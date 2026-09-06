@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import Button from '@demicodes/web-ui/ui/Button.vue'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
@@ -68,8 +69,9 @@ onBeforeUnmount(() => window.clearTimeout(timer))
       <div class="h-10 flex-1 rounded-md bg-surface-raised ring-1 ring-line-subtle" />
       <div class="h-10 flex-1 rounded-md bg-surface-float ring-1 ring-line-subtle" />
     </div>
-    <!-- Accent: a switch you can flip -->
-    <div class="flex justify-end">
+    <!-- A plain button and a switch you can flip: the controls as they are -->
+    <div class="flex items-center justify-between">
+      <Button size="sm">Button</Button>
       <Switch v-model="on" />
     </div>
   </div>
