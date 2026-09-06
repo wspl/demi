@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { showToast } from '@demicodes/web-ui/infra/toast'
-import { Check, Copy, ExternalLink, Laptop, Monitor, Moon, Plug, Server, Sun, Terminal } from '@lucide/vue'
+import { Check, Copy, ExternalLink, Eye, EyeOff, FolderOpen, Laptop, Monitor, Moon, Plug, RotateCw, ScrollText, Server, Sun, Terminal, Trash2 } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
@@ -17,6 +17,7 @@ import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextArea from '@demicodes/web-ui/ui/TextArea.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
 import SettingsNote from '@demicodes/web-ui/settings/SettingsNote.vue'
@@ -307,7 +308,7 @@ const revealed = ref<Record<string, boolean>>({})
     <SettingsGroup title="Shell allowlist" description="Commands matching a pattern run without asking, whatever the rule above says.">
       <SettingsRow v-for="pattern in s.permissions.allowlist" :key="pattern" inset :label="pattern">
         <template #leading><Terminal :size="ICON_PX.in24" /></template>
-        <Button size="sm" @click="s.permissions.allowlist = s.permissions.allowlist.filter((p) => p !== pattern)">Remove</Button>
+        <Tooltip content="Remove"><IconButton size="sm" :icon="Trash2" variant="danger" aria-label="Remove pattern" @click="s.permissions.allowlist = s.permissions.allowlist.filter((p) => p !== pattern)" /></Tooltip>
       </SettingsRow>
       <SettingsRow label="Add a pattern" description="Glob syntax. `git *` matches every git command.">
         <TextInput v-model="newPattern" placeholder="docker compose *" class="w-56 max-w-full" @keydown.enter="addPattern" />
@@ -338,7 +339,8 @@ const revealed = ref<Record<string, boolean>>({})
     <SettingsGroup title="Project instructions" description="AGENTS.md files the agent reads from the working directory up to the checkout root.">
       <SettingsRow v-for="file in s.instructions.files" :key="file.path" :label="file.path" :description="file.found ? 'Read at the start of every turn.' : 'Not found. Create it to give this project its own rules.'">
         <template #tags><Tag :tone="file.found ? 'success' : 'neutral'">{{ file.found ? 'Found' : 'Missing' }}</Tag></template>
-        <Button size="sm" @click="file.found ? note('Opening in your editor', file.path) : (file.found = true)">{{ file.found ? 'Open' : 'Create' }}</Button>
+        <Tooltip v-if="file.found" content="Open in editor"><IconButton size="sm" :icon="ExternalLink" aria-label="Open in editor" @click="note('Opening in your editor', file.path)" /></Tooltip>
+        <Button v-else size="sm" @click="file.found = true">Create</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Memory">
@@ -370,8 +372,8 @@ const revealed = ref<Record<string, boolean>>({})
           </template>
           <template v-if="server.state === 'auth'"><Button size="sm" @click="signInServer(server)">Sign in</Button></template>
           <template v-else-if="server.state === 'crashed'">
-            <Button size="sm" @click="note(`${server.name} logs`, server.detail)">Logs</Button>
-            <Button size="sm" @click="restartServer(server)">Restart</Button>
+            <Tooltip content="Logs"><IconButton size="sm" :icon="ScrollText" aria-label="Show logs" @click="note(`${server.name} logs`, server.detail)" /></Tooltip>
+            <Tooltip content="Restart"><IconButton size="sm" :icon="RotateCw" aria-label="Restart server" @click="restartServer(server)" /></Tooltip>
           </template>
           <template v-else-if="server.state === 'connected'">
             <Button size="sm" @click="server.expanded = !server.expanded">{{ server.expanded ? 'Hide tools' : 'Tools' }}</Button>
@@ -416,7 +418,7 @@ const revealed = ref<Record<string, boolean>>({})
             <Tag v-if="device.version !== '1.6.2'" tone="warning">Update available</Tag>
           </template>
           <Button size="sm" v-if="!device.current" @click="device.online = !device.online; device.seen = device.online ? 'Now' : 'Just now'">{{ device.online ? 'Go offline' : 'Connect' }}</Button>
-          <Button size="sm" :disabled="device.current" @click="revokeDevice(device.id)">Revoke</Button>
+          <Tooltip content="Revoke"><IconButton size="sm" :icon="Trash2" variant="danger" :disabled="device.current" aria-label="Revoke device" @click="revokeDevice(device.id)" /></Tooltip>
         </SettingsRow>
         <SettingsRow inset label="Home directory">
           <span class="font-mono text-[12px] text-fg-muted">{{ device.home }}</span>
@@ -521,21 +523,18 @@ const revealed = ref<Record<string, boolean>>({})
         </Dropdown>
       </SettingsRow>
       <SettingsRow label="Open log folder">
-        <Button size="sm" @click="note('Opening the log folder', '~/Library/Logs/Demi')">
-          Open
-          <ExternalLink :size="ICON_PX.in24" />
-        </Button>
+        <Tooltip content="Open folder"><IconButton size="sm" :icon="FolderOpen" aria-label="Open log folder" @click="note('Opening the log folder', '~/Library/Logs/Demi')" /></Tooltip>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Configuration">
       <SettingsRow label="Config file" description="Edits made here are written back; edits made there reload live.">
         <span class="font-mono text-[12px] text-fg-muted">{{ s.developer.configPath }}</span>
         <IconButton size="sm" :icon="Copy" variant="ghost" aria-label="Copy config path" @click="copyText(s.developer.configPath, 'Path')" />
-        <Button size="sm" @click="note('Opening in your editor', s.developer.configPath)">Open</Button>
+        <Tooltip content="Open in editor"><IconButton size="sm" :icon="ExternalLink" aria-label="Open config in editor" @click="note('Opening in your editor', s.developer.configPath)" /></Tooltip>
       </SettingsRow>
       <SettingsRow v-for="entry in s.developer.env" :key="entry.key" inset :label="entry.key">
         <span class="font-mono text-[12px] text-fg-muted">{{ revealed[entry.key] ? entry.value.replace(/•+/, '3f2a9c1d7e5b4a6f8c2d1e9b') : entry.value }}</span>
-        <Button size="sm" @click="revealed[entry.key] = !revealed[entry.key]">{{ revealed[entry.key] ? 'Hide' : 'Reveal' }}</Button>
+        <Tooltip :content="revealed[entry.key] ? 'Hide' : 'Reveal'"><IconButton size="sm" :icon="revealed[entry.key] ? EyeOff : Eye" :aria-label="revealed[entry.key] ? 'Hide value' : 'Reveal value'" @click="revealed[entry.key] = !revealed[entry.key]" /></Tooltip>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Experiments" description="May change or disappear. Feedback welcome.">
