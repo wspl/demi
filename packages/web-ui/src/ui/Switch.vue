@@ -52,6 +52,6 @@ function onKeydown(event: KeyboardEvent) {
 
 <style scoped>
 .switch-on {
-  background: var(--on-accent);
+  background: var(--accent-fill);
 }
 </style>
