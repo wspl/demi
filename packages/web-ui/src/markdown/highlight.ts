@@ -38,6 +38,13 @@ const highlighterReady = createHighlighter({ themes: ALL_SHIKI_THEMES, langs: [.
   renderVersion.value += 1
 })
 
+// The Shiki theme follows `<html data-theme>`, so a mode switch is a new render too.
+if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
+  new MutationObserver(() => {
+    renderVersion.value += 1
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+}
+
 function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
