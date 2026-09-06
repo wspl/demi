@@ -38,8 +38,8 @@ defineExpose({
   >
     <input
       ref="inputRef"
-      v-bind="inputAttrs"
       type="text"
+      v-bind="inputAttrs"
       :value="modelValue"
       :placeholder="placeholder"
       class="h-full min-w-0 flex-1 bg-transparent px-2.5 text-chrome text-fg outline-none placeholder:text-fg-subtle"

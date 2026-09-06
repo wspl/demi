@@ -102,7 +102,6 @@ export interface MockProvider {
   state: MockProviderState
   detail?: string
   enabled: boolean
-  defaultModelId: string | null
   models: MockModel[]
   accounts: MockAccount[]
   /** The vendor mark; null falls back to an initial. */
@@ -158,7 +157,6 @@ function provider(partial: Partial<MockProvider> & Pick<MockProvider, 'id' | 'na
     stale: false,
     state: 'ready',
     enabled: true,
-    defaultModelId: null,
     models: [],
     accounts: [],
     logo: null,
@@ -204,7 +202,6 @@ export function mockProviders(): MockProvider[] {
         { id: 'a1', label: 'zan@example.com', plan: 'Max 5×', active: true, quota: { used: 62, max: 100, resets: 'in 2 h 10 min' } },
         { id: 'a2', label: 'zan@work.example', plan: 'Pro', active: false, quota: { used: 100, max: 100, resets: 'in 4 h' } },
       ],
-      defaultModelId: 'claude-sonnet-4-5',
       catalogFetched: '2 min ago',
       models: [
         model({ id: 'claude-opus-4-1', name: 'Claude Opus 4.1', contextWindow: 200_000, outputLimit: 32_000, tools: true, attachments: true, efforts: ['low', 'medium', 'high', 'max'], defaultEffort: 'high' }),
@@ -222,7 +219,7 @@ export function mockProviders(): MockProvider[] {
     provider({
       id: 'anthropic', name: 'Anthropic', kind: 'api_key', family: 'anthropic', vendorId: 'anthropic', logo: '/logos/anthropic.svg',
       baseUrl: 'https://api.anthropic.com', wireApi: 'anthropic-messages', keyHint: 'sk-ant-…3f2a',
-      catalogFetched: '14 min ago', defaultModelId: 'claude-sonnet-4-5',
+      catalogFetched: '14 min ago',
       models: [
         model({ id: 'claude-opus-4-1', name: 'Claude Opus 4.1', contextWindow: 200_000, outputLimit: 32_000, tools: true, attachments: true, efforts: ['low', 'medium', 'high'], defaultEffort: 'high' }),
         model({ id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', contextWindow: 1_000_000, outputLimit: 64_000, tools: true, attachments: true, efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' }),
@@ -242,7 +239,7 @@ export function mockProviders(): MockProvider[] {
     provider({
       id: 'kimi', name: 'Kimi', kind: 'api_key', family: 'anthropic', vendorId: 'moonshotai', logo: '/logos/moonshotai.svg',
       baseUrl: 'https://api.moonshot.cn/anthropic', wireApi: 'anthropic-messages', keyHint: 'sk-…8c1d',
-      modelSource: 'manual', defaultModelId: 'kimi-k2-thinking',
+      modelSource: 'manual',
       models: [
         model({ id: 'kimi-k2-thinking', name: 'Kimi K2 Thinking', contextWindow: 256_000, outputLimit: 32_000, tools: true, attachments: false, efforts: ['low', 'high'], defaultEffort: 'high' }),
         model({ id: 'kimi-k2-turbo-preview' }),
@@ -296,13 +293,6 @@ export function createSettingsState() {
     providers: mockProviders(),
     selectedProviderId: 'kimi' as string | null,
     providerDetailOpen: false,
-    defaults: {
-      chat: 'Claude Sonnet 4.5',
-      fast: 'Claude Haiku 4.5',
-      subagent: 'GPT-5 mini',
-      reasoning: 'medium' as 'off' | 'low' | 'medium' | 'high',
-      temperature: 0.3,
-    },
     agents: [
       { id: 'build', name: 'Build', model: 'Claude Sonnet', mode: 'primary', summary: 'Full tool access · edits, shell, web', isDefault: true, enabled: true, expanded: true },
       { id: 'plan', name: 'Plan', model: 'Claude Sonnet', mode: 'primary', summary: 'Read-only · asks before every edit', enabled: true, expanded: false },
