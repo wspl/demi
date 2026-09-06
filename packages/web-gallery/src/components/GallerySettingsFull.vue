@@ -22,6 +22,7 @@ import TextArea from '@demicodes/web-ui/ui/TextArea.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import AppearancePreview from '@demicodes/web-ui/settings/AppearancePreview.vue'
 import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
 import SettingsNote from '@demicodes/web-ui/settings/SettingsNote.vue'
 import SettingsPage from '@demicodes/web-ui/settings/SettingsPage.vue'
@@ -62,6 +63,12 @@ const tools = [
 
 function pick<T extends string>(current: T, values: readonly T[], set: (value: T) => void) {
   return { current, values, set }
+}
+
+/** Light and dark switch the gallery itself, so the preview and the page follow; System keeps the current mode. */
+function setThemeChoice(choice: 'light' | 'dark' | 'system') {
+  s.value.general.theme = choice
+  if (choice !== 'system') galleryState.mode = choice
 }
 
 // Actions the mock cannot perform say what the product would do.
@@ -153,6 +160,7 @@ const revealed = ref<Record<string, boolean>>({})
   <!-- General -->
   <SettingsPage v-if="tab === 'general'" title="General" description="Language, look, and how the app starts.">
     <SettingsGroup title="Appearance">
+      <template #aside><AppearancePreview :font-size="s.general.fontSize" /></template>
       <SettingsRow label="Language" description="The app's own text. Model output is unaffected.">
         <Dropdown size="sm" :overlay-store="appOverlayStore" variant="default" trigger-label="Language">
           <template #trigger>{{ s.general.language }}</template>
@@ -164,7 +172,7 @@ const revealed = ref<Record<string, boolean>>({})
         </Dropdown>
       </SettingsRow>
       <SettingsRow label="Theme">
-        <Segmented size="sm" v-model="s.general.theme" :options="themeOptions" />
+        <Segmented size="sm" :model-value="s.general.theme" :options="themeOptions" @update:model-value="setThemeChoice($event as 'light' | 'dark' | 'system')" />
       </SettingsRow>
       <!-- Tone and accent change the gallery itself, the way they would change the app. -->
       <SettingsRow label="Tone">
