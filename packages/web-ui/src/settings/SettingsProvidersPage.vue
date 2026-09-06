@@ -283,25 +283,19 @@ function saveModel(draft: SettingsModelDraft) {
             </template>
           </SettingsGroup>
 
-          <!-- Models. A subscription's list is whatever the vendor serves, so its only control is a refresh. -->
-          <SettingsGroup title="Models">
-            <template v-if="selected.kind === 'subscription'" #header>
+          <!-- Models. A subscription's list is whatever the vendor serves, so its only control is a
+               refresh; a vendor key chooses between the catalog and a manual list; a bare endpoint
+               only has the manual list. -->
+          <SettingsGroup>
+            <template #header>
               <header class="flex h-7 select-none items-center gap-2">
                 <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">Models</h3>
-                <span v-if="selected.catalogFetched" class="text-[12px] text-fg-subtle">fetched {{ selected.catalogFetched }}</span>
-                <span class="ml-auto"><Tooltip content="Refresh the list"><IconButton :icon="RefreshCw" size="sm" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip></span>
+                <span v-if="selected.modelSource === 'catalog' && selected.catalogFetched" class="text-[12px] text-fg-subtle">fetched {{ selected.catalogFetched }}</span>
+                <Tag v-if="selected.stale" tone="warning">Stale</Tag>
+                <span v-if="selected.kind === 'subscription'" class="ml-auto"><Tooltip content="Refresh the list"><IconButton :icon="RefreshCw" size="sm" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip></span>
+                <Segmented v-else-if="selected.vendorId" v-model="selected.modelSource" size="sm" class="ml-auto" :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]" />
               </header>
             </template>
-            <!-- Only a models.dev vendor has a catalog; a bare endpoint lists what you add. -->
-            <SettingsRow
-              v-if="selected.kind === 'api_key' && selected.vendorId"
-              label="Source"
-              :description="selected.modelSource === 'catalog' && selected.catalogFetched ? `Fetched ${selected.catalogFetched}` : undefined"
-            >
-              <template #tags><Tag v-if="selected.stale" tone="warning">Stale</Tag></template>
-              <Tooltip v-if="selected.modelSource === 'catalog'" content="Refresh the catalog"><IconButton :icon="RefreshCw" size="sm" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip>
-              <Segmented v-model="selected.modelSource" size="sm" :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]" />
-            </SettingsRow>
             <div v-if="selected.kind === 'api_key'" class="flex items-center gap-3 px-3 py-2">
               <Checkbox
                 :model-value="visibleSelection(selected).checked"
@@ -314,6 +308,7 @@ function saveModel(draft: SettingsModelDraft) {
                 <template #prefix><Search :size="ICON_PX.in24" /></template>
               </TextInput>
               <Tooltip v-if="selected.modelSource === 'manual'" content="Add model"><IconButton :icon="Plus" aria-label="Add model" @click="openModel('create', null)" /></Tooltip>
+              <Tooltip v-else content="Refresh the catalog"><IconButton :icon="RefreshCw" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip>
             </div>
             <SettingsRow v-for="m in visibleModels(selected)" :key="m.id" :label="m.name || m.id" compact :class="m.enabled ? '' : 'opacity-60'">
               <template v-if="selected.kind === 'api_key'" #leading><Checkbox v-model="m.enabled" label="" :aria-label="`Enable ${m.name || m.id}`" /></template>
