@@ -8,7 +8,7 @@ import { overlayContainerKey } from '@demicodes/web-ui/overlay/overlayContainer'
  * and never registers as the page's exclusive overlay.
  */
 withDefaults(defineProps<{
-  size?: 'md' | 'lg' | 'wide'
+  size?: 'md' | 'lg' | 'wide' | 'tall' | 'narrow'
 }>(), {
   size: 'md',
 })
@@ -21,7 +21,7 @@ provide(overlayContainerKey, well)
   <div
     ref="well"
     class="gallery-overlay-well"
-    :class="size === 'lg' ? 'gallery-overlay-well-lg' : size === 'wide' ? 'gallery-overlay-well-wide' : ''"
+    :class="size === 'md' ? '' : `gallery-overlay-well-${size}`"
   >
     <slot />
   </div>

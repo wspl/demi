@@ -1,12 +1,9 @@
 <script setup lang="ts">
-import { X } from '@lucide/vue'
-import Button from '@demicodes/web-ui/ui/Button.vue'
-import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
-import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
-import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
-import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
-import Menu from '@demicodes/web-ui/ui/Menu.vue'
-import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
+import { computed } from 'vue'
+import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
+import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
+import SettingsUsage from '@demicodes/web-ui/settings/SettingsUsage.vue'
+import type { SettingsTab } from '@demicodes/web-ui/settings/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { setTheme, useTheme } from '@demicodes/web-ui/theme/appTheme'
 import { useResources } from '../prototype/resources'
@@ -18,107 +15,33 @@ const emit = defineEmits<{ signOut: [] }>()
 const resources = useResources()
 const conversations = useConversations()
 const { theme } = useTheme()
-const tabs = ['Account', 'Devices', 'Providers', 'Usage']
+
+const tab = computed({
+  get: () => resources.settingsTab as SettingsTab,
+  set: (value: SettingsTab) => {
+    resources.settingsTab = value
+  },
+})
+
+const usage = computed(() => ({
+  conversations: conversations.items.length,
+  messages: conversations.items.reduce((n, c) => n + c.blocks.filter((b) => b.type === 'user').length, 0),
+  cost: '$0.00',
+}))
 </script>
 
 <template>
-  <Dialog
-    :is-open="true"
-    :overlay-store="appOverlayStore"
-    size="lg"
-    label="Settings"
-    @close="resources.settingsOpen = false"
-  >
-    <header class="flex select-none items-center justify-between border-b border-line px-4 py-3">
-      <h2 class="text-[15px] font-medium text-fg-emphasis">Settings</h2>
-      <IconButton
-        :icon="X"
-        variant="ghost"
-        aria-label="Close settings"
-        @click="resources.settingsOpen = false"
-      />
-    </header>
-    <div class="flex min-h-[22rem] flex-col sm:flex-row">
-      <nav
-        class="flex shrink-0 gap-1 overflow-x-auto border-b border-line p-2 sm:w-36 sm:flex-col sm:border-b-0 sm:border-r"
-        aria-label="Settings sections"
-      >
-        <Button
-          v-for="tab in tabs"
-          :key="tab"
-          variant="ghost"
-          :pressed="resources.settingsTab === tab"
-          class="shrink-0 justify-start"
-          @click="resources.settingsTab = tab"
-        >
-          {{ tab }}
-        </Button>
-      </nav>
-      <section class="settings-content min-w-0 flex-1 p-5">
-        <template v-if="resources.settingsTab === 'Account'">
-          <h3>Your workspace</h3>
-          <label>
-            Display name
-            <TextInput v-model="resources.username" maxlength="50" />
-          </label>
-          <div class="setting-row">
-            <div>
-              <strong>Appearance</strong>
-            </div>
-            <Dropdown :overlay-store="appOverlayStore" variant="default">
-              <template #trigger>{{ theme === 'light' ? 'Light' : 'Dark' }}</template>
-              <template #content>
-                <Menu>
-                  <MenuItem
-                    label="Light"
-                    choice
-                    :is-selected="theme === 'light'"
-                    @select="setTheme('light')"
-                  />
-                  <MenuItem
-                    label="Dark"
-                    choice
-                    :is-selected="theme === 'dark'"
-                    @select="setTheme('dark')"
-                  />
-                </Menu>
-              </template>
-            </Dropdown>
-          </div>
-          <div class="setting-row">
-            <div>
-              <strong>Session</strong>
-            </div>
-            <Button @click="emit('signOut')">Sign out</Button>
-          </div>
-        </template>
-        <DevicesPanel v-else-if="resources.settingsTab === 'Devices'" />
-        <ProvidersPanel v-else-if="resources.settingsTab === 'Providers'" />
-        <template v-else-if="resources.settingsTab === 'Usage'">
-          <h3>Usage</h3>
-          <div class="grid grid-cols-3 gap-3 py-6">
-            <div>
-              <strong class="text-[24px] font-normal">{{ conversations.items.length }}</strong>
-              <p class="hint">Conversations</p>
-            </div>
-            <div>
-              <strong class="text-[24px] font-normal">
-                {{
-                  conversations.items.reduce(
-                    (n, c) => n + c.blocks.filter((b) => b.type === 'user').length,
-                    0,
-                  )
-                }}
-              </strong>
-              <p class="hint">Messages</p>
-            </div>
-            <div>
-              <strong class="text-[24px] font-normal">$0.00</strong>
-              <p class="hint">Actual cost</p>
-            </div>
-          </div>
-        </template>
-      </section>
-    </div>
-  </Dialog>
+  <SettingsDialog v-model:tab="tab" :is-open="true" :overlay-store="appOverlayStore" @close="resources.settingsOpen = false">
+    <SettingsAccount
+      v-if="tab === 'Account'"
+      v-model:name="resources.username"
+      :overlay-store="appOverlayStore"
+      :theme="theme"
+      @change-theme="setTheme"
+      @sign-out="emit('signOut')"
+    />
+    <DevicesPanel v-else-if="tab === 'Devices'" />
+    <ProvidersPanel v-else-if="tab === 'Providers'" />
+    <SettingsUsage v-else-if="tab === 'Usage'" :usage="usage" />
+  </SettingsDialog>
 </template>
