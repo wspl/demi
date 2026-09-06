@@ -230,7 +230,9 @@ html[data-theme="light"][data-accent="teal"] {
   --line-focus: oklch(52% 0.2 190);
 }
 
-/* Accents remap --on-accent; the fill follows, darker and more saturated. */
+/* Accents remap --on-accent; the fill takes the hue with its own lightness. On dark
+   surfaces a fill needs to be light enough to stand off them (3:1 against the float
+   surface) while white still reads on it, which puts it at 64% lightness. */
 html[data-theme="dark"][data-accent] {
-  --accent-fill: oklch(from var(--on-accent) 55% calc(c + 0.06) h);
+  --accent-fill: oklch(from var(--on-accent) 64% 0.18 h);
 }
