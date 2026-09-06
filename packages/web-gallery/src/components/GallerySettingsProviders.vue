@@ -77,8 +77,8 @@ const modelDialog = ref<{ mode: 'create' | 'edit' | 'view'; model: SettingsModel
 const modelDialogOpen = ref(false)
 const testing = ref<string | null>(null)
 
-/** Only trouble is marked on the rail; a healthy provider carries no badge. */
-const stateBadge = { ready: undefined, error: 'danger', unreachable: 'danger', 'signed-out': 'warning', disabled: undefined } as const
+/** The rail badges only what needs attention: yellow still needs setting up, red failed its test. */
+const stateBadge = { ready: undefined, unconfigured: 'warning', error: 'danger', unreachable: 'danger', 'signed-out': 'warning', disabled: undefined } as const
 const wireOptions = (Object.keys(WIRE_API_LABELS) as WireApi[]).map((value) => ({ value, label: WIRE_API_LABELS[value] }))
 const wireLabel = (w: WireApi) => WIRE_API_LABELS[w]
 
@@ -100,6 +100,7 @@ function addProvider(vendor: SettingsVendor | null) {
     modelSource: vendor ? 'catalog' : 'manual',
     catalogFetched: vendor ? 'just now' : null,
     logo: vendor?.logo ?? null,
+    state: 'unconfigured',
   }))
   addOpen.value = false
   select(id)
