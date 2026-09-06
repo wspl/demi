@@ -17,16 +17,17 @@ const detailOpen = defineModel<boolean>('detailOpen', { default: false })
 </script>
 
 <template>
-  <div class="@container">
-    <!-- The list is a bare rail, not a card: only the detail's own groups draw surfaces. -->
-    <div class="grid gap-x-8 gap-y-4 @md:grid-cols-[11rem_minmax(0,1fr)]">
+  <div class="@container min-h-0 flex-1">
+    <!-- The list is a bare rail, not a card: only the detail's own groups draw surfaces.
+         Each side scrolls on its own when the host gives the split a height. -->
+    <div class="grid h-full grid-rows-[minmax(0,1fr)] gap-x-8 gap-y-4 @md:grid-cols-[11rem_minmax(0,1fr)]">
       <aside
-        class="flex flex-col gap-0.5 self-start"
+        class="flex min-h-0 flex-col gap-0.5 overflow-y-auto"
         :class="detailOpen ? 'hidden @md:flex' : 'flex'"
       >
         <slot name="list" />
       </aside>
-      <section class="min-w-0" :class="detailOpen ? 'block' : 'hidden @md:block'">
+      <section class="min-h-0 min-w-0 overflow-y-auto" :class="detailOpen ? 'block' : 'hidden @md:block'">
         <div class="-mx-2 mb-3 flex h-10 items-center gap-1 @md:hidden">
           <Button variant="ghost" size="sm" @click="detailOpen = false">
             <ChevronLeft :size="ICON_PX.in24" />
