@@ -4,6 +4,7 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
+import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import TokenInput from '@demicodes/web-ui/ui/TokenInput.vue'
@@ -80,7 +81,7 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
         <h3 class="truncate text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
         <p v-if="mode === 'view'" class="mt-0.5 font-mono text-[12px] text-fg-subtle">{{ draft.id }}</p>
       </header>
-      <div class="flex min-h-0 flex-col gap-4 overflow-y-auto px-5" :class="editable ? '' : 'pb-5'">
+      <ScrollArea class="min-h-0" :viewport-class="`flex flex-col gap-4 px-5 ${editable ? '' : 'pb-5'}`">
 
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
         <SettingsRow v-if="editable" label="Model id">
@@ -146,7 +147,7 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
         </div>
       </div>
 
-      </div>
+      </ScrollArea>
       <div v-if="editable" class="flex justify-end gap-2 p-5 pt-4">
         <Button size="sm" @click="emit('close')">Cancel</Button>
         <Button size="sm" variant="primary" :disabled="!canSave" @click="emit('save', clone(draft))">{{ mode === 'create' ? 'Add model' : 'Save' }}</Button>
