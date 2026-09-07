@@ -39,7 +39,7 @@ const emit = defineEmits<{
 
 const columns: { key: FileBrowserSortKey; label: string; class: string }[] = [
   { key: 'name', label: 'Name', class: '' },
-  { key: 'modifiedAt', label: 'Date modified', class: 'hidden @md:block' },
+  { key: 'modifiedAt', label: 'Date modified', class: 'hidden @md:flex' },
   { key: 'size', label: 'Size', class: 'text-right' },
 ]
 
