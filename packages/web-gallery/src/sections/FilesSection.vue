@@ -136,7 +136,7 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </div>
     </GallerySection>
 
-    <GallerySection title="Select folder" note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline one shows what that looks like.">
+    <GallerySection title="Select folder" note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline one is listed but cannot be chosen.">
       <GalleryOverlayWell size="tall">
         <FileBrowserDialog
           :key="folderKey"

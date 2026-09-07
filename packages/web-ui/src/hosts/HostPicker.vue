@@ -13,7 +13,6 @@ const props = defineProps<{
   devices: DeviceOption[]
   includeCloud?: boolean
   selectedId?: string
-  requireOnline?: boolean
   boundIds?: string[]
 }>()
 const emit = defineEmits<{ select: [id: string]; connect: [] }>()
@@ -29,7 +28,8 @@ function disabled(device: DeviceOption) {
   return (
     device.id === props.selectedId ||
     props.boundIds?.includes(device.id) ||
-    (!!props.requireOnline && !device.online)
+    // An offline device cannot be chosen anywhere; it stays listed so its absence is visible.
+    !device.online
   )
 }
 </script>
