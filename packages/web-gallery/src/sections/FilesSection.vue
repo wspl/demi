@@ -152,7 +152,7 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </GallerySpecimen>
     </GallerySection>
 
-    <GallerySection title="Narrow" note="At a phone width the places move into a menu in the status row, Forward and the date column go, and the address bar folds.">
+    <GallerySection title="Narrow" note="At a phone width the path takes its own row under the toolbar, the places become a menu at the toolbar's right, Forward and the date column go, and the address bar folds.">
       <GalleryOverlayWell size="narrow">
         <FileBrowserDialog
           :is-open="true"
