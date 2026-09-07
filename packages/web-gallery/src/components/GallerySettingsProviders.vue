@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { showToast } from '@demicodes/web-ui/infra/toast'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsProviderEntry, type SettingsProviderModel, type SettingsVendor, type SettingsWireApi } from '@demicodes/web-ui/settings/types'
@@ -79,7 +78,6 @@ function refresh(p: SettingsProviderEntry) {
     refreshing.value = null
     p.catalogFetched = 'just now'
     p.stale = false
-    showToast({ title: `${p.name} refreshed`, message: `${p.models.length} models listed.` })
   }, 1400)
 }
 

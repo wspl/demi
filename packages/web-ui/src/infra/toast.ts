@@ -1,6 +1,11 @@
 import { reactive } from 'vue'
 import { createId } from '@demicodes/utils'
 
+/**
+ * A toast is only for an outcome that has nowhere else to go: the menu already
+ * closed, the drop has no field, the send failed off-control. Do not toast a
+ * success the page already shows, or stand in for a dialog that does not exist.
+ */
 export type ToastTone = 'danger' | 'neutral'
 
 export interface Toast {

@@ -6,6 +6,7 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import SidebarNavItem from '@demicodes/web-ui/sidebar/SidebarNavItem.vue'
 import { showToast } from '@demicodes/web-ui/infra/toast'
+import { matchesShortcut } from '@demicodes/web-ui/ui/shortcut'
 import type { SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
@@ -66,15 +67,23 @@ function signOut() {
   resources.settingsOpen = false
   void router.push('/login')
 }
-function shortcut(event: KeyboardEvent) {
-  if (!resources.signedIn || !(event.metaKey || event.ctrlKey)) return
-  if (event.key === ',') {
-    event.preventDefault()
+/** The bindings from the keyboard settings, by the action each one names. */
+const actions: Record<string, () => void> = {
+  new: () => create(null),
+  sidebar: () => {
+    resources.sidebarOpen = !resources.sidebarOpen
+  },
+  settings: () => {
     resources.settingsOpen = true
-  }
-  if (event.key === 'Enter' || event.key.toLowerCase() !== 'n') return
+  },
+}
+function shortcut(event: KeyboardEvent) {
+  if (!resources.signedIn) return
+  const binding = resources.settings.keys.find((entry) => matchesShortcut(event, entry.keys))
+  const action = binding && actions[binding.id]
+  if (!action) return
   event.preventDefault()
-  create(null)
+  action()
 }
 onMounted(() => window.addEventListener('keydown', shortcut))
 onUnmounted(() => window.removeEventListener('keydown', shortcut))
