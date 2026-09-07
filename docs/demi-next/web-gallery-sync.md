@@ -19,13 +19,16 @@ browser package typechecks and checks affected specimens in the browser.
 | Models & providers: rail, provider page, add/model dialogs, login dialog | settings/SettingsProvidersPage, AddProviderDialog, ModelDialog, ProviderLoginDialog | GallerySettingsProviders over fixture state and mock handlers |
 | Account credentials: change email (address, password, code), change password | settings/ChangeEmailDialog, ChangePasswordDialog | GallerySettingsFull mock flows; standalone wells with every phase |
 | Text entry: prefix/suffix, secrets with an eye, token counts with a unit | TextInput, TokenInput | Primitives specimens |
+| File browser: folder and file choosing over a `FileBrowserSource`, address bar, places and devices, states | files/FileBrowser, FileBrowserDialog (see `docs/file-browser.md`) | Files page over fixture trees; the workspace picker, new-project Browse and the composer's remote attachment in `web` |
+| Composer Add menu: local files, and a remote file when the conversation has a host | SessionComposer `remoteFiles` / `attachRemote` | GalleryComposer opens the Files dialog; `web` inserts the path into the draft |
 
 ## Product-flow coverage boundary
 
 The gallery is a component catalog, not a second application with copied stores.
-Host binding persistence, recent-directory selection and its file browser,
-archive/composer switching, routing and the rich seeded conversation
-scenarios are assembled in `web`. Their complete workflows must be
+Host binding persistence, recent-directory selection, archive/composer
+switching, routing and the rich seeded conversation scenarios are assembled
+in `web`; the file browser those flows open is the shared component over a
+`FileBrowserSource` the product supplies. Their complete workflows must be
 accepted in `web`; the gallery does not currently reproduce these composed
 workflows. A component specimen alone does not establish end-to-end parity.
 

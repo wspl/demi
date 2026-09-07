@@ -1,0 +1,169 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
+import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
+import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memory-source'
+import type { FileBrowserMode, FileBrowserSource } from '@demicodes/web-ui/files/types'
+import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
+import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
+import GallerySection from '../components/GallerySection.vue'
+import GallerySpecimen from '../components/GallerySpecimen.vue'
+import { createGalleryFileHosts, laptopTree } from '../fixtures/files'
+
+const anatomy: [string, string][] = [
+  ['Shape', 'The Windows open dialog: Back, Forward and Up beside the address bar, a filter at the right; places and devices down the left; a detail list; the name row with the confirm button under it.'],
+  ['Address', 'Crumbs, each a jump; deep paths fold their middle into an ellipsis. Clicking the free space turns the bar into a text field with the full path. The root crumb is the device.'],
+  ['List', 'Name, date and size, folders first, names in natural order; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'],
+  ['Keys', 'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history. The filter narrows the folder and highlights the match.'],
+  ['Name row', 'The selected row fills it. Typed text is resolved against the folder: a folder is entered, a file is opened, ~ is the home, a slash makes it a path. What is not there says so under the row.'],
+  ['New folder', 'A row at the top of the list with the name ready to type over; Enter creates it and selects it. Only a source that can create directories offers the button.'],
+  ['States', 'A slow device shows a spinner, an empty folder says so, and a folder that cannot be read explains why: missing, locked, or the device offline.'],
+  ['Hosts', 'The sidebar lists the devices the caller offers with their online dot; choosing one asks the caller for that device\'s source and the browser starts over at its home.'],
+]
+
+const hosts = createGalleryFileHosts()
+const hostOptions = hosts.map(({ id, label, online, icon }) => ({ id, label, online, icon }))
+
+// Select folder: the workspace picker's use, opening on the laptop's projects.
+const folderHostId = ref('mac')
+const folderHost = computed(() => hosts.find((host) => host.id === folderHostId.value)!)
+const folderChosen = ref<string | null>(null)
+const folderKey = ref(0)
+
+// Open file: the composer's remote attachment, opening inside a project.
+const fileHostId = ref('mac')
+const fileHost = computed(() => hosts.find((host) => host.id === fileHostId.value)!)
+const fileChosen = ref<string | null>(null)
+const fileKey = ref(0)
+
+// One browser, inline, switched between the states a folder can be in.
+const stateOptions = [
+  { value: 'slow', label: 'Slow device' },
+  { value: 'empty', label: 'Empty' },
+  { value: 'locked', label: 'Locked' },
+  { value: 'missing', label: 'Missing' },
+  { value: 'offline', label: 'Offline' },
+  { value: 'readonly', label: 'Read-only' },
+] as const
+type StateOption = (typeof stateOptions)[number]['value']
+const state = ref<StateOption>('empty')
+const laptop = laptopTree()
+const stateSources: Record<StateOption, { source: FileBrowserSource; path: string }> = {
+  slow: { source: createMemoryFileSource({ home: '/Users/zan', root: laptop, latencyMs: 60_000 }), path: '/Users/zan/Projects' },
+  empty: { source: createMemoryFileSource({ home: '/Users/zan', root: laptop }), path: '/Users/zan/Library/Preferences' },
+  locked: { source: createMemoryFileSource({ home: '/Users/zan', root: laptop }), path: '/Users/zan/.ssh' },
+  missing: { source: createMemoryFileSource({ home: '/Users/zan', root: laptop }), path: '/Users/zan/Projects/gone' },
+  offline: { source: hosts[2]!.source, path: '/home/zan' },
+  readonly: {
+    source: (() => {
+      const { createDirectory: _omit, ...rest } = createMemoryFileSource({ home: '/srv', root: dir({ srv: dir({ 'release.tar.gz': file(90_211_004, '2026-09-01T08:00:00Z') }) }) })
+      return rest
+    })(),
+    path: '/srv',
+  },
+}
+const stateMode = ref<FileBrowserMode>('directory')
+const modeOptions = [
+  { value: 'directory', label: 'Folder' },
+  { value: 'file', label: 'File' },
+] as const
+
+function selectHost(target: 'folder' | 'file', id: string) {
+  if (target === 'folder') {
+    folderHostId.value = id
+    folderKey.value += 1
+  } else {
+    fileHostId.value = id
+    fileKey.value += 1
+  }
+}
+</script>
+
+<template>
+  <div class="flex flex-col gap-10">
+    <GallerySection title="Files" note="One browser for choosing a folder on a device and for opening a file there. Fixture trees; nothing reads a disk.">
+      <dl class="grid max-w-3xl grid-cols-[7rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px] leading-5">
+        <template v-for="[term, detail] in anatomy" :key="term">
+          <dt class="select-none text-fg-subtle">{{ term }}</dt>
+          <dd class="text-fg-muted">{{ detail }}</dd>
+        </template>
+      </dl>
+    </GallerySection>
+
+    <GallerySection title="Select folder" note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the sidebar; the offline one shows what that looks like.">
+      <GalleryOverlayWell size="tall">
+        <FileBrowserDialog
+          :key="folderKey"
+          :is-open="true"
+          :overlay-store="appOverlayStore"
+          mode="directory"
+          title="Select folder"
+          description="Conversations in this workspace run in the folder you choose."
+          :source="folderHost.source"
+          :initial-path="folderHostId === 'mac' ? '/Users/zan/Projects' : undefined"
+          :places="folderHost.places"
+          :hosts="hostOptions"
+          :host-id="folderHostId"
+          @select="folderChosen = $event"
+          @update:host-id="selectHost('folder', $event)"
+        />
+      </GalleryOverlayWell>
+      <p class="select-none text-[12px] text-fg-subtle">
+        Chosen: <span class="select-text text-fg-muted">{{ folderChosen ?? '—' }}</span>
+      </p>
+    </GallerySection>
+
+    <GallerySection title="Open file" note="The composer's remote attachment: opens inside the conversation's workspace. Folders are entered, a file is the answer.">
+      <GalleryOverlayWell size="tall">
+        <FileBrowserDialog
+          :key="fileKey"
+          :is-open="true"
+          :overlay-store="appOverlayStore"
+          mode="file"
+          title="Open file"
+          :source="fileHost.source"
+          :initial-path="fileHostId === 'mac' ? '/Users/zan/Projects/demi' : undefined"
+          :places="fileHost.places"
+          :hosts="hostOptions"
+          :host-id="fileHostId"
+          @select="fileChosen = $event"
+          @update:host-id="selectHost('file', $event)"
+        />
+      </GalleryOverlayWell>
+      <p class="select-none text-[12px] text-fg-subtle">
+        Chosen: <span class="select-text text-fg-muted">{{ fileChosen ?? '—' }}</span>
+      </p>
+    </GallerySection>
+
+    <GallerySection title="States" note="The browser alone, without the dialog and without a sidebar, in each state a folder can be in.">
+      <div class="mb-3 flex flex-wrap items-center gap-3">
+        <Segmented v-model="state" :options="stateOptions" />
+        <Segmented v-model="stateMode" :options="modeOptions" />
+      </div>
+      <GallerySpecimen wide>
+        <div class="gallery-frame flex h-96 w-full max-w-3xl flex-col overflow-hidden">
+          <FileBrowser
+            :key="`${state}-${stateMode}`"
+            :mode="stateMode"
+            :source="stateSources[state].source"
+            :initial-path="stateSources[state].path"
+          />
+        </div>
+      </GallerySpecimen>
+    </GallerySection>
+
+    <GallerySection title="Narrow" note="At a phone width the sidebar stays and the date column goes; the address bar folds.">
+      <GalleryOverlayWell size="narrow">
+        <FileBrowserDialog
+          :is-open="true"
+          :overlay-store="appOverlayStore"
+          mode="directory"
+          :source="hosts[0]!.source"
+          initial-path="/Users/zan/Projects/a project with a very long directory name that will not fit in the address bar/src"
+          :places="hosts[0]!.places"
+        />
+      </GalleryOverlayWell>
+    </GallerySection>
+  </div>
+</template>

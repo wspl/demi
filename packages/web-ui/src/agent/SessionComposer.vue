@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { ThinkingConfig, TokenUsage } from '@demicodes/core'
-import { ArrowUp, File as FileIcon, Plus, Square } from '@lucide/vue'
+import { ArrowUp, File as FileIcon, HardDrive, Plus, Square } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { t } from '../infra/i18n'
@@ -27,6 +27,8 @@ const props = withDefaults(
     canCompact?: boolean
     accept?: string
     attachments?: { name: string; src?: string; caption?: string }[]
+    /** The conversation has a host with files: the menu offers a remote file beside local ones. */
+    remoteFiles?: boolean
     focused?: boolean
     attachOpen?: boolean
     dropping?: boolean
@@ -49,6 +51,8 @@ const emit = defineEmits<{
   stop: []
   compact: []
   addFiles: [files: File[]]
+  /** Open the host's file browser; the caller attaches what it returns. */
+  attachRemote: []
   removeAttachment: [index: number]
   selectModel: [providerId: string, modelId: string]
   changeThinking: [config: ThinkingConfig]
@@ -153,8 +157,14 @@ function keydown(event: KeyboardEvent) {
             <Menu>
               <MenuItem
                 :icon="FileIcon"
-                :label="t('agent.input.attachFiles')"
+                :label="t(remoteFiles ? 'agent.input.attachLocalFiles' : 'agent.input.attachFiles')"
                 @select="pickFiles(close)"
+              />
+              <MenuItem
+                v-if="remoteFiles"
+                :icon="HardDrive"
+                :label="t('agent.input.attachRemoteFile')"
+                @select="emit('attachRemote')"
               />
             </Menu>
           </template>

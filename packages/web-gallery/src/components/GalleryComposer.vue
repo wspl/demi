@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import type { ThinkingConfig, TokenUsage } from '@demicodes/core'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
+import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
+import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { filePreviewUrl } from '@demicodes/web-ui/agent/message-input/attachments'
 import { demoUsage } from '../fixtures/blocks'
 import { demoModels, demoProviders } from '../fixtures/catalog'
+import { createGalleryFileHosts } from '../fixtures/files'
 
 const props = withDefaults(
   defineProps<{
@@ -54,6 +57,14 @@ function submit() {
 function addFiles(files: File[]) {
   attached.value.push(...files.map((file) => ({ name: file.name, src: filePreviewUrl(file) })))
 }
+// A remote file: the fixture laptop's project; the chosen path joins the draft.
+const remoteHosts = createGalleryFileHosts()
+const remoteHostId = ref<string | null>(null)
+const remoteHost = computed(() => remoteHosts.find((host) => host.id === remoteHostId.value) ?? remoteHosts[0]!)
+function attachRemote(path: string) {
+  draft.value = draft.value && !/\s$/.test(draft.value) ? `${draft.value} ${path}` : `${draft.value}${path}`
+  remoteHostId.value = null
+}
 function selectModel(provider: string, model: string) {
   providerId.value = provider
   modelId.value = model
@@ -81,13 +92,32 @@ defineExpose({
     :service-tier-id="tier"
     :thinking-config="thinking"
     :usage="props.usage ?? demoUsage"
+    remote-files
     @submit="submit"
     @add-files="addFiles"
+    @attach-remote="remoteHostId = 'mac'"
     @remove-attachment="remove"
     @select-model="selectModel"
     @change-thinking="thinking = $event"
     @change-service-tier="tier = $event"
     @stop="emit('stop')"
     @compact="emit('compact')"
+  />
+  <FileBrowserDialog
+    v-if="remoteHostId"
+    :is-open="true"
+    :overlay-store="appOverlayStore"
+    mode="file"
+    title="Attach remote file"
+    description="The file's path goes into the message for the agent to read."
+    :source="remoteHost.source"
+    :initial-path="remoteHostId === 'mac' ? '/Users/zan/Projects/demi' : undefined"
+    :places="remoteHost.places"
+    :hosts="remoteHosts.map(({ id, label, online }) => ({ id, label, online }))"
+    :host-id="remoteHostId"
+    confirm-label="Attach"
+    @select="attachRemote"
+    @close="remoteHostId = null"
+    @update:host-id="remoteHostId = $event"
   />
 </template>

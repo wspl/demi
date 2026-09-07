@@ -34,6 +34,6 @@ function onKeydown(event: KeyboardEvent) {
     @keydown="onKeydown"
   >
     <span class="checkbox-mark" :data-state="mark" />
-    <span class="select-none text-chrome text-fg-body">{{ label }}</span>
+    <span class="select-none whitespace-nowrap text-chrome text-fg-body">{{ label }}</span>
   </span>
 </template>

@@ -31,7 +31,9 @@ scripted response clock. The fixture provider's model names are illustrative. Bo
 online so main-host switching is available immediately.
 Conversation content and resource edits live in memory and reset on reload.
 Files stay in the browser: image previews use local object URLs, and file
-placement is simulated. No credential fields send or persist secrets.
+placement is simulated. The composer's Add menu offers local files and, when the
+conversation has a host, a remote file: the shared browser in file mode over the
+main and attached hosts, whose chosen path joins the draft as a reference. No credential fields send or persist secrets.
 
 ## Prototype behavior under review
 
@@ -73,9 +75,11 @@ selection opens a directory chooser on the selected device; choosing a folder mo
 to the matching workspace, creating its prototype record when needed. Offline
 devices can be attached but cannot be selected as the main environment. The workspace control
 opens up to eight recent directories on the current device, marks the current one,
-and switches directly when selected. The bottom action opens a simulated file browser
-with parent navigation, filtering, file previews and folder selection. Its tooltip
-shows the full path. The current branch appears as plain text beside its icon,
+and switches directly when selected. The bottom action opens the shared file browser
+(`docs/file-browser.md`) in folder mode over the device's fixture tree, with the
+device's workspaces as places and the other devices in its sidebar; choosing a
+folder moves the conversation. The new-project form's Browse button opens the same
+browser for the chosen device. Its tooltip shows the full path. The current branch appears as plain text beside its icon,
 without a menu, switching or creation actions. Workspace switching is disabled during a running turn or for an archived conversation, while file
 browsing remains available. Files and branches are fixtures; no real filesystem,
 Git repository or device is modified. Conversations without a device binding display Cloud, with only the cloud
