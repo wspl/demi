@@ -165,9 +165,6 @@ export function createSettingsState() {
       email: 'zan@example.com',
       passwordChanged: '3 months ago',
       plan: 'Pro',
-      renews: 'Oct 12',
-      creditsUsed: 8_640,
-      creditsMax: 10_000,
     },
     providers: mockProviders(),
     selectedProviderId: 'kimi' as string | null,
@@ -256,25 +253,6 @@ export function createSettingsState() {
       retention: 'Forever',
       shareLinks: false,
       telemetry: true,
-    },
-    usage: {
-      spend: [
-        { provider: 'Anthropic', amount: '$12.40' },
-        { provider: 'OpenAI', amount: '$3.10' },
-        { provider: 'Ollama', amount: '—' },
-      ],
-      input: '1.2M',
-      output: '210k',
-      cacheRead: '890k',
-      resets: 'Oct 1',
-    },
-    developer: {
-      logLevel: 'Info',
-      experiments: [
-        { id: 'parallel', name: 'Parallel tool calls', description: 'Run independent tool calls at once.', on: true },
-        { id: 'background', name: 'Background agents', description: 'Keep subagents running after the turn ends.', on: false },
-        { id: 'voice', name: 'Voice input', description: 'Dictate into the composer.', on: false },
-      ],
     },
   })
 }

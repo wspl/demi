@@ -102,8 +102,7 @@ right of the conversation title.
 
 The settings dialog is the shared shell with the product rail
 (`web-ui/settings/sections.ts`): General, Account, Notifications; Models &
-providers, MCP servers, Skills; Devices, Keyboard, Data & privacy, Usage &
-billing; Developer. Every page is a `web-ui` component over a presentation model;
+providers, MCP servers, Skills; Devices, Keyboard, Data & privacy. Every page is a `web-ui` component over a presentation model;
 `web/settings/SettingsDialog.vue` supplies the prototype's state
 (`prototype/settings.ts`) and decides what a row does to the app. General writes the
 theme choice, tone, accent and transcript text size onto the document as they
@@ -114,7 +113,7 @@ is offered in the model menu while it is enabled and its last check passed, and 
 its enabled models are listed. Keyboard rebinds the shortcuts `App` listens for,
 through the one notation `web-ui/ui/shortcut.ts` defines; a binding another action
 holds is refused on the page's note. Data & privacy's Delete all empties the
-conversation list in place; Developer's Download logs saves a text file. A dialog
+conversation list in place. A dialog
 opened from a settings page (a credential flow, adding a server, pairing a device)
 stacks on the settings dialog: the shell stays, Escape and the scrim close only the
 top, and closing the shell takes the stack with it.
