@@ -8,6 +8,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import { isFastMode } from './fast-mode'
 import { resolveSelectedModel } from './model-selection'
+import { buildReasoningState, reasoningOptionLabel } from './reasoning'
 import ModelMenu from './ModelMenu.vue'
 
 const props = defineProps<{
@@ -27,6 +28,12 @@ const emit = defineEmits<{
 
 const selected = computed(() => resolveSelectedModel(props.providers, props.models, props.selectedProviderId, props.selectedModelId))
 const fast = computed(() => isFastMode(selected.value?.model, props.serviceTierId))
+// The chip names the reasoning level beside the model, quieter than the name, so the
+// current effort is visible without opening the menu.
+const reasoningLabel = computed(() => {
+  const state = buildReasoningState(selected.value?.model ?? null)
+  return state ? reasoningOptionLabel(state, props.thinkingConfig) : ''
+})
 </script>
 
 <template>
@@ -39,6 +46,7 @@ const fast = computed(() => isFastMode(selected.value?.model, props.serviceTierI
     <template #trigger>
       <span class="inline-flex min-w-0 items-center gap-1">
         <span class="truncate">{{ selected.model.name }}</span>
+        <span v-if="reasoningLabel" class="shrink-0 text-fg-subtle">{{ reasoningLabel }}</span>
         <Zap v-if="fast" :size="ICON_PX.in28" class="shrink-0" />
       </span>
     </template>
