@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, ref, shallowRef, watch, type Component } from 'vue'
-import { ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Eye, EyeOff, FolderPlus, MapPin, Monitor } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Eye, EyeOff, FolderPlus, MapPin } from '@lucide/vue'
+import { CLOUD_HOST_ID, hostIcon } from '../hosts/icons'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
@@ -235,7 +236,7 @@ defineExpose({
             class="flex h-7 w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
             :class="isOpen ? 'bg-active' : 'bg-hover hover:bg-active'"
           >
-            <component :is="currentHost?.icon ?? Monitor" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
+            <component :is="currentHost ? hostIcon(currentHost) : hostIcon({ id: '' })" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
             <span class="min-w-0 flex-1 truncate">{{ currentHost?.label ?? 'Device' }}</span>
             <ChevronDown :size="ICON_PX.in24" class="shrink-0 text-fg-subtle transition-transform duration-200 ease-out" :class="isOpen ? 'rotate-180' : ''" />
           </span>
@@ -245,8 +246,8 @@ defineExpose({
             <MenuItem
               v-for="host in hosts"
               :key="host.id"
-              :icon="host.icon"
-              :indicator="host.icon ? undefined : host.online ? 'success' : 'muted'"
+              :icon="host.id === CLOUD_HOST_ID ? hostIcon(host) : host.icon"
+              :indicator="host.icon || host.id === CLOUD_HOST_ID ? undefined : host.online ? 'success' : 'muted'"
               :indicator-label="host.online ? 'Online' : 'Offline'"
               :label="host.label"
               choice

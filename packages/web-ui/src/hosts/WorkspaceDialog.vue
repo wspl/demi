@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { FolderOpen, Plus, X } from '@lucide/vue'
+import { CLOUD_HOST_ID, hostIcon } from './icons'
+import { ICON_PX } from '../ui/icon-metrics'
+import { baseName } from '../files/paths'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
@@ -16,8 +19,9 @@ import type { WorkspaceDevice, WorkspaceDraft, WorkspaceProject } from './worksp
 
 /**
  * A conversation's working environment: pick one of the projects, or make a new one
- * from a name, a device and a directory. The folder browser is a page of the same
- * dialog, opened by Browse…. Every opening starts from a clean form.
+ * from a device and a directory on it; the project is named after the directory. The
+ * folder browser is a page of the same dialog, opened by Browse…. Every opening starts
+ * from a clean form on the Cloud workspace, or the first device when there is none.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -29,10 +33,8 @@ const props = defineProps<{
   /** No switching while a turn runs. */
   locked?: boolean
   devices: WorkspaceDevice[]
-  /** Offer the managed Cloud workspace beside the devices. */
+  /** Offer the managed Cloud workspace beside the devices; it is the default. */
   cloud?: boolean
-  /** The directory the form starts on for a device. */
-  defaultPath?: string
   /** What went wrong with the last Create, shown under the form. */
   message?: string
   /** The browser's tree for a device. */
@@ -46,42 +48,53 @@ const emit = defineEmits<{
   create: [draft: WorkspaceDraft]
 }>()
 
-const name = ref('')
 const path = ref('')
 const deviceId = ref('')
 const showCreate = ref(false)
 const browsing = ref(false)
 
 const device = computed(() => props.devices.find((entry) => entry.id === deviceId.value) ?? null)
-const deviceLabel = computed(() => (deviceId.value === 'cloud' ? 'Cloud' : device.value?.name ?? 'Choose a device'))
-const browserHosts = computed(() => props.devices.map((entry) => ({ id: entry.id, label: entry.name, online: entry.online })))
+const cloudChosen = computed(() => deviceId.value === CLOUD_HOST_ID)
+const deviceLabel = computed(() => (cloudChosen.value ? 'Cloud' : device.value?.name ?? 'Choose a device'))
+const browserHosts = computed(() => [
+  ...props.devices.map((entry) => ({ id: entry.id, label: entry.name, online: entry.online })),
+  ...(props.cloud ? [{ id: CLOUD_HOST_ID, label: 'Cloud', online: true }] : []),
+])
 const browserSource = computed(() => props.sourceFor(deviceId.value))
 const browserPlaces = computed(() => props.placesFor?.(deviceId.value) ?? [])
-const canCreate = computed(() => !!name.value.trim() && (deviceId.value === 'cloud' || (!!device.value && path.value.startsWith('/'))))
+const online = computed(() => cloudChosen.value || !!device.value?.online)
+const canCreate = computed(() => online.value && path.value.startsWith('/') && !!baseName(path.value))
+/** What the project will be called: the directory's name. */
+const projectName = computed(() => baseName(path.value.replace(/\/$/, '')))
 
 watch(
   () => props.isOpen,
   (open) => {
     if (!open) return
-    name.value = ''
-    path.value = props.defaultPath ?? '/'
-    deviceId.value = props.devices[0]?.id ?? (props.cloud ? 'cloud' : '')
+    deviceId.value = props.cloud ? CLOUD_HOST_ID : props.devices[0]?.id ?? ''
     showCreate.value = props.mode === 'create'
     browsing.value = false
   },
   { immediate: true },
 )
 
-/** The browser's folder becomes the directory, and the name when none is typed. */
+// The directory starts at the chosen host's home; picking another host starts over there.
+watch(
+  deviceId,
+  (id) => {
+    path.value = id ? props.sourceFor(id).home : ''
+  },
+  { immediate: true },
+)
+
 function pickDirectory(chosen: string) {
   path.value = chosen
-  if (!name.value.trim()) name.value = chosen.split('/').filter(Boolean).at(-1) ?? ''
   browsing.value = false
 }
 
 function create() {
   if (!canCreate.value) return
-  emit('create', { name: name.value.trim(), deviceId: deviceId.value, path: deviceId.value === 'cloud' ? '' : path.value.trim() })
+  emit('create', { deviceId: deviceId.value, path: path.value.replace(/\/$/, '') || '/' })
 }
 </script>
 
@@ -140,40 +153,42 @@ function create() {
           </div>
         </template>
         <form v-else class="flex flex-col gap-4" @submit.prevent="create">
-          <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-            Project name
-            <TextInput v-model="name" focused maxlength="64" placeholder="My next idea" />
-          </label>
           <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
             Device
             <Dropdown :overlay-store="overlayStore" variant="default" trigger-label="Device">
-              <template #trigger>{{ deviceLabel }}</template>
+              <template #trigger>
+                <span class="flex items-center gap-2">
+                  <component :is="hostIcon({ id: deviceId })" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
+                  {{ deviceLabel }}
+                </span>
+              </template>
               <template #content="{ close }">
                 <Menu>
+                  <MenuItem v-if="cloud" :icon="hostIcon({ id: CLOUD_HOST_ID })" label="Cloud" choice :is-selected="cloudChosen" @select="deviceId = CLOUD_HOST_ID; close()" />
                   <MenuItem
                     v-for="entry in devices"
                     :key="entry.id"
+                    :icon="hostIcon(entry)"
                     :label="entry.name"
-                    :indicator="entry.online ? 'success' : 'muted'"
-                    :indicator-label="entry.online ? 'Online' : 'Offline'"
+                    :value="entry.online ? undefined : 'Offline'"
                     choice
                     :is-selected="deviceId === entry.id"
                     @select="deviceId = entry.id; close()"
                   />
-                  <MenuItem v-if="cloud" label="Cloud" choice :is-selected="deviceId === 'cloud'" @select="deviceId = 'cloud'; close()" />
                 </Menu>
               </template>
             </Dropdown>
           </div>
-          <label v-if="deviceId !== 'cloud'" class="flex flex-col gap-1.5 text-chrome text-fg-muted">
+          <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
             Directory
             <span class="flex items-center gap-2">
               <TextInput v-model="path" placeholder="/path/to/project" class="min-w-0 flex-1" />
-              <Button class="shrink-0" :disabled="!device?.online" @click="browsing = true">
+              <Button class="shrink-0" :disabled="!online" @click="browsing = true">
                 <FolderOpen :size="14" />
                 Browse…
               </Button>
             </span>
+            <span class="text-[12px] leading-4 text-fg-subtle">{{ projectName ? `The project will be called ${projectName}.` : 'The project takes the folder\'s name.' }}</span>
           </label>
           <InlineError v-if="message" :message="message" />
           <div>
