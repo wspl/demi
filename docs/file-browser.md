@@ -74,9 +74,10 @@ list has room whatever the folder holds.
   over; Enter creates it and selects it, Escape or blur drops it.
 - **States**: a spinner while a folder loads, one line for an empty folder, and for
   a failure an icon with the reason.
-- **Narrow**: below a phone width the sidebar becomes a Places menu at the start of
-  the status row, Forward goes, the date column hides and the buttons drop under the
-  status.
+- **Narrow**: below a phone width the path takes a row of its own under the toolbar,
+  whose left keeps the device and nav and whose right holds a Places menu with the
+  rail's groups beside the icons; Forward goes, the date column hides and the
+  buttons drop under the status.
 
 Nothing in the browser is document text: the whole surface is `select-none` and the
 only text cursor is inside the address field and the new-folder name.

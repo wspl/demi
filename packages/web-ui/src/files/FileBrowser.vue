@@ -207,7 +207,9 @@ defineExpose({
 
 <template>
   <div class="@container flex min-h-0 flex-1 select-none flex-col">
-    <div class="flex shrink-0 items-center gap-2 py-2 pl-2 pr-3">
+    <!-- One row at width: device, nav, path, icons. Narrow: the path takes a row of its own
+         under the toolbar, whose left holds the device and nav and whose right the icons. -->
+    <div class="flex shrink-0 flex-wrap items-center gap-2 py-2 pl-2 pr-3">
       <!-- The device sits in the rail's column with the rail's own inset; the path beside it starts at that device's root. -->
       <Dropdown v-if="hosts.length" :overlay-store="appOverlayStore" class="w-40 shrink-0 [&>div]:w-full">
         <template #trigger="{ isOpen }">
@@ -249,8 +251,31 @@ defineExpose({
           <IconButton :icon="ArrowUp" variant="ghost" aria-label="Parent folder" :disabled="path === '/'" @click="up" />
         </Tooltip>
       </div>
-      <FileBrowserAddressBar class="min-w-0 flex-1" :path="path" @navigate="goTo" />
+      <span class="flex-1 @md:hidden" />
+      <FileBrowserAddressBar class="order-1 min-w-0 basis-full @md:order-none @md:flex-1 @md:basis-auto" :path="path" @navigate="goTo" />
       <div class="flex shrink-0 items-center gap-0.5">
+        <!-- The rail's places, as a menu where the rail has no room. -->
+        <Dropdown v-if="hasRail" :overlay-store="appOverlayStore" class="@md:hidden">
+          <template #trigger="{ isOpen }">
+            <Tooltip content="Places">
+              <IconButton :icon="MapPin" variant="ghost" :pressed="isOpen" aria-label="Places" />
+            </Tooltip>
+          </template>
+          <template #content>
+            <Menu>
+              <MenuGroup v-for="(group, index) in places" :key="group.label ?? index" :label="group.label ?? 'Places'">
+                <MenuItem
+                  v-for="place in group.places"
+                  :key="place.path"
+                  :icon="place.icon"
+                  :label="place.label ?? (baseName(place.path) || '/')"
+                  :title="place.path"
+                  @select="goTo(place.path)"
+                />
+              </MenuGroup>
+            </Menu>
+          </template>
+        </Dropdown>
         <Tooltip v-if="source.createDirectory" content="New folder">
           <IconButton :icon="FolderPlus" variant="ghost" aria-label="New folder" :disabled="!!failure || loading" @click="creating = true" />
         </Tooltip>
@@ -300,30 +325,6 @@ defineExpose({
     </div>
     <div class="flex shrink-0 flex-col gap-2 px-3 py-2 @md:flex-row @md:items-center @md:gap-3">
       <div class="flex min-w-0 flex-1 items-center gap-3">
-      <div class="flex shrink-0 items-center gap-0.5 empty:hidden">
-        <!-- The rail's places, as a menu where the rail has no room. -->
-        <Dropdown v-if="hasRail" :overlay-store="appOverlayStore" class="@md:hidden">
-          <template #trigger="{ isOpen }">
-            <Tooltip content="Places">
-              <IconButton :icon="MapPin" variant="ghost" :pressed="isOpen" aria-label="Places" />
-            </Tooltip>
-          </template>
-          <template #content>
-            <Menu>
-              <MenuGroup v-for="(group, index) in places" :key="group.label ?? index" :label="group.label ?? 'Places'">
-                <MenuItem
-                  v-for="place in group.places"
-                  :key="place.path"
-                  :icon="place.icon"
-                  :label="place.label ?? (baseName(place.path) || '/')"
-                  :title="place.path"
-                  @select="goTo(place.path)"
-                />
-              </MenuGroup>
-            </Menu>
-          </template>
-        </Dropdown>
-      </div>
       <div class="flex min-w-0 flex-1 items-center gap-2 text-chrome" role="status">
         <template v-if="error">
           <span class="truncate text-on-danger" :title="error">{{ error }}</span>
