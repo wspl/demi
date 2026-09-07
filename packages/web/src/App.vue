@@ -35,23 +35,16 @@ watch(
   },
   { immediate: true },
 )
-/** The sidebar's Skills flyout lists every skill from every source; a switch there is the settings switch. */
-const skillItems = computed(() =>
-  resources.settings.skillSources.flatMap((source) => source.skills.map((skill) => ({ id: skill.id, name: skill.name, summary: skill.description, enabled: skill.enabled }))),
-)
-function toggleSkill(id: string, enabled: boolean) {
-  const skill = resources.settings.skillSources.flatMap((source) => source.skills).find((entry) => entry.id === id)
-  if (skill) skill.enabled = enabled
-}
-function browseSkills() {
-  resources.settingsTab = 'skills'
-  resources.settingsOpen = true
-}
 const account = computed(() => ({
   name: resources.username || 'Zan',
   email: '',
   plan: 'Personal workspace',
 }))
+/** The sidebar's Skills and Archived entries open their settings sections. */
+function openSettings(section?: string) {
+  if (section) resources.settingsTab = section
+  resources.settingsOpen = true
+}
 function reorder(request: SidebarReorder) {
   if (request.kind === 'project') resources.reorderProject(request.id, request.beforeId)
   else conversations.reorder(request.id, request.beforeId)
@@ -74,10 +67,6 @@ function removeProject(id: string) {
     return
   }
   resources.projects = resources.projects.filter((p) => p.id !== id)
-}
-function restore(id: string) {
-  conversations.archive([id], false)
-  open(id)
 }
 function signOut() {
   resources.signedIn = false
@@ -132,8 +121,6 @@ watch(
         :projects="resources.projects"
         :conversations="conversations.items.filter((c) => !c.archived)"
         :active-id="activeId"
-        :skills="skillItems"
-        :archived="conversations.items.filter((c) => c.archived)"
         hide-delete
         @reorder="reorder"
         @select="open"
@@ -144,10 +131,7 @@ watch(
         @pin="conversations.pin"
         @move-to-project="conversations.move"
         @archive="conversations.archive"
-        @toggle-skill="toggleSkill"
-        @manage-skills="browseSkills"
-        @restore="restore"
-        @open-settings="resources.settingsOpen = true"
+        @open-settings="openSettings"
         @sign-out="signOut"
       />
     </div>
