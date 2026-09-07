@@ -53,7 +53,7 @@ list has room whatever the folder holds.
 - **Device and address**: two controls. The device sits over the rail, as wide as it,
   a menu of the hosts the caller offers, dotted green or gray; then Back, Forward and
   Up, and the path from that device's root, as crumbs, each a jump; the root crumb is
-  the platform's folder glyph, since a lone slash is too narrow to hit. Deep paths keep the root and the last three crumbs (two in a
+  the platform's folder glyph beside its slash. Deep paths keep the root and the last three crumbs (two in a
   narrow bar) and fold the middle into an ellipsis. A click on the free space turns
   the bar into a text field with the full path; Enter goes there, Escape or blur
   leaves it.

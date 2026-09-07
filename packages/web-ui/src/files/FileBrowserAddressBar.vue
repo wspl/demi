@@ -103,19 +103,16 @@ watch(() => props.path, () => {
       <span
         v-else
         role="link"
-        class="flex h-5 min-w-0 shrink items-center gap-1 rounded text-chrome transition-colors duration-200 ease-out"
+        class="flex h-5 min-w-0 shrink items-center gap-1 rounded px-1 text-chrome transition-colors duration-200 ease-out"
         :class="[
           index === shown.length - 1 ? 'max-w-[60%] shrink-0 text-fg-emphasis' : 'text-fg-muted hover:bg-hover hover:text-fg',
-          index === 0 ? 'shrink-0 px-1.5' : 'px-1',
+          index === 0 ? 'shrink-0' : '',
         ]"
         @click="emit('navigate', crumb.path)"
       >
-        <!-- The root is the device's OS folder: a lone slash is too narrow to hit. -->
-        <FileIcon v-if="index === 0" name="/" :is-directory="true" :icon="rootIconName(platform)" aria-label="Root" />
-        <template v-else>
-          <FileIcon :name="crumb.name" :is-directory="true" />
-          <span class="truncate">{{ crumb.name }}</span>
-        </template>
+        <!-- The root wears the device's OS folder beside its slash, the same shape as every other crumb. -->
+        <FileIcon :name="crumb.name" :is-directory="true" :icon="index === 0 ? rootIconName(platform) : undefined" />
+        <span class="truncate">{{ crumb.name }}</span>
       </span>
     </template>
     <span class="h-full min-w-4 flex-1" @click="startEdit" />
