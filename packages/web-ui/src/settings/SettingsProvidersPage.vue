@@ -294,7 +294,7 @@ function saveModel(draft: SettingsModelDraft) {
                 <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">Models</h3>
                 <span v-if="selected.modelSource === 'catalog' && selected.catalogFetched" class="text-[12px] text-fg-subtle">fetched {{ selected.catalogFetched }}</span>
                 <Tag v-if="selected.stale" tone="warning">Stale</Tag>
-                <span v-if="selected.kind === 'subscription'" class="ml-auto"><Tooltip content="Refresh the list"><IconButton size="sm" :icon="refreshing === selected.id ? IndeterminateSpinner : RefreshCw" :disabled="refreshing === selected.id" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip></span>
+                <span v-if="selected.kind === 'subscription'" class="ml-auto"><Tooltip content="Refresh the list"><IconButton size="sm" :icon="RefreshCw" spin-on-click :spinning="refreshing === selected.id" :disabled="refreshing === selected.id" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip></span>
                 <Segmented size="sm" v-else-if="selected.vendorId" v-model="selected.modelSource" class="ml-auto" :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]" />
               </header>
             </template>
@@ -311,7 +311,7 @@ function saveModel(draft: SettingsModelDraft) {
                 <template #prefix><Search :size="ICON_PX.in24" /></template>
               </TextInput>
               <Tooltip v-if="selected.modelSource === 'manual'" content="Add model"><IconButton size="sm" :icon="Plus" aria-label="Add model" @click="openModel('create', null)" /></Tooltip>
-              <Tooltip v-else content="Refresh the catalog"><IconButton size="sm" :icon="refreshing === selected.id ? IndeterminateSpinner : RefreshCw" :disabled="refreshing === selected.id" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip>
+              <Tooltip v-else content="Refresh the catalog"><IconButton size="sm" :icon="RefreshCw" spin-on-click :spinning="refreshing === selected.id" :disabled="refreshing === selected.id" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip>
             </div>
             <SettingsRow v-for="m in visibleModels(selected)" :key="m.id" :label="m.name || m.id" compact :class="m.enabled ? '' : 'opacity-60'">
               <template v-if="selected.kind === 'api_key'" #leading><Checkbox v-model="m.enabled" label="" :aria-label="`Enable ${m.name || m.id}`" /></template>
