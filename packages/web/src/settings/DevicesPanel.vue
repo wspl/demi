@@ -1,29 +1,13 @@
 <script setup lang="ts">
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { showToast } from '@demicodes/web-ui/infra/toast'
-import type { PairingResult } from '@demicodes/web-ui/devices/pairing'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import { useResources } from '../prototype/resources'
 import { useConversations } from '../conversation/store'
+import { claimDevice, deviceInstallation } from '../prototype/pairing'
 
 const resources = useResources()
 const conversations = useConversations()
-// Prototype endpoint contract; installers are not served by this SPA.
-const installation = {
-  shellInstallerUrl: `${window.location.origin}/install.sh`,
-  powershellInstallerUrl: `${window.location.origin}/install.ps1`,
-}
-
-async function claim(_code: string): Promise<PairingResult> {
-  const device = {
-    id: crypto.randomUUID(),
-    name: `host-${resources.devices.length + 1}`,
-    online: true,
-    home: '/home/demo',
-  }
-  resources.devices.push(device)
-  return { ok: true, device }
-}
 
 function revoke(id: string) {
   if (resources.projects.some((p) => p.deviceId === id)) {
@@ -40,8 +24,8 @@ function revoke(id: string) {
   <SettingsDevices
     :devices="resources.devices"
     :overlay-store="appOverlayStore"
-    :installation="installation"
-    :claim-device="claim"
+    :installation="deviceInstallation"
+    :claim-device="claimDevice"
     @revoke="revoke"
   />
 </template>
