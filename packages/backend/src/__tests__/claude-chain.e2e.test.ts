@@ -142,6 +142,7 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
       id: 'claude-sonnet-4-6',
       name: 'Claude Sonnet',
       contextWindow: 200_000,
+      outputLimit: null,
       inputLimit: null,
       thinking: [],
       acceptedExtensions: [],

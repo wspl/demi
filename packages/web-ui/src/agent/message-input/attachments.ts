@@ -1,5 +1,5 @@
 import type { UserContentBlock } from '@demicodes/core'
-import { sniffModelMediaType } from '@demicodes/core'
+import { fileExtensionSupport, sniffModelMediaType } from '@demicodes/core'
 
 export async function fileToUserContent(file: File): Promise<UserContentBlock> {
   const bytes = new Uint8Array(await file.arrayBuffer())
@@ -20,18 +20,16 @@ export async function fileToUserContent(file: File): Promise<UserContentBlock> {
   }
 }
 
-export function fileMatchesAcceptedExtensions(file: File, acceptedExtensions: readonly string[]): boolean {
-  if (acceptedExtensions.length === 0) return true
+export function fileMatchesAcceptedExtensions(file: File, acceptedExtensions: readonly string[] | null): boolean {
   const ext = file.name.split('.').pop()?.toLowerCase()
   if (!ext) return false
-  if (acceptedExtensions.includes(ext)) return true
-  return ext === 'jpeg' && acceptedExtensions.includes('jpg')
+  return fileExtensionSupport(acceptedExtensions, ext) === true
 }
 
 /** Splits a drop or paste into the files the model accepts and the ones it does not. */
 export function partitionAcceptedFiles(
   files: readonly File[],
-  acceptedExtensions: readonly string[],
+  acceptedExtensions: readonly string[] | null,
 ): { accepted: File[]; rejected: File[] } {
   const accepted: File[] = []
   const rejected: File[] = []
@@ -41,8 +39,8 @@ export function partitionAcceptedFiles(
   return { accepted, rejected }
 }
 
-export function acceptAttribute(acceptedExtensions: readonly string[]): string | undefined {
-  if (acceptedExtensions.length === 0) return undefined
+export function acceptAttribute(acceptedExtensions: readonly string[] | null): string | undefined {
+  if (acceptedExtensions === null || acceptedExtensions.length === 0) return undefined
   return acceptedExtensions.map((ext) => `.${ext}`).join(',')
 }
 

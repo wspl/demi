@@ -29,7 +29,7 @@ export interface ModelInfo {
   name: string
   contextWindow: number | null
   inputLimit: number | null
-  acceptedExtensions: string[]
+  acceptedExtensions: string[] | null
   reasoning: ModelReasoning | null
   /** Provider-advertised speed tiers. Fast Mode is the tier flagged `fast`; models without one have no Fast switch. */
   serviceTiers: ModelServiceTier[] | null

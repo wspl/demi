@@ -6,7 +6,7 @@ import { PendingSteerQueue } from '../session/steer-queue'
 
 const model: ModelSelection = {
   providerId: 'stub',
-  model: { id: 'stub', name: 'Stub', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
+  model: { id: 'stub', name: 'Stub', contextWindow: 100_000, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
   thinking: null,
 }
 

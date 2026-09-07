@@ -225,6 +225,7 @@ function makeRequest(items: InferenceRequest['items']): InferenceRequest {
     sessionId: 'session-1',
     turnId: 'turn-1',
     requestId: 'request-1',
+    outputLimit: null,
     modelId: 'gpt-5.4',
     systemPrompt: 'system',
     cwd: '/tmp',

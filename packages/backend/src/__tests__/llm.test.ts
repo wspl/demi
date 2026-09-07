@@ -22,7 +22,7 @@ import { openBackend, type TestBackend } from './session'
 function selectionFor(providerId: string) {
   const model: ModelSelection = {
     providerId: providerId,
-    model: { id: 'test-model', name: 'M', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
+    model: { id: 'test-model', name: 'M', contextWindow: 100_000, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
     thinking: null,
   }
   return { providerId: providerId, model }
