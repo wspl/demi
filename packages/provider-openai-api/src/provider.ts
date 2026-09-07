@@ -34,6 +34,8 @@ export type OpenAIApiHeadersResolver = () => Record<string, string> | Promise<Re
 export type OpenAIApiFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 
 export interface OpenAIApiRequestOptions {
+  /** Overrides the current model output limit for both Responses and Chat Completions. */
+  maxOutputTokens?: number
   maxRetries?: number
   streamOptions?: Record<string, unknown> | null
   extraBody?: Record<string, unknown>
@@ -222,6 +224,7 @@ export function createOpenAIApiProvider(options: OpenAIApiProviderOptions = {}):
       message: wireApi === 'responses' ? 'Uses the OpenAI Responses API' : 'Uses the OpenAI Chat Completions API',
     }),
     listModels: modelList,
+    supportsOutputLimit: true,
     createRuntime: (_selection: ProviderSelection) =>
       wireApi === 'responses' ? new OpenAIResponsesProvider(runtimeOptions) : new OpenAIChatCompletionsProvider(runtimeOptions),
   })
@@ -343,6 +346,8 @@ export function buildOpenAIResponsesBody(
     include: ['reasoning.encrypted_content'],
     prompt_cache_key: clampPromptCacheKey(request.sessionId),
   }
+  const outputLimit = options?.maxOutputTokens ?? request.outputLimit
+  if (outputLimit !== null) body.max_output_tokens = outputLimit
   if (request.systemPrompt.trim()) body.instructions = request.systemPrompt
   if (request.tools.length > 0) {
     body.tools = request.tools.map(toolToOpenAIResponseTool)
@@ -542,6 +547,9 @@ export function buildOpenAIChatCompletionsBody(
     body.tools = request.tools.map(toolToOpenAITool)
     body.tool_choice = 'auto'
   }
+  const outputLimit = options?.maxOutputTokens ?? request.outputLimit
+  const extraOutputLimit = options?.extraBody && ('max_tokens' in options.extraBody || 'max_completion_tokens' in options.extraBody)
+  if (outputLimit !== null && !extraOutputLimit) body.max_completion_tokens = outputLimit
   const reasoningEffort = thinkingToReasoningEffort(request)
   if (reasoningEffort) body.reasoning_effort = reasoningEffort
   if (request.serviceTierId) body.service_tier = request.serviceTierId

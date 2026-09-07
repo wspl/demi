@@ -55,10 +55,10 @@ test('session provider clones retain independent state and steering while refres
   const provider = (await resolve(entry.id, { agentSessionId: conversation.id }))!
   const runtime = await providerRuntime(provider, {
     providerId: entry.id,
-    model: { providerId: entry.id, model: { id: 'test', name: 'Test', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] }, thinking: null },
+    model: { providerId: entry.id, model: { id: 'test', name: 'Test', contextWindow: 100_000, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] }, thinking: null },
   })
   const request: InferenceRequest = {
-    sessionId: conversation.id, turnId: 'turn', requestId: 'request', modelId: 'test',
+    sessionId: conversation.id, turnId: 'turn', requestId: 'request', outputLimit: null, modelId: 'test',
     cwd: '/', systemPrompt: '', items: [], tools: [], thinking: null, cancel: new AbortController().signal,
   }
   const read = async (target: AgentProvider, steerId?: string): Promise<string> => {

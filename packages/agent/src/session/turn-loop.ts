@@ -344,6 +344,7 @@ export class ProviderTurnLoop<State> {
       sessionId: this.host.agentSessionId,
       turnId: this.host.currentTurnId(),
       requestId: this.host.nextRequestId(),
+      outputLimit: this.host.model.model.outputLimit,
       modelId: this.host.model.model.id,
       systemPrompt,
       cwd: this.host.cwd,

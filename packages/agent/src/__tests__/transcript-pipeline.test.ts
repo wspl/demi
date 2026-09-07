@@ -13,6 +13,7 @@ const model: ModelSelection = {
     id: 'test-model',
     name: 'Test Model',
     contextWindow: 1_000_000,
+    outputLimit: null,
     inputLimit: null,
     thinking: [],
     acceptedExtensions: [],

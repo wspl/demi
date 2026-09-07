@@ -71,8 +71,16 @@ describe('modelSelectionFromCatalog', () => {
     expect(selection.model.id).toBe('pending')
     expect(selection.model.name).toBe('Pending')
     expect(selection.model.contextWindow).toBe(0)
-    expect(selection.model.acceptedExtensions).toEqual([])
+    expect(selection.model.acceptedExtensions).toBeNull()
     expect(selection.model.thinking).toEqual([])
+  })
+
+  it('preserves output limits and unknown attachment types, including explicit overrides', () => {
+    expect(modelSelectionFromCatalog('p', providerModel({ outputLimit: 8_000 })).model.outputLimit).toBe(8_000)
+    expect(modelSelectionFromCatalog('p', providerModel()).model.acceptedExtensions).toBeNull()
+    expect(modelSelectionFromCatalog('p', null, { modelId: 'custom', acceptedExtensions: ['pdf'] }).model.acceptedExtensions).toEqual(['pdf'])
+    expect(modelSelectionFromCatalog('p', providerModel({ supportsAttachments: true }), { acceptedExtensions: [] }).model.acceptedExtensions).toEqual([])
+    expect(modelSelectionFromCatalog('p', providerModel({ supportsAttachments: true }), { acceptedExtensions: null }).model.acceptedExtensions).toBeNull()
   })
 
   it('passes through thinking config and service tier', () => {

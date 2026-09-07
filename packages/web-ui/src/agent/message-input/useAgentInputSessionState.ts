@@ -21,7 +21,7 @@ export function useAgentInputSessionState(workspace: AgentWorkspace, conversatio
   const thinkingConfig = computed<ThinkingConfig>(() => effortToThinkingConfig(session.value?.model.thinkingEffort ?? null))
   const contextWindow = computed<number | null>(() => selectedModel.value?.contextWindow ?? null)
   const inputLimit = computed<number | null>(() => selectedModel.value?.inputLimit ?? null)
-  const acceptedExtensions = computed<string[]>(() => selectedModel.value?.acceptedExtensions ?? [])
+  const acceptedExtensions = computed<string[] | null>(() => selectedModel.value?.acceptedExtensions ?? null)
 
   const phase = computed(() => session.value?.phase ?? 'idle')
   const isRunning = computed(() => phase.value === 'running')
