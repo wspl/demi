@@ -12,6 +12,13 @@ web-ui theme and components. `docs/package-boundaries.md` defines module ownersh
 The stack continues the existing browser packages and the product design.
 
 Gallery and application import sidebar presentation from `web-ui/sidebar`.
+The gallery's FunctionalBlock shell specimens use the same `ToolShellBlock`
+as the product transcript, showing both collapsed and expanded output. Its optional
+`open` model lets previews set the initial state; product history still starts folded.
+Gallery catalog pages remember their scroll position per route in session storage.
+The shared `useSavedScroll` composable restores the visible section and its offset
+after refresh or route changes, allowing initial layout changes to settle. This is
+opt-in preview navigation; conversation scrolling retains its existing behavior.
 `SessionComposer` owns the shared input surface used by the gallery, prototype
 and `AgentMessageInput`; each caller supplies its own state and editor behavior.
 The application assembles `AgentMessageList`, `SessionSurface`,
