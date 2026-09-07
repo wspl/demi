@@ -1476,6 +1476,29 @@ test('AgentSession accepts provider-stream steer without native support and cont
   ])
 })
 
+test('AgentSession publishes accepted user steers and clears them when an abort writes history', async () => {
+  const provider = new GateProvider([[events.text('unused'), events.response()]])
+  const session = createSession(provider)
+  const changes: string[][] = []
+  session.subscribe((event) => {
+    if (event.type === 'pending_steers_changed') changes.push(event.pendingSteers.map((steer) => steer.id))
+  })
+  const sending = session.send(text('start'))
+  await provider.waitForRun(0)
+  await session.steer(text('keep on abort'), { id: 'abort-steer' })
+  expect(session.pendingSteers()).toMatchObject([{ id: 'abort-steer', content: text('keep on abort') }])
+  const snapshot = session.pendingSteers()
+  snapshot[0]!.content.length = 0
+  snapshot[0]!.model.model.id = 'mutated by caller'
+  expect(session.pendingSteers()[0]!.content).toEqual(text('keep on abort'))
+  expect(session.pendingSteers()[0]!.model.model.id).toBe(model.model.id)
+  await session.abort()
+  await sending
+  expect(session.pendingSteers()).toEqual([])
+  expect(changes).toEqual([['abort-steer'], []])
+  expect(session.transcript().blocks.filter((block) => block.type === 'steer').map((block) => block.id)).toEqual(['abort-steer'])
+})
+
 test('AgentSession can cancel a pending provider-stream steer before materialization', async () => {
   const provider = new GateProvider([
     [events.text('first'), events.response()],

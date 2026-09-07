@@ -1,6 +1,7 @@
 import type {
   Block,
   ModelSelection,
+  PendingSteer,
   ProviderErrorDiagnostics,
   QueuedMessage,
   SessionPhase,
@@ -384,6 +385,7 @@ export type SessionEvent =
   | { type: 'transcript_changed'; patches: TranscriptPatch[]; revision: number }
   | { type: 'phase_changed'; phase: SessionPhase }
   | { type: 'queue_changed'; queue: QueuedMessage[] }
+  | { type: 'pending_steers_changed'; pendingSteers: PendingSteer[] }
   | { type: 'tool_progress'; toolCallId: string; toolName: string; progress: unknown }
   | {
       type: 'retry_scheduled'

@@ -1,10 +1,6 @@
-import type { ModelSelection, UserContentBlock } from '@demicodes/core'
+import type { PendingSteer } from '@demicodes/core'
 
-export interface PendingSteer {
-  id: string
-  turnId: string
-  model: ModelSelection
-  content: UserContentBlock[]
+interface QueuedSteer extends PendingSteer {
   hidden?: boolean
 }
 
@@ -15,9 +11,16 @@ export interface PendingSteer {
  * session owns the delivery and materialization decisions.
  */
 export class PendingSteerQueue {
-  private readonly pending: PendingSteer[] = []
+  private readonly pending: QueuedSteer[] = []
   private readonly canceledIds = new Set<string>()
   private continuation = 0
+
+  /** Detached user-facing data; internal wakeups never leave the session. */
+  snapshot(): PendingSteer[] {
+    return structuredClone(this.pending.filter((steer) => !steer.hidden).map(({ id, turnId, model, content }) => ({
+      id, turnId, model, content,
+    })))
+  }
 
   /** Monotonic count of steers ever enqueued (decremented only when a pending one is removed). */
   get continuationCount(): number {
@@ -25,7 +28,7 @@ export class PendingSteerQueue {
   }
 
   /** Enqueues a steer for later materialization. */
-  add(steer: PendingSteer): void {
+  add(steer: QueuedSteer): void {
     this.pending.push(steer)
     this.continuation += 1
   }
@@ -55,8 +58,8 @@ export class PendingSteerQueue {
   }
 
   /** Removes and returns every pending steer for `turnId`, preserving order. */
-  takeForTurn(turnId: string): PendingSteer[] {
-    const steers: PendingSteer[] = []
+  takeForTurn(turnId: string): QueuedSteer[] {
+    const steers: QueuedSteer[] = []
     for (let index = 0; index < this.pending.length; ) {
       const steer = this.pending[index]
       if (steer.turnId !== turnId) {

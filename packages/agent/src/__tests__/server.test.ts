@@ -621,6 +621,68 @@ test('AgentClient.steer accepts active provider without native steer and materia
   expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response', 'steer', 'text', 'response'])
 })
 
+test('a new AgentClient receives pending steers from the live session and observes their removal', async () => {
+  const provider = new ServerGateProvider({ supportsSteer: false })
+  const selection = providerSelection('pending-reconnect')
+  const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
+    agent: createTextHarness(),
+    providers: [runtimeProvider('pending-reconnect', provider)],
+  })
+  const sessionId = globalThis.crypto.randomUUID()
+  const first = server.client()
+  await first.open(selection, '/workspace', sessionId)
+  const sending = first.send([{ type: 'text', text: 'start' }])
+  await provider.waitForRun(0)
+  await first.steer([{ type: 'text', text: 'keep' }], { steerId: 'keep' })
+  await first.steer([{ type: 'text', text: 'cancel' }], { steerId: 'cancel' })
+  expect(first.pendingSteers().map((steer) => steer.id)).toEqual(['keep', 'cancel'])
+
+  const second = server.client()
+  const seen: ClientSessionEvent[] = []
+  second.subscribe((event) => {
+    seen.push(event)
+    const historyIds = new Set(second.transcript().blocks.map((block) => block.id))
+    expect(second.pendingSteers().some((steer) => historyIds.has(steer.id))).toBe(false)
+  })
+  await second.open(selection, '/workspace', sessionId)
+  await waitFor(() => second.pendingSteers().length === 2)
+  expect(provider.calls).toBe(1)
+  expect(first.pendingSteers()).toEqual([])
+  expect(second.pendingSteers()).toMatchObject([
+    { id: 'keep', turnId: provider.requests[0]?.turnId, model: selection.model, content: [{ type: 'text', text: 'keep' }] },
+    { id: 'cancel', content: [{ type: 'text', text: 'cancel' }] },
+  ])
+  const snapshot = second.pendingSteers()
+  snapshot[0]!.content.length = 0
+  expect(second.pendingSteers()[0]!.content).toEqual([{ type: 'text', text: 'keep' }])
+
+  second.cancelPendingSteer('cancel')
+  await waitFor(() => second.pendingSteers().length === 1)
+  expect(second.pendingSteers()[0]!.id).toBe('keep')
+  const third = server.client()
+  await third.open(selection, '/workspace', sessionId)
+  await waitFor(() => third.pendingSteers().length === 1)
+  expect(third.pendingSteers()[0]!.id).toBe('keep')
+  third.subscribe(() => {
+    const historyIds = new Set(third.transcript().blocks.map((block) => block.id))
+    expect(third.pendingSteers().some((steer) => historyIds.has(steer.id))).toBe(false)
+  })
+  provider.release(0)
+  await provider.waitForRun(1)
+  await waitFor(() => third.pendingSteers().length === 0)
+  expect(third.transcript().blocks.filter((block) => block.type === 'steer').map((block) => block.id)).toEqual(['keep'])
+  expect(provider.requests[1]!.items.filter((item) => item.type === 'user_steer')).toEqual([
+    { type: 'user_steer', turnId: provider.requests[0]!.turnId, content: [{ type: 'text', text: 'keep' }] },
+  ])
+  provider.release(1)
+  await waitFor(() => third.transcript().blocks.filter((block) => block.type === 'response').length === 2)
+  await sending
+  expect(seen.some((event) => event.type === 'pending_steers' && event.pendingSteers.length === 1)).toBe(true)
+  await server.close()
+})
+
 test('AgentClient.cancelPendingSteer removes an accepted steer before transcript materialization', async () => {
   const provider = new ServerGateProvider({ supportsSteer: false })
   const server = new AgentServer({
@@ -888,9 +950,11 @@ test('AgentClient.steerQueuedMessage converts a queued send into an active steer
   await secondSend
   expect(settlements).toEqual(['second'])
   expect(latestQueueTexts(seen)).toEqual([])
+  expect(client.pendingSteers()).toMatchObject([{ id: 'steer-queued', content: [{ type: 'text', text: 'second' }] }])
 
   gates[0].resolve(undefined)
   await waitFor(() => provider.calls === 2)
+  expect(client.pendingSteers()).toEqual([])
   expect(provider.requests[1]!.items.map((item) => item.type)).toEqual([
     'user_message',
     'assistant_text',

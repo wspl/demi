@@ -143,8 +143,10 @@ Notes:
   dependency-free); schemas live beside their boundary's frame types.
 - Schema-ization must never produce two declarations of one shape: where a
   hand-written type exists today, the schema replaces it as the source of
-  truth and the type becomes `z.infer`. `ServerFrame` (outbound, unvalidated
-  by design) keeps its hand-written type — no schema, so no duplication.
+  truth and the type becomes `z.infer`. Most `ServerFrame` variants retain
+  their hand-written types. The `pending_steers` variant is derived from its
+  schema and validated by `AgentClient`; its core-owned message type uses a
+  typed validator. See [pending user steers](agent-pending-steers.md).
 
 ### Guard dedup sweep (tier 1)
 
