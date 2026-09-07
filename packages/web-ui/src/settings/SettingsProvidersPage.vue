@@ -222,7 +222,7 @@ function saveModel(draft: SettingsModelDraft) {
                   />
                   <template v-else>
                     <h3 class="min-w-0 truncate text-[15px] font-medium text-fg-emphasis">{{ selected.name }}</h3>
-                    <Tooltip v-if="selected.kind === 'api_key'" content="Rename"><IconButton size="sm" :icon="TextCursorInput" variant="ghost" aria-label="Rename provider" @click="beginRename" /></Tooltip>
+                    <Tooltip v-if="selected.kind === 'api_key'" content="Rename"><IconButton size="sm" :icon="TextCursorInput" aria-label="Rename provider" @click="beginRename" /></Tooltip>
                   </template>
                   <div class="ml-auto flex items-center gap-1.5">
                     <Switch v-model="selected.enabled" size="sm" class="ml-2" />
