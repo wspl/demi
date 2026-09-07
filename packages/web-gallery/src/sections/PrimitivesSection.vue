@@ -230,7 +230,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
           <TextInput v-model="query" placeholder="Search files" />
         </GallerySpecimen>
         <GallerySpecimen variant="focused">
-          <TextInput v-model="query" placeholder="Search files" focused />
+          <TextInput v-model="query" placeholder="Search files" show-focus />
         </GallerySpecimen>
         <GallerySpecimen variant="bare">
           <TextInput v-model="query" placeholder="Search files" bare>
