@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUpdate, ref, watch } from 'vue'
 import { Archive, FolderPlus, Settings, SquarePen, WandSparkles } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
@@ -185,6 +185,26 @@ function onListKeydown(event: KeyboardEvent): void {
   list.onKeydown(event)
 }
 
+/* A leaving row is taken out of flow, and a flex container would place it at the list's top,
+   so the move transition would fly it up through the headers. The rows' offsets are read before
+   the DOM changes (once one row is absolute, the next one's offset has already shifted) and a
+   leaving row is pinned where it stood, fading in place. */
+const entryTops = new Map<string, number>()
+onBeforeUpdate(() => {
+  entryTops.clear()
+  for (const el of listRef.value?.querySelectorAll<HTMLElement>('[data-sidebar-id]') ?? []) {
+    const marginTop = parseFloat(getComputedStyle(el).marginTop) || 0
+    entryTops.set(el.dataset.sidebarId!, el.offsetTop - marginTop)
+  }
+})
+function pinLeavingEntry(el: Element): void {
+  const row = el as HTMLElement
+  const top = entryTops.get(row.dataset.sidebarId ?? '')
+  if (top == null) return
+  row.style.top = `${top}px`
+  row.style.left = '0'
+}
+
 function rowMenuOpenFor(id: string): boolean {
   return rowMenu.isOpen.value && menuTargets.value.some((target) => target.id === id)
 }
@@ -234,7 +254,7 @@ function selectProjectConversations(project: SidebarProject): void {
 
     >
       <!-- Rows sit a hairline apart, the way menu items and the entries above do. -->
-      <TransitionGroup name="sidebar-items" tag="div" class="relative flex flex-col gap-px">
+      <TransitionGroup name="sidebar-items" tag="div" class="relative flex flex-col gap-px" @before-leave="pinLeavingEntry">
         <div
           v-for="(entry, index) in displayEntries"
           :key="entry.id"
