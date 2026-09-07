@@ -16,7 +16,7 @@ dialog because that is the shape people already know for the job.
 │ RECENT        │ 📄 notes.txt        Sep 6, 10:12         512 B │
 │  ◷ demi       │                                                │
 ├───────────────┴─────────────────────────────────────────────────┤
-│ 📁 Selected folder: demi               [Select Folder] [Cancel] │
+│ Selected folder: 📁 demi               [Select Folder] [Cancel] │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -63,11 +63,11 @@ list has room whatever the folder holds.
   up, ⌥← and ⌥→ walk the history.
 - **Toolbar icons**: after the address bar, New folder and the hidden-files switch
   as icon buttons with tooltips; the switch shows pressed while hidden files show.
-- **Status row**: a folder or file icon, then "Selected folder:" or "Selected file:"
-  and the name; with nothing selected the same icon and, what can be: "Select a file", or "Select a folder, or
-  use demi" since in folder mode the confirm button takes the current folder. A
-  failure to create a folder reads here in red. On the right the confirm button and
-  Cancel.
+- **Status row**: gray words, then the entry in white with its icon: "Selected
+  folder: 📁 demi", "Selected file: 📄 README.md", or with nothing selected "Select
+  a folder, or use 📁 Desktop" since in folder mode the confirm button takes the
+  current folder, and "Select a file" in file mode. A failure to create a folder
+  reads here in red. On the right the confirm button and Cancel.
 - **New folder**: an editable row at the top of the list with the name ready to type
   over; Enter creates it and selects it, Escape or blur drops it.
 - **States**: a spinner while a folder loads, one line for an empty folder, and for
