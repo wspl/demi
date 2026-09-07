@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
+import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
@@ -52,9 +52,10 @@ function toggleEffort(effort: string) {
   draft.value.efforts = list.includes(effort) ? list.filter((e) => e !== effort) : [...list, effort]
 }
 
-function presetState(extensions: string[]): { checked: boolean; partial: boolean } {
+/** A preset's switch is on when any of its extensions is accepted and sets all of them; mixed reads "2/5" beside it. */
+function presetState(extensions: string[]): { checked: boolean; label?: string } {
   const have = extensions.filter((e) => draft.value.extensions.includes(e)).length
-  return { checked: have === extensions.length, partial: have > 0 && have < extensions.length }
+  return { checked: have > 0, label: have > 0 && have < extensions.length ? `${have}/${extensions.length}` : undefined }
 }
 
 function setPreset(extensions: string[], on: boolean) {
@@ -127,10 +128,11 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
         </SettingsRow>
         <template v-if="editable">
           <SettingsRow v-for="preset in EXTENSION_PRESETS" :key="preset.id" inset :label="preset.label" :description="preset.extensions.join(' ')">
-            <Checkbox
+            <span v-if="presetState(preset.extensions).label" class="select-none tabular-nums text-[12px] leading-4 text-fg-subtle">{{ presetState(preset.extensions).label }}</span>
+            <Switch
               :model-value="presetState(preset.extensions).checked"
-              :partial="presetState(preset.extensions).partial"
-              label=""
+              size="sm"
+              :aria-label="`Accept ${preset.label.toLowerCase()}`"
               @update:model-value="(on) => setPreset(preset.extensions, on)"
             />
           </SettingsRow>
