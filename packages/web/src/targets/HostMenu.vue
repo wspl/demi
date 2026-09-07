@@ -90,9 +90,11 @@ function connect() {
           <MenuItem
             v-for="host in conversation.attachedHosts"
             :key="host.deviceId"
+            :icon="Monitor"
             :label="host.name"
             :indicator="isOnline(host.deviceId) ? 'success' : 'muted'"
             :indicator-label="isOnline(host.deviceId) ? 'Online' : 'Offline'"
+            :note="isOnline(host.deviceId) ? undefined : 'offline'"
             has-submenu
           >
             <template #submenu>
