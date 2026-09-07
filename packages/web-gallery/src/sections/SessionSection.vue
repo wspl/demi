@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Brain, Play, RotateCw, Terminal } from '@lucide/vue'
+import { Brain, Play, RotateCw } from '@lucide/vue'
 import FunctionalBlock from '@demicodes/web-ui/agent/blocks/FunctionalBlock.vue'
+import ToolShellBlock from '@demicodes/web-ui/agent/blocks/ToolShellBlock.vue'
+import { parseToolInput } from '@demicodes/web-ui/agent/block-helpers'
 import LoadingBlock from '@demicodes/web-ui/agent/blocks/LoadingBlock.vue'
 import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
 import ModelMenu from '@demicodes/web-ui/agent/ModelMenu.vue'
@@ -18,6 +20,7 @@ import ExploratoryMark from '../components/ExploratoryMark.vue'
 import {
   demoImageUrl,
   demoModel,
+  shellTool,
   longUserText,
   pendingSteerDemo,
   steerPrompt,
@@ -120,6 +123,7 @@ const queuedShown = ref(true)
 const functionalCollapsed = ref(false)
 const functionalExpanded = ref(true)
 const functionalTool = ref(false)
+const functionalShellExpanded = ref(true)
 // Open, as a failure that just happened leaves it; a transcript revisited later starts folded.
 const functionalError = ref(true)
 
@@ -415,7 +419,7 @@ onMounted(() => {
       </div>
     </GallerySection>
 
-    <GallerySection title="FunctionalBlock" note="Collapsed, expanded, loading, tool detail, and error.">
+    <GallerySection title="FunctionalBlock" note="Thinking, shell (collapsed and expanded), loading, and error.">
       <div class="gallery-frame gallery-block-frame bg-surface">
         <div class="specimen-stack">
           <GallerySpecimen variant="collapsed" wide>
@@ -445,19 +449,21 @@ onMounted(() => {
               </template>
             </FunctionalBlock>
           </GallerySpecimen>
-          <GallerySpecimen variant="tool · detail" wide>
-            <FunctionalBlock
+          <GallerySpecimen variant="shell · collapsed" wide>
+            <ToolShellBlock
               v-model:open="functionalTool"
-              label="shell_exec"
-              detail="rg -n &quot;sid&quot; packages/web/src/auth.test.ts"
-            >
-              <template #icon>
-                <Terminal :size="ICON_PX.in28" />
-              </template>
-              <template #body>
-                <pre class="font-mono text-xs text-fg-muted">packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")</pre>
-              </template>
-            </FunctionalBlock>
+              :block="shellTool"
+              :input="parseToolInput(shellTool.input)"
+              :is-streaming="false"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="shell · expanded" wide>
+            <ToolShellBlock
+              v-model:open="functionalShellExpanded"
+              :block="shellTool"
+              :input="parseToolInput(shellTool.input)"
+              :is-streaming="false"
+            />
           </GallerySpecimen>
           <GallerySpecimen variant="error" wide>
             <FunctionalBlock
