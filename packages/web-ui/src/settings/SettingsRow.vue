@@ -1,5 +1,7 @@
 <script setup lang="ts">
 /**
+ * Icons align with the title. Controls center unless detail is present;
+ * controlsAlign explicitly selects title alignment or vertical centering.
  * Label and explanation on the left, the control on the right. In a narrow card the
  * control drops under the text and keeps its right alignment. An inset row belongs to
  * the row above it (a server's tools, an agent's permissions). A compact row is for
@@ -11,6 +13,7 @@ defineProps<{
   inset?: boolean
   compact?: boolean
   interactive?: boolean
+  controlsAlign?: 'start' | 'center'
 }>()
 
 const emit = defineEmits<{
@@ -27,7 +30,7 @@ const emit = defineEmits<{
     ]"
     @click="interactive && emit('click')"
   >
-    <div v-if="$slots.leading" class="flex shrink-0 self-start pt-[3px] text-fg-muted @sm:self-center @sm:pt-0">
+    <div v-if="$slots.leading" class="flex h-5 shrink-0 items-center self-start text-fg-muted">
       <slot name="leading" />
     </div>
     <div class="min-w-0 flex-1 select-none">
@@ -44,7 +47,10 @@ const emit = defineEmits<{
     <div
       v-if="$slots.default"
       class="flex min-w-0 items-center justify-end gap-2 self-stretch @sm:basis-auto @sm:max-w-[66%]"
-      :class="inset ? 'shrink-0' : 'basis-full'"
+      :class="[
+        inset ? 'shrink-0' : 'basis-full',
+        (controlsAlign ?? ($slots.detail ? 'start' : 'center')) === 'start' ? '@sm:h-5 @sm:self-start' : '',
+      ]"
     >
       <slot />
     </div>
