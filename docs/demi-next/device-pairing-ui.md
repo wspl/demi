@@ -43,8 +43,9 @@ is invented in the browser. Managed hosts receive pre-issued tokens and never
 enter this flow. See [runner.md](runner.md) and [managed-hosts.md](managed-hosts.md).
 
 The Settings gallery has a separate Add device pairing-flow specimen using the
-same dialog, with directly selectable setup, code, pairing, invalid-code,
-rate-limit, connection-error and completed states, plus a clickable happy path.
+same dialog, with directly selectable setup, code, pairing, one representative error and
+completed states, plus a clickable happy path. Error examples demonstrate styling
+rather than enumerate backend failure modes.
 The gallery uses reserved example-domain installer URLs and performs no connection.
 The product prototype uses same-origin placeholder installer paths; a production
 host must supply published scripts before offering executable setup commands.
