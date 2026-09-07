@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
-import { Archive, PanelLeft } from '@lucide/vue'
-import Button from '@demicodes/web-ui/ui/Button.vue'
+import { PanelLeft } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
-import SidebarNavItem from '@demicodes/web-ui/sidebar/SidebarNavItem.vue'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import { matchesShortcut } from '@demicodes/web-ui/ui/shortcut'
 import type { SidebarReorder } from '@demicodes/web-ui/sidebar/types'
@@ -19,15 +17,26 @@ const resources = useResources()
 const router = useRouter()
 const route = useRoute()
 const folded = ref<string[]>([])
-const showArchived = ref(false)
 const activeId = computed(() => (typeof route.params.id === 'string' ? route.params.id : null))
 watch(
-  () => [activeId.value, showArchived.value, conversations.items.find((item) => item.id === activeId.value)?.unread],
+  () => [activeId.value, conversations.items.find((item) => item.id === activeId.value)?.unread],
   () => {
-    if (activeId.value && !showArchived.value) conversations.markRead(activeId.value)
+    if (activeId.value) conversations.markRead(activeId.value)
   },
   { immediate: true },
 )
+/** The sidebar's Skills flyout lists every skill from every source; a switch there is the settings switch. */
+const skillItems = computed(() =>
+  resources.settings.skillSources.flatMap((source) => source.skills.map((skill) => ({ id: skill.id, name: skill.name, summary: skill.description, enabled: skill.enabled }))),
+)
+function toggleSkill(id: string, enabled: boolean) {
+  const skill = resources.settings.skillSources.flatMap((source) => source.skills).find((entry) => entry.id === id)
+  if (skill) skill.enabled = enabled
+}
+function browseSkills() {
+  resources.settingsTab = 'skills'
+  resources.settingsOpen = true
+}
 const account = computed(() => ({
   name: resources.username || 'Zan',
   email: '',
@@ -42,7 +51,6 @@ function open(id: string) {
   void router.push(`/chat/${id}`)
 }
 function create(projectId: string | null) {
-  showArchived.value = false
   open(conversations.create(projectId))
 }
 function addProject() {
@@ -59,7 +67,6 @@ function removeProject(id: string) {
 }
 function restore(id: string) {
   conversations.archive([id], false)
-  showArchived.value = false
   open(id)
 }
 function signOut() {
@@ -115,9 +122,8 @@ watch(
         :projects="resources.projects"
         :conversations="conversations.items.filter((c) => !c.archived)"
         :active-id="activeId"
-        :plugins="[]"
-        :skills="[]"
-        hide-extensions
+        :skills="skillItems"
+        :archived="conversations.items.filter((c) => c.archived)"
         hide-delete
         @reorder="reorder"
         @select="open"
@@ -128,20 +134,12 @@ watch(
         @pin="conversations.pin"
         @move-to-project="conversations.move"
         @archive="conversations.archive"
+        @toggle-skill="toggleSkill"
+        @manage-skills="browseSkills"
+        @restore="restore"
         @open-settings="resources.settingsOpen = true"
         @sign-out="signOut"
-      >
-        <template #navigation>
-          <div class="mt-1 px-2.5">
-            <SidebarNavItem
-              :icon="Archive"
-              label="Archived"
-              :pressed="showArchived"
-              @click="showArchived = !showArchived"
-            />
-          </div>
-        </template>
-      </AppSidebar>
+      />
     </div>
     <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
       <div class="flex select-none items-center px-2 md:hidden">
@@ -153,37 +151,7 @@ watch(
         />
         <span class="px-2 text-chrome text-fg-muted">Demi</span>
       </div>
-      <section
-        v-if="showArchived"
-        class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-xl bg-surface"
-      >
-        <header class="flex shrink-0 items-center px-3 py-2">
-          <h1 class="select-none text-chrome font-normal text-fg">Archived conversations</h1>
-        </header>
-        <div class="min-h-0 flex-1 overflow-y-auto px-[var(--agent-pad-x,2rem)] pb-8 pt-2">
-          <p
-            v-if="!conversations.items.some((c) => c.archived)"
-            class="grid h-full place-items-center text-conversation text-fg-faint"
-          >
-            No archived conversations.
-          </p>
-          <ul v-else class="flex flex-col gap-0.5">
-            <li
-              v-for="c in conversations.items.filter((c) => c.archived)"
-              :key="c.id"
-              class="flex h-9 items-center gap-3 rounded-md px-2 hover:bg-hover"
-            >
-              <span class="min-w-0 flex-1 truncate text-conversation text-fg-body">{{ c.title }}</span>
-              <Button variant="ghost" size="sm" @click="restore(c.id)">
-                Restore
-              </Button>
-            </li>
-          </ul>
-        </div>
-      </section>
-      <template v-else>
-        <RouterView />
-      </template>
+      <RouterView />
     </main>
     <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->
     <SettingsDialog @sign-out="signOut" />

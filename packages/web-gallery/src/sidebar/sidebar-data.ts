@@ -42,15 +42,6 @@ export function demoConversations(): SidebarConversation[] {
   ]
 }
 
-export function demoPlugins(): SidebarExtension[] {
-  return [
-    { id: 'github', name: 'GitHub', summary: 'Pull requests, issues, and checks', enabled: true },
-    { id: 'browser', name: 'Browser', summary: 'Drive a page and read what it renders', enabled: true },
-    { id: 'database', name: 'Database', summary: 'Query the development database', enabled: false },
-    { id: 'notify', name: 'Notifications', summary: 'Ping when a long turn finishes', enabled: true },
-  ]
-}
-
 export function demoSkills(): SidebarExtension[] {
   return [
     { id: 'commit', name: 'commit', summary: 'Conventional commit from the staged diff', enabled: true },
@@ -58,5 +49,13 @@ export function demoSkills(): SidebarExtension[] {
     { id: 'release', name: 'release', summary: 'Version packages and write the changelog', enabled: true },
     { id: 'e2e', name: 'e2e', summary: 'Run the browser suite against the dev server', enabled: false },
     { id: 'docs', name: 'docs', summary: 'Keep the design records in step with the code', enabled: false },
+  ]
+}
+
+export function demoArchived(): SidebarConversation[] {
+  return [
+    { id: 'a-oauth', title: 'OAuth refresh token rotation', updatedAt: '2026-08-02T10:00:00Z', status: 'idle', projectId: null, pinned: false, unread: false },
+    { id: 'a-icons', title: 'Icon theme survey', updatedAt: '2026-07-21T10:00:00Z', status: 'idle', projectId: null, pinned: false, unread: false },
+    { id: 'a-perf', title: 'Sidebar scroll performance', updatedAt: '2026-07-03T10:00:00Z', status: 'idle', projectId: 'p-demi', pinned: false, unread: false },
   ]
 }

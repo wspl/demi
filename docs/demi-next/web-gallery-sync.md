@@ -10,6 +10,7 @@ browser package typechecks and checks affected specimens in the browser.
 | Surface | Shared implementation | Gallery coverage |
 | --- | --- | --- |
 | Sidebar header, project names, pin/archive actions | AppSidebar, SidebarProjectHeader, SidebarRow | Sidebar live specimen |
+| Sidebar entries: New, the Skills flyout, Archived as a searchable menu to the right; New on the Conversations heading | AppSidebar over `skills` and `archived` | Sidebar live and pinned-flyout specimens; `web` feeds the settings' skills and the archived conversations |
 | Marquee, read indicators, ordering, temporary folding and centered scrolling | Sidebar components and drag controller | Sidebar live specimen with mutable data |
 | Menu sizing, label/value rows, section headings and status indicators | Menu, MenuItem, MenuGroup | Overlays specimens |
 | Host search, Cloud option and bound-device disabling | hosts/HostPicker | Main and attached picker specimens in Overlays |

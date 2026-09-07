@@ -40,7 +40,10 @@ main and attached hosts, whose chosen path joins the draft as a reference. No cr
 Zan opens `demi`, then creates a conversation and sends a message. The local
 clock streams a scripted answer. A second message queues behind it. Selecting
 another conversation in the sidebar leaves the simulation running; archiving
-is refused while a turn is running. Restore brings an archived conversation back into the list.
+is refused while a turn is running. The sidebar's Archived entry opens a searchable
+menu to its right; choosing a conversation there brings it back into the list and
+opens it. The Skills entry's flyout switches the same skills the settings page does,
+and Browse skills… opens that page.
 
 The project picker changes the conversation's working environment and sidebar
 group together, and refuses changes while running. A project cannot be removed
@@ -121,7 +124,7 @@ by state (`settingsOpen`, `targetOpen`, a chosen host) rather than by `v-if`, so
 closing plays the dialog's leave; the working-environment dialog resets its form on
 each opening.
 The composer appears immediately on conversation changes and restoration.
-The archived-conversation bar retains its transition and respects reduced motion. Shared typography uses macOS grayscale
+Shared typography uses macOS grayscale
 antialiasing with normal-weight interface text.
 
 Sidebar ordering and motion follow `sidebar-order.md`. Projects and conversations

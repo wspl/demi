@@ -8,15 +8,15 @@ import GallerySpecimen from '../components/GallerySpecimen.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import {
   demoAccount,
+  demoArchived,
   demoConversations,
-  demoPlugins,
   demoProjects,
   demoSkills,
 } from '../sidebar/sidebar-data'
 
 const projects = ref(demoProjects())
 const conversations = ref(demoConversations())
-const plugins = ref(demoPlugins())
+const archived = ref(demoArchived())
 const skills = ref(demoSkills())
 const activeId = ref<string | null>('c-login')
 const collapsedProjects = ref<string[]>(['p-dotfiles'])
@@ -24,7 +24,7 @@ const emptyList = ref<SidebarConversation[]>([])
 let nextId = 1
 
 const anatomy: [string, string][] = [
-  ['Top', 'The app name, then the entries: New conversation, Plugins, Skills. Plugins and skills open a flyout that toggles items in place; managing goes to its own surface.'],
+  ['Top', 'The app name, then the entries: New, Skills, Archived. Skills opens a flyout that toggles skills in place; browsing goes to its own surface. Archived opens a searchable menu to the right; choosing a conversation brings it back and opens it. The Conversations heading carries the same New as the entry.'],
   ['Conversations', 'Plain conversations that run in no checkout. Manual order, pinned on top.'],
   ['Projects', 'Every checkout the agent works in, in manual order, each with the host it lives on. A project folds; its rows sit at the same inset as plain conversations. An empty project offers its first conversation.'],
   ['Row', 'A title and one quiet dot: breathing while running, green for a result waiting to be read, orange when the conversation needs the user. A cut title fades at the edge and plays as a marquee on hover. Pin and archive appear on hover; rename is inline.'],
@@ -50,6 +50,15 @@ function select(id: string): void {
   conversations.value = conversations.value.map((conversation) => (
     conversation.id === id ? { ...conversation, unread: false } : conversation
   ))
+}
+
+/** Restoring moves the conversation back to the top of the list and opens it. */
+function restore(id: string): void {
+  const item = archived.value.find((conversation) => conversation.id === id)
+  if (!item) return
+  archived.value = archived.value.filter((conversation) => conversation.id !== id)
+  conversations.value = [item, ...conversations.value]
+  activeId.value = id
 }
 
 function create(projectId: string | null): void {
@@ -98,7 +107,7 @@ const activeTitle = computed(() => conversations.value.find((conversation) => co
 
 <template>
   <div class="flex flex-col gap-10">
-    <GallerySection title="Sidebar" note="The conversation list, by project. Entries at the top, the account at the bottom. Everything here is live: select, fold a project, pin, rename, toggle a plugin.">
+    <GallerySection title="Sidebar" note="The conversation list, by project. Entries at the top, the account at the bottom. Everything here is live: select, fold a project, pin, rename, toggle a skill, restore from Archived.">
       <div class="gallery-frame divide-y divide-line">
         <div v-for="[name, note] in anatomy" :key="name" class="grid gap-2 px-4 py-3 md:grid-cols-[180px_1fr]">
           <div class="text-[13px] text-fg">{{ name }}</div>
@@ -116,8 +125,8 @@ const activeTitle = computed(() => conversations.value.find((conversation) => co
             :projects="projects"
             :conversations="conversations"
             :active-id="activeId"
-            :plugins="plugins"
             :skills="skills"
+            :archived="archived"
             @reorder="reorder"
             @select="select"
             @create="create"
@@ -128,8 +137,8 @@ const activeTitle = computed(() => conversations.value.find((conversation) => co
             @move-to-project="(ids, projectId) => patchMany(ids, (c) => ({ ...c, projectId }))"
             @archive="dropMany"
             @remove="dropMany"
-            @toggle-plugin="(id, enabled) => (plugins = toggle(plugins, id, enabled))"
             @toggle-skill="(id, enabled) => (skills = toggle(skills, id, enabled))"
+            @restore="restore"
           />
           <div class="flex min-w-0 flex-1 items-center justify-center bg-surface text-[13px] text-fg-faint">
             {{ activeTitle }}
@@ -147,8 +156,8 @@ const activeTitle = computed(() => conversations.value.find((conversation) => co
               :projects="fixedProjects.slice(0, 1)"
               :conversations="emptyList"
               :active-id="null"
-              :plugins="plugins"
               :skills="skills"
+              :archived="[]"
               @create="(projectId) => (emptyList = [{ id: 'first', title: 'New conversation', updatedAt: new Date().toISOString(), status: 'idle', projectId, pinned: false, unread: false }])"
             />
           </div>
@@ -156,24 +165,8 @@ const activeTitle = computed(() => conversations.value.find((conversation) => co
       </div>
     </GallerySection>
 
-    <GallerySection title="Flyouts" note="Plugins and skills toggle in place. The flyout opens from its entry at the top.">
+    <GallerySection title="Flyouts" note="Skills toggle in place under their entry. Archived opens to the right and searches as you type.">
       <div class="specimen-row specimen-row-wide items-start">
-        <GalleryOverlayWell size="wide">
-          <GallerySpecimen variant="plugins · pinned">
-            <div class="gallery-frame flex h-[28rem] w-[36rem] overflow-hidden">
-              <AppSidebar
-                :account="demoAccount"
-                :projects="fixedProjects"
-                :conversations="fixedConversations"
-                active-id="c-login"
-                :plugins="plugins"
-                :skills="skills"
-                pinned-flyout="plugins"
-                @toggle-plugin="(id, enabled) => (plugins = toggle(plugins, id, enabled))"
-              />
-            </div>
-          </GallerySpecimen>
-        </GalleryOverlayWell>
         <GalleryOverlayWell size="wide">
           <GallerySpecimen variant="skills · pinned">
             <div class="gallery-frame flex h-[28rem] w-[36rem] overflow-hidden">
@@ -182,10 +175,26 @@ const activeTitle = computed(() => conversations.value.find((conversation) => co
                 :projects="fixedProjects"
                 :conversations="fixedConversations"
                 active-id="c-login"
-                :plugins="plugins"
                 :skills="skills"
+                :archived="archived"
                 pinned-flyout="skills"
                 @toggle-skill="(id, enabled) => (skills = toggle(skills, id, enabled))"
+              />
+            </div>
+          </GallerySpecimen>
+        </GalleryOverlayWell>
+        <GalleryOverlayWell size="wide">
+          <GallerySpecimen variant="archived · pinned">
+            <div class="gallery-frame flex h-[28rem] w-[36rem] overflow-hidden">
+              <AppSidebar
+                :account="demoAccount"
+                :projects="fixedProjects"
+                :conversations="fixedConversations"
+                active-id="c-login"
+                :skills="skills"
+                :archived="archived"
+                pinned-flyout="archived"
+                @restore="restore"
               />
             </div>
           </GallerySpecimen>
