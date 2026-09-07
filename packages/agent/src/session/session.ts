@@ -1,10 +1,10 @@
 import { AbortError, abortable, asError, createId, errorCode, isAbortError, noop, throwIfAborted, truncate } from '@demicodes/utils'
-import type { ModelSelection, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
+import type { ModelSelection, PendingSteer, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
 import type { AgentProvider, InferenceItem, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
 import { TranscriptLog, type TranscriptOptions } from '../transcript/transcript'
 import type { TranscriptPatch } from '../protocol/frames'
 import { YieldScheduler } from './yield-scheduler'
-import { PendingSteerQueue, type PendingSteer } from './steer-queue'
+import { PendingSteerQueue } from './steer-queue'
 import { CompactionController, type CompactionHost } from './compaction'
 import { ProviderStreamError } from './provider-stream-error'
 import { ProviderTurnLoop, type ProviderTurnLoopHost } from './turn-loop'
@@ -396,12 +396,16 @@ export class AgentSession<State> {
       model: this.model,
       content: resolvedContent,
     })
+    this.emitPendingSteers()
     // TranscriptLog-backed steering is materialized after the current sampling/tool boundary,
     // matching Codex pending input semantics.
   }
 
   cancelPendingSteer(id: string): boolean {
-    if (this.steerQueue.removePending(id)) return true
+    if (this.steerQueue.removePending(id)) {
+      this.emitPendingSteers()
+      return true
+    }
     if (this.activeTurnId && this.currentAbortController && this.activeTurnPhase !== 'finalizing') {
       this.steerQueue.markCanceled(id)
       return true
@@ -522,6 +526,11 @@ export class AgentSession<State> {
   /** Independent provider runtime with this session's configuration (for child sessions). */
   cloneProviderRuntime(): AgentProvider {
     return this.provider.clone()
+  }
+
+  /** Accepted user steers that have not yet entered the transcript; excludes internal wakeups. */
+  pendingSteers(): PendingSteer[] {
+    return this.steerQueue.snapshot()
   }
 
   queuedMessages(): QueuedMessage[] {
@@ -718,6 +727,7 @@ export class AgentSession<State> {
       content,
       hidden,
     })
+    if (!hidden) this.emitPendingSteers()
   }
 
   private enqueueHiddenSend(content: UserContentBlock[], metadata: AgentMetadata | null): void {
@@ -1089,6 +1099,7 @@ export class AgentSession<State> {
       this.transcriptLog.pushSteer(steer.turnId, steer.model, steer.content, steer.id, steer.hidden ?? false)
     }
     await this.commitTranscript()
+    if (steers.some((steer) => !steer.hidden)) this.emitPendingSteers()
     return true
   }
 
@@ -1098,7 +1109,9 @@ export class AgentSession<State> {
   }
 
   private discardPendingSteersForCurrentTurn(): void {
-    if (this.activeTurnId) this.steerQueue.takeForTurn(this.activeTurnId)
+    if (!this.activeTurnId) return
+    const discarded = this.steerQueue.takeForTurn(this.activeTurnId)
+    if (discarded.some((steer) => !steer.hidden)) this.emitPendingSteers()
   }
 
   private removeQueuedMessage(id: string): void {
@@ -1147,6 +1160,10 @@ export class AgentSession<State> {
     if (this.currentPhase === phase) return
     this.currentPhase = phase
     this.emit({ type: 'phase_changed', phase })
+  }
+
+  private emitPendingSteers(): void {
+    this.emit({ type: 'pending_steers_changed', pendingSteers: this.pendingSteers() })
   }
 
   private emitQueue(): void {

@@ -10,6 +10,7 @@ import type {
   ImageSource,
   Model,
   ModelSelection,
+  PendingSteer,
   ThinkingCapability,
   ThinkingConfig,
   UserContentBlock,
@@ -99,6 +100,19 @@ export const userContentBlockSchema: z.ZodType<UserContentBlock> = z.discriminat
   z.object({ type: z.literal('document'), source: documentSourceSchema }),
   z.object({ type: z.literal('reference'), reference: z.string() }),
 ])
+
+// Accepted user steers returned by AgentServer; validated when AgentClient receives them.
+const pendingSteerSchema: z.ZodType<PendingSteer> = z.object({
+  id: z.string(),
+  turnId: z.string(),
+  model: modelSelectionSchema,
+  content: z.array(userContentBlockSchema),
+})
+
+export const pendingSteersFrameSchema = z.object({
+  type: z.literal('pending_steers'),
+  pendingSteers: z.array(pendingSteerSchema),
+})
 
 const portableJsonValueSchema: z.ZodType<PortableJsonValue> = z.lazy(() =>
   z.union([
