@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Cloud, FolderOpen, Monitor, Plus, X } from '@lucide/vue'
+import { ChevronDown, Cloud, FolderOpen, Monitor, Plus, X } from '@lucide/vue'
 import { CLOUD_HOST_ID, hostIcon } from './icons'
 import { ICON_PX } from '../ui/icon-metrics'
 import { baseName } from '../files/paths'
@@ -175,15 +175,22 @@ function create() {
             <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
               Device
               <span class="flex items-center gap-2">
-                <Dropdown :overlay-store="overlayStore" variant="default" trigger-label="Device">
-                  <template #trigger>
-                    <span class="flex items-center gap-2">
+                <!-- The menu fills the row, the way the file browser's device picker does; Add device sits after it. -->
+                <Dropdown :overlay-store="overlayStore" class="min-w-0 flex-1 [&>div]:w-full">
+                  <template #trigger="{ isOpen }">
+                    <span
+                      role="button"
+                      aria-label="Device"
+                      class="flex h-7 w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
+                      :class="isOpen ? 'bg-active' : 'bg-hover hover:bg-active'"
+                    >
                       <component :is="hostIcon({ id: deviceId })" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
-                      {{ deviceLabel }}
+                      <span class="min-w-0 flex-1 truncate">{{ deviceLabel }}</span>
+                      <ChevronDown :size="ICON_PX.in24" class="shrink-0 text-fg-subtle transition-transform duration-200 ease-out" :class="isOpen ? 'rotate-180' : ''" />
                     </span>
                   </template>
-                  <template #content="{ close }">
-                    <Menu>
+                  <template #content="{ close, triggerWidth }">
+                    <Menu :style="{ minWidth: `${triggerWidth}px` }">
                       <MenuItem
                         v-for="entry in devices"
                         :key="entry.id"
@@ -202,7 +209,7 @@ function create() {
                     </Menu>
                   </template>
                 </Dropdown>
-                <Button @click="emit('connectDevice')">
+                <Button class="shrink-0" @click="emit('connectDevice')">
                   <Plus :size="14" />
                   Add device
                 </Button>
