@@ -13,14 +13,11 @@ export function formatBytes(size: number): string {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
 }
 
-/** Today shows the time, this year the day, older the date; empty for an unknown time. */
-export function formatModified(iso: string | undefined, now = dayjs()): string {
+/** One shape for every row, `Sep 2, 2026 18:12`; empty for an unknown time. */
+export function formatModified(iso: string | undefined): string {
   if (!iso) return ''
   const time = dayjs(iso)
-  if (!time.isValid()) return ''
-  if (time.isSame(now, 'day')) return time.format('HH:mm')
-  if (time.isSame(now, 'year')) return time.format('MMM D, HH:mm')
-  return time.format('YYYY-MM-DD')
+  return time.isValid() ? time.format('MMM D, YYYY HH:mm') : ''
 }
 
 /** The Type column: `Folder`, `TS file`, or `File` when the name has no extension. */
