@@ -6,7 +6,7 @@
 // version — the client knows nothing about vendors.
 import { errorMessage, numberOrNull } from '@demicodes/utils'
 import { z } from 'zod'
-import type { ProviderModel, ProviderModelList } from './types'
+import type { ProviderModel, ProviderModelList, ProviderModelListOptions } from './types'
 
 const modelsDevReasoningOptionSchema = z.looseObject({
   type: z.string(),
@@ -50,7 +50,7 @@ export type ModelsDevCatalog = z.infer<typeof modelsDevCatalogSchema>
 
 export type ModelsDevFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 
-export interface ModelsDevOptions {
+export interface ModelsDevOptions extends ProviderModelListOptions {
   fetch?: ModelsDevFetch
   url?: string
   now?: () => Date
@@ -89,7 +89,7 @@ export async function fetchModelsDev(options: ModelsDevOptions = {}): Promise<Mo
   const nowDate = (options.now ?? (() => new Date()))()
   const cached = cache?.url === url ? cache : null
 
-  if (cached && nowDate.getTime() - cached.fetchedAtMs < MODELS_DEV_CACHE_TTL_MS) {
+  if (!options.refresh && cached && nowDate.getTime() - cached.fetchedAtMs < MODELS_DEV_CACHE_TTL_MS) {
     return { catalog: cached.catalog, fetchedAt: cached.fetchedAt, stale: false, warnings: [] }
   }
   const headers = new Headers({ accept: 'application/json' })

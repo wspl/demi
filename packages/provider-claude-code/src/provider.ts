@@ -619,8 +619,8 @@ export function createClaudeCodeProvider(options: ClaudeCodeProviderOptions = {}
     quota,
     ...(credentialsApi ? { credentials: credentialsApi } : {}),
     state: () => ({ status: 'unknown', message: 'Runtime is checked when a Claude Code request runs' }),
-    listModels: async () => {
-      const catalog = await listClaudeCodeModels()
+    listModels: async (listOptions) => {
+      const catalog = await listClaudeCodeModels(listOptions)
       return applyModelPolicy(catalog, id, options.models)
     },
     createRuntime: () => new ClaudeCodeProvider(runtimeOptions),

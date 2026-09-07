@@ -201,8 +201,8 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
         ? 'Uses Codex auth + demi credential pool'
         : 'Uses official Codex auth storage',
     }),
-    listModels: async () => {
-      const catalog = await listCodexModels(runtimeOptions)
+    listModels: async (listOptions) => {
+      const catalog = await listCodexModels({ ...runtimeOptions, ...listOptions })
       return applyModelPolicy(catalog, id, options.models)
     },
     createRuntime: () => new CodexProvider(runtimeOptions),

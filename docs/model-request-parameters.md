@@ -72,3 +72,33 @@ result. It no longer treats an empty list as allowing every file. This check is
 for attachments sent directly to the model; uploading a file to a working
 directory is a separate operation. Product callers can distinguish unknown from
 unsupported when explaining why a direct attachment is unavailable.
+
+
+## Refreshing a model catalog
+
+`Provider.listModels({ refresh: true })` asks the adapter to check its remote
+catalog even when a cached result is still within its freshness period. Calling
+`listModels()` without that option retains normal caching.
+
+- Codex bypasses its local catalog freshness check and fetches the authenticated
+  catalog again.
+- Claude Code passes the option to the shared models.dev client. The client
+  sends a conditional request when it has an ETag or Last-Modified value; a
+  304 response confirms the content is unchanged.
+- Grok Build already fetches its catalog on every call, so explicit refresh
+  has the same network behavior as a normal read.
+- OpenAI API, Anthropic API, and Google API model lists come from configured
+  data. Refresh returns the current configured list without making an inference
+  or inventing a remote fetch.
+
+Codex and models.dev preserve their existing failure behavior: when a remote
+check fails and a usable cached list exists, the returned list is marked stale
+and carries a warning. Without a usable cached list they report failure. Grok
+Build retains its existing explicitly stale fallback list on catalog failure.
+The content's sourceFetchedAt value is preserved when revalidation confirms no
+change or when a cached list is returned after failure.
+
+Refresh preserves the provider's configured model filter and default selection
+policy. It does not edit caller-owned custom model configuration or switch the
+model of an active session. Product backends can forward a refresh request to
+this interface; adding that product endpoint is separate from this framework API.

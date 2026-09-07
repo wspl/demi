@@ -7,9 +7,10 @@ import {
   type ModelsDevFetch,
   type ProviderModel,
   type ProviderModelList,
+  type ProviderModelListOptions,
 } from '@demicodes/provider'
 
-export interface ClaudeCodeModelCatalogOptions {
+export interface ClaudeCodeModelCatalogOptions extends ProviderModelListOptions {
   fetch?: ModelCatalogFetch
   modelsDevUrl?: string
   minimumModelVersion?: string
@@ -31,7 +32,7 @@ const DEFAULT_MINIMUM_MODEL_VERSION = '4.6'
  * fetch, its cache and the stale fallback are the shared models.dev client's.
  */
 export async function listClaudeCodeModels(options: ClaudeCodeModelCatalogOptions = {}): Promise<ProviderModelList> {
-  const snapshot = await fetchModelsDev({ fetch: options.fetch, url: options.modelsDevUrl, now: options.now })
+  const snapshot = await fetchModelsDev({ fetch: options.fetch, url: options.modelsDevUrl, now: options.now, refresh: options.refresh })
   return modelsDevAnthropicCatalogToModelList(snapshot.catalog, {
     minimumModelVersion: options.minimumModelVersion ?? DEFAULT_MINIMUM_MODEL_VERSION,
     sourceFetchedAt: snapshot.fetchedAt,
