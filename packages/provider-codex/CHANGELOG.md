@@ -1,5 +1,17 @@
 # @demicodes/provider-codex
 
+## 0.24.1
+
+### Patch Changes
+
+- 981daa4: Update the default Codex catalog client version to 0.153.4 so applications can discover current models without overriding clientVersion.
+
+  Query the dedicated Codex usage endpoint for quota instead of invoking a fixed model. Preserve passive header observation and handle auth refresh, HTTP failures, and additional model windows.
+
+  - @demicodes/core@0.24.1
+  - @demicodes/provider@0.24.1
+  - @demicodes/utils@0.24.1
+
 ## 0.24.0
 
 ### Patch Changes
