@@ -376,8 +376,10 @@ function selectProjectConversations(project: SidebarProject): void {
   pointer-events: none;
   z-index: 1;
 }
-.drop-before::before { top: 0; }
-.drop-after::after { bottom: 0; }
+/* One line per boundary: "after A" and "before B" paint the same two pixels, centred on
+   the 1px gap between the rows, so the line never jumps as the pointer crosses the middle. */
+.drop-before::before { top: -2px; }
+.drop-after::after { bottom: -1px; }
 @media (prefers-reduced-motion: reduce) {
   .sidebar-items-move,
   .sidebar-items-enter-active,
