@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import { Check, Copy, ExternalLink, Eye, EyeOff, FolderOpen, Laptop, Monitor, Moon, Plug, RotateCw, ScrollText, Server, Sun, Terminal, Trash2 } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
@@ -175,6 +176,14 @@ function signInServer(server: SettingsState['servers'][number]) {
   server.state = 'connected'
   server.detail = undefined
   note(`Signed in to ${server.name}`)
+}
+
+async function claimDevice(_code: string) {
+  await new Promise((resolve) => window.setTimeout(resolve, 900))
+  const n = s.value.devices.length + 1
+  const device = { id: `device-${Date.now()}`, name: `host-${n}`, online: true, seen: 'Now', version: '1.6.2', current: false }
+  s.value.devices.push(device)
+  return { ok: true as const, device }
 }
 
 function revokeDevice(id: string) {
@@ -461,34 +470,7 @@ const revealed = ref<Record<string, boolean>>({})
     </SettingsGroup>
   </SettingsPage>
 
-  <!-- Devices -->
-  <SettingsPage v-else-if="tab === 'devices'" title="Devices" description="Machines that can host a conversation's working directory.">
-    <SettingsGroup title="Your devices">
-      <template v-for="device in s.devices" :key="device.id">
-        <SettingsRow :label="device.name" :description="device.online ? `Online · Demi ${device.version}` : `Last seen ${device.seen} · Demi ${device.version}`">
-          <template #leading>
-            <span class="relative flex">
-              <component :is="device.current ? Laptop : Monitor" :size="ICON_PX.in28" />
-              <span class="absolute -right-0.5 -top-0.5 size-1.5 rounded-full ring-2 ring-surface-float" :class="device.online ? 'bg-on-success' : 'bg-fg-ghost'" />
-            </span>
-          </template>
-          <template #tags>
-            <Tag v-if="device.current" tone="accent">This device</Tag>
-            <Tag v-if="device.version !== '1.6.2'" tone="warning">Update available</Tag>
-          </template>
-          <!-- Presence is the device's own doing; the only action here is to revoke it. -->
-          <Tooltip content="Revoke"><IconButton size="sm" :icon="Trash2" variant="danger" :disabled="device.current" aria-label="Revoke device" @click="revokeDevice(device.id)" /></Tooltip>
-        </SettingsRow>
-      </template>
-    </SettingsGroup>
-    <SettingsGroup title="Add a device" description="Install Demi on the machine and paste this code; it appears above once it connects.">
-      <SettingsRow label="Pairing code" description="Expires in 9 minutes.">
-        <span class="font-mono text-[15px] tracking-[0.2em] text-fg">7KQ-42M</span>
-        <IconButton size="sm" :icon="Copy" variant="ghost" aria-label="Copy pairing code" @click="copyText('7KQ-42M', 'Pairing code')" />
-      </SettingsRow>
-    </SettingsGroup>
-    <SettingsNote text="Remove the projects using a device before revoking it." />
-  </SettingsPage>
+  <SettingsDevices v-else-if="tab === 'devices'" :devices="s.devices" :overlay-store="appOverlayStore" runner-command="demi-runner run --backend https://demi.example.com" :claim-device="claimDevice" @revoke="revokeDevice" />
 
   <!-- Keyboard -->
   <SettingsPage v-else-if="tab === 'keyboard'" title="Keyboard" description="Click one to change it.">

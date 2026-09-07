@@ -1,41 +1,43 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import { showToast } from '@demicodes/web-ui/infra/toast'
+import type { PairingResult } from '@demicodes/web-ui/devices/pairing'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import { useResources } from '../prototype/resources'
 import { useConversations } from '../conversation/store'
 
 const resources = useResources()
 const conversations = useConversations()
-const message = ref('')
+const runnerCommand = `demi-runner run --backend ${window.location.origin}`
 
-function claim(name: string) {
-  resources.devices.push({ id: crypto.randomUUID(), name, online: true, home: '/home/demo' })
-  message.value = 'Device connected.'
-}
-
-function toggleOnline(id: string) {
-  const device = resources.devices.find((d) => d.id === id)
-  if (device) device.online = !device.online
+async function claim(_code: string): Promise<PairingResult> {
+  const device = {
+    id: crypto.randomUUID(),
+    name: `host-${resources.devices.length + 1}`,
+    online: true,
+    home: '/home/demo',
+  }
+  resources.devices.push(device)
+  return { ok: true, device }
 }
 
 function revoke(id: string) {
   if (resources.projects.some((p) => p.deviceId === id)) {
-    message.value = 'Remove the projects using this device before revoking it.'
+    showToast({ title: 'Device is in use', message: 'Remove the projects using this device before revoking it.', tone: 'danger' })
     return
   }
   resources.devices = resources.devices.filter((d) => d.id !== id)
   for (const c of conversations.items)
     c.attachedHosts = c.attachedHosts.filter((host) => host.deviceId !== id)
-  message.value = 'Device revoked.'
 }
 </script>
 
 <template>
   <SettingsDevices
     :devices="resources.devices"
-    :message="message"
-    @toggle-online="toggleOnline"
+    :overlay-store="appOverlayStore"
+    :runner-command="runnerCommand"
+    :claim-device="claim"
     @revoke="revoke"
-    @add="claim"
   />
 </template>

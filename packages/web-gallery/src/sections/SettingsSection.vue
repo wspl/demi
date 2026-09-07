@@ -10,6 +10,7 @@ import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
+import GalleryDevicePairing from '../components/GalleryDevicePairing.vue'
 import { createSettingsState, fullSettingsNav } from '../fixtures/settings'
 
 const anatomy: [string, string][] = [
@@ -92,6 +93,10 @@ const passwordPhase = ref('form')
           <GallerySettingsFull :tab="fullNarrowTab" :state="full" />
         </SettingsDialog>
       </GalleryOverlayWell>
+    </GallerySection>
+
+    <GallerySection title="Add device · pairing flow" note="One shared flow for a local computer, a remote SSH server, or a headless machine. Start the runner, paste its pairing code, then use the connected device.">
+      <GalleryDevicePairing />
     </GallerySection>
 
     <GallerySection title="Change email" note="The new address and the current password, then the code that proves the address is reachable.">
