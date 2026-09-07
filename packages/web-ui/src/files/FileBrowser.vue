@@ -83,9 +83,9 @@ const canConfirm = computed(() => {
 /** The status row: what is selected, or what can be. */
 const status = computed(() => {
   const entry = selectedEntry.value
-  if (entry) return { icon: entry.isDirectory ? Folder : File, label: entry.isDirectory ? 'Selected folder:' : 'Selected file:', text: entry.name }
-  if (props.mode === 'file') return { icon: File, label: null, text: 'Select a file' }
-  return { icon: Folder, label: null, text: `Select a folder, or use ${baseName(path.value) || '/'}` }
+  if (entry) return { lead: entry.isDirectory ? 'Selected folder:' : 'Selected file:', icon: entry.isDirectory ? Folder : File, name: entry.name }
+  if (props.mode === 'file') return { lead: 'Select a file', icon: null, name: null }
+  return { lead: 'Select a folder, or use', icon: Folder, name: baseName(path.value) || '/' }
 })
 
 function toFailure(err: unknown): FileBrowserFailure {
@@ -321,9 +321,11 @@ defineExpose({
           <span class="truncate text-on-danger" :title="error">{{ error }}</span>
         </template>
         <template v-else>
-          <component :is="status.icon" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
-          <span v-if="status.label" class="shrink-0 text-fg-subtle">{{ status.label }}</span>
-          <span class="truncate text-fg" :title="status.text">{{ status.text }}</span>
+          <span class="shrink-0 text-fg-subtle">{{ status.lead }}</span>
+          <template v-if="status.name">
+            <component :is="status.icon" :size="ICON_PX.in28" class="shrink-0 text-fg" />
+            <span class="truncate text-fg" :title="status.name">{{ status.name }}</span>
+          </template>
         </template>
       </div>
       </div>
