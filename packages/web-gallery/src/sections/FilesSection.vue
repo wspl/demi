@@ -9,7 +9,7 @@ import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserMode, FileBrowserSource } from '@demicodes/web-ui/files/types'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
-import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
+import GalleryDialogFrame from '../components/GalleryDialogFrame.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { createGalleryFileHosts, laptopTree } from '../fixtures/files'
@@ -23,7 +23,7 @@ const anatomy: [string, string][] = [
   ['List', 'Name, date and size, folders first, names in natural order; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'],
   ['Keys', 'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history.'],
   ['Status row', 'Says what is selected, as "Selected folder:" or "Selected file:" with the name, or what can be. Right: the confirm button and Cancel. A failure to create a folder reads here.'],
-  ['New project', 'The working-environment dialog: the projects to switch between, or a form for a new one from a device (Cloud by default) and a directory on it, named after the folder; Browse… turns the dialog into the folder browser.'],
+  ['New project', 'The working-environment dialog: a form for a new project from a device (Cloud by default) and a directory on it, named after the folder; Browse… turns the dialog into the folder browser. Switching between projects is the same dialog on its list.'],
   ['New folder', 'A row at the top of the list with the name ready to type over; Enter creates it and selects it. Only a source that can create directories offers the icon.'],
   ['States', 'A slow device shows a spinner, an empty folder says so, and a folder that cannot be read explains why: missing, locked, or the device offline.'],
 ]
@@ -137,7 +137,7 @@ function selectHost(target: 'folder' | 'file', id: string) {
     </GallerySection>
 
     <GallerySection title="Select folder" note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline one is listed but cannot be chosen.">
-      <GalleryOverlayWell size="tall">
+      <GalleryDialogFrame>
         <FileBrowserDialog
           :key="folderKey"
           :is-open="true"
@@ -152,14 +152,14 @@ function selectHost(target: 'folder' | 'file', id: string) {
           @select="folderChosen = $event"
           @update:host-id="selectHost('folder', $event)"
         />
-      </GalleryOverlayWell>
+      </GalleryDialogFrame>
       <p class="select-none text-[12px] text-fg-subtle">
         Chosen: <span class="select-text text-fg-muted">{{ folderChosen ?? '—' }}</span>
       </p>
     </GallerySection>
 
     <GallerySection title="Open file" note="The composer's remote attachment: opens inside the conversation's workspace. Folders are entered, a file is the answer.">
-      <GalleryOverlayWell size="tall">
+      <GalleryDialogFrame>
         <FileBrowserDialog
           :key="fileKey"
           :is-open="true"
@@ -174,50 +174,31 @@ function selectHost(target: 'folder' | 'file', id: string) {
           @select="fileChosen = $event"
           @update:host-id="selectHost('file', $event)"
         />
-      </GalleryOverlayWell>
+      </GalleryDialogFrame>
       <p class="select-none text-[12px] text-fg-subtle">
         Chosen: <span class="select-text text-fg-muted">{{ fileChosen ?? '—' }}</span>
       </p>
     </GallerySection>
 
-    <GallerySection title="New project" note="The working-environment dialog, pinned open on the form and on the project list. Create adds a project named after its folder; a folder name already in the list is refused under the form.">
-      <div class="flex flex-col gap-4">
-        <GalleryOverlayWell size="tall">
-          <WorkspaceDialog
-            :key="workspaceKey"
-            :is-open="true"
-            :overlay-store="appOverlayStore"
-            mode="create"
-            :projects="workspaceProjects"
-            :current-project-id="workspaceCurrent"
-            :devices="workspaceDevices"
-            cloud
-            :message="workspaceMessage"
-            :source-for="sourceFor"
-            :places-for="placesFor"
-            @create="createWorkspace"
-          />
-        </GalleryOverlayWell>
-        <GalleryOverlayWell size="tall">
-          <WorkspaceDialog
-            :key="workspaceKey"
-            :is-open="true"
-            :overlay-store="appOverlayStore"
-            mode="switch"
-            :projects="workspaceProjects"
-            :current-project-id="workspaceCurrent"
-            :devices="workspaceDevices"
-            cloud
-            :message="workspaceMessage"
-            :source-for="sourceFor"
-            :places-for="placesFor"
-            @select="workspaceCurrent = $event"
-            @create="createWorkspace"
-          />
-        </GalleryOverlayWell>
-      </div>
+    <GallerySection title="New project" note="The working-environment dialog on its form: a device (Cloud by default) and a directory on it, the project named after the folder. Browse… turns the dialog into the folder browser; a folder name already in the list is refused under the form.">
+      <GalleryDialogFrame class="max-w-md">
+        <WorkspaceDialog
+          :key="workspaceKey"
+          :is-open="true"
+          :overlay-store="appOverlayStore"
+          mode="create"
+          :projects="workspaceProjects"
+          :current-project-id="workspaceCurrent"
+          :devices="workspaceDevices"
+          cloud
+          :message="workspaceMessage"
+          :source-for="sourceFor"
+          :places-for="placesFor"
+          @create="createWorkspace"
+        />
+      </GalleryDialogFrame>
       <p class="select-none text-[12px] text-fg-subtle">
-        Projects: <span class="select-text text-fg-muted">{{ workspaceProjects.map((project) => project.name).join(', ') }}</span> · current <span class="select-text text-fg-muted">{{ workspaceCurrent ?? 'none' }}</span>
+        Projects: <span class="select-text text-fg-muted">{{ workspaceProjects.map((project) => project.name).join(', ') }}</span>
       </p>
     </GallerySection>
 
@@ -239,7 +220,7 @@ function selectHost(target: 'folder' | 'file', id: string) {
     </GallerySection>
 
     <GallerySection title="Narrow" note="At a phone width the path takes its own row under the toolbar, the places become a menu at the toolbar's right, Forward and the date column go, and the address bar folds.">
-      <GalleryOverlayWell size="narrow">
+      <GalleryDialogFrame class="max-w-[22rem]">
         <FileBrowserDialog
           :is-open="true"
           :overlay-store="appOverlayStore"
@@ -248,7 +229,7 @@ function selectHost(target: 'folder' | 'file', id: string) {
           initial-path="/Users/zan/Projects/a project with a very long directory name that will not fit in the address bar/src"
           :places="hosts[0]!.places"
         />
-      </GalleryOverlayWell>
+      </GalleryDialogFrame>
     </GallerySection>
   </div>
 </template>
