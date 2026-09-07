@@ -45,8 +45,9 @@ const reasoningLabel = computed(() => {
   >
     <template #trigger="{ isOpen }">
       <span class="inline-flex min-w-0 items-center gap-1">
-        <span class="truncate">{{ selected.model.name }}</span>
-        <!-- One step quieter than the chip's own tone, which is subtle when closed and body when open. -->
+        <!-- The name sits a step above the chip's tone and the level a step below it, so the
+             two stay two steps apart whether the chip is subtle (closed) or body (open). -->
+        <span class="truncate" :class="isOpen ? 'text-fg-body' : 'text-fg-muted'">{{ selected.model.name }}</span>
         <span v-if="reasoningLabel" class="shrink-0" :class="isOpen ? 'text-fg-subtle' : 'text-fg-faint'">{{ reasoningLabel }}</span>
         <Zap v-if="fast" :size="ICON_PX.in28" class="shrink-0" />
       </span>
