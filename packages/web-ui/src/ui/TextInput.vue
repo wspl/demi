@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, useAttrs, useSlots } from 'vue'
+import { computed, onMounted, ref, useAttrs, useSlots } from 'vue'
 import { Eye, EyeOff } from '@lucide/vue'
 import IconButton from './IconButton.vue'
 
@@ -8,7 +8,10 @@ defineOptions({ inheritAttrs: false })
 const props = defineProps<{
   modelValue?: string
   placeholder?: string
+  /** Take focus on mount: the field a dialog or form opens on. The ring follows real focus. */
   focused?: boolean
+  /** Paint the focus ring without holding focus, for a catalog specimen. */
+  showFocus?: boolean
   /** A key or password: masked, with a built-in eye to reveal it. */
   secret?: boolean
   /** Height family: md is 28px, sm is 24px. Match the surface's other controls. */
@@ -34,7 +37,10 @@ const frameAttrs = computed(() => ({ class: attrs['class'], style: attrs['style'
 const inputAttrs = computed(() => Object.fromEntries(Object.entries(attrs).filter(([key]) => key !== 'class' && key !== 'style')))
 const inputRef = ref<HTMLInputElement>()
 const isFocused = ref(false)
-const startFocused = ref(props.focused ?? false)
+
+onMounted(() => {
+  if (props.focused) inputRef.value?.focus()
+})
 
 defineExpose({
   focus() { inputRef.value?.focus() },
@@ -50,7 +56,7 @@ defineExpose({
     :class="[
       bare ? (size === 'sm' ? 'min-h-6 self-stretch' : 'min-h-7 self-stretch') : size === 'sm' ? 'h-6' : 'h-7',
       attrs['class'] ? '' : 'w-full',
-      bare ? 'bg-transparent ring-transparent' : ['bg-surface-raised', startFocused || isFocused ? 'ring-line-focus' : 'ring-line'],
+      bare ? 'bg-transparent ring-transparent' : ['bg-surface-raised', showFocus || isFocused ? 'ring-line-focus' : 'ring-line'],
     ]"
     :data-bare="bare ? true : undefined"
     @click="inputRef?.focus()"
@@ -68,7 +74,7 @@ defineExpose({
       :class="[slots['prefix'] ? 'pl-1.5' : bare ? 'pl-0' : size === 'sm' ? 'pl-2' : 'pl-2.5', secret || slots['suffix'] ? 'pr-1.5' : bare ? 'pr-0' : size === 'sm' ? 'pr-2' : 'pr-2.5']"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       @focus="isFocused = true"
-      @blur="isFocused = false; startFocused = false"
+      @blur="isFocused = false"
     />
     <div v-if="secret" class="flex shrink-0 items-center pr-1">
       <IconButton :icon="revealed ? EyeOff : Eye" variant="ghost" size="xs" :aria-label="revealed ? 'Hide' : 'Show'" @click.stop="revealed = !revealed" />
