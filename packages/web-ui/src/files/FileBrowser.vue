@@ -250,7 +250,8 @@ defineExpose({
               :indicator="host.id === CLOUD_HOST_ID ? undefined : host.online ? 'success' : 'muted'"
               :indicator-label="host.online ? 'Online' : 'Offline'"
               :note="host.id !== CLOUD_HOST_ID && !host.online ? 'offline' : undefined"
-              :disabled-reason="host.id !== CLOUD_HOST_ID && !host.online ? 'This device is offline.' : undefined"
+              :disabled="host.id !== CLOUD_HOST_ID && !host.online"
+              disabled-reason="This device is offline."
               :label="host.label"
               choice
               :is-selected="host.id === hostId"
