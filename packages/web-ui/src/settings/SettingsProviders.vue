@@ -40,8 +40,8 @@ function add() {
         :label="provider.label"
         :description="`${provider.modelCount} ${provider.modelCount === 1 ? 'model' : 'models'} · ${provider.isAvailable ? 'Available' : 'Unavailable'}`"
       >
-        <Button variant="ghost" size="sm" @click="emit('test', provider.id)">Test</Button>
-        <Button variant="ghost" size="sm" @click="emit('remove', provider.id)">Remove</Button>
+        <Button size="sm" @click="emit('test', provider.id)">Test</Button>
+        <Button size="sm" @click="emit('remove', provider.id)">Remove</Button>
         <Switch
           :model-value="provider.isAvailable"
           size="sm"

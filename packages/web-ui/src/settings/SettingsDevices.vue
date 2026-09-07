@@ -50,10 +50,10 @@ function add() {
             />
           </span>
         </template>
-        <Button variant="ghost" size="sm" @click="emit('toggleOnline', device.id)">
+        <Button size="sm" @click="emit('toggleOnline', device.id)">
           {{ device.online ? 'Go offline' : 'Connect' }}
         </Button>
-        <Button variant="ghost" size="sm" @click="emit('revoke', device.id)">Revoke</Button>
+        <Button size="sm" @click="emit('revoke', device.id)">Revoke</Button>
       </SettingsRow>
       <div v-if="!devices.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">
         No devices connected.
