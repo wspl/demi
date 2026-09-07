@@ -43,10 +43,11 @@ const reasoningLabel = computed(() => {
     variant="ghost"
     trigger-label="Model"
   >
-    <template #trigger>
+    <template #trigger="{ isOpen }">
       <span class="inline-flex min-w-0 items-center gap-1">
         <span class="truncate">{{ selected.model.name }}</span>
-        <span v-if="reasoningLabel" class="shrink-0 text-fg-subtle">{{ reasoningLabel }}</span>
+        <!-- One step quieter than the chip's own tone, which is subtle when closed and body when open. -->
+        <span v-if="reasoningLabel" class="shrink-0" :class="isOpen ? 'text-fg-subtle' : 'text-fg-faint'">{{ reasoningLabel }}</span>
         <Zap v-if="fast" :size="ICON_PX.in28" class="shrink-0" />
       </span>
     </template>
