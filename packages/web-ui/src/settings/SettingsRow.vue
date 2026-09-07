@@ -30,7 +30,7 @@ const emit = defineEmits<{
     ]"
     @click="interactive && emit('click')"
   >
-    <div v-if="$slots.leading" class="flex h-5 shrink-0 items-center self-start text-fg-muted">
+    <div v-if="$slots.leading" class="flex h-5 shrink-0 items-center text-fg-muted" :style="{ alignSelf: description || $slots.description || $slots.detail ? 'flex-start' : 'center' }">
       <slot name="leading" />
     </div>
     <div class="min-w-0 flex-1 select-none">
