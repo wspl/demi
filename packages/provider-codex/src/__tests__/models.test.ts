@@ -79,7 +79,7 @@ test('listCodexModels uses the static catalog client version by default', async 
     now: () => new Date('2026-06-20T00:00:00.000Z'),
   })
 
-  expect(requests).toEqual(['https://chatgpt.com/backend-api/codex/models?client_version=0.130.0'])
+  expect(requests).toEqual(['https://chatgpt.com/backend-api/codex/models?client_version=0.153.4'])
   resetCodexModelCatalogCacheForTests()
 })
 

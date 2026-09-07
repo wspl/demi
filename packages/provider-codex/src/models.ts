@@ -27,7 +27,7 @@ interface CodexCatalogCache {
 }
 
 const DEFAULT_CHATGPT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api'
-const DEFAULT_CODEX_MODEL_CATALOG_CLIENT_VERSION = '0.130.0'
+const DEFAULT_CODEX_MODEL_CATALOG_CLIENT_VERSION = '0.153.4'
 const CODEX_MODEL_CACHE_TTL_MS = 15 * 60 * 1000
 const codexCatalogCache = new Map<string, CodexCatalogCache>()
 

@@ -21,8 +21,8 @@ See [docs/provider-global-credentials.md](../../docs/provider-global-credentials
 
 ## Quota
 
-- **probe** (cost: `minimal_request`): tiny streamed Responses call; reads
-  `x-codex-primary-*` / `x-codex-secondary-*` headers.
+- **probe** (cost: `free`): authenticated `GET /backend-api/wham/usage`; reads
+  the account plan and primary, secondary, and additional model quota windows.
 - **observe**: same headers on live inference responses (preferred steady-state).
 
 See [docs/provider-quota.md](../../docs/provider-quota.md).

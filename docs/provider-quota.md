@@ -10,7 +10,7 @@ Each vendor exposes usage and rate-limit data differently:
 
 | Provider | Active probe | Passive observation |
 |---|---|---|
-| Codex | Minimal Responses request (headers only) | `x-codex-*` on live Responses |
+| Codex | `GET /backend-api/wham/usage` | `x-codex-*` on live Responses |
 | Claude Code | `GET /api/oauth/usage` | Stream-json `rate_limits` / unified rate-limit headers |
 | Grok Build | `/v1/billing?format=credits` + `/v1/user?include=subscription` | Short-window `x-ratelimit-*` on chat |
 
@@ -31,7 +31,7 @@ vendor-specific UI branches for every header name.
 
 - Billing UI or payment flows.
 - Cross-provider aggregate “total remaining” product metrics (products can compose snapshots).
-- Free unlimited probing when the vendor only offers a paid/minimal inference sniff (Codex).
+- Vendor billing changes or purchasing extra quota.
 
 ## 3. Public contract (`@demicodes/provider`)
 
@@ -91,8 +91,8 @@ type ProviderQuotaCapability =
     }
 ```
 
-- **`free`**: dedicated usage API (Claude, Grok billing).
-- **`minimal_request`**: probe burns a tiny inference / streamed request (Codex).
+- **`free`**: dedicated usage API (Codex, Claude, Grok billing).
+- **`minimal_request`**: probe burns a tiny inference / streamed request when required by a provider.
 
 ### 3.3 Helpers
 
@@ -119,11 +119,11 @@ Agent runtime does **not** call quota. Products (web control, REPL, dashboards) 
 
 | Path | Behavior |
 |---|---|
-| **probe** | Auth from active store → minimal streamed Responses → parse `x-codex-primary-*` / `x-codex-secondary-*` → cancel body. `probeCost: 'minimal_request'`. |
+| **probe** | Auth from active store → `GET https://chatgpt.com/backend-api/wham/usage` → map JSON windows and plan. `probeCost: 'free'`; no model invocation. A 401 refreshes auth and retries once; other HTTP errors fail explicitly. |
 | **observe** | Same headers on any live Responses HTTP response (`onHttpResponse` in the provider). |
-| **Windows** | Typically `primary` and `secondary` with percent + reset. |
+| **Windows** | `primary` and `secondary` with percent + reset; additional model windows use `<metered_feature>:<window>` ids and model scope labels. |
 
-There is no free Codex “usage only” HTTP API in this stack; passive observe on SSE is the preferred steady-state path.
+The endpoint follows the official Codex backend client usage query. API-key auth is unsupported for this subscription endpoint. Missing optional windows are valid; invalid payloads fail instead of inventing remaining quota. Passive SSE header observation remains available without extra requests.
 
 ### 4.2 Claude Code (`@demicodes/provider-claude-code`)
 
@@ -167,7 +167,7 @@ const snap = provider.quota
   ? await ensureQuota(provider.quota, { prefer: 'cache' })
   : null
 
-// Force a network probe (respect probeCost — Codex is not free):
+// Force a network probe:
 const probed = await provider.quota?.probe({ force: true })
 ```
 
@@ -175,7 +175,7 @@ Guidance:
 
 1. Prefer **observation** during active chat (zero extra cost when headers/body carry windows).
 2. Call **probe** for dashboard open / refresh, or when `latest()` is null/stale.
-3. For Codex, avoid polling `probe()` on a tight timer; use observe + sparse probe.
+3. Avoid polling usage endpoints on a tight timer; use observe + sparse probe.
 
 ## 7. Implementation notes
 
@@ -189,7 +189,8 @@ Guidance:
 | Area | Coverage |
 |---|---|
 | `@demicodes/provider` | `createProviderQuota` cache/observe/`clearLatest`; `ensureQuota` |
-| Each kit | Mapper unit tests; optional live probe gated by env |
+| Each kit | Mapper unit tests; no real-model calls |
+| Codex `quota.test.ts` | Usage GET and auth headers, plan and scoped window mapping, 401 refresh, HTTP errors, cancellation, invalid payload and API-key rejection; passive observation |
 | Credentials | setActive clears quota cache (kit-level) |
 
 ## 9. Summary
@@ -197,7 +198,7 @@ Guidance:
 | Question | Answer |
 |---|---|
 | One snapshot type for all three? | **Yes** |
-| Free probe for all? | **No** — Codex is `minimal_request` |
+| Free probe for all? | **Yes** — each uses a dedicated usage endpoint |
 | Primary steady-state path? | **observe** on live inference where possible |
 | Agent protocol change? | **None** |
 | Tied to multi-cred? | **Yes** — active credential + `clearLatest` on switch |
