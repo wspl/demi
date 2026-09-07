@@ -61,11 +61,13 @@ export function createStandardAgentTools<State = unknown>(
       inputSchema: {
         type: 'object',
         additionalProperties: false,
-        required: ['script', 'timeoutMs'],
+        required: ['script', 'description', 'timeoutMs'],
         properties: {
           script: { type: 'string' },
           description: {
             type: 'string',
+            minLength: 1,
+            pattern: '\\S',
             description: TOOL_DESCRIPTION_FIELD,
           },
           shellId: { type: 'string' },
@@ -361,6 +363,9 @@ function binaryStreamVerdict(
 function parseShellExecInput(input: unknown): ShellExecInput {
   const record = asRecord(input, 'agent tool input must be an object')
   if (typeof record.script !== 'string') throw new Error('shell_exec requires string field "script"')
+  if (typeof record.description !== 'string' || record.description.trim().length === 0) {
+    throw new Error('shell_exec requires non-empty string field "description"')
+  }
   return {
     script: record.script,
     shellId: asString(record.shellId),

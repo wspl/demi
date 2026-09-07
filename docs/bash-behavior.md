@@ -94,7 +94,7 @@ Who changes what:
 
 ### Upstream just-bash
 
-The submodule is `github.com/wspl/just-bash` (`3.1.0-demi.4`). Semantic
+The submodule is `github.com/wspl/just-bash` (`3.1.0-demi.5`). Semantic
 fixes are supposed to come from `github.com/vercel-labs/just-bash` `main`
 (`just-bash@3.4.2`). Syncing that `main` does **not** retire the
 observation lies in the tables above, except `test -ef` / `-nt` / `-ot`.

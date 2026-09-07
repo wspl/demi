@@ -12,7 +12,7 @@ test('attempt artifacts are complete enough to audit the run', async () => {
   const providers = [
     stubProvider(() => [
       [events.text('done!'), events.response()],
-      [events.toolCall('t1', 'shell_exec', { script: "printf 'done' > done.txt", timeoutMs: 10_000 }), events.response()],
+      [events.toolCall('t1', 'shell_exec', { description: 'Test result', script: "printf 'done' > done.txt", timeoutMs: 10_000 }), events.response()],
       [events.text('created'), events.response()],
     ]),
   ]
