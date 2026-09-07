@@ -20,6 +20,22 @@ const staticAuth: GrokResolvedAuth = {
   authFile: '/tmp/auth.json',
 }
 
+test('Grok catalog reads contact the source, including explicit refresh requests', async () => {
+  let calls = 0
+  const provider = createGrokBuildProvider({
+    authStore: new StaticGrokAuthStore(staticAuth),
+    fetch: async () => {
+      calls += 1
+      return Response.json({ data: [{ id: 'grok-test' }] })
+    },
+  })
+  await provider.listModels!()
+  const refreshed = await provider.listModels!({ refresh: true })
+  expect(calls).toBe(2)
+  expect(refreshed.models.map((model) => model.id)).toEqual(['grok-test'])
+  expect(refreshed.stale).toBe(false)
+})
+
 test('Grok Build provider posts chat completions with CLI session headers', async () => {
   const requests: CapturedRequest[] = []
   const provider = createGrokBuildProvider({

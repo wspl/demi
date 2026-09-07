@@ -1,10 +1,29 @@
-import { expect, test } from 'bun:test'
+import { createClaudeCodeProvider } from '../provider'
+import { expect, spyOn, test } from 'bun:test'
 import {
   listClaudeCodeModels,
   modelsDevAnthropicCatalogToModelList,
   parseClaudeModelVersion,
   resetClaudeCodeModelCatalogCacheForTests,
 } from '../models'
+
+test('Provider.listModels forwards refresh and retains the configured Claude model filter', async () => {
+  resetClaudeCodeModelCatalogCacheForTests()
+  const fetch = spyOn(globalThis, 'fetch').mockImplementation(Object.assign(async () => Response.json(modelsDevFixture()), { preconnect() {} }))
+  try {
+    const provider = createClaudeCodeProvider({ credentials: false, models: { include: ['claude-opus-4-8'] } })
+    const first = await provider.listModels!()
+    await provider.listModels!()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const refreshed = await provider.listModels!({ refresh: true })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(refreshed.models.map((model) => model.id)).toEqual(first.models.map((model) => model.id))
+    expect(refreshed.models.map((model) => model.id)).toEqual(['claude-opus-4-8'])
+  } finally {
+    fetch.mockRestore()
+    resetClaudeCodeModelCatalogCacheForTests()
+  }
+})
 
 test('parseClaudeModelVersion handles Claude full ids and date snapshots', () => {
   expect(parseClaudeModelVersion('claude-opus-4-8')).toEqual({ major: 4, minor: 8 })
