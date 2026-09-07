@@ -1,4 +1,4 @@
-import type { Interpreter, InterpreterState } from '@demicodes/just-bash/interpreter'
+import type { HostSpawnRedirection, Interpreter, InterpreterState } from '@demicodes/just-bash/interpreter'
 import type { CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult } from '@demicodes/just-bash/types'
 import type { HostCwd, HostSpawnExit, HostSpawnHandle } from './host'
 import type { HostBackedFileSystem } from './host-fs'
@@ -21,6 +21,8 @@ export interface ShellSession {
   forkCommands: ForkCommandRegistry
   cwdHandle: HostCwd
   accumulator: ExecAccumulator
+  captureForeground?: (foreground: ForegroundProcess) => void
+  foregroundRedirections?: HostSpawnRedirection[]
   foreground?: ForegroundProcess
   activeCommandId?: string
   backgroundJobs: Map<number, BackgroundJob>

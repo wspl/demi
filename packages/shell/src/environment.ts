@@ -399,10 +399,7 @@ export class BashEnvironment {
     const session = this.shells.get(record.shellId)
     const foreground = session?.foreground
     if (record.status === 'running' && foreground?.commandId === record.id) {
-      record.stdout = foreground.stdoutBuffer
-      record.stderr = foreground.stderrBuffer
-      record.outputChunks = [...foreground.outputChunks]
-      record.lastOutputAt = foreground.lastOutputAt
+      session?.captureForeground?.(foreground)
     }
     return record
   }
@@ -592,7 +589,47 @@ export class BashEnvironment {
     session.abortController = new AbortController()
     session.activeCommandId = record.id
 
-    const execPromise = session.interpreter.executeScript(ast).then(
+    let pipelineStdout = ''
+    let pipelineStderr = ''
+    let pipelineChunks: ShellOutputRecordChunk[] = []
+    const execPromise = session.interpreter.executeScript(ast, {
+      onPipelineStart: () => {
+        if (record.status !== 'running' || session.activeCommandId !== record.id) return
+        session.captureForeground = undefined
+        session.foregroundRedirections = undefined
+        pipelineStdout = record.stdout
+        pipelineStderr = record.stderr
+        pipelineChunks = [...record.outputChunks]
+      },
+      onCommandStart: (redirections) => {
+        if (record.status !== 'running' || session.activeCommandId !== record.id) return
+        session.foregroundRedirections = redirections
+        const offset = pipelineChunks.reduce((total, chunk) => total + chunk.bytes, 0)
+        session.captureForeground = (foreground) => {
+          if (record.status !== 'running') return
+          record.stdout = pipelineStdout + foreground.stdoutBuffer
+          record.stderr = pipelineStderr + foreground.stderrBuffer
+          record.outputChunks = [...pipelineChunks, ...foreground.outputChunks.map((chunk) => ({ ...chunk, offset: offset + chunk.offset }))]
+          if (foreground.outputBytes > 0) record.lastOutputAt = foreground.lastOutputAt
+        }
+      },
+      onPipelineOutput: (stdout, stderr) => {
+        if (record.status !== 'running') return
+        const nextStdout = pipelineStdout + stdout
+        const nextStderr = pipelineStderr + stderr
+        if (nextStdout.startsWith(record.stdout) && nextStderr.startsWith(record.stderr)) {
+          appendRecordOutput(record, 'stdout', nextStdout.slice(record.stdout.length))
+          appendRecordOutput(record, 'stderr', nextStderr.slice(record.stderr.length))
+        }
+        record.stdout = nextStdout
+        record.stderr = nextStderr
+        ensureRecordOutputCoverage(record)
+        session.accumulator.stdout = nextStdout
+        session.accumulator.stderr = nextStderr
+        session.captureForeground = undefined
+        if (stdout || stderr) record.lastOutputAt = Date.now()
+      },
+    }).then(
       (result) => result,
       (error) => error as Error,
     )
@@ -954,10 +991,7 @@ export class BashEnvironment {
     session.accumulator.audit.push(...foreground.audit)
     const record = this.commandsById.get(commandId)
     if (record) {
-      record.stdout = foreground.stdoutBuffer
-      record.stderr = foreground.stderrBuffer
-      record.outputChunks = [...foreground.outputChunks]
-      record.lastOutputAt = foreground.lastOutputAt
+      session?.captureForeground?.(foreground)
     }
     session.foreground = undefined
 
@@ -1010,8 +1044,8 @@ export class BashEnvironment {
         const err = resultOrError as unknown as { stdout: string; stderr: string; exitCode: number }
         const outText = decodeBytesToUtf8(unsafeBytesFromLatin1(err.stdout))
         const errText = decodeBytesToUtf8(unsafeBytesFromLatin1(err.stderr))
-        session.accumulator.stdout += outText
-        session.accumulator.stderr += errText
+        session.accumulator.stdout = outText
+        session.accumulator.stderr = errText
         appendRecordOutput(record, 'stdout', outText)
         appendRecordOutput(record, 'stderr', errText)
         return this.finishExited(session, record, err.exitCode, input)
@@ -1078,12 +1112,10 @@ export class BashEnvironment {
       }
     }
     const stderrText = foreground ? resultOrError.stderr : decodeBytesToUtf8(unsafeBytesFromLatin1(resultOrError.stderr))
-    session.accumulator.stdout += stdoutText
-    session.accumulator.stderr += stderrText
+    session.accumulator.stdout = stdoutText
+    session.accumulator.stderr = stderrText
     if (binary) record.binaryStdout = binary
-    if (foreground && !binary) {
-      record.outputChunks = [...foreground.outputChunks]
-    } else if (binary) {
+    if (binary) {
       // Drop any streamed (mojibake) view of a binary stream at exit; the
       // placeholder is the canonical text render.
       record.outputChunks = []
@@ -1129,9 +1161,7 @@ export class BashEnvironment {
     foreground.abortController.abort()
     foreground.handle.kill('SIGTERM').catch(() => {})
     await flushForegroundSinks(session, foreground)
-    record.stdout = foreground.stdoutBuffer
-    record.stderr = foreground.stderrBuffer
-    record.outputChunks = [...foreground.outputChunks]
+    session.captureForeground?.(foreground)
     record.lastOutputAt = Date.now()
     record.status = 'aborted'
     session.foreground = undefined
@@ -1167,10 +1197,7 @@ export class BashEnvironment {
     const session = this.shells.get(record.shellId)
     const foreground = session?.foreground
     if (record.status === 'running' && foreground?.commandId === record.id) {
-      record.stdout = foreground.stdoutBuffer
-      record.stderr = foreground.stderrBuffer
-      record.outputChunks = [...foreground.outputChunks]
-      record.lastOutputAt = foreground.lastOutputAt
+      session?.captureForeground?.(foreground)
     }
     const maxOutputBytes = input.maxOutputBytes ?? this.defaultOutputLimitBytes
     const stdout = streamView(record, 'stdout', input.stdoutOffset, maxOutputBytes)

@@ -59,11 +59,11 @@ test('action metadata switches Host while the same Host keeps its shell state', 
     displayName: 'Stub',
     createRuntime: () =>
       new StubProvider([
-        [events.toolCall('alice-1', 'shell_exec', { script: 'mkdir nested && cd nested && pwd', timeoutMs: 1_000 })],
+        [events.toolCall('alice-1', 'shell_exec', { description: 'Test result', script: 'mkdir nested && cd nested && pwd', timeoutMs: 1_000 })],
         [events.text('done'), events.response()],
-        [events.toolCall('bob-1', 'shell_exec', { script: 'pwd', timeoutMs: 1_000 })],
+        [events.toolCall('bob-1', 'shell_exec', { description: 'Test result', script: 'pwd', timeoutMs: 1_000 })],
         [events.text('done'), events.response()],
-        [events.toolCall('alice-2', 'shell_exec', { script: 'pwd', timeoutMs: 1_000 })],
+        [events.toolCall('alice-2', 'shell_exec', { description: 'Test result', script: 'pwd', timeoutMs: 1_000 })],
         [events.text('done'), events.response()],
       ]),
   })
@@ -97,6 +97,7 @@ test('a command handle cannot be controlled from another action Host', async () 
       new StubProvider([
         [
           events.toolCall('alice-running', 'shell_exec', {
+            description: 'Test result',
             script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
             timeoutMs: 1,
           }),
@@ -141,9 +142,9 @@ test('runCommandLine follows its source shell after the current action switches 
     displayName: 'Stub',
     createRuntime: () =>
       new StubProvider([
-        [events.toolCall('alice-shell', 'shell_exec', { script: 'printf alice', timeoutMs: 1_000 })],
+        [events.toolCall('alice-shell', 'shell_exec', { description: 'Test result', script: 'printf alice', timeoutMs: 1_000 })],
         [events.text('done'), events.response()],
-        [events.toolCall('bob-shell', 'shell_exec', { script: 'printf bob', timeoutMs: 1_000 })],
+        [events.toolCall('bob-shell', 'shell_exec', { description: 'Test result', script: 'printf bob', timeoutMs: 1_000 })],
         [events.text('done'), events.response()],
       ]),
   })

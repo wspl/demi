@@ -55,7 +55,8 @@ not a single abstract UI-model package.
 
 ## 3. The `description` convention
 
-Every standard tool's input schema must allow an optional `description?: string`.
+`shell_exec` requires a non-blank `description: string`, validated before execution.
+The other standard tools allow an optional `description?: string`.
 
 `description` is a short, user-visible intent title. It should let the user understand
 which concrete user-visible state or result this step is meant to surface, confirm, or
@@ -155,7 +156,9 @@ It only needs to follow the same tool-name → rendering-semantics mapping as th
 Must cover:
 
 1. Standard-tool schema: all five tools allow `description`, and the standard-tool set is
-   still exactly `shell_exec/shell_status/shell_write/shell_abort/yield`.
+   still exactly `shell_exec/shell_status/shell_write/shell_abort/yield`. `tools.test.ts`
+   verifies that missing, non-string, empty, and whitespace-only execution descriptions
+   fail before resolving a shell environment.
 2. Web dispatch: `ToolCallBlock` has a dedicated renderer for each of the five standard
    tools; only unknown tools fall through to generic.
 3. Web rendering: all five standard tools prefer `description`, falling back to §4 when absent.

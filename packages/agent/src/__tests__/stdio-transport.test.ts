@@ -148,6 +148,7 @@ test('StdioTransport close disposes shell foreground processes through AgentServ
       new StubProvider([
         [
           events.toolCall('tool-1', 'shell_exec', {
+            description: 'Test result',
             script: 'sh -c "sleep 0.2; printf leaked > stdio-leaked.txt"',
             timeoutMs: 1,
           }),

@@ -96,12 +96,14 @@ type ShellExecInput = {
   script: string
   shellId?: string
   timeoutMs: number
-  description?: string
+  description: string
 }
 ```
 
 Semantics:
 
+- `description` is required and must contain a non-whitespace character. Invalid values
+  fail before environment resolution or execution.
 - `timeoutMs` is required, in the range `1..600000` (max 10 minutes). It is the **upper
   bound on the synchronous observation window**; when it elapses the process is **not
   terminated** and the command record is not released.
@@ -415,6 +417,16 @@ Output sinks stream as they write: visible stdout/stderr chunks append to the ma
 artifact in real time; the file-redirection sink also writes to `Host.fs` chunk by chunk, so a
 long command's target file is visible while it runs.
 
+A command record accumulates the whole script's visible output. Finishing one top-level
+pipeline commits its stdout/stderr before the next pipeline starts; changing foreground
+processes cannot erase that prefix or reset output cursors. Direct external and registered
+commands expose their redirected output while running. Output captured inside pipelines,
+command substitutions, functions, or compound commands is reconciled when the enclosing
+top-level pipeline completes; intermediate captured output is not published as terminal output.
+`packages/shell/src/__tests__/script-output.test.ts` covers builtin, external, and registered
+prefixes, successive foreground commands, merged cursors, Unicode, and captured/redirection
+boundaries.
+
 The model reads an artifact with an ordinary shell text command only when the preview is
 truncated, a long-running command's history must be inspected, or text search is needed:
 
@@ -473,7 +485,7 @@ and never stuffs a large chunk of output into `shell_status`.
 
 ```text
 Turn A
-shell_exec({ script: "pnpm test", timeoutMs: 10000 })
+shell_exec({ description: "Verify test results", script: "pnpm test", timeoutMs: 10000 })
 → running + commandId (turn not ended)
 
 yield({ durationMs: 30000 })
@@ -497,10 +509,10 @@ grep -n -E "ERROR|FAIL" /@/commands/<commandId>/stderr.txt
 ### Dev-server smoke check
 
 ```text
-shell_exec({ script: "pnpm dev", timeoutMs: 3000 })
+shell_exec({ description: "Make the application available", script: "pnpm dev", timeoutMs: 3000 })
 → running + commandId=server
 
-shell_exec({ script: "curl -I http://127.0.0.1:18922", timeoutMs: 10000 })
+shell_exec({ description: "Verify application availability", script: "curl -I http://127.0.0.1:18922", timeoutMs: 10000 })
 → exited (default shell busy, an auxiliary shell is used automatically, without
   interrupting the dev server)
 
@@ -511,7 +523,7 @@ shell_abort({ commandId: server })
 
 ```text
 Turn A
-shell_exec({ script: "node prompt.js", timeoutMs: 1000 })
+shell_exec({ description: "Collect the requested input", script: "node prompt.js", timeoutMs: 1000 })
 → running + commandId
 
 shell_write({ commandId, stdin: "Alice\n" })
@@ -539,7 +551,7 @@ shell_abort({ commandId })
 
 ```text
 Turn A
-shell_exec({ script: "pnpm test", timeoutMs: 10000 })
+shell_exec({ description: "Verify test results", script: "pnpm test", timeoutMs: 10000 })
 → running + commandId
 yield({ durationMs: 30000 })
 → scheduled, Turn A completes
