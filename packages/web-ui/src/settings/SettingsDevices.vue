@@ -1,45 +1,39 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import { Monitor } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import SettingsGroup from './SettingsGroup.vue'
-import SettingsNote from './SettingsNote.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsDevice } from './types'
+import type { OverlayStore } from '../overlay/overlayStore'
+import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
+import { useDevicePairing, type PairingResult } from '../devices/pairing'
 
-defineProps<{
+const props = defineProps<{
   devices: SettingsDevice[]
-  /** Outcome of the last action. */
-  message?: string
+  overlayStore: OverlayStore
+  runnerCommand: string
+  claimDevice: (code: string) => Promise<PairingResult>
 }>()
-
-const emit = defineEmits<{
-  toggleOnline: [id: string]
-  revoke: [id: string]
-  add: [name: string]
-}>()
-
-const name = ref('')
-
-function add() {
-  const value = name.value.trim()
-  if (!value) return
-  emit('add', value)
-  name.value = ''
-}
+const emit = defineEmits<{ revoke: [id: string] }>()
+const { isOpen, phase, open, close, submit } = useDevicePairing((code) => props.claimDevice(code))
 </script>
 
 <template>
   <SettingsPage title="Devices" description="Machines that can host a conversation's working directory.">
-    <SettingsGroup title="Your devices">
+    <SettingsGroup>
+      <template #header>
+        <header class="flex items-center justify-between gap-3">
+          <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">Your devices</h3>
+          <Button size="sm" @click="open">Add device</Button>
+        </header>
+      </template>
       <SettingsRow
         v-for="device in devices"
         :key="device.id"
         :label="device.name"
-        :description="device.online ? 'Online' : 'Offline'"
+        :description="device.online ? 'Online' : device.seen ? `Last seen ${device.seen}` : 'Offline'"
       >
         <template #leading>
           <span class="relative flex">
@@ -50,23 +44,12 @@ function add() {
             />
           </span>
         </template>
-        <Button size="sm" @click="emit('toggleOnline', device.id)">
-          {{ device.online ? 'Go offline' : 'Connect' }}
-        </Button>
         <Button size="sm" @click="emit('revoke', device.id)">Revoke</Button>
       </SettingsRow>
       <div v-if="!devices.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">
         No devices connected.
       </div>
     </SettingsGroup>
-    <SettingsGroup title="Add a device" description="Claim a machine by name; it appears above once it connects.">
-      <form @submit.prevent="add">
-        <SettingsRow label="Device name">
-          <TextInput v-model="name" placeholder="My laptop" maxlength="64" class="w-56 max-w-full" />
-          <Button :disabled="!name.trim()" @click="add">Add device</Button>
-        </SettingsRow>
-      </form>
-    </SettingsGroup>
-    <SettingsNote v-if="message" :text="message" />
+    <DevicePairingDialog :is-open="isOpen" :overlay-store="overlayStore" :command="runnerCommand" :phase="phase" @close="close" @next="phase = { kind: 'code' }" @back="phase = { kind: 'setup' }" @submit="submit" />
   </SettingsPage>
 </template>
