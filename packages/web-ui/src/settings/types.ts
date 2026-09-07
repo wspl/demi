@@ -31,6 +31,14 @@ export interface SettingsDevice {
   seen?: string
 }
 
+/** An archived conversation as the Archived page lists it. */
+export interface SettingsArchivedConversation {
+  id: string
+  title: string
+  /** When it was archived or last active, formatted by the host. */
+  detail?: string
+}
+
 /** A shortcut the keyboard page lists and rebinds. */
 export interface SettingsKeyBinding {
   id: string

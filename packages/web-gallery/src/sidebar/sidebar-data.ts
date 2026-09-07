@@ -1,4 +1,4 @@
-import type { SidebarAccount, SidebarConversation, SidebarExtension, SidebarProject } from '@demicodes/web-ui/sidebar/types'
+import type { SidebarAccount, SidebarConversation, SidebarProject } from '@demicodes/web-ui/sidebar/types'
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
@@ -42,20 +42,3 @@ export function demoConversations(): SidebarConversation[] {
   ]
 }
 
-export function demoSkills(): SidebarExtension[] {
-  return [
-    { id: 'commit', name: 'commit', summary: 'Conventional commit from the staged diff', enabled: true },
-    { id: 'review', name: 'review', summary: 'Adversarial review of the current branch', enabled: true },
-    { id: 'release', name: 'release', summary: 'Version packages and write the changelog', enabled: true },
-    { id: 'e2e', name: 'e2e', summary: 'Run the browser suite against the dev server', enabled: false },
-    { id: 'docs', name: 'docs', summary: 'Keep the design records in step with the code', enabled: false },
-  ]
-}
-
-export function demoArchived(): SidebarConversation[] {
-  return [
-    { id: 'a-oauth', title: 'OAuth refresh token rotation', updatedAt: '2026-08-02T10:00:00Z', status: 'idle', projectId: null, pinned: false, unread: false },
-    { id: 'a-icons', title: 'Icon theme survey', updatedAt: '2026-07-21T10:00:00Z', status: 'idle', projectId: null, pinned: false, unread: false },
-    { id: 'a-perf', title: 'Sidebar scroll performance', updatedAt: '2026-07-03T10:00:00Z', status: 'idle', projectId: 'p-demi', pinned: false, unread: false },
-  ]
-}

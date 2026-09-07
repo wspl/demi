@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
+import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
 import SettingsData from '@demicodes/web-ui/settings/SettingsData.vue'
 import SettingsGeneral from '@demicodes/web-ui/settings/SettingsGeneral.vue'
 import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
@@ -104,6 +105,14 @@ function deleteAccount() {
   resources.projects = []
   resources.devices = []
   emit('signOut')
+}
+
+// Archived: restoring brings the conversation back and opens it in place of the settings.
+const archived = computed(() => conversations.items.filter((c) => c.archived).map((c) => ({ id: c.id, title: c.title })))
+function restore(id: string) {
+  conversations.archive([id], false)
+  resources.settingsOpen = false
+  void router.push(`/chat/${id}`)
 }
 
 // MCP: adding connects at once; a restart or sign-in clears the fault.
@@ -217,6 +226,7 @@ function deleteAllConversations() {
     <SettingsMcp v-else-if="tab === 'mcp'" :servers="s.servers" :overlay-store="appOverlayStore" @add="addServer" @sign-in="reconnectServer" @restart="reconnectServer" />
     <SettingsSkills v-else-if="tab === 'skills'" :sources="s.skillSources" :overlay-store="appOverlayStore" @add="addSkillSource" @remove="removeSkillSource" @update="updateSkillSource" />
     <DevicesPanel v-else-if="tab === 'devices'" />
+    <SettingsArchived v-else-if="tab === 'archived'" :conversations="archived" @restore="restore" />
     <SettingsKeyboard v-else-if="tab === 'keyboard'" :bindings="s.keys" :message="keyMessage" @rebind="rebind" @reset="resetShortcuts" />
     <SettingsData
       v-else-if="tab === 'data'"

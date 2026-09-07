@@ -24,13 +24,6 @@ export interface SidebarConversation {
 }
 
 /** One installed extension entry: a plugin (tools and integrations) or a skill (a packaged workflow). */
-export interface SidebarExtension {
-  id: string
-  name: string
-  summary: string
-  enabled: boolean
-}
-
 export interface SidebarAccount {
   name: string
   email: string

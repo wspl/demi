@@ -235,6 +235,11 @@ export function createSettingsState() {
         skills: [],
       },
     ] as SettingsSkillSource[],
+    archived: [
+      { id: 'oauth', title: 'OAuth refresh token rotation', detail: 'Archived Aug 2' },
+      { id: 'icons', title: 'Icon theme survey', detail: 'Archived Jul 21' },
+      { id: 'perf', title: 'Sidebar scroll performance', detail: 'Archived Jul 3' },
+    ],
     devices: [
       { id: 'mac', name: 'zan-mbp', online: true, seen: 'Now' },
       { id: 'build', name: 'build-01', online: false, seen: '3 days ago' },
