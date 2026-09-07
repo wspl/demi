@@ -13,6 +13,7 @@ import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { createGalleryFileHosts, laptopTree } from '../fixtures/files'
+import { baseName } from '@demicodes/web-ui/files/paths'
 
 const anatomy: [string, string][] = [
   ['Shape', 'The Windows open dialog: a plain title bar; Back, Forward and Up, the device, the path from its root, then New folder and hidden files as icons; places down the left; a detail list; a status row with the confirm button.'],
@@ -22,7 +23,7 @@ const anatomy: [string, string][] = [
   ['List', 'Name, date and size, folders first, names in natural order; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'],
   ['Keys', 'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history.'],
   ['Status row', 'Says what is selected, as "Selected folder:" or "Selected file:" with the name, or what can be. Right: the confirm button and Cancel. A failure to create a folder reads here.'],
-  ['New project', 'The working-environment dialog: the projects to switch between, or a form for a new one with a name, a device and a directory; Browse… turns the dialog into the folder browser and the chosen folder fills the directory and, if empty, the name.'],
+  ['New project', 'The working-environment dialog: the projects to switch between, or a form for a new one from a device (Cloud by default) and a directory on it, named after the folder; Browse… turns the dialog into the folder browser.'],
   ['New folder', 'A row at the top of the list with the name ready to type over; Enter creates it and selects it. Only a source that can create directories offers the icon.'],
   ['States', 'A slow device shows a spinner, an empty folder says so, and a folder that cannot be read explains why: missing, locked, or the device offline.'],
 ]
@@ -44,16 +45,18 @@ const workspaceProjects = ref<WorkspaceProject[]>([
 const workspaceCurrent = ref<string | null>('demi')
 const workspaceMessage = ref('')
 const workspaceKey = ref(0)
-const sourceFor = (id: string) => (hosts.find((host) => host.id === id) ?? hosts[0]!).source
-const placesFor = (id: string) => (hosts.find((host) => host.id === id) ?? hosts[0]!).places
+const cloudSource = createMemoryFileSource({ platform: 'linux', home: '/home/demi', root: dir({ home: dir({ demi: dir({ workspace: dir({}), scratch: dir({}) }) }) }) })
+const sourceFor = (id: string) => (id === 'cloud' ? cloudSource : (hosts.find((host) => host.id === id) ?? hosts[0]!).source)
+const placesFor = (id: string) => (id === 'cloud' ? [{ label: 'Quick access', places: [{ path: '/home/demi', label: 'Home' }] }] : (hosts.find((host) => host.id === id) ?? hosts[0]!).places)
 function createWorkspace(draft: WorkspaceDraft) {
-  if (workspaceProjects.value.some((project) => project.name === draft.name)) {
-    workspaceMessage.value = 'A project with that name already exists.'
+  const name = baseName(draft.path) || 'Workspace'
+  if (workspaceProjects.value.some((project) => project.name === name)) {
+    workspaceMessage.value = `A project called ${name} already exists.`
     return
   }
   workspaceMessage.value = ''
   const host = draft.deviceId === 'cloud' ? 'Cloud' : workspaceDevices.find((device) => device.id === draft.deviceId)?.name ?? draft.deviceId
-  workspaceProjects.value.push({ id: `p-${Date.now()}`, name: draft.name, host, path: draft.path || '/home/demi' })
+  workspaceProjects.value.push({ id: `p-${Date.now()}`, name, host, path: draft.path })
   workspaceCurrent.value = workspaceProjects.value.at(-1)!.id
   workspaceKey.value += 1
 }
@@ -177,7 +180,7 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </p>
     </GallerySection>
 
-    <GallerySection title="New project" note="The working-environment dialog, pinned open on the form and on the project list. Create adds to the list; a repeated name is refused under the form.">
+    <GallerySection title="New project" note="The working-environment dialog, pinned open on the form and on the project list. Create adds a project named after its folder; a folder name already in the list is refused under the form.">
       <div class="flex flex-col gap-4">
         <GalleryOverlayWell size="tall">
           <WorkspaceDialog
@@ -189,7 +192,6 @@ function selectHost(target: 'folder' | 'file', id: string) {
             :current-project-id="workspaceCurrent"
             :devices="workspaceDevices"
             cloud
-            default-path="/Users/zan/Projects/"
             :message="workspaceMessage"
             :source-for="sourceFor"
             :places-for="placesFor"
@@ -206,7 +208,6 @@ function selectHost(target: 'folder' | 'file', id: string) {
             :current-project-id="workspaceCurrent"
             :devices="workspaceDevices"
             cloud
-            default-path="/Users/zan/Projects/"
             :message="workspaceMessage"
             :source-for="sourceFor"
             :places-for="placesFor"

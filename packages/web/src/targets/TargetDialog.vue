@@ -5,7 +5,8 @@ import type { WorkspaceDraft } from '@demicodes/web-ui/hosts/workspace'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useConversations } from '../conversation/store'
 import { useResources } from '../prototype/resources'
-import { CLOUD_HOME, fileSourceFor, placesFor } from '../prototype/files'
+import { baseName } from '@demicodes/web-ui/files/paths'
+import { fileSourceFor, placesFor } from '../prototype/files'
 
 /** The shared working-environment dialog over the prototype's projects and devices. */
 const props = defineProps<{ conversationId: string | null }>()
@@ -39,11 +40,11 @@ function create(draft: WorkspaceDraft) {
   const id = crypto.randomUUID()
   resources.projects.push({
     id,
-    name: draft.name,
+    name: baseName(draft.path) || 'Workspace',
     deviceId: draft.deviceId,
     host: cloud ? 'Cloud' : device!.name,
     hostKind: cloud ? 'cloud' : 'device',
-    path: cloud ? CLOUD_HOME : draft.path,
+    path: draft.path,
     branch: null,
   })
   if (resources.targetMode === 'switch') select(id)
@@ -61,7 +62,6 @@ function create(draft: WorkspaceDraft) {
     :locked="!!current?.stream"
     :devices="devices"
     cloud
-    default-path="/Users/zan/Projects/"
     :message="message"
     :source-for="(id) => fileSourceFor(deviceById(id))"
     :places-for="(id) => placesFor(deviceById(id), resources.projects)"

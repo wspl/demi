@@ -121,8 +121,9 @@ stacks on the settings dialog: the shell stays, Escape and the scrim close only 
 top, and closing the shell takes the stack with it. Dialogs stay mounted and open
 by state (`settingsOpen`, `targetOpen`, a chosen host) rather than by `v-if`, so
 closing plays the dialog's leave; the working-environment dialog resets its form on
-each opening. That dialog is the shared `hosts/WorkspaceDialog` (project list, new
-project form, the folder browser as a page of it); `web/targets/TargetDialog.vue`
+each opening. That dialog is the shared `hosts/WorkspaceDialog` (project list; a new-project
+form of a device, Cloud by default, and a directory on it, the project taking the
+folder's name; the folder browser as a page of it); `web/targets/TargetDialog.vue`
 only maps the prototype's projects and devices onto it. Connect new device, from
 the host menu, opens the Add device pairing dialog at the app root; the Devices
 settings page runs the same claim.
