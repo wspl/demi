@@ -170,7 +170,9 @@ function create() {
                     :key="entry.id"
                     :icon="hostIcon(entry)"
                     :label="entry.name"
-                    :value="entry.online ? undefined : 'Offline'"
+                    :indicator="entry.online ? 'success' : 'muted'"
+                    :indicator-label="entry.online ? 'Online' : 'Offline'"
+                    :note="entry.online ? undefined : 'offline'"
                     choice
                     :is-selected="deviceId === entry.id"
                     @select="deviceId = entry.id; close()"

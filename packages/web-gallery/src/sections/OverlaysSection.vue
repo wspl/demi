@@ -183,13 +183,13 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
           <MenuItem :icon="Monitor" label="Main host" value="zan-mbp" has-submenu>
             <template #submenu>
               <HostPicker
-                :devices="[{ id: 'mac', name: 'zan-mbp', online: true }, { id: 'build', name: 'build-01', online: true }]"
+                :devices="[{ id: 'mac', name: 'zan-mbp', online: true }, { id: 'build', name: 'build-01', online: true }, { id: 'studio', name: 'studio', online: false }]"
                 include-cloud require-online selected-id="mac"
               />
             </template>
           </MenuItem>
           <MenuGroup label="Attached hosts">
-            <MenuItem label="build-01" indicator="success" indicator-label="Online" has-submenu>
+            <MenuItem :icon="Monitor" label="build-01" indicator="success" indicator-label="Online" has-submenu>
               <template #submenu>
                 <Menu>
                   <MenuItem :icon="Monitor" label="Use as main environment…" />
@@ -197,6 +197,7 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
                 </Menu>
               </template>
             </MenuItem>
+            <MenuItem :icon="Monitor" label="studio" indicator="muted" indicator-label="Offline" note="offline" has-submenu />
           </MenuGroup>
           <MenuDivider />
           <MenuItem :icon="Plus" label="Attach device…" has-submenu>

@@ -1,4 +1,4 @@
-<script setup lang="ts" generic="T extends { id: string; label: string; icon?: import('vue').Component }">
+<script setup lang="ts" generic="T extends { id: string; label: string; icon?: import('vue').Component; note?: string }">
 import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { Search, CircleX } from '@lucide/vue'
@@ -178,6 +178,7 @@ function handleKeydown(event: KeyboardEvent) {
             :style="{ transform: `translateY(${vItem.start}px)` }"
             :label="filteredItems[vItem.index]!.label"
             :icon="filteredItems[vItem.index]!.icon"
+            :note="filteredItems[vItem.index]!.note"
             :disabled="isItemDisabled?.(filteredItems[vItem.index]!)"
             choice
             :is-selected="filteredItems[vItem.index]!.id === selectedId"
@@ -204,6 +205,7 @@ function handleKeydown(event: KeyboardEvent) {
           :key="item.id"
           :label="item.label"
           :icon="item.icon"
+          :note="item.note"
           :disabled="isItemDisabled?.(item)"
           choice
           :is-selected="item.id === selectedId"
