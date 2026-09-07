@@ -12,12 +12,12 @@ import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { createGalleryFileHosts, laptopTree } from '../fixtures/files'
 
 const anatomy: [string, string][] = [
-  ['Shape', 'The Windows open dialog: a plain title bar; Back, Forward and Up, the device, and the path from its root; places down the left; a detail list; a status row with the confirm button.'],
+  ['Shape', 'The Windows open dialog: a plain title bar; Back, Forward and Up, the device, the path from its root, then New folder and hidden files as icons; places down the left; a detail list; a status row with the confirm button.'],
   ['Device', 'Its own control before the path: a menu of the devices the caller offers with their online dot. Choosing one asks the caller for that device\'s source and the browser starts over at its home.'],
   ['Address', 'Crumbs from the root, each a jump; deep paths fold their middle into an ellipsis. Clicking the free space turns the bar into a text field with the full path.'],
   ['List', 'Name, date and size, folders first, names in natural order; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'],
   ['Keys', 'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history.'],
-  ['Status row', 'Left: New folder and the hidden-files switch as icons, then what is selected, or what can be. Right: the confirm button and Cancel. A failure to create a folder reads here.'],
+  ['Status row', 'Says what is selected, as "Selected folder:" or "Selected file:" with the name, or what can be. Right: the confirm button and Cancel. A failure to create a folder reads here.'],
   ['New folder', 'A row at the top of the list with the name ready to type over; Enter creates it and selects it. Only a source that can create directories offers the icon.'],
   ['States', 'A slow device shows a spinner, an empty folder says so, and a folder that cannot be read explains why: missing, locked, or the device offline.'],
 ]
