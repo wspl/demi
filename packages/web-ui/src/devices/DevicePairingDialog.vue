@@ -46,7 +46,7 @@ function submit() { if (props.phase.kind === 'code' && code.value.trim()) emit('
         </div>
         <InlineError v-if="phase.kind === 'code' && phase.error" :message="phase.error" />
       </template>
-      <div v-else class="flex items-center gap-2 py-2 text-chrome text-fg">
+      <div v-else class="flex items-center gap-2 rounded-xl border border-line bg-surface-float p-4 text-chrome text-fg">
         <Check :size="14" class="shrink-0 text-on-success" />
         <span class="min-w-0 truncate">{{ phase.device.name }}</span>
       </div>
