@@ -76,6 +76,7 @@ export class GrokBuildProvider implements AgentProvider {
     let accessToken: string | undefined
 
     for (let attempt = 0; attempt < 2; attempt++) {
+      const observeQuota = this.options.quota?.captureObserver()
       let auth: GrokResolvedAuth
       try {
         auth = await this.options.authStore.resolveAuth({ forceRefresh })
@@ -106,7 +107,7 @@ export class GrokBuildProvider implements AgentProvider {
         })
 
         try {
-          this.options.quota?.observeResponse?.({ headers: response.headers, status: response.status })
+          observeQuota?.({ headers: response.headers, status: response.status })
         } catch {
           // Quota observation must never break inference.
         }

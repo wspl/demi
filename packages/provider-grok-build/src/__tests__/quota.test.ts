@@ -68,7 +68,7 @@ test('observeGrokRateLimitHeaders maps short windows', () => {
   expect(observed?.windows.find((w) => w.id === 'tpm')).toMatchObject({ used: 1000, limit: 5000 })
 })
 
-test('Grok inference observes ratelimit headers into provider.quota.latest', async () => {
+test.each([false, true])('Grok response quota respects account invalidation: %s', async (invalidate) => {
   const auth: GrokResolvedAuth = {
     accessToken: 'tok',
     refreshToken: null,
@@ -88,15 +88,17 @@ test('Grok inference observes ratelimit headers into provider.quota.latest', asy
   }
   const provider = createGrokBuildProvider({
     authStore: store,
-    fetch: async () =>
-      new Response('data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n', {
+    fetch: async () => {
+      if (invalidate) provider.quota!.clearLatest!()
+      return new Response('data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n', {
         status: 200,
         headers: {
           'content-type': 'text/event-stream',
           'x-ratelimit-limit-requests': '100',
           'x-ratelimit-remaining-requests': '90',
         },
-      }),
+      })
+    },
   })
   expect(provider.quota?.latest()).toBeNull()
   const runtime = await providerRuntime(provider, {
@@ -130,8 +132,11 @@ test('Grok inference observes ratelimit headers into provider.quota.latest', asy
   })) {
     // drain
   }
-  expect(provider.quota?.latest()?.source).toBe('observation')
-  expect(provider.quota?.latest()?.windows.find((w) => w.id === 'rpm')?.used).toBe(10)
+  if (invalidate) expect(provider.quota?.latest()).toBeNull()
+  else {
+    expect(provider.quota?.latest()?.source).toBe('observation')
+    expect(provider.quota?.latest()?.windows.find((w) => w.id === 'rpm')?.used).toBe(10)
+  }
 })
 
 test('Grok quota probe hits credits billing and subscription user', async () => {

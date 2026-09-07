@@ -73,7 +73,7 @@ test('observeClaudeStreamBody maps rate_limits on stream messages', () => {
   expect(observed?.windows.find((w) => w.id === 'seven_day')?.usedPercent).toBe(50)
 })
 
-test('Claude inference observes rate_limits from stream-json messages into shared quota', async () => {
+test.each([false, true])('Claude stream quota respects account invalidation: %s', async (invalidate) => {
   const transport = new FakeClaudeTransport([
     {
       type: 'result',
@@ -85,7 +85,10 @@ test('Claude inference observes rate_limits from stream-json messages into share
       },
     },
   ])
-  const factory: ClaudeTransportFactory = { start: async () => transport }
+  const factory: ClaudeTransportFactory = { start: async () => {
+    if (invalidate) quota.clearLatest!()
+    return transport
+  } }
   const quota = createClaudeCodeQuota({ providerId: 'claude-code' })
   const { ClaudeCodeProvider } = await import('../provider')
   const runtime = new ClaudeCodeProvider({ transportFactory: factory, quota })
@@ -106,8 +109,11 @@ test('Claude inference observes rate_limits from stream-json messages into share
     events.push(event)
   }
   expect(events.some((e) => e.type === 'response')).toBe(true)
-  expect(quota.latest()?.source).toBe('observation')
-  expect(quota.latest()?.windows.find((w) => w.id === 'five_hour')?.usedPercent).toBe(18)
+  if (invalidate) expect(quota.latest()).toBeNull()
+  else {
+    expect(quota.latest()?.source).toBe('observation')
+    expect(quota.latest()?.windows.find((w) => w.id === 'five_hour')?.usedPercent).toBe(18)
+  }
 
   // Public shell exposes quota.observeResponse.
   const shell = createClaudeCodeProvider()
