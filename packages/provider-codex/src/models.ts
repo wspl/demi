@@ -1,5 +1,5 @@
 import { errorMessage, isRecord, nonEmptyString, numberOrNull } from '@demicodes/utils'
-import type { ProviderModel, ProviderModelList } from '@demicodes/provider'
+import type { ProviderModel, ProviderModelList, ProviderModelListOptions } from '@demicodes/provider'
 import {
   CodexAuthError,
   FileCodexAuthStore,
@@ -8,7 +8,7 @@ import {
   type CodexResolvedAuth,
 } from './auth'
 
-export interface CodexModelCatalogOptions {
+export interface CodexModelCatalogOptions extends ProviderModelListOptions {
   authStore?: CodexAuthStore
   codexHome?: string
   baseUrl?: string
@@ -41,7 +41,7 @@ export async function listCodexModels(options: CodexModelCatalogOptions = {}): P
   assertCodexBackendModelCatalogAuth(auth)
   const cacheKey = codexModelCatalogCacheKey(auth, options.baseUrl, clientVersion)
   const cached = codexCatalogCache.get(cacheKey)
-  if (cached && nowDate.getTime() - cached.fetchedAtMs < CODEX_MODEL_CACHE_TTL_MS) {
+  if (!options.refresh && cached && nowDate.getTime() - cached.fetchedAtMs < CODEX_MODEL_CACHE_TTL_MS) {
     return cloneModelList(markModelListCache(cached.list, false))
   }
 

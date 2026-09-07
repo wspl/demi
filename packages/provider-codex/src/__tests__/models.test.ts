@@ -1,4 +1,5 @@
-import { expect, test } from 'bun:test'
+import { createCodexProvider } from '../provider'
+import { expect, spyOn, test } from 'bun:test'
 import { StaticCodexAuthStore, type CodexResolvedAuth } from '../auth'
 import {
   codexBackendModelsToModelList,
@@ -17,6 +18,23 @@ const chatgptAuth: CodexResolvedAuth = {
   expiresAt: null,
   authFile: '/tmp/auth.json',
 }
+
+test('Provider.listModels forwards refresh and retains the configured Codex model filter', async () => {
+  resetCodexModelCatalogCacheForTests()
+  const fetch = spyOn(globalThis, 'fetch').mockImplementation(Object.assign(async () => Response.json(codexModelsFixture()), { preconnect() {} }))
+  try {
+    const provider = createCodexProvider({ authStore: new StaticCodexAuthStore(chatgptAuth), models: { include: ['gpt-5.5'] } })
+    await provider.listModels!()
+    await provider.listModels!()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const refreshed = await provider.listModels!({ refresh: true })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(refreshed.models.map((model) => model.id)).toEqual(['gpt-5.5'])
+  } finally {
+    fetch.mockRestore()
+    resetCodexModelCatalogCacheForTests()
+  }
+})
 
 test('Codex backend model catalog maps slug ids and explicit capabilities', () => {
   const list = codexBackendModelsToModelList(codexModelsFixture(), {
@@ -64,6 +82,32 @@ test('listCodexModels requests Codex backend with auth headers and client versio
   expect(requests[0]?.headers.get('chatgpt-account-id')).toBe('account-1')
   expect(requests[0]?.headers.get('accept')).toBe('application/json')
   expect(list.models.map((model) => model.id)).toEqual(['gpt-5.5', 'gpt-5.4-mini'])
+  resetCodexModelCatalogCacheForTests()
+})
+
+test('an explicit catalog refresh bypasses the Codex TTL and reports failures as stale', async () => {
+  resetCodexModelCatalogCacheForTests()
+  let calls = 0
+  let offline = false
+  const options = {
+    authStore: new StaticCodexAuthStore(chatgptAuth),
+    now: () => new Date('2026-09-08T00:00:00Z'),
+    fetch: async () => {
+      calls += 1
+      if (offline) throw new Error('offline')
+      return Response.json(codexModelsFixture())
+    },
+  }
+  await listCodexModels(options)
+  await listCodexModels(options)
+  expect(calls).toBe(1)
+  await listCodexModels({ ...options, refresh: true })
+  expect(calls).toBe(2)
+  offline = true
+  const stale = await listCodexModels({ ...options, refresh: true })
+  expect(calls).toBe(3)
+  expect(stale.stale).toBe(true)
+  expect(stale.warnings.join(' ')).toContain('offline')
   resetCodexModelCatalogCacheForTests()
 })
 
