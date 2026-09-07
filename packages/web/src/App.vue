@@ -98,7 +98,8 @@ watch(
   () => conversations.notice,
   (message) => {
     if (!message) return
-    showToast({ title: message })
+    // A notice is an action the prototype refused, so it reads as a rejection.
+    showToast({ title: message, tone: 'danger' })
     conversations.notice = ''
   },
 )

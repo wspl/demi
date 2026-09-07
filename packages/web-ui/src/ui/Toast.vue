@@ -31,7 +31,8 @@ const emit = defineEmits<{
       <CircleCheck v-else :size="ICON_PX.in28" />
     </span>
     <div class="min-w-0 flex-1">
-      <div class="flex h-5 items-center text-chrome leading-5 text-fg-emphasis">{{ title }}</div>
+      <!-- The title wraps; 20px lines keep a one-line title centred on the icon. -->
+      <div class="min-h-5 text-chrome leading-5 text-fg-emphasis">{{ title }}</div>
       <div
         v-if="message"
         class="text-[12px] leading-4 text-fg-muted"
