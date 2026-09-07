@@ -2,6 +2,8 @@ import { computed, type ComputedRef } from 'vue'
 import { createThemeStore, type ThemeStoreState } from './themeStore'
 
 export type ThemeMode = ThemeStoreState['mode']
+/** What the user asked for: a mode, or to follow the OS. */
+export type ThemeChoice = ThemeMode | 'system'
 
 const STORAGE_KEY = 'demi-theme-mode'
 
@@ -53,4 +55,19 @@ export function applyThemeToDocument(): void {
       appThemeStore.setMode(event.matches ? 'light' : 'dark')
     })
   }
+}
+
+/** The saved choice, or `system` while the theme follows the OS. */
+export function themeChoice(): ThemeChoice {
+  return storedMode() ?? 'system'
+}
+
+/** A mode is remembered; `system` forgets the choice and follows the OS from now on. */
+export function setThemeChoice(choice: ThemeChoice): void {
+  if (choice !== 'system') {
+    setTheme(choice)
+    return
+  }
+  if (typeof localStorage !== 'undefined') localStorage.removeItem(STORAGE_KEY)
+  appThemeStore.setMode(systemPrefersLight() ? 'light' : 'dark')
 }

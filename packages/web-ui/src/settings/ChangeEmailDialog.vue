@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Check } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -35,6 +35,11 @@ const emit = defineEmits<{
 const email = ref('')
 const password = ref('')
 const code = ref('')
+const resent = ref(false)
+
+watch(() => props.phase.kind, () => {
+  resent.value = false
+})
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const CODE_LENGTH = 6
@@ -53,6 +58,12 @@ function submit() {
 
 function verify() {
   if (canVerify.value) emit('verify', code.value.trim())
+}
+
+function resend() {
+  if (props.phase.kind !== 'verify' || props.phase.busy) return
+  resent.value = true
+  emit('resend')
 }
 </script>
 
@@ -89,8 +100,11 @@ function verify() {
         </div>
         <InlineError v-if="phase.error" :message="phase.error" />
         <p class="select-none text-[12px] text-fg-subtle">
-          Nothing arrived?
-          <button type="button" class="text-on-accent hover:underline" :disabled="phase.busy" @click="emit('resend')">Send it again</button>
+          <template v-if="resent">A new code went to {{ phase.email }}.</template>
+          <template v-else>
+            Nothing arrived?
+            <button type="button" class="text-on-accent hover:underline" :disabled="phase.busy" @click="resend">Send it again</button>
+          </template>
         </p>
       </template>
 

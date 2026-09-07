@@ -53,8 +53,8 @@ function submit() {
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Change password</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          <template v-if="phase.kind === 'form'">Other devices are signed out once it changes.</template>
-          <template v-else>Password changed. Other devices are signed out.</template>
+          <template v-if="phase.kind === 'form'">Other sessions are signed out once it changes.</template>
+          <template v-else>Password changed. Other sessions are signed out.</template>
         </p>
       </header>
 

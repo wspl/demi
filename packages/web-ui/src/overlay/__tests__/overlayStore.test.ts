@@ -47,3 +47,32 @@ test('hasEntries and closeTop ignore a hint-only stack', () => {
   expect(hintClosed).toBe(0)
   expect(store.state.entries).toHaveLength(1)
 })
+
+test('a stacked entry keeps what it stands on and goes with it', () => {
+  const store = createOverlayStore()
+  let outerClosed = 0
+  let innerClosed = 0
+  store.push('dialog', () => {
+    outerClosed += 1
+  })
+  store.push('inner', () => {
+    innerClosed += 1
+  }, 'stacked')
+  expect(outerClosed).toBe(0)
+  expect(store.state.entries.map((entry) => entry.id)).toEqual(['dialog', 'inner'])
+  expect(store.isTop('inner')).toBe(true)
+  expect(store.isTop('dialog')).toBe(false)
+
+  store.closeTop()
+  expect(innerClosed).toBe(1)
+  expect(outerClosed).toBe(0)
+  // The closed dialog unregisters itself, as the component does when it is no longer open.
+  store.remove('inner')
+
+  store.push('inner-2', () => {
+    innerClosed += 1
+  }, 'stacked')
+  store.remove('dialog')
+  expect(innerClosed).toBe(2)
+  expect(store.state.entries).toHaveLength(0)
+})
