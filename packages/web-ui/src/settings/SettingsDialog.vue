@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ChevronDown, CircleUser, Gauge, Monitor, Search, Sparkles } from '@lucide/vue'
+import { ChevronDown, Search } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
@@ -11,6 +11,7 @@ import SidebarNavItem from '@demicodes/web-ui/sidebar/SidebarNavItem.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { SETTINGS_SECTIONS } from './sections'
 import type { SettingsAccountInfo, SettingsNavGroup, SettingsNavItem, SettingsTab } from './types'
 
 /**
@@ -22,22 +23,13 @@ const props = withDefaults(defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
   account?: SettingsAccountInfo
-  /** The rail. Defaults to the product's four sections. */
+  /** The rail. Defaults to the product's sections. */
   sections?: SettingsNavGroup[]
 }>(), {
-  sections: () => [
-    {
-      items: [
-        { id: 'Account', label: 'Account', icon: CircleUser },
-        { id: 'Devices', label: 'Devices', icon: Monitor },
-        { id: 'Providers', label: 'Providers', icon: Sparkles },
-        { id: 'Usage', label: 'Usage', icon: Gauge },
-      ],
-    },
-  ],
+  sections: () => SETTINGS_SECTIONS,
 })
 
-const tab = defineModel<SettingsTab>('tab', { default: 'Account' })
+const tab = defineModel<SettingsTab>('tab', { default: 'general' })
 
 const emit = defineEmits<{
   close: []

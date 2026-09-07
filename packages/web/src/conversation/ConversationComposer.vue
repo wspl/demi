@@ -24,7 +24,7 @@ const selectedModel = computed(() =>
 )
 const canSend = computed(
   () =>
-    resources.providers.some((p) => p.id === props.conversation.providerId && p.isAvailable) &&
+    resources.providerInfos.some((p) => p.id === props.conversation.providerId && p.isAvailable) &&
     !!selectedModel.value,
 )
 
@@ -59,7 +59,7 @@ function removeFile(id: string) {
 }
 
 function openProviders() {
-  resources.settingsTab = 'Providers'
+  resources.settingsTab = 'models'
   resources.settingsOpen = true
 }
 function selectModel(providerId: string, modelId: string) {
@@ -125,7 +125,7 @@ const attachments = computed(() =>
       :running="!!conversation.stream"
       :disabled="!canSend"
       :attachments="attachments"
-      :providers="resources.providers"
+      :providers="resources.providerInfos"
       :models="resources.models"
       :selected-provider-id="conversation.providerId"
       :selected-model-id="conversation.modelId"

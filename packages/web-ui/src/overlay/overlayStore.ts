@@ -1,12 +1,18 @@
 import { createStore } from '../store/createStore'
 
-/** Exclusive layers (menu, popover, dialog) dismiss hints. Hints never cover them. */
-export type OverlayLayer = 'exclusive' | 'hint'
+/**
+ * Exclusive layers (menu, popover, dialog) dismiss hints and replace each other.
+ * A stacked layer is a dialog opened from inside another: it dismisses hints too,
+ * but keeps what it stands on, and goes when that closes. Hints never cover either.
+ */
+export type OverlayLayer = 'exclusive' | 'stacked' | 'hint'
 
 export interface OverlayEntry {
   id: string
   layer: OverlayLayer
   close: () => void
+  /** The exclusive entry a stacked one stands on. */
+  parent?: string
 }
 
 export interface OverlayStore {
@@ -15,6 +21,8 @@ export interface OverlayStore {
   }
   hasEntries(): boolean
   hasExclusive(): boolean
+  /** Whether this entry is the one Escape and the scrim address. */
+  isTop(id: string): boolean
   closeTop(): void
   push(id: string, close: () => void, layer?: OverlayLayer): () => void
   remove(id: string): void
@@ -22,7 +30,7 @@ export interface OverlayStore {
 }
 
 function isExclusive(entry: OverlayEntry): boolean {
-  return entry.layer === 'exclusive'
+  return entry.layer !== 'hint'
 }
 
 export function createOverlayStore(): OverlayStore {
@@ -41,9 +49,25 @@ export function createOverlayStore(): OverlayStore {
     for (const hint of hints) hint.close()
   }
 
+  /** Drops an entry and closes whatever was stacked on it. */
+  function drop(id: string): void {
+    const index = store.state.entries.findIndex((entry) => entry.id === id)
+    if (index < 0) return
+    store.update((state) => {
+      state.entries.splice(index, 1)
+    })
+    for (const child of store.state.entries.filter((entry) => entry.parent === id)) {
+      drop(child.id)
+      child.close()
+    }
+  }
+
   return {
     state: store.state,
     subscribe: store.subscribe,
+    isTop(id) {
+      return exclusives().at(-1)?.id === id
+    },
     hasExclusive() {
       return exclusives().length > 0
     },
@@ -60,40 +84,23 @@ export function createOverlayStore(): OverlayStore {
         return () => {}
       }
 
-      let previous: OverlayEntry[] = []
-      if (layer === 'exclusive') {
-        dismissHints()
-        previous = exclusives()
-      }
+      dismissHints()
+      const previous = layer === 'exclusive' ? exclusives() : []
+      const parent = layer === 'stacked' ? exclusives().at(-1)?.id : undefined
 
       store.update((state) => {
-        state.entries.push({ id, layer, close })
+        state.entries.push({ id, layer, close, parent })
       })
 
       for (const entry of previous) {
+        drop(entry.id)
         entry.close()
-        const index = store.state.entries.findIndex((item) => item.id === entry.id)
-        if (index >= 0) {
-          store.update((state) => {
-            state.entries.splice(index, 1)
-          })
-        }
       }
 
-      return () => {
-        const index = store.state.entries.findIndex((entry) => entry.id === id)
-        if (index < 0) return
-        store.update((state) => {
-          state.entries.splice(index, 1)
-        })
-      }
+      return () => drop(id)
     },
     remove(id) {
-      const index = store.state.entries.findIndex((entry) => entry.id === id)
-      if (index < 0) return
-      store.update((state) => {
-        state.entries.splice(index, 1)
-      })
+      drop(id)
     },
   }
 }
