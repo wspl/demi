@@ -13,8 +13,10 @@ export interface WorkspaceDevice {
   online: boolean
 }
 
-/** A new project as the form hands it back: a device (`cloud` for the managed workspace) and a directory on it. The project takes the directory's name. */
-export interface WorkspaceDraft {
-  deviceId: string
-  path: string
-}
+/**
+ * A new project as the form hands it back: on the Cloud only a name, the workspace being
+ * managed; on a device a directory on it, the project taking the directory's name.
+ */
+export type WorkspaceDraft =
+  | { kind: 'cloud'; name: string }
+  | { kind: 'device'; deviceId: string; path: string }
