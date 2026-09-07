@@ -6,6 +6,7 @@ import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsDevice } from './types'
+import type { DeviceInstallation } from '../devices/installation'
 import type { OverlayStore } from '../overlay/overlayStore'
 import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
@@ -13,7 +14,7 @@ import { useDevicePairing, type PairingResult } from '../devices/pairing'
 const props = defineProps<{
   devices: SettingsDevice[]
   overlayStore: OverlayStore
-  runnerCommand: string
+  installation: DeviceInstallation
   claimDevice: (code: string) => Promise<PairingResult>
 }>()
 const emit = defineEmits<{ revoke: [id: string] }>()
@@ -50,6 +51,6 @@ const { isOpen, phase, open, close, submit } = useDevicePairing((code) => props.
         No devices connected.
       </div>
     </SettingsGroup>
-    <DevicePairingDialog :is-open="isOpen" :overlay-store="overlayStore" :command="runnerCommand" :phase="phase" @close="close" @next="phase = { kind: 'code' }" @back="phase = { kind: 'setup' }" @submit="submit" />
+    <DevicePairingDialog :is-open="isOpen" :overlay-store="overlayStore" :installation="installation" :phase="phase" @close="close" @next="phase = { kind: 'code' }" @back="phase = { kind: 'setup' }" @submit="submit" />
   </SettingsPage>
 </template>
