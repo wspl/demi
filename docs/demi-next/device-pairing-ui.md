@@ -2,7 +2,7 @@
 
 The reusable `web-ui/devices/DevicePairingDialog` and `useDevicePairing` own the
 pairing presentation and lifecycle. Settings, onboarding and host pickers can
-supply installer endpoints, the backend URL and an asynchronous claim adapter. The current product and
+supply deployment-specific installer endpoints and an asynchronous claim adapter. The current product and
 gallery use prototype adapters, not live device APIs.
 
 Devices has an Add device button on the right of Your devices. Revocation is
@@ -15,8 +15,12 @@ revocation uses an error toast because the action has no input field.
    box displays a curl-to-shell command on Linux/macOS, or a PowerShell `.ps1`
    invocation on Windows. Copy always uses the selected system's command.
    The deployment supplies `DeviceInstallation` (shell and PowerShell installer
-   URLs plus backend URL); `deviceInstallCommand` owns shell-specific quoting.
-   The proposed scripts install/start the runner with the supplied backend.
+   URLs); `deviceInstallCommand` owns shell-specific quoting.
+   The proposed scripts carry their deployment’s backend configuration and
+   install/start the runner without extra command-line arguments. Unix examples
+   follow [rustup](https://rustup.rs/) (`--proto '=https' --tlsv1.2 -sSf` piped
+   to `sh`); Windows uses `irm <installer.ps1> | iex`. Rustup itself offers a
+   Windows executable; the PowerShell flow is Demi’s proposed installer contract.
    Keep the terminal open until pairing completes.
    `ui/CopyCode` owns the bordered command surface, wrapping, copy action and
    copied feedback. Provider login commands use the same component.
