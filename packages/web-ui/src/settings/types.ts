@@ -39,32 +39,6 @@ export interface SettingsKeyBinding {
   keys: string
 }
 
-export interface SettingsExperiment {
-  id: string
-  name: string
-  description: string
-  on: boolean
-}
-
-export interface SettingsSpendRow {
-  provider: string
-  /** Formatted by the host; shown verbatim. */
-  amount: string
-}
-
-/** What the usage page shows: the plan, its credits, and what the providers billed. */
-export interface SettingsUsageInfo {
-  plan: string
-  renews: string
-  creditsUsed: number
-  creditsMax: number
-  resets: string
-  spend: SettingsSpendRow[]
-  input: string
-  output: string
-  cacheRead: string
-}
-
 /** A model as the settings edit it: what a custom endpoint needs to be usable. */
 export interface SettingsModelDraft {
   id: string

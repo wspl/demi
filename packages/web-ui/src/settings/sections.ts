@@ -1,4 +1,4 @@
-import { Bell, CircleUser, Code, Database, Gauge, Keyboard, Monitor, Plug, Settings2, Sparkles, WandSparkles } from '@lucide/vue'
+import { Bell, CircleUser, Database, Keyboard, Monitor, Plug, Settings2, Sparkles, WandSparkles } from '@lucide/vue'
 import type { SettingsNavGroup } from './types'
 
 /** The product's settings rail: every section, grouped the way the rail reads them. */
@@ -24,11 +24,6 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
       { id: 'devices', label: 'Devices', icon: Monitor, keywords: ['pairing code', 'claim', 'revoke', 'runner', 'machine'] },
       { id: 'keyboard', label: 'Keyboard', icon: Keyboard, keywords: ['shortcut', 'hotkey', 'binding'] },
       { id: 'data', label: 'Data & privacy', icon: Database, keywords: ['transcripts', 'retention', 'share links', 'export', 'usage data', 'delete'] },
-      { id: 'usage', label: 'Usage & billing', icon: Gauge, keywords: ['plan', 'credits', 'invoices', 'spend', 'tokens'] },
     ],
-  },
-  {
-    label: 'Advanced',
-    items: [{ id: 'developer', label: 'Developer', icon: Code, keywords: ['logs', 'log level', 'download', 'experiments'] }],
   },
 ]
