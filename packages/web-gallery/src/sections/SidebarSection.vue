@@ -18,8 +18,8 @@ let nextId = 1
 
 const anatomy: [string, string][] = [
   ['Top', 'The app name, then the entries: New, Skills, Archived. Skills and Archived open their settings sections. The Conversations heading carries the same New as the entry.'],
-  ['Conversations', 'Plain conversations that run in no checkout. Manual order, pinned on top.'],
-  ['Projects', 'Every checkout the agent works in, in manual order, each with the host it lives on. A project folds; its rows sit at the same inset as plain conversations. An empty project offers its first conversation.'],
+  ['Conversations', 'Plain conversations that run in no checkout. Manual order, pinned on top. The Conversations and Projects headings stick to the top of the list as it scrolls.'],
+  ['Projects', 'Every checkout the agent works in, in manual order, each with the host it lives on. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'],
   ['Row', 'A title and one quiet dot: breathing while running, green for a result waiting to be read, orange when the conversation needs the user. A cut title fades at the edge and plays as a marquee on hover. Pin and archive appear on hover; rename is inline.'],
   ['Selection', 'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Project dragging temporarily folds all projects, restores their expansion on release, and smoothly centers the moved header. Right-click acts on the selection: open and rename for one row; pin, move to a project, archive, and delete for any count. Project headers have their own menu.'],
   ['Keys', 'The list is one tab stop. ↑↓ move and select, Shift+↑↓ extend, ⌘↑↓ jump to the ends, Space toggles, Enter opens a row or folds a project, ← → fold and unfold, ⌘A selects all, Esc collapses to the open conversation, F2 renames, ⌫ deletes, ⌘⇧P pins; Alt+↑↓ reorders the focused entry.'],

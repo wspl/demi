@@ -36,7 +36,7 @@ const emit = defineEmits<{
       class="shrink-0 text-fg-muted"
     />
     <span class="flex min-w-0 flex-1 items-center gap-1">
-      <span class="min-w-0 truncate font-medium">{{ project.name }}</span>
+      <span class="min-w-0 truncate font-medium text-fg-emphasis">{{ project.name }}</span>
       <ChevronRight
         :size="ICON_PX.in20"
         aria-hidden="true"
