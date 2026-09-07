@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUpdate, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { Archive, FolderPlus, Settings, SquarePen, WandSparkles } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
@@ -185,24 +185,34 @@ function onListKeydown(event: KeyboardEvent): void {
   list.onKeydown(event)
 }
 
-/* A leaving row is taken out of flow, and a flex container would place it at the list's top,
-   so the move transition would fly it up through the headers. The rows' offsets are read before
-   the DOM changes (once one row is absolute, the next one's offset has already shifted) and a
-   leaving row is pinned where it stood, fading in place. */
-const entryTops = new Map<string, number>()
-onBeforeUpdate(() => {
-  entryTops.clear()
-  for (const el of listRef.value?.querySelectorAll<HTMLElement>('[data-sidebar-id]') ?? []) {
-    const marginTop = parseFloat(getComputedStyle(el).marginTop) || 0
-    entryTops.set(el.dataset.sidebarId!, el.offsetTop - marginTop)
-  }
-})
-function pinLeavingEntry(el: Element): void {
+/* Rows grow and shrink in flow. A leaving row keeps its place and folds its height to
+   nothing while it fades, so the list's height, the scroll position and the rows below all
+   follow it smoothly; a row taken out of flow would vanish in one step at the end, and the
+   scroll position with it. The gap and a project's top margin fold with the row. */
+function beforeEnterEntry(el: Element): void {
   const row = el as HTMLElement
-  const top = entryTops.get(row.dataset.sidebarId ?? '')
-  if (top == null) return
-  row.style.top = `${top}px`
-  row.style.left = '0'
+  row.style.height = '0'
+  row.style.overflow = 'hidden'
+}
+function enterEntry(el: Element): void {
+  const row = el as HTMLElement
+  row.style.height = `${row.scrollHeight}px`
+}
+function afterEnterEntry(el: Element): void {
+  const row = el as HTMLElement
+  row.style.height = ''
+  row.style.overflow = ''
+}
+function beforeLeaveEntry(el: Element): void {
+  const row = el as HTMLElement
+  row.style.height = `${row.offsetHeight}px`
+  row.style.overflow = 'hidden'
+}
+function leaveEntry(el: Element): void {
+  const row = el as HTMLElement
+  row.style.height = '0'
+  row.style.marginTop = '0'
+  row.style.marginBottom = '-1px'
 }
 
 function rowMenuOpenFor(id: string): boolean {
@@ -254,7 +264,17 @@ function selectProjectConversations(project: SidebarProject): void {
 
     >
       <!-- Rows sit a hairline apart, the way menu items and the entries above do. -->
-      <TransitionGroup name="sidebar-items" tag="div" class="relative flex flex-col gap-px" @before-leave="pinLeavingEntry">
+      <TransitionGroup
+        name="sidebar-items"
+        tag="div"
+        class="relative flex flex-col gap-px"
+        @before-enter="beforeEnterEntry"
+        @enter="enterEntry"
+        @after-enter="afterEnterEntry"
+        @enter-cancelled="afterEnterEntry"
+        @before-leave="beforeLeaveEntry"
+        @leave="leaveEntry"
+      >
         <div
           v-for="(entry, index) in displayEntries"
           :key="entry.id"
@@ -380,11 +400,11 @@ function selectProjectConversations(project: SidebarProject): void {
 .sidebar-items-move,
 .sidebar-items-enter-active,
 .sidebar-items-leave-active {
-  transition: transform 180ms ease, opacity 180ms ease;
+  transition: transform 180ms ease, opacity 180ms ease, height 180ms ease, margin 180ms ease;
 }
 .sidebar-items-enter-from,
 .sidebar-items-leave-to { opacity: 0; }
-.sidebar-items-leave-active { position: absolute; width: 100%; pointer-events: none; }
+.sidebar-items-leave-active { pointer-events: none; }
 .drop-before::before,
 .drop-after::after {
   content: '';
