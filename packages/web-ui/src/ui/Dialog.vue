@@ -30,6 +30,8 @@ const props = defineProps<{
   label?: string
   /** Every dialog closes from its top-right corner; a flow that must finish can hide it. */
   hideClose?: boolean
+  /** Stack on whatever dialog is open instead of replacing it, for a dialog mounted at the app root but opened from inside another. */
+  stack?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -53,7 +55,7 @@ const id = useOverlay(
   () => {
     if (props.isOpen) emit('close')
   },
-  nested ? 'stacked' : 'exclusive',
+  nested || props.stack ? 'stacked' : 'exclusive',
 )
 
 onKeyStroke('Escape', (event) => {

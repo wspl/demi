@@ -13,7 +13,7 @@ import SettingsRow from '../settings/SettingsRow.vue'
 import Segmented from '../ui/Segmented.vue'
 import { deviceInstallCommand, deviceSystems, type DeviceInstallation, type DeviceSystem } from './installation'
 
-const props = defineProps<{ isOpen: boolean; overlayStore: OverlayStore; installation: DeviceInstallation; phase: PairingPhase }>()
+const props = defineProps<{ isOpen: boolean; overlayStore: OverlayStore; installation: DeviceInstallation; phase: PairingPhase; /** Stack on an open dialog, when opened from inside one. */ stack?: boolean }>()
 const emit = defineEmits<{ close: []; next: []; back: []; submit: [code: string] }>()
 const code = ref('')
 const system = ref<DeviceSystem>('linux')
@@ -23,7 +23,7 @@ function submit() { if (props.phase.kind === 'code' && code.value.trim()) emit('
 </script>
 
 <template>
-  <Dialog :is-open="isOpen" :overlay-store="overlayStore" label="Add device" @close="emit('close')">
+  <Dialog :is-open="isOpen" :overlay-store="overlayStore" label="Add device" :stack="stack" @close="emit('close')">
     <div class="flex flex-col gap-4 p-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Add device</h3>

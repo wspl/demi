@@ -68,5 +68,6 @@ function create(draft: WorkspaceDraft) {
     @close="close"
     @select="select"
     @create="create"
+    @connect-device="resources.pairingOpen = true"
   />
 </template>

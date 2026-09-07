@@ -122,8 +122,9 @@ top, and closing the shell takes the stack with it. Dialogs stay mounted and ope
 by state (`settingsOpen`, `targetOpen`, a chosen host) rather than by `v-if`, so
 closing plays the dialog's leave; the working-environment dialog resets its form on
 each opening. That dialog is the shared `hosts/WorkspaceDialog` (project list; a new-project
-form that branches on Cloud or Device cards: the Cloud asks only a name, a device
-asks which one and a directory on it, the project taking the folder's name; the
+form that branches on Device or Cloud cards, Device first: a device asks which one,
+with Add device beside the menu starting the pairing dialog stacked on the form, and
+a directory on it, the project taking the folder's name; the Cloud asks only a name; the
 folder browser as a page of it); `web/targets/TargetDialog.vue`
 only maps the prototype's projects and devices onto it. Connect new device, from
 the host menu, opens the Add device pairing dialog at the app root; the Devices

@@ -152,6 +152,7 @@ watch(
     <TargetDialog :conversation-id="activeId" />
     <DevicePairingDialog
       :is-open="pairing.isOpen.value"
+      stack
       :overlay-store="appOverlayStore"
       :installation="deviceInstallation"
       :phase="pairing.phase.value"

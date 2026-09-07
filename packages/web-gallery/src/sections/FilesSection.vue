@@ -23,7 +23,7 @@ const anatomy: [string, string][] = [
   ['List', 'Name, date and size, folders first, names in natural order; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'],
   ['Keys', 'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history.'],
   ['Status row', 'Says what is selected, as "Selected folder:" or "Selected file:" with the name, or what can be. Right: the confirm button and Cancel. A failure to create a folder reads here.'],
-  ['New project', 'The working-environment dialog: Cloud or Device as two cards; the Cloud only asks a name, a device asks which one and a directory on it, the project named after the folder; Browse… turns the dialog into the folder browser. Switching between projects is the same dialog on its list.'],
+  ['New project', 'The working-environment dialog: Device or Cloud as two cards, Device first; a device asks which one, with Add device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Switching between projects is the same dialog on its list.'],
   ['New folder', 'A row at the top of the list with the name ready to type over; Enter creates it and selects it. Only a source that can create directories offers the icon.'],
   ['States', 'A slow device shows a spinner, an empty folder says so, and a folder that cannot be read explains why: missing, locked, or the device offline.'],
 ]
@@ -37,7 +37,11 @@ const iconSamples: [string, boolean][] = [
 const hosts = createGalleryFileHosts()
 
 // New project: the working-environment dialog over the same hosts; a created project joins the list.
-const workspaceDevices = hosts.map(({ id, label, online }) => ({ id, name: label, online }))
+const workspaceDevices = ref(hosts.map(({ id, label, online }) => ({ id, name: label, online })))
+/** Add device stands in for the pairing flow: a new online device joins the list. */
+function connectWorkspaceDevice() {
+  workspaceDevices.value.push({ id: `device-${Date.now()}`, name: `host-${workspaceDevices.value.length + 1}`, online: true })
+}
 const workspaceProjects = ref<WorkspaceProject[]>([
   { id: 'demi', name: 'demi', host: 'zan-mbp', path: '/Users/zan/Projects/demi' },
   { id: 'assets', name: 'assetsfactory', host: 'build-01', path: '/srv/assetsfactory' },
@@ -55,7 +59,7 @@ function createWorkspace(draft: WorkspaceDraft) {
     return
   }
   workspaceMessage.value = ''
-  const host = draft.kind === 'cloud' ? 'Cloud' : workspaceDevices.find((device) => device.id === draft.deviceId)?.name ?? draft.deviceId
+  const host = draft.kind === 'cloud' ? 'Cloud' : workspaceDevices.value.find((device) => device.id === draft.deviceId)?.name ?? draft.deviceId
   workspaceProjects.value.push({ id: `p-${Date.now()}`, name, host, path: draft.kind === 'cloud' ? `/home/demi/${name}` : draft.path })
   workspaceCurrent.value = workspaceProjects.value.at(-1)!.id
   workspaceKey.value += 1
@@ -180,7 +184,7 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </p>
     </GallerySection>
 
-    <GallerySection title="New project" note="The working-environment dialog on its form: Cloud or Device. The Cloud only asks a name; a device asks which one and a directory, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form.">
+    <GallerySection title="New project" note="The working-environment dialog on its form: Device or Cloud. A device asks which one (Add device beside the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form.">
       <GalleryDialogFrame class="max-w-md">
         <WorkspaceDialog
           :key="workspaceKey"
@@ -195,6 +199,7 @@ function selectHost(target: 'folder' | 'file', id: string) {
           :source-for="sourceFor"
           :places-for="placesFor"
           @create="createWorkspace"
+          @connect-device="connectWorkspaceDevice"
         />
       </GalleryDialogFrame>
       <p class="select-none text-[12px] text-fg-subtle">
