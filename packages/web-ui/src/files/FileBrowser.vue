@@ -321,9 +321,9 @@ defineExpose({
           <span class="truncate text-on-danger" :title="error">{{ error }}</span>
         </template>
         <template v-else>
-          <component :is="status.icon" :size="ICON_PX.in28" class="shrink-0" :class="status.label ? 'text-fg-muted' : 'text-fg-subtle'" />
+          <component :is="status.icon" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
           <span v-if="status.label" class="shrink-0 text-fg-subtle">{{ status.label }}</span>
-          <span class="truncate" :class="status.label ? 'text-fg' : 'text-fg-subtle'" :title="status.text">{{ status.text }}</span>
+          <span class="truncate text-fg" :title="status.text">{{ status.text }}</span>
         </template>
       </div>
       </div>
