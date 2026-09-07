@@ -7,14 +7,12 @@ import type { ProductAccent, ProductTone } from '@demicodes/web-ui/theme/product
 import { galleryState } from '../gallery-state'
 import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import SettingsData from '@demicodes/web-ui/settings/SettingsData.vue'
-import SettingsDeveloper from '@demicodes/web-ui/settings/SettingsDeveloper.vue'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import SettingsGeneral from '@demicodes/web-ui/settings/SettingsGeneral.vue'
 import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
 import SettingsMcp from '@demicodes/web-ui/settings/SettingsMcp.vue'
 import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotifications.vue'
 import SettingsSkills from '@demicodes/web-ui/settings/SettingsSkills.vue'
-import SettingsUsage from '@demicodes/web-ui/settings/SettingsUsage.vue'
 import type { SettingsMcpDraft, SettingsSkillDraft, SettingsSkillSource } from '@demicodes/web-ui/settings/types'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
@@ -182,18 +180,6 @@ function resetShortcuts() {
   keyMessage.value = ''
 }
 
-function toggleExperiment(id: string, on: boolean) {
-  const experiment = s.value.developer.experiments.find((entry) => entry.id === id)
-  if (experiment) experiment.on = on
-}
-
-const usage = computed(() => ({
-  plan: s.value.account.plan,
-  renews: s.value.account.renews,
-  creditsUsed: s.value.account.creditsUsed,
-  creditsMax: s.value.account.creditsMax,
-  ...s.value.usage,
-}))
 </script>
 
 <template>
@@ -268,14 +254,4 @@ const usage = computed(() => ({
     :retentions="['Forever', '90 days', '30 days', '7 days']"
   />
 
-  <SettingsUsage v-else-if="tab === 'usage'" :usage="usage" />
-
-  <SettingsDeveloper
-    v-else-if="tab === 'developer'"
-    v-model:log-level="s.developer.logLevel"
-    :overlay-store="appOverlayStore"
-    :levels="['Error', 'Warn', 'Info', 'Debug']"
-    :experiments="s.developer.experiments"
-    @toggle-experiment="toggleExperiment"
-  />
 </template>
