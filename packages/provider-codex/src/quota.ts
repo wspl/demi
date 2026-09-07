@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { isRecord } from '@demicodes/utils'
+import { isRecord, nonEmptyString, numberOrNull } from '@demicodes/utils'
 import {
+  ProviderQuotaUnsupportedError,
   clampUsedPercent,
   numberHeader,
   createProviderQuota,
@@ -11,82 +12,98 @@ import {
   type ProviderQuotaWindow,
 } from '@demicodes/provider'
 import { FileCodexAuthStore, type CodexAuthStore } from './auth'
-import { buildCodexHeaders, responsesUrlForAuth } from './provider'
+import { buildCodexHeaders } from './provider'
 
 export interface CodexQuotaOptions {
   providerId?: string
   codexHome?: string
   baseUrl?: string
   authStore?: CodexAuthStore
-  /** Model id for the minimal probe request (must be accepted by the backend). */
-  probeModelId?: string
   fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>
   userAgent?: string
 }
 
-const DEFAULT_PROBE_MODEL = 'gpt-5.4'
-
-/**
- * Codex consumer rate windows come from Responses headers:
- * x-codex-{primary,secondary}-used-percent / -window-minutes / -reset-at
- *
- * probe() issues a minimal streamed Responses request and cancels the body
- * (probeCost: minimal_request). observeResponse can parse the same headers
- * from any live Responses call without an extra request.
- */
+/** Probes the Codex usage endpoint; live inference still observes rate-limit headers. */
 export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota {
   const providerId = options.providerId ?? 'codex'
   const authStore = options.authStore ?? new FileCodexAuthStore({ codexHome: options.codexHome })
   const fetchImpl = options.fetch ?? fetch
-  const probeModelId = options.probeModelId ?? DEFAULT_PROBE_MODEL
 
   return createProviderQuota({
     providerId,
     canProbe: true,
     canObserve: true,
-    probeCost: 'minimal_request',
+    probeCost: 'free',
     staleAfterMs: 5 * 60_000,
     probe: async ({ signal } = {}) => {
-      const auth = await authStore.resolveAuth()
+      const request = async (forceRefresh = false): Promise<Response> => {
+        signal?.throwIfAborted()
+        const auth = await authStore.resolveAuth({ forceRefresh })
+        if (auth.kind === 'apiKey') {
+          throw new ProviderQuotaUnsupportedError(providerId, 'Codex usage requires ChatGPT account authentication')
+        }
+        const headers = buildCodexHeaders(
+          auth,
+          { sessionId: 'demi-codex-quota-probe', requestId: randomUUID() },
+          { userAgent: options.userAgent },
+        )
+        headers.set('accept', 'application/json')
+        const baseUrl = (options.baseUrl ?? 'https://chatgpt.com/backend-api')
+          .replace(/\/+$/, '').replace(/\/codex(?:\/responses)?$/, '')
+        return fetchImpl(`${baseUrl}/wham/usage`, { method: 'GET', headers, signal })
+      }
+      let response = await request()
+      if (response.status === 401) {
+        await response.body?.cancel()
+        response = await request(true)
+      }
+      if (!response.ok) {
+        await response.body?.cancel()
+        throw new Error(`Codex usage request failed with HTTP ${response.status}`)
+      }
+      const partial = mapCodexUsagePayload(await response.json())
       const status = await authStore.status()
-      const accountLabel = status.status === 'authenticated' ? status.accountLabel ?? null : null
-      const headers = buildCodexHeaders(
-        auth,
-        { sessionId: 'demi-codex-quota-probe', requestId: randomUUID() },
-        { userAgent: options.userAgent },
-      )
-      const body = {
-        model: probeModelId,
-        instructions: 'Reply with pong.',
-        input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'ping' }] }],
-        tools: [],
-        tool_choice: 'auto',
-        parallel_tool_calls: true,
-        store: false,
-        stream: true,
-        include: [],
-        prompt_cache_key: 'demi-codex-quota-probe',
-        text: { verbosity: 'low' },
-      }
-      const response = await fetchImpl(responsesUrlForAuth(auth, options.baseUrl), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal,
-      })
-      const partial = mapCodexRateLimitHeaders(response.headers)
-      await response.body?.cancel().catch(() => {})
-      if (!partial || partial.windows.length === 0) {
-        throw new Error(`Codex quota probe got no rate-limit headers (HTTP ${response.status})`)
-      }
-      return {
-        ...partial,
-        accountLabel,
-        raw: { ...(isRecord(partial.raw) ? partial.raw : {}), httpStatus: response.status, authKind: auth.kind },
-      }
+      return { ...partial, accountLabel: status.status === 'authenticated' ? status.accountLabel ?? null : null }
+
     },
     observe: ({ headers }) => mapCodexRateLimitHeaders(headers),
   })
+}
+
+function mapCodexUsagePayload(payload: unknown): ProviderQuotaProbeResult {
+  if (!isRecord(payload) || typeof payload.plan_type !== 'string') {
+    throw new Error('Codex usage response has invalid quota data')
+  }
+  const windows = mapUsageWindows(payload.rate_limit)
+  if (Array.isArray(payload.additional_rate_limits)) {
+    for (const limit of payload.additional_rate_limits) {
+      if (!isRecord(limit)) continue
+      const id = nonEmptyString(limit.metered_feature)
+      const label = nonEmptyString(limit.limit_name)
+      if (!id || !label) continue
+      windows.push(...mapUsageWindows(limit.rate_limit).map((window) => ({
+        ...window, id: `${id}:${window.id}`, scope: { kind: 'model', label },
+      })))
+    }
+  }
+  return { windows, plan: { id: payload.plan_type, label: payload.plan_type } }
+}
+
+function mapUsageWindows(value: unknown): ProviderQuotaWindow[] {
+  if (!isRecord(value)) return []
+  const headers = new Headers()
+  for (const kind of ['primary', 'secondary'] as const) {
+    const window = value[`${kind}_window`]
+    if (!isRecord(window)) continue
+    const usedPercent = numberOrNull(window.used_percent)
+    if (usedPercent === null) continue
+    headers.set(`x-codex-${kind}-used-percent`, String(usedPercent))
+    const seconds = numberOrNull(window.limit_window_seconds)
+    if (seconds !== null) headers.set(`x-codex-${kind}-window-minutes`, String(seconds / 60))
+    const resetAt = numberOrNull(window.reset_at)
+    if (resetAt !== null) headers.set(`x-codex-${kind}-reset-at`, String(resetAt))
+  }
+  return mapCodexRateLimitHeaders(headers)?.windows ?? []
 }
 
 export function mapCodexRateLimitHeaders(headers: Headers | undefined): ProviderQuotaProbeResult | null {
