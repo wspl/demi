@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useButtonIconSpin } from './button-icon-spin'
 import type { Component } from 'vue'
 import { ICON_PX } from './icon-metrics'
 
@@ -11,12 +12,17 @@ const props = withDefaults(defineProps<{
   circle?: boolean
   disabled?: boolean
   pressed?: boolean
+  spinning?: boolean
+  spinOnClick?: boolean
 }>(), {
   size: 'md',
   variant: 'default',
 })
 
 const pressed = computed(() => props.pressed === true)
+const emit = defineEmits<{ spinEnd: [] }>()
+const root = ref<HTMLElement | null>(null)
+const { rotating, onClick } = useButtonIconSpin(root, props, () => emit('spinEnd'))
 
 const glyphPx = computed(() => {
   if (props.iconSize != null) return props.iconSize
@@ -28,6 +34,9 @@ const glyphPx = computed(() => {
 
 <template>
   <span
+    ref="root"
+    :data-spinning="rotating || undefined"
+    @click="onClick"
     role="button"
     class="inline-flex shrink-0 cursor-default items-center justify-center transition-[color,background-color,box-shadow,filter] duration-200 ease-out"
     :data-pressed="!disabled && pressed ? true : undefined"

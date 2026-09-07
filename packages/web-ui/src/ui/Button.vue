@@ -1,21 +1,30 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useButtonIconSpin } from './button-icon-spin'
 
 const props = withDefaults(defineProps<{
   size?: 'xs' | 'sm' | 'md'
   variant?: 'default' | 'primary' | 'ghost' | 'danger'
   disabled?: boolean
   pressed?: boolean
+  spinning?: boolean
+  spinOnClick?: boolean
 }>(), {
   size: 'md',
   variant: 'default',
 })
 
 const pressed = computed(() => props.pressed === true)
+const emit = defineEmits<{ spinEnd: [] }>()
+const root = ref<HTMLElement | null>(null)
+const { rotating, onClick } = useButtonIconSpin(root, props, () => emit('spinEnd'))
 </script>
 
 <template>
   <span
+    ref="root"
+    :data-spinning="rotating || undefined"
+    @click="onClick"
     role="button"
     class="inline-flex cursor-default items-center justify-center gap-1 whitespace-nowrap rounded-md transition-[color,background-color,box-shadow,filter] duration-200 ease-out select-none"
     :data-pressed="!disabled && pressed ? true : undefined"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ChevronDown, Plus, Search, Send, Settings2, Trash2 } from '@lucide/vue'
+import { ChevronDown, RefreshCw, Plus, Search, Send, Settings2, Trash2 } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -22,6 +22,8 @@ import { demoUsage } from '../fixtures/blocks'
 import { usageAt } from '../fixtures/catalog'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
+
+const spinning = ref(false)
 
 const query = ref('session cookie')
 const emptyQuery = ref('')
@@ -59,6 +61,15 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
   <div class="space-y-8">
     <GallerySection title="Button" note="Enabled, disabled, sizes, and pressed.">
       <div class="specimen-row">
+        <GallerySpecimen variant="spin · full revolution">
+          <Button spin-on-click><RefreshCw :size="ICON_PX.in28" />Refresh</Button>
+        </GallerySpecimen>
+        <GallerySpecimen variant="icon spin · full revolution">
+          <IconButton :icon="RefreshCw" spin-on-click aria-label="Refresh example" />
+        </GallerySpecimen>
+        <GallerySpecimen variant="spin · stop after current revolution">
+          <Button :spinning="spinning" @click="spinning = !spinning"><RefreshCw :size="ICON_PX.in28" />{{ spinning ? 'Stop spinning' : 'Start spinning' }}</Button>
+        </GallerySpecimen>
         <GallerySpecimen variant="default">
           <Button size="md">Default</Button>
         </GallerySpecimen>
