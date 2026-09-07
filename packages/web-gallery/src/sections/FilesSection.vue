@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
+import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserMode, FileBrowserSource } from '@demicodes/web-ui/files/types'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
@@ -15,11 +16,18 @@ const anatomy: [string, string][] = [
   ['Shape', 'The Windows open dialog: a plain title bar; Back, Forward and Up, the device, the path from its root, then New folder and hidden files as icons; places down the left; a detail list; a status row with the confirm button.'],
   ['Device', 'Its own control before the path: a menu of the devices the caller offers with their online dot. Choosing one asks the caller for that device\'s source and the browser starts over at its home.'],
   ['Address', 'Crumbs from the root, each a jump; deep paths fold their middle into an ellipsis. Clicking the free space turns the bar into a text field with the full path.'],
+  ['Icons', 'Every row carries its Material Icon Theme glyph, chosen by name: src and .git as typed folders, package.json with the Node badge, App.vue with the Vue mark. Until the theme loads, and for a name it does not know, a plain outline.'],
   ['List', 'Name, date and size, folders first, names in natural order; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'],
   ['Keys', 'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history.'],
   ['Status row', 'Says what is selected, as "Selected folder:" or "Selected file:" with the name, or what can be. Right: the confirm button and Cancel. A failure to create a folder reads here.'],
   ['New folder', 'A row at the top of the list with the name ready to type over; Enter creates it and selects it. Only a source that can create directories offers the icon.'],
   ['States', 'A slow device shows a spinner, an empty folder says so, and a folder that cannot be read explains why: missing, locked, or the device offline.'],
+]
+
+const iconSamples: [string, boolean][] = [
+  ['src', true], ['.git', true], ['node_modules', true], ['docs', true], ['Projects', true],
+  ['package.json', false], ['README.md', false], ['index.ts', false], ['app.test.ts', false], ['App.vue', false],
+  ['main.rs', false], ['main.go', false], ['app.py', false], ['config.yaml', false], ['logo.png', false], ['LICENSE', false], ['notes', false],
 ]
 
 const hosts = createGalleryFileHosts()
@@ -89,6 +97,14 @@ function selectHost(target: 'folder' | 'file', id: string) {
           <dd class="text-fg-muted">{{ detail }}</dd>
         </template>
       </dl>
+    </GallerySection>
+
+    <GallerySection title="Icons" note="The Material Icon Theme, resolved by name; the manifest and each glyph load on first use.">
+      <div class="flex flex-wrap gap-x-6 gap-y-2">
+        <span v-for="[name, isDirectory] in iconSamples" :key="name" class="flex select-none items-center gap-2 text-chrome text-fg-body">
+          <FileIcon :name="name" :is-directory="isDirectory" />{{ name }}
+        </span>
+      </div>
     </GallerySection>
 
     <GallerySection title="Select folder" note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline one shows what that looks like.">
