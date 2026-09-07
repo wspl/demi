@@ -130,17 +130,6 @@ function visibleModels(p: SettingsProviderEntry): SettingsProviderModel[] {
   return q ? p.models.filter((m) => m.id.includes(q) || m.name.toLowerCase().includes(q)) : p.models
 }
 
-/** The switch over the visible models works like a skill pack's: on when any is on, and sets every one. Mixed reads "4/6" beside it. */
-function visibleSelection(p: SettingsProviderEntry): { checked: boolean; label?: string } {
-  const visible = visibleModels(p)
-  const on = visible.filter((m) => m.enabled).length
-  return { checked: on > 0, label: on > 0 && on < visible.length ? `${on}/${visible.length}` : undefined }
-}
-
-function setAll(p: SettingsProviderEntry, enabled: boolean) {
-  for (const m of visibleModels(p)) m.enabled = enabled
-}
-
 /** The model dialog: create or edit a manual model, or view a catalog one. */
 const modelDialog = ref<{ mode: 'create' | 'edit' | 'view'; model: SettingsModelDraft; original: SettingsProviderModel | null } | null>(null)
 const modelDialogOpen = ref(false)
@@ -297,18 +286,11 @@ function saveModel(draft: SettingsModelDraft) {
                 <Segmented size="sm" v-else-if="selected.vendorId" v-model="selected.modelSource" class="ml-auto" :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]" />
               </header>
             </template>
-            <!-- The filter is bare text; its hit area is the whole row height. The switch at the end rules every listed model. -->
+            <!-- The filter is bare text; its hit area is the whole row height. -->
             <div v-if="selected.kind === 'api_key'" class="flex min-h-10 items-center gap-3 px-3 py-1">
               <TextInput size="sm" v-model="modelFilter" placeholder="Filter models" bare class="min-w-0 flex-1">
                 <template #prefix><Search :size="ICON_PX.in24" /></template>
               </TextInput>
-              <span v-if="visibleSelection(selected).label" class="select-none tabular-nums text-[12px] leading-4 text-fg-subtle">{{ visibleSelection(selected).label }}</span>
-              <Switch
-                :model-value="visibleSelection(selected).checked"
-                size="sm"
-                aria-label="Enable every listed model"
-                @update:model-value="(on) => setAll(selected!, on)"
-              />
               <Tooltip v-if="selected.modelSource === 'manual'" content="Add model"><IconButton size="sm" :icon="Plus" aria-label="Add model" @click="openModel('create', null)" /></Tooltip>
               <Tooltip v-else content="Refresh the catalog"><IconButton size="sm" :icon="RefreshCw" spin-on-click :spinning="refreshing === selected.id" :disabled="refreshing === selected.id" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip>
             </div>
