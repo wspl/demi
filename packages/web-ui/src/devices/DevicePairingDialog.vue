@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useClipboard } from '@vueuse/core'
-import { Check, Copy } from '@lucide/vue'
+import { Check } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { PairingPhase } from './pairing'
 import Dialog from '../ui/Dialog.vue'
 import Button from '../ui/Button.vue'
-import IconButton from '../ui/IconButton.vue'
+import CopyCode from '../ui/CopyCode.vue'
 import TextInput from '../ui/TextInput.vue'
 import InlineError from '../ui/InlineError.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
@@ -17,11 +16,8 @@ import { deviceInstallCommand, deviceSystems, type DeviceInstallation, type Devi
 const props = defineProps<{ isOpen: boolean; overlayStore: OverlayStore; installation: DeviceInstallation; phase: PairingPhase }>()
 const emit = defineEmits<{ close: []; next: []; back: []; submit: [code: string] }>()
 const code = ref('')
-const { copy, copied } = useClipboard()
 const system = ref<DeviceSystem>('linux')
-const copiedFor = ref<DeviceSystem>()
 const command = computed(() => deviceInstallCommand(props.installation, system.value))
-function copyCommand() { copiedFor.value = system.value; void copy(command.value) }
 watch(() => props.isOpen, () => { code.value = '' })
 function submit() { if (props.phase.kind === 'code' && code.value.trim()) emit('submit', code.value.trim()) }
 </script>
@@ -39,10 +35,7 @@ function submit() { if (props.phase.kind === 'code' && code.value.trim()) emit('
         </SettingsRow>
         <div class="flex flex-col gap-2 p-4">
           <p class="text-[12px] leading-4 text-fg-subtle">{{ system === 'windows' ? 'Run in PowerShell on the device. Keep it open.' : 'Run in a terminal on the device, locally or over SSH. Keep it open.' }}</p>
-          <div class="flex items-start gap-2 rounded-md border border-line bg-surface px-3 py-2">
-            <code class="min-w-0 flex-1 select-text break-words font-mono text-[12px] leading-5 text-fg-body">{{ command }}</code>
-            <IconButton :icon="copied && copiedFor === system ? Check : Copy" size="sm" :aria-label="copied && copiedFor === system ? 'Copied' : 'Copy install command'" @click="copyCommand" />
-          </div>
+          <CopyCode :code="command" copy-label="Copy install command" />
         </div>
       </div>
       <template v-else-if="phase.kind === 'code' || phase.kind === 'pairing'">

@@ -44,7 +44,7 @@ onMounted(() => {
       fill="none"
       stroke="currentColor"
       :stroke-width="stroke"
-      :class="trackClass ?? 'text-overlay/8'"
+      :class="trackClass ?? 'opacity-20'"
     />
     <circle
       ref="arcRef"
@@ -53,7 +53,7 @@ onMounted(() => {
       stroke="currentColor"
       :stroke-width="stroke"
       stroke-linecap="round"
-      :class="arcClass ?? 'text-fg-muted'"
+      :class="arcClass"
       :stroke-dasharray="`${dashMin} ${circumference - dashMin}`"
       :style="{ transformOrigin: `${cx}px ${cy}px` }"
     />
