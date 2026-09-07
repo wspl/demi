@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ChevronDown, Cloud, FolderOpen, Monitor, Plus, X } from '@lucide/vue'
+import { Cloud, FolderOpen, Monitor, Plus, X } from '@lucide/vue'
 import { CLOUD_HOST_ID, hostIcon } from './icons'
 import { ICON_PX } from '../ui/icon-metrics'
 import { baseName } from '../files/paths'
@@ -13,7 +13,6 @@ import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import TextInput from '../ui/TextInput.vue'
-import Tooltip from '../ui/Tooltip.vue'
 import InlineError from '../ui/InlineError.vue'
 import FileBrowser from '../files/FileBrowser.vue'
 import type { FileBrowserPlaceGroup, FileBrowserSource } from '../files/types'
@@ -176,22 +175,15 @@ function create() {
             <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
               Device
               <span class="flex items-center gap-2">
-                <!-- The menu fills the row, the way the file browser's device picker does; Add device sits beside it. -->
-                <Dropdown :overlay-store="overlayStore" class="min-w-0 flex-1 [&>div]:w-full">
-                  <template #trigger="{ isOpen }">
-                    <span
-                      role="button"
-                      aria-label="Device"
-                      class="flex h-7 w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
-                      :class="isOpen ? 'bg-active' : 'bg-hover hover:bg-active'"
-                    >
+                <Dropdown :overlay-store="overlayStore" variant="default" trigger-label="Device">
+                  <template #trigger>
+                    <span class="flex items-center gap-2">
                       <component :is="hostIcon({ id: deviceId })" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
-                      <span class="min-w-0 flex-1 truncate">{{ deviceLabel }}</span>
-                      <ChevronDown :size="ICON_PX.in24" class="shrink-0 text-fg-subtle transition-transform duration-200 ease-out" :class="isOpen ? 'rotate-180' : ''" />
+                      {{ deviceLabel }}
                     </span>
                   </template>
-                  <template #content="{ close, triggerWidth }">
-                    <Menu :style="{ minWidth: `${triggerWidth}px` }">
+                  <template #content="{ close }">
+                    <Menu>
                       <MenuItem
                         v-for="entry in devices"
                         :key="entry.id"
@@ -210,9 +202,10 @@ function create() {
                     </Menu>
                   </template>
                 </Dropdown>
-                <Tooltip content="Add device">
-                  <IconButton :icon="Plus" aria-label="Add device" @click="emit('connectDevice')" />
-                </Tooltip>
+                <Button @click="emit('connectDevice')">
+                  <Plus :size="14" />
+                  Add device
+                </Button>
               </span>
             </div>
             <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
