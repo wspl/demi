@@ -16,7 +16,7 @@ dialog because that is the shape people already know for the job.
 │ RECENT        │ 📄 notes.txt        Sep 6, 10:12         512 B │
 │  ◷ demi       │                                                │
 ├───────────────┴─────────────────────────────────────────────────┤
-│ Selected folder: 📁 demi               [Select Folder] [Cancel] │
+│ Selected folder: demi                  [Select Folder] [Cancel] │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -63,8 +63,8 @@ list has room whatever the folder holds.
   up, ⌥← and ⌥→ walk the history.
 - **Toolbar icons**: after the address bar, New folder and the hidden-files switch
   as icon buttons with tooltips; the switch shows pressed while hidden files show.
-- **Status row**: "Selected folder:" or "Selected file:" with the entry's icon and
-  name; with nothing selected, what can be: "Select a file", or "Select a folder, or
+- **Status row**: "Selected folder:" or "Selected file:" and the name, plain text
+  either way; with nothing selected, what can be: "Select a file", or "Select a folder, or
   use demi" since in folder mode the confirm button takes the current folder. A
   failure to create a folder reads here in red. On the right the confirm button and
   Cancel.
