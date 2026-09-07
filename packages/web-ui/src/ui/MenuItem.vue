@@ -21,6 +21,7 @@ const props = defineProps<{
   note?: string
   isDanger?: boolean
   disabled?: boolean
+  /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: string
   shortcut?: string
   /** A choice row: shows the check gutter, reports aria-checked, and keeps the menu tree open. */
@@ -37,8 +38,8 @@ const emit = defineEmits<{
 
 const slots = useSlots()
 const isChoice = computed(() => props.choice === true)
-const isDisabled = computed(() => props.disabled || !!props.disabledReason)
-const tooltipContent = computed(() => props.disabledReason?.trim() || undefined)
+const isDisabled = computed(() => props.disabled === true)
+const tooltipContent = computed(() => (isDisabled.value ? props.disabledReason?.trim() || undefined : undefined))
 const menuIconless = inject(
   menuIconlessKey,
   computed(() => false),
