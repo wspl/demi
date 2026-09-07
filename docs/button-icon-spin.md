@@ -16,3 +16,8 @@ reduced-motion preferences preserve the lifecycle without visible rotation.
 
 Model catalog refresh and skill source update use the shared rotation. The
 Primitives gallery demonstrates click feedback and controlled start/stop.
+
+`IndeterminateSpinner` inherits its surrounding text color by default. Its arc
+uses that color at full opacity and its track at 20%, including in primary and
+disabled buttons. Explicit arc/track classes remain available for specialized
+surfaces. The Primitives gallery includes primary and default button specimens.
