@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { createProviderQuota } from '@demicodes/provider'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,7 +18,13 @@ test('claude credentials add/setActive and pool-aware resolve', async () => {
   try {
     const pool = openClaudeCodeCredentialPool({ stateDir })
     const authStore = new PoolAwareClaudeCodeAuthStore(pool)
-    const credentials = createClaudeCodeCredentials(pool, authStore)
+    const quota = createProviderQuota({
+      providerId: 'claude-code',
+      canProbe: true,
+      probe: async () => ({ accountLabel: 'old-account', windows: [] }),
+      observe: () => ({ accountLabel: 'old-account', windows: [] }),
+    })
+    const credentials = createClaudeCodeCredentials(pool, authStore, { quota })
 
     const a = await credentials.add!({ accessToken: 'token-a', subscriptionType: 'pro' })
     const b = await credentials.add!({ accessToken: 'token-b', subscriptionType: 'max' })
@@ -25,7 +32,12 @@ test('claude credentials add/setActive and pool-aware resolve', async () => {
 
     await credentials.setActive(a.id)
     expect((await authStore.resolveAccess()).accessToken).toBe('token-a')
+    await quota.probe()
+    const oldObserver = quota.captureObserver()
     await credentials.setActive(b.id)
+    expect(quota.latest()).toBeNull()
+    expect(oldObserver({})).toBeNull()
+    expect(quota.latest()).toBeNull()
     expect((await authStore.resolveAccess()).accessToken).toBe('token-b')
     expect((await credentials.getActive()).status).toMatchObject({
       status: 'authenticated',

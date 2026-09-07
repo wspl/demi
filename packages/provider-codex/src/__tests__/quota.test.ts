@@ -63,15 +63,16 @@ test('createCodexQuota probe uses response headers and cancels body', async () =
   expect(quota.capability()).toMatchObject({ probeCost: 'minimal_request', canObserve: true })
 })
 
-test('Codex SSE inference observes x-codex headers into provider.quota.latest', async () => {
+test.each([false, true])('Codex SSE quota respects account invalidation: %s', async (invalidate) => {
   const provider = createCodexProvider({
     authStore: staticStore(),
     transport: 'sse',
   })
   // Rebuild runtime with a fetch transport that returns ratelimit headers.
   const transport = new FetchCodexResponsesTransport({
-    fetch: (async () =>
-      new Response('event: response.completed\ndata: {"type":"response.completed","response":{"id":"r1"}}\n\n', {
+    fetch: (async () => {
+      if (invalidate) provider.quota!.clearLatest!()
+      return new Response('event: response.completed\ndata: {"type":"response.completed","response":{"id":"r1"}}\n\n', {
         status: 200,
         headers: {
           'content-type': 'text/event-stream',
@@ -79,7 +80,8 @@ test('Codex SSE inference observes x-codex headers into provider.quota.latest', 
           'x-codex-primary-window-minutes': '300',
           'x-codex-primary-reset-at': '1700000000',
         },
-      })) as unknown as typeof fetch,
+      })
+    }) as unknown as typeof fetch,
   })
   const { CodexProvider } = await import('../provider')
   const runtime = new CodexProvider({
@@ -102,8 +104,11 @@ test('Codex SSE inference observes x-codex headers into provider.quota.latest', 
   })) {
     // drain
   }
-  expect(provider.quota?.latest()?.source).toBe('observation')
-  expect(provider.quota?.latest()?.windows[0]?.usedPercent).toBe(41)
+  if (invalidate) expect(provider.quota?.latest()).toBeNull()
+  else {
+    expect(provider.quota?.latest()?.source).toBe('observation')
+    expect(provider.quota?.latest()?.windows[0]?.usedPercent).toBe(41)
+  }
 })
 
 test('Codex inference is not interrupted when quota observation throws', async () => {

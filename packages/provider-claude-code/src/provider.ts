@@ -12,6 +12,7 @@ import {
   type ProviderEvent,
   toolResultContentToText,
   type ProviderQuota,
+  type ProviderQuotaObserver,
 } from '@demicodes/provider'
 import { FileClaudeCodeAuthStore } from './auth'
 import { createClaudeCodeCredentials, openClaudeCodeCredentialPool, PoolAwareClaudeCodeAuthStore } from './credentials'
@@ -58,6 +59,7 @@ export interface ClaudeCodeProviderConfig {
 }
 
 interface ActiveClaudeRun {
+  observeQuota: ProviderQuotaObserver | undefined
   transport: ClaudeTransport
   iterator: AsyncIterator<unknown>
   pendingControlRequest: ClaudeControlRequest | null
@@ -120,21 +122,22 @@ export class ClaudeCodeProvider implements AgentProvider {
     })
   }
 
-  private observeQuotaFromMessage(message: unknown): void {
+  private observeQuotaFromMessage(message: unknown, observe: ProviderQuotaObserver | undefined): void {
     try {
-      this.quota?.observeResponse?.({ body: message })
+      observe?.({ body: message })
     } catch {
       // Quota observation must never break inference.
     }
   }
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+    const observeQuota = this.quota?.captureObserver()
     let active: ActiveClaudeRun | null = null
     let keepActiveForContinuation = false
     const signal = request.cancel
     let abortListener: (() => void) | null = null
     try {
-      active = await this.ensureActiveForRequest(request)
+      active = await this.ensureActiveForRequest(request, observeQuota)
       const run = active
       const onAbort = async (): Promise<void> => {
         await run.transport.kill()
@@ -168,7 +171,7 @@ export class ClaudeCodeProvider implements AgentProvider {
         }
 
         const raw = next.value
-        this.observeQuotaFromMessage(raw)
+        this.observeQuotaFromMessage(raw, observeQuota)
         const ignoreAssistantContent = active.hasStreamed && isMessageType(raw, 'assistant')
         const mapped = mapClaudeStdoutMessage(raw, {
           ignoreAssistantContent,
@@ -266,7 +269,10 @@ export class ClaudeCodeProvider implements AgentProvider {
    * a freshly appended user message); a cold start is taken only when there is no live process,
    * the session changed, or the transcript was rewritten underneath us (compaction).
    */
-  private async ensureActiveForRequest(request: InferenceRequest): Promise<ActiveClaudeRun> {
+  private async ensureActiveForRequest(
+    request: InferenceRequest,
+    observeQuota: ProviderQuotaObserver | undefined,
+  ): Promise<ActiveClaudeRun> {
     const credentialId = this.getActiveCredentialId ? await this.getActiveCredentialId() : null
     const existing = this.active
     if (
@@ -281,18 +287,24 @@ export class ClaudeCodeProvider implements AgentProvider {
         existing.pendingSdkToolCalls.length > 0 ||
         existing.pendingToolUseIds.length > 0
       if (hasPendingToolCall || !itemsDiverged(existing, request.items)) {
+        existing.observeQuota = observeQuota
         await this.sendContinuation(existing, request)
         return existing
       }
     }
     if (existing) await this.disposeActive(existing)
-    return this.coldStart(request, credentialId)
+    return this.coldStart(request, credentialId, observeQuota)
   }
 
-  private async coldStart(request: InferenceRequest, credentialId: string | null): Promise<ActiveClaudeRun> {
+  private async coldStart(
+    request: InferenceRequest,
+    credentialId: string | null,
+    observeQuota: ProviderQuotaObserver | undefined,
+  ): Promise<ActiveClaudeRun> {
     const transport = await this.transportFactory.start(request)
     const iterator = transport.messages()[Symbol.asyncIterator]()
     const active: ActiveClaudeRun = {
+      observeQuota,
       transport,
       iterator,
       pendingControlRequest: null,
@@ -450,7 +462,7 @@ export class ClaudeCodeProvider implements AgentProvider {
           `Claude Code exited before requesting SDK MCP tool result for ${[...remaining].join(', ')}`,
         )
       }
-      this.observeQuotaFromMessage(next.value)
+      this.observeQuotaFromMessage(next.value, active.observeQuota)
       const mapped = mapClaudeStdoutMessage(next.value, {
         ignoreAssistantContent: true,
         ignoreAssistantToolUse: true,

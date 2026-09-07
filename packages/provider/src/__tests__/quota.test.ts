@@ -1,9 +1,11 @@
+import { deferred } from '@demicodes/utils'
 import { expect, test } from 'bun:test'
 import {
   clampUsedPercent,
   createProviderQuota,
   ensureQuota,
   ProviderQuotaUnsupportedError,
+  ProviderQuotaInvalidatedError,
   severityFromUsedPercent,
   unixSecondsToIso,
   usedPercentFromRatio,
@@ -99,6 +101,44 @@ test('observations merge partial windows without dropping probed plan and quota'
     ['rpm', 40],
     ['tpm', 5],
   ])
+})
+
+test('clearing quota after an account switch prevents an older probe overwriting the new account', async () => {
+  const old = deferred<void>()
+  let account = 'A'
+  const quota = createProviderQuota({
+    providerId: 'demo', canProbe: true,
+    probe: async () => {
+      const requestedAccount = account
+      if (requestedAccount === 'A') await old.promise
+      return { accountLabel: requestedAccount, windows: [] }
+    },
+  })
+  const probingA = quota.probe().catch((error: unknown) => error)
+  account = 'B'
+  quota.clearLatest!()
+  await quota.probe()
+  expect(quota.latest()?.accountLabel).toBe('B')
+  old.resolve()
+  expect(await probingA).toBeInstanceOf(ProviderQuotaInvalidatedError)
+  expect(quota.latest()?.accountLabel).toBe('B')
+})
+
+test('captured observers ignore old account responses after the quota is cleared', () => {
+  const quota = createProviderQuota({
+    providerId: 'demo', canProbe: false,
+    probe: async () => ({ windows: [] }),
+    observe: ({ body }) => ({ accountLabel: String(body), windows: [] }),
+  })
+  const observeA = quota.captureObserver()
+  expect(observeA({ body: 'A' })?.accountLabel).toBe('A')
+  quota.clearLatest!()
+  expect(quota.latest()).toBeNull()
+  expect(observeA({ body: 'A' })).toBeNull()
+  expect(quota.latest()).toBeNull()
+  quota.captureObserver()({ body: 'B' })
+  observeA({ body: 'A' })
+  expect(quota.latest()?.accountLabel).toBe('B')
 })
 
 test('percent helpers', () => {
