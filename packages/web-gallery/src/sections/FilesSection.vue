@@ -184,7 +184,7 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </p>
     </GallerySection>
 
-    <GallerySection title="New project" note="The working-environment dialog on its form: Device or Cloud. A device asks which one (Add device beside the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form.">
+    <GallerySection title="New project" note="The working-environment dialog on its form: Device or Cloud. A device asks which one (Add device after the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form.">
       <GalleryDialogFrame class="max-w-md">
         <WorkspaceDialog
           :key="workspaceKey"
