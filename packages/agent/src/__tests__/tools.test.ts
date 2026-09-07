@@ -74,7 +74,7 @@ test('completed short shell_exec hides and releases the command handle', async (
   const shellExec = tools.find((tool) => tool.name === 'shell_exec')
   if (!shellExec) throw new Error('missing shell_exec')
 
-  const result = await shellExec.invoke(toolContext(), { script: 'printf done', timeoutMs: 1 })
+  const result = await shellExec.invoke(toolContext(), { script: 'printf done', description: 'Result ready', timeoutMs: 1 })
   const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
 
   expect(text).toContain('status: exited')
@@ -104,7 +104,7 @@ test('completed truncated shell_exec keeps the command handle for artifacts', as
   const shellExec = tools.find((tool) => tool.name === 'shell_exec')
   if (!shellExec) throw new Error('missing shell_exec')
 
-  const result = await shellExec.invoke(toolContext(), { script: 'printf long', timeoutMs: 1 })
+  const result = await shellExec.invoke(toolContext(), { script: 'printf long', description: 'Result ready', timeoutMs: 1 })
   const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
 
   expect(text).toContain('commandId: cmd-1')
@@ -129,7 +129,7 @@ test('a custom preview budget function replaces the built-in split', async () =>
   const shellExec = tools.find((tool) => tool.name === 'shell_exec')
   if (!shellExec) throw new Error('missing shell_exec')
 
-  const result = await shellExec.invoke(toolContext(), { script: 'printf long', timeoutMs: 1 })
+  const result = await shellExec.invoke(toolContext(), { script: 'printf long', description: 'Result ready', timeoutMs: 1 })
   const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
 
   expect(seen).toEqual([toolContext().model.model.contextWindow])
@@ -332,3 +332,18 @@ const model: ModelSelection = {
   },
   thinking: null,
 }
+
+
+test('shell_exec requires a nonblank description before resolving the environment', async () => {
+  let hasResolved = false
+  const tools = createStandardAgentTools({
+    environment: () => { hasResolved = true; throw new Error('must not execute') },
+    scheduleYield: () => ({ output: [] }),
+  })
+  const shellExec = tools.find((tool) => tool.name === 'shell_exec')!
+  expect(shellExec.inputSchema.required).toContain('description')
+  for (const description of [undefined, null, 1, '', ' \n\t']) {
+    await expect(shellExec.invoke(toolContext(), { script: 'true', timeoutMs: 1, description })).rejects.toThrow('description')
+  }
+  expect(hasResolved).toBe(false)
+})

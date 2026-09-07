@@ -13,7 +13,7 @@ cheap:
 1. **Expose internals Demi integrates with** — parser hooks, the command
    registry, the encoding module, interpreter session /
    `hostSpawn` / `hostResolveCommand` / `hostCwd` / `spawnError` /
-   registered command hooks, subpath export conditions.
+   registered command hooks, top-level script output observers, subpath export conditions.
 2. **Dispatch order required by the Host model** — registered commands resolve
    before `PATH` when a `hostSpawn` hook is present; `preferHostSpawn` falls
    back only on `spawnError.kind === executable_not_found`.
@@ -49,7 +49,7 @@ wiring bug.
 ## Current fork state
 
 - Fork branch: `main` (pinned by the root submodule pointer; see
-  `git submodule status`). Package version: `3.1.0-demi.4`.
+  `git submodule status`). Package version: `3.1.0-demi.5`.
 - Last merged upstream: `vercel-labs/just-bash` `just-bash@3.1.0`
   (`2586623`, “seed cd dash from OLDPWD”).
 - vercel-labs `main` is `just-bash@3.4.2`. Syncing it does not fix portable
@@ -57,14 +57,14 @@ wiring bug.
   (`FsStat.dev`/`ino`). Inventory: `docs/bash-behavior.md` (Upstream
   just-bash).
 - Fork-only surface on top of that base: `hostSpawn` / registered-command
-  dispatch / parser hooks / packaging / Bun workspace, plus
+  dispatch / parser hooks / top-level pipeline output observation / packaging / Bun workspace, plus
   `preferHostSpawn` (`e02953a`, `80c7569`) and `ExecResult.spawnError` /
   `hostCwd` / cd·pwd·file-test alignment (`feat/host-spawn-error-cwd`).
 
 ## Version scheme
 
 The fork publishes as `<upstream-version>-demi.<N>` (current:
-`3.1.0-demi.4`), keeping the upstream semver visible while marking the
+`3.1.0-demi.5`), keeping the upstream semver visible while marking the
 artifact as fork-modified:
 
 - `<upstream-version>` is the upstream version the fork base is rebased onto

@@ -8,7 +8,7 @@ const WRITE_SCRIPT = "printf 'done' > done.txt"
 test('autonomous pass: worker completes with zero interventions', async () => {
   const providers = [
     stubProvider(() => [
-      [events.toolCall('t1', 'shell_exec', { script: WRITE_SCRIPT, timeoutMs: 10_000 }), events.response()],
+      [events.toolCall('t1', 'shell_exec', { description: 'Test result', script: WRITE_SCRIPT, timeoutMs: 10_000 }), events.response()],
       [events.text('done.txt is created'), events.response()],
     ]),
   ]
@@ -33,7 +33,7 @@ test('false done: worker claims completion, evaluator detects it and nudges to a
       // Turn 1: claims completion without doing the work.
       [events.text('All finished. done.txt has been created.'), events.response()],
       // Turn 2 (after the nudge): actually does it.
-      [events.toolCall('t2', 'shell_exec', { script: WRITE_SCRIPT, timeoutMs: 10_000 }), events.response()],
+      [events.toolCall('t2', 'shell_exec', { description: 'Test result', script: WRITE_SCRIPT, timeoutMs: 10_000 }), events.response()],
       [events.text('now it is really created'), events.response()],
     ]),
   ]
@@ -61,7 +61,7 @@ test('oracle_evidence interventions carry the raw failing evidence', async () =>
     stubProvider(() => [
       [events.text('done'), events.response()],
       [events.text('still not doing it'), events.response()],
-      [events.toolCall('t3', 'shell_exec', { script: WRITE_SCRIPT, timeoutMs: 10_000 }), events.response()],
+      [events.toolCall('t3', 'shell_exec', { description: 'Test result', script: WRITE_SCRIPT, timeoutMs: 10_000 }), events.response()],
       [events.text('created'), events.response()],
     ]),
   ]
@@ -100,7 +100,7 @@ test('budget exhaustion finalizes as timeout with the interventions on record', 
 test('the worker runs against an isolated workspace and the diff is captured', async () => {
   const providers = [
     stubProvider(() => [
-      [events.toolCall('t1', 'shell_exec', { script: WRITE_SCRIPT, timeoutMs: 10_000 }), events.response()],
+      [events.toolCall('t1', 'shell_exec', { description: 'Test result', script: WRITE_SCRIPT, timeoutMs: 10_000 }), events.response()],
       [events.text('created'), events.response()],
     ]),
   ]

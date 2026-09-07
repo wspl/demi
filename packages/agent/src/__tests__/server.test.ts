@@ -292,7 +292,7 @@ test('AgentServer maps shell tool progress into shell_output and audit frames', 
       shellIdFactory: () => 'agent-shell',
     },
     providerTurns: [
-      [events.toolCall('tool-1', 'shell_exec', { script: 'sh -c "printf hi"', timeoutMs: 1_000 })],
+      [events.toolCall('tool-1', 'shell_exec', { description: 'Test result', script: 'sh -c "printf hi"', timeoutMs: 1_000 })],
       [events.text('done'), events.response()],
     ],
   })
@@ -300,7 +300,7 @@ test('AgentServer maps shell tool progress into shell_output and audit frames', 
   client.subscribe((event) => seen.push(event))
 
   await client.open(providerConfig([
-      [events.toolCall('tool-1', 'shell_exec', { script: 'sh -c "printf hi"', timeoutMs: 1_000 })],
+      [events.toolCall('tool-1', 'shell_exec', { description: 'Test result', script: 'sh -c "printf hi"', timeoutMs: 1_000 })],
       [events.text('done'), events.response()],
     ]),
     process.cwd(),
@@ -329,6 +329,7 @@ test('AgentServer bridges shell_write frames to the active shell command', async
     providerTurns: [
       [
         events.toolCall('tool-1', 'shell_exec', {
+          description: 'Test result',
           script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
           timeoutMs: 1,
         }),
@@ -342,6 +343,7 @@ test('AgentServer bridges shell_write frames to the active shell command', async
   await client.open(providerConfig([
       [
         events.toolCall('tool-1', 'shell_exec', {
+          description: 'Test result',
           script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
           timeoutMs: 1,
         }),
@@ -395,6 +397,7 @@ test('AgentClient.shellWrite waits for shell_write_result and rejects when no se
     providerTurns: [
       [
         events.toolCall('tool-1', 'shell_exec', {
+          description: 'Test result',
           script: 'sh -c \'IFS= read -r line; sleep 0.05; printf %s "$line"\'',
           timeoutMs: 1,
         }),
@@ -406,6 +409,7 @@ test('AgentClient.shellWrite waits for shell_write_result and rejects when no se
   const turns: ConstructorParameters<typeof StubProvider>[0] = [
     [
       events.toolCall('tool-1', 'shell_exec', {
+        description: 'Test result',
         script: 'sh -c \'IFS= read -r line; sleep 0.05; printf %s "$line"\'',
         timeoutMs: 1,
       }),
@@ -1026,6 +1030,7 @@ test('AgentServer disposes shell resources when a close frame is received', asyn
     providerTurns: [
       [
         events.toolCall('tool-1', 'shell_exec', {
+          description: 'Test result',
           script: 'sh -c "sleep 0.2; printf leaked > agent-leaked.txt"',
           timeoutMs: 1,
         }),
@@ -1037,6 +1042,7 @@ test('AgentServer disposes shell resources when a close frame is received', asyn
   await client.open(providerConfig([
       [
         events.toolCall('tool-1', 'shell_exec', {
+          description: 'Test result',
           script: 'sh -c "sleep 0.2; printf leaked > agent-leaked.txt"',
           timeoutMs: 1,
         }),
