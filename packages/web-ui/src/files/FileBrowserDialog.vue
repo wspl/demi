@@ -6,8 +6,9 @@ import FileBrowser from './FileBrowser.vue'
 import type { FileBrowserHost, FileBrowserMode, FileBrowserPlaceGroup, FileBrowserSource } from './types'
 
 /**
- * The file browser as a modal: a title over the browser, which fills a fixed height so
- * the list has room whatever the folder holds. Cancel and the corner both close.
+ * The file browser as a modal: a plain title bar over the browser, which fills a
+ * fixed height so the list has room whatever the folder holds. Cancel and the
+ * corner both close.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -16,8 +17,6 @@ const props = defineProps<{
   source: FileBrowserSource
   /** Defaults to `Open file` or `Select folder`. */
   title?: string
-  /** One line under the title: what the chosen path is for. */
-  description?: string
   initialPath?: string
   places?: FileBrowserPlaceGroup[]
   hosts?: FileBrowserHost[]
@@ -40,9 +39,8 @@ const title = computed(() => props.title ?? (props.mode === 'file' ? 'Open file'
 <template>
   <Dialog :is-open="isOpen" :overlay-store="overlayStore" size="lg" :label="title" @close="emit('close')">
     <div class="flex h-[32rem] min-h-0 flex-col">
-      <header class="select-none px-5 pb-2 pt-5 pr-12">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
-        <p v-if="description" class="mt-0.5 text-[13px] leading-5 text-fg-muted">{{ description }}</p>
+      <header class="flex h-11 shrink-0 select-none items-center border-b border-line px-4 pr-12">
+        <h3 class="truncate text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
       </header>
       <FileBrowser
         v-model:show-hidden="showHidden"

@@ -154,7 +154,6 @@ const attachments = computed(() =>
       :overlay-store="appOverlayStore"
       mode="file"
       title="Attach remote file"
-      description="The file's path goes into the message for the agent to read."
       :source="remoteSource"
       :initial-path="remoteStart"
       :places="remotePlaces"
