@@ -48,7 +48,7 @@ test('open and set_provider record only a provider the user may name', async () 
   const f = await fixture()
   const selection = (providerId: string) => ({
     providerId,
-    model: { providerId, model: { id: 'm', name: 'm', contextWindow: 1, inputLimit: null, thinking: [], acceptedExtensions: [] }, thinking: null },
+    model: { providerId, model: { id: 'm', name: 'm', contextWindow: 1, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] }, thinking: null },
   })
   f.client.send({ type: 'open', sessionId: 'ignored', cwd: '/ignored', provider: selection('someone-elses') } as never)
   f.client.send({ type: 'set_provider', provider: selection('someone-elses') } as never)
@@ -95,7 +95,7 @@ test('an outbound blob write failure is reported without dropping later frames',
   const f = await fixture({ put: async () => { throw new Error('blob unavailable') }, get: async () => null })
   f.scoped.send({ type: 'transcript_reset', revision: 1, blocks: [{
     type: 'user', id: 'u', turnId: 'turn', createdAt: new Date().toISOString(), preamble: null,
-    model: { providerId: 'test', model: { id: 'test', name: 'Test', contextWindow: 1000, inputLimit: null, thinking: [], acceptedExtensions: [] }, thinking: null },
+    model: { providerId: 'test', model: { id: 'test', name: 'Test', contextWindow: 1000, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] }, thinking: null },
     content: [{ type: 'image', source: { type: 'binary', data: new Uint8Array([1]), mediaType: 'image/png' } }],
   }] })
   f.scoped.send({ type: 'phase', phase: 'idle' })

@@ -44,7 +44,7 @@ function addFiles(files: File[]) {
       src: filePreviewUrl(file),
       destination: fileMatchesAcceptedExtensions(
         file,
-        selectedModel.value?.acceptedExtensions ?? [],
+        selectedModel.value?.acceptedExtensions ?? null,
       )
         ? 'message'
         : 'workspace',

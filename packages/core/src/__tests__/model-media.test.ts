@@ -1,3 +1,4 @@
+import { fileExtensionSupport } from '../index'
 import { expect, test } from 'bun:test'
 import { modelAcceptsMediaType, sniffModelMediaType, type Model } from '../index'
 
@@ -6,6 +7,7 @@ function model(acceptedExtensions: Model['acceptedExtensions']): Model {
     id: 'm',
     name: 'M',
     contextWindow: 1,
+    outputLimit: null,
     inputLimit: null,
     thinking: [],
     acceptedExtensions,
@@ -51,4 +53,14 @@ test('modelAcceptsMediaType gates on catalog extensions', () => {
   expect(modelAcceptsMediaType(model(['jpg']), 'image/jpeg')).toBe(true)
   expect(modelAcceptsMediaType(model([]), 'image/png')).toBe(false)
   expect(modelAcceptsMediaType(images, 'application/pdf')).toBe(false)
+})
+
+
+test('attachment checks distinguish unknown, unsupported and explicitly supported types', () => {
+  expect(fileExtensionSupport(null, 'png')).toBeNull()
+  expect(fileExtensionSupport([], 'png')).toBe(false)
+  expect(fileExtensionSupport(['png'], 'png')).toBe(true)
+  expect(fileExtensionSupport(['png'], 'pdf')).toBe(false)
+  expect(fileExtensionSupport(['jpeg'], 'jpg')).toBe(true)
+  expect(fileExtensionSupport(['jpg'], 'jpeg')).toBe(true)
 })

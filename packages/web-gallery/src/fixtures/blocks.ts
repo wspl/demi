@@ -8,6 +8,7 @@ export const demoModel: ModelSelection = {
     id: 'demo-model',
     name: 'Demo model',
     contextWindow: 200_000,
+    outputLimit: null,
     inputLimit: 180_000,
     thinking: [],
     acceptedExtensions: [],

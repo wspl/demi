@@ -16,7 +16,6 @@ import {
   type Provider,
   type ProviderEvent,
   type ProviderModelList,
-  type ProviderSelection,
   type ToolDefinition,
 } from '@demicodes/provider'
 import { googleDefaultModels, modelListFromGoogleModels, type GoogleModelOptions } from './models'
@@ -164,14 +163,8 @@ export function createGoogleProvider(options: GoogleProviderOptions = {}): Provi
     auth: { status: () => authStatusFromKey(apiKey, options.headers, 'x-goog-api-key', 'Google') },
     state: () => ({ status: 'ready', message: 'Uses the Gemini generateContent API' }),
     listModels: modelList,
-    createRuntime: (selection: ProviderSelection) => {
-      const outputLimit = modelList().models.find((model) => model.id === selection.model.model.id)?.outputLimit ?? null
-      const request: GoogleRequestOptions = {
-        ...options.request,
-        maxOutputTokens: options.request?.maxOutputTokens ?? outputLimit ?? undefined,
-      }
-      return new GoogleProvider({ ...runtimeOptions, request })
-    },
+    supportsOutputLimit: true,
+    createRuntime: () => new GoogleProvider(runtimeOptions),
   })
 }
 
@@ -220,7 +213,7 @@ export function buildGoogleGenerateContentBody(
     body.tools = [{ functionDeclarations: request.tools.map(toolToGoogleFunctionDeclaration) }]
   }
   const generationConfig: GoogleGenerationConfig = {}
-  const maxOutputTokens = options?.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS
+  const maxOutputTokens = options?.maxOutputTokens ?? request.outputLimit ?? DEFAULT_MAX_OUTPUT_TOKENS
   if (maxOutputTokens > 0) generationConfig.maxOutputTokens = maxOutputTokens
   const thinkingConfig = googleThinkingConfig(request.thinking, options)
   if (thinkingConfig) generationConfig.thinkingConfig = thinkingConfig

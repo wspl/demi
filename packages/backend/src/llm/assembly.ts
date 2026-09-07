@@ -212,7 +212,7 @@ export class ProviderAssembly {
         providerId: entry.id,
         model: {
           providerId: entry.id,
-          model: { id: modelId, name: modelId, contextWindow: 128_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
+          model: { id: modelId, name: modelId, contextWindow: 128_000, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
           thinking: null,
         },
       })
@@ -220,6 +220,7 @@ export class ProviderAssembly {
         sessionId: 'provider-test',
         turnId: createId(),
         requestId: createId(),
+        outputLimit: null,
         modelId,
         systemPrompt: 'Reply with the word ok.',
         cwd: '/',

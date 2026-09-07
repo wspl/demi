@@ -17,6 +17,7 @@ function makeRequest(overrides: Partial<InferenceRequest> = {}): InferenceReques
     sessionId: 'transport-test-session',
     turnId: 'test-turn',
     requestId: 'test-request',
+    outputLimit: null,
     modelId: 'claude-test',
     systemPrompt: 'system',
     cwd: '/workspace/project',

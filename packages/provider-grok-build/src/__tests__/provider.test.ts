@@ -312,7 +312,7 @@ function selection(providerId: string, modelId: string): ProviderSelection {
     providerId,
     model: {
       providerId,
-      model: { id: modelId, name: modelId, contextWindow: 0, inputLimit: null, thinking: [], acceptedExtensions: [] },
+      model: { id: modelId, name: modelId, contextWindow: 0, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
       thinking: null,
       serviceTierId: null,
     },
@@ -324,6 +324,7 @@ function request(overrides: Partial<InferenceRequest> = {}): InferenceRequest {
     sessionId: 'session-1',
     turnId: 'turn-1',
     requestId: 'req-1',
+    outputLimit: null,
     modelId: 'gpt-test',
     systemPrompt: '',
     cwd: '/workspace',

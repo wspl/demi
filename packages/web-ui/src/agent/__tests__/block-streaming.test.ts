@@ -8,6 +8,7 @@ const model: ModelSelection = {
     id: 'demo',
     name: 'Demo',
     contextWindow: 1,
+    outputLimit: null,
     inputLimit: 1,
     thinking: [],
     acceptedExtensions: [],

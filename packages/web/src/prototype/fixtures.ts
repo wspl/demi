@@ -146,6 +146,7 @@ export function modelSelection(c: Conversation): ModelSelection {
       id: entry.id,
       name: entry.name,
       contextWindow: entry.contextWindow!,
+      outputLimit: entry.outputLimit,
       inputLimit: entry.contextWindow,
       thinking: [],
       acceptedExtensions: entry.extensions.map((extension) => extension.replace(/^\./, '')) as FileExtension[],

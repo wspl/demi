@@ -7,6 +7,7 @@ function makeRequest(items: InferenceRequest['items']): InferenceRequest {
     sessionId: 'test-session',
     turnId: 'test-turn',
     requestId: 'test-request',
+    outputLimit: null,
     modelId: 'test-model',
     systemPrompt: '',
     cwd: '/tmp',

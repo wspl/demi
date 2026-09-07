@@ -18,7 +18,6 @@ import {
   type Provider,
   type ProviderEvent,
   type ProviderModelList,
-  type ProviderSelection,
   type ToolDefinition,
 } from '@demicodes/provider'
 import {
@@ -169,16 +168,8 @@ export function createAnthropicApiProvider(options: AnthropicApiProviderOptions 
     auth: { status: () => authStatusFromKey(apiKey, options.headers, 'x-api-key', 'Anthropic') },
     state: () => ({ status: 'ready', message: 'Uses the Anthropic Messages API' }),
     listModels: modelList,
-    createRuntime: (selection: ProviderSelection) => {
-      // max_tokens defaults to the selected model's catalog outputLimit; an
-      // explicit request.maxTokens still wins.
-      const outputLimit = modelList().models.find((model) => model.id === selection.model.model.id)?.outputLimit ?? null
-      const request: AnthropicApiRequestOptions = {
-        ...options.request,
-        maxTokens: options.request?.maxTokens ?? outputLimit ?? undefined,
-      }
-      return new AnthropicApiProvider({ ...runtimeOptions, request })
-    },
+    supportsOutputLimit: true,
+    createRuntime: () => new AnthropicApiProvider(runtimeOptions),
   })
 }
 
@@ -219,7 +210,7 @@ export function buildAnthropicMessagesBody(
   request: InferenceRequest,
   options: AnthropicApiRequestOptions | undefined,
 ): AnthropicMessagesRequestBody {
-  const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
+  const maxTokens = options?.maxTokens ?? request.outputLimit ?? DEFAULT_MAX_TOKENS
   const body: AnthropicMessagesRequestBody = {
     model: request.modelId,
     messages: inferenceItemsToAnthropicMessages(request.items),

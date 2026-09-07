@@ -4,7 +4,7 @@ import { canResumeFromDock } from '../dock-recovery'
 
 const model: ModelSelection = {
   providerId: 'p',
-  model: { id: 'm', name: 'M', contextWindow: 1000, inputLimit: 900, thinking: [], acceptedExtensions: [] },
+  model: { id: 'm', name: 'M', contextWindow: 1000, outputLimit: null, inputLimit: 900, thinking: [], acceptedExtensions: [] },
   thinking: null,
 }
 const text: Block = { type: 'text', id: 't', createdAt: '', model, text: 'done' }

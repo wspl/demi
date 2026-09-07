@@ -62,7 +62,7 @@ async function turn(backend: TestBackend, actor: WebSession, providerId: string)
   const client = new AgentClient(createWebSocketClientTransport(socket as never))
   const model: ModelSelection = {
     providerId: providerId,
-    model: { id: 'm', name: 'M', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
+    model: { id: 'm', name: 'M', contextWindow: 100_000, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
     thinking: null,
   }
   await client.open({ providerId: providerId, model }, '/ignored', 'ignored')

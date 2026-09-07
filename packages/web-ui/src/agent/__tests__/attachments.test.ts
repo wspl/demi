@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test'
 import { acceptAttribute, dataTransferFiles, fileMatchesAcceptedExtensions, filePreviewUrl, fileToUserContent, partitionAcceptedFiles, transferHasFiles } from '../message-input/attachments'
 
-test('empty accepted list allows any file', () => {
-  expect(fileMatchesAcceptedExtensions(new File(['x'], 'note.txt'), [])).toBe(true)
+test('empty or unknown accepted types do not admit files', () => {
+  expect(fileMatchesAcceptedExtensions(new File(['x'], 'note.txt'), [])).toBe(false)
+  expect(fileMatchesAcceptedExtensions(new File(['x'], 'shot.png'), null)).toBe(false)
 })
 
 test('accepted extensions match the file suffix and jpeg/jpg', () => {
@@ -15,7 +16,7 @@ test('a paste or drop splits into accepted and rejected files', () => {
   const png = new File(['x'], 'shot.png')
   const pdf = new File(['x'], 'spec.pdf')
   expect(partitionAcceptedFiles([png, pdf], ['png'])).toEqual({ accepted: [png], rejected: [pdf] })
-  expect(partitionAcceptedFiles([png, pdf], [])).toEqual({ accepted: [png, pdf], rejected: [] })
+  expect(partitionAcceptedFiles([png, pdf], [])).toEqual({ accepted: [], rejected: [png, pdf] })
 })
 
 test('image files get an object-url preview', () => {

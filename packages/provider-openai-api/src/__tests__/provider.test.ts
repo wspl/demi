@@ -9,6 +9,18 @@ import {
   type ServerSentEvent,
 } from '../provider'
 
+test('Responses and Chat Completions forward the per-request output limit', () => {
+  expect(buildOpenAIResponsesBody(request({ outputLimit: 8_000 }), undefined)).toMatchObject({ max_output_tokens: 8_000 })
+  expect(buildOpenAIChatCompletionsBody(request({ outputLimit: 32_000 }), undefined)).toMatchObject({ max_completion_tokens: 32_000 })
+  expect(buildOpenAIChatCompletionsBody(request({ outputLimit: 8_000 }), { maxOutputTokens: 2_000 })).toMatchObject({ max_completion_tokens: 2_000 })
+  const legacyField = buildOpenAIChatCompletionsBody(request({ outputLimit: 8_000 }), { extraBody: { max_tokens: 4_000 } })
+  expect(legacyField).toMatchObject({ max_tokens: 4_000 })
+  expect(legacyField).not.toHaveProperty('max_completion_tokens')
+  expect(buildOpenAIResponsesBody(request({ outputLimit: null }), undefined)).not.toHaveProperty('max_output_tokens')
+  expect(buildOpenAIChatCompletionsBody(request({ outputLimit: null }), undefined)).not.toHaveProperty('max_completion_tokens')
+  expect(buildOpenAIResponsesBody(request({ outputLimit: 8_000 }), { extraBody: { max_output_tokens: 4_000 } })).toMatchObject({ max_output_tokens: 4_000 })
+})
+
 test('OpenAI API provider resolves Responses endpoint and API key from env vars', async () => {
   await withEnv(
     {
@@ -544,6 +556,7 @@ function request(overrides: Partial<InferenceRequest> = {}): InferenceRequest {
     sessionId: 'session-1',
     turnId: 'turn-1',
     requestId: 'request-1',
+    outputLimit: null,
     modelId: 'gpt-test',
     systemPrompt: '',
     cwd: '/workspace',
@@ -561,7 +574,7 @@ function selection(providerId: string, modelId: string): ProviderSelection {
     providerId,
     model: {
       providerId,
-      model: { id: modelId, name: modelId, contextWindow: 0, inputLimit: null, thinking: [], acceptedExtensions: [] },
+      model: { id: modelId, name: modelId, contextWindow: 0, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
       thinking: null,
       serviceTierId: null,
     },

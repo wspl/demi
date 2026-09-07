@@ -54,8 +54,8 @@ export interface ModelSelectionFromCatalogOptions {
   thinking?: ThinkingConfig | null
   /** Active service tier, if the model exposes tiers. */
   serviceTierId?: string | null
-  /** Attachment types to accept when the model supports attachments. */
-  acceptedExtensions?: readonly FileExtension[]
+  /** Explicit accepted types, overriding catalog flags; null preserves unknown capability. */
+  acceptedExtensions?: readonly FileExtension[] | null
   /** Display name to use when the catalog entry is absent. */
   fallbackName?: string
 }
@@ -70,19 +70,24 @@ export function modelSelectionFromCatalog(
   options: ModelSelectionFromCatalogOptions = {},
 ): ModelSelection {
   const modelId = options.modelId ?? model?.id ?? ''
-  const accepted = options.acceptedExtensions ?? DEFAULT_ATTACHMENT_EXTENSIONS
+  const acceptedExtensions = options.acceptedExtensions !== undefined
+    ? options.acceptedExtensions === null ? null : [...options.acceptedExtensions]
+    : model?.supportsAttachments == null && model?.supportsVideo !== true
+      ? null
+      : [
+          ...(model?.supportsAttachments ? DEFAULT_ATTACHMENT_EXTENSIONS : []),
+          ...(model?.supportsVideo ? VIDEO_FILE_EXTENSIONS : []),
+        ]
   return {
     providerId,
     model: {
       id: modelId,
       name: model?.displayName ?? options.fallbackName ?? modelId,
       contextWindow: model?.contextWindow ?? 0,
+      outputLimit: model?.outputLimit ?? null,
       inputLimit: null,
       thinking: thinkingCapabilitiesFromProviderModel(model),
-      acceptedExtensions: [
-        ...(model?.supportsAttachments ? accepted : []),
-        ...(model?.supportsVideo ? VIDEO_FILE_EXTENSIONS : []),
-      ],
+      acceptedExtensions,
     },
     thinking: options.thinking ?? null,
     serviceTierId: options.serviceTierId ?? null,
