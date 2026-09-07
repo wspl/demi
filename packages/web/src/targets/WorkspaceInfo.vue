@@ -7,12 +7,13 @@ import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
+import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { Conversation, Project } from '../prototype/types'
 import { useResources } from '../prototype/resources'
+import { browserHosts, fileSourceFor, placesFor } from '../prototype/files'
 import { useConversations } from '../conversation/store'
-import FileBrowser from './FileBrowser.vue'
 import HostMenu from './HostMenu.vue'
 
 const props = defineProps<{ project?: Project; conversation: Conversation }>()
@@ -26,15 +27,26 @@ const recentDirectories = computed(() =>
     .slice(0, 8),
 )
 const browsingDevice = ref<string | null>(null)
-const browserPath = ref('')
+const browserPath = ref<string | undefined>()
 const locked = computed(() => !!props.conversation.stream || props.conversation.archived)
+const browsingHost = computed(() => resources.devices.find((item) => item.id === browsingDevice.value) ?? null)
+const browserSource = computed(() => fileSourceFor(browsingHost.value))
+const browserPlaces = computed(() => placesFor(browsingHost.value, resources.projects))
+const browserHostList = computed(() => browserHosts(resources.devices, true))
+const browserTitle = computed(() => `Select folder · ${browsingHost.value?.name ?? 'Cloud'}`)
+
 function browse(deviceId = props.project?.deviceId ?? 'cloud', cwd?: string) {
   directoryOpen.value = false
   browserPath.value =
     cwd ??
     (deviceId === props.project?.deviceId
       ? props.project.path
-      : (resources.projects.find((project) => project.deviceId === deviceId)?.path ?? '/workspace'))
+      : resources.projects.find((project) => project.deviceId === deviceId)?.path)
+  browsingDevice.value = deviceId
+}
+/** Another device in the browser's sidebar: it starts over at that device's home. */
+function switchBrowserHost(deviceId: string) {
+  browserPath.value = undefined
   browsingDevice.value = deviceId
 }
 function selectRecent(id: string) {
@@ -124,13 +136,23 @@ function selectFolder(path: string) {
         <span class="max-w-32 truncate">{{ project.branch }}</span>
       </span>
     </template>
-    <FileBrowser
+    <FileBrowserDialog
       v-if="browsingDevice"
-      :device-id="browsingDevice"
+      :is-open="true"
+      :overlay-store="appOverlayStore"
+      mode="directory"
+      :title="browserTitle"
+      description="This conversation moves to the workspace at the folder you choose."
+      :source="browserSource"
       :initial-path="browserPath"
-      :locked="locked"
-      @close="browsingDevice = null"
+      :places="browserPlaces"
+      :hosts="browserHostList"
+      :host-id="browsingDevice"
+      confirm-label="Use this folder"
+      :confirm-disabled="locked"
       @select="selectFolder"
+      @close="browsingDevice = null"
+      @update:host-id="switchBrowserHost"
     />
   </div>
 </template>
