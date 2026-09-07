@@ -35,6 +35,7 @@ const tallOptions = Array.from({ length: 24 }, (_, i) => ({
 const dialogOpen = ref(false)
 const inlineDialogOpen = ref(true)
 const pinDangerToast = ref(true)
+const pinRejectedToast = ref(true)
 const pinCopiedToast = ref(true)
 
 const paradigmSelected = ref('hairline')
@@ -419,7 +420,7 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
       </GallerySpecimen>
     </GallerySection>
 
-    <GallerySection title="Toast" note="Danger, Copied, and live host.">
+    <GallerySection title="Toast" note="Danger, a rejected action whose title wraps, Copied, and live host.">
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="danger">
           <div class="w-80">
@@ -431,6 +432,17 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
               @dismiss="pinDangerToast = false"
             />
             <Button v-else size="md" @click="pinDangerToast = true">Show</Button>
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="rejected">
+          <div class="w-80">
+            <Toast
+              v-if="pinRejectedToast"
+              title="Move the project’s conversations to another environment before removing it."
+              tone="danger"
+              @dismiss="pinRejectedToast = false"
+            />
+            <Button v-else size="md" @click="pinRejectedToast = true">Show</Button>
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="copied">
