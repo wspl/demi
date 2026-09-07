@@ -149,8 +149,7 @@ const attachments = computed(() =>
       @compact="store.compact(conversation)"
     />
     <FileBrowserDialog
-      v-if="remoteHostId"
-      :is-open="true"
+      :is-open="!!remoteHostId"
       :overlay-store="appOverlayStore"
       mode="file"
       title="Attach remote file"
@@ -158,7 +157,7 @@ const attachments = computed(() =>
       :initial-path="remoteStart"
       :places="remotePlaces"
       :hosts="remoteHosts"
-      :host-id="remoteHostId"
+      :host-id="remoteHostId ?? undefined"
       confirm-label="Attach"
       @select="attachRemote"
       @close="remoteHostId = null"
