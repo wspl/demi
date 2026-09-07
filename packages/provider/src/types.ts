@@ -267,6 +267,11 @@ export type ProviderRuntimeState =
   | { status: 'unavailable'; message: string }
   | { status: 'error'; message: string }
 
+export interface ProviderModelListOptions {
+  /** Check the remote catalog even if a cached copy is still within its freshness period. */
+  refresh?: boolean
+}
+
 export interface Provider {
   id: string
   displayName: string
@@ -286,7 +291,7 @@ export interface Provider {
   /** This adapter forwards InferenceRequest.outputLimit. Unset means it cannot set this limit. */
   supportsOutputLimit?: boolean
   state?(): Promise<ProviderRuntimeState> | ProviderRuntimeState
-  listModels?(): Promise<ProviderModelList> | ProviderModelList
+  listModels?(options?: ProviderModelListOptions): Promise<ProviderModelList> | ProviderModelList
 }
 
 export interface ProviderRuntimeFactory {
