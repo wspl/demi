@@ -100,11 +100,11 @@ function verify() {
       </div>
 
       <div class="flex justify-end gap-2">
-        <Button v-if="phase.kind === 'done'" size="sm" variant="primary" @click="emit('close')">Done</Button>
+        <Button v-if="phase.kind === 'done'" variant="primary" @click="emit('close')">Done</Button>
         <template v-else>
-          <Button size="sm" @click="emit('close')">Cancel</Button>
-          <Button v-if="phase.kind === 'form'" size="sm" variant="primary" :disabled="!canSubmit" @click="submit">{{ phase.busy ? 'Sending code…' : 'Continue' }}</Button>
-          <Button v-else size="sm" variant="primary" :disabled="!canVerify" @click="verify">{{ phase.busy ? 'Checking…' : 'Verify' }}</Button>
+          <Button @click="emit('close')">Cancel</Button>
+          <Button v-if="phase.kind === 'form'" variant="primary" :disabled="!canSubmit" @click="submit">{{ phase.busy ? 'Sending code…' : 'Continue' }}</Button>
+          <Button v-else variant="primary" :disabled="!canVerify" @click="verify">{{ phase.busy ? 'Checking…' : 'Verify' }}</Button>
         </template>
       </div>
     </div>

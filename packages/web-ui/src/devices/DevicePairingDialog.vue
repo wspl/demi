@@ -51,12 +51,12 @@ function submit() { if (props.phase.kind === 'code' && code.value.trim()) emit('
         <span class="min-w-0 truncate">{{ phase.device.name }}</span>
       </div>
       <div class="flex justify-end gap-2">
-        <Button v-if="phase.kind === 'done'" size="sm" variant="primary" @click="emit('close')">Done</Button>
+        <Button v-if="phase.kind === 'done'" variant="primary" @click="emit('close')">Done</Button>
         <template v-else>
-          <Button v-if="phase.kind === 'code'" size="sm" @click="emit('back')">Back</Button>
-          <Button size="sm" @click="emit('close')">Cancel</Button>
-          <Button v-if="phase.kind === 'setup'" size="sm" variant="primary" @click="emit('next')">Continue</Button>
-          <Button v-else size="sm" variant="primary" :disabled="phase.kind === 'pairing' || !code.trim()" @click="submit"><IndeterminateSpinner v-if="phase.kind === 'pairing'" :size="14" />{{ phase.kind === 'pairing' ? 'Pairing…' : 'Pair device' }}</Button>
+          <Button v-if="phase.kind === 'code'" @click="emit('back')">Back</Button>
+          <Button @click="emit('close')">Cancel</Button>
+          <Button v-if="phase.kind === 'setup'" variant="primary" @click="emit('next')">Continue</Button>
+          <Button v-else variant="primary" :disabled="phase.kind === 'pairing' || !code.trim()" @click="submit"><IndeterminateSpinner v-if="phase.kind === 'pairing'" :size="14" />{{ phase.kind === 'pairing' ? 'Pairing…' : 'Pair device' }}</Button>
         </template>
       </div>
     </div>
