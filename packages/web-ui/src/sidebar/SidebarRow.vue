@@ -112,7 +112,8 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     @mouseenter="startMarquee"
     @mouseleave="stopMarquee"
   >
-    <span class="flex size-3.5 shrink-0 items-center justify-center">
+    <!-- The dot keeps to the end of the icon column, flush with a project header's folder icon. -->
+    <span class="flex size-3.5 shrink-0 items-center justify-end">
       <span v-if="dotClass" class="size-1.5 rounded-full" :class="dotClass" />
     </span>
     <input
