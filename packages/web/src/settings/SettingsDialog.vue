@@ -4,13 +4,11 @@ import { useRouter } from 'vue-router'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import SettingsData from '@demicodes/web-ui/settings/SettingsData.vue'
-import SettingsDeveloper from '@demicodes/web-ui/settings/SettingsDeveloper.vue'
 import SettingsGeneral from '@demicodes/web-ui/settings/SettingsGeneral.vue'
 import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
 import SettingsMcp from '@demicodes/web-ui/settings/SettingsMcp.vue'
 import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotifications.vue'
 import SettingsSkills from '@demicodes/web-ui/settings/SettingsSkills.vue'
-import SettingsUsage from '@demicodes/web-ui/settings/SettingsUsage.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import type { SettingsMcpDraft, SettingsMcpServer, SettingsSkillDraft, SettingsSkillSource, SettingsTab } from '@demicodes/web-ui/settings/types'
@@ -20,7 +18,7 @@ import { setThemeChoice } from '@demicodes/web-ui/theme/appTheme'
 import { applyProductAppearance, applyTranscriptTextSize } from '@demicodes/web-ui/theme/productAppearance'
 import { useResources } from '../prototype/resources'
 import { useConversations } from '../conversation/store'
-import { DEFAULT_KEYS, LANGUAGES, LOG_LEVELS, RETENTIONS } from '../prototype/settings'
+import { DEFAULT_KEYS, LANGUAGES, RETENTIONS } from '../prototype/settings'
 import DevicesPanel from './DevicesPanel.vue'
 import ProvidersPanel from './ProvidersPanel.vue'
 
@@ -169,34 +167,6 @@ function deleteAllConversations() {
   void router.push('/chat')
 }
 
-const usage = computed(() => ({
-  plan: s.account.plan,
-  renews: s.account.renews,
-  creditsUsed: s.account.creditsUsed,
-  creditsMax: s.account.creditsMax,
-  ...s.usage,
-}))
-
-/** Recent diagnostics as a text file the browser saves. */
-function downloadLogs() {
-  const lines = [
-    `# Demi diagnostics · ${new Date().toISOString()}`,
-    `log level: ${s.developer.logLevel}`,
-    `providers: ${resources.providers.map((provider) => `${provider.name} (${provider.state})`).join(', ')}`,
-    `devices: ${resources.devices.map((device) => `${device.name} ${device.online ? 'online' : 'offline'}`).join(', ')}`,
-    `conversations: ${conversations.items.length}`,
-  ]
-  const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }))
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = 'demi-diagnostics.txt'
-  anchor.click()
-  URL.revokeObjectURL(url)
-}
-function toggleExperiment(id: string, on: boolean) {
-  const experiment = s.developer.experiments.find((entry) => entry.id === id)
-  if (experiment) experiment.on = on
-}
 </script>
 
 <template>
@@ -257,16 +227,6 @@ function toggleExperiment(id: string, on: boolean) {
       :retentions="RETENTIONS"
       @export="requestExport"
       @delete-all="deleteAllConversations"
-    />
-    <SettingsUsage v-else-if="tab === 'usage'" :usage="usage" />
-    <SettingsDeveloper
-      v-else-if="tab === 'developer'"
-      v-model:log-level="s.developer.logLevel"
-      :overlay-store="appOverlayStore"
-      :levels="LOG_LEVELS"
-      :experiments="s.developer.experiments"
-      @download-logs="downloadLogs"
-      @toggle-experiment="toggleExperiment"
     />
   </SettingsDialog>
 </template>

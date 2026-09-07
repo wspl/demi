@@ -1,4 +1,4 @@
-import type { SettingsExperiment, SettingsKeyBinding, SettingsMcpServer, SettingsProviderEntry, SettingsProviderModel, SettingsSkillSource, SettingsVendor } from '@demicodes/web-ui/settings/types'
+import type { SettingsKeyBinding, SettingsMcpServer, SettingsProviderEntry, SettingsProviderModel, SettingsSkillSource, SettingsVendor } from '@demicodes/web-ui/settings/types'
 import type { ThemeChoice } from '@demicodes/web-ui/theme/appTheme'
 import type { ProductAccent, ProductTone } from '@demicodes/web-ui/theme/productAppearance'
 
@@ -15,7 +15,6 @@ export interface PrototypeProvider extends SettingsProviderEntry {
 
 export const LANGUAGES = ['English', '简体中文', '日本語']
 export const RETENTIONS = ['Forever', '90 days', '30 days', '7 days']
-export const LOG_LEVELS = ['Error', 'Warn', 'Info', 'Debug']
 
 /** What each shortcut does in the app; ids are what `App` listens for. */
 export const DEFAULT_KEYS: SettingsKeyBinding[] = [
@@ -27,20 +26,18 @@ export const DEFAULT_KEYS: SettingsKeyBinding[] = [
 export interface PrototypeSettings {
   general: { language: string; theme: ThemeChoice; tone: ProductTone; accent: ProductAccent; fontSize: number }
   notifications: { browser: boolean; sound: boolean; onFinish: boolean; onError: boolean }
-  account: { email: string; passwordChanged: string; plan: string; renews: string; creditsUsed: number; creditsMax: number }
+  account: { email: string; passwordChanged: string; plan: string }
   servers: SettingsMcpServer[]
   skillSources: SettingsSkillSource[]
   keys: SettingsKeyBinding[]
   data: { retention: string; shareLinks: boolean; telemetry: boolean }
-  usage: { spend: { provider: string; amount: string }[]; input: string; output: string; cacheRead: string; resets: string }
-  developer: { logLevel: string; experiments: SettingsExperiment[] }
 }
 
 export function settings(): PrototypeSettings {
   return {
     general: { language: 'English', theme: 'system', tone: 'ink', accent: 'blue', fontSize: 15 },
     notifications: { browser: true, sound: false, onFinish: true, onError: true },
-    account: { email: 'zan@example.com', passwordChanged: '3 months ago', plan: 'Pro', renews: 'Oct 12', creditsUsed: 8_640, creditsMax: 10_000 },
+    account: { email: 'zan@example.com', passwordChanged: '3 months ago', plan: 'Pro' },
     servers: [
       {
         id: 'github', name: 'GitHub', transport: 'stdio', target: 'npx @modelcontextprotocol/server-github', state: 'connected', enabled: true,
@@ -66,21 +63,6 @@ export function settings(): PrototypeSettings {
     ],
     keys: DEFAULT_KEYS.map((binding) => ({ ...binding })),
     data: { retention: 'Forever', shareLinks: false, telemetry: true },
-    usage: {
-      spend: [
-        { provider: 'Anthropic', amount: '$12.40' },
-        { provider: 'OpenAI', amount: '$3.10' },
-        { provider: 'Ollama', amount: '—' },
-      ],
-      input: '1.2M', output: '210k', cacheRead: '890k', resets: 'Oct 1',
-    },
-    developer: {
-      logLevel: 'Info',
-      experiments: [
-        { id: 'parallel', name: 'Parallel tool calls', description: 'Run independent tool calls at once.', on: true },
-        { id: 'background', name: 'Background agents', description: 'Keep subagents running after the turn ends.', on: false },
-      ],
-    },
   }
 }
 
