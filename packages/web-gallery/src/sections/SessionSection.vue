@@ -120,7 +120,8 @@ const queuedShown = ref(true)
 const functionalCollapsed = ref(false)
 const functionalExpanded = ref(true)
 const functionalTool = ref(false)
-const functionalError = ref(false)
+// Open, as a failure that just happened leaves it; a transcript revisited later starts folded.
+const functionalError = ref(true)
 
 function hideBlock(id: string): void {
   hiddenIds.value = new Set(hiddenIds.value).add(id)

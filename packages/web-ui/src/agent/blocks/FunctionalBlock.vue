@@ -14,7 +14,7 @@ const props = defineProps<{
   suffix?: string
   trailing?: string
   loading?: boolean
-  /** The failure text, shown under the body; keeps the block open. Pair with `tone="danger"`. */
+  /** The failure text, shown under the body. A failure as it happens opens the block and keeps it open; a block mounted over a past failure starts closed like any other. Pair with `tone="danger"`. */
   errorText?: string
   tone?: 'danger'
   /** Keep the body scrolled to the latest line while content streams in (e.g. live thinking). */
@@ -44,6 +44,7 @@ function clearCloseTimer() {
 }
 
 // A failed call keeps its error text on screen: the settle timer never closes over it.
+// Only changes while mounted open a block; a transcript opened later shows every block folded.
 function closeAfterActiveOutputSettles() {
   if (!isOpen.value) return
   clearCloseTimer()
@@ -68,7 +69,6 @@ watch(
     }
     closeAfterActiveOutputSettles()
   },
-  { immediate: true },
 )
 
 onBeforeUnmount(clearCloseTimer)
