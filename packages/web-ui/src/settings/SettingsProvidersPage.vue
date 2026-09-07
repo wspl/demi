@@ -313,8 +313,17 @@ function saveModel(draft: SettingsModelDraft) {
               <Tooltip v-if="selected.modelSource === 'manual'" content="Add model"><IconButton size="sm" :icon="Plus" aria-label="Add model" @click="openModel('create', null)" /></Tooltip>
               <Tooltip v-else content="Refresh the catalog"><IconButton size="sm" :icon="RefreshCw" spin-on-click :spinning="refreshing === selected.id" :disabled="refreshing === selected.id" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip>
             </div>
-            <SettingsRow v-for="m in visibleModels(selected)" :key="m.id" :label="m.name || m.id" compact :class="m.enabled ? '' : 'opacity-60'">
-              <template v-if="selected.kind === 'api_key'" #leading><Checkbox v-model="m.enabled" label="" :aria-label="`Enable ${m.name || m.id}`" /></template>
+            <SettingsRow
+              v-for="m in visibleModels(selected)"
+              :key="m.id"
+              :label="m.name || m.id"
+              compact
+              :interactive="selected.kind === 'api_key'"
+              isolate-controls
+              :class="m.enabled ? '' : 'opacity-60'"
+              @click="m.enabled = !m.enabled"
+            >
+              <template v-if="selected.kind === 'api_key'" #leading><Checkbox v-model="m.enabled" label="" :aria-label="`Enable ${m.name || m.id}`" @click.stop /></template>
               <template #tags>
                 <Tooltip v-if="isUnknown(m)" content="Capabilities unknown. Edit to fill them in."><Tag tone="warning"><TriangleAlert :size="12" /></Tag></Tooltip>
                 <Tag v-if="m.contextWindow !== null">{{ formatTokens(m.contextWindow) }}</Tag>

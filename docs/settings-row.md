@@ -15,3 +15,9 @@ For example, an MCP row with title, target and tool tags uses first-line control
 a Skills source with title and origin uses centered controls. MCP rows without
 tool tags also center their controls. In narrow cards, controls still move below
 the text and align right.
+
+Interactive rows emit clicks from the row surface. With `isolateControls`, the
+trailing control area stops click propagation, including button gaps. Model rows use
+this to toggle enabled state from the title, tags and surrounding space.
+Their checkbox handles its own click and keyboard input and stops click
+propagation so it toggles only once.
