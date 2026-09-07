@@ -38,7 +38,7 @@ Devices settings page runs), which is separate from granting a particular
 conversation access to that device.
 
 Attachment names are generated from device names and kept unique within the
-conversation. The menu uses shared `MenuItem` label/value and status-indicator presentation,
+conversation. The menu uses shared `MenuItem` label/value presentation; a device row keeps its icon, wears its online dot on the icon's corner, and reads "(offline)" after the name when it is not reachable,
 and shared `MenuGroup` section titles. Online devices have a green dot; offline
 devices have a gray dot. The dot replaces the device icon in the left icon gutter;
 the right side retains the submenu arrow. Both include accessible status labels. Main host is a

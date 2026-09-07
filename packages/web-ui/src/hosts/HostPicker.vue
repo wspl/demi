@@ -22,6 +22,7 @@ const items = computed(() =>
     ...device,
     label: device.name,
     icon: Monitor,
+    note: device.online ? undefined : 'offline',
   })),
 )
 function disabled(device: DeviceOption) {

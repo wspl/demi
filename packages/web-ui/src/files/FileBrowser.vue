@@ -246,9 +246,10 @@ defineExpose({
             <MenuItem
               v-for="host in hosts"
               :key="host.id"
-              :icon="host.id === CLOUD_HOST_ID ? hostIcon(host) : host.icon"
-              :indicator="host.icon || host.id === CLOUD_HOST_ID ? undefined : host.online ? 'success' : 'muted'"
+              :icon="hostIcon(host)"
+              :indicator="host.id === CLOUD_HOST_ID ? undefined : host.online ? 'success' : 'muted'"
               :indicator-label="host.online ? 'Online' : 'Offline'"
+              :note="host.id !== CLOUD_HOST_ID && !host.online ? 'offline' : undefined"
               :label="host.label"
               choice
               :is-selected="host.id === hostId"
