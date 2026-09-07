@@ -7,7 +7,7 @@ dialog because that is the shape people already know for the job.
 
 ```text
 ┌ Select folder ─────────────────────────────────────────────── × ┐
-│ ‹ › ↑  [🖥 zan-mbp ˅]  [ / › Users › zan › Projects            ] │
+│ ‹ › ↑  [🖥 zan-mbp ˅]  [ / › Users › zan › Projects   ] [＋] [👁] │
 ├───────────────┬─────────────────────────────────────────────────┤
 │ QUICK ACCESS  │ Name ˄              Date modified          Size │
 │  ⌂ Home       │ 📁 assetsfactory    Sep 2, 18:12               │
@@ -16,7 +16,7 @@ dialog because that is the shape people already know for the job.
 │ RECENT        │ 📄 notes.txt        Sep 6, 10:12         512 B │
 │  ◷ demi       │                                                │
 ├───────────────┴─────────────────────────────────────────────────┤
-│ [＋] [👁]  📁 demi                     [Select Folder] [Cancel] │
+│ Selected folder: 📁 demi               [Select Folder] [Cancel] │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -61,11 +61,13 @@ list has room whatever the folder holds.
   be picked. Hidden entries (dot names) show only with the switch on.
 - **Keys** in the list: arrows move the selection, Home and End jump, Backspace goes
   up, ⌥← and ⌥→ walk the history.
-- **Status row**: on the left New folder and the hidden-files switch as icon buttons
-  with tooltips, then what is selected (its icon and name) or, with nothing selected,
-  what can be: "Select a file", or "Select a folder, or use demi" since in folder
-  mode the confirm button takes the current folder. A failure to create a folder
-  reads here in red. On the right the confirm button and Cancel.
+- **Toolbar icons**: after the address bar, New folder and the hidden-files switch
+  as icon buttons with tooltips; the switch shows pressed while hidden files show.
+- **Status row**: "Selected folder:" or "Selected file:" with the entry's icon and
+  name; with nothing selected, what can be: "Select a file", or "Select a folder, or
+  use demi" since in folder mode the confirm button takes the current folder. A
+  failure to create a folder reads here in red. On the right the confirm button and
+  Cancel.
 - **New folder**: an editable row at the top of the list with the name ready to type
   over; Enter creates it and selects it, Escape or blur drops it.
 - **States**: a spinner while a folder loads, one line for an empty folder, and for
