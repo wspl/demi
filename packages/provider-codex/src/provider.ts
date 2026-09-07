@@ -12,6 +12,7 @@ import {
   type Provider,
   type ProviderEvent,
   type ProviderQuota,
+  type ProviderQuotaObserver,
 } from '@demicodes/provider'
 import {
   CodexAuthError,
@@ -106,6 +107,7 @@ export class CodexProvider implements AgentProvider {
     let forceRefresh = false
 
     while (true) {
+      const observeQuota = this.quota?.captureObserver()
       try {
         const auth = await this.authStore.resolveAuth({ forceRefresh })
         const url = responsesUrlForAuth(auth, this.config.baseUrl)
@@ -120,14 +122,14 @@ export class CodexProvider implements AgentProvider {
           websocketConnectTimeoutMs: this.config.websocketConnectTimeoutMs,
           streamIdleTimeoutMs: this.config.streamIdleTimeoutMs || undefined,
           onHttpResponse: (response) => {
-            this.observeQuotaResponse({ headers: response.headers, status: response.status })
+            this.observeQuotaResponse(observeQuota, { headers: response.headers, status: response.status })
           },
         })
         yield* mapCodexResponseEvents(stream)
         return
       } catch (error) {
         if (error instanceof CodexHttpError) {
-          this.observeQuotaResponse({ headers: error.headers, status: error.status })
+          this.observeQuotaResponse(observeQuota, { headers: error.headers, status: error.status })
         }
         if (request.cancel.aborted) {
           yield { type: 'abort' }
@@ -143,9 +145,9 @@ export class CodexProvider implements AgentProvider {
     }
   }
 
-  private observeQuotaResponse(input: { headers: Headers; status: number }): void {
+  private observeQuotaResponse(observe: ProviderQuotaObserver | undefined, input: { headers: Headers; status: number }): void {
     try {
-      this.quota?.observeResponse?.(input)
+      observe?.(input)
     } catch {
       // Quota observation must never break inference.
     }

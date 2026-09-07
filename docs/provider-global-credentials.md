@@ -1,6 +1,31 @@
 # Provider global credentials (codex / claude-code / grok-build)
 
-Final-state design for multi-credential support with a **global active** switch.
+Contract and implementation notes for multi-credential support with a **global active** switch.
+
+## Verified switching behavior
+
+The current Codex, Claude Code, and Grok Build factories share an auth store
+between login status, quota probing, and inference. `credentials.setActive(id)`
+updates the stored selection and clears the quota instance owned by that provider.
+Subsequent credential resolution reads the selected entry. Claude Code also
+compares the active credential ID before each turn and replaces its retained CLI
+process when the account changes.
+
+An already started request can finish with its resolved credentials. Its quota
+reply cannot restore the previous account's cache after a switch: old probes
+reject with `ProviderQuotaInvalidatedError`, and captured inference observers
+ignore invalidated replies. See [quota invalidation](provider-quota.md#5-relationship-to-credentials)
+for the callback contract and the scope of the in-memory guarantee.
+
+Fake credential fixtures verify account selection, auth resolution, and quota
+invalidation in all three kits. Fake Claude transports verify that the next turn
+uses a new process. Deferred probe and response tests verify late-result handling.
+These tests do not call real models or establish that a vendor accepts a token.
+
+Removing the active pool entry currently clears its pointer. A later pool-aware
+lookup selects the first remaining entry by ID, or uses vendor defaults when the
+pool is empty. This is the existing library behavior; product UI policy for
+removing the current account remains separate.
 
 ## 1. Problem
 

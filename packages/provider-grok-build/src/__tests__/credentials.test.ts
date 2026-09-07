@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { createProviderQuota } from '@demicodes/provider'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -35,7 +36,13 @@ test('grok credentials import entries and switch active', async () => {
 
     const pool = openGrokCredentialPool({ stateDir })
     const authStore = new PoolAwareGrokAuthStore(pool, { grokHome })
-    const credentials = createGrokBuildCredentials(pool, authStore, { grokHome })
+    const quota = createProviderQuota({
+      providerId: 'grok-build',
+      canProbe: true,
+      probe: async () => ({ accountLabel: 'old-account', windows: [] }),
+      observe: () => ({ accountLabel: 'old-account', windows: [] }),
+    })
+    const credentials = createGrokBuildCredentials(pool, authStore, { grokHome, quota })
 
     await credentials.importDefault!()
     const list = await credentials.list()
@@ -49,7 +56,12 @@ test('grok credentials import entries and switch active', async () => {
     expect((await authStore.resolveAuth()).email).toBe('a@x.ai')
     expect((await authStore.resolveAuth()).accessToken).toBe('token-a')
 
+    await quota.probe()
+    const oldObserver = quota.captureObserver()
     await credentials.setActive(b!.id)
+    expect(quota.latest()).toBeNull()
+    expect(oldObserver({})).toBeNull()
+    expect(quota.latest()).toBeNull()
     expect((await authStore.resolveAuth()).email).toBe('b@x.ai')
     expect((await authStore.resolveAuth()).accessToken).toBe('token-b')
   } finally {

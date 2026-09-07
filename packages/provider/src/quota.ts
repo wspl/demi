@@ -81,10 +81,14 @@ export interface ProviderQuotaObserveInput {
   body?: unknown
 }
 
+export type ProviderQuotaObserver = (input: ProviderQuotaObserveInput) => ProviderQuotaSnapshot | null
+
 export interface ProviderQuota {
   capability(): ProviderQuotaCapability
   probe(options?: ProviderQuotaProbeOptions): Promise<ProviderQuotaSnapshot>
   latest(): ProviderQuotaSnapshot | null
+  /** Capture before an async request; clearLatest invalidates this observer so old replies cannot refill the cache. */
+  captureObserver(): ProviderQuotaObserver
   /**
    * Drop the in-memory latest snapshot (e.g. after credentials.setActive so the
    * next ensureQuota/probe does not show the previous account).
@@ -95,6 +99,13 @@ export interface ProviderQuota {
    * Returns the new snapshot when observation succeeded; otherwise null.
    */
   observeResponse?(input: ProviderQuotaObserveInput): ProviderQuotaSnapshot | null
+}
+
+export class ProviderQuotaInvalidatedError extends Error {
+  constructor(readonly providerId: string) {
+    super(`Provider "${providerId}" quota request was invalidated; query the current account again`)
+    this.name = 'ProviderQuotaInvalidatedError'
+  }
 }
 
 export class ProviderQuotaUnsupportedError extends Error {
@@ -169,6 +180,7 @@ export interface ProviderQuotaProbeResult {
 /** In-memory latest snapshot + capability wiring for concrete providers. */
 export function createProviderQuota(options: CreateProviderQuotaOptions): ProviderQuota {
   let latest: ProviderQuotaSnapshot | null = null
+  let generation = 0
   const canObserve = options.canObserve ?? Boolean(options.observe)
 
   const capability = (): ProviderQuotaCapability => {
@@ -203,12 +215,19 @@ export function createProviderQuota(options: CreateProviderQuotaOptions): Provid
   const quota: ProviderQuota = {
     capability,
     latest: () => latest,
+    captureObserver: () => {
+      const captured = generation
+      return (input) => captured === generation ? quota.observeResponse?.(input) ?? null : null
+    },
     clearLatest: () => {
+      generation += 1
       latest = null
     },
     async probe(probeOptions = {}) {
       if (!options.canProbe) throw new ProviderQuotaUnsupportedError(options.providerId)
+      const captured = generation
       const partial = await options.probe(probeOptions)
+      if (captured !== generation) throw new ProviderQuotaInvalidatedError(options.providerId)
       return materialize(partial, 'probe')
     },
   }
