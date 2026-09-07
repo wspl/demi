@@ -69,7 +69,7 @@ const rollKey = computed(() => (props.isStreaming ? 'live' : 'done'))
         <StreamedMarkdown
           :content="thinking"
           :streaming="isStreaming"
-          class="px-3 py-1 text-conversation text-fg-muted"
+          class="px-3 py-1 text-[13px] leading-5 text-fg-subtle"
         />
       </template>
     </FunctionalBlock>
