@@ -347,7 +347,7 @@ svg.lucide {
    row's chevron or check sits in. */
 .menu-cell-suffix {
   grid-column: 3 / 5;
-  margin-left: 0.5rem;
+  margin-left: 0.25rem;
 }
 
 .menu-cell-value + .menu-cell-suffix {
