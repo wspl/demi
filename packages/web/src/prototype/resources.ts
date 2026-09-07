@@ -42,6 +42,8 @@ export const useResources = defineStore('resources', {
       settingsOpen: false,
       targetOpen: false,
       targetMode: 'switch' as 'switch' | 'create',
+      /** The Add device pairing dialog, opened from anywhere a device could be connected. */
+      pairingOpen: false,
       sidebarOpen: false,
     }
   },

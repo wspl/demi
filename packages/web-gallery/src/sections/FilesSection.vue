@@ -3,6 +3,8 @@ import { computed, ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
+import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
+import type { WorkspaceDraft, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserMode, FileBrowserSource } from '@demicodes/web-ui/files/types'
@@ -20,6 +22,7 @@ const anatomy: [string, string][] = [
   ['List', 'Name, date and size, folders first, names in natural order; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'],
   ['Keys', 'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history.'],
   ['Status row', 'Says what is selected, as "Selected folder:" or "Selected file:" with the name, or what can be. Right: the confirm button and Cancel. A failure to create a folder reads here.'],
+  ['New project', 'The working-environment dialog: the projects to switch between, or a form for a new one with a name, a device and a directory; Browse… turns the dialog into the folder browser and the chosen folder fills the directory and, if empty, the name.'],
   ['New folder', 'A row at the top of the list with the name ready to type over; Enter creates it and selects it. Only a source that can create directories offers the icon.'],
   ['States', 'A slow device shows a spinner, an empty folder says so, and a folder that cannot be read explains why: missing, locked, or the device offline.'],
 ]
@@ -31,6 +34,29 @@ const iconSamples: [string, boolean][] = [
 ]
 
 const hosts = createGalleryFileHosts()
+
+// New project: the working-environment dialog over the same hosts; a created project joins the list.
+const workspaceDevices = hosts.map(({ id, label, online }) => ({ id, name: label, online }))
+const workspaceProjects = ref<WorkspaceProject[]>([
+  { id: 'demi', name: 'demi', host: 'zan-mbp', path: '/Users/zan/Projects/demi' },
+  { id: 'assets', name: 'assetsfactory', host: 'build-01', path: '/srv/assetsfactory' },
+])
+const workspaceCurrent = ref<string | null>('demi')
+const workspaceMessage = ref('')
+const workspaceKey = ref(0)
+const sourceFor = (id: string) => (hosts.find((host) => host.id === id) ?? hosts[0]!).source
+const placesFor = (id: string) => (hosts.find((host) => host.id === id) ?? hosts[0]!).places
+function createWorkspace(draft: WorkspaceDraft) {
+  if (workspaceProjects.value.some((project) => project.name === draft.name)) {
+    workspaceMessage.value = 'A project with that name already exists.'
+    return
+  }
+  workspaceMessage.value = ''
+  const host = draft.deviceId === 'cloud' ? 'Cloud' : workspaceDevices.find((device) => device.id === draft.deviceId)?.name ?? draft.deviceId
+  workspaceProjects.value.push({ id: `p-${Date.now()}`, name: draft.name, host, path: draft.path || '/home/demi' })
+  workspaceCurrent.value = workspaceProjects.value.at(-1)!.id
+  workspaceKey.value += 1
+}
 const hostOptions = hosts.map(({ id, label, online, icon }) => ({ id, label, online, icon }))
 
 // Select folder: the workspace picker's use, opening on the laptop's projects.
@@ -148,6 +174,49 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </GalleryOverlayWell>
       <p class="select-none text-[12px] text-fg-subtle">
         Chosen: <span class="select-text text-fg-muted">{{ fileChosen ?? '—' }}</span>
+      </p>
+    </GallerySection>
+
+    <GallerySection title="New project" note="The working-environment dialog, pinned open on the form and on the project list. Create adds to the list; a repeated name is refused under the form.">
+      <div class="flex flex-col gap-4">
+        <GalleryOverlayWell size="tall">
+          <WorkspaceDialog
+            :key="workspaceKey"
+            :is-open="true"
+            :overlay-store="appOverlayStore"
+            mode="create"
+            :projects="workspaceProjects"
+            :current-project-id="workspaceCurrent"
+            :devices="workspaceDevices"
+            cloud
+            default-path="/Users/zan/Projects/"
+            :message="workspaceMessage"
+            :source-for="sourceFor"
+            :places-for="placesFor"
+            @create="createWorkspace"
+          />
+        </GalleryOverlayWell>
+        <GalleryOverlayWell size="tall">
+          <WorkspaceDialog
+            :key="workspaceKey"
+            :is-open="true"
+            :overlay-store="appOverlayStore"
+            mode="switch"
+            :projects="workspaceProjects"
+            :current-project-id="workspaceCurrent"
+            :devices="workspaceDevices"
+            cloud
+            default-path="/Users/zan/Projects/"
+            :message="workspaceMessage"
+            :source-for="sourceFor"
+            :places-for="placesFor"
+            @select="workspaceCurrent = $event"
+            @create="createWorkspace"
+          />
+        </GalleryOverlayWell>
+      </div>
+      <p class="select-none text-[12px] text-fg-subtle">
+        Projects: <span class="select-text text-fg-muted">{{ workspaceProjects.map((project) => project.name).join(', ') }}</span> · current <span class="select-text text-fg-muted">{{ workspaceCurrent ?? 'none' }}</span>
       </p>
     </GallerySection>
 

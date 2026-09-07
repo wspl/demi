@@ -15,7 +15,7 @@ Conversation c1 header: [zan-mbp +2] [demi] [main]
                          +-- [green dot] studio                 > Use as main / Detach
                          |   ----------------------------------
                          +-- Attach device… > searchable owned devices
-                         +-- Connect new device… > account device settings
+                         +-- Connect new device… > the Add device pairing dialog
 ```
 
 The trigger shows the main device and the attachment count. Cloud uses its icon. Conversations without a device binding also display Cloud
@@ -33,8 +33,9 @@ Attach selects an existing owned device and starts its cwd at its home. The
 picker shows all owned devices and disables the main device and devices already attached; offline devices
 may be attached but cannot be promoted until online. Managed Cloud is not in the
 attachment picker; it can enter the list as a departed main host. Connecting a
-new device opens the global device settings, which is separate from granting a
-particular conversation access to that device.
+new device opens the Add device pairing dialog right there (the same flow the
+Devices settings page runs), which is separate from granting a particular
+conversation access to that device.
 
 Attachment names are generated from device names and kept unique within the
 conversation. The menu uses shared `MenuItem` label/value and status-indicator presentation,

@@ -14,6 +14,8 @@ browser package typechecks and checks affected specimens in the browser.
 | Marquee, read indicators, ordering, temporary folding and centered scrolling | Sidebar components and drag controller | Sidebar live specimen with mutable data |
 | Menu sizing, label/value rows, section headings and status indicators | Menu, MenuItem, MenuGroup | Overlays specimens |
 | Host search, Cloud option and bound-device disabling | hosts/HostPicker | Main and attached picker specimens in Overlays |
+| Working environment: project list, new-project form, Browse… as a folder browser page | hosts/WorkspaceDialog over `WorkspaceProject` / `WorkspaceDevice` | Files page, pinned on the form and the list; `web` TargetDialog maps the prototype onto it |
+| Device pairing from anywhere: the host menu's Connect new device | devices/DevicePairingDialog with `useDevicePairing` at the app root | Settings Devices specimen; `web` App hosts the dialog |
 | Composer, model menu, attachments and input layout | SessionComposer, ModelMenu | GalleryComposer in Session |
 | Transcript blocks, markdown and tool output | Shared agent renderers | Session, Markdown and Code |
 | Fold: height and chevron | ui/Fold, ui/FoldChevron | Motion Fold specimen; Skills packs; FunctionalBlock |

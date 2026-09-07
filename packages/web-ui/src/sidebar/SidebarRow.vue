@@ -149,7 +149,9 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
       </span>
       <span v-else ref="titleText">{{ conversation.title }}</span>
     </span>
+    <!-- While renaming the field has the whole row: no actions, no pin glyph over it. -->
     <span
+      v-if="!renaming"
       class="absolute inset-y-0 right-1 flex items-center gap-0.5 transition-opacity"
       :class="
         menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100'
@@ -179,7 +181,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
       </Tooltip>
     </span>
     <Pin
-      v-if="conversation.pinned && !menuOpen"
+      v-if="conversation.pinned && !menuOpen && !renaming"
       :size="ICON_PX.in20"
       class="pointer-events-none absolute right-[10px] text-fg-faint transition-opacity group-hover/row:opacity-0"
     />

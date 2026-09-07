@@ -4,19 +4,29 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import { PanelLeft } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import { showToast } from '@demicodes/web-ui/infra/toast'
+import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { matchesShortcut } from '@demicodes/web-ui/ui/shortcut'
 import type { SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
+import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
+import { useDevicePairing } from '@demicodes/web-ui/devices/pairing'
 import SettingsDialog from './settings/SettingsDialog.vue'
 import TargetDialog from './targets/TargetDialog.vue'
 import { useConversations } from './conversation/store'
 import { useResources } from './prototype/resources'
+import { claimDevice, deviceInstallation } from './prototype/pairing'
 const conversations = useConversations()
 const resources = useResources()
 const router = useRouter()
 const route = useRoute()
 const folded = ref<string[]>([])
+// Connect new device, from the host menu or elsewhere, pairs right here rather than in settings.
+const pairing = useDevicePairing(claimDevice)
+watch(() => resources.pairingOpen, (wanted) => {
+  if (wanted) pairing.open()
+  else pairing.close()
+})
 const activeId = computed(() => (typeof route.params.id === 'string' ? route.params.id : null))
 watch(
   () => [activeId.value, conversations.items.find((item) => item.id === activeId.value)?.unread],
@@ -156,6 +166,16 @@ watch(
     <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->
     <SettingsDialog @sign-out="signOut" />
     <TargetDialog :conversation-id="activeId" />
+    <DevicePairingDialog
+      :is-open="pairing.isOpen.value"
+      :overlay-store="appOverlayStore"
+      :installation="deviceInstallation"
+      :phase="pairing.phase.value"
+      @close="resources.pairingOpen = false"
+      @next="pairing.phase.value = { kind: 'code' }"
+      @back="pairing.phase.value = { kind: 'setup' }"
+      @submit="pairing.submit"
+    />
   </div>
   <RouterView v-else />
   <ToastHost />

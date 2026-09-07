@@ -47,8 +47,7 @@ function detach(id: string) {
 }
 function connect() {
   open.value = false
-  resources.settingsTab = 'devices'
-  resources.settingsOpen = true
+  resources.pairingOpen = true
 }
 </script>
 
