@@ -172,7 +172,7 @@ function deleteAllConversations() {
 <template>
   <SettingsDialog
     v-model:tab="tab"
-    :is-open="true"
+    :is-open="resources.settingsOpen"
     :overlay-store="appOverlayStore"
     :account="{ name: resources.username || 'Zan', plan: `${s.account.plan} plan` }"
     @close="resources.settingsOpen = false"
