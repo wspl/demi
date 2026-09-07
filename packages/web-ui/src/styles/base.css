@@ -292,10 +292,12 @@ svg.lucide {
 }
 
 /* Menu columns. The list is one grid — icon gutter, label, value, suffix — and every row
-   is a subgrid of it, so labels start on one line and values, shortcuts, checks and
-   submenu arrows end on another, the way native menus measure all items at once.
-   Column spacing lives on the cells so absent cells add no width. Virtualised rows are
-   absolutely positioned and cannot subgrid; they carry the same template themselves. */
+   that sits directly on it (or in a group on it) is a subgrid, so labels start on one
+   line and values, shortcuts, checks and submenu arrows end on another, the way native
+   menus measure all items at once. Column spacing lives on the cells so absent cells add
+   no width. A row anywhere else — the header slot, a wrapper, a virtualised list — lays
+   out its own four columns, so it never falls apart; it only loses alignment with rows
+   on the shared grid. */
 .overlay-menu-scroll {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
@@ -307,17 +309,19 @@ svg.lucide {
   grid-column: 1 / -1;
 }
 
+.menu-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
 .menu-group,
-[data-menu-item]:not(.absolute),
-[data-menu-item]:not(.absolute) > .menu-row {
+.overlay-menu-scroll > [data-menu-item]:not(.absolute),
+.menu-group > [data-menu-item]:not(.absolute),
+.overlay-menu-scroll > [data-menu-item]:not(.absolute) > .menu-row,
+.menu-group > [data-menu-item]:not(.absolute) > .menu-row {
   display: grid;
   grid-template-columns: subgrid;
   grid-column: 1 / -1;
-}
-
-[data-menu-item].absolute > .menu-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
 }
 
 .menu-cell-gutter {
