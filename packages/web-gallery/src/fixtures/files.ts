@@ -1,4 +1,4 @@
-import { Clock, Folder, House, Monitor } from '@lucide/vue'
+import { Monitor } from '@lucide/vue'
 import { createMemoryFileSource, dir, file, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserHost, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
 
@@ -87,8 +87,8 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
       online: true,
       source: createMemoryFileSource({ home: '/Users/zan', root: laptopTree(), latencyMs }),
       places: [
-        { label: 'Quick access', places: [{ path: '/Users/zan', label: 'Home', icon: House }, { path: '/Users/zan/Desktop', icon: Folder }, { path: '/Users/zan/Projects', icon: Folder }] },
-        { label: 'Recent', places: [{ path: '/Users/zan/Projects/demi', icon: Clock }, { path: '/Users/zan/dotfiles', icon: Clock }] },
+        { label: 'Quick access', places: [{ path: '/Users/zan', label: 'Home', icon: 'folder-home' }, { path: '/Users/zan/Desktop' }, { path: '/Users/zan/Projects' }] },
+        { label: 'Recent', places: [{ path: '/Users/zan/Projects/demi' }, { path: '/Users/zan/dotfiles' }] },
       ],
     },
     {
@@ -97,8 +97,8 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
       online: true,
       source: createMemoryFileSource({ home: '/home/build', root: buildBoxTree(), latencyMs }),
       places: [
-        { label: 'Quick access', places: [{ path: '/home/build', label: 'Home', icon: House }] },
-        { label: 'Recent', places: [{ path: '/srv/assetsfactory', icon: Clock }] },
+        { label: 'Quick access', places: [{ path: '/home/build', label: 'Home', icon: 'folder-home' }] },
+        { label: 'Recent', places: [{ path: '/srv/assetsfactory' }] },
       ],
     },
     {
@@ -107,7 +107,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
       online: false,
       icon: undefined,
       source: createMemoryFileSource({ home: '/home/zan', root: dir({}), latencyMs, offline: true }),
-      places: [{ label: 'Quick access', places: [{ path: '/home/zan', label: 'Home', icon: House }] }],
+      places: [{ label: 'Quick access', places: [{ path: '/home/zan', label: 'Home', icon: 'folder-home' }] }],
     },
   ]
 }

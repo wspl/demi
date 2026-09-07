@@ -13,6 +13,8 @@ const props = withDefaults(
   defineProps<{
     name: string
     isDirectory: boolean
+    /** A theme icon id that overrides what the name resolves to. */
+    icon?: string
     size?: number
   }>(),
   { size: 16 },
@@ -20,7 +22,7 @@ const props = withDefaults(
 
 ensureFileIconTheme()
 
-const icon = computed(() => (fileIconTheme.value ? fileIconName(fileIconTheme.value, props.name, props.isDirectory) : null))
+const icon = computed(() => props.icon ?? (fileIconTheme.value ? fileIconName(fileIconTheme.value, props.name, props.isDirectory) : null))
 const src = shallowRef<string | null>(null)
 
 watch(
