@@ -60,7 +60,7 @@ test('restored sessions share one live state object between harness and session'
   const sessionId = globalThis.crypto.randomUUID()
   const hostStates: CounterState[] = []
   const turns = (): ConstructorParameters<typeof StubProvider>[0] => [
-    [events.toolCall('tool-1', 'shell_exec', { script: 'printf ready', timeoutMs: 1_000 })],
+    [events.toolCall('tool-1', 'shell_exec', { description: 'Test result', script: 'printf ready', timeoutMs: 1_000 })],
     [events.text('done'), events.response()],
   ]
 

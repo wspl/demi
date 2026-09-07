@@ -151,7 +151,7 @@ class VirtualForegroundJob {
       stdoutPump: Promise.resolve(),
       stderrPump: Promise.resolve(),
       exitPromise: this.exitPromise,
-      outputSinks: createOutputSinks(session.fs, cwd, undefined),
+      outputSinks: createOutputSinks(session.fs, cwd, session.foregroundRedirections),
       abortController: this.abortController,
       ...(runningHint !== undefined ? { runningHint } : {}),
     }
@@ -189,6 +189,7 @@ class VirtualForegroundJob {
     this.stdinQueue.close()
     this.settleExit({ exitCode: 0 })
     if (this.installed && this.session.foreground === this.foreground) {
+      this.session.captureForeground?.(this.foreground)
       this.session.foreground = undefined
     }
   }
