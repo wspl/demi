@@ -16,8 +16,13 @@ import type { FileBrowserEntry, FileBrowserFailure, FileBrowserMode } from './ty
  * a double click or Enter opens a folder or confirms a file; the arrows move the
  * selection, Backspace goes up. In directory mode files are shown but cannot be picked.
  */
+/** An entry with the glyph its place on the tree earns, when it earns one. */
+export interface FileBrowserRow extends FileBrowserEntry {
+  icon?: string
+}
+
 const props = defineProps<{
-  entries: FileBrowserEntry[]
+  entries: FileBrowserRow[]
   mode: FileBrowserMode
   sort: FileBrowserSort
   loading: boolean
@@ -203,7 +208,7 @@ defineExpose({
           @dblclick="activate(entry)"
         >
           <span class="flex min-w-0 items-center gap-2 px-1">
-            <FileIcon :name="entry.name" :is-directory="entry.isDirectory" :class="pickable(entry) ? '' : 'opacity-40'" />
+            <FileIcon :name="entry.name" :is-directory="entry.isDirectory" :icon="entry.icon" :class="pickable(entry) ? '' : 'opacity-40'" />
             <span class="truncate" :title="entry.name">{{ entry.name }}</span>
           </span>
           <span class="hidden truncate px-1 text-[12px] text-fg-subtle @md:block">{{ formatModified(entry.modifiedAt) }}</span>

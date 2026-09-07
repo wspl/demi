@@ -74,7 +74,7 @@ export function placesFor(device: Device | null, projects: Project[]): FileBrows
   const deviceId = device?.id ?? 'cloud'
   const recent = projects.filter((item) => item.deviceId === deviceId).map((item) => ({ path: item.path, label: item.name }))
   return [
-    { label: 'Quick access', places: [{ path: device?.home ?? CLOUD_HOME, label: 'Home', icon: 'folder-home' }] },
+    { label: 'Quick access', places: [{ path: device?.home ?? CLOUD_HOME, label: 'Home' }] },
     ...(recent.length ? [{ label: 'Workspaces', places: recent }] : []),
   ]
 }
