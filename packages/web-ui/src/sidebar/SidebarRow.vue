@@ -159,6 +159,18 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
         menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100'
       "
     >
+      <!-- Archive first, Pin at the end: the pin lands where the pinned glyph already sits, and the
+           destructive action is not the one nearest the pointer's resting place. -->
+      <Tooltip content="Archive conversation" class="flex items-center">
+        <IconButton
+          :icon="Archive"
+          size="sm"
+          variant="ghost"
+          aria-label="Archive conversation"
+          :disabled="conversation.status === 'active'"
+          @click.stop="emit('archive')"
+        />
+      </Tooltip>
       <Tooltip :content="conversation.pinned ? 'Unpin' : 'Pin'" class="flex items-center">
         <IconButton
           v-if="!hidePin"
@@ -169,16 +181,6 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
           :aria-pressed="conversation.pinned"
           :aria-label="conversation.pinned ? 'Unpin conversation' : 'Pin conversation'"
           @click.stop="emit('togglePin')"
-        />
-      </Tooltip>
-      <Tooltip content="Archive conversation" class="flex items-center">
-        <IconButton
-          :icon="Archive"
-          size="sm"
-          variant="ghost"
-          aria-label="Archive conversation"
-          :disabled="conversation.status === 'active'"
-          @click.stop="emit('archive')"
         />
       </Tooltip>
     </span>
