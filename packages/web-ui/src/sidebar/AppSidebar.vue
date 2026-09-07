@@ -233,7 +233,8 @@ function selectProjectConversations(project: SidebarProject): void {
       @click.capture="drag.click"
 
     >
-      <TransitionGroup name="sidebar-items" tag="div" class="relative">
+      <!-- Rows sit a hairline apart, the way menu items and the entries above do. -->
+      <TransitionGroup name="sidebar-items" tag="div" class="relative flex flex-col gap-px">
         <div
           v-for="(entry, index) in displayEntries"
           :key="entry.id"
