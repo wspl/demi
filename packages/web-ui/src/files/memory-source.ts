@@ -3,7 +3,7 @@
  * Nothing here touches a real disk; a directory can be marked as failing to exercise
  * the browser's error states, and every read can carry a simulated latency.
  */
-import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource } from './types'
+import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource, type FileBrowserPlatform } from './types'
 import { baseName, joinPath, normalizePath, parentPath } from './paths'
 
 export interface MemoryFile {
@@ -23,6 +23,7 @@ export interface MemoryDirectory {
 export type MemoryNode = MemoryFile | MemoryDirectory
 
 export interface MemoryFileSourceOptions {
+  platform: FileBrowserPlatform
   home: string
   root: MemoryDirectory
   /** Milliseconds each read takes; a real host is never instant. */
@@ -67,6 +68,7 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
 
   return {
     root,
+    platform: options.platform,
     home: normalizePath(options.home),
     async list(path, signal) {
       await wait(signal)
