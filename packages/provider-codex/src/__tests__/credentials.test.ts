@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { createProviderQuota } from '@demicodes/provider'
 import { Buffer } from 'node:buffer'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -48,7 +49,13 @@ test('codex credentials importDefault, setActive, and resolve via pool', async (
 
     const pool = openCodexCredentialPool({ stateDir })
     const authStore = new PoolAwareCodexAuthStore(pool, { codexHome: codexA })
-    const credentials = createCodexCredentials(pool, authStore, { codexHome: codexA })
+    const quota = createProviderQuota({
+      providerId: 'codex',
+      canProbe: true,
+      probe: async () => ({ accountLabel: 'old-account', windows: [] }),
+      observe: () => ({ accountLabel: 'old-account', windows: [] }),
+    })
+    const credentials = createCodexCredentials(pool, authStore, { codexHome: codexA, quota })
 
     const importedA = await credentials.importDefault!()
     expect(importedA.label).toBe('a@example.com')
@@ -65,13 +72,20 @@ test('codex credentials importDefault, setActive, and resolve via pool', async (
     expect(activeA.credentialId).toBe(importedA.id)
     expect(activeA.status).toMatchObject({ status: 'authenticated', accountLabel: 'a@example.com' })
 
+    await quota.probe()
+    const oldObserver = quota.captureObserver()
     await credentials.setActive(importedB.id)
+    expect(quota.latest()).toBeNull()
+    expect(oldObserver({})).toBeNull()
+    expect(quota.latest()).toBeNull()
     const activeB = await credentials.getActive()
     expect(activeB.credentialId).toBe(importedB.id)
     expect(activeB.status).toMatchObject({ status: 'authenticated', accountLabel: 'b@example.com' })
 
     const auth = await authStore.resolveAuth()
     expect(auth.kind === 'chatgpt' ? auth.email : null).toBe('b@example.com')
+
+    expect(JSON.stringify(await credentials.list())).not.toContain('access_token')
 
     // active pointer file exists
     const activeRaw = await readFile(join(stateDir, 'credentials', 'codex', 'active'), 'utf8')

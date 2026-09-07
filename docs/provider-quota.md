@@ -69,6 +69,7 @@ interface ProviderQuota {
   probe(options?: { signal?: AbortSignal; force?: boolean }): Promise<ProviderQuotaSnapshot>
   latest(): ProviderQuotaSnapshot | null
   clearLatest?(): void
+  captureObserver(): ProviderQuotaObserver
   observeResponse?(input: {
     headers?: Headers
     status?: number
@@ -148,6 +149,23 @@ Token resolution follows the same auth path as inference (credential pool active
 - Quota always reflects the **global active** credential for that provider.
 - On `credentials.setActive`, implementations **must** call `quota.clearLatest()` so UI does not show the previous account’s windows.
 - `ProviderQuotaSnapshot.accountLabel` should match the active account label when known.
+- `clearLatest()` also invalidates work started before the clear. A pending probe
+  rejects with `ProviderQuotaInvalidatedError`; it neither returns the old account's
+  snapshot nor replaces the current cache. The caller can issue a new probe for
+  the current account.
+- Inference adapters call `captureObserver()` before resolving credentials for an
+  asynchronous request. They pass response headers or CLI envelopes to the captured
+  callback. After invalidation, that callback returns null without changing the
+  cache. This covers Codex, Claude Code, and Grok Build, including replies from
+  requests that continue after an account switch.
+- `observeResponse()` is for immediate observations. An asynchronous integration
+  must capture an observer before starting its request; calling the immediate
+  method on an old reply cannot identify the reply's account.
+
+Invalidation belongs to the quota instance wired to the credentials API. Products
+should reuse that provider instance for switching and querying. An independently
+constructed provider or another process is not notified through this in-memory
+mechanism.
 
 See [provider-global-credentials.md](./provider-global-credentials.md).
 
@@ -189,8 +207,8 @@ Guidance:
 | Area | Coverage |
 |---|---|
 | `@demicodes/provider` | `createProviderQuota` cache/observe/`clearLatest`; `ensureQuota` |
-| Each kit | Mapper unit tests; optional live probe gated by env |
-| Credentials | setActive clears quota cache (kit-level) |
+| Each kit | Mapper tests and fake transport tests for normal observations and replies arriving after invalidation |
+| Credentials | All three kits clear cached quota and invalidate captured observations on setActive; deferred probes cannot overwrite the new account |
 
 ## 9. Summary
 

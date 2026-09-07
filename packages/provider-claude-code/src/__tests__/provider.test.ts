@@ -1006,6 +1006,33 @@ test('ClaudeCodeProvider cold-restarts with a new process when the model changes
   expect(onModelB.writes.some((write) => isRecord(write) && write.type === 'user')).toBe(true)
 })
 
+test('ClaudeCodeProvider starts a new process for the next turn after switching accounts', async () => {
+  let credentialId = 'account-a'
+  const first = new FakeClaudeTransport([
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'A' }] } },
+    { type: 'result', usage: { input_tokens: 1 } },
+  ])
+  const second = new FakeClaudeTransport([
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'B' }] } },
+    { type: 'result', usage: { input_tokens: 1 } },
+  ])
+  const provider = new ClaudeCodeProvider({
+    transportFactory: sequenceFactory([first, second]),
+    getActiveCredentialId: async () => credentialId,
+  })
+  const request = makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }])
+  for await (const _event of provider.run(request)) { /* Consume the completed turn. */ }
+  expect(first.killed).toBe(false)
+  credentialId = 'account-b'
+  const events = []
+  for await (const event of provider.run(request)) events.push(event)
+  expect(events).toMatchObject([{ type: 'text_delta', text: 'B' }, { type: 'response' }])
+  expect(first.killed).toBe(true)
+  expect(first.waitCalls).toBe(1)
+  expect(second.killed).toBe(false)
+  await provider.dispose()
+})
+
 function fakeFactory(transport: FakeClaudeTransport): ClaudeTransportFactory {
   return { start: async () => transport }
 }
