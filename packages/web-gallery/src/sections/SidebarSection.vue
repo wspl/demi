@@ -24,7 +24,7 @@ const emptyList = ref<SidebarConversation[]>([])
 let nextId = 1
 
 const anatomy: [string, string][] = [
-  ['Top', 'The app name, then the entries: New, Skills, Archived. Skills opens a flyout that toggles skills in place; browsing goes to its own surface. Archived opens a searchable menu to the right; choosing a conversation brings it back and opens it. The Conversations heading carries the same New as the entry.'],
+  ['Top', 'The app name, then the entries: New, Skills, Archived. Skills opens a flyout that toggles skills in place; browsing goes to its own surface. Archived opens a searchable menu under its entry, wider than the rail; choosing a conversation brings it back and opens it. The Conversations heading carries the same New as the entry.'],
   ['Conversations', 'Plain conversations that run in no checkout. Manual order, pinned on top.'],
   ['Projects', 'Every checkout the agent works in, in manual order, each with the host it lives on. A project folds; its rows sit at the same inset as plain conversations. An empty project offers its first conversation.'],
   ['Row', 'A title and one quiet dot: breathing while running, green for a result waiting to be read, orange when the conversation needs the user. A cut title fades at the edge and plays as a marquee on hover. Pin and archive appear on hover; rename is inline.'],
@@ -165,7 +165,7 @@ const activeTitle = computed(() => conversations.value.find((conversation) => co
       </div>
     </GallerySection>
 
-    <GallerySection title="Flyouts" note="Skills toggle in place under their entry. Archived opens to the right and searches as you type.">
+    <GallerySection title="Flyouts" note="Skills toggle in place under their entry. Archived opens under its entry, wider than the rail, and searches as you type.">
       <div class="specimen-row specimen-row-wide items-start">
         <GalleryOverlayWell size="wide">
           <GallerySpecimen variant="skills · pinned">
