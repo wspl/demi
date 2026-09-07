@@ -150,8 +150,9 @@ const toneClass = computed(() => {
       </span>
       <span class="menu-cell-label">
         <slot>
-          <span class="min-w-0 flex-1 truncate">{{ label }}</span>
+          <span class="min-w-0 truncate">{{ label }}</span>
         </slot>
+        <!-- The note follows the name; the label cell is the grid column, so nothing needs to stretch. -->
         <span v-if="note" class="shrink-0 pl-1 text-fg-subtle">({{ note }})</span>
       </span>
       <span v-if="value" class="menu-cell-value truncate text-right text-fg-muted" :title="value">
