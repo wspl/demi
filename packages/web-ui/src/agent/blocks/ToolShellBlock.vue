@@ -39,10 +39,12 @@ const isOpen = defineModel<boolean>('open', { default: false })
     </template>
 
     <template #body>
-      <div class="flex px-3 py-1 font-mono text-xs">
-        <span class="mr-1 shrink-0 select-none text-fg-faint">$</span><span class="min-w-0 select-all whitespace-pre-wrap break-words text-fg-muted">{{ command }}</span>
+      <div class="mx-3 my-1 space-y-1 rounded-md border border-line-subtle bg-surface-base px-3 py-2">
+        <div class="flex font-mono text-xs leading-5 text-fg-subtle">
+          <span class="mr-1 shrink-0 select-none text-fg-faint">$</span><span class="min-w-0 select-all whitespace-pre-wrap break-words">{{ command }}</span>
+        </div>
+        <AnsiText v-if="terminalOutputText" :content="terminalOutputText" />
       </div>
-      <AnsiText v-if="terminalOutputText" :content="terminalOutputText" class="px-3 pb-1" />
     </template>
   </FunctionalBlock>
 </template>

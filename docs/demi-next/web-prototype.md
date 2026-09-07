@@ -15,7 +15,10 @@ Gallery and application import sidebar presentation from `web-ui/sidebar`.
 The gallery's FunctionalBlock specimens use the same `ThinkingBlock`, `ToolShellBlock`,
 and `ErrorBlock` as the product transcript, including thinking Markdown and live labels.
 Thinking bodies use 13px text, 20px line height, and the subtle foreground token
-to keep them visually secondary to the response.
+to keep them visually secondary to the response. Shell commands and output share
+a rounded, subtly bordered base-surface panel with 12px monospace text and 20px
+line height. Commands use the subtle foreground and output uses the muted
+foreground, while ANSI colors remain available for terminal emphasis.
 Their optional `open` models let previews set the initial state; product history
 still starts folded. The specimen frame owns the outer inset, so thinking blocks
 use a zero `--agent-pad-x` inside it to avoid doubling the padding.
