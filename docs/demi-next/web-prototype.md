@@ -41,7 +41,7 @@ Zan opens `demi`, then creates a conversation and sends a message. The local
 clock streams a scripted answer. A second message queues behind it. Selecting
 another conversation in the sidebar leaves the simulation running; archiving
 is refused while a turn is running. The sidebar's Archived entry opens a searchable
-menu to its right; choosing a conversation there brings it back into the list and
+menu under it, wider than the rail; choosing a conversation there brings it back into the list and
 opens it. The Skills entry's flyout switches the same skills the settings page does,
 and Browse skills… opens that page.
 
