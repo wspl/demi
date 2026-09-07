@@ -185,8 +185,9 @@ watch(
         <RouterView />
       </template>
     </main>
-    <SettingsDialog v-if="resources.settingsOpen" @sign-out="signOut" />
-    <TargetDialog v-if="resources.targetOpen" :conversation-id="activeId" />
+    <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->
+    <SettingsDialog @sign-out="signOut" />
+    <TargetDialog :conversation-id="activeId" />
   </div>
   <RouterView v-else />
   <ToastHost />
