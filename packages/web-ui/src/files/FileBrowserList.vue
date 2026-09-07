@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { ChevronDown, ChevronUp, File, Folder, FolderX, Lock, WifiOff } from '@lucide/vue'
-import HighlightText from '../ui/HighlightText.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import TextInput from '../ui/TextInput.vue'
@@ -22,8 +21,6 @@ const props = defineProps<{
   sort: FileBrowserSort
   loading: boolean
   failure: FileBrowserFailure | null
-  /** Highlights matches of the filter in each name. */
-  query: string
   /** A row for a folder about to be created; Enter confirms its name. */
   creating: boolean
 }>()
@@ -143,7 +140,7 @@ defineExpose({
 <template>
   <div class="@container flex min-h-0 flex-1 flex-col">
     <div
-      class="grid h-7 shrink-0 select-none grid-cols-[minmax(0,1fr)_5.5rem] items-center border-b border-line px-2 text-[12px] text-fg-subtle @md:grid-cols-[minmax(0,1fr)_8.5rem_5.5rem]"
+      class="grid h-7 shrink-0 grid-cols-[minmax(0,1fr)_5.5rem] items-center border-b border-line px-2 text-[12px] text-fg-subtle @md:grid-cols-[minmax(0,1fr)_8.5rem_5.5rem]"
       role="row"
     >
       <span
@@ -210,10 +207,7 @@ defineExpose({
               class="shrink-0"
               :class="entry.name === selected ? '' : pickable(entry) ? 'text-fg-muted' : 'text-fg-faint'"
             />
-            <span class="truncate" :title="entry.name">
-              <HighlightText v-if="query" :text="entry.name" :query="query" />
-              <template v-else>{{ entry.name }}</template>
-            </span>
+            <span class="truncate" :title="entry.name">{{ entry.name }}</span>
           </span>
           <span class="hidden truncate px-1 text-[12px] text-fg-subtle @md:block">{{ formatModified(entry.modifiedAt) }}</span>
           <span class="truncate px-1 text-right text-[12px] text-fg-subtle" :title="entryKind(entry.name, entry.isDirectory)">
@@ -239,7 +233,7 @@ defineExpose({
           v-else-if="!entries.length && !creating"
           class="flex flex-1 select-none items-center justify-center py-10 text-chrome text-fg-subtle"
         >
-          {{ query ? 'Nothing here matches.' : 'This folder is empty.' }}
+          This folder is empty.
         </div>
       </div>
     </ScrollArea>
