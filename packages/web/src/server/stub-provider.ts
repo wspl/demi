@@ -37,7 +37,7 @@ export function createStubProvider(): Provider {
         [
           { type: 'thinking_delta', text: 'Let me inspect the workspace before answering.' },
           { type: 'thinking_signature', signature: 'stub-signature' },
-          events.toolCall('tool-1', 'shell_exec', { script: 'echo "hello from demi" && ls -a' }),
+          events.toolCall('tool-1', 'shell_exec', { description: 'Inspect the workspace', timeoutMs: 1_000, script: 'echo "hello from demi" && ls -a' }),
         ],
         [
           events.text('Hello from the stub provider. The shell command ran and its output is shown above.'),

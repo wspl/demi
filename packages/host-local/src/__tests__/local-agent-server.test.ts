@@ -55,7 +55,7 @@ function stubProvider() {
     displayName: 'Stub',
     createRuntime: () =>
       new StubProvider([
-        [events.toolCall('create-shell', 'shell_exec', { script: 'printf ready', timeoutMs: 1_000 })],
+        [events.toolCall('create-shell', 'shell_exec', { description: 'Test result', script: 'printf ready', timeoutMs: 1_000 })],
         [events.text('ready'), events.response()],
       ]),
   })

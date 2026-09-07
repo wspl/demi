@@ -45,6 +45,7 @@ test('coding agent completes an demi/todo workflow through shell session tools',
   const provider = new StubProvider([
     [
       events.toolCall('create-file', 'shell_exec', {
+        description: 'Test result',
         timeoutMs: 1_000,
         script: "demi create src/app.ts <<'EOF'\nexport const value = 1\nEOF",
       }),
@@ -53,7 +54,7 @@ test('coding agent completes an demi/todo workflow through shell session tools',
       const result = latestShellResult(request)
       expect(result.status).toBe('exited')
       expect(result.stdout).toBe('Created src/app.ts')
-      return [events.toolCall('add-todo', 'shell_exec', { shellId: result.shellId, script: 'todo add \"Run tests\" --json', timeoutMs: 1_000 })]
+      return [events.toolCall('add-todo', 'shell_exec', { description: 'Test result', shellId: result.shellId, script: 'todo add \"Run tests\" --json', timeoutMs: 1_000 })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
@@ -61,6 +62,7 @@ test('coding agent completes an demi/todo workflow through shell session tools',
       expect(JSON.parse(result.stdout)).toEqual({ todo: { id: 'T1', text: 'Run tests', status: 'pending' } })
       return [
         events.toolCall('edit-file', 'shell_exec', {
+          description: 'Test result',
           shellId: result.shellId,
           timeoutMs: 1_000,
           script: 'demi edit src/app.ts --old "1" --new "2"',
@@ -101,6 +103,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
   const provider = new StubProvider([
     [
       events.toolCall('start-workflow', 'shell_exec', {
+        description: 'Test result',
         timeoutMs: 1_000,
         script: [
           "demi create note.txt <<'EOF'",
@@ -125,6 +128,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
       expect(serialized).toContain('carry state')
       return [
         events.toolCall('continue-workflow', 'shell_exec', {
+          description: 'Test result',
           timeoutMs: 1_000,
           script: ['todo done T1 --json', "printf '\\n'", 'todo list --json', "printf '\\n'", 'cat note.txt'].join('\n'),
         }),
@@ -160,6 +164,7 @@ test('coding agent preserves cwd and env when reusing a shell session', async ()
   const provider = new StubProvider([
     [
       events.toolCall('prepare-shell-state', 'shell_exec', {
+        description: 'Test result',
         timeoutMs: 1_000,
         script: [
           'mkdir -p pkg',
@@ -175,6 +180,7 @@ test('coding agent preserves cwd and env when reusing a shell session', async ()
       expect(result.stdout).toBe(`prepared:${join(root, 'pkg')}:kept`)
       return [
         events.toolCall('read-shell-state', 'shell_exec', {
+          description: 'Test result',
           shellId: result.shellId,
           timeoutMs: 1_000,
           script: 'printf "state:%s:%s" "$PWD" "$WORKFLOW_TOKEN"',
@@ -205,6 +211,7 @@ test('coding agent iterates from a failing project test to a passing fix', async
   const provider = new StubProvider([
     [
       events.toolCall('create-project', 'shell_exec', {
+        description: 'Test result',
         timeoutMs: 1_000,
         script: [
           'mkdir -p src',
@@ -218,20 +225,21 @@ test('coding agent iterates from a failing project test to a passing fix', async
       expect(result.status).toBe('exited')
       expect(result.exitCode).toBe(0)
       expect(result.stdout).toContain('Created src/todo.ts')
-      return [events.toolCall('run-failing-tests', 'shell_exec', { shellId: result.shellId, script: 'bun test src/todo.test.ts', timeoutMs: 1_000 })]
+      return [events.toolCall('run-failing-tests', 'shell_exec', { description: 'Test result', shellId: result.shellId, script: 'bun test src/todo.test.ts', timeoutMs: 1_000 })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
       expect(result.status).toBe('exited')
       expect(result.exitCode).not.toBe(0)
       expect(`${result.stdout}\n${result.stderr}`).toContain('ship tests')
-      return [events.toolCall('read-source', 'shell_exec', { shellId: result.shellId, script: 'cat src/todo.ts', timeoutMs: 1_000 })]
+      return [events.toolCall('read-source', 'shell_exec', { description: 'Test result', shellId: result.shellId, script: 'cat src/todo.ts', timeoutMs: 1_000 })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
       expect(result.stdout).toContain('return items')
       return [
         events.toolCall('fix-source', 'shell_exec', {
+          description: 'Test result',
           shellId: result.shellId,
           timeoutMs: 1_000,
           script: 'demi edit src/todo.ts --old "return items" --new "return [...items, text]"',
@@ -242,7 +250,7 @@ test('coding agent iterates from a failing project test to a passing fix', async
       const result = latestShellResult(request)
       expect(result.status).toBe('exited')
       expect(result.exitCode).toBe(0)
-      return [events.toolCall('run-passing-tests', 'shell_exec', { shellId: result.shellId, script: 'bun test src/todo.test.ts', timeoutMs: 1_000 })]
+      return [events.toolCall('run-passing-tests', 'shell_exec', { description: 'Test result', shellId: result.shellId, script: 'bun test src/todo.test.ts', timeoutMs: 1_000 })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
@@ -269,6 +277,7 @@ test('coding agent controls a long foreground command with status and abort', as
   const provider = new StubProvider([
     [
       events.toolCall('start-long', 'shell_exec', {
+        description: 'Test result',
         script: "sh -c 'printf ready; sleep 10'",
         timeoutMs: 1_000,
       }),
