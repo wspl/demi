@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Brain, Play, RotateCw } from '@lucide/vue'
-import FunctionalBlock from '@demicodes/web-ui/agent/blocks/FunctionalBlock.vue'
+import { Play, RotateCw } from '@lucide/vue'
+import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
+import ErrorBlock from '@demicodes/web-ui/agent/blocks/ErrorBlock.vue'
 import ToolShellBlock from '@demicodes/web-ui/agent/blocks/ToolShellBlock.vue'
 import { parseToolInput } from '@demicodes/web-ui/agent/block-helpers'
 import LoadingBlock from '@demicodes/web-ui/agent/blocks/LoadingBlock.vue'
@@ -21,6 +22,7 @@ import {
   demoImageUrl,
   demoModel,
   shellTool,
+  thinkingText,
   longUserText,
   pendingSteerDemo,
   steerPrompt,
@@ -124,8 +126,9 @@ const functionalCollapsed = ref(false)
 const functionalExpanded = ref(true)
 const functionalTool = ref(false)
 const functionalShellExpanded = ref(true)
-// Open, as a failure that just happened leaves it; a transcript revisited later starts folded.
 const functionalError = ref(true)
+const functionalThinkingStartedAt = new Date().toISOString()
+const functionalThinkingEndedAt = new Date(Date.parse(functionalThinkingStartedAt) + 8_000).toISOString()
 
 function hideBlock(id: string): void {
   hiddenIds.value = new Set(hiddenIds.value).add(id)
@@ -421,33 +424,31 @@ onMounted(() => {
 
     <GallerySection title="FunctionalBlock" note="Thinking, shell (collapsed and expanded), loading, and error.">
       <div class="gallery-frame gallery-block-frame bg-surface">
-        <div class="specimen-stack">
+        <div class="specimen-stack [--agent-pad-x:0px]">
           <GallerySpecimen variant="collapsed" wide>
-            <FunctionalBlock v-model:open="functionalCollapsed" label="Thought for 8s">
-              <template #icon>
-                <Brain :size="ICON_PX.in28" />
-              </template>
-              <template #body>
-                <div class="text-conversation text-fg-body">The helper already writes the new session cookie.</div>
-              </template>
-            </FunctionalBlock>
+            <ThinkingBlock
+              v-model:open="functionalCollapsed"
+              :thinking="thinkingText"
+              :is-streaming="false"
+              :created-at="functionalThinkingStartedAt"
+              :ended-at="functionalThinkingEndedAt"
+            />
           </GallerySpecimen>
           <GallerySpecimen variant="expanded" wide>
-            <FunctionalBlock v-model:open="functionalExpanded" label="Thought for 8s">
-              <template #icon>
-                <Brain :size="ICON_PX.in28" />
-              </template>
-              <template #body>
-                <div class="text-conversation text-fg-body">The cookie name changed from sid to session. The test is the one still looking for sid.</div>
-              </template>
-            </FunctionalBlock>
+            <ThinkingBlock
+              v-model:open="functionalExpanded"
+              :thinking="thinkingText"
+              :is-streaming="false"
+              :created-at="functionalThinkingStartedAt"
+              :ended-at="functionalThinkingEndedAt"
+            />
           </GallerySpecimen>
           <GallerySpecimen variant="loading" wide>
-            <FunctionalBlock loading label="Thinking">
-              <template #icon>
-                <Brain :size="ICON_PX.in28" />
-              </template>
-            </FunctionalBlock>
+            <ThinkingBlock
+              thinking=""
+              :is-streaming="true"
+              :created-at="functionalThinkingStartedAt"
+            />
           </GallerySpecimen>
           <GallerySpecimen variant="shell · collapsed" wide>
             <ToolShellBlock
@@ -466,11 +467,11 @@ onMounted(() => {
             />
           </GallerySpecimen>
           <GallerySpecimen variant="error" wide>
-            <FunctionalBlock
+            <ErrorBlock
               v-model:open="functionalError"
-              tone="danger"
-              label="Provider aborted after 3 retries."
-              error-text="http 429 · rate_limited"
+              message="Provider aborted after 3 retries."
+              code="rate_limit"
+              :diagnostics="{ httpStatus: 429 }"
             />
           </GallerySpecimen>
         </div>
