@@ -413,9 +413,10 @@ virtual namespace:
   session snapshot must retain the artifact content or a restorable reference for anything that
   still needs reading.
 
-Output sinks stream as they write: visible stdout/stderr chunks append to the matching command
-artifact in real time; the file-redirection sink also writes to `Host.fs` chunk by chunk, so a
-long command's target file is visible while it runs.
+Visible stdout/stderr is captured while a direct foreground command runs and exposed through
+command status and artifacts. File-redirection output is buffered and committed by the
+interpreter when the command completes; abort flushes the foreground file sinks through
+`Host.fs`. Redirected files are not guaranteed to grow while a command is running.
 
 A command record accumulates the whole script's visible output. Finishing one top-level
 pipeline commits its stdout/stderr before the next pipeline starts; changing foreground
