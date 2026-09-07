@@ -342,9 +342,16 @@ svg.lucide {
   margin-left: 0.75rem;
 }
 
+/* A row without a value lets its suffix span the value column too, so a wide suffix
+   (a switch beside a Fast Mode label) cannot widen the arrow column that every other
+   row's chevron or check sits in. */
 .menu-cell-suffix {
-  grid-column: 4;
+  grid-column: 3 / 5;
   margin-left: 0.5rem;
+}
+
+.menu-cell-value + .menu-cell-suffix {
+  grid-column: 4;
 }
 
 .input-float {
