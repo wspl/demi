@@ -13,6 +13,7 @@ defineProps<{
   inset?: boolean
   compact?: boolean
   interactive?: boolean
+  isolateControls?: boolean
   controlsAlign?: 'start' | 'center'
 }>()
 
@@ -46,6 +47,7 @@ const emit = defineEmits<{
          The container spans the row's content box so a bare input can stretch to it. -->
     <div
       v-if="$slots.default"
+      @click="isolateControls && $event.stopPropagation()"
       class="flex min-w-0 items-center justify-end gap-2 self-stretch @sm:basis-auto @sm:max-w-[66%]"
       :class="[
         inset ? 'shrink-0' : 'basis-full',
