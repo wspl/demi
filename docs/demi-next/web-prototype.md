@@ -12,9 +12,11 @@ web-ui theme and components. `docs/package-boundaries.md` defines module ownersh
 The stack continues the existing browser packages and the product design.
 
 Gallery and application import sidebar presentation from `web-ui/sidebar`.
-The gallery's FunctionalBlock shell specimens use the same `ToolShellBlock`
-as the product transcript, showing both collapsed and expanded output. Its optional
-`open` model lets previews set the initial state; product history still starts folded.
+The gallery's FunctionalBlock specimens use the same `ThinkingBlock`, `ToolShellBlock`,
+and `ErrorBlock` as the product transcript, including thinking Markdown and live labels.
+Their optional `open` models let previews set the initial state; product history
+still starts folded. The specimen frame owns the outer inset, so thinking blocks
+use a zero `--agent-pad-x` inside it to avoid doubling the padding.
 Gallery catalog pages remember their scroll position per route in session storage.
 The shared `useSavedScroll` composable restores the visible section and its offset
 after refresh or route changes, allowing initial layout changes to settle. This is

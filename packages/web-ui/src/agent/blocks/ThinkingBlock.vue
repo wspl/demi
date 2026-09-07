@@ -15,7 +15,7 @@ const props = defineProps<{
 }>()
 
 const hasContent = computed(() => props.thinking.trim().length > 0)
-const isOpen = ref(false)
+const isOpen = defineModel<boolean>('open', { default: false })
 
 // Live timer while thinking; once done the elapsed is frozen to (next block's createdAt - this
 // block's createdAt), so the duration survives reload instead of growing from the original time.
