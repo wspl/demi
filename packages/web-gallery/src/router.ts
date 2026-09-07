@@ -4,6 +4,7 @@ import SurfacesSection from './sections/SurfacesSection.vue'
 import PrimitivesSection from './sections/PrimitivesSection.vue'
 import MotionSection from './sections/MotionSection.vue'
 import OverlaysSection from './sections/OverlaysSection.vue'
+import FilesSection from './sections/FilesSection.vue'
 import SessionSection from './sections/SessionSection.vue'
 import SidebarSection from './sections/SidebarSection.vue'
 import SettingsSection from './sections/SettingsSection.vue'
@@ -19,6 +20,7 @@ export const NAV: { path: string; label: string }[] = [
   { path: '/primitives', label: 'Primitives' },
   { path: '/motion', label: 'Motion' },
   { path: '/overlays', label: 'Overlays' },
+  { path: '/files', label: 'Files' },
   { path: '/session', label: 'Session' },
   { path: '/sidebar', label: 'Sidebar' },
   { path: '/settings', label: 'Settings' },
@@ -36,6 +38,7 @@ export const router = createRouter({
     { path: '/primitives', component: PrimitivesSection, meta: { layout: 'catalog' } },
     { path: '/motion', component: MotionSection, meta: { layout: 'catalog' } },
     { path: '/overlays', component: OverlaysSection, meta: { layout: 'catalog' } },
+    { path: '/files', component: FilesSection, meta: { layout: 'catalog' } },
     { path: '/session', component: SessionSection, meta: { layout: 'session' } },
     { path: '/sidebar', component: SidebarSection, meta: { layout: 'catalog' } },
     { path: '/settings', component: SettingsSection, meta: { layout: 'catalog' } },

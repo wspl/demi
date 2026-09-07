@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
+import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
+import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 
@@ -10,6 +12,7 @@ import {
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { useConversations } from './store'
 import { useResources } from '../prototype/resources'
+import { fileSourceFor, placesFor } from '../prototype/files'
 import type { Conversation } from '../prototype/types'
 
 const props = defineProps<{ conversation: Conversation }>()
@@ -68,6 +71,36 @@ function send() {
   if (canSend.value) store.send(props.conversation)
 }
 
+/**
+ * A remote file: the conversation's main host and its attached hosts, browsed from the
+ * workspace directory. The chosen path lands in the draft as a reference; the prototype
+ * keeps no bytes.
+ */
+const project = computed(() => resources.projects.find((item) => item.id === props.conversation.projectId))
+const remoteHosts = computed(() => {
+  const main = project.value
+    ? [{ id: project.value.deviceId, label: project.value.host, online: project.value.hostKind === 'cloud' || !!resources.devices.find((d) => d.id === project.value!.deviceId)?.online }]
+    : []
+  const attached = props.conversation.attachedHosts.map((host) => ({ id: host.deviceId, label: host.name, online: !!resources.devices.find((d) => d.id === host.deviceId)?.online }))
+  return [...main, ...attached]
+})
+const remoteHostId = ref<string | null>(null)
+const remoteDevice = computed(() => resources.devices.find((d) => d.id === remoteHostId.value) ?? null)
+const remoteSource = computed(() => fileSourceFor(remoteDevice.value))
+const remotePlaces = computed(() => placesFor(remoteDevice.value, resources.projects))
+const remoteStart = computed(() => {
+  if (remoteHostId.value === project.value?.deviceId) return project.value?.path
+  return props.conversation.attachedHosts.find((host) => host.deviceId === remoteHostId.value)?.cwd
+})
+function openRemote() {
+  remoteHostId.value = remoteHosts.value[0]?.id ?? null
+}
+function attachRemote(path: string) {
+  const draft = props.conversation.draft
+  props.conversation.draft = draft && !/\s$/.test(draft) ? `${draft} ${path}` : `${draft}${path}`
+  remoteHostId.value = null
+}
+
 const attachments = computed(() =>
   props.conversation.files.map((file) => ({
     ...file,
@@ -104,14 +137,33 @@ const attachments = computed(() =>
         cacheReadTokens: 0,
         cacheWriteTokens: 0,
       }"
+      :remote-files="remoteHosts.length > 0"
       @submit="send"
       @add-files="addFiles"
+      @attach-remote="openRemote"
       @remove-attachment="(index) => removeFile(conversation.files[index]!.id)"
       @select-model="selectModel"
       @change-thinking="conversation.thinking = $event"
       @change-service-tier="conversation.serviceTierId = $event"
       @stop="store.stop(conversation)"
       @compact="store.compact(conversation)"
+    />
+    <FileBrowserDialog
+      v-if="remoteHostId"
+      :is-open="true"
+      :overlay-store="appOverlayStore"
+      mode="file"
+      title="Attach remote file"
+      description="The file's path goes into the message for the agent to read."
+      :source="remoteSource"
+      :initial-path="remoteStart"
+      :places="remotePlaces"
+      :hosts="remoteHosts"
+      :host-id="remoteHostId"
+      confirm-label="Attach"
+      @select="attachRemote"
+      @close="remoteHostId = null"
+      @update:host-id="remoteHostId = $event"
     />
   </div>
 </template>
