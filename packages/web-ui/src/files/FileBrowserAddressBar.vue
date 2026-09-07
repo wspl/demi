@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import type { Component } from 'vue'
 import { ChevronRight, Ellipsis } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
 import TextInput from '../ui/TextInput.vue'
@@ -13,9 +12,6 @@ import { normalizePath, pathSegments } from './paths'
  */
 const props = defineProps<{
   path: string
-  /** The root crumb's label and icon: a host's name, or `/`. */
-  rootLabel?: string
-  rootIcon?: Component
 }>()
 
 const emit = defineEmits<{
@@ -85,7 +81,7 @@ watch(() => props.path, () => {
   <div
     v-else
     ref="bar"
-    class="flex h-7 min-w-0 cursor-text select-none items-center overflow-hidden rounded-md bg-surface-raised px-1 ring-1 ring-line"
+    class="flex h-7 min-w-0 cursor-default select-none items-center overflow-hidden rounded-md bg-surface-raised px-1 ring-1 ring-line"
     role="navigation"
     aria-label="Current path"
     @click.self="startEdit"
@@ -109,8 +105,7 @@ watch(() => props.path, () => {
         ]"
         @click="emit('navigate', crumb.path)"
       >
-        <component :is="rootIcon" v-if="index === 0 && rootIcon" :size="ICON_PX.in24" class="shrink-0" />
-        <span class="truncate">{{ index === 0 ? (rootLabel ?? crumb.name) : crumb.name }}</span>
+        <span class="truncate">{{ crumb.name }}</span>
       </span>
     </template>
     <span class="h-full min-w-4 flex-1" @click="startEdit" />

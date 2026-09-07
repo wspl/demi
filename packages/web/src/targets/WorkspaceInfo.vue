@@ -33,7 +33,6 @@ const browsingHost = computed(() => resources.devices.find((item) => item.id ===
 const browserSource = computed(() => fileSourceFor(browsingHost.value))
 const browserPlaces = computed(() => placesFor(browsingHost.value, resources.projects))
 const browserHostList = computed(() => browserHosts(resources.devices, true))
-const browserTitle = computed(() => `Select folder · ${browsingHost.value?.name ?? 'Cloud'}`)
 
 function browse(deviceId = props.project?.deviceId ?? 'cloud', cwd?: string) {
   directoryOpen.value = false
@@ -141,8 +140,6 @@ function selectFolder(path: string) {
       :is-open="true"
       :overlay-store="appOverlayStore"
       mode="directory"
-      :title="browserTitle"
-      description="This conversation moves to the workspace at the folder you choose."
       :source="browserSource"
       :initial-path="browserPath"
       :places="browserPlaces"
