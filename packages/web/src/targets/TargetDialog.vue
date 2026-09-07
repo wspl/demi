@@ -6,7 +6,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useConversations } from '../conversation/store'
 import { useResources } from '../prototype/resources'
 import { baseName } from '@demicodes/web-ui/files/paths'
-import { fileSourceFor, placesFor } from '../prototype/files'
+import { CLOUD_HOME, fileSourceFor, placesFor } from '../prototype/files'
 
 /** The shared working-environment dialog over the prototype's projects and devices. */
 const props = defineProps<{ conversationId: string | null }>()
@@ -30,21 +30,21 @@ function select(id: string | null) {
   close()
 }
 
+/** A Cloud project is a managed workspace under the Cloud home, named as typed; a device project is its directory. */
 function create(draft: WorkspaceDraft) {
-  const cloud = draft.deviceId === 'cloud'
-  const device = deviceById(draft.deviceId)
-  if (!cloud && !device) {
+  const device = draft.kind === 'device' ? deviceById(draft.deviceId) : null
+  if (draft.kind === 'device' && !device) {
     message.value = 'Select a device and enter an absolute directory path.'
     return
   }
   const id = crypto.randomUUID()
   resources.projects.push({
     id,
-    name: baseName(draft.path) || 'Workspace',
-    deviceId: draft.deviceId,
-    host: cloud ? 'Cloud' : device!.name,
-    hostKind: cloud ? 'cloud' : 'device',
-    path: draft.path,
+    name: draft.kind === 'cloud' ? draft.name : baseName(draft.path) || 'Workspace',
+    deviceId: draft.kind === 'cloud' ? 'cloud' : draft.deviceId,
+    host: draft.kind === 'cloud' ? 'Cloud' : device!.name,
+    hostKind: draft.kind,
+    path: draft.kind === 'cloud' ? `${CLOUD_HOME}/${draft.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : draft.path,
     branch: null,
   })
   if (resources.targetMode === 'switch') select(id)

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { FolderOpen, Plus, X } from '@lucide/vue'
+import { Cloud, FolderOpen, Monitor, Plus, X } from '@lucide/vue'
 import { CLOUD_HOST_ID, hostIcon } from './icons'
 import { ICON_PX } from '../ui/icon-metrics'
 import { baseName } from '../files/paths'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
+import ChoiceCards from '../ui/ChoiceCards.vue'
 import Dialog from '../ui/Dialog.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
@@ -18,10 +19,11 @@ import type { FileBrowserPlaceGroup, FileBrowserSource } from '../files/types'
 import type { WorkspaceDevice, WorkspaceDraft, WorkspaceProject } from './workspace'
 
 /**
- * A conversation's working environment: pick one of the projects, or make a new one
- * from a device and a directory on it; the project is named after the directory. The
- * folder browser is a page of the same dialog, opened by Browse…. Every opening starts
- * from a clean form on the Cloud workspace, or the first device when there is none.
+ * A conversation's working environment: pick one of the projects, or make a new one.
+ * The form branches on where it lives: on the Cloud the workspace is managed and only
+ * needs a name; on a device it is a directory there, and takes the directory's name.
+ * The folder browser is a page of the same dialog, opened by Browse…. Every opening
+ * starts from a clean form on the Cloud, or on the first device when there is no Cloud.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -33,7 +35,7 @@ const props = defineProps<{
   /** No switching while a turn runs. */
   locked?: boolean
   devices: WorkspaceDevice[]
-  /** Offer the managed Cloud workspace beside the devices; it is the default. */
+  /** Offer the managed Cloud workspace; it is the default. */
   cloud?: boolean
   /** What went wrong with the last Create, shown under the form. */
   message?: string
@@ -48,37 +50,45 @@ const emit = defineEmits<{
   create: [draft: WorkspaceDraft]
 }>()
 
+type Kind = 'cloud' | 'device'
+const kindOptions = [
+  { value: 'cloud', label: 'Cloud', description: 'A managed workspace, ready at once.', icon: Cloud },
+  { value: 'device', label: 'Device', description: 'A directory on one of your devices.', icon: Monitor },
+] as const satisfies readonly { value: Kind; label: string; description: string; icon: typeof Cloud }[]
+
+const kind = ref<Kind>('cloud')
+const name = ref('')
 const path = ref('')
 const deviceId = ref('')
 const showCreate = ref(false)
 const browsing = ref(false)
 
 const device = computed(() => props.devices.find((entry) => entry.id === deviceId.value) ?? null)
-const cloudChosen = computed(() => deviceId.value === CLOUD_HOST_ID)
-const deviceLabel = computed(() => (cloudChosen.value ? 'Cloud' : device.value?.name ?? 'Choose a device'))
-const browserHosts = computed(() => [
-  ...props.devices.map((entry) => ({ id: entry.id, label: entry.name, online: entry.online })),
-  ...(props.cloud ? [{ id: CLOUD_HOST_ID, label: 'Cloud', online: true }] : []),
-])
+const deviceLabel = computed(() => device.value?.name ?? 'Choose a device')
+const browserHosts = computed(() => props.devices.map((entry) => ({ id: entry.id, label: entry.name, online: entry.online })))
 const browserSource = computed(() => props.sourceFor(deviceId.value))
 const browserPlaces = computed(() => props.placesFor?.(deviceId.value) ?? [])
-const online = computed(() => cloudChosen.value || !!device.value?.online)
-const canCreate = computed(() => online.value && path.value.startsWith('/') && !!baseName(path.value))
-/** What the project will be called: the directory's name. */
+const online = computed(() => !!device.value?.online)
+/** What a device project will be called: the directory's name. */
 const projectName = computed(() => baseName(path.value.replace(/\/$/, '')))
+const canCreate = computed(() =>
+  kind.value === 'cloud' ? !!name.value.trim() : online.value && path.value.startsWith('/') && !!projectName.value,
+)
 
 watch(
   () => props.isOpen,
   (open) => {
     if (!open) return
-    deviceId.value = props.cloud ? CLOUD_HOST_ID : props.devices[0]?.id ?? ''
+    kind.value = props.cloud ? 'cloud' : 'device'
+    name.value = ''
+    deviceId.value = props.devices.find((entry) => entry.online)?.id ?? props.devices[0]?.id ?? ''
     showCreate.value = props.mode === 'create'
     browsing.value = false
   },
   { immediate: true },
 )
 
-// The directory starts at the chosen host's home; picking another host starts over there.
+// The directory starts at the chosen device's home; picking another device starts over there.
 watch(
   deviceId,
   (id) => {
@@ -94,7 +104,8 @@ function pickDirectory(chosen: string) {
 
 function create() {
   if (!canCreate.value) return
-  emit('create', { deviceId: deviceId.value, path: path.value.replace(/\/$/, '') || '/' })
+  if (kind.value === 'cloud') emit('create', { kind: 'cloud', name: name.value.trim() })
+  else emit('create', { kind: 'device', deviceId: deviceId.value, path: path.value.replace(/\/$/, '') || '/' })
 }
 </script>
 
@@ -153,47 +164,54 @@ function create() {
           </div>
         </template>
         <form v-else class="flex flex-col gap-4" @submit.prevent="create">
-          <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-            Device
-            <Dropdown :overlay-store="overlayStore" variant="default" trigger-label="Device">
-              <template #trigger>
-                <span class="flex items-center gap-2">
-                  <component :is="hostIcon({ id: deviceId })" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
-                  {{ deviceLabel }}
-                </span>
-              </template>
-              <template #content="{ close }">
-                <Menu>
-                  <MenuItem v-if="cloud" :icon="hostIcon({ id: CLOUD_HOST_ID })" label="Cloud" choice :is-selected="cloudChosen" @select="deviceId = CLOUD_HOST_ID; close()" />
-                  <MenuItem
-                    v-for="entry in devices"
-                    :key="entry.id"
-                    :icon="hostIcon(entry)"
-                    :label="entry.name"
-                    :indicator="entry.online ? 'success' : 'muted'"
-                    :indicator-label="entry.online ? 'Online' : 'Offline'"
-                    :note="entry.online ? undefined : 'offline'"
-                    :disabled="!entry.online"
-                    disabled-reason="This device is offline."
-                    choice
-                    :is-selected="deviceId === entry.id"
-                    @select="deviceId = entry.id; close()"
-                  />
-                </Menu>
-              </template>
-            </Dropdown>
-          </div>
-          <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-            Directory
-            <span class="flex items-center gap-2">
-              <TextInput v-model="path" placeholder="/path/to/project" class="min-w-0 flex-1" />
-              <Button class="shrink-0" :disabled="!online" @click="browsing = true">
-                <FolderOpen :size="14" />
-                Browse…
-              </Button>
-            </span>
-            <span class="text-[12px] leading-4 text-fg-subtle">{{ projectName ? `The project will be called ${projectName}.` : 'The project takes the folder\'s name.' }}</span>
+          <ChoiceCards v-if="cloud" v-model="kind" :options="kindOptions" />
+          <label v-if="kind === 'cloud'" class="flex flex-col gap-1.5 text-chrome text-fg-muted">
+            Project name
+            <TextInput v-model="name" focused maxlength="64" placeholder="My next idea" />
           </label>
+          <template v-else>
+            <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
+              Device
+              <Dropdown :overlay-store="overlayStore" variant="default" trigger-label="Device">
+                <template #trigger>
+                  <span class="flex items-center gap-2">
+                    <component :is="hostIcon({ id: deviceId })" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
+                    {{ deviceLabel }}
+                  </span>
+                </template>
+                <template #content="{ close }">
+                  <Menu>
+                    <MenuItem
+                      v-for="entry in devices"
+                      :key="entry.id"
+                      :icon="hostIcon(entry)"
+                      :label="entry.name"
+                      :indicator="entry.online ? 'success' : 'muted'"
+                      :indicator-label="entry.online ? 'Online' : 'Offline'"
+                      :note="entry.online ? undefined : 'offline'"
+                      :disabled="!entry.online"
+                      disabled-reason="This device is offline."
+                      choice
+                      :is-selected="deviceId === entry.id"
+                      @select="deviceId = entry.id; close()"
+                    />
+                    <div v-if="!devices.length" class="select-none px-2 py-3 text-center text-chrome text-fg-subtle">No devices yet.</div>
+                  </Menu>
+                </template>
+              </Dropdown>
+            </div>
+            <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
+              Directory
+              <span class="flex items-center gap-2">
+                <TextInput v-model="path" placeholder="/path/to/project" class="min-w-0 flex-1" />
+                <Button class="shrink-0" :disabled="!online" @click="browsing = true">
+                  <FolderOpen :size="14" />
+                  Browse…
+                </Button>
+              </span>
+              <span class="text-[12px] leading-4 text-fg-subtle">{{ projectName ? `The project will be called ${projectName}.` : 'The project takes the folder\'s name.' }}</span>
+            </label>
+          </template>
           <InlineError v-if="message" :message="message" />
           <div>
             <Button variant="primary" :disabled="!canCreate" @click="create">Create project</Button>
