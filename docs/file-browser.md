@@ -7,7 +7,7 @@ dialog because that is the shape people already know for the job.
 
 ```text
 ┌ Select folder ─────────────────────────────────────────────── × ┐
-│ ‹ › ↑  [🖥 zan-mbp ˅]  [ / › Users › zan › Projects   ] [＋] [👁] │
+│ [🖥 zan-mbp      ˅]  ‹ › ↑ [ / › Users › zan › Projects ] [＋] [👁] │
 ├───────────────┬─────────────────────────────────────────────────┤
 │ QUICK ACCESS  │ Name ˄              Date modified          Size │
 │  ⌂ Home       │ 📁 assetsfactory    Sep 2, 18:12               │
@@ -48,15 +48,16 @@ list has room whatever the folder holds.
 
 ## Behavior
 
-- **Device and address**: two controls. The device is a menu of the hosts the caller
-  offers, dotted green or gray; the path beside it starts at that device's root, as
-  crumbs, each a jump. Deep paths keep the root and the last three crumbs (two in a
+- **Device and address**: two controls. The device sits over the rail, as wide as it,
+  a menu of the hosts the caller offers, dotted green or gray; then Back, Forward and
+  Up, and the path from that device's root, as crumbs, each a jump. Deep paths keep the root and the last three crumbs (two in a
   narrow bar) and fold the middle into an ellipsis. A click on the free space turns
   the bar into a text field with the full path; Enter goes there, Escape or blur
   leaves it.
 - **List**: Name, Date modified and Size; folders first, names in natural order
-  (`file2` before `file10`). A header click sorts, a second click flips; the time
-  column starts newest first. A click selects; a double click or Enter opens a folder
+  (`file2` before `file10`). A header click sorts ascending, a second descending, a
+  third returns to the default order; every column shows a faint pair of chevrons
+  until it is the sorted one. A click selects; a double click or Enter opens a folder
   or, in file mode, confirms a file. In folder mode files are shown dimmed and cannot
   be picked. Hidden entries (dot names) show only with the switch on.
 - **Keys** in the list: arrows move the selection, Home and End jump, Backspace goes

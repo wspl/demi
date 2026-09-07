@@ -29,10 +29,12 @@ test('hidden entries hide until asked for; the query matches anywhere in the nam
   expect(names(filterEntries(entries, 'ILE1', true))).toEqual(['file10.txt'])
 })
 
-test('nextSort flips the same column and starts time newest first', () => {
+test('nextSort cycles a column through ascending, descending and the default order', () => {
+  expect(nextSort({ key: null, direction: 'asc' }, 'name')).toEqual({ key: 'name', direction: 'asc' })
   expect(nextSort({ key: 'name', direction: 'asc' }, 'name')).toEqual({ key: 'name', direction: 'desc' })
+  expect(nextSort({ key: 'name', direction: 'desc' }, 'name')).toEqual({ key: null, direction: 'asc' })
   expect(nextSort({ key: 'name', direction: 'desc' }, 'size')).toEqual({ key: 'size', direction: 'asc' })
-  expect(nextSort({ key: 'name', direction: 'asc' }, 'modifiedAt')).toEqual({ key: 'modifiedAt', direction: 'desc' })
+  expect(names(sortEntries(entries, { key: null, direction: 'desc' }))).toEqual(['.git', 'src', 'file2.txt', 'file10.txt'])
 })
 
 test('history pushes, walks back and forward, and drops the forward stack on a new push', () => {

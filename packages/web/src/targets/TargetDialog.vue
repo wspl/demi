@@ -78,11 +78,13 @@ function create() {
     :overlay-store="appOverlayStore"
     :size="browsing ? 'lg' : 'md'"
     label="Working environment"
+    hide-close
     @close="close"
   >
     <div v-if="browsing" class="flex h-[32rem] min-h-0 flex-col">
-      <header class="flex h-11 shrink-0 select-none items-center border-b border-line px-4 pr-12">
+      <header class="flex h-11 shrink-0 select-none items-center justify-between gap-2 border-b border-line pl-4 pr-2">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Select folder</h3>
+        <IconButton :icon="X" variant="ghost" aria-label="Close environment picker" @click="close" />
       </header>
       <FileBrowser
         mode="directory"

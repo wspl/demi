@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { X } from '@lucide/vue'
 import Dialog from '../ui/Dialog.vue'
+import IconButton from '../ui/IconButton.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import FileBrowser from './FileBrowser.vue'
 import type { FileBrowserHost, FileBrowserMode, FileBrowserPlaceGroup, FileBrowserSource } from './types'
@@ -37,10 +39,12 @@ const title = computed(() => props.title ?? (props.mode === 'file' ? 'Open file'
 </script>
 
 <template>
-  <Dialog :is-open="isOpen" :overlay-store="overlayStore" size="lg" :label="title" @close="emit('close')">
+  <Dialog :is-open="isOpen" :overlay-store="overlayStore" size="lg" :label="title" hide-close @close="emit('close')">
     <div class="flex h-[32rem] min-h-0 flex-col">
-      <header class="flex h-11 shrink-0 select-none items-center border-b border-line px-4 pr-12">
+      <!-- The title bar carries its own close so the button centers on the bar. -->
+      <header class="flex h-11 shrink-0 select-none items-center justify-between gap-2 border-b border-line pl-4 pr-2">
         <h3 class="truncate text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
+        <IconButton :icon="X" variant="ghost" aria-label="Close" @click="emit('close')" />
       </header>
       <FileBrowser
         v-model:show-hidden="showHidden"

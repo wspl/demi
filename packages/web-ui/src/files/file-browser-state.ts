@@ -4,8 +4,9 @@ import { isHiddenName } from './paths'
 
 export type FileBrowserSortKey = 'name' | 'modifiedAt' | 'size'
 
+/** `key: null` is the default order: folders first, then names. */
 export interface FileBrowserSort {
-  key: FileBrowserSortKey
+  key: FileBrowserSortKey | null
   direction: 'asc' | 'desc'
 }
 
@@ -16,6 +17,7 @@ export function sortEntries(entries: readonly FileBrowserEntry[], sort: FileBrow
   return [...entries].sort((a, b) => {
     if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
     let order = 0
+    if (sort.key === null) return collator.compare(a.name, b.name)
     if (sort.key === 'modifiedAt') order = (a.modifiedAt ?? '').localeCompare(b.modifiedAt ?? '')
     else if (sort.key === 'size') order = (a.size ?? -1) - (b.size ?? -1)
     if (order === 0) order = collator.compare(a.name, b.name) * (sort.key === 'name' ? 1 : sign)
@@ -29,10 +31,11 @@ export function filterEntries(entries: readonly FileBrowserEntry[], query: strin
   return entries.filter((entry) => (showHidden || !isHiddenName(entry.name)) && (!needle || entry.name.toLowerCase().includes(needle)))
 }
 
-/** Clicking the same header again flips the direction; another column starts ascending, except time, which starts newest first. */
+/** A header click cycles its column: ascending, descending, then back to the default order. Another column starts ascending. */
 export function nextSort(current: FileBrowserSort, key: FileBrowserSortKey): FileBrowserSort {
-  if (current.key === key) return { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
-  return { key, direction: key === 'modifiedAt' ? 'desc' : 'asc' }
+  if (current.key !== key) return { key, direction: 'asc' }
+  if (current.direction === 'asc') return { key, direction: 'desc' }
+  return { key: null, direction: 'asc' }
 }
 
 /** A browser-style history over visited directories. Navigating discards the forward stack. */
