@@ -17,6 +17,7 @@ const props = defineProps<{
   diagnostics?: ProviderErrorDiagnostics
 }>()
 
+const isOpen = defineModel<boolean>('open', { default: false })
 const summary = computed(() => errorSummary(props.code))
 const facts = computed(() => errorFacts(props.code, props.diagnostics))
 const reportText = computed(() => errorReportText(props.message, props.code, props.diagnostics))
@@ -24,7 +25,7 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 </script>
 
 <template>
-  <FunctionalBlock expandable tone="danger">
+  <FunctionalBlock v-model:open="isOpen" expandable tone="danger">
     <template #icon>
       <CircleX :size="ICON_PX.in28" />
     </template>
