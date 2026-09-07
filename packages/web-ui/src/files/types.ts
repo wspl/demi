@@ -49,7 +49,8 @@ export interface FileBrowserPlace {
   path: string
   /** Defaults to the last segment of the path. */
   label?: string
-  icon?: Component
+  /** A Material Icon Theme id in place of the one the path's name resolves to, e.g. `folder-home`. */
+  icon?: string
 }
 
 /** Sidebar shortcuts under a caption, the way Windows groups Quick access and This PC. */

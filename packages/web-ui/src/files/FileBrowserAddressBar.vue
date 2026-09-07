@@ -3,12 +3,14 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { ChevronRight, Ellipsis, HardDrive } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
 import TextInput from '../ui/TextInput.vue'
+import FileIcon from './FileIcon.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { normalizePath, pathSegments } from './paths'
 
 /**
- * The path as crumbs, each a jump; a click on the bar's free space turns it into a
- * text field with the full path, the way the Windows address bar edits.
+ * The path as crumbs, each its folder glyph and a jump; a click on the bar's free
+ * space turns it into a text field with the full path, the way the Windows address
+ * bar edits.
  */
 const props = defineProps<{
   path: string
@@ -107,7 +109,10 @@ watch(() => props.path, () => {
       >
         <!-- The root is a drive glyph: a lone slash is too narrow to hit. -->
         <HardDrive v-if="index === 0" :size="ICON_PX.in24" class="shrink-0" aria-label="Root" />
-        <span v-else class="truncate">{{ crumb.name }}</span>
+        <template v-else>
+          <FileIcon :name="crumb.name" :is-directory="true" />
+          <span class="truncate">{{ crumb.name }}</span>
+        </template>
       </span>
     </template>
     <span class="h-full min-w-4 flex-1" @click="startEdit" />
