@@ -11,6 +11,7 @@
 - Every UI behavior lives in `web-ui` as a reusable component or primitive; `web` and `web-gallery` supply only data, state and handlers. A behavior first built for one surface (a control's affordance, a page's interaction, a dialog flow) is generalized into `web-ui` before the checkpoint, never left local to the gallery or the product.
 - Keep `web` and `web-gallery` synchronized in both directions: implement shared UI in `web-ui`, and update gallery examples and product usage together when shared behavior or design changes.
 - Keep documentation consistent with the implementation. Describe the current design; keep history separate.
+- Documentation must be readable and unambiguous. Name the responsible module, the data or action, and the observable result. Distinguish verified behavior, suspected problems, proposals, and open decisions. Explain necessary terminology in plain language; do not blur framework, backend, and UI responsibilities.
 - Explain designs with concrete examples and diagrams when they improve clarity.
 - Write code comments in English.
 - Commit completed checkpoints with Conventional Commit subjects and push after each commit.
