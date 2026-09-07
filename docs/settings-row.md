@@ -1,7 +1,10 @@
 # Settings row alignment
 
 `web-ui/settings/SettingsRow.vue` owns alignment for both product settings and
-gallery examples. Leading icons center on the 20px title line.
+gallery examples. Leading icons and checkboxes center on the 20px title line.
+Single-line rows center the leading slot vertically with the title, including
+when minimum row height or taller controls add space. Multiline rows anchor it
+to the first line.
 
 The optional `controlsAlign` prop accepts `start` or `center`. When omitted,
 controls align with the title if the `detail` slot is present, and center on the
