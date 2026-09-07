@@ -1,8 +1,7 @@
 export type DeviceSystem = 'linux' | 'macos' | 'windows'
 
-/** Deployment-provided installer endpoints; the UI does not publish installers. */
+/** Deployment-provided installers carry their backend configuration. */
 export interface DeviceInstallation {
-  backendUrl: string
   shellInstallerUrl: string
   powershellInstallerUrl: string
 }
@@ -16,8 +15,8 @@ export const deviceSystems = [
 export function deviceInstallCommand(installation: DeviceInstallation, system: DeviceSystem): string {
   if (system === 'windows') {
     const quote = (value: string) => `'${value.replaceAll("'", "''")}'`
-    return `& ([scriptblock]::Create((Invoke-RestMethod ${quote(installation.powershellInstallerUrl)}))) -Backend ${quote(installation.backendUrl)}`
+    return `irm ${quote(installation.powershellInstallerUrl)} | iex`
   }
   const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
-  return `curl -fsSL ${quote(installation.shellInstallerUrl)} | sh -s -- --backend ${quote(installation.backendUrl)}`
+  return `curl --proto '=https' --tlsv1.2 -sSf ${quote(installation.shellInstallerUrl)} | sh`
 }

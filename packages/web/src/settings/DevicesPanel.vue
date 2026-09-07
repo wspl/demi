@@ -10,7 +10,6 @@ const resources = useResources()
 const conversations = useConversations()
 // Prototype endpoint contract; installers are not served by this SPA.
 const installation = {
-  backendUrl: window.location.origin,
   shellInstallerUrl: `${window.location.origin}/install.sh`,
   powershellInstallerUrl: `${window.location.origin}/install.ps1`,
 }
