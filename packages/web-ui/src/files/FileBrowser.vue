@@ -15,6 +15,7 @@ import SidebarNavItem from '../sidebar/SidebarNavItem.vue'
 import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
 import FileBrowserList from './FileBrowserList.vue'
 import FileIcon from './FileIcon.vue'
+import { rootIconName } from './file-icons'
 import { createFileBrowserHistory, filterEntries, nextSort, sortEntries, type FileBrowserSort, type FileBrowserSortKey } from './file-browser-state'
 import { baseName, joinPath, normalizePath, parentPath } from './paths'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserHost, type FileBrowserMode, type FileBrowserPlace, type FileBrowserPlaceGroup, type FileBrowserSource } from './types'
@@ -77,7 +78,8 @@ const currentHost = computed(() => props.hosts.find((host) => host.id === props.
 const hasRail = computed(() => props.places.length > 0)
 /** A place's glyph: the theme folder its name resolves to, or the id the caller names. */
 function placeIcon(place: FileBrowserPlace): Component {
-  return () => h(FileIcon, { name: baseName(place.path) || '/', isDirectory: true, icon: place.icon })
+  const name = baseName(place.path)
+  return () => h(FileIcon, { name: name || '/', isDirectory: true, icon: place.icon ?? (name ? undefined : rootIconName(props.source.platform)) })
 }
 
 const confirmLabel = computed(() => props.confirmLabel ?? (props.mode === 'file' ? 'Open' : 'Select Folder'))
@@ -258,7 +260,8 @@ defineExpose({
         </Tooltip>
       </div>
       <span class="flex-1 @md:hidden" />
-      <FileBrowserAddressBar class="order-1 min-w-0 basis-full @md:order-none @md:flex-1 @md:basis-auto" :path="path" @navigate="goTo" />
+      <FileBrowserAddressBar
+          :platform="source.platform" class="order-1 min-w-0 basis-full @md:order-none @md:flex-1 @md:basis-auto" :path="path" @navigate="goTo" />
       <div class="flex shrink-0 items-center gap-0.5">
         <!-- The rail's places, as a menu where the rail has no room. -->
         <Dropdown v-if="hasRail" :overlay-store="appOverlayStore" class="@md:hidden">
@@ -338,7 +341,7 @@ defineExpose({
         <template v-else>
           <span class="shrink-0 text-fg-subtle">{{ status.lead }}</span>
           <span v-if="status.name" class="flex min-w-0 items-center gap-1 text-fg">
-            <FileIcon :name="status.name" :is-directory="status.isDirectory" />
+            <FileIcon :name="status.name" :is-directory="status.isDirectory" :icon="status.name === '/' ? rootIconName(source.platform) : undefined" />
             <span class="truncate" :title="status.name">{{ status.name }}</span>
           </span>
         </template>

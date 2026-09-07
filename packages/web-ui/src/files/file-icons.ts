@@ -3,6 +3,8 @@
  * names, whole file names and extension suffixes to icon ids; this resolves the
  * way VS Code does, without touching the assets, so it can be tested anywhere.
  */
+import type { FileBrowserPlatform } from './types'
+
 export interface FileIconTheme {
   /** The icon for a file no rule names. */
   file: string
@@ -30,4 +32,9 @@ export function fileIconName(theme: FileIconTheme, name: string, isDirectory: bo
     if (icon) return icon
   }
   return theme.file
+}
+
+/** The root of a device wears its operating system's folder: `folder-linux`, `folder-macos`, `folder-windows`. */
+export function rootIconName(platform: FileBrowserPlatform): string {
+  return `folder-${platform}`
 }

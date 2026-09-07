@@ -58,14 +58,14 @@ type StateOption = (typeof stateOptions)[number]['value']
 const state = ref<StateOption>('empty')
 const laptop = laptopTree()
 const stateSources: Record<StateOption, { source: FileBrowserSource; path: string }> = {
-  slow: { source: createMemoryFileSource({ home: '/Users/zan', root: laptop, latencyMs: 60_000 }), path: '/Users/zan/Projects' },
-  empty: { source: createMemoryFileSource({ home: '/Users/zan', root: laptop }), path: '/Users/zan/Library/Preferences' },
-  locked: { source: createMemoryFileSource({ home: '/Users/zan', root: laptop }), path: '/Users/zan/.ssh' },
-  missing: { source: createMemoryFileSource({ home: '/Users/zan', root: laptop }), path: '/Users/zan/Projects/gone' },
+  slow: { source: createMemoryFileSource({ platform: 'linux', home: '/Users/zan', root: laptop, latencyMs: 60_000 }), path: '/Users/zan/Projects' },
+  empty: { source: createMemoryFileSource({ platform: 'linux', home: '/Users/zan', root: laptop }), path: '/Users/zan/Library/Preferences' },
+  locked: { source: createMemoryFileSource({ platform: 'linux', home: '/Users/zan', root: laptop }), path: '/Users/zan/.ssh' },
+  missing: { source: createMemoryFileSource({ platform: 'linux', home: '/Users/zan', root: laptop }), path: '/Users/zan/Projects/gone' },
   offline: { source: hosts[2]!.source, path: '/home/zan' },
   readonly: {
     source: (() => {
-      const { createDirectory: _omit, ...rest } = createMemoryFileSource({ home: '/srv', root: dir({ srv: dir({ 'release.tar.gz': file(90_211_004, '2026-09-01T08:00:00Z') }) }) })
+      const { createDirectory: _omit, ...rest } = createMemoryFileSource({ platform: 'linux', home: '/srv', root: dir({ srv: dir({ 'release.tar.gz': file(90_211_004, '2026-09-01T08:00:00Z') }) }) })
       return rest
     })(),
     path: '/srv',

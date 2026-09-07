@@ -25,6 +25,8 @@ dialog because that is the shape people already know for the job.
 The browser reads through a `FileBrowserSource` and never knows where entries come
 from (`files/types.ts`):
 
+- `platform`: `macos`, `linux` or `windows`; the root crumb, a root place and the
+  status entry for `/` wear that system's folder glyph.
 - `home`: where it opens when the caller names no path, and where `~` and Home go.
 - `list(path, signal)`: the entries of one directory — name, `isDirectory`, and size
   and modification time when the source knows them. A known failure rejects with a
@@ -51,7 +53,7 @@ list has room whatever the folder holds.
 - **Device and address**: two controls. The device sits over the rail, as wide as it,
   a menu of the hosts the caller offers, dotted green or gray; then Back, Forward and
   Up, and the path from that device's root, as crumbs, each a jump; the root crumb is
-  a drive glyph, since a lone slash is too narrow to hit. Deep paths keep the root and the last three crumbs (two in a
+  the platform's folder glyph, since a lone slash is too narrow to hit. Deep paths keep the root and the last three crumbs (two in a
   narrow bar) and fold the middle into an ellipsis. A click on the free space turns
   the bar into a text field with the full path; Enter goes there, Escape or blur
   leaves it.

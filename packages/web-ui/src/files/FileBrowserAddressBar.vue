@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { ChevronRight, Ellipsis, HardDrive } from '@lucide/vue'
+import { ChevronRight, Ellipsis } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
 import TextInput from '../ui/TextInput.vue'
 import FileIcon from './FileIcon.vue'
 import { ICON_PX } from '../ui/icon-metrics'
+import { rootIconName } from './file-icons'
 import { normalizePath, pathSegments } from './paths'
+import type { FileBrowserPlatform } from './types'
 
 /**
  * The path as crumbs, each its folder glyph and a jump; a click on the bar's free
@@ -14,6 +16,7 @@ import { normalizePath, pathSegments } from './paths'
  */
 const props = defineProps<{
   path: string
+  platform: FileBrowserPlatform
 }>()
 
 const emit = defineEmits<{
@@ -107,8 +110,8 @@ watch(() => props.path, () => {
         ]"
         @click="emit('navigate', crumb.path)"
       >
-        <!-- The root is a drive glyph: a lone slash is too narrow to hit. -->
-        <HardDrive v-if="index === 0" :size="ICON_PX.in24" class="shrink-0" aria-label="Root" />
+        <!-- The root is the device's OS folder: a lone slash is too narrow to hit. -->
+        <FileIcon v-if="index === 0" name="/" :is-directory="true" :icon="rootIconName(platform)" aria-label="Root" />
         <template v-else>
           <FileIcon :name="crumb.name" :is-directory="true" />
           <span class="truncate">{{ crumb.name }}</span>
