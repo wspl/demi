@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { ChevronDown, ChevronUp, File, Folder, FolderX, Lock, WifiOff } from '@lucide/vue'
+import { ChevronDown, ChevronUp, ChevronsUpDown, File, Folder, FolderX, Lock, WifiOff } from '@lucide/vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import TextInput from '../ui/TextInput.vue'
@@ -153,11 +153,12 @@ defineExpose({
         @click="emit('sort', column.key)"
       >
         <span class="truncate">{{ column.label }}</span>
+        <!-- Every column sorts: the unsorted ones say so with a faint pair of chevrons. -->
         <component
-          :is="sort.direction === 'asc' ? ChevronUp : ChevronDown"
-          v-if="sort.key === column.key"
+          :is="sort.key === column.key ? (sort.direction === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown"
           :size="ICON_PX.in20"
           class="shrink-0"
+          :class="sort.key === column.key ? '' : 'text-fg-faint'"
         />
       </span>
     </div>
