@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Cloud, FolderOpen, Monitor, Plus, X } from '@lucide/vue'
+import { ChevronDown, Cloud, FolderOpen, Monitor, Plus, X } from '@lucide/vue'
 import { CLOUD_HOST_ID, hostIcon } from './icons'
 import { ICON_PX } from '../ui/icon-metrics'
 import { baseName } from '../files/paths'
@@ -13,6 +13,7 @@ import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import TextInput from '../ui/TextInput.vue'
+import Tooltip from '../ui/Tooltip.vue'
 import InlineError from '../ui/InlineError.vue'
 import FileBrowser from '../files/FileBrowser.vue'
 import type { FileBrowserPlaceGroup, FileBrowserSource } from '../files/types'
@@ -23,7 +24,7 @@ import type { WorkspaceDevice, WorkspaceDraft, WorkspaceProject } from './worksp
  * The form branches on where it lives: on the Cloud the workspace is managed and only
  * needs a name; on a device it is a directory there, and takes the directory's name.
  * The folder browser is a page of the same dialog, opened by Browse…. Every opening
- * starts from a clean form on the Cloud, or on the first device when there is no Cloud.
+ * starts from a clean form on Device, on the first device that is online.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -48,15 +49,17 @@ const emit = defineEmits<{
   close: []
   select: [projectId: string | null]
   create: [draft: WorkspaceDraft]
+  /** The Add device button beside the device menu: the host starts pairing. */
+  connectDevice: []
 }>()
 
 type Kind = 'cloud' | 'device'
 const kindOptions = [
-  { value: 'cloud', label: 'Cloud', description: 'A managed workspace, ready at once.', icon: Cloud },
   { value: 'device', label: 'Device', description: 'A directory on one of your devices.', icon: Monitor },
+  { value: 'cloud', label: 'Cloud', description: 'A managed workspace, ready at once.', icon: Cloud },
 ] as const satisfies readonly { value: Kind; label: string; description: string; icon: typeof Cloud }[]
 
-const kind = ref<Kind>('cloud')
+const kind = ref<Kind>('device')
 const name = ref('')
 const path = ref('')
 const deviceId = ref('')
@@ -79,7 +82,7 @@ watch(
   () => props.isOpen,
   (open) => {
     if (!open) return
-    kind.value = props.cloud ? 'cloud' : 'device'
+    kind.value = 'device'
     name.value = ''
     deviceId.value = props.devices.find((entry) => entry.online)?.id ?? props.devices[0]?.id ?? ''
     showCreate.value = props.mode === 'create'
@@ -172,33 +175,45 @@ function create() {
           <template v-else>
             <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
               Device
-              <Dropdown :overlay-store="overlayStore" variant="default" trigger-label="Device">
-                <template #trigger>
-                  <span class="flex items-center gap-2">
-                    <component :is="hostIcon({ id: deviceId })" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
-                    {{ deviceLabel }}
-                  </span>
-                </template>
-                <template #content="{ close }">
-                  <Menu>
-                    <MenuItem
-                      v-for="entry in devices"
-                      :key="entry.id"
-                      :icon="hostIcon(entry)"
-                      :label="entry.name"
-                      :indicator="entry.online ? 'success' : 'muted'"
-                      :indicator-label="entry.online ? 'Online' : 'Offline'"
-                      :note="entry.online ? undefined : 'offline'"
-                      :disabled="!entry.online"
-                      disabled-reason="This device is offline."
-                      choice
-                      :is-selected="deviceId === entry.id"
-                      @select="deviceId = entry.id; close()"
-                    />
-                    <div v-if="!devices.length" class="select-none px-2 py-3 text-center text-chrome text-fg-subtle">No devices yet.</div>
-                  </Menu>
-                </template>
-              </Dropdown>
+              <span class="flex items-center gap-2">
+                <!-- The menu fills the row, the way the file browser's device picker does; Add device sits beside it. -->
+                <Dropdown :overlay-store="overlayStore" class="min-w-0 flex-1 [&>div]:w-full">
+                  <template #trigger="{ isOpen }">
+                    <span
+                      role="button"
+                      aria-label="Device"
+                      class="flex h-7 w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
+                      :class="isOpen ? 'bg-active' : 'bg-hover hover:bg-active'"
+                    >
+                      <component :is="hostIcon({ id: deviceId })" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
+                      <span class="min-w-0 flex-1 truncate">{{ deviceLabel }}</span>
+                      <ChevronDown :size="ICON_PX.in24" class="shrink-0 text-fg-subtle transition-transform duration-200 ease-out" :class="isOpen ? 'rotate-180' : ''" />
+                    </span>
+                  </template>
+                  <template #content="{ close, triggerWidth }">
+                    <Menu :style="{ minWidth: `${triggerWidth}px` }">
+                      <MenuItem
+                        v-for="entry in devices"
+                        :key="entry.id"
+                        :icon="hostIcon(entry)"
+                        :label="entry.name"
+                        :indicator="entry.online ? 'success' : 'muted'"
+                        :indicator-label="entry.online ? 'Online' : 'Offline'"
+                        :note="entry.online ? undefined : 'offline'"
+                        :disabled="!entry.online"
+                        disabled-reason="This device is offline."
+                        choice
+                        :is-selected="deviceId === entry.id"
+                        @select="deviceId = entry.id; close()"
+                      />
+                      <div v-if="!devices.length" class="select-none px-2 py-3 text-center text-chrome text-fg-subtle">No devices yet.</div>
+                    </Menu>
+                  </template>
+                </Dropdown>
+                <Tooltip content="Add device">
+                  <IconButton :icon="Plus" aria-label="Add device" @click="emit('connectDevice')" />
+                </Tooltip>
+              </span>
             </div>
             <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
               Directory
