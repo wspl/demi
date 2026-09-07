@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, h, onBeforeUnmount, ref, shallowRef, watch, type Component } from 'vue'
 import { ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Eye, EyeOff, FolderPlus, MapPin, Monitor } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Button from '../ui/Button.vue'
@@ -17,7 +17,7 @@ import FileBrowserList from './FileBrowserList.vue'
 import FileIcon from './FileIcon.vue'
 import { createFileBrowserHistory, filterEntries, nextSort, sortEntries, type FileBrowserSort, type FileBrowserSortKey } from './file-browser-state'
 import { baseName, joinPath, normalizePath, parentPath } from './paths'
-import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserHost, type FileBrowserMode, type FileBrowserPlaceGroup, type FileBrowserSource } from './types'
+import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserHost, type FileBrowserMode, type FileBrowserPlace, type FileBrowserPlaceGroup, type FileBrowserSource } from './types'
 
 /**
  * The file and folder chooser, laid out like the Windows open dialog: Back, Forward
@@ -75,6 +75,11 @@ const visible = computed(() => sortEntries(filterEntries(entries.value, '', show
 const selectedEntry = computed(() => visible.value.find((entry) => entry.name === selected.value) ?? null)
 const currentHost = computed(() => props.hosts.find((host) => host.id === props.hostId))
 const hasRail = computed(() => props.places.length > 0)
+/** A place's glyph: the theme folder its name resolves to, or the id the caller names. */
+function placeIcon(place: FileBrowserPlace): Component {
+  return () => h(FileIcon, { name: baseName(place.path) || '/', isDirectory: true, icon: place.icon })
+}
+
 const confirmLabel = computed(() => props.confirmLabel ?? (props.mode === 'file' ? 'Open' : 'Select Folder'))
 const canConfirm = computed(() => {
   if (props.confirmDisabled) return false
@@ -268,7 +273,7 @@ defineExpose({
                 <MenuItem
                   v-for="place in group.places"
                   :key="place.path"
-                  :icon="place.icon"
+                  :icon="placeIcon(place)"
                   :label="place.label ?? (baseName(place.path) || '/')"
                   :title="place.path"
                   @select="goTo(place.path)"
@@ -298,7 +303,7 @@ defineExpose({
           <SidebarNavItem
             v-for="place in group.places"
             :key="place.path"
-            :icon="place.icon"
+            :icon="placeIcon(place)"
             :label="place.label ?? (baseName(place.path) || '/')"
             :pressed="path === normalizePath(place.path)"
             :title="place.path"

@@ -1,4 +1,3 @@
-import { Clock, House } from '@lucide/vue'
 import { createMemoryFileSource, dir, file, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserHost, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
 import type { Device, Project } from './types'
@@ -73,9 +72,9 @@ export function fileSourceFor(device: Device | null): FileBrowserSource {
 /** Home first, then the workspaces already on that device. */
 export function placesFor(device: Device | null, projects: Project[]): FileBrowserPlaceGroup[] {
   const deviceId = device?.id ?? 'cloud'
-  const recent = projects.filter((item) => item.deviceId === deviceId).map((item) => ({ path: item.path, label: item.name, icon: Clock }))
+  const recent = projects.filter((item) => item.deviceId === deviceId).map((item) => ({ path: item.path, label: item.name }))
   return [
-    { label: 'Quick access', places: [{ path: device?.home ?? CLOUD_HOME, label: 'Home', icon: House }] },
+    { label: 'Quick access', places: [{ path: device?.home ?? CLOUD_HOME, label: 'Home', icon: 'folder-home' }] },
     ...(recent.length ? [{ label: 'Workspaces', places: recent }] : []),
   ]
 }
