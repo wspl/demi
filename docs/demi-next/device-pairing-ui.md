@@ -18,6 +18,8 @@ revocation uses an error toast because the action has no input field.
    URLs plus backend URL); `deviceInstallCommand` owns shell-specific quoting.
    The proposed scripts install/start the runner with the supplied backend.
    Keep the terminal open until pairing completes.
+   `ui/CopyCode` owns the bordered command surface, wrapping, copy action and
+   copied feedback. Provider login commands use the same component.
    These installers are not implemented or published in this repository yet;
    OS selection is a UI prototype, not a claim of native Windows runner support.
 2. Enter code: paste the full code printed by the runner. The browser does not

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ChevronDown, RefreshCw, Plus, Search, Send, Settings2, Trash2 } from '@lucide/vue'
+import CopyCode from '@demicodes/web-ui/ui/CopyCode.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -70,6 +71,12 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
         <GallerySpecimen variant="spin · stop after current revolution">
           <Button :spinning="spinning" @click="spinning = !spinning"><RefreshCw :size="ICON_PX.in28" />{{ spinning ? 'Stop spinning' : 'Start spinning' }}</Button>
         </GallerySpecimen>
+        <GallerySpecimen variant="spinner · primary">
+          <Button variant="primary" disabled><IndeterminateSpinner />Pairing…</Button>
+        </GallerySpecimen>
+        <GallerySpecimen variant="spinner · default">
+          <Button><IndeterminateSpinner />Loading…</Button>
+        </GallerySpecimen>
         <GallerySpecimen variant="default">
           <Button size="md">Default</Button>
         </GallerySpecimen>
@@ -115,6 +122,9 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
       </div>
     </GallerySection>
 
+    <GallerySection title="CopyCode" note="Shared command surface, wrapping and copy feedback.">
+      <CopyCode code="demi-runner run --backend https://demi.example.com" />
+    </GallerySection>
     <GallerySection title="IconButton" note="Chip and circle. Accent is send.">
       <div class="specimen-row">
         <GallerySpecimen variant="default">

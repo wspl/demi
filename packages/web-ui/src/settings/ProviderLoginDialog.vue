@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { Check, Copy, ExternalLink, TriangleAlert } from '@lucide/vue'
+import CopyCode from '../ui/CopyCode.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -117,10 +118,7 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
           <Tag class="mt-0.5 shrink-0 tabular-nums">2</Tag>
           <div class="flex min-w-0 flex-1 flex-col gap-1.5">
             <span class="text-chrome text-fg">Run this in a terminal and sign in when the browser opens.</span>
-            <div class="flex items-center gap-2 rounded-md bg-surface px-3 py-1.5 ring-1 ring-line">
-              <code class="min-w-0 flex-1 select-all truncate font-mono text-[12px] text-fg">{{ phase.command }}</code>
-              <IconButton size="sm" :icon="copied ? Check : Copy" variant="ghost" :aria-label="copied ? 'Copied' : 'Copy command'" @click="copy(phase.command)" />
-            </div>
+            <CopyCode :code="phase.command" />
           </div>
         </li>
         <li class="flex items-start gap-3">
