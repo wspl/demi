@@ -63,7 +63,7 @@ export function fileSourceFor(device: Device | null): FileBrowserSource {
   const id = device?.id ?? 'cloud'
   let source = sources.get(id)
   if (!source) {
-    source = createMemoryFileSource({ home: device?.home ?? CLOUD_HOME, root: (trees[id] ?? trees['cloud']!)(), latencyMs: 200 })
+    source = createMemoryFileSource({ platform: device?.platform ?? 'linux', home: device?.home ?? CLOUD_HOME, root: (trees[id] ?? trees['cloud']!)(), latencyMs: 200 })
     sources.set(id, source)
   }
   return source

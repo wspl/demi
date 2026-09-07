@@ -34,8 +34,12 @@ export class FileBrowserError extends Error {
   }
 }
 
-/** The directory tree behind one browser: where it starts and how it reads. */
+/** The operating system behind a source; picks the root glyph. */
+export type FileBrowserPlatform = 'macos' | 'linux' | 'windows'
+
+/** The directory tree behind one browser: where it starts, what runs it and how it reads. */
 export interface FileBrowserSource {
+  platform: FileBrowserPlatform
   /** The directory the browser opens in when the caller names none, and where Home goes. */
   home: string
   /** Lists one directory. Rejects with a `FileBrowserError` for a known failure; anything else reads as `other`. */
