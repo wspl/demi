@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Eye, EyeOff, File, Folder, FolderPlus, MapPin, Monitor } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Eye, EyeOff, FolderPlus, MapPin, Monitor } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
@@ -14,6 +14,7 @@ import { ICON_PX } from '../ui/icon-metrics'
 import SidebarNavItem from '../sidebar/SidebarNavItem.vue'
 import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
 import FileBrowserList from './FileBrowserList.vue'
+import FileIcon from './FileIcon.vue'
 import { createFileBrowserHistory, filterEntries, nextSort, sortEntries, type FileBrowserSort, type FileBrowserSortKey } from './file-browser-state'
 import { baseName, joinPath, normalizePath, parentPath } from './paths'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserHost, type FileBrowserMode, type FileBrowserPlaceGroup, type FileBrowserSource } from './types'
@@ -83,9 +84,9 @@ const canConfirm = computed(() => {
 /** The status row: what is selected, or what can be. */
 const status = computed(() => {
   const entry = selectedEntry.value
-  if (entry) return { lead: entry.isDirectory ? 'Selected folder:' : 'Selected file:', icon: entry.isDirectory ? Folder : File, name: entry.name }
-  if (props.mode === 'file') return { lead: 'Select a file', icon: null, name: null }
-  return { lead: 'Select a folder, or use', icon: Folder, name: baseName(path.value) || '/' }
+  if (entry) return { lead: entry.isDirectory ? 'Selected folder:' : 'Selected file:', isDirectory: entry.isDirectory, name: entry.name }
+  if (props.mode === 'file') return { lead: 'Select a file', isDirectory: false, name: null }
+  return { lead: 'Select a folder, or use', isDirectory: true, name: baseName(path.value) || '/' }
 })
 
 function toFailure(err: unknown): FileBrowserFailure {
@@ -332,7 +333,7 @@ defineExpose({
         <template v-else>
           <span class="shrink-0 text-fg-subtle">{{ status.lead }}</span>
           <span v-if="status.name" class="flex min-w-0 items-center gap-1 text-fg">
-            <component :is="status.icon" :size="ICON_PX.in28" class="shrink-0" />
+            <FileIcon :name="status.name" :is-directory="status.isDirectory" />
             <span class="truncate" :title="status.name">{{ status.name }}</span>
           </span>
         </template>

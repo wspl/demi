@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { ChevronDown, ChevronUp, ChevronsUpDown, File, Folder, FolderX, Lock, WifiOff } from '@lucide/vue'
+import { ChevronDown, ChevronUp, ChevronsUpDown, FolderX, Lock, WifiOff } from '@lucide/vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import TextInput from '../ui/TextInput.vue'
+import FileIcon from './FileIcon.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import type { FileBrowserSort, FileBrowserSortKey } from './file-browser-state'
 import { entryKind, formatBytes, formatModified } from './format'
@@ -179,7 +180,7 @@ defineExpose({
           aria-selected="true"
         >
           <span class="flex min-w-0 items-center gap-2 px-1">
-            <Folder :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
+            <FileIcon :name="newName" :is-directory="true" />
             <TextInput ref="newNameInput" v-model="newName" size="sm" aria-label="New folder name" spellcheck="false" @keydown="onNewNameKeydown" @blur="emit('cancelCreate')" />
           </span>
         </div>
@@ -202,12 +203,7 @@ defineExpose({
           @dblclick="activate(entry)"
         >
           <span class="flex min-w-0 items-center gap-2 px-1">
-            <component
-              :is="entry.isDirectory ? Folder : File"
-              :size="ICON_PX.in28"
-              class="shrink-0"
-              :class="entry.name === selected ? '' : pickable(entry) ? 'text-fg-muted' : 'text-fg-faint'"
-            />
+            <FileIcon :name="entry.name" :is-directory="entry.isDirectory" :class="pickable(entry) ? '' : 'opacity-40'" />
             <span class="truncate" :title="entry.name">{{ entry.name }}</span>
           </span>
           <span class="hidden truncate px-1 text-[12px] text-fg-subtle @md:block">{{ formatModified(entry.modifiedAt) }}</span>
