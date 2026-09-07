@@ -40,10 +40,9 @@ main and attached hosts, whose chosen path joins the draft as a reference. No cr
 Zan opens `demi`, then creates a conversation and sends a message. The local
 clock streams a scripted answer. A second message queues behind it. Selecting
 another conversation in the sidebar leaves the simulation running; archiving
-is refused while a turn is running. The sidebar's Archived entry opens a searchable
-menu under it, wider than the rail; choosing a conversation there brings it back into the list and
-opens it. The Skills entry's flyout switches the same skills the settings page does,
-and Browse skills… opens that page.
+is refused while a turn is running. The sidebar's Skills and Archived entries open
+those settings sections; the Archived page is a searchable list whose Restore brings
+a conversation back into the sidebar and opens it.
 
 The project picker changes the conversation's working environment and sidebar
 group together, and refuses changes while running. A project cannot be removed
@@ -105,7 +104,7 @@ right of the conversation title.
 
 The settings dialog is the shared shell with the product rail
 (`web-ui/settings/sections.ts`): General, Account, Notifications; Models &
-providers, MCP servers, Skills; Devices, Keyboard, Data & privacy. Every page is a `web-ui` component over a presentation model;
+providers, MCP servers, Skills; Devices, Archived, Keyboard, Data & privacy. Every page is a `web-ui` component over a presentation model;
 `web/settings/SettingsDialog.vue` supplies the prototype's state
 (`prototype/settings.ts`) and decides what a row does to the app. General writes the
 theme choice, tone, accent and transcript text size onto the document as they

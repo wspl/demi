@@ -6,6 +6,7 @@ import type { ThemeChoice } from '@demicodes/web-ui/theme/appTheme'
 import type { ProductAccent, ProductTone } from '@demicodes/web-ui/theme/productAppearance'
 import { galleryState } from '../gallery-state'
 import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
+import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
 import SettingsData from '@demicodes/web-ui/settings/SettingsData.vue'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import SettingsGeneral from '@demicodes/web-ui/settings/SettingsGeneral.vue'
@@ -146,6 +147,10 @@ function updateSkillSource(source: SettingsSkillSource) {
   }, 600)
 }
 
+function restoreArchived(id: string) {
+  s.value.archived = s.value.archived.filter((entry) => entry.id !== id)
+}
+
 function revokeDevice(id: string) {
   s.value.devices = s.value.devices.filter((d) => d.id !== id)
 }
@@ -240,6 +245,8 @@ function resetShortcuts() {
     @remove="removeSkillSource"
     @update="updateSkillSource"
   />
+
+  <SettingsArchived v-else-if="tab === 'archived'" :conversations="s.archived" @restore="restoreArchived" />
 
   <SettingsDevices v-else-if="tab === 'devices'" :devices="s.devices" :overlay-store="appOverlayStore" :installation="demoDeviceInstallation" :claim-device="claimDevice" @revoke="revokeDevice" />
 
