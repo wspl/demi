@@ -173,6 +173,7 @@ function create() {
                     :indicator="entry.online ? 'success' : 'muted'"
                     :indicator-label="entry.online ? 'Online' : 'Offline'"
                     :note="entry.online ? undefined : 'offline'"
+                    :disabled-reason="entry.online ? undefined : 'This device is offline.'"
                     choice
                     :is-selected="deviceId === entry.id"
                     @select="deviceId = entry.id; close()"

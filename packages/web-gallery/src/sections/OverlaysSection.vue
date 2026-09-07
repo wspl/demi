@@ -184,7 +184,7 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
             <template #submenu>
               <HostPicker
                 :devices="[{ id: 'mac', name: 'zan-mbp', online: true }, { id: 'build', name: 'build-01', online: true }, { id: 'studio', name: 'studio', online: false }]"
-                include-cloud require-online selected-id="mac"
+                include-cloud selected-id="mac"
               />
             </template>
           </MenuItem>

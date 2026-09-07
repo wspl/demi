@@ -30,8 +30,8 @@ new device. Neither picker offers Hostless as a binding target. Search filters
 device names while the top actions remain visible.
 
 Attach selects an existing owned device and starts its cwd at its home. The
-picker shows all owned devices and disables the main device and devices already attached; offline devices
-may be attached but cannot be promoted until online. Managed Cloud is not in the
+picker shows all owned devices and disables the main device, devices already attached and
+offline devices: an offline device is never a choice, in this menu or any other host list. Managed Cloud is not in the
 attachment picker; it can enter the list as a departed main host. Connecting a
 new device opens the Add device pairing dialog right there (the same flow the
 Devices settings page runs), which is separate from granting a particular
@@ -40,8 +40,7 @@ conversation access to that device.
 Attachment names are generated from device names and kept unique within the
 conversation. The menu uses shared `MenuItem` label/value presentation; a device row keeps its icon, wears its online dot on the icon's corner, and reads "(offline)" after the name when it is not reachable,
 and shared `MenuGroup` section titles. Online devices have a green dot; offline
-devices have a gray dot. The dot replaces the device icon in the left icon gutter;
-the right side retains the submenu arrow. Both include accessible status labels. Main host is a
+devices a gray one, on the icon's corner; the right side retains the submenu arrow. Both include accessible status labels. Main host is a
 single label/value submenu row, without a section heading.
 The menu exposes device identity, online status, promotion and
 detach; it has no rename action or directory display. Directory selection and
