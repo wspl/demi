@@ -41,4 +41,5 @@ artifacts, and Git tags therefore expose the same Demi release version.
 The repository release command publishes every group package whose shared
 version is absent from the registry. It refreshes the lockfile, builds all
 packages, validates packed dependency ranges and export targets, publishes the
-tarballs, and creates one package tag per artifact.
+tarballs with an explicit `latest` registry tag (including the independently versioned
+just-bash fork), and creates one package tag per artifact.
