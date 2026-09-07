@@ -23,7 +23,7 @@ const anatomy: [string, string][] = [
   ['List', 'Name, date and size, folders first, names in natural order; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'],
   ['Keys', 'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history.'],
   ['Status row', 'Says what is selected, as "Selected folder:" or "Selected file:" with the name, or what can be. Right: the confirm button and Cancel. A failure to create a folder reads here.'],
-  ['New project', 'The working-environment dialog: a form for a new project from a device (Cloud by default) and a directory on it, named after the folder; Browse… turns the dialog into the folder browser. Switching between projects is the same dialog on its list.'],
+  ['New project', 'The working-environment dialog: Cloud or Device as two cards; the Cloud only asks a name, a device asks which one and a directory on it, the project named after the folder; Browse… turns the dialog into the folder browser. Switching between projects is the same dialog on its list.'],
   ['New folder', 'A row at the top of the list with the name ready to type over; Enter creates it and selects it. Only a source that can create directories offers the icon.'],
   ['States', 'A slow device shows a spinner, an empty folder says so, and a folder that cannot be read explains why: missing, locked, or the device offline.'],
 ]
@@ -49,14 +49,14 @@ const cloudSource = createMemoryFileSource({ platform: 'linux', home: '/home/dem
 const sourceFor = (id: string) => (id === 'cloud' ? cloudSource : (hosts.find((host) => host.id === id) ?? hosts[0]!).source)
 const placesFor = (id: string) => (id === 'cloud' ? [{ label: 'Quick access', places: [{ path: '/home/demi', label: 'Home' }] }] : (hosts.find((host) => host.id === id) ?? hosts[0]!).places)
 function createWorkspace(draft: WorkspaceDraft) {
-  const name = baseName(draft.path) || 'Workspace'
+  const name = draft.kind === 'cloud' ? draft.name : baseName(draft.path) || 'Workspace'
   if (workspaceProjects.value.some((project) => project.name === name)) {
     workspaceMessage.value = `A project called ${name} already exists.`
     return
   }
   workspaceMessage.value = ''
-  const host = draft.deviceId === 'cloud' ? 'Cloud' : workspaceDevices.find((device) => device.id === draft.deviceId)?.name ?? draft.deviceId
-  workspaceProjects.value.push({ id: `p-${Date.now()}`, name, host, path: draft.path })
+  const host = draft.kind === 'cloud' ? 'Cloud' : workspaceDevices.find((device) => device.id === draft.deviceId)?.name ?? draft.deviceId
+  workspaceProjects.value.push({ id: `p-${Date.now()}`, name, host, path: draft.kind === 'cloud' ? `/home/demi/${name}` : draft.path })
   workspaceCurrent.value = workspaceProjects.value.at(-1)!.id
   workspaceKey.value += 1
 }
@@ -180,7 +180,7 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </p>
     </GallerySection>
 
-    <GallerySection title="New project" note="The working-environment dialog on its form: a device (Cloud by default) and a directory on it, the project named after the folder. Browse… turns the dialog into the folder browser; a folder name already in the list is refused under the form.">
+    <GallerySection title="New project" note="The working-environment dialog on its form: Cloud or Device. The Cloud only asks a name; a device asks which one and a directory, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form.">
       <GalleryDialogFrame class="max-w-md">
         <WorkspaceDialog
           :key="workspaceKey"

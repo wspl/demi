@@ -30,6 +30,7 @@ browser package typechecks and checks affected specimens in the browser.
 | Skills: git sources, folded packs, per-skill switches, pack enable switch | settings/SettingsSkills, AddSkillSourceDialog | Settings full mock; the product Skills page |
 | Account credentials: change email (address, password, code), change password | settings/ChangeEmailDialog, ChangePasswordDialog, opened from SettingsAccount | GallerySettingsFull mock flows; standalone wells with every phase; the product Account page |
 | Text entry: prefix/suffix, secrets with an eye, token counts with a unit | TextInput, TokenInput | Primitives specimens |
+| Branching choice: cards with an icon, title and line | ui/ChoiceCards | Primitives specimen; the new-project form's Cloud or Device |
 | File browser: folder and file choosing over a `FileBrowserSource`, address bar, places and devices, states | files/FileBrowser, FileBrowserDialog, FileIcon (see `docs/file-browser.md`) | Files page over fixture trees; the workspace picker, new-project Browse and the composer's remote attachment in `web` |
 | Composer Add menu: local files, and a remote file when the conversation has a host | SessionComposer `remoteFiles` / `attachRemote` | GalleryComposer opens the Files dialog; `web` inserts the path into the draft |
 

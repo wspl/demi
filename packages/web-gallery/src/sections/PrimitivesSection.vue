@@ -11,6 +11,8 @@ import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import ShortcutRecorder from '@demicodes/web-ui/ui/ShortcutRecorder.vue'
 import SwatchPicker from '@demicodes/web-ui/ui/SwatchPicker.vue'
+import ChoiceCards from '@demicodes/web-ui/ui/ChoiceCards.vue'
+import { Cloud, Monitor } from '@lucide/vue'
 import { PRODUCT_ACCENTS } from '@demicodes/web-ui/theme/productAppearance'
 import TokenInput from '@demicodes/web-ui/ui/TokenInput.vue'
 import HighlightText from '@demicodes/web-ui/ui/HighlightText.vue'
@@ -38,6 +40,11 @@ const enabledOff = ref(false)
 const enabledSmOn = ref(true)
 const enabledSmOff = ref(false)
 const checkboxOn = ref(true)
+const choice = ref<'cloud' | 'device'>('cloud')
+const choiceOptions = [
+  { value: 'cloud', label: 'Cloud', description: 'A managed workspace, ready at once.', icon: Cloud },
+  { value: 'device', label: 'Device', description: 'A directory on one of your devices.', icon: Monitor },
+] as const
 const checkboxOff = ref(false)
 const checkboxPartialOn = ref(false)
 const checkboxPartial = ref(true)
@@ -247,6 +254,14 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
       <div class="specimen-row">
         <GallerySpecimen variant="accents">
           <SwatchPicker v-model="swatch" :options="PRODUCT_ACCENTS" />
+        </GallerySpecimen>
+      </div>
+    </GallerySection>
+
+    <GallerySection title="ChoiceCards" note="A few exclusive choices as cards with an icon, a title and a line, for a form that branches on the answer.">
+      <div class="specimen-row">
+        <GallerySpecimen variant="two cards" wide>
+          <div class="w-96 max-w-full"><ChoiceCards v-model="choice" :options="choiceOptions" /></div>
         </GallerySpecimen>
       </div>
     </GallerySection>
