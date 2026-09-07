@@ -24,7 +24,8 @@ const props = defineProps<{
   menuOpen: boolean
   renaming: boolean
   hidePin?: boolean
-  /** Inside a project: the row steps in under its header, so the header reads as the group. */
+  /** Inside a project: the row steps in 8px under its header by padding, so its hover and
+      selection still span the list like the header does. */
   nested?: boolean
 }>()
 
@@ -104,7 +105,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
 <template>
   <div
     class="group/row relative flex h-7 cursor-default select-none items-center gap-2 rounded-md pr-1 text-chrome transition-colors duration-200 ease-out"
-    :class="[rowClass, nested ? 'ml-3 pl-2' : 'pl-2']"
+    :class="[rowClass, nested ? 'pl-4' : 'pl-2']"
     :aria-selected="selected"
     @click="emit('click', $event)"
     @contextmenu.prevent="emit('contextmenu', $event)"
