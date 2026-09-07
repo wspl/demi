@@ -241,6 +241,10 @@ function selectProjectConversations(project: SidebarProject): void {
           class="sidebar-entry relative"
           :class="[
             entry.kind === 'project' && displayEntries[index - 1]?.id !== 'projects-heading' ? 'mt-3' : '',
+            // Headings stick to the top of the list; a project's header sticks just under the 30px Projects heading.
+            // The gap above Projects is a margin on the entry, outside the sticky box, so both headings stick the same.
+            entry.kind === 'heading' ? 'sticky top-0 z-20 bg-surface-base' : entry.kind === 'project' ? 'sticky top-[30px] z-10 bg-surface-base' : '',
+            entry.id === 'projects-heading' ? 'mt-4' : '',
             drag.source.value?.id === entry.id ? 'opacity-40' : '',
             drag.target.value?.id === entry.id ? (drag.target.value.after ? 'drop-after' : 'drop-before') : '',
           ]"
@@ -248,7 +252,7 @@ function selectProjectConversations(project: SidebarProject): void {
           :data-sidebar-kind="entry.kind"
           @pointerdown="entry.kind !== 'heading' && renamingId !== entry.id && drag.start($event, entry)"
         >
-          <div v-if="entry.kind === 'heading'" class="group/projects mb-1.5 flex h-6 items-center px-2 text-[11px] uppercase tracking-wide text-fg-subtle" :class="entry.id === 'projects-heading' ? 'mt-4' : ''">
+          <div v-if="entry.kind === 'heading'" class="group/projects mb-1.5 flex h-6 items-center px-2 text-[11px] uppercase tracking-wide text-fg-subtle">
             <span class="flex-1">{{ entry.id === 'projects-heading' ? 'Projects' : 'Conversations' }}</span>
             <Tooltip v-if="entry.id === 'projects-heading'" content="Add project" placement="right">
               <IconButton :icon="FolderPlus" size="xs" variant="ghost" class="opacity-0 transition-opacity group-hover/projects:opacity-100" @click="emit('addProject')" />
@@ -270,6 +274,7 @@ function selectProjectConversations(project: SidebarProject): void {
           <SidebarRow
             v-else
             :conversation="byId.get(entry.id)!"
+            :nested="byId.get(entry.id)!.projectId !== null"
             :hide-pin="hidePin"
             :open="entry.id === activeId"
             :selected="list.isSelected(entry.id)"
