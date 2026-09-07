@@ -149,7 +149,7 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
       <div class="flex justify-end gap-2">
         <Button v-if="phase.kind === 'done'" variant="primary" @click="emit('close')">Done</Button>
         <template v-else>
-          <Button variant="ghost" @click="emit('close')">Cancel</Button>
+          <Button @click="emit('close')">Cancel</Button>
           <Button v-if="phase.kind === 'failed'" @click="emit('retry')">Try again</Button>
         </template>
       </div>
