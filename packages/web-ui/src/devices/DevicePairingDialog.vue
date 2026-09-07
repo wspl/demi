@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { Check, Copy } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -11,11 +11,17 @@ import TextInput from '../ui/TextInput.vue'
 import InlineError from '../ui/InlineError.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import SettingsRow from '../settings/SettingsRow.vue'
+import Segmented from '../ui/Segmented.vue'
+import { deviceInstallCommand, deviceSystems, type DeviceInstallation, type DeviceSystem } from './installation'
 
-const props = defineProps<{ isOpen: boolean; overlayStore: OverlayStore; command: string; phase: PairingPhase }>()
+const props = defineProps<{ isOpen: boolean; overlayStore: OverlayStore; installation: DeviceInstallation; phase: PairingPhase }>()
 const emit = defineEmits<{ close: []; next: []; back: []; submit: [code: string] }>()
 const code = ref('')
 const { copy, copied } = useClipboard()
+const system = ref<DeviceSystem>('linux')
+const copiedFor = ref<DeviceSystem>()
+const command = computed(() => deviceInstallCommand(props.installation, system.value))
+function copyCommand() { copiedFor.value = system.value; void copy(command.value) }
 watch(() => props.isOpen, () => { code.value = '' })
 function submit() { if (props.phase.kind === 'code' && code.value.trim()) emit('submit', code.value.trim()) }
 </script>
@@ -28,10 +34,16 @@ function submit() { if (props.phase.kind === 'code' && code.value.trim()) emit('
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">{{ phase.kind === 'setup' ? 'Start the runner on your device to get a pairing code.' : phase.kind === 'done' ? 'The device is linked to your account and ready to use.' : 'Enter the pairing code printed by the runner.' }}</p>
       </header>
       <div v-if="phase.kind === 'setup'" class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
-        <SettingsRow label="Run on your device" description="Use a local terminal or SSH. Keep the runner open.">
-          <template #detail><code class="block break-words text-[12px] leading-5 text-fg-body">{{ command }}</code></template>
-          <IconButton :icon="copied ? Check : Copy" size="sm" :aria-label="copied ? 'Copied' : 'Copy runner command'" @click="copy(command)" />
+        <SettingsRow label="System">
+          <Segmented v-model="system" size="sm" :options="deviceSystems" aria-label="Device system" />
         </SettingsRow>
+        <div class="flex flex-col gap-2 p-4">
+          <p class="text-[12px] leading-4 text-fg-subtle">{{ system === 'windows' ? 'Run in PowerShell on the device. Keep it open.' : 'Run in a terminal on the device, locally or over SSH. Keep it open.' }}</p>
+          <div class="flex items-start gap-2 rounded-md border border-line bg-surface px-3 py-2">
+            <code class="min-w-0 flex-1 select-text break-words font-mono text-[12px] leading-5 text-fg-body">{{ command }}</code>
+            <IconButton :icon="copied && copiedFor === system ? Check : Copy" size="sm" :aria-label="copied && copiedFor === system ? 'Copied' : 'Copy install command'" @click="copyCommand" />
+          </div>
+        </div>
       </div>
       <template v-else-if="phase.kind === 'code' || phase.kind === 'pairing'">
         <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">

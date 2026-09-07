@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { demoDeviceInstallation } from '../fixtures/device-installation'
 import { computed, ref } from 'vue'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import { Check, Copy, ExternalLink, Eye, EyeOff, FolderOpen, Laptop, Monitor, Moon, Plug, RotateCw, ScrollText, Server, Sun, Terminal, Trash2 } from '@lucide/vue'
@@ -470,7 +471,7 @@ const revealed = ref<Record<string, boolean>>({})
     </SettingsGroup>
   </SettingsPage>
 
-  <SettingsDevices v-else-if="tab === 'devices'" :devices="s.devices" :overlay-store="appOverlayStore" runner-command="demi-runner run --backend https://demi.example.com" :claim-device="claimDevice" @revoke="revokeDevice" />
+  <SettingsDevices v-else-if="tab === 'devices'" :devices="s.devices" :overlay-store="appOverlayStore" :installation="demoDeviceInstallation" :claim-device="claimDevice" @revoke="revokeDevice" />
 
   <!-- Keyboard -->
   <SettingsPage v-else-if="tab === 'keyboard'" title="Keyboard" description="Click one to change it.">

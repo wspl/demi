@@ -8,7 +8,12 @@ import { useConversations } from '../conversation/store'
 
 const resources = useResources()
 const conversations = useConversations()
-const runnerCommand = `demi-runner run --backend ${window.location.origin}`
+// Prototype endpoint contract; installers are not served by this SPA.
+const installation = {
+  backendUrl: window.location.origin,
+  shellInstallerUrl: `${window.location.origin}/install.sh`,
+  powershellInstallerUrl: `${window.location.origin}/install.ps1`,
+}
 
 async function claim(_code: string): Promise<PairingResult> {
   const device = {
@@ -36,7 +41,7 @@ function revoke(id: string) {
   <SettingsDevices
     :devices="resources.devices"
     :overlay-store="appOverlayStore"
-    :runner-command="runnerCommand"
+    :installation="installation"
     :claim-device="claim"
     @revoke="revoke"
   />

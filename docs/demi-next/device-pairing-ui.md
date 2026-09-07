@@ -2,7 +2,7 @@
 
 The reusable `web-ui/devices/DevicePairingDialog` and `useDevicePairing` own the
 pairing presentation and lifecycle. Settings, onboarding and host pickers can
-supply the same command and asynchronous claim adapter. The current product and
+supply installer endpoints, the backend URL and an asynchronous claim adapter. The current product and
 gallery use prototype adapters, not live device APIs.
 
 Devices has an Add device button on the right of Your devices. Revocation is
@@ -11,11 +11,15 @@ revocation uses an error toast because the action has no input field.
 
 ## Flow
 
-1. Start runner: open a terminal on the target computer, or SSH into a remote or
-   headless server. Use an installed `demi-runner` and the host-provided command
-   `demi-runner run --backend <deployment URL>`. Keep the process running. Already
-   paired runners reconnect automatically. A binary installation/download URL
-   is not defined by the current runner design; the UI does not invent one.
+1. Install and start runner: select Linux, macOS or Windows. A bordered command
+   box displays a curl-to-shell command on Linux/macOS, or a PowerShell `.ps1`
+   invocation on Windows. Copy always uses the selected system's command.
+   The deployment supplies `DeviceInstallation` (shell and PowerShell installer
+   URLs plus backend URL); `deviceInstallCommand` owns shell-specific quoting.
+   The proposed scripts install/start the runner with the supplied backend.
+   Keep the terminal open until pairing completes.
+   These installers are not implemented or published in this repository yet;
+   OS selection is a UI prototype, not a claim of native Windows runner support.
 2. Enter code: paste the full code printed by the runner. The browser does not
    issue a device code. The backend owns normalization and verification.
 3. Pairing: disable duplicate submission and keep the entered code visible.
@@ -35,4 +39,6 @@ enter this flow. See [runner.md](runner.md) and [managed-hosts.md](managed-hosts
 The Settings gallery has a separate Add device pairing-flow specimen using the
 same dialog, with directly selectable setup, code, pairing, invalid-code,
 rate-limit, connection-error and completed states, plus a clickable happy path.
-The example command uses a reserved example domain and performs no connection.
+The gallery uses reserved example-domain installer URLs and performs no connection.
+The product prototype uses same-origin placeholder installer paths; a production
+host must supply published scripts before offering executable setup commands.
