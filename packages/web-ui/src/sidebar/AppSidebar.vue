@@ -3,19 +3,16 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { Archive, FolderPlus, Settings, SquarePen, WandSparkles } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
-import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
-import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Popover from '@demicodes/web-ui/ui/Popover.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import type { SidebarAccount, SidebarConversation, SidebarExtension, SidebarProject, SidebarReorder } from './types'
+import type { SidebarAccount, SidebarConversation, SidebarProject, SidebarReorder } from './types'
 import { plainConversations, projectGroups } from './group-conversations'
 import { useSidebarDrag } from './useSidebarDrag'
 import { reorderPeers } from './reorder'
 import { visibleEntries } from './list-model'
 import { useSidebarList } from './useSidebarList'
-import ExtensionFlyout from './ExtensionFlyout.vue'
 import SidebarAccountRow from './SidebarAccount.vue'
 import SidebarNavItem from './SidebarNavItem.vue'
 import SidebarProjectHeader from './SidebarProjectHeader.vue'
@@ -24,8 +21,8 @@ import SidebarRow from './SidebarRow.vue'
 import SidebarSelectionMenu from './SidebarSelectionMenu.vue'
 
 /**
- * Top: the app and its entries: New, Skills (a flyout that toggles skills in place) and
- * Archived (a searchable menu under it; choosing one restores it). Middle: plain
+ * Top: the app and its entries: New, then Skills and Archived, which open their settings
+ * sections. Middle: plain
  * conversations, then every project as a collapsible group of its conversations, with one
  * selection across all of them. Bottom: the account and settings.
  */
@@ -34,13 +31,8 @@ const props = defineProps<{
   projects: SidebarProject[]
   conversations: SidebarConversation[]
   activeId: string | null
-  skills: SidebarExtension[]
-  /** Archived conversations, for the Archived entry's menu. */
-  archived: SidebarConversation[]
   hidePin?: boolean
   hideDelete?: boolean
-  /** Pinned open flyout for the catalog; the product never pins. */
-  pinnedFlyout?: 'skills' | 'archived'
 }>()
 
 const emit = defineEmits<{
@@ -54,12 +46,8 @@ const emit = defineEmits<{
   moveToProject: [ids: string[], projectId: string | null]
   archive: [ids: string[]]
   remove: [ids: string[]]
-  toggleSkill: [id: string, enabled: boolean]
-  /** The flyout's Browse skills…: the host opens its skills surface. */
-  manageSkills: []
-  /** An archived conversation chosen from the menu: bring it back and open it. */
-  restore: [id: string]
-  openSettings: []
+  /** Settings, on a section when an entry names one (`skills`, `archived`). */
+  openSettings: [section?: string]
   signOut: []
 }>()
 
@@ -84,7 +72,6 @@ const displayEntries = computed(() => [
   { kind: 'heading' as const, id: 'projects-heading' },
   ...entries.value.filter((entry) => entry.kind === 'project' || entry.projectId !== null),
 ])
-const archivedItems = computed(() => props.archived.map((conversation) => ({ id: conversation.id, label: conversation.title })))
 
 // Folding is transient; reveal the source again after layout has settled on drop or cancellation.
 watch(drag.source, async (source, previous, onCleanup) => {
@@ -226,40 +213,11 @@ function selectProjectConversations(project: SidebarProject): void {
       <span class="min-w-0 flex-1 truncate text-chrome font-medium text-fg-emphasis">Demi</span>
     </div>
 
-    <!-- The entries: one primary action, what the agent can use, and what was put away. -->
+    <!-- The entries: one primary action, then the two settings sections a conversation reaches for. -->
     <div class="flex shrink-0 flex-col gap-px px-2.5">
       <SidebarNavItem :icon="SquarePen" label="New" shortcut="⌘N" emphasis @click="emit('create', null)" />
-      <!-- Each entry is a full-width row, dropdown or not. -->
-      <Dropdown :overlay-store="appOverlayStore" placement="bottom-start" :offset="8" class="w-full [&>div]:w-full" v-bind="pinnedFlyout === 'skills' ? { open: true } : {}">
-        <template #trigger="{ isOpen }">
-          <SidebarNavItem :icon="WandSparkles" label="Skills" :pressed="isOpen" />
-        </template>
-        <template #content="{ close }">
-          <ExtensionFlyout
-            title="Skills"
-            :items="skills"
-            manage-label="Browse skills…"
-            @toggle="(id, enabled) => emit('toggleSkill', id, enabled)"
-            @manage="close(); emit('manageSkills')"
-          />
-        </template>
-      </Dropdown>
-      <!-- Archived opens under its entry, wider than the rail: a searchable list; choosing one restores and opens it. -->
-      <Dropdown :overlay-store="appOverlayStore" placement="bottom-start" :offset="8" class="w-full [&>div]:w-full" v-bind="pinnedFlyout === 'archived' ? { open: true } : {}">
-        <template #trigger="{ isOpen }">
-          <SidebarNavItem :icon="Archive" label="Archived" :pressed="isOpen" />
-        </template>
-        <template #content="{ close }">
-          <Menu
-            :items="archivedItems"
-            class="w-80"
-            filterable
-            filter-placeholder="Search archived…"
-            empty-text="No archived conversations."
-            @select="(id) => { close(); emit('restore', id) }"
-          />
-        </template>
-      </Dropdown>
+      <SidebarNavItem :icon="WandSparkles" label="Skills" @click="emit('openSettings', 'skills')" />
+      <SidebarNavItem :icon="Archive" label="Archived" @click="emit('openSettings', 'archived')" />
     </div>
 
     <!-- Plain conversations first, then the projects. One focusable list; rows are not tab stops. -->

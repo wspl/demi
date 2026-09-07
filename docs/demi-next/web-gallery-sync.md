@@ -10,7 +10,8 @@ browser package typechecks and checks affected specimens in the browser.
 | Surface | Shared implementation | Gallery coverage |
 | --- | --- | --- |
 | Sidebar header, project names, pin/archive actions | AppSidebar, SidebarProjectHeader, SidebarRow | Sidebar live specimen |
-| Sidebar entries: New, the Skills flyout, Archived as a searchable menu under it; New on the Conversations heading | AppSidebar over `skills` and `archived` | Sidebar live and pinned-flyout specimens; `web` feeds the settings' skills and the archived conversations |
+| Sidebar entries: New, then Skills and Archived opening their settings sections; New on the Conversations heading | AppSidebar `openSettings(section)` | Sidebar live specimen reports the section; `web` opens the settings dialog on it |
+| Archived conversations: searchable list with Restore | settings/SettingsArchived | Settings full mock; `web` restores and opens the conversation |
 | Marquee, read indicators, ordering, temporary folding and centered scrolling | Sidebar components and drag controller | Sidebar live specimen with mutable data |
 | Menu sizing, label/value rows, section headings and status indicators | Menu, MenuItem, MenuGroup | Overlays specimens |
 | Host search, Cloud option and bound-device disabling | hosts/HostPicker | Main and attached picker specimens in Overlays |
@@ -20,7 +21,7 @@ browser package typechecks and checks affected specimens in the browser.
 | Transcript blocks, markdown and tool output | Shared agent renderers | Session, Markdown and Code |
 | Fold: height and chevron | ui/Fold, ui/FoldChevron | Motion Fold specimen; Skills packs; FunctionalBlock |
 | Settings shell, rail, pages, groups, rows, split lists | settings/SettingsDialog, sections (`SETTINGS_SECTIONS`), SettingsPage, SettingsGroup, SettingsRow, SettingsSplit, SettingsListItem | Settings full mock and narrow variant; the product settings in `web` |
-| Settings pages: General (theme, tone, accent, text size), Account, Notifications, Keyboard, Data & privacy | settings/SettingsGeneral, SettingsAccount, SettingsNotifications, SettingsKeyboard, SettingsData | Settings full mock over fixture state; `web` over `prototype/settings.ts`, where General writes the document and Keyboard drives `App`'s shortcuts |
+| Settings pages: General (theme, tone, accent, text size), Account, Notifications, Archived, Keyboard, Data & privacy | settings/SettingsGeneral, SettingsAccount, SettingsNotifications, SettingsArchived, SettingsKeyboard, SettingsData | Settings full mock over fixture state; `web` over `prototype/settings.ts`, where General writes the document and Keyboard drives `App`'s shortcuts |
 | Stacked dialogs: a dialog opened inside another keeps it, Escape closes the top | ui/Dialog over overlayStore's `stacked` layer | Every settings page that opens a dialog, in the product |
 | Shortcut notation: one string the recorder writes and the app matches | ui/shortcut (`formatShortcut`, `matchesShortcut`), ShortcutRecorder | Keyboard page; `web` `App` listens through the bindings |
 | Devices: claim by pairing code, online status, revoke | settings/SettingsDevices | Settings full mock and the product Devices panel |
