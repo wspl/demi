@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import manifest from 'material-icon-theme/dist/material-icons.json'
-import { fileIconName, type FileIconTheme } from '../file-icons'
+import { fileIconName, landmarkIcon, type FileIconTheme } from '../file-icons'
 
 const theme = manifest as FileIconTheme
 
@@ -21,4 +21,11 @@ test('files match the whole name before the longest suffix, case-insensitively',
   expect(fileIconName(theme, 'App.vue', false)).toBe('vue')
   expect(fileIconName(theme, 'LICENSE', false)).toBe('license')
   expect(fileIconName(theme, 'notes', false)).toBe('file')
+})
+
+test('the root and the home are known by their place, not their name', () => {
+  const source = { platform: 'macos', home: '/Users/zan' } as const
+  expect(landmarkIcon('/', source)).toBe('folder-macos')
+  expect(landmarkIcon('/Users/zan', source)).toBe('folder-home')
+  expect(landmarkIcon('/Users', source)).toBeUndefined()
 })
