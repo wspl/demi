@@ -45,6 +45,8 @@ const messages: Record<string, string> = {
   'agent.context.compactHint': 'Click to compact context',
   'agent.input.attach': 'Add attachment',
   'agent.input.attachFiles': 'Attach files',
+  'agent.input.attachLocalFiles': 'Attach local files',
+  'agent.input.attachRemoteFile': 'Attach remote file…',
   'agent.queue.queued': 'Queued',
   'agent.queue.remove': 'Remove from the queue',
   'agent.queue.sendNow': 'Steer the current turn with this',
