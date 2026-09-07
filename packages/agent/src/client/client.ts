@@ -1,4 +1,5 @@
-import type { Block, SessionPhase, UserContentBlock } from '@demicodes/core'
+import type { Block, PendingSteer, SessionPhase, UserContentBlock } from '@demicodes/core'
+import { pendingSteersFrameSchema } from '../protocol/schemas'
 import { applyTranscriptPatches } from '../transcript/patch'
 import type { ProviderSelection } from '@demicodes/provider'
 import type { ClientFrame, ClientSessionEvent, ServerFrame } from '../protocol/frames'
@@ -40,6 +41,7 @@ export class AgentClient {
   private readonly pendingAbortWaiters: AbortWaiter[] = []
   private readonly queuedMessageIds = new Set<string>()
   private blocks: Block[] = []
+  private pending: PendingSteer[] = []
   private revision: number | null = null
   private awaitingResync = false
   private phase: SessionPhase | null = null
@@ -191,6 +193,11 @@ export class AgentClient {
     return { blocks: [...this.blocks] }
   }
 
+  /** Detached accepted user steers, excluding any already present in the transcript. */
+  pendingSteers(): PendingSteer[] {
+    return structuredClone(this.pending)
+  }
+
   private sendFrame(frame: ClientFrame): void {
     this.transport.send(frame)
   }
@@ -201,6 +208,7 @@ export class AgentClient {
         this.blocks = [...frame.blocks]
         this.revision = frame.revision
         this.awaitingResync = false
+        this.removeMaterializedSteers()
         this.emit({ type: 'transcript_reset', blocks: this.blocks })
         return
       case 'transcript_patch':
@@ -214,9 +222,11 @@ export class AgentClient {
         }
         this.revision = frame.revision
         this.blocks = applyTranscriptPatches(this.blocks, frame.patches)
+        this.removeMaterializedSteers()
         this.emit({ type: 'transcript_patch', patches: frame.patches, blocks: this.blocks })
         return
       case 'closed':
+        this.pending = []
         this.blocks = []
         this.revision = null
         this.awaitingResync = false
@@ -228,6 +238,7 @@ export class AgentClient {
         this.rejectAllAbortWaiters(new Error('Session closed'))
         return
       case 'opened':
+        this.pending = []
         this.emit(frame)
         return
       case 'phase': {
@@ -241,6 +252,11 @@ export class AgentClient {
         this.queuedMessageIds.clear()
         for (const message of frame.queue) this.queuedMessageIds.add(message.id)
         this.emit(frame)
+        return
+      case 'pending_steers':
+        this.pending = structuredClone(pendingSteersFrameSchema.parse(frame).pendingSteers)
+        this.removeMaterializedSteers(false)
+        this.emitPendingSteers()
         return
       case 'steer_result':
         this.emit(frame)
@@ -281,6 +297,19 @@ export class AgentClient {
         }
         return
     }
+  }
+
+  private removeMaterializedSteers(notify = true): void {
+    if (this.pending.length === 0) return
+    const materializedIds = new Set(this.blocks.filter((block) => block.type === 'steer').map((block) => block.id))
+    const remaining = this.pending.filter((steer) => !materializedIds.has(steer.id))
+    if (remaining.length === this.pending.length) return
+    this.pending = remaining
+    if (notify) this.emitPendingSteers()
+  }
+
+  private emitPendingSteers(): void {
+    this.emit({ type: 'pending_steers', pendingSteers: this.pendingSteers() })
   }
 
   private waitForFrame<T extends ClientSessionEvent['type']>(type: T): Promise<void> {

@@ -89,6 +89,9 @@ export class LiveSession {
       case 'queue_changed':
         this.sink({ type: 'queue', queue: event.queue })
         return
+      case 'pending_steers_changed':
+        this.sink({ type: 'pending_steers', pendingSteers: event.pendingSteers })
+        return
       case 'tool_progress': {
         this.emitToolProgress(event.toolCallId, event.toolName, event.progress)
         return
