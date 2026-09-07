@@ -7,9 +7,15 @@ import { onKeyStroke } from '@vueuse/core'
 import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayContainerKey } from '../overlay/overlayContainer'
+import { dialogNestingKey } from '../overlay/dialogNesting'
 import { useOverlay } from '../composables/useOverlay'
 
 /**
+ * Size: md is the default compact panel, wide fits a settings row beside a
+ * long input, lg is an editor, xl is the settings shell.
+ * Nesting: a dialog opened from inside another stacks on it; the one beneath stays,
+ * Escape and the scrim close only the top, and closing the one beneath takes the
+ * stack with it.
  * Scrolling: a dialog's header, search and footer stay put; only its body scrolls.
  * The panel is a flex column capped at the host's height, so content declares one
  * root with `flex min-h-0 flex-col` and puts the body in a `ScrollArea`. Content
@@ -18,7 +24,7 @@ import { useOverlay } from '../composables/useOverlay'
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
-  size?: 'md' | 'lg' | 'xl'
+  size?: 'md' | 'wide' | 'lg' | 'xl'
   label?: string
   /** Every dialog closes from its top-right corner; a flow that must finish can hide it. */
   hideClose?: boolean
@@ -34,14 +40,22 @@ const teleportTarget = computed(() => container?.value ?? 'body')
 const family = createOverlayFamily()
 // Child menus share ownership, but the dialog surface is outside their click boundary.
 provide(overlayFamilyKey, family)
+const nested = inject(dialogNestingKey, false)
+provide(dialogNestingKey, true)
+
+const id = useOverlay(
+  props.overlayStore,
+  () => (container ? false : props.isOpen),
+  () => {
+    if (props.isOpen) emit('close')
+  },
+  nested ? 'stacked' : 'exclusive',
+)
+
 onKeyStroke('Escape', (event) => {
-  if (!props.isOpen || container) return
+  if (!props.isOpen || container || !props.overlayStore.isTop(id)) return
   event.preventDefault()
   emit('close')
-})
-
-useOverlay(props.overlayStore, () => (container ? false : props.isOpen), () => {
-  if (props.isOpen) emit('close')
 })
 </script>
 
@@ -57,7 +71,7 @@ useOverlay(props.overlayStore, () => (container ? false : props.isOpen), () => {
       >
         <div
           class="dialog-panel relative flex max-h-[calc(100%-2rem)] w-[calc(100%-2rem)] flex-col overflow-hidden rounded-xl bg-surface-dialog shadow-2xl"
-          :class="size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-3xl' : 'max-w-md'"
+          :class="size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-3xl' : size === 'wide' ? 'max-w-xl' : 'max-w-md'"
           role="dialog"
           aria-modal="true"
           :aria-label="label"

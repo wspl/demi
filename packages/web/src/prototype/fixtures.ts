@@ -1,40 +1,8 @@
 import type { FileExtension, ModelSelection } from '@demicodes/core'
-import type { Conversation, Device, Project, PrototypeProvider } from './types'
+import type { Conversation, Device, Project } from './types'
+import { DEFAULT_MODEL, providers } from './settings'
 import { populateTranscript } from './transcripts'
 
-export function providers(): PrototypeProvider[] {
-  return [
-    {
-      id: 'demo',
-      label: 'Demo provider',
-      isAvailable: true,
-      models: [
-        {
-          id: 'balanced',
-          name: 'Balanced',
-          contextWindow: 200000,
-          inputLimit: 180000,
-          acceptedExtensions: ['png', 'jpg', 'webp', 'pdf'],
-          reasoning: {
-            efforts: ['low', 'medium', 'high'],
-            defaultEffort: 'medium',
-            canDisable: true,
-          },
-          serviceTiers: [{ id: 'fast', label: 'Fast', fast: true }],
-        },
-        {
-          id: 'precise',
-          name: 'Precise',
-          contextWindow: 200000,
-          inputLimit: 180000,
-          acceptedExtensions: ['png', 'jpg', 'webp', 'pdf'],
-          reasoning: { efforts: ['medium', 'high'], defaultEffort: 'high', canDisable: false },
-          serviceTiers: null,
-        },
-      ],
-    },
-  ]
-}
 export function devices(): Device[] {
   return [
     { id: 'mac', name: 'zan-mbp', online: true, platform: 'linux', home: '/Users/zan' },
@@ -82,8 +50,8 @@ export function conversation(
     files: [],
     queue: [],
     pendingSteers: [],
-    providerId: 'demo',
-    modelId: 'balanced',
+    providerId: DEFAULT_MODEL.providerId,
+    modelId: DEFAULT_MODEL.modelId,
     thinking: { type: 'effort', effort: 'medium', summary: null },
     serviceTierId: null,
     attachedHosts: [],
@@ -171,16 +139,16 @@ export function conversations(): Conversation[] {
 }
 
 export function modelSelection(c: Conversation): ModelSelection {
-  const entry = providers()[0]!.models.find((model) => model.id === c.modelId)!
+  const entry = providers().find((provider) => provider.id === c.providerId)!.models.find((model) => model.id === c.modelId)!
   return {
     providerId: c.providerId,
     model: {
       id: entry.id,
       name: entry.name,
       contextWindow: entry.contextWindow!,
-      inputLimit: entry.inputLimit,
+      inputLimit: entry.contextWindow,
       thinking: [],
-      acceptedExtensions: entry.acceptedExtensions as FileExtension[],
+      acceptedExtensions: entry.extensions.map((extension) => extension.replace(/^\./, '')) as FileExtension[],
     },
     thinking: c.thinking,
     serviceTierId: c.serviceTierId,

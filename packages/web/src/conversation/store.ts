@@ -247,7 +247,6 @@ export const useConversations = defineStore('conversations', {
         summary: 'The conversation’s goals and decisions are retained for the next turn.',
         summaryTokens: 28,
       })
-      this.notice = 'Context compacted.'
     },
   },
 })

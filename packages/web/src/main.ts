@@ -1,8 +1,8 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
-import { productAppearance } from '@demicodes/web-ui/theme/productAppearance'
-import { applyThemeToDocument } from '@demicodes/web-ui/theme/appTheme'
+import { applyProductAppearance, applyTranscriptTextSize, productAppearance } from '@demicodes/web-ui/theme/productAppearance'
+import { applyThemeToDocument, themeChoice } from '@demicodes/web-ui/theme/appTheme'
 import { useConversations } from './conversation/store'
 import { useResources } from './prototype/resources'
 import ChatPage from './conversation/ChatPage.vue'
@@ -26,6 +26,10 @@ router.beforeEach((to) => (!resources.signedIn && to.path !== '/login' ? '/login
 for (const [axis, value] of Object.entries(productAppearance)) {
   document.documentElement.setAttribute(`data-${axis}`, value)
 }
+// The saved theme is the General page's choice; tone, accent and text size start from the settings.
+resources.settings.general.theme = themeChoice()
+applyProductAppearance(resources.settings.general)
+applyTranscriptTextSize(resources.settings.general.fontSize)
 applyThemeToDocument()
 createApp(App).use(pinia).use(router).mount('#app')
 const timer = window.setInterval(() => conversations.advance(), 80)

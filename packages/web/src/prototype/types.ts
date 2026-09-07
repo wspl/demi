@@ -2,7 +2,6 @@ import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type { Block, ThinkingConfig, QueuedMessage } from '@demicodes/core'
 import type { SidebarConversation, SidebarProject } from '@demicodes/web-ui/sidebar/types'
 import type { PendingSteerMessage } from '@demicodes/web-ui/agent/types'
-import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
 
 export interface DraftFile {
   id: string
@@ -37,7 +36,4 @@ export interface Device {
 export interface Project extends SidebarProject {
   deviceId: string
   branch: string | null
-}
-export interface PrototypeProvider extends ProviderInfo {
-  models: ModelInfo[]
 }

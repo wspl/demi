@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onUpdated, ref, useSlots, watch } from 'vue'
-import { ChevronRight, CircleX } from '@lucide/vue'
+import { CircleX } from '@lucide/vue'
 import ChromeRoll from '@demicodes/web-ui/ui/ChromeRoll.vue'
+import Fold from '@demicodes/web-ui/ui/Fold.vue'
+import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
 const ACTIVE_OUTPUT_CLOSE_DELAY_MS = 1000
@@ -106,48 +108,32 @@ onUpdated(() => {
         </div>
       </ChromeRoll>
       <span class="-ml-1 shrink-0 text-xs">
-        <ChevronRight
+        <FoldChevron
           v-if="isExpandable"
-          :size="ICON_PX.in28"
-          class="transition-[color,transform] duration-200"
-          :class="[
-            isOpen ? 'rotate-90' : '',
-            tone === 'danger' ? 'text-on-danger-muted group-hover:text-on-danger' : 'text-fg-faint group-hover:text-fg-muted',
-          ]"
+          :open="isOpen"
+          :class="tone === 'danger' ? 'text-on-danger-muted group-hover:text-on-danger' : 'text-fg-faint group-hover:text-fg-muted'"
         />
         <span v-else-if="!loading && trailing" class="text-fg-subtle group-hover:text-fg-muted">{{ trailing }}</span>
       </span>
       <div class="flex-1"></div>
     </div>
-    <div v-if="isExpandable" class="functional-block-body" :class="isOpen ? 'is-open' : ''">
-      <div class="overflow-hidden">
-        <div class="mb-1 flex overflow-hidden">
-          <div
-            v-if="showIcon"
-            class="functional-block-rail shrink-0"
-            :style="{ width: `${ICON_PX.in28}px` }"
-          />
-          <div ref="bodyScroll" class="min-w-0 max-h-80 flex-1 overflow-y-auto py-0.5">
-            <slot v-if="hasBodySlot()" name="body" />
-            <pre v-if="errorText" class="whitespace-pre-wrap px-3 py-1.5 font-mono text-xs text-on-danger-muted">{{ errorText }}</pre>
-          </div>
+    <Fold v-if="isExpandable" :open="isOpen">
+      <div class="mb-1 flex overflow-hidden">
+        <div
+          v-if="showIcon"
+          class="functional-block-rail shrink-0"
+          :style="{ width: `${ICON_PX.in28}px` }"
+        />
+        <div ref="bodyScroll" class="min-w-0 max-h-80 flex-1 overflow-y-auto py-0.5">
+          <slot v-if="hasBodySlot()" name="body" />
+          <pre v-if="errorText" class="whitespace-pre-wrap px-3 py-1.5 font-mono text-xs text-on-danger-muted">{{ errorText }}</pre>
         </div>
       </div>
-    </div>
+    </Fold>
   </div>
 </template>
 
 <style scoped>
-.functional-block-body {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.2s ease;
-}
-
-.functional-block-body.is-open {
-  grid-template-rows: 1fr;
-}
-
 .functional-block-icon :deep(svg) {
   width: 100%;
   height: 100%;

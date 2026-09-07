@@ -27,20 +27,42 @@ export interface SettingsDevice {
   id: string
   name: string
   online: boolean
+  /** When the host last connected; shown while it is offline. */
+  seen?: string
 }
 
-export interface SettingsProvider {
+/** A shortcut the keyboard page lists and rebinds. */
+export interface SettingsKeyBinding {
   id: string
-  label: string
-  modelCount: number
-  isAvailable: boolean
+  action: string
+  /** In the recorder's notation, e.g. `⌘⇧O`. */
+  keys: string
 }
 
-export interface SettingsUsage {
-  conversations: number
-  messages: number
-  /** Formatted by the host; the panel shows it verbatim. */
-  cost: string
+export interface SettingsExperiment {
+  id: string
+  name: string
+  description: string
+  on: boolean
+}
+
+export interface SettingsSpendRow {
+  provider: string
+  /** Formatted by the host; shown verbatim. */
+  amount: string
+}
+
+/** What the usage page shows: the plan, its credits, and what the providers billed. */
+export interface SettingsUsageInfo {
+  plan: string
+  renews: string
+  creditsUsed: number
+  creditsMax: number
+  resets: string
+  spend: SettingsSpendRow[]
+  input: string
+  output: string
+  cacheRead: string
 }
 
 /** A model as the settings edit it: what a custom endpoint needs to be usable. */
@@ -126,6 +148,52 @@ export interface SettingsProviderEntry {
   accounts: SettingsProviderAccount[]
   /** The vendor mark; null falls back to an initial. */
   logo: string | null
+}
+
+export type SettingsMcpTransport = 'stdio' | 'http'
+export type SettingsMcpState = 'connected' | 'auth' | 'crashed' | 'disabled'
+
+/** A tool server as the settings page lists it. Tools are names only; there is no per-tool switch. */
+export interface SettingsMcpServer {
+  id: string
+  name: string
+  transport: SettingsMcpTransport
+  target: string
+  state: SettingsMcpState
+  enabled: boolean
+  /** Why it is not connected, shown on the status. */
+  detail?: string
+  tools: string[]
+}
+
+export interface SettingsMcpDraft {
+  transport: SettingsMcpTransport
+  name: string
+  target: string
+}
+
+export type SettingsSkillSourceState = 'ready' | 'updating' | 'error'
+
+/** One skill inside a source. Off keeps the files but hides them from the agent. */
+export interface SettingsSkill {
+  id: string
+  name: string
+  description: string
+  enabled: boolean
+}
+
+/** A git repository that produced one or more skills. */
+export interface SettingsSkillSource {
+  id: string
+  name: string
+  origin: string
+  state: SettingsSkillSourceState
+  detail?: string
+  skills: SettingsSkill[]
+}
+
+export interface SettingsSkillDraft {
+  origin: string
 }
 
 export const THINKING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'max'] as const

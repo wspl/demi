@@ -34,7 +34,7 @@ watch(
   { immediate: true },
 )
 const hasProvider = computed(() =>
-  resources.providers.some((p) => p.id === conversation.value?.providerId && p.isAvailable),
+  resources.providerInfos.some((p) => p.id === conversation.value?.providerId && p.isAvailable),
 )
 
 function editUser(content: UserContentBlock[]) {

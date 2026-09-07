@@ -1,60 +1,11 @@
 import { reactive } from 'vue'
-import {
-  Bell,
-  BookOpen,
-  Bot,
-  CircleUser,
-  Code,
-  Database,
-  Gauge,
-  Keyboard,
-  Monitor,
-  Plug,
-  Settings2,
-  ShieldCheck,
-  Sparkles,
-} from '@lucide/vue'
-import type { SettingsNavGroup, SettingsProviderAccount, SettingsProviderEntry, SettingsProviderModel, SettingsProviderState, SettingsQuotaWindow, SettingsVendor, SettingsWireApi } from '@demicodes/web-ui/settings/types'
+import type { SettingsMcpServer, SettingsMcpState, SettingsProviderAccount, SettingsProviderEntry, SettingsProviderModel, SettingsProviderState, SettingsQuotaWindow, SettingsSkillSource, SettingsVendor, SettingsWireApi } from '@demicodes/web-ui/settings/types'
 
 /**
  * A coding agent's whole settings surface, mocked in every awkward state at once:
  * expiring auth, a crashed server, a full quota, a disabled provider.
  */
-export const fullSettingsNav: SettingsNavGroup[] = [
-  {
-    items: [
-      { id: 'general', label: 'General', icon: Settings2, keywords: ['language', 'theme', 'tone', 'accent', 'font size'] },
-      { id: 'account', label: 'Account', icon: CircleUser, keywords: ['avatar', 'display name', 'email', 'password', 'plan', 'billing', 'sign out', 'delete account'] },
-      { id: 'notifications', label: 'Notifications', icon: Bell, keywords: ['sound', 'quiet hours', 'approval'] },
-    ],
-  },
-  {
-    label: 'Agent',
-    items: [
-      { id: 'models', label: 'Models & providers', icon: Sparkles, keywords: ['api key', 'anthropic', 'openai', 'claude code', 'codex', 'base url', 'catalog'] },
-      { id: 'agents', label: 'Agents', icon: Bot, keywords: ['model', 'mode', 'subagent', 'system prompt', 'tools'] },
-      { id: 'permissions', label: 'Permissions', icon: ShieldCheck, keywords: ['edit files', 'shell', 'allowlist', 'ask', 'scope'] },
-      { id: 'instructions', label: 'Instructions & memory', icon: BookOpen, keywords: ['agents.md', 'global instructions', 'memory', 'system prompt'] },
-      { id: 'mcp', label: 'MCP servers', icon: Plug, keywords: ['tools', 'transport', 'stdio', 'server'] },
-    ],
-  },
-  {
-    label: 'Workspace',
-    items: [
-      { id: 'devices', label: 'Devices', icon: Monitor, keywords: ['pairing code', 'revoke', 'machine'] },
-      { id: 'keyboard', label: 'Keyboard', icon: Keyboard, keywords: ['shortcut', 'hotkey', 'binding'] },
-      { id: 'data', label: 'Data & privacy', icon: Database, keywords: ['transcripts', 'retention', 'share links', 'export', 'usage data', 'delete'] },
-      { id: 'usage', label: 'Usage & billing', icon: Gauge, keywords: ['plan', 'credits', 'invoices', 'spend', 'tokens'] },
-    ],
-  },
-  {
-    label: 'Advanced',
-    items: [{ id: 'developer', label: 'Developer', icon: Code, keywords: ['logs', 'log level', 'config file', 'environment', 'experiments'] }],
-  },
-]
-
-export type Permission = 'allow' | 'ask' | 'deny'
-export type ServerState = 'connected' | 'auth' | 'crashed' | 'disabled'
+export type ServerState = SettingsMcpState
 
 /** Wire protocols the openai family can speak; the others have one each. */
 export type WireApi = SettingsWireApi
@@ -75,28 +26,7 @@ export interface MockProvider extends SettingsProviderEntry {
   models: MockModel[]
 }
 
-export interface MockServer {
-  id: string
-  name: string
-  transport: 'stdio' | 'http'
-  target: string
-  state: ServerState
-  enabled: boolean
-  detail?: string
-  tools: { name: string; enabled: boolean }[]
-  expanded: boolean
-}
-
-export interface MockAgent {
-  id: string
-  name: string
-  model: string
-  mode: 'primary' | 'subagent'
-  summary: string
-  isDefault?: boolean
-  enabled: boolean
-  expanded: boolean
-}
+export type MockServer = SettingsMcpServer
 
 function model(partial: Partial<MockModel> & Pick<MockModel, 'id'>): MockModel {
   return {
@@ -225,13 +155,10 @@ export function createSettingsState() {
       fontSize: 15,
     },
     notifications: {
-      desktop: true,
+      browser: true,
       sound: false,
       onFinish: true,
-      onApproval: true,
       onError: true,
-      quietHours: true,
-      quietRange: '22:00 – 08:00',
     },
     account: {
       name: 'Zan',
@@ -245,57 +172,84 @@ export function createSettingsState() {
     providers: mockProviders(),
     selectedProviderId: 'kimi' as string | null,
     providerDetailOpen: false,
-    agents: [
-      { id: 'build', name: 'Build', model: 'Claude Sonnet', mode: 'primary', summary: 'Full tool access · edits, shell, web', isDefault: true, enabled: true, expanded: true },
-      { id: 'plan', name: 'Plan', model: 'Claude Sonnet', mode: 'primary', summary: 'Read-only · asks before every edit', enabled: true, expanded: false },
-      { id: 'explore', name: 'Explore', model: 'Claude Haiku', mode: 'subagent', summary: 'Search and read · no writes', enabled: true, expanded: false },
-      { id: 'review', name: 'Review', model: 'GPT-5', mode: 'subagent', summary: 'Custom prompt · 2,140 tokens', enabled: false, expanded: false },
-    ] as MockAgent[],
-    permissions: {
-      edit: 'ask' as Permission,
-      shell: 'ask' as Permission,
-      read: 'allow' as Permission,
-      web: 'allow' as Permission,
-      mcp: 'ask' as Permission,
-      scope: 'project' as 'project' | 'everywhere',
-      allowlist: ['git *', 'bun test *', 'npm run *', 'ls *'],
-    },
-    instructions: {
-      global: 'Prefer small, reviewable changes. Run the relevant tests before reporting done. Never call real models from tests.',
-      files: [
-        { path: '~/Projects/demi/AGENTS.md', found: true },
-        { path: '~/Projects/demi/packages/web/AGENTS.md', found: true },
-        { path: '~/Projects/notes/AGENTS.md', found: false },
-      ],
-      memory: true,
-      memories: 12,
-    },
     servers: [
       {
-        id: 'github', name: 'github', transport: 'stdio', target: 'npx @modelcontextprotocol/server-github', state: 'connected', enabled: true, expanded: true,
+        id: 'github', name: 'GitHub', transport: 'stdio', target: 'npx @modelcontextprotocol/server-github', state: 'connected', enabled: true,
         tools: [
-          { name: 'create_issue', enabled: true },
-          { name: 'list_pull_requests', enabled: true },
-          { name: 'merge_pull_request', enabled: false },
-          { name: 'search_code', enabled: true },
+          'create_issue',
+          'list_issues',
+          'create_pull_request',
+          'list_pull_requests',
+          'merge_pull_request',
+          'search_code',
+          'get_file',
+          'create_comment',
         ],
       },
-      { id: 'postgres', name: 'postgres', transport: 'http', target: 'https://mcp.internal/pg', state: 'auth', enabled: true, expanded: false, detail: 'Sign in to authorize this server', tools: [] },
-      { id: 'filesystem', name: 'filesystem', transport: 'stdio', target: 'npx @modelcontextprotocol/server-filesystem', state: 'crashed', enabled: true, expanded: false, detail: 'exit code 1 · npx: command not found', tools: [] },
-      { id: 'sentry', name: 'sentry', transport: 'http', target: 'https://mcp.sentry.dev', state: 'disabled', enabled: false, expanded: false, tools: [] },
+      { id: 'postgres', name: 'Postgres', transport: 'http', target: 'https://mcp.internal/pg', state: 'auth', enabled: true, detail: 'Sign in to authorize this server', tools: [] },
+      { id: 'filesystem', name: 'FileSystem', transport: 'stdio', target: 'npx @modelcontextprotocol/server-filesystem', state: 'crashed', enabled: true, detail: 'exit code 1 · npx: command not found', tools: ['read_file', 'write_file', 'list_directory', 'search_files'] },
+      { id: 'sentry', name: 'Sentry', transport: 'http', target: 'https://mcp.sentry.dev', state: 'disabled', enabled: false, tools: [] },
     ] as MockServer[],
+    skillSources: [
+      {
+        id: 'vercel',
+        name: 'vercel-labs/agent-skills',
+        origin: 'https://github.com/vercel-labs/agent-skills',
+        state: 'ready',
+        skills: [
+          { id: 'web-design', name: 'web-design-guidelines', description: 'Review UI against Vercel’s web interface guidelines.', enabled: true },
+          { id: 'react-best', name: 'vercel-react-best-practices', description: 'React composition and data-fetching patterns.', enabled: true },
+          { id: 'react-native', name: 'vercel-react-native-skills', description: 'React Native layout and navigation conventions.', enabled: false },
+          { id: 'composition', name: 'vercel-composition-patterns', description: 'When to split a component and when to leave it.', enabled: true },
+          { id: 'frontend', name: 'frontend-design', description: 'Taste-led interface work: type, color, motion.', enabled: false },
+          { id: 'tdd', name: 'tdd', description: 'Write the failing test before the change.', enabled: false },
+          { id: 'agent-browser', name: 'agent-browser', description: 'Browse and act on a page the agent can see.', enabled: false },
+          { id: 'find-skills', name: 'find-skills', description: 'Search installed skills when the next step is unclear.', enabled: true },
+        ],
+      },
+      {
+        id: 'anthropic',
+        name: 'anthropics/skills',
+        origin: 'https://github.com/anthropics/skills',
+        state: 'ready',
+        skills: [
+          { id: 'pptx', name: 'pptx', description: 'Create and edit PowerPoint decks.', enabled: true },
+          { id: 'pdf', name: 'pdf', description: 'Read and fill PDF forms.', enabled: true },
+          { id: 'xlsx', name: 'xlsx', description: 'Build spreadsheets from tables.', enabled: true },
+          { id: 'docx', name: 'docx', description: 'Draft Word documents.', enabled: false },
+          { id: 'skill-creator', name: 'skill-creator', description: 'Author a new SKILL.md that other agents can load.', enabled: true },
+        ],
+      },
+      {
+        id: 'commit',
+        name: 'zan/commit',
+        origin: 'https://github.com/zan/commit',
+        state: 'ready',
+        skills: [
+          { id: 'commit', name: 'commit', description: 'Conventional commit from the staged diff.', enabled: true },
+        ],
+      },
+      {
+        id: 'broken',
+        name: 'example/broken-skills',
+        origin: 'https://github.com/example/broken-skills',
+        state: 'error',
+        detail: 'Repository not found',
+        skills: [],
+      },
+    ] as SettingsSkillSource[],
     devices: [
-      { id: 'mac', name: 'zan-mbp', online: true, current: true, version: '1.6.2', seen: 'Now' },
-      { id: 'build', name: 'build-01', online: false, current: false, version: '1.5.9', seen: '3 days ago' },
-      { id: 'lab', name: 'lab-workstation-with-a-long-hostname', online: true, current: false, version: '1.6.2', seen: '2 minutes ago' },
+      { id: 'mac', name: 'zan-mbp', online: true, seen: 'Now' },
+      { id: 'build', name: 'build-01', online: false, seen: '3 days ago' },
+      { id: 'lab', name: 'lab-workstation-with-a-long-hostname', online: true, seen: '2 minutes ago' },
     ],
     keys: [
-      { id: 'new', action: 'New conversation', keys: '⌘N' },
+      { id: 'new', action: 'New conversation', keys: '⌘⇧O' },
       { id: 'send', action: 'Send message', keys: '⏎' },
       { id: 'stop', action: 'Stop the turn', keys: '⎋' },
       { id: 'sidebar', action: 'Toggle sidebar', keys: '⌘B' },
       { id: 'search', action: 'Search conversations', keys: '⌘K' },
-      { id: 'focus', action: 'Focus composer', keys: '⌘L' },
+      { id: 'focus', action: 'Focus composer', keys: '⌘J' },
       { id: 'settings', action: 'Open settings', keys: '⌘,' },
     ],
     data: {
@@ -316,15 +270,10 @@ export function createSettingsState() {
     },
     developer: {
       logLevel: 'Info',
-      configPath: '~/.config/demi/config.json',
       experiments: [
         { id: 'parallel', name: 'Parallel tool calls', description: 'Run independent tool calls at once.', on: true },
         { id: 'background', name: 'Background agents', description: 'Keep subagents running after the turn ends.', on: false },
         { id: 'voice', name: 'Voice input', description: 'Dictate into the composer.', on: false },
-      ],
-      env: [
-        { key: 'ANTHROPIC_API_KEY', value: 'sk-ant-••••••••••••3f2a' },
-        { key: 'DEMI_LOG_DIR', value: '~/Library/Logs/Demi' },
       ],
     },
   })

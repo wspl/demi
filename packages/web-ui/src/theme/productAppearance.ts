@@ -34,3 +34,21 @@ export const PRODUCT_ACCENTS: readonly ProductAccentOption[] = [
 ]
 
 export const DEFAULT_ACCENT: ProductAccent = 'blue'
+
+/** The axes a user changes at runtime; the rest of `productAppearance` is fixed per product. */
+export interface ProductAppearanceChoice {
+  tone: ProductTone
+  accent: ProductAccent
+}
+
+/** Puts a choice on the document, where the tokens read it. */
+export function applyProductAppearance(choice: ProductAppearanceChoice): void {
+  const root = document.documentElement
+  root.setAttribute('data-tone', choice.tone)
+  root.setAttribute('data-accent', choice.accent)
+}
+
+/** The transcript's text size, in px; the composer and previews follow the same token. */
+export function applyTranscriptTextSize(px: number): void {
+  document.documentElement.style.setProperty('--agent-text', `${px}px`)
+}

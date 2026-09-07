@@ -11,7 +11,8 @@ import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import GalleryDevicePairing from '../components/GalleryDevicePairing.vue'
-import { createSettingsState, fullSettingsNav } from '../fixtures/settings'
+import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
+import { createSettingsState } from '../fixtures/settings'
 
 const anatomy: [string, string][] = [
   ['Shell', 'One large dialog. The rail sits on the page surface with the account on top and a filter under it, the page on the dialog surface, so it reads like the app itself. Below a phone width the rail becomes a row.'],
@@ -20,13 +21,15 @@ const anatomy: [string, string][] = [
   ['Readouts', 'A value the control produces (a size, a temperature) reads out beside the control, never in the explanation under the label.'],
   ['Providers', 'A bare rail of providers beside the selected one, with no surface of its own. Every supported subscription is always listed and dotted green once signed in, red when broken; an API key is dotted only while it needs attention. An API-key entry edits its endpoint, key and models on the page; a subscription entry manages accounts. Adding a provider, signing in, and adding or editing a model open dialogs.'],
   ['Credentials', 'Changing the email asks for the new address and the current password, then a code sent to the new address. Changing the password asks for the current one and the new one twice; length and the match are checked in the dialog, the current password by the server.'],
+  ['MCP', 'Servers in one list. Status is a dot and a word; an error sits on the status as a tooltip. Tools are tags on a third line, one row, with the rest as +N. Adding opens a dialog.'],
+  ['Skills', 'Git repositories, not a marketplace. One source is a pack of SKILL.md files. Packs start folded with a Fold animation; more than six skills scroll inside the pack. The source row has no hover wash. Each skill has a switch. The pack’s switch is on when any skill is on and sets every skill. Beside it: N/N only when mixed. Adding is a git URL. skills.sh is a link, not a catalog.'],
   ['Sign-in', 'Each subscription signs in the way its vendor does. Claude Code prints a token from its own CLI, so the dialog walks through install, command and paste. Codex confirms a device code in the browser while the dialog waits. Grok Build shows a code the user copies back.'],
 ]
 
 const account = { name: 'Zan', plan: 'Personal workspace' }
 const full = createSettingsState()
 const fullTab = ref<SettingsTab>('models')
-const fullNarrowTab = ref<SettingsTab>('mcp')
+const fullNarrowTab = ref<SettingsTab>('skills')
 
 /** Every phase of each vendor's flow, pinned open and switchable. */
 const claudePhases: { value: string; label: string; phase: ProviderLoginPhase }[] = [
@@ -81,15 +84,15 @@ const passwordPhase = ref('form')
       note="A stress test: everything a coding agent might ask for, in its worst states at once. Expiring auth, an unreachable local model, a crashed MCP server, a quota nearly spent, disabled entries, nested rows, long paths."
     >
       <GalleryOverlayWell size="tall">
-        <SettingsDialog v-model:tab="fullTab" :is-open="true" :overlay-store="appOverlayStore" :account="account" :sections="fullSettingsNav">
+        <SettingsDialog v-model:tab="fullTab" :is-open="true" :overlay-store="appOverlayStore" :account="account" :sections="SETTINGS_SECTIONS">
           <GallerySettingsFull :tab="fullTab" :state="full" />
         </SettingsDialog>
       </GalleryOverlayWell>
     </GallerySection>
 
-    <GallerySection title="Full · narrow" note="The long rail becomes a picker; nested rows and tags survive the width.">
+    <GallerySection title="Full · narrow" note="The long rail becomes a picker; the page still reads at this width.">
       <GalleryOverlayWell size="narrow">
-        <SettingsDialog v-model:tab="fullNarrowTab" :is-open="true" :overlay-store="appOverlayStore" :account="account" :sections="fullSettingsNav">
+        <SettingsDialog v-model:tab="fullNarrowTab" :is-open="true" :overlay-store="appOverlayStore" :account="account" :sections="SETTINGS_SECTIONS">
           <GallerySettingsFull :tab="fullNarrowTab" :state="full" />
         </SettingsDialog>
       </GalleryOverlayWell>

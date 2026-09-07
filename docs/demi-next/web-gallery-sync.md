@@ -15,12 +15,21 @@ browser package typechecks and checks affected specimens in the browser.
 | Host search, Cloud option and bound-device disabling | hosts/HostPicker | Main and attached picker specimens in Overlays |
 | Composer, model menu, attachments and input layout | SessionComposer, ModelMenu | GalleryComposer in Session |
 | Transcript blocks, markdown and tool output | Shared agent renderers | Session, Markdown and Code |
-| Settings shell, pages, groups, rows, split lists | settings/SettingsDialog, SettingsPage, SettingsGroup, SettingsRow, SettingsSplit, SettingsListItem | Settings full mock and narrow variant |
-| Models & providers: rail, provider page, add/model dialogs, login dialog | settings/SettingsProvidersPage, AddProviderDialog, ModelDialog, ProviderLoginDialog | GallerySettingsProviders over fixture state and mock handlers |
-| Account credentials: change email (address, password, code), change password | settings/ChangeEmailDialog, ChangePasswordDialog | GallerySettingsFull mock flows; standalone wells with every phase |
+| Fold: height and chevron | ui/Fold, ui/FoldChevron | Motion Fold specimen; Skills packs; FunctionalBlock |
+| Settings shell, rail, pages, groups, rows, split lists | settings/SettingsDialog, sections (`SETTINGS_SECTIONS`), SettingsPage, SettingsGroup, SettingsRow, SettingsSplit, SettingsListItem | Settings full mock and narrow variant; the product settings in `web` |
+| Settings pages: General (theme, tone, accent, text size), Account, Notifications, Keyboard, Data & privacy, Usage & billing, Developer | settings/SettingsGeneral, SettingsAccount, SettingsNotifications, SettingsKeyboard, SettingsData, SettingsUsage, SettingsDeveloper | Settings full mock over fixture state; `web` over `prototype/settings.ts`, where General writes the document and Keyboard drives `App`'s shortcuts |
+| Stacked dialogs: a dialog opened inside another keeps it, Escape closes the top | ui/Dialog over overlayStore's `stacked` layer | Every settings page that opens a dialog, in the product |
+| Shortcut notation: one string the recorder writes and the app matches | ui/shortcut (`formatShortcut`, `matchesShortcut`), ShortcutRecorder | Keyboard page; `web` `App` listens through the bindings |
+| Devices: claim by pairing code, online status, revoke | settings/SettingsDevices | Settings full mock and the product Devices panel |
+| Models & providers: rail, provider page, add/model dialogs, login dialog | settings/SettingsProvidersPage, AddProviderDialog, ModelDialog, ProviderLoginDialog | GallerySettingsProviders over fixture state and mock handlers; `web` ProvidersPanel over the providers the composer also reads |
+| MCP servers: status + tool tags, add dialog | settings/SettingsMcp, AddMcpServerDialog | Settings full mock; the product MCP page |
+| Skills: git sources, folded packs, per-skill switches, pack enable switch | settings/SettingsSkills, AddSkillSourceDialog | Settings full mock; the product Skills page |
+| Account credentials: change email (address, password, code), change password | settings/ChangeEmailDialog, ChangePasswordDialog, opened from SettingsAccount | GallerySettingsFull mock flows; standalone wells with every phase; the product Account page |
 | Text entry: prefix/suffix, secrets with an eye, token counts with a unit | TextInput, TokenInput | Primitives specimens |
 | File browser: folder and file choosing over a `FileBrowserSource`, address bar, places and devices, states | files/FileBrowser, FileBrowserDialog, FileIcon (see `docs/file-browser.md`) | Files page over fixture trees; the workspace picker, new-project Browse and the composer's remote attachment in `web` |
 | Composer Add menu: local files, and a remote file when the conversation has a host | SessionComposer `remoteFiles` / `attachRemote` | GalleryComposer opens the Files dialog; `web` inserts the path into the draft |
+
+Toasts are only for outcomes with no other surface (a failed send, a rejected drop, copy after a menu closed). Gallery mocks do not toast in-place successes or stand in for dialogs the product does not have; a taken shortcut uses `SettingsNote` on the Keyboard page.
 
 ## Product-flow coverage boundary
 

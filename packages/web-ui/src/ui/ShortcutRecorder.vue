@@ -2,6 +2,7 @@
 import { computed, nextTick, ref } from 'vue'
 import Button from './Button.vue'
 import KeyCap from './KeyCap.vue'
+import { shortcutKeyCap, shortcutModifiers } from './shortcut'
 
 /**
  * A shortcut shown as key caps, with a Change button that records a new one in
@@ -23,33 +24,6 @@ const recording = ref(false)
 const held = ref('')
 const field = ref<HTMLElement>()
 
-const SPECIAL: Record<string, string> = {
-  Enter: '⏎',
-  Escape: '⎋',
-  Backspace: '⌫',
-  Delete: '⌦',
-  Tab: '⇥',
-  ' ': '␣',
-  ArrowUp: '↑',
-  ArrowDown: '↓',
-  ArrowLeft: '←',
-  ArrowRight: '→',
-}
-const MODIFIERS = new Set(['Meta', 'Control', 'Alt', 'Shift'])
-
-function modifiers(event: KeyboardEvent): string {
-  return `${event.ctrlKey ? '⌃' : ''}${event.altKey ? '⌥' : ''}${event.shiftKey ? '⇧' : ''}${event.metaKey ? '⌘' : ''}`
-}
-
-function keyCap(event: KeyboardEvent): string {
-  if (MODIFIERS.has(event.key)) return ''
-  if (SPECIAL[event.key]) return SPECIAL[event.key]
-  // The physical key, so ⇧ doesn't turn "k" into "K" twice or "," into "<".
-  if (event.code.startsWith('Key')) return event.code.slice(3)
-  if (event.code.startsWith('Digit')) return event.code.slice(5)
-  return event.key.length === 1 ? event.key.toUpperCase() : event.key
-}
-
 function start() {
   recording.value = true
   held.value = ''
@@ -64,12 +38,12 @@ function stop() {
 function onKeydown(event: KeyboardEvent) {
   event.preventDefault()
   event.stopPropagation()
-  if (event.key === 'Escape' && !modifiers(event)) {
+  if (event.key === 'Escape' && !shortcutModifiers(event)) {
     stop()
     return
   }
-  const cap = keyCap(event)
-  held.value = modifiers(event) + cap
+  const cap = shortcutKeyCap(event)
+  held.value = shortcutModifiers(event) + cap
   if (cap) {
     emit('update:modelValue', held.value)
     stop()
@@ -78,7 +52,7 @@ function onKeydown(event: KeyboardEvent) {
 
 function onKeyup(event: KeyboardEvent) {
   if (!recording.value) return
-  held.value = modifiers(event)
+  held.value = shortcutModifiers(event)
 }
 
 const shown = computed(() => (recording.value ? held.value : props.modelValue))

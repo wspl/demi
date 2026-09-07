@@ -95,9 +95,29 @@ state; idle conversations have no status glyph.
 Cloud workspaces use a cloud icon, while device workspaces show an online/offline status dot
 and hostname, centered beside the workspace name. The sidebar has no prototype
 caption. Menus, dialogs, settings and the entry page omit instructional and
-prototype commentary. Simulation details belong in documentation. Settings expose
-Account, Devices, Providers and Usage. The archive button sits immediately to the
+prototype commentary. Simulation details belong in documentation. The archive button sits immediately to the
 right of the conversation title.
+
+## Settings
+
+The settings dialog is the shared shell with the product rail
+(`web-ui/settings/sections.ts`): General, Account, Notifications; Models &
+providers, MCP servers, Skills; Devices, Keyboard, Data & privacy, Usage &
+billing; Developer. Every page is a `web-ui` component over a presentation model;
+`web/settings/SettingsDialog.vue` supplies the prototype's state
+(`prototype/settings.ts`) and decides what a row does to the app. General writes the
+theme choice, tone, accent and transcript text size onto the document as they
+change. Account runs the change-email and change-password flows with a timer in
+place of the server (`wrong` is the one password refused, `000000` the one code).
+The providers page edits the same provider entries the composer reads: a provider
+is offered in the model menu while it is enabled and its last check passed, and only
+its enabled models are listed. Keyboard rebinds the shortcuts `App` listens for,
+through the one notation `web-ui/ui/shortcut.ts` defines; a binding another action
+holds is refused on the page's note. Data & privacy's Delete all empties the
+conversation list in place; Developer's Download logs saves a text file. A dialog
+opened from a settings page (a credential flow, adding a server, pairing a device)
+stacks on the settings dialog: the shell stays, Escape and the scrim close only the
+top, and closing the shell takes the stack with it.
 The composer appears immediately on conversation changes and restoration.
 The archived-conversation bar retains its transition and respects reduced motion. Shared typography uses macOS grayscale
 antialiasing with normal-weight interface text.
@@ -116,7 +136,8 @@ and centered 24px targets; conversation actions have a 2px gap.
 ## Product appearance
 
 The product uses Regular density, Medium radius and Hairline shadows; those are
-fixed. Tone (Ink or Warm) and accent are the user's to choose in settings.
+fixed. Tone (Ink or Warm), accent, the theme and the transcript text size are the
+user's to choose on the General settings page.
 `web-ui/theme/productAppearance.ts` defines the fixed axes and the catalogs of
 tones and accents; `web-ui/styles/product-appearance.css` owns every token they
 need in light and dark. The web composition root applies the axes and the gallery

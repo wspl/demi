@@ -4,6 +4,8 @@ import { Brain } from '@lucide/vue'
 import ActivityMark from '@demicodes/web-ui/ui/ActivityMark.vue'
 import ExploratoryMark, { type ExploratoryMarkKind } from '../components/ExploratoryMark.vue'
 import ChromeRoll from '@demicodes/web-ui/ui/ChromeRoll.vue'
+import Fold from '@demicodes/web-ui/ui/Fold.vue'
+import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -15,6 +17,7 @@ const faceFaces = [
   { key: 'requesting', label: 'Requesting', icon: 'sweep' },
   { key: 'thinking', label: 'Thinking', icon: 'brain' },
 ] as const
+const foldOpen = ref(false)
 const labelIndex = ref(0)
 const faceIndex = ref(0)
 const labelFace = ref<(typeof labelFaces)[number]>('Resuming')
@@ -104,6 +107,26 @@ const exploratoryMarks: { kind: ExploratoryMarkKind; name: string; note: string 
             </ChromeRoll>
           </div>
           <Button size="sm" variant="ghost" @click="rollFace">Roll face</Button>
+        </div>
+      </GallerySpecimen>
+    </div>
+  </GallerySection>
+
+  <GallerySection title="Fold" note="Height and chevron share one duration. Used by skill packs and transcript blocks.">
+    <div class="specimen-row">
+      <GallerySpecimen variant="toggle">
+        <div class="w-56">
+          <button type="button" class="flex h-7 w-full cursor-default items-center justify-between text-chrome text-fg" @click="foldOpen = !foldOpen">
+            Pack
+            <FoldChevron :open="foldOpen" class="text-fg-subtle" />
+          </button>
+          <Fold :open="foldOpen">
+            <div class="space-y-1 py-1 text-[12px] leading-4 text-fg-muted">
+              <div>web-design-guidelines</div>
+              <div>vercel-react-best-practices</div>
+              <div>tdd</div>
+            </div>
+          </Fold>
         </div>
       </GallerySpecimen>
     </div>

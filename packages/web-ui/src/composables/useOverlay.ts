@@ -6,7 +6,7 @@ export function useOverlay(
   isOpen: WatchSource<boolean>,
   close: () => void,
   layer: OverlayLayer = 'exclusive',
-): void {
+): string {
   const id = crypto.randomUUID()
   let remove = () => {}
 
@@ -20,4 +20,6 @@ export function useOverlay(
     remove()
     store.remove(id)
   })
+
+  return id
 }
