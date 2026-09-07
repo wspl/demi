@@ -1,5 +1,19 @@
 # @demicodes/agent
 
+## 0.25.0
+
+### Minor Changes
+
+- 497204a: Preserve cumulative script output and monotonic cursors across foreground commands, including registered commands and shell redirections. Require a non-blank description for shell_exec before resolving its execution environment.
+
+### Patch Changes
+
+- Updated dependencies [497204a]
+  - @demicodes/shell@0.25.0
+  - @demicodes/core@0.25.0
+  - @demicodes/provider@0.25.0
+  - @demicodes/utils@0.25.0
+
 ## 0.24.1
 
 ### Patch Changes
