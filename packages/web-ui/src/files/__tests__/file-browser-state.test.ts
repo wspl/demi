@@ -1,5 +1,4 @@
 import { expect, test } from 'bun:test'
-import dayjs from 'dayjs'
 import { createFileBrowserHistory, filterEntries, nextSort, sortEntries } from '../file-browser-state'
 import { entryKind, formatBytes, formatModified } from '../format'
 import type { FileBrowserEntry } from '../types'
@@ -61,11 +60,9 @@ test('bytes and times format for a column', () => {
   expect(formatBytes(12)).toBe('12 B')
   expect(formatBytes(1536)).toBe('1.5 KB')
   expect(formatBytes(20 * 1024 * 1024)).toBe('20 MB')
-  const now = dayjs('2026-09-07T15:00:00')
-  expect(formatModified('2026-09-07T09:05:00', now)).toBe('09:05')
-  expect(formatModified('2026-03-02T09:05:00', now)).toBe('Mar 2, 09:05')
-  expect(formatModified('2025-03-02T09:05:00', now)).toBe('2025-03-02')
-  expect(formatModified(undefined, now)).toBe('')
+  expect(formatModified('2026-09-07T09:05:00')).toBe('Sep 7, 2026 09:05')
+  expect(formatModified('2025-03-02T09:05:00')).toBe('Mar 2, 2025 09:05')
+  expect(formatModified(undefined)).toBe('')
 })
 
 test('the Type column reads the extension', () => {
