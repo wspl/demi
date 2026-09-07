@@ -79,7 +79,6 @@ function connect() {
             <HostPicker
               :devices="resources.devices"
               include-cloud
-              require-online
               :selected-id="project?.deviceId ?? 'cloud'"
               @select="selectMain"
               @connect="connect"
