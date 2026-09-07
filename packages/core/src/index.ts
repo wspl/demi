@@ -98,12 +98,23 @@ export interface Model {
   name: string
   contextWindow: number
   inputLimit: number | null
+  /** Maximum generated tokens for a request, or null when unspecified. */
+  outputLimit: number | null
   thinking: ThinkingCapability[]
-  acceptedExtensions: FileExtension[]
+  /** Empty means unsupported; null means the accepted types are unknown. */
+  acceptedExtensions: FileExtension[] | null
+}
+
+/** Whether an extension is accepted; null preserves unknown capability. Extensions omit the dot. */
+export function fileExtensionSupport(acceptedExtensions: readonly string[] | null, extension: string): boolean | null {
+  if (acceptedExtensions === null) return null
+  if (acceptedExtensions.includes(extension)) return true
+  return (extension === 'jpg' && acceptedExtensions.includes('jpeg')) ||
+    (extension === 'jpeg' && acceptedExtensions.includes('jpg'))
 }
 
 export function modelAcceptsVideo(model: Model): boolean {
-  return VIDEO_FILE_EXTENSIONS.some((extension) => model.acceptedExtensions.includes(extension))
+  return VIDEO_FILE_EXTENSIONS.some((extension) => fileExtensionSupport(model.acceptedExtensions, extension) === true)
 }
 
 // ── model media (closed set) ────────────────────────────────────────
@@ -138,9 +149,7 @@ export function modelMediaTypeFor(mediaType: string): ModelMediaType | null {
 export function modelAcceptsMediaType(model: Model, mediaType: string): boolean {
   const entry = modelMediaTypeFor(mediaType)
   if (!entry) return false
-  if (model.acceptedExtensions.includes(entry.extension)) return true
-  // jpg/jpeg are the same format under two extension spellings.
-  return entry.extension === 'jpeg' && model.acceptedExtensions.includes('jpg')
+  return fileExtensionSupport(model.acceptedExtensions, entry.extension) === true
 }
 
 /**

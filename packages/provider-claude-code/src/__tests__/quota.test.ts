@@ -94,6 +94,7 @@ test('Claude inference observes rate_limits from stream-json messages into share
     requestId: 'req-1',
     turnId: 'turn-1',
     sessionId: 'sess-1',
+    outputLimit: null,
     modelId: 'claude-sonnet-4-6',
     systemPrompt: 'sys',
     cwd: '/tmp',

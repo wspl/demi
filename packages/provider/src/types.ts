@@ -55,6 +55,8 @@ export interface InferenceRequest {
   /** Unique id for this concrete provider request. */
   requestId: string
   modelId: string
+  /** The current model's output limit; explicit adapter request options take precedence. */
+  outputLimit: number | null
   systemPrompt: string
   cwd: string
   items: InferenceItem[]
@@ -281,6 +283,8 @@ export interface Provider {
    * ids. Unset means no requirement.
    */
   requiresProcessCapableHost?: boolean
+  /** This adapter forwards InferenceRequest.outputLimit. Unset means it cannot set this limit. */
+  supportsOutputLimit?: boolean
   state?(): Promise<ProviderRuntimeState> | ProviderRuntimeState
   listModels?(): Promise<ProviderModelList> | ProviderModelList
 }

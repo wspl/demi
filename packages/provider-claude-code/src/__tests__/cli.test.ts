@@ -56,6 +56,7 @@ test('buildClaudeArgsForRequest maps summary thinking effort to CLI args', () =>
     sessionId: 'test-session',
     turnId: 'test-turn',
     requestId: 'test-request',
+    outputLimit: null,
     modelId: 'claude-opus-4-8',
     systemPrompt: 'Summarize the previous conversation for continuation.',
     cwd: '/workspace',

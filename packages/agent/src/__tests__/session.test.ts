@@ -23,6 +23,7 @@ const model: ModelSelection = {
     id: 'test-model',
     name: 'Test Model',
     contextWindow: 100_000,
+    outputLimit: null,
     inputLimit: null,
     thinking: [],
     acceptedExtensions: [],
@@ -1425,6 +1426,33 @@ test('AgentSession delivers multiple steers to an active steerable provider run 
   await sending
 
   expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer', 'steer', 'text', 'response'])
+})
+
+test('an immediate same-provider model switch updates all parameters on the next request', async () => {
+  const provider = new GateProvider([
+    [events.text('first'), events.response()],
+    [events.text('continued'), events.response()],
+  ])
+  const initial = { ...model, model: { ...model.model, id: 'a', outputLimit: 8_000 } }
+  const next: ModelSelection = {
+    ...model,
+    model: { ...model.model, id: 'b', outputLimit: 32_000 },
+    thinking: { type: 'effort', effort: 'high', summary: null },
+    serviceTierId: 'priority',
+  }
+  const session = createSession(provider, createRuntime(), undefined, initial)
+  const sending = session.send(text('start'))
+  await provider.waitForRun(0)
+  expect(provider.requests[0]).toMatchObject({ modelId: 'a', outputLimit: 8_000 })
+  await session.steer(text('continue with the next model'))
+  session.updateModel(null, next, 'immediate')
+  provider.release(0)
+  await provider.waitForRun(1)
+  expect(provider.requests[1]).toMatchObject({
+    modelId: 'b', outputLimit: 32_000, thinking: next.thinking, serviceTierId: 'priority',
+  })
+  provider.release(1)
+  await sending
 })
 
 test('AgentSession accepts provider-stream steer without native support and continues the same turn', async () => {

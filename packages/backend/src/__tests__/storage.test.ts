@@ -15,7 +15,7 @@ import { WebSessions } from '../auth/sessions'
 
 const model: ModelSelection = {
   providerId: 'stub',
-  model: { id: 'm', name: 'M', contextWindow: 1000, inputLimit: null, thinking: [], acceptedExtensions: [] },
+  model: { id: 'm', name: 'M', contextWindow: 1000, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
   thinking: null,
 }
 

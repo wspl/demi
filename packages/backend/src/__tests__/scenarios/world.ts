@@ -238,7 +238,7 @@ export class World {
 function selectionFor(providerId: string) {
   const model: ModelSelection = {
     providerId: providerId,
-    model: { id: 'scenario-model', name: 'Scenario Model', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
+    model: { id: 'scenario-model', name: 'Scenario Model', contextWindow: 100_000, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
     thinking: null,
   }
   return { providerId: providerId, model }

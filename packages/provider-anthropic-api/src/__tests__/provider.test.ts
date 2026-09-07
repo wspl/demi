@@ -28,6 +28,25 @@ test('Anthropic API provider resolves endpoint and API key from env vars', async
   )
 })
 
+test('a reused Anthropic runtime uses the output limit of each request after a model switch', async () => {
+  const requests: CapturedRequest[] = []
+  const provider = createAnthropicApiProvider({
+    apiKey: () => 'test-key',
+    models: [
+      { id: 'a', contextWindow: 100_000, outputLimit: 8_000 },
+      { id: 'b', contextWindow: 200_000, outputLimit: 32_000 },
+    ],
+    fetch: captureFetch(requests),
+  })
+  const runtime = await providerRuntime(provider, selection('anthropic', 'a'))
+  await collect(runtime.run(request({ modelId: 'a', outputLimit: 8_000 })))
+  await collect(runtime.run(request({ modelId: 'b', outputLimit: 32_000 })))
+  expect(requests.map((entry) => entry.body)).toMatchObject([
+    { model: 'a', max_tokens: 8_000 },
+    { model: 'b', max_tokens: 32_000 },
+  ])
+})
+
 test('Anthropic API provider explicit baseUrl and apiKey take precedence over env vars', async () => {
   await withEnv(
     {
@@ -217,6 +236,7 @@ function request(overrides: Partial<InferenceRequest> = {}): InferenceRequest {
     sessionId: 'session-1',
     turnId: 'turn-1',
     requestId: 'request-1',
+    outputLimit: null,
     modelId: 'claude-test',
     systemPrompt: '',
     cwd: '/workspace',
@@ -234,7 +254,7 @@ function selection(providerId: string, modelId: string): ProviderSelection {
     providerId,
     model: {
       providerId,
-      model: { id: modelId, name: modelId, contextWindow: 0, inputLimit: null, thinking: [], acceptedExtensions: [] },
+      model: { id: modelId, name: modelId, contextWindow: 0, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
       thinking: null,
       serviceTierId: null,
     },

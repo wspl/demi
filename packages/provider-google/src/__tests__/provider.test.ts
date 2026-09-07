@@ -28,6 +28,23 @@ test('Google provider resolves endpoint and API key from env vars', async () => 
   )
 })
 
+test('a reused Google runtime takes the output limit from each current request', async () => {
+  const requests: CapturedRequest[] = []
+  const provider = createGoogleProvider({
+    apiKey: () => 'test-key',
+    models: [
+      { id: 'a', contextWindow: 100_000, outputLimit: 8_000 },
+      { id: 'b', contextWindow: 200_000, outputLimit: 32_000 },
+    ],
+    fetch: captureFetch(requests),
+  })
+  const runtime = await providerRuntime(provider, selection('google', 'a'))
+  await collect(runtime.run(request({ modelId: 'a', outputLimit: 8_000 })))
+  await collect(runtime.run(request({ modelId: 'b', outputLimit: 32_000 })))
+  expect(requests.map((entry) => JSON.parse(entry.body).generationConfig.maxOutputTokens)).toEqual([8_000, 32_000])
+  expect(buildGoogleGenerateContentBody(request({ outputLimit: 8_000 }), { maxOutputTokens: 4_000 }).generationConfig?.maxOutputTokens).toBe(4_000)
+})
+
 test('system prompt, tools and thinking budget land in the generateContent body', () => {
   const base = request({
     systemPrompt: 'you are a shell',
@@ -233,6 +250,7 @@ function request(overrides: Partial<InferenceRequest> = {}): InferenceRequest {
     sessionId: 'session',
     turnId: 'turn',
     requestId: 'request',
+    outputLimit: null,
     modelId: 'gemini-3.6-flash',
     systemPrompt: '',
     cwd: '/tmp',
@@ -249,7 +267,7 @@ function selection(providerId: string, modelId: string): ProviderSelection {
     providerId,
     model: {
       providerId,
-      model: { id: modelId, name: modelId, contextWindow: 0, inputLimit: null, thinking: [], acceptedExtensions: [] },
+      model: { id: modelId, name: modelId, contextWindow: 0, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
       thinking: null,
       serviceTierId: null,
     },

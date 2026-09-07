@@ -186,7 +186,7 @@ test('a malformed runner frame closes the socket; a bad device token is rejected
 function selectionFor(providerId: string) {
   const model: ModelSelection = {
     providerId: providerId,
-    model: { id: 'm', name: 'M', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
+    model: { id: 'm', name: 'M', contextWindow: 100_000, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
     thinking: null,
   }
   return { providerId: providerId, model }

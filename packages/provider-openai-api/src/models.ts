@@ -91,7 +91,7 @@ export function modelListFromOpenAIApiModels(
     displayName: model.displayName ?? model.id,
     description: model.description,
     contextWindow: positiveInteger(model.contextWindow, `models[${model.id}].contextWindow`),
-    outputLimit: model.outputLimit ?? null,
+    outputLimit: model.outputLimit == null ? null : positiveInteger(model.outputLimit, `models[${model.id}].outputLimit`),
     supportsTools: model.supportsTools ?? null,
     supportsAttachments: model.supportsAttachments ?? null,
     supportsReasoning: model.supportsReasoning ?? null,

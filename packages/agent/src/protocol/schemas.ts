@@ -60,9 +60,10 @@ const modelSchema: z.ZodType<Model> = z.object({
   id: z.string(),
   name: z.string(),
   contextWindow: z.number(),
+  outputLimit: z.number().int().positive().nullable(),
   inputLimit: z.number().nullable(),
   thinking: z.array(thinkingCapabilitySchema),
-  acceptedExtensions: z.array(fileExtensionSchema),
+  acceptedExtensions: z.array(fileExtensionSchema).nullable(),
 })
 
 const modelSelectionSchema: z.ZodType<ModelSelection> = z.object({

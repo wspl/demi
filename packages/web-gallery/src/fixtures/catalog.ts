@@ -12,7 +12,7 @@ function model(partial: Pick<ModelInfo, 'id' | 'name'> & Partial<ModelInfo>): Mo
   return {
     contextWindow: 200_000,
     inputLimit: 180_000,
-    acceptedExtensions: ['.png', '.pdf', '.md'],
+    acceptedExtensions: ['png', 'pdf', 'md'],
     reasoning: null,
     serviceTiers: null,
     ...partial,
