@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { ArrowLeft, ArrowRight, ArrowUp, Eye, EyeOff, File, Folder, FolderPlus, MapPin, Monitor } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Eye, EyeOff, File, Folder, FolderPlus, MapPin, Monitor } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
@@ -63,7 +63,7 @@ const canForward = ref(false)
 const entries = shallowRef<FileBrowserEntry[]>([])
 const loading = ref(false)
 const failure = ref<FileBrowserFailure | null>(null)
-const sort = ref<FileBrowserSort>({ key: 'name', direction: 'asc' })
+const sort = ref<FileBrowserSort>({ key: null, direction: 'asc' })
 const selected = ref<string | null>(null)
 const error = ref<string | null>(null)
 const creating = ref(false)
@@ -207,26 +207,23 @@ defineExpose({
 
 <template>
   <div class="@container flex min-h-0 flex-1 select-none flex-col">
-    <div class="flex shrink-0 items-center gap-2 px-3 py-2">
-      <div class="flex shrink-0 items-center">
-        <Tooltip content="Back">
-          <IconButton :icon="ArrowLeft" variant="ghost" aria-label="Back" :disabled="!canBack" @click="back" />
-        </Tooltip>
-        <Tooltip content="Forward" class="hidden @md:inline-flex">
-          <IconButton :icon="ArrowRight" variant="ghost" aria-label="Forward" :disabled="!canForward" @click="forward" />
-        </Tooltip>
-        <Tooltip content="Up">
-          <IconButton :icon="ArrowUp" variant="ghost" aria-label="Parent folder" :disabled="path === '/'" @click="up" />
-        </Tooltip>
-      </div>
-      <!-- The device, its own control; the path beside it starts at that device's root. -->
-      <Dropdown v-if="hosts.length" :overlay-store="appOverlayStore" variant="default" trigger-label="Device" class="shrink-0">
-        <template #trigger>
-          <component :is="currentHost?.icon ?? Monitor" :size="ICON_PX.in28" class="text-fg-muted" />
-          <span class="max-w-32 truncate">{{ currentHost?.label ?? 'Device' }}</span>
+    <div class="flex shrink-0 items-center gap-2 py-2 pl-2 pr-3">
+      <!-- The device sits in the rail's column with the rail's own inset; the path beside it starts at that device's root. -->
+      <Dropdown v-if="hosts.length" :overlay-store="appOverlayStore" class="w-40 shrink-0 [&>div]:w-full">
+        <template #trigger="{ isOpen }">
+          <span
+            role="button"
+            aria-label="Device"
+            class="flex h-7 w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
+            :class="isOpen ? 'bg-active' : 'bg-hover hover:bg-active'"
+          >
+            <component :is="currentHost?.icon ?? Monitor" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
+            <span class="min-w-0 flex-1 truncate">{{ currentHost?.label ?? 'Device' }}</span>
+            <ChevronDown :size="ICON_PX.in24" class="shrink-0 text-fg-subtle transition-transform duration-200 ease-out" :class="isOpen ? 'rotate-180' : ''" />
+          </span>
         </template>
-        <template #content>
-          <Menu>
+        <template #content="{ triggerWidth }">
+          <Menu :style="{ minWidth: `${triggerWidth}px` }">
             <MenuItem
               v-for="host in hosts"
               :key="host.id"
@@ -241,6 +238,17 @@ defineExpose({
           </Menu>
         </template>
       </Dropdown>
+      <div class="flex shrink-0 items-center">
+        <Tooltip content="Back">
+          <IconButton :icon="ArrowLeft" variant="ghost" aria-label="Back" :disabled="!canBack" @click="back" />
+        </Tooltip>
+        <Tooltip content="Forward" class="hidden @md:inline-flex">
+          <IconButton :icon="ArrowRight" variant="ghost" aria-label="Forward" :disabled="!canForward" @click="forward" />
+        </Tooltip>
+        <Tooltip content="Up">
+          <IconButton :icon="ArrowUp" variant="ghost" aria-label="Parent folder" :disabled="path === '/'" @click="up" />
+        </Tooltip>
+      </div>
       <FileBrowserAddressBar class="min-w-0 flex-1" :path="path" @navigate="goTo" />
       <div class="flex shrink-0 items-center gap-0.5">
         <Tooltip v-if="source.createDirectory" content="New folder">
@@ -322,10 +330,10 @@ defineExpose({
         </template>
         <template v-else>
           <span class="shrink-0 text-fg-subtle">{{ status.lead }}</span>
-          <template v-if="status.name">
-            <component :is="status.icon" :size="ICON_PX.in28" class="shrink-0 text-fg" />
-            <span class="truncate text-fg" :title="status.name">{{ status.name }}</span>
-          </template>
+          <span v-if="status.name" class="flex min-w-0 items-center gap-1 text-fg">
+            <component :is="status.icon" :size="ICON_PX.in28" class="shrink-0" />
+            <span class="truncate" :title="status.name">{{ status.name }}</span>
+          </span>
         </template>
       </div>
       </div>
