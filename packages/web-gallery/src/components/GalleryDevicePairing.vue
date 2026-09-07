@@ -11,9 +11,7 @@ const scenarios: { value: string; label: string; phase: PairingPhase }[] = [
   { value: 'setup', label: 'Start runner', phase: { kind: 'setup' } },
   { value: 'code', label: 'Enter code', phase: { kind: 'code' } },
   { value: 'pairing', label: 'Pairing', phase: { kind: 'pairing' } },
-  { value: 'invalid', label: 'Invalid code', phase: { kind: 'code', error: pairingErrors.invalid_code } },
-  { value: 'limited', label: 'Too many attempts', phase: { kind: 'code', error: pairingErrors.rate_limited } },
-  { value: 'offline', label: 'Connection error', phase: { kind: 'code', error: pairingErrors.unavailable } },
+  { value: 'error', label: 'Error', phase: { kind: 'code', error: pairingErrors.invalid_code } },
   { value: 'done', label: 'Connected', phase: { kind: 'done', device: { id: 'demo-device', name: 'zan-mbp' } } },
 ]
 const { phase, submit, reset } = useDevicePairing(async () => {
