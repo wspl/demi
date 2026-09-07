@@ -116,7 +116,10 @@ holds is refused on the page's note. Data & privacy's Delete all empties the
 conversation list in place. A dialog
 opened from a settings page (a credential flow, adding a server, pairing a device)
 stacks on the settings dialog: the shell stays, Escape and the scrim close only the
-top, and closing the shell takes the stack with it.
+top, and closing the shell takes the stack with it. Dialogs stay mounted and open
+by state (`settingsOpen`, `targetOpen`, a chosen host) rather than by `v-if`, so
+closing plays the dialog's leave; the working-environment dialog resets its form on
+each opening.
 The composer appears immediately on conversation changes and restoration.
 The archived-conversation bar retains its transition and respects reduced motion. Shared typography uses macOS grayscale
 antialiasing with normal-weight interface text.

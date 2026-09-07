@@ -103,23 +103,22 @@ function selectFolder(path: string) {
           </Tooltip>
         </template>
         <template #content>
+          <!-- The menu lays its rows on one grid and scrolls itself; nothing wraps the items. -->
           <Menu>
-            <div class="max-h-64 overflow-y-auto">
-              <MenuItem
-                v-for="item in recentDirectories"
-                :key="item.id"
-                :icon="Folder"
-                :label="item.path"
-                choice
-                :is-selected="item.id === project.id"
-                :disabled="
-                  locked ||
-                  (item.hostKind !== 'cloud' &&
-                    !resources.devices.find((device) => device.id === item.deviceId)?.online)
-                "
-                @select="selectRecent(item.id)"
-              />
-            </div>
+            <MenuItem
+              v-for="item in recentDirectories"
+              :key="item.id"
+              :icon="Folder"
+              :label="item.path"
+              choice
+              :is-selected="item.id === project.id"
+              :disabled="
+                locked ||
+                (item.hostKind !== 'cloud' &&
+                  !resources.devices.find((device) => device.id === item.deviceId)?.online)
+              "
+              @select="selectRecent(item.id)"
+            />
             <MenuDivider />
             <MenuItem :icon="Folder" label="Choose another directory…" @select="browse()" />
           </Menu>
@@ -135,16 +134,16 @@ function selectFolder(path: string) {
         <span class="max-w-32 truncate">{{ project.branch }}</span>
       </span>
     </template>
+    <!-- Stays mounted, open by state, so it can leave the way it arrived. -->
     <FileBrowserDialog
-      v-if="browsingDevice"
-      :is-open="true"
+      :is-open="!!browsingDevice"
       :overlay-store="appOverlayStore"
       mode="directory"
       :source="browserSource"
       :initial-path="browserPath"
       :places="browserPlaces"
       :hosts="browserHostList"
-      :host-id="browsingDevice"
+      :host-id="browsingDevice ?? undefined"
       confirm-label="Use this folder"
       :confirm-disabled="locked"
       @select="selectFolder"

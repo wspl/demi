@@ -104,8 +104,7 @@ defineExpose({
     @compact="emit('compact')"
   />
   <FileBrowserDialog
-    v-if="remoteHostId"
-    :is-open="true"
+    :is-open="!!remoteHostId"
     :overlay-store="appOverlayStore"
     mode="file"
     title="Attach remote file"
@@ -113,7 +112,7 @@ defineExpose({
     :initial-path="remoteHostId === 'mac' ? '/Users/zan/Projects/demi' : undefined"
     :places="remoteHost.places"
     :hosts="remoteHosts.map(({ id, label, online }) => ({ id, label, online }))"
-    :host-id="remoteHostId"
+    :host-id="remoteHostId ?? undefined"
     confirm-label="Attach"
     @select="attachRemote"
     @close="remoteHostId = null"

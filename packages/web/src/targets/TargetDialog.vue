@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { X, Plus, FolderOpen } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -30,6 +30,17 @@ const browsingDevice = computed(() => resources.devices.find((d) => d.id === dev
 const browserSource = computed(() => fileSourceFor(browsingDevice.value))
 const browserPlaces = computed(() => placesFor(browsingDevice.value, resources.projects))
 const browserHostList = computed(() => browserHosts(resources.devices, false))
+
+// The dialog stays mounted so it can leave; every opening starts from a clean form.
+watch(() => resources.targetOpen, (open) => {
+  if (!open) return
+  name.value = ''
+  path.value = '/Users/zan/Projects/'
+  deviceId.value = resources.devices[0]?.id ?? 'cloud'
+  showCreate.value = resources.targetMode === 'create'
+  message.value = ''
+  browsing.value = false
+})
 
 /** The browser's folder becomes the project's directory, and its name when none is typed. */
 function pickDirectory(chosen: string) {
@@ -74,7 +85,7 @@ function create() {
 <template>
   <!-- One dialog: the browser is a page of it, since a dialog over a dialog closes the first. -->
   <Dialog
-    :is-open="true"
+    :is-open="resources.targetOpen"
     :overlay-store="appOverlayStore"
     :size="browsing ? 'lg' : 'md'"
     label="Working environment"
