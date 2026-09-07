@@ -21,10 +21,10 @@ import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type 
 /**
  * The file and folder chooser, laid out like the Windows open dialog: Back, Forward
  * and Up, then the device and beside it the path from that device's root; places
- * down the left; a detail list; and a status row with the confirm button. The
- * status row's left holds New folder and the hidden-files switch as icons, and says
- * what is selected or what can be. Below a phone width the rail becomes a Places
- * menu there too, and Forward goes.
+ * root, with New folder and the hidden-files switch as icons after it; places down
+ * the left; a detail list; and a status row that says what is selected or what can
+ * be, with the confirm button. Below a phone width the rail becomes a Places menu
+ * at the start of the status row, and Forward goes.
  *
  * The browser reads through `source` and owns everything else: where it is, what is
  * selected, the history. The caller decides what a chosen path means. Switching a
@@ -83,9 +83,9 @@ const canConfirm = computed(() => {
 /** The status row: what is selected, or what can be. */
 const status = computed(() => {
   const entry = selectedEntry.value
-  if (entry) return { icon: entry.isDirectory ? Folder : File, text: entry.name, muted: false }
-  if (props.mode === 'file') return { icon: null, text: 'Select a file', muted: true }
-  return { icon: null, text: `Select a folder, or use ${baseName(path.value) || '/'}`, muted: true }
+  if (entry) return { icon: entry.isDirectory ? Folder : File, label: entry.isDirectory ? 'Selected folder:' : 'Selected file:', text: entry.name }
+  if (props.mode === 'file') return { icon: null, label: null, text: 'Select a file' }
+  return { icon: null, label: null, text: `Select a folder, or use ${baseName(path.value) || '/'}` }
 })
 
 function toFailure(err: unknown): FileBrowserFailure {
@@ -242,6 +242,14 @@ defineExpose({
         </template>
       </Dropdown>
       <FileBrowserAddressBar class="min-w-0 flex-1" :path="path" @navigate="goTo" />
+      <div class="flex shrink-0 items-center gap-0.5">
+        <Tooltip v-if="source.createDirectory" content="New folder">
+          <IconButton :icon="FolderPlus" variant="ghost" aria-label="New folder" :disabled="!!failure || loading" @click="creating = true" />
+        </Tooltip>
+        <Tooltip :content="showHidden ? 'Hide hidden files' : 'Show hidden files'">
+          <IconButton :icon="showHidden ? EyeOff : Eye" variant="ghost" :pressed="showHidden" :aria-label="showHidden ? 'Hide hidden files' : 'Show hidden files'" @click="showHidden = !showHidden" />
+        </Tooltip>
+      </div>
     </div>
     <div class="flex min-h-0 flex-1 border-y border-line">
       <ScrollArea
@@ -284,7 +292,7 @@ defineExpose({
     </div>
     <div class="flex shrink-0 flex-col gap-2 px-3 py-2 @md:flex-row @md:items-center @md:gap-3">
       <div class="flex min-w-0 flex-1 items-center gap-3">
-      <div class="flex shrink-0 items-center gap-0.5">
+      <div class="flex shrink-0 items-center gap-0.5 empty:hidden">
         <!-- The rail's places, as a menu where the rail has no room. -->
         <Dropdown v-if="hasRail" :overlay-store="appOverlayStore" class="@md:hidden">
           <template #trigger="{ isOpen }">
@@ -307,20 +315,15 @@ defineExpose({
             </Menu>
           </template>
         </Dropdown>
-        <Tooltip v-if="source.createDirectory" content="New folder">
-          <IconButton :icon="FolderPlus" variant="ghost" aria-label="New folder" :disabled="!!failure || loading" @click="creating = true" />
-        </Tooltip>
-        <Tooltip :content="showHidden ? 'Hide hidden files' : 'Show hidden files'">
-          <IconButton :icon="showHidden ? EyeOff : Eye" variant="ghost" :pressed="showHidden" :aria-label="showHidden ? 'Hide hidden files' : 'Show hidden files'" @click="showHidden = !showHidden" />
-        </Tooltip>
       </div>
       <div class="flex min-w-0 flex-1 items-center gap-2 text-chrome" role="status">
         <template v-if="error">
           <span class="truncate text-on-danger" :title="error">{{ error }}</span>
         </template>
         <template v-else>
+          <span v-if="status.label" class="shrink-0 text-fg-subtle">{{ status.label }}</span>
           <component :is="status.icon" v-if="status.icon" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
-          <span class="truncate" :class="status.muted ? 'text-fg-subtle' : 'text-fg'" :title="status.text">{{ status.text }}</span>
+          <span class="truncate" :class="status.label ? 'text-fg' : 'text-fg-subtle'" :title="status.text">{{ status.text }}</span>
         </template>
       </div>
       </div>
