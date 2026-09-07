@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { ArrowLeft, ArrowRight, ArrowUp, Eye, EyeOff, File, Folder, FolderPlus, MapPin, Monitor } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, ArrowUp, Eye, EyeOff, FolderPlus, MapPin, Monitor } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
@@ -83,9 +83,9 @@ const canConfirm = computed(() => {
 /** The status row: what is selected, or what can be. */
 const status = computed(() => {
   const entry = selectedEntry.value
-  if (entry) return { icon: entry.isDirectory ? Folder : File, label: entry.isDirectory ? 'Selected folder:' : 'Selected file:', text: entry.name }
-  if (props.mode === 'file') return { icon: null, label: null, text: 'Select a file' }
-  return { icon: null, label: null, text: `Select a folder, or use ${baseName(path.value) || '/'}` }
+  if (entry) return { label: entry.isDirectory ? 'Selected folder:' : 'Selected file:', text: entry.name }
+  if (props.mode === 'file') return { label: null, text: 'Select a file' }
+  return { label: null, text: `Select a folder, or use ${baseName(path.value) || '/'}` }
 })
 
 function toFailure(err: unknown): FileBrowserFailure {
@@ -322,7 +322,6 @@ defineExpose({
         </template>
         <template v-else>
           <span v-if="status.label" class="shrink-0 text-fg-subtle">{{ status.label }}</span>
-          <component :is="status.icon" v-if="status.icon" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
           <span class="truncate" :class="status.label ? 'text-fg' : 'text-fg-subtle'" :title="status.text">{{ status.text }}</span>
         </template>
       </div>
