@@ -12,14 +12,14 @@ import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { createGalleryFileHosts, laptopTree } from '../fixtures/files'
 
 const anatomy: [string, string][] = [
-  ['Shape', 'The Windows open dialog: Back, Forward and Up beside the address bar, a filter at the right; places and devices down the left; a detail list; the name row with the confirm button under it.'],
-  ['Address', 'Crumbs, each a jump; deep paths fold their middle into an ellipsis. Clicking the free space turns the bar into a text field with the full path. The root crumb is the device.'],
+  ['Shape', 'The Windows open dialog: a plain title bar; Back, Forward and Up, the device, and the path from its root; places down the left; a detail list; a status row with the confirm button.'],
+  ['Device', 'Its own control before the path: a menu of the devices the caller offers with their online dot. Choosing one asks the caller for that device\'s source and the browser starts over at its home.'],
+  ['Address', 'Crumbs from the root, each a jump; deep paths fold their middle into an ellipsis. Clicking the free space turns the bar into a text field with the full path.'],
   ['List', 'Name, date and size, folders first, names in natural order; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'],
-  ['Keys', 'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history. The filter narrows the folder and highlights the match.'],
-  ['Name row', 'The selected row fills it. Typed text is resolved against the folder: a folder is entered, a file is opened, ~ is the home, a slash makes it a path. What is not there says so under the row.'],
-  ['New folder', 'A row at the top of the list with the name ready to type over; Enter creates it and selects it. Only a source that can create directories offers the button.'],
+  ['Keys', 'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history.'],
+  ['Status row', 'Left: New folder and the hidden-files switch as icons, then what is selected, or what can be. Right: the confirm button and Cancel. A failure to create a folder reads here.'],
+  ['New folder', 'A row at the top of the list with the name ready to type over; Enter creates it and selects it. Only a source that can create directories offers the icon.'],
   ['States', 'A slow device shows a spinner, an empty folder says so, and a folder that cannot be read explains why: missing, locked, or the device offline.'],
-  ['Hosts', 'The sidebar lists the devices the caller offers with their online dot; choosing one asks the caller for that device\'s source and the browser starts over at its home.'],
 ]
 
 const hosts = createGalleryFileHosts()
@@ -91,7 +91,7 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </dl>
     </GallerySection>
 
-    <GallerySection title="Select folder" note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the sidebar; the offline one shows what that looks like.">
+    <GallerySection title="Select folder" note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline one shows what that looks like.">
       <GalleryOverlayWell size="tall">
         <FileBrowserDialog
           :key="folderKey"
@@ -99,7 +99,6 @@ function selectHost(target: 'folder' | 'file', id: string) {
           :overlay-store="appOverlayStore"
           mode="directory"
           title="Select folder"
-          description="Conversations in this workspace run in the folder you choose."
           :source="folderHost.source"
           :initial-path="folderHostId === 'mac' ? '/Users/zan/Projects' : undefined"
           :places="folderHost.places"
@@ -153,7 +152,7 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </GallerySpecimen>
     </GallerySection>
 
-    <GallerySection title="Narrow" note="At a phone width the sidebar stays and the date column goes; the address bar folds.">
+    <GallerySection title="Narrow" note="At a phone width the places move into a menu in the status row, Forward and the date column go, and the address bar folds.">
       <GalleryOverlayWell size="narrow">
         <FileBrowserDialog
           :is-open="true"

@@ -81,9 +81,8 @@ function create() {
     @close="close"
   >
     <div v-if="browsing" class="flex h-[32rem] min-h-0 flex-col">
-      <header class="select-none px-5 pb-2 pt-5 pr-12">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Select folder · {{ browsingDevice?.name }}</h3>
-        <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">The new project's conversations run in the folder you choose.</p>
+      <header class="flex h-11 shrink-0 select-none items-center border-b border-line px-4 pr-12">
+        <h3 class="text-[15px] font-medium text-fg-emphasis">Select folder</h3>
       </header>
       <FileBrowser
         mode="directory"
