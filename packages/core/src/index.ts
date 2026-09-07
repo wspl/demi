@@ -298,6 +298,14 @@ export type Block =
 
 export type SessionPhase = 'idle' | 'running' | 'compacting'
 
+/** A user steer accepted by the session but not yet written to its transcript. */
+export interface PendingSteer {
+  id: string
+  turnId: string
+  model: ModelSelection
+  content: UserContentBlock[]
+}
+
 export interface QueuedMessage {
   id: string
   text: string

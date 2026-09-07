@@ -16,7 +16,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: none.
-- Owns: shared data types only: transcript blocks, content blocks, model selection, thinking config, usage, and session phase.
+- Owns: shared data types only: transcript blocks, content blocks, model selection, thinking config, usage, session phase, queued messages, and accepted user steers awaiting transcript insertion.
 - Public boundary: type/data contracts shared across packages.
 - Must not: contain concrete provider names, catalog source names, shell runtime details, Host details, UI concepts, transport URLs, or backend identifiers.
 

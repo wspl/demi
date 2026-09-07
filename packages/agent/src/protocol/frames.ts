@@ -8,7 +8,7 @@ import type {
 } from '@demicodes/core'
 import type { AbortResult, AgentMetadata } from '../types'
 import type { ShellCommandStatus } from '@demicodes/shell'
-import type { clientFrameSchema } from './schemas'
+import type { clientFrameSchema, pendingSteersFrameSchema } from './schemas'
 
 /** One child agent session as seen on the parent connection. */
 export interface SubagentJob {
@@ -37,6 +37,7 @@ export type ServerFrame =
   | { type: 'transcript_patch'; patches: TranscriptPatch[]; revision: number }
   | { type: 'phase'; phase: SessionPhase }
   | { type: 'queue'; queue: QueuedMessage[] }
+  | z.infer<typeof pendingSteersFrameSchema>
   | { type: 'steer_result'; steerId: string; status: 'accepted' }
   | { type: 'steer_result'; steerId: string; status: 'rejected'; reason: string }
   | { type: 'abort_result'; result: AbortResult }
@@ -77,6 +78,7 @@ export type ClientSessionEvent =
   | { type: 'transcript_patch'; patches: TranscriptPatch[]; blocks: Block[] }
   | { type: 'phase'; phase: SessionPhase }
   | { type: 'queue'; queue: QueuedMessage[] }
+  | z.infer<typeof pendingSteersFrameSchema>
   | { type: 'steer_result'; steerId: string; status: 'accepted' }
   | { type: 'steer_result'; steerId: string; status: 'rejected'; reason: string }
   | { type: 'abort_result'; result: AbortResult }

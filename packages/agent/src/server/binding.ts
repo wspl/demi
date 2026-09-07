@@ -305,6 +305,7 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
     this.sendTranscriptReset(live.session)
     this.send({ type: 'phase', phase: live.session.phase() })
     this.send({ type: 'queue', queue: live.session.queuedMessages() })
+    this.send({ type: 'pending_steers', pendingSteers: live.session.pendingSteers() })
   }
 
   /** Aligns an adopted live session with the model/provider this open named. */
