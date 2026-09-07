@@ -1,3 +1,4 @@
+import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type { Block, ThinkingConfig, QueuedMessage } from '@demicodes/core'
 import type { SidebarConversation, SidebarProject } from '@demicodes/web-ui/sidebar/types'
 import type { PendingSteerMessage } from '@demicodes/web-ui/agent/types'
@@ -30,6 +31,7 @@ export interface Device {
   id: string
   name: string
   online: boolean
+  platform: FileBrowserPlatform
   home: string
 }
 export interface Project extends SidebarProject {

@@ -4,6 +4,7 @@ import { FileBrowserError } from '../types'
 
 function source(offline = false) {
   return createMemoryFileSource({
+    platform: 'linux',
     home: '/home/alex',
     offline,
     root: dir({

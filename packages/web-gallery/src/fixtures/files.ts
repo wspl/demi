@@ -85,7 +85,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
       id: 'mac',
       label: 'alex-mbp',
       online: true,
-      source: createMemoryFileSource({ home: '/Users/alex', root: laptopTree(), latencyMs }),
+      source: createMemoryFileSource({ platform: 'linux', home: '/Users/alex', root: laptopTree(), latencyMs }),
       places: [
         { label: 'Quick access', places: [{ path: '/Users/alex', label: 'Home', icon: 'folder-home' }, { path: '/Users/alex/Desktop' }, { path: '/Users/alex/Projects' }] },
         { label: 'Recent', places: [{ path: '/Users/alex/Projects/demi' }, { path: '/Users/alex/dotfiles' }] },
@@ -95,7 +95,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
       id: 'build',
       label: 'build-01',
       online: true,
-      source: createMemoryFileSource({ home: '/home/build', root: buildBoxTree(), latencyMs }),
+      source: createMemoryFileSource({ platform: 'linux', home: '/home/build', root: buildBoxTree(), latencyMs }),
       places: [
         { label: 'Quick access', places: [{ path: '/home/build', label: 'Home', icon: 'folder-home' }] },
         { label: 'Recent', places: [{ path: '/srv/renderfarm' }] },
@@ -106,7 +106,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
       label: 'studio',
       online: false,
       icon: undefined,
-      source: createMemoryFileSource({ home: '/home/alex', root: dir({}), latencyMs, offline: true }),
+      source: createMemoryFileSource({ platform: 'linux', home: '/home/alex', root: dir({}), latencyMs, offline: true }),
       places: [{ label: 'Quick access', places: [{ path: '/home/alex', label: 'Home', icon: 'folder-home' }] }],
     },
   ]
