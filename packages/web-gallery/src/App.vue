@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useSavedScroll } from '@demicodes/web-ui/composables/useSavedScroll'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
 import { applyParadigm, galleryState, PARADIGMS } from './gallery-state'
@@ -8,6 +9,8 @@ import AccentPicker from './components/AccentPicker.vue'
 import AxisPicker from './components/AxisPicker.vue'
 
 const route = useRoute()
+const viewport = ref<HTMLElement>()
+useSavedScroll(viewport, () => `demi-gallery-scroll:${route.fullPath}`)
 
 function setMode(mode: 'light' | 'dark') {
   galleryState.mode = mode
@@ -103,7 +106,7 @@ const mainClass = computed(() => {
         </div>
       </header>
 
-      <main :class="mainClass">
+      <main ref="viewport" :class="mainClass">
         <RouterView />
       </main>
     </div>

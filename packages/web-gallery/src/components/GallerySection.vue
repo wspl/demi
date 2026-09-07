@@ -6,7 +6,7 @@ defineProps<{
 </script>
 
 <template>
-  <section class="space-y-3">
+  <section :data-scroll-anchor="title" class="space-y-3">
     <header class="space-y-1">
       <h2 class="select-none text-[15px] font-medium text-fg-emphasis">{{ title }}</h2>
       <p v-if="note" class="max-w-3xl text-[13px] leading-5 text-fg-muted">{{ note }}</p>

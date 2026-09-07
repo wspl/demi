@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { SquareTerminal } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AnsiText from './AnsiText.vue'
@@ -18,7 +18,7 @@ const command = computed(() => (props.input['script'] as string) ?? '')
 const title = computed(() => standardToolTitle('shell_exec', props.input))
 const errorText = computed(() => getToolErrorText(props.block))
 const terminalOutputText = computed(() => shellTerminalOutputChunks(props.block).map((chunk) => chunk.text).join(''))
-const isOpen = ref(false)
+const isOpen = defineModel<boolean>('open', { default: false })
 </script>
 
 <template>
