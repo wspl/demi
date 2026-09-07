@@ -1,5 +1,12 @@
 # @demicodes/shell
 
+## 0.25.0
+
+### Patch Changes
+
+- 497204a: Preserve cumulative script output and monotonic cursors across foreground commands, including registered commands and shell redirections. Require a non-blank description for shell_exec before resolving its execution environment.
+  - @demicodes/utils@0.25.0
+
 ## 0.24.1
 
 ### Patch Changes
