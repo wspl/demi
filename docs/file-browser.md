@@ -61,8 +61,10 @@ list has room whatever the folder holds.
   carry a Material Icon Theme glyph (`FileIcon`), chosen by name the way VS Code does: the whole file name first, then
   the longest dotted suffix, and folders by name (`src`, `.git`, `node_modules`).
   The manifest is one lazy chunk and each glyph its own asset, loaded on first use;
-  until then, and for a name the theme does not know, a plain outline. A place may
-  name its own icon id (`folder-home` for the home place).
+  until then, and for a name the theme does not know, a plain outline. Two folders
+  are known by where they sit rather than by name: the root wears the source
+  platform's folder, the home directory `folder-home`, wherever they appear. A place
+  may still name its own icon id.
 - **List**: Name, Date modified and Size; folders first, names in natural order
   (`file2` before `file10`). A header click sorts ascending, a second descending, a
   third returns to the default order; every column shows a faint pair of chevrons

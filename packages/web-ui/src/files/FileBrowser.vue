@@ -15,7 +15,7 @@ import SidebarNavItem from '../sidebar/SidebarNavItem.vue'
 import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
 import FileBrowserList from './FileBrowserList.vue'
 import FileIcon from './FileIcon.vue'
-import { rootIconName } from './file-icons'
+import { landmarkIcon } from './file-icons'
 import { createFileBrowserHistory, filterEntries, nextSort, sortEntries, type FileBrowserSort, type FileBrowserSortKey } from './file-browser-state'
 import { baseName, joinPath, normalizePath, parentPath } from './paths'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserHost, type FileBrowserMode, type FileBrowserPlace, type FileBrowserPlaceGroup, type FileBrowserSource } from './types'
@@ -72,14 +72,19 @@ const creating = ref(false)
 const list = ref<InstanceType<typeof FileBrowserList>>()
 let pending: AbortController | null = null
 
-const visible = computed(() => sortEntries(filterEntries(entries.value, '', showHidden.value), sort.value))
+/** The rows in view, each folder carrying the glyph its place earns (the home under `/Users`). */
+const visible = computed(() =>
+  sortEntries(filterEntries(entries.value, '', showHidden.value), sort.value).map((entry) =>
+    entry.isDirectory ? { ...entry, icon: landmarkIcon(joinPath(path.value, entry.name), props.source) } : entry,
+  ),
+)
 const selectedEntry = computed(() => visible.value.find((entry) => entry.name === selected.value) ?? null)
 const currentHost = computed(() => props.hosts.find((host) => host.id === props.hostId))
 const hasRail = computed(() => props.places.length > 0)
 /** A place's glyph: the theme folder its name resolves to, or the id the caller names. */
 function placeIcon(place: FileBrowserPlace): Component {
-  const name = baseName(place.path)
-  return () => h(FileIcon, { name: name || '/', isDirectory: true, icon: place.icon ?? (name ? undefined : rootIconName(props.source.platform)) })
+  const target = normalizePath(place.path)
+  return () => h(FileIcon, { name: baseName(target) || '/', isDirectory: true, icon: place.icon ?? landmarkIcon(target, props.source) })
 }
 
 const confirmLabel = computed(() => props.confirmLabel ?? (props.mode === 'file' ? 'Open' : 'Select Folder'))
@@ -91,9 +96,12 @@ const canConfirm = computed(() => {
 /** The status row: what is selected, or what can be. */
 const status = computed(() => {
   const entry = selectedEntry.value
-  if (entry) return { lead: entry.isDirectory ? 'Selected folder:' : 'Selected file:', isDirectory: entry.isDirectory, name: entry.name }
-  if (props.mode === 'file') return { lead: 'Select a file', isDirectory: false, name: null }
-  return { lead: 'Select a folder, or use', isDirectory: true, name: baseName(path.value) || '/' }
+  if (entry) {
+    const icon = entry.isDirectory ? landmarkIcon(joinPath(path.value, entry.name), props.source) : undefined
+    return { lead: entry.isDirectory ? 'Selected folder:' : 'Selected file:', isDirectory: entry.isDirectory, name: entry.name, icon }
+  }
+  if (props.mode === 'file') return { lead: 'Select a file', isDirectory: false, name: null, icon: undefined }
+  return { lead: 'Select a folder, or use', isDirectory: true, name: baseName(path.value) || '/', icon: landmarkIcon(path.value, props.source) }
 })
 
 function toFailure(err: unknown): FileBrowserFailure {
@@ -261,7 +269,7 @@ defineExpose({
       </div>
       <span class="flex-1 @md:hidden" />
       <FileBrowserAddressBar
-          :platform="source.platform" class="order-1 min-w-0 basis-full @md:order-none @md:flex-1 @md:basis-auto" :path="path" @navigate="goTo" />
+          :source="source" class="order-1 min-w-0 basis-full @md:order-none @md:flex-1 @md:basis-auto" :path="path" @navigate="goTo" />
       <div class="flex shrink-0 items-center gap-0.5">
         <!-- The rail's places, as a menu where the rail has no room. -->
         <Dropdown v-if="hasRail" :overlay-store="appOverlayStore" class="@md:hidden">
@@ -341,7 +349,7 @@ defineExpose({
         <template v-else>
           <span class="shrink-0 text-fg-subtle">{{ status.lead }}</span>
           <span v-if="status.name" class="flex min-w-0 items-center gap-1 text-fg">
-            <FileIcon :name="status.name" :is-directory="status.isDirectory" :icon="status.name === '/' ? rootIconName(source.platform) : undefined" />
+            <FileIcon :name="status.name" :is-directory="status.isDirectory" :icon="status.icon" />
             <span class="truncate" :title="status.name">{{ status.name }}</span>
           </span>
         </template>

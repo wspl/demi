@@ -87,7 +87,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
       online: true,
       source: createMemoryFileSource({ platform: 'linux', home: '/Users/zan', root: laptopTree(), latencyMs }),
       places: [
-        { label: 'Quick access', places: [{ path: '/Users/zan', label: 'Home', icon: 'folder-home' }, { path: '/Users/zan/Desktop' }, { path: '/Users/zan/Projects' }] },
+        { label: 'Quick access', places: [{ path: '/Users/zan', label: 'Home' }, { path: '/Users/zan/Desktop' }, { path: '/Users/zan/Projects' }] },
         { label: 'Recent', places: [{ path: '/Users/zan/Projects/demi' }, { path: '/Users/zan/dotfiles' }] },
       ],
     },
@@ -97,7 +97,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
       online: true,
       source: createMemoryFileSource({ platform: 'linux', home: '/home/build', root: buildBoxTree(), latencyMs }),
       places: [
-        { label: 'Quick access', places: [{ path: '/home/build', label: 'Home', icon: 'folder-home' }] },
+        { label: 'Quick access', places: [{ path: '/home/build', label: 'Home' }] },
         { label: 'Recent', places: [{ path: '/srv/assetsfactory' }] },
       ],
     },
@@ -107,7 +107,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
       online: false,
       icon: undefined,
       source: createMemoryFileSource({ platform: 'linux', home: '/home/zan', root: dir({}), latencyMs, offline: true }),
-      places: [{ label: 'Quick access', places: [{ path: '/home/zan', label: 'Home', icon: 'folder-home' }] }],
+      places: [{ label: 'Quick access', places: [{ path: '/home/zan', label: 'Home' }] }],
     },
   ]
 }

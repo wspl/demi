@@ -5,9 +5,9 @@ import { useElementSize } from '@vueuse/core'
 import TextInput from '../ui/TextInput.vue'
 import FileIcon from './FileIcon.vue'
 import { ICON_PX } from '../ui/icon-metrics'
-import { rootIconName } from './file-icons'
+import { landmarkIcon } from './file-icons'
 import { normalizePath, pathSegments } from './paths'
-import type { FileBrowserPlatform } from './types'
+import type { FileBrowserSource } from './types'
 
 /**
  * The path as crumbs, each its folder glyph and a jump; a click on the bar's free
@@ -16,7 +16,8 @@ import type { FileBrowserPlatform } from './types'
  */
 const props = defineProps<{
   path: string
-  platform: FileBrowserPlatform
+  /** Where the root and the home are, for their glyphs. */
+  source: Pick<FileBrowserSource, 'platform' | 'home'>
 }>()
 
 const emit = defineEmits<{
@@ -110,8 +111,8 @@ watch(() => props.path, () => {
         ]"
         @click="emit('navigate', crumb.path)"
       >
-        <!-- The root wears the device's OS folder beside its slash, the same shape as every other crumb. -->
-        <FileIcon :name="crumb.name" :is-directory="true" :icon="index === 0 ? rootIconName(platform) : undefined" />
+        <!-- The root and the home wear their landmark glyphs; every crumb has the same shape. -->
+        <FileIcon :name="crumb.name" :is-directory="true" :icon="landmarkIcon(crumb.path, source)" />
         <span class="truncate">{{ crumb.name }}</span>
       </span>
     </template>
