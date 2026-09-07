@@ -184,7 +184,7 @@ for (const { dir, manifest } of packages) {
   }
   const env = { ...process.env, ...(process.env.NPM_TOKEN ? { NPM_CONFIG_TOKEN: process.env.NPM_TOKEN } : {}) }
   try {
-    await $`bun publish ${tarball} --access public`.cwd(dir).env(env)
+    await $`bun publish ${tarball} --access public --tag latest`.cwd(dir).env(env)
   } catch (error) {
     // A freshly created package can lag in the registry metadata endpoint (404)
     // while the version already exists server-side; treat the resulting
