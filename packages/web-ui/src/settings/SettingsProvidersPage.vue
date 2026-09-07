@@ -3,7 +3,6 @@ import { computed, nextTick, ref } from 'vue'
 import { Brain, Check, Image, Info, Plug, Plus, RefreshCw, Search, SlidersHorizontal, TextCursorInput, Trash2, TriangleAlert, Zap } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
@@ -131,11 +130,11 @@ function visibleModels(p: SettingsProviderEntry): SettingsProviderModel[] {
   return q ? p.models.filter((m) => m.id.includes(q) || m.name.toLowerCase().includes(q)) : p.models
 }
 
-/** The header checkbox over the visible models: all, none, or some of them on. */
-function visibleSelection(p: SettingsProviderEntry): { checked: boolean; partial: boolean } {
+/** The switch over the visible models works like a skill pack's: on when any is on, and sets every one. Mixed reads "4/6" beside it. */
+function visibleSelection(p: SettingsProviderEntry): { checked: boolean; label?: string } {
   const visible = visibleModels(p)
   const on = visible.filter((m) => m.enabled).length
-  return { checked: visible.length > 0 && on === visible.length, partial: on > 0 && on < visible.length }
+  return { checked: on > 0, label: on > 0 && on < visible.length ? `${on}/${visible.length}` : undefined }
 }
 
 function setAll(p: SettingsProviderEntry, enabled: boolean) {
@@ -298,18 +297,18 @@ function saveModel(draft: SettingsModelDraft) {
                 <Segmented size="sm" v-else-if="selected.vendorId" v-model="selected.modelSource" class="ml-auto" :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]" />
               </header>
             </template>
-            <!-- The filter is bare text; its hit area is the whole row height. -->
+            <!-- The filter is bare text; its hit area is the whole row height. The switch at the end rules every listed model. -->
             <div v-if="selected.kind === 'api_key'" class="flex min-h-10 items-center gap-3 px-3 py-1">
-              <Checkbox
-                :model-value="visibleSelection(selected).checked"
-                :partial="visibleSelection(selected).partial"
-                label=""
-                aria-label="Enable every listed model"
-                @update:model-value="(on) => setAll(selected!, on)"
-              />
               <TextInput size="sm" v-model="modelFilter" placeholder="Filter models" bare class="min-w-0 flex-1">
                 <template #prefix><Search :size="ICON_PX.in24" /></template>
               </TextInput>
+              <span v-if="visibleSelection(selected).label" class="select-none tabular-nums text-[12px] leading-4 text-fg-subtle">{{ visibleSelection(selected).label }}</span>
+              <Switch
+                :model-value="visibleSelection(selected).checked"
+                size="sm"
+                aria-label="Enable every listed model"
+                @update:model-value="(on) => setAll(selected!, on)"
+              />
               <Tooltip v-if="selected.modelSource === 'manual'" content="Add model"><IconButton size="sm" :icon="Plus" aria-label="Add model" @click="openModel('create', null)" /></Tooltip>
               <Tooltip v-else content="Refresh the catalog"><IconButton size="sm" :icon="RefreshCw" spin-on-click :spinning="refreshing === selected.id" :disabled="refreshing === selected.id" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip>
             </div>
@@ -323,7 +322,6 @@ function saveModel(draft: SettingsModelDraft) {
               :class="m.enabled ? '' : 'opacity-60'"
               @click="m.enabled = !m.enabled"
             >
-              <template v-if="selected.kind === 'api_key'" #leading><Checkbox v-model="m.enabled" label="" :aria-label="`Enable ${m.name || m.id}`" @click.stop /></template>
               <template #tags>
                 <Tooltip v-if="isUnknown(m)" content="Capabilities unknown. Edit to fill them in."><Tag tone="warning"><TriangleAlert :size="12" /></Tag></Tooltip>
                 <Tag v-if="m.contextWindow !== null">{{ formatTokens(m.contextWindow) }}</Tag>
@@ -336,6 +334,7 @@ function saveModel(draft: SettingsModelDraft) {
                 <Tooltip content="Remove"><IconButton size="sm" :icon="Trash2" variant="danger" aria-label="Remove model" @click="emit('removeModel', selected, m)" /></Tooltip>
               </template>
               <Tooltip v-else content="Details"><IconButton size="sm" :icon="Info" aria-label="Model details" @click="openModel('view', m)" /></Tooltip>
+              <Switch v-if="selected.kind === 'api_key'" v-model="m.enabled" size="sm" :aria-label="`Enable ${m.name || m.id}`" />
             </SettingsRow>
             <div v-if="!visibleModels(selected).length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">
               {{ modelFilter ? 'No model matches.' : selected.kind === 'subscription' ? 'Sign in to see what this account can use.' : 'No models yet.' }}

@@ -1,7 +1,7 @@
 # Settings row alignment
 
 `web-ui/settings/SettingsRow.vue` owns alignment for both product settings and
-gallery examples. Leading icons and checkboxes center on the 20px title line.
+gallery examples. Leading icons center on the 20px title line.
 Single-line rows center the leading slot vertically with the title, including
 when minimum row height or taller controls add space. Multiline rows anchor it
 to the first line.
@@ -19,5 +19,7 @@ the text and align right.
 Interactive rows emit clicks from the row surface. With `isolateControls`, the
 trailing control area stops click propagation, including button gaps. Model rows use
 this to toggle enabled state from the title, tags and surrounding space.
-Their checkbox handles its own click and keyboard input and stops click
-propagation so it toggles only once.
+Their switch sits at the end of the controls, handles its own click and keyboard
+input, and stops click propagation so it toggles only once. Settings use switches
+for every on/off, never checkboxes: a group's switch is on when any member is on and
+sets every member, with the mixed count beside it.

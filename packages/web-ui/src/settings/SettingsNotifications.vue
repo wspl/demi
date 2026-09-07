@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import Checkbox from '../ui/Checkbox.vue'
 import Switch from '../ui/Switch.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
@@ -23,8 +22,8 @@ const onError = defineModel<boolean>('onError', { required: true })
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Notify me when" description="Only while the conversation is not in front.">
-      <SettingsRow label="A turn finishes"><Checkbox v-model="onFinish" label="" /></SettingsRow>
-      <SettingsRow label="A turn fails"><Checkbox v-model="onError" label="" /></SettingsRow>
+      <SettingsRow label="A turn finishes"><Switch v-model="onFinish" /></SettingsRow>
+      <SettingsRow label="A turn fails"><Switch v-model="onError" /></SettingsRow>
     </SettingsGroup>
   </SettingsPage>
 </template>
