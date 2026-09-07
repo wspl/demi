@@ -21,5 +21,7 @@ trailing control area stops click propagation, including button gaps. Model rows
 this to toggle enabled state from the title, tags and surrounding space.
 Their switch sits at the end of the controls, handles its own click and keyboard
 input, and stops click propagation so it toggles only once. Settings use switches
-for every on/off, never checkboxes: a group's switch is on when any member is on and
-sets every member, with the mixed count beside it.
+for every on/off: a group's switch is on when any member is on and sets every
+member, with the mixed count beside it. A checkbox is for picking members of a set
+inside a form, such as the model dialog's file presets, where a mixed mark means
+some of the preset's extensions are in.
