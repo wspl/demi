@@ -25,7 +25,7 @@ import SidebarSelectionMenu from './SidebarSelectionMenu.vue'
 
 /**
  * Top: the app and its entries: New, Skills (a flyout that toggles skills in place) and
- * Archived (a searchable menu to the right; choosing one restores it). Middle: plain
+ * Archived (a searchable menu under it; choosing one restores it). Middle: plain
  * conversations, then every project as a collapsible group of its conversations, with one
  * selection across all of them. Bottom: the account and settings.
  */
@@ -244,14 +244,15 @@ function selectProjectConversations(project: SidebarProject): void {
           />
         </template>
       </Dropdown>
-      <!-- Archived opens to the right: a searchable list; choosing one restores and opens it. -->
-      <Dropdown :overlay-store="appOverlayStore" placement="right-start" :offset="8" class="w-full [&>div]:w-full" v-bind="pinnedFlyout === 'archived' ? { open: true } : {}">
+      <!-- Archived opens under its entry, wider than the rail: a searchable list; choosing one restores and opens it. -->
+      <Dropdown :overlay-store="appOverlayStore" placement="bottom-start" :offset="8" class="w-full [&>div]:w-full" v-bind="pinnedFlyout === 'archived' ? { open: true } : {}">
         <template #trigger="{ isOpen }">
           <SidebarNavItem :icon="Archive" label="Archived" :pressed="isOpen" />
         </template>
         <template #content="{ close }">
           <Menu
             :items="archivedItems"
+            class="w-80"
             filterable
             filter-placeholder="Search archived…"
             empty-text="No archived conversations."
