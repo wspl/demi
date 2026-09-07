@@ -84,7 +84,6 @@ const displayEntries = computed(() => [
   { kind: 'heading' as const, id: 'projects-heading' },
   ...entries.value.filter((entry) => entry.kind === 'project' || entry.projectId !== null),
 ])
-const enabledSkills = computed(() => props.skills.filter((skill) => skill.enabled).length)
 const archivedItems = computed(() => props.archived.map((conversation) => ({ id: conversation.id, label: conversation.title })))
 
 // Folding is transient; reveal the source again after layout has settled on drop or cancellation.
@@ -230,9 +229,10 @@ function selectProjectConversations(project: SidebarProject): void {
     <!-- The entries: one primary action, what the agent can use, and what was put away. -->
     <div class="flex shrink-0 flex-col gap-px px-2.5">
       <SidebarNavItem :icon="SquarePen" label="New" shortcut="⌘N" emphasis @click="emit('create', null)" />
-      <Dropdown :overlay-store="appOverlayStore" placement="bottom-start" :offset="8" v-bind="pinnedFlyout === 'skills' ? { open: true } : {}">
+      <!-- Each entry is a full-width row, dropdown or not. -->
+      <Dropdown :overlay-store="appOverlayStore" placement="bottom-start" :offset="8" class="w-full [&>div]:w-full" v-bind="pinnedFlyout === 'skills' ? { open: true } : {}">
         <template #trigger="{ isOpen }">
-          <SidebarNavItem :icon="WandSparkles" label="Skills" :count="enabledSkills" :pressed="isOpen" />
+          <SidebarNavItem :icon="WandSparkles" label="Skills" :pressed="isOpen" />
         </template>
         <template #content="{ close }">
           <ExtensionFlyout
@@ -245,9 +245,9 @@ function selectProjectConversations(project: SidebarProject): void {
         </template>
       </Dropdown>
       <!-- Archived opens to the right: a searchable list; choosing one restores and opens it. -->
-      <Dropdown :overlay-store="appOverlayStore" placement="right-start" :offset="8" v-bind="pinnedFlyout === 'archived' ? { open: true } : {}">
+      <Dropdown :overlay-store="appOverlayStore" placement="right-start" :offset="8" class="w-full [&>div]:w-full" v-bind="pinnedFlyout === 'archived' ? { open: true } : {}">
         <template #trigger="{ isOpen }">
-          <SidebarNavItem :icon="Archive" label="Archived" :count="archived.length || undefined" :pressed="isOpen" />
+          <SidebarNavItem :icon="Archive" label="Archived" :pressed="isOpen" />
         </template>
         <template #content="{ close }">
           <Menu
