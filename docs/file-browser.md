@@ -7,7 +7,7 @@ dialog because that is the shape people already know for the job.
 
 ```text
 ┌ Select folder ─────────────────────────────────────────────── × ┐
-│ [🖥 zan-mbp      ˅]  ‹ › ↑ [ / › Users › zan › Projects ] [＋] [👁] │
+│ [🖥 zan-mbp      ˅]  ‹ › ↑ [ 💽 › Users › zan › Projects ] [＋] [👁] │
 ├───────────────┬─────────────────────────────────────────────────┤
 │ QUICK ACCESS  │ Name ˄              Date modified          Size │
 │  ⌂ Home       │ 📁 assetsfactory    Sep 2, 18:12               │
@@ -50,7 +50,8 @@ list has room whatever the folder holds.
 
 - **Device and address**: two controls. The device sits over the rail, as wide as it,
   a menu of the hosts the caller offers, dotted green or gray; then Back, Forward and
-  Up, and the path from that device's root, as crumbs, each a jump. Deep paths keep the root and the last three crumbs (two in a
+  Up, and the path from that device's root, as crumbs, each a jump; the root crumb is
+  a drive glyph, since a lone slash is too narrow to hit. Deep paths keep the root and the last three crumbs (two in a
   narrow bar) and fold the middle into an ellipsis. A click on the free space turns
   the bar into a text field with the full path; Enter goes there, Escape or blur
   leaves it.

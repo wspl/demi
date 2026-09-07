@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { ChevronRight, Ellipsis } from '@lucide/vue'
+import { ChevronRight, Ellipsis, HardDrive } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
 import TextInput from '../ui/TextInput.vue'
 import { ICON_PX } from '../ui/icon-metrics'
@@ -98,14 +98,16 @@ watch(() => props.path, () => {
       <span
         v-else
         role="link"
-        class="flex h-5 min-w-0 shrink items-center gap-1 rounded px-1 text-chrome transition-colors duration-200 ease-out"
+        class="flex h-5 min-w-0 shrink items-center gap-1 rounded text-chrome transition-colors duration-200 ease-out"
         :class="[
           index === shown.length - 1 ? 'max-w-[60%] shrink-0 text-fg-emphasis' : 'text-fg-muted hover:bg-hover hover:text-fg',
-          index === 0 ? 'shrink-0' : '',
+          index === 0 ? 'shrink-0 px-1.5' : 'px-1',
         ]"
         @click="emit('navigate', crumb.path)"
       >
-        <span class="truncate">{{ crumb.name }}</span>
+        <!-- The root is a drive glyph: a lone slash is too narrow to hit. -->
+        <HardDrive v-if="index === 0" :size="ICON_PX.in24" class="shrink-0" aria-label="Root" />
+        <span v-else class="truncate">{{ crumb.name }}</span>
       </span>
     </template>
     <span class="h-full min-w-4 flex-1" @click="startEdit" />
