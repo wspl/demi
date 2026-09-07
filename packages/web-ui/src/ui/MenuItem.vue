@@ -14,8 +14,11 @@ const props = defineProps<{
   icon?: Component
   label?: string
   value?: string
+  /** A status dot: alone in the gutter, or on the icon's corner when there is one. */
   indicator?: 'success' | 'muted'
   indicatorLabel?: string
+  /** A quiet qualifier after the label, in parentheses: `offline`, `read-only`. */
+  note?: string
   isDanger?: boolean
   disabled?: boolean
   disabledReason?: string
@@ -133,20 +136,22 @@ const toneClass = computed(() => {
       @mouseenter="openSubmenu"
       @mouseleave="scheduleCloseSubmenu"
     >
-      <span v-if="showIconGutter" class="menu-cell-gutter flex size-4 shrink-0 items-center justify-center">
+      <span v-if="showIconGutter" class="menu-cell-gutter relative flex size-4 shrink-0 items-center justify-center">
+        <component :is="icon" v-if="icon" :size="ICON_PX.in28" />
+        <!-- The dot rides the icon's corner, or stands alone in the gutter. -->
         <span
           v-if="indicator"
           class="size-1.5 shrink-0 rounded-full"
-          :class="indicator === 'success' ? 'bg-on-success' : 'bg-fg-faint'"
+          :class="[indicator === 'success' ? 'bg-on-success' : 'bg-fg-faint', icon ? 'absolute -right-0.5 -top-0.5 ring-2 ring-surface-float' : '']"
           role="img"
           :aria-label="indicatorLabel"
         />
-        <component :is="icon" v-else-if="icon" :size="ICON_PX.in28" />
       </span>
       <span class="menu-cell-label">
         <slot>
           <span class="min-w-0 flex-1 truncate">{{ label }}</span>
         </slot>
+        <span v-if="note" class="shrink-0 pl-1 text-fg-subtle">({{ note }})</span>
       </span>
       <span v-if="value" class="menu-cell-value truncate text-right text-fg-muted" :title="value">
         {{ value }}
