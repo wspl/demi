@@ -17,7 +17,7 @@ keeps their full output on this machine, and the relay through which root
 commands (`commands.md`) reach the backend. Even the Claude Code CLI reaches the runner
 as an ordinary remote `spawn`; the runner has no claude-specific code.
 
-It is JS running on tinyjs (`tinyjs.md`), so its protocol schemas are the
+It is JS running on txiki.js (`txiki.md`), so its protocol schemas are the
 same zod objects the backend uses. Design principle: no speculative
 constraints — no workspace restrictions, no local policy layer, no
 configuration beyond what the connection needs.
@@ -39,7 +39,7 @@ configuration beyond what the connection needs.
    machine with the conversation's cwd and env, the conversation and shell
    ids in the environment, the bounded output view streamed to the backend,
    the full output teed to an output file here.
-4. **Relaying root commands.** A Unix domain socket for command-mode tinyjs
+4. **Relaying root commands.** A Unix domain socket for command-mode txiki.js
    processes: manifest cache misses, and `rpc` command invocations
    forwarded to the backend attributed to the invoking conversation, their
    stdin and stdout carried as pipes — HTTP streams brokered by the
@@ -54,7 +54,7 @@ processes, `rpc` commands in the backend); provider logic.
 
 ## Process shape and local state
 
-The tinyjs binary in runner mode: `demi-runner run [--backend <url>]`. First
+The txiki.js binary in runner mode: `demi-runner run [--backend <url>]`. First
 start prints the claim token and waits; later starts authenticate with the
 persisted device token. On a managed host the runner is PID 1 and performs
 init duties (`managed-hosts.md` § Lifecycle): the same binary, told by its
@@ -83,8 +83,8 @@ Dependency footprint: `@demicodes/runner-protocol`, `@demicodes/shell`
 (cache and relay only), `@demicodes/utils`. No agent, coding-agent or
 provider packages. The package's directories are its modules
 (`package-boundaries.md`): `machine/` — this machine as the runner sees
-it, the `Host` contract over tinyjs's primitives plus the links and the
-tee, the only code that imports `tinyjs:*`; `serve/` — the runner's end
+it, the `Host` contract over txiki.js's primitives plus the links and the
+stream logger, the code that adapts runtime and Web APIs; `serve/` — the runner's end
 of the protocol, `HostRpcServer` and `JobTable`; `relay/` — the UDS relay;
 and the two entry modes with their shared state at the root.
 
@@ -106,10 +106,9 @@ One outbound WebSocket, speaking runner protocol **version 9**. Frames are binar
 bin, `Date` as the timestamp extension, `undefined` as nil), so bytes and
 times are native wire types; a text frame is malformed and closes the
 socket. The schemas are `zod` in `@demicodes/runner-protocol`, shared
-verbatim by both ends; the codec is the carrier's — `@msgpack/msgpack` on
-the backend, `tinyjs:bytes` on the runner — handed to `createRunnerWire`,
-and the two are held to the same bytes by a test that round-trips frames
-through both.
+verbatim by both ends. Both use `msgpackCodec` from
+`@demicodes/runner-protocol/msgpack`, handed to `createRunnerWire`. A test
+round-trips frames through Bun and txiki.js and compares the bytes.
 
 Pairing, end to end — two user steps (run the command, paste the code):
 
@@ -223,7 +222,7 @@ runner's own: `DEMI_HOME`, `DEMI_JOB_CWD_FILE` (where the `EXIT` trap
 writes `pwd`) and `DEMI_JOB_STDIN_FD` (the descriptor the prelude
 duplicated the job's stdin onto with `exec 199<&0`, so a command-mode
 process can tell the job's live stdin from a redirection by `fdNode`,
-`tinyjs.md`), plus `DEMI_JOB_ID`, which associates local relay calls with
+`txiki.md`), plus `DEMI_JOB_ID`, which associates local relay calls with
 their owning job. The runner cancels those calls before killing the job
 and when the job exits. A raw spawn (the Claude Code CLI) is different:
 its spawner owns the environment it named, and the runner fills in only
@@ -237,7 +236,7 @@ blocked write.
 
 **The view is the model's view.** What crosses the wire, what the backend
 records, and what the browser shows are one and the same: the bytes the
-model sees. The **tee** is a tinyjs primitive (`tinyjs.md`): each job's
+model sees. The **tee** is the stream logger in `runner/src/machine/jobs.ts` (`txiki.md`): each job's
 stdout and stderr are written in full to output files under the target's
 `commandOutputDir`. While the job runs, `job_output` streams the first
 bytes of each stream up to the view budget (`JOB_VIEW_BYTES`, a protocol
@@ -258,7 +257,7 @@ names the agent's deliverables, and Demi keeps it free for that.
 ## The local relay
 
 `~/.demi/runner.sock` (mode 0600) accepts connections from command-mode
-tinyjs processes. Its frames are MessagePack behind a 32-bit big-endian
+txiki.js processes. Its frames are MessagePack behind a 32-bit big-endian
 length. A manifest request uses one connection and is answered from the
 cache; a process asks when `commands/current` is missing. An RPC uses a data
 connection and a lifetime connection. The data request is `rpc { callId,
@@ -507,7 +506,7 @@ takes the wake path (`managed-hosts.md`).
   views from it without double-counting.
 
 The running-hint contract is covered by `runner/src/__tests__/running-hint.test.ts`
-against a live tinyjs runner and a local mock backend: runtime and RPC
+against a live txiki.js runner and a local mock backend: runtime and RPC
 invocations, live stdin, shell chains, abort, command-process death with bash
 still running, and help/error/plain-command exclusions. The matching
 `host-remote/src/__tests__/running-hint.test.ts` checks concurrent invocation

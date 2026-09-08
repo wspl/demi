@@ -10,7 +10,7 @@ import { backendToRunnerMessageSchema, helloErrorCodeSchema, runnerToBackendMess
  * Frames are MessagePack (`Uint8Array` as bin, `Date` as the timestamp
  * extension, `undefined` as nil), so bytes and times are native wire types.
  * The codec is the carrier's: `@msgpack/msgpack` on Bun (`codec.ts`),
- * `tinyjs:bytes` on tinyjs. The message set is declared as zod schemas in
+ * the same `msgpackCodec` on txiki.js. The message set is declared as zod schemas in
  * `schemas.ts` — the single source of truth these types derive from — and
  * each end validates the direction it receives.
  */
@@ -42,7 +42,7 @@ export type JobOutput = NonNullable<JobExitMessage['output']>
 export type RpcCallMessage = Extract<RunnerToBackendMessage, { type: 'rpc_call' }>
 export type HelloErrorCode = z.infer<typeof helloErrorCodeSchema>
 
-/** A MessagePack codec: the two ends bring their own (`msgpackCodec`, `tinyjs:bytes`). */
+/** A MessagePack codec: both ends use `msgpackCodec`. */
 export interface MessagePackCodec {
   encode(value: unknown): Uint8Array
   decode(bytes: Uint8Array): unknown

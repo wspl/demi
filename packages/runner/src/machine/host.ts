@@ -1,11 +1,8 @@
-import { abi, cwd, identity } from 'tinyjs:runtime'
+import { cwd, identity } from './runtime'
 import { fileHostStore, type Host } from '@demicodes/shell'
 import { normalizePath } from '@demicodes/utils'
 import { createRunnerFileSystem } from './fs'
 import { createRunnerProcess } from './process'
-
-/** The `tinyjs:*` surface this package is written against. */
-export const TINYJS_ABI = 3
 
 export interface RunnerHostOptions {
   /** Default working directory (default: the process's cwd). */
@@ -17,14 +14,11 @@ export interface RunnerHostOptions {
 }
 
 /**
- * The Host over the tinyjs primitives (`docs/demi-next/tinyjs.md`): the
+ * The Host over the txiki.js APIs (`docs/demi-next/txiki.md`): the
  * machine's real filesystem and processes, a file-backed store, the
  * process's own identity.
  */
 export function createRunnerHost(options: RunnerHostOptions = {}): Host {
-  if (abi !== TINYJS_ABI) {
-    throw new Error(`this runner is built for tinyjs abi ${TINYJS_ABI}; this tinyjs has abi ${abi}`)
-  }
   const defaultCwd = normalizePath(options.defaultCwd ?? cwd())
   const fs = createRunnerFileSystem(defaultCwd)
   return {

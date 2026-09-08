@@ -18,7 +18,7 @@
 | `product.md` | instance mode, users, conversations, attachments, provider management, web UI |
 | `sessions-and-targets.md` | a conversation's execution target: Cloud, paired devices, workspaces, switching, attached hosts |
 | `commands.md` | the command system: root commands (`demi` built in, library users add their own), `rpc` and `runtime` kinds, the command ABI, manifest, loader |
-| `tinyjs.md` | tinyjs: the runtime under the runner and every root command on a target |
+| `txiki.md` | txiki.js: the runtime under the runner and every root command on a target |
 | `runner.md` | the runner program: handshake, Host RPC, jobs, tee, the local relay |
 | `managed-hosts.md` | Firecracker provisioning, images, system/home persistence, reset, lifecycle, security |
 | `providers-and-vault.md` | the LLM module, credential vault, usage accounting, Claude Code |
@@ -69,9 +69,9 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
 - Backend ↔ runner: Demi's runner protocol — a remote form of the `Host`
   contract (filesystem ops, process spawn with streamed stdio) plus the job
   and output messages (`runner.md`). Both ends are TypeScript: the backend
-  on Bun, the runner as JS on tinyjs (`tinyjs.md`).
+  on Bun, the runner as JS on txiki.js (`txiki.md`).
 - Target ↔ backend for root commands (`demi` and any library-defined
-  root): a root command on a target is tinyjs plus the loader;
+  root): a root command on a target is txiki.js plus the loader;
   `runtime` commands run on the target, `rpc` commands travel to the
   backend as typed messages through the runner's socket (`commands.md`).
 - The one special case is the **Claude Code provider**: its transport is the
@@ -134,7 +134,7 @@ realization inside the runner:
 | Where | Role | Runs in |
 |---|---|---|
 | `@demicodes/host-remote` | the Host of every user host and managed host as the backend sees it: each call forwarded over the runner wire | the backend |
-| `@demicodes/runner`, `machine/` | the machine itself — files and real processes over tinyjs's primitives — performing what `host-remote` asked; never held by the agent | the runner, on tinyjs |
+| `@demicodes/runner`, `machine/` | the machine itself — files and real processes over txiki.js's primitives — performing what `host-remote` asked; never held by the agent | the runner, on txiki.js |
 
 The wire between the last two is `@demicodes/runner-protocol`, which both
 ends depend on.
@@ -145,14 +145,14 @@ ends depend on.
   hosting, LLM module, vault, accounting, runner management, managed hosts,
   the command manifest — that scales by running more copies plus one
   control-plane process. `backend.md`, `storage.md`.
-- **tinyjs** (`packages/tinyjs`, Rust): a small QuickJS runtime binary
-  providing IO primitives, an event loop and the byte-level paths; the native runtime layer. `tinyjs.md`.
-- **Runner** (`@demicodes/runner`, JS on tinyjs): the program on every
+- **txiki.js** (`vendor/txiki.js`, C/C++ fork): a small QuickJS runtime binary
+  providing IO primitives, an event loop and the byte-level paths; the native runtime layer. `txiki.md`.
+- **Runner** (`@demicodes/runner`, JS on txiki.js): the program on every
   execution target — one outbound socket, Host RPC, the job table, the tee,
   the local relay for root commands. `runner.md`.
 - **Command loader** (`@demicodes/command-loader`, pure JS): serves the
   command manifest wherever commands run — inside the runner, inside
-  tinyjs in command mode and inside third-party embedders. `commands.md`.
+  txiki.js in command mode and inside third-party embedders. `commands.md`.
 - **Managed hosts**: Firecracker microVMs the backend provisions on demand,
   persisting a pinned base plus a writable system layer and home. `managed-hosts.md`.
 - **Web frontend** (`@demicodes/web`): the product SPA over

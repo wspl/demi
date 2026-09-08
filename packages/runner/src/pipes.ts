@@ -3,9 +3,8 @@
 // device token, and `PUT`s a byte stream up or `GET`s one down. Nothing is
 // held beyond what is in flight: a `PUT` body is fed through a bounded
 // in-process pipe whose backpressure reaches the producer.
-import * as fs from 'tinyjs:fs'
-import { httpGet, httpPut, openPipe } from './machine'
-import { collectBytes, decodeUtf8, noop } from '@demicodes/utils'
+import { httpGet, httpPut } from './machine'
+import { collectBytes, decodeUtf8 } from '@demicodes/utils'
 
 /** What a device end does with its URL: the shape the relay and the job table are given. */
 export interface PipeEnds {
@@ -23,31 +22,7 @@ export class PipeClient implements PipeEnds {
 
   async put(url: string, body: AsyncIterable<Uint8Array>): Promise<void> {
     const headers = await this.headers()
-    const { read, write } = openPipe()
-    // The producer writes into the pipe as the request reads it out; a
-    // request that ended (refused, or the far side gone) breaks the write,
-    // which ends the producer's loop and releases its source.
-    const pump = (async () => {
-      try {
-        for await (const chunk of body) await fs.write(write, chunk)
-      } finally {
-        fs.close(write)
-      }
-    })()
-    pump.catch(noop)
-    let response: Awaited<ReturnType<typeof httpPut>>
-    try {
-      response = await httpPut(this.resolve(url), read, headers)
-    } catch (error) {
-      // The request never took the handle, or failed with it: release the read end so the producer's writes break.
-      try {
-        fs.close(read)
-      } catch {
-        // Consumed by the request: already gone.
-      }
-      throw error
-    }
-    await pump.catch(noop)
+    const response = await httpPut(this.resolve(url), body, headers)
     await expectOk(response)
   }
 

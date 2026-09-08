@@ -36,7 +36,7 @@ provider-*             concrete providers                   -> core, provider, u
 command-loader         manifest + loader                    -> shell, utils
 runner-protocol        the runner wire                      -> shell, utils
 host-remote            the backend's Host over a runner     -> runner-protocol, shell, utils
-runner                 the machine-side program (tinyjs)    -> command-loader, runner-protocol, shell, utils
+runner                 the machine-side program (txiki.js)    -> command-loader, runner-protocol, shell, utils
 backend                the product server (leaf)
 web-ui, web-gallery    the browser UI library and component gallery
 ```
@@ -52,6 +52,7 @@ Notable design records outside `docs/demi-next/`:
 ## Development
 
 ```sh
+git submodule update --init --recursive
 bun install
 bun run typecheck      # type-check all packages
 bun run typecheck:web  # type-check the Vue UI packages
@@ -60,9 +61,10 @@ bun run build          # build every library package to dist/ (tsdown)
 bun run llms           # regenerate llms-full.txt from the docs
 ```
 
-The tinyjs runtime is a Rust crate under `packages/tinyjs`
-([docs/demi-next/tinyjs.md](docs/demi-next/tinyjs.md)); tests that need it
-build it once through `@demicodes/runner/testing`.
+The forked txiki.js runtime is pinned under `vendor/txiki.js`
+([runtime design](docs/demi-next/txiki.md)). Tests build it through
+`@demicodes/runner/testing`; install CMake and a C/C++ compiler first.
+Static Linux cross builds also require Zig.
 
 Workspaces resolve `@demicodes/*` from source in dev/test (the `development` export
 condition); a build is only needed to publish.

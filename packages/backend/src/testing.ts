@@ -6,7 +6,7 @@ import { Hono } from 'hono'
 import { createBunWebSocket } from 'hono/bun'
 import { buildManifest, inProcessRpc } from '@demicodes/command-loader'
 import { RemoteShellEnvironment } from '@demicodes/host-remote'
-import { startTinyjsRunner } from '@demicodes/runner/testing'
+import { startTxikiRunner } from '@demicodes/runner/testing'
 import { AgentSessionCommandStorage, type CommandRegistry, type Host, type ShellEnvironmentOptions } from '@demicodes/shell'
 import { waitFor } from '@demicodes/utils'
 import { transpileCommandModule } from './conversation/command-manifest'
@@ -88,7 +88,7 @@ async function createFixture(host: Host, initialCommands: CommandRegistry): Prom
   app.route('/api/pipes', pipeRoutes({ control, broker: pipes }))
   const server = Bun.serve({ port: 0, fetch: app.fetch, websocket })
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-test-runner-'))
-  let runner: Awaited<ReturnType<typeof startTinyjsRunner>> | undefined
+  let runner: Awaited<ReturnType<typeof startTxikiRunner>> | undefined
   const close = async () => {
     await runner?.stop()
     await registry.close()
@@ -97,7 +97,7 @@ async function createFixture(host: Host, initialCommands: CommandRegistry): Prom
     db.close()
   }
   try {
-    runner = await startTinyjsRunner({ backendUrl: `http://localhost:${server.port}`, stateDir, home: host.defaultCwd, deviceToken: token })
+    runner = await startTxikiRunner({ backendUrl: `http://localhost:${server.port}`, stateDir, home: host.defaultCwd, deviceToken: token })
     await registry.whenOnline(device.id)
     await waitFor(() => runner!.log.some(line => line.includes(' installed:')), () => runner!.log.join('\n'), { timeoutMs: 15_000 })
     return { registry, deviceId: device.id, commands, users: 0, close }

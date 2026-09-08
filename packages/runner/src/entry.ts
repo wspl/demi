@@ -1,4 +1,4 @@
-// The entry of the tinyjs bundle (`docs/demi-next/tinyjs.md` § Entry modes):
+// The entry of the txiki.js bundle (`docs/demi-next/txiki.md` § Entry modes):
 // one packed binary reached through symlinks, the mode chosen by the name it
 // was invoked by. `demi-runner` is runner mode; any other name is a root
 // command in command mode.

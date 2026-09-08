@@ -9,7 +9,7 @@ import { createLoader } from '../loader/loader'
 import { directorySource, writeManifestDirectory } from '../loader/source'
 import { testRoots, transpile } from './fixtures'
 
-// A manifest kept as files, modules imported by path: the route tinyjs takes on
+// A manifest kept as files, modules imported by path: the route txiki.js takes on
 // a target, proven here under Bun with the same loader.
 test('directorySource: the manifest is read back from files and runtime modules import by path', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-manifest-dir-'))

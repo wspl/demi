@@ -7,7 +7,7 @@ export interface ManifestSource {
   manifest(): Promise<Manifest>
   /**
    * Where a `runtime` module lives as a file, by its hash. An embedder whose
-   * runtime imports only files (tinyjs) loads modules from here; absent, the
+   * runtime imports only files (txiki.js) loads modules from here; absent, the
    * loader imports each module from its text.
    */
   modulePath?(hash: string): string

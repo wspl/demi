@@ -1,20 +1,20 @@
 import { mkdtemp, rm, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { startTinyjsRunner, type TinyjsRunner } from '@demicodes/runner/testing'
+import { startTxikiRunner, type TxikiRunner } from '@demicodes/runner/testing'
 import type { BootArgs, ManagedHostProvisioner } from '../../managed/provisioner'
 
 interface Guest {
   owner: string
   homeDir: string
   stateDir: string
-  runner: TinyjsRunner | null
+  runner: TxikiRunner | null
   /** Set around a stop the provisioner itself performs, so the exit is not reported as a death. */
   stopping: boolean
 }
 
 /**
- * The provisioner seam over a local packed tinyjs runner: the "VM" is a
+ * The provisioner seam over a local packed txiki.js runner: the "VM" is a
  * process with the owner's `homeDir` as its `HOME`, started as a managed
  * host with the pre-issued token. Hibernate stops the process and keeps the
  * directory; wake starts a new process over it; a process that exits on its
@@ -98,7 +98,7 @@ export class FakeProvisioner implements ManagedHostProvisioner {
 
   private async start(guest: Guest, boot: BootArgs): Promise<void> {
     if (guest.runner) throw new Error(`guest ${guest.owner} already runs`)
-    const runner = await startTinyjsRunner({
+    const runner = await startTxikiRunner({
       backendUrl: boot.backendUrl,
       stateDir: guest.stateDir,
       home: guest.homeDir,

@@ -5,7 +5,7 @@ import { expect, test } from 'bun:test'
 import { createRunnerWire, type RunnerToBackendMessage } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { deferred, waitFor } from '@demicodes/utils'
-import { startTinyjsRunner } from '../testing'
+import { startTxikiRunner } from '../testing'
 
 // The runner's ends of pipes (`runner.md` § Pipes): a job started with
 // `stdin` GETs the origin-relative URL with its device token into the job's
@@ -33,6 +33,7 @@ test('job pipes: stdin is fetched into the job, stdout is streamed out as it is 
       const url = new URL(request.url)
       if (url.pathname === '/api/runner') return bunServer.upgrade(request) ? undefined : new Response('no', { status: 400 })
       authorizations.push(request.headers.get('authorization') ?? '')
+      if (url.pathname === '/api/pipes/early') return new Response('refused early', { status: 404 })
       if (request.method === 'GET' && url.pathname === '/api/pipes/in') return new Response(payload)
       if (request.method === 'PUT' && url.pathname.startsWith('/api/pipes/out')) {
         // Consumed as it streams: the body is never buffered by the server as a whole until the end.
@@ -57,7 +58,7 @@ test('job pipes: stdin is fetched into the job, stdout is streamed out as it is 
     },
   })
 
-  const runner = await startTinyjsRunner({ backendUrl: `http://localhost:${server.port}`, stateDir, home: runnerDir })
+  const runner = await startTxikiRunner({ backendUrl: `http://localhost:${server.port}`, stateDir, home: runnerDir })
   await waitFor(() => runner.statuses.includes('online'), () => runner.log.join('\n'), { timeoutMs: 10_000 })
   const send = (message: Parameters<typeof wire.encode>[0]) => socket!.send(wire.encode(message))
   const doneFor = (pipeId: string) => inbound.find((m): m is Extract<RunnerToBackendMessage, { type: 'pipe_done' }> => m.type === 'pipe_done' && m.pipeId === pipeId)
@@ -74,7 +75,10 @@ test('job pipes: stdin is fetched into the job, stdout is streamed out as it is 
     stdin: { id: 'in', url: '/api/pipes/in' },
     stdout: { id: 'out1', url: '/api/pipes/out1' },
   })
-  const uploaded = await uploads.get('/api/pipes/out1')!.promise
+  let uploaded: Uint8Array | undefined
+  void uploads.get('/api/pipes/out1')!.promise.then((bytes) => { uploaded = bytes })
+  await waitFor(() => uploaded !== undefined, () => `${runner.log.join('\n')}\n${JSON.stringify(inbound.slice(-8).map((m) => m.type === 'job_output' ? { type: m.type, bytes: m.bytes.length } : m))}`, { timeoutMs: 15_000 })
+  if (!uploaded) throw new Error('upload missing')
   await waitFor(() => doneFor('in') !== undefined && doneFor('out1') !== undefined && exitOf('j1') !== undefined, () => runner.log.join('\n'), { timeoutMs: 20_000 })
   expect(doneFor('in')).toEqual({ type: 'pipe_done', pipeId: 'in', ok: true })
   expect(doneFor('out1')).toEqual({ type: 'pipe_done', pipeId: 'out1', ok: true })
@@ -113,6 +117,17 @@ test('job pipes: stdin is fetched into the job, stdout is streamed out as it is 
   await waitFor(() => doneFor('missing') !== undefined && exitOf('j3') !== undefined, () => runner.log.join('\n'), { timeoutMs: 20_000 })
   expect(doneFor('missing')?.ok).toBe(false)
   expect(new TextDecoder().decode(exitOf('j3')?.output?.stdoutTail).trim()).toBe('0')
+
+  // Refusal before the first output byte cancels a pending read without stopping the job log.
+  send({
+    type: 'job_start', jobId: 'j4', script: 'sleep 0.1; head -c 2000000 /dev/zero',
+    cwd: runnerDir, env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: runnerDir },
+    stdout: { id: 'early', url: '/api/pipes/early' },
+  })
+  await waitFor(() => doneFor('early') !== undefined && exitOf('j4') !== undefined, () => runner.log.join('\n'), { timeoutMs: 10_000 })
+  expect(doneFor('early')?.ok).toBe(false)
+  expect(exitOf('j4')?.exitCode).toBe(0)
+  expect(exitOf('j4')?.output?.stdoutBytes).toBe(2_000_000)
 
   await runner.stop()
   server.stop(true)
