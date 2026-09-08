@@ -47,31 +47,63 @@ export const MANAGED_ENV = {
   dns: 'DEMI_MANAGED_DNS',
 } as const
 
-export const DEFAULTS = { vcpus: 2, memMib: 2048, systemMib: 1024, homeMib: 1024, subnet: '172.16.0.0/16', slots: 256, tapPrefix: 'demi', dns: ['1.1.1.1', '8.8.8.8'], chrootBase: '/srv/jailer', uidBase: 20000 }
+export const DEFAULTS = {
+  vcpus: 2,
+  memMib: 2048,
+  systemMib: 1024,
+  homeMib: 1024,
+  subnet: '172.16.0.0/16',
+  slots: 256,
+  tapPrefix: 'demi',
+  dns: ['1.1.1.1', '8.8.8.8'],
+  chrootBase: '/srv/jailer',
+  uidBase: 20000,
+}
 
 /** The configuration the environment describes, or null when `DEMI_MANAGED_FIRECRACKER` is unset. */
-export function firecrackerConfigFromEnv(env: Record<string, string | undefined>, dataDir: string): FirecrackerConfig | null {
+export function firecrackerConfigFromEnv(
+  env: Record<string, string | undefined>,
+  dataDir: string,
+): FirecrackerConfig | null {
   const firecracker = env[MANAGED_ENV.firecracker]
-  if (!firecracker) return null
+  if (!firecracker) {
+    return null
+  }
   const required = (name: keyof typeof MANAGED_ENV): string => {
     const value = env[MANAGED_ENV[name]]
-    if (!value) throw new Error(`${MANAGED_ENV[name]} is required when ${MANAGED_ENV.firecracker} is set`)
+    if (!value) {
+      throw new Error(`${MANAGED_ENV[name]} is required when ${MANAGED_ENV.firecracker} is set`)
+    }
     return value
   }
   const integer = (name: keyof typeof MANAGED_ENV, fallback: number): number => {
     const value = env[MANAGED_ENV[name]]
-    if (value === undefined) return fallback
+    if (value === undefined) {
+      return fallback
+    }
     const parsed = Number(value)
-    if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`${MANAGED_ENV[name]} must be a positive integer, got ${value}`)
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(`${MANAGED_ENV[name]} must be a positive integer, got ${value}`)
+    }
     return parsed
   }
   const mode = env[MANAGED_ENV.launch] ?? 'direct'
   let launch: LaunchMode
-  if (mode === 'direct') launch = { mode: 'direct' }
-  else if (mode === 'jailer') {
+  if (mode === 'direct') {
+    launch = { mode: 'direct' }
+  } else if (mode === 'jailer') {
     const uidBase = integer('uidBase', DEFAULTS.uidBase)
-    launch = { mode: 'jailer', jailer: required('jailer'), helper: required('helper'), chrootBase: env[MANAGED_ENV.chrootBase] ?? DEFAULTS.chrootBase, uidBase, gidBase: uidBase }
-  } else throw new Error(`${MANAGED_ENV.launch} must be direct or jailer, got ${mode}`)
+    launch = {
+      mode: 'jailer',
+      jailer: required('jailer'),
+      helper: required('helper'),
+      chrootBase: env[MANAGED_ENV.chrootBase] ?? DEFAULTS.chrootBase,
+      uidBase,
+      gidBase: uidBase,
+    }
+  } else {
+    throw new Error(`${MANAGED_ENV.launch} must be direct or jailer, got ${mode}`)
+  }
   return {
     firecracker,
     launch,
@@ -84,7 +116,7 @@ export function firecrackerConfigFromEnv(env: Record<string, string | undefined>
     subnet: env[MANAGED_ENV.subnet] ?? DEFAULTS.subnet,
     slots: integer('slots', DEFAULTS.slots),
     tapPrefix: DEFAULTS.tapPrefix,
-    dns: (env[MANAGED_ENV.dns] ?? DEFAULTS.dns.join(',')).split(',').filter((entry) => entry.length > 0),
+    dns: (env[MANAGED_ENV.dns] ?? DEFAULTS.dns.join(',')).split(',').filter(entry => entry.length > 0),
     runDir: join(dataDir, 'firecracker'),
     imagesDir: join(dataDir, 'machines'),
   }

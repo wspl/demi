@@ -29,7 +29,11 @@ export class HostRpcServer {
       case 'spawn': {
         const ready = this.handleSpawn(message)
         this.starting.set(message.spawnId, ready)
-        try { await ready } finally { this.starting.delete(message.spawnId) }
+        try {
+          await ready
+        } finally {
+          this.starting.delete(message.spawnId)
+        }
         return
       }
       case 'spawn_stdin': {
@@ -81,11 +85,14 @@ export class HostRpcServer {
     let handle: HostSpawnHandle
     try {
       const injected = await this.executionEnv?.(message)
+      const env = message.env || injected
+        ? { ...deviceFallback(definedEnv(message.env ?? {}), this.deviceEnv), ...injected }
+        : undefined
       handle = await this.host.process.spawn({
         command: message.command,
         ...(message.args ? { args: message.args } : {}),
         ...(message.cwd !== undefined ? { cwd: message.cwd } : {}),
-        ...((message.env || injected) ? { env: { ...deviceFallback(definedEnv(message.env ?? {}), this.deviceEnv), ...injected } } : {}),
+        ...(env ? { env } : {}),
         ...(message.killProcessGroup !== undefined ? { killProcessGroup: message.killProcessGroup } : {}),
       })
     } catch (error) {

@@ -21,7 +21,11 @@ export async function connectWebSocket(url: string, headers?: Record<string, str
       if (!(result.value instanceof Uint8Array)) throw new Error('runner WebSocket requires binary frames')
       return result.value
     },
-    close: async (code) => { socket.close(code === undefined ? undefined : { closeCode: code }); await socket.closed.catch(noop) },
+    close: async (code) => {
+      socket.close(code === undefined ? undefined : { closeCode: code })
+      // A failed connection is already closed; shutdown does not report it a second time.
+      await socket.closed.catch(noop)
+    },
   }
 }
 
@@ -47,8 +51,12 @@ export interface UnixListener {
 export async function listenUnix(path: string, mode: number): Promise<UnixListener> {
   const listener = await tjs.listen('pipe', path)
   listener.closed.catch(noop)
-  try { if (!navigator.platform.startsWith('Win')) await tjs.chmod(path, mode) }
-  catch (error) { listener.close(); throw error }
+  try {
+    if (!navigator.platform.startsWith('Win')) await tjs.chmod(path, mode)
+  } catch (error) {
+    listener.close()
+    throw error
+  }
   const reader = (await listener.opened).readable.getReader()
   return {
     accept: async () => {

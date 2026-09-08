@@ -10,15 +10,27 @@ export function safeImageId(id: string): string {
 
 export async function syncFile(path: string): Promise<void> {
   const file = await open(path, 'r')
-  try { await file.sync() } finally { await file.close() }
+  try {
+    await file.sync()
+  } finally {
+    await file.close()
+  }
 }
 
 export async function atomicJson(path: string, value: unknown): Promise<void> {
   const temp = `${path}.${createId()}`
-  const file = await open(temp, 'wx')
-  try { await file.writeFile(JSON.stringify(value)); await file.sync() }
-  finally { await file.close() }
-  try { await rename(temp, path) } finally { await rm(temp, { force: true }) }
+  try {
+    const file = await open(temp, 'wx')
+    try {
+      await file.writeFile(JSON.stringify(value))
+      await file.sync()
+    } finally {
+      await file.close()
+    }
+    await rename(temp, path)
+  } finally {
+    await rm(temp, { force: true })
+  }
 }
 
 export interface MachineImageStore {
@@ -31,17 +43,32 @@ export interface MachineImageStore {
 export class DirMachineImageStore implements MachineImageStore {
   constructor(private readonly root: string) {}
 
-  private device(deviceId: string): string { return join(this.root, safeImageId(deviceId)) }
+  private device(deviceId: string): string {
+    return join(this.root, safeImageId(deviceId))
+  }
 
   async read(deviceId: string): Promise<MachineImageState | null> {
-    try { return imageStateSchema.parse(JSON.parse(await readFile(join(this.device(deviceId), 'current.json'), 'utf8'))) }
-    catch (error) { if (errorCode(error) === 'ENOENT') return null; throw error }
+    try {
+      const manifest = await readFile(join(this.device(deviceId), 'current.json'), 'utf8')
+      return imageStateSchema.parse(JSON.parse(manifest))
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') {
+        return null
+      }
+      throw error
+    }
   }
 
   async copy(deviceId: string, state: MachineImageState, destination: string): Promise<void> {
     const from = join(this.device(deviceId), 'generations', safeImageId(state.generation))
     await mkdir(destination, { recursive: true })
-    for (const volume of ['system', 'home']) await copyFile(join(from, `${volume}.ext4`), join(destination, `${volume}.ext4`), constants.COPYFILE_FICLONE)
+    for (const volume of ['system', 'home']) {
+      await copyFile(
+        join(from, `${volume}.ext4`),
+        join(destination, `${volume}.ext4`),
+        constants.COPYFILE_FICLONE,
+      )
+    }
   }
 
   async publish(deviceId: string, state: MachineImageState, source: string): Promise<void> {
