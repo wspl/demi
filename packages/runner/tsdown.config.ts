@@ -5,6 +5,6 @@ export default defineConfig({
   format: ['esm'],
   dts: true,
   clean: true,
-  // The tinyjs API is provided by the runtime, never bundled.
-  external: [/^tinyjs:/],
+  // The txiki.js API is provided by the runtime, never bundled.
+  external: [/^tjs:/],
 })

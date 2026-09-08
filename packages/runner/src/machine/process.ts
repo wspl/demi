@@ -1,13 +1,8 @@
-import * as fs from 'tinyjs:fs'
-import * as proc from 'tinyjs:process'
-import { env as processEnv } from 'tinyjs:runtime'
-import type { HostProcess, HostSpawnExit, HostSpawnHandle, HostSpawnParams, SpawnErrorKind } from '@demicodes/shell'
+import type { HostProcess, HostSpawnExit, HostSpawnHandle, SpawnErrorKind } from '@demicodes/shell'
 import { emptyByteStream, errorCode, noop } from '@demicodes/utils'
 import { openRunnerCwd } from './cwd'
-import { readHandle } from './stdio'
-
 /**
- * The `HostProcess` facet over `tinyjs:process`. A child gets exactly the
+ * The `HostProcess` facet over txiki.js. A child gets exactly the
  * env passed (the process's own when none is), a stdin pipe, and its own
  * process group when the caller wants to kill the group.
  */
@@ -16,15 +11,13 @@ export function createRunnerProcess(defaultCwd: string): HostProcess {
     openCwd: openRunnerCwd,
     spawn: async (params) => {
       const cwd = params.cwd ?? defaultCwd
-      let child: proc.Child
+      let child: tjs.Process
       try {
-        child = await proc.spawn({
-          command: params.command,
-          args: params.args ?? [],
+        child = tjs.spawn([params.command, ...(params.args ?? [])], {
           cwd,
-          env: params.env ? definedEnv(params.env) : { ...processEnv },
-          stdin: 'pipe',
-          processGroup: params.killProcessGroup === true,
+          env: params.env ? definedEnv(params.env) : { ...tjs.env },
+          stdin: 'pipe', stdout: 'pipe', stderr: 'pipe',
+          detached: params.killProcessGroup === true,
         })
       } catch (error) {
         return failedSpawn(await classifySpawnFailure(error, cwd))
@@ -34,38 +27,31 @@ export function createRunnerProcess(defaultCwd: string): HostProcess {
   }
 }
 
-function spawnedHandle(child: proc.Child, group: boolean): HostSpawnHandle {
-  let stdinOpen = child.stdin !== null
+export function spawnedHandle(child: tjs.Process, group: boolean): HostSpawnHandle {
+  const writer = child.stdin?.getWriter()
+  let stdinOpen = !!writer
   let exited = false
-  const closeStdin = (): void => {
-    if (child.stdin === null || !stdinOpen) return
+  const closeStdin = async (): Promise<void> => {
+    if (!stdinOpen) return
     stdinOpen = false
-    fs.close(child.stdin)
+    await writer!.close().catch(noop)
   }
-  const exit: Promise<HostSpawnExit> = proc.wait(child.pid).then((result) => {
+  const exit: Promise<HostSpawnExit> = child.wait().then((result) => {
     exited = true
-    // Nothing reads the pipe any more; a stdin handle nobody closed would leak.
-    closeStdin()
-    return { exitCode: result.code, ...(result.signal !== undefined ? { signal: result.signal } : {}) }
+    stdinOpen = false
+    void writer?.abort().catch(noop)
+    return { exitCode: result.term_signal ? null : result.exit_status, ...(result.term_signal ? { signal: result.term_signal } : {}) }
   })
-  // A rejection is delivered to whoever calls wait(); nobody may.
   exit.catch(noop)
   return {
-    stdout: readHandle(child.stdout, true),
-    stderr: readHandle(child.stderr, true),
-    writeStdin: async (data) => {
-      if (child.stdin === null || !stdinOpen) return
-      await fs.write(child.stdin, data)
-    },
-    closeStdin: async () => closeStdin(),
+    stdout: child.stdout ?? emptyByteStream(),
+    stderr: child.stderr ?? emptyByteStream(),
+    writeStdin: async (data) => { if (stdinOpen) await writer!.write(data) },
+    closeStdin,
     kill: async (signal = 'SIGTERM') => {
       if (exited) return
-      try {
-        proc.kill(child.pid, signal, { group })
-      } catch (error) {
-        // Reaped between the check and the call.
-        if (errorCode(error) !== 'ESRCH') throw error
-      }
+      try { tjs.kill(group ? -child.pid : child.pid, signal as tjs.Signal) }
+      catch (error) { if (errorCode(error) !== 'ESRCH') throw error }
     },
     wait: () => exit,
   }
@@ -85,7 +71,7 @@ function failedSpawn(kind: SpawnErrorKind): HostSpawnHandle {
 /** A cwd that is gone explains the failure before the binary does. */
 async function classifySpawnFailure(error: unknown, cwd: string): Promise<SpawnErrorKind> {
   try {
-    if ((await fs.stat(cwd)).kind !== 'dir') return 'cwd_unusable'
+    if (!(await tjs.stat(cwd)).isDirectory) return 'cwd_unusable'
   } catch {
     return 'cwd_unusable'
   }

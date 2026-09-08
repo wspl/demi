@@ -32,7 +32,7 @@ export async function runCommandMode(root: string, args: readonly string[]): Pro
   // The job's own stdin is live — shell_write feeds it and it never ends
   // on its own — so it is the post-start stream and there is no pipe; a
   // redirection is the pipe.
-  const live = isJobStdin()
+  const live = await isJobStdin()
   return loader.dispatch(root, args, {
     ...(live ? { stdinStream: stdinStream() } : { stdin: stdinStream() }),
     stdout: stdoutWriter(),
@@ -53,9 +53,9 @@ async function manifestSource(fs: Parameters<typeof directorySource>[1], dir: st
 }
 
 /** Whether fd 0 is the job's stdin the prelude duplicated (`runner-protocol`, `wrapScript`). */
-function isJobStdin(): boolean {
+async function isJobStdin(): Promise<boolean> {
   const duplicated = Number(env[JOB_STDIN_FD_VAR])
   if (!Number.isInteger(duplicated) || duplicated < 3) return false
-  const own = fdNode(0)
-  return own !== null && own === fdNode(duplicated)
+  const own = await fdNode(0)
+  return own !== null && own === await fdNode(duplicated)
 }

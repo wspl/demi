@@ -16,14 +16,14 @@ scope. No compatibility paths or legacy-data conversion are part of the design.
 | M4 — Devices | pairing, tokens, registry and remote Host | claim, reconnect, revoke, unknown token and offline behavior |
 | M5 — Providers | provider assembly, credential vault, model catalog and usage | mock provider/auth endpoints; process-backed inference obtains its device; no credential disclosure |
 | M6 — Targets | Cloud/device/workspace selection, attached devices, per-node context | idle-tree switch admission, device ownership, files stay on original device |
-| M7 — tinyjs | QuickJS runtime, native I/O, packed binaries | primitive conformance, platform builds, startup and stream-throughput measurements |
-| M8 — Commands | one command tree, manifest, loader, runtime and RPC leaves | JS modules execute on tinyjs; RPC reaches the node's backend handler and storage; independent root embedding |
-| M9 — Runner | TypeScript on tinyjs, real bash jobs, tee, relay and transfers | streaming stdin/stdout, cancellation, process cleanup, bounded wire views and authenticated job attribution |
+| M7 — txiki.js | QuickJS runtime, native I/O, packed binaries | primitive conformance, platform builds, startup and stream-throughput measurements |
+| M8 — Commands | one command tree, manifest, loader, runtime and RPC leaves | JS modules execute on txiki.js; RPC reaches the node's backend handler and storage; independent root embedding |
+| M9 — Runner | TypeScript on txiki.js, real bash jobs, tee, relay and transfers | streaming stdin/stdout, cancellation, process cleanup, bounded wire views and authenticated job attribution |
 | M10 — Scenarios | backend, scripted provider and real packed runners | `scenarios.md` acceptance matrix, restarts, cross-host pipelines and teardown invariants |
 | M11 — Personal Cloud | unique managed device per user; system/home persistence; external reset | multiple projects share one machine; both disks survive shutdown; broken guest resets with home retained; serialized recovery |
 | M12 — Multi-user | authentication, roles, provider mode and tenant isolation | cross-user access refused for every named resource, including Cloud status/reset; account controls |
 | M13 — Web | shared UI prototype, feature design and backend integration | the reviewed product flows and matching gallery specimens, including Cloud lifecycle and reset |
-| M14 — Packaging | backend/web assets, tinyjs runner, kernel/base images and helper | image build and Linux/KVM smoke in both launch modes without real models |
+| M14 — Packaging | backend/web assets, txiki.js runner, kernel/base images and helper | image build and Linux/KVM smoke in both launch modes without real models |
 | M15 — Scaled deployment | control service, S3 adapters, replication and user-worker placement | worker fencing, single VM writer, consistent disk generations and user reassignment |
 
 ## Cloud acceptance checkpoints

@@ -146,6 +146,9 @@ export class RelayServer {
       this.report(ref, null)
     } catch (error) {
       this.report(ref, error)
+    } finally {
+      // An early HTTP refusal also releases a relay producer waiting for its next chunk.
+      call.pipe.fail(new Error('pipe upload finished'))
     }
   }
 

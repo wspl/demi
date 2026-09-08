@@ -75,7 +75,7 @@ export function isFileNotFoundError(error: unknown): boolean {
 
 /**
  * An error carrying an errno-style string `code` (`ENOENT`, `EISDIR`, …), the
- * shape Node's fs errors and tinyjs's `ShellError` share, for failures a Host
+ * shape Node's fs errors and txiki.js's native errors share, for failures a Host
  * decides itself rather than receives from the OS.
  */
 export function errnoError(code: string, message: string, detail: { syscall?: string; path?: string } = {}): Error {

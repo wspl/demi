@@ -1,10 +1,7 @@
-// The runner's jobs over the tee primitive, and the file reads the job table
-// needs (`runner.md` § Jobs and the tee).
-import * as fs from 'tinyjs:fs'
-import * as proc from 'tinyjs:process'
 import type { HostSpawnError } from '@demicodes/shell'
-import { errorCode } from '@demicodes/utils'
-import { readHandle } from './stdio'
+import { errorCode, noop } from '@demicodes/utils'
+import { spawnedHandle } from './process'
+import { writeAll } from './fs'
 
 export interface TeedSpawnParams {
   command: string
@@ -29,102 +26,95 @@ export interface TeedSpawnHandle {
   wait(): Promise<{ exitCode: number | null; signal?: string; spawnError?: HostSpawnError; stdoutBytes: number; stderrBytes: number }>
 }
 
-/**
- * Spawns a process in its own process group with both streams teed to
- * files by tinyjs; the handle's streams carry the view. A spawn failure is
- * reported through `wait` as a `HostSpawnError`, like a Host spawn.
- */
+/** Log every byte, retain a bounded preview, and backpressure the optional live copy. */
 export async function spawnTeed(params: TeedSpawnParams): Promise<TeedSpawnHandle> {
-  let child: proc.Child
+  // Open log files before spawning so an unwritable output directory cannot orphan a job.
+  const stdoutFile = await tjs.open(params.tee.stdoutPath, 'w', 0o600)
+  let stderrFile: tjs.FileHandle
+  try { stderrFile = await tjs.open(params.tee.stderrPath, 'w', 0o600) }
+  catch (error) { await stdoutFile.close(); throw error }
+  let child: tjs.Process
   try {
-    child = await proc.spawn({
-      command: params.command,
-      args: params.args,
-      cwd: params.cwd,
-      env: params.env,
-      stdin: 'pipe',
-      processGroup: true,
-      tee: params.tee,
+    child = tjs.spawn([params.command, ...params.args], {
+      cwd: params.cwd, env: params.env, detached: true,
+      stdin: 'pipe', stdout: 'pipe', stderr: 'pipe',
       ...(params.uid !== undefined ? { uid: params.uid } : {}),
       ...(params.gid !== undefined ? { gid: params.gid } : {}),
     })
   } catch (error) {
+    await Promise.all([stdoutFile.close(), stderrFile.close()])
     const kind: HostSpawnError['kind'] = errorCode(error) === 'ENOENT' ? 'executable_not_found' : 'other'
     const empty = async function* (): AsyncIterable<Uint8Array> {}
     return {
-      stdout: empty(),
-      stderr: empty(),
-      writeStdin: async () => {},
-      closeStdin: async () => {},
-      kill: async () => {},
+      stdout: empty(), stderr: empty(),
+      writeStdin: async () => {}, closeStdin: async () => {}, kill: async () => {},
       wait: async () => ({ exitCode: null, spawnError: { kind }, stdoutBytes: 0, stderrBytes: 0 }),
     }
   }
-  let stdinOpen = child.stdin !== null
-  let exited = false
-  const closeStdin = (): void => {
-    if (child.stdin === null || !stdinOpen) return
-    stdinOpen = false
-    fs.close(child.stdin)
-  }
-  const exit = proc.wait(child.pid).then((result) => {
-    exited = true
-    closeStdin()
-    return {
-      exitCode: result.code,
-      ...(result.signal !== undefined ? { signal: result.signal } : {}),
-      stdoutBytes: result.stdoutBytes ?? 0,
-      stderrBytes: result.stderrBytes ?? 0,
-    }
-  })
-  exit.catch(() => {})
-  return {
-    stdout: readHandle(child.stdout, true),
-    stderr: readHandle(child.stderr, true),
-    ...(child.stdoutStream !== null ? { stdoutStream: readHandle(child.stdoutStream, true) } : {}),
-    writeStdin: async (data) => {
-      if (child.stdin === null || !stdinOpen) return
-      await fs.write(child.stdin, data)
-    },
-    closeStdin: async () => closeStdin(),
+  const handle = spawnedHandle(child, true)
+  const stdout = logStream(handle.stdout, stdoutFile, params.tee.viewLimit, params.tee.stream === true)
+  const stderr = logStream(handle.stderr, stderrFile, params.tee.viewLimit, false)
+  let finished = false
+  const wait = Promise.all([handle.wait(), stdout.done, stderr.done]).then(([exit, stdoutBytes, stderrBytes]) => { finished = true; return { ...exit, stdoutBytes, stderrBytes } })
+  wait.catch(noop)
+  return { ...handle, stdout: stdout.preview, stderr: stderr.preview,
+    ...(stdout.live ? { stdoutStream: stdout.live } : {}),
     kill: async (signal = 'SIGTERM') => {
-      if (exited) return
-      try {
-        proc.kill(child.pid, signal, { group: true })
-      } catch (error) {
-        if (errorCode(error) !== 'ESRCH') throw error
-      }
+      // A surviving descendant keeps its process group reserved after the leader exits.
+      // Continue allowing escalation until the whole output lifetime has ended.
+      if (finished) return
+      try { tjs.kill(-child.pid, signal as tjs.Signal) }
+      catch (error) { if (errorCode(error) !== 'ESRCH') throw error }
     },
-    wait: () => exit,
-  }
+    wait: () => wait }
 }
 
-/** The last `bytes` of a file, or the whole file when it is shorter. */
+function logStream(source: AsyncIterable<Uint8Array>, file: tjs.FileHandle, limit: number, stream: boolean) {
+  let previewController: ReadableStreamDefaultController<Uint8Array> | undefined
+  const preview = new ReadableStream<Uint8Array>({
+    start(controller) { previewController = controller },
+    cancel() { previewController = undefined },
+  })
+  const live = stream ? new TransformStream<Uint8Array, Uint8Array>() : undefined
+  let writer = live?.writable.getWriter()
+  // Cancellation discards only the live copy. Logging continues until process EOF.
+  writer?.closed.catch(() => { writer = undefined })
+  const done = (async () => {
+    let total = 0
+    try {
+      for await (const chunk of source) {
+        await writeAll(file, chunk)
+        const remaining = limit - total
+        if (previewController && remaining > 0) previewController.enqueue(chunk.slice(0, remaining))
+        total += chunk.byteLength
+        if (previewController && total >= limit) { previewController.close(); previewController = undefined }
+        if (writer) await writer.write(chunk).catch(() => { writer = undefined })
+      }
+      previewController?.close()
+      await writer?.close().catch(noop)
+      return total
+    } catch (error) {
+      previewController?.error(error)
+      await writer?.abort(error).catch(noop)
+      throw error
+    } finally { await file.close() }
+  })()
+  done.catch(noop)
+  return { preview, live: live?.readable, done }
+}
+
+/** Read at most the requested tail, without loading the full log. */
 export async function readTail(path: string, bytes: number): Promise<Uint8Array> {
-  const size = (await fs.stat(path)).size
-  const length = Math.min(size, bytes)
-  if (length === 0) return new Uint8Array(0)
-  const fd = await fs.open(path, 'r')
+  const file = await tjs.open(path, 'r')
   try {
-    const parts: Uint8Array[] = []
-    let offset = size - length
-    let remaining = length
-    while (remaining > 0) {
-      const chunk = await fs.read(fd, remaining, offset)
-      if (chunk === null) break
-      parts.push(chunk)
-      offset += chunk.byteLength
-      remaining -= chunk.byteLength
+    const size = (await file.stat()).size
+    const result = new Uint8Array(Math.min(size, bytes))
+    let read = 0
+    while (read < result.length) {
+      const count = await file.read(result.subarray(read), size - result.length + read)
+      if (count === null) break
+      read += count
     }
-    if (parts.length === 1) return parts[0]!
-    const out = new Uint8Array(length - remaining)
-    let at = 0
-    for (const part of parts) {
-      out.set(part, at)
-      at += part.byteLength
-    }
-    return out
-  } finally {
-    fs.close(fd)
-  }
+    return result.subarray(0, read)
+  } finally { await file.close() }
 }

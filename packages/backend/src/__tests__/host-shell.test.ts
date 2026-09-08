@@ -8,7 +8,7 @@ import { AgentClient, createWebSocketClientTransport, type ClientSessionEvent } 
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import type { RunnerProtocolMessage } from '@demicodes/runner-protocol'
-import { startTinyjsRunner } from '@demicodes/runner/testing'
+import { startTxikiRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
 import { FakeProvisioner } from './scenarios/fake-provisioner'
 import { openBackend, type TestBackend } from './session'
@@ -60,7 +60,7 @@ function lastExited(shellEvents: Extract<ClientSessionEvent, { type: 'shell_outp
 async function pairDevice(backend: TestBackend, name: string) {
   const home = await mkdtemp(join(tmpdir(), `demi-hs-${name}-`))
   const stateDir = await mkdtemp(join(tmpdir(), `demi-hs-${name}-state-`))
-  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home, name })
+  const runner = await startTxikiRunner({ backendUrl: backend.url, stateDir, home, name })
   await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 10_000 })
   const claimed = await json(backend, '/api/devices/claim', { code: runner.codes[0] })
   const { device } = (await claimed.json()) as { device: { id: string } }

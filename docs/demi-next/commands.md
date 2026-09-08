@@ -15,8 +15,8 @@ declares their own root (`scout`) with the same tree types, kinds, ABI,
 manifest, loader and target-side entry. Nothing below is specific to
 `demi` except its contents.
 
-On a target every root is a name in `PATH` — a symlink to the tinyjs binary
-(`tinyjs.md`) — so real bash runs `demi …` and `scout …` the same way it
+On a target every root is a name in `PATH` — a symlink to the txiki.js binary
+(`txiki.md`) — so real bash runs `demi …` and `scout …` the same way it
 runs anything else.
 
 ## Organizing rule
@@ -56,7 +56,7 @@ in `PATH`; everything else is whatever the machine has.
  ───────                          ────────────────────                 ───────────────────────
  job_start {script, cwd,   ────▶  spawn  bash -c "<script>"     ────▶  bash
             env + conv/shell ids}   │  tee stdout/stderr → output         │
-                                    │  files under commandOutputDir        ├─ demi file edit src/a.ts        (tinyjs, command mode)
+                                    │  files under commandOutputDir        ├─ demi file edit src/a.ts        (txiki.js, command mode)
                                     │                                      │    read ${DEMI_HOME}/commands/<hash>/   manifest cache
                                     │                                      │    kind = runtime
                                     │                                      │    → run the module in-process, ctx.fs = real fs
@@ -110,7 +110,7 @@ Every leaf is one of two kinds:
 - **`runtime`** — the implementation is an ES module shipped to wherever the
   command is invoked and run there against that place's filesystem. `demi
   file read/create/edit/patch` and future `demi search` are `runtime`. On a
-  target the module runs inside tinyjs in command mode with zero round
+  target the module runs inside txiki.js in command mode with zero round
   trips.
 
 The rule is mechanical: **a command that touches only the target's
@@ -153,13 +153,13 @@ guarantees (`TextEncoder`, `TextDecoder`, `URL`, `atob`, `btoa`,
 `crypto.randomUUID`, `AbortSignal`). Nothing bundles the module, so an
 import of a value fails where the module loads, the same in every
 embedder; type imports are erased by the transpiler. This is what makes
-one module run identically inside tinyjs against a real filesystem,
+one module run identically inside txiki.js against a real filesystem,
 and inside a test with an injected Host. It is the public contract a third
 party builds on, versioned with the manifest.
 
 Byte-heavy work inside a module goes through `ctx.fs` and the streams,
 which every embedder implements natively; a module never loops over bytes
-in JS (tinyjs has no JIT — `tinyjs.md`).
+in JS (txiki.js has no JIT — `txiki.md`).
 
 ### How a tree carries a module
 
@@ -237,7 +237,7 @@ for a group, parses and validates the leaf's arguments against its schema,
 then either runs the module with a `ctx` built from `host`, `io` and the
 arguments, or sends the `rpc` message. A module is imported from a `blob:`
 URL of its text (library embeddings and tests) or from the source's module file
-(tinyjs imports only files), so the same bytes run everywhere. Help text comes from the tree,
+(txiki.js imports only files), so the same bytes run everywhere. Help text comes from the tree,
 so `demi file --help` is identical on every target.
 
 Embedders:
@@ -245,18 +245,18 @@ Embedders:
 | Embedder | Source | Host | rpc |
 |---|---|---|---|
 | runner | the backend socket, cached on disk under `${DEMI_HOME}/commands/<hash>/` | — (the runner does not execute commands; it caches and relays) | the backend socket |
-| tinyjs in command mode on a target | the runner's disk cache; a miss asks the runner over the UDS | the runner's machine layer over the real filesystem | the runner over the UDS |
-| tinyjs in command mode, standalone (no runner) | a configured directory or URL | the real filesystem | none, or an embedder-supplied transport |
+| txiki.js in command mode on a target | the runner's disk cache; a miss asks the runner over the UDS | the runner's machine layer over the real filesystem | the runner over the UDS |
+| txiki.js in command mode, standalone (no runner) | a configured directory or URL | the real filesystem | none, or an embedder-supplied transport |
 | tests | in-memory | in-memory Host | stub |
 
 A third party who wants Demi's commands in another agent needs the loader,
-a Host implementation and a manifest source — no runner, no tinyjs, no
+a Host implementation and a manifest source — no runner, no txiki.js, no
 backend.
 
 ## Root commands on a target
 
-A root command on a target is the tinyjs binary in command mode
-(`tinyjs.md`) running the loader, reached through a symlink named after the
+A root command on a target is the txiki.js binary in command mode
+(`txiki.md`) running the loader, reached through a symlink named after the
 root: `argv[0]` selects the root's tree in the manifest. Real bash spawns it
 like any other program; it reads the manifest cache the runner maintains,
 runs `runtime` commands in its own process, and forwards `rpc` commands to
