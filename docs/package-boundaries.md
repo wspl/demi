@@ -177,6 +177,7 @@ Test code may depend upward for integration coverage. Production code must not.
   - `usage/` — enforcement (the provider-request rate limiter); the ledger rows live on the `ControlService`.
   - `managed/` — one managed device per user, lazy allocation/wake, device-wide admission, idle shutdown, paired system/home checkpointing, volume growth, external system reset, Cloud project directory creation.
   - `managed/firecracker/` — the Firecracker implementation of the seam: the image tools over e2fsprogs (`mke2fs -d` from a directory, create both writable volumes and grow backing files), the VM process in its two launch modes (direct, or the jailer through the privileged helper), the Firecracker API over its socket, the tap slots and the per-VM kernel command line. Spawning `firecracker`, the jailer and e2fsprogs is this module's transport — the intentional external-process exception; nothing else in the backend spawns.
+  - `scripts/` (beside `src/`) — Linux deployment scripts, included in the backend package. `install-managed-hosts.sh` configures taps, forwarding and egress rules; `firecracker-jailer.sh` prepares image paths and permissions, invokes jailer and monitors the VM, or kills its recorded PID. The backend invokes the latter through `sudo -n`. Jailer owns isolation; the script has no runner communication or business logic.
   - New modules get sibling directories — never new files at the root.
 
 - Execution coordination: authenticated live-job RPC routing, conversation target/file admission and user-device lifecycle admission. Managed operations persist allocation/reset intent and recover it before new work; every conversation using Cloud shares its device-wide operation gate.
@@ -211,10 +212,6 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: the QuickJS-ng runtime, Web APIs, native filesystem/process/socket APIs, Linux PID 1 orphan reaping, privilege drop, file leases and interruptible workers, and the CMake target that links an embedded bytecode entry.
 - Dependency: pinned fork and recursive dependencies; the runner consumes its declarations rather than redeclaring the runtime API.
 - Demi builds: `packages/runner/runtime` owns native build flags, cross toolchains and application bundling inputs. Native runtime code stays in the fork.
-
-### `packages/fc-helper` (Rust, not a workspace package)
-
-- Owns: `demi-fc-helper`, the privileged helper of `jailer` mode (`docs/demi-next/managed-hosts.md` § Provisioning): `vm start` prepares the jail (kernel and rootfs linked in, the system and home images shared with the backend group, the socket directory group-accessible), runs the jailer and stays as the VM's parent; `vm kill` signals the recorded pid. Two verbs, whitelisted arguments, no shell. Invoked by the backend through `sudo -n`; the sudoers line for it is the backend user's only privilege.
 
 ### `packages/guest-image` (not a workspace package)
 
