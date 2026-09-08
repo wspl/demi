@@ -14,12 +14,22 @@ export const localInvokeSchema = z.object({
   env: z.record(z.string(), z.string()),
   live: z.boolean(),
 }).strict()
-export const localWatchSchema = z.object({ version: z.literal(LOCAL.version), id, context: id }).strict()
-export const localManageSchema = z.object({ version: z.literal(LOCAL.version), secret: id, action: z.enum(['status', 'drain']) }).strict()
+export const localWatchSchema = z.object({
+  version: z.literal(LOCAL.version),
+  id,
+  context: id,
+}).strict()
+export const localManageSchema = z.object({
+  version: z.literal(LOCAL.version),
+  secret: id,
+  action: z.enum(['status', 'drain']),
+}).strict()
 export type LocalInvoke = z.infer<typeof localInvokeSchema>
 
 export function localFrame(type: number, body: Uint8Array = new Uint8Array()): Uint8Array {
-  if (body.length > LOCAL.maxFrame) throw new Error('local IPC frame exceeds limit')
+  if (body.length > LOCAL.maxFrame) {
+    throw new Error('local IPC frame exceeds limit')
+  }
   const bytes = new Uint8Array(5 + body.length)
   new DataView(bytes.buffer).setUint32(0, body.length)
   bytes[4] = type
@@ -27,21 +37,34 @@ export function localFrame(type: number, body: Uint8Array = new Uint8Array()): U
   return bytes
 }
 
-export async function* localFrames(input: AsyncIterable<Uint8Array>): AsyncIterable<{ type: number; body: Uint8Array }> {
+export async function* localFrames(
+  input: AsyncIterable<Uint8Array>,
+): AsyncIterable<{ type: number; body: Uint8Array }> {
   let buffer = new Uint8Array(0)
   for await (const chunk of input) {
     const joined = new Uint8Array(buffer.length + chunk.length)
-    joined.set(buffer); joined.set(chunk, buffer.length); buffer = joined
+    joined.set(buffer)
+    joined.set(chunk, buffer.length)
+    buffer = joined
     while (buffer.length >= 5) {
       const length = new DataView(buffer.buffer, buffer.byteOffset, 4).getUint32(0)
-      if (length > LOCAL.maxFrame) throw new Error('local IPC frame exceeds limit')
-      if (buffer.length < length + 5) break
+      if (length > LOCAL.maxFrame) {
+        throw new Error('local IPC frame exceeds limit')
+      }
+      const frameSize = length + 5
+      if (buffer.length < frameSize) {
+        break
+      }
       const type = buffer[4]!
-      if (!Object.values(LOCAL.frames).includes(type)) throw new Error('unknown local IPC frame')
-      const body = buffer.slice(5, length + 5)
-      buffer = buffer.slice(length + 5)
+      if (!Object.values(LOCAL.frames).includes(type)) {
+        throw new Error('unknown local IPC frame')
+      }
+      const body = buffer.slice(5, frameSize)
+      buffer = buffer.slice(frameSize)
       yield { type, body }
     }
   }
-  if (buffer.length) throw new Error('truncated local IPC frame')
+  if (buffer.length) {
+    throw new Error('truncated local IPC frame')
+  }
 }

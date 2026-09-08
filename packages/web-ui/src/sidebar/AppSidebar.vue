@@ -54,15 +54,22 @@ const emit = defineEmits<{
 const collapsedProjects = defineModel<string[]>('collapsedProjects', { default: () => [] })
 const renamingId = ref<string | null>(null)
 const listRef = ref<HTMLElement>()
-const drag = useSidebarDrag(listRef, () => props.projects, () => props.conversations, (request) => emit('reorder', request))
+const drag = useSidebarDrag(
+  listRef,
+  () => props.projects,
+  () => props.conversations,
+  request => emit('reorder', request),
+)
 
 const plain = computed(() => plainConversations(props.conversations))
 const groups = computed(() => projectGroups(props.projects, props.conversations))
-const foldedSet = computed(() => new Set(
-  drag.source.value?.kind === 'project'
-    ? props.projects.map((project) => project.id)
-    : collapsedProjects.value,
-))
+const foldedSet = computed(() => {
+  // Hide all project children while their headers are being reordered.
+  if (drag.source.value?.kind === 'project') {
+    return new Set(props.projects.map(project => project.id))
+  }
+  return new Set(collapsedProjects.value)
+})
 const entries = computed(() => visibleEntries(plain.value, groups.value, foldedSet.value))
 const byId = computed(() => new Map(props.conversations.map((conversation) => [conversation.id, conversation])))
 const projectById = computed(() => new Map(props.projects.map((project) => [project.id, project])))
@@ -75,27 +82,50 @@ const displayEntries = computed(() => [
 
 // Folding is transient; reveal the source again after layout has settled on drop or cancellation.
 watch(drag.source, async (source, previous, onCleanup) => {
-  const project = source?.kind === 'project' ? source : previous?.kind === 'project' ? previous : null
-  if (!project) return
+  const project = source ?? previous
+  if (project?.kind !== 'project') return
+
   let cancelled = false
-  onCleanup(() => { cancelled = true })
+  onCleanup(() => {
+    cancelled = true
+  })
+
   await nextTick()
+  if (cancelled) return
+
   const container = listRef.value
-  const row = Array.from(container?.querySelectorAll<HTMLElement>('[data-sidebar-kind="project"]') ?? [])
-    .find((element) => element.dataset.sidebarId === project.id)
-  if (!container || !row) return
-  await Promise.allSettled(row.getAnimations().map((animation) => animation.finished))
+  if (!container) return
+  const rows = container.querySelectorAll<HTMLElement>('[data-sidebar-kind="project"]')
+  const row = Array.from(rows).find(element => element.dataset.sidebarId === project.id)
+  if (!row) return
+
+  // Cancelled transitions still leave a measurable row; only the watcher cancellation stops scrolling.
+  await Promise.allSettled(row.getAnimations().map(animation => animation.finished))
   if (cancelled || !row.isConnected) return
+
   const bounds = container.getBoundingClientRect()
   const item = row.getBoundingClientRect()
-  const delta = source
-    ? item.top < bounds.top ? item.top - bounds.top
-      : item.bottom > bounds.bottom ? item.bottom - bounds.bottom : 0
-    : item.top + item.height / 2 - (bounds.top + bounds.height / 2)
-  if (delta) container.scrollBy({
-    top: delta,
-    behavior: source || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
-  })
+  let distance = 0
+  let behavior: ScrollBehavior = 'instant'
+
+  if (source) {
+    // Keep the dragged header visible without shifting it unnecessarily.
+    if (item.top < bounds.top) {
+      distance = item.top - bounds.top
+    } else if (item.bottom > bounds.bottom) {
+      distance = item.bottom - bounds.bottom
+    }
+  } else {
+    // Once the children unfold, bring their project header back to the center.
+    distance = item.top + item.height / 2 - (bounds.top + bounds.height / 2)
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      behavior = 'smooth'
+    }
+  }
+
+  if (distance) {
+    container.scrollBy({ top: distance, behavior })
+  }
 })
 
 function isFolded(projectId: string): boolean {
@@ -126,8 +156,12 @@ const list = useSidebarList(entries, computed(() => props.activeId), {
   open: (id) => emit('select', id),
   toggleFold: (projectId) => setFolded(projectId, !isFolded(projectId)),
   fold: setFolded,
-  rename: (id) => { renamingId.value = id },
-  remove: (ids) => { if (!props.hideDelete) emit('remove', ids) },
+  rename: (id) => {
+    renamingId.value = id
+  },
+  remove: (ids) => {
+    if (!props.hideDelete) emit('remove', ids)
+  },
   togglePin,
 })
 
@@ -155,6 +189,11 @@ function openProjectMenu(project: SidebarProject, event: MouseEvent): void {
   projectMenu.open(event, listRef.value)
 }
 
+function onListPointerDown() {
+  list.keyboardNav.value = false
+  drag.pointerDown()
+}
+
 // A key closes an open menu first: its targets are the selection the key is about to change.
 function onListKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape' && drag.source.value) {
@@ -168,10 +207,12 @@ function onListKeydown(event: KeyboardEvent): void {
     event.preventDefault()
     const peers = reorderPeers(entry, props.projects, props.conversations)
     const index = peers.indexOf(entry.id)
-    if (event.key === 'ArrowUp' && index > 0)
+    if (event.key === 'ArrowUp' && index > 0) {
       emit('reorder', { kind: entry.kind, id: entry.id, beforeId: peers[index - 1]! })
-    if (event.key === 'ArrowDown' && index >= 0 && index < peers.length - 1)
+    }
+    if (event.key === 'ArrowDown' && index >= 0 && index < peers.length - 1) {
       emit('reorder', { kind: entry.kind, id: entry.id, beforeId: peers[index + 2] ?? null })
+    }
     return
   }
   if (rowMenu.isOpen.value || projectMenu.isOpen.value) {
@@ -259,7 +300,7 @@ function selectProjectConversations(project: SidebarProject): void {
       role="listbox"
       aria-multiselectable="true"
       @keydown="onListKeydown"
-      @pointerdown="list.keyboardNav.value = false; drag.pointerDown()"
+      @pointerdown="onListPointerDown"
       @click.capture="drag.click"
 
     >
@@ -360,12 +401,30 @@ function selectProjectConversations(project: SidebarProject): void {
         :hide-pin="hidePin"
         :hide-delete="hideDelete"
         :projects="projects"
-        @open="(id) => { rowMenu.close(); emit('select', id) }"
-        @rename="(id) => { rowMenu.close(); renamingId = id }"
-        @pin="(ids, pinned) => { rowMenu.close(); emit('pin', ids, pinned) }"
-        @move-to="(ids, projectId) => { rowMenu.close(); emit('moveToProject', ids, projectId) }"
-        @archive="(ids) => { rowMenu.close(); emit('archive', ids) }"
-        @remove="(ids) => { rowMenu.close(); emit('remove', ids) }"
+        @open="(id) => {
+          rowMenu.close()
+          emit('select', id)
+        }"
+        @rename="(id) => {
+          rowMenu.close()
+          renamingId = id
+        }"
+        @pin="(ids, pinned) => {
+          rowMenu.close()
+          emit('pin', ids, pinned)
+        }"
+        @move-to="(ids, projectId) => {
+          rowMenu.close()
+          emit('moveToProject', ids, projectId)
+        }"
+        @archive="(ids) => {
+          rowMenu.close()
+          emit('archive', ids)
+        }"
+        @remove="(ids) => {
+          rowMenu.close()
+          emit('remove', ids)
+        }"
       />
     </Popover>
     <Popover
@@ -383,10 +442,22 @@ function selectProjectConversations(project: SidebarProject): void {
         :project="menuProject"
         :folded="isFolded(menuProject.id)"
         :count="groups.find((group) => group.project.id === menuProject?.id)?.items.length ?? 0"
-        @create="projectMenu.close(); emit('create', menuProject.id)"
-        @toggle-fold="projectMenu.close(); setFolded(menuProject.id, !isFolded(menuProject.id))"
-        @select-all="projectMenu.close(); selectProjectConversations(menuProject)"
-        @remove="projectMenu.close(); emit('removeProject', menuProject.id)"
+        @create="
+          projectMenu.close();
+          emit('create', menuProject.id)
+        "
+        @toggle-fold="
+          projectMenu.close();
+          setFolded(menuProject.id, !isFolded(menuProject.id))
+        "
+        @select-all="
+          projectMenu.close();
+          selectProjectConversations(menuProject)
+        "
+        @remove="
+          projectMenu.close();
+          emit('removeProject', menuProject.id)
+        "
       />
     </Popover>
   </aside>

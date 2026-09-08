@@ -16,7 +16,9 @@ export function createRunnerProcess(defaultCwd: string): HostProcess {
         child = tjs.spawn([params.command, ...(params.args ?? [])], {
           cwd,
           env: params.env ? definedEnv(params.env) : { ...tjs.env },
-          stdin: 'pipe', stdout: 'pipe', stderr: 'pipe',
+          stdin: 'pipe',
+          stdout: 'pipe',
+          stderr: 'pipe',
           detached: params.killProcessGroup === true,
         })
       } catch (error) {
@@ -32,26 +34,35 @@ export function spawnedHandle(child: tjs.Process, group: boolean): HostSpawnHand
   let stdinOpen = !!writer
   let exited = false
   const closeStdin = async (): Promise<void> => {
-    if (!stdinOpen) return
+    if (!stdinOpen || !writer) return
     stdinOpen = false
-    await writer!.close().catch(noop)
+    // The child may close its input before the caller finishes sending.
+    await writer.close().catch(noop)
   }
   const exit: Promise<HostSpawnExit> = child.wait().then((result) => {
     exited = true
     stdinOpen = false
+    // Release pending writes after process exit; the pipe may already be closed.
     void writer?.abort().catch(noop)
-    return { exitCode: result.term_signal ? null : result.exit_status, ...(result.term_signal ? { signal: result.term_signal } : {}) }
+    if (result.term_signal) return { exitCode: null, signal: result.term_signal }
+    return { exitCode: result.exit_status }
   })
   exit.catch(noop)
   return {
     stdout: child.stdout ?? emptyByteStream(),
     stderr: child.stderr ?? emptyByteStream(),
-    writeStdin: async (data) => { if (stdinOpen) await writer!.write(data) },
+    writeStdin: async (data) => {
+      if (stdinOpen && writer) await writer.write(data)
+    },
     closeStdin,
     kill: async (signal = 'SIGTERM') => {
       if (exited) return
-      try { tjs.kill(group ? -child.pid : child.pid, signal as tjs.Signal) }
-      catch (error) { if (errorCode(error) !== 'ESRCH') throw error }
+      try {
+        tjs.kill(group ? -child.pid : child.pid, signal as tjs.Signal)
+      } catch (error) {
+        // The process can exit between checking its status and sending the signal.
+        if (errorCode(error) !== 'ESRCH') throw error
+      }
     },
     wait: () => exit,
   }
