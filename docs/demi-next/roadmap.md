@@ -26,6 +26,16 @@ scope. No compatibility paths or legacy-data conversion are part of the design.
 | M14 — Packaging | backend/web assets, txiki.js runner, kernel/base images and helper | image build and Linux/KVM smoke in both launch modes without real models |
 | M15 — Scaled deployment | control service, S3 adapters, replication and user-worker placement | worker fencing, single VM writer, consistent disk generations and user reassignment |
 
+### Pending native command client checkpoint
+
+Implement [command-client.md](command-client.md): a separate C + libuv
+client, runner-owned command dispatch, a shared local protocol contract,
+automatic user/instance endpoint discovery, and Unix/Windows access control.
+Update M8/M9/M14 acceptance with independent client/runner artifacts,
+concurrent invocation context, streaming and cancellation, and Windows
+named-pipe runtime checks. The size experiment is evidence for the choice,
+not completion of this checkpoint.
+
 ## Cloud acceptance checkpoints
 
 1. **Ownership and execution.** The control database enforces one managed device

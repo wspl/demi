@@ -498,9 +498,17 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` and `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
 
+### `packages/command-client` (planned native executable)
+
+- Status: accepted design, not implemented; see `docs/demi-next/command-client.md`.
+- Owns: a standalone `demi` C executable with statically linked libuv; endpoint discovery, raw invocation/context transport, byte streams, cancellation and exit status. Its executable is separate from `demi-runner`.
+- Depends on: libuv and the local IPC contract owned by `@demicodes/runner-protocol`; no JS engine or TypeScript runtime packages. Cross-language protocol fixtures must verify both endpoints.
+- Must not: parse business command arguments, cache manifests, execute command scripts, hold backend credentials or duplicate command schemas.
+- Target runner responsibility: host `@demicodes/command-loader`, cache manifests, parse/validate/dispatch invocations, schedule local runtime modules and forward backend RPC. Definitions remain in their owning command packages. Platform endpoint names and access controls follow `docs/demi-next/command-client.md`.
+
 ### `@demicodes/runner`
 
-- Status: implemented on txiki.js (`src/entry.ts` is the bundle entry — command mode for any root name, runner mode for `demi-runner`; native linking in `runtime/build.ts`).
+- Status: current implementation on txiki.js; the native-client split above is pending (`src/entry.ts` is the bundle entry — command mode for any root name, runner mode for `demi-runner`; native linking in `runtime/build.ts`).
 - Production deps: `@demicodes/command-loader`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; txiki.js globals and Web APIs, declared by the pinned fork's `types/src` and used through `src/machine/`.
 - Owns: the runner program (`docs/demi-next/runner.md`) — the single outbound backend WebSocket with reconnect/backoff and the hello/claim handshake; machine-local state under `DEMI_HOME` (`~/.demi`: `runner.json`, `runner-token` 0600, `runner.sock`, `commands/`, `bin/`, `output/`; Cloud uses `/run/demi` and a memory-only token); the machine served over the protocol (spawns naming no `PATH`/`HOME` resolve against the device's own — binary resolution is a device fact); the job table over the tee; brokered transfers; the local relay and its command-mode client; the manifest cache with the `current` and root symlinks. Command mode: the loader over the machine layer, `rpc` leaves through the relay, the job's live stdin told from a redirection by `fdNode`.
 - Public boundary: the packed `demi-runner` binary; `packedRunner`, `startTxikiRunner`, `txikiBinary` and `bundleForTxiki` under `@demicodes/runner/testing` for Bun tests that need a runner process or run JS on txiki.js; `LocalHost` and `nodeFileSystem` in the test-only `runner/testing/` directory provide real Node filesystem/process fixtures; `HostRpcServer` and `JobTable` under `@demicodes/runner/serve` for tests that join the runner's end to a `RemoteHost` without a socket.

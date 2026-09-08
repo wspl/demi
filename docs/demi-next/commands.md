@@ -15,9 +15,17 @@ declares their own root (`scout`) with the same tree types, kinds, ABI,
 manifest, loader and target-side entry. Nothing below is specific to
 `demi` except its contents.
 
-On a target every root is a name in `PATH` — a symlink to the txiki.js binary
-(`txiki.md`) — so real bash runs `demi …` and `scout …` the same way it
-runs anything else.
+The accepted target is a native C + libuv command client, separate from
+`demi-runner`. It sends raw invocations to the runner, which owns the loader
+and dispatch. [Native command client and IPC](command-client.md) defines
+that boundary, discovery and access control. The command trees, kinds,
+manifest and module ABI below remain shared.
+
+**Implementation status:** the execution-flow diagram, embedder table and
+“Root commands on a target” section below describe the current command-mode
+implementation. Their shared executable, client-side loader and standalone
+mode are pending replacement by `command-client.md`; they are not the
+accepted client design.
 
 ## Organizing rule
 
