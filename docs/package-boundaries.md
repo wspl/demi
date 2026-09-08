@@ -226,6 +226,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: a standalone `demi` C executable with statically linked libuv; endpoint discovery, raw invocation/context transport, byte streams, cancellation and exit status. Its executable is separate from `demi-runner`.
 - Depends on: libuv and the local IPC contract owned by `@demicodes/runner-protocol`; no JS engine or TypeScript runtime packages. Cross-language protocol fixtures must verify both endpoints.
 - Must not: parse business command arguments, cache manifests, execute command scripts, hold backend credentials or duplicate command schemas.
+- Target deployment boundary: one runner process per local backend registration, with an installation-owned matched client/runner release, credentials, manifest cache and endpoint. Multiple backend registrations may run on the same device; upgrades do not affect other installations. Jobs inherit the owning client PATH plus exact endpoint and live context.
 - Target runner responsibility: host `@demicodes/command-loader`, cache manifests, parse/validate/dispatch invocations, schedule local runtime modules and forward backend RPC. Definitions remain in their owning command packages. Platform endpoint names and access controls follow `docs/demi-next/command-client.md`.
 
 ### `@demicodes/runner`
