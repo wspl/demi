@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| Date | 2026-09-02 |
-| Status | Design (implemented through M6; home-image store in M11; S3 backends and controld in M15) |
-| Scope | The two databases, `ControlService`, the blob store, the home-image store, replication, the N>1 topology |
+| Date | 2026-09-08 |
+| Status | Target architecture contract; acceptance tracked in `progress.md` |
+| Scope | The two databases, `ControlService`, the blob store, the machine-image store, replication, the N>1 topology |
 
 ## The split
 
@@ -22,23 +22,22 @@ follows the write-frequency line:
   completion delivery) with each node's state row, and each node's
   transcript as **one row per block** (the journal — streaming persists by
   appending block rows, never by rewriting a checkpoint JSON) — that
-  conversation's `host_store` scope, and the **tree** of its hostless
-  filesystem (paths and metadata; the bytes are in the blob store). High
+  conversation's `host_store` scope. High
   write rate, but each file has exactly one writer and the files never
   contend. The process keeps an LRU of open
   handles (64): a cold history read holds one only until other
   conversations are touched, and a conversation in use is always the most
   recent; the objects handed out for a conversation are stable and reopen
   the handle on demand.
-- **Blob store** — attachment bytes, transcript media (`source.ref`) and
-  the contents of hostless files, content-addressed within each user's
+- **Blob store** — attachment bytes, transcript media (`source.ref`), content-addressed within each user's
   namespace at `blobs/<userId>/<sha256>`:
   local directory at N=1, S3 at N>1. Bytes never enter a database.
-- **Home-image store** — managed hosts' home images, one **named, mutable,
-  owner-bound** object per owner (`homes/<ownerId>.ext4`), overwritten in
-  place whenever a guest ends and at every checkpoint (temp + atomic
-  rename), streamed in and out: local directory at N=1, S3 at N>1. Not the blob store: an image has one current
-  version, not a history of content hashes (`managed-hosts.md`).
+- **Machine-image store** — one committed disk generation per managed device,
+  owned by its user. Each generation manifest references a pinned base version,
+  a writable system image and a home image. Both writable images become durable
+  before atomic publication of the manifest. Local directory at N=1; an S3
+  adapter with conditional manifest publication at N>1. This is separate from
+  content-addressed attachment blobs (`managed-hosts.md`).
 - **Litestream** watches the data directory (`dir` + glob + `watch`) and
   continuously replicates every `*.sqlite` to S3: asynchronous, loses at
   most about the last sync interval on node death; restore is snapshot +
@@ -92,8 +91,8 @@ service:
                     └───────────────────────┘  repoint workers
 
  S3:  litestream/…     continuous replication of every *.sqlite
-      blobs/<userId>/<sha256>   attachment bytes + transcript media + hostless files
-      homes/<owner>    managed-host home images
+      blobs/<userId>/<sha256>   attachment bytes + transcript media
+      machines/<deviceId>/    managed disk generations
 ```
 
 **N=1 is the same picture with the LB and the extra workers deleted: one
@@ -117,8 +116,7 @@ Interface topology — every endpoint by where its data lives:
  (c) conversation hot path — worker-LOCAL, never crosses the network
    WS /:id/stream ──▶ live session ──▶ conversations/<id>.sqlite (block append)
    GET /:id/transcript ─────────────▶ conversations/<id>.sqlite (cold read)
-   hostless Host fs ops ────────────▶ conversations/<id>.sqlite (files tree) + blob store (bytes)
-   managed VM lifecycle ────────────▶ homes/<owner> (worker-local process, store upload)
+   managed VM lifecycle ────────────▶ machines/<deviceId>/ (worker-local process, generation publication)
 
  (d) mixed endpoints — local work + independent control-plane appends
    WS stream, turn ends ─┬─▶ <id>.sqlite (blocks, local)
@@ -136,7 +134,7 @@ Invariants this topology enforces:
 
 - The public API exists only on workers; `demi-controld` has no public
   endpoint. Workers never touch `control.sqlite`; controld never touches
-  conversation files, blobs or home images.
+  conversation files, blobs or machine images.
 - The RPC surface is the `ControlService` interface mapped 1:1 (Hono +
   `POST /rpc/<method>`, plain JSON, domain errors as `{code, message}`
   rebuilt by the client). One call = one atomic operation; transactions
@@ -156,21 +154,26 @@ only; the `*Store` suffix stays reserved for storage backends.
 
 ## Schema
 
-`control.sqlite` (final state, no speculative columns):
+`control.sqlite` (target schema):
 
 ```
 users                   id, username, password_hash(argon2id), role(master|admin|user), created_at
 web_sessions            token_hash(sha256 of the cookie token), user_id, expires_at
-conversations           id, user_id, title, archived, workspace_id(NULL), host_device_id(NULL),
-                        pending_switch_json(NULL), provider_id, model_id, created_at, updated_at
-                        ← workspace_id and host_device_id mutually exclusive; both NULL = hostless
-                        ← pending_switch_json: the switch the next turn announces ({from, to}), then NULL
+conversations           id, user_id, title, archived, target_json,
+                        context_version, last_switch_json(NULL), provider_id, model_id, created_at, updated_at
+                        ← target_json: validated union cloud | device(deviceId, path) | workspace(workspaceId)
+                        ← cloud resolves the user's unique managed device on demand
+                        ← each node persists its own observed context revision
 conversation_hosts      conversation_id, device_id, name, cwd, attached_at
                         ← the attached hosts; UNIQUE (conversation_id, name); cwd = where the last shell there ended
 workspaces              id, user_id, device_id, path, name, created_at
 devices                 id, user_id, kind(user|managed), name, platform, token_hash,
-                        owner_conversation_id(NULL), owner_workspace_id(NULL),   ← managed only
                         claimed_at, last_seen_at
+                        ← partial UNIQUE(user_id) WHERE kind = 'managed'
+managed_operations      device_id, operation_id, kind, phase, source_generation, target_base_version,
+                        result_generation(NULL), error_json(NULL)
+                        ← durable allocation/reset intent and result; operation_id unique per device
+                        ← at most one pending operation per managed device; completed ids retained for retry
 providers               id, owner_user_id(NULL in shared mode), provider_type, credential_kind, label,
                         config(encrypted: key, endpoint, protocol, vendor id,
                         typed model list — or the subscription marker), created_at
@@ -194,9 +197,6 @@ nodes            id, parent_id(NULL for the root), description, profile_name(NUL
                    the spawn command returned it, or the product took the closed frame)
 blocks           node_id, idx, block_json  ← one row per transcript block, append-only during streaming
 host_store       scope, key, value_json  ← this conversation's scope
-files            path, kind(file|dir), mode, mtime, size, sha256(NULL for dir)
-                 ← the hostless filesystem's tree; bytes in the blob store by sha256;
-                   emptied once the conversation has a home image
 ```
 
 Create, save and close are each one transaction (`subagent.md` §
@@ -206,34 +206,32 @@ marks delivered every child completion the state row now carries; a close
 writes the phase, time and result. Deleting a node deletes its descendants
 and their rows.
 
-## The hostless filesystem and the home image
+## Machine disk generations
 
-A conversation's files have two forms, one per phase, and one conversion
-between them:
+Working files live on devices, never in conversation databases or attachment
+blobs. The backend writes a workspace file drop through Host RPC after obtaining
+the selected device; message attachments remain backend blobs.
 
-- **Before a machine** — the `files` tree plus blobs, served to tinybash
-  and the root commands as `@demicodes/host-virtual`'s `Host`. Copying a
-  file copies a row; the quota counts bytes referenced by the tree, one sum over the rows.
-  Workspace files dropped into a hostless conversation land here.
-  Concurrent appends to one path are serialized through the filesystem
-  backend's per-path queue, including the blob read and write; independent
-  paths proceed concurrently and a failed append does not block later ones.
-- **The upgrade** — the backend materialises the tree into a directory
-  (modes and mtimes included; the tree holds no symlinks) and runs `mke2fs -d <dir>` to
-  produce the home image with its contents in one step: no mount, no
-  root, no guest cooperation. The directory becomes `/demi` inside the
-  image, which the guest mounts at `/home`; the files carry the backend
-  user's ownership until the guest's first boot chowns them to the guest
-  user (`demi.firstboot=1` on the kernel command line, that boot only).
-  `/tmp` is materialised under the home's `.tmp` directory. The image
-  goes to the home-image store and the VM boots with it; the `files` rows
-  are then deleted. Blobs stay — they are content-addressed and may be
-  referenced elsewhere.
-- **After** — the home image is the only form (`managed-hosts.md`).
-  There is no way back to hostless, so no reverse conversion exists.
+```text
+machines/<deviceId>/current.json                 committed generation reference
+machines/<deviceId>/generations/<generationId>/manifest.json
+machines/<deviceId>/generations/<generationId>/system.ext4
+machines/<deviceId>/generations/<generationId>/home.ext4
+```
 
-A Cloud workspace's first image is the same `mke2fs` on an empty
-directory.
+The manifest records device identity, base-image version and both image
+references. A reset generation can reference the already durable home image
+from its source generation. Referenced images cannot be reclaimed. Capturing a
+running machine pauses it while copying both writable volumes. Publishing the
+manifest is the commit point; readers never combine images from unrelated
+checkpoints. This guarantees a filesystem-consistent snapshot, not application
+transaction atomicity. `managed-hosts.md` owns boot, checkpoint and reset order.
+
+Working images live separately while the VM runs or a save needs retry. Failed
+publication preserves these files and the prior committed manifest. Recovery
+fences old writers and resolves recorded operations before admitting work.
+Account deletion and unreferenced-generation collection require an explicit
+retention policy; project and conversation deletion never collect machine disks.
 
 Notes: pending claim tokens live in memory (an unclaimed runner socket
 holds them; a restart reprints); claim tokens are 128-bit random,
@@ -253,18 +251,18 @@ query time.
   commands keep per node: the backend's DB-backed `HostStore` over the same
   database's `host_store` table is composed into every Host it hands the
   harness, with atomic `writeJson` and indexed `list`.
-- The hostless filesystem is behind the `Host` fs contract
-  (`@demicodes/host-virtual` over the `files` tree and the blob store).
+- Device files are accessed through `Host.fs`, implemented by `RemoteHost`
+  over the runner protocol. Backend-local storage uses its own filesystem adapter.
 - The blob store is put/get by content hash within a user namespace, with
   two backends (directory, S3). `UserBlobStores` resolves uploads and HTTP
   downloads by authenticated user, and session persistence, transcript
-  media and hostless files by conversation owner. `ConversationStores`
+  media by conversation owner. `ConversationStores`
   receives the per-conversation BlobStore factory and its tree store
   externalizes every node's media — root and subagents alike — into that
   namespace; the agent never sees a blob store. A hash identifies bytes
   within that scope and grants no access to another user's namespace.
-  The home-image store is streaming write/read by owner id with the
-  same two backends. Both live in `@demicodes/backend`.
+  The machine-image store streams images by device and generation and atomically
+  publishes their manifest, with the same two backends. Both live in `@demicodes/backend`.
 
 ## Precedents
 
@@ -274,5 +272,4 @@ NameNode, TiDB PD, Kafka controller, Kubernetes control plane); a service
 exclusively owning its database behind a domain API; an HTTP service
 fronting SQLite (Grafana, Gitea, Headscale); user-sharded SQLite control
 planes with tenant migration (Tailscale); streaming SQLite replication to
-S3 (Litestream). Alternatives weighed during the review are archived in
-`progress.md`.
+S3 (Litestream).

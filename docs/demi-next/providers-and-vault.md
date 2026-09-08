@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Date | 2026-09-02 |
-| Status | Design (implemented in M5) |
+| Date | 2026-09-08 |
+| Status | Target architecture contract; acceptance tracked in `progress.md` |
 | Scope | The LLM module, the credential vault, usage accounting, and the Claude Code special case |
 
 ## LLM module
@@ -58,9 +58,9 @@ Each spawn also resolves the current Host at invocation time. Provider
 cache lookups compare the freshly read configuration and label, so an
 older lookup completing after an edit cannot leave later requests using
 its snapshot. A provider declares an **execution-requirement
-capability flag** when it needs a process-capable target; the hostless
-state refuses such a provider with upgrade guidance — gated by the flag,
-never by provider names.
+capability flag** when inference needs a process on the selected target. The
+backend obtains or wakes Cloud before starting that provider, or reports an
+unavailable paired device. This is gated by the flag, never by provider names.
 
 ## Credential vault
 

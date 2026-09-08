@@ -18,15 +18,15 @@ Conversation c1 header: [zan-mbp +2] [demi] [main]
                          +-- Connect new device… > the Add device pairing dialog
 ```
 
-The trigger shows the main device and the attachment count. Cloud uses its icon. Conversations without a device binding also display Cloud
-and the cloud icon, with an optional attachment count and no device, workspace
-or branch metadata. Hostless is an internal term, never a user-facing label. Attaching is available in every main-host
+The trigger shows the main device and the attachment count. Cloud uses its icon. A Cloud selection displays the cloud icon before and after allocation; its
+lifecycle status distinguishes sleeping, starting, ready and failed. Device
+allocation does not change the selection. Attaching is available in every main-host
 state. The attachment section is shown when devices are attached.
 
 Main host and Attach device use the same `HostPicker`: fixed top actions, a
 divider, the shared menu search field, another divider and device results. Main
 host includes Cloud then Connect new device; Attach device includes only Connect
-new device. Neither picker offers Hostless as a binding target. Search filters
+new device. Search filters
 device names while the top actions remain visible.
 
 Attach selects an existing owned device and starts its cwd at its home. The
@@ -61,4 +61,4 @@ connect devices or grant real execution permissions. Store coverage in
 `packages/web/src/conversation/store.test.ts` exercises unique device identity,
 default home directories, duplicate attachment prevention, alias collision,
 main/attached exchange, retained cwd and detach. Browser verification covers the
-menu's binding, detach and Hostless entry flows.
+menu's binding, detach and Cloud entry flows.

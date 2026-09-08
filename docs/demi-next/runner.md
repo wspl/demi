@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Date | 2026-09-02 |
-| Status | Implemented on tinyjs (M9 step 3): connection, Host RPC, jobs and the tee, the relay, the manifest cache; the M1, M4 and M6 suites run on it |
+| Date | 2026-09-08 |
+| Status | Target architecture contract; acceptance tracked in `progress.md` |
 | Scope | The program on every execution target: identity and connection, Host RPC, the job table, the tee, the local relay, the wire rules |
 
 ## Role
@@ -59,7 +59,7 @@ start prints the claim token and waits; later starts authenticate with the
 persisted device token. On a managed host the runner is PID 1 and performs
 init duties (`managed-hosts.md` § Lifecycle): the same binary, told by its
 pid; the token comes off the kernel command line and stays in memory, the
-state directory is `/var/lib/demi` on the ephemeral upper, every job and
+state directory is `/run/demi` on tmpfs, every job and
 spawn runs as the guest user, and the hello reports that user's identity.
 
 ```
@@ -95,8 +95,7 @@ Three packages carry a machine's Host, one per place: the wire itself is
 `@demicodes/runner-protocol` (schemas, messages, codec — both ends depend
 on it, it depends on neither); the backend's end is `@demicodes/host-remote`
 (`RemoteHost`, a `Host` that forwards each call over the socket, and
-`RemoteShellEnvironment`, the shell of a real host over jobs) — one of the
-two Hosts the backend injects into the agent, beside `@demicodes/host-virtual`;
+`RemoteShellEnvironment`, the shell of a real host over jobs) — the production Host and shell the backend injects into the agent;
 the machine's end is the runner's `machine/` layer, which performs what
 `RemoteHost` was asked. The agent never holds the machine layer; a
 machine is always reached through `host-remote`.
@@ -157,10 +156,10 @@ Handshake and liveness:
 | b → r | `hello_ok { deviceId }` / `claim_pending { claimToken }` / `claimed { deviceToken }` / `hello_error { code, reason }` | outcomes; `code` is `unsupported_protocol`, `unknown_device`, `already_connected`, `revoked` or `internal` |
 | b → r | `ping` | liveness, backend-driven interval |
 | r → b | `pong { jobs }` | liveness plus the count of running jobs, which the idle rule reads (`managed-hosts.md`) |
-| b → r | `sync { id }` | before a hibernate: flush the home to disk |
-| r → b | `sync_done { id, untouched }` | flushed; `untouched` when nothing wrote to the home since boot, so the save can skip the upload (`managed-hosts.md` § Home persistence) |
-| r → b | `home_grow { bytes }` | the home nears its cap: grow its image to this total size |
-| b → r | `home_grown { bytes }` | the image is that large; the runner grows the filesystem into it |
+| b → r | `sync { id }` | before shutdown: flush both writable filesystems to disk |
+| r → b | `sync_done { id, untouched }` | flushed; `untouched` means neither system nor home changed since the committed baseline; otherwise save both (`managed-hosts.md` § Persistence) |
+| r → b | `volume_grow { id, volume, bytes }` | request total image size for `system` or `home`; backend enforces the user's quota |
+| b → r | `volume_grown { id, volume, bytes }` / `volume_grow_error { id, code }` | rescan succeeded and the guest can grow that filesystem, or a quota/operation error |
 
 Host RPC — the wire form of the `Host` contract's `fs` and `process`
 facets (`Host.store` never crosses this protocol):
@@ -219,9 +218,7 @@ the directory, which is the one thing a model reaches for.
 A job's environment is the device's underneath and the backend's on top:
 the environment the runner was started with — the device user's own on a
 user host, the guest's login table on a managed host — with what the
-backend named over it (the shell's starting table where the target has
-one, `sessions-and-targets.md` § What moves, plus `DEMI_SESSION_ID` and
-`DEMI_SHELL_ID`), `bin/` first in `PATH`, and four entries of the
+backend named over it (`DEMI_SESSION_ID` and `DEMI_SHELL_ID`), `bin/` first in `PATH`, and four entries of the
 runner's own: `DEMI_HOME`, `DEMI_JOB_CWD_FILE` (where the `EXIT` trap
 writes `pwd`) and `DEMI_JOB_STDIN_FD` (the descriptor the prelude
 duplicated the job's stdin onto with `exec 199<&0`, so a command-mode
@@ -390,8 +387,8 @@ A's model:   tar c . | demi host shell --host B "tar x -C /work"        (B's job
   rpc_exit ◄──────────────────────  after P_out drained ◄────────────────────────────────  job_exit
 ```
 
-A conversation `c1` starting hostless acquires its machine `A` before any
-statement of a cross-host pipeline runs:
+A conversation `c1` runs the pipeline on its main machine `A`; the backend
+wakes Cloud first if that selected machine is asleep:
 
 ```
 c1: demi host shell --host B "tar c -C /work ." | tar x
@@ -445,8 +442,7 @@ c1: demi host shell --host B "tar c -C /work ." | tar x
   by nature; the wire rules keep them so.
 
 `demi host shell` forwards the caller's live stdin to the far job when
-there is no finite stdin pipe. Its caller is a machine job: a hostless
-conversation acquires its machine before executing a cross-host script. Cancelling
+there is no finite stdin pipe. Its caller is a machine job. Cancelling
 the invoking command sends SIGTERM to the far job and escalates to SIGKILL
 after five seconds if needed. The signal is the caller's throughout the
 relay and backend handler; terminating a process also closes its lifetime

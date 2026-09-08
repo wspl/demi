@@ -56,3 +56,14 @@ page's interaction built for one surface is generalized into `web-ui` before
 the checkpoint. The gallery's providers page is the model: `web-ui` owns the
 page and its dialogs over `SettingsProviderEntry` models, and the gallery only
 holds fixtures and mock handlers.
+
+## Cloud lifecycle and reset acceptance
+
+The shared Cloud settings presentation and reset dialog belong to `web-ui`.
+The product supplies user Cloud state and backend handlers; gallery fixtures
+supply the same contract. Cover sleeping, starting, ready, resetting and failed
+states, including a guest that cannot connect. The reset dialog names its
+user-wide impact, stops all Cloud tasks and preserves `/home`. Simulated success
+must retain device/project identity and home files while replacing system state.
+A metadata-only project deletion must leave the shared machine and files intact.
+See `managed-hosts.md` and `product.md` for authoritative behavior.
