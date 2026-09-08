@@ -234,3 +234,17 @@ user-wide impact, stops all Cloud tasks and preserves `/home`. Simulated success
 must retain device/project identity and home files while replacing system state.
 A metadata-only project deletion must leave the shared machine and files intact.
 See `managed-hosts.md` and `product.md` for authoritative behavior.
+
+## Cloud lifecycle settings
+
+`web-ui/cloud/CloudSettings.vue` owns the shared Cloud status, storage-limit
+readout, reset confirmation, progress and retry interaction. `SettingsDevices`
+mounts it in both the product prototype and the gallery. The component emits an
+operation ID; a failed reset retries with that same ID.
+
+`web/prototype/cloud.ts` supplies simulated phases and stops prototype Cloud
+streams when reset begins. Gallery fixtures supply the same contract. Both are
+local demonstrations: neither surface currently calls the backend Cloud REST
+API. The backend independently implements authenticated `GET /api/cloud` and
+`POST /api/cloud/reset`; wiring the web prototype to backend sessions remains
+part of the product-wide backend integration.

@@ -2,7 +2,7 @@
 // `@demicodes/shell/testing` entrypoint, never imported by runtime code:
 // the in-memory store and the conformance suite, runtime-neutral so the
 // suite runs on tinyjs too. The Node Host tests run it against is
-// `LocalHost` under `@demicodes/host-virtual/testing`.
+// `LocalHost` under `@demicodes/runner/testing`.
 import type { Host, HostSpawnHandle, HostStore } from './host'
 import { collectBytes, decodeUtf8, encodeUtf8, errorCode } from '@demicodes/utils'
 
@@ -47,10 +47,9 @@ export function hostConformanceCases(options: HostConformanceOptions): HostConfo
   const { host, root } = options
   const env = { PATH: options.path ?? '/usr/bin:/bin' }
   const fs = host.fs
-  // Process cases apply only to a Host that runs processes.
-  const spawn = host.process.spawn?.bind(host.process)
-  const processCase = (name: string, run: (spawn: NonNullable<Host['process']['spawn']>) => Promise<void>): HostConformanceCase[] =>
-    spawn ? [{ name, run: () => run(spawn) }] : []
+  const spawn = host.process.spawn.bind(host.process)
+  const processCase = (name: string, run: (spawn: Host['process']['spawn']) => Promise<void>): HostConformanceCase[] =>
+    [{ name, run: () => run(spawn) }]
   const text = (value: string) => encodeUtf8(value)
   const read = async (path: string) => decodeUtf8(await fs.readFile(path))
   const codeOf = async (action: () => Promise<unknown>): Promise<string | null> => {

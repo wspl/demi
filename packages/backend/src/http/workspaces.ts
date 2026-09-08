@@ -71,7 +71,6 @@ export function workspaceRoutes(options: {
     if (inUse > 0) {
       return c.json({ code: 'workspace_in_use', message: `${inUse} conversation(s) still target this workspace` }, 409)
     }
-    await managedHosts?.destroy({ kind: 'workspace', id: workspace.id })
     await control.deleteWorkspace(workspace.id)
     return c.body(null, 204)
   })

@@ -21,10 +21,10 @@ import {
 import { HostRpcServer } from './serve/host-rpc-server'
 import { JobTable } from './serve/jobs'
 import type { Host } from '@demicodes/shell'
-import { collectBytes, delay, errorMessage, noop, SerialQueue } from '@demicodes/utils'
+import { collectBytes, createId, delay, errorMessage, noop, SerialQueue } from '@demicodes/utils'
 import { ManifestCache } from './manifest-cache'
 import { RelayServer } from './relay/server'
-import { DirectoryHome, type HomeImage } from './init/home-image'
+import { DirectoryVolume, type Volume } from './init/volume'
 import { RunnerState } from './state'
 import { PipeClient } from './pipes'
 
@@ -43,11 +43,11 @@ export interface RunnerModeOptions {
   /** A token held in memory only — PID 1's, off the kernel command line — taking precedence over the state directory's. */
   deviceToken?: string
   /** The identity reported and the user every job and spawn runs as; PID 1 names the guest user here. */
-  guest?: { identity: Host['identity']; runAs: { uid: number; gid: number } }
+  identity?: Host['identity']
   /** The home as the guest sees it (default: a directory that only syncs). */
-  home?: HomeImage
+  volumes?: Partial<Record<'home' | 'system', Volume>>
   /** How often the home's room is checked between jobs (default a minute; 0 disables). */
-  homeCheckMs?: number
+  volumeCheckMs?: number
   reconnect?: { initialDelayMs?: number; maxDelayMs?: number }
   log?: (line: string) => void
 }
@@ -62,25 +62,25 @@ export class RunnerMode {
   private readonly pipes: PipeClient
   private readonly wire = createRunnerWire({ encode: msgpackEncode, decode: msgpackDecode })
   private readonly log: (line: string) => void
-  private readonly home: HomeImage
+  private readonly volumes: Partial<Record<'home' | 'system', Volume>>
   private stopped = false
   private link: WebSocketLink | null = null
   private relay: RelayServer | null = null
-  private homeCheckTimer: ReturnType<typeof setInterval> | null = null
-  private homeGrowPending = false
+  private volumeCheckTimer: ReturnType<typeof setInterval> | null = null
+  private readonly growthPending = new Map<'home' | 'system', string>()
 
   constructor(private readonly options: RunnerModeOptions) {
-    const guestIdentity = options.guest?.identity
+    const runnerIdentity = options.identity ?? identity
     this.host = createRunnerHost({
-      defaultCwd: guestIdentity?.homeDir ?? identity.homeDir,
+      defaultCwd: runnerIdentity.homeDir,
       storeDir: `${options.stateDir}/store`,
-      ...(options.guest ? { runAs: options.guest.runAs, identity: options.guest.identity } : {}),
+      identity: runnerIdentity,
     })
     this.state = new RunnerState(this.host.fs, options.stateDir)
     this.cache = new ManifestCache(this.host.fs, this.state.commandsDir, this.state.binDir, options.executable)
     this.pipes = new PipeClient(options.backendUrl, () => this.token())
     this.log = options.log ?? ((line) => console.error(line))
-    this.home = options.home ?? new DirectoryHome({ run: (command, args) => this.command(command, args) })
+    this.volumes = options.volumes ?? { home: new DirectoryVolume({ run: (command, args) => this.command(command, args) }) }
   }
 
   /** The device token: the one held in memory, else the state directory's. */
@@ -107,10 +107,9 @@ export class RunnerMode {
       send: (message) => this.sendToBackend(message),
       manifest: () => this.cache.current(),
       pipes: this.pipes,
-      ...(this.options.guest ? { socketMode: 0o666 } : {}),
     })
-    const checkMs = this.options.homeCheckMs ?? 60_000
-    if (checkMs > 0) this.homeCheckTimer = setInterval(() => void this.checkHome(), checkMs)
+    const checkMs = this.options.volumeCheckMs ?? 60_000
+    if (checkMs > 0) this.volumeCheckTimer = setInterval(() => void this.checkVolumes(), checkMs)
     try {
       while (!this.stopped) {
         this.log('connecting…')
@@ -123,27 +122,33 @@ export class RunnerMode {
       }
       return 'stopped'
     } finally {
-      if (this.homeCheckTimer) clearInterval(this.homeCheckTimer)
-      this.homeCheckTimer = null
+      if (this.volumeCheckTimer) clearInterval(this.volumeCheckTimer)
+      this.volumeCheckTimer = null
       this.relay.close()
       this.relay = null
     }
   }
 
   /**
-   * The home growth request (`managed-hosts.md` § Home persistence): when
-   * the filesystem nears its cap, ask once; `home_grown` closes the
+   * The writable-volume growth request (`managed-hosts.md` § Home persistence): when
+   * the filesystem nears its cap, ask once; `volume_grown` closes the
    * request by growing the filesystem into the enlarged image.
    */
-  private async checkHome(): Promise<void> {
-    if (this.homeGrowPending || !this.link) return
-    try {
-      const bytes = await this.home.wanted()
-      if (bytes === null || !this.link) return
-      this.homeGrowPending = true
-      this.sendToBackend({ type: 'home_grow', bytes })
-    } catch (error) {
-      this.log(`home check failed: ${errorMessage(error)}`)
+  private async checkVolumes(): Promise<void> {
+    if (!this.link) return
+    for (const volume of ['home', 'system'] as const) {
+      const image = this.volumes[volume]
+      if (!image || this.growthPending.has(volume)) continue
+      const id = createId()
+      this.growthPending.set(volume, id)
+      try {
+        const bytes = await image.wanted()
+        if (bytes === null || !this.link) { this.growthPending.delete(volume); continue }
+        this.sendToBackend({ type: 'volume_grow', id, volume, bytes })
+      } catch (error) {
+        this.growthPending.delete(volume)
+        this.log(`${volume} check failed: ${errorMessage(error)}`)
+      }
     }
   }
 
@@ -159,7 +164,7 @@ export class RunnerMode {
     // A job that just ended may have filled the home.
     if (message.type === 'job_exit') {
       this.relay?.cancelJob(message.jobId)
-      void this.checkHome()
+      void this.checkVolumes()
     }
   }
 
@@ -172,23 +177,19 @@ export class RunnerMode {
       this.log(`connect failed: ${errorMessage(error)}`)
       return 'closed'
     }
+    this.growthPending.clear()
     this.link = link
     const rpc = new HostRpcServer(this.host, (message) => this.sendToBackend(message), this.options.deviceEnv)
     const jobs = new JobTable({
       spawn: spawnTeed,
       outputDir: this.state.outputDir,
       fs: {
-        // The job writes its final cwd into its output directory itself; as the guest user it needs the directory open.
-        mkdir: async (path) => {
-          await this.host.fs.mkdir(path, { recursive: true })
-          if (this.options.guest) await this.host.fs.chmod(path, 0o1777)
-        },
+        mkdir: (path) => this.host.fs.mkdir(path, { recursive: true }),
         readTail,
         readFile: (path) => this.host.fs.readFile(path),
         rm: (path) => this.host.fs.rm(path, { force: true }),
       },
       deviceEnv: this.options.deviceEnv,
-      ...(this.options.guest ? { runAs: this.options.guest.runAs } : {}),
       pathPrefix: [this.state.binDir],
       // Command-mode processes find the relay socket and the manifest cache here.
       fixedEnv: { DEMI_HOME: this.options.stateDir },
@@ -271,23 +272,24 @@ export class RunnerMode {
         this.sendToBackend({ type: 'pong', jobs: ends.jobs.count })
         return undefined
       case 'sync': {
-        let untouched = false
+        let syncError: string | undefined
         try {
-          untouched = (await this.home.sync()).untouched
+          await Promise.all(Object.values(this.volumes).map(image => image.sync()))
         } catch (error) {
-          this.log(`sync failed: ${errorMessage(error)}`)
+          syncError = errorMessage(error)
+          this.log(`sync failed: ${syncError}`)
         }
-        this.sendToBackend({ type: 'sync_done', id: message.id, untouched })
+        this.sendToBackend({ type: 'sync_done', id: message.id, ...(syncError ? { error: syncError } : {}) })
         return undefined
       }
-      case 'home_grown':
-        this.homeGrowPending = false
+      case 'volume_grown':
+        if (this.growthPending.get(message.volume) !== message.id) return undefined
         try {
-          await this.home.grown(message.bytes)
-          this.log(`home grown to ${message.bytes} bytes`)
+          if (message.error) throw new Error(message.error)
+          await this.volumes[message.volume]?.grown(message.bytes)
         } catch (error) {
-          this.log(`home growth failed: ${errorMessage(error)}`)
-        }
+          this.log(`${message.volume} growth failed: ${errorMessage(error)}`)
+        } finally { this.growthPending.delete(message.volume) }
         return undefined
       case 'manifest':
         try {

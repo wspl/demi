@@ -1,4 +1,4 @@
-import { pathArg, runtimeModule, type Command, type CommandStorage } from '@demicodes/shell'
+import { runtimeModule, type Command, type CommandStorage } from '@demicodes/shell'
 import { z } from 'zod'
 
 /** Test roots: a `runtime` leaf, an `rpc` leaf that reads storage, and a group. */
@@ -37,8 +37,8 @@ export function testRoots(): Command[] {
           module: runtimeModule(COPY_MODULE),
           summary: 'Copy a file.',
           input: {
-            from: pathArg(z.string().describe('Source path')),
-            to: pathArg(z.string().describe('Destination path')),
+            from: z.string().describe('Source path'),
+            to: z.string().describe('Destination path'),
             upper: z.boolean().optional().describe('Uppercase the content'),
           },
           positionals: ['from', 'to'],

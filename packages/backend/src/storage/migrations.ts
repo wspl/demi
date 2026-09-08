@@ -42,11 +42,11 @@ CREATE TABLE devices (
   name                  TEXT NOT NULL,
   platform              TEXT NOT NULL,
   token_hash            TEXT NOT NULL,
-  owner_conversation_id TEXT,
-  owner_workspace_id    TEXT,
   claimed_at            TEXT NOT NULL,
   last_seen_at          TEXT
 );
+
+CREATE UNIQUE INDEX idx_managed_user ON devices(user_id) WHERE kind = 'managed';
 
 CREATE TABLE workspaces (
   id         TEXT PRIMARY KEY,
@@ -62,9 +62,9 @@ CREATE TABLE conversations (
   user_id       TEXT NOT NULL REFERENCES users(id),
   title         TEXT NOT NULL,
   archived      INTEGER NOT NULL DEFAULT 0,
-  workspace_id  TEXT REFERENCES workspaces(id),
-  host_device_id TEXT REFERENCES devices(id),
+  target_json   TEXT NOT NULL DEFAULT '{"kind":"cloud"}',
   last_switch_json TEXT,
+      cloud_reset_id TEXT,
   context_version INTEGER NOT NULL DEFAULT 0,
   provider_id TEXT,
   model_id      TEXT,
@@ -73,9 +73,12 @@ CREATE TABLE conversations (
 );
 CREATE INDEX idx_conversations_user ON conversations(user_id, archived, updated_at);
 
-CREATE TABLE conversation_upgrades (
-  conversation_id TEXT PRIMARY KEY REFERENCES conversations(id),
-  state TEXT NOT NULL CHECK (state IN ('prepared', 'committed'))
+CREATE TABLE managed_operations (
+  device_id TEXT NOT NULL REFERENCES devices(id),
+  operation_id TEXT NOT NULL,
+  operation_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (device_id, operation_id)
 );
 
 CREATE TABLE conversation_hosts (
@@ -128,16 +131,7 @@ CREATE TABLE attachments (
   },
 ]
 
-/**
- * Per-conversation database: the session tree — one node row per agent (the
- * root, whose id is the conversation's, and every subagent under it) with
- * its state row, and each node's transcript as one row per block
- * (`subagent.md` § Persistence) — that conversation's host_store scope, and
- * the hostless filesystem's tree (`storage.md` § The hostless filesystem and
- * the home image) — bytes in the blob store by sha256, emptied once the
- * conversation has a home image. Media bytes never appear in block_json —
- * they live in the blob store as content-addressed refs.
- */
+/** Per-conversation agent journal and node-scoped command state. Files live on devices. */
 export const CONVERSATION_MIGRATIONS: Migration[] = [
   {
     id: 1,
@@ -175,16 +169,6 @@ CREATE TABLE host_store (
   PRIMARY KEY (scope, key)
 );
 
-CREATE TABLE files (
-  path   TEXT PRIMARY KEY,
-  parent TEXT NOT NULL,
-  kind   TEXT NOT NULL CHECK (kind IN ('file', 'dir')),
-  mode   INTEGER NOT NULL,
-  mtime  INTEGER NOT NULL,
-  size   INTEGER NOT NULL,
-  sha256 TEXT
-);
-CREATE INDEX idx_files_parent ON files(parent);
 `,
   },
 ]

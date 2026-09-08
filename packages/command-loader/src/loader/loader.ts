@@ -15,7 +15,7 @@ export interface LoaderOptions {
 
 export interface Loader {
   manifest: Manifest
-  /** The manifest's roots as command trees; help and `rootPaths` come from here. */
+  /** The manifest's roots as command trees; help is derived from them. */
   roots: Command[]
   /** Runs `root argv…` with the given stdio; usage errors print to stderr and exit 1. */
   dispatch(root: string, argv: readonly string[], io: DispatchIO): Promise<number>

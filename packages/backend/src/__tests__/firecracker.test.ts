@@ -6,7 +6,7 @@ import { bootArgs } from '../managed/firecracker/boot-args'
 import { DEFAULTS, MANAGED_ENV, firecrackerConfigFromEnv } from '../managed/firecracker/config'
 import { FirecrackerProvisioner, type ImageTools, type ProcessControl } from '../managed/firecracker/provisioner'
 import { SlotPool, slotOf } from '../managed/firecracker/slots'
-import type { HomeImageStore } from '../storage/home-image-store'
+import { DirMachineImageStore, atomicJson } from '../storage/machine-image-store'
 
 // The Firecracker provisioner's pure parts: slots out of the managed
 // subnet, the guest's kernel command line, the configuration from the
@@ -42,7 +42,7 @@ test('configuration from the environment: absent, direct, jailer, and the errors
   const base = { [MANAGED_ENV.firecracker]: '/opt/fc/firecracker', [MANAGED_ENV.kernel]: '/opt/fc/vmlinux', [MANAGED_ENV.rootfs]: '/opt/fc/rootfs.ext4' }
   const direct = firecrackerConfigFromEnv(base, '/data')!
   expect(direct.launch).toEqual({ mode: 'direct' })
-  expect(direct).toMatchObject({ vcpus: DEFAULTS.vcpus, memMib: DEFAULTS.memMib, homeMib: DEFAULTS.homeMib, subnet: DEFAULTS.subnet, slots: DEFAULTS.slots, dns: DEFAULTS.dns, runDir: '/data/firecracker', homesDir: '/data/homes' })
+  expect(direct).toMatchObject({ vcpus: DEFAULTS.vcpus, memMib: DEFAULTS.memMib, homeMib: DEFAULTS.homeMib, subnet: DEFAULTS.subnet, slots: DEFAULTS.slots, dns: DEFAULTS.dns, runDir: '/data/firecracker', imagesDir: '/data/machines' })
   const jailer = firecrackerConfigFromEnv({ ...base, [MANAGED_ENV.launch]: 'jailer', [MANAGED_ENV.jailer]: '/opt/fc/jailer', [MANAGED_ENV.helper]: '/usr/local/bin/demi-fc-helper', [MANAGED_ENV.uidBase]: '30000', [MANAGED_ENV.slots]: '16', [MANAGED_ENV.dns]: '9.9.9.9' }, '/data')!
   expect(jailer.launch).toEqual({ mode: 'jailer', jailer: '/opt/fc/jailer', helper: '/usr/local/bin/demi-fc-helper', chrootBase: '/srv/jailer', uidBase: 30000, gidBase: 30000 })
   expect(jailer.slots).toBe(16)
@@ -53,109 +53,96 @@ test('configuration from the environment: absent, direct, jailer, and the errors
   expect(() => firecrackerConfigFromEnv({ ...base, [MANAGED_ENV.launch]: 'podman' }, '/data')).toThrow('direct or jailer')
 })
 
-// The lifecycle (`managed-hosts.md` § Home persistence): what a previous
-// backend left is killed and saved at start, a save that fails keeps the
-// working image and refuses the next boot, destroy saves before it forgets.
 
-class MemoryStore implements HomeImageStore {
-  readonly images = new Map<string, string>()
-  async has(ownerKey: string): Promise<boolean> {
-    return this.images.has(ownerKey)
-  }
-  async put(ownerKey: string, path: string): Promise<void> {
-    this.images.set(ownerKey, await readFile(path, 'utf8'))
-    await rm(path, { force: true })
-  }
-  async get(ownerKey: string, path: string): Promise<void> {
-    await writeFile(path, this.images.get(ownerKey) ?? '')
-  }
-  async delete(ownerKey: string): Promise<void> {
-    this.images.delete(ownerKey)
-  }
-}
-
-const exists = (path: string) => stat(path).then(() => true, () => false)
-
-async function fixture(options: { shrinkFails?: (path: string) => boolean } = {}) {
-  const dataDir = await mkdtemp(join(tmpdir(), 'demi-fc-unit-'))
-  const config = firecrackerConfigFromEnv({ [MANAGED_ENV.firecracker]: '/opt/fc/firecracker', [MANAGED_ENV.kernel]: '/opt/fc/vmlinux', [MANAGED_ENV.rootfs]: '/opt/fc/rootfs.ext4' }, dataDir)!
-  const shrunk: string[] = []
+async function fixture() {
+  const directory = await mkdtemp(join(tmpdir(), 'demi-machine-'))
+  const kernel = join(directory, 'kernel')
+  const rootfs = join(directory, 'rootfs')
+  await writeFile(kernel, 'kernel-v1')
+  await writeFile(rootfs, 'root-v1')
+  const config = firecrackerConfigFromEnv({ DEMI_MANAGED_FIRECRACKER: '/missing-firecracker', DEMI_MANAGED_KERNEL: kernel, DEMI_MANAGED_ROOTFS: rootfs }, directory)!
   const tools: ImageTools = {
-    makeHomeImage: async (homeDir, imagePath) => {
-      await writeFile(imagePath, `image of ${homeDir}`)
-    },
-    shrinkImage: async (path) => {
-      if (options.shrinkFails?.(path)) throw new Error('e2fsck exited 4: filesystem errors left uncorrected')
-      shrunk.push(path)
-      return (await stat(path)).size
-    },
+    makeHomeImage: async (_home, image) => { await writeFile(image, 'empty-home') },
+    makeSystemImage: async image => { await writeFile(image, 'empty-system') },
     growImage: async () => {},
   }
   const alive = new Set<number>()
-  const killed: string[] = []
-  const processes: ProcessControl = {
-    alive: (pid) => alive.has(pid),
-    kill: async (vmId, pid) => {
-      killed.push(`${vmId}:${pid}`)
-      alive.delete(pid)
-    },
-  }
-  const store = new MemoryStore()
-  const log: string[] = []
-  const provisioner = new FirecrackerProvisioner(config, { store, tools, processes, log: (line) => log.push(line) })
-  return { dataDir, config, provisioner, store, tools, alive, killed, shrunk, log }
+  const killed: number[] = []
+  const processes: ProcessControl = { alive: pid => alive.has(pid), kill: async (_id, pid) => { alive.delete(pid); killed.push(pid) } }
+  const store = new DirMachineImageStore(config.imagesDir)
+  const provisioner = new FirecrackerProvisioner(config, { tools, processes, store })
+  return { config, provisioner, store, alive, killed }
 }
 
-test('reconcile kills the VMs a previous backend left and saves their working images; a failed save keeps the image', async () => {
-  const { config, provisioner, store, alive, killed, shrunk, log } = await fixture({ shrinkFails: (path) => path.endsWith('workspace:w2.ext4') })
-  // Two VMs still running from the previous process, one whose process is already gone, one stale checkpoint copy.
-  await mkdir(join(config.runDir, 'vm-aaaaaaaaaaaa'), { recursive: true })
-  await writeFile(join(config.runDir, 'vm-aaaaaaaaaaaa', 'vm.json'), JSON.stringify({ pid: 4242, owner: 'conversation:c1' }))
-  await mkdir(join(config.runDir, 'vm-bbbbbbbbbbbb'), { recursive: true })
-  await writeFile(join(config.runDir, 'vm-bbbbbbbbbbbb', 'vm.json'), JSON.stringify({ pid: 4343, owner: 'workspace:w2' }))
-  await mkdir(join(config.runDir, 'vm-cccccccccccc'), { recursive: true })
-  await writeFile(join(config.runDir, 'vm-cccccccccccc', 'vm.json'), JSON.stringify({ pid: 4444, owner: 'conversation:c3' }))
-  alive.add(4242)
-  alive.add(4343)
-  const homes = join(config.runDir, 'homes')
-  await mkdir(homes, { recursive: true })
-  await writeFile(join(homes, 'conversation:c1.ext4'), 'c1 newest')
-  await writeFile(join(homes, 'workspace:w2.ext4'), 'w2 newest')
-  await writeFile(join(homes, 'conversation:c1.ext4.checkpoint-old'), 'partial copy')
-  store.images.set('conversation:c1', 'c1 stale')
-
+test('reconciliation kills orphan VMs before publishing both working disks', async () => {
+  const { config, provisioner, store, alive, killed } = await fixture()
+  const vm = join(config.runDir, 'vm-orphan')
+  const working = join(config.runDir, 'machines', 'device-a')
+  await mkdir(vm, { recursive: true })
+  await mkdir(working, { recursive: true })
+  await writeFile(join(vm, 'vm.json'), JSON.stringify({ pid: 123, owner: 'device-a' }))
+  alive.add(123)
+  await writeFile(join(working, 'system.ext4'), 'installed-package')
+  await writeFile(join(working, 'home.ext4'), 'project-files')
+  await atomicJson(join(working, 'manifest.json'), { generation: 'old', baseVersion: 'base', resetId: null, systemBytes: 17, homeBytes: 13 })
   await provisioner.reconcile()
-
-  expect(killed.sort()).toEqual(['vm-aaaaaaaaaaaa:4242', 'vm-bbbbbbbbbbbb:4343'])
-  expect(await exists(join(config.runDir, 'vm-aaaaaaaaaaaa'))).toBe(false)
-  expect(await exists(join(config.runDir, 'vm-cccccccccccc'))).toBe(false)
-  expect(await exists(join(homes, 'conversation:c1.ext4.checkpoint-old'))).toBe(false)
-  // c1: saved, the working image consumed, the store now holds the newer copy.
-  expect(shrunk).toEqual([join(homes, 'conversation:c1.ext4')])
-  expect(store.images.get('conversation:c1')).toBe('c1 newest')
-  expect(await exists(join(homes, 'conversation:c1.ext4'))).toBe(false)
-  // w2: the save failed, so the image stays where it is and the store is untouched.
-  expect(await exists(join(homes, 'workspace:w2.ext4'))).toBe(true)
-  expect(store.images.has('workspace:w2')).toBe(false)
-  expect(log.some((line) => line.includes('workspace:w2') && line.includes('not saved'))).toBe(true)
-
-  // The next boot of w2 retries the save first and refuses when it fails again; c1's boot would proceed to the store copy.
-  await expect(provisioner.wake({ kind: 'workspace', id: 'w2' }, { backendUrl: 'http://b', deviceToken: 't' })).rejects.toThrow('e2fsck exited 4')
-  expect(await exists(join(homes, 'workspace:w2.ext4'))).toBe(true)
+  expect(killed).toEqual([123])
+  const state = (await store.read('device-a'))!
+  const copied = join(config.runDir, 'readback')
+  await store.copy('device-a', state, copied)
+  expect(await readFile(join(copied, 'system.ext4'), 'utf8')).toBe('installed-package')
+  expect(await readFile(join(copied, 'home.ext4'), 'utf8')).toBe('project-files')
+  expect(await stat(working).then(() => true, () => false)).toBe(false)
 })
 
-test('destroy saves the home before forgetting the guest; a second destroy is a no-op', async () => {
+test('reset replaces only system, pins the base, and replays an operation id without changing generation', async () => {
   const { config, provisioner, store } = await fixture()
-  const homes = join(config.runDir, 'homes')
-  await mkdir(homes, { recursive: true })
-  await writeFile(join(homes, 'conversation:c9.ext4'), 'c9 work')
   await provisioner.reconcile()
-  expect(store.images.get('conversation:c9')).toBe('c9 work')
-  // An image left after reconcile (a save that failed) is saved by destroy too.
-  await writeFile(join(homes, 'conversation:c9.ext4'), 'c9 later')
-  await provisioner.destroy({ kind: 'conversation', id: 'c9' })
-  expect(store.images.get('conversation:c9')).toBe('c9 later')
-  expect(await exists(join(homes, 'conversation:c9.ext4'))).toBe(false)
-  await provisioner.destroy({ kind: 'conversation', id: 'c9' })
-  expect(provisioner.running({ kind: 'conversation', id: 'c9' })).toBe(false)
+  const base = await provisioner.currentBaseVersion()
+  await provisioner.reset('device-a', 'first', base)
+  const before = (await store.read('device-a'))!
+  const stage = join(config.runDir, 'edit')
+  await store.copy('device-a', before, stage)
+  await writeFile(join(stage, 'home.ext4'), 'precious')
+  await writeFile(join(stage, 'system.ext4'), 'broken')
+  await store.publish('device-a', { ...before, generation: 'edited' }, stage)
+  await writeFile(config.rootfs, 'new-deployment')
+  await provisioner.reset('device-a', 'reset-2', base)
+  const reset = (await store.read('device-a'))!
+  expect(reset.baseVersion).toBe(base)
+  await store.copy('device-a', reset, stage)
+  expect(await readFile(join(stage, 'home.ext4'), 'utf8')).toBe('precious')
+  expect(await readFile(join(stage, 'system.ext4'), 'utf8')).toBe('empty-system')
+  await provisioner.reset('device-a', 'reset-2', base)
+  expect(await store.read('device-a')).toEqual(reset)
+  expect(await readFile(join(config.imagesDir, 'bases', base, 'rootfs'), 'utf8')).toBe('root-v1')
+})
+
+test('a partial disk publication cannot replace the last complete generation', async () => {
+  const { config, provisioner, store } = await fixture()
+  await provisioner.reconcile()
+  await provisioner.reset('device-a', 'initial', await provisioner.currentBaseVersion())
+  const before = (await store.read('device-a'))!
+  const stage = join(config.runDir, 'partial')
+  await mkdir(stage)
+  await writeFile(join(stage, 'system.ext4'), 'new-system')
+  await expect(store.publish('device-a', { ...before, generation: 'partial' }, stage)).rejects.toThrow()
+  expect(await store.read('device-a')).toEqual(before)
+  expect(await readFile(join(stage, 'system.ext4'), 'utf8')).toBe('new-system')
+})
+
+test('published checkpoints retain only the current and previous complete generations', async () => {
+  const { config, provisioner, store } = await fixture()
+  await provisioner.reconcile()
+  await provisioner.reset('device-a', 'first', await provisioner.currentBaseVersion())
+  const state = (await store.read('device-a'))!
+  const stage = join(config.runDir, 'checkpoint-source')
+  await store.copy('device-a', state, stage)
+  await store.publish('device-a', { ...state, generation: 'second' }, stage)
+  await store.publish('device-a', { ...state, generation: 'third' }, stage)
+  expect(await stat(join(config.imagesDir, 'device-a', 'generations', state.generation)).then(() => true, () => false)).toBe(false)
+  const previous = join(config.runDir, 'previous-readback')
+  await store.copy('device-a', { ...state, generation: 'second' }, previous)
+  expect(await readFile(join(previous, 'home.ext4'), 'utf8')).toBe('empty-home')
+  expect((await store.read('device-a'))?.generation).toBe('third')
 })

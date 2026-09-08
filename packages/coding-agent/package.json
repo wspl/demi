@@ -19,8 +19,9 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@demicodes/host-virtual": "workspace:^",
-    "@demicodes/provider": "workspace:^"
+    "@demicodes/provider": "workspace:^",
+    "@demicodes/runner": "workspace:^",
+    "@demicodes/backend": "workspace:^"
   },
   "license": "Apache-2.0",
   "main": "./dist/index.mjs",

@@ -1,3 +1,4 @@
+import { FakeProvisioner } from './scenarios/fake-provisioner'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -38,7 +39,7 @@ test("the matrix: another user's objects answer 404 on every route, to users and
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-isolation-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-isolation-state-'))
   const home = await mkdtemp(join(tmpdir(), 'demi-isolation-home-'))
-  const backend = await openBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0 } })
+  const backend = await openBackend({ managedHosts: { provisioner: new FakeProvisioner() }, dataDir, port: 0, runner: { pingIntervalMs: 0 } })
   const alice = await createUser(backend, 'alice')
   const bob = await createUser(backend, 'bob')
 
@@ -53,7 +54,7 @@ test("the matrix: another user's objects answer 404 on every route, to users and
     await alice.fetch('/api/attachments', { method: 'POST', body: PNG_BYTES, headers: { 'content-type': 'image/png' } }),
     201,
   )
-  const privateFile = new TextEncoder().encode('alice private hostless file')
+  const privateFile = new TextEncoder().encode('alice private Cloud file')
   const fileHash = new Bun.CryptoHasher('sha256').update(privateFile).digest('hex')
   await must(await alice.fetch(`/api/conversations/${conversation.id}/workspace-files?name=private.txt`, {
     method: 'POST', body: privateFile,
@@ -74,7 +75,7 @@ test("the matrix: another user's objects answer 404 on every route, to users and
     ['PATCH', `/api/conversations/${conversation.id}/hosts/${device.id}`, { name: 'taken' }],
     ['DELETE', `/api/conversations/${conversation.id}/hosts/${device.id}`],
     ['POST', `/api/conversations/${conversation.id}/workspace-files?name=x.txt`, 'bytes'],
-    ['PATCH', `/api/conversations/${bobs.id}`, { workspaceId: workspace.id }],
+    ['PATCH', `/api/conversations/${bobs.id}`, { target: { kind: 'workspace', workspaceId: workspace.id } }],
     ['POST', `/api/conversations/${bobs.id}/hosts`, { deviceId: device.id }],
     ['DELETE', `/api/devices/${device.id}`],
     ['GET', `/api/devices/${device.id}/fs?path=${encodeURIComponent(home)}`],
@@ -103,8 +104,7 @@ test("the matrix: another user's objects answer 404 on every route, to users and
   expect((await must<{ devices: unknown[] }>(await alice.fetch('/api/devices'), 200)).devices).toHaveLength(1)
   expect(new Uint8Array(await (await alice.fetch(`/api/blobs/${attachment.sha256}`)).arrayBuffer())).toEqual(PNG_BYTES)
   const ownFile = await alice.fetch(`/api/blobs/${fileHash}`)
-  expect(new Uint8Array(await ownFile.arrayBuffer())).toEqual(privateFile)
-  expect(ownFile.headers.get('vary')).toBe('Cookie')
+  expect(ownFile.status).toBe(404) // Machine files are not stored as transcript blobs.
   // Identical content is available to Bob only after he stores his own copy.
   const { attachment: bobsAttachment } = await must<{ attachment: { sha256: string } }>(
     await bob.fetch('/api/attachments', { method: 'POST', body: PNG_BYTES, headers: { 'content-type': 'image/png' } }), 201,

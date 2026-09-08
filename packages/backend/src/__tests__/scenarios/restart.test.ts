@@ -90,8 +90,8 @@ test('R3 — runner death mid-command is a tool error; the returned runner serve
   expect(await driver.readFile('before.txt')).toBe('before')
 }, 60_000)
 
-test('R4 — hostless persistence: files, todos and the ledger survive a backend restart', async () => {
-  const driver = await world.conversation('hostless')
+test('R4 — cloud persistence: files, todos and the ledger survive a backend restart', async () => {
+  const driver = await world.conversation('cloud')
   const first = await driver.turn({
     model: [model.shell('t1', "demi file create notes.md <<'EOF'\nkeep me\nEOF\ndemi todo add \"still here\""), model.say('stored')],
   })

@@ -15,7 +15,7 @@ const fake = new FakeProvisioner()
 let world: World
 
 beforeAll(async () => {
-  world = await World.create({ runners: ['alpha'], managedHosts: { provisioner: fake, config: { hostsPerUser: 30 } } })
+  world = await World.create({ runners: ['alpha'], managedHosts: { provisioner: fake, config: { maxRunning: 30 } } })
 })
 
 afterAll(async () => {
@@ -23,7 +23,7 @@ afterAll(async () => {
   await fake.close()
 })
 
-describe.each<Target>(['hostless', 'runner:alpha'])('S5 subagents on %s', (target) => {
+describe.each<Target>(['cloud', 'runner:alpha'])('S5 subagents on %s', (target) => {
   test('an explore child works on the parent\'s files like any child; a default child writes', async () => {
     const driver = await world.conversation(target)
     await driver.turn({
@@ -51,7 +51,7 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S5 subagents on %s', (targe
     expect(childSaw).toContain('Created blocked.md')
     expect(explored.received[0]).toContain('subagentId:')
     expect(explored.received[0]).toContain('the file says 42; I wrote too')
-    expect(target === 'hostless' ? await readFile(join(fake.homeOf({ kind: 'conversation', id: driver.id }), 'blocked.md'), 'utf8') : await driver.readFile('blocked.md')).toBe('nope\n')
+    expect(await driver.readFile('blocked.md')).toBe('nope\n')
 
     // The default child writes where the parent then reads.
     world.model.scriptChild(model.shell('c3', "demi file create reply.md <<'EOF'\nfrom the child\nEOF"), model.say('wrote reply.md'))

@@ -25,7 +25,8 @@
         "zod": "^4.0.0",
       },
       "devDependencies": {
-        "@demicodes/host-virtual": "workspace:^",
+        "@demicodes/backend": "workspace:^",
+        "@demicodes/runner": "workspace:^",
       },
     },
     "packages/backend": {
@@ -40,7 +41,6 @@
         "@demicodes/command-loader": "workspace:^",
         "@demicodes/core": "workspace:^",
         "@demicodes/host-remote": "workspace:^",
-        "@demicodes/host-virtual": "workspace:^",
         "@demicodes/provider": "workspace:^",
         "@demicodes/provider-anthropic-api": "workspace:^",
         "@demicodes/provider-claude-code": "workspace:^",
@@ -69,8 +69,9 @@
         "zod": "^4.0.0",
       },
       "devDependencies": {
-        "@demicodes/host-virtual": "workspace:^",
+        "@demicodes/backend": "workspace:^",
         "@demicodes/provider": "workspace:^",
+        "@demicodes/runner": "workspace:^",
       },
     },
     "packages/command-loader": {
@@ -82,7 +83,7 @@
         "zod": "^4.0.0",
       },
       "devDependencies": {
-        "@demicodes/host-virtual": "workspace:^",
+        "@demicodes/runner": "workspace:^",
       },
     },
     "packages/core": {
@@ -98,21 +99,7 @@
         "@demicodes/utils": "workspace:^",
       },
       "devDependencies": {
-        "@demicodes/host-virtual": "workspace:^",
         "@demicodes/runner": "workspace:^",
-      },
-    },
-    "packages/host-virtual": {
-      "name": "@demicodes/host-virtual",
-      "version": "0.20.0",
-      "dependencies": {
-        "@demicodes/shell": "workspace:^",
-        "@demicodes/tinybash": "workspace:^",
-        "@demicodes/utils": "workspace:^",
-      },
-      "devDependencies": {
-        "@demicodes/command-loader": "workspace:^",
-        "zod": "^4.0.0",
       },
     },
     "packages/provider": {
@@ -143,7 +130,8 @@
       },
       "devDependencies": {
         "@demicodes/agent": "workspace:^",
-        "@demicodes/host-virtual": "workspace:^",
+        "@demicodes/backend": "workspace:^",
+        "@demicodes/runner": "workspace:^",
         "@demicodes/shell": "workspace:^",
       },
     },
@@ -157,7 +145,8 @@
       },
       "devDependencies": {
         "@demicodes/agent": "workspace:^",
-        "@demicodes/host-virtual": "workspace:^",
+        "@demicodes/backend": "workspace:^",
+        "@demicodes/runner": "workspace:^",
         "@demicodes/shell": "workspace:^",
       },
     },
@@ -202,7 +191,6 @@
         "@demicodes/coding-agent": "workspace:^",
         "@demicodes/core": "workspace:^",
         "@demicodes/host-remote": "workspace:^",
-        "@demicodes/host-virtual": "workspace:^",
         "@demicodes/provider": "workspace:^",
       },
     },
@@ -224,18 +212,7 @@
         "zod": "^4.0.0",
       },
       "devDependencies": {
-        "@demicodes/host-virtual": "workspace:^",
-      },
-    },
-    "packages/tinybash": {
-      "name": "@demicodes/tinybash",
-      "version": "0.20.0",
-      "dependencies": {
-        "@demicodes/utils": "workspace:^",
-      },
-      "devDependencies": {
-        "@demicodes/host-virtual": "workspace:^",
-        "@demicodes/shell": "workspace:^",
+        "@demicodes/runner": "workspace:^",
       },
     },
     "packages/utils": {
@@ -377,8 +354,6 @@
 
     "@demicodes/host-remote": ["@demicodes/host-remote@workspace:packages/host-remote"],
 
-    "@demicodes/host-virtual": ["@demicodes/host-virtual@workspace:packages/host-virtual"],
-
     "@demicodes/provider": ["@demicodes/provider@workspace:packages/provider"],
 
     "@demicodes/provider-anthropic-api": ["@demicodes/provider-anthropic-api@workspace:packages/provider-anthropic-api"],
@@ -398,8 +373,6 @@
     "@demicodes/runner-protocol": ["@demicodes/runner-protocol@workspace:packages/runner-protocol"],
 
     "@demicodes/shell": ["@demicodes/shell@workspace:packages/shell"],
-
-    "@demicodes/tinybash": ["@demicodes/tinybash@workspace:packages/tinybash"],
 
     "@demicodes/utils": ["@demicodes/utils@workspace:packages/utils"],
 

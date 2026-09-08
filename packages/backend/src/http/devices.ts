@@ -31,7 +31,7 @@ export function deviceRoutes(options: { control: ControlService; registry: Runne
 
   app.delete('/:id', async (c) => {
     const device = await control.getDevice(c.req.param('id'))
-    // A managed host is not one of the user's devices: its row is the lifecycle's and goes with destroy.
+    // The lifecycle owns the user's managed device; revocation applies only to connected devices.
     if (!device || device.userId !== c.get('user').id || device.kind !== 'user') {
       return c.json({ code: 'device_not_found', message: 'No such device' }, 404)
     }

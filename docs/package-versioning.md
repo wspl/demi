@@ -15,7 +15,6 @@ The fixed group contains:
 - `@demicodes/command-loader`
 - `@demicodes/core`
 - `@demicodes/host-remote`
-- `@demicodes/host-virtual`
 - `@demicodes/provider`
 - `@demicodes/provider-anthropic-api`
 - `@demicodes/provider-claude-code`
@@ -26,7 +25,6 @@ The fixed group contains:
 - `@demicodes/runner`
 - `@demicodes/runner-protocol`
 - `@demicodes/shell`
-- `@demicodes/tinybash`
 - `@demicodes/utils`
 - `@demicodes/web-ui`
 

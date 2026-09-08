@@ -1,289 +1,242 @@
-// The Firecracker provisioner (`managed-hosts.md`): the seam's production
-// implementation. A guest per owner over a working home image under the
-// run directory; the home-image store holds the durable copy. The one
-// invariant every path keeps: a working image exists only while its guest
-// runs or until its save succeeded, and the store holds the current home
-// whenever no working image exists — so hibernate, destroy, the backend
-// closing and a crash found at the next start all end in the same save.
-// Images never enter this process's memory.
-import { constants, copyFile, mkdir, readdir, rm, stat } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { createReadStream } from 'node:fs'
+import { constants, copyFile, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createId, delay, errorMessage, SerialQueue } from '@demicodes/utils'
-import type { ManagedHostOwner } from '../../storage/control'
-import { DirHomeImageStore, type HomeImageStore } from '../../storage/home-image-store'
-import { ownerFromKey, ownerKey, type BootArgs, type ManagedHostProvisioner } from '../provisioner'
+import { createId, delay, errorCode, errorMessage, SerialQueue } from '@demicodes/utils'
+import { atomicJson, DirMachineImageStore, safeImageId, syncFile, type MachineImageStore } from '../../storage/machine-image-store'
+import { imageStateSchema, type BootArgs, type MachineImageState, type ManagedHostProvisioner, type ManagedVolume } from '../provisioner'
 import { bootArgs } from './boot-args'
 import type { FirecrackerConfig } from './config'
-import { growImage, makeHomeImage, missingImageTools, shrinkImage } from './image-tools'
+import { growImage, makeHomeImage, makeSystemImage, missingImageTools } from './image-tools'
 import { SlotPool, type Slot } from './slots'
 import { killVm, processAlive, readVmRecord, removeVmRecord, startVm, vmDirectory, type RunningVm } from './vm'
 
 interface Guest {
-  owner: ManagedHostOwner
-  /** The working image, `<runDir>/homes/<ownerKey>.ext4`, present while running or until saved. */
-  workImage: string
+  id: string
+  directory: string
   vm: RunningVm | null
   slot: Slot | null
-  /** Set around a kill this provisioner performs, so the exit is not a death. */
   stopping: boolean
-  /** One guest's transitions run one at a time: a checkpoint never copies under a kill, a save never races another. */
   transitions: SerialQueue
 }
-
-/** The image tools, injectable so the reconciliation and save paths run in tests without e2fsprogs. */
 export interface ImageTools {
   makeHomeImage: typeof makeHomeImage
-  shrinkImage: typeof shrinkImage
+  makeSystemImage: typeof makeSystemImage
   growImage: typeof growImage
 }
-
-/** The process facts reconciliation needs, injectable for tests. */
-export interface ProcessControl {
-  alive(pid: number): boolean
-  kill(vmId: string, pid: number): Promise<void>
-}
-
+export interface ProcessControl { alive(pid: number): boolean; kill(vmId: string, pid: number): Promise<void> }
 export interface FirecrackerProvisionerOptions {
-  store?: HomeImageStore
+  store?: MachineImageStore
   log?: (line: string) => void
   tools?: ImageTools
   processes?: ProcessControl
 }
 
-/** How long a VM found at start may take to die after the kill before reconciliation gives up on it. */
-const RECONCILE_KILL_MS = 15_000
-
+/** Working disks survive failed saves. A generation publishes system and home together. */
 export class FirecrackerProvisioner implements ManagedHostProvisioner {
   private readonly guests = new Map<string, Guest>()
   private readonly slots: SlotPool
-  private readonly store: HomeImageStore
+  private readonly store: MachineImageStore
   private readonly tools: ImageTools
   private readonly processes: ProcessControl
-  private readonly deathListeners: Array<(owner: ManagedHostOwner) => void> = []
+  private readonly deathListeners: Array<(deviceId: string) => void> = []
   private readonly log: (line: string) => void
+  private base: Promise<string> | null = null
+  private readonly workDir: string
 
-  constructor(
-    private readonly config: FirecrackerConfig,
-    options: FirecrackerProvisionerOptions = {},
-  ) {
+  constructor(private readonly config: FirecrackerConfig, options: FirecrackerProvisionerOptions = {}) {
+    this.workDir = join(config.runDir, 'machines')
     if (!options.tools) {
       const missing = missingImageTools()
-      if (missing.length > 0) throw new Error(`managed hosts need ${missing.join(', ')} on this machine`)
+      if (missing.length) throw new Error(`managed hosts need ${missing.join(', ')}`)
     }
     this.slots = new SlotPool({ subnet: config.subnet, count: config.slots, tapPrefix: config.tapPrefix })
-    this.store = options.store ?? new DirHomeImageStore(config.homesDir)
-    this.tools = options.tools ?? { makeHomeImage, shrinkImage, growImage }
-    this.processes = options.processes ?? { alive: processAlive, kill: (vmId, pid) => killVm(config, vmId, pid) }
-    this.log = options.log ?? ((line) => console.warn(line))
+    this.store = options.store ?? new DirMachineImageStore(config.imagesDir)
+    this.tools = options.tools ?? { makeHomeImage, makeSystemImage, growImage }
+    this.processes = options.processes ?? { alive: processAlive, kill: (id, pid) => killVm(config, id, pid) }
+    this.log = options.log ?? console.warn
   }
 
-  /**
-   * What a previous backend process left: VMs still running (killed — a
-   * second guest over the same image would corrupt it, and their taps are
-   * this pool's), then every working image, which is newer than the store
-   * (saved; a save that fails keeps the image and refuses that owner's
-   * next boot until it succeeds).
-   */
+  currentBaseVersion(): Promise<string> { return this.base ??= this.pinBase() }
+
+  private async pinBase(): Promise<string> {
+    const bases = join(this.config.imagesDir, 'bases')
+    await mkdir(bases, { recursive: true })
+    const stage = join(bases, `.stage-${createId()}`)
+    await mkdir(stage)
+    try {
+      const hash = createHash('sha256')
+      for (const [name, source] of [['kernel', this.config.kernel], ['rootfs', this.config.rootfs]]) {
+        const path = join(stage, name!)
+        await copyFile(source!, path, constants.COPYFILE_FICLONE)
+        hash.update(name!)
+        for await (const chunk of createReadStream(path)) hash.update(chunk)
+        await syncFile(path)
+      }
+      const version = hash.digest('hex')
+      await syncFile(stage)
+      try { await rename(stage, join(bases, version)) }
+      catch (error) { if (!['EEXIST', 'ENOTEMPTY'].includes(errorCode(error) ?? '')) throw error }
+      await syncFile(bases)
+      return version
+    } finally { await rm(stage, { recursive: true, force: true }) }
+  }
+
+  imageState(id: string): Promise<MachineImageState | null> { return this.store.read(id) }
+
   async reconcile(): Promise<void> {
     await mkdir(this.workDir, { recursive: true })
-    await mkdir(this.config.runDir, { recursive: true })
     for (const entry of await readdir(this.config.runDir, { withFileTypes: true })) {
-      if (!entry.isDirectory() || entry.name === 'homes') continue
-      const vmId = entry.name
-      const record = await readVmRecord(this.config, vmId)
+      if (!entry.isDirectory() || !entry.name.startsWith('vm-')) continue
+      const record = await readVmRecord(this.config, entry.name)
       if (record && this.processes.alive(record.pid)) {
-        this.log(`vm ${vmId} of ${record.owner} outlived the previous backend; killing it`)
-        await this.processes.kill(vmId, record.pid)
-        const deadline = Date.now() + RECONCILE_KILL_MS
+        await this.processes.kill(entry.name, record.pid)
+        const deadline = Date.now() + 15_000
         while (this.processes.alive(record.pid)) {
-          if (Date.now() > deadline) throw new Error(`vm ${vmId} (pid ${record.pid}) of ${record.owner} did not die; its home cannot be saved safely`)
+          if (Date.now() > deadline) throw new Error(`VM ${entry.name} did not stop; disks cannot be saved`)
           await delay(100)
         }
       }
-      await rm(vmDirectory(this.config, vmId), { recursive: true, force: true })
+      await rm(vmDirectory(this.config, entry.name), { recursive: true, force: true })
     }
     for (const name of await readdir(this.workDir)) {
-      if (name.includes('.checkpoint-')) {
-        await rm(join(this.workDir, name), { force: true })
-        continue
-      }
-      const owner = name.endsWith('.ext4') ? ownerFromKey(name.slice(0, -'.ext4'.length)) : null
-      if (!owner) continue
-      await this.save(this.guest(owner)).catch((error) => this.log(`home of ${ownerKey(owner)} left by the previous backend is not saved yet: ${errorMessage(error)}`))
+      if (name.startsWith('.')) { await rm(join(this.workDir, name), { recursive: true, force: true }); continue }
+      await this.save(this.guest(name))
     }
+    await this.currentBaseVersion()
   }
 
-  provision(owner: ManagedHostOwner, homeDir: string, boot: BootArgs): Promise<void> {
-    const guest = this.guest(owner)
-    return guest.transitions.run(async () => {
-      if (guest.vm) throw new Error(`guest ${ownerKey(owner)} already runs`)
-      await mkdir(this.workDir, { recursive: true })
-      // The image is made and stored before the first boot: the store holds every owner from the start.
-      await this.tools.makeHomeImage(homeDir, guest.workImage, this.config.homeMib * 1024 * 1024)
-      await this.save(guest)
-      await this.boot(guest, boot, true)
-    })
-  }
-
-  wake(owner: ManagedHostOwner, boot: BootArgs): Promise<void> {
-    const guest = this.guest(owner)
-    return guest.transitions.run(async () => {
-      if (guest.vm) throw new Error(`guest ${ownerKey(owner)} already runs`)
-      await this.boot(guest, boot, false)
-    })
-  }
-
-  hibernate(owner: ManagedHostOwner, report: { untouched: boolean }): Promise<void> {
-    const guest = this.guest(owner)
-    return guest.transitions.run(async () => {
-      await this.stop(guest)
-      if (report.untouched) {
-        await rm(guest.workImage, { force: true })
-        return
-      }
-      await this.save(guest)
-    })
-  }
-
-  checkpoint(owner: ManagedHostOwner): Promise<void> {
-    const guest = this.guest(owner)
-    return guest.transitions.run(async () => {
-      if (!guest.vm) return
-      const copy = `${guest.workImage}.checkpoint-${createId()}`
-      await guest.vm.api.pause()
-      try {
-        await copyFile(guest.workImage, copy, constants.COPYFILE_FICLONE)
-      } finally {
-        await guest.vm.api.resume()
-      }
-      try {
-        await this.tools.shrinkImage(copy)
-        await this.store.put(ownerKey(owner), copy)
-      } catch (error) {
-        await rm(copy, { force: true })
-        throw error
-      }
-    })
-  }
-
-  growHome(owner: ManagedHostOwner, bytes: number): Promise<void> {
-    const guest = this.guest(owner)
-    return guest.transitions.run(async () => {
-      if (!guest.vm) throw new Error(`guest ${ownerKey(owner)} is not running`)
-      await this.tools.growImage(guest.workImage, bytes)
-      await guest.vm.api.rescanHome(guest.vm.homePathInVm)
-    })
-  }
-
-  /** The guest killed if it runs and its home saved; the entry is forgotten only once the save succeeded. */
-  async destroy(owner: ManagedHostOwner): Promise<void> {
-    const guest = this.guests.get(ownerKey(owner))
-    if (!guest) return
-    await guest.transitions.run(async () => {
-      await this.stop(guest)
-      await this.save(guest)
-    })
-    this.guests.delete(ownerKey(owner))
-  }
-
-  onDeath(listener: (owner: ManagedHostOwner) => void): void {
-    this.deathListeners.push(listener)
-  }
-
-  /** Every guest killed and every home saved; an image whose save failed stays for the next start's reconciliation. */
-  async close(): Promise<void> {
-    for (const guest of this.guests.values()) {
-      await guest.transitions
-        .run(async () => {
-          await this.stop(guest)
-          await this.save(guest)
-        })
-        .catch((error) => this.log(`closing ${ownerKey(guest.owner)}: ${errorMessage(error)}`))
-    }
-  }
-
-  running(owner: ManagedHostOwner): boolean {
-    return (this.guests.get(ownerKey(owner))?.vm ?? null) !== null
-  }
-
-  private get workDir(): string {
-    return join(this.config.runDir, 'homes')
-  }
-
-  private guest(owner: ManagedHostOwner): Guest {
-    const key = ownerKey(owner)
-    let guest = this.guests.get(key)
+  private guest(id: string): Guest {
+    safeImageId(id)
+    let guest = this.guests.get(id)
     if (!guest) {
-      guest = { owner, workImage: join(this.workDir, `${key}.ext4`), vm: null, slot: null, stopping: false, transitions: new SerialQueue() }
-      this.guests.set(key, guest)
+      guest = { id, directory: join(this.workDir, id), vm: null, slot: null, stopping: false, transitions: new SerialQueue() }
+      this.guests.set(id, guest)
     }
     return guest
   }
-
-  /** The working image, when present, shrunk and made the store's current copy; nothing to do when there is none. */
-  private async save(guest: Guest): Promise<void> {
-    const present = await stat(guest.workImage).then(() => true, () => false)
-    if (!present) return
-    const key = ownerKey(guest.owner)
-    try {
-      const bytes = await this.tools.shrinkImage(guest.workImage)
-      await this.store.put(key, guest.workImage)
-      this.log(`home of ${key} saved: ${bytes} bytes`)
-    } catch (error) {
-      this.log(`home of ${key} not saved, kept as ${guest.workImage}: ${errorMessage(error)}`)
-      throw error
-    }
+  private async working(guest: Guest): Promise<MachineImageState | null> {
+    try { return imageStateSchema.parse(JSON.parse(await readFile(join(guest.directory, 'manifest.json'), 'utf8'))) }
+    catch (error) { if (errorCode(error) === 'ENOENT') return null; throw error }
   }
-
-  private async boot(guest: Guest, boot: BootArgs, firstBoot: boolean): Promise<void> {
-    const key = ownerKey(guest.owner)
-    // A working image left by a failed save is saved now, or the boot is refused: the store must hold the current home before a fresh copy is taken from it.
-    await this.save(guest)
-    // The working image: the store's current one, enlarged to the nominal size; the guest grows the filesystem at boot.
-    await this.store.get(key, guest.workImage)
-    await this.tools.growImage(guest.workImage, this.config.homeMib * 1024 * 1024)
-    const slot = this.slots.take()
-    // Short: the API socket path under the run directory must fit a unix socket address (108 bytes).
-    const vmId = `vm-${createId().slice(0, 12)}`
-    let vm: RunningVm
+  private async save(guest: Guest): Promise<void> {
+    const state = await this.working(guest)
+    if (!state) return
+    const next = { ...state, generation: createId(), systemBytes: (await stat(join(guest.directory, 'system.ext4'))).size, homeBytes: (await stat(join(guest.directory, 'home.ext4'))).size }
+    await this.store.publish(guest.id, next, guest.directory)
+    await rm(guest.directory, { recursive: true })
+    await syncFile(this.workDir)
+  }
+  private async initialize(id: string, baseVersion: string): Promise<void> {
+    const directory = join(this.workDir, `.initial-${createId()}`)
+    await mkdir(directory, { recursive: true })
     try {
-      vm = await startVm(this.config, { vmId, slot, homeImage: guest.workImage, bootArgs: bootArgs({ backendUrl: boot.backendUrl, deviceToken: boot.deviceToken, slot, dns: this.config.dns, firstBoot }), owner: key }, this.log)
-    } catch (error) {
-      this.slots.release(slot)
-      await rm(vmDirectory(this.config, vmId), { recursive: true, force: true })
-      throw error
-    }
-    guest.vm = vm
-    guest.slot = slot
-    guest.stopping = false
-    void vm.exited.then((code) => {
-      if (guest.vm !== vm) return
-      const died = !guest.stopping
-      void this.released(guest, vmId)
-      if (died) {
-        this.log(`guest ${key} died (exit ${code ?? 'signal'}); console at ${join(vmDirectory(this.config, vmId), 'console.log')}`)
-        for (const listener of this.deathListeners) listener(guest.owner)
-      }
+      const home = join(directory, 'empty-home')
+      await mkdir(home)
+      const state = { generation: createId(), baseVersion, resetId: null, systemBytes: this.config.systemMib * 1024 ** 2, homeBytes: this.config.homeMib * 1024 ** 2 }
+      await this.tools.makeHomeImage(home, join(directory, 'home.ext4'), state.homeBytes)
+      await this.tools.makeSystemImage(join(directory, 'system.ext4'), state.systemBytes)
+      await this.store.publish(id, state, directory)
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  }
+  wake(id: string, boot: BootArgs): Promise<void> {
+    const guest = this.guest(id)
+    return guest.transitions.run(async () => {
+      if (guest.vm) return
+      await this.save(guest)
+      let state = await this.store.read(id)
+      const firstBoot = !state
+      if (!state) { await this.initialize(id, await this.currentBaseVersion()); state = await this.store.read(id) }
+      if (!state) throw new Error('Initial machine generation missing')
+      const stage = join(this.workDir, `.wake-${createId()}`)
+      await this.store.copy(id, state, stage)
+      await Promise.all(['home.ext4', 'system.ext4'].map(volume => syncFile(join(stage, volume))))
+      await atomicJson(join(stage, 'manifest.json'), state)
+      await syncFile(stage)
+      await rename(stage, guest.directory)
+      await syncFile(this.workDir)
+      const slot = this.slots.take()
+      const vmId = `vm-${createId().slice(0, 12)}`
+      let vm: RunningVm
+      try {
+        const base = join(this.config.imagesDir, 'bases', safeImageId(state.baseVersion))
+        vm = await startVm({ ...this.config, kernel: join(base, 'kernel'), rootfs: join(base, 'rootfs') }, {
+          vmId, slot, homeImage: join(guest.directory, 'home.ext4'), systemImage: join(guest.directory, 'system.ext4'),
+          bootArgs: bootArgs({ ...boot, slot, dns: this.config.dns, firstBoot }), owner: id,
+        }, this.log)
+      } catch (error) { this.slots.release(slot); throw error }
+      guest.vm = vm; guest.slot = slot; guest.stopping = false
+      void vm.exited.then(async () => {
+        if (guest.vm !== vm) return
+        const died = !guest.stopping
+        await this.released(guest, vmId)
+        if (died) for (const listener of this.deathListeners) listener(id)
+      })
     })
   }
-
-  /** The VM process is gone: its slot back in the pool, its record removed so no later start tries to kill it. */
+  hibernate(id: string): Promise<void> {
+    const guest = this.guest(id)
+    return guest.transitions.run(async () => { await this.stop(guest); await this.save(guest) })
+  }
+  checkpoint(id: string): Promise<void> {
+    const guest = this.guest(id)
+    return guest.transitions.run(async () => {
+      if (!guest.vm) return
+      const state = await this.working(guest)
+      if (!state) throw new Error('Running machine has no manifest')
+      const stage = join(this.workDir, `.checkpoint-${createId()}`)
+      await mkdir(stage)
+      await guest.vm.api.pause()
+      try {
+        for (const volume of ['system', 'home']) await copyFile(join(guest.directory, `${volume}.ext4`), join(stage, `${volume}.ext4`), constants.COPYFILE_FICLONE)
+      } finally { await guest.vm.api.resume() }
+      try {
+        await this.store.publish(id, { ...state, generation: createId(), systemBytes: (await stat(join(stage, 'system.ext4'))).size, homeBytes: (await stat(join(stage, 'home.ext4'))).size }, stage)
+      } finally { await rm(stage, { recursive: true, force: true }) }
+    })
+  }
+  growVolume(id: string, volume: ManagedVolume, bytes: number): Promise<void> {
+    const guest = this.guest(id)
+    return guest.transitions.run(async () => {
+      if (!guest.vm) throw new Error('Machine is not running')
+      await this.tools.growImage(join(guest.directory, `${volume}.ext4`), bytes)
+      await guest.vm.api.rescanVolume(volume, guest.vm.volumePaths[volume])
+    })
+  }
+  reset(id: string, operationId: string, baseVersion: string): Promise<void> {
+    const guest = this.guest(id)
+    return guest.transitions.run(async () => {
+      await this.stop(guest); await this.save(guest)
+      let state = await this.store.read(id)
+      if (!state) { await this.initialize(id, baseVersion); state = await this.store.read(id) }
+      if (!state) throw new Error('Machine generation missing')
+      if (state.resetId === operationId) return
+      const stage = join(this.workDir, `.reset-${createId()}`)
+      try {
+        await this.store.copy(id, state, stage)
+        await rm(join(stage, 'system.ext4'))
+        const systemBytes = this.config.systemMib * 1024 ** 2
+        await this.tools.makeSystemImage(join(stage, 'system.ext4'), systemBytes)
+        await this.store.publish(id, { ...state, generation: createId(), resetId: operationId, baseVersion, systemBytes }, stage)
+      } finally { await rm(stage, { recursive: true, force: true }) }
+    })
+  }
+  onDeath(listener: (id: string) => void): void { this.deathListeners.push(listener) }
+  running(id: string): boolean { return !!this.guests.get(id)?.vm }
+  async close(): Promise<void> {
+    for (const guest of this.guests.values()) await this.hibernate(guest.id).catch(error => this.log(errorMessage(error)))
+  }
   private async released(guest: Guest, vmId: string): Promise<void> {
     guest.vm = null
     if (guest.slot) this.slots.release(guest.slot)
     guest.slot = null
     await removeVmRecord(this.config, vmId)
   }
-
   private async stop(guest: Guest): Promise<void> {
     const vm = guest.vm
     if (!vm) return
     guest.stopping = true
-    await vm.kill()
-    await vm.exited
-    // The exit handler released it; a handler still queued finds `vm` gone and stops there.
+    await vm.kill(); await vm.exited
     if (guest.vm === vm) await this.released(guest, vm.id)
   }
-
 }
-

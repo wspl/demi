@@ -17,7 +17,7 @@ afterAll(async () => {
   await world.close()
 })
 
-describe.each<Target>(['hostless', 'runner:alpha'])('S1 file workflow on %s', (target) => {
+describe.each<Target>(['cloud', 'runner:alpha'])('S1 file workflow on %s', (target) => {
   test('create, read, edit, list', async () => {
     const driver = await world.conversation(target)
     const created = await driver.turn({

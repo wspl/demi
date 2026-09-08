@@ -96,7 +96,7 @@ output. That terminal output comes from the interleaved output stream in runtime
 or from the auto-budgeted preview, merged into a single transcript in stdout/stderr arrival
 order; this is purely a UI/runtime rendering. On a machine the full output lives in the
 job's output files on the target (`stdoutPath` / `stderrPath`), which the model reads with
-ordinary commands — not through `shell_status`; hostless, nothing beyond the view exists.
+ordinary commands — not through `shell_status`.
 When an older
 transcript lacks interleaved output it may fall back to stdout-then-stderr, but it must not
 show stderr alone, nor show protocol fields such as `status`, `shellId`, `commandId`, path,

@@ -13,7 +13,7 @@ const fake = new FakeProvisioner()
 let world: World
 
 beforeAll(async () => {
-  world = await World.create({ runners: ['alpha'], managedHosts: { provisioner: fake, config: { hostsPerUser: 30 } } })
+  world = await World.create({ runners: ['alpha'], managedHosts: { provisioner: fake, config: { maxRunning: 30 } } })
 })
 
 afterAll(async () => {
@@ -21,12 +21,12 @@ afterAll(async () => {
   await fake.close()
 })
 
-/** Text past the runner's head+tail view and the model's preview, within the hostless capture limit. */
+/** Text past the runner's head+tail view and the model's preview, within the cloud capture limit. */
 const BIG_LINES = Array.from({ length: 4_000 }, (_, i) => `line ${String(i).padStart(5, '0')} ${'x'.repeat(20)}`)
 const BIG_TEXT = `${BIG_LINES.join('\n')}\n`
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01])
 
-describe.each<Target>(['hostless', 'runner:alpha'])('S2 output view on %s', (target) => {
+describe.each<Target>(['cloud', 'runner:alpha'])('S2 output view on %s', (target) => {
   test('a stream past the view budget', async () => {
     const driver = await world.conversation(target)
     await driver.upload('big.txt', new TextEncoder().encode(BIG_TEXT))
@@ -40,7 +40,7 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S2 output view on %s', (tar
     expect(received).toContain('line 00000')
     expect(received).not.toContain('line 03999')
     expect(received).toContain(expected(target).previewTruncated)
-    // The shell view: the runner shows the head, a gap note and the tail; hostless shows the capture.
+    // The shell view: the runner shows the head, a gap note and the tail; cloud shows the capture.
     const status = turn.shell.find((event) => event.status.status === 'exited')?.status
     const text = status?.status === 'exited' ? status.stdout.delta : ''
     expect(text).toContain('line 03999')

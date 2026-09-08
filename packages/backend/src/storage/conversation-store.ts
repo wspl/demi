@@ -2,9 +2,7 @@ import { join } from 'node:path'
 import type { Block } from '@demicodes/core'
 import type { HostStore } from '@demicodes/shell'
 import type { AgentTreeStore, BlobStore } from '@demicodes/agent'
-import type { VirtualFsBackend } from '@demicodes/host-virtual'
 import { openSqliteDatabase, type SqlDatabase, type SqlParams } from './database'
-import { clearFilesTree, filesTreeBackend, materializeFilesTree, type TreePlacement } from './files-tree'
 import { DbHostStore } from './host-store'
 import { CONVERSATION_MIGRATIONS, migrate } from './migrations'
 import { readNode, sqliteAgentTreeStore } from './tree-store'
@@ -64,20 +62,6 @@ export class ConversationStores {
 
   hostStore(conversationId: string): HostStore {
     return new DbHostStore(this.db(conversationId), 'host')
-  }
-
-  /** The hostless filesystem: the conversation's `files` tree over the blob store. */
-  filesBackend(conversationId: string): VirtualFsBackend {
-    return filesTreeBackend(this.db(conversationId), this.blobsFor(conversationId))
-  }
-
-  /** The tree written into real directories for the home image, then emptied (`storage.md` § The upgrade). */
-  async materializeFiles(conversationId: string, placements: readonly TreePlacement[]): Promise<void> {
-    await materializeFilesTree(this.db(conversationId), this.blobsFor(conversationId), placements)
-  }
-
-  clearFiles(conversationId: string): void {
-    clearFilesTree(this.db(conversationId))
   }
 
   /** Cold transcript read of the root node: the raw rows, media left as refs. */

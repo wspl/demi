@@ -1,41 +1,70 @@
 # Demi Next: Acceptance Ledger
 
-Status: documentation checkpoint, 2026-09-08. The records in this directory are
-target contracts. Their presence does not establish implementation completion.
-Historical implementation logs, review discussions and measurements are available
-in Git; this ledger records acceptance against the current contract.
+Implementation checkpoint: 2026-09-08. This ledger records the current source
+and completed checks. Historical changes and earlier designs are in Git.
 
-## Architecture acceptance
+## Implemented architecture
 
-| Contract | State | Required evidence |
+| Contract | Responsible code | Evidence |
 |---|---|---|
-| TypeScript runner and JS commands on tinyjs | retained architecture; existing source inspected | scoped runner, loader and shared-schema checks when implementation changes |
-| All production machine operations through remote Host and real bash | pending implementation acceptance | end-to-end scripted turns and filesystem operations on a runner |
-| One managed device per user | pending implementation acceptance | database uniqueness, concurrent first use, multiple projects and user isolation |
-| Persistent system and home | pending implementation acceptance | paired disk checkpoint, shutdown/wake and failure recovery on Linux/KVM |
-| System reset with retained home | pending implementation acceptance | broken-guest reset, failure at each commit boundary and stable device/project identity |
-| User-wide activity and capacity admission | pending implementation acceptance | active child, file upload, cross-host job, simultaneous wake/reset/shutdown races |
-| Shared Cloud UI | pending implementation acceptance | product and gallery lifecycle/reset states, backend integration and error recovery |
+| One TypeScript runner on tinyjs for Cloud and connected devices | `runner`, `host-remote`, `command-loader` | real-runner command, filesystem, process, relay and shell-control suites |
+| One managed device per user; projects are directories | backend control schema and `managed/lifecycle.ts` | concurrent first use, shared project/device identity, target ownership and switching tests |
+| Persistent system and home, pinned base | `managed/firecracker`, `storage/machine-image-store.ts` | paired publication, orphan recovery, failed publication, bounded generation retention; real shutdown/wake |
+| External system reset retaining home | lifecycle, `http/cloud.ts`, per-conversation reset context | concurrent operation-ID reuse, failed reset/retry, preserved files and model announcement; real broken-bash reset |
+| Device-wide activity and capacity admission | lifecycle and registry-injected `RemoteHost` admission | file calls, spawns and jobs retain leases; cached Hosts refuse new work during transitions; idle/wake scenario |
+| Shared Cloud settings | `web-ui/cloud/CloudSettings.vue` | product/gallery usage, frontend typechecks and browser verification of confirmation, progress and completion |
 
-## Documentation verification
+Cloud guest init mounts both writable disks and drops the runner to uid/gid
+1000. Filesystem RPCs, raw processes and shell jobs therefore use the same
+account. Connected runners use their local account. Both paths share command
+manifests, JS command loading, Zod contracts, relay, output handling and process
+control. VM provisioning, boot mounts, credentials and disk lifecycle remain
+managed-host responsibilities.
 
-The documentation checkpoint must check terminology, target ownership, storage
-schema, command/runtime boundaries, internal references and whitespace. It does
-not execute runtime tests or call models. New implementation checkpoints add
-concrete commands, environments and results here after those checks actually run.
-Benchmarks must identify their workload and platform; hypervisor microbenchmarks
-are not evidence of product command-ready latency or capacity.
+The workspace contains no virtual-host package or shell interpreter. The Host
+process contract requires `spawn`. Test fixtures use real Node filesystem/process
+facets or the actual packed runner. Runtime credentials are dropped once after
+guest init; there is no separate per-job guest identity path.
 
-### 2026-09-08 documentation checkpoint — verified
+## Completed checks
 
-- Audited all 19 records in this directory plus `docs/package-boundaries.md` for
-  obsolete execution terminology and type/table references: no matches.
-- Checked local document references, referenced section headings and balanced
-  fenced blocks across those 20 documents: passed.
-- Checked the target dependency graph against its package registry: identical
-  package set, all dependencies named, no cycles.
-- `git diff --check`: passed.
+- `bun run typecheck`: passed.
+- `bun run typecheck:web`: passed for all three frontend packages.
+- `bun run test`: 893 passed, 11 conditionally skipped, 0 failed across 152 files.
+- `bun run build`: passed.
+- `bun run check:registry`: passed.
+- `cargo test` in `packages/tinyjs`: passed, including all 61 primitive
+  conformance cases and the native test harness.
+- The Linux ARM64 packed runner and `demi-fc-helper` cross-compiled successfully.
+- Browser inspection of the gallery Cloud settings: confirmation layout,
+  progress, completion, and the preserved-home explanation verified.
 
-No implementation files changed and no runtime or model tests ran. The target
-package graph intentionally specifies the desired package set; current workspace
-manifest/source conformance remains implementation acceptance work.
+All executed provider turns used scripted providers. No real-model tests ran.
+
+## Linux/KVM verification
+
+The env-gated `real-firecracker.e2e.test.ts` ran inside the local ARM64 Lima KVM
+host using Firecracker 1.16.1, the repository-built Linux 6.1.155 kernel and
+Ubuntu 24.04 rootfs. Both direct and jailer launch modes passed.
+
+The scenario verified upload ownership and shell uid 1000, shared machine
+identity for another project, persistence of a system installation and home
+file across shutdown/wake, and stable device identity after reset. Both final
+runs additionally removed bash execute permission and wrote a newer home file
+immediately before reset; external reset restored bash and preserved that newer
+file. These are functional tests, not capacity or boot-latency benchmarks.
+
+## Product integration boundary
+
+The backend implements authenticated `GET /api/cloud` and
+`POST /api/cloud/reset`. The shared settings component receives Cloud state and
+emits a reset operation ID; retries reuse that ID.
+
+As with the rest of the current web prototype, `web/prototype/cloud.ts` and the
+gallery provide local state and simulated handlers. They do not call these REST
+endpoints. Connecting the web prototype to backend authentication and live state
+is product-wide integration work, described in `web-prototype.md`.
+
+The tests above establish the named scenarios. They do not establish
+production-scale capacity, exhaustive crash injection at every filesystem
+operation, or a production deployment of the web prototype.

@@ -3,9 +3,9 @@
 //! whitelisted, no shell, no configuration file.
 //!
 //!   vm start --id ID --jailer PATH --firecracker PATH --chroot-base DIR --uid N --gid N
-//!            --backend-gid N --kernel PATH --rootfs PATH --home PATH
+//!            --backend-gid N --kernel PATH --rootfs PATH --home PATH --system PATH
 //!       prepares `<chroot-base>/<firecracker basename>/<id>/root` (the kernel and
-//!       rootfs hardlinked or copied in, the home image hardlinked and made
+//!       rootfs hardlinked or copied in, both writable images hardlinked and made
 //!       writable by the VM uid and the backend group, the API socket directory
 //!       group-accessible), writes the child's pid beside it, execs the jailer
 //!       as a child and waits: the helper's exit is the VM's exit.
@@ -84,6 +84,7 @@ fn start(flags: HashMap<String, String>) -> ! {
     let kernel = absolute(&flags, "kernel");
     let rootfs = absolute(&flags, "rootfs");
     let home = absolute(&flags, "home");
+    let system = absolute(&flags, "system");
     let exec_name = firecracker.file_name().unwrap_or_else(|| fail("--firecracker has no file name")).to_owned();
     let jail = chroot_base.join(&exec_name).join(id);
     let root = jail.join("root");
@@ -92,11 +93,13 @@ fn start(flags: HashMap<String, String>) -> ! {
     link_or_copy(&kernel, &root.join("vmlinux"));
     link_or_copy(&rootfs, &root.join("rootfs.ext4"));
     // The working image is shared with the backend by the link: the VM uid owns it, the backend group writes it.
-    let home_link = root.join("home.ext4");
-    let _ = fs::remove_file(&home_link);
-    fs::hard_link(&home, &home_link).unwrap_or_else(|e| fail(&format!("link {} into the jail (same filesystem required): {e}", home.display())));
-    chown(&home_link, Some(uid), Some(backend_gid)).unwrap_or_else(|e| fail(&format!("chown home: {e}")));
-    fs::set_permissions(&home_link, fs::Permissions::from_mode(0o660)).unwrap_or_else(|e| fail(&format!("chmod home: {e}")));
+    for (name, image) in [("home", &home), ("system", &system)] {
+        let link = root.join(format!("{name}.ext4"));
+        let _ = fs::remove_file(&link);
+        fs::hard_link(image, &link).unwrap_or_else(|e| fail(&format!("link {} into jail: {e}", image.display())));
+        chown(&link, Some(uid), Some(backend_gid)).unwrap_or_else(|e| fail(&format!("chown {name}: {e}")));
+        fs::set_permissions(&link, fs::Permissions::from_mode(0o660)).unwrap_or_else(|e| fail(&format!("chmod {name}: {e}")));
+    }
     // The API socket lands in run/ with the backend group, through the setgid bit and the umask below.
     let run = root.join("run");
     chown(&run, Some(uid), Some(backend_gid)).unwrap_or_else(|e| fail(&format!("chown run: {e}")));
@@ -123,11 +126,13 @@ fn start(flags: HashMap<String, String>) -> ! {
     fs::write(jail.join("pid"), child.id().to_string()).unwrap_or_else(|e| fail(&format!("write pid: {e}")));
     let status = child.wait().unwrap_or_else(|e| fail(&format!("wait: {e}")));
     // With `--new-pid-ns` the jailer forks: the parent exits once Firecracker runs as the new
-    // namespace's init, its pid in `firecracker.pid`. The helper then stands in for the parent
+    // namespace's init, its pid in `<exec filename>.pid`. The helper then stands in for the parent
     // it no longer is — it outlives Firecracker by polling — so its exit stays the VM's exit.
+    let mut pid_name = exec_name.clone();
+    pid_name.push(".pid");
     let mut pid = None;
     for _ in 0..40 {
-        if let Some(found) = fs::read_to_string(root.join("firecracker.pid")).ok().and_then(|text| text.trim().parse::<i32>().ok()).filter(|pid| *pid > 1) {
+        if let Some(found) = fs::read_to_string(root.join(&pid_name)).ok().and_then(|text| text.trim().parse::<i32>().ok()).filter(|pid| *pid > 1) {
             pid = Some(found);
             break;
         }

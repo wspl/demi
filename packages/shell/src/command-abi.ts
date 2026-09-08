@@ -1,4 +1,3 @@
-import type { z } from 'zod'
 import type { HostFileSystem } from './host'
 
 /**
@@ -35,8 +34,7 @@ export type CommandModule<Args = Record<string, unknown>> = (ctx: CommandContext
 
 /**
  * The stdio and environment of one command invocation, as a shell hands it
- * to a dispatcher (the loader); tinybash speaks the same shape
- * speak this.
+ * to the command loader.
  */
 export interface DispatchIO {
   /** The pipe: a pipeline, heredoc, `<` file. Finite. Absent when fd 0 is not a pipe. */
@@ -56,13 +54,6 @@ export interface DispatchIO {
   onRunningHint?: (hint: string | undefined) => void | Promise<void>
 }
 
-/**
- * What a hostless shell asks of a root command before running a script: the
- * path arguments of one invocation (argv without the root name), from the
- * path marks on the tree (`tinybash.md` § Interface).
- */
-export type RootPaths = (argv: readonly string[]) => readonly string[]
-
 declare const runtimeModuleBrand: unique symbol
 
 /** The text of a `runtime` module, as a tree carries it. */
@@ -80,17 +71,6 @@ export function runtimeModule(source: unknown): RuntimeModule {
     throw new TypeError(`runtimeModule: expected the module text, received ${typeof source}; import the module with { type: 'text' } and build with commandModulesAsText`)
   }
   return source as RuntimeModule
-}
-
-const PATH_MARK = 'path'
-
-/** Marks an argument as naming a file or directory (`commands.md` § The command ABI). */
-export function pathArg<T extends z.ZodType>(schema: T): T {
-  return schema.meta({ ...schema.meta(), [PATH_MARK]: true }) as T
-}
-
-export function isPathArg(schema: z.ZodType): boolean {
-  return schema.meta()?.[PATH_MARK] === true
 }
 
 const loadedModules = new Map<string, Promise<CommandModule>>()

@@ -102,7 +102,7 @@ machine is always reached through `host-remote`.
 
 ## Connection model
 
-One outbound WebSocket, speaking runner protocol **version 7**. Frames are binary **MessagePack** (`Uint8Array` as
+One outbound WebSocket, speaking runner protocol **version 9**. Frames are binary **MessagePack** (`Uint8Array` as
 bin, `Date` as the timestamp extension, `undefined` as nil), so bytes and
 times are native wire types; a text frame is malformed and closes the
 socket. The schemas are `zod` in `@demicodes/runner-protocol`, shared
@@ -157,9 +157,9 @@ Handshake and liveness:
 | b → r | `ping` | liveness, backend-driven interval |
 | r → b | `pong { jobs }` | liveness plus the count of running jobs, which the idle rule reads (`managed-hosts.md`) |
 | b → r | `sync { id }` | before shutdown: flush both writable filesystems to disk |
-| r → b | `sync_done { id, untouched }` | flushed; `untouched` means neither system nor home changed since the committed baseline; otherwise save both (`managed-hosts.md` § Persistence) |
+| r → b | `sync_done { id, error? }` | both writable volumes flushed, or an explicit failure; shutdown saves both disks (`managed-hosts.md` § Persistence) |
 | r → b | `volume_grow { id, volume, bytes }` | request total image size for `system` or `home`; backend enforces the user's quota |
-| b → r | `volume_grown { id, volume, bytes }` / `volume_grow_error { id, code }` | rescan succeeded and the guest can grow that filesystem, or a quota/operation error |
+| b → r | `volume_grown { id, volume, bytes, error: null | string }` | rescan succeeded and the guest can grow that filesystem, or a quota/operation error |
 
 Host RPC — the wire form of the `Host` contract's `fs` and `process`
 facets (`Host.store` never crosses this protocol):

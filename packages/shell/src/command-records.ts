@@ -17,7 +17,7 @@ export interface ShellCommandRecord {
   id: string
   shellId: string
   commandStorageId: string
-  /** The target directory holding the output files (the runner's tee); absent for hostless. */
+  /** The target directory holding the output files (the runner's tee); optional when no output files are retained. */
   outputDir?: string
   script: string
   startedAt: number

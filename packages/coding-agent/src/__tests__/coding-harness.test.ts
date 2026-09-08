@@ -14,7 +14,8 @@ import {
 import type { InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { CommandRegistry, type Command, type Host, type HostDirent, type HostFileSystem, type HostProcess, type HostStore, createLogicalHostCwd, type ShellEnvironment } from '@demicodes/shell'
-import { hostlessShell, hostlessShellFactory, LocalHost } from '@demicodes/host-virtual/testing'
+import { runnerShell, runnerShellFactory } from '@demicodes/backend/testing'
+import { LocalHost } from '@demicodes/runner/testing'
 import { createCodingAgentHarness } from '../index'
 
 const model: ModelSelection = {
@@ -267,7 +268,7 @@ async function createRuntimeFromHarness(
   for (const command of commands) registry.register(command)
   const host = harness.host(harnessContext)
   if (host instanceof Promise) throw new Error('test harness host must be synchronous')
-  const environment = await hostlessShell({
+  const environment = await runnerShell({
     host,
     commands: registry,
     initialEnv: { PATH: process.env.PATH ?? '' },

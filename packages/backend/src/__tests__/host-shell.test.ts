@@ -18,7 +18,7 @@ import { openBackend, type TestBackend } from './session'
 // attached to the job's as pipes: HTTP streams between the two runners,
 // brokered by the backend, so a working tree never crosses either runner
 // socket in either direction — the wire audit below is the proof. A
-// hostless caller's ends are the backend's own streams.
+// cloud caller's ends are the backend's own streams.
 
 async function api(backend: TestBackend, path: string, init?: RequestInit): Promise<Response> {
   return backend.session.fetch(path, init)
@@ -117,8 +117,8 @@ test('host shell --host: the job runs on the named host with the caller\'s pipes
   // The conversation starts on alpha and switches to beta: the switch attached alpha under its name, hence reachable.
   const created = await api(backend, '/api/conversations', { method: 'POST' })
   const { conversation } = (await created.json()) as { conversation: { id: string } }
-  expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: a.workspaceId }, 'PATCH')).status).toBe(200)
-  expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: b.workspaceId }, 'PATCH')).status).toBe(200)
+  expect((await json(backend, `/api/conversations/${conversation.id}`, { target: { kind: 'workspace', workspaceId: a.workspaceId } }, 'PATCH')).status).toBe(200)
+  expect((await json(backend, `/api/conversations/${conversation.id}`, { target: { kind: 'workspace', workspaceId: b.workspaceId } }, 'PATCH')).status).toBe(200)
 
   scripts.push(
     `demi host list && demi host shell --host alpha "tar c -C ${a.home} notes.bin" | tar x && cmp notes.bin ${join(a.home, 'notes.bin')} && echo copied`,
@@ -126,7 +126,7 @@ test('host shell --host: the job runs on the named host with the caller\'s pipes
     // Where a shell on the attached host ends is where the next one starts; `--host` takes the id as well.
     `demi host shell --host alpha "mkdir -p sub && cd sub && pwd" && demi host shell --host ${a.deviceId} "pwd" && demi host list`,
     `demi host shell --host nope "echo hi"; echo exit=$?`,
-    // Hostless: the peek runs on beta; the pull lands in the store through tinybash's own `tar`, no machine acquired.
+    // Cloud: the peek runs on beta; the pull lands in the Cloud runner through real `tar`.
     `demi host shell --host beta "head -c 5 notes.bin | od -An -tx1" && demi host shell --host beta "tar c -C ${b.home} notes.bin" | tar x && wc -c notes.bin && demi host current`,
   )
   const { client, shellEvents } = await openClient(backend, conversation.id, selection)
@@ -193,12 +193,12 @@ test('host shell --host: the job runs on the named host with the caller\'s pipes
   expect(refused?.stderr.delta).toContain('host nope is not reachable')
   expect(refused?.stdout.delta).toContain('exit=1')
 
-  // Hostless caller: beta is attached by the switch, and the bytes land in this process's tinybash pipeline through the backend's own end.
-  expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: null }, 'PATCH')).status).toBe(200)
+  // Cloud caller: beta is attached by the switch, and the bytes land in the Cloud runner’s bash pipeline.
+  expect((await json(backend, `/api/conversations/${conversation.id}`, { target: { kind: 'cloud' } }, 'PATCH')).status).toBe(200)
   await client.send([{ type: 'text', text: 'peek from nowhere' }])
   const peeked = lastExited(shellEvents)
   expect(peeked?.exitCode).toBe(0)
-  expect(peeked?.stdout.delta.replace(/\s+/g, ' ').trim()).toStartWith(`00 1f 3e 5d 7c ${payload.length} notes.bin host: machine "cloud"`)
+  expect(peeked?.stdout.delta.replace(/\s+/g, ' ').trim()).toStartWith(`00 1f 3e 5d 7c ${payload.length} notes.bin host: machine "Cloud"`)
 
   await a.runner.stop()
   await b.runner.stop()
@@ -206,7 +206,7 @@ test('host shell --host: the job runs on the named host with the caller\'s pipes
   await fake.close()
 }, 120_000)
 
-test('host shell streams stderr before stdout ends, forwards shell_write, and cancels the far job from device and hostless callers', async () => {
+test('host shell streams stderr before stdout ends, forwards shell_write, and cancels the far job from device and cloud callers', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-hs-control-'))
   const frames: Array<{ deviceId: string; direction: 'in' | 'out'; message: RunnerProtocolMessage }> = []
   let commandId = ''
@@ -227,15 +227,15 @@ test('host shell streams stderr before stdout ends, forwards shell_write, and ca
   const a = await pairDevice(backend, 'alpha')
   const b = await pairDevice(backend, 'beta')
   try {
-    for (const caller of ['device', 'hostless', 'device-pipe', 'device-child-kill']) {
-      const onDevice = caller !== 'hostless'
+    for (const caller of ['device', 'cloud', 'device-pipe', 'device-child-kill']) {
+      const onDevice = caller !== 'cloud'
       script = caller === 'device-pipe'
         ? 'head -c 20000000 /dev/zero | demi host shell --host alpha \'printf "ready\\n" >&2; sleep 30\''
         : 'demi host shell --host alpha \'printf "ready\\n" >&2; read line; printf "got:%s\\n" "$line"; sleep 30\''
       if (caller === 'device-child-kill') script = 'head -c 20000000 /dev/zero | demi host shell --host alpha \'printf "ready\\n" >&2; sleep 30\' & child=$!; sleep 1; kill -KILL "$child"; wait "$child"; sleep 30'
       const { conversation } = await (await api(backend, '/api/conversations', { method: 'POST' })).json() as { conversation: { id: string } }
-      expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: a.workspaceId }, 'PATCH')).status).toBe(200)
-      expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: onDevice ? b.workspaceId : null }, 'PATCH')).status).toBe(200)
+      expect((await json(backend, `/api/conversations/${conversation.id}`, { target: { kind: 'workspace', workspaceId: a.workspaceId } }, 'PATCH')).status).toBe(200)
+      expect((await json(backend, `/api/conversations/${conversation.id}`, { target: onDevice ? { kind: 'workspace', workspaceId: b.workspaceId } : { kind: 'cloud' } }, 'PATCH')).status).toBe(200)
       const { client, shellEvents } = await openClient(backend, conversation.id, selectionFor(provider.provider.id))
       const start = frames.length
       try {
@@ -249,7 +249,7 @@ test('host shell streams stderr before stdout ends, forwards shell_write, and ca
         } else {
           await waitFor(() => since().some((frame) => frame.deviceId === a.deviceId && frame.message.type === 'job_output' && textOf(frame.message).includes('ready')))
         }
-        if (caller === 'device' || caller === 'hostless') {
+        if (caller === 'device' || caller === 'cloud') {
           await client.shellWrite(commandId, 'hello\n')
           await waitFor(() => since().some((frame) => frame.deviceId === a.deviceId && frame.message.type === 'job_output' && frame.message.stream === 'stdout' && textOf(frame.message).includes('got:hello')), () => `${caller}: ${JSON.stringify(since().map((frame) => ({ device: frame.deviceId, dir: frame.direction, type: frame.message.type, text: textOf(frame.message) })))}`, { timeoutMs: 5_000 })
         }

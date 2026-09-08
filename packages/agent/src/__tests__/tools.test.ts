@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { Model, ModelSelection } from '@demicodes/core'
-import { hostlessShellFactory, LocalHost } from '@demicodes/host-virtual/testing'
+import { runnerShellFactory } from '@demicodes/backend/testing'
+import { LocalHost } from '@demicodes/runner/testing'
 import { defineProvider, type ProviderSelection } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import type { ShellCommandStatus, ShellEnvironment } from '@demicodes/shell'
@@ -201,7 +202,7 @@ test('AgentServer keeps the custom preview policy across model changes and live 
   const server = new AgentServer({ store: memoryAgentStores(),
     agent: { name: 'preview', initialState: () => ({}), host: () => host, systemPrompt: () => 'test' },
     providers: [defineProvider({ id: 'stub', displayName: 'Stub', createRuntime: () => runtime })],
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     tools: {
       shellPreviewBudgetTokens: (contextWindow) => {
         seenWindows.push(contextWindow)

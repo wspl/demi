@@ -1,3 +1,4 @@
+import { FakeProvisioner } from './scenarios/fake-provisioner'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -49,7 +50,7 @@ test('message attachment: upload → ref block → inline bytes at the provider 
         return [events.text('saw it'), events.response()]
       },
     ])
-  const backend = await openBackend({
+  const backend = await openBackend({ managedHosts: { provisioner: new FakeProvisioner() },
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0 },
@@ -143,7 +144,7 @@ test('attachment upload limits and workspace file drop', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m6-drop-'))
   const stubRuntime = () =>
     new StubProvider([[events.toolCall('t1', 'shell_exec', { script: 'cat notes/readme.md', timeoutMs: 10_000 })], [events.text('ok'), events.response()]])
-  const backend = await openBackend({
+  const backend = await openBackend({ managedHosts: { provisioner: new FakeProvisioner() },
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0 },
@@ -175,7 +176,7 @@ test('attachment upload limits and workspace file drop', async () => {
     body: 'dropped content',
   })
   expect(dropped.status).toBe(201)
-  expect(((await dropped.json()) as { path: string }).path).toBe('/home/demi/notes/readme.md')
+  expect(((await dropped.json()) as { path: string }).path).toEndWith(`/sessions/${conversation.id}/notes/readme.md`)
 
   // The agent's shell sees the dropped file on the execution target.
   const client = await connectClient(backend, conversation.id, selectionFor(provider.id))

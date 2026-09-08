@@ -4,7 +4,7 @@ import type { UpgradeWebSocket } from 'hono/ws'
 import type { ProviderAssembly } from '../llm/assembly'
 import type { RunnerRegistry } from '../runner/registry'
 import type { PipeBroker } from '../runner/pipes'
-import type { ControlService, WorkspaceRecord } from '../storage/control'
+import type { ControlService, WorkspaceRecord, ConversationTargetPointer } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 import type { ProviderVault } from '../vault/providers'
 import type { SubscriptionLoginFlows } from '../vault/subscription-login'
@@ -31,6 +31,7 @@ import { runnerSocketRoutes } from './runner-socket'
 import { pipeRoutes } from './pipes'
 import { streamRoutes } from './stream'
 import { usageRoutes } from './usage'
+import { cloudRoutes } from './cloud'
 import { workspaceRoutes } from './workspaces'
 
 /** Assembles the external HTTP surface: error shape, 404 shape, one route module per resource. */
@@ -47,7 +48,7 @@ export function createApp(options: {
   upgradeWebSocket: UpgradeWebSocket
   blobs: UserBlobStores
   withHost: <T>(conversationId: string, operation: (host: Host) => Promise<T>, signal?: AbortSignal) => Promise<T>
-  switchTarget: (conversationId: string, toWorkspaceId: string | null) => Promise<SwitchTargetResult>
+  switchTarget: (conversationId: string, to: ConversationTargetPointer) => Promise<SwitchTargetResult>
   managedHosts: ManagedHosts | null
   createCloudWorkspace: ((userId: string, name: string) => Promise<WorkspaceRecord>) | null
   sessions: WebSessions
@@ -73,6 +74,7 @@ export function createApp(options: {
   app.route('/api/runner', runnerSocketRoutes({ registry: options.runnerRegistry, upgradeWebSocket: options.upgradeWebSocket }))
   app.route('/api/pipes', pipeRoutes({ control: options.control, broker: options.pipes }))
   app.route('/api/devices', deviceRoutes({ control: options.control, registry: options.runnerRegistry }))
+  app.route('/api/cloud', cloudRoutes(options.managedHosts))
   app.route('/api/workspaces', workspaceRoutes({ control: options.control, managedHosts: options.managedHosts, createCloudWorkspace: options.createCloudWorkspace }))
   app.route('/api/attachments', attachmentRoutes({ control: options.control, blobsFor: (id) => options.blobs.forUser(id) }))
   app.route('/api/blobs', blobRoutes({ blobsFor: (id) => options.blobs.forUser(id) }))
@@ -80,6 +82,7 @@ export function createApp(options: {
   app.route(
     '/api/conversations',
     streamRoutes({
+      registry: options.runnerRegistry,
       control: options.control,
       agentServer: options.agentServer,
       upgradeWebSocket: options.upgradeWebSocket,
@@ -98,7 +101,7 @@ export function createApp(options: {
       managedHosts: options.managedHosts,
       vault: options.vault,
       mode: options.mode,
-      deviceOnline: (deviceId) => options.runnerRegistry.deviceOnline(deviceId),
+      registry: options.runnerRegistry,
     }),
   )
 

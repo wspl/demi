@@ -1,3 +1,4 @@
+import { cloudSessionDirectory } from './execution-target'
 import { clientFrameSchema, externalizeBlockMedia, type AgentServerTransport, type BlobStore, type ClientFrame, type ServerFrame } from '@demicodes/agent'
 import type { Block } from '@demicodes/core'
 import { errorMessage, SerialQueue } from '@demicodes/utils'
@@ -6,10 +7,6 @@ import { resolveAttachmentRefs } from './attachment-refs'
 import { conversationClientFrameSchema, type ConversationClientFrame } from './client-frames'
 
 /** Virtual working directory every virtual-target conversation starts in. */
-/** The hostless home: cwd of every hostless shell, and where the model's files live (`sessions-and-targets.md` § The namespace). */
-export const HOSTLESS_HOME = '/home/demi'
-/** The two subtrees a hostless script may touch, plus `/dev/null`. */
-export const HOSTLESS_NAMESPACE: readonly string[] = [HOSTLESS_HOME, '/tmp']
 
 /**
  * Scopes an incoming stream to its conversation: the session id and cwd are
@@ -26,7 +23,7 @@ export interface ConversationTransportOptions {
   control: ControlService
   /** Whether the conversation's user may name this provider — the same rule as the PATCH route's. */
   providerAllowed: (providerId: string) => Promise<boolean>
-  /** Where every session of the conversation opens; the hostless home unless the conversation has a workspace. */
+  /** Where every session of the conversation opens; the conversation’s Cloud session directory or selected target path. */
   cwd?: string
   blobs?: BlobStore
 }
@@ -44,7 +41,7 @@ export function conversationScopedTransport(
   options: ConversationTransportOptions,
 ): AgentServerTransport {
   const { blobs } = options
-  const cwd = options.cwd ?? HOSTLESS_HOME
+  const cwd = options.cwd ?? cloudSessionDirectory(conversation.id)
   // Frame rewrites can await storage (attachment resolution inbound, blob
   // puts outbound); one chain per direction keeps delivery in arrival order.
   const deliveries = new SerialQueue()

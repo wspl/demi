@@ -114,7 +114,7 @@ test('switching main hosts preserves the departed directory and promotes attachm
   expect(conversation.attachedHosts).toEqual([])
 })
 
-test('hostless attachment names are unique', () => {
+test('cloud attachment names are unique', () => {
   const { store, conversation } = newConversation()
   store.attachHost(conversation, 'mac', '/Users/zan', 'worker')
   store.attachHost(conversation, 'build', '/home/build', 'worker')

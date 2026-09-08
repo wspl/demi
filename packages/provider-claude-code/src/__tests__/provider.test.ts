@@ -3,8 +3,9 @@ import { CommandRegistry } from '@demicodes/shell'
 import { waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import { AgentSession, createStandardAgentTools, type AgentHarnessRuntime } from '@demicodes/agent'
-import { hostlessShell } from '@demicodes/host-virtual/testing'
-import { LocalHost } from '@demicodes/host-virtual/testing'
+import { runnerShell } from '@demicodes/backend/testing'
+
+import { LocalHost } from '@demicodes/runner/testing'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -868,7 +869,7 @@ test('ClaudeCodeProvider integrates with AgentSession and shell tools for contro
     { type: 'result', usage: { input_tokens: 4, output_tokens: 2 } },
   ])
   const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
-  const environment = await hostlessShell({
+  const environment = await runnerShell({
     host: new LocalHost(process.cwd()),
     commands: new CommandRegistry(),
     shellIdFactory: () => 'claude-shell-session',
@@ -921,7 +922,7 @@ test('ClaudeCodeProvider keeps repeated MCP request ids distinct in AgentSession
     { type: 'result', usage: { input_tokens: 4, output_tokens: 2 } },
   ])
   const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
-  const environment = await hostlessShell({
+  const environment = await runnerShell({
     host: new LocalHost(process.cwd()),
     commands: new CommandRegistry(),
     shellIdFactory: () => 'claude-repeated-id-shell',

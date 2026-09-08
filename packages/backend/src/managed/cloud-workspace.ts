@@ -1,33 +1,22 @@
-import { mkdir } from 'node:fs/promises'
-import { join } from 'node:path'
 import { createId } from '@demicodes/utils'
+import { administrativeStore } from '../storage/host-store'
 import type { RunnerRegistry } from '../runner/registry'
 import type { ControlService, WorkspaceRecord } from '../storage/control'
 import type { ManagedHosts } from './lifecycle'
 
-export interface CloudWorkspaceDeps {
-  control: ControlService
-  managedHosts: ManagedHosts
-  registry: RunnerRegistry
-  /** Where a new host's home starts: `<stagingDir>/<workspaceId>`, empty, handed to the provisioner which owns it from then on. */
-  stagingDir: string
-}
+export interface CloudWorkspaceDeps { control: ControlService; managedHosts: ManagedHosts; registry: RunnerRegistry }
 
-/**
- * The Cloud device choice on workspace creation (`managed-hosts.md` §
- * Cloud workspace): one host owned by the workspace over an empty home,
- * and the workspace at that home. The id is chosen first so the device row
- * can name its owner before the workspace row exists; a host that never
- * comes up leaves neither — `provisionFresh` takes the device row with the
- * guest, since nothing references it.
- */
+/** Projects are directories on the user's shared device. */
 export async function createCloudWorkspace(deps: CloudWorkspaceDeps, userId: string, name: string): Promise<WorkspaceRecord> {
   const id = createId()
-  const owner = { kind: 'workspace' as const, id }
-  const home = join(deps.stagingDir, id)
-  await mkdir(home, { recursive: true })
-  const deviceId = (await deps.managedHosts.provisionFresh(owner, userId, home)).id
-  const path = deps.registry.deviceIdentity(deviceId)?.homeDir
-  if (!path) throw new Error(`machine ${deviceId} came online without reporting its home`)
-  return deps.control.createWorkspace({ id, userId, deviceId, path, name })
+  const device = await deps.control.getOrCreateCloudDevice(userId)
+  const release = await deps.managedHosts.enter(device)
+  try {
+    const home = deps.registry.deviceIdentity(device.id)?.homeDir
+    if (!home) throw new Error('Cloud did not report its home directory')
+    const path = `${home}/projects/${id}`
+    const host = deps.registry.hostFor({ deviceId: device.id, path }, `workspace-${id}`, administrativeStore)
+    await host.fs.mkdir(path, { recursive: true })
+    return await deps.control.createWorkspace({ id, userId, deviceId: device.id, path, name })
+  } finally { release() }
 }

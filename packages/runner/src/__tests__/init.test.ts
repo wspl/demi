@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test'
 import { guestBootConfig, parseKernelCmdline } from '../init/cmdline'
-import { BlockHomeImage, DEFAULT_GROWTH_POLICY, growthWanted, parseDf, reserveBytes, sectorsWritten } from '../init/home-image'
+import { BlockVolume, DEFAULT_GROWTH_POLICY, growthWanted, parseDf, reserveBytes } from '../init/volume'
 import { GUEST_LAYOUT, initPlan, resolvConf, runInit, type InitStep } from '../init/plan'
 
 // PID 1 without a kernel: the command line, the plan of spawns the boot
-// is, the home image's untouched report and growth decision, each over
+// is, the volume sync and growth decision, each over
 // recorded commands.
 
 const CMDLINE = 'console=ttyS0 init=/demi-runner panic=1 reboot=k demi.backend=https://demi.example.com demi.token=tok-123 demi.ip=172.16.5.2/30 demi.gw=172.16.5.1 demi.dns=1.1.1.1,8.8.8.8 quiet\n'
@@ -35,7 +35,8 @@ test('the plan: kernel filesystems, the upper pivoted over /, the home, the netw
   const lines = plan.map((step) => `${step.command} ${step.args.join(' ')}`)
   const at = (needle: string) => lines.findIndex((line) => line.includes(needle))
   expect(lines[0]).toBe('mount -t proc proc /proc')
-  expect(at('-t overlay')).toBeGreaterThan(at('-t tmpfs upper /run/upper'))
+  expect(lines).toContain('mount -t ext4 /dev/vdc /run/upper')
+  expect(at('-t overlay')).toBeGreaterThan(at('-t ext4 /dev/vdc /run/upper'))
   expect(at('pivot_root /run/newroot /run/newroot/oldroot')).toBeGreaterThan(at('--move /proc /run/newroot/proc'))
   // /run holds the new root: it cannot move into it; a fresh one follows the pivot.
   expect(lines.some((line) => line.includes('--move /run'))).toBe(false)
@@ -68,30 +69,19 @@ test('runInit stops at the first fatal failure and skips a tolerated one', async
   expect(ran).toEqual(['mount a', 'mount b', 'mount c'])
 })
 
-const DISKSTATS = [
-  ' 254       0 vda 1200 0 96000 300 0 0 0 0 0 200 300 0 0 0 0 0 0',
-  ' 254      16 vdb 40 0 800 10 12 3 96 20 0 30 30 0 0 0 0 0 0',
-].join('\n')
-
-test('the home image: untouched while the sectors written stand at the baseline', async () => {
-  let written = 96
+test('a writable volume syncs its mount and grows when capacity is low', async () => {
   const ran: string[] = []
   const io = {
     run: async (command: string, args: string[]) => {
       ran.push(`${command} ${args.join(' ')}`)
       return { code: 0, stdout: new TextEncoder().encode(command === 'df' ? `Filesystem 1-blocks Used Available Capacity Mounted on\n/dev/vdb ${1024 ** 3} 0 ${available} 0% /home\n` : '') }
     },
-    readFile: async () => new TextEncoder().encode(DISKSTATS.replace('12 3 96', `12 3 ${written}`)),
   }
   let available = 900 * 1024 ** 2
-  expect(sectorsWritten(DISKSTATS, 'vdb')).toBe(96)
-  expect(sectorsWritten(DISKSTATS, 'vdc')).toBeNull()
-  const home = new BlockHomeImage(io, '/dev/vdb', '/home')
-  await home.baseline()
-  expect(await home.sync()).toEqual({ untouched: true })
+  const home = new BlockVolume(io, '/dev/vdb', '/home')
+  await home.sync()
   expect(ran).toEqual(['sync -f /home'])
-  written = 104
-  expect(await home.sync()).toEqual({ untouched: false })
+  await home.sync()
 
   expect(await home.wanted()).toBeNull()
   available = 100 * 1024 ** 2

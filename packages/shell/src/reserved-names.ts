@@ -6,7 +6,7 @@
 /** Shell language words and builtins the interpreters own. */
 const SHELL_WORDS = ['.', 'bash', 'break', 'cd', 'command', 'continue', 'echo', 'exit', 'export', 'jobs', 'local', 'popd', 'printf', 'pushd', 'read', 'return', 'set', 'sh', 'shift', 'source', 'test', 'true', 'false', 'unset', 'wait']
 
-/** Coreutils and text tools: tinybash's builtin set and the machine's usual companions. */
+/** Coreutils and text tools: the machine's usual commands. */
 const UNIX_TOOLS = ['awk', 'cat', 'chmod', 'cp', 'cut', 'du', 'file', 'find', 'grep', 'head', 'jq', 'ls', 'mkdir', 'mv', 'nl', 'rg', 'rm', 'sed', 'sort', 'stat', 'tail', 'tee', 'touch', 'tr', 'tree', 'uniq', 'wc', 'xargs', 'yq']
 
 /** Toolchains a coding agent invokes by name. */

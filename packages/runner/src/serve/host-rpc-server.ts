@@ -11,6 +11,7 @@ import { deviceFallback } from './device-env'
  */
 export class HostRpcServer {
   private readonly spawns = new Map<string, HostSpawnHandle>()
+  private readonly starting = new Map<string, Promise<void>>()
 
   constructor(
     private readonly host: Pick<Host, 'fs' | 'process'>,
@@ -24,20 +25,26 @@ export class HostRpcServer {
       return
     }
     switch (message.type) {
-      case 'spawn':
-        await this.handleSpawn(message)
+      case 'spawn': {
+        const ready = this.handleSpawn(message)
+        this.starting.set(message.spawnId, ready)
+        try { await ready } finally { this.starting.delete(message.spawnId) }
         return
+      }
       case 'spawn_stdin': {
+        await this.starting.get(message.spawnId)
         const spawn = this.spawns.get(message.spawnId)
         await spawn?.writeStdin(message.bytes).catch(() => {})
         return
       }
       case 'spawn_stdin_end': {
+        await this.starting.get(message.spawnId)
         const spawn = this.spawns.get(message.spawnId)
         await spawn?.closeStdin().catch(() => {})
         return
       }
       case 'spawn_kill': {
+        await this.starting.get(message.spawnId)
         const spawn = this.spawns.get(message.spawnId)
         await spawn?.kill(message.signal).catch(() => {})
         return
@@ -50,6 +57,7 @@ export class HostRpcServer {
 
   /** Kills every in-flight spawn — call when the connection drops. */
   async close(): Promise<void> {
+    await Promise.all(this.starting.values())
     const spawns = [...this.spawns.values()]
     this.spawns.clear()
     await Promise.all(spawns.map((spawn) => spawn.kill('SIGKILL').catch(() => {})))
@@ -71,9 +79,7 @@ export class HostRpcServer {
     const { spawnId } = message
     let handle: HostSpawnHandle
     try {
-      const spawn = this.host.process.spawn
-      if (!spawn) throw new Error('this Host runs no processes')
-      handle = await spawn.call(this.host.process, {
+      handle = await this.host.process.spawn({
         command: message.command,
         ...(message.args ? { args: message.args } : {}),
         ...(message.cwd !== undefined ? { cwd: message.cwd } : {}),

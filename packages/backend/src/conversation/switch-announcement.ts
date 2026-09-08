@@ -2,7 +2,6 @@ import type { AgentHarness } from '@demicodes/agent'
 import type { CodingState } from '@demicodes/coding-agent'
 import type { RunnerRegistry } from '../runner/registry'
 import type { AttachedHostRecord, ControlService, ExecutionTarget } from '../storage/control'
-import { HOSTLESS_HOME } from './scoped-transport'
 
 /**
  * Injects the context block the model needs at a turn boundary
@@ -22,9 +21,13 @@ export function switchAnnouncementPreamble(control: ControlService, registry: Ru
     if (ctx.transcript.blocks.some(block => block.type === 'user' && block.preamble?.includes(marker))) return null
     const attached = await control.listAttachedHosts(conversation.id)
     const lines: string[] = [marker]
+    const resetMarker = `[Cloud reset ${conversation.cloudResetId}]`
+    if (conversation.cloudResetId && !ctx.transcript.blocks.some(block => block.type === 'user' && block.preamble?.includes(resetMarker))) {
+      lines.push(resetMarker, 'Cloud was reset: system packages and configuration were rebuilt from the base image. Files under /home remain. Running processes, temporary files, and previous shell state are gone; check the environment before continuing.')
+    }
 
     const switchDescription = conversation.lastSwitch
-      ? `Previous target: ${await describe(control, conversation.lastSwitch.from)}. Current target: ${await describe(control, conversation.lastSwitch.to)}. New shells start in ${targetDirectory(conversation.lastSwitch.to, registry)}.`
+      ? `Previous target: ${await describe(control, conversation.lastSwitch.from)}. Current target: ${await describe(control, conversation.lastSwitch.to)}. New shells start in ${conversation.lastSwitch.to.path}.`
       : null
     const previousSwitch = [...ctx.transcript.blocks].reverse().find(block => block.type === 'user' && block.preamble?.includes('[Execution target switched]'))
     const switchObserved = switchDescription !== null && previousSwitch?.type === 'user' && previousSwitch.preamble?.includes(switchDescription)
@@ -35,9 +38,9 @@ export function switchAnnouncementPreamble(control: ControlService, registry: Ru
         switchDescription!,
         'No files were moved: everything created earlier lives on the previous target, and file paths from before the switch — including the full outputs of earlier commands — are stale here.',
       )
-      const departed = from.kind === 'hostless' ? null : attached.find((host) => host.deviceId === from.deviceId)
+      const departed = from.deviceId === null ? null : attached.find((host) => host.deviceId === from.deviceId)
       if (departed) {
-        const fromDir = targetDirectory(from, registry)
+        const fromDir = from.path
         lines.push(
           `The previous host stays attached as "${departed.name}": \`demi host shell --host ${departed.name} <script>\` runs a shell string there with byte-faithful stdio, starting in ${fromDir} (e.g. \`demi host shell --host ${departed.name} "tar c -C ${fromDir} ." | tar x\` pulls its files into the current directory).`,
         )
@@ -65,14 +68,8 @@ export function attachedDirectory(host: AttachedHostRecord, registry: RunnerRegi
   return host.cwd ?? registry.deviceIdentity(host.deviceId)?.homeDir ?? 'its home directory'
 }
 
-function targetDirectory(target: ExecutionTarget, registry: RunnerRegistry): string {
-  if (target.kind === 'hostless') return HOSTLESS_HOME
-  if (target.kind === 'workspace') return target.path
-  return registry.deviceIdentity(target.deviceId)?.homeDir ?? 'its home directory'
-}
-
 async function describe(control: ControlService, target: ExecutionTarget): Promise<string> {
-  if (target.kind === 'hostless') return `the virtual environment (files under ${HOSTLESS_HOME})`
+  if (target.deviceId === null) return 'Cloud (not allocated)'
   const device = await control.getDevice(target.deviceId)
   const name = device ? `"${device.name}"` : target.deviceId
   if (target.kind === 'workspace') {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { demoDeviceInstallation } from '../fixtures/device-installation'
+import type { CloudState } from '@demicodes/web-ui/cloud/types'
 import { computed, ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import type { ThemeChoice } from '@demicodes/web-ui/theme/appTheme'
@@ -25,6 +26,16 @@ const props = defineProps<{
   tab: string
   state: SettingsState
 }>()
+
+const cloud = ref<CloudState>({ state: 'running', phase: null, error: null, systemBytes: 16 * 1024 ** 3, homeBytes: 32 * 1024 ** 3 })
+async function resetCloud() {
+  cloud.value.state = 'resetting'
+  for (const phase of ['stopping', 'saving', 'rebuilding', 'booting', 'ready'] as const) {
+    cloud.value.phase = phase
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+  cloud.value.state = 'running'
+}
 
 const s = computed(() => props.state)
 
@@ -248,7 +259,7 @@ function resetShortcuts() {
 
   <SettingsArchived v-else-if="tab === 'archived'" :conversations="s.archived" @restore="restoreArchived" />
 
-  <SettingsDevices v-else-if="tab === 'devices'" :devices="s.devices" :overlay-store="appOverlayStore" :installation="demoDeviceInstallation" :claim-device="claimDevice" @revoke="revokeDevice" />
+  <SettingsDevices v-else-if="tab === 'devices'" :cloud="cloud" @reset-cloud="resetCloud" :devices="s.devices" :overlay-store="appOverlayStore" :installation="demoDeviceInstallation" :claim-device="claimDevice" @revoke="revokeDevice" />
 
   <SettingsKeyboard v-else-if="tab === 'keyboard'" :bindings="s.keys" :message="keyMessage" @rebind="rebind" @reset="resetShortcuts" />
 

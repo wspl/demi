@@ -3,9 +3,10 @@ import { mkdtemp, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { hostlessShellFactory, probeCommand } from '@demicodes/host-virtual/testing'
+import { runnerShellFactory, probeCommand } from '@demicodes/backend/testing'
+
 import type { ModelSelection } from '@demicodes/core'
-import { LocalHost } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/runner/testing'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { AgentServer, type AgentHarness, type ClientSessionEvent } from '../index'
@@ -71,7 +72,7 @@ test('action metadata switches Host while the same Host keeps its shell state', 
         [events.text('done'), events.response()],
       ]),
   })
-  const server = new AgentServer({ store: memoryAgentStores(), shellEnvironment: hostlessShellFactory, agent: routedHarness(hosts), providers: [provider] })
+  const server = new AgentServer({ store: memoryAgentStores(), shellEnvironment: runnerShellFactory, agent: routedHarness(hosts), providers: [provider] })
   const client = server.client()
   const shellOutputs: ClientSessionEvent[] = []
   client.subscribe((event) => {
@@ -111,7 +112,7 @@ test('a command handle cannot be controlled from another action Host', async () 
   const commandId = 'alice-command'
   let commandIndex = 0
   const server = new AgentServer({ store: memoryAgentStores(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: routedHarness(hosts),
     providers: [provider],
     shell: { commandIdFactory: () => (commandIndex++ === 0 ? commandId : `${commandId}-${commandIndex}`) },

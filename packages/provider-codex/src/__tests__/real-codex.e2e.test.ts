@@ -10,8 +10,9 @@ import {
   type AgentToolInvokeResult,
 } from '@demicodes/agent'
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
-import { hostlessShell } from '@demicodes/host-virtual/testing'
-import { LocalHost } from '@demicodes/host-virtual/testing'
+import { runnerShell } from '@demicodes/backend/testing'
+
+import { LocalHost } from '@demicodes/runner/testing'
 import { FileCodexAuthStore } from '../auth'
 import { CodexProvider } from '../provider'
 
@@ -106,7 +107,7 @@ cacheE2e('CodexProvider reports provider cache usage on repeated stable-prefix r
 toolE2e('CodexProvider drives a real AgentSession shell tool roundtrip', async () => {
   await expectCodexAuthAvailable()
   const provider = new CodexProvider({ transport })
-  const environment = await hostlessShell({
+  const environment = await runnerShell({
     host: new LocalHost(process.cwd()),
     commands: new CommandRegistry(),
     shellIdFactory: () => `codex-tool-e2e-shell-${randomUUID()}`,

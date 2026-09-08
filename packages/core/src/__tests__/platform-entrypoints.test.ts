@@ -46,9 +46,7 @@ const platformNeutralEntries = [
   '@demicodes/shell',
   '@demicodes/coding-agent',
   '@demicodes/runner-protocol',
-  '@demicodes/host-virtual',
   '@demicodes/command-loader',
-  '@demicodes/tinybash',
   '@demicodes/host-remote',
 ] as const
 
@@ -136,7 +134,6 @@ test('package manifests preserve layering boundaries', () => {
   for (const packageName of platformNeutralPackages) {
     // Hosts are the product's to inject; tests may run against one.
     expect(productionDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/host-remote')
-    expect(productionDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/host-virtual')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/provider-claude-code')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/provider-codex')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/provider-openai-api')

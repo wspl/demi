@@ -2,7 +2,7 @@
 
 Demi is a hosted coding-agent product and the TypeScript packages it is
 built from: a provider-agnostic agent runtime, a command system with one
-manifest for every execution surface, a hostless shell, and a runner that
+manifest for every execution surface, and a runner that
 turns any machine into an execution target. The design is recorded under
 [docs/demi-next/](docs/demi-next/overview.md); the package contract is
 [docs/package-boundaries.md](docs/package-boundaries.md).
@@ -10,9 +10,8 @@ turns any machine into an execution target. The design is recorded under
 - **Provider-agnostic** — one inference contract (`@demicodes/provider`) with
   adapters for Claude Code, Codex, the Anthropic API, the OpenAI API, Google
   Gemini and Grok Build.
-- **One backend, many targets** — a conversation runs hostless (files in its
-  own store, scripts in `@demicodes/tinybash`) or on a machine reached through
-  its runner; switching targets is a first-class operation.
+- **One backend, many targets** — a conversation runs on its user’s managed
+  Cloud or a connected device, through the same runner; switching targets is a first-class operation.
 - **One command manifest** — every root command (`demi …`) is defined once in
   the backend and served to every surface; the runner caches it and makes the
   roots real executables.
@@ -30,12 +29,10 @@ Packages depend strictly downward (enforced by a boundary test):
 ```
 utils, core            shared helpers + data types (zero deps)
 provider               abstract inference contract          -> core, utils
-tinybash               the hostless shell (standalone)      -> utils
-shell                  Host contract + command system       -> tinybash (hostless entry), utils
+shell                  Host contract + command system       -> utils
 agent                  session runtime + protocol           -> core, provider, shell, utils
 coding-agent           coding harness + the demi root       -> agent, core, shell, utils
 provider-*             concrete providers                   -> core, provider, utils
-host-virtual           the hostless Host                    -> shell, utils
 command-loader         manifest + loader                    -> shell, utils
 runner-protocol        the runner wire                      -> shell, utils
 host-remote            the backend's Host over a runner     -> runner-protocol, shell, utils

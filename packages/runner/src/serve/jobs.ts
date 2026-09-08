@@ -54,8 +54,6 @@ export interface JobTableOptions {
   pathPrefix?: string[]
   /** Entries set in every job's env regardless of what the backend named: where the runner lives (`DEMI_HOME`). */
   fixedEnv?: Record<string, string>
-  /** Every job runs as this user: PID 1 spawning as the guest user. */
-  runAs?: { uid: number; gid: number }
   /** The device ends of a job's pipes (`runner.md` § Pipes); absent, a job with pipes reports them failed. */
   pipes?: PipeEnds
   send(message: RunnerToBackendMessage): void
@@ -77,6 +75,7 @@ interface Job {
 
 export class JobTable {
   private readonly jobs = new Map<string, Job>()
+  private readonly starting = new Map<string, Promise<void>>()
 
   constructor(private readonly options: JobTableOptions) {}
 
@@ -87,16 +86,22 @@ export class JobTable {
 
   async handleMessage(message: BackendToRunnerMessage): Promise<void> {
     switch (message.type) {
-      case 'job_start':
-        await this.start(message)
+      case 'job_start': {
+        const ready = this.start(message)
+        this.starting.set(message.jobId, ready)
+        try { await ready } finally { this.starting.delete(message.jobId) }
         return
+      }
       case 'job_stdin':
+        await this.starting.get(message.jobId)
         await this.jobs.get(message.jobId)?.handle.writeStdin(message.bytes).catch(noop)
         return
       case 'job_stdin_end':
+        await this.starting.get(message.jobId)
         await this.jobs.get(message.jobId)?.handle.closeStdin().catch(noop)
         return
       case 'job_kill':
+        await this.starting.get(message.jobId)
         await this.jobs.get(message.jobId)?.handle.kill(message.signal).catch(noop)
         return
       default:
@@ -106,6 +111,7 @@ export class JobTable {
 
   /** Kills every running job — the connection dropped. */
   async close(): Promise<void> {
+    await Promise.all(this.starting.values())
     const jobs = [...this.jobs.values()]
     this.jobs.clear()
     await Promise.all(jobs.map((job) => job.handle.kill('SIGKILL').catch(noop)))
@@ -132,7 +138,6 @@ export class JobTable {
           [JOB_ID_VAR]: jobId,
         },
         tee: { stdoutPath, stderrPath, viewLimit: JOB_VIEW_BYTES, ...(message.stdout ? { stream: true } : {}) },
-        ...(this.options.runAs ?? {}),
       })
     } catch (error) {
       this.options.send({ type: 'job_exit', jobId, exitCode: null, signal: errorMessage(error), spawnError: { kind: 'other' } })

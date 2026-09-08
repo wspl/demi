@@ -103,7 +103,7 @@ A short window is the idiomatic way to fan out.
 
 Spawn is an `rpc` command: on a machine the command-mode process relays it
 to the backend and stays attached for its stdin (`runner.md` § The local
-relay); hostless, the backend calls it directly. `demi agent … &` is not a
+relay). `demi agent … &` is not a
 spawn path: a backgrounded job's stdin is not the tool call's, so nothing
 steers the child. The short subcommands below are fine either way.
 
@@ -637,7 +637,7 @@ Only the node assembly instantiates `AgentSession`.
 - `packages/backend/src/__tests__/storage.test.ts` — the SQLite realization:
   the same contract over the conversation database, media by reference, the
   cold transcript read of the root node
-- `packages/host-virtual/src/__tests__/hostless-environment.test.ts` — registered command abort
+- `packages/backend/src/__tests__/host-shell.test.ts` — registered command abort
   signal, live stdout, `shell_write` as stdin stream, byte-clean pipes around
   a virtual foreground job
 - `packages/coding-agent/src/__tests__/coding-harness.test.ts` — unnamed inherit / `explore`

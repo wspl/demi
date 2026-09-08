@@ -26,7 +26,7 @@ describe('buildManifest', () => {
     expect((await buildManifest(roots, { transpile })).hash).not.toBe(a.hash)
   })
 
-  test('the tree carries kinds, help, positionals and JSON Schema with path marks', async () => {
+  test('the tree carries kinds, help, positionals and JSON Schema', async () => {
     const manifest = await buildManifest(testRoots(), { transpile })
     const root = manifest.roots.scout!.tree
     if (!isManifestGroup(root)) throw new Error('root')
@@ -37,7 +37,7 @@ describe('buildManifest', () => {
     expect(copy.module).toBeDefined()
     expect(manifest.modules[copy.module!]).toContain('export default')
     const input = copy.input as { properties: Record<string, Record<string, unknown>>; required: string[] }
-    expect(input.properties.from).toMatchObject({ type: 'string', path: true, description: 'Source path' })
+    expect(input.properties.from).toMatchObject({ type: 'string', description: 'Source path' })
     expect(input.properties.upper).toMatchObject({ type: 'boolean' })
     expect(input.required).toEqual(['from', 'to'])
     const note = root.subcommands[2]!

@@ -1,7 +1,0 @@
-{
-  "exit": 2,
-  "stdout": "",
-  "stderr": "sort: read failed: -: Is a directory\n",
-  "user": "zan",
-  "group": "zan"
-}

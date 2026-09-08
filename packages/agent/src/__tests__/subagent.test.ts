@@ -2,10 +2,11 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { hostlessShellFactory, probeCommand } from '@demicodes/host-virtual/testing'
+import { runnerShellFactory, probeCommand } from '@demicodes/backend/testing'
+
 import { waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
-import { LocalHost } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/runner/testing'
 import { defineProvider, type InferenceRequest, type ProviderSelection } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {
@@ -75,7 +76,7 @@ async function openHarness(options: {
   }
   const server = new AgentServer({
     store: () => store,
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: harness,
     providers: [defineProvider({ id: 'stub', displayName: 'stub', createRuntime: () => new StubProvider(options.turns) })],
     shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
@@ -102,7 +103,8 @@ function itemsText(request: InferenceRequest): string {
 }
 
 function spawnCall(toolUseId: string, script: string, timeoutMs: number): ReturnType<typeof events.toolCall> {
-  return events.toolCall(toolUseId, 'shell_exec', { script, timeoutMs })
+  // Give real command processes time to publish the child id before the scripted parent continues.
+  return events.toolCall(toolUseId, 'shell_exec', { script, timeoutMs: Math.max(timeoutMs, 200) })
 }
 
 function subagentIdFrom(request: InferenceRequest): string {

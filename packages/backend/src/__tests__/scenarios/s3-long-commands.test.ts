@@ -15,7 +15,7 @@ const fake = new FakeProvisioner()
 let world: World
 
 beforeAll(async () => {
-  world = await World.create({ runners: ['alpha'], managedHosts: { provisioner: fake, config: { hostsPerUser: 30 } } })
+  world = await World.create({ runners: ['alpha'], managedHosts: { provisioner: fake, config: { maxRunning: 30 } } })
 })
 
 afterAll(async () => {
@@ -52,7 +52,7 @@ function pollThenSay(driverId: string, text: string, everyMs = 150): TurnScript 
   return poll
 }
 
-describe.each<Target>(['hostless', 'runner:alpha'])('S3 long commands on %s', (target) => {
+describe.each<Target>(['cloud', 'runner:alpha'])('S3 long commands on %s', (target) => {
   test('a command polled to its end with shell_status', async () => {
     const driver = await world.conversation(target)
     world.model.scriptChild(model.slowSay('child done', 1_200))

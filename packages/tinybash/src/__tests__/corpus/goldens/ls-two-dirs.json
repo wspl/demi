@@ -1,7 +1,0 @@
-{
-  "exit": 0,
-  "stdout": "docs:\nreadme.md\n\nsrc:\nlib\nmain.ts\nutil.ts\n",
-  "stderr": "",
-  "user": "bytedance",
-  "group": "bytedance"
-}

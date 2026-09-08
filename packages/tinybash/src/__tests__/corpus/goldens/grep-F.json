@@ -1,7 +1,0 @@
-{
-  "exit": 0,
-  "stdout": "export const x = 1\nexport const y = 2\n",
-  "stderr": "",
-  "user": "bytedance",
-  "group": "bytedance"
-}

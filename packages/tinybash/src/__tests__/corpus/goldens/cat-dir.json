@@ -1,7 +1,0 @@
-{
-  "exit": 0,
-  "stdout": "after\n",
-  "stderr": "cat: src: Is a directory\n",
-  "user": "bytedance",
-  "group": "bytedance"
-}
