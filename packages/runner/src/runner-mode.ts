@@ -90,7 +90,10 @@ export class RunnerMode {
 
   private executionEnvironment(context: ExecutionContext, env: Record<string, string | undefined>): Record<string, string> {
     const bin = context.manifest ? this.cache.binDirectory(context.manifest) : dirnamePath(this.options.clientExecutable)
-    return { ...this.contexts.environment(context, this.endpoint), PATH: `${bin}:${env.PATH ?? this.options.deviceEnv.PATH ?? '/usr/bin:/bin'}` }
+    return {
+      ...this.contexts.environment(context, this.endpoint),
+      PATH: `${bin}:${env.PATH ?? this.options.deviceEnv.PATH ?? '/usr/bin:/bin'}`,
+    }
   }
 
   /** The device token: the one held in memory, else the state directory's. */
@@ -100,7 +103,7 @@ export class RunnerMode {
 
   /** A command from the runner's own machine, run to its end — the home's `sync`, `df`, `resize2fs`. */
   private async command(command: string, args: string[]): Promise<{ code: number | null; stdout: Uint8Array }> {
-    const child = await this.host.process.spawn!({ command, args })
+    const child = await this.host.process.spawn({ command, args })
     await child.closeStdin()
     const [stdout, exit] = await Promise.all([collectBytes(child.stdout), child.wait()])
     return { code: exit.exitCode, stdout }
@@ -114,7 +117,10 @@ export class RunnerMode {
     await this.host.fs.mkdir(this.options.stateDir, { recursive: true })
     await this.host.fs.chmod(this.options.stateDir, 0o700)
     const lease = await tjs.open(`${this.options.stateDir}/runner.lock`, 'a', 0o600)
-    if (!lease.lock()) { await lease.close(); throw new Error('runner already active for this installation') }
+    if (!lease.lock()) {
+      await lease.close()
+      throw new Error('runner already active for this installation')
+    }
     let runtimeDir: string | null = null
     let published = false
     try {
@@ -128,16 +134,27 @@ export class RunnerMode {
       this.endpoint = windows ? String.raw`\\.\pipe\demi-${startId}` : `${runtimeDir}/ipc.sock`
       const secret = crypto.randomUUID().replaceAll('-', '')
       this.relay = await RelayServer.listen(this.endpoint, {
-        send: message => this.sendToBackend(message), host: this.host, contexts: this.contexts,
+        send: message => this.sendToBackend(message),
+        host: this.host,
+        contexts: this.contexts,
         source: context => {
           if (!context.manifest) throw new Error('no command manifest for this execution context')
           return directorySource(`${this.state.commandsDir}/${context.manifest.hash}`, this.host.fs)
         },
-        pipes: this.pipes, manageSecret: secret,
-        drain: async () => { this.draining = true; while (this.contexts.count) await delay(50) },
+        pipes: this.pipes,
+        manageSecret: secret,
+        drain: async () => {
+          this.draining = true
+          while (this.contexts.count) await delay(50)
+        },
         stop: () => this.stop(),
       })
-      await this.host.fs.writeFile(this.state.activePath, new TextEncoder().encode(JSON.stringify({ endpoint: this.endpoint, secret, release: tjs.env.DEMI_RELEASE_ID ?? RUNNER_VERSION })))
+      const activeRunner = {
+        endpoint: this.endpoint,
+        secret,
+        release: tjs.env.DEMI_RELEASE_ID ?? RUNNER_VERSION,
+      }
+      await this.host.fs.writeFile(this.state.activePath, new TextEncoder().encode(JSON.stringify(activeRunner)))
       published = true
       await this.host.fs.chmod(this.state.activePath, 0o600)
       const checkMs = this.options.volumeCheckMs ?? 60_000
@@ -155,7 +172,8 @@ export class RunnerMode {
     } finally {
       if (this.volumeCheckTimer) clearInterval(this.volumeCheckTimer)
       this.volumeCheckTimer = null
-      this.relay?.close(); this.relay = null
+      this.relay?.close()
+      this.relay = null
       this.contexts.clear()
       if (published) await this.host.fs.rm(this.state.activePath, { force: true })
       if (runtimeDir) await this.host.fs.rm(runtimeDir, { recursive: true, force: true })
@@ -177,7 +195,10 @@ export class RunnerMode {
       this.growthPending.set(volume, id)
       try {
         const bytes = await image.wanted()
-        if (bytes === null || !this.link) { this.growthPending.delete(volume); continue }
+        if (bytes === null || !this.link) {
+          this.growthPending.delete(volume)
+          continue
+        }
         this.sendToBackend({ type: 'volume_grow', id, volume, bytes })
       } catch (error) {
         this.growthPending.delete(volume)
@@ -194,9 +215,13 @@ export class RunnerMode {
   private sendToBackend(message: RunnerToBackendMessage): void {
     const link = this.link
     if (!link) throw new Error('runner: not connected')
-    void link.send(this.wire.encode(message)).catch(() => {})
+    // The receive loop owns disconnection and tears down all jobs and calls.
+    void link.send(this.wire.encode(message)).catch(noop)
     // A job that just ended may have filled the home.
-    if (message.type === 'spawn_exit') { this.relay?.cancelOwner(`spawn:${message.spawnId}`); this.contexts.remove(`spawn:${message.spawnId}`) }
+    if (message.type === 'spawn_exit') {
+      this.relay?.cancelOwner(`spawn:${message.spawnId}`)
+      this.contexts.remove(`spawn:${message.spawnId}`)
+    }
     if (message.type === 'job_exit') {
       this.contexts.remove(`job:${message.jobId}`)
       this.relay?.cancelJob(message.jobId)
@@ -247,7 +272,13 @@ export class RunnerMode {
           type: 'hello',
           protocol: RUNNER_PROTOCOL_VERSION,
           ...(deviceToken ? { deviceToken } : {}),
-          runner: { name: this.options.name ?? identity.hostname, platform: `txiki.js/${runtimeVersion}`, version: RUNNER_VERSION, identity: { ...this.host.identity }, ...(this.options.managed ? { managed: true } : {}) },
+          runner: {
+            name: this.options.name ?? identity.hostname,
+            platform: `txiki.js/${runtimeVersion}`,
+            version: RUNNER_VERSION,
+            identity: { ...this.host.identity },
+            ...(this.options.managed ? { managed: true } : {}),
+          },
         }),
       )
       for (;;) {
@@ -261,16 +292,7 @@ export class RunnerMode {
           continue
         }
         if (message.type === 'job_stdin' || message.type === 'job_stdin_end' || message.type === 'spawn_stdin' || message.type === 'spawn_stdin_end') {
-          const key = 'jobId' in message ? `job:${message.jobId}` : `spawn:${message.spawnId}`
-          let queue = inputQueues.get(key)
-          if (!queue) {
-            queue = new SerialQueue()
-            inputQueues.set(key, queue)
-          }
-          const current = queue
-          void queue.run(() => this.handle(message, { rpc, jobs })).catch(noop).finally(() => {
-            if (current.idle && inputQueues.get(key) === current) inputQueues.delete(key)
-          })
+          this.enqueueInput(message, inputQueues, { rpc, jobs })
           continue
         }
         const handled = await this.handle(message, { rpc, jobs })
@@ -292,10 +314,48 @@ export class RunnerMode {
     return outcome
   }
 
+  private enqueueInput(
+    message: Extract<BackendToRunnerMessage, { type: 'job_stdin' | 'job_stdin_end' | 'spawn_stdin' | 'spawn_stdin_end' }>,
+    queues: Map<string, SerialQueue>,
+    ends: { rpc: HostRpcServer; jobs: JobTable },
+  ): void {
+    const key = 'jobId' in message ? `job:${message.jobId}` : `spawn:${message.spawnId}`
+    let queue = queues.get(key)
+    if (!queue) {
+      queue = new SerialQueue()
+      queues.set(key, queue)
+    }
+    const current = queue
+    void current.run(() => this.handle(message, ends))
+      // A child can close stdin before queued writes finish; its exit is reported separately.
+      .catch(noop)
+      .finally(() => {
+        if (current.idle && queues.get(key) === current) queues.delete(key)
+      })
+  }
+
   private async handle(message: BackendToRunnerMessage, ends: { rpc: HostRpcServer; jobs: JobTable }): Promise<'online' | 'rejected' | undefined> {
     if (this.draining) {
-      if (message.type === 'job_start') { this.sendToBackend({ type: 'job_exit', jobId: message.jobId, exitCode: null, spawnError: { kind: 'other' }, signal: 'runner is draining for upgrade' }); return }
-      if (message.type === 'spawn') { this.sendToBackend({ type: 'spawn_exit', spawnId: message.spawnId, exitCode: null, spawnError: { kind: 'other' }, signal: 'runner is draining for upgrade' }); return }
+      if (message.type === 'job_start') {
+        this.sendToBackend({
+          type: 'job_exit',
+          jobId: message.jobId,
+          exitCode: null,
+          spawnError: { kind: 'other' },
+          signal: 'runner is draining for upgrade',
+        })
+        return
+      }
+      if (message.type === 'spawn') {
+        this.sendToBackend({
+          type: 'spawn_exit',
+          spawnId: message.spawnId,
+          exitCode: null,
+          spawnError: { kind: 'other' },
+          signal: 'runner is draining for upgrade',
+        })
+        return
+      }
     }
     switch (message.type) {
       case 'hello_ok': {
@@ -336,7 +396,9 @@ export class RunnerMode {
           await this.volumes[message.volume]?.grown(message.bytes)
         } catch (error) {
           this.log(`${message.volume} growth failed: ${errorMessage(error)}`)
-        } finally { this.growthPending.delete(message.volume) }
+        } finally {
+          this.growthPending.delete(message.volume)
+        }
         return undefined
       case 'manifest':
         try {
