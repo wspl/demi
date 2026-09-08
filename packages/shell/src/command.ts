@@ -134,7 +134,7 @@ export interface CommandExecutionContext {
   /**
    * How a `runtime` module's text becomes its function. Absent, the text is
    * imported through a `blob:` URL; an embedder whose runtime imports only
-   * files (tinyjs) supplies the import from its module cache.
+   * files (txiki.js) supplies the import from its module cache.
    */
   loadModule?: (module: RuntimeModule) => Promise<CommandModule>
   onRunningHint?: DispatchIO['onRunningHint']

@@ -5,7 +5,7 @@ import { expect } from 'bun:test'
 import type { Block, ModelSelection } from '@demicodes/core'
 import { defineProvider } from '@demicodes/provider'
 import { JOB_VIEW_BYTES, type RunnerProtocolMessage } from '@demicodes/runner-protocol'
-import { startTinyjsRunner, type TinyjsRunner } from '@demicodes/runner/testing'
+import { startTxikiRunner, type TxikiRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
 import type { BackendOptions } from '../../index'
 import { openBackend, type TestBackend } from '../session'
@@ -17,7 +17,7 @@ import { Driver, type Target } from './driver'
 
 /**
  * The world: one backend over a temp data directory, its `stub` provider
- * type answered by the scripted model, and the packed tinyjs runners named
+ * type answered by the scripted model, and the packed txiki.js runners named
  * in `runners`, each paired as a device with a workspace at its home. One
  * world per test file, one conversation per scenario.
  */
@@ -42,7 +42,7 @@ export interface Device {
   name: string
   home: string
   stateDir: string
-  runner: TinyjsRunner
+  runner: TxikiRunner
   deviceId: string
   workspaceId: string
   /** Jobs that were running when the runner was killed: they never report an exit. */
@@ -112,7 +112,7 @@ export class World {
   async pair(name: string): Promise<Device> {
     const home = await mkdtemp(join(tmpdir(), `demi-scenario-${name}-`))
     const stateDir = await mkdtemp(join(tmpdir(), `demi-scenario-${name}-state-`))
-    const runner = await startTinyjsRunner({ backendUrl: this.url, stateDir, home, name })
+    const runner = await startTxikiRunner({ backendUrl: this.url, stateDir, home, name })
     await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 15_000 })
     const { device } = await this.api<{ device: { id: string } }>('/api/devices/claim', { code: runner.codes[0] })
     await waitFor(() => runner.statuses.includes('online'), () => runner.log.join('\n'), { timeoutMs: 10_000 })
@@ -135,7 +135,7 @@ export class World {
 
   async returnRunner(name: string): Promise<void> {
     const device = this.device(name)
-    device.runner = await startTinyjsRunner({ backendUrl: this.url, stateDir: device.stateDir, home: device.home, name })
+    device.runner = await startTxikiRunner({ backendUrl: this.url, stateDir: device.stateDir, home: device.home, name })
     await waitFor(() => device.runner.statuses.includes('online'), () => device.runner.log.join('\n'), { timeoutMs: 15_000 })
   }
 

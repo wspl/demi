@@ -3,7 +3,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { startTinyjsRunner } from '@demicodes/runner/testing'
+import { startTxikiRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
 import { login, openBackend, type TestBackend, type WebSession } from './session'
 
@@ -44,7 +44,7 @@ test("the matrix: another user's objects answer 404 on every route, to users and
   const bob = await createUser(backend, 'bob')
 
   // Alice's world: a device, a workspace on it, a conversation with an attached host, an attachment.
-  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home, name: 'alice-laptop' })
+  const runner = await startTxikiRunner({ backendUrl: backend.url, stateDir, home, name: 'alice-laptop' })
   await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 10_000 })
   const { device } = await must<{ device: { id: string } }>(await alice.fetch('/api/devices/claim', json({ code: runner.codes[0] })), 201)
   const { workspace } = await must<{ workspace: { id: string } }>(await alice.fetch('/api/workspaces', json({ deviceId: device.id, path: home, name: 'proj' })), 201)
@@ -123,7 +123,7 @@ test("the matrix: another user's objects answer 404 on every route, to users and
   expect((await must<{ hosts: unknown[] }>(await alice.fetch(`/api/conversations/${conversation.id}/hosts`), 200)).hosts).toHaveLength(0)
   await waitFor(() => runner.statuses.includes('rejected'), undefined, { timeoutMs: 5_000 })
   await runner.stop()
-  const again = await startTinyjsRunner({ backendUrl: backend.url, stateDir: await mkdtemp(join(tmpdir(), 'demi-isolation-state2-')), home, name: 'alice-laptop' })
+  const again = await startTxikiRunner({ backendUrl: backend.url, stateDir: await mkdtemp(join(tmpdir(), 'demi-isolation-state2-')), home, name: 'alice-laptop' })
   await waitFor(() => again.codes.length > 0, () => again.log.join('\n'), { timeoutMs: 10_000 })
   expect((await alice.fetch(`/api/devices/${device.id}`, { method: 'DELETE' })).status).toBe(404)
   const reclaimed = await must<{ device: { id: string } }>(await bob.fetch('/api/devices/claim', json({ code: again.codes[0] })), 201)

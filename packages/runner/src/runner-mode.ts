@@ -9,7 +9,7 @@ import {
   msgpackEncode,
   readTail,
   spawnTeed,
-  version as tinyjsVersion,
+  version as runtimeVersion,
   type WebSocketLink,
 } from './machine'
 import {
@@ -205,7 +205,7 @@ export class RunnerMode {
           type: 'hello',
           protocol: RUNNER_PROTOCOL_VERSION,
           ...(deviceToken ? { deviceToken } : {}),
-          runner: { name: this.options.name ?? identity.hostname, platform: `tinyjs/${tinyjsVersion}`, version: RUNNER_VERSION, identity: { ...this.host.identity }, ...(this.options.managed ? { managed: true } : {}) },
+          runner: { name: this.options.name ?? identity.hostname, platform: `txiki.js/${runtimeVersion}`, version: RUNNER_VERSION, identity: { ...this.host.identity }, ...(this.options.managed ? { managed: true } : {}) },
         }),
       )
       for (;;) {

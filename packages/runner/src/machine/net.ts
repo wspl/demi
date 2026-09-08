@@ -1,50 +1,42 @@
-// The network primitives as the runner uses them: the backend WebSocket and
-// the local relay socket. Byte streams over the handles come from `stdio.ts`.
-import * as fs from 'tinyjs:fs'
-import * as net from 'tinyjs:net'
-import { readHandle } from './stdio'
+import { noop } from '@demicodes/utils'
 
 export interface WebSocketLink {
   send(frame: Uint8Array): Promise<void>
-  /** The next frame, or `null` once the peer closed. */
   receive(): Promise<Uint8Array | null>
   close(code?: number): Promise<void>
 }
 
-/** Connects the one outbound WebSocket; proxies from the environment apply. */
 export async function connectWebSocket(url: string, headers?: Record<string, string>): Promise<WebSocketLink> {
-  // An explicit `undefined` is not an absent optional to the primitive.
-  const ws = headers ? await net.wsConnect(url, { headers }) : await net.wsConnect(url)
-  let closed = false
+  const socket = new WebSocketStream(url, { headers })
+  socket.closed.catch(noop)
+  const opened = await socket.opened
+  const reader = opened.readable.getReader()
+  const writer = opened.writable.getWriter()
+  writer.closed.catch(noop)
   return {
-    send: (frame) => net.wsSend(ws, frame),
-    receive: () => net.wsRecv(ws),
-    close: async (code) => {
-      if (closed) return
-      closed = true
-      await net.wsClose(ws, code)
+    send: (frame) => writer.write(frame),
+    receive: async () => {
+      const result = await reader.read()
+      if (result.done) return null
+      if (!(result.value instanceof Uint8Array)) throw new Error('runner WebSocket requires binary frames')
+      return result.value
     },
+    close: async (code) => { socket.close(code === undefined ? undefined : { closeCode: code }); await socket.closed.catch(noop) },
   }
 }
 
-/** A connected stream socket: bytes in, bytes out. */
 export interface StreamSocket {
   input: AsyncIterable<Uint8Array>
   write(data: Uint8Array): Promise<void>
   close(): void
 }
 
-function socketOf(fd: number): StreamSocket {
-  let open = true
-  return {
-    input: readHandle(fd, false),
-    write: (data) => fs.write(fd, data),
-    close: () => {
-      if (!open) return
-      open = false
-      fs.close(fd)
-    },
-  }
+async function socketOf(socket: PipeSocket): Promise<StreamSocket> {
+  socket.closed.catch(noop)
+  const { readable, writable } = await socket.opened
+  const writer = writable.getWriter()
+  writer.closed.catch(noop)
+  return { input: readable, write: (data) => writer.write(data), close: () => socket.close() }
 }
 
 export interface UnixListener {
@@ -52,15 +44,22 @@ export interface UnixListener {
   close(): void
 }
 
-/** Listens on a Unix domain socket created with `mode`. */
 export async function listenUnix(path: string, mode: number): Promise<UnixListener> {
-  const listener = await net.udsListen(path, { mode })
+  const listener = await tjs.listen('pipe', path)
+  listener.closed.catch(noop)
+  try { await tjs.chmod(path, mode) }
+  catch (error) { listener.close(); throw error }
+  const reader = (await listener.opened).readable.getReader()
   return {
-    accept: async () => socketOf(await net.accept(listener)),
-    close: () => net.close(listener),
+    accept: async () => {
+      const result = await reader.read()
+      if (result.done) throw new Error('Unix listener is closed')
+      return socketOf(result.value)
+    },
+    close: () => listener.close(),
   }
 }
 
 export async function connectUnix(path: string): Promise<StreamSocket> {
-  return socketOf(await net.udsConnect(path))
+  return socketOf(await tjs.connect('pipe', path))
 }
