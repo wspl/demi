@@ -26,6 +26,20 @@ process contract requires `spawn`. Test fixtures use real Node filesystem/proces
 facets or the actual packed runner. Runtime credentials are dropped once after
 guest init; there is no separate per-job guest identity path.
 
+## Accepted design awaiting implementation
+
+[Native command client and local IPC](command-client.md) defines separate
+`demi` (C + libuv) and `demi-runner` (TS + txiki.js) executables. The runner
+will own command loading, parsing and dispatch; the client will carry raw
+arguments, context, streams, cancellation and exit status. Endpoint names
+are scoped to user/instance, with Unix socket permissions or Windows
+named-pipe access control applied automatically.
+
+Production still uses one binary selected by invocation name and a
+command-mode JS loader. The IPC size probes passed byte-transfer checks on
+macOS/Linux; Windows was cross-built only. Native production dispatch,
+protocol/cancellation, packaging and Windows acceptance remain unimplemented.
+
 ## Completed checks
 
 - `bun run typecheck`: passed.
