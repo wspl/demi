@@ -31,9 +31,12 @@ guest init; there is no separate per-job guest identity path.
 [Native command client and local IPC](command-client.md) defines separate
 `demi` (C + libuv) and `demi-runner` (TS + txiki.js) executables. The runner
 will own command loading, parsing and dispatch; the client will carry raw
-arguments, context, streams, cancellation and exit status. Endpoint names
-are scoped to user/instance, with Unix socket permissions or Windows
-named-pipe access control applied automatically.
+arguments, context, streams, cancellation and exit status. Each backend
+registration owns a separate runner installation and matched
+client/runner release; a device can run several registrations. Each job
+gets its owner's client PATH, random IPC endpoint and live execution context.
+Unix permissions or Windows named-pipe access control apply automatically.
+Installation and upgrades must not overwrite another backend's instance.
 
 Production still uses one binary selected by invocation name and a
 command-mode JS loader. The IPC size probes passed byte-transfer checks on

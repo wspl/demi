@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-08 |
-| Status | Accepted target design; production implementation pending |
+| Status | Target design; production implementation pending |
 | Scope | Separate command client and runner, command dispatch, IPC discovery and access |
 
 ## Executables and responsibilities
@@ -27,6 +27,59 @@ RPC dependencies. The native client must not reimplement it.
 Third-party root names use the same client transport and identify the root
 in the invocation. Packaging those names must resolve to the client, never
 to `demi-runner`.
+
+## Runner instances and version ownership
+
+A physical device may run multiple runner processes. Each local backend
+registration owns one runner instance, not one runner shared by all
+backends. The registration consists of the backend service identity/address
+and the paired account/device relationship; a local opaque installation ID
+names its state. Different registrations must not share credentials,
+manifest caches, jobs, IPC endpoints or upgrade state. One registration
+serves all of its projects; projects do not each start a runner.
+
+Each installation owns a matched release of two executables: `demi` and
+`demi-runner`. Different backends may install different releases on the
+same machine. Their clients must not overwrite one global `demi` binary.
+The runner puts its own release's client directory first in the jobs' PATH.
+The backend wire, local client wire and command-module ABI are checked for
+compatibility at their respective boundaries; incompatible versions fail
+explicitly rather than attempting another instance or a compatibility shim.
+
+```text
+backend A <-> runner A (release A) --spawn--> job A -> demi A
+                  ^                                   |
+                  +----- endpoint A + context A -------+
+
+backend B <-> runner B (release B) --spawn--> job B -> demi B
+                  ^                                   |
+                  +----- endpoint B + context B -------+
+
+Both installations may live on the same physical device.
+```
+
+An installation script downloaded from a backend carries that backend's
+service address and release selection. It installs/registers only that
+backend relationship and starts or reuses that installation's runner.
+Repeated installation for the same registration is idempotent; installing
+B must not replace A's binaries or backend configuration. Device identifiers
+issued by a backend remain scoped to that registration.
+
+A per-installation process lock/service identity prevents duplicate active
+runners for that registration. There is no machine-wide singleton lock.
+An upgrade affects only its installation: stop admitting jobs, drain the
+current invocations, then switch the matched client/runner release and
+restart. If draining cannot finish, report that the upgrade is waiting;
+do not silently reroute or kill jobs. Recheck compatibility when reconnecting
+because a backend may have upgraded independently.
+
+Registration, releases, credentials and caches belong under distinct
+installation directories. Runtime sockets may use a shorter protected
+runtime directory to fit platform path limits. These installations share
+an OS filesystem when run as the same user; routing and version isolation
+are not filesystem isolation. For managed Cloud, one backend still manages
+one device per user; this does not require separate backends to share a
+runner process.
 
 ## Command execution
 
@@ -67,26 +120,43 @@ There is no standalone manifest-loading fallback in the native client.
 
 ## Endpoint names: finding the correct runner
 
-libuv's pipe API provides UDS on Unix and named pipes on Windows. Both ends
-must agree on an endpoint, but its operating-system representation differs:
+libuv's pipe API provides UDS on Unix and named pipes on Windows. Every
+runner instance opens its own endpoint with a random per-start component:
 
-- Unix: a socket under the runner's state directory, such as
-  `${DEMI_HOME}/runner.sock` (`~/.demi` by default, `/run/demi` in Cloud).
-- Windows: a local named-pipe name such as
-  `\\.\pipe\demi-<user-id>-<instance-id>`, not a filesystem socket path.
+- Unix: a short socket path in a private runtime directory, scoped to the
+  installation and current runner start.
+- Windows: a local named pipe such as
+  `\\.\pipe\demi-<installation-id>-<random-start-id>`.
 
-The runner supplies its resolved endpoint to the jobs it starts. The client
-uses that endpoint so changing cwd or entering another project does not
-select another runner. For an ordinary terminal invocation, default
-discovery must resolve the same user's default runner. Multiple instances
-must have distinct endpoints. A project's directory is not an instance
-identity: one user's Cloud runner serves multiple projects.
+Randomness avoids collisions and stale names; the per-installation lock
+prevents duplicate processes. Random names are not access controls.
 
-Endpoint discovery and installation normally happen automatically. Users
-should not need to invent a pipe name or configure permissions manually.
-The exact environment field and Windows name derivation are pending wire
-and packaging implementation; the examples above specify the scope, not
-an already implemented naming algorithm.
+Before starting a job, the runner allocates an opaque execution context
+bound to that instance/start, its backend registration, authorized
+session/shell/job and manifest version. It injects its exact endpoint and
+context ID into the child environment and selects its own client via PATH.
+These values override conflicting backend-provided environment entries.
+Context-aware raw spawns use the same mechanism. A spawn without an
+associated session cannot manufacture session authority by naming an ID.
+
+`demi` forwards the context and raw arguments to that exact endpoint. The
+runner validates the live context before selecting its manifest or routing
+backend work. Each command invocation receives a separate invocation ID so
+concurrent calls within one job have independent streams and cancellation.
+A context identifies the execution relationship; it is not a backend URL
+supplied by the client. Job completion invalidates its contexts.
+
+There is no search for a convenient live runner and no fallback to another
+backend. An endpoint/context mismatch, stale context after restart, or
+missing exit reply fails explicitly. For an ordinary terminal invocation,
+the user must select/activate an installation and establish an appropriate
+context; the CLI must not infer a backend from cwd or the most recently
+installed instance.
+
+Installation and job startup handle names and permissions automatically.
+The exact environment field names, Windows name encoding, registration
+lookup and terminal activation interface remain implementation decisions.
+The application contract above specifies their behavior, not a shipped API.
 
 ## Access: who may connect
 
@@ -128,7 +198,8 @@ are pending implementation decisions, not features of the size prototype.
 Acceptance includes concurrent invocations with different cwd/env, binary
 pipes and file redirection, help and argument errors, local/runtime and
 backend/RPC commands, cancellation under backpressure, runner disconnect,
-Unix and Windows endpoint isolation, Windows terminal/Unicode handling,
+Unix and Windows endpoint isolation, two backends with different releases,
+installation/upgrade independence, stale-context rejection, Windows terminal/Unicode handling,
 and separate runnable client/runner artifacts.
 
 ## Current implementation and evidence
