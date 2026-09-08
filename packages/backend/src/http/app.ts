@@ -1,3 +1,4 @@
+import { runnerInstallRoutes, type RunnerInstallationOptions } from './runner-install'
 import type { AgentServer } from '@demicodes/agent'
 import { Hono } from 'hono'
 import type { UpgradeWebSocket } from 'hono/ws'
@@ -36,6 +37,7 @@ import { workspaceRoutes } from './workspaces'
 
 /** Assembles the external HTTP surface: error shape, 404 shape, one route module per resource. */
 export function createApp(options: {
+  runnerInstallation?: RunnerInstallationOptions
   control: ControlService
   conversationStores: ConversationStores
   vault: ProviderVault
@@ -64,6 +66,7 @@ export function createApp(options: {
   // routes runners dial with their device token.
   app.use('/api/*', authenticate(options.sessions, ['/api/setup', '/api/auth/login', '/api/runner', '/api/pipes']))
 
+  app.route('/', runnerInstallRoutes(options.runnerInstallation))
   app.route('/api/setup', setupRoutes({ control: options.control, sessions: options.sessions }))
   app.route('/api/auth', authRoutes({ control: options.control, sessions: options.sessions, limiter: options.loginLimiter }))
   app.route('/api/users', userRoutes({ control: options.control }))

@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/runner",
-  "description": "The Demi runner: the program that turns a machine into an execution target \u2014 runner mode over the backend socket, command mode for every root command.",
+  "description": "The Demi runner: target machine connection, shell jobs, command dispatch and local IPC for the native command client.",
   "version": "0.20.0",
   "private": false,
   "type": "module",

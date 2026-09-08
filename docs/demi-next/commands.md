@@ -21,12 +21,6 @@ and dispatch. [Native command client and IPC](command-client.md) defines
 that boundary, discovery and access control. The command trees, kinds,
 manifest and module ABI below remain shared.
 
-**Implementation status:** the execution-flow diagram, embedder table and
-“Root commands on a target” section below describe the current command-mode
-implementation. Their shared executable, client-side loader and standalone
-mode are pending replacement by `command-client.md`; they are not the
-accepted client design.
-
 ## Organizing rule
 
 Demi's agent works entirely through shell commands. **Every Demi-specific
@@ -64,7 +58,7 @@ in `PATH`; everything else is whatever the machine has.
  ───────                          ────────────────────                 ───────────────────────
  job_start {script, cwd,   ────▶  spawn  bash -c "<script>"     ────▶  bash
             env + conv/shell ids}   │  tee stdout/stderr → output         │
-                                    │  files under commandOutputDir        ├─ demi file edit src/a.ts        (txiki.js, command mode)
+                                    │  files under commandOutputDir        ├─ demi file edit src/a.ts        (native C client)
                                     │                                      │    read ${DEMI_HOME}/commands/<hash>/   manifest cache
                                     │                                      │    kind = runtime
                                     │                                      │    → run the module in-process, ctx.fs = real fs
@@ -77,14 +71,14 @@ in `PATH`; everything else is whatever the machine has.
 
  an rpc command inside the same script, e.g.  demi todo add "run the suite":
 
-                                                                        command mode: kind = rpc
+                                                                        runner dispatch: kind = rpc
                                   runner  ◀───────── UDS ─────────────  → parsed args; the pipe as frames
  ◀── rpc_call {conv id, shell id, ──┘  attributes by the ids in the
      root, command, args, stdin?}      job's environment
  ─── rpc_pipes {stdin, stdout} ─▶ runner: PUT the pipe, GET the stdout    HTTP streams brokered by the backend,
      backend runs the command                                             never bytes on the socket
      against conversation state
- ─── rpc_output / rpc_exit ─────▶ runner ──────────── UDS ────────────▶ command mode writes stdout, exits with the code
+ ─── rpc_output / rpc_exit ─────▶ runner ──────────── UDS ────────────▶ native client writes stdout, exits with the code
 ```
 
 What crosses the runner socket: the script, the model's view of the
@@ -118,7 +112,7 @@ Every leaf is one of two kinds:
 - **`runtime`** — the implementation is an ES module shipped to wherever the
   command is invoked and run there against that place's filesystem. `demi
   file read/create/edit/patch` and future `demi search` are `runtime`. On a
-  target the module runs inside txiki.js in command mode with zero round
+  target the module runs inside an isolated txiki.js runner worker with zero round
   trips.
 
 The rule is mechanical: **a command that touches only the target's
@@ -252,9 +246,7 @@ Embedders:
 
 | Embedder | Source | Host | rpc |
 |---|---|---|---|
-| runner | the backend socket, cached on disk under `${DEMI_HOME}/commands/<hash>/` | — (the runner does not execute commands; it caches and relays) | the backend socket |
-| txiki.js in command mode on a target | the runner's disk cache; a miss asks the runner over the UDS | the runner's machine layer over the real filesystem | the runner over the UDS |
-| txiki.js in command mode, standalone (no runner) | a configured directory or URL | the real filesystem | none, or an embedder-supplied transport |
+| runner | the backend socket, cached and pinned per job under `${DEMI_HOME}/commands/<hash>/` | machine layer; runtime leaves execute in isolated workers | the authenticated backend socket and HTTP pipes |
 | tests | in-memory | in-memory Host | stub |
 
 A third party who wants Demi's commands in another agent needs the loader,
@@ -263,27 +255,24 @@ backend.
 
 ## Root commands on a target
 
-A root command on a target is the txiki.js binary in command mode
-(`txiki.md`) running the loader, reached through a symlink named after the
-root: `argv[0]` selects the root's tree in the manifest. Real bash spawns it
-like any other program; it reads the manifest cache the runner maintains,
-runs `runtime` commands in its own process, and forwards `rpc` commands to
-the runner over the local UDS. The process holds no credential: the runner
-forwards the job, node and shell ids injected at job creation on its
-authenticated socket. The backend verifies them against its live-job record
-before selecting the invoking Host, handler and command storage
-(`execution-coordination.md`). Process-supplied ids alone grant no authority. The runner creates and removes the
-symlinks as the manifest's root set changes, and points
-`${DEMI_HOME}/commands/current` at the cached manifest command mode reads;
-`DEMI_HOME` defaults to `~/.demi` on paired devices and is `/run/demi` on
-Cloud. `DEMI_COMMANDS_DIR` names another directory (the standalone case). The
-entry of the bundle is `packages/runner/src/entry.ts`: the name it
-was invoked by selects runner mode or the root.
+A root command is the standalone C + libuv client (`command-client.md`).
+Real bash invokes it through the root alias in the job's pinned manifest
+bin directory. Its basename identifies the root; raw argv, current cwd/env
+and live execution context travel to the job's exact runner endpoint.
+The client loads no manifest and performs no command parsing.
 
-Stdin and stdout are byte-faithful in both kinds: a `runtime` module reads
-and writes its process streams; an `rpc` invocation's stdin and stdout
-are pipes — HTTP streams brokered by the backend — and its stderr and
-exit code ride the socket (`runner.md` § Pipes).
+The runner validates that context, selects its manifest, and dispatches
+through `command-loader`. Runtime modules use isolated workers; backend
+handlers use authenticated RPC with HTTP pipes for stdin/stdout. The
+runner returns byte-faithful output and final status over local IPC.
+The client has no credential and cannot select another backend by changing
+session IDs. Ordinary terminal invocation without a live context fails.
+
+The runner snapshots a manifest for each job/spawn and injects its bin PATH,
+`DEMI_RUNNER_ENDPOINT` and `DEMI_CONTEXT_ID`. `${DEMI_HOME}/commands/current`
+selects the manifest for new contexts; existing contexts retain theirs.
+`DEMI_HOME` defaults to `~/.demi/instances/<backend-hash>` on paired devices
+and `/run/demi` in managed guests.
 
 ## The `demi host` group
 

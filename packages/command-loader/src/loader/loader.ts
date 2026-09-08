@@ -11,6 +11,8 @@ export interface LoaderOptions {
   host: Host
   /** Carries `rpc` invocations; absent, the embedder serves only `runtime` commands. */
   rpc?: RpcTransport
+  /** Optional execution boundary for a file-backed module (for example an isolated worker). */
+  importModule?: (specifier: string) => Promise<CommandModule>
 }
 
 export interface Loader {
@@ -29,7 +31,7 @@ export interface Loader {
 export async function createLoader(options: LoaderOptions): Promise<Loader> {
   const manifest = await options.source.manifest()
   const roots = treeFromManifest(manifest, options.rpc)
-  const loadModule = moduleLoader(manifest, options.source)
+  const loadModule = moduleLoader(manifest, options.source, options.importModule)
   return {
     manifest,
     roots,
@@ -66,13 +68,13 @@ export async function createLoader(options: LoaderOptions): Promise<Loader> {
  * module's text, the manifest maps the text back to its hash, the source
  * maps the hash to a path.
  */
-function moduleLoader(manifest: Manifest, source: ManifestSource): ((module: RuntimeModule) => Promise<CommandModule>) | undefined {
+function moduleLoader(manifest: Manifest, source: ManifestSource, importer = importCommandModule): ((module: RuntimeModule) => Promise<CommandModule>) | undefined {
   if (!source.modulePath) return undefined
   const modulePath = source.modulePath.bind(source)
   const hashes = new Map(Object.entries(manifest.modules).map(([hash, javascript]) => [javascript, hash]))
   return (module) => {
     const hash = hashes.get(module)
     if (hash === undefined) throw new Error('loader: the module text is not in the manifest')
-    return importCommandModule(modulePath(hash))
+    return importer(modulePath(hash))
   }
 }

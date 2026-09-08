@@ -1,3 +1,4 @@
+import { z } from 'zod'
 // Machine-local runner state (`runner.md` § Process shape and local state):
 //
 //   <stateDir>/runner.json    backend URL, device id
@@ -5,10 +6,9 @@
 import type { HostFileSystem } from '@demicodes/shell'
 import { decodeUtf8, encodeUtf8, isFileNotFoundError } from '@demicodes/utils'
 
-export interface RunnerConfig {
-  backendUrl: string
-  deviceId?: string
-}
+const runnerConfigSchema = z.object({ backendUrl: z.string().url(), deviceId: z.string().optional() }).strict()
+export const activeRunnerSchema = z.object({ endpoint: z.string().min(1), secret: z.string().regex(/^[a-f0-9]{32}$/), release: z.string().min(1) }).strict()
+export type RunnerConfig = z.infer<typeof runnerConfigSchema>
 
 export class RunnerState {
   constructor(
@@ -24,16 +24,10 @@ export class RunnerState {
     return `${this.dir}/runner-token`
   }
 
-  get socketPath(): string {
-    return `${this.dir}/runner.sock`
-  }
+  get activePath(): string { return `${this.dir}/active.json` }
 
   get commandsDir(): string {
     return `${this.dir}/commands`
-  }
-
-  get binDir(): string {
-    return `${this.dir}/bin`
   }
 
   get outputDir(): string {
@@ -42,7 +36,7 @@ export class RunnerState {
 
   async readConfig(): Promise<RunnerConfig | null> {
     try {
-      return JSON.parse(decodeUtf8(await this.fs.readFile(this.configPath))) as RunnerConfig
+      return runnerConfigSchema.parse(JSON.parse(decodeUtf8(await this.fs.readFile(this.configPath))))
     } catch (error) {
       if (isFileNotFoundError(error)) return null
       throw error

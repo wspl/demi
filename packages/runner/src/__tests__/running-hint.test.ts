@@ -91,7 +91,7 @@ test('a live txiki.js runner reports actual runtime and rpc leaf hints and clear
     expect('runningHint' in stopped).toBe(false)
     await waitFor(() => inbound.slice(before).some((message) => message.type === 'rpc_cancel'), undefined, { timeoutMs: 10_000 })
 
-    // Kill only the command-mode child: its hint must end by socket EOF while bash stays alive.
+    // Kill only the native client: its hint must end by socket EOF while bash stays alive.
     const killedBefore = inbound.length
     const child = await shell.exec({ script: 'attend runtime <&199 & child=$!; echo "$child" > child.pid; wait "$child"; sleep 30', timeoutMs: 100 })
     await waitFor(() => inbound.slice(killedBefore).some((message) => message.type === 'job_running_hint' && message.hint !== null), undefined, { timeoutMs: 10_000 })

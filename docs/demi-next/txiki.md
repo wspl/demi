@@ -24,8 +24,8 @@ backend (Bun)                  target machine
 runner-protocol ─ WebSocket ── runner (TypeScript bundle)
                                ├─ machine/ → txiki.js APIs → files/processes
                                ├─ JobTable → bash → commands
-                               └─ local relay ← command-mode process
-                                                  └─ command-loader → Host
+                               └─ local IPC ← native C client
+                                   └─ command-loader → isolated worker / backend RPC
 ```
 
 ## Runtime surface
@@ -42,7 +42,7 @@ The fork adds the capabilities needed by both devices and managed guests:
   group on Unix. The child remains waitable. `tjs.kill(-pid, signal)`
   signals that group.
 - `tjs.fstat(fd)` inspects an inherited descriptor without taking ownership.
-  Command mode compares device and inode numbers for fd 0 and the
+  The native client uses libuv fstat to compare fd 0 with the
   descriptor duplicated by the job prelude. Matching numbers identify the
   job's live stdin; redirection supplies a finite command input instead.
 - `tjs.dropPrivileges(uid, gid)` clears supplementary groups, then sets gid
@@ -94,17 +94,17 @@ layout; the macOS build signs the final file after stripping. The build copies t
 The compiler and source bundle are build inputs, not files installed on
 the target.
 
-The following is the **current implementation**, pending the
-[separate native client](command-client.md). In that target design txiki.js
-packages only `demi-runner`; `demi` is an independent C + libuv executable.
+txiki.js packages only `demi-runner`; `demi` is an independent C + libuv
+executable. `src/entry.ts` starts the runner or its installation management
+commands (`status`, `drain`). PID 1 first performs managed boot and drops to
+the guest account. Root command invocation never enters this executable.
+`runtime/bundle.ts` embeds the command-worker JS source in the runner bundle;
+each runtime leaf receives an isolated worker, with message-based streams
+and an interruptible QuickJS loop for cancellation.
 
-`src/entry.ts` chooses the application mode:
-
-- PID 1 performs the managed guest boot, drops to the guest account, then
-  runs the runner with the boot-time token held in memory.
-- The name `demi-runner` selects `run [--backend <url>]`.
-- Any other invocation name selects that root command. Symlinks such as
-  `demi` point at the same executable.
+`FileHandle.lock()` provides the nonblocking exclusive installation lease,
+released by close or process exit. Worker termination sets an atomic flag
+checked by QuickJS before joining its thread.
 
 The bare development interpreter uses `tjs run entry.mjs`. It is useful
 for isolated conformance tests; it is not the installed command launcher.
@@ -123,8 +123,7 @@ also need Zig. `CMAKE` and `ZIG` can name specific executables. The build
 cache is `.cache/txiki`; generated binaries are never committed.
 
 ```sh
-bun build packages/runner/src/entry.ts --format=esm --target=browser \
-  --conditions=development --external 'tjs:*' --outfile /tmp/entry.mjs
+bun packages/runner/runtime/bundle.ts packages/runner/src/entry.ts /tmp/entry.mjs
 bun packages/runner/runtime/build.ts /tmp/entry.mjs /tmp/demi-runner
 bash packages/guest-image/runner/build.sh aarch64
 bash packages/guest-image/runner/build.sh x86_64
@@ -143,19 +142,19 @@ compiler and target runtime must use that pinned QuickJS revision.
 
 ## Application sizes
 
-Measured on 2026-09-08 with the checked-in build configuration (MinSizeRel,
-LTO, stripping, optional features disabled). These are complete runner
-applications, including the bundled JavaScript and shared MessagePack codec.
+Measured paired release artifacts on 2026-09-08 (MinSizeRel, stripped,
+optional features disabled). The native client includes statically linked
+libuv; the runner includes JS dispatch and the worker source.
 
-| Target | Bytes | Verification |
-|---|---:|---|
-| macOS ARM64 | 3,215,936 | startup and strict signature check |
-| macOS Intel | 3,323,328 | startup under Rosetta and strict signature check |
-| Linux ARM64 musl | 3,468,952 | static ELF; real Linux/KVM guest |
-| Linux x64 musl | 3,553,856 | static ELF cross build |
+| Target | Native client bytes | Runner bytes | Verification |
+|---|---:|---:|---|
+| macOS ARM64 | 125,456 | 3,265,232 | integration and installer tests |
+| macOS Intel | 93,232 | 3,364,656 | cross build; startup under Rosetta |
+| Linux ARM64 musl | 129,056 | 3,510,272 | real KVM, direct and jailer |
+| Linux x64 musl | 122,664 | 3,595,136 | static cross build |
 
-macOS used Apple Clang 21; Linux cross builds used Zig 0.16 with ThinLTO.
-Sizes vary with the compiler and application bundle.
+Sizes vary with compiler and bundle. The Windows C client cross-build is
+available separately; a Windows runner release is not yet published.
 
 ## Network configuration
 
@@ -167,7 +166,7 @@ cookie jar. These defaults belong to the runtime, not to backend routing.
 
 ## Verification
 
-The runner suite executes command mode, Host conformance, binary wire
+The runner suite executes native command dispatch, Host conformance, binary wire
 frames, process cancellation, live control, runtime/RPC hints and a 3 MiB
 bidirectional job pipe against actual txiki.js processes. Tests under the
 fork cover the added native primitives. The real Firecracker test uses a

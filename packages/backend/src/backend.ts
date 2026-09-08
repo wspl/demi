@@ -37,6 +37,8 @@ import { openSqliteDatabase } from './storage/database'
 import { CONTROL_MIGRATIONS, migrate } from './storage/migrations'
 
 export interface BackendOptions {
+  /** Directory produced by runner/runtime/release.ts; exposes paired client/runner downloads. */
+  runnerReleaseDir?: string
   /** Data directory: control database, conversation databases, blobs and machine images. */
   dataDir: string
   /** The instance mode, a deployment decision: `DEMI_INSTANCE_MODE`. */
@@ -239,7 +241,9 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   })
 
   const { upgradeWebSocket, websocket } = createBunWebSocket()
+  const runnerReleaseDir = options.runnerReleaseDir ?? process.env.DEMI_RUNNER_RELEASE_DIR
   const app = createApp({
+    ...(runnerReleaseDir ? { runnerInstallation: { directory: runnerReleaseDir, backendUrl: options.publicUrl } } : {}),
     control,
     conversationStores,
     vault,

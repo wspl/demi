@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "maxFrame": 1048576,
+  "chunkSize": 65536,
+  "endpointEnv": "DEMI_RUNNER_ENDPOINT",
+  "contextEnv": "DEMI_CONTEXT_ID",
+  "stdinFdEnv": "DEMI_JOB_STDIN_FD",
+  "frames": {
+    "invoke": 1,
+    "watch": 2,
+    "input": 3,
+    "inputEnd": 4,
+    "ready": 5,
+    "pull": 6,
+    "stdout": 7,
+    "stderr": 8,
+    "exit": 9,
+    "error": 10,
+    "manage": 11
+  }
+}

@@ -6,12 +6,9 @@
 | Status | Target architecture contract; acceptance tracked in `progress.md` |
 | Scope | The program on every execution target: identity and connection, Host RPC, the job table, the tee, the local relay, the wire rules |
 
-The accepted [native command client design](command-client.md) separates
-`demi` (C + libuv) from `demi-runner` (TS + txiki.js) and moves command
-parsing and local execution scheduling into the runner. That change is not
-yet implemented. This document's command-mode relay, state layout and wire
-examples describe the current implementation until that work is accepted;
-they do not require a shared client/runner executable in the target design.
+The [native command client](command-client.md) is separate from the runner:
+`demi` uses C + libuv; `demi-runner` uses TS + txiki.js. The runner owns
+command parsing, runtime-worker scheduling and backend RPC dispatch.
 
 ## Role
 
@@ -46,18 +43,18 @@ configuration beyond what the connection needs.
    machine with the conversation's cwd and env, the conversation and shell
    ids in the environment, the bounded output view streamed to the backend,
    the full output teed to an output file here.
-4. **Relaying root commands.** A Unix domain socket for command-mode txiki.js
-   processes: manifest cache misses, and `rpc` command invocations
-   forwarded to the backend attributed to the invoking conversation, their
-   stdin and stdout carried as pipes — HTTP streams brokered by the
-   backend, never bytes on the runner socket (§ Pipes). The runner also
-   maintains the root-command symlinks in `PATH` from the manifest.
+4. **Dispatching root commands.** An owner-only local socket receives raw
+   invocation/context metadata from the C client. The runner validates its
+   live execution context and uses the pinned manifest with `command-loader`.
+   Runtime leaves run in isolated workers; RPC leaves use authenticated
+   backend control messages and HTTP pipes. Root aliases in each manifest's
+   bin directory point to the matched native client.
 
 Non-responsibilities: user authentication; credentials of any kind (the
 Claude Code CLI it spawns receives its token as process env from the
 backend-side provider, nothing is persisted here); transcript or checkpoint
-storage; command implementations (`runtime` modules run in command-mode
-processes, `rpc` commands in the backend); provider logic.
+storage; definitions of business commands (`runtime` modules execute in
+runner workers, `rpc` handlers in the backend); provider logic.
 
 ## Process shape and local state
 
@@ -70,15 +67,19 @@ state directory is `/run/demi` on tmpfs, every job and
 spawn runs as the guest user, and the hello reports that user's identity.
 
 ```
-~/.demi/                 (`DEMI_HOME` names another place; every job and command-mode process inherits it)
+~/.demi/instances/<installation>/  (`DEMI_HOME` overrides this directory)
   runner.json            backend URL, device id
   runner-token           device token (0600)
-  runner.sock            the local relay (0600)
-  commands/<hash>/       manifest cache: manifest.json + modules/<hash>.mjs, by manifest hash
-  commands/current       → the cached manifest command mode reads
-  bin/<root>             → the packed binary, one per root in the manifest; first in every job's PATH
-  output/<jobId>/        stdout.txt, stderr.txt: a job's full output, written by the tee
-  store/                 Host.store of the machine's Host
+  runner.lock            OS lock held for this installation's runner lifetime
+  active.json            random endpoint, management secret, release (0600)
+  commands/<hash>/       manifest.json, modules/<hash>.mjs, bin/<root> → C client
+  commands/current       → manifest selected for new jobs
+  output/<jobId>/        full stdout.txt and stderr.txt
+  store/                 the machine's Host.store
+  releases/<release>/    installed matched demi and demi-runner
+  run                    installation launcher created by install.sh
+
+$TMPDIR/demi-<random>/ipc.sock  (directory 0700, socket 0600; new on each start)
 ```
 
 `demi-runner run [--backend <url>]` reads `DEMI_RUNNER_NAME` for the
@@ -87,7 +88,7 @@ first reconnect delay (tests shorten it).
 
 Dependency footprint: `@demicodes/runner-protocol`, `@demicodes/shell`
 (the Host contract and the command system), `@demicodes/command-loader`
-(cache and relay only), `@demicodes/utils`. No agent, coding-agent or
+(manifest storage, command parsing and dispatch), `@demicodes/utils`. No agent, coding-agent or
 provider packages. The package's directories are its modules
 (`package-boundaries.md`): `machine/` — this machine as the runner sees
 it, the `Host` contract over txiki.js's primitives plus the links and the
@@ -197,7 +198,7 @@ Relay and outputs:
 | b → r | `rpc_pipes { callId, stdin?, stdout }` | the call's pipe ends, sent before anything else for the call: the runner `PUT`s the process's pipe into `stdin` and `GET`s `stdout` into the process (§ Pipes) |
 | r → b | `rpc_stdin { callId, bytes }` / `rpc_stdin_end { callId }` | the live stdin the command is steered with (`shell_write`); never the pipe |
 | r → b | `rpc_cancel { callId }` | the invoking process or owning job ended; abort the backend handler, close its live stdin and fail its pipes |
-| b → r | `rpc_output { callId, bytes }` / `rpc_exit { callId, exitCode }` | the stderr view and the exit code back to the command-mode process; `rpc_exit` follows the stdout pipe's drain |
+| b → r | `rpc_output { callId, bytes }` / `rpc_exit { callId, exitCode }` | the stderr view and the exit code back to the native client; `rpc_exit` follows the stdout pipe's drain |
 | b → r | `manifest { manifest }` on connect and on change | the command manifest the runner caches for the CLI |
 | r → b | `pipe_done { pipeId, ok, error? }` | this runner's end of a pipe closed: its HTTP exchange completed, or why it did not |
 
@@ -227,8 +228,8 @@ user host, the guest's login table on a managed host — with what the
 backend named over it (`DEMI_SESSION_ID` and `DEMI_SHELL_ID`), `bin/` first in `PATH`, and four entries of the
 runner's own: `DEMI_HOME`, `DEMI_JOB_CWD_FILE` (where the `EXIT` trap
 writes `pwd`) and `DEMI_JOB_STDIN_FD` (the descriptor the prelude
-duplicated the job's stdin onto with `exec 199<&0`, so a command-mode
-process can tell the job's live stdin from a redirection by `fdNode`,
+duplicated the job's stdin onto with `exec 199<&0`, so a native
+client can tell the job's live stdin from a redirection by `fdNode`,
 `txiki.md`), plus `DEMI_JOB_ID`, which associates local relay calls with
 their owning job. The runner cancels those calls before killing the job
 and when the job exits. A raw spawn (the Claude Code CLI) is different:
@@ -263,32 +264,26 @@ names the agent's deliverables, and Demi keeps it free for that.
 
 ## The local relay
 
-`~/.demi/runner.sock` (mode 0600) accepts connections from command-mode
-txiki.js processes. Its frames are MessagePack behind a 32-bit big-endian
-length. A manifest request uses one connection and is answered from the
-cache; a process asks when `commands/current` is missing. An RPC uses a data
-connection and a lifetime connection. The data request is `rpc { callId,
-jobId?, agentSessionId, shellId, root, path, argv, args, json, cwd, env, stdin }` — the parsed
-invocation and whether fd 0 is a pipe — followed by the pipe itself as
-`pipe { bytes }` frames ending in `pipe_end`, and by `stdin { bytes }`
-frames for the live stdin and `stdin_end`; back come `output { stream,
-bytes }` frames and `exit { exitCode }`, or `error { message }`. The runner
-first registers the call and replies `ready`; the process then opens the
-lifetime connection with `watch { callId }`. The runner binds that
-connection, forwards `rpc_call` to the backend and acknowledges the watch
-with `ready`. Only then does the process send input data. The lifetime
-connection carries no data: its EOF cancels the call even when the data
-connection is blocked by a slow stdin consumer.
+The local contract is `runner-protocol/local`: a four-byte body length,
+one-byte frame tag, and JSON metadata or raw bytes. The C client sends
+`invoke { version, id, context, root, argv, cwd, env, live }` to the exact
+`DEMI_RUNNER_ENDPOINT`. The runner validates `DEMI_CONTEXT_ID` against its
+live job/spawn table, then sends `ready`. A second connection sends
+`watch { version, id, context }`; after validation the runner acknowledges
+it and starts the loader. Closing either connection cancels the call.
+The control connection stays readable while data output is backpressured.
 
-A registered leaf may declare `runningHint` in its command manifest. After
-argument validation, the loader reports that hint for the actual invocation
-through a separate `running_hint { jobId, hint }` lifetime connection, for
-both `runtime` and `rpc` leaves. The relay assigns an `invocationId`, sends
-`job_running_hint` to the backend and replies `ready`; only then does the
-leaf execute. Completion, failure or cancellation closes the connection.
-Its EOF sends the clearing message even if the command process was killed
-and the surrounding bash job continues. Job termination and disconnect
-also clear its active hints.
+The loader uses the context's manifest snapshot. Runtime modules execute
+in separate interruptible workers; RPC modules retain the backend transport
+below. The runner requests stdin one chunk at a time using `pull`, answered
+by `input` or `inputEnd`. `stdout`/`stderr` use chunks up to 64 KiB. `exit`
+contains the status and follows completed output writes. EOF without that
+frame fails the client. Boundary schemas and limits live in the shared
+protocol package; the C header is generated from its JSON contract.
+
+A validated leaf's `runningHint` is reported by the runner's loader with
+its invocation ID. Completion, failure, socket EOF and job cancellation
+clear that hint, including when the surrounding bash job remains alive.
 
 The remote shell keeps each invocation's hint independently. In a concurrent
 pipeline it shows the latest active hint and restores another active hint
@@ -297,34 +292,10 @@ running guidance resumes; exited and aborted statuses never carry a hint.
 Help and invalid invocations do not register one. Hints travel separately
 from stdout and stderr and do not consume the job's output view budget.
 
-```text
-beta: job j12 invokes call c9                    beta runner             backend
-data socket: rpc {callId:c9, jobId:j12, ...} --> register c9
-data socket:                              <-- ready
-lifetime socket: watch {callId:c9}         --> bind lifetime
-                                               rpc_call c9 ----------> register handler
-lifetime socket:                          <-- ready
-data socket: pipe / stdin                 --> HTTP pipe / rpc_stdin
-
-process c9 exits or is killed:
-lifetime socket EOF                       --> rpc_cancel c9 ---------> abort handler
-                                                                        close live stdin
-                                                                        fail pipes
-```
-
-The runner forwards `rpc` on its authenticated socket as `rpc_call` /
-`rpc_stdin` / `rpc_stdin_end`, streams the `pipe` frames into the `PUT`
-that the backend's `rpc_pipes` names and the `GET` body back as `output`
-frames, and relays `rpc_output` / `rpc_exit`. Stdout and stderr frames share
-an ordered socket writer, so stderr remains visible while stdout is still
-streaming. Only the exit waits for the stdout stream to finish. The data
-connection is ordered, so the pipe rides it as the byte stream it is;
-the runner holds no more of it than an HTTP body in flight. The backend
-runs the leaf against the tree of the conversation `agentSessionId` names.
-The command-mode process never holds a credential. Attribution is by the live job the backend dispatched on this authenticated
-device connection (`execution-coordination.md`). A callback carries its job id;
-node and shell identity must match the backend's record, and the invoking Host
-comes from that job. An exited or disconnected job cannot invoke a command.
+The client has no backend credential. The runner obtains session/shell/job
+attribution from the validated live context; the backend verifies that
+attribution against its live-job record on the authenticated runner socket.
+A raw spawn has no job authority and cannot manufacture it through env.
 
 ## Pipes
 
@@ -345,7 +316,7 @@ An end is one of:
 
 | End | Where | How it produces or consumes |
 |---|---|---|
-| a command-mode process's fd 0 / fd 1 | a device | through the local relay: the pipe's frames on the UDS, the runner doing the HTTP |
+| a native client's fd 0 / fd 1 | a device | through the local relay: the pipe's frames on the UDS, the runner doing the HTTP |
 | a job's fd 0 / fd 1 | a device | the runner attaches the HTTP body to the process it spawns for `job_start` |
 | an `rpc` handler's `ctx.stdin` / `ctx.io.stdout` | the backend | an `AsyncIterable<Uint8Array>` / a writer |
 
@@ -363,7 +334,7 @@ An `rpc` command on a device — the handler runs in the backend:
 ```
 A's model:   demi file write notes.md < big.txt
 
-  A (command-mode process ─UDS─ runner)                backend
+  A (native client ─UDS─ runner)                backend
   rpc { …, stdin: true } ─────────────────────────────►  rpc_call { …, stdin: true }
                                                           P_in  minted  A → backend (sink: the handler's ctx.stdin)
                                                           P_out minted  backend → A (source: the handler's stdout)
@@ -408,7 +379,7 @@ c1: demi host shell --host B "tar c -C /work ." | tar x
   the model's view and the transcript, and the pipe neither waits for it
   nor reads it back. An `rpc` handler reads its stdin as it arrives and
   its writes leave as they happen.
-- **A pipe both ends know.** A command-mode process whose fd 0 is the
+- **A pipe both ends know.** A native client whose fd 0 is the
   job's live stdin (`DEMI_JOB_STDIN_FD`) declares `stdin: false` and no
   stdin pipe is minted. Every call has a stdout pipe; one that never
   writes closes it empty. A job gets a pipe only for the fd `job_start`

@@ -17,6 +17,16 @@
       "development": "./src/codec.ts",
       "types": "./dist/codec.d.mts",
       "import": "./dist/codec.mjs"
+    },
+    "./local": {
+      "development": "./src/local.ts",
+      "types": "./dist/local.d.mts",
+      "import": "./dist/local.mjs"
+    },
+    "./release": {
+      "development": "./src/release.ts",
+      "types": "./dist/release.d.mts",
+      "import": "./dist/release.mjs"
     }
   },
   "files": [

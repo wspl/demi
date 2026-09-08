@@ -465,15 +465,15 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the manifest types, the manifest sources (`inMemorySource`; `directorySource` with the `writeManifestDirectory` layout), the loader (`createLoader` → `dispatch(root, argv, io)`: tree resolution, group help, argument parsing and validation, running a `runtime` module from its text or from the source's module file, forwarding an `rpc` invocation).
 - Public boundary: `buildManifest`, `parseManifest` and the `Manifest` types, `createLoader` / `inMemorySource` / `directorySource` / `writeManifestDirectory`, `inProcessRpc` and the `RpcTransport` types, `treeFromManifest` from root; the `commandModulesAsText` build plugin (a `*.command.ts` file served as its text at build time) under `build`, Node-only.
-- Pure JS with no runtime dependency: the same package runs in the backend, in txiki.js command mode and in tests. `buildManifest` takes the transpiler as a parameter (the backend passes Bun's); the package never transpiles on its own.
+- Pure JS with no runtime dependency: the same package runs in the backend, in the txiki.js runner and in tests. `buildManifest` takes the transpiler as a parameter (the backend passes Bun's); the package never transpiles on its own.
 - Must not: know the backend, the runner or any Host implementation (all injected), spawn processes, or hold a command definition of its own.
 
 ### `@demicodes/runner-protocol`
 
 - Status: implemented (the final wire: MessagePack frames, per-op fs messages, jobs, the rpc relay, the manifest push, transfers).
 - Production deps: `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
-- Owns: the runner wire and nothing else — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` shared by Bun and txiki.js), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
-- Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`. Both ends of the wire depend on this package; it depends on neither end.
+- Owns: the backend runner wire and native-client local IPC contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` shared by Bun and txiki.js), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
+- Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`; strict local metadata schemas, binary framing and generated-C-header facts under `local`; matched-release schemas under `release`. Both ends of the wire depend on this package; it depends on neither end.
 - Must not: contain network IO, a Host implementation, a shell environment, the job table, credentials, claim policy, device registry, or conversation state.
 
 ### `@demicodes/host-remote`
@@ -486,7 +486,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `vendor/txiki.js` (C/C++ submodule, not a workspace package)
 
-- Owns: the QuickJS-ng runtime, Web APIs, native filesystem/process/socket APIs, Linux PID 1 orphan reaping, privilege drop, and the CMake target that links an embedded bytecode entry.
+- Owns: the QuickJS-ng runtime, Web APIs, native filesystem/process/socket APIs, Linux PID 1 orphan reaping, privilege drop, file leases and interruptible workers, and the CMake target that links an embedded bytecode entry.
 - Dependency: pinned fork and recursive dependencies; the runner consumes its declarations rather than redeclaring the runtime API.
 - Demi builds: `packages/runner/runtime` owns native build flags, cross toolchains and application bundling inputs. Native runtime code stays in the fork.
 
@@ -496,11 +496,11 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `packages/guest-image` (not a workspace package)
 
-- Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` and `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
+- Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` and native client as `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
 
-### `packages/command-client` (planned native executable)
+### `packages/command-client` (native executable)
 
-- Status: accepted design, not implemented; see `docs/demi-next/command-client.md`.
+- Status: implemented for macOS/Linux; see `docs/demi-next/command-client.md` for Windows acceptance gaps.
 - Owns: a standalone `demi` C executable with statically linked libuv; endpoint discovery, raw invocation/context transport, byte streams, cancellation and exit status. Its executable is separate from `demi-runner`.
 - Depends on: libuv and the local IPC contract owned by `@demicodes/runner-protocol`; no JS engine or TypeScript runtime packages. Cross-language protocol fixtures must verify both endpoints.
 - Must not: parse business command arguments, cache manifests, execute command scripts, hold backend credentials or duplicate command schemas.
@@ -509,17 +509,18 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/runner`
 
-- Status: current implementation on txiki.js; the native-client split above is pending (`src/entry.ts` is the bundle entry — command mode for any root name, runner mode for `demi-runner`; native linking in `runtime/build.ts`).
+- Status: implemented on txiki.js with a separate native client. `src/entry.ts` handles runner startup, PID 1 boot and installation management; `runtime/bundle.ts` embeds the worker source; `runtime/build.ts` links the runner; `runtime/release.ts` creates matched client/runner releases.
 - Production deps: `@demicodes/command-loader`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; txiki.js globals and Web APIs, declared by the pinned fork's `types/src` and used through `src/machine/`.
-- Owns: the runner program (`docs/demi-next/runner.md`) — the single outbound backend WebSocket with reconnect/backoff and the hello/claim handshake; machine-local state under `DEMI_HOME` (`~/.demi`: `runner.json`, `runner-token` 0600, `runner.sock`, `commands/`, `bin/`, `output/`; Cloud uses `/run/demi` and a memory-only token); the machine served over the protocol (spawns naming no `PATH`/`HOME` resolve against the device's own — binary resolution is a device fact); the job table over the tee; brokered transfers; the local relay and its command-mode client; the manifest cache with the `current` and root symlinks. Command mode: the loader over the machine layer, `rpc` leaves through the relay, the job's live stdin told from a redirection by `fdNode`.
+- Owns: one outbound backend WebSocket per installation, reconnect and pairing; private installation state (`runner.json`, device token, OS lock, `active.json`, manifest cache, output and Host store); the target Host, teed shell jobs and brokered transfers; native-client IPC validation and command-loader dispatch. Each job/spawn receives an opaque live context, the exact random endpoint and a manifest-specific client PATH. Runtime leaves run in isolated interruptible workers; RPC leaves use authenticated backend transport. Managed guests keep state under `/run/demi` and the token in memory.
 - Public boundary: the packed `demi-runner` binary; `packedRunner`, `startTxikiRunner`, `txikiBinary` and `bundleForTxiki` under `@demicodes/runner/testing` for Bun tests that need a runner process or run JS on txiki.js; `LocalHost` and `nodeFileSystem` in the test-only `runner/testing/` directory provide real Node filesystem/process fixtures; `HostRpcServer` and `JobTable` under `@demicodes/runner/serve` for tests that join the runner's end to a `RemoteHost` without a socket.
 - Layout (directories mirror the runner's modules):
   - `machine/` — this machine as the runner sees it: the `Host` contract over txiki.js's primitives (`fs`, `process`, `cwd`, `stdio`), the teed spawn and tail reads for jobs, the WebSocket, Unix-socket and HTTP links, the codec re-export, the process itself (`argv`, `env`, `exit`, `onSignal`, `fdNode`). Accepted by the Host conformance suite on txiki.js. Internal to the runner: the agent never holds it — a machine is reached through `@demicodes/host-remote`.
   - `serve/` — the runner's end of the protocol: `HostRpcServer` (the `fs_*` and spawn messages over the machine layer) and `JobTable` (jobs over the teed spawn: the `EXIT` trap prelude, the stdin duplicate, the view budget, the job environment names).
-  - `relay/` — the UDS relay: server, client, and its length-prefixed wire.
+  - `relay/` — local IPC server and authenticated backend calls. The local frame contract belongs to `runner-protocol/local`; the C client is a separate native package.
+  - `commands/` — live execution contexts, worker dispatch and worker entry; no command definitions.
   - `init/` — PID 1 on a managed guest: the kernel command line as the guest's configuration, the boot as a plan of rootfs commands (kernel filesystems, persistent system overlay over the pinned base, separate home, network and `/run/demi` temporary state), per-volume usage, sync and growth. Pure over injected spawn and read, so Bun tests cover it without a kernel; `boot.ts` binds it to the machine layer.
   - `testing/` — Node-only filesystem and process fixtures; imported only through the testing entry.
-  - `runner-mode.ts`, `command-mode.ts`, `entry.ts`, `manifest-cache.ts`, `state.ts`, `transfers.ts` — the two entry modes and the machine-local state they share.
+  - `runner-mode.ts`, `entry.ts`, `management.ts`, `manifest-cache.ts`, `state.ts`, `transfers.ts` — runner startup/administration, manifest storage and machine-local state.
 - Must not: hold credentials other than the backend-issued device token, store any conversation or transcript state, or import `@demicodes/agent`, `@demicodes/coding-agent`, provider packages, or Node in production code.
 
 ### `@demicodes/web-ui`

@@ -1,0 +1,6 @@
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_PROCESSOR "$ENV{DEMI_ZIG_ARCH}")
+set(CMAKE_C_COMPILER "${CMAKE_CURRENT_LIST_DIR}/../../runner/runtime/toolchain/zig-cc")
+set(CMAKE_AR "${CMAKE_CURRENT_LIST_DIR}/../../runner/runtime/toolchain/zig-ar")
+set(CMAKE_RANLIB "${CMAKE_CURRENT_LIST_DIR}/../../runner/runtime/toolchain/zig-ranlib")
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)

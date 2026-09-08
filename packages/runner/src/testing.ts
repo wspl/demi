@@ -2,8 +2,9 @@
 // process: the binaries, the bundle, the packed runner, and a runner
 // process with its pairing code and status captured. Shipped as
 // `@demicodes/runner/testing`, never bundled.
-import { mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { existsSync, copyFileSync } from 'node:fs'
+import { commandClientBinary } from '../../command-client/build'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -21,7 +22,7 @@ export { packRuntime }
  */
 export async function bundleForTxiki(entry: string, outfile: string): Promise<void> {
   const built = Bun.spawnSync(
-    ['bun', 'build', entry, '--format=esm', '--target=browser', '--conditions=development', '--external', 'tjs:*', '--outfile', outfile],
+    ['bun', resolve(import.meta.dir, '../runtime/bundle.ts'), entry, outfile],
     { stdout: 'pipe', stderr: 'pipe' },
   )
   if (!built.success) throw new Error(`bundle failed:\n${built.stderr.toString()}${built.stdout.toString()}`)
@@ -29,7 +30,7 @@ export async function bundleForTxiki(entry: string, outfile: string): Promise<vo
 
 let packed: Promise<string> | null = null
 
-/** The packed txiki.js bundle with `demi-runner` beside it, built once per test process. */
+/** The packed txiki.js runner with the native `demi` client beside it, built once per test process. */
 export function packedRunner(): Promise<string> {
   return (packed ??= (async () => {
     const cache = resolve(import.meta.dir, '../../..', '.cache/txiki/runners')
@@ -37,24 +38,25 @@ export function packedRunner(): Promise<string> {
     const bundle = join(cache, `entry-${process.pid}.mjs`)
     await bundleForTxiki(resolve(import.meta.dir, 'entry.ts'), bundle)
     const runtime = runtimeBinary()
+    const client = commandClientBinary()
     const hash = createHash('sha256')
-    for (const path of [bundle, runtime, resolve(import.meta.dir, '../runtime/build.ts'), resolve(import.meta.dir, '../../../vendor/txiki.js/src/cli.c'), resolve(import.meta.dir, '../../../vendor/txiki.js/CMakeLists.txt')]) {
+    for (const path of [bundle, runtime, client, resolve(import.meta.dir, '../runtime/build.ts'), resolve(import.meta.dir, '../../../vendor/txiki.js/src/cli.c'), resolve(import.meta.dir, '../../../vendor/txiki.js/CMakeLists.txt')]) {
       hash.update(await readFile(path))
     }
     const work = join(cache, hash.digest('hex'))
-    const file = join(work, 'demi-cli')
+    const file = join(work, 'demi-runner')
     if (!existsSync(file)) {
       await mkdir(work, { recursive: true })
       packRuntime(bundle, file)
     }
-    if (!existsSync(join(work, 'demi-runner'))) await symlink(file, join(work, 'demi-runner'))
+    copyFileSync(client, join(work, 'demi'))
     return join(work, 'demi-runner')
   })())
 }
 
 export interface TxikiRunnerOptions {
   backendUrl: string
-  /** `DEMI_HOME`: runner.json, runner-token, runner.sock, commands, bin, output. */
+  /** `DEMI_HOME`: runner.json, runner-token, active.json, runner.lock, commands, output. */
   stateDir: string
   /** `HOME` inside the runner: its default working directory. */
   home: string

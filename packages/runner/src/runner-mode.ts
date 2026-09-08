@@ -1,6 +1,8 @@
+import { ExecutionContexts, type ExecutionContext } from './commands/contexts'
+import { directorySource } from '@demicodes/command-loader'
 // Runner mode (`runner.md`): the one outbound WebSocket to the backend with
 // its handshake and reconnect, the Host served over it, the job table, the
-// manifest cache, and the local relay for command-mode processes.
+// manifest cache, and the local relay for native clients.
 import {
   connectWebSocket,
   createRunnerHost,
@@ -21,7 +23,7 @@ import {
 import { HostRpcServer } from './serve/host-rpc-server'
 import { JobTable } from './serve/jobs'
 import type { Host } from '@demicodes/shell'
-import { collectBytes, createId, delay, errorMessage, noop, SerialQueue } from '@demicodes/utils'
+import { collectBytes, createId, delay, dirnamePath, errorMessage, noop, SerialQueue } from '@demicodes/utils'
 import { ManifestCache } from './manifest-cache'
 import { RelayServer } from './relay/server'
 import { DirectoryVolume, type Volume } from './init/volume'
@@ -35,7 +37,7 @@ export interface RunnerModeOptions {
   /** Device display name (default the hostname). */
   name?: string
   /** The packed binary the root-command symlinks point at. */
-  executable: string
+  clientExecutable: string
   /** Device facts jobs fall back to: `PATH`, `HOME`. */
   deviceEnv: Record<string, string>
   /** Booted as a managed host: the hello says so, and a missing token is a refusal, not a pairing. */
@@ -63,6 +65,9 @@ export class RunnerMode {
   private readonly wire = createRunnerWire({ encode: msgpackEncode, decode: msgpackDecode })
   private readonly log: (line: string) => void
   private readonly volumes: Partial<Record<'home' | 'system', Volume>>
+  private readonly contexts = new ExecutionContexts()
+  private endpoint = ''
+  private draining = false
   private stopped = false
   private link: WebSocketLink | null = null
   private relay: RelayServer | null = null
@@ -77,10 +82,15 @@ export class RunnerMode {
       identity: runnerIdentity,
     })
     this.state = new RunnerState(this.host.fs, options.stateDir)
-    this.cache = new ManifestCache(this.host.fs, this.state.commandsDir, this.state.binDir, options.executable)
+    this.cache = new ManifestCache(this.host.fs, this.state.commandsDir, options.clientExecutable)
     this.pipes = new PipeClient(options.backendUrl, () => this.token())
     this.log = options.log ?? ((line) => console.error(line))
     this.volumes = options.volumes ?? { home: new DirectoryVolume({ run: (command, args) => this.command(command, args) }) }
+  }
+
+  private executionEnvironment(context: ExecutionContext, env: Record<string, string | undefined>): Record<string, string> {
+    const bin = context.manifest ? this.cache.binDirectory(context.manifest) : dirnamePath(this.options.clientExecutable)
+    return { ...this.contexts.environment(context, this.endpoint), PATH: `${bin}:${env.PATH ?? this.options.deviceEnv.PATH ?? '/usr/bin:/bin'}` }
   }
 
   /** The device token: the one held in memory, else the state directory's. */
@@ -102,15 +112,36 @@ export class RunnerMode {
     const max = this.options.reconnect?.maxDelayMs ?? 30_000
     let backoff = initial
     await this.host.fs.mkdir(this.options.stateDir, { recursive: true })
-    await this.host.fs.rm(this.state.socketPath, { force: true })
-    this.relay = await RelayServer.listen(this.state.socketPath, {
-      send: (message) => this.sendToBackend(message),
-      manifest: () => this.cache.current(),
-      pipes: this.pipes,
-    })
-    const checkMs = this.options.volumeCheckMs ?? 60_000
-    if (checkMs > 0) this.volumeCheckTimer = setInterval(() => void this.checkVolumes(), checkMs)
+    await this.host.fs.chmod(this.options.stateDir, 0o700)
+    const lease = await tjs.open(`${this.options.stateDir}/runner.lock`, 'a', 0o600)
+    if (!lease.lock()) { await lease.close(); throw new Error('runner already active for this installation') }
+    let runtimeDir: string | null = null
+    let published = false
     try {
+      const config = await this.state.readConfig()
+      if (config && config.backendUrl !== this.options.backendUrl) throw new Error('state directory belongs to another backend')
+      await this.state.writeConfig(config ?? { backendUrl: this.options.backendUrl })
+      const startId = crypto.randomUUID().replaceAll('-', '')
+      const windows = navigator.platform.startsWith('Win')
+      runtimeDir = windows ? null : await tjs.makeTempDir(`${tjs.tmpDir}/demi-XXXXXX`)
+      if (runtimeDir) await tjs.chmod(runtimeDir, 0o700)
+      this.endpoint = windows ? String.raw`\\.\pipe\demi-${startId}` : `${runtimeDir}/ipc.sock`
+      const secret = crypto.randomUUID().replaceAll('-', '')
+      this.relay = await RelayServer.listen(this.endpoint, {
+        send: message => this.sendToBackend(message), host: this.host, contexts: this.contexts,
+        source: context => {
+          if (!context.manifest) throw new Error('no command manifest for this execution context')
+          return directorySource(`${this.state.commandsDir}/${context.manifest.hash}`, this.host.fs)
+        },
+        pipes: this.pipes, manageSecret: secret,
+        drain: async () => { this.draining = true; while (this.contexts.count) await delay(50) },
+        stop: () => this.stop(),
+      })
+      await this.host.fs.writeFile(this.state.activePath, new TextEncoder().encode(JSON.stringify({ endpoint: this.endpoint, secret, release: tjs.env.DEMI_RELEASE_ID ?? RUNNER_VERSION })))
+      published = true
+      await this.host.fs.chmod(this.state.activePath, 0o600)
+      const checkMs = this.options.volumeCheckMs ?? 60_000
+      if (checkMs > 0) this.volumeCheckTimer = setInterval(() => void this.checkVolumes(), checkMs)
       while (!this.stopped) {
         this.log('connecting…')
         const outcome = await this.connectOnce()
@@ -124,8 +155,11 @@ export class RunnerMode {
     } finally {
       if (this.volumeCheckTimer) clearInterval(this.volumeCheckTimer)
       this.volumeCheckTimer = null
-      this.relay.close()
-      this.relay = null
+      this.relay?.close(); this.relay = null
+      this.contexts.clear()
+      if (published) await this.host.fs.rm(this.state.activePath, { force: true })
+      if (runtimeDir) await this.host.fs.rm(runtimeDir, { recursive: true, force: true })
+      await lease.close()
     }
   }
 
@@ -162,7 +196,9 @@ export class RunnerMode {
     if (!link) throw new Error('runner: not connected')
     void link.send(this.wire.encode(message)).catch(() => {})
     // A job that just ended may have filled the home.
+    if (message.type === 'spawn_exit') { this.relay?.cancelOwner(`spawn:${message.spawnId}`); this.contexts.remove(`spawn:${message.spawnId}`) }
     if (message.type === 'job_exit') {
+      this.contexts.remove(`job:${message.jobId}`)
       this.relay?.cancelJob(message.jobId)
       void this.checkVolumes()
     }
@@ -179,7 +215,10 @@ export class RunnerMode {
     }
     this.growthPending.clear()
     this.link = link
-    const rpc = new HostRpcServer(this.host, (message) => this.sendToBackend(message), this.options.deviceEnv)
+    const rpc = new HostRpcServer(this.host, (message) => this.sendToBackend(message), this.options.deviceEnv, async message => {
+      const context = this.contexts.create(`spawn:${message.spawnId}`, {}, await this.cache.current())
+      return this.executionEnvironment(context, message.env ?? {})
+    })
     const jobs = new JobTable({
       spawn: spawnTeed,
       outputDir: this.state.outputDir,
@@ -190,9 +229,12 @@ export class RunnerMode {
         rm: (path) => this.host.fs.rm(path, { force: true }),
       },
       deviceEnv: this.options.deviceEnv,
-      pathPrefix: [this.state.binDir],
-      // Command-mode processes find the relay socket and the manifest cache here.
+      // The state location is fixed; per-job context and manifest PATH are injected below.
       fixedEnv: { DEMI_HOME: this.options.stateDir },
+      executionEnv: async message => {
+        const context = this.contexts.create(`job:${message.jobId}`, message.env, await this.cache.current(), message.jobId)
+        return this.executionEnvironment(context, message.env)
+      },
       pipes: this.pipes,
       send: (message) => this.sendToBackend(message),
     })
@@ -245,11 +287,16 @@ export class RunnerMode {
       await link.close().catch(() => {})
       await Promise.all([jobs.close(), rpc.close()])
       this.relay?.connectionLost()
+      this.contexts.clear()
     }
     return outcome
   }
 
   private async handle(message: BackendToRunnerMessage, ends: { rpc: HostRpcServer; jobs: JobTable }): Promise<'online' | 'rejected' | undefined> {
+    if (this.draining) {
+      if (message.type === 'job_start') { this.sendToBackend({ type: 'job_exit', jobId: message.jobId, exitCode: null, spawnError: { kind: 'other' }, signal: 'runner is draining for upgrade' }); return }
+      if (message.type === 'spawn') { this.sendToBackend({ type: 'spawn_exit', spawnId: message.spawnId, exitCode: null, spawnError: { kind: 'other' }, signal: 'runner is draining for upgrade' }); return }
+    }
     switch (message.type) {
       case 'hello_ok': {
         const config = (await this.state.readConfig()) ?? { backendUrl: this.options.backendUrl }
