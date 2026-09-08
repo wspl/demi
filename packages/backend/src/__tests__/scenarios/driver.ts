@@ -5,13 +5,13 @@ import { AgentClient, createWebSocketClientTransport, type ClientSessionEvent } 
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
 import { delay } from '@demicodes/utils'
-import { HOSTLESS_HOME } from '../../conversation/scoped-transport'
+import { CLOUD_HOME } from '../../conversation/execution-target'
 import type { TurnScript } from './model'
 export type { TurnScript } from './model'
 import type { World } from './world'
 
-/** `hostless`, or `runner:<name>` for a device the world paired. */
-export type Target = 'hostless' | `runner:${string}`
+/** `cloud`, or `runner:<name>` for a device the world paired. */
+export type Target = 'cloud' | `runner:${string}`
 
 export type ShellOutputEvent = Extract<ClientSessionEvent, { type: 'shell_output' }>
 
@@ -46,7 +46,7 @@ export class Driver {
   static async open(world: World, target: Target): Promise<Driver> {
     const { conversation } = await world.api<{ conversation: { id: string } }>('/api/conversations', {})
     const driver = new Driver(world, conversation.id, target)
-    if (target !== 'hostless') await driver.switchTo(target)
+    if (target !== 'cloud') await driver.switchTo(target)
     await driver.attach()
     return driver
   }
@@ -75,8 +75,8 @@ export class Driver {
 
   /** Rebinds the conversation's target over PATCH (a turn-boundary switch). */
   async switchTo(target: Target): Promise<void> {
-    const workspaceId = target === 'hostless' ? null : this.world.device(target.slice('runner:'.length)).workspaceId
-    await this.world.api(`/api/conversations/${this.id}`, { workspaceId }, 'PATCH')
+    const workspaceId = target === 'cloud' ? null : this.world.device(target.slice('runner:'.length)).workspaceId
+    await this.world.api(`/api/conversations/${this.id}`, { target: workspaceId === null ? { kind: 'cloud' } : { kind: 'workspace', workspaceId } }, 'PATCH')
     this.target = target
   }
 
@@ -134,15 +134,15 @@ export class Driver {
   }
 
   /** Where the target keeps a file under the conversation's home. */
-  /** Where a runner keeps a file under the conversation's home; a hostless conversation's files are rows, read with `readFile`. */
+  /** Where a runner keeps a file under the conversation's home; a cloud conversation's files are rows, read with `readFile`. */
   filePath(relative: string): string {
-    if (this.target === 'hostless') throw new Error('a hostless conversation has no file path; use readFile')
+    if (this.target === 'cloud') throw new Error('a cloud conversation has no file path; use readFile')
     return join(this.world.device(this.target.slice('runner:'.length)).home, relative)
   }
 
   /** A file under the conversation's home as the current target keeps it, or null when absent. */
   async readFile(relative: string): Promise<string | null> {
-    if (this.target === 'hostless') return this.world.hostlessFile(this.id, `${HOSTLESS_HOME}/${relative}`)
+    if (this.target === 'cloud') return this.world.cloudFile(this.id, relative)
     return readFile(this.filePath(relative), 'utf8').catch(() => null)
   }
 
@@ -169,16 +169,12 @@ export interface TurnBegin {
 
 /** The allowed differences between the two targets, keyed by what a scenario asks about. */
 export function expected(target: Target) {
-  const hostless = target === 'hostless'
   return {
-    hostCurrent: hostless ? 'host: virtual' : `on device "${target.slice('runner:'.length)}"`,
-    /** A stream past the runner's view carries a gap note; the hostless view is the whole capture. */
-    gapNote: hostless ? null : 'bytes not shown; the full stream is at',
-    /** Where a binary final stream's raw bytes are, as the model is told. */
-    binaryKept: hostless ? 'the raw bytes were not kept beyond this view' : 'the raw bytes remain readable at',
-    binaryPlaceholder: hostless ? '; not kept beyond this view>' : '; raw bytes at ',
-    /** How a truncated preview tells the model where the rest is. */
-    previewTruncated: hostless ? 'previewTruncated: true; nothing beyond this view was kept' : 'previewTruncated: true; read ',
+    hostCurrent: target === 'cloud' ? 'host: machine "Cloud"' : `on device "${target.slice('runner:'.length)}"`,
+    gapNote: 'bytes not shown; the full stream is at',
+    binaryKept: 'the raw bytes remain readable at',
+    binaryPlaceholder: '; raw bytes at ',
+    previewTruncated: 'previewTruncated: true; read ',
   }
 }
 

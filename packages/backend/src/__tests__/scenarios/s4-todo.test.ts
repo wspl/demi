@@ -4,7 +4,7 @@ import { model, type Target } from './driver'
 
 // S4 — `demi todo`: written in one turn, read in a later one; a second
 // conversation sees an empty list. The rpc leaf crosses the relay on a
-// runner and runs in-process hostless; storage is scoped to the session.
+// runner and runs in-process cloud; storage is scoped to the session.
 
 let world: World
 
@@ -16,7 +16,7 @@ afterAll(async () => {
   await world.close()
 })
 
-describe.each<Target>(['hostless', 'runner:alpha'])('S4 todo on %s', (target) => {
+describe.each<Target>(['cloud', 'runner:alpha'])('S4 todo on %s', (target) => {
   test('todos persist across turns and stay with their session', async () => {
     const driver = await world.conversation(target)
     world.wire()
@@ -29,9 +29,9 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S4 todo on %s', (target) =>
     const json = /preview:\n([\s\S]*?)\nnext:/.exec(listed.received[0]!)?.[1] ?? /preview:\n([\s\S]*)$/.exec(listed.received[0]!)?.[1] ?? ''
     expect(JSON.parse(json.trim())).toMatchObject({ todos: [{ text: 'draft the outline' }, { text: 'run the suite' }] })
 
-    // On a runner the leaf is relayed as rpc; hostless runs it in this process.
+    // On a runner the leaf is relayed as rpc; cloud runs it in this process.
     const relayed = world.wire('alpha').filter((f) => f.message.type === 'rpc_call').map((f) => (f.message.type === 'rpc_call' ? f.message.path.join(' ') : ''))
-    if (target === 'hostless') expect(relayed).toEqual([])
+    if (target === 'cloud') expect(relayed).toEqual([])
     else expect(relayed).toEqual(['demi todo add', 'demi todo add', 'demi todo list'])
 
     const other = await world.conversation(target)

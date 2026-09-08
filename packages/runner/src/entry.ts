@@ -2,7 +2,7 @@
 // one packed binary reached through symlinks, the mode chosen by the name it
 // was invoked by. `demi-runner` is runner mode; any other name is a root
 // command in command mode.
-import { argv, createRunnerHost, env, exit, identity, onSignal, pid, stderrWriter } from './machine'
+import { argv, createRunnerHost, dropPrivileges, env, exit, identity, onSignal, pid, stderrWriter } from './machine'
 import { basenamePath, errorMessage } from '@demicodes/utils'
 import { runCommandMode, stateDir } from './command-mode'
 import { GUEST_USER, bootGuest } from './init/boot'
@@ -35,17 +35,18 @@ async function initMain(): Promise<number> {
     await flush()
     return 1
   }
+  const guestIdentity = dropPrivileges(GUEST_USER.uid, GUEST_USER.gid)
   const runner = new RunnerMode({
     backendUrl: boot.config.backendUrl,
     stateDir: boot.stateDir,
     executable: '/demi-runner',
     name: identity.hostname,
-    // The guest's login table: the same values the backend names for the hostless shell (`sessions-and-targets.md` § What moves).
+    // Files, jobs, and commands all use the same guest account.
     deviceEnv: { PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', HOME: GUEST_USER.homeDir, USER: GUEST_USER.name, SHELL: '/bin/bash', LANG: 'C' },
     managed: true,
     deviceToken: boot.config.deviceToken,
-    guest: { identity: { uid: GUEST_USER.uid, gid: GUEST_USER.gid, hostname: identity.hostname, homeDir: GUEST_USER.homeDir }, runAs: { uid: GUEST_USER.uid, gid: GUEST_USER.gid } },
-    home: boot.home,
+    identity: { ...guestIdentity, homeDir: GUEST_USER.homeDir },
+    volumes: boot.volumes,
     log,
   })
   onSignal('SIGTERM', () => void runner.stop())

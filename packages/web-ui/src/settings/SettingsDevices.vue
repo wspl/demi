@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CloudSettings from '../cloud/CloudSettings.vue'
+import type { CloudState } from '../cloud/types'
 import { Monitor } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -12,17 +14,19 @@ import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
 
 const props = defineProps<{
+  cloud: CloudState
   devices: SettingsDevice[]
   overlayStore: OverlayStore
   installation: DeviceInstallation
   claimDevice: (code: string) => Promise<PairingResult>
 }>()
-const emit = defineEmits<{ revoke: [id: string] }>()
+const emit = defineEmits<{ revoke: [id: string]; resetCloud: [operationId: string] }>()
 const { isOpen, phase, open, close, submit } = useDevicePairing((code) => props.claimDevice(code))
 </script>
 
 <template>
   <SettingsPage title="Devices" description="Machines that can host a conversation's working directory.">
+    <CloudSettings :cloud="cloud" :overlay-store="overlayStore" @reset="emit('resetCloud', $event)" />
     <SettingsGroup>
       <template #header>
         <header class="flex items-center justify-between gap-3">

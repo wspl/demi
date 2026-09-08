@@ -17,7 +17,7 @@ afterAll(async () => {
   await world.close()
 })
 
-describe.each<Target>(['hostless', 'runner:alpha'])('S9 detach on %s', (target) => {
+describe.each<Target>(['cloud', 'runner:alpha'])('S9 detach on %s', (target) => {
   test('a turn survives its client', async () => {
     const driver = await world.conversation(target)
     await driver.turn({ model: [model.say('warm')] })

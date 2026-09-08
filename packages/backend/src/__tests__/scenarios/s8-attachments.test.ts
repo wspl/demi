@@ -19,7 +19,7 @@ afterAll(async () => {
 
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01])
 
-describe.each<Target>(['hostless', 'runner:alpha'])('S8 attachments on %s', (target) => {
+describe.each<Target>(['cloud', 'runner:alpha'])('S8 attachments on %s', (target) => {
   test('upload → ref → bytes at the model → blob route', async () => {
     const driver = await world.conversation(target)
     const uploaded = await world.backend.session.fetch(`/api/attachments`, { method: 'POST', body: PNG_BYTES, headers: { 'content-type': 'image/png' } })

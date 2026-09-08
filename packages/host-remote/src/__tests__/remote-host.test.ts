@@ -2,17 +2,18 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { LocalHost } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/runner/testing'
 import { createRunnerWire, type BackendToRunnerMessage, type RunnerToBackendMessage } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { HostRpcServer } from '@demicodes/runner/serve'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { RemoteHost } from '../index'
+import { deferred } from '@demicodes/utils'
 
 const wire = createRunnerWire(msgpackCodec)
 
 /** RemoteHost and HostRpcServer joined directly (encoded through the codec both ways). */
-async function connectedPair() {
+async function connectedPair(spawnReady?: Promise<void>) {
   const dir = await mkdtemp(join(tmpdir(), 'demi-runner-proto-'))
   const local = new LocalHost(dir)
   const remote = new RemoteHost({
@@ -20,7 +21,8 @@ async function connectedPair() {
     identity: { uid: 501, gid: 20, hostname: 'test', homeDir: '/' },
     store: memoryHostStore(),
   })
-  const server = new HostRpcServer(local, (message: RunnerToBackendMessage) => {
+  const served = spawnReady ? { fs: local.fs, process: { ...local.process, spawn: async (params: Parameters<typeof local.process.spawn>[0]) => { await spawnReady; return local.process.spawn(params) } } } : local
+  const server = new HostRpcServer(served, (message: RunnerToBackendMessage) => {
     remote.handleMessage(wire.decodeRunnerToBackend(wire.encode(message)))
   })
   remote.attach((message: BackendToRunnerMessage) => {
@@ -122,3 +124,54 @@ async function collect(stream: AsyncIterable<Uint8Array>): Promise<string> {
   for await (const chunk of stream) text += decoder.decode(chunk, { stream: true })
   return text + decoder.decode()
 }
+
+test('machine admission covers pending filesystem calls and process lifetime, then refuses cached Hosts during a transition', async () => {
+  let active = 0
+  let blocked = false
+  const messages: BackendToRunnerMessage[] = []
+  const host = new RemoteHost({
+    defaultCwd: '/work', identity: { uid: 1000, gid: 1000, hostname: 'cloud', homeDir: '/home/demi' }, store: memoryHostStore(),
+    admit: () => {
+      if (blocked) throw new Error('machine transition')
+      active++
+      return () => { active-- }
+    },
+  })
+  host.attach(message => messages.push(message))
+  const read = host.fs.readFile('/work/file')
+  const request = messages[0]!
+  expect(request.type).toBe('fs_readFile')
+  expect(active).toBe(1)
+  if (request.type !== 'fs_readFile') throw new Error('Expected read request')
+  host.handleMessage({ type: 'fs_ok', id: request.id, op: 'readFile', result: new Uint8Array() })
+  await read
+  expect(active).toBe(0)
+  const process = await host.process.spawn({ command: 'sleep', args: ['10'] })
+  const job = host.startJob({ script: 'sleep 10', cwd: '/work', env: {} })
+  expect(active).toBe(2)
+  blocked = true
+  await expect(host.fs.readFile('/work/next')).rejects.toThrow('machine transition')
+  await expect(host.process.spawn({ command: 'true' })).rejects.toThrow('machine transition')
+  expect(() => host.startJob({ script: 'true', cwd: '/work', env: {} })).toThrow('machine transition')
+  expect(messages).toHaveLength(3)
+  host.detach()
+  await Promise.all([process.wait(), job.wait()])
+  expect(active).toBe(0)
+})
+
+
+test('stdin and cancellation sent during native process startup reach the new process', async () => {
+  const ready = deferred<void>()
+  const { remote, server } = await connectedPair(ready.promise)
+  try {
+    const cat = await remote.process.spawn({ command: '/bin/cat' })
+    await cat.writeStdin(new TextEncoder().encode('early input'))
+    await cat.closeStdin()
+    const sleeper = await remote.process.spawn({ command: '/bin/sleep', args: ['10'] })
+    await sleeper.kill('SIGKILL')
+    ready.resolve()
+    expect(await collect(cat.stdout)).toBe('early input')
+    expect((await cat.wait()).exitCode).toBe(0)
+    expect((await sleeper.wait()).signal).toBe('SIGKILL')
+  } finally { ready.resolve(); remote.detach(); await server.close() }
+})

@@ -1,3 +1,4 @@
+import { FakeProvisioner } from './scenarios/fake-provisioner'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,7 +10,7 @@ import { StubProvider, events } from '@demicodes/provider/testing'
 import { openBackend, type TestBackend } from './session'
 
 // M2 acceptance: a zero-setup virtual conversation over the real Web API +
-// conversation stream — tinybash builtins work, a script outside the subset
+// conversation stream — real shell commands work, and a failing script
 // is refused with the reason, and cold history equals the live transcript.
 // Detach mid-turn and the backend restart live in `scenarios/` (S9, R1).
 
@@ -70,17 +71,17 @@ async function connectClient(
   return { client: new AgentClient(createWebSocketClientTransport(socket as never)), socket }
 }
 
-test('hostless conversation end-to-end: tinybash builtins, refusal, detach-safe turns, cold history', async () => {
+test('Cloud conversation executes native programs and retains history', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-backend-'))
   const stub = new StubProvider([
-    // Turn 1: tinybash builtins over the hostless tree.
+    // Turn 1: real bash on the Cloud runner.
     [events.toolCall('t1', 'shell_exec', { script: 'echo -n hello > f.txt && cat f.txt', timeoutMs: 10_000 })],
     [events.text('files done'), events.response()],
     // Turn 2: a real program puts the script outside the subset; this backend provisions no machine, so the call is a tool error and nothing runs.
-    [events.toolCall('t2', 'shell_exec', { script: 'python3 -V', timeoutMs: 10_000 })],
+    [events.toolCall('t2', 'shell_exec', { script: 'uname -s', timeoutMs: 10_000 })],
     [events.text('refused as expected'), events.response()],
   ])
-  const backend = await openBackend({ dataDir, port: 0, providerTypes: stubTypes(() => stub) })
+  const backend = await openBackend({ managedHosts: { provisioner: new FakeProvisioner() }, dataDir, port: 0, providerTypes: stubTypes(() => stub) })
   const providerId = await createStubProvider(backend)
 
   // Web API basics.
@@ -112,8 +113,8 @@ test('hostless conversation end-to-end: tinybash builtins, refusal, detach-safe 
   expect(shellOutputs[0]).toBe('hello')
 
   await client.send([{ type: 'text', text: 'now run python' }])
-  expect(shellErrors).toHaveLength(1)
-  expect(JSON.stringify(client.transcript().blocks.filter((block) => block.type === 'tool_call').at(-1))).toContain('this backend provisions none')
+  expect(shellErrors).toHaveLength(2)
+  expect(shellOutputs[1]).toMatch(/Darwin|Linux/)
 
   // The first user message became the title.
   const listed = await api<{ conversations: Array<{ id: string; title: string }> }>(backend, '/api/conversations')
@@ -125,7 +126,7 @@ test('hostless conversation end-to-end: tinybash builtins, refusal, detach-safe 
 
 test('a malformed PATCH body is rejected with 400 invalid_body', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-backend-badbody-'))
-  const backend = await openBackend({ dataDir, port: 0 })
+  const backend = await openBackend({ managedHosts: { provisioner: new FakeProvisioner() }, dataDir, port: 0 })
   const created = await api<{ conversation: { id: string } }>(backend, '/api/conversations', { method: 'POST' })
 
   const bad = await backend.session.fetch(`/api/conversations/${created.conversation.id}`, {

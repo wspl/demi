@@ -4,8 +4,9 @@ import { deferred, type Deferred } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import { AgentSession, createStandardAgentTools, type AgentHarnessRuntime } from '@demicodes/agent'
 import { clampPromptCacheKey, providerRuntime, type InferenceRequest, type ProviderSelection } from '@demicodes/provider'
-import { hostlessShell } from '@demicodes/host-virtual/testing'
-import { LocalHost } from '@demicodes/host-virtual/testing'
+import { runnerShell } from '@demicodes/backend/testing'
+
+import { LocalHost } from '@demicodes/runner/testing'
 import { StaticCodexAuthStore, type CodexResolvedAuth } from '../auth'
 import { CodexProvider, buildCodexHeaders, createCodexProvider, parseCodexProviderConfig, responsesUrlForAuth } from '../provider'
 import type { CodexResponseStreamEvent } from '../responses'
@@ -336,7 +337,7 @@ test('CodexProvider integrates with AgentSession and shell tools for function ca
     transportImpl: transport,
     transport: 'sse',
   })
-  const environment = await hostlessShell({
+  const environment = await runnerShell({
     host: new LocalHost(process.cwd()),
     commands: new CommandRegistry(),
     shellIdFactory: () => 'codex-shell-session',

@@ -139,3 +139,6 @@ export async function startTinyjsRunner(options: TinyjsRunnerOptions): Promise<T
   await waitFor(() => runner.statuses.length > 0, undefined, { timeoutMs: 10_000 })
   return runner
 }
+
+export { LocalHost, type LocalHostOptions } from './testing/local-host'
+export { nodeFileSystem } from './testing/node-fs'

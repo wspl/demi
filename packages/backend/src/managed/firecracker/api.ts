@@ -9,6 +9,7 @@ export interface VmDescription {
   kernelPath: string
   bootArgs: string
   rootfsPath: string
+  systemPath: string
   homePath: string
   tap: string
   mac: string
@@ -36,6 +37,7 @@ export class FirecrackerApi {
     await this.request('PUT', '/boot-source', { kernel_image_path: vm.kernelPath, boot_args: vm.bootArgs })
     await this.request('PUT', '/drives/rootfs', { drive_id: 'rootfs', path_on_host: vm.rootfsPath, is_root_device: true, is_read_only: true })
     await this.request('PUT', '/drives/home', { drive_id: 'home', path_on_host: vm.homePath, is_root_device: false, is_read_only: false })
+    await this.request('PUT', '/drives/system', { drive_id: 'system', path_on_host: vm.systemPath, is_root_device: false, is_read_only: false })
     await this.request('PUT', '/network-interfaces/eth0', { iface_id: 'eth0', guest_mac: vm.mac, host_dev_name: vm.tap })
   }
 
@@ -52,8 +54,8 @@ export class FirecrackerApi {
   }
 
   /** The backing file changed size: Firecracker re-reads it and the guest sees a bigger block device. */
-  async rescanHome(homePath: string): Promise<void> {
-    await this.request('PATCH', '/drives/home', { drive_id: 'home', path_on_host: homePath })
+  async rescanVolume(volume: 'home' | 'system', path: string): Promise<void> {
+    await this.request('PATCH', `/drives/${volume}`, { drive_id: volume, path_on_host: path })
   }
 
   private async request(method: string, path: string, body?: unknown): Promise<void> {

@@ -17,7 +17,7 @@ test("runtime: argv/env/pid/identity/version", () => {
   assert(rt.pid > 0, "pid");
   assertEq([rt.stdin, rt.stdout, rt.stderr], [0, 1, 2]);
   assert(typeof rt.identity.uid === "number" && typeof rt.identity.hostname === "string" && rt.identity.homeDir.startsWith("/"), "identity");
-  assertEq([rt.version, rt.abi], [1, 2]);
+  assertEq([rt.version, rt.abi], [1, 3]);
   assert(typeof rt.openHandles() === "number", "openHandles");
 });
 
@@ -41,4 +41,8 @@ test("runtime: onSignal registers a handler", async () => {
   // registration and the unsupported-name error are checked.
   await assertCode(() => rt.onSignal("SIGKILL", () => {}), "EINVAL", "signal");
   assertEq(got, null);
+});
+
+test("runtime: dropPrivileges refuses root credentials", async () => {
+  await assertCode(() => rt.dropPrivileges(0, 0), "EINVAL", "dropPrivileges");
 });

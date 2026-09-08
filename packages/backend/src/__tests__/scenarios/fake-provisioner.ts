@@ -1,20 +1,16 @@
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, rm, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startTinyjsRunner, type TinyjsRunner } from '@demicodes/runner/testing'
 import type { BootArgs, ManagedHostProvisioner } from '../../managed/provisioner'
-import { ownerKey } from '../../managed/provisioner'
-import type { ManagedHostOwner } from '../../storage/control'
 
 interface Guest {
-  owner: ManagedHostOwner
+  owner: string
   homeDir: string
   stateDir: string
   runner: TinyjsRunner | null
   /** Set around a stop the provisioner itself performs, so the exit is not reported as a death. */
   stopping: boolean
-  /** The `untouched` report of each hibernate, in order. */
-  reports: boolean[]
 }
 
 /**
@@ -27,63 +23,66 @@ interface Guest {
 export class FakeProvisioner implements ManagedHostProvisioner {
   readonly guests = new Map<string, Guest>()
   readonly calls: string[] = []
-  private readonly deathListeners: Array<(owner: ManagedHostOwner) => void> = []
+  private readonly deathListeners: Array<(owner: string) => void> = []
   /** How long a checkpoint holds the guest "paused". */
   checkpointMs = 0
 
   /** Nothing to settle: the fake's guests never outlive the test process. */
   async reconcile(): Promise<void> {}
 
-  async provision(owner: ManagedHostOwner, homeDir: string, boot: BootArgs): Promise<void> {
-    this.calls.push(`provision:${ownerKey(owner)}`)
-    const stateDir = await mkdtemp(join(tmpdir(), 'demi-fake-vm-state-'))
-    const guest: Guest = { owner, homeDir, stateDir, runner: null, stopping: false, reports: [] }
-    this.guests.set(ownerKey(owner), guest)
-    await this.start(guest, boot)
+  async currentBaseVersion(): Promise<string> { return 'test-base' }
+  async imageState(id: string) {
+    return this.guests.has(id) ? { generation: 'test', baseVersion: 'test-base', resetId: null, systemBytes: 1024 ** 3, homeBytes: 1024 ** 3 } : null
   }
-
-  async wake(owner: ManagedHostOwner, boot: BootArgs): Promise<void> {
-    this.calls.push(`wake:${ownerKey(owner)}`)
+  async wake(owner: string, boot: BootArgs): Promise<void> {
+    this.calls.push(`wake:${owner}`)
+    if (!this.guests.has(owner)) {
+      const homeDir = await mkdtemp(join(tmpdir(), 'demi-fake-home-'))
+      const stateDir = await mkdtemp(join(tmpdir(), 'demi-fake-state-'))
+      this.guests.set(owner, { owner, homeDir, stateDir, runner: null, stopping: false })
+    }
     await this.start(this.guest(owner), boot)
   }
-
-  async hibernate(owner: ManagedHostOwner, report: { untouched: boolean }): Promise<void> {
-    this.calls.push(`hibernate:${ownerKey(owner)}`)
-    this.guest(owner).reports.push(report.untouched)
-    await this.stop(this.guest(owner))
+  async hibernate(owner: string): Promise<void> {
+    this.calls.push(`hibernate:${owner}`)
+    const guest = this.guests.get(owner)
+    if (guest) await this.stop(guest)
+  }
+  async growVolume(owner: string, volume: 'system' | 'home', bytes: number): Promise<void> {
+    this.calls.push(`grow:${owner}:${volume}:${bytes}`)
+  }
+  async reset(owner: string, operationId: string, baseVersion: string): Promise<void> {
+    this.calls.push(`reset:${owner}:${operationId}:${baseVersion}`)
+    const guest = this.guests.get(owner)
+    if (guest) {
+      await this.stop(guest)
+      await rm(guest.stateDir, { recursive: true, force: true })
+      await mkdir(guest.stateDir)
+    }
   }
 
-  async growHome(owner: ManagedHostOwner, bytes: number): Promise<void> {
-    this.calls.push(`grow:${ownerKey(owner)}:${bytes}`)
-  }
-
-  async checkpoint(owner: ManagedHostOwner): Promise<void> {
-    this.calls.push(`checkpoint:${ownerKey(owner)}`)
+  async checkpoint(owner: string): Promise<void> {
+    this.calls.push(`checkpoint:${owner}`)
     if (this.checkpointMs > 0) await new Promise((resolve) => setTimeout(resolve, this.checkpointMs))
   }
 
-  async destroy(owner: ManagedHostOwner): Promise<void> {
-    this.calls.push(`destroy:${ownerKey(owner)}`)
-    await this.stop(this.guest(owner))
-  }
-
-  onDeath(listener: (owner: ManagedHostOwner) => void): void {
+  onDeath(listener: (owner: string) => void): void {
     this.deathListeners.push(listener)
   }
 
   /** The guest dies on its own: what a crashed VM looks like from above. */
-  async kill(owner: ManagedHostOwner): Promise<void> {
+  async kill(owner: string): Promise<void> {
     const guest = this.guest(owner)
     const runner = guest.runner
     if (!runner) return
     await runner.stop()
   }
 
-  running(owner: ManagedHostOwner): boolean {
-    return this.guests.get(ownerKey(owner))?.runner !== null
+  running(owner: string): boolean {
+    return this.guests.get(owner)?.runner !== null
   }
 
-  homeOf(owner: ManagedHostOwner): string {
+  homeOf(owner: string): string {
     return this.guest(owner).homeDir
   }
 
@@ -91,14 +90,14 @@ export class FakeProvisioner implements ManagedHostProvisioner {
     for (const guest of this.guests.values()) await this.stop(guest)
   }
 
-  private guest(owner: ManagedHostOwner): Guest {
-    const guest = this.guests.get(ownerKey(owner))
-    if (!guest) throw new Error(`no guest for ${ownerKey(owner)}`)
+  private guest(owner: string): Guest {
+    const guest = this.guests.get(owner)
+    if (!guest) throw new Error(`no guest for ${owner}`)
     return guest
   }
 
   private async start(guest: Guest, boot: BootArgs): Promise<void> {
-    if (guest.runner) throw new Error(`guest ${ownerKey(guest.owner)} already runs`)
+    if (guest.runner) throw new Error(`guest ${guest.owner} already runs`)
     const runner = await startTinyjsRunner({
       backendUrl: boot.backendUrl,
       stateDir: guest.stateDir,

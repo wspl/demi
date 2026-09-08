@@ -1,7 +1,0 @@
-{
-  "exit": 0,
-  "stdout": "export function main() {\n  return 42\n}\nalpha\nbeta\ngamma\nbeta\ndelta\n-rw-r--r-- 1 example-company example-company 28 Jan 15  2024 out/notes.txt\n-rw-r--r-- 1 example-company example-company  5 Jan 15  2024 out/src/lib/deep.ts\n-rw-r--r-- 1 example-company example-company 39 Jan 15  2024 out/src/main.ts\n",
-  "stderr": "",
-  "user": "example-company",
-  "group": "example-company"
-}

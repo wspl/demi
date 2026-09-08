@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # The shared read-only rootfs (managed-hosts.md § Images): Ubuntu 24.04 by
-# debootstrap, the toolchain from packages.txt, Bun, uv and rustup for the
-# guest user, the guest user `demi` (uid 1000) with passwordless sudo, the
+# debootstrap, the system toolchain from packages.txt, the guest user `demi` (uid 1000) with passwordless sudo, the
 # runner as /demi-runner and /usr/bin/demi, packed with `mke2fs -d`.
 # Runs as root on Linux. Usage: sudo rootfs/build.sh <aarch64|x86_64>
 set -euo pipefail
@@ -40,11 +39,8 @@ in_chroot useradd -m -u 1000 -g 1000 -s /bin/bash demi
 cp -a --no-preserve=ownership "$here/rootfs/overlay/." "$work/"
 chmod 0440 "$work/etc/sudoers.d/demi"
 echo demi > "$work/etc/hostname"
-
-# The developer tools that install into home: Bun, uv, rustup for the guest user.
-in_chroot su - demi -c 'curl -fsSL https://bun.sh/install | bash' || echo "bun install skipped" >&2
-in_chroot su - demi -c 'curl -LsSf https://astral.sh/uv/install.sh | sh' || echo "uv install skipped" >&2
-in_chroot su - demi -c 'curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal' || echo "rustup install skipped" >&2
+# e2fsprogs uses the mount table to select online resizing. PID 1 owns mounts.
+ln -sf /proc/self/mounts "$work/etc/mtab"
 
 # The runner: init, and the command-mode root every job finds first.
 install -m 0755 "$runner" "$work/demi-runner"

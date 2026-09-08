@@ -16,6 +16,13 @@ export class ActivityGate {
     return this.once(() => { this.readers--; this.notify() })
   }
 
+  /** Admits immediately, or refuses while an exclusive transition owns the gate. */
+  tryEnter(): (() => void) | null {
+    if (this.reserved) return null
+    this.readers++
+    return this.once(() => { this.readers--; this.notify() })
+  }
+
   /** Reserves only an idle gate, synchronously with respect to new entrants. */
   tryReserve(): (() => void) | null {
     if (this.reserved || this.readers > 0) return null
