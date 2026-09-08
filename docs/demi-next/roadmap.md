@@ -30,10 +30,12 @@ scope. No compatibility paths or legacy-data conversion are part of the design.
 
 Implement [command-client.md](command-client.md): a separate C + libuv
 client, runner-owned command dispatch, a shared local protocol contract,
-automatic user/instance endpoint discovery, and Unix/Windows access control.
+per-backend registration/release isolation, exact endpoint/context injection,
+and Unix/Windows access control.
 Update M8/M9/M14 acceptance with independent client/runner artifacts,
 concurrent invocation context, streaming and cancellation, and Windows
-named-pipe runtime checks. The size experiment is evidence for the choice,
+named-pipe runtime checks, plus simultaneous different backend releases and
+independent installation/upgrades. The size experiment is evidence for the choice,
 not completion of this checkpoint.
 
 ## Cloud acceptance checkpoints
