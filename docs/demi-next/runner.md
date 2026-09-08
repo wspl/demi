@@ -6,6 +6,13 @@
 | Status | Target architecture contract; acceptance tracked in `progress.md` |
 | Scope | The program on every execution target: identity and connection, Host RPC, the job table, the tee, the local relay, the wire rules |
 
+The accepted [native command client design](command-client.md) separates
+`demi` (C + libuv) from `demi-runner` (TS + txiki.js) and moves command
+parsing and local execution scheduling into the runner. That change is not
+yet implemented. This document's command-mode relay, state layout and wire
+examples describe the current implementation until that work is accepted;
+they do not require a shared client/runner executable in the target design.
+
 ## Role
 
 The runner turns a machine into an **execution target**. It is not an agent

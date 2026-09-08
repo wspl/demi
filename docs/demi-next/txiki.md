@@ -94,6 +94,10 @@ layout; the macOS build signs the final file after stripping. The build copies t
 The compiler and source bundle are build inputs, not files installed on
 the target.
 
+The following is the **current implementation**, pending the
+[separate native client](command-client.md). In that target design txiki.js
+packages only `demi-runner`; `demi` is an independent C + libuv executable.
+
 `src/entry.ts` chooses the application mode:
 
 - PID 1 performs the managed guest boot, drops to the guest account, then
