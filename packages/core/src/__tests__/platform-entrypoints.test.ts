@@ -569,7 +569,7 @@ async function listProductionSourceFiles(): Promise<string[]> {
   return files.flat()
 }
 
-// The workspaces are the packages (packages/fc-helper is a Rust crate; vendor/txiki.js is a C/C++ submodule).
+// The workspaces are the packages; vendor/txiki.js is a C/C++ submodule.
 async function readWorkspacePackages(root: PackageManifest): Promise<Map<string, WorkspacePackage>> {
   const packages = new Map<string, WorkspacePackage>()
   for (const directory of root.workspaces ?? []) {

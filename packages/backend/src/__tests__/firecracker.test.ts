@@ -43,8 +43,8 @@ test('configuration from the environment: absent, direct, jailer, and the errors
   const direct = firecrackerConfigFromEnv(base, '/data')!
   expect(direct.launch).toEqual({ mode: 'direct' })
   expect(direct).toMatchObject({ vcpus: DEFAULTS.vcpus, memMib: DEFAULTS.memMib, homeMib: DEFAULTS.homeMib, subnet: DEFAULTS.subnet, slots: DEFAULTS.slots, dns: DEFAULTS.dns, runDir: '/data/firecracker', imagesDir: '/data/machines' })
-  const jailer = firecrackerConfigFromEnv({ ...base, [MANAGED_ENV.launch]: 'jailer', [MANAGED_ENV.jailer]: '/opt/fc/jailer', [MANAGED_ENV.helper]: '/usr/local/bin/demi-fc-helper', [MANAGED_ENV.uidBase]: '30000', [MANAGED_ENV.slots]: '16', [MANAGED_ENV.dns]: '9.9.9.9' }, '/data')!
-  expect(jailer.launch).toEqual({ mode: 'jailer', jailer: '/opt/fc/jailer', helper: '/usr/local/bin/demi-fc-helper', chrootBase: '/srv/jailer', uidBase: 30000, gidBase: 30000 })
+  const jailer = firecrackerConfigFromEnv({ ...base, [MANAGED_ENV.launch]: 'jailer', [MANAGED_ENV.jailer]: '/opt/fc/jailer', [MANAGED_ENV.helper]: '/usr/local/libexec/demi/firecracker-jailer.sh', [MANAGED_ENV.uidBase]: '30000', [MANAGED_ENV.slots]: '16', [MANAGED_ENV.dns]: '9.9.9.9' }, '/data')!
+  expect(jailer.launch).toEqual({ mode: 'jailer', jailer: '/opt/fc/jailer', helper: '/usr/local/libexec/demi/firecracker-jailer.sh', chrootBase: '/srv/jailer', uidBase: 30000, gidBase: 30000 })
   expect(jailer.slots).toBe(16)
   expect(jailer.dns).toEqual(['9.9.9.9'])
   expect(() => firecrackerConfigFromEnv({ [MANAGED_ENV.firecracker]: '/fc' }, '/data')).toThrow(MANAGED_ENV.kernel)
