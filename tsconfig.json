@@ -20,6 +20,8 @@
       "@demicodes/command-loader/build": ["./packages/command-loader/src/build.ts"],
       "@demicodes/provider/credentials-pool": ["./packages/provider/src/credentials-pool.ts"],
       "@demicodes/provider/testing": ["./packages/provider/src/testing.ts"],
+      "@demicodes/runner-protocol/local": ["./packages/runner-protocol/src/local.ts"],
+      "@demicodes/runner-protocol/release": ["./packages/runner-protocol/src/release.ts"],
       "@demicodes/runner-protocol/msgpack": ["./packages/runner-protocol/src/codec.ts"],
       "@demicodes/runner/serve": ["./packages/runner/src/serve/index.ts"],
       "@demicodes/runner/testing": ["./packages/runner/src/testing.ts"],

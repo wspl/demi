@@ -54,6 +54,8 @@ export interface JobTableOptions {
   pathPrefix?: string[]
   /** Entries set in every job's env regardless of what the backend named: where the runner lives (`DEMI_HOME`). */
   fixedEnv?: Record<string, string>
+  /** Runner-owned endpoint and execution context, bound before spawning. */
+  executionEnv?: (message: Extract<BackendToRunnerMessage, { type: 'job_start' }>) => Promise<Record<string, string>>
   /** The device ends of a job's pipes (`runner.md` § Pipes); absent, a job with pipes reports them failed. */
   pipes?: PipeEnds
   send(message: RunnerToBackendMessage): void
@@ -133,6 +135,7 @@ export class JobTable {
         env: {
           ...withPathPrefix({ ...this.options.deviceEnv, ...message.env }, this.options.pathPrefix ?? []),
           ...this.options.fixedEnv,
+          ...await this.options.executionEnv?.(message),
           [JOB_CWD_FILE_VAR]: cwdFile,
           [JOB_STDIN_FD_VAR]: String(JOB_STDIN_FD),
           [JOB_ID_VAR]: jobId,
@@ -226,7 +229,7 @@ export class JobTable {
  * ends in — after an explicit `exit` too — for the backend to carry into
  * the next job (a script bash refuses to parse never runs it, and the
  * backend keeps the directory it had); and the job's stdin duplicated onto
- * a high descriptor every child inherits, so a command-mode process can
+ * a high descriptor every child inherits, so a native client can
  * tell the job's live stdin from a redirection (`txiki.md`, `fdNode`).
  */
 export function wrapScript(script: string): string {

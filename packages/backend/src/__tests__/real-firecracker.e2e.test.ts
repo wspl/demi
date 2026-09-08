@@ -21,7 +21,7 @@ e2e('managed runner: one user machine, matching file/job identity, both disks pe
   try {
     const driver = await world.conversation('cloud')
     await driver.upload('uploaded', new TextEncoder().encode('from-api'))
-    const initial = await driver.turn({ model: [model.shell('initial', 'id -u; stat -c %u uploaded; echo home-data > note; sudo sh -c "echo installed > /usr/local/system-marker"; cat uploaded'), model.say('ready')] })
+    const initial = await driver.turn({ model: [model.shell('initial', 'id -u; stat -c %u uploaded; echo home-data > note; sudo sh -c "echo installed > /usr/local/system-marker"; demi file read uploaded; demi --help > /dev/null'), model.say('ready')] })
     expect(initial.received[0]).toContain('1000\n1000')
     expect(initial.received[0]).toContain('from-api')
     const status = await world.api<{ device: { id: string } }>('/api/cloud')

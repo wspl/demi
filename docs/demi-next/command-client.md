@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-08 |
-| Status | Target design; production implementation pending |
+| Status | Implemented for macOS/Linux; Windows platform acceptance remains open |
 | Scope | Separate command client and runner, command dispatch, IPC discovery and access |
 
 ## Executables and responsibilities
@@ -18,7 +18,7 @@ does not point at the runner executable through a symlink.
 | `demi-runner` — TypeScript bundled with txiki.js | Device connection, Host operations, shell jobs and output, manifest cache, command parsing and dispatch, local execution scheduling, backend RPC forwarding | Agent sessions, provider logic, transcript storage, definitions of business commands |
 | Backend and command-defining packages | Command definitions and schemas; backend handlers for conversation/platform state | The native client's transport implementation |
 
-The proposed native source location is `packages/command-client`, outside
+The native source location is `packages/command-client`, outside
 the TypeScript runtime dependency graph. It builds the `demi` executable.
 The runner remains in `packages/runner`. `@demicodes/command-loader` remains
 the single parser/dispatcher, hosted by the runner with injected Host and
@@ -153,10 +153,10 @@ the user must select/activate an installation and establish an appropriate
 context; the CLI must not infer a backend from cwd or the most recently
 installed instance.
 
-Installation and job startup handle names and permissions automatically.
-The exact environment field names, Windows name encoding, registration
-lookup and terminal activation interface remain implementation decisions.
-The application contract above specifies their behavior, not a shipped API.
+Installation and job startup handle Unix names and permissions automatically.
+The injected fields are `DEMI_RUNNER_ENDPOINT` and `DEMI_CONTEXT_ID`.
+Ordinary terminal invocations without a live job/spawn context fail explicitly;
+a terminal activation command is not currently exposed.
 
 ## Access: who may connect
 
@@ -164,7 +164,7 @@ An endpoint name locates a runner; it does not authorize its caller.
 
 On Unix, the runner creates its state directory with owner-only access and
 its socket with owner-only read/write access (0700 and 0600 respectively).
-On Windows, the runner creates a local-only named pipe with an explicit
+The Windows target design requires a local-only named pipe with an explicit
 access-control list for its owning user. A user/instance identifier in the
 pipe name prevents collisions but does not replace that access control.
 The native client and runner use the same OS account, including the guest
@@ -192,8 +192,15 @@ The job's interactive input and redirected command input remain distinct.
 
 The local contract belongs to `@demicodes/runner-protocol`; the C client and
 TS runner must be checked against the same fixtures. Boundary decoders must
-reject invalid frames. Exact framing/version negotiation and the C codec
-are pending implementation decisions, not features of the size prototype.
+reject invalid frames. `local-contract.json` defines protocol version, frame tags and limits; C build
+code generates its header from that file. Frames contain a four-byte
+big-endian body length, a one-byte type, then the body. Metadata is strict
+JSON; stream chunks are raw bytes. The maximum body is 1 MiB, with 64 KiB
+stream chunks. `invoke` and `watch` include the protocol version. An
+invocation opens its control connection after the first `ready`; only the
+validated watch starts dispatch. `pull` requests one stdin chunk at a time.
+`exit` carries a four-byte status after all output writes. Disconnecting
+either connection cancels the invocation.
 
 Acceptance includes concurrent invocations with different cwd/env, binary
 pipes and file redirection, help and argument errors, local/runtime and
@@ -204,10 +211,42 @@ and separate runnable client/runner artifacts.
 
 ## Current implementation and evidence
 
-Production still uses a shared txiki.js executable selected by invocation
-name. Its command-mode process loads the manifest, executes runtime leaves
-and relays RPC leaves. That implementation has not yet been replaced by
-this design; `progress.md` tracks the gap.
+`packages/command-client` implements the C transport. The runner hosts
+`command-loader`; runtime leaves run in separate txiki.js workers so their
+cwd/env and CPU execution do not block or mutate the runner's JS context.
+Worker termination uses a QuickJS interrupt flag. Backend leaves retain
+the existing authenticated RPC and HTTP pipe transport.
+
+`runner.lock` holds a nonblocking OS lock for the installation lifetime.
+`active.json` publishes its random endpoint, management secret and release.
+`status` queries that endpoint; `drain` refuses new jobs/spawns, waits for
+existing contexts, stops the runner and waits for its OS lock to release.
+The backend exposes `/install.sh` and immutable artifact downloads when
+`runnerReleaseDir` (or `DEMI_RUNNER_RELEASE_DIR`) is configured. The installer
+checks both hashes, rejects a state directory bound to another backend,
+serializes installation changes and upgrades only that installation.
+`DEMI_INSTALLATION_ID` selects another registration of the same backend.
+Each job's PATH points to its pinned manifest's root aliases; updating the
+manifest does not change already-running jobs.
+
+Build a matched release with:
+
+```sh
+bun run --conditions development packages/runner/runtime/release.ts /path/to/releases macos-arm64 linux-arm64
+```
+
+The release directory contains `manifest.json` plus
+`<release>/<target>/{demi,demi-runner}`. Supported release targets are
+`macos-arm64`, `macos-x64`, `linux-arm64`, and `linux-x64`. Windows is not
+published: native runner packaging, explicit local-only pipe ACLs and
+Windows execution acceptance remain required. `/install.ps1` returns 503
+with that limitation rather than distributing an unverified runner.
+
+Automated tests cover two simultaneous runner registrations, separate
+cwd/env, 3 MiB binary pipes, stale/mismatched contexts, duplicate ownership,
+CPU-loop cancellation, fragmented and oversized frames, disconnects and
+cancellation while stdout is backpressured. Installer tests exercise real
+paired binaries, reuse and an independent upgrade across two backends.
 
 The [IPC size experiment](../experiments/demi-ipc-size/README.md) measured
 C + libuv transport probes at 105 KiB on macOS ARM64, 113 KiB on Linux ARM64,
