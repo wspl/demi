@@ -60,8 +60,8 @@ a conversation back into the sidebar and opens it.
 
 The project picker changes the conversation's working environment and sidebar
 group together, and refuses changes while running. A project cannot be removed
-while any conversation still belongs to it. The Cloud option creates only a
-simulated project. These behaviors exercise the current baseline for review;
+while any conversation still belongs to it. The Cloud option creates a simulated directory/project on the user's one
+Cloud device; creating a second project reuses that identity. These behaviors exercise the current baseline for review;
 prototype additions are decided in M13.2.
 
 ## Verification
@@ -76,7 +76,8 @@ prototype additions are decided in M13.2.
   mobile sidebar, attachment preview, and unknown-conversation navigation.
 - `bun run typecheck:web` and `bun run web:build`: browser compilation.
 
-Progress and remaining M13.1 coverage are recorded in `progress.md`.
+Prototype acceptance follows the Web delivery stages in `roadmap.md`; verified
+checks are recorded in `progress.md`.
 
 Navigation uses the sidebar and URL only, with no conversation tabs. Interface
 labels and controls are not selectable; message content, paths and editable
@@ -98,8 +99,8 @@ folder moves the conversation. The new-project form's Browse button opens the sa
 browser for the chosen device. Its tooltip shows the full path. The current branch appears as plain text beside its icon,
 without a menu, switching or creation actions. Workspace switching is disabled during a running turn or for an archived conversation, while file
 browsing remains available. Files and branches are fixtures; no real filesystem,
-Git repository or device is modified. Conversations without a device binding display Cloud, with only the cloud
-icon and attachment count in the header.
+Git repository or device is modified. Conversations selecting Cloud display its icon and attachment count even before
+allocation; sleeping and starting are lifecycle states of that same selection.
 Project groups retain the project list's order regardless
 of conversation creation or activity. Sidebar rows
 offer pin and archive on hover, plus the shared context menu for rename, move
@@ -222,3 +223,14 @@ dark greys before it turns light in a dark theme. Its hidden state is therefore 
 thumb's own hue at zero alpha, written as `rgb(from <colour> r g b / 0)`, never the
 bare keyword and never a `color-mix` with 0% of the colour, which also collapses to
 transparent black. Any new property found to behave this way gets the same treatment.
+
+## Cloud lifecycle and reset acceptance
+
+The shared Cloud settings presentation and reset dialog belong to `web-ui`.
+The product supplies user Cloud state and backend handlers; gallery fixtures
+supply the same contract. Cover sleeping, starting, ready, resetting and failed
+states, including a guest that cannot connect. The reset dialog names its
+user-wide impact, stops all Cloud tasks and preserves `/home`. Simulated success
+must retain device/project identity and home files while replacing system state.
+A metadata-only project deletion must leave the shared machine and files intact.
+See `managed-hosts.md` and `product.md` for authoritative behavior.
