@@ -29,9 +29,12 @@ Two launch modes are supported:
 
 - `direct`: an unprivileged Firecracker process with KVM and its seccomp filter,
   for self-hosting and trusted deployments.
-- `jailer`: the restricted Rust `fc-helper` prepares per-VM chroot, namespaces,
-  cgroup and uid, launches the jailer and supervises it, for public deployments.
-  The helper accepts explicit start/kill operations and validated paths and ids.
+- `jailer`: `backend/scripts/firecracker-jailer.sh` prepares image paths and
+  filesystem permissions, launches jailer and monitors Firecracker's recorded
+  PID. Jailer creates the chroot, namespaces and cgroup and drops to the slot's
+  uid. The script accepts `vm start` and `vm kill` with validated arguments; it
+  does not implement isolation, communicate with the runner or carry business
+  logic. The backend communicates with Firecracker through its API socket.
 
 The guest pipeline builds a minimal Linux kernel and a read-only developer
 rootfs containing bash, coreutils, compilers and the packed txiki.js runner.
@@ -40,6 +43,73 @@ require keeping a VM running. The install script prepares the tap pool,
 forwarding and nftables policy. The backend URL is reachable; other private and
 link-local destinations are blocked, public egress is allowed and inbound
 connections are not exposed. No host directories are mounted into a guest.
+
+### Installing jailer mode
+
+Run these steps on the Linux backend host. The examples use the service account
+`demi-backend`, Firecracker and jailer installed as root-owned executables at
+`/opt/firecracker/firecracker` and `/opt/firecracker/jailer`, and the default
+chroot base `/srv/jailer`. Bash, coreutils, sudo, e2fsprogs and KVM are required;
+the networking setup also uses iproute2 and nftables. The writable disk images
+and chroot base must be on the same filesystem because the script hardlinks
+those images into each jail.
+
+The backend package includes `scripts/`; no helper compilation is required.
+From the backend package directory (`packages/backend` in a checkout), install
+the launcher under a root-owned directory:
+
+```sh
+sudo install -d -o root -g root -m 0755 /usr/local/libexec/demi
+sudo install -o root -g root -m 0755 scripts/firecracker-jailer.sh \
+  /usr/local/libexec/demi/firecracker-jailer.sh
+sudo install -d -o root -g root -m 0755 /srv/jailer
+```
+
+Use `sudo visudo -f /etc/sudoers.d/demi-firecracker` to add exactly these two
+allowed operations, replacing the account name if necessary:
+
+```sudoers
+demi-backend ALL=(root) NOPASSWD: /usr/local/libexec/demi/firecracker-jailer.sh vm start *, /usr/local/libexec/demi/firecracker-jailer.sh vm kill *
+```
+
+The backend invokes this installed path directly through `sudo -n`; sudoers
+must name the script, not `/bin/bash`. Keep the script and its parent directories
+unwritable by the backend account. This account is trusted to supply executable
+and image paths: the helper permission is an infrastructure privilege, not a
+security boundary against the backend itself.
+
+Set the backend service environment:
+
+```sh
+DEMI_MANAGED_LAUNCH=jailer
+DEMI_MANAGED_FIRECRACKER=/opt/firecracker/firecracker
+DEMI_MANAGED_JAILER=/opt/firecracker/jailer
+DEMI_MANAGED_HELPER=/usr/local/libexec/demi/firecracker-jailer.sh
+DEMI_MANAGED_CHROOT_BASE=/srv/jailer
+DEMI_MANAGED_UID_BASE=20000
+DEMI_MANAGED_KERNEL=/opt/demi-guest/vmlinux
+DEMI_MANAGED_ROOTFS=/opt/demi-guest/rootfs.ext4
+```
+
+Point the last two variables at the deployed guest-image artifacts. The backend
+pins its own base-image copies before starting a VM. Use the same uid base,
+slot count and subnet when preparing networking; for example:
+
+```sh
+sudo bash scripts/install-managed-hosts.sh \
+  --user demi-backend \
+  --mode jailer \
+  --uid-base 20000 \
+  --slots 256 \
+  --subnet 172.16.0.0/16 \
+  --backend-address 172.16.0.1 \
+  --backend-port 3271
+```
+
+Replace the backend address and port with the guest-reachable listener. This
+network script configures taps and firewall rules only; it does not install the
+launcher or edit sudoers. Repeat networking setup after reboot. Restart the
+backend service after applying its environment and account permissions.
 
 ## Images
 
