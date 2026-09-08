@@ -6,8 +6,15 @@ import { z } from 'zod'
 import type { HostFileSystem } from '@demicodes/shell'
 import { decodeUtf8, encodeUtf8, isFileNotFoundError } from '@demicodes/utils'
 
-const runnerConfigSchema = z.object({ backendUrl: z.string().url(), deviceId: z.string().optional() }).strict()
-export const activeRunnerSchema = z.object({ endpoint: z.string().min(1), secret: z.string().regex(/^[a-f0-9]{32}$/), release: z.string().min(1) }).strict()
+const runnerConfigSchema = z.object({
+  backendUrl: z.string().url(),
+  deviceId: z.string().optional(),
+}).strict()
+export const activeRunnerSchema = z.object({
+  endpoint: z.string().min(1),
+  secret: z.string().regex(/^[a-f0-9]{32}$/),
+  release: z.string().min(1),
+}).strict()
 export type RunnerConfig = z.infer<typeof runnerConfigSchema>
 
 export class RunnerState {
@@ -24,7 +31,9 @@ export class RunnerState {
     return `${this.dir}/runner-token`
   }
 
-  get activePath(): string { return `${this.dir}/active.json` }
+  get activePath(): string {
+    return `${this.dir}/active.json`
+  }
 
   get commandsDir(): string {
     return `${this.dir}/commands`

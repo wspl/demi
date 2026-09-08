@@ -1,51 +1,124 @@
-import type { CommandModule } from '@demicodes/shell'
+import type { CommandContext, CommandModule, CommandResult } from '@demicodes/shell'
 import { errorMessage, noop } from '@demicodes/utils'
+import type { IORequest, IOReplyValue, RunnerMessage, WorkerMessage } from './worker-messages'
 
 declare const DEMI_COMMAND_WORKER_SOURCE: string
 
 /** Each module gets an isolated JS runtime; terminate can interrupt a CPU-bound module. */
-export function workerModule(path: string): Promise<CommandModule> {
-  return Promise.resolve(ctx => new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(new Blob([DEMI_COMMAND_WORKER_SOURCE], { type: 'text/javascript' }))
-    const worker = new Worker(url)
+export async function workerModule(path: string): Promise<CommandModule> {
+  return context => executeInWorker(path, context)
+}
+
+function createCommandWorker(): Worker {
+  const source = new Blob([DEMI_COMMAND_WORKER_SOURCE], { type: 'text/javascript' })
+  const url = URL.createObjectURL(source)
+  try {
+    return new Worker(url)
+  } finally {
     URL.revokeObjectURL(url)
-    const input = ctx.stdin[Symbol.asyncIterator]()
+  }
+}
+
+type WorkerOutcome =
+  | { type: 'exit'; exitCode: number }
+  | { type: 'error'; error: unknown }
+
+function executeInWorker(path: string, context: CommandContext): Promise<CommandResult> {
+  return new Promise((resolve, reject) => {
+    const worker = createCommandWorker()
+    const input = context.stdin[Symbol.asyncIterator]()
     let finished = false
-    const finish = (error?: unknown, exitCode?: number) => {
+
+    function finish(outcome: WorkerOutcome): void {
       if (finished) return
       finished = true
-      ctx.signal.removeEventListener('abort', abort)
+
+      context.signal.removeEventListener('abort', abort)
       worker.terminate()
+      // Closing stdin must not delay cancellation or replace the command's result.
       void input.return?.().catch(noop)
-      if (error) reject(error)
-      else resolve({ exitCode: exitCode! })
-    }
-    const abort = () => finish(ctx.signal.reason ?? new Error('command cancelled'))
-    ctx.signal.addEventListener('abort', abort, { once: true })
-    if (ctx.signal.aborted) { abort(); return }
-    worker.onerror = () => finish(new Error('command worker failed'))
-    worker.onmessage = event => {
-      const message = event.data
-      if (message.type === 'exit') {
-        if (!Number.isInteger(message.exitCode) || message.exitCode < 0 || message.exitCode > 255) finish(new Error('invalid command exit code'))
-        else finish(undefined, message.exitCode)
-      } else if (message.type === 'error') finish(new Error(message.message))
-      else {
-        void (async () => {
-          if (message.type === 'input') {
-            const next = await input.next()
-            return next.done ? null : next.value
-          }
-          if (message.type === 'output' && message.bytes instanceof Uint8Array && (message.stream === 'stdout' || message.stream === 'stderr')) {
-            await ctx[message.stream as 'stdout' | 'stderr'](message.bytes)
-            return null
-          }
-          throw new Error('invalid command worker request')
-        })().then(value => { if (!finished) worker.postMessage({ type: 'reply', id: message.id, value }) }, error => {
-          if (!finished) worker.postMessage({ type: 'reply', id: message.id, error: errorMessage(error) })
-        })
+
+      if (outcome.type === 'error') {
+        reject(outcome.error)
+      } else {
+        resolve({ exitCode: outcome.exitCode })
       }
     }
-    worker.postMessage({ type: 'run', path, args: ctx.args, cwd: ctx.cwd, env: ctx.env })
-  }))
+
+    function abort(): void {
+      finish({ type: 'error', error: context.signal.reason ?? new Error('command cancelled') })
+    }
+
+    function send(message: RunnerMessage): void {
+      if (!finished) worker.postMessage(message)
+    }
+
+    function replyToRequest(request: IORequest): void {
+      void performIO(request, input, context).then(
+        value => send({ type: 'reply', id: request.id, value }),
+        error => send({ type: 'reply', id: request.id, error: errorMessage(error) }),
+      )
+    }
+
+    context.signal.addEventListener('abort', abort, { once: true })
+    if (context.signal.aborted) {
+      abort()
+      return
+    }
+
+    worker.onerror = () => {
+      finish({ type: 'error', error: new Error('command worker failed') })
+    }
+
+    worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
+      const message = event.data
+      switch (message.type) {
+        case 'exit': {
+          const { exitCode } = message
+          if (!Number.isInteger(exitCode) || exitCode < 0 || exitCode > 255) {
+            finish({ type: 'error', error: new Error('invalid command exit code') })
+          } else {
+            finish({ type: 'exit', exitCode })
+          }
+          return
+        }
+        case 'error':
+          finish({ type: 'error', error: new Error(message.message) })
+          return
+        default:
+          replyToRequest(message)
+      }
+    }
+
+    send({
+      type: 'run',
+      path,
+      args: context.args,
+      cwd: context.cwd,
+      env: context.env,
+    })
+  })
+}
+
+async function performIO(
+  request: IORequest,
+  input: AsyncIterator<Uint8Array>,
+  context: CommandContext,
+): Promise<IOReplyValue> {
+  switch (request.type) {
+    case 'input': {
+      const next = await input.next()
+      return next.done ? null : next.value
+    }
+    case 'output': {
+      const { stream, bytes } = request
+      if (!(bytes instanceof Uint8Array) || (stream !== 'stdout' && stream !== 'stderr')) {
+        throw new Error('invalid command worker request')
+      }
+      await context[stream](bytes)
+      return null
+    }
+    default:
+      throw new Error('invalid command worker request')
+  }
 }

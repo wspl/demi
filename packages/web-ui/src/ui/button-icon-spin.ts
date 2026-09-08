@@ -33,12 +33,26 @@ export function useButtonIconSpin(root: Ref<HTMLElement | null>, props: ButtonIc
     }
   }
 
-  watch(() => props.spinning, (spinning) => { if (spinning) void start() }, { flush: 'post', immediate: true })
-  watch(root, () => { if (props.spinning) void start() }, { flush: 'post' })
+  function startWhileSpinning() {
+    if (props.spinning) {
+      void start()
+    }
+  }
+
+  function onClick() {
+    if (props.spinOnClick && !props.disabled) {
+      void start()
+    }
+  }
+
+  watch(() => props.spinning, startWhileSpinning, { flush: 'post', immediate: true })
+  watch(root, startWhileSpinning, { flush: 'post' })
   onBeforeUnmount(() => {
     disposed = true
-    for (const animation of animations) animation.cancel()
+    for (const animation of animations) {
+      animation.cancel()
+    }
   })
 
-  return { rotating, onClick: () => { if (props.spinOnClick && !props.disabled) void start() } }
+  return { rotating, onClick }
 }

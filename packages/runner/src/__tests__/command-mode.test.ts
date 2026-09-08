@@ -12,13 +12,14 @@ import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
 import { packedRunner, startTxikiRunner } from '../testing'
 
-async function fixture(label: string) {
+async function fixture(label: string, commands: Command[] = []) {
   const home = await realpath(await mkdtemp(join(tmpdir(), 'demi-native-home-')))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-native-state-'))
   const roots: Command[] = [{ name: 'demi', summary: label, subcommands: [
     { name: 'where', summary: 'Invocation context', kind: 'runtime', module: runtimeModule(`export default async ctx => { await ctx.stdout(JSON.stringify({label:${JSON.stringify(label)},cwd:ctx.cwd,value:ctx.env.PROBE})); return {exitCode:0}; }`) },
     { name: 'echo', summary: 'Byte stream', kind: 'runtime', module: runtimeModule('export default async ctx => { for await(const b of ctx.stdin) await ctx.stdout(b); return {exitCode:0}; }') },
     { name: 'spin', summary: 'Interruptible worker', kind: 'runtime', module: runtimeModule('export default async ctx => { await ctx.stdout("started"); while(true){} }') },
+    ...commands,
   ] }]
   const manifest = await buildManifest(roots, { transpile: source => source })
   const wire = createRunnerWire(msgpackCodec)
@@ -83,6 +84,45 @@ test('a CPU-bound command can be cancelled without blocking the runner; duplicat
     const next = await f.shell.exec({ script: 'demi --help', timeoutMs: 10_000 })
     expect(next.status === 'exited' && next.exitCode).toBe(0)
   } finally { await f.close() }
+}, 15_000)
+
+test('workers preserve output and report command failures and invalid exit codes', async () => {
+  const f = await fixture('worker-results', [{
+    name: 'result',
+    summary: 'Worker completion cases',
+    kind: 'runtime',
+    module: runtimeModule(`
+      export default async context => {
+        await context.stdout('command output');
+        await context.stderr('command diagnostic');
+
+        if (context.env.RESULT === 'error') {
+          throw new Error('command failed');
+        }
+        if (context.env.RESULT === 'invalid') {
+          return { exitCode: 256 };
+        }
+        return { exitCode: 17 };
+      }
+    `),
+  }])
+
+  try {
+    const completed = await f.shell.exec({ script: 'demi result', timeoutMs: 10_000 })
+    expect(completed.status === 'exited' && completed.exitCode).toBe(17)
+    expect(completed.stdout.delta).toBe('command output')
+    expect(completed.stderr.delta).toBe('command diagnostic')
+
+    const failed = await f.shell.exec({ script: 'RESULT=error demi result', timeoutMs: 10_000 })
+    expect(failed.status === 'exited' && failed.exitCode).toBe(1)
+    expect(failed.stderr.delta).toContain('command failed')
+
+    const invalid = await f.shell.exec({ script: 'RESULT=invalid demi result', timeoutMs: 10_000 })
+    expect(invalid.status === 'exited' && invalid.exitCode).toBe(1)
+    expect(invalid.stderr.delta).toContain('invalid command exit code')
+  } finally {
+    await f.close()
+  }
 }, 15_000)
 
 

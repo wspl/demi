@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Cloud, Copy, Link, Monitor, Pencil, Plus, Trash2, Unlink } from '@lucide/vue'
+import { Copy, Pencil, Plus, Trash2 } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -16,10 +16,35 @@ import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ref } from 'vue'
-import HostPicker from '@demicodes/web-ui/hosts/HostPicker.vue'
+import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
+import type { HostMenuMainHost } from '@demicodes/web-ui/hosts/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
+
+const hostDevices = [
+  { id: 'mac', name: 'zan-mbp', online: true },
+  { id: 'build', name: 'build-01', online: true },
+  { id: 'studio', name: 'studio', online: false },
+]
+const mainHost = ref<HostMenuMainHost>({ id: 'mac', name: 'zan-mbp', kind: 'device' })
+const attachedHosts = ref(hostDevices.filter(device => device.id !== 'mac'))
+
+function switchMainHost(id: string) {
+  const device = hostDevices.find(device => device.id === id)
+  mainHost.value = device
+    ? { id: device.id, name: device.name, kind: 'device' }
+    : { id: 'cloud', name: 'Cloud', kind: 'cloud' }
+}
+
+function attachHost(id: string) {
+  const device = hostDevices.find(device => device.id === id)
+  if (device) attachedHosts.value.push(device)
+}
+
+function detachHost(id: string) {
+  attachedHosts.value = attachedHosts.value.filter(device => device.id !== id)
+}
 
 const items = [
   { id: 'neutral', label: 'Neutral' },
@@ -180,37 +205,15 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
         </GallerySpecimen>
       </GalleryOverlayWell>
       <GallerySpecimen variant="host menu · label/value and status">
-        <Menu>
-          <MenuItem :icon="Monitor" label="Main host" value="zan-mbp" has-submenu>
-            <template #submenu>
-              <HostPicker
-                :devices="[{ id: 'mac', name: 'zan-mbp', online: true }, { id: 'build', name: 'build-01', online: true }, { id: 'studio', name: 'studio', online: false }]"
-                include-cloud selected-id="mac"
-              />
-            </template>
-          </MenuItem>
-          <MenuGroup label="Attached hosts">
-            <MenuItem :icon="Monitor" label="build-01" indicator="success" indicator-label="Online" has-submenu>
-              <template #submenu>
-                <Menu>
-                  <MenuItem :icon="Monitor" label="Use as main environment…" />
-                  <MenuItem :icon="Unlink" label="Detach" />
-                </Menu>
-              </template>
-            </MenuItem>
-            <MenuItem :icon="Monitor" label="studio" indicator="muted" indicator-label="Offline" note="offline" has-submenu />
-          </MenuGroup>
-          <MenuDivider />
-          <MenuItem :icon="Plus" label="Attach device…" has-submenu>
-            <template #submenu>
-              <HostPicker
-                :devices="[{ id: 'mac', name: 'zan-mbp', online: true }, { id: 'build', name: 'build-01', online: true }, { id: 'studio', name: 'studio', online: false }]"
-                :bound-ids="['mac', 'build']"
-              />
-            </template>
-          </MenuItem>
-          <MenuItem :icon="Link" label="Connect new device…" />
-        </Menu>
+        <HostMenu
+          :main-host="mainHost"
+          :attached-hosts="attachedHosts"
+          :devices="hostDevices"
+          @switch-main="switchMainHost"
+          @attach="attachHost"
+          @detach="detachHost"
+          @connect="showToast({ title: 'Connect new device' })"
+        />
       </GallerySpecimen>
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="label/value · columns">

@@ -91,7 +91,11 @@ export class JobTable {
       case 'job_start': {
         const ready = this.start(message)
         this.starting.set(message.jobId, ready)
-        try { await ready } finally { this.starting.delete(message.jobId) }
+        try {
+          await ready
+        } finally {
+          this.starting.delete(message.jobId)
+        }
         return
       }
       case 'job_stdin':
@@ -156,7 +160,9 @@ export class JobTable {
   private async feedStdin(handle: JobSpawnHandle, ref: PipeRef): Promise<void> {
     try {
       if (!this.options.pipes) throw new Error('this runner has no pipe ends')
-      for await (const chunk of await this.options.pipes.get(ref.url)) await handle.writeStdin(chunk)
+      for await (const chunk of await this.options.pipes.get(ref.url)) {
+        await handle.writeStdin(chunk)
+      }
       this.report(ref, null)
     } catch (error) {
       this.report(ref, error)
@@ -183,7 +189,11 @@ export class JobTable {
   }
 
   private report(ref: PipeRef, error: unknown | null): void {
-    this.options.send(error === null ? { type: 'pipe_done', pipeId: ref.id, ok: true } : { type: 'pipe_done', pipeId: ref.id, ok: false, error: errorMessage(error) })
+    if (error === null) {
+      this.options.send({ type: 'pipe_done', pipeId: ref.id, ok: true })
+    } else {
+      this.options.send({ type: 'pipe_done', pipeId: ref.id, ok: false, error: errorMessage(error) })
+    }
   }
 
   private async pump(jobId: string, handle: JobSpawnHandle, files: { stdoutPath: string; stderrPath: string; cwdFile: string }): Promise<void> {

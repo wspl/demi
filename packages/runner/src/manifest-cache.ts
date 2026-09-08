@@ -13,12 +13,15 @@ export class ManifestCache {
     private readonly executable: string,
   ) {}
 
-  binDirectory(manifest: Manifest): string { return `${this.commandsDir}/${manifest.hash}/bin` }
+  binDirectory(manifest: Manifest): string {
+    return `${this.commandsDir}/${manifest.hash}/bin`
+  }
 
   /** The manifest in force, if any. */
   async current(): Promise<Manifest | null> {
     try {
-      return parseManifest(JSON.parse(new TextDecoder().decode(await this.fs.readFile(`${this.commandsDir}/current/manifest.json`))))
+      const bytes = await this.fs.readFile(`${this.commandsDir}/current/manifest.json`)
+      return parseManifest(JSON.parse(new TextDecoder().decode(bytes)))
     } catch (error) {
       if (isFileNotFoundError(error)) return null
       throw error
@@ -32,7 +35,9 @@ export class ManifestCache {
     if (!(await this.fs.exists(`${dir}/manifest.json`))) await writeManifestDirectory(manifest, dir, this.fs)
     const binDir = this.binDirectory(manifest)
     await this.fs.mkdir(binDir, { recursive: true })
-    for (const root of Object.keys(manifest.roots)) await replaceSymlink(this.fs, this.executable, `${binDir}/${root}`)
+    for (const root of Object.keys(manifest.roots)) {
+      await replaceSymlink(this.fs, this.executable, `${binDir}/${root}`)
+    }
     await replaceSymlink(this.fs, manifest.hash, `${this.commandsDir}/current`)
     return manifest
   }

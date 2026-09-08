@@ -26,7 +26,11 @@ export function createRunnerFileSystem(defaultCwd: string): HostFileSystem {
       const target = resolve(path, options?.cwd)
       if (options?.createParents) await tjs.makeDir(dirnamePath(target), { recursive: true })
       const file = await tjs.open(target, 'a')
-      try { await writeAll(file, data) } finally { await file.close() }
+      try {
+        await writeAll(file, data)
+      } finally {
+        await file.close()
+      }
     },
     exists: async (path, options) => {
       try {
@@ -105,7 +109,9 @@ async function copyEntry(source: string, target: string, stat: tjs.StatResult): 
     case stat.isDirectory: {
       await tjs.makeDir(target, { recursive: true, mode: stat.mode & 0o7777 })
       for (const entry of await readDirectory(source)) {
-        await copyEntry(`${source}/${entry.name}`, `${target}/${entry.name}`, await tjs.lstat(`${source}/${entry.name}`))
+        const sourcePath = `${source}/${entry.name}`
+        const targetPath = `${target}/${entry.name}`
+        await copyEntry(sourcePath, targetPath, await tjs.lstat(sourcePath))
       }
       return
     }
@@ -174,5 +180,9 @@ async function readDirectory(path: string): Promise<tjs.DirEnt[]> {
 /** File writes can be partial; finish each chunk before accepting another. */
 export async function writeAll(file: tjs.FileHandle, data: Uint8Array): Promise<void> {
   const writer = file.writable.getWriter()
-  try { await writer.write(data) } finally { writer.releaseLock() }
+  try {
+    await writer.write(data)
+  } finally {
+    writer.releaseLock()
+  }
 }

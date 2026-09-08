@@ -6,7 +6,6 @@ import { GUEST_USER, bootGuest } from './init/boot'
 import { RunnerMode } from './runner-mode'
 import { RunnerState } from './state'
 
-
 async function main(): Promise<number> {
   // The kernel started this binary as init: a managed guest (`managed-hosts.md` § Lifecycle).
   if (pid === 1) return initMain()
@@ -36,7 +35,13 @@ async function initMain(): Promise<number> {
     clientExecutable: '/usr/bin/demi',
     name: identity.hostname,
     // Files, jobs, and commands all use the same guest account.
-    deviceEnv: { PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', HOME: GUEST_USER.homeDir, USER: GUEST_USER.name, SHELL: '/bin/bash', LANG: 'C' },
+    deviceEnv: {
+      PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+      HOME: GUEST_USER.homeDir,
+      USER: GUEST_USER.name,
+      SHELL: '/bin/bash',
+      LANG: 'C',
+    },
     managed: true,
     deviceToken: boot.config.deviceToken,
     identity: { ...guestIdentity, homeDir: GUEST_USER.homeDir },
@@ -70,7 +75,7 @@ async function runnerMain(args: readonly string[]): Promise<number> {
     await stderr('No backend URL: pass --backend <url>.\n')
     return 2
   }
-  const hash = backendUrl ? Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(new URL(backendUrl).toString()))), b => b.toString(16).padStart(2, '0')).join('') : ''
+  const hash = backendUrl ? await backendInstanceId(backendUrl) : ''
   const dir = env.DEMI_HOME ?? `${identity.homeDir}/.demi/instances/${hash}`
   if (action !== 'run') return manageRunner(dir, action)
   const host = createRunnerHost()
@@ -94,4 +99,16 @@ async function runnerMain(args: readonly string[]): Promise<number> {
   return (await runner.run()) === 'rejected' ? 1 : 0
 }
 
-try { exit(await main()) } catch (error) { await stderrWriter()(`demi-runner: ${errorMessage(error)}\n`); exit(1) }
+/** Canonical backend URLs select stable, installation-local state directories. */
+async function backendInstanceId(backendUrl: string): Promise<string> {
+  const url = new URL(backendUrl).toString()
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(url))
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+try {
+  exit(await main())
+} catch (error) {
+  await stderrWriter()(`demi-runner: ${errorMessage(error)}\n`)
+  exit(1)
+}

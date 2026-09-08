@@ -31,7 +31,11 @@ export function useSidebarDrag(
       target.value = null
       return
     }
-    const id = element.dataset.sidebarId!
+    const id = element.dataset.sidebarId
+    if (id === undefined) {
+      target.value = null
+      return
+    }
     const rect = element.getBoundingClientRect()
     const after = pointer.value.y > rect.top + rect.height / 2
     const request = sidebarDrop(source.value, { kind, id }, after, projects(), conversations())
@@ -44,12 +48,12 @@ export function useSidebarDrag(
     const rect = element.getBoundingClientRect()
     if (pointer.value.x >= rect.left && pointer.value.x <= rect.right) {
       const edge = 36
-      const distance =
-        pointer.value.y < rect.top + edge
-          ? pointer.value.y - rect.top - edge
-          : pointer.value.y > rect.bottom - edge
-            ? pointer.value.y - rect.bottom + edge
-            : 0
+      let distance = 0
+      if (pointer.value.y < rect.top + edge) {
+        distance = pointer.value.y - (rect.top + edge)
+      } else if (pointer.value.y > rect.bottom - edge) {
+        distance = pointer.value.y - (rect.bottom - edge)
+      }
       if (distance) {
         element.scrollTop += Math.max(-10, Math.min(10, distance / 3))
       }
@@ -88,9 +92,12 @@ export function useSidebarDrag(
     if (source.value) {
       pointer.value = { x: event.clientX, y: event.clientY }
       locate()
-      if (target.value) commit(target.value.request)
     }
+    const request = target.value?.request
     cancel()
+    if (request) {
+      commit(request)
+    }
   }
 
   function keydown(event: KeyboardEvent) {
@@ -105,8 +112,9 @@ export function useSidebarDrag(
       event.button !== 0 ||
       !(event.target instanceof Element) ||
       event.target.closest('input, [aria-label], [data-no-drag]')
-    )
+    ) {
       return
+    }
     cancel()
     suppressClick = false
     candidate = { entry, x: event.clientX, y: event.clientY, pointerId: event.pointerId }

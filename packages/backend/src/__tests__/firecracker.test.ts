@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
@@ -145,4 +145,18 @@ test('published checkpoints retain only the current and previous complete genera
   await store.copy('device-a', { ...state, generation: 'second' }, previous)
   expect(await readFile(join(previous, 'home.ext4'), 'utf8')).toBe('empty-home')
   expect((await store.read('device-a'))?.generation).toBe('third')
+})
+
+
+test('failed JSON serialization preserves the published file and removes its temporary file', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'demi-atomic-json-'))
+  const path = join(directory, 'current.json')
+  try {
+    await atomicJson(path, { generation: 'complete' })
+    await expect(atomicJson(path, { unserializable: 1n })).rejects.toThrow()
+    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ generation: 'complete' })
+    expect(await readdir(directory)).toEqual(['current.json'])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
 })

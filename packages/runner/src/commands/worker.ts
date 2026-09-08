@@ -1,43 +1,89 @@
-import { createRunnerFileSystem } from '../machine/fs'
 import { importCommandModule } from '@demicodes/shell'
-import type { CommandResult } from '@demicodes/shell'
-import { errorMessage, encodeUtf8 } from '@demicodes/utils'
+import type { CommandWriter } from '@demicodes/shell'
+import { deferred, errorMessage, encodeUtf8, type Deferred } from '@demicodes/utils'
+import { createRunnerFileSystem } from '../machine/fs'
+import type {
+  InputRequest,
+  IOReplyValue,
+  OutputRequest,
+  RunCommand,
+  RunnerMessage,
+  WorkerMessage,
+} from './worker-messages'
 
-const scope = globalThis as unknown as { onmessage: ((event: MessageEvent) => void) | null; postMessage(value: unknown): void }
-let sequence = 0
-const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>()
-function request(type: string, data: Record<string, unknown> = {}): Promise<unknown> {
-  const id = ++sequence
-  return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); scope.postMessage({ type, id, ...data }) })
+// txiki exposes these globals in workers; the runner's main-thread types do not.
+const scope = globalThis as unknown as {
+  onmessage: ((event: MessageEvent<RunnerMessage>) => void) | null
+  postMessage(message: WorkerMessage): void
 }
+
+let nextRequestId = 0
 let started = false
+const pendingRequests = new Map<number, Deferred<IOReplyValue>>()
+
+function requestIO(
+  request: Omit<InputRequest, 'id'> | Omit<OutputRequest, 'id'>,
+): Promise<IOReplyValue> {
+  const id = ++nextRequestId
+  const reply = deferred<IOReplyValue>()
+  pendingRequests.set(id, reply)
+  scope.postMessage({ ...request, id })
+  return reply.promise
+}
+
+const stdin: AsyncIterable<Uint8Array> = {
+  async *[Symbol.asyncIterator]() {
+    for (;;) {
+      const bytes = await requestIO({ type: 'input' })
+      if (bytes === null) {
+        return
+      }
+      yield bytes
+    }
+  },
+}
+
+function outputWriter(stream: 'stdout' | 'stderr'): CommandWriter {
+  return async data => {
+    const bytes = typeof data === 'string' ? encodeUtf8(data) : data
+    await requestIO({ type: 'output', stream, bytes })
+  }
+}
+
+async function runCommand(message: RunCommand): Promise<void> {
+  const command = await importCommandModule(message.path)
+  const result = await command({
+    args: message.args,
+    cwd: message.cwd,
+    env: message.env,
+    fs: createRunnerFileSystem(message.cwd),
+    stdin,
+    stdout: outputWriter('stdout'),
+    stderr: outputWriter('stderr'),
+    // Cancellation terminates this worker, including CPU-bound command code.
+    signal: new AbortController().signal,
+  })
+  scope.postMessage({ type: 'exit', exitCode: result.exitCode })
+}
+
 scope.onmessage = event => {
   const message = event.data
   if (message.type === 'reply') {
-    const waiter = pending.get(message.id)
-    pending.delete(message.id)
-    if (message.error) waiter?.reject(new Error(message.error))
-    else waiter?.resolve(message.value)
+    const pending = pendingRequests.get(message.id)
+    pendingRequests.delete(message.id)
+    if ('error' in message) {
+      pending?.reject(new Error(message.error))
+    } else {
+      pending?.resolve(message.value)
+    }
     return
   }
-  if (message.type !== 'run' || started) throw new Error('unexpected command worker message')
+
+  if (message.type !== 'run' || started) {
+    throw new Error('unexpected command worker message')
+  }
   started = true
-  const { path, args, cwd, env } = message
-  const stdin: AsyncIterable<Uint8Array> = {
-    async *[Symbol.asyncIterator]() {
-      for (;;) {
-        const bytes = await request('input') as Uint8Array | null
-        if (bytes === null) return
-        yield bytes
-      }
-    },
-  }
-  const write = (stream: string) => async (data: string | Uint8Array) => {
-    await request('output', { stream, bytes: typeof data === 'string' ? encodeUtf8(data) : data })
-  }
-  void (async () => {
-    const command = await importCommandModule(path)
-    const result: CommandResult = await command({ args, cwd, env, fs: createRunnerFileSystem(cwd), stdin, stdout: write('stdout'), stderr: write('stderr'), signal: new AbortController().signal })
-    scope.postMessage({ type: 'exit', exitCode: result.exitCode })
-  })().catch(error => scope.postMessage({ type: 'error', message: errorMessage(error) }))
+  void runCommand(message).catch(error => {
+    scope.postMessage({ type: 'error', message: errorMessage(error) })
+  })
 }

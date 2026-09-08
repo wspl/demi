@@ -8,7 +8,7 @@ import { basename, join } from 'node:path'
 import process from 'node:process'
 import { z } from 'zod'
 import { atomicJson, syncFile } from '../../storage/machine-image-store'
-import { errorCode } from '@demicodes/utils'
+import { errorCode, errorMessage } from '@demicodes/utils'
 import { FirecrackerApi } from './api'
 import type { FirecrackerConfig } from './config'
 import type { Slot } from './slots'
@@ -55,9 +55,13 @@ export function vmDirectory(config: FirecrackerConfig, vmId: string): string {
 
 export async function readVmRecord(config: FirecrackerConfig, vmId: string): Promise<VmRecord | null> {
   try {
-    return vmRecordSchema.parse(JSON.parse(await readFile(join(vmDirectory(config, vmId), VM_RECORD), 'utf8')))
+    return vmRecordSchema.parse(
+      JSON.parse(await readFile(join(vmDirectory(config, vmId), VM_RECORD), 'utf8')),
+    )
   } catch (error) {
-    if (errorCode(error) === 'ENOENT') return null
+    if (errorCode(error) === 'ENOENT') {
+      return null
+    }
     throw error
   }
 }
@@ -77,11 +81,21 @@ export async function killVm(config: FirecrackerConfig, vmId: string, pid: numbe
     try {
       process.kill(pid, 'SIGKILL')
     } catch (error) {
-      if (errorCode(error) !== 'ESRCH') throw error
+      if (errorCode(error) !== 'ESRCH') {
+        throw error
+      }
     }
     return
   }
-  const killer = Bun.spawn(['sudo', '-n', config.launch.helper, 'vm', 'kill', '--id', vmId, '--chroot-base', config.launch.chrootBase], { stdout: 'ignore', stderr: 'ignore' })
+  const args = [
+    'vm', 'kill',
+    '--id', vmId,
+    '--chroot-base', config.launch.chrootBase,
+  ]
+  const killer = Bun.spawn(['sudo', '-n', config.launch.helper, ...args], {
+    stdout: 'ignore',
+    stderr: 'ignore',
+  })
   await killer.exited
 }
 
@@ -96,7 +110,11 @@ export function processAlive(pid: number): boolean {
 }
 
 /** Starts the process, waits for its API, configures and boots the guest. */
-export async function startVm(config: FirecrackerConfig, start: VmStart, log: (line: string) => void): Promise<RunningVm> {
+export async function startVm(
+  config: FirecrackerConfig,
+  start: VmStart,
+  log: (line: string) => void,
+): Promise<RunningVm> {
   const vmDir = vmDirectory(config, start.vmId)
   await mkdir(vmDir, { recursive: true })
   const console = Bun.file(join(vmDir, 'console.log'))
@@ -107,7 +125,11 @@ export async function startVm(config: FirecrackerConfig, start: VmStart, log: (l
     socketPath = join(vmDir, 'api.sock')
     await rm(socketPath, { force: true })
     paths = { kernel: config.kernel, rootfs: config.rootfs, home: start.homeImage, system: start.systemImage }
-    child = Bun.spawn([config.firecracker, '--api-sock', socketPath, '--id', start.vmId], { stdout: console, stderr: console, stdin: 'ignore' })
+    child = Bun.spawn([config.firecracker, '--api-sock', socketPath, '--id', start.vmId], {
+      stdout: console,
+      stderr: console,
+      stdin: 'ignore',
+    })
   } else {
     const launch = config.launch
     const chroot = join(launch.chrootBase, basename(config.firecracker), start.vmId, 'root')
@@ -129,20 +151,26 @@ export async function startVm(config: FirecrackerConfig, start: VmStart, log: (l
       '--home', start.homeImage,
       '--system', start.systemImage,
     ]
-    child = Bun.spawn(['sudo', '-n', launch.helper, ...helperArgs], { stdout: console, stderr: console, stdin: 'ignore' })
+    child = Bun.spawn(['sudo', '-n', launch.helper, ...helperArgs], {
+      stdout: console,
+      stderr: console,
+      stdin: 'ignore',
+    })
   }
   const pid = child.pid
   const record: VmRecord = { pid, owner: start.owner }
   const kill = () => killVm(config, start.vmId, pid)
-  const exited: Promise<number | null> = child.exited.then((code) => (child.signalCode ? null : code))
+  const exited: Promise<number | null> = child.exited.then(code => (child.signalCode ? null : code))
   const api = new FirecrackerApi(socketPath)
   try {
     await atomicJson(join(vmDir, VM_RECORD), record)
     await syncFile(vmDir)
     await Promise.race([
       api.ready(API_READY_MS),
-      exited.then((code) => {
-        throw new Error(`the VM process exited with ${code ?? 'a signal'} before its API came up (see ${join(vmDir, 'console.log')})`)
+      exited.then(code => {
+        throw new Error(
+          `the VM process exited with ${code ?? 'a signal'} before its API came up (see ${join(vmDir, 'console.log')})`,
+        )
       }),
     ])
     await api.configure({
@@ -158,7 +186,8 @@ export async function startVm(config: FirecrackerConfig, start: VmStart, log: (l
     })
     await api.start()
   } catch (error) {
-    await kill().catch(() => {})
+    // Report cleanup failure without replacing the boot error.
+    await kill().catch(cleanupError => log(errorMessage(cleanupError)))
     throw error
   }
   log(`vm ${start.vmId} started on ${start.slot.tap} (${start.slot.guestAddress})`)

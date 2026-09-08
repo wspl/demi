@@ -26,8 +26,10 @@ export class FirecrackerApi {
         await this.request('GET', '/')
         return
       } catch (error) {
-        if (Date.now() > deadline) throw new Error(`firecracker API did not come up: ${errorMessage(error)}`)
-        await new Promise((resolve) => setTimeout(resolve, 20))
+        if (Date.now() > deadline) {
+          throw new Error(`firecracker API did not come up: ${errorMessage(error)}`)
+        }
+        await new Promise(resolve => setTimeout(resolve, 20))
       }
     }
   }
@@ -35,10 +37,29 @@ export class FirecrackerApi {
   async configure(vm: VmDescription): Promise<void> {
     await this.request('PUT', '/machine-config', { vcpu_count: vm.vcpus, mem_size_mib: vm.memMib })
     await this.request('PUT', '/boot-source', { kernel_image_path: vm.kernelPath, boot_args: vm.bootArgs })
-    await this.request('PUT', '/drives/rootfs', { drive_id: 'rootfs', path_on_host: vm.rootfsPath, is_root_device: true, is_read_only: true })
-    await this.request('PUT', '/drives/home', { drive_id: 'home', path_on_host: vm.homePath, is_root_device: false, is_read_only: false })
-    await this.request('PUT', '/drives/system', { drive_id: 'system', path_on_host: vm.systemPath, is_root_device: false, is_read_only: false })
-    await this.request('PUT', '/network-interfaces/eth0', { iface_id: 'eth0', guest_mac: vm.mac, host_dev_name: vm.tap })
+    await this.request('PUT', '/drives/rootfs', {
+      drive_id: 'rootfs',
+      path_on_host: vm.rootfsPath,
+      is_root_device: true,
+      is_read_only: true,
+    })
+    await this.request('PUT', '/drives/home', {
+      drive_id: 'home',
+      path_on_host: vm.homePath,
+      is_root_device: false,
+      is_read_only: false,
+    })
+    await this.request('PUT', '/drives/system', {
+      drive_id: 'system',
+      path_on_host: vm.systemPath,
+      is_root_device: false,
+      is_read_only: false,
+    })
+    await this.request('PUT', '/network-interfaces/eth0', {
+      iface_id: 'eth0',
+      guest_mac: vm.mac,
+      host_dev_name: vm.tap,
+    })
   }
 
   async start(): Promise<void> {
@@ -62,9 +83,13 @@ export class FirecrackerApi {
     const response = await fetch(`http://firecracker${path}`, {
       method,
       unix: this.socketPath,
-      headers: { accept: 'application/json', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      headers: {
+        accept: 'application/json',
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
-    if (!response.ok) throw new Error(`firecracker ${method} ${path}: HTTP ${response.status} ${await response.text()}`)
+    if (!response.ok)
+      throw new Error(`firecracker ${method} ${path}: HTTP ${response.status} ${await response.text()}`)
   }
 }

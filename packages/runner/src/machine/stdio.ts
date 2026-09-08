@@ -5,11 +5,11 @@ import { toBytes } from '@demicodes/utils'
 let out: WritableStreamDefaultWriter<Uint8Array> | undefined
 let err: WritableStreamDefaultWriter<Uint8Array> | undefined
 export const stdoutWriter = (): CommandWriter => {
-  out ??= tjs.stdout.getWriter()
-  return (data) => out!.write(toBytes(data))
+  const writer = out ??= tjs.stdout.getWriter()
+  return (data) => writer.write(toBytes(data))
 }
 export const stderrWriter = (): CommandWriter => {
-  err ??= tjs.stderr.getWriter()
-  return (data) => err!.write(toBytes(data))
+  const writer = err ??= tjs.stderr.getWriter()
+  return (data) => writer.write(toBytes(data))
 }
 export const stdinStream = (): AsyncIterable<Uint8Array> => tjs.stdin
