@@ -32,9 +32,7 @@ export function createSessionProviderResolver(options: SessionProvidersOptions):
     const session: SessionProviderContext = {
       spawn: async (params) => {
         const target = await host()
-        const spawn = target.process.spawn
-        if (!spawn) throw new Error('this provider needs a machine: the conversation runs hostless')
-        return spawn.call(target.process, params)
+        return target.process.spawn(params)
       },
     }
     const meter: MeterOptions = {

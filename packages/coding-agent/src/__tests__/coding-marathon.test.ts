@@ -13,8 +13,9 @@ import {
   type AgentToolInvokeResult,
 } from '@demicodes/agent'
 import { CommandRegistry, type ShellEnvironment, type ShellEnvironmentOptions } from '@demicodes/shell'
-import { hostlessShell, probeCommand } from '@demicodes/host-virtual/testing'
-import { LocalHost } from '@demicodes/host-virtual/testing'
+import { runnerShell, probeCommand } from '@demicodes/backend/testing'
+
+import { LocalHost } from '@demicodes/runner/testing'
 import type { InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { createCodingAgentHarness } from '../index'
@@ -149,7 +150,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
   })
 })
 
-test('coding agent preserves cwd and env when reusing a shell session', async () => {
+test('coding agent preserves cwd between jobs and scopes exported variables to one job', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-shell-state-'))
   const harness = createCodingAgentHarness({ host: new LocalHost(root) })
   const { runtime } = await createRuntimeFromHarness(harness, root, {
@@ -182,7 +183,7 @@ test('coding agent preserves cwd and env when reusing a shell session', async ()
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
       expect(result.status).toBe('exited')
-      expect(result.stdout).toBe(`state:${join(root, 'pkg')}:kept`)
+      expect(result.stdout).toBe(`state:${join(root, 'pkg')}:`)
       return [events.text('state preserved'), events.response()]
     },
   ])
@@ -382,7 +383,7 @@ test('coding agent exercises all standard shell control tools in one flow', asyn
         return [
           events.toolCall('start-long', 'shell_exec', {
             description: 'Start long command',
-            script: 'printf long-ready && probe hold 10000',
+            script: 'printf long-ready; sleep 10',
             timeoutMs: 20,
           }),
         ]
@@ -446,7 +447,7 @@ test('coding agent exercises all standard shell control tools in one flow', asyn
   const toolNames = session.transcript().blocks.flatMap((block) => (block.type === 'tool_call' ? [block.toolName] : []))
   expect(new Set(toolNames)).toEqual(new Set(['shell_exec', 'yield', 'shell_status', 'shell_write', 'shell_abort']))
   expect(session.transcript().pendingToolCalls()).toHaveLength(0)
-})
+}, 15_000)
 
 async function createRuntimeFromHarness(
   harness: AgentHarness<Record<string, never>>,
@@ -466,7 +467,7 @@ async function createRuntimeFromHarness(
   registry.register(probeCommand())
   const host = harness.host(harnessContext)
   if (host instanceof Promise) throw new Error('test harness host must be synchronous')
-  const environment = await hostlessShell({
+  const environment = await runnerShell({
     initialEnv: { PATH: process.env.PATH ?? '' },
     ...options,
     host,

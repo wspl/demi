@@ -8,6 +8,8 @@ import {
 import { Hono } from 'hono'
 import type { UpgradeWebSocket } from 'hono/ws'
 import type { WSContext } from 'hono/ws'
+import type { RunnerRegistry } from '../runner/registry'
+import { resolveExecutionTarget } from '../conversation/execution-target'
 import { conversationScopedTransport } from '../conversation/scoped-transport'
 import type { ControlService } from '../storage/control'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
@@ -21,6 +23,7 @@ import { visibleProvider } from '../vault/scope'
  * logic in `scoped-transport.ts`.
  */
 export function streamRoutes(options: {
+  registry: RunnerRegistry
   control: ControlService
   agentServer: AgentServer
   upgradeWebSocket: UpgradeWebSocket
@@ -34,7 +37,7 @@ export function streamRoutes(options: {
   app.get('/:id/stream', async (c, next) => {
     const conversation = await control.getConversation(c.req.param('id'))
     if (!conversation || conversation.userId !== c.get('user').id) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
-    const workspace = conversation.workspaceId ? await control.getWorkspace(conversation.workspaceId) : null
+    const target = await resolveExecutionTarget(control, options.registry, conversation)
     return upgradeWebSocket(() => {
       const adapter = new WsContextAdapter()
       let binding: AgentTransportBinding | null = null
@@ -42,7 +45,7 @@ export function streamRoutes(options: {
         onOpen(_event, ws) {
           const transport = conversationScopedTransport(createWebSocketServerTransport(adapter.socket(ws)), conversation, {
             control,
-            cwd: workspace?.path,
+            cwd: target.path,
             blobs: blobsFor(conversation.userId),
             providerAllowed: async (providerId) => (await visibleProvider(vault, mode, conversation.userId, providerId)) !== null,
           })

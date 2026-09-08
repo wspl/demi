@@ -42,6 +42,6 @@
   "homepage": "https://github.com/wspl/demi/tree/main/packages/command-loader#readme",
   "bugs": "https://github.com/wspl/demi/issues",
   "devDependencies": {
-    "@demicodes/host-virtual": "workspace:^"
+    "@demicodes/runner": "workspace:^"
   }
 }

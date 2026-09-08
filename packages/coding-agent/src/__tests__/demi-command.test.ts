@@ -3,8 +3,9 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import { type CommandIO, type CommandStorage, type Host, type HostDirent, type HostFileStat, type HostFileSystem, type HostProcess, type HostStore, createLogicalHostCwd, runRegisteredCommand, type ShellEnvironment } from '@demicodes/shell'
-import { hostlessShell } from '@demicodes/host-virtual/testing'
-import { LocalHost } from '@demicodes/host-virtual/testing'
+import { runnerShell } from '@demicodes/backend/testing'
+
+import { LocalHost } from '@demicodes/runner/testing'
 import { bytesStream, bytesToBase64, encodeUtf8 } from '@demicodes/utils'
 import { createCodingCommandRegistry, createDemiCommand } from '../index'
 
@@ -25,7 +26,7 @@ test('demi file read emits raw bytes; binary files surface as binaryStdout at th
   if (read.status !== 'exited') throw new Error('expected exited result')
   expect(read.exitCode).toBe(0)
   expect(read.binaryStdout?.data).toEqual(png)
-  expect(read.stdout.delta).toContain(`<binary stdout: ${png.length} bytes; not kept beyond this view>`)
+  expect(read.stdout.delta).toContain(`<binary stdout: ${png.length} bytes; raw bytes at `)
 
   // Bytes pipe cleanly into downstream commands.
   const counted = await env.exec({ shellId: read.shellId, script: 'demi file read shot.png | wc -c' })
@@ -74,9 +75,8 @@ test('demi allows paths outside default cwd when the namespace allows them', asy
   const defaultCwd = join(parent, 'default-cwd')
   await mkdir(defaultCwd)
   const host = new LocalHost(defaultCwd)
-  const env = await hostlessShell({
+  const env = await runnerShell({
     host,
-    namespace: [parent],
     commands: createCodingCommandRegistry(),
     shellIdFactory: () => 'demi-boundary-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
@@ -107,7 +107,7 @@ test('demi file patch can modify paths outside default cwd when Host.fs allows t
   await mkdir(root)
   const outsidePath = join(parent, 'outside.txt')
   const host = new LocalHost(root)
-  const env = await hostlessShell({
+  const env = await runnerShell({
     host,
     commands: createCodingCommandRegistry(),
     shellIdFactory: () => 'demi-patch-boundary-shell',
@@ -328,7 +328,7 @@ test('demi file patch rolls back files when a later write fails', async () => {
 async function createDemiEnvironment(): Promise<{ env: ShellEnvironment; host: LocalHost }> {
   const root = await mkdtemp(join(tmpdir(), 'demi-scratch-'))
   const host = new LocalHost(root)
-  const env = await hostlessShell({
+  const env = await runnerShell({
     host,
     commands: createCodingCommandRegistry(),
     shellIdFactory: () => 'demi-shell',

@@ -1,351 +1,296 @@
-import { ActivityGate, deferred, errorMessage, noop, withTimeout, type Deferred } from '@demicodes/utils'
+import { ActivityGate, errorMessage, noop, withTimeout } from '@demicodes/utils'
 import { generateDeviceToken, hashDeviceToken } from '../runner/claim-codes'
 import type { RunnerRegistry } from '../runner/registry'
-import type { ControlService, DeviceRecord, ManagedHostOwner } from '../storage/control'
-import { ownerKey, type ManagedHostProvisioner } from './provisioner'
+import type { ControlService, DeviceRecord, ManagedOperation } from '../storage/control'
+import type { ManagedHostProvisioner, ManagedVolume } from './provisioner'
 
-/** Sizes are configurable, presence is not (`managed-hosts.md` § Security baseline). */
 export interface ManagedHostsConfig {
-  /** Reclaim after this long with no in-flight turn and no running jobs. */
   idleMs: number
-  /** Reclaim a host that has jobs but no turns after this long. */
   hardCapMs: number
-  /** Save a running host's home this often. */
   checkpointIntervalMs: number
-  /** This many guest deaths within the window stop automatic re-provisioning for the owner. */
   crashLoop: { deaths: number; windowMs: number }
-  hostsPerUser: number
-  /** How long a booted guest may take to present itself. */
   bootTimeoutMs: number
-  /** How often the idle rule and the checkpoint clock are evaluated. */
   sweepMs: number
-  /** How long the guest may take to answer the `sync` before hibernate; silence counts as a touched home. */
   syncTimeoutMs: number
+  systemQuotaBytes: number
+  homeQuotaBytes: number
+  maxRunning: number
 }
-
 export const DEFAULT_MANAGED_HOSTS_CONFIG: ManagedHostsConfig = {
-  idleMs: 10 * 60_000,
-  hardCapMs: 24 * 60 * 60_000,
-  checkpointIntervalMs: 15 * 60_000,
-  crashLoop: { deaths: 3, windowMs: 10 * 60_000 },
-  hostsPerUser: 10,
-  bootTimeoutMs: 60_000,
-  sweepMs: 30_000,
-  syncTimeoutMs: 5_000,
+  idleMs: 10 * 60_000, hardCapMs: 24 * 60 * 60_000,
+  checkpointIntervalMs: 15 * 60_000, crashLoop: { deaths: 3, windowMs: 10 * 60_000 },
+  bootTimeoutMs: 60_000, sweepMs: 30_000, syncTimeoutMs: 5_000,
+  systemQuotaBytes: 16 * 1024 ** 3, homeQuotaBytes: 32 * 1024 ** 3, maxRunning: 16,
 }
-
 export interface ManagedHostsOptions {
   control: ControlService
   registry: RunnerRegistry
   provisioner: ManagedHostProvisioner
-  /** The URL guests dial — the backend's public one, like a user host (`managed-hosts.md` § Network). */
   backendUrl: () => string
-  /** Whether any conversation of the owner has a turn in flight; the idle rule's first input. */
-  turnInFlight: (owner: ManagedHostOwner) => Promise<boolean>
-  /** Reserves all existing owner trees until retirement enters the saving state. */
-  reserveIdle: (owner: ManagedHostOwner) => Promise<(() => void) | null>
+  turnInFlight: (userId: string) => Promise<boolean>
+  reserveIdle: (userId: string) => Promise<(() => void) | null>
+  interrupt: (userId: string) => Promise<() => void>
   config?: Partial<ManagedHostsConfig>
   log?: (line: string) => void
   now?: () => number
 }
-
-export type ManagedHostErrorCode = 'crash_loop' | 'host_limit' | 'boot_timeout' | 'guest_died' | 'not_owner'
-
 export class ManagedHostError extends Error {
-  constructor(
-    readonly code: ManagedHostErrorCode,
-    message: string,
-  ) {
-    super(message)
-    this.name = 'ManagedHostError'
-  }
+  constructor(readonly code: string, message: string) { super(message); this.name = 'ManagedHostError' }
 }
-
-/**
- * One owner's guest as the lifecycle sees it (`managed-hosts.md` §
- * Lifecycle). `booting` covers provision and wake; `off` covers hibernated
- * and dead alike — both take the wake path on the next need. State is in
- * memory: after a backend restart every managed device is `off`, which is
- * true, since its guest died with the process.
- */
-interface OwnedHost {
+interface Machine {
+  device: DeviceRecord
   activity: ActivityGate
-  owner: ManagedHostOwner
-  deviceId: string
-  state: 'booting' | 'running' | 'saving' | 'off'
-  /** The in-flight boot, joined by concurrent needs. */
-  boot: Promise<void> | null
-  /** Rejected by a death during the boot, so the boot fails then rather than at its timeout. */
-  died: Deferred<never> | null
-  /** The in-flight hibernate; a need arriving meanwhile waits for it and then wakes. */
-  save: Promise<void> | null
+  state: 'off' | 'booting' | 'running' | 'saving' | 'resetting'
+  pending: Promise<void> | null
+  resetTask: Promise<void> | null
+  reset: ManagedOperation | null
+  deaths: number[]
   startedAt: number
   idleSince: number | null
-  lastCheckpointAt: number
-  deaths: number[]
+  checkpointAt: number
+  error: string | null
 }
 
-/** The device row's owner (`devices.owner_*`, managed rows only). */
-export function ownerOf(device: DeviceRecord): ManagedHostOwner {
-  if (device.ownerConversationId !== null) return { kind: 'conversation', id: device.ownerConversationId }
-  if (device.ownerWorkspaceId !== null) return { kind: 'workspace', id: device.ownerWorkspaceId }
-  throw new Error(`device ${device.id} is managed but owns nothing`)
-}
-
-/**
- * The managed-host lifecycle: provision on first need, the idle rule and
- * hard cap driving hibernation, wake on the next need with concurrent
- * needs joined, the periodic checkpoint with the liveness exemption, the
- * crash-loop guard and the per-user cap. Drives the provisioner seam and
- * the device rows; never touches an image. Every way a guest ends — the
- * idle rule, the owner archived or deleted, the backend closing — goes
- * through `hibernate`, so the home is saved before the guest is gone.
- */
+/** User-owned machines. Admission and every VM transition share one device identity. */
 export class ManagedHosts {
   private readonly config: ManagedHostsConfig
-  private readonly hosts = new Map<string, OwnedHost>()
-  private readonly log: (line: string) => void
+  private readonly volumeLimits: { systemBytes: number; homeBytes: number }
+  private readonly machines = new Map<string, Machine>()
   private readonly now: () => number
-  private sweepTimer: ReturnType<typeof setInterval> | null = null
+  private readonly log: (line: string) => void
+  private readonly timer: ReturnType<typeof setInterval>
   private sweeping = false
   private closed = false
 
   constructor(private readonly options: ManagedHostsOptions) {
     this.config = { ...DEFAULT_MANAGED_HOSTS_CONFIG, ...options.config }
-    this.log = options.log ?? ((line) => console.warn(line))
-    this.now = options.now ?? (() => Date.now())
-    options.provisioner.onDeath((owner) => this.guestDied(owner))
-    this.sweepTimer = setInterval(() => void this.sweep(), this.config.sweepMs)
-  }
-
-  /**
-   * The first boot for an owner: the device row with its token, the guest
-   * over `homeDir`, online before this resolves. Refused past the per-user
-   * cap, and for an owner that has a machine already — one machine per
-   * owner, never reused.
-   */
-  async provision(owner: ManagedHostOwner, userId: string, homeDir: string): Promise<DeviceRecord> {
-    if (await this.options.control.getManagedDevice(owner)) throw new Error(`${ownerKey(owner)} already has a machine`)
-    if ((await this.options.control.countManagedDevices(userId)) >= this.config.hostsPerUser) {
-      throw new ManagedHostError('host_limit', `the limit of ${this.config.hostsPerUser} machines per user is reached`)
-    }
-    const token = generateDeviceToken()
-    const device = await this.options.control.createDevice({
-      userId,
-      kind: 'managed',
-      name: 'cloud',
-      platform: 'managed',
-      tokenHash: hashDeviceToken(token),
-      ...(owner.kind === 'conversation' ? { ownerConversationId: owner.id } : { ownerWorkspaceId: owner.id }),
+    this.volumeLimits = { systemBytes: this.config.systemQuotaBytes, homeBytes: this.config.homeQuotaBytes }
+    this.now = options.now ?? Date.now
+    this.log = options.log ?? console.warn
+    this.timer = setInterval(() => { void this.sweep().catch(error => this.log(errorMessage(error))) }, this.config.sweepMs)
+    options.provisioner.onDeath(id => {
+      const machine = this.machines.get(id)
+      if (!machine || machine.state === 'saving' || machine.state === 'resetting') return
+      machine.deaths.push(this.now()); machine.state = 'off'
+      this.options.registry.disconnect(id)
     })
-    const host = this.host(owner, device.id)
-    await this.boot(host, () => this.options.provisioner.provision(owner, homeDir, { backendUrl: this.options.backendUrl(), deviceToken: token }))
-    return device
   }
 
-  /**
-   * A first boot that leaves nothing behind when it fails: the device row,
-   * the guest and whatever the provisioner made for the owner are removed,
-   * so the next attempt starts from the caller's home as it stands then.
-   */
-  async provisionFresh(owner: ManagedHostOwner, userId: string, homeDir: string): Promise<DeviceRecord> {
+  private machine(device: DeviceRecord): Machine {
+    if (device.kind !== 'managed') throw new Error('Expected a managed device')
+    let machine = this.machines.get(device.id)
+    if (!machine) {
+      machine = { device, activity: new ActivityGate(), state: 'off', pending: null, resetTask: null, reset: null, deaths: [], startedAt: 0, idleSince: null, checkpointAt: 0, error: null }
+      this.machines.set(device.id, machine)
+    }
+    return machine
+  }
+
+  async ensureRunning(device: DeviceRecord): Promise<void> {
+    const machine = this.machine(device)
+    if (this.closed) throw new ManagedHostError('closed', 'Cloud is shutting down')
+    if (machine.state === 'resetting') throw new ManagedHostError('resetting', 'Cloud environment is resetting')
+    while (machine.pending) await machine.pending
+    if (machine.resetTask) throw new ManagedHostError('resetting', 'Cloud environment is resetting')
+    if (machine.state === 'running') return
+    if (machine.deaths.filter(at => this.now() - at < this.config.crashLoop.windowMs).length >= this.config.crashLoop.deaths) throw new ManagedHostError('crash_loop', 'Cloud repeatedly failed; reset the environment to recover')
+    // Mark booting synchronously before any await: reservations include boots in flight.
+    this.assertCapacity(machine)
+    machine.state = 'booting'
+    const boot = this.boot(machine)
+    machine.pending = boot
+    try { await boot } finally { if (machine.pending === boot) machine.pending = null }
+  }
+
+  private assertCapacity(machine: Machine): void {
+    const reserved = [...this.machines.values()].filter(other => other !== machine && other.state !== 'off').length
+    if (reserved >= this.config.maxRunning) throw new ManagedHostError('capacity', 'Cloud capacity is currently full; retry later')
+  }
+
+  private async boot(machine: Machine, resetting = false): Promise<void> {
     try {
-      return await this.provision(owner, userId, homeDir)
+      const token = generateDeviceToken()
+      await this.options.control.rotateDeviceToken(machine.device.id, hashDeviceToken(token))
+      await this.options.provisioner.wake(machine.device.id, { backendUrl: this.options.backendUrl(), deviceToken: token })
+      await withTimeout(this.options.registry.whenOnline(machine.device.id), this.config.bootTimeoutMs, 'Cloud boot timeout')
+      if (!resetting) machine.state = 'running'
+      machine.error = null
+      machine.startedAt = machine.checkpointAt = this.now(); machine.idleSince = null
     } catch (error) {
-      const device = await this.options.control.getManagedDevice(owner)
-      if (device) {
-        await this.destroy(owner).catch(noop)
-        await this.options.control.deleteDevice(device.id).catch(noop)
-        this.hosts.delete(ownerKey(owner))
-      }
+      await this.options.provisioner.hibernate(machine.device.id).catch(noop)
+      this.options.registry.disconnect(machine.device.id)
+      if (!resetting) machine.state = 'off'
+      machine.error = errorMessage(error)
       throw error
     }
   }
 
-  /**
-   * The next action needing the host: a running guest returns at once, a
-   * boot in flight is joined, an off guest is woken with a fresh token — a
-   * latency, not an error — unless it is crash-looping.
-   */
-  async ensureRunning(device: DeviceRecord): Promise<void> {
-    const owner = ownerOf(device)
-    const host = this.host(owner, device.id)
-    if (host.state === 'running') return
-    if (host.boot) return host.boot
-    if (host.save) await host.save.catch(() => {})
-    if (host.boot) return host.boot
-    const recent = host.deaths.filter((at) => this.now() - at < this.config.crashLoop.windowMs)
-    if (recent.length >= this.config.crashLoop.deaths) {
-      throw new ManagedHostError('crash_loop', `the machine died ${recent.length} times in the last ${Math.round(this.config.crashLoop.windowMs / 60_000)} minutes and is not restarted automatically`)
-    }
-    const token = generateDeviceToken()
-    await this.boot(host, async () => {
-      await this.options.control.rotateDeviceToken(device.id, hashDeviceToken(token))
-      await this.options.provisioner.wake(owner, { backendUrl: this.options.backendUrl(), deviceToken: token })
-    })
-  }
-
-  /** Keeps a borrowed machine available for the lifetime of a cross-host command. */
   async enter(device: DeviceRecord, signal?: AbortSignal): Promise<() => void> {
-    const release = await this.host(ownerOf(device), device.id).activity.enter(signal)
+    const machine = this.machine(device)
+    if (machine.state === 'resetting') throw new ManagedHostError('resetting', 'Cloud environment is resetting')
+    const release = await machine.activity.enter(signal)
     try { await this.ensureRunning(device); return release }
     catch (error) { release(); throw error }
   }
 
-  /** The guest a device row denotes, if this backend knows it as running. */
-  isRunning(deviceId: string): boolean {
-    for (const host of this.hosts.values()) if (host.deviceId === deviceId) return host.state === 'running'
-    return false
+  /** Synchronous admission for every RPC, including calls through an already cached Host. */
+  admit(deviceId: string): () => void {
+    const machine = this.machines.get(deviceId)
+    if (!machine) return noop
+    if (this.closed || machine.state !== 'running' || machine.resetTask) throw new ManagedHostError('unavailable', 'Cloud is not accepting operations')
+    const release = machine.activity.tryEnter()
+    if (!release) throw new ManagedHostError('unavailable', 'Cloud is changing state')
+    machine.idleSince = null
+    return release
   }
 
-  /** Flushes the home, kills the guest and saves its home; the next need wakes it. */
-  async hibernate(owner: ManagedHostOwner): Promise<void> {
-    const host = this.hosts.get(ownerKey(owner))
-    if (!host || host.state !== 'running') return
-    host.state = 'saving'
-    host.save = (async () => {
+  async hibernate(deviceId: string): Promise<void> {
+    const machine = this.machines.get(deviceId)
+    if (!machine) return
+    if (machine.pending) await machine.pending
+    if (machine.state !== 'running') return
+    machine.state = 'saving'
+    const save = (async () => {
       try {
-        const report = await this.options.registry.sync(host.deviceId, this.config.syncTimeoutMs)
-        await this.options.provisioner.hibernate(owner, report)
-        this.options.registry.disconnect(host.deviceId)
-      } finally {
-        host.state = 'off'
-        host.save = null
-      }
+        await this.options.registry.sync(deviceId, this.config.syncTimeoutMs).catch(error => this.log(errorMessage(error)))
+        await this.options.provisioner.hibernate(deviceId)
+      } finally { this.options.registry.disconnect(deviceId); machine.state = 'off' }
     })()
-    await host.save
+    machine.pending = save
+    try { await save } finally { if (machine.pending === save) machine.pending = null }
   }
 
-  /** A guest's `home_grow` (`managed-hosts.md` § Home persistence): its image becomes `bytes` large. */
-  async growHome(deviceId: string, bytes: number): Promise<void> {
+  async growVolume(deviceId: string, volume: ManagedVolume, bytes: number): Promise<void> {
+    const quota = volume === 'system' ? this.config.systemQuotaBytes : this.config.homeQuotaBytes
+    if (!Number.isSafeInteger(bytes) || bytes <= 0 || bytes > quota) throw new ManagedHostError('quota', `${volume} volume quota exceeded`)
     const device = await this.options.control.getDevice(deviceId)
-    if (!device || device.kind !== 'managed') throw new Error(`device ${deviceId} has no managed home`)
-    await this.options.provisioner.growHome(ownerOf(device), bytes)
+    if (!device || device.kind !== 'managed') throw new Error('No managed device')
+    await this.options.provisioner.growVolume(deviceId, volume, bytes)
   }
 
-  /**
-   * The backend starting: the provisioner kills and saves what a previous
-   * process left before any guest is booted here.
-   */
-  reconcile(): Promise<void> {
-    return this.options.provisioner.reconcile()
+  async status(userId: string) {
+    const device = await this.options.control.getManagedDevice(userId)
+    if (!device) return { device: null, state: 'unallocated' as const, operation: null, error: null, image: null, limits: this.volumeLimits }
+    const machine = this.machine(device)
+    return { device, state: machine.state, operation: machine.reset, error: machine.error, image: await this.options.provisioner.imageState(device.id), limits: this.volumeLimits }
   }
 
-  /** The owner is archived or deleted: the guest is hibernated — its home saved — and forgotten; the device row stays with the home (retention is a later item). */
-  async destroy(owner: ManagedHostOwner): Promise<void> {
-    const device = await this.options.control.getManagedDevice(owner)
-    if (!device) return
-    const host = this.host(owner, device.id)
-    if (host.boot) await host.boot.catch(noop)
-    await this.hibernate(owner)
-    host.state = 'off'
-    await this.options.provisioner.destroy(owner)
-    this.options.registry.disconnect(device.id)
-  }
-
-  /** The backend closing: every running guest hibernated — synced, killed, saved — before the process goes. */
-  async close(): Promise<void> {
-    this.closed = true
-    if (this.sweepTimer) clearInterval(this.sweepTimer)
-    this.sweepTimer = null
-    for (const host of [...this.hosts.values()]) {
-      if (host.boot) await host.boot.catch(noop)
-      await this.hibernate(host.owner).catch((error) => this.log(`hibernate of ${ownerKey(host.owner)} at close failed: ${errorMessage(error)}`))
+  async reset(userId: string, operationId: string): Promise<ManagedOperation> {
+    if (this.closed) throw new ManagedHostError('closed', 'Cloud is shutting down')
+    const device = await this.options.control.getOrCreateCloudDevice(userId)
+    const machine = this.machine(device)
+    const existing = await this.options.control.getManagedOperation(device.id, operationId)
+    if (machine.state === 'resetting') {
+      if (machine.reset?.id === operationId) return machine.reset
+      throw new ManagedHostError('resetting', 'Another reset is in progress')
     }
-    await this.options.provisioner.close()
-  }
-
-  private host(owner: ManagedHostOwner, deviceId: string): OwnedHost {
-    const key = ownerKey(owner)
-    let host = this.hosts.get(key)
-    if (!host) {
-      host = { activity: new ActivityGate(), owner, deviceId, state: 'off', boot: null, died: null, save: null, startedAt: 0, idleSince: null, lastCheckpointAt: 0, deaths: [] }
-      this.hosts.set(key, host)
+    if (existing?.phase === 'ready') return existing
+    const operation: ManagedOperation = { id: operationId, baseVersion: existing?.baseVersion ?? await this.options.provisioner.currentBaseVersion(), phase: 'stopping', error: null }
+    // Recheck after asynchronous lookups before closing admission.
+    if (machine.resetTask) {
+      if (machine.reset?.id === operationId) return machine.reset
+      throw new ManagedHostError('resetting', 'Another reset is in progress')
     }
-    return host
-  }
-
-  private async boot(host: OwnedHost, start: () => Promise<void>): Promise<void> {
-    host.state = 'booting'
-    const died = deferred<never>()
-    died.promise.catch(noop)
-    host.died = died
-    host.boot = (async () => {
+    if (this.closed) throw new ManagedHostError('closed', 'Cloud is shutting down')
+    this.assertCapacity(machine)
+    machine.state = 'resetting'; machine.reset = operation
+    const task = (async () => {
       try {
-        await start()
-        // Online, or dead on the way there — a death fails the boot at once, not at its timeout.
-        await Promise.race([withTimeout(this.options.registry.whenOnline(host.deviceId), this.config.bootTimeoutMs, 'boot timeout'), died.promise])
+        await this.options.control.putManagedOperation(device.id, operation)
+        await this.runReset(machine, operation)
       } catch (error) {
-        host.state = 'off'
-        throw errorMessage(error) === 'boot timeout' ? new ManagedHostError('boot_timeout', 'the machine did not come online in time') : error
+        machine.state = 'off'; machine.error = errorMessage(error)
+        machine.reset = { ...operation, phase: 'failed', error: machine.error }
+        throw error
       }
-      const now = this.now()
-      host.state = 'running'
-      host.startedAt = now
-      host.idleSince = null
-      host.lastCheckpointAt = now
     })()
+    machine.resetTask = task
+    void task.catch(error => this.log(errorMessage(error))).finally(() => { machine.resetTask = null })
+    return operation
+  }
+
+  private async runReset(machine: Machine, operation: ManagedOperation): Promise<void> {
+    let release: (() => void) | undefined
+    let releaseTrees: (() => void) | undefined
+    const phase = async (value: ManagedOperation['phase'], error: string | null = null) => {
+      operation = { ...operation, phase: value, error }; machine.reset = operation
+      await this.options.control.putManagedOperation(machine.device.id, operation)
+    }
     try {
-      await host.boot
-    } finally {
-      host.boot = null
-      host.died = null
+      if (machine.pending) await machine.pending.catch(noop)
+      machine.state = 'resetting'
+      releaseTrees = await this.options.interrupt(machine.device.userId)
+      await this.options.registry.sync(machine.device.id, this.config.syncTimeoutMs).catch(error => this.log(errorMessage(error)))
+      this.options.registry.disconnect(machine.device.id)
+      release = await machine.activity.reserve(AbortSignal.timeout(30_000))
+      await phase('saving')
+      await this.options.provisioner.hibernate(machine.device.id)
+      await phase('rebuilding')
+      await this.options.provisioner.reset(machine.device.id, operation.id, operation.baseVersion)
+      await this.options.control.announceCloudReset(machine.device.userId, operation.id)
+      machine.deaths = []
+      await phase('booting')
+      await this.boot(machine, true)
+      await phase('ready')
+      machine.state = 'running'
+    } catch (error) {
+      await this.options.provisioner.hibernate(machine.device.id).catch(noop)
+      this.options.registry.disconnect(machine.device.id)
+      machine.state = 'off'; machine.error = errorMessage(error)
+      await phase('failed', machine.error)
+    } finally { release?.(); releaseTrees?.() }
+  }
+
+  async reconcile(): Promise<void> {
+    await this.options.provisioner.reconcile()
+    for (const { deviceId, operation } of await this.options.control.listManagedOperations()) {
+      const device = await this.options.control.getDevice(deviceId)
+      if (!device) throw new Error('Reset references a missing device')
+      const machine = this.machine(device); machine.reset = operation
+      // Recovery makes the disk commit determinate before accepting traffic; boot remains lazy.
+      if (operation.phase !== 'ready' && operation.phase !== 'failed') {
+        await this.options.provisioner.reset(deviceId, operation.id, operation.baseVersion)
+        await this.options.control.announceCloudReset(device.userId, operation.id)
+        machine.reset = { ...operation, phase: 'failed', error: 'Reset disks recovered; retry to start Cloud' }
+        await this.options.control.putManagedOperation(deviceId, machine.reset)
+      }
     }
   }
 
-  private guestDied(owner: ManagedHostOwner): void {
-    const host = this.hosts.get(ownerKey(owner))
-    if (!host || host.state === 'off' || host.state === 'saving') return
-    host.deaths.push(this.now())
-    host.state = 'off'
-    host.died?.reject(new ManagedHostError('guest_died', 'the machine died while booting'))
-    this.options.registry.disconnect(host.deviceId)
-    this.log(`managed host of ${ownerKey(owner)} died (${host.deaths.length} deaths recorded)`)
-  }
-
-  /** The idle rule, the hard cap and the checkpoint clock over every running guest. */
   async sweep(): Promise<void> {
     if (this.sweeping || this.closed) return
     this.sweeping = true
     try {
-      for (const host of [...this.hosts.values()]) {
-        if (host.state !== 'running') continue
+      for (const machine of this.machines.values()) {
+        if (machine.state !== 'running' || machine.resetTask) continue
         const now = this.now()
-        const turn = await this.options.turnInFlight(host.owner)
-        const jobs = this.options.registry.runningJobs(host.deviceId)
-        if (turn || jobs > 0) host.idleSince = null
-        else host.idleSince ??= now
-        const idle = host.idleSince !== null && now - host.idleSince >= this.config.idleMs
-        const capped = !turn && now - host.startedAt >= this.config.hardCapMs
+        const turn = await this.options.turnInFlight(machine.device.userId)
+        const jobs = this.options.registry.runningJobs(machine.device.id)
+        if (turn || jobs || machine.activity.active) machine.idleSince = null
+        else machine.idleSince ??= now
+        const idle = machine.idleSince !== null && now - machine.idleSince >= this.config.idleMs
+        const capped = !turn && now - machine.startedAt >= this.config.hardCapMs
         if (idle || capped) {
-          const releaseMachine = host.activity.tryReserve()
-          if (!releaseMachine) { host.idleSince = null; continue }
+          const releaseMachine = machine.activity.tryReserve()
+          if (!releaseMachine) continue
           try {
-            const release = await this.options.reserveIdle(host.owner)
-            if (!release) { host.idleSince = null; continue }
-            try {
-              if (!capped && this.options.registry.runningJobs(host.deviceId) > 0) { host.idleSince = null; continue }
-              await this.hibernate(host.owner).catch((error) => this.log(`hibernate of ${ownerKey(host.owner)} failed: ${errorMessage(error)}`))
-            } finally { release() }
+            const releaseTrees = await this.options.reserveIdle(machine.device.userId)
+            if (!releaseTrees) continue
+            try { await this.hibernate(machine.device.id) } finally { releaseTrees() }
           } finally { releaseMachine() }
-          continue
+        } else if (now - machine.checkpointAt >= this.config.checkpointIntervalMs) {
+          this.options.registry.pauseLiveness(machine.device.id)
+          try { await this.options.provisioner.checkpoint(machine.device.id); machine.checkpointAt = now }
+          finally { this.options.registry.resumeLiveness(machine.device.id) }
         }
-        if (now - host.lastCheckpointAt >= this.config.checkpointIntervalMs) await this.checkpoint(host)
       }
-    } finally {
-      this.sweeping = false
-    }
+    } finally { this.sweeping = false }
   }
 
-  private async checkpoint(host: OwnedHost): Promise<void> {
-    this.options.registry.pauseLiveness(host.deviceId)
-    try {
-      await this.options.provisioner.checkpoint(host.owner)
-      host.lastCheckpointAt = this.now()
-    } catch (error) {
-      this.log(`checkpoint of ${ownerKey(host.owner)} failed: ${errorMessage(error)}`)
-    } finally {
-      this.options.registry.resumeLiveness(host.deviceId)
-    }
+  async close(): Promise<void> {
+    this.closed = true; clearInterval(this.timer)
+    for (const machine of this.machines.values()) await machine.resetTask?.catch(noop)
+    for (const machine of this.machines.values()) await this.hibernate(machine.device.id).catch(error => this.log(errorMessage(error)))
+    await this.options.provisioner.close()
   }
 }

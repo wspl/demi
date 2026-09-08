@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { cloud, resetCloud } from '../prototype/cloud'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
@@ -23,6 +24,8 @@ function revoke(id: string) {
 <template>
   <SettingsDevices
     :devices="resources.devices"
+    :cloud="cloud"
+    @reset-cloud="resetCloud"
     :overlay-store="appOverlayStore"
     :installation="deviceInstallation"
     :claim-device="claimDevice"

@@ -160,7 +160,7 @@ only; the `*Store` suffix stays reserved for storage backends.
 users                   id, username, password_hash(argon2id), role(master|admin|user), created_at
 web_sessions            token_hash(sha256 of the cookie token), user_id, expires_at
 conversations           id, user_id, title, archived, target_json,
-                        context_version, last_switch_json(NULL), provider_id, model_id, created_at, updated_at
+                        context_version, last_switch_json(NULL), cloud_reset_id(NULL), provider_id, model_id, created_at, updated_at
                         ← target_json: validated union cloud | device(deviceId, path) | workspace(workspaceId)
                         ← cloud resolves the user's unique managed device on demand
                         ← each node persists its own observed context revision
@@ -170,10 +170,11 @@ workspaces              id, user_id, device_id, path, name, created_at
 devices                 id, user_id, kind(user|managed), name, platform, token_hash,
                         claimed_at, last_seen_at
                         ← partial UNIQUE(user_id) WHERE kind = 'managed'
-managed_operations      device_id, operation_id, kind, phase, source_generation, target_base_version,
-                        result_generation(NULL), error_json(NULL)
-                        ← durable allocation/reset intent and result; operation_id unique per device
-                        ← at most one pending operation per managed device; completed ids retained for retry
+managed_operations      device_id, operation_id, operation_json, updated_at
+                        ← validated reset record: id, baseVersion, phase, error(NULL)
+                        ← operation_id unique per device; completed ids retained for retry
+                        ← lifecycle admission permits one pending reset per device
+                        ← allocation is the unique managed-device row; disk generation is in the image manifest
 providers               id, owner_user_id(NULL in shared mode), provider_type, credential_kind, label,
                         config(encrypted: key, endpoint, protocol, vendor id,
                         typed model list — or the subscription marker), created_at
@@ -273,3 +274,9 @@ exclusively owning its database behind a domain API; an HTTP service
 fronting SQLite (Grafana, Gitea, Headscale); user-sharded SQLite control
 planes with tenant migration (Tailscale); streaming SQLite replication to
 S3 (Litestream).
+
+The directory machine-image store retains the current complete generation and
+its immediate predecessor. After publishing and syncing the current pointer, it
+removes older generation directories. Failed publication preserves the current
+pointer and the source working disks; the next successful publication also
+reclaims incomplete generation directories.

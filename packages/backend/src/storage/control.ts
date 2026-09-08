@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { createId } from '@demicodes/utils'
 import type { Role, User } from '../auth/identity'
 import type { SqlDatabase } from './database'
@@ -26,21 +27,24 @@ export interface ControlService {
   deleteWebSession(tokenHash: string): Promise<void>
   /** Drops every session whose expiry is at or before `before` (an ISO instant). */
   deleteExpiredWebSessions(before: string): Promise<void>
-  /** A user device by default; a managed host names its owner (`managed-hosts.md` § What a managed host is). */
+  /** Devices are owned by users. */
   createDevice(device: {
     userId: string
     name: string
     platform: string
     tokenHash: string
     kind?: DeviceKind
-    ownerConversationId?: string
-    ownerWorkspaceId?: string
   }): Promise<DeviceRecord>
   getDevice(id: string): Promise<DeviceRecord | null>
   getDeviceByTokenHash(tokenHash: string): Promise<DeviceRecord | null>
-  /** The managed host bound to an owner, if one was ever provisioned. */
-  getManagedDevice(owner: ManagedHostOwner): Promise<DeviceRecord | null>
-  countManagedDevices(userId: string): Promise<number>
+  /** The user's managed device, if one has been allocated. */
+  getManagedDevice(userId: string): Promise<DeviceRecord | null>
+  getOrCreateCloudDevice(userId: string): Promise<DeviceRecord>
+  listUserConversationIds(userId: string): Promise<string[]>
+  getManagedOperation(deviceId: string, operationId: string): Promise<ManagedOperation | null>
+  listManagedOperations(): Promise<Array<{ deviceId: string; operation: ManagedOperation }>>
+  putManagedOperation(deviceId: string, operation: ManagedOperation): Promise<void>
+  announceCloudReset(userId: string, operationId: string): Promise<void>
   /** A managed host's token is minted fresh at every provision and wake; the row keeps only the current hash. */
   rotateDeviceToken(id: string, tokenHash: string): Promise<void>
   /** The user's paired devices — managed hosts never appear in a device list. */
@@ -72,7 +76,7 @@ export interface ControlService {
   /** Metadata only — the bytes live in the blob store under `sha256`. */
   createAttachment(attachment: { userId: string; mediaType: string; sizeBytes: number; sha256: string }): Promise<AttachmentRecord>
   getAttachment(id: string): Promise<AttachmentRecord | null>
-  /** `id` pre-chosen by the caller when something must exist under it before the row does (a Cloud workspace's host). */
+  /** `id` pre-chosen by the caller when something must exist under it before the row does (a Cloud project directory). */
   createWorkspace(workspace: { id?: string; userId: string; deviceId: string; path: string; name: string }): Promise<WorkspaceRecord>
   getWorkspace(id: string): Promise<WorkspaceRecord | null>
   listWorkspaces(userId: string): Promise<WorkspaceRecord[]>
@@ -97,15 +101,6 @@ export interface ControlService {
     transition: TargetSwitch,
     ends: { departed: { deviceId: string; cwd: string | null } | null; arrivingDeviceId: string | null },
   ): Promise<boolean>
-  /**
-   * The session upgrade's write (`sessions-and-targets.md` § Hostless
-   * execution): a hostless conversation bound to the machine provisioned for
-   * it, silently — no pending switch. False when it is no longer hostless.
-   */
-  bindConversationHost(conversationId: string, deviceId: string): Promise<boolean>
-  beginUpgrade(conversationId: string): Promise<void>
-  listUpgrades(): Promise<Array<{ conversationId: string; state: 'prepared' | 'committed' }>>
-  finishUpgrade(conversationId: string): Promise<void>
   /**
    * The attached hosts (`sessions-and-targets.md` § Attached hosts). `attachHost`
    * is idempotent: an attached device keeps its row; a new one is named from
@@ -136,19 +131,14 @@ export type DeviceKind = 'user' | 'managed'
 export interface DeviceRecord {
   id: string
   userId: string
-  /** `user`: paired through the claim flow; `managed`: a VM the backend provisioned, bound to one owner. */
+  /** `user`: paired through the claim flow; `managed`: a VM the backend provisioned, owned by its user. */
   kind: DeviceKind
   name: string
   platform: string
-  /** Managed hosts only: exactly one of the two owners is set. */
-  ownerConversationId: string | null
-  ownerWorkspaceId: string | null
   claimedAt: string
   lastSeenAt: string | null
 }
 
-/** What a managed host is bound to (`managed-hosts.md` § What a managed host is): exactly one of the two. */
-export type ManagedHostOwner = { kind: 'conversation'; id: string } | { kind: 'workspace'; id: string }
 
 export interface AttachedHostRecord {
   conversationId: string
@@ -216,21 +206,26 @@ export interface UsageRow {
   createdAt: string
 }
 
-/**
- * Where a conversation's commands run (`sessions-and-targets.md` § The three
- * states), resolved from its record: a workspace, a session-bound managed
- * host, or nothing.
- */
-export type ExecutionTarget =
-  | { kind: 'hostless' }
-  | { kind: 'workspace'; workspaceId: string; deviceId: string; path: string }
-  | { kind: 'host'; deviceId: string }
-
-/** The two mutually exclusive pointers on the conversation row; both null is hostless. */
-export interface ConversationTargetPointer {
-  workspaceId: string | null
-  hostDeviceId: string | null
-}
+/** Persisted target selection; all external inputs and stored rows use this schema. */
+export const conversationTargetSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('cloud') }).strict(),
+  z.object({ kind: z.literal('device'), deviceId: z.string().min(1), path: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal('workspace'), workspaceId: z.string().min(1) }).strict(),
+])
+export type ConversationTargetPointer = z.infer<typeof conversationTargetSchema>
+export const executionTargetSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('cloud'), deviceId: z.string().nullable(), path: z.string() }),
+  z.object({ kind: z.literal('device'), deviceId: z.string(), path: z.string() }),
+  z.object({ kind: z.literal('workspace'), workspaceId: z.string(), deviceId: z.string(), path: z.string() }),
+])
+export type ExecutionTarget = z.infer<typeof executionTargetSchema>
+export const managedOperationSchema = z.object({
+  id: z.string().min(1),
+  baseVersion: z.string().min(1),
+  phase: z.enum(['stopping', 'saving', 'rebuilding', 'booting', 'ready', 'failed']),
+  error: z.string().nullable(),
+})
+export type ManagedOperation = z.infer<typeof managedOperationSchema>
 
 /** The latest explicit target switch, retained for every node's execution context. */
 export interface TargetSwitch {
@@ -243,8 +238,8 @@ export interface ConversationRecord {
   userId: string
   title: string
   archived: boolean
-  workspaceId: string | null
-  hostDeviceId: string | null
+  target: ConversationTargetPointer
+  cloudResetId: string | null
   lastSwitch: TargetSwitch | null
   /** Monotonic revision of the target and attached-host context. */
   contextVersion: number
@@ -259,8 +254,8 @@ interface ConversationRow {
   user_id: string
   title: string
   archived: number
-  workspace_id: string | null
-  host_device_id: string | null
+  target_json: string
+  cloud_reset_id: string | null
   last_switch_json: string | null
   context_version: number
   provider_id: string | null
@@ -270,7 +265,7 @@ interface ConversationRow {
 }
 
 const SELECT =
-  'SELECT id, user_id, title, archived, workspace_id, host_device_id, last_switch_json, context_version, provider_id, model_id, created_at, updated_at FROM conversations'
+  'SELECT id, user_id, title, archived, target_json, last_switch_json, cloud_reset_id, context_version, provider_id, model_id, created_at, updated_at FROM conversations'
 
 interface UserRow {
   id: string
@@ -357,8 +352,6 @@ export class LocalControlService implements ControlService {
     platform: string
     tokenHash: string
     kind?: DeviceKind
-    ownerConversationId?: string
-    ownerWorkspaceId?: string
   }): Promise<DeviceRecord> {
     const record: DeviceRecord = {
       id: createId(),
@@ -366,13 +359,11 @@ export class LocalControlService implements ControlService {
       kind: device.kind ?? 'user',
       name: device.name,
       platform: device.platform,
-      ownerConversationId: device.ownerConversationId ?? null,
-      ownerWorkspaceId: device.ownerWorkspaceId ?? null,
       claimedAt: new Date().toISOString(),
       lastSeenAt: null,
     }
     this.db.run(
-      'INSERT INTO devices (id, user_id, kind, name, platform, token_hash, owner_conversation_id, owner_workspace_id, claimed_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO devices (id, user_id, kind, name, platform, token_hash, claimed_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [
         record.id,
         record.userId,
@@ -380,8 +371,6 @@ export class LocalControlService implements ControlService {
         record.name,
         record.platform,
         device.tokenHash,
-        record.ownerConversationId,
-        record.ownerWorkspaceId,
         record.claimedAt,
         null,
       ],
@@ -399,14 +388,40 @@ export class LocalControlService implements ControlService {
     return row ? deviceFromRow(row) : null
   }
 
-  async getManagedDevice(owner: ManagedHostOwner): Promise<DeviceRecord | null> {
-    const column = owner.kind === 'conversation' ? 'owner_conversation_id' : 'owner_workspace_id'
-    const row = this.db.get<DeviceRow>(`${DEVICE_SELECT} WHERE kind = 'managed' AND ${column} = ?`, [owner.id])
+  async getManagedDevice(userId: string): Promise<DeviceRecord | null> {
+    const row = this.db.get<DeviceRow>(`${DEVICE_SELECT} WHERE kind = 'managed' AND user_id = ?`, [userId])
     return row ? deviceFromRow(row) : null
   }
 
-  async countManagedDevices(userId: string): Promise<number> {
-    return this.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM devices WHERE user_id = ? AND kind = 'managed'", [userId])?.n ?? 0
+  async getOrCreateCloudDevice(userId: string): Promise<DeviceRecord> {
+    return this.db.transaction(() => {
+      this.db.run("INSERT INTO devices (id, user_id, kind, name, platform, token_hash, claimed_at) VALUES (?, ?, 'managed', 'Cloud', 'linux', '', ?) ON CONFLICT DO NOTHING", [createId(), userId, new Date().toISOString()])
+      const row = this.db.get<DeviceRow>(`${DEVICE_SELECT} WHERE kind = 'managed' AND user_id = ?`, [userId])
+      if (!row) throw new Error('Cloud device allocation failed')
+      return deviceFromRow(row)
+    })
+  }
+
+  async listUserConversationIds(userId: string): Promise<string[]> {
+    return this.db.all<{ id: string }>('SELECT id FROM conversations WHERE user_id = ?', [userId]).map(row => row.id)
+  }
+
+  async getManagedOperation(deviceId: string, operationId: string): Promise<ManagedOperation | null> {
+    const row = this.db.get<{ operation_json: string }>('SELECT operation_json FROM managed_operations WHERE device_id = ? AND operation_id = ?', [deviceId, operationId])
+    return row ? managedOperationSchema.parse(JSON.parse(row.operation_json)) : null
+  }
+
+  async listManagedOperations(): Promise<Array<{ deviceId: string; operation: ManagedOperation }>> {
+    return this.db.all<{ device_id: string; operation_json: string }>('SELECT device_id, operation_json FROM managed_operations ORDER BY updated_at, rowid').map(row => ({ deviceId: row.device_id, operation: managedOperationSchema.parse(JSON.parse(row.operation_json)) }))
+  }
+
+  async putManagedOperation(deviceId: string, operation: ManagedOperation): Promise<void> {
+    const parsed = managedOperationSchema.parse(operation)
+    this.db.run('INSERT INTO managed_operations (device_id, operation_id, operation_json, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (device_id, operation_id) DO UPDATE SET operation_json = excluded.operation_json, updated_at = excluded.updated_at', [deviceId, parsed.id, JSON.stringify(parsed), Date.now()])
+  }
+
+  async announceCloudReset(userId: string, operationId: string): Promise<void> {
+    this.db.run('UPDATE conversations SET context_version = context_version + 1, cloud_reset_id = ? WHERE user_id = ? AND (cloud_reset_id IS NULL OR cloud_reset_id <> ?)', [operationId, userId, operationId])
   }
 
   async rotateDeviceToken(id: string, tokenHash: string): Promise<void> {
@@ -621,16 +636,16 @@ export class LocalControlService implements ControlService {
   }
 
   async countConversationsInWorkspace(workspaceId: string): Promise<number> {
-    return this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM conversations WHERE workspace_id = ?', [workspaceId])?.n ?? 0
+    return this.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM conversations WHERE json_extract(target_json, '$.workspaceId') = ?", [workspaceId])?.n ?? 0
   }
 
   async listConversationIdsInWorkspace(workspaceId: string): Promise<string[]> {
-    return this.db.all<{ id: string }>('SELECT id FROM conversations WHERE workspace_id = ?', [workspaceId]).map((row) => row.id)
+    return this.db.all<{ id: string }>("SELECT id FROM conversations WHERE json_extract(target_json, '$.workspaceId') = ?", [workspaceId]).map((row) => row.id)
   }
 
   async setConversationWorkspace(conversationId: string, workspaceId: string | null): Promise<void> {
-    this.db.run('UPDATE conversations SET workspace_id = ?, updated_at = ? WHERE id = ?', [
-      workspaceId,
+    this.db.run('UPDATE conversations SET target_json = ?, updated_at = ? WHERE id = ?', [
+      JSON.stringify(workspaceId === null ? { kind: 'cloud' } : { kind: 'workspace', workspaceId }),
       new Date().toISOString(),
       conversationId,
     ])
@@ -646,8 +661,8 @@ export class LocalControlService implements ControlService {
     return this.db.transaction(() => {
       const now = new Date().toISOString()
       this.db.run(
-        'UPDATE conversations SET workspace_id = ?, host_device_id = ?, last_switch_json = ?, context_version = context_version + 1, updated_at = ? WHERE id = ? AND workspace_id IS ? AND host_device_id IS ?',
-        [to.workspaceId, to.hostDeviceId, JSON.stringify(transition), now, conversationId, from.workspaceId, from.hostDeviceId],
+        'UPDATE conversations SET target_json = ?, last_switch_json = ?, context_version = context_version + 1, updated_at = ? WHERE id = ? AND target_json = ?',
+        [JSON.stringify(conversationTargetSchema.parse(to)), JSON.stringify(transition), now, conversationId, JSON.stringify(conversationTargetSchema.parse(from))],
       )
       const won = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
       if (!won) return false
@@ -657,31 +672,6 @@ export class LocalControlService implements ControlService {
         this.insertAttachedHost(conversationId, ends.departed.deviceId, name, ends.departed.cwd, now)
       }
       return true
-    })
-  }
-
-  async beginUpgrade(conversationId: string): Promise<void> {
-    this.db.run("INSERT INTO conversation_upgrades (conversation_id, state) VALUES (?, 'prepared')", [conversationId])
-  }
-
-  async listUpgrades(): Promise<Array<{ conversationId: string; state: 'prepared' | 'committed' }>> {
-    return this.db.all<{ conversationId: string; state: 'prepared' | 'committed' }>('SELECT conversation_id AS conversationId, state FROM conversation_upgrades')
-  }
-
-  async finishUpgrade(conversationId: string): Promise<void> {
-    this.db.run('DELETE FROM conversation_upgrades WHERE conversation_id = ?', [conversationId])
-  }
-
-  async bindConversationHost(conversationId: string, deviceId: string): Promise<boolean> {
-    return this.db.transaction(() => {
-      this.db.run('UPDATE conversations SET host_device_id = ?, updated_at = ? WHERE id = ? AND workspace_id IS NULL AND host_device_id IS NULL', [
-        deviceId,
-        new Date().toISOString(),
-        conversationId,
-      ])
-      const changed = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
-      if (changed) this.db.run("UPDATE conversation_upgrades SET state = 'committed' WHERE conversation_id = ?", [conversationId])
-      return changed
     })
   }
 
@@ -753,8 +743,8 @@ export class LocalControlService implements ControlService {
       userId,
       title: options.title ?? 'New conversation',
       archived: false,
-      workspaceId: null,
-      hostDeviceId: null,
+      target: { kind: 'cloud' },
+      cloudResetId: null,
       lastSwitch: null,
       contextVersion: 0,
       providerId: null,
@@ -763,8 +753,8 @@ export class LocalControlService implements ControlService {
       updatedAt: now,
     }
     this.db.run(
-      'INSERT INTO conversations (id, user_id, title, archived, workspace_id, provider_id, model_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [record.id, userId, record.title, 0, null, null, null, now, now],
+      'INSERT INTO conversations (id, user_id, title, archived, target_json, provider_id, model_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [record.id, userId, record.title, 0, JSON.stringify(record.target), null, null, now, now],
     )
     return record
   }
@@ -824,8 +814,6 @@ interface DeviceRow {
   kind: DeviceKind
   name: string
   platform: string
-  owner_conversation_id: string | null
-  owner_workspace_id: string | null
   claimed_at: string
   last_seen_at: string | null
 }
@@ -853,7 +841,7 @@ interface WorkspaceRow {
   created_at: string
 }
 
-const DEVICE_SELECT = 'SELECT id, user_id, kind, name, platform, owner_conversation_id, owner_workspace_id, claimed_at, last_seen_at FROM devices'
+const DEVICE_SELECT = 'SELECT id, user_id, kind, name, platform, claimed_at, last_seen_at FROM devices'
 
 interface ProviderRow {
   id: string
@@ -926,8 +914,6 @@ function deviceFromRow(row: DeviceRow): DeviceRecord {
     kind: row.kind,
     name: row.name,
     platform: row.platform,
-    ownerConversationId: row.owner_conversation_id,
-    ownerWorkspaceId: row.owner_workspace_id,
     claimedAt: row.claimed_at,
     lastSeenAt: row.last_seen_at,
   }
@@ -939,9 +925,9 @@ function fromRow(row: ConversationRow): ConversationRecord {
     userId: row.user_id,
     title: row.title,
     archived: row.archived !== 0,
-    workspaceId: row.workspace_id,
-    hostDeviceId: row.host_device_id,
-    lastSwitch: row.last_switch_json ? (JSON.parse(row.last_switch_json) as TargetSwitch) : null,
+    target: conversationTargetSchema.parse(JSON.parse(row.target_json)),
+    cloudResetId: row.cloud_reset_id,
+    lastSwitch: row.last_switch_json ? z.object({ from: executionTargetSchema, to: executionTargetSchema }).parse(JSON.parse(row.last_switch_json)) : null,
     contextVersion: row.context_version,
     providerId: row.provider_id,
     modelId: row.model_id,

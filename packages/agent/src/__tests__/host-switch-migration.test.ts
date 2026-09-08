@@ -3,9 +3,10 @@ import { mkdtemp, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { hostlessShellFactory } from '@demicodes/host-virtual/testing'
+import { runnerShellFactory } from '@demicodes/backend/testing'
+
 import type { Block, ModelSelection } from '@demicodes/core'
-import { LocalHost } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/runner/testing'
 import { defineProvider, type InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { AgentServer, type AgentHarness, type ClientSessionEvent } from '../index'
@@ -92,7 +93,7 @@ test('switching Host between turns injects a context block and keeps one continu
       ]),
   })
 
-  const server = new AgentServer({ store: memoryAgentStores(), shellEnvironment: hostlessShellFactory, agent: harness, providers: [provider] })
+  const server = new AgentServer({ store: memoryAgentStores(), shellEnvironment: runnerShellFactory, agent: harness, providers: [provider] })
   const client = server.client()
   const shellOutputs: ClientSessionEvent[] = []
   client.subscribe((event) => {

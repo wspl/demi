@@ -15,7 +15,7 @@ use crate::state::state;
 pub const VERSION: u32 = 1;
 /// Bumped when the `tinyjs:*` surface changes incompatibly; the runner's machine layer
 /// checks it at start.
-pub const ABI: u32 = 2;
+pub const ABI: u32 = 3;
 
 pub struct RuntimeModule;
 
@@ -23,7 +23,7 @@ impl ModuleDef for RuntimeModule {
     fn declare(decl: &Declarations<'_>) -> Result<()> {
         for name in [
             "argv", "env", "cwd", "chdir", "exit", "onSignal", "stdin", "stdout", "stderr", "pid",
-            "identity", "version", "abi", "openHandles", "fdNode",
+            "identity", "dropPrivileges", "version", "abi", "openHandles", "fdNode",
         ] {
             decl.declare(name)?;
         }
@@ -52,6 +52,7 @@ impl ModuleDef for RuntimeModule {
         exports.export("stderr", 2)?;
         exports.export("pid", std::process::id())?;
         exports.export("identity", identity(ctx)?)?;
+        exports.export("dropPrivileges", Func::from(drop_privileges))?;
         exports.export("version", VERSION)?;
         exports.export("abi", ABI)?;
         exports.export("openHandles", Func::from(open_handles))?;
@@ -149,4 +150,24 @@ fn identity<'js>(ctx: &Ctx<'js>) -> Result<Object<'js>> {
     obj.set("hostname", hostname)?;
     obj.set("homeDir", home_dir)?;
     Ok(obj)
+}
+
+/// Permanently enter the guest account after init. libc coordinates credentials
+/// across native worker threads; no work may be in flight during this transition.
+fn drop_privileges<'js>(ctx: Ctx<'js>, uid: u32, gid: u32) -> Result<Object<'js>> {
+    if uid == 0 || gid == 0 {
+        return Err(invalid(&ctx, "dropPrivileges", "uid and gid must be nonzero"));
+    }
+    // SAFETY: no borrowed pointers; libc applies process credentials. Clear
+    // supplementary groups before dropping the privilege needed to change them.
+    if unsafe { libc::setgroups(0, std::ptr::null()) } != 0 {
+        return Err(throw_io(&ctx, std::io::Error::last_os_error(), "setgroups", None));
+    }
+    if unsafe { libc::setgid(gid) } != 0 {
+        return Err(throw_io(&ctx, std::io::Error::last_os_error(), "setgid", None));
+    }
+    if unsafe { libc::setuid(uid) } != 0 {
+        return Err(throw_io(&ctx, std::io::Error::last_os_error(), "setuid", None));
+    }
+    identity(&ctx)
 }

@@ -80,6 +80,8 @@ declare module 'tinyjs:runtime' {
   export const env: Readonly<Record<string, string>>
   export function cwd(): string
   export function chdir(path: string): void
+  /** Permanent process credential drop after privileged guest initialization. */
+  export function dropPrivileges(uid: number, gid: number): typeof identity
   export function exit(code?: number): never
   export function onSignal(name: 'SIGTERM' | 'SIGINT' | 'SIGHUP' | 'SIGUSR1' | 'SIGUSR2', handler: () => void): void
   export const stdin: number

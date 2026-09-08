@@ -1,3 +1,4 @@
+import { administrativeStore } from '../storage/host-store'
 import { RemoteHost } from '@demicodes/host-remote'
 import {
   RUNNER_PROTOCOL_VERSION,
@@ -17,6 +18,7 @@ import { generateClaimCode, generateDeviceToken, hashDeviceToken, normalizeClaim
 import { withRelayedPipes, type Pipe, type PipeBroker } from './pipes'
 
 export interface RunnerRegistryOptions {
+  admit?: (deviceId: string) => () => void
   control: ControlService
   /** Pairing-code lifetime; an expired code is re-issued over the waiting socket. */
   claimTtlMs?: number
@@ -34,8 +36,8 @@ export interface RunnerRegistryOptions {
   pipes?: PipeBroker
   /** Every message on every authenticated socket, by device — the wire audit tests run. */
   trace?: (deviceId: string, direction: 'in' | 'out', message: RunnerProtocolMessage) => void
-  /** A guest's `home_grow`: grow the device's home image to `bytes`; `home_grown` is sent once this resolves. */
-  homeGrow?: (deviceId: string, bytes: number) => Promise<void>
+  /** A guest's `volume_grow`: enlarge the named writable disk and report `volume_grown`. */
+  volumeGrow?: (deviceId: string, volume: 'system' | 'home', bytes: number) => Promise<void>
 }
 
 /**
@@ -91,7 +93,7 @@ interface RunnerConnection {
   /** Live stdin queues of the rpc calls relayed on this connection. */
   rpcCalls: Map<string, { jobId: string; live: ByteQueue; controller: AbortController; pipes: Pipe[] }>
   /** `sync` requests in flight, settled by `sync_done`. */
-  syncs: Map<string, Deferred<{ untouched: boolean }>>
+  syncs: Map<string, Deferred<void>>
 }
 
 const wire = createRunnerWire(msgpackCodec)
@@ -113,7 +115,7 @@ export class RunnerRegistry {
   private readonly rpc: RpcRelayHandler | null
   private readonly pipes: PipeBroker | null
   private readonly trace: ((deviceId: string, direction: 'in' | 'out', message: RunnerProtocolMessage) => void) | null
-  private readonly homeGrow: ((deviceId: string, bytes: number) => Promise<void>) | null
+  private readonly volumeGrow: ((deviceId: string, volume: 'system' | 'home', bytes: number) => Promise<void>) | null
   private readonly pendingClaims = new Map<string, RunnerConnection>()
   private readonly sockets = new Set<RunnerConnection>()
   private readonly connections = new Map<string, RunnerConnection>()
@@ -125,7 +127,7 @@ export class RunnerRegistry {
   private readonly onlineWaiters = new Map<string, Deferred<void>>()
   private closed = false
 
-  constructor(options: RunnerRegistryOptions) {
+  constructor(private readonly options: RunnerRegistryOptions) {
     this.control = options.control
     this.claimTtlMs = options.claimTtlMs ?? 10 * 60_000
     this.pingIntervalMs = options.pingIntervalMs ?? 30_000
@@ -135,7 +137,7 @@ export class RunnerRegistry {
     this.rpc = options.rpc ?? null
     this.pipes = options.pipes ?? null
     this.trace = options.trace ?? null
-    this.homeGrow = options.homeGrow ?? null
+    this.volumeGrow = options.volumeGrow ?? null
   }
 
   /** Binds one runner WebSocket; the route feeds frames and the close event in. */
@@ -281,6 +283,7 @@ export class RunnerRegistry {
     if (!host) {
       host = new RemoteHost({
         defaultCwd: workspace.path,
+        admit: () => this.options.admit?.(workspace.deviceId) ?? (() => {}),
         identity: this.identities.get(workspace.deviceId) ?? { uid: 0, gid: 0, hostname: 'offline', homeDir: workspace.path },
         store,
       })
@@ -305,22 +308,17 @@ export class RunnerRegistry {
     connection.close()
   }
 
-  /**
-   * Flushes the device's home to disk before its guest is killed
-   * (`managed-hosts.md` § Lifecycle) and learns whether the home was
-   * touched since boot. Offline, or silent past `timeoutMs`, counts as
-   * touched: the save then happens in full, which is always correct.
-   */
-  async sync(deviceId: string, timeoutMs: number): Promise<{ untouched: boolean }> {
+  /** Flushes runner filesystems before saving; lifecycle policy handles failures. */
+  async sync(deviceId: string, timeoutMs: number): Promise<void> {
     const connection = this.connections.get(deviceId)
-    if (!connection) return { untouched: false }
+    if (!connection) throw new Error('Runner is offline')
     const id = createId()
-    const done = deferred<{ untouched: boolean }>()
+    const done = deferred<void>()
     connection.syncs.set(id, done)
     connection.send({ type: 'sync', id })
     const timer = setTimeout(() => {
       connection.syncs.delete(id)
-      done.resolve({ untouched: false })
+      done.reject(new Error('Runner sync interrupted or timed out'))
     }, timeoutMs)
     try {
       return await done.promise
@@ -333,7 +331,7 @@ export class RunnerRegistry {
   deviceFs(deviceId: string): HostFileSystem | null {
     const connection = this.connections.get(deviceId)
     if (!connection) return null
-    return this.hostFor({ deviceId, path: '/' }, BROWSE_CONVERSATION, INERT_STORE).fs
+    return this.hostFor({ deviceId, path: '/' }, BROWSE_CONVERSATION, administrativeStore).fs
   }
 
   async close(): Promise<void> {
@@ -387,11 +385,12 @@ export class RunnerRegistry {
     if (message.type === 'sync_done') {
       const done = connection.syncs.get(message.id)
       connection.syncs.delete(message.id)
-      done?.resolve({ untouched: message.untouched })
+      if (message.error) done?.reject(new Error(message.error))
+      else done?.resolve()
       return
     }
-    if (message.type === 'home_grow') {
-      void this.growHome(connection, connection.deviceId, message.bytes)
+    if (message.type === 'volume_grow') {
+      void this.growVolume(connection, message)
       return
     }
     if (message.type === 'job_exit') {
@@ -404,17 +403,13 @@ export class RunnerRegistry {
   }
 
   /** The guest's home is nearly full: grow its image, then tell the guest the new size so it grows the filesystem. */
-  private async growHome(connection: RunnerConnection, deviceId: string, bytes: number): Promise<void> {
-    if (!this.homeGrow) {
-      this.log(`device ${deviceId} asked for a ${bytes}-byte home; this backend grows none`)
-      return
-    }
+  private async growVolume(connection: RunnerConnection, message: Extract<RunnerToBackendMessage, { type: 'volume_grow' }>): Promise<void> {
+    let error: string | null = null
     try {
-      await this.homeGrow(deviceId, bytes)
-      connection.send({ type: 'home_grown', bytes })
-    } catch (error) {
-      this.log(`home growth of device ${deviceId} failed: ${errorMessage(error)}`)
-    }
+      if (!this.volumeGrow) throw new Error('Volume growth is unavailable')
+      await this.volumeGrow(connection.deviceId!, message.volume, message.bytes)
+    } catch (cause) { error = errorMessage(cause) }
+    connection.send({ type: 'volume_grown', id: message.id, volume: message.volume, bytes: message.bytes, error })
   }
 
   /**
@@ -610,7 +605,7 @@ export class RunnerRegistry {
   private teardown(connection: RunnerConnection): void {
     this.clearPendingClaim(connection)
     for (const callId of connection.rpcCalls.keys()) this.cancelRpc(connection, callId)
-    for (const done of connection.syncs.values()) done.resolve({ untouched: false })
+    for (const done of connection.syncs.values()) done.reject(new Error('Runner sync interrupted or timed out'))
     connection.syncs.clear()
     if (connection.pingTimer) {
       clearInterval(connection.pingTimer)
@@ -641,9 +636,3 @@ export class RunnerRegistry {
 
 /** Directory browse is fs-only; the shared browse host needs no real identity or store. */
 const BROWSE_CONVERSATION = '\0browse'
-const INERT_STORE: HostStore = {
-  readJson: async () => null,
-  writeJson: async () => {},
-  delete: async () => {},
-  list: async () => [],
-}

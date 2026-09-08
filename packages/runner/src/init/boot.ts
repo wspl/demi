@@ -1,23 +1,23 @@
 // PID 1 (`managed-hosts.md` § Lifecycle, "Runner is PID 1"): the init duties
-// from the plan, the home image under watch, then the runner itself with
+// from the plan, both writable volumes under watch, then the runner itself with
 // the guest user for every job, the token off the kernel command line and
 // nothing of it on disk. The runner's own state lives on the ephemeral
-// upper so the home stays untouched by the runner's own bookkeeping.
+// /run mount so the home stays untouched by the runner's own bookkeeping.
 import type { Host } from '@demicodes/shell'
 import { collectBytes, decodeUtf8, encodeUtf8 } from '@demicodes/utils'
 import { guestBootConfig, type GuestBootConfig } from './cmdline'
-import { BlockHomeImage } from './home-image'
+import { BlockVolume } from './volume'
 import { GUEST_LAYOUT, initPlan, resolvConf, runInit, type GuestLayout } from './plan'
 
 /** The guest user every job runs as (`managed-hosts.md` § Lifecycle): fixed by the image. */
 export const GUEST_USER = { name: 'demi', uid: 1000, gid: 1000, homeDir: '/home/demi' }
 
-/** Where PID 1 keeps runner.json, the socket, the command cache and job output: the upper, gone with the VM. */
-export const GUEST_STATE_DIR = '/var/lib/demi'
+/** Where PID 1 keeps runner.json, the socket, the command cache and job output: /run, gone with the VM. */
+export const GUEST_STATE_DIR = '/run/demi'
 
 export interface GuestBoot {
   config: GuestBootConfig
-  home: BlockHomeImage
+  volumes: Record<'home' | 'system', BlockVolume>
   stateDir: string
 }
 
@@ -47,13 +47,16 @@ export async function bootGuest(host: Host, log: (line: string) => void, layout:
     return { code: result.code, stderr: decodeUtf8(result.stderr) }
   }, log)
   if (config.network) await host.fs.writeFile('/etc/resolv.conf', encodeUtf8(resolvConf(config.network)))
-  const home = new BlockHomeImage({ run, readFile: (path) => host.fs.readFile(path) }, layout.homeDevice, layout.homeMount)
-  await home.baseline()
+  const volumeIO = { run: (command: string, args: string[]) => command === 'resize2fs' ? run('sudo', ['-n', command, ...args]) : run(command, args), readFile: (path: string) => host.fs.readFile(path) }
+  const home = new BlockVolume(volumeIO, layout.homeDevice, layout.homeMount)
+  const system = new BlockVolume(volumeIO, layout.systemDevice, `${layout.oldRoot}${layout.upperMount}`)
   await host.fs.mkdir(GUEST_STATE_DIR, { recursive: true })
   await host.fs.mkdir(GUEST_USER.homeDir, { recursive: true })
+  const ownership = await run('chown', [`${GUEST_USER.uid}:${GUEST_USER.gid}`, GUEST_STATE_DIR])
+  if (ownership.code !== 0) throw new Error('Cannot assign runner state to the guest user')
   // A freshly made image carries the backend user's ownership (`mke2fs -d`); every later boot finds the guest user's.
   await run('chown', [...(config.firstBoot ? ['-R'] : []), `${GUEST_USER.uid}:${GUEST_USER.gid}`, GUEST_USER.homeDir])
-  return { config, home, stateDir: GUEST_STATE_DIR }
+  return { config, volumes: { home, system }, stateDir: GUEST_STATE_DIR }
 }
 
 async function readAfterProc(host: Host, run: ReturnType<typeof commandRunner>, log: (line: string) => void): Promise<Uint8Array> {

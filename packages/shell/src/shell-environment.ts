@@ -1,11 +1,5 @@
-/**
- * The shell environment behind the `shell_exec` / `shell_status` /
- * `shell_write` / `shell_abort` tools: one interface, two implementations —
- * `HostlessEnvironment` (`@demicodes/host-virtual`: tinybash over the
- * conversation's store-backed Host) and `RemoteShellEnvironment`
- * (`@demicodes/host-remote`: jobs on a machine's runner). The agent server
- * talks to the interface only.
- */
+/** The agent's shell tools use this interface. RemoteShellEnvironment dispatches
+ * real bash jobs through the shared runner protocol on every machine target. */
 
 export interface ShellExecInput {
   script: string
@@ -42,7 +36,7 @@ export interface ShellAbortInput {
 }
 
 export interface ShellStreamView {
-  /** Where the full stream lives on the target; absent when nothing beyond the view is kept (hostless). */
+  /** Where the full stream lives on the target; absent when nothing beyond the view is kept. */
   path?: string
   offset: number
   delta: string
@@ -62,7 +56,7 @@ export interface ShellOutputRecordChunk extends ShellOutputChunk {
 }
 
 export interface ShellOutputView {
-  /** The target directory holding the output files; absent for hostless. */
+  /** The target directory holding the output files; optional when no output files are retained. */
   path?: string
   offset: number
   text: string
@@ -88,7 +82,7 @@ export type ShellCommandStatus =
       status: 'exited'
       shellId: string
       commandId: string
-      /** The directory the target's output files live in; absent when nothing beyond the view is kept (hostless). */
+      /** The directory the target's output files live in; absent when nothing beyond the view is kept. */
       outputDir?: string
       exitCode: number
       stdout: ShellStreamView

@@ -36,8 +36,7 @@ export interface HostFileSystem {
 }
 
 export interface HostProcess {
-  /** Absent on a Host that runs no processes (the hostless Host): a provider that needs one says so. */
-  spawn?(params: HostSpawnParams): Promise<HostSpawnHandle>
+  spawn(params: HostSpawnParams): Promise<HostSpawnHandle>
   openCwd(path: string): Promise<HostCwd>
 }
 
