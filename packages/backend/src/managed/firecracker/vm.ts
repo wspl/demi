@@ -1,8 +1,8 @@
 // One VM process in either launch mode (`managed-hosts.md` § Provisioning):
 // `direct` spawns Firecracker as this process's child; `jailer` spawns the
-// privileged helper through sudo, which prepares the chroot and runs the
-// jailer, and stays as the VM's parent so its exit is the VM's death in
-// both modes alike.
+// Bash launcher through sudo. The script prepares image paths and permissions,
+// launches jailer, then monitors Firecracker's recorded PID until it exits.
+// Jailer owns the chroot, namespace, cgroup and uid isolation.
 import { mkdir, readFile, rm } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import process from 'node:process'
@@ -37,7 +37,7 @@ const VM_RECORD = 'vm.json'
 export interface RunningVm {
   api: FirecrackerApi
   id: string
-  /** The process this backend spawned: Firecracker itself, or the helper that parents it; alive as long as the VM is. */
+  /** The spawned process: Firecracker directly, or sudo running the script that monitors it. */
   pid: number
   /** The path Firecracker knows the home image by (chroot-relative under the jailer). */
   volumePaths: Record<'system' | 'home', string>
