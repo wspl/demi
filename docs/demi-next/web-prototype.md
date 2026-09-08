@@ -224,27 +224,43 @@ thumb's own hue at zero alpha, written as `rgb(from <colour> r g b / 0)`, never 
 bare keyword and never a `color-mix` with 0% of the colour, which also collapses to
 transparent black. Any new property found to behave this way gets the same treatment.
 
-## Cloud lifecycle and reset acceptance
+## Cloud behavior and backend integration
 
-The shared Cloud settings presentation and reset dialog belong to `web-ui`.
-The product supplies user Cloud state and backend handlers; gallery fixtures
-supply the same contract. Cover sleeping, starting, ready, resetting and failed
-states, including a guest that cannot connect. The reset dialog names its
-user-wide impact, stops all Cloud tasks and preserves `/home`. Simulated success
-must retain device/project identity and home files while replacing system state.
-A metadata-only project deletion must leave the shared machine and files intact.
-See `managed-hosts.md` and `product.md` for authoritative behavior.
-
-## Cloud lifecycle settings
+The current backend gives each user one persistent Cloud device; projects and
+unassigned conversations use directories on that device. The prototype's Cloud,
+project list and environment selector already express this structure. Integrating
+the backend does not require separate machine-ownership controls for projects or
+conversations. Authoritative target and persistence rules live in
+[sessions-and-targets.md](sessions-and-targets.md) and
+[managed-hosts.md](managed-hosts.md); implementation acceptance is recorded in
+[progress.md](progress.md).
 
 `web-ui/cloud/CloudSettings.vue` owns the shared Cloud status, storage-limit
 readout, reset confirmation, progress and retry interaction. `SettingsDevices`
 mounts it in both the product prototype and the gallery. The component emits an
-operation ID; a failed reset retries with that same ID.
+operation ID; a failed reset retries with that same ID. Its confirmation explains
+that reset stops all of the user's Cloud tasks, replaces system packages and
+settings, and retains home files.
 
 `web/prototype/cloud.ts` supplies simulated phases and stops prototype Cloud
-streams when reset begins. Gallery fixtures supply the same contract. Both are
-local demonstrations: neither surface currently calls the backend Cloud REST
-API. The backend independently implements authenticated `GET /api/cloud` and
-`POST /api/cloud/reset`; wiring the web prototype to backend sessions remains
-part of the product-wide backend integration.
+streams when reset begins. Gallery fixtures supply the same presentation
+contract. Neither currently calls the authenticated backend endpoints
+`GET /api/cloud` and `POST /api/cloud/reset`. Simulated completion verifies the
+presentation flow; it does not verify disk persistence or backend recovery.
+
+The remaining product integration maps the authenticated user's Cloud status to
+the shared component, submits its operation ID and reads the operation result.
+Request acceptance is distinct from completion. Loading, unavailable Cloud,
+startup failure and reset failure need observable feedback; the interface does
+not need VM, disk-generation or runner controls. Backend wake is automatic when
+an operation needs the machine, so sleeping must not require manual power-on.
+
+Integration checks should cover sleeping, starting, ready, resetting and failed
+states, including a guest that cannot connect, with consistent product/gallery
+presentation. Backend persistence and reset acceptance belong to the scenarios
+recorded in `progress.md`, rather than to the browser simulation.
+
+The prototype currently includes a fixture Cloud file browser and project move
+controls. Backend support for those operations does not decide which entry points
+the product offers. Product decisions about exposing Cloud browsing or moving a
+conversation out of a project remain separate from this implementation record.
