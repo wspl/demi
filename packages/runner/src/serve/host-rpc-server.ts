@@ -17,6 +17,7 @@ export class HostRpcServer {
     private readonly host: Pick<Host, 'fs' | 'process'>,
     private readonly send: (message: RunnerToBackendMessage) => void,
     private readonly deviceEnv: Record<string, string> = {},
+    private readonly executionEnv?: (message: Extract<BackendToRunnerMessage, { type: 'spawn' }>) => Promise<Record<string, string>>,
   ) {}
 
   async handleMessage(message: BackendToRunnerMessage): Promise<void> {
@@ -79,11 +80,12 @@ export class HostRpcServer {
     const { spawnId } = message
     let handle: HostSpawnHandle
     try {
+      const injected = await this.executionEnv?.(message)
       handle = await this.host.process.spawn({
         command: message.command,
         ...(message.args ? { args: message.args } : {}),
         ...(message.cwd !== undefined ? { cwd: message.cwd } : {}),
-        ...(message.env ? { env: deviceFallback(definedEnv(message.env), this.deviceEnv) } : {}),
+        ...((message.env || injected) ? { env: { ...deviceFallback(definedEnv(message.env ?? {}), this.deviceEnv), ...injected } } : {}),
         ...(message.killProcessGroup !== undefined ? { killProcessGroup: message.killProcessGroup } : {}),
       })
     } catch (error) {

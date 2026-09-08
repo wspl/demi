@@ -320,7 +320,9 @@ test('a device token holds one live connection: the newcomer is refused and retr
 
   // The same token from a second process: refused with already_connected,
   // logged, and the first connection is untouched.
-  const twin = await startTxikiRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  const twinState = await mkdtemp(join(tmpdir(), 'demi-m4-twin-state-'))
+  await writeFile(join(twinState, 'runner-token'), readFileSync(join(stateDir, 'runner-token')))
+  const twin = await startTxikiRunner({ backendUrl: backend.url, stateDir: twinState, home: runnerDir, name: 'test-device' })
   await waitFor(() => refusals.some((line) => line.includes('already_connected')), undefined, { timeoutMs: 5_000 })
   expect(refusals[0]).toContain(device.id)
   expect(twin.statuses).not.toContain('rejected')
