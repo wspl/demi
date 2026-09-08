@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Date | 2026-09-02 |
-| Status | Design (implemented through M6) |
+| Date | 2026-09-08 |
+| Status | Target architecture contract; acceptance tracked in `progress.md` |
 | Scope | The `@demicodes/backend` program: modules, deployment topology, routing, the Web API |
 
 ## One program, one architecture
@@ -31,7 +31,7 @@ Scaled (same program × N + one internal control-plane service):
 ```
 
 Every instance is a **complete** backend for its assigned users — user x's
-HTTP, conversation sockets, runner sockets, hostless Hosts, managed VMs and
+HTTP, conversation sockets, runner sockets, managed VMs and
 CLI processes are all pinned to the instance the user→worker map names. The
 affinity is natural because conversations, devices and (isolated mode)
 providers are all user-owned, so nothing stateful ever crosses instances.
@@ -55,7 +55,7 @@ config:
   a backend restart: stop the user's sessions on the source, `litestream
   restore` their conversation files on the target, update the map; runners
   reconnect to the new home. Managed VMs are hibernated on the source and
-  woken on the target from the home-image store.
+  woken on the target from the committed system/home generation.
 - **Control-plane access is the only cross-instance traffic** — the
   `ControlService` RPC (`storage.md`).
 
@@ -70,13 +70,11 @@ Spoken of as modules, not separate services:
   path as live (a full-sync `transcript_reset`), compaction, session
   concurrency via client-owned session ids and the ownership registry;
   the conversation's execution target (`sessions-and-targets.md`) — the
-  resolution of its three states to a Host, the switch, the silent
-  upgrade and the hostless re-entry rule — as one module keyed by the
+  resolution of Cloud, device or workspace selection to a Host and user switches — as one module keyed by the
   conversation, which every session of it (root or subagent) asks.
 - **Command module**: assembles the roots (`demi` from
   `@demicodes/coding-agent` plus the backend-contributed `host` group),
-  builds and serves the manifest, runs hostless conversations' tool calls
-  in tinybash over an in-process loader, executes `rpc` commands arriving
+  builds and serves the manifest and executes `rpc` commands arriving
   from runners (`commands.md`).
 - **LLM module**, **credential vault**, **usage accounting**:
   `providers-and-vault.md`.
@@ -86,7 +84,7 @@ Spoken of as modules, not separate services:
   (`@demicodes/host-remote`) over connected runners, the rpc relay, the
   pipe broker (`runner.md` § Pipes).
 - **Managed hosts module**: the `ManagedHostProvisioner` (Firecracker under
-  jailer via the privileged helper), images, the home-image store,
+  jailer via the privileged helper), images, the machine-image store,
   lifecycle (`managed-hosts.md`).
 - **Auth module**: users and roles, password hashing (argon2id), the
   cookie sessions with their sliding expiry, the login lockout. Device
@@ -187,7 +185,26 @@ features; update this inventory when those contracts are defined.
 `@demicodes/backend` is a product leaf: nothing imports it. Its production
 dependencies are the agent, coding-agent, core, provider, the provider
 runtimes, shell (the Host and shell-environment contracts and the command
-types), host-virtual and host-remote (the two Hosts it injects into the
-agent, and with them the hostless shell and the filesystem over Node),
+types), host-remote (the remote Host and shell it injects into the
+agent),
 command-loader, runner-protocol and utils, plus `hono` on Bun. The module
 directories mirror the modules above (`docs/package-boundaries.md`).
+
+## User Cloud control
+
+`managed/` owns the unique managed device for each user, lazy allocation/wake,
+shared-device admission and system reset. `conversation/` resolves target
+selections and coordinates per-conversation switches. `storage/` enforces
+managed-device uniqueness, records lifecycle intents and publishes consistent
+disk generations. Workspace creation ensures a directory on the user's device;
+it does not allocate an independent VM.
+
+The authenticated Web API exposes `GET /api/cloud` for logical device identity,
+lifecycle state, disk usage/limits and pending operation, and
+`POST /api/cloud/reset` with a validated `{ operationId }`. The backend selects
+and records the shipped base version at admission. The response identifies the
+operation; the status response reports stopping, saving, rebuilding, booting,
+ready or failure. Retrying the same operation id returns the same operation.
+A reset affects every job on the user's Cloud and preserves home. Requests
+cannot name another user's device or arbitrary image paths. Settings use this
+API even when the guest is offline or broken (`managed-hosts.md`).

@@ -1,6 +1,6 @@
 # Demi Next: Execution Identity and Coordination
 
-Status: final-state contract; implementation tracked in `progress.md`.
+Status: final-state contract; acceptance tracked in `progress.md`.
 
 ## Identity
 
@@ -42,73 +42,37 @@ A live child's turn counts even while it is waiting on a provider with no job.
 The backend's conversation target module owns target resolution and transitions.
 It coordinates file operations with target changes, including HTTP file drops.
 The managed-host lifecycle uses tree activity for every conversation of its
-owner, and actual in-flight execution when deciding whether a machine is idle.
+user, and actual in-flight execution when deciding whether a machine is idle.
 Guest transitions remain owned and serialized by the provisioner.
 
 Every node receives product execution context independently of its profile prompt.
-The context carries the latest target switch and attached hosts. The backend
+The context carries the latest target switch, attached hosts and any Cloud reset. The backend
 uses `context_version` and `last_switch_json`; each node observes the revision
 from its own persisted context block before inference. Context
 observation is node-scoped and checkpointed with the transcript; one node cannot
 consume another node's pending change. The agent's generic context contracts carry
 root and node identity without depending on backend database types.
 
-## Hostless eligibility
+## Cloud admission and recovery
 
-Hostless scripts execute local work: supported shell constructs and
-builtins, file commands, todo commands and observational command leaves. Scripts
-that start or resume agent work, or execute on another Host, require a machine
-before any statement runs. The backend declares this execution policy alongside
-the command manifest; the parser checks all invocations, including pipelines and
-expanded command arguments. Help and invalid invocations do not provision a VM.
-With an admission policy, root invocations containing unexpanded glob arguments
-require a machine: file creation could change their command or option tokens
-after preflight. Builtin globbing retains its normal hostless behavior.
+One user owns one Cloud machine. The lifecycle reserves device-wide admission
+before shutdown or reset, including file operations, provider processes and
+cross-host jobs from every conversation. Tree reservations alone do not protect
+a shared device. New work waits for a normal wake; work during reset is rejected
+with an explicit resetting status and is never silently replayed.
 
-A hostless conversation may retain attached Hosts, but executing on one first
-upgrades its main target. Spawning a child first upgrades the root conversation;
-all children start on its machine. This keeps parent/child waits out of the
-hostless-to-machine cutover. No running parent interpreter migrates while waiting
-for its child.
-
-```
-c1: printf before > note; demi agent spawn ...; cat child.txt
-    |
-    +-- preflight: requires a machine; no statement has run
-    +-- reserve c1's hostless execution and file-operation admission
-    +-- finish admitted local work; reject a blocked cutover without replay
-    +-- prepare a home image from the quiescent files tree
-    +-- provision and commit c1's machine target
-    +-- run the entire original script with real bash
-```
-
-## Cutover and recovery
-
-One conversation owns one cutover. Admission covers full hostless execution
-(including delayed completion after a tool observation window), as well as file
-uploads. A cutover blocks new old-target work, waits for admitted operations and
-then materializes the files. Work admitted after the cutover resolves its Host
-again and executes on the committed target. A wait must be cancellable; a failed
-or cancelled attempt never replays a partially executed command. A hostless
-command awaiting live stdin may keep its admission lease; the cutover drain
-times out after 30 seconds, leaving that script and its files on the current
-target. No hostless script is replayed to force a cutover.
-
-The control database records `conversation_upgrades`: `prepared` before
-materialization/provisioning, and `committed` in the same transaction as target
-binding. The recorded conversation owns the prepared image/device. The target binding is the commit point.
-Before it, the hostless tree is authoritative and an uncommitted machine cannot
-accept conversation jobs. After it, the home image is authoritative and the
-hostless tree cannot accept writes. Recovery completes or discards the recorded
-transition before admitting work; it never guesses from arbitrary historical
-files. Retiring the source tree is idempotent after the target commit. These
-operations span stores; no cross-database transaction is implied.
+A reset interrupts all jobs on that device and coordinates the durable disk
+operation described in `managed-hosts.md`. A first-use race joins one allocation
+and one boot. Device uniqueness is enforced in the control database; process
+serialization alone is insufficient. Project and conversation archive operations
+do not destroy the machine. A callback remains bound to the live job that
+originated it, including when another conversation uses the same device.
 
 ## Package responsibilities
 
 - `agent`: root/node identities, tree-wide turn admission and per-node context
   persistence, using its existing node assembly and tree directory.
-- `backend/conversation`: target admission, Hostless policy, cutover and product
+- `backend/conversation`: target admission and product
   execution context. HTTP file drops use the same target admission.
 - `backend/runner`: authenticated RPC routing using live jobs on the sending
   device; invocation-specific Host and node scope.
@@ -117,18 +81,16 @@ operations span stores; no cross-database transaction is implied.
 - `runner-protocol` and `runner`: carry the job reference end to end; no agent
   runtime or conversation store on a runner.
 - `command-loader` and `shell`: the shared command contract, input schema and
-  invocation context. Generic preflight decisions remain declarative.
-- `tinybash`: accepts an embedder's invocation eligibility predicate during
-  parse-time checking; knows no agent, VM or backend.
+  invocation context.
 
 ## Verification
 
 Backend regression coverage must assert cross-user RPC refusal, mismatched and
 expired jobs, child storage through cross-host calls, callbacks from an older
 still-authorized target, tree-busy switches, concurrent turn admission, uploads
-on both sides of cutover, and interrupted cutover recovery. Hostless scenarios
-cover machine admission before spawn/resume/cross-host scripts, nested parent
-scripts, help/error exclusions and shell-state handover. Agent tests cover all
+during target changes, shared-device shutdown admission and interrupted reset
+recovery. Cloud scenarios cover one device across concurrent projects and
+conversations, failed wake, preserved system/home and cross-user refusal. Agent tests cover all
 turn entrances and context visibility for root, child and custom-profile nodes.
 Runner/remote-host/protocol tests cover job-reference lifecycle and cancellation.
 Use scripted providers and scoped package suites; no real-model tests.

@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| Date | 2026-09-02 |
-| Status | Implemented (M8); the target-side command mode in M9 step 1; the CLI's `rpc` path completes with the runner port |
-| Scope | The command system: root commands, organizing rule, command kinds, the command ABI, the manifest, the loader, tinybash and hostless execution, root commands on a target |
+| Date | 2026-09-08 |
+| Status | Target architecture contract; acceptance tracked in `progress.md` |
+| Scope | The command system: root commands, organizing rule, command kinds, the command ABI, the manifest, the loader, root commands on a target |
 
 ## Root commands
 
@@ -17,8 +17,7 @@ manifest, loader and target-side entry. Nothing below is specific to
 
 On a target every root is a name in `PATH` — a symlink to the tinyjs binary
 (`tinyjs.md`) — so real bash runs `demi …` and `scout …` the same way it
-runs anything else. In a hostless conversation tinybash's executables are
-its builtins plus the manifest's roots.
+runs anything else.
 
 ## Organizing rule
 
@@ -39,13 +38,13 @@ root contributes the groups that need backend state (`host`), an embedding
 library user adds their roots, and the backend builds one manifest from
 all of them. No other process holds a command definition.
 
-## Two execution paths
+## Execution flow
 
-The same tool call runs one of two ways, decided by whether the
-conversation has an execution target (`sessions-and-targets.md`). The model
-sees the same commands, help and output shapes on both.
+Every tool script runs through the selected device's runner and real bash
+(`sessions-and-targets.md`). Cloud is obtained or woken before execution when
+needed. The command manifest is shared across paired devices and Cloud.
 
-### On a real host (user host or managed host)
+### On a paired device or Cloud
 
 Real bash on the target parses the tool call. `demi` is an ordinary program
 in `PATH`; everything else is whatever the machine has.
@@ -58,7 +57,7 @@ in `PATH`; everything else is whatever the machine has.
  job_start {script, cwd,   ────▶  spawn  bash -c "<script>"     ────▶  bash
             env + conv/shell ids}   │  tee stdout/stderr → output         │
                                     │  files under commandOutputDir        ├─ demi file edit src/a.ts        (tinyjs, command mode)
-                                    │                                      │    read ~/.demi/commands/<hash>/   manifest cache
+                                    │                                      │    read ${DEMI_HOME}/commands/<hash>/   manifest cache
                                     │                                      │    kind = runtime
                                     │                                      │    → run the module in-process, ctx.fs = real fs
                                     │                                      │    (zero wire bytes)
@@ -87,64 +86,13 @@ commands. An `rpc` command's stdin and stdout are pipes — HTTP streams
 brokered by the backend (`runner.md` § Pipes). File contents and pipeline
 bytes never ride the socket.
 
-### Hostless (no execution target)
-
-There is no bash and no runner. The backend runs the tool call in tinybash;
-the model is told nothing about it — the tool is bash, and a script
-tinybash cannot run is run on a machine instead.
-
-```
- tool call:  demi file create notes.md <<'EOF' … EOF
-             demi todo add "draft the outline"
-
- backend (one process; nothing leaves it)
- ────────────────────────────────────────
- tinybash ──▶ [ {argv, stdin}, {argv, stdin} ]                pipelines, chains, heredocs, redirections,
-        │                                                     cd, $NAME, ~/, globs; builtins (grep head ls …)
-        ▼                                                     anything else → the script goes to a machine
- in-process loader  (executables: tinybash's builtins + the manifest's roots)
-   ├─ demi file create …   kind = runtime  → run the SAME module as on a real host,
-   │                                          ctx.fs = store-backed Host
-   │                                          → files tree in conversations/<id>.sqlite, bytes in the blob store
-   └─ demi todo add …      kind = rpc      → the in-process handler, no socket
-        │
-        ▼
- tool result = stdout / stderr / exit code, exactly as on a real host
-
-
- tool call:  npm test                                   (or any script outside the subset: `$(…)`, `for`, …)
- tinybash ──▶ outside the subset, nothing ran
-        └──▶ backend builds the home image from the hostless tree (mke2fs -d), provisions a
-             managed host with it bound to the conversation (silently), hands over cwd and
-             variables, runs the WHOLE script on the real-host path above;
-             every later tool call runs there. The model sees only the tool result.
-             (no machine configured at all → the tool result is tinybash's refusal line on
-             stderr with exit 2, e.g. `tinybash: line 1: python3: no such program here; a machine`)
-```
-
-### Side by side
-
-| | Real host | Hostless |
-|---|---|---|
-| Who runs the tool call | real bash on the target | tinybash in the backend |
-| What can appear in it | anything bash runs | the tinybash subset: pipelines, chains, heredocs, redirections, expansions; builtins + root commands |
-| Where a `runtime` module runs | in a command-mode tinyjs process on the target | in the backend process |
-| The `ctx.fs` it sees | the target's real filesystem (the runner's machine layer) | the conversation's store-backed Host (`host-virtual`) |
-| Where an `rpc` command runs | in the backend, reached via UDS → runner socket | in the backend, called directly |
-| The shell environment behind the `shell_*` tools | `RemoteShellEnvironment` (`host-remote`: jobs on the runner) | `HostlessEnvironment` (`host-virtual`: tinybash over the Host); same command records and views |
-| Where files live | on the target | in `conversations/<id>.sqlite` |
-| Where full output lives | output files on the target; the model reads past the view with commands | nowhere beyond the view: no tee, the shell runs in the backend |
-| Bytes on the wire | script, the model's view, exit, rpc args/output | none |
-| Leaving this path | user switches the target in the picker | the first script outside the subset moves the conversation to a machine, silently |
-
 ## Command kinds
 
 An executable leaf may declare `runningHint`, model-facing guidance shown
 while that invocation is active. The manifest preserves it, and the loader
 reports it only after help and argument validation have selected an actual
 execution. Each invocation clears its hint on completion or cancellation;
-concurrent pipelines keep independent hints. Hostless dispatch updates the
-command view in process; the runner reports the same lifecycle over its
+concurrent pipelines keep independent hints. The runner reports the lifecycle over its
 relay (`runner.md`). `demi agent spawn` and `resume` use this to explain
 steering, abort and completion wakeups instead of suggesting polling.
 
@@ -163,9 +111,7 @@ Every leaf is one of two kinds:
   command is invoked and run there against that place's filesystem. `demi
   file read/create/edit/patch` and future `demi search` are `runtime`. On a
   target the module runs inside tinyjs in command mode with zero round
-  trips; in a
-  hostless conversation it runs inside the backend against the
-  conversation's store-backed Host.
+  trips.
 
 The rule is mechanical: **a command that touches only the target's
 filesystem is `runtime`; a command that touches conversation or platform
@@ -184,14 +130,10 @@ export default async function (ctx: CommandContext): Promise<CommandResult>
 `CommandResult` is `{ exitCode }`; everything a command has to say goes
 through its streams, so the result is the same object on every surface.
 
-A leaf's input schema marks every argument that names a file or directory
-as a **path** (`pathArg(z.string())`, zod metadata read back with
-`isPathArg`); the mark survives into the manifest's JSON Schema. Arguments
-reach the module as written — a module resolves a path through `ctx.fs`
-with `ctx.cwd`, so its messages name what the caller typed — and tinybash
-uses the marks to decide whether a script stays inside the hostless
-namespace (`sessions-and-targets.md`). An argument that can be a path must
-be marked; an unmarked argument is never treated as one.
+Arguments reach the module as written. A module resolves paths through
+`ctx.fs` with `ctx.cwd`, so messages retain the caller's spelling. The command
+input schema validates arguments; filesystem access follows the selected Host's
+policy. No separate path-admission metadata is needed.
 
 `ctx` is the whole world the module sees:
 
@@ -212,8 +154,7 @@ guarantees (`TextEncoder`, `TextDecoder`, `URL`, `atob`, `btoa`,
 import of a value fails where the module loads, the same in every
 embedder; type imports are erased by the transpiler. This is what makes
 one module run identically inside tinyjs against a real filesystem,
-inside the backend against the store-backed Host, and inside a test with
-an in-memory Host. It is the public contract a third
+and inside a test with an injected Host. It is the public contract a third
 party builds on, versioned with the manifest.
 
 Byte-heavy work inside a module goes through `ctx.fs` and the streams,
@@ -230,7 +171,7 @@ tree that declares the leaf imports it as text and hands the text to
 ```ts
 import readModule from './read.command.ts' with { type: 'text' }
 
-{ name: 'read', kind: 'runtime', module: runtimeModule(readModule), input: { path: pathArg(z.string()) }, positionals: ['path'] }
+{ name: 'read', kind: 'runtime', module: runtimeModule(readModule), input: { path: z.string() }, positionals: ['path'] }
 ```
 
 Bun honors the `text` import attribute natively (development, tests, the
@@ -288,25 +229,22 @@ loader.roots                                          the manifest as command tr
   root, path, parsed args, `--json`, the pipe as a stream, cwd, env, plus
   the stdio and post-start stdin to relay); an embedder without one serves
   only `runtime` commands, and an `rpc` leaf reports the missing
-  transport. `inProcessRpc(roots, { storage, host })` is the backend's
-  transport: the trees that declared the handlers are in the process.
+  transport. `inProcessRpc(roots, { storage, host })` supports library
+  embeddings and tests whose handlers are in the same process.
 
 Dispatch selects the root's tree, resolves the path through it, prints help
 for a group, parses and validates the leaf's arguments against its schema,
 then either runs the module with a `ctx` built from `host`, `io` and the
 arguments, or sends the `rpc` message. A module is imported from a `blob:`
-URL of its text (the backend, tests) or from the source's module file
+URL of its text (library embeddings and tests) or from the source's module file
 (tinyjs imports only files), so the same bytes run everywhere. Help text comes from the tree,
-so `demi file --help` is identical on every surface. `rootPaths(manifest)`
-derives the `RootPaths` functions tinybash needs from the path marks, so
-an embedder that runs tinybash over the loader declares nothing twice.
+so `demi file --help` is identical on every target.
 
 Embedders:
 
 | Embedder | Source | Host | rpc |
 |---|---|---|---|
-| backend, hostless conversation | in-process tree | the conversation's store-backed Host | in-process |
-| runner | the backend socket, cached on disk under `~/.demi/commands/<hash>/` | — (the runner does not execute commands; it caches and relays) | the backend socket |
+| runner | the backend socket, cached on disk under `${DEMI_HOME}/commands/<hash>/` | — (the runner does not execute commands; it caches and relays) | the backend socket |
 | tinyjs in command mode on a target | the runner's disk cache; a miss asks the runner over the UDS | the runner's machine layer over the real filesystem | the runner over the UDS |
 | tinyjs in command mode, standalone (no runner) | a configured directory or URL | the real filesystem | none, or an embedder-supplied transport |
 | tests | in-memory | in-memory Host | stub |
@@ -323,40 +261,21 @@ root: `argv[0]` selects the root's tree in the manifest. Real bash spawns it
 like any other program; it reads the manifest cache the runner maintains,
 runs `runtime` commands in its own process, and forwards `rpc` commands to
 the runner over the local UDS. The process holds no credential: the runner
-attributes an `rpc` call to a conversation by the ids the backend injected
-into the bash environment at spawn time and forwards it on its
-authenticated socket (`runner.md`). The runner creates and removes the
+forwards the job, node and shell ids injected at job creation on its
+authenticated socket. The backend verifies them against its live-job record
+before selecting the invoking Host, handler and command storage
+(`execution-coordination.md`). Process-supplied ids alone grant no authority. The runner creates and removes the
 symlinks as the manifest's root set changes, and points
-`~/.demi/commands/current` at the cached manifest command mode reads;
-`DEMI_COMMANDS_DIR` names another directory (the standalone case). The
-entry of the bundle is `packages/runner/src/tinyjs/entry.ts`: the name it
+`${DEMI_HOME}/commands/current` at the cached manifest command mode reads;
+`DEMI_HOME` defaults to `~/.demi` on paired devices and is `/run/demi` on
+Cloud. `DEMI_COMMANDS_DIR` names another directory (the standalone case). The
+entry of the bundle is `packages/runner/src/entry.ts`: the name it
 was invoked by selects runner mode or the root.
 
 Stdin and stdout are byte-faithful in both kinds: a `runtime` module reads
 and writes its process streams; an `rpc` invocation's stdin and stdout
 are pipes — HTTP streams brokered by the backend — and its stderr and
 exit code ride the socket (`runner.md` § Pipes).
-
-## Hostless execution
-
-A conversation with no execution target (`sessions-and-targets.md`) still
-executes root commands. The backend runs the tool call in **tinybash**
-(`tinybash.md`): a small shell — parser, executor and a closed set of
-GNU-faithful builtins over the conversation's store-backed filesystem
-(`@demicodes/host-virtual`) — that dispatches root commands through an
-in-process loader. It is the in-process counterpart of real bash on a
-target: same tool, same root commands, the subset of bash that covers
-94 % of the shapes a coding agent writes, and one guarantee — any script
-it accepts means the same thing in bash with GNU coreutils.
-
-In outline: pipelines, `;` `&&` `||` newline chains, heredocs,
-redirections, `cd`, `$NAME`, `~/` and globs; builtins such as `grep`,
-`head`, `tail`, `ls`, `cat`, `find` with whitelisted flags. Command
-substitution, control flow, job control and any flag outside a whitelist
-are refused with a message naming the way out. The whole script is parsed
-before anything runs; a script using a program that is neither a builtin
-nor a root is handed intact to a provisioned machine, so hostless
-execution never leaves a script half-done.
 
 ## The `demi host` group
 
@@ -389,32 +308,20 @@ place.
 ## Packages
 
 - `@demicodes/shell` keeps the `Command` types (tree, input/output specs,
-  `CommandContext`, `CommandResult`, path marks, `runtimeModule`), the Host
+  `CommandContext`, `CommandResult`, `runtimeModule`), the Host
   contract and the `ShellEnvironment` contract. It carries no engine.
-- `@demicodes/host-virtual` is the hostless target: `VirtualHost` and
-  `HostlessEnvironment` — the `ShellEnvironment` of a hostless
-  conversation, tinybash over the Host with the loader's root paths and
-  dispatcher injected — beside each other the way `host-remote` holds a
-  machine's Host and shell.
 - `@demicodes/coding-agent` declares the `demi` root's agent-facing groups
   with the `kind` on each leaf; the `runtime` leaves are `*.command.ts`
   files written against the ABI. A library user declares their own root
   the same way, with the same types.
-- `@demicodes/command-loader` is new: the manifest types, the manifest
+- `@demicodes/command-loader` owns: the manifest types, the manifest
   build (`buildManifest`, the transpiler injected), the loader,
-  `rootPaths`, and the `commandModulesAsText` build plugin under
+  and the `commandModulesAsText` build plugin under
   `@demicodes/command-loader/build`.
-- `@demicodes/tinybash` is the hostless shell — parser, executor and the
-  GNU-faithful builtins over its own system interface (a filesystem, a
-  script's stdio, a root-command dispatcher; `tinybash.md` § Interface).
-  Standalone infrastructure depending on nothing of Demi but `utils`;
-  usable by any embedder that adapts a filesystem to it.
-- `@demicodes/backend` assembles the roots, builds and serves the
-  manifest, and composes the hostless shell: `createHostlessShell` builds
-  the loader over the conversation's `VirtualHost` with `rpc` in process
-  and hands `HostlessEnvironment` its root paths and dispatcher; the agent
-  server's `shellEnvironment` factory picks it for every `VirtualHost` and
-  `RemoteShellEnvironment` (`@demicodes/host-remote`) for every
-  `RemoteHost`. `shell_write` reaches a root command as the
-  script's stdin (`tinybash.md` § Interface), so `demi agent spawn` is
-  steerable hostless exactly as on a machine.
+- `@demicodes/host-remote` owns `RemoteHost` and `RemoteShellEnvironment`:
+  the backend's machine interface and shell job view.
+- `@demicodes/backend` assembles roots, builds and serves the manifest and
+  authenticates RPC invocations against live jobs. Its shell-environment
+  factory supplies `RemoteShellEnvironment` for the resolved device. It does
+  not execute shell scripts. `shell_write` reaches the job's live stdin,
+  including a foreground `demi agent spawn` command.

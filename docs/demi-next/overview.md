@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Date | 2026-09-02 |
-| Status | Design (M0–M6 implemented; see `roadmap.md`) |
+| Date | 2026-09-08 |
+| Status | Target architecture contract; acceptance tracked in `progress.md` |
 | Scope | The hosted multi-user chat product. This document holds the core shape and the index; each subsystem has its own record in this directory. |
 
 ## Documents
@@ -12,22 +12,23 @@
 |---|---|
 | `overview.md` | motivation, protocol layering, invariants, component map, prior art |
 | `roadmap.md` | milestones, acceptance, deferred items |
-| `execution-coordination.md` | execution identity, tree admission, Hostless eligibility and cutover |
+| `execution-coordination.md` | execution identity, tree admission, shared-device admission and recovery |
 | `backend.md` | the backend program: modules, deployment topology, routing, Web API |
-| `storage.md` | control and conversation databases, `ControlService`, blob and home-image stores, replication |
+| `storage.md` | control and conversation databases, `ControlService`, blob and machine-image stores, replication |
 | `product.md` | instance mode, users, conversations, attachments, provider management, web UI |
-| `sessions-and-targets.md` | a conversation's execution target: hostless, user hosts, managed hosts, switching, attached hosts |
-| `commands.md` | the command system: root commands (`demi` built in, library users add their own), `rpc` and `runtime` kinds, the command ABI, manifest, loader, tinybash and hostless execution |
-| `tinybash.md` | the small shell hostless conversations run in: the corpus-placed boundary, grammar, GNU-faithful builtins, refusals, the equivalence guarantee |
+| `sessions-and-targets.md` | a conversation's execution target: Cloud, paired devices, workspaces, switching, attached hosts |
+| `commands.md` | the command system: root commands (`demi` built in, library users add their own), `rpc` and `runtime` kinds, the command ABI, manifest, loader |
 | `tinyjs.md` | tinyjs: the runtime under the runner and every root command on a target |
 | `runner.md` | the runner program: handshake, Host RPC, jobs, tee, the local relay |
-| `managed-hosts.md` | Firecracker provisioning, images, home persistence, lifecycle, security |
+| `managed-hosts.md` | Firecracker provisioning, images, system/home persistence, reset, lifecycle, security |
 | `providers-and-vault.md` | the LLM module, credential vault, usage accounting, Claude Code |
 | `scenarios.md` | the scenario suite over the headless system: the world fixture, the driver, the teardown invariants, the scenarios and restarts |
-| `progress.md` | live implementation log, review history, measurements |
+| `progress.md` | acceptance ledger and verification evidence |
 
-Every record is a standalone final-state document. Review history and
-rejected alternatives live only in `progress.md`.
+Every record describes the target architecture. These contracts do not certify
+that the current source implements every requirement. `progress.md` records
+verified acceptance only; implementation history belongs to Git. The diff of
+these contracts is the basis for implementation planning.
 
 ## Motivation
 
@@ -40,10 +41,12 @@ over ChatGPT/Claude web UIs:
 - **Choice of execution environment**: agent tools run on the user's own
   devices via the runner program (user hosts) or in operator-provisioned
   microVMs (managed hosts).
-- **Chat-first default**: most conversations are conversation with light
-  tools and need no machine at all — they run `demi` commands in the
-  backend's tiny shell (tinybash) and only get a machine when they first
-  need one.
+- **Chat-first default**: new conversations select the user's Cloud immediately.
+  The VM starts only when a file, process or process-backed provider needs it;
+  reading history and ordinary inference do not require an active machine.
+- **Personal Cloud**: one managed device per user, persistent system and home,
+  project directories shared on that machine, and self-service system reset
+  that preserves home.
 
 ## Protocol layering (the core shape)
 
@@ -88,9 +91,8 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
    thing that stays on the target, and stays there
    (`sessions-and-targets.md`).
 2. **The execution target is a mutable conversation property.** A
-   conversation's tools execute against a `Host`: the store-backed hostless
-   Host in the backend, or the remote Host of a runner — on a user-paired
-   device or an operator-provisioned managed host. `AgentHarness.host`
+   conversation's tools execute against the remote `Host` of a runner — on a
+   user-paired device or the user's unique managed Cloud device. `AgentHarness.host`
    resolves a stable Host per execution target from action metadata.
    Switching targets is a first-class operation at a turn boundary,
    announced to the model with an injected context block.
@@ -117,21 +119,20 @@ Four words are easy to confuse and are used in exactly one sense each:
 
 | Word | Means | Never means |
 |---|---|---|
-| **target** (execution target) | the conversation's pointer to where its commands run: a workspace, a session-bound managed host, or nothing (hostless) | a machine |
+| **target** (execution target) | the conversation's pointer to where its commands run: Cloud, a paired device/directory, or a workspace | a machine |
 | **device** | a row in the registry with a token: a paired user device or a managed one | |
-| **host** | a machine that executes for Demi, seen through the `Host` contract: a user host, a managed host, the store-backed hostless Host | the machine that runs a VM |
+| **host** | a machine that executes for Demi, seen through the `Host` contract: a paired device or the user's managed Cloud | the machine that runs a VM |
 | **guest** / **backend machine** | virtualization terms only: the microVM, and the machine running the backend and Firecracker | a Demi host |
 
 So a managed host is a *guest* on the *backend machine*; the word "host"
 on its own is always Demi's sense.
 
-The `Host` contract (`@demicodes/shell`) has two implementations the
-backend injects into the agent — the `host-` packages — and one internal
+The `Host` contract (`@demicodes/shell`) has one production implementation the
+backend injects into the agent and one internal
 realization inside the runner:
 
 | Where | Role | Runs in |
 |---|---|---|
-| `@demicodes/host-virtual` | the hostless Host: files in the conversation's store, no spawn | the backend |
 | `@demicodes/host-remote` | the Host of every user host and managed host as the backend sees it: each call forwarded over the runner wire | the backend |
 | `@demicodes/runner`, `machine/` | the machine itself — files and real processes over tinyjs's primitives — performing what `host-remote` asked; never held by the agent | the runner, on tinyjs |
 
@@ -145,18 +146,15 @@ ends depend on.
   the command manifest — that scales by running more copies plus one
   control-plane process. `backend.md`, `storage.md`.
 - **tinyjs** (`packages/tinyjs`, Rust): a small QuickJS runtime binary
-  providing IO primitives, an event loop and the byte-level paths; the only
-  Rust in the system. `tinyjs.md`.
+  providing IO primitives, an event loop and the byte-level paths; the native runtime layer. `tinyjs.md`.
 - **Runner** (`@demicodes/runner`, JS on tinyjs): the program on every
   execution target — one outbound socket, Host RPC, the job table, the tee,
   the local relay for root commands. `runner.md`.
 - **Command loader** (`@demicodes/command-loader`, pure JS): serves the
   command manifest wherever commands run — inside the runner, inside
-  tinyjs in command mode, inside the backend for hostless conversations, and
-  inside any third-party embedder. **tinybash** (`@demicodes/tinybash`,
-  pure JS): the tiny shell hostless conversations run in. `commands.md`.
+  tinyjs in command mode and inside third-party embedders. `commands.md`.
 - **Managed hosts**: Firecracker microVMs the backend provisions on demand,
-  persisting only a home image. `managed-hosts.md`.
+  persisting a pinned base plus a writable system layer and home. `managed-hosts.md`.
 - **Web frontend** (`@demicodes/web`): the product SPA over
   `@demicodes/web-ui` and the Web API. `product.md`.
 

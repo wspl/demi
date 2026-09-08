@@ -78,8 +78,7 @@ number of executable pages it touches, on top of the runtime's own start-up:
 | Bun, the runner | 4.95 s | 1.56 s | 103 MB |
 
 The per-page cost is unaffected by page-cache warming or bytecode caching;
-only a small binary removes it. Measurements and the decomposition are in
-`progress.md`. A general-purpose small runtime (LLRT) would qualify on size
+only a small binary removes it. Measurements and the decomposition are recorded in Git history. A general-purpose small runtime (LLRT) would qualify on size
 but carries a Node-compatibility surface we do not want, an experimental
 label, and gaps (WebSocket, UDS) that would need Rust modules regardless —
 the same work with a larger, borrowed API.
@@ -282,7 +281,7 @@ per buffer). The protocol work is delegated:
   context is single-threaded, so none of async Rust's `Send` friction
   applies).
 
-LLRT's module crates were evaluated and rejected (`progress.md`): what they
+LLRT's module crates were evaluated and rejected (recorded in Git history): what they
 provided correctly was the trivial part, while the primitives with
 semantics we depend on fell short.
 
@@ -348,7 +347,7 @@ ID at release time. macOS binaries are linked with `-headerpad` so the
 injected load command has room, and `tinyjsc` refuses a binary without it
 rather than overwrite the start of `__text`. A packed binary parses no
 arguments of its own: everything goes to the bundle. Two other mechanisms
-were measured and rejected (`progress.md`): appending after the Mach-O
+were measured and rejected (recorded in Git history): appending after the Mach-O
 executes but fails strict validation, and `postject`/LIEF mis-relocates a
 Rust binary's TLS sections.
 

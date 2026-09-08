@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Date | 2026-09-02 |
-| Status | Design (mechanisms and endpoints through M6; multi-user delivered in M12; UI in M13) |
+| Date | 2026-09-08 |
+| Status | Target architecture contract; acceptance tracked in `progress.md` |
 | Scope | What the product stores and exposes: instance mode, users, conversations, attachments, provider management, the web UI and frontend package |
 
 ## Instance mode: shared vs isolated
@@ -63,7 +63,7 @@ selection, timestamps, archived flag.
   view lists them and any can be restored. No user data is deleted in v1.
 - **Titles**: default is the first user message plus manual rename.
 - **New conversation is one click**: immediately typeable — target defaults
-  to hostless, model defaults to the user's last-used selection.
+  to the user's Cloud, model defaults to the user's last-used selection.
 - **Message-level operations: everything Demi implements gets exposed** —
   mid-turn steering, the message queue, abort, retry, resume, manual
   compaction, mid-conversation provider/model switch, interactive stdin to
@@ -87,10 +87,9 @@ API; cold history rides the same rendering path.
 - **Workspace files** (files the agent should work on; anything non-media
   dropped into the chat routes here): written into the execution target's
   working directory via the backend (browser → HTTP upload → Host RPC
-  write), the path inserted into the input as a text reference. In the
-  hostless state they land in the conversation's hostless filesystem —
-  the same tree-plus-blobs form (`storage.md`), so the upload's bytes are
-  already a blob and the drop is a tree row.
+  write), the path inserted into the input as a text reference. A Cloud drop
+  obtains or wakes the user's machine before writing; it never creates a
+  working-files tree in the conversation database.
 
 ## Provider management
 
@@ -127,7 +126,7 @@ Labels need not be unique. No model-level configuration of any kind.
 ## Web UI surface inventory
 
 Chat view (existing web-ui components) + conversation sidebar; model picker
-at the input area; execution-target picker (hostless, the user's devices
+at the input area; execution-target picker (Cloud, the user's devices
 with a directory browser and directory creation, workspaces; the
 new-project device dropdown adds **Cloud**); the conversation's host list
 (the main host, the attached hosts with name and directory; attach,
@@ -165,7 +164,7 @@ Layout and information architecture:
   retry, …). The model picker lives at the input area — web-ui's existing
   design.
 - The conversation list is **grouped by workspace**: the first group is
-  the hostless and session-bound conversations, then one group per
+  conversations without a workspace, then one group per
   workspace, plus an archived view.
 - **Settings are modal dialogs** from the sidebar user menu, with tabs:
   devices, providers, usage, user management (admin), instance settings
@@ -178,3 +177,20 @@ Layout and information architecture:
   wiring. web-ui stays product-neutral in its dependencies.
 - Visual language follows web-ui's theme system (light/dark);
   English-only copy in v1.
+
+## Cloud settings
+
+Each user has one Cloud device. Settings show lifecycle state, resource usage
+and limits, and a Reset environment action. The reset dialog explains that all
+Cloud tasks stop, system packages and configuration are replaced, and `/home`
+is preserved. Confirmation starts a backend operation; shared UI shows its
+progress and failure/retry state even if the guest cannot connect. Project
+links and conversation history remain intact. Reset is not a project action.
+
+All Cloud projects share the user's machine and can access each other's files.
+Project creation chooses or creates a directory there. Archiving conversations
+or deleting project metadata does not delete files or reset Cloud. Lifecycle,
+persistence and reset guarantees are defined in `managed-hosts.md`.
+
+The dialog and lifecycle presentation live in `web-ui`; `web` supplies API
+state and handlers and `web-gallery` supplies fixtures for the same components.
