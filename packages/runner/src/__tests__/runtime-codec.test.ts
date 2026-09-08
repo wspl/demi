@@ -2,14 +2,12 @@ import { expect, test } from 'bun:test'
 import { mkdtemp, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { bundleForTinyjs, tinyjsBinary } from '../testing'
+import { bundleForTxiki, txikiBinary } from '../testing'
 import { RUNNER_PROTOCOL_VERSION, createRunnerWire, type RunnerProtocolMessage } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 
-// The two codecs of the wire, @msgpack/msgpack on Bun and tinyjs:bytes on
-// tinyjs, must produce and read the same bytes: frames encoded here are
-// decoded, re-encoded and returned by tinyjs, then compared byte for byte.
-test('frames encoded on Bun are read and reproduced identically by tinyjs', async () => {
+// The shared codec must preserve frames identically across Bun and txiki.js.
+test('frames encoded on Bun are read and reproduced identically by txiki.js', async () => {
   const wire = createRunnerWire(msgpackCodec)
   const messages: RunnerProtocolMessage[] = [
     { type: 'hello', protocol: RUNNER_PROTOCOL_VERSION, deviceToken: 't', runner: { name: 'n', platform: 'p', version: '1', identity: { uid: 501, gid: 20, hostname: 'h', homeDir: '/h' } } },
@@ -26,18 +24,18 @@ test('frames encoded on Bun are read and reproduced identically by tinyjs', asyn
   ]
   const work = await realpath(await mkdtemp(join(tmpdir(), 'demi-codec-')))
   await Bun.write(join(work, 'entry.ts'), `
-import { msgpackEncode, msgpackDecode } from 'tinyjs:bytes'
-import * as fs from 'tinyjs:fs'
-import { env, exit } from 'tinyjs:runtime'
-const frames = msgpackDecode(await fs.readFile(env.FRAMES)) as Uint8Array[]
-await fs.writeFile(env.FRAMES_BACK, msgpackEncode(frames.map((frame) => msgpackEncode(msgpackDecode(frame)))))
+import { msgpackCodec } from '${join(import.meta.dir, '../../../runner-protocol/src/codec.ts')}'
+const { encode: msgpackEncode, decode: msgpackDecode } = msgpackCodec
+const { env, exit } = tjs
+const frames = msgpackDecode(await tjs.readFile(env.FRAMES)) as Uint8Array[]
+await tjs.writeFile(env.FRAMES_BACK, msgpackEncode(frames.map((frame) => msgpackEncode(msgpackDecode(frame)))))
 exit(0)
 `)
   const bundle = join(work, 'entry.mjs')
-  await bundleForTinyjs(join(work, 'entry.ts'), bundle)
+  await bundleForTxiki(join(work, 'entry.ts'), bundle)
   const frames = messages.map((message) => wire.encode(message))
   await Bun.write(join(work, 'frames.bin'), msgpackCodec.encode(frames))
-  const run = Bun.spawnSync([tinyjsBinary(), bundle], {
+  const run = Bun.spawnSync([txikiBinary(), 'run', bundle], {
     env: { PATH: process.env.PATH ?? '', FRAMES: join(work, 'frames.bin'), FRAMES_BACK: join(work, 'back.bin') },
     stdout: 'pipe',
     stderr: 'pipe',

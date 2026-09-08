@@ -1,43 +1,27 @@
-// Test helpers for Bun tests that run JS on tinyjs or need a runner
+// Test helpers for Bun tests that run JS on txiki.js or need a runner
 // process: the binaries, the bundle, the packed runner, and a runner
 // process with its pairing code and status captured. Shipped as
 // `@demicodes/runner/testing`, never bundled.
+import { mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { mkdir, realpath, symlink, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { waitFor } from '@demicodes/utils'
 
-const CRATE = resolve(import.meta.dir, '..', '..', 'tinyjs')
+import { runtimeBinary, packRuntime } from '../runtime/build'
+export const txikiBinary = runtimeBinary
+export { packRuntime }
 
 /**
- * The path of a tinyjs binary, building the crate in debug mode when it is
- * missing. `TINYJS_BIN` names a prebuilt `tinyjs` instead.
- */
-export function tinyjsBinary(name: 'tinyjs' | 'tinyjsc' = 'tinyjs'): string {
-  if (name === 'tinyjs' && process.env.TINYJS_BIN) return process.env.TINYJS_BIN
-  const path = join(CRATE, 'target', 'debug', name)
-  if (existsSync(path)) return path
-  const home = process.env.HOME ?? ''
-  const built = Bun.spawnSync(['cargo', 'build', '--bin', name], {
-    cwd: CRATE,
-    env: { ...process.env, PATH: `${process.env.PATH ?? ''}:/opt/homebrew/opt/rustup/bin:${home}/.cargo/bin` },
-    stdout: 'inherit',
-    stderr: 'inherit',
-  })
-  if (!built.success) throw new Error(`cargo build --bin ${name} failed in ${CRATE}`)
-  return path
-}
-
-/**
- * Bundles an entry for tinyjs: one ESM file, workspace packages from their
- * sources, `tinyjs:*` left to the runtime. Runs the bundler in its own
+ * Bundles an entry for txiki.js: one ESM file, workspace packages from their
+ * sources, `tjs:*` left to the runtime. Runs the bundler in its own
  * process: an in-process `Bun.build` for a browser target leaves the test
  * process unable to resolve some of the same packages afterwards.
  */
-export async function bundleForTinyjs(entry: string, outfile: string): Promise<void> {
+export async function bundleForTxiki(entry: string, outfile: string): Promise<void> {
   const built = Bun.spawnSync(
-    ['bun', 'build', entry, '--format=esm', '--target=browser', '--conditions=development', '--external', 'tinyjs:*', '--outfile', outfile],
+    ['bun', 'build', entry, '--format=esm', '--target=browser', '--conditions=development', '--external', 'tjs:*', '--outfile', outfile],
     { stdout: 'pipe', stderr: 'pipe' },
   )
   if (!built.success) throw new Error(`bundle failed:\n${built.stderr.toString()}${built.stdout.toString()}`)
@@ -45,25 +29,30 @@ export async function bundleForTinyjs(entry: string, outfile: string): Promise<v
 
 let packed: Promise<string> | null = null
 
-/** The packed tinyjs bundle with `demi-runner` beside it, built once per test process. */
+/** The packed txiki.js bundle with `demi-runner` beside it, built once per test process. */
 export function packedRunner(): Promise<string> {
   return (packed ??= (async () => {
-    const work = await realpath(join(tmpdir(), `demi-packed-${process.pid}`))
-      .catch(async () => {
-        await mkdir(join(tmpdir(), `demi-packed-${process.pid}`), { recursive: true })
-        return realpath(join(tmpdir(), `demi-packed-${process.pid}`))
-      })
-    const bundle = join(work, 'entry.mjs')
-    await bundleForTinyjs(resolve(import.meta.dir, 'entry.ts'), bundle)
+    const cache = resolve(import.meta.dir, '../../..', '.cache/txiki/runners')
+    await mkdir(cache, { recursive: true })
+    const bundle = join(cache, `entry-${process.pid}.mjs`)
+    await bundleForTxiki(resolve(import.meta.dir, 'entry.ts'), bundle)
+    const runtime = runtimeBinary()
+    const hash = createHash('sha256')
+    for (const path of [bundle, runtime, resolve(import.meta.dir, '../runtime/build.ts'), resolve(import.meta.dir, '../../../vendor/txiki.js/src/cli.c'), resolve(import.meta.dir, '../../../vendor/txiki.js/CMakeLists.txt')]) {
+      hash.update(await readFile(path))
+    }
+    const work = join(cache, hash.digest('hex'))
     const file = join(work, 'demi-cli')
-    const pack = Bun.spawnSync([tinyjsBinary('tinyjsc'), bundle, '--bin', tinyjsBinary(), '--out', file], { stdout: 'pipe', stderr: 'pipe' })
-    if (pack.exitCode !== 0) throw new Error(`tinyjsc failed: ${pack.stderr.toString()}`)
-    await symlink(file, join(work, 'demi-runner')).catch(() => {})
+    if (!existsSync(file)) {
+      await mkdir(work, { recursive: true })
+      packRuntime(bundle, file)
+    }
+    if (!existsSync(join(work, 'demi-runner'))) await symlink(file, join(work, 'demi-runner'))
     return join(work, 'demi-runner')
   })())
 }
 
-export interface TinyjsRunnerOptions {
+export interface TxikiRunnerOptions {
   backendUrl: string
   /** `DEMI_HOME`: runner.json, runner-token, runner.sock, commands, bin, output. */
   stateDir: string
@@ -76,7 +65,7 @@ export interface TinyjsRunnerOptions {
   managed?: boolean
 }
 
-export interface TinyjsRunner {
+export interface TxikiRunner {
   codes: string[]
   statuses: string[]
   details: string[]
@@ -88,7 +77,7 @@ export interface TinyjsRunner {
 }
 
 /** Starts `demi-runner run --backend <url>` and captures its lines. */
-export async function startTinyjsRunner(options: TinyjsRunnerOptions): Promise<TinyjsRunner> {
+export async function startTxikiRunner(options: TxikiRunnerOptions): Promise<TxikiRunner> {
   const bin = await packedRunner()
   if (options.deviceToken) {
     await mkdir(options.stateDir, { recursive: true })
@@ -106,7 +95,7 @@ export async function startTinyjsRunner(options: TinyjsRunnerOptions): Promise<T
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const runner: TinyjsRunner = { codes: [], statuses: [], details: [], log: [], exited: child.exited.then(() => {}), stop: async () => {} }
+  const runner: TxikiRunner = { codes: [], statuses: [], details: [], log: [], exited: child.exited.then(() => {}), stop: async () => {} }
   const read = async (stream: ReadableStream<Uint8Array>) => {
     let buffer = ''
     for await (const chunk of stream) {

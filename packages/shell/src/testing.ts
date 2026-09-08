@@ -1,7 +1,7 @@
 // Test helpers for packages exercising the Host contract. Shipped as the
 // `@demicodes/shell/testing` entrypoint, never imported by runtime code:
 // the in-memory store and the conformance suite, runtime-neutral so the
-// suite runs on tinyjs too. The Node Host tests run it against is
+// suite runs on txiki.js too. The Node Host tests run it against is
 // `LocalHost` under `@demicodes/runner/testing`.
 import type { Host, HostSpawnHandle, HostStore } from './host'
 import { collectBytes, decodeUtf8, encodeUtf8, errorCode } from '@demicodes/utils'
@@ -23,7 +23,7 @@ export function memoryHostStore(): HostStore {
 
 /**
  * The Host conformance suite: what every `Host` implementation must do,
- * as cases any harness can run — `bun:test` for a Host on Bun, the tinyjs
+ * as cases any harness can run — `bun:test` for a Host on Bun, the txiki.js
  * harness for the runner's machine layer. The suite is runtime-neutral: it
  * imports nothing but the contract and `@demicodes/utils`.
  *

@@ -1,25 +1,37 @@
-// HTTP as the runner uses it: the device ends of pipes (`runner.md`
-// § Pipes). A request body streams from a handle; a response body streams
-// down as bytes. Proxies from the environment apply.
-import * as net from 'tinyjs:net'
-import { readHandle } from './stdio'
-
 export interface HttpResponse {
   status: number
   headers: Record<string, string>
-  /** The body, streamed; closes the handle when drained or dropped. */
   body: AsyncIterable<Uint8Array>
 }
 
-/** `PUT`s a readable handle as the request body; the handle is consumed by the request. */
-export async function httpPut(url: string, handle: number, headers: Record<string, string>): Promise<HttpResponse> {
-  return responseOf(await net.httpRequest({ method: 'PUT', url, headers, body: { handle } }))
+/** Fetch pulls the producer only as the network accepts more bytes. */
+export async function httpPut(url: string, source: AsyncIterable<Uint8Array>, headers: Record<string, string>): Promise<HttpResponse> {
+  const reader = source instanceof ReadableStream ? source.getReader() : undefined
+  const iterator = reader ? undefined : source[Symbol.asyncIterator]()
+  let finished = false
+  const finish = async () => {
+    if (finished) return
+    finished = true
+    if (reader) { await reader.cancel(); reader.releaseLock() }
+    else await iterator!.return?.()
+  }
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const result = reader ? await reader.read() : await iterator!.next()
+      if (finished) return
+      if (result.done) { finished = true; reader?.releaseLock(); controller.close() }
+      else controller.enqueue(result.value)
+    },
+    cancel: finish,
+  }, { highWaterMark: 0 })
+  try { return responseOf(await fetch(url, { method: 'PUT', headers, body, duplex: 'half' })) }
+  finally { await finish() }
 }
 
 export async function httpGet(url: string, headers: Record<string, string>): Promise<HttpResponse> {
-  return responseOf(await net.httpRequest({ method: 'GET', url, headers }))
+  return responseOf(await fetch(url, { headers }))
 }
 
-function responseOf(response: { status: number; headers: Record<string, string>; body: number }): HttpResponse {
-  return { status: response.status, headers: response.headers, body: readHandle(response.body, true) }
+function responseOf(response: Response): HttpResponse {
+  return { status: response.status, headers: Object.fromEntries(response.headers), body: response.body ?? new ReadableStream({ start(controller) { controller.close() } }) }
 }

@@ -12,7 +12,7 @@ import type { PipeEnds } from '../pipes'
  * carried back; nothing else of the shell's state is.
  *
  * Platform-neutral: the teed spawn and the file reads are injected — the
- * tinyjs runner brings the tee primitive, tests bring a JavaScript tee
+ * txiki.js runner brings the stream logger, tests bring a Host-backed logger
  * over a local Host.
  */
 export interface JobSpawnParams {
@@ -227,7 +227,7 @@ export class JobTable {
  * the next job (a script bash refuses to parse never runs it, and the
  * backend keeps the directory it had); and the job's stdin duplicated onto
  * a high descriptor every child inherits, so a command-mode process can
- * tell the job's live stdin from a redirection (`tinyjs.md`, `fdNode`).
+ * tell the job's live stdin from a redirection (`txiki.md`, `fdNode`).
  */
 export function wrapScript(script: string): string {
   return [

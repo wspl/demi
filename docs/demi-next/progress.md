@@ -7,7 +7,7 @@ and completed checks. Historical changes and earlier designs are in Git.
 
 | Contract | Responsible code | Evidence |
 |---|---|---|
-| One TypeScript runner on tinyjs for Cloud and connected devices | `runner`, `host-remote`, `command-loader` | real-runner command, filesystem, process, relay and shell-control suites |
+| One TypeScript runner on txiki.js for Cloud and connected devices | `runner`, `host-remote`, `command-loader` | real-runner command, filesystem, process, relay and shell-control suites |
 | One managed device per user; projects are directories | backend control schema and `managed/lifecycle.ts` | concurrent first use, shared project/device identity, target ownership and switching tests |
 | Persistent system and home, pinned base | `managed/firecracker`, `storage/machine-image-store.ts` | paired publication, orphan recovery, failed publication, bounded generation retention; real shutdown/wake |
 | External system reset retaining home | lifecycle, `http/cloud.ts`, per-conversation reset context | concurrent operation-ID reuse, failed reset/retry, preserved files and model announcement; real broken-bash reset |
@@ -33,9 +33,18 @@ guest init; there is no separate per-job guest identity path.
 - `bun run test`: 893 passed, 11 conditionally skipped, 0 failed across 152 files.
 - `bun run build`: passed.
 - `bun run check:registry`: passed.
-- `cargo test` in `packages/tinyjs`: passed, including all 61 primitive
-  conformance cases and the native test harness.
-- The Linux ARM64 packed runner and `demi-fc-helper` cross-compiled successfully.
+- Fork checks: inherited descriptors, partial file writes, detached processes,
+  privilege validation, queued stream writes, slow HTTP readers, early upload
+  cancellation and the existing fetch request/abort regressions passed.
+- An embedded fixture passed Linux PID 1 orphan reaping (32 descendants with
+  registered exit statuses preserved), permanent privilege drop with empty
+  supplementary groups, empty-chroot startup without `/proc`, and a full
+  3 MiB awaited stdout write.
+- macOS ARM64 and Intel application startup and strict code-signature checks
+  passed. Linux ARM64 and x64 static applications cross-compiled.
+- `packages/tinyjs` has been removed. The runner uses the pinned
+  `vendor/txiki.js` fork; build/test helpers compile and cache the native
+  single-file application before the ordinary tests run.
 - Browser inspection of the gallery Cloud settings: confirmation layout,
   progress, completion, and the preserved-home explanation verified.
 

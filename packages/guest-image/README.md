@@ -10,7 +10,7 @@ rootfs.ext4   the shared read-only root: Ubuntu 24.04, the toolchain, the guest 
 ```
 
 ```
-runner/build.sh   <arch>          → out/<arch>/demi-runner   the packed tinyjs runner for Linux musl (from macOS or Linux)
+runner/build.sh   <arch>          → out/<arch>/demi-runner   the packed txiki.js runner for Linux musl (from macOS or Linux)
 kernel/build.sh   <arch>          → out/<arch>/vmlinux       (needs the kernel build deps; about 20 minutes on 4 cores)
 sudo rootfs/build.sh <arch>       → out/<arch>/rootfs.ext4   (needs debootstrap and network; consumes out/<arch>/demi-runner)
 ```

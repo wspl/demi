@@ -8,7 +8,7 @@ import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider, type AgentProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { decodeUtf8, deferred, delay, waitFor } from '@demicodes/utils'
-import { startTinyjsRunner } from '@demicodes/runner/testing'
+import { startTxikiRunner } from '@demicodes/runner/testing'
 import type { SessionProviderContext } from '../llm/assembly'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
@@ -344,7 +344,7 @@ test('a process-capable provider gets a session-scoped instance carrying the tar
   })
 
   // Claim a runner and bind a conversation's workspace to it (M4 machinery).
-  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'cli-device' })
+  const runner = await startTxikiRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'cli-device' })
   await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 10_000 })
   const codes = runner.codes
   const claimed = await api<{ device: { id: string } }>(backend, '/api/devices/claim', post({ code: codes[0] }))
@@ -489,14 +489,14 @@ test('a process provider reuses its process on one target and replaces it after 
       },
     },
   })
-  const runners: Awaited<ReturnType<typeof startTinyjsRunner>>[] = []
+  const runners: Awaited<ReturnType<typeof startTxikiRunner>>[] = []
   let client: AgentClient | undefined
   try {
     const workspaces: Array<{ id: string; path: string }> = []
     for (const name of ['a', 'b']) {
       const home = await mkdtemp(join(tmpdir(), `demi-provider-${name}-`))
       const stateDir = await mkdtemp(join(tmpdir(), 'demi-provider-runner-'))
-      const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home, name })
+      const runner = await startTxikiRunner({ backendUrl: backend.url, stateDir, home, name })
       runners.push(runner)
       await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 10_000 })
       const claimed = await api<{ device: { id: string } }>(backend, '/api/devices/claim', post({ code: runner.codes[0] }))

@@ -9,7 +9,7 @@ import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { RUNNER_PROTOCOL_VERSION, createRunnerWire } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
-import { startTinyjsRunner } from '@demicodes/runner/testing'
+import { startTxikiRunner } from '@demicodes/runner/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
@@ -29,7 +29,7 @@ test('pairing: claim, reconnect with the device token, revoke refuses the reconn
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m4-runner-'))
   const backend = await openBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0 } })
 
-  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  const runner = await startTxikiRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
   await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 5_000 })
   const code = runner.codes[0]
   expect(code).toMatch(/^[0-9A-Z]{4}(-[0-9A-Z]{1,4}){6}$|^[0-9A-Z-]{26,}$/)
@@ -87,7 +87,7 @@ test('pairing: claim, reconnect with the device token, revoke refuses the reconn
     if (!offline) await delay(20)
   }
   expect(offline).toBe(true)
-  const restarted = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  const restarted = await startTxikiRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
   await waitFor(() => restarted.statuses.includes('online'), undefined, { timeoutMs: 5_000 })
   expect(restarted.codes).toHaveLength(0)
 
@@ -112,7 +112,7 @@ test('claim codes expire and rotate on the waiting socket; the stale code is dea
     port: 0,
     runner: { pingIntervalMs: 0, claimTtlMs: 150 },
   })
-  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  const runner = await startTxikiRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
   await waitFor(() => runner.codes.length >= 2, undefined, { timeoutMs: 5_000 })
   expect(runner.codes[1]).not.toBe(runner.codes[0])
 
@@ -231,7 +231,7 @@ test('M4 acceptance: a session executes on the claimed device; disconnect is a t
   // Pair a device, then point the conversation's workspace at it (the M6
   // workspace endpoints do this over HTTP; here the control plane is written
   // directly).
-  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  const runner = await startTxikiRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
   await waitFor(() => runner.codes.length > 0, undefined, { timeoutMs: 5_000 })
   const claimed = await api(backend, '/api/devices/claim', {
     method: 'POST',
@@ -280,7 +280,7 @@ test('M4 acceptance: a session executes on the claimed device; disconnect is a t
   expect(failed?.status.status).not.toBe('running')
 
   // A fresh runner process with the persisted device token: reconnect resumes.
-  const revived = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  const revived = await startTxikiRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
   await waitFor(() => revived.statuses.includes('online'), undefined, { timeoutMs: 5_000 })
   const eventsBeforeTurn3 = shellEvents.length
   await client.send([{ type: 'text', text: 'read it back' }])
@@ -308,7 +308,7 @@ test('a device token holds one live connection: the newcomer is refused and retr
   const refusals: string[] = []
   const backend = await openBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0, log: (line) => refusals.push(line) } })
 
-  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  const runner = await startTxikiRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
   await waitFor(() => runner.codes.length > 0, undefined, { timeoutMs: 5_000 })
   const claimed = await api(backend, '/api/devices/claim', {
     method: 'POST',
@@ -320,7 +320,7 @@ test('a device token holds one live connection: the newcomer is refused and retr
 
   // The same token from a second process: refused with already_connected,
   // logged, and the first connection is untouched.
-  const twin = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  const twin = await startTxikiRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
   await waitFor(() => refusals.some((line) => line.includes('already_connected')), undefined, { timeoutMs: 5_000 })
   expect(refusals[0]).toContain(device.id)
   expect(twin.statuses).not.toContain('rejected')

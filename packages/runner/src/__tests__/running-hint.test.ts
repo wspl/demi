@@ -9,12 +9,12 @@ import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { runtimeModule, type Command } from '@demicodes/shell'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
-import { startTinyjsRunner, type TinyjsRunner } from '../testing'
+import { startTxikiRunner, type TxikiRunner } from '../testing'
 
 const wire = createRunnerWire(msgpackCodec)
 const module = runtimeModule('export default async function(ctx) { for await (const chunk of ctx.stdin) { await ctx.stdout(chunk); return { exitCode: 0 } } return { exitCode: 0 } }')
 
-test('a live tinyjs runner reports actual runtime and rpc leaf hints and clears them between shell statements', async () => {
+test('a live txiki.js runner reports actual runtime and rpc leaf hints and clears them between shell statements', async () => {
   const home = await mkdtemp(join(tmpdir(), 'demi-hints-home-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-hints-state-'))
   const roots: Command[] = [{ name: 'attend', summary: 'Hint probes.', subcommands: [
@@ -60,9 +60,9 @@ test('a live tinyjs runner reports actual runtime and rpc leaf hints and clears 
       close() { host.detach() },
     },
   })
-  let runner: TinyjsRunner | undefined
+  let runner: TxikiRunner | undefined
   try {
-    runner = await startTinyjsRunner({ backendUrl: `http://localhost:${server.port}`, stateDir, home })
+    runner = await startTxikiRunner({ backendUrl: `http://localhost:${server.port}`, stateDir, home })
     await waitFor(() => runner!.log.some((line) => line.includes(`manifest ${manifest.hash.slice(0, 12)} installed`)), () => runner!.log.join('\n'), { timeoutMs: 10_000 })
     for (const leaf of ['runtime', 'rpc']) {
       const before = inbound.length

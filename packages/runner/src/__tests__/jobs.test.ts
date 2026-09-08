@@ -16,8 +16,7 @@ import {
 } from '../serve/jobs'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 
-// The job table on a local Host with a JavaScript tee (the tinyjs runner
-// brings the primitive): the backend's RemoteShellEnvironment drives it
+// The job table on a local Host with a JavaScript stream logger: the backend's RemoteShellEnvironment drives it
 // through the codec both ways.
 
 const wire = createRunnerWire(msgpackCodec)
@@ -151,7 +150,7 @@ test('a dropped connection kills the job on the runner and fails it in the backe
   expect(jobs.count).toBe(0)
 })
 
-/** A tee in JavaScript over a Host without the primitive: the full streams to files, the head as the view. */
+/** A stream logger over a test Host: the full streams to files, the head as the view. */
 async function teedSpawn(host: LocalHost, params: JobSpawnParams): Promise<JobSpawnHandle> {
   const handle = await host.process.spawn!({ command: params.command, args: params.args, cwd: params.cwd, env: params.env, killProcessGroup: true })
   const counts = { stdout: 0, stderr: 0 }

@@ -6,7 +6,7 @@ import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { FileCredentialPool } from '@demicodes/provider/credentials-pool'
-import { startTinyjsRunner } from '@demicodes/runner/testing'
+import { startTxikiRunner } from '@demicodes/runner/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
@@ -89,7 +89,7 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
   })
 
   // Pair the runner.
-  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'chain-device' })
+  const runner = await startTxikiRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'chain-device' })
   await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 10_000 })
   const codes = runner.codes
   const claimResponse = await backend.session.fetch(`/api/devices/claim`, {

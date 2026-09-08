@@ -48,7 +48,7 @@ provider-*             concrete providers                   -> core, provider, u
 command-loader         manifest + loader                    -> shell, utils
 runner-protocol        the runner wire                      -> shell, utils
 host-remote            the backend's Host over a runner     -> runner-protocol, shell, utils
-runner                 the machine-side program (tinyjs)    -> command-loader, runner-protocol, shell, utils
+runner                 the machine-side program (txiki.js)    -> command-loader, runner-protocol, shell, utils
 backend                the product server (leaf)
 web-ui, web-gallery    the browser UI library and component gallery
 ```
@@ -64,6 +64,7 @@ Notable design records outside `docs/demi-next/`:
 ## Development
 
 ```sh
+git submodule update --init --recursive
 bun install
 bun run typecheck      # type-check all packages
 bun run typecheck:web  # type-check the Vue UI packages
@@ -72,9 +73,10 @@ bun run build          # build every library package to dist/ (tsdown)
 bun run llms           # regenerate llms-full.txt from the docs
 ```
 
-The tinyjs runtime is a Rust crate under `packages/tinyjs`
-([docs/demi-next/tinyjs.md](docs/demi-next/tinyjs.md)); tests that need it
-build it once through `@demicodes/runner/testing`.
+The forked txiki.js runtime is pinned under `vendor/txiki.js`
+([runtime design](docs/demi-next/txiki.md)). Tests build it through
+`@demicodes/runner/testing`; install CMake and a C/C++ compiler first.
+Static Linux cross builds also require Zig.
 
 Workspaces resolve `@demicodes/*` from source in dev/test (the `development` export
 condition); a build is only needed to publish.
@@ -325,7 +327,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: implemented.
 - Production deps: `@demicodes/utils`.
 - Owns three contracts and nothing that implements them. **The Host contract** (`host.ts`): `defaultCwd`, `identity`, `fs`, `process` (`openCwd`, `spawn`), `store`; `fileHostStore` (a `HostStore` as JSON files on any `HostFileSystem`). **The command system** (`command.ts`, `command-abi.ts`, `storage.ts`, `reserved-names.ts`, `shell-quote.ts`): command specs and kinds, the command ABI (`CommandContext`, `CommandResult`, `DispatchIO`, `runtimeModule`, `importCommandModule`), `CommandRegistry` with the one reserved-name table, HostStore-scoped command storage. **The shell-environment contract** (`shell-environment.ts`, `command-records.ts`): `ShellEnvironment` behind the `shell_*` tools, the command record, the model's status view (each stream's delta since the last view, its tail, and the output path when the target keeps one). The production shell is `RemoteShellEnvironment` in `host-remote`, over real runner jobs.
-- Entries: the root runs on every runtime (Bun, tinyjs; the runner bundles it); `storage` too. `testing` is the in-memory store and the Host conformance suite (`hostConformanceCases`, run by every Host implementation; including process cases), runtime-neutral so the suite runs on tinyjs. No entry imports Node.
+- Entries: the root runs on every runtime (Bun, txiki.js; the runner bundles it); `storage` too. `testing` is the in-memory store and the Host conformance suite (`hostConformanceCases`, run by every Host implementation; including process cases), runtime-neutral so the suite runs on txiki.js. No entry imports Node.
 - `Host.defaultCwd` is a default working-directory helper only. It is not a sandbox, workspace boundary, permission boundary, or access-control source.
 - Runtime file operations go through `Host.fs`; `Host.fs` is a system-level file access facet whose allowed paths are decided by the Host backend policy, not by `defaultCwd`.
 - True external process execution goes through `Host.process.spawn`.
@@ -463,14 +465,14 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the manifest types, the manifest sources (`inMemorySource`; `directorySource` with the `writeManifestDirectory` layout), the loader (`createLoader` → `dispatch(root, argv, io)`: tree resolution, group help, argument parsing and validation, running a `runtime` module from its text or from the source's module file, forwarding an `rpc` invocation).
 - Public boundary: `buildManifest`, `parseManifest` and the `Manifest` types, `createLoader` / `inMemorySource` / `directorySource` / `writeManifestDirectory`, `inProcessRpc` and the `RpcTransport` types, `treeFromManifest` from root; the `commandModulesAsText` build plugin (a `*.command.ts` file served as its text at build time) under `build`, Node-only.
-- Pure JS with no runtime dependency: the same package runs in the backend, in tinyjs command mode and in tests. `buildManifest` takes the transpiler as a parameter (the backend passes Bun's); the package never transpiles on its own.
+- Pure JS with no runtime dependency: the same package runs in the backend, in txiki.js command mode and in tests. `buildManifest` takes the transpiler as a parameter (the backend passes Bun's); the package never transpiles on its own.
 - Must not: know the backend, the runner or any Host implementation (all injected), spawn processes, or hold a command definition of its own.
 
 ### `@demicodes/runner-protocol`
 
 - Status: implemented (the final wire: MessagePack frames, per-op fs messages, jobs, the rpc relay, the manifest push, transfers).
 - Production deps: `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
-- Owns: the runner wire and nothing else — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` for Bun, `tinyjs:bytes` on tinyjs), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
+- Owns: the runner wire and nothing else — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` shared by Bun and txiki.js), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
 - Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`. Both ends of the wire depend on this package; it depends on neither end.
 - Must not: contain network IO, a Host implementation, a shell environment, the job table, credentials, claim policy, device registry, or conversation state.
 
@@ -482,6 +484,12 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: `RemoteHost`, `RemoteShellEnvironment` and their option types from root.
 - Must not: contain network IO (the wire is an injected send/handle pair), credentials, the device registry, or conversation state. `Host.store` never crosses the wire.
 
+### `vendor/txiki.js` (C/C++ submodule, not a workspace package)
+
+- Owns: the QuickJS-ng runtime, Web APIs, native filesystem/process/socket APIs, Linux PID 1 orphan reaping, privilege drop, and the CMake target that links an embedded bytecode entry.
+- Dependency: pinned fork and recursive dependencies; the runner consumes its declarations rather than redeclaring the runtime API.
+- Demi builds: `packages/runner/runtime` owns native build flags, cross toolchains and application bundling inputs. Native runtime code stays in the fork.
+
 ### `packages/fc-helper` (Rust, not a workspace package)
 
 - Owns: `demi-fc-helper`, the privileged helper of `jailer` mode (`docs/demi-next/managed-hosts.md` § Provisioning): `vm start` prepares the jail (kernel and rootfs linked in, the system and home images shared with the backend group, the socket directory group-accessible), runs the jailer and stays as the VM's parent; `vm kill` signals the recorded pid. Two verbs, whitelisted arguments, no shell. Invoked by the backend through `sudo -n`; the sudoers line for it is the backend user's only privilege.
@@ -492,12 +500,12 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/runner`
 
-- Status: implemented on tinyjs (`src/entry.ts` is the bundle entry — command mode for any root name, runner mode for `demi-runner`; packaging in M14).
-- Production deps: `@demicodes/command-loader`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; the `tinyjs:*` modules, declared once in `src/machine/tinyjs.d.ts` and imported nowhere outside `src/machine/`.
+- Status: implemented on txiki.js (`src/entry.ts` is the bundle entry — command mode for any root name, runner mode for `demi-runner`; native linking in `runtime/build.ts`).
+- Production deps: `@demicodes/command-loader`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; txiki.js globals and Web APIs, declared by the pinned fork's `types/src` and used through `src/machine/`.
 - Owns: the runner program (`docs/demi-next/runner.md`) — the single outbound backend WebSocket with reconnect/backoff and the hello/claim handshake; machine-local state under `DEMI_HOME` (`~/.demi`: `runner.json`, `runner-token` 0600, `runner.sock`, `commands/`, `bin/`, `output/`; Cloud uses `/run/demi` and a memory-only token); the machine served over the protocol (spawns naming no `PATH`/`HOME` resolve against the device's own — binary resolution is a device fact); the job table over the tee; brokered transfers; the local relay and its command-mode client; the manifest cache with the `current` and root symlinks. Command mode: the loader over the machine layer, `rpc` leaves through the relay, the job's live stdin told from a redirection by `fdNode`.
-- Public boundary: the packed `demi-runner` binary; `packedRunner`, `startTinyjsRunner`, `tinyjsBinary` and `bundleForTinyjs` under `@demicodes/runner/testing` for Bun tests that need a runner process or run JS on tinyjs; `LocalHost` and `nodeFileSystem` in the test-only `runner/testing/` directory provide real Node filesystem/process fixtures; `HostRpcServer` and `JobTable` under `@demicodes/runner/serve` for tests that join the runner's end to a `RemoteHost` without a socket.
+- Public boundary: the packed `demi-runner` binary; `packedRunner`, `startTxikiRunner`, `txikiBinary` and `bundleForTxiki` under `@demicodes/runner/testing` for Bun tests that need a runner process or run JS on txiki.js; `LocalHost` and `nodeFileSystem` in the test-only `runner/testing/` directory provide real Node filesystem/process fixtures; `HostRpcServer` and `JobTable` under `@demicodes/runner/serve` for tests that join the runner's end to a `RemoteHost` without a socket.
 - Layout (directories mirror the runner's modules):
-  - `machine/` — this machine as the runner sees it: the `Host` contract over tinyjs's primitives (`fs`, `process`, `cwd`, `stdio`), the teed spawn and tail reads for jobs, the WebSocket, Unix-socket and HTTP links, the codec re-export, the process itself (`argv`, `env`, `exit`, `onSignal`, `fdNode`). Accepted by the Host conformance suite on tinyjs. Internal to the runner: the agent never holds it — a machine is reached through `@demicodes/host-remote`.
+  - `machine/` — this machine as the runner sees it: the `Host` contract over txiki.js's primitives (`fs`, `process`, `cwd`, `stdio`), the teed spawn and tail reads for jobs, the WebSocket, Unix-socket and HTTP links, the codec re-export, the process itself (`argv`, `env`, `exit`, `onSignal`, `fdNode`). Accepted by the Host conformance suite on txiki.js. Internal to the runner: the agent never holds it — a machine is reached through `@demicodes/host-remote`.
   - `serve/` — the runner's end of the protocol: `HostRpcServer` (the `fs_*` and spawn messages over the machine layer) and `JobTable` (jobs over the teed spawn: the `EXIT` trap prelude, the stdin duplicate, the view budget, the job environment names).
   - `relay/` — the UDS relay: server, client, and its length-prefixed wire.
   - `init/` — PID 1 on a managed guest: the kernel command line as the guest's configuration, the boot as a plan of rootfs commands (kernel filesystems, persistent system overlay over the pinned base, separate home, network and `/run/demi` temporary state), per-volume usage, sync and growth. Pure over injected spawn and read, so Bun tests cover it without a kernel; `boot.ts` binds it to the machine layer.
@@ -624,7 +632,7 @@ module.
 - Platform-neutral package roots must not statically pull Node-only adapters, concrete providers, UI code, or test helpers into their import closure.
 - Public roots expose stable package contracts only; internal parser, transport, protocol, local adapter, auth-store, stream, and test helpers stay behind implementation files unless a package registry entry explicitly says otherwise.
 - Any workspace package imported by production source must be declared in `dependencies`, not hidden in `devDependencies` or transitive packages.
-- Runtime-specific code (Node, tinyjs) lives behind an entry or directory named for it (the runner's `machine/`), never in a platform-neutral root.
+- Runtime-specific code (Node, txiki.js) lives behind an entry or directory named for it (the runner's `machine/`), never in a platform-neutral root.
 - Do not keep compatibility shims when a package split moves an implementation to its final package.
 
 ## Verification

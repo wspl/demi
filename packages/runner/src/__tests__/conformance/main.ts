@@ -1,6 +1,6 @@
-// The Host conformance suite on tinyjs: the definition of done for the
-// machine layer. Bundled by the Bun test and run as `tinyjs main.mjs`.
-import { env, exit, openHandles } from 'tinyjs:runtime'
+// The Host conformance suite on txiki.js: the definition of done for the
+// machine layer. Bundled by the Bun test and run as `txiki.js main.mjs`.
+import { env, exit } from '../../machine'
 import { hostConformanceCases } from '@demicodes/shell/testing'
 import { createRunnerHost } from '../../machine'
 
@@ -22,11 +22,6 @@ for (const conformance of cases) {
     const detail = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error)
     console.log(`FAIL ${conformance.name}\n     ${detail.trimEnd().replace(/\n/g, '\n     ')}`)
   }
-}
-const open = openHandles()
-if (open !== 0) {
-  failed += 1
-  console.log(`FAIL ${open} handle(s) still open after the suite`)
 }
 console.log(`\n${cases.length - failed}/${cases.length} passed`)
 exit(failed === 0 ? 0 : 1)

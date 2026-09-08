@@ -5,18 +5,17 @@ import { join } from 'node:path'
 import { createDemiCommand } from '@demicodes/coding-agent'
 import { buildManifest, writeManifestDirectory } from '@demicodes/command-loader'
 import { LocalHost } from '@demicodes/runner/testing'
-import { bundleForTinyjs, tinyjsBinary } from '../testing'
+import { bundleForTxiki, packRuntime } from '../testing'
 
-// tinyjs in command mode: the bundle packed by tinyjsc, reached through a
+// txiki.js in command mode: the bundle compiled by tjsc and linked by CMake, reached through a
 // symlink named after the root, running `demi file` runtime modules from a
 // manifest directory against the real filesystem.
-test('command mode runs demi file runtime commands on tinyjs', async () => {
+test('command mode runs demi file runtime commands on txiki.js', async () => {
   const work = await realpath(await mkdtemp(join(tmpdir(), 'demi-command-mode-')))
   const bundle = join(work, 'entry.mjs')
-  await bundleForTinyjs(join(import.meta.dir, '..', 'entry.ts'), bundle)
+  await bundleForTxiki(join(import.meta.dir, '..', 'entry.ts'), bundle)
   const packed = join(work, 'demi-cli')
-  const pack = Bun.spawnSync([tinyjsBinary('tinyjsc'), bundle, '--bin', tinyjsBinary(), '--out', packed], { stdout: 'pipe', stderr: 'pipe' })
-  expect(pack.exitCode, pack.stderr.toString()).toBe(0)
+  packRuntime(bundle, packed)
   const bin = join(work, 'bin')
   await mkdir(bin)
   await symlink(packed, join(bin, 'demi'))

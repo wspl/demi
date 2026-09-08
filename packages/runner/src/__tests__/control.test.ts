@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { createRunnerWire, type BackendToRunnerMessage, type RunnerToBackendMessage } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { waitFor } from '@demicodes/utils'
-import { startTinyjsRunner } from '../testing'
+import { startTxikiRunner } from '../testing'
 
 const wire = createRunnerWire(msgpackCodec)
 
@@ -25,7 +25,7 @@ test('blocked job and spawn stdin leave ping, filesystem and kill responsive; st
       }
     } },
   })
-  const runner = await startTinyjsRunner({ backendUrl: `http://localhost:${server.port}`, home, stateDir, deviceToken: 'test' })
+  const runner = await startTxikiRunner({ backendUrl: `http://localhost:${server.port}`, home, stateDir, deviceToken: 'test' })
   const send = (message: BackendToRunnerMessage) => socket.send(wire.encode(message))
   try {
     await waitFor(() => runner.statuses.includes('online'))

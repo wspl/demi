@@ -14,9 +14,9 @@ import { createRunnerWire, type BackendToRunnerMessage } from '@demicodes/runner
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
-import { startTinyjsRunner } from '../testing'
+import { startTxikiRunner } from '../testing'
 
-// M1 acceptance on the tinyjs runner: a bare AgentServer executing on a real
+// M1 acceptance on the txiki.js runner: a bare AgentServer executing on a real
 // runner process over a real WebSocket — commands run as jobs in the
 // runner's home, a runner death mid-command surfaces as an ordinary tool
 // error without losing the session, and after reconnect the next command
@@ -84,7 +84,7 @@ test('bare AgentServer executes over a live runner; death mid-command is a tool 
     },
   })
 
-  const runner = await startTinyjsRunner({ backendUrl: `ws://localhost:${server.port}`, stateDir, home: runnerDir, name: 'test-runner' })
+  const runner = await startTxikiRunner({ backendUrl: `ws://localhost:${server.port}`, stateDir, home: runnerDir, name: 'test-runner' })
   await waitFor(() => remoteHost.online, () => runner.log.join('\n'), { timeoutMs: 10_000 })
 
   const harness: AgentHarness<Record<string, never>> = {
