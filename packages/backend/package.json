@@ -15,6 +15,11 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./testing": {
+      "development": "./src/testing.ts",
+      "types": "./dist/testing.d.mts",
+      "import": "./dist/testing.mjs"
     }
   },
   "files": [
@@ -29,7 +34,6 @@
     "@demicodes/command-loader": "workspace:^",
     "@demicodes/core": "workspace:^",
     "@demicodes/host-remote": "workspace:^",
-    "@demicodes/host-virtual": "workspace:^",
     "@demicodes/provider": "workspace:^",
     "@demicodes/provider-anthropic-api": "workspace:^",
     "@demicodes/provider-claude-code": "workspace:^",

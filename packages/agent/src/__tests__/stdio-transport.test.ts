@@ -6,11 +6,12 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { hostlessShellFactory, probeCommand } from '@demicodes/host-virtual/testing'
+import { runnerShellFactory, probeCommand } from '@demicodes/backend/testing'
+
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/runner/testing'
 import { defineProvider, type AgentProvider, type InferenceRequest, type Provider, type ProviderEvent, type ProviderSelection } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {
@@ -76,7 +77,7 @@ test('StdioTransport carries the same AgentClient/AgentServer frames over NDJSON
   const serverToClient = new PassThrough()
 
   const server = new AgentServer({ store: memoryAgentStores(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('echo-stub', () => new StubProvider([[events.text('over stdio'), events.response()]]))],
   })
@@ -98,7 +99,7 @@ test('StdioTransport preserves complex AgentClient action convergence over NDJSO
   const provider = new StdioScenarioProvider()
 
   const server = new AgentServer({ store: memoryAgentStores(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('stdio-scenario', provider)],
   })
@@ -161,7 +162,7 @@ test('StdioTransport close disposes shell foreground processes through AgentServ
       ]),
   )
   const server = new AgentServer({ store: memoryAgentStores(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createHarness(),
     providers: [provider],
     shell: {

@@ -16,16 +16,17 @@ export interface FirecrackerConfig {
   rootfs: string
   vcpus: number
   memMib: number
-  /** A home image's nominal size: what an image is enlarged to at every boot. */
+  /** Initial writable-volume sizes; existing volumes keep their capacity. */
+  systemMib: number
   homeMib: number
   subnet: string
   slots: number
   tapPrefix: string
   dns: string[]
-  /** Working files per VM: the API socket, the console log, the working home image. */
+  /** Working files per VM: the API socket, the console log, both working disks. */
   runDir: string
-  /** The home-image store's directory. */
-  homesDir: string
+  /** Immutable paired disk generations and pinned base images. */
+  imagesDir: string
 }
 
 export const MANAGED_ENV = {
@@ -39,13 +40,14 @@ export const MANAGED_ENV = {
   rootfs: 'DEMI_MANAGED_ROOTFS',
   vcpus: 'DEMI_MANAGED_VCPUS',
   memMib: 'DEMI_MANAGED_MEM_MIB',
+  systemMib: 'DEMI_MANAGED_SYSTEM_MIB',
   homeMib: 'DEMI_MANAGED_HOME_MIB',
   subnet: 'DEMI_MANAGED_SUBNET',
   slots: 'DEMI_MANAGED_SLOTS',
   dns: 'DEMI_MANAGED_DNS',
 } as const
 
-export const DEFAULTS = { vcpus: 2, memMib: 2048, homeMib: 1024, subnet: '172.16.0.0/16', slots: 256, tapPrefix: 'demi', dns: ['1.1.1.1', '8.8.8.8'], chrootBase: '/srv/jailer', uidBase: 20000 }
+export const DEFAULTS = { vcpus: 2, memMib: 2048, systemMib: 1024, homeMib: 1024, subnet: '172.16.0.0/16', slots: 256, tapPrefix: 'demi', dns: ['1.1.1.1', '8.8.8.8'], chrootBase: '/srv/jailer', uidBase: 20000 }
 
 /** The configuration the environment describes, or null when `DEMI_MANAGED_FIRECRACKER` is unset. */
 export function firecrackerConfigFromEnv(env: Record<string, string | undefined>, dataDir: string): FirecrackerConfig | null {
@@ -77,12 +79,13 @@ export function firecrackerConfigFromEnv(env: Record<string, string | undefined>
     rootfs: required('rootfs'),
     vcpus: integer('vcpus', DEFAULTS.vcpus),
     memMib: integer('memMib', DEFAULTS.memMib),
+    systemMib: integer('systemMib', DEFAULTS.systemMib),
     homeMib: integer('homeMib', DEFAULTS.homeMib),
     subnet: env[MANAGED_ENV.subnet] ?? DEFAULTS.subnet,
     slots: integer('slots', DEFAULTS.slots),
     tapPrefix: DEFAULTS.tapPrefix,
     dns: (env[MANAGED_ENV.dns] ?? DEFAULTS.dns.join(',')).split(',').filter((entry) => entry.length > 0),
     runDir: join(dataDir, 'firecracker'),
-    homesDir: join(dataDir, 'homes'),
+    imagesDir: join(dataDir, 'machines'),
   }
 }

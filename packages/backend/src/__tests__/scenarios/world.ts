@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect } from 'bun:test'
@@ -11,6 +11,7 @@ import type { BackendOptions } from '../../index'
 import { openBackend, type TestBackend } from '../session'
 import { DirBlobStore } from '../../storage/blob-store'
 import { openSqliteDatabase } from '../../storage/database'
+import { FakeProvisioner } from './fake-provisioner'
 import { ScriptedModel } from './model'
 import { Driver, type Target } from './driver'
 
@@ -28,7 +29,7 @@ export interface WorldOptions {
   /** Reuse a data directory: the restart file reopens its world over the previous one. */
   dataDir?: string
   /** Managed hosts through a provisioner (the fake, in tests) with the lifecycle sizes the scenario needs. */
-  managedHosts?: BackendOptions['managedHosts']
+  managedHosts?: BackendOptions['managedHosts'] | null
   /** The URL managed guests dial (real guests cannot reach localhost). */
   publicUrl?: string
   /** The backend's liveness ping; on by default it is what carries `pong.jobs`, which the idle rule reads. Default 0 (off). */
@@ -72,6 +73,7 @@ export class World {
   ) {}
 
   static async create(options: WorldOptions = {}): Promise<World> {
+    options = { ...options, managedHosts: options.managedHosts === undefined ? { provisioner: new FakeProvisioner(), config: { sweepMs: 60_000 } } : options.managedHosts }
     const dataDir = options.dataDir ?? (await mkdtemp(join(tmpdir(), 'demi-scenario-')))
     const model = new ScriptedModel()
     const frames: WireFrame[] = []
@@ -165,17 +167,12 @@ export class World {
     return frames.filter((frame) => frame.deviceId === id)
   }
 
-  /** A hostless conversation's file as its `files` tree and the blob store hold it; null when absent. */
-  async hostlessFile(conversationId: string, virtualPath: string): Promise<string | null> {
-    const db = openSqliteDatabase(join(this.dataDir, 'conversations', `${conversationId}.sqlite`))
-    try {
-      const row = db.get<{ sha256: string | null }>("SELECT sha256 FROM files WHERE path = ? AND kind = 'file'", [virtualPath])
-      if (!row?.sha256) return null
-      const bytes = await new DirBlobStore(join(this.dataDir, 'blobs', this.backend.session.user.id)).get(row.sha256)
-      return bytes ? new TextDecoder().decode(bytes) : null
-    } finally {
-      db.close()
-    }
+  async cloudFile(conversationId: string, relative: string): Promise<string | null> {
+    const fake = this.options.managedHosts?.provisioner
+    if (!(fake instanceof FakeProvisioner)) throw new Error('Use runner assertions for real VM files')
+    const guest = [...fake.guests.values()][0]
+    if (!guest) return null
+    return readFile(join(guest.homeDir, 'sessions', conversationId, relative), 'utf8').catch(() => null)
   }
 
   async api<T>(path: string, body?: unknown, method = body === undefined ? 'GET' : 'POST'): Promise<T> {

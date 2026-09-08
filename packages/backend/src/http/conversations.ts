@@ -7,7 +7,9 @@ import type { ProviderVault } from '../vault/providers'
 import { visibleProvider } from '../vault/scope'
 import type { SwitchTargetResult } from '../conversation/target'
 import { ATTACHMENT_MAX_BYTES } from './attachments'
-import type { ControlService } from '../storage/control'
+import { conversationTargetSchema, type ConversationTargetPointer, type ControlService } from '../storage/control'
+import type { RunnerRegistry } from '../runner/registry'
+import { resolveExecutionTarget } from '../conversation/execution-target'
 import type { ConversationStores } from '../storage/conversation-store'
 import type { ManagedHosts } from '../managed/lifecycle'
 
@@ -19,8 +21,8 @@ const patchConversationBodySchema = z.object({
   archived: z.boolean().optional(),
   providerId: z.string().nullable().optional(),
   modelId: z.string().nullable().optional(),
-  workspaceId: z.string().nullable().optional(),
-})
+  target: conversationTargetSchema.optional(),
+}).strict()
 
 /** `/api/conversations` REST surface (the live stream is `stream.ts`). */
 export function conversationRoutes(options: {
@@ -28,14 +30,14 @@ export function conversationRoutes(options: {
   conversationStores: ConversationStores
   withHost: <T>(conversationId: string, operation: (host: Host) => Promise<T>, signal?: AbortSignal) => Promise<T>
   /** The target switch (`conversation/target.ts`): the domain decides, the route maps the outcome. */
-  switchTarget: (conversationId: string, toWorkspaceId: string | null) => Promise<SwitchTargetResult>
+  switchTarget: (conversationId: string, to: ConversationTargetPointer) => Promise<SwitchTargetResult>
   managedHosts: ManagedHosts | null
   vault: ProviderVault
   mode: InstanceMode
   /** Whether a device has a live runner socket, for the host list. */
-  deviceOnline: (deviceId: string) => boolean
+  registry: RunnerRegistry
 }): Hono<AuthEnv> {
-  const { control, conversationStores, withHost, switchTarget, managedHosts, vault, mode, deviceOnline } = options
+  const { control, conversationStores, withHost, switchTarget, managedHosts, vault, mode, registry } = options
   const app = new Hono<AuthEnv>()
 
   // The caller's conversation, or null: another user's answers like a missing one.
@@ -67,8 +69,6 @@ export function conversationRoutes(options: {
       await control.renameConversation(conversation.id, body.title.trim())
     }
     if (body.archived !== undefined) {
-      // An archived owner's guest is destroyed — its home saved and kept (`managed-hosts.md` § Lifecycle); the flag follows a successful save.
-      if (body.archived) await managedHosts?.destroy({ kind: 'conversation', id: conversation.id })
       await control.setConversationArchived(conversation.id, body.archived)
     }
     if (body.providerId !== undefined || body.modelId !== undefined) {
@@ -77,16 +77,18 @@ export function conversationRoutes(options: {
       }
       await control.setConversationModel(conversation.id, body.providerId ?? null, body.modelId ?? null)
     }
-    if (body.workspaceId !== undefined) {
-      const result = await switchTarget(conversation.id, body.workspaceId)
+    if (body.target !== undefined) {
+      const result = await switchTarget(conversation.id, body.target)
       switch (result.outcome) {
         case 'switched':
         case 'noop':
           break
         case 'workspace_not_found':
           return c.json({ code: 'workspace_not_found', message: 'No such workspace' }, 404)
-        case 'no_hostless_entrance':
-          return c.json({ code: 'no_hostless_entrance', message: 'A conversation with a machine of its own cannot go back to hostless' }, 409)
+        case 'device_not_found':
+          return c.json({ code: 'device_not_found', message: 'No such device' }, 404)
+        case 'archived':
+          return c.json({ code: 'archived', message: 'Restore the conversation before switching' }, 409)
         case 'turn_in_flight':
           return c.json({ code: 'turn_in_flight', message: 'Target switches happen at turn boundaries; a turn is running' }, 409)
         case 'conflict':
@@ -103,7 +105,7 @@ export function conversationRoutes(options: {
   // any device the user owns; which devices the product offers is its own
   // choice. A change is announced to the model at the next turn boundary.
   const hostsOf = async (conversationId: string) =>
-    (await control.listAttachedHosts(conversationId)).map((host) => ({ ...host, online: deviceOnline(host.deviceId) }))
+    (await control.listAttachedHosts(conversationId)).map((host) => ({ ...host, online: registry.deviceOnline(host.deviceId) }))
 
   app.get('/:id/hosts', async (c) => {
     const conversation = await own(c)
@@ -119,7 +121,7 @@ export function conversationRoutes(options: {
     const device = await control.getDevice(parsed.data.deviceId)
     if (!device || device.userId !== conversation.userId) return c.json({ code: 'device_not_found', message: 'No such device' }, 404)
     // A host is main or attached, never both.
-    const target = conversation.workspaceId ? (await control.getWorkspace(conversation.workspaceId))?.deviceId : conversation.hostDeviceId
+    const target = (await resolveExecutionTarget(control, options.registry, conversation)).deviceId
     if (target === device.id) return c.json({ code: 'host_is_main', message: 'That device is the conversation\'s main host' }, 409)
     await control.attachHost(conversation.id, device.id, device.name, null, true)
     return c.json({ hosts: await hostsOf(conversation.id) }, 201)
@@ -162,7 +164,7 @@ export function conversationRoutes(options: {
     if (bytes.length > ATTACHMENT_MAX_BYTES) {
       return c.json({ code: 'too_large', message: `File exceeds the ${ATTACHMENT_MAX_BYTES}-byte limit` }, 413)
     }
-    // The Host's own working directory: the workspace path, the hostless home, or the machine's home.
+    // The selected Host owns the upload's working directory.
     try {
       const path = await withHost(conversation.id, async host => {
         await host.fs.writeFile(name, bytes, { cwd: host.defaultCwd, createParents: true })

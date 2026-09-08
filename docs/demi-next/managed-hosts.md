@@ -120,13 +120,13 @@ capacity. Published hypervisor overhead is not an end-to-end product benchmark.
 
 ## System reset
 
-The authenticated owner can reset Cloud from settings, including when the guest
-cannot boot. The shared UI states that all Cloud tasks stop, system packages and
+The authenticated owner can request a reset outside the guest, including when
+the guest cannot boot. The shared UI states that all Cloud tasks stop, system packages and
 configuration are replaced, and `/home` is retained. It must not promise that
 retaining `.bashrc` or user-installed tools repairs defects inside home.
 
-The backend records a reset operation with a unique id, target base version and
-source generation. It closes machine admission, interrupts affected active turns and ends all jobs
+The backend records a reset operation with a unique id, target base version,
+phase and error. The machine-image manifest identifies the committed generation. It closes machine admission, interrupts affected active turns and ends all jobs
 using the device across conversations, then stops the guest and preserves its
 latest home image. Pending machine operations receive an interruption result;
 they are not replayed against the rebuilt system. It
@@ -158,7 +158,7 @@ connection. User ownership is checked on every control-plane operation.
 
 The same TypeScript runner on tinyjs serves paired devices and Cloud. On Cloud
 it is PID 1, mounts filesystems, configures networking, reaps children and runs
-jobs as uid 1000 (`demi`, `/home/demi`, passwordless sudo). The VM, not that uid,
+filesystem operations and jobs as uid 1000 (`demi`, `/home/demi`, passwordless sudo). The VM, not that uid,
 is the user security boundary. Backend lifecycle remains reachable if the guest
 or its runner fails.
 

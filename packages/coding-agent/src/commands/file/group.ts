@@ -1,4 +1,4 @@
-import { pathArg, runtimeModule, type CommandGroup } from '@demicodes/shell'
+import { runtimeModule, type CommandGroup } from '@demicodes/shell'
 import { z } from 'zod'
 import createModule from './create.command' with { type: 'text' }
 import editModule from './edit.command' with { type: 'text' }
@@ -21,7 +21,7 @@ export function createFileGroup(): CommandGroup {
           'writes the raw file bytes to stdout; an image or video result is presented to you as viewable media',
         failureOutput: 'writes the reason to stderr and exits non-zero if the path is missing or unreadable',
         input: {
-          path: pathArg(z.string().describe('File path to read')),
+          path: z.string().describe('File path to read'),
         },
         positionals: ['path'],
       },
@@ -33,7 +33,7 @@ export function createFileGroup(): CommandGroup {
         successOutput: 'writes "Created <path>" to stdout',
         failureOutput: 'writes the reason to stderr and exits non-zero without overwriting existing files',
         input: {
-          path: pathArg(z.string().describe('Target file path')),
+          path: z.string().describe('Target file path'),
           content: z.string().describe('File content, passed via stdin/heredoc'),
         },
         positionals: ['path'],
@@ -47,7 +47,7 @@ export function createFileGroup(): CommandGroup {
         successOutput: 'writes "Edited <path>" to stdout',
         failureOutput: 'writes no-match, ambiguous-match, or write errors to stderr and exits non-zero without partial writes',
         input: {
-          path: pathArg(z.string().describe('Target file path')),
+          path: z.string().describe('Target file path'),
           old: z.string().describe('Exact text to replace'),
           new: z.string().describe('Replacement text'),
           occurrence: z.number().int().positive().optional().describe('1-based occurrence to replace'),

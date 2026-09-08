@@ -134,10 +134,10 @@ export const runnerToBackendMessageSchema = z.union([
   }),
   /** Liveness plus the count of running jobs, which the idle rule reads. */
   z.object({ type: z.literal('pong'), jobs: z.number().int().nonnegative() }),
-  /** The home is on disk; `untouched` when nothing wrote to it since this boot (`managed-hosts.md` § Home persistence). */
-  z.object({ type: z.literal('sync_done'), id: z.string(), untouched: z.boolean() }),
-  /** The home is nearly full: the runner asks for this total size; `home_grown` answers. */
-  z.object({ type: z.literal('home_grow'), bytes: z.number().int().positive() }),
+  /** Every writable volume was synced, or the runner reports the failure. */
+  z.object({ type: z.literal('sync_done'), id: z.string(), error: z.string().optional() }),
+  /** A writable volume is nearly full: the runner asks for this total size; `volume_grown` answers. */
+  z.object({ type: z.literal('volume_grow'), id: z.string(), volume: z.enum(['system', 'home']), bytes: z.number().int().positive() }),
   fsOkMessageSchema,
   /** A failed fs call; `code` carries the errno-style code (ENOENT, …) when there is one. */
   z.object({ type: z.literal('fs_error'), id: z.string(), code: z.string().optional(), message: z.string() }),
@@ -210,10 +210,10 @@ export const backendToRunnerMessageSchema = z.union([
     z.object({ type: z.literal('claimed'), deviceToken: z.string() }),
     z.object({ type: z.literal('hello_error'), code: helloErrorCodeSchema, reason: z.string() }),
     z.object({ type: z.literal('ping') }),
-    /** Flush the home to disk before the guest is killed; `sync_done` answers. */
+    /** Flush writable filesystems before the guest is stopped; `sync_done` answers. */
     z.object({ type: z.literal('sync'), id: z.string() }),
-    /** The home's backing image is now `bytes` large; the runner grows the filesystem into it. */
-    z.object({ type: z.literal('home_grown'), bytes: z.number().int().positive() }),
+    /** The named backing image is now `bytes` large, or an error explains why growth failed. */
+    z.object({ type: z.literal('volume_grown'), id: z.string(), volume: z.enum(['system', 'home']), bytes: z.number().int().positive(), error: z.string().nullable() }),
     z.object({
       type: z.literal('spawn'),
       spawnId: z.string(),

@@ -1,5 +1,5 @@
 // What PID 1 does before it is a runner (`managed-hosts.md` § Lifecycle,
-// "Runner is PID 1"): the kernel filesystems, the ephemeral upper over `/`,
+// "Runner is PID 1"): the kernel filesystems, the persistent system overlay over `/`,
 // the home, the network. Every step is a command from the rootfs — mount,
 // pivot_root, ip — so this module is a plan of spawns, run by `runInit`
 // and checked in tests without a kernel.
@@ -13,11 +13,13 @@ export interface InitStep {
 }
 
 export interface GuestLayout {
-  /** The block device carrying the owner's home image. */
+  /** Writable system overlay disk. */
+  systemDevice: string
+  /** The block device carrying the user's home image. */
   homeDevice: string
   /** Where it is mounted; the guest user's home lives under it. */
   homeMount: string
-  /** The tmpfs that becomes the overlay's upper and work directories. */
+  /** The ext4 mount holding the overlay's upper and work directories. */
   upperMount: string
   /** Where the overlay is assembled before it becomes `/`. */
   newRoot: string
@@ -26,6 +28,7 @@ export interface GuestLayout {
 }
 
 export const GUEST_LAYOUT: GuestLayout = {
+  systemDevice: '/dev/vdc',
   homeDevice: '/dev/vdb',
   homeMount: '/home',
   upperMount: '/run/upper',
@@ -43,7 +46,7 @@ export function kernelMounts(): InitStep[] {
 }
 
 /**
- * The ephemeral upper (`managed-hosts.md` § Images): a tmpfs as the upper
+ * The persistent system (`managed-hosts.md` § Images): ext4 holds the upper
  * and work directories of an overlay over the read-only rootfs, assembled
  * under `newRoot`, then made `/` by `pivot_root`. `/proc`, `/sys` and
  * `/dev` move into the new root before the pivot; `/run` cannot — the new
@@ -55,7 +58,8 @@ export function upperOverlay(layout: GuestLayout): InitStep[] {
   const { upperMount, newRoot, oldRoot } = layout
   return [
     { command: 'mkdir', args: ['-p', upperMount, newRoot] },
-    { command: 'mount', args: ['-t', 'tmpfs', 'upper', upperMount] },
+    { command: 'mount', args: ['-t', 'ext4', layout.systemDevice, upperMount] },
+    { command: 'resize2fs', args: [layout.systemDevice] },
     { command: 'mkdir', args: ['-p', `${upperMount}/upper`, `${upperMount}/work`] },
     { command: 'mount', args: ['-t', 'overlay', 'overlay', '-o', `lowerdir=/,upperdir=${upperMount}/upper,workdir=${upperMount}/work`, newRoot] },
     { command: 'mkdir', args: ['-p', `${newRoot}${oldRoot}`] },
@@ -67,8 +71,8 @@ export function upperOverlay(layout: GuestLayout): InitStep[] {
 
 /**
  * The home image, read-write, journal replayed by the mount itself after a
- * hibernate's `kill -9`; then grown into its backing file, which the
- * backend re-enlarged to the nominal size after the shrink at hibernate.
+ * hibernate; then resized to the backing disk capacity. Both disks retain
+ * their capacity across saves and wakes.
  */
 export function homeMount(layout: GuestLayout): InitStep[] {
   return [

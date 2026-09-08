@@ -33,8 +33,7 @@
     "@demicodes/coding-agent": "workspace:^",
     "@demicodes/core": "workspace:^",
     "@demicodes/host-remote": "workspace:^",
-    "@demicodes/provider": "workspace:^",
-    "@demicodes/host-virtual": "workspace:^"
+    "@demicodes/provider": "workspace:^"
   },
   "license": "Apache-2.0",
   "publishConfig": {

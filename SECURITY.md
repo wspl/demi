@@ -23,16 +23,15 @@ prompts should be aware of it:
   records the raw provider request/response stream — which includes full prompt
   content — to `$TMPDIR/demi-claude-wire/claude-<session>.jsonl`. Disable it with
   `DEMI_CLAUDE_WIRE_LOG=0`, or relocate it with `DEMI_CLAUDE_WIRE_LOG_DIR`.
-- **Host-local store.** `@demicodes/host-local` persists command artifacts under
-  `$TMPDIR/demi-host-local-store/`.
 - **Secrets in errors.** Provider adapters redact known API keys from error
   messages (`redactSecretText`), but treat logs as potentially sensitive.
 
 ## Sandboxing
 
-The shell runs against a `Host` abstraction. When running untrusted agents, supply
-a `Host` that enforces your sandbox (path jail, restricted `spawn`, ephemeral
-store). The Host contract and the Hosts Demi ships — `@demicodes/host-virtual`,
-the hostless namespace over a pluggable filesystem with no processes at all, and
-`@demicodes/host-remote`, a paired runner's machine — are described in the package
-registry of [docs/package-boundaries.md](docs/package-boundaries.md).
+The backend uses `@demicodes/host-remote` for both managed Cloud and connected
+runners. Managed Cloud isolates users in separate VMs; projects belonging to one
+user share that user's machine and filesystem permissions. The runner performs
+file operations and starts processes as the same guest user. A connected runner
+has the permissions of its local account. See
+[managed hosts](docs/demi-next/managed-hosts.md) and the
+[package contract](docs/package-boundaries.md).

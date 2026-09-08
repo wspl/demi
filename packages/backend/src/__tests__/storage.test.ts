@@ -9,7 +9,6 @@ import { DbHostStore } from '../storage/host-store'
 import { LocalControlService } from '../storage/control'
 import { ConversationStores } from '../storage/conversation-store'
 import { DirBlobStore } from '../storage/blob-store'
-import { filesTreeBackend } from '../storage/files-tree'
 import { completionMessageId } from '@demicodes/agent'
 import { WebSessions } from '../auth/sessions'
 
@@ -55,7 +54,7 @@ test('conversation migrations create the data-plane tables', () => {
   const tables = db
     .all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
     .map((row) => row.name)
-  for (const table of ['nodes', 'blocks', 'host_store', 'files']) expect(tables).toContain(table)
+  for (const table of ['nodes', 'blocks', 'host_store']) expect(tables).toContain(table)
   db.close()
 })
 
@@ -155,9 +154,9 @@ test('ControlService device and workspace records', async () => {
 
   const conversation = await control.createConversation(user.id)
   await control.setConversationWorkspace(conversation.id, workspace.id)
-  expect((await control.getConversation(conversation.id))?.workspaceId).toBe(workspace.id)
+  expect((await control.getConversation(conversation.id))?.target).toEqual({ kind: 'workspace', workspaceId: workspace.id })
   await control.setConversationWorkspace(conversation.id, null)
-  expect((await control.getConversation(conversation.id))?.workspaceId).toBeNull()
+  expect((await control.getConversation(conversation.id))?.target).toEqual({ kind: 'cloud' })
 
   await control.deleteDevice(other.id)
   expect((await control.listDevices(user.id)).map((row) => row.id)).toEqual([device.id])
@@ -337,40 +336,4 @@ test('expired web sessions are swept when a session opens', async () => {
   expect(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM web_sessions')?.n).toBe(1)
   expect((await sessions.resolve(live.token))?.user.id).toBe(user!.id)
   db.close()
-})
-
-test('concurrent file appends preserve every write and recover after a failed append', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'demi-file-appends-'))
-  const db = openSqliteDatabase(':memory:')
-  migrate(db, CONVERSATION_MIGRATIONS)
-  const blobs = new DirBlobStore(root)
-  let failNext = false
-  const fs = filesTreeBackend(db, {
-    get: (hash) => blobs.get(hash),
-    put: async (bytes) => {
-      if (failNext) { failNext = false; throw new Error('temporary blob write failure') }
-      return blobs.put(bytes)
-    },
-  })
-  const encode = (text: string) => new TextEncoder().encode(text)
-  try {
-    await fs.writeFile('/shared', encode('start\n'))
-    const lines = Array.from({ length: 20 }, (_, index) => `${index}\n`)
-    await Promise.all(lines.map((line) => fs.appendFile('/shared', encode(line))))
-    expect(new TextDecoder().decode(await fs.readFile('/shared'))).toBe(`start\n${lines.join('')}`)
-    failNext = true
-    const writes = await Promise.allSettled([
-      fs.appendFile('/shared', encode('failed\n')),
-      fs.appendFile('/shared', encode('recovered\n')),
-    ])
-    expect(writes.map((write) => write.status)).toEqual(['rejected', 'fulfilled'])
-    expect(new TextDecoder().decode(await fs.readFile('/shared'))).toBe(`start\n${lines.join('')}recovered\n`)
-    await Promise.all([fs.appendFile('/created', encode('A')), fs.appendFile('/created', encode('B'))])
-    expect(new TextDecoder().decode(await fs.readFile('/created'))).toBe('AB')
-    // The quota's measure is one sum over the rows.
-    expect(await fs.usage()).toBe(`start\n${lines.join('')}recovered\n`.length + 2)
-  } finally {
-    db.close()
-    rmSync(root, { recursive: true, force: true })
-  }
 })

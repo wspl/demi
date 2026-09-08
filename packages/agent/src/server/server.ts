@@ -143,6 +143,24 @@ export class AgentServer {
     return this.activity(rootSessionId).tryReserve()
   }
 
+  /** Interrupts a tree and holds all new action admission until the caller releases it. */
+  async interruptTree(rootSessionId: string): Promise<() => void> {
+    const reserved = this.activity(rootSessionId).reserve(AbortSignal.timeout(30_000))
+    reserved.catch(() => {})
+    try {
+      const live = this.sessionOwnership.get(rootSessionId)
+      if (live) {
+        await live.session.abort()
+        await live.supervisor.abortAll()
+        await live.node.disposeEnvironments()
+      }
+      return await reserved
+    } catch (error) {
+      void reserved.then(release => release(), () => {})
+      throw error
+    }
+  }
+
   treeActive(rootSessionId: string): boolean { return this.activity(rootSessionId).active }
 
   private activity(rootSessionId: string): ActivityGate {

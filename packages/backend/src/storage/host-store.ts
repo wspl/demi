@@ -45,3 +45,11 @@ export class DbHostStore implements HostStore {
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (match) => `\\${match}`)
 }
+
+/** Administrative file operations have no command state. */
+export const administrativeStore: HostStore = {
+  readJson: async () => null,
+  writeJson: async () => { throw new Error('No command storage for administrative file operations') },
+  delete: async () => {},
+  list: async () => [],
+}

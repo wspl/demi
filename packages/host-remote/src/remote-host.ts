@@ -31,6 +31,8 @@ export type RemoteJobExit = Omit<JobExitMessage, 'type' | 'jobId'>
 
 export interface RemoteHostOptions {
   defaultCwd: string
+  /** Reserves machine activity until the dispatched operation completes. */
+  admit?: () => () => void
   /** From the runner `hello` — read synchronously at shell creation. */
   identity: HostIdentity
   /** Backend-composed store; conversation state never crosses the runner protocol. */
@@ -61,7 +63,7 @@ export class RemoteHost implements Host {
   private readonly activeSpawns = new Map<string, RemoteSpawn>()
   private readonly activeJobs = new Map<string, RemoteJobState>()
 
-  constructor(options: RemoteHostOptions) {
+  constructor(private readonly options: RemoteHostOptions) {
     this.defaultCwd = options.defaultCwd
     this.currentIdentity = options.identity
     this.store = options.store
@@ -128,8 +130,10 @@ export class RemoteHost implements Host {
    * other ends are elsewhere (`runner.md` § Pipes).
    */
   startJob(params: { script: string; cwd: string; env: Record<string, string>; stdin?: PipeRef; stdout?: PipeRef }): RemoteJob {
+    const release = this.options.admit?.()
     const jobId = createId()
     const job = new RemoteJobState(jobId, (message) => this.dispatch(message), Object.freeze({ ...params.env }))
+    void job.handle().wait().finally(() => release?.())
     if (!this.send) {
       job.finish({ exitCode: null, signal: 'runner disconnected', spawnError: { kind: 'other' } })
       return job.handle()
@@ -147,6 +151,7 @@ export class RemoteHost implements Host {
       })
     } catch (error) {
       this.activeJobs.delete(jobId)
+      release?.()
       throw error
     }
     return job.handle()
@@ -202,24 +207,27 @@ export class RemoteHost implements Host {
   /** One `fs_<op>` request, answered by `fs_ok` or `fs_error` under its id. */
   private async call<Op extends FsOp>(op: Op, params: FsParams<Op>): Promise<FsResult<Op>> {
     if (!this.send) throw offlineError('runner disconnected')
+    const release = this.options.admit?.()
     const id = createId()
     const pending = deferred<unknown>()
     this.pendingCalls.set(id, pending)
     try {
       this.send({ type: `fs_${op}`, id, ...definedFields(params) } as BackendToRunnerMessage)
+      return (await pending.promise) as FsResult<Op>
     } catch (error) {
       this.pendingCalls.delete(id)
       throw error
-    }
-    return (await pending.promise) as FsResult<Op>
+    } finally { release?.() }
   }
 
   private async spawn(params: HostSpawnParams): Promise<HostSpawnHandle> {
     if (!this.send) {
       return failedSpawnHandle({ exitCode: null, signal: 'runner disconnected', spawnError: { kind: 'other' } })
     }
+    const release = this.options.admit?.()
     const spawnId = createId()
     const spawn = new RemoteSpawn(spawnId, (message) => this.dispatch(message))
+    void spawn.handle().wait().finally(() => release?.())
     this.activeSpawns.set(spawnId, spawn)
     try {
       this.send({
@@ -233,6 +241,7 @@ export class RemoteHost implements Host {
       })
     } catch (error) {
       this.activeSpawns.delete(spawnId)
+      release?.()
       throw error
     }
     return spawn.handle()

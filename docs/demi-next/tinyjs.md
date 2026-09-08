@@ -151,7 +151,7 @@ from these.
 spawn({
   command, args, cwd, env,                     // env is the complete table; nothing is inherited
   stdin: "pipe" | "null",
-  uid?, gid?, processGroup?: boolean,          // uid/gid: how PID 1 runs jobs as the guest user
+  uid?, gid?, processGroup?: boolean,          // optional native child credentials
   tee?: { stdoutPath, stderrPath, viewLimit, stream? }
 }): Promise<{ pid, stdin: fd | null, stdout: fd, stderr: fd, stdoutStream: fd | null }>   // stdin is null for stdin: "null"
 wait(pid): Promise<{ code: number | null, signal?: string, stdoutBytes?, stderrBytes? }>
@@ -210,6 +210,7 @@ cwd(): string   chdir(path)   exit(code)
 onSignal(name, handler)                        // SIGTERM, SIGINT, SIGHUP
 stdin: fd   stdout: fd   stderr: fd   pid
 identity: { uid, gid, hostname, homeDir }
+dropPrivileges(uid, gid): Identity             // clear groups, set gid/uid after guest init
 version: number   abi: number
 fdNode(fd): string | null                      // dev:ino behind an OS file descriptor
 ```

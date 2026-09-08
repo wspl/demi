@@ -4,11 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { type ShellEnvironmentOptions } from '@demicodes/shell'
-import { hostlessShellFactory, probeCommand } from '@demicodes/host-virtual/testing'
+import { runnerShellFactory, probeCommand } from '@demicodes/backend/testing'
+
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/runner/testing'
 import {
   defineProvider,
   type AgentProvider,
@@ -475,7 +476,7 @@ test('AgentServer queues send frames while the session is busy and drains them i
   const provider = new DelayedProvider(gate.promise)
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('delayed', provider)],
   })
@@ -518,7 +519,7 @@ test('AgentClient.steer resolves correlated accepted acks and receives transcrip
   const provider = new ServerGateProvider({ supportsSteer: true })
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('server-steerable', provider)],
   })
@@ -572,7 +573,7 @@ test('AgentClient.steer accepts active provider without native steer and materia
   const provider = new ServerGateProvider({ supportsSteer: false })
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('server-no-native-steer', provider)],
   })
@@ -627,7 +628,7 @@ test('a new AgentClient receives pending steers from the live session and observ
   const selection = providerSelection('pending-reconnect')
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('pending-reconnect', provider)],
   })
@@ -688,7 +689,7 @@ test('AgentClient.cancelPendingSteer removes an accepted steer before transcript
   const provider = new ServerGateProvider({ supportsSteer: false })
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('server-cancel-pending-steer', provider)],
   })
@@ -725,7 +726,7 @@ test('AgentClient.cancelPendingSteer removes an accepted steer before transcript
 test('AgentClient.cancelPendingSteer is silent without an open session', async () => {
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [],
   })
@@ -746,7 +747,7 @@ test('AgentServer rejects retry, resume, and compact frames while the session is
   const provider = new DelayedProvider(gate.promise)
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('delayed-rejects', provider)],
   })
@@ -778,7 +779,7 @@ test('AgentClient resolves each queued send promise on its own phase cycle', asy
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -832,7 +833,7 @@ test('AgentClient.dequeueMessage resolves the removed queued send without runnin
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -873,7 +874,7 @@ test('AgentClient.sendQueuedMessage moves a queued send to the next phase cycle'
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -926,7 +927,7 @@ test('AgentClient.steerQueuedMessage converts a queued send into an active steer
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -980,7 +981,7 @@ test('AgentClient.clearMessageQueue resolves queued sends without canceling the 
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -1026,7 +1027,7 @@ test('AgentClient rejects only the active action when queued sends continue afte
   const provider = new ErrorThenDelayedProvider(errorGate.promise, successGate.promise)
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('error-then-delayed', provider)],
   })
@@ -1063,7 +1064,7 @@ test('AgentClient.abort returns false while idle and true after aborting active 
   const provider = new AbortAwareProvider()
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('abort-aware', provider)],
   })
@@ -1083,7 +1084,7 @@ test('AgentServer aborts the active session when a close frame is received', asy
   const provider = new AbortAwareProvider()
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('abort-aware', provider)],
   })
@@ -1173,7 +1174,7 @@ function createAgentClientHarness(options: {
   const store = new MemoryAgentStore()
   const server = new AgentServer({
     store: () => store,
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: options.harness ?? createTextHarness(),
     providers: [runtimeProvider('stub', () => new StubProvider(options.providerTurns))],
     shell: options.shell,
@@ -1374,7 +1375,7 @@ function delay(ms: number): Promise<void> {
 test('a malformed client frame is rejected at ingress with invalid_frame', async () => {
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('stub', () => new StubProvider([[events.text('ok'), events.response()]]))],
   })
@@ -1399,7 +1400,7 @@ test('AgentServer accepts a ProviderResolver: session context arrives, unknown i
   const contexts: Array<{ providerId: string; agentSessionId: string }> = []
   const server = new AgentServer({
     store: () => new MemoryAgentStore(),
-    shellEnvironment: hostlessShellFactory,
+    shellEnvironment: runnerShellFactory,
     agent: createTextHarness(),
     providers: (providerId, context) => {
       contexts.push({ providerId, agentSessionId: context.agentSessionId })

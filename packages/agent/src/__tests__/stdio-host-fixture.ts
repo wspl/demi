@@ -2,8 +2,9 @@ import { memoryAgentStores } from '../testing'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import type { AgentHarness } from '@demicodes/agent'
-import { hostlessShellFactory } from '@demicodes/host-virtual/testing'
-import { LocalHost } from '@demicodes/host-virtual/testing'
+import { runnerShellFactory } from '@demicodes/backend/testing'
+
+import { LocalHost } from '@demicodes/runner/testing'
 import { AgentServer } from '../index'
 import { createStdioServerTransport } from '../protocol/stdio-transport'
 
@@ -14,7 +15,7 @@ const childProvider = defineProvider({
 })
 
 const server = new AgentServer({ store: memoryAgentStores(),
-  shellEnvironment: hostlessShellFactory,
+  shellEnvironment: runnerShellFactory,
   agent: createHarness(),
   providers: [childProvider],
 })
