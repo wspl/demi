@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # The shared read-only rootfs (managed-hosts.md § Images): Ubuntu 24.04 by
 # debootstrap, the system toolchain from packages.txt, the guest user `demi` (uid 1000) with passwordless sudo, the
-# runner as /demi-runner and /usr/bin/demi, packed with `mke2fs -d`.
+# runner as /demi-runner and the native client as /usr/bin/demi, packed with `mke2fs -d`.
 # Runs as root on Linux. Usage: sudo rootfs/build.sh <aarch64|x86_64>
 set -euo pipefail
 arch="${1:?arch}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 out="$here/out/$arch"
 runner="$out/demi-runner"
-[ -x "$runner" ] || { echo "build the runner first: runner/build.sh $arch" >&2; exit 2; }
+client="$out/demi"
+[ -x "$runner" ] && [ -x "$client" ] || { echo "build the runner first: runner/build.sh $arch" >&2; exit 2; }
 case "$arch" in aarch64) deb_arch=arm64 ;; x86_64) deb_arch=amd64 ;; *) echo "unknown arch $arch" >&2; exit 2 ;; esac
 work="${ROOTFS_WORK:-$here/out/rootfs-$arch}"
 suite="${UBUNTU_SUITE:-noble}"
@@ -42,9 +43,9 @@ echo demi > "$work/etc/hostname"
 # e2fsprogs uses the mount table to select online resizing. PID 1 owns mounts.
 ln -sf /proc/self/mounts "$work/etc/mtab"
 
-# The runner: init, and the command-mode root every job finds first.
+# The runner owns init; jobs invoke the separate native command client.
 install -m 0755 "$runner" "$work/demi-runner"
-ln -sf /demi-runner "$work/usr/bin/demi"
+install -m 0755 "$client" "$work/usr/bin/demi"
 # /home is the owner's image; the rootfs carries only the mount point.
 rm -rf "$work/home/demi"; mkdir -p "$work/home"
 umount -l "$work/dev" "$work/sys" "$work/proc"; trap - EXIT

@@ -47,7 +47,7 @@ export interface UnixListener {
 export async function listenUnix(path: string, mode: number): Promise<UnixListener> {
   const listener = await tjs.listen('pipe', path)
   listener.closed.catch(noop)
-  try { await tjs.chmod(path, mode) }
+  try { if (!navigator.platform.startsWith('Win')) await tjs.chmod(path, mode) }
   catch (error) { listener.close(); throw error }
   const reader = (await listener.opened).readable.getReader()
   return {

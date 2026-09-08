@@ -1,67 +1,101 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, realpath, symlink } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile, realpath } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createDemiCommand } from '@demicodes/coding-agent'
-import { buildManifest, writeManifestDirectory } from '@demicodes/command-loader'
-import { LocalHost } from '@demicodes/runner/testing'
-import { bundleForTxiki, packRuntime } from '../testing'
+import { buildManifest, type Manifest } from '@demicodes/command-loader'
+import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
+import { createRunnerWire } from '@demicodes/runner-protocol'
+import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
+import { runtimeModule, type Command } from '@demicodes/shell'
+import { memoryHostStore } from '@demicodes/shell/testing'
+import { waitFor } from '@demicodes/utils'
+import { packedRunner, startTxikiRunner } from '../testing'
 
-// txiki.js in command mode: the bundle compiled by tjsc and linked by CMake, reached through a
-// symlink named after the root, running `demi file` runtime modules from a
-// manifest directory against the real filesystem.
-test('command mode runs demi file runtime commands on txiki.js', async () => {
-  const work = await realpath(await mkdtemp(join(tmpdir(), 'demi-command-mode-')))
-  const bundle = join(work, 'entry.mjs')
-  await bundleForTxiki(join(import.meta.dir, '..', 'entry.ts'), bundle)
-  const packed = join(work, 'demi-cli')
-  packRuntime(bundle, packed)
-  const bin = join(work, 'bin')
-  await mkdir(bin)
-  await symlink(packed, join(bin, 'demi'))
-  await symlink(packed, join(bin, 'nope'))
-  await symlink(packed, join(bin, 'demi-runner'))
+async function fixture(label: string) {
+  const home = await realpath(await mkdtemp(join(tmpdir(), 'demi-native-home-')))
+  const stateDir = await mkdtemp(join(tmpdir(), 'demi-native-state-'))
+  const roots: Command[] = [{ name: 'demi', summary: label, subcommands: [
+    { name: 'where', summary: 'Invocation context', kind: 'runtime', module: runtimeModule(`export default async ctx => { await ctx.stdout(JSON.stringify({label:${JSON.stringify(label)},cwd:ctx.cwd,value:ctx.env.PROBE})); return {exitCode:0}; }`) },
+    { name: 'echo', summary: 'Byte stream', kind: 'runtime', module: runtimeModule('export default async ctx => { for await(const b of ctx.stdin) await ctx.stdout(b); return {exitCode:0}; }') },
+    { name: 'spin', summary: 'Interruptible worker', kind: 'runtime', module: runtimeModule('export default async ctx => { await ctx.stdout("started"); while(true){} }') },
+  ] }]
+  const manifest = await buildManifest(roots, { transpile: source => source })
+  const wire = createRunnerWire(msgpackCodec)
+  const host = new RemoteHost({ defaultCwd: home, identity: { uid: 1, gid: 1, hostname: label, homeDir: home }, store: memoryHostStore() })
+  const shell = new RemoteShellEnvironment({ host })
+  let sendManifest: (value: Manifest) => void
+  const server = Bun.serve({ port: 0, fetch: (request, server) => server.upgrade(request) ? undefined : new Response('missing', { status: 404 }), websocket: {
+    message(ws, data) {
+      const message = wire.decodeRunnerToBackend(new Uint8Array(data as Buffer))
+      if (message.type === 'hello') {
+        host.attach(message => { ws.send(wire.encode(message)) })
+        sendManifest = value => { ws.send(wire.encode({ type: 'manifest', manifest: value })) }
+        ws.send(wire.encode({ type: 'hello_ok', deviceId: label }))
+        ws.send(wire.encode({ type: 'manifest', manifest }))
+      } else host.handleMessage(message)
+    }, close() { host.detach() },
+  } })
+  const runner = await startTxikiRunner({ backendUrl: `http://localhost:${server.port}`, home, stateDir, deviceToken: label })
+  await waitFor(() => runner.log.some(line => line.includes('installed: demi')), () => runner.log.join('\n'))
+  return { home, stateDir, host, shell, runner, async replaceRoot() {
+    const updated = await buildManifest([{ ...roots[0]!, name: 'replacement' }], { transpile: source => source })
+    sendManifest(updated)
+    await waitFor(() => runner.log.some(line => line.includes('installed: replacement')), () => runner.log.join('\n'))
+  }, backendUrl: `http://localhost:${server.port}`, async close() { await runner.stop(); server.stop(true) } }
+}
 
-  const transpiler = new Bun.Transpiler({ loader: 'ts', target: 'browser' })
-  const manifest = await buildManifest([createDemiCommand()], { transpile: (source) => transpiler.transformSync(source) })
-  const commands = join(work, 'commands', manifest.hash)
-  await writeManifestDirectory(manifest, commands, new LocalHost(work, { storeRoot: join(work, 'store') }).fs)
+test('native commands route to their own runner and keep cwd/env and binary streams independent', async () => {
+  const a = await fixture('A'), b = await fixture('B')
+  try {
+    const calls = await Promise.all([a.shell.exec({ script: 'PROBE=alpha demi where', timeoutMs: 10_000 }), b.shell.exec({ script: 'PROBE=beta demi where', timeoutMs: 10_000 })])
+    expect(JSON.parse(calls[0]!.stdout.delta)).toEqual({ label: 'A', cwd: a.home, value: 'alpha' })
+    expect(JSON.parse(calls[1]!.stdout.delta)).toEqual({ label: 'B', cwd: b.home, value: 'beta' })
+    const bytes = new Uint8Array(3 * 1024 * 1024).map((_, i) => i % 256)
+    await writeFile(join(a.home, 'input'), bytes)
+    const echoed = await a.shell.exec({ script: 'cat input | demi echo > output', timeoutMs: 10_000 })
+    expect(echoed.status === 'exited' && echoed.exitCode).toBe(0)
+    expect(new Uint8Array(await readFile(join(a.home, 'output')))).toEqual(bytes)
+    const capture = await a.shell.exec({ script: 'printf "%s\\n%s\\n" "$DEMI_RUNNER_ENDPOINT" "$DEMI_CONTEXT_ID" > context; sleep 30', timeoutMs: 50 })
+    const [endpoint, context] = (await readFile(join(a.home, 'context'), 'utf8')).trim().split('\n')
+    const other = JSON.parse(await readFile(join(b.stateDir, 'active.json'), 'utf8'))
+    expect(endpoint).not.toBe(other.endpoint)
+    const client = join((await packedRunner()).replace(/\/demi-runner$/, ''), 'demi')
+    const wrong = Bun.spawnSync([client, 'where'], { env: { ...process.env, DEMI_RUNNER_ENDPOINT: other.endpoint, DEMI_CONTEXT_ID: context }, stdout: 'pipe', stderr: 'pipe' })
+    expect(wrong.exitCode).toBe(1)
+    expect(wrong.stderr.toString()).toContain('not live on this runner')
+    await a.shell.abort({ commandId: capture.commandId })
+    const stale = Bun.spawnSync([client, 'where'], { env: { ...process.env, DEMI_RUNNER_ENDPOINT: endpoint, DEMI_CONTEXT_ID: context }, stdout: 'pipe', stderr: 'pipe' })
+    expect(stale.exitCode).toBe(1)
+  } finally { await a.close(); await b.close() }
+}, 30_000)
 
-  const project = join(work, 'project')
-  await mkdir(project)
-  const run = (name: string, args: string[], stdin = '') => {
-    const started = performance.now()
-    const result = Bun.spawnSync([join(bin, name), ...args], {
-      cwd: project,
-      env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: work, DEMI_COMMANDS_DIR: commands },
-      stdin: new TextEncoder().encode(stdin),
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    return { code: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString(), ms: performance.now() - started }
-  }
+test('a CPU-bound command can be cancelled without blocking the runner; duplicate installation is refused', async () => {
+  const f = await fixture('isolated')
+  try {
+    const started = await f.shell.exec({ script: 'demi spin', timeoutMs: 100 })
+    expect(started.status).toBe('running')
+    expect(await f.host.fs.exists(f.home)).toBe(true)
+    const duplicate = Bun.spawnSync([await packedRunner(), 'run', '--backend', f.backendUrl], { env: { ...process.env, DEMI_HOME: f.stateDir }, stdout: 'pipe', stderr: 'pipe' })
+    expect(duplicate.exitCode).toBe(1)
+    expect(duplicate.stderr.toString()).toContain('already active')
+    expect((await f.shell.abort({ commandId: started.commandId })).status).toBe('aborted')
+    const next = await f.shell.exec({ script: 'demi --help', timeoutMs: 10_000 })
+    expect(next.status === 'exited' && next.exitCode).toBe(0)
+  } finally { await f.close() }
+}, 15_000)
 
-  const created = run('demi', ['file', 'create', 'notes.md'], 'alpha\nbeta\n')
-  expect(created.code, created.stderr).toBe(0)
-  expect(created.stdout).toBe('Created notes.md\n')
-  expect(await Bun.file(join(project, 'notes.md')).text()).toBe('alpha\nbeta\n')
 
-  const read = run('demi', ['file', 'read', 'notes.md'])
-  expect(read.code, read.stderr).toBe(0)
-  expect(read.stdout).toBe('alpha\nbeta\n')
-  console.log(`command mode: demi file read in ${read.ms.toFixed(0)}ms`)
-
-  const help = run('demi', ['file', '--help'])
-  expect(help.code).toBe(0)
-  expect(help.stdout).toContain('demi file read')
-
-  // An rpc leaf has no transport in a standalone command-mode process.
-  const todo = run('demi', ['todo', 'list'])
-  expect(todo.code).toBe(1)
-  expect(todo.stderr).toContain('rpc command')
-
-  expect(run('nope', ['x']).code).toBe(127)
-  const runner = run('demi-runner', [])
-  expect(runner.code).toBe(2)
-  expect(runner.stderr).toContain('Usage: demi-runner run')
-}, 180_000)
+test('an active job keeps its manifest and root aliases after a manifest update', async () => {
+  const f = await fixture('pinned')
+  try {
+    const started = await f.shell.exec({ script: 'touch ready; while [ ! -f proceed ]; do sleep 0.01; done; PROBE=old demi where > result', timeoutMs: 50 })
+    expect(started.status).toBe('running')
+    await f.replaceRoot()
+    await writeFile(join(f.home, 'proceed'), '')
+    await waitFor(() => { try { return JSON.parse(readFileSync(join(f.home, 'result'), 'utf8')).value === 'old' } catch { return false } })
+    while ((await f.shell.status({ commandId: started.commandId })).status === 'running') await Bun.sleep(10)
+    const next = await f.shell.exec({ script: 'PROBE=new replacement where', timeoutMs: 10_000 })
+    expect(JSON.parse(next.stdout.delta).value).toBe('new')
+  } finally { await f.close() }
+}, 15_000)

@@ -26,31 +26,30 @@ process contract requires `spawn`. Test fixtures use real Node filesystem/proces
 facets or the actual packed runner. Runtime credentials are dropped once after
 guest init; there is no separate per-job guest identity path.
 
-## Accepted design awaiting implementation
+## Native client checkpoint
 
-[Native command client and local IPC](command-client.md) defines separate
-`demi` (C + libuv) and `demi-runner` (TS + txiki.js) executables. The runner
-will own command loading, parsing and dispatch; the client will carry raw
-arguments, context, streams, cancellation and exit status. Each backend
-registration owns a separate runner installation and matched
-client/runner release; a device can run several registrations. Each job
-gets its owner's client PATH, random IPC endpoint and live execution context.
-Unix permissions or Windows named-pipe access control apply automatically.
-Installation and upgrades must not overwrite another backend's instance.
+`packages/command-client` now provides a separate C + static libuv `demi`.
+The runner owns loader dispatch and isolated runtime workers. A live
+context pins each job to its runner, backend registration and manifest;
+random owner-only Unix endpoints and installation locks isolate concurrent
+runners. Matched release generation, backend downloads and the Unix
+installer support independent reuse and draining upgrades.
 
-Production still uses one binary selected by invocation name and a
-command-mode JS loader. The IPC size probes passed byte-transfer checks on
-macOS/Linux; Windows was cross-built only. Native production dispatch,
-protocol/cancellation, packaging and Windows acceptance remain unimplemented.
+Native tests cover binary/fragmented frames, bounded input/output,
+disconnects, cancellation under backpressure and CPU-loop interruption.
+Integration tests cover simultaneous backend registrations, cwd/env,
+stale contexts and real-binary installation upgrades. Windows release,
+local-only pipe ACLs and runtime acceptance remain open; the PowerShell
+endpoint explicitly reports unavailable.
 
 ## Completed checks
 
 - `bun run typecheck`: passed.
 - `bun run typecheck:web`: passed for all three frontend packages.
-- `bun run test`: 893 passed, 11 conditionally skipped, 0 failed across 152 files.
+- `bun run test`: 900 passed, 11 conditionally skipped, 0 failed across 154 files.
 - `bun run build`: passed.
 - `bun run check:registry`: passed.
-- Fork checks: inherited descriptors, partial file writes, detached processes,
+- Fork checks: exclusive file leases, CPU-bound worker termination, inherited descriptors, partial file writes, detached processes,
   privilege validation, queued stream writes, slow HTTP readers, early upload
   cancellation and the existing fetch request/abort regressions passed.
 - An embedded fixture passed Linux PID 1 orphan reaping (32 descendants with

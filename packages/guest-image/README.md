@@ -6,13 +6,13 @@ The two release artifacts a backend with managed hosts needs
 
 ```
 vmlinux       the guest kernel: Linux 6.1, Firecracker's microvm config plus ours (kernel/)
-rootfs.ext4   the shared read-only root: Ubuntu 24.04, the toolchain, the guest user, the runner (rootfs/)
+rootfs.ext4   the shared read-only root: Ubuntu 24.04, the toolchain, the guest user, the runner and native client (rootfs/)
 ```
 
 ```
-runner/build.sh   <arch>          → out/<arch>/demi-runner   the packed txiki.js runner for Linux musl (from macOS or Linux)
+runner/build.sh   <arch>          → out/<arch>/{demi-runner,demi}   matched txiki.js runner and C + libuv client (from macOS or Linux)
 kernel/build.sh   <arch>          → out/<arch>/vmlinux       (needs the kernel build deps; about 20 minutes on 4 cores)
-sudo rootfs/build.sh <arch>       → out/<arch>/rootfs.ext4   (needs debootstrap and network; consumes out/<arch>/demi-runner)
+sudo rootfs/build.sh <arch>       → out/<arch>/rootfs.ext4   (needs debootstrap and network; consumes both out/<arch>/demi-runner and out/<arch>/demi)
 ```
 
 `<arch>` is `aarch64` or `x86_64`. Nothing here runs at backend runtime;
