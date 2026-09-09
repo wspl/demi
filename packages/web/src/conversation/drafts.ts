@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { conversationRecordSchema, hostsSchema } from '../api/contracts'
 
 const modelSchema = z.object({
   providerId: z.string(),
@@ -35,6 +36,29 @@ const remoteSchema = z.object({
   deviceId: z.string(),
 })
 export const draftSchema = z.object({
+  pendingSend: z
+    .object({
+      id: z.string().uuid(),
+      text: z.string(),
+      fileIds: z.array(z.string()),
+      error: z.string().nullable(),
+    })
+    .nullable(),
+  local: z
+    .object({
+      phase: z.enum(['draft', 'pending']),
+      conversation: conversationRecordSchema.pick({
+        id: true,
+        title: true,
+        pinned: true,
+        archived: true,
+        target: true,
+        createdAt: true,
+        updatedAt: true,
+      }),
+      hosts: z.array(hostsSchema.shape.hosts.element.omit({ online: true })),
+    })
+    .nullable(),
   text: z.string(),
   model: modelSchema,
   files: z.array(z.union([fileSchema, remoteSchema])),
@@ -131,5 +155,23 @@ export async function writeDraft(
 ): Promise<void> {
   await draftStorage('readwrite', (store) =>
     store.put(draft, [userId, conversationId]),
+  )
+}
+
+export async function readLocalDrafts(userId: string): Promise<SavedDraft[]> {
+  const values = await draftStorage('readonly', (store) =>
+    store.getAll(IDBKeyRange.bound([userId], [userId, []])),
+  )
+  return values
+    .map((value) => draftSchema.parse(value))
+    .filter((draft) => draft.local !== null)
+}
+
+export async function deleteDraft(
+  userId: string,
+  conversationId: string,
+): Promise<void> {
+  await draftStorage('readwrite', (store) =>
+    store.delete([userId, conversationId]),
   )
 }

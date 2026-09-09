@@ -17,7 +17,6 @@ import { useProduct } from './state/product'
 import { usePreferences } from './state/preferences'
 import { onSessionExpired } from './api/client'
 import { useSession } from './auth/session'
-import { showToast } from '@demicodes/web-ui/infra/toast'
 import ChatPage from './conversation/ChatPage.vue'
 import LoginPage from './auth/LoginPage.vue'
 import App from './App.vue'
@@ -66,7 +65,7 @@ const stopIdentity = watch(
       product.stop()
     }
     if (id) {
-      void product.start()
+      void conversations.initialize()
     }
   },
   { immediate: true },
@@ -82,29 +81,10 @@ const stopExpiry = onSessionExpired(() => {
   }
   void router.replace('/login?reason=expired')
 })
-router.beforeEach(async (to, from) => {
+router.beforeEach(async (to) => {
   await restored
   if (startup.signal.aborted) {
     return false
-  }
-  if (session.signedIn && from.matched.length && from.path !== '/login') {
-    try {
-      await session.restore(startup.signal)
-    } catch (error) {
-      if (startup.signal.aborted) {
-        return false
-      }
-      showToast({
-        title: 'Could not check your session',
-        message: error instanceof Error ? error.message : String(error),
-        tone: 'danger',
-      })
-      return false
-    }
-    if (!session.signedIn) {
-      window.location.replace('/login?reason=expired')
-      return false
-    }
   }
   if (!session.signedIn && to.path !== '/login') {
     return '/login'

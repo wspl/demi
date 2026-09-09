@@ -351,6 +351,17 @@ export class AgentSession<State> {
     } = {}
   ): Promise<void> {
     const id = options.id ?? this.idFactory()
+    if (
+      this.activeTurnId === id ||
+      this.pendingActions.some(
+        (action) => action.type === 'send' && action.id === id
+      ) ||
+      this.transcriptLog.blocks.some(
+        (block) => block.type === 'user' && block.turnId === id
+      )
+    ) {
+      return Promise.resolve()
+    }
     return this.enqueue({
       type: 'send',
       id,

@@ -414,7 +414,7 @@ test(
     })
     const { device } = (await claimed.json()) as { device: { id: string } }
 
-    const created = await api(backend, '/api/conversations', { method: 'POST' })
+    const created = await api(backend, '/api/conversations', { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) })
     const { conversation } = (await created.json()) as { conversation: { id: string } }
     const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
     const control = new LocalControlService(controlDb)

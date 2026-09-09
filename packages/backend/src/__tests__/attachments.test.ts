@@ -135,7 +135,7 @@ test(
     expect(attachment.mediaType).toBe('image/png')
     expect(attachment.sizeBytes).toBe(PNG_BYTES.length)
 
-    const created = await api(backend, '/api/conversations', { method: 'POST' })
+    const created = await api(backend, '/api/conversations', { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) })
     const { conversation } = (await created.json()) as { conversation: { id: string } }
     const client = await connectClient(backend, conversation.id, selection)
 
@@ -272,7 +272,7 @@ test('attachment upload limits and workspace file drop', async () => {
     headers: { 'content-type': 'application/json' },
   })
   const { provider } = (await providerResponse.json()) as { provider: { id: string } }
-  const created = await api(backend, '/api/conversations', { method: 'POST' })
+  const created = await api(backend, '/api/conversations', { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) })
   const { conversation } = (await created.json()) as { conversation: { id: string } }
 
   // Path traversal is refused; a clean relative path lands in the virtual cwd.

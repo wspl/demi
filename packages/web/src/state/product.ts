@@ -82,6 +82,9 @@ export const useProduct = defineStore('product', () => {
     if (!current) {
       return
     }
+    if (conversationId && !snapshot.value?.conversations.some((item) => item.id === conversationId)) {
+      conversationId = null
+    }
     const key = conversationId ?? ''
     const requestId = Symbol()
     modelRequests.set(key, requestId)

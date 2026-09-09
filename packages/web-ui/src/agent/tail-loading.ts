@@ -31,7 +31,7 @@ export function shouldShowTailLoading(
 function lastNonQueueBlock(blocks: readonly MessageListBlock[]): MessageListBlock | undefined {
   for (let i = blocks.length - 1; i >= 0; i--) {
     const block = blocks[i]
-    if (block && !isQueueTailBlock(block))
+    if (block && !isQueueTailBlock(block) && block.type !== 'pending_submission')
       return block
   }
 }

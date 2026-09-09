@@ -10,6 +10,7 @@ import ErrorBlock from './ErrorBlock.vue'
 import AbortedBlock from './AbortedBlock.vue'
 import CompactionBlock from './CompactionBlock.vue'
 import QueueDivider from './QueueDivider.vue'
+import PendingSubmission from '../PendingSubmission.vue'
 
 defineOptions({ inheritAttrs: false })
 
@@ -28,14 +29,20 @@ const emit = defineEmits<{
   deleteQueued: [id: string]
   sendQueued: [id: string]
   editUser: [content: UserContentBlock[]]
+  retrySubmission: []
 }>()
 
 const attrs = useAttrs()
 </script>
 
 <template>
+  <PendingSubmission
+    v-if="block.type === 'pending_submission'"
+    v-bind="{ ...attrs, ...block.submission }"
+    @retry="emit('retrySubmission')"
+  />
   <UserBlock
-    v-if="block.type === 'user'"
+    v-else-if="block.type === 'user'"
     v-bind="attrs"
     :content="block.content"
     :editable="editable"

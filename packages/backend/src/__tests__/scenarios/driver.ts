@@ -56,7 +56,7 @@ export class Driver {
   static async open(world: World, target: Target): Promise<Driver> {
     const { conversation } = await world.api<{ conversation: { id: string } }>(
       '/api/conversations',
-      {}
+      { id: crypto.randomUUID() }
     )
     const driver = new Driver(world, conversation.id, target)
     if (target !== 'cloud')

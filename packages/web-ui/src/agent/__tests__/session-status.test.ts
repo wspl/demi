@@ -29,4 +29,6 @@ test('a failed restore is not a missing conversation', () => {
 test('an unknown id waits for the list', () => {
   expect(conversationPageKind('loading', false)).toBe('loading')
   expect(conversationPageKind('ready', true)).toBe('session')
+  expect(conversationPageKind('loading', true)).toBe('session')
+  expect(conversationPageKind('failed', true)).toBe('session')
 })

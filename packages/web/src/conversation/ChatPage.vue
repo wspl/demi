@@ -85,6 +85,14 @@ function editUser(content: UserContentBlock[]) {
     v-if="pageKind === 'session' && conversation"
     :conversation="conversation"
     :has-provider="hasProvider"
+    :pending-submission="conversation.pendingSend ? {
+      id: conversation.pendingSend.id,
+      text: conversation.pendingSend.text,
+      fileNames: conversation.files.filter((file) => conversation.pendingSend?.fileIds.includes(file.id)).map((file) => file.name),
+      error: conversation.pendingSend.error,
+      sending: conversation.submission === 'sending',
+    } : null"
+    @retry-submission="store.send(conversation)"
     @archive="store.archive([conversation.id])"
     @retry="store.start(conversation)"
     @retry-load="store.reloadSession(conversation.id)"

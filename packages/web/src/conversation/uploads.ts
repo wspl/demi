@@ -19,6 +19,13 @@ export function createConversationUploads(
     conversation: Conversation,
     item: Extract<ProductAttachment, { kind: 'file' }>,
   ): Promise<void> {
+    if (conversation.persistence !== 'synced' && item.destination === 'workspace') {
+      item.phase = 'staged'
+      item.error = undefined
+      item.progress = undefined
+      onChange()
+      return
+    }
     const controller = new AbortController()
     uploads.get(item.id)?.abort()
     uploads.set(item.id, controller)

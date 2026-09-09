@@ -653,6 +653,22 @@ test(
   }
 )
 
+test('retrying an accepted send ID does not request the provider again', async () => {
+  let requests = 0
+  const session = createSession(new StubProvider([
+    () => {
+      requests += 1
+      return [events.text('Accepted'), events.response({ outputTokens: 1 })]
+    },
+  ]))
+  const first = session.send(text('hello'), { id: 'stable-message' })
+  await session.send(text('hello'), { id: 'stable-message' })
+  await first
+  await session.send(text('hello'), { id: 'stable-message' })
+  expect(requests).toBe(1)
+  expect(session.transcript().blocks.filter((block) => block.type === 'user')).toHaveLength(1)
+})
+
 test(
   'AgentSession rejects, emits, and records provider error events',
   async () => {

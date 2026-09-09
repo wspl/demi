@@ -178,7 +178,7 @@ chain(
     // Conversation bound to the runner workspace.
     const created = await backend.session.fetch(
       `/api/conversations`,
-      { method: 'POST' }
+      { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }
     )
     const { conversation } = (await created.json()) as { conversation: { id: string } }
     const workspace = await control.createWorkspace({

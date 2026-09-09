@@ -14,8 +14,18 @@ when the page becomes visible. It reconciles account, conversation, project,
 device and preference metadata. `api/contracts.ts` validates REST responses;
 `api/transcript.ts` validates persisted blocks and incoming agent frames.
 
-`conversation/store.ts` retains each conversation's draft and loaded transcript
-while replacing its server metadata. Only the visible conversation owns a live
+`conversation/store.ts` retains local drafts and loaded transcripts while
+reconciling server metadata. New conversation allocates a UUID locally and opens
+the composer without an HTTP request. Repeated New reuses an empty draft for the
+same project. Leaving an empty draft discards it; drafts containing text or files
+are restored from per-user IndexedDB storage.
+
+The first Send makes the conversation permanent locally, including when the
+network request fails. It creates the server record with
+`POST /api/conversations { id: UUID }`, applies the chosen target and model, and
+submits the message. Repeating creation with the same UUID returns the owner's
+existing record without resetting it. Another account cannot claim that UUID.
+Only the visible conversation owns a live
 `ConversationRuntime`. Opening it reads its transcript, descendant histories and
 attached hosts, then attaches to `/api/conversations/:id/stream`. Leaving the
 page closes the client transport without sending a task-close or abort command.
@@ -24,11 +34,14 @@ a failed reconnect exposes the shared Retry action. Server takeover closes the
 attachment without an automatic reconnect fight between browser windows.
 
 `AgentClient.submit` confirms a send when its message ID appears in the transcript
-or queue. The product then clears only the submitted draft and attachments.
-A rejected or unconfirmed send retains them. Confirmation is not turn completion:
+or queue. The product stores the submitted text, attachment IDs and message ID
+until confirmation, separately from the next composer draft. An unconfirmed send
+remains visible in `web-ui/agent/PendingSubmission.vue` with its error and Retry.
+Retry reuses the message ID. `ConversationRuntime` checks restored history and
+the queue before resubmitting; `AgentSession` ignores IDs already active, queued
+or present in its transcript. Confirmation clears only that submitted message
+and its attachments. This is admission confirmation, not turn completion:
 a later model failure exposes Retry without duplicating the accepted user message.
-If a connection is lost between server acceptance and confirmation, users must
-inspect the restored history before resending; this is not an exactly-once API.
 The visible Retry/Resume recovery action calls `resume`, preserving completed
 tool effects rather than regenerating the latest turn.
 
@@ -46,7 +59,7 @@ agent protocol.
 | Transcript, queue and pending steers | Backend agent session; reconnect restores the current session snapshot. Pending-steer recovery after process restart is outside this change. |
 | Pins, ordering, read revisions and archive state | Backend conversation/sidebar APIs. A batch keeps successful changes and reports only failures. |
 | Appearance and keyboard shortcuts | Backend per-field preference API. Local pending changes are overlaid until the write and refresh finish. |
-| Draft text, file bytes, scroll state and last model | Per-user IndexedDB records in `conversation/drafts.ts`. Binary previews are recreated, and unfinished uploads restart. |
+| Local conversation metadata, draft text, unconfirmed sends, file bytes, scroll state and last model | Per-user IndexedDB records in `conversation/drafts.ts`. Binary previews are recreated, and unfinished uploads restart. Empty unsent drafts are not stored. |
 | Project folds, recent projects, hidden providers/models | Per-user browser storage in `state/local.ts`. Hiding affects selection menus, not a running task. |
 
 New conversations select the first available model. An explicit previous choice
@@ -103,6 +116,9 @@ device target. Main-target changes require an idle, unarchived conversation.
 `api/uploads.ts` sends file bytes with XHR transfer progress. The selected model's
 accepted extensions distinguish model attachments from workspace files. Upload
 failures retain a tile with Retry; Send remains blocked until uploads are ready.
+Workspace files in a local conversation are staged without a request and upload
+after its first Send creates the server record. A failed first-send upload stays
+with the unconfirmed message and retries through that message's Retry action.
 Removing a file cancels its transfer. A target change invalidates and repeats
 workspace uploads against the new context. Remote references retain device ID
 and path in a file reference; the backend includes the existing host read command

@@ -145,9 +145,7 @@ test(
     const created = await api<{ conversation: {
         id: string;
         title: string
-      } }>(backend, '/api/conversations', {
-      method: 'POST',
-    })
+      } }>(backend, '/api/conversations', { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) })
     const conversationId = created.conversation.id
     expect(created.conversation.title).toBe('New conversation')
 
@@ -184,6 +182,29 @@ test(
   30_000
 )
 
+test('conversation creation validates and reuses the client UUID', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-backend-create-'))
+  const backend = await openBackend({ dataDir, port: 0 })
+  try {
+    const id = crypto.randomUUID()
+    const create = (body: unknown) => backend.session.fetch('/api/conversations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    expect((await create({})).status).toBe(400)
+    expect((await create({ id: 'invalid' })).status).toBe(400)
+    expect((await create({ id })).status).toBe(201)
+    const retried = await create({ id })
+    expect(retried.status).toBe(200)
+    expect(await retried.json()).toMatchObject({ conversation: { id } })
+    const list = await api<{ conversations: { id: string }[] }>(backend, '/api/conversations')
+    expect(list.conversations.map((item) => item.id)).toEqual([id])
+  } finally {
+    await backend.close()
+  }
+})
+
 test('a malformed PATCH body is rejected with 400 invalid_body', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-backend-badbody-'))
   const backend = await openBackend({
@@ -194,7 +215,7 @@ test('a malformed PATCH body is rejected with 400 invalid_body', async () => {
   const created = await api<{ conversation: { id: string } }>(
     backend,
     '/api/conversations',
-    { method: 'POST' }
+    { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }
   )
 
   const bad = await backend.session.fetch(

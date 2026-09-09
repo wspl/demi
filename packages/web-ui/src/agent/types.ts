@@ -19,6 +19,14 @@ export interface PendingSteerMessage {
   baselineSteerBlockIds: string[]
 }
 
+export interface PendingSubmissionState {
+  id: string
+  text: string
+  fileNames: string[]
+  error: string | null
+  sending: boolean
+}
+
 /**
  * Reactive per-conversation state. Mirrors the shape agent-gui exposed via
  * `rpc.agent.$state.sessions[id]` so ported components read it the same way.

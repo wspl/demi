@@ -14,13 +14,14 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { BackendConversation } from '../api/contracts'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
-import type { SavedFile } from '../conversation/drafts'
+import type { SavedDraft, SavedFile } from '../conversation/drafts'
 
 export type ProductAttachment =
   | (ComposerFileAttachment & Pick<SavedFile, 'file' | 'upload'>)
   | (ComposerRemoteAttachment & { deviceId: string })
 
 export interface Conversation extends SidebarConversation {
+  persistence: 'draft' | 'pending' | 'synced'
   target: BackendConversation['target']
   contextVersion: number
   revision: number
@@ -37,6 +38,7 @@ export interface Conversation extends SidebarConversation {
   draft: string
   files: ProductAttachment[]
   submission: 'idle' | 'sending'
+  pendingSend: SavedDraft['pendingSend']
   scroll: PersistedScrollState | null
   attachedHosts: {
     deviceId: string

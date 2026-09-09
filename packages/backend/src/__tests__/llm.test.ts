@@ -114,7 +114,7 @@ async function openConversation(
   const id = conversationId ?? (await api<{ conversation: { id: string } }>(
     backend,
     '/api/conversations',
-    { method: 'POST' }
+    { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }
   )).body.conversation.id
   const socket = backend.session.socket(`/api/conversations/${id}/stream`)
   await new Promise<void>((resolve, reject) => {
@@ -648,7 +648,7 @@ test(
     const conversation = await api<{ conversation: { id: string } }>(
       backend,
       '/api/conversations',
-      { method: 'POST' }
+      { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }
     )
     const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
     const control = new LocalControlService(controlDb)
@@ -897,7 +897,7 @@ test(
       const conversation = await api<{ conversation: { id: string } }>(
         backend,
         '/api/conversations',
-        { method: 'POST' }
+        { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }
       )
       const path = `/api/conversations/${conversation.body.conversation.id}`
       expect((await api(backend, path, patch({ target: {

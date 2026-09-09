@@ -101,6 +101,36 @@ test('disposing an open view detaches without sending task-close or abort comman
   await expect(runtime.connect()).rejects.toThrow('disposed')
 })
 
+test('retry reconciles an already accepted message before submitting again', async () => {
+  const h = clientHarness()
+  const current = state()
+  const runtime = new ConversationRuntime({
+    state: current,
+    prepareModel: async () => provider,
+    connect: async () => h.client,
+  })
+  try {
+    await runtime.connect()
+    h.receive({
+      type: 'transcript_reset',
+      revision: 1,
+      blocks: [{
+        type: 'user',
+        id: 'user-block',
+        turnId: 'persisted-message',
+        createdAt: '2026-09-10T00:00:00Z',
+        model: provider.model,
+        content: [{ type: 'text', text: 'Already accepted' }],
+        preamble: null,
+      }],
+    })
+    await runtime.submit([{ type: 'text', text: 'Already accepted' }], 'persisted-message')
+    expect(h.sent.map((frame) => frame.type)).toEqual(['open'])
+  } finally {
+    runtime.dispose()
+  }
+})
+
 test('server takeover does not start a reconnect fight between views', async () => {
   const h = clientHarness()
   let connects = 0

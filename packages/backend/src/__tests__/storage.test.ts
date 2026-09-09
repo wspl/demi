@@ -165,6 +165,25 @@ test('ControlService conversation CRUD and ordering', async () => {
   db.close()
 })
 
+test('client conversation IDs are idempotent and scoped to their owner', async () => {
+  const db = openControlDb()
+  try {
+    const control = new LocalControlService(db)
+    const user = (await control.createMaster({ email: 'owner@example.test', passwordHash: '!' }))!
+    const id = crypto.randomUUID()
+    const created = await control.createConversation(user.id, { id })
+    await control.renameConversation(id, 'Already sent')
+    const retried = await control.createConversation(user.id, { id })
+    expect(retried.id).toBe(created.id)
+    expect(retried.title).toBe('Already sent')
+    expect(await control.listConversations(user.id)).toHaveLength(1)
+    await expect(control.createConversation('different-user', { id })).rejects.toThrow('Conversation id is unavailable')
+    expect((await control.getConversation(id))?.userId).toBe(user.id)
+  } finally {
+    db.close()
+  }
+})
+
 test('ControlService device and workspace records', async () => {
   const db = openControlDb()
   const control = new LocalControlService(db)

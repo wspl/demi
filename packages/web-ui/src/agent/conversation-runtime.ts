@@ -6,6 +6,7 @@ import type {
 import type { UserContentBlock } from '@demicodes/core'
 import type { ConversationState } from './types'
 import { createPendingSteerMessage } from './pending-steers'
+import { hasAcceptedSubmission } from './submission'
 
 export type RuntimeState = Pick<
   ConversationState,
@@ -50,9 +51,13 @@ export class ConversationRuntime {
     await (await this.ensureOpen()).send(content)
   }
 
-  async submit(content: UserContentBlock[]): Promise<void> {
+  async submit(content: UserContentBlock[], messageId?: string): Promise<void> {
     this.options.state.lastError = null
-    await (await this.ensureOpen()).submit(content)
+    const client = await this.ensureOpen()
+    if (messageId && hasAcceptedSubmission(this.options.state, messageId)) {
+      return
+    }
+    await client.submit(content, messageId)
   }
 
   async dequeueMessage(id: string): Promise<void> {

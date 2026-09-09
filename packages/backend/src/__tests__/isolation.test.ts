@@ -111,7 +111,7 @@ test(
       201
     )
     const { conversation } = await must<{ conversation: { id: string } }>(
-      await alice.fetch('/api/conversations', { method: 'POST' }),
+      await alice.fetch('/api/conversations', { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }),
       201
     )
     await must(
@@ -152,7 +152,7 @@ test(
 
     // Bob's own objects, to aim at alice's from.
     const { conversation: bobs } = await must<{ conversation: { id: string } }>(
-      await bob.fetch('/api/conversations', { method: 'POST' }),
+      await bob.fetch('/api/conversations', { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }),
       201
     )
 

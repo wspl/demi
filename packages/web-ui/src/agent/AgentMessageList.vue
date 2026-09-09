@@ -8,7 +8,7 @@ import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streamin
 import { pendingSteersToRenderBlocks, type MessageListBlock } from './pending-steers'
 import { queuedMessagesToRenderBlocks } from './queued-messages'
 import { shouldShowTailLoading } from './tail-loading'
-import type { PendingSteerMessage } from './types'
+import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import AgentMessageVirtualBlock from './blocks/AgentMessageVirtualBlock.vue'
 import LoadingBlock from './blocks/LoadingBlock.vue'
 import SessionStatus from './SessionStatus.vue'
@@ -29,6 +29,7 @@ const props = defineProps<{
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
   loadError?: string | null
+  pendingSubmission?: PendingSubmissionState | null
 }>()
 
 const emit = defineEmits<{
@@ -42,6 +43,7 @@ const emit = defineEmits<{
   sendQueued: [id: string]
   editUser: [content: UserContentBlock[]]
   retryLoad: []
+  retrySubmission: []
 }>()
 
 const visibleTranscriptBlocks = computed(() => getVisibleBlocks(props.blocks))
@@ -49,10 +51,15 @@ const renderBlocks = computed<MessageListBlock[]>(() => [
   ...visibleTranscriptBlocks.value,
   ...pendingSteersToRenderBlocks(props.pendingSteers),
   ...queuedMessagesToRenderBlocks(props.queue),
+  ...(props.pendingSubmission ? [{
+    type: 'pending_submission' as const,
+    id: `pending-submission:${props.pendingSubmission.id}`,
+    submission: props.pendingSubmission,
+  }] : []),
 ])
 
 const paneStatus = computed(() =>
-  sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.length > 0),
+  props.pendingSubmission ? null : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.length > 0),
 )
 const reconnecting = computed(() => sessionShowsReconnectTail(props.load ?? 'ready'))
 const shouldShowLoading = computed(() =>
@@ -184,6 +191,7 @@ defineExpose({
               @delete-queued="(id) => emit('deleteQueued', id)"
               @send-queued="(id) => emit('sendQueued', id)"
               @edit-user="(content) => emit('editUser', content)"
+              @retry-submission="emit('retrySubmission')"
             />
           </div>
         </div>

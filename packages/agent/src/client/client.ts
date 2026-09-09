@@ -101,8 +101,10 @@ export class AgentClient {
   }
 
   /** Resolves when the message is in the transcript or server queue. */
-  submit(content: UserContentBlock[]): Promise<void> {
-    const messageId = globalThis.crypto.randomUUID()
+  submit(
+    content: UserContentBlock[],
+    messageId: string = globalThis.crypto.randomUUID(),
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const finish = (error?: Error) => {
         clearTimeout(timeout)
