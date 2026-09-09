@@ -24,7 +24,7 @@ export function usageRoutes(options: { control: ControlService; mode: InstanceMo
     const byUser = new Map<string, UsageRow[]>()
     for (const row of await control.listAllUsage()) byUser.set(row.userId, [...(byUser.get(row.userId) ?? []), row])
     return c.json({
-      users: users.map((user) => ({ userId: user.id, username: user.username, totals: aggregate(byUser.get(user.id) ?? []) })),
+      users: users.map((user) => ({ userId: user.id, email: user.email, totals: aggregate(byUser.get(user.id) ?? []) })),
     })
   })
 

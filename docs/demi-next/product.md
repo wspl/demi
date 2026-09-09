@@ -31,15 +31,17 @@ provider runtime per entry.
 
 ## User system
 
-Username + password (argon2id), cookie session (httpOnly, 30 days
+Email + password (argon2id), cookie session (httpOnly, 30 days
 sliding); the conversation stream WebSocket and the Web API authenticate
 by the same same-origin cookie. **No self-registration and no password
-recovery** — zero mail dependency. The instance's first account is made
+recovery**. Setup and administrators provision accounts without a mail dependency.
+Changing an email requires a code sent to the new address through the deployment's
+`AccountMailSender`; an unconfigured sender returns `mail_unavailable`. The instance's first account is made
 by the setup call while it has no users (`POST /api/setup`), which the
 login page routes to when `GET /api/setup` says so. Everyone can change
 their own password with the current one in hand; five failed logins in a
-row lock the username for a minute. Accounts are managed from an admin
-page:
+row lock the email for a minute. Each account also stores its current nickname, separately from the login address.
+Accounts are managed through the admin API; the admin page is deferred:
 
 - **master**: the instance's first account, created at initial setup; can
   do everything, including creating admins.

@@ -1,5 +1,5 @@
 export interface LoginLimiterOptions {
-  /** Failures on one username within `lockMs` of each other before it locks. Default 5. */
+  /** Failures on one email within `lockMs` of each other before it locks. Default 5. */
   lockAfter?: number
   /** How long the lock holds, and how long a name's failures are remembered. Default 60 s. */
   lockMs?: number
@@ -14,9 +14,9 @@ interface Failures {
 }
 
 /**
- * Per-username login lockout: `lockAfter` failures within `lockMs` lock the
+ * Per-email login lockout: `lockAfter` failures within `lockMs` lock the
  * name for `lockMs`; a success clears the count. Entries expire, so a spray
- * of usernames occupies memory for `lockMs` each and no longer.
+ * of emails occupies memory for `lockMs` each and no longer.
  */
 export class LoginLimiter {
   private readonly lockAfter: number
@@ -30,30 +30,30 @@ export class LoginLimiter {
     this.now = options.now ?? Date.now
   }
 
-  locked(username: string): boolean {
-    const entry = this.failures.get(username)
+  locked(email: string): boolean {
+    const entry = this.failures.get(email)
     if (!entry) return false
     const now = this.now()
     if (entry.lockedUntil > now) return true
-    if (entry.expiresAt <= now) this.failures.delete(username)
+    if (entry.expiresAt <= now) this.failures.delete(email)
     return false
   }
 
-  failed(username: string): void {
+  failed(email: string): void {
     const now = this.now()
     this.forgetExpired(now)
-    const entry = this.failures.get(username) ?? { count: 0, lockedUntil: 0, expiresAt: 0 }
+    const entry = this.failures.get(email) ?? { count: 0, lockedUntil: 0, expiresAt: 0 }
     entry.count += 1
     if (entry.count >= this.lockAfter) {
       entry.count = 0
       entry.lockedUntil = now + this.lockMs
     }
     entry.expiresAt = now + this.lockMs
-    this.failures.set(username, entry)
+    this.failures.set(email, entry)
   }
 
-  succeeded(username: string): void {
-    this.failures.delete(username)
+  succeeded(email: string): void {
+    this.failures.delete(email)
   }
 
   /** Names tracked right now (diagnostics and tests). */
@@ -62,8 +62,8 @@ export class LoginLimiter {
   }
 
   private forgetExpired(now: number): void {
-    for (const [username, entry] of this.failures) {
-      if (entry.expiresAt <= now) this.failures.delete(username)
+    for (const [email, entry] of this.failures) {
+      if (entry.expiresAt <= now) this.failures.delete(email)
     }
   }
 }

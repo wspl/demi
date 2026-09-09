@@ -157,7 +157,7 @@ only; the `*Store` suffix stays reserved for storage backends.
 `control.sqlite` (target schema):
 
 ```
-users                   id, username, password_hash(argon2id), role(master|admin|user), created_at
+users                   id, email(unique, case-insensitive), nickname, password_hash(argon2id), role(master|admin|user), created_at
 web_sessions            token_hash(sha256 of the cookie token), user_id, expires_at
 conversations           id, user_id, title, archived, target_json,
                         context_version, last_switch_json(NULL), cloud_reset_id(NULL), provider_id, model_id, created_at, updated_at
@@ -280,3 +280,10 @@ its immediate predecessor. After publishing and syncing the current pointer, it
 removes older generation directories. Failed publication preserves the current
 pointer and the source working disks; the next successful publication also
 reclaims incomplete generation directories.
+
+Account email changes use `email_challenges`: one pending row per user with the
+new email, challenge ID, keyed code hash, password hash at issue, expiry, send
+time and failed attempt count. Confirmation updates the email and consumes the
+challenge in one control-database transaction. No prior nickname or email history
+is stored. The initial schema defines the current design; there is no legacy
+username migration.

@@ -45,10 +45,10 @@ async function listIds(actor: WebSession, path: '/api/providers' | '/api/models'
   return body.providers.map((entry) => entry.id ?? entry.providerId!)
 }
 
-async function createUser(backend: TestBackend, username: string): Promise<WebSession> {
-  const response = await backend.session.fetch('/api/users', json({ username, password: `${username}-pass-1`, role: 'user' }))
-  if (response.status !== 201) throw new Error(`create ${username}: HTTP ${response.status}`)
-  return login(backend, username, `${username}-pass-1`)
+async function createUser(backend: TestBackend, email: string): Promise<WebSession> {
+  const response = await backend.session.fetch('/api/users', json({ email, password: `${email.split('@')[0]}-pass-1`, role: 'user' }))
+  if (response.status !== 201) throw new Error(`create ${email}: HTTP ${response.status}`)
+  return login(backend, email, `${email.split('@')[0]}-pass-1`)
 }
 
 /** One turn on a fresh conversation over `providerId`; resolves once the answer arrived. */
@@ -75,7 +75,7 @@ test('shared mode: admins configure the instance providers, everyone uses them, 
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-mode-shared-'))
   const backend = await openBackend(stubOptions(dataDir, 'shared'))
   const master = backend.session
-  const bob = await createUser(backend, 'bob')
+  const bob = await createUser(backend, 'bob@example.test')
 
   expect((await createProvider(bob, 'mine')).status).toBe(403)
   const shared = await createProvider(master, 'Instance stub')
@@ -91,8 +91,8 @@ test('shared mode: admins configure the instance providers, everyone uses them, 
   expect(own.totals).toEqual([expect.objectContaining({ providerId: shared.id, requests: 1 })])
 
   expect((await bob.fetch('/api/usage/instance')).status).toBe(403)
-  const instance = (await (await master.fetch('/api/usage/instance')).json()) as { users: Array<{ username: string; totals: Array<{ requests: number }> }> }
-  expect(instance.users.map((entry) => `${entry.username}:${entry.totals[0]?.requests ?? 0}`)).toEqual(['master:1', 'bob:1'])
+  const instance = (await (await master.fetch('/api/usage/instance')).json()) as { users: Array<{ email: string; totals: Array<{ requests: number }> }> }
+  expect(instance.users.map((entry) => `${entry.email}:${entry.totals[0]?.requests ?? 0}`)).toEqual(['master@example.test:1', 'bob@example.test:1'])
 
   await backend.close()
 
@@ -103,8 +103,8 @@ test('shared mode: admins configure the instance providers, everyone uses them, 
 test('isolated mode: every user configures and sees their own providers; nothing of another user is reachable', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-mode-isolated-'))
   const backend = await openBackend(stubOptions(dataDir, 'isolated'))
-  const alice = await createUser(backend, 'alice')
-  const bob = await createUser(backend, 'bob')
+  const alice = await createUser(backend, 'alice@example.test')
+  const bob = await createUser(backend, 'bob@example.test')
 
   const mine = await createProvider(alice, "alice's")
   const theirs = await createProvider(bob, "bob's")

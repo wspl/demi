@@ -4,9 +4,9 @@ import { hashPassword } from '../auth/passwords'
 import type { WebSessions } from '../auth/sessions'
 import type { ControlService } from '../storage/control'
 import { writeSessionCookie } from './cookies'
-import { passwordSchema, usernameSchema } from './auth'
+import { passwordSchema, emailSchema } from './auth'
 
-const setupBodySchema = z.object({ username: usernameSchema, password: passwordSchema })
+const setupBodySchema = z.object({ email: emailSchema, password: passwordSchema })
 
 /**
  * `/api/setup` — the instance's initial setup (`product.md` § User system):
@@ -21,8 +21,8 @@ export function setupRoutes(options: { control: ControlService; sessions: WebSes
 
   app.post('/', async (c) => {
     const parsed = setupBodySchema.safeParse(await c.req.json().catch(() => null))
-    if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { username, password }' }, 400)
-    const user = await control.createMaster({ username: parsed.data.username, passwordHash: await hashPassword(parsed.data.password) })
+    if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { email, password }' }, 400)
+    const user = await control.createMaster({ email: parsed.data.email, passwordHash: await hashPassword(parsed.data.password) })
     if (!user) return c.json({ code: 'already_set_up', message: 'This instance has its master account' }, 404)
     const session = await sessions.open(user.id)
     writeSessionCookie(c, session.token, session.expiresAt)

@@ -3,7 +3,7 @@ import { SESSION_COOKIE } from '../http/cookies'
 import { modelsDevFetch } from './models-dev'
 
 /** The master account every test backend is set up with. */
-export const MASTER = { username: 'master', password: 'master-pass-1' }
+export const MASTER = { email: 'master@example.test', password: 'master-pass-1' }
 
 /** A signed-in browser: its cookie on every request and stream socket. */
 export interface WebSession {
@@ -23,7 +23,7 @@ export async function openBackend(options: Omit<BackendOptions, 'mode'> & { mode
   const backend = await createBackend({ mode: 'shared', modelsDev: { fetch: modelsDevFetch() }, ...options })
   try {
     const { needed } = (await (await fetch(`${backend.url}/api/setup`)).json()) as { needed: boolean }
-    const session = needed ? await setupMaster(backend) : await login(backend, MASTER.username, MASTER.password)
+    const session = needed ? await setupMaster(backend) : await login(backend, MASTER.email, MASTER.password)
     return { ...backend, session }
   } catch (error) {
     await backend.close()
@@ -35,8 +35,8 @@ export async function setupMaster(backend: Pick<Backend, 'url'>): Promise<WebSes
   return sessionFrom(backend.url, await postJson(backend.url, '/api/setup', MASTER), 201)
 }
 
-export async function login(backend: Pick<Backend, 'url'>, username: string, password: string): Promise<WebSession> {
-  return sessionFrom(backend.url, await postJson(backend.url, '/api/auth/login', { username, password }), 200)
+export async function login(backend: Pick<Backend, 'url'>, email: string, password: string): Promise<WebSession> {
+  return sessionFrom(backend.url, await postJson(backend.url, '/api/auth/login', { email, password }), 200)
 }
 
 function postJson(url: string, path: string, body: unknown): Promise<Response> {
