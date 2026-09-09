@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AsyncRegion from '../ui/AsyncRegion.vue'
 import CloudSettings from '../cloud/CloudSettings.vue'
 import type { CloudState } from '../cloud/types'
 import { Monitor } from '@lucide/vue'
@@ -14,6 +15,8 @@ import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
 
 const props = defineProps<{
+  load?: 'loading' | 'ready' | 'failed'
+  pendingIds?: string[]
   cloud: CloudState | null
   resetPending?: boolean
   resetError?: string | null
@@ -23,10 +26,13 @@ const props = defineProps<{
   claimDevice: (code: string, signal?: AbortSignal) => Promise<PairingResult>
 }>()
 const emit = defineEmits<{
-  revoke: [id: string];
+  retry: []
+  revoke: [id: string]
   resetCloud: [operationId: string]
 }>()
-const { isOpen, phase, open, close, submit } = useDevicePairing((code, signal) => props.claimDevice(code, signal))
+const { isOpen, phase, open, close, submit } = useDevicePairing(
+  (code, signal) => props.claimDevice(code, signal),
+)
 </script>
 
 <template>
@@ -45,33 +51,52 @@ const { isOpen, phase, open, close, submit } = useDevicePairing((code, signal) =
     <SettingsGroup>
       <template #header>
         <header class="flex items-center justify-between gap-3">
-          <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">Your devices</h3>
+          <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">
+            Your devices
+          </h3>
           <Button size="sm" @click="open">Add device</Button>
         </header>
       </template>
-      <SettingsRow
-        v-for="device in devices"
-        :key="device.id"
-        :label="device.name"
-        :description="device.online ? 'Online' : device.seen ? `Last seen ${device.seen}` : 'Offline'"
+      <AsyncRegion
+        :state="load"
+        label="Loading devices…"
+        @retry="emit('retry')"
       >
-        <template #leading>
-          <span class="relative flex">
-            <Monitor :size="ICON_PX.in28" />
-            <span
-              class="absolute -right-0.5 -top-0.5 size-1.5 rounded-full ring-2 ring-surface-float"
-              :class="device.online ? 'bg-on-success' : 'bg-fg-ghost'"
-            />
-          </span>
-        </template>
-        <Button size="sm" @click="emit('revoke', device.id)">Revoke</Button>
-      </SettingsRow>
-      <div
-        v-if="!devices.length"
-        class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
-      >
-        No devices connected.
-      </div>
+        <SettingsRow
+          v-for="device in devices"
+          :key="device.id"
+          :label="device.name"
+          :description="
+            device.online
+              ? 'Online'
+              : device.seen
+                ? `Last seen ${device.seen}`
+                : 'Offline'
+          "
+        >
+          <template #leading>
+            <span class="relative flex">
+              <Monitor :size="ICON_PX.in28" />
+              <span
+                class="absolute -right-0.5 -top-0.5 size-1.5 rounded-full ring-2 ring-surface-float"
+                :class="device.online ? 'bg-on-success' : 'bg-fg-ghost'"
+              />
+            </span>
+          </template>
+          <Button
+            size="sm"
+            :loading="pendingIds?.includes(device.id)"
+            @click="emit('revoke', device.id)"
+            >Revoke</Button
+          >
+        </SettingsRow>
+        <div
+          v-if="!devices.length"
+          class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
+        >
+          No devices connected.
+        </div>
+      </AsyncRegion>
     </SettingsGroup>
     <DevicePairingDialog
       :is-open="isOpen"

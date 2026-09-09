@@ -5,8 +5,14 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import Tag from '../ui/Tag.vue'
 import CommitTextInput from '../ui/CommitTextInput.vue'
-import ChangeEmailDialog, { type ChangeEmailPhase } from './ChangeEmailDialog.vue'
-import ChangePasswordDialog, { type ChangePasswordPhase } from './ChangePasswordDialog.vue'
+import ChangeEmailDialog, {
+  type ChangeEmailDialogDraft,
+  type ChangeEmailPhase,
+} from './ChangeEmailDialog.vue'
+import ChangePasswordDialog, {
+  type ChangePasswordDialogDraft,
+  type ChangePasswordPhase,
+} from './ChangePasswordDialog.vue'
 import { IN_DEVELOPMENT } from '../ui/disabled'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
@@ -19,6 +25,7 @@ import SettingsRow from './SettingsRow.vue'
  */
 const props = defineProps<{
   overlayStore: OverlayStore
+  nameSave?: 'idle' | 'saving' | 'saved' | 'failed'
   email: string
   emailVerified?: boolean
   /** When the password last changed, formatted by the host. */
@@ -27,11 +34,18 @@ const props = defineProps<{
   passwordPhase: ChangePasswordPhase
 }>()
 
+const emailDraft = defineModel<ChangeEmailDialogDraft>('emailDraft', {
+  default: () => ({ email: '', password: '', code: '' }),
+})
+const passwordDraft = defineModel<ChangePasswordDialogDraft>('passwordDraft', {
+  default: () => ({ current: '', next: '', confirm: '' }),
+})
 const name = defineModel<string>('name', { required: true })
 const emailOpen = defineModel<boolean>('emailOpen', { default: false })
 const passwordOpen = defineModel<boolean>('passwordOpen', { default: false })
 
 const emit = defineEmits<{
+  retryName: []
   /** The row's Change: the host resets the phase before the dialog shows. */
   changeEmail: []
   changePassword: []
@@ -55,7 +69,8 @@ const initial = computed(() => accountInitial(name.value, props.email))
       >
         <span
           class="flex size-8 select-none items-center justify-center rounded-full bg-tint-accent text-[13px] font-medium text-on-accent"
-        >{{ initial }}</span>
+          >{{ initial }}</span
+        >
       </SettingsRow>
       <SettingsRow
         label="Display name"
@@ -63,25 +78,56 @@ const initial = computed(() => accountInitial(name.value, props.email))
       >
         <CommitTextInput
           :model-value="name"
+          :disabled="nameSave === 'saving'"
           aria-label="Display name"
           @commit="name = $event"
           maxlength="50"
           class="w-56 max-w-full"
         />
+        <span
+          v-if="nameSave && nameSave !== 'idle'"
+          class="text-[12px] text-fg-subtle"
+          role="status"
+          >{{
+            nameSave === 'saving'
+              ? 'Saving…'
+              : nameSave === 'saved'
+                ? 'Saved'
+                : 'Not saved'
+          }}</span
+        >
+        <Button
+          v-if="nameSave === 'failed'"
+          size="sm"
+          @click="emit('retryName')"
+          >Retry</Button
+        >
       </SettingsRow>
       <SettingsRow label="Email">
-        <template v-if="emailVerified" #tags><Tag tone="success">Verified</Tag></template>
+        <template v-if="emailVerified" #tags
+          ><Tag tone="success">Verified</Tag></template
+        >
         <span class="text-chrome text-fg-muted">{{ email }}</span>
-        <Button size="sm" aria-label="Change email" @click="emit('changeEmail')">Change</Button>
+        <Button size="sm" aria-label="Change email" @click="emit('changeEmail')"
+          >Change</Button
+        >
       </SettingsRow>
       <SettingsRow
         label="Password"
-        :description="passwordChanged ? `Last changed ${passwordChanged}.` : undefined"
+        :description="
+          passwordChanged ? `Last changed ${passwordChanged}.` : undefined
+        "
       >
-        <Button size="sm" aria-label="Change password" @click="emit('changePassword')">Change</Button>
+        <Button
+          size="sm"
+          aria-label="Change password"
+          @click="emit('changePassword')"
+          >Change</Button
+        >
       </SettingsRow>
     </SettingsGroup>
     <ChangeEmailDialog
+      v-model:draft="emailDraft"
       :is-open="emailOpen"
       :overlay-store="overlayStore"
       :phase="emailPhase"
@@ -91,6 +137,7 @@ const initial = computed(() => accountInitial(name.value, props.email))
       @resend="emit('resendEmail')"
     />
     <ChangePasswordDialog
+      v-model:draft="passwordDraft"
       :is-open="passwordOpen"
       :overlay-store="overlayStore"
       :phase="passwordPhase"
@@ -112,11 +159,7 @@ const initial = computed(() => accountInitial(name.value, props.email))
         disabled
         :disabled-reason="IN_DEVELOPMENT"
       >
-        <Button
-          size="sm"
-          variant="danger"
-          disabled
-        >Delete account</Button>
+        <Button size="sm" variant="danger" disabled>Delete account</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>

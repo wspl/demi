@@ -40,6 +40,7 @@ const props = withDefaults(
     focused?: boolean
     attachOpen?: boolean
     dropping?: boolean
+    modelLoad?: 'loading' | 'ready' | 'failed'
     providers: ProviderInfo[]
     models: Record<string, ModelInfo[]>
     selectedProviderId?: string | null
@@ -60,6 +61,7 @@ const props = withDefaults(
 )
 const draft = defineModel<string>('draft', { default: '' })
 const emit = defineEmits<{
+  retryModels: []
   submit: []
   stop: []
   compact: []
@@ -103,7 +105,8 @@ const sendBlockReason = computed(() => {
   return attachmentSendBlockReason(props.attachments)
 })
 const expanded = computed(
-  () => props.multiline || draft.value.includes('\n') || !!props.attachments.length,
+  () =>
+    props.multiline || draft.value.includes('\n') || !!props.attachments.length,
 )
 const selected = computed(() =>
   props.models[props.selectedProviderId ?? '']?.find(
@@ -138,10 +141,7 @@ function keydown(event: KeyboardEvent) {
 </script>
 
 <template>
-  <Transition
-    name="composer-archive"
-    mode="out-in"
-  >
+  <Transition name="composer-archive" mode="out-in">
     <SessionNoticeBar
       v-if="archived"
       key="archived"
@@ -150,17 +150,17 @@ function keydown(event: KeyboardEvent) {
       @action="emit('restore')"
     />
     <SessionNoticeBar
-      v-else-if="modelState.kind === 'none'"
+      v-else-if="
+        modelState.kind === 'none' && (!modelLoad || modelLoad === 'ready')
+      "
       key="none"
       :label="t('agent.input.noModels')"
-      :action="canConfigure !== false ? t('agent.input.configureModels') : undefined"
+      :action="
+        canConfigure !== false ? t('agent.input.configureModels') : undefined
+      "
       @action="emit('configure')"
     />
-    <div
-      v-else
-      key="composer"
-      class="w-full"
-    >
+    <div v-else key="composer" class="w-full">
       <input
         ref="fileInput"
         type="file"
@@ -175,10 +175,7 @@ function keydown(event: KeyboardEvent) {
         :dropping="dropping"
         @drop-files="emit('addFiles', $event)"
       >
-        <template
-          v-if="attachments.length"
-          #chips
-        >
+        <template v-if="attachments.length" #chips>
           <Tooltip
             v-for="item in attachments"
             :key="item.id"
@@ -252,13 +249,17 @@ function keydown(event: KeyboardEvent) {
         </template>
         <template #model>
           <ModelSelector
+            :load="modelLoad"
+            @retry="emit('retryModels')"
             :providers="providers"
             :models="models"
             :selected-provider-id="selectedProviderId"
             :selected-model-id="selectedModelId"
             :thinking-config="thinkingConfig"
             :service-tier-id="serviceTierId"
-            @select-model="(provider, model) => emit('selectModel', provider, model)"
+            @select-model="
+              (provider, model) => emit('selectModel', provider, model)
+            "
             @change-thinking="emit('changeThinking', $event)"
             @change-service-tier="emit('changeServiceTier', $event)"
           />
@@ -288,10 +289,7 @@ function keydown(event: KeyboardEvent) {
               @click="submit"
             />
           </Tooltip>
-          <Tooltip
-            v-else-if="running || compacting"
-            content="Stop"
-          >
+          <Tooltip v-else-if="running || compacting" content="Stop">
             <IconButton
               :icon="Square"
               variant="ghost"

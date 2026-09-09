@@ -5,6 +5,7 @@ import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import CopyCode from '@demicodes/web-ui/ui/CopyCode.vue'
+import GalleryLoadingStates from '../components/GalleryLoadingStates.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 
@@ -115,5 +116,6 @@ const surfaces = [
         </div>
       </GallerySpecimen>
     </div>
+    <GalleryLoadingStates />
   </GallerySection>
 </template>

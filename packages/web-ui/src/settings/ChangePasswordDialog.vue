@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { Check } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -35,14 +35,37 @@ const emit = defineEmits<{
 
 const MIN_LENGTH = 8
 
-const current = ref('')
-const next = ref('')
-const confirm = ref('')
+export interface ChangePasswordDialogDraft {
+  current: string
+  next: string
+  confirm: string
+}
+const draft = defineModel<ChangePasswordDialogDraft>('draft', {
+  default: () => ({ current: '', next: '', confirm: '' }),
+})
+const current = computed({
+  get: () => draft.value.current,
+  set: (value: string) => {
+    draft.value = { ...draft.value, current: value }
+  },
+})
+const next = computed({
+  get: () => draft.value.next,
+  set: (value: string) => {
+    draft.value = { ...draft.value, next: value }
+  },
+})
+const confirm = computed({
+  get: () => draft.value.confirm,
+  set: (value: string) => {
+    draft.value = { ...draft.value, confirm: value }
+  },
+})
 
 watch(
   () => [props.isOpen, props.phase.kind],
   () => {
-    if (!props.isOpen || props.phase.kind === 'done') {
+    if (props.phase.kind === 'done') {
       current.value = ''
       next.value = ''
       confirm.value = ''
@@ -85,7 +108,9 @@ function submit() {
   >
     <div class="flex flex-col gap-4 p-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Change password</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">
+          Change password
+        </h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
           <template v-if="phase.kind === 'form'"
             >Enter your current password and choose a new one.</template
@@ -130,10 +155,7 @@ function submit() {
             />
           </SettingsRow>
         </div>
-        <InlineError
-          v-if="phase.error"
-          :message="phase.error"
-        />
+        <InlineError v-if="phase.error" :message="phase.error" />
         <InlineError
           v-else-if="tooShort"
           :message="`A password has at least ${MIN_LENGTH} characters.`"
@@ -142,20 +164,11 @@ function submit() {
           v-else-if="unchanged"
           message="That is your current password."
         />
-        <InlineError
-          v-else-if="mismatch"
-          message="The two passwords differ."
-        />
+        <InlineError v-else-if="mismatch" message="The two passwords differ." />
       </template>
 
-      <div
-        v-else
-        class="flex items-center gap-2 py-2 text-chrome text-fg"
-      >
-        <Check
-          :size="ICON_PX.in28"
-          class="text-on-success"
-        />
+      <div v-else class="flex items-center gap-2 py-2 text-chrome text-fg">
+        <Check :size="ICON_PX.in28" class="text-on-success" />
         Password changed
       </div>
 
@@ -170,9 +183,10 @@ function submit() {
           <Button @click="emit('close')">Cancel</Button>
           <Button
             variant="primary"
-            :disabled="!canSubmit"
+            :disabled="!canSubmit && !phase.busy"
+            :loading="phase.busy"
             @click="submit"
-            >{{ phase.busy ? 'Changing…' : 'Change password' }}</Button
+            >Change password</Button
           >
         </template>
       </div>

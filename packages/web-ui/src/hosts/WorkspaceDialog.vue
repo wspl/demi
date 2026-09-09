@@ -5,6 +5,8 @@ import { CLOUD_HOST_ID, hostIcon } from './icons'
 import { ICON_PX } from '../ui/icon-metrics'
 import { baseName } from '../files/paths'
 import type { OverlayStore } from '../overlay/overlayStore'
+import AsyncRegion from '../ui/AsyncRegion.vue'
+import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Button from '../ui/Button.vue'
 import ChoiceCards from '../ui/ChoiceCards.vue'
 import Dialog from '../ui/Dialog.vue'
@@ -16,7 +18,11 @@ import TextInput from '../ui/TextInput.vue'
 import InlineError from '../ui/InlineError.vue'
 import FileBrowser from '../files/FileBrowser.vue'
 import type { FileBrowserPlaceGroup, FileBrowserSource } from '../files/types'
-import type { WorkspaceDevice, WorkspaceDraft, WorkspaceProject } from './workspace'
+import type {
+  WorkspaceDevice,
+  WorkspaceDraft,
+  WorkspaceProject,
+} from './workspace'
 
 /**
  * A conversation's working environment: pick one of the projects, or make a new one.
@@ -35,6 +41,7 @@ const props = defineProps<{
   /** No switching while a turn runs. */
   locked?: boolean
   pending?: boolean
+  load?: 'loading' | 'ready' | 'failed'
   devices: WorkspaceDevice[]
   /** Offer the managed Cloud workspace; it is the default. */
   cloud?: boolean
@@ -46,6 +53,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  retry: []
   close: []
   select: [projectId: string | null]
   create: [draft: WorkspaceDraft]
@@ -108,13 +116,15 @@ const canCreate = computed(
 watch(
   () => props.isOpen,
   (open) => {
-    if (!open) {
+    if (!open || props.pending || props.message) {
       return
     }
     kind.value = 'device'
     name.value = ''
     deviceId.value =
-      props.devices.find((entry) => entry.online)?.id ?? props.devices[0]?.id ?? ''
+      props.devices.find((entry) => entry.online)?.id ??
+      props.devices[0]?.id ??
+      ''
     showCreate.value = props.mode === 'create'
     browsing.value = false
   },
@@ -167,10 +177,7 @@ function selectDevice(id: string, close: () => void): void {
     hide-close
     @close="emit('close')"
   >
-    <div
-      v-if="browsing"
-      class="flex h-[32rem] min-h-0 flex-col"
-    >
+    <div v-if="browsing" class="flex h-[32rem] min-h-0 flex-col">
       <header
         class="flex h-11 shrink-0 select-none items-center justify-between gap-2 border-b border-line pl-4 pr-2"
       >
@@ -210,164 +217,168 @@ function selectDevice(id: string, close: () => void): void {
           @click="emit('close')"
         />
       </header>
-      <div class="flex flex-col gap-4 p-4">
-        <template v-if="!showCreate">
-          <Menu
-            class="w-full"
-            iconless
-          >
-            <MenuItem
-              label="No project"
-              choice
-              :is-selected="!currentProjectId"
-              :disabled="locked"
-              @select="emit('select', null)"
-            />
-            <MenuItem
-              v-for="project in projects"
-              :key="project.id"
-              :label="project.name"
-              :value="project.host"
-              :title="project.path"
-              choice
-              :is-selected="currentProjectId === project.id"
-              :disabled="locked"
-              @select="emit('select', project.id)"
-            />
-          </Menu>
-          <div>
-            <Button
-              :disabled="locked"
-              @click="showCreate = true"
+      <AsyncRegion
+        :state="load"
+        label="Loading working environments…"
+        @retry="emit('retry')"
+      >
+        <div class="flex flex-col gap-4 p-4">
+          <template v-if="!showCreate">
+            <span
+              v-if="pending"
+              class="flex items-center gap-1.5 text-chrome text-fg-subtle"
+              role="status"
+              ><IndeterminateSpinner :size="14" /> Switching project…</span
             >
-              <Plus :size="14" />
-              New project
-            </Button>
-          </div>
-        </template>
-        <form
-          v-else
-          class="flex flex-col gap-4"
-          @submit.prevent="create"
-        >
-          <ChoiceCards
-            v-if="cloud"
-            v-model="kind"
-            :options="kindOptions"
-          />
-          <label
-            v-if="kind === 'cloud'"
-            class="flex flex-col gap-1.5 text-chrome text-fg-muted"
-          >
-            Project name
-            <TextInput
-              v-model="name"
-              focused
-              maxlength="64"
-              placeholder="My next idea"
-            />
-          </label>
-          <template v-else>
-            <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-              Device
-              <span class="flex items-center gap-2">
-                <!-- The menu fills the row, the way the file browser's device picker does; Add device sits after it. -->
-                <Dropdown
-                  :overlay-store="overlayStore"
-                  class="min-w-0 flex-1 [&>div]:w-full"
-                >
-                  <template #trigger="{ isOpen }">
-                    <span
-                      role="button"
-                      aria-label="Device"
-                      class="flex h-7 w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
-                      :class="isOpen ? 'bg-active' : 'bg-hover hover:bg-active'"
-                    >
-                      <component
-                        :is="hostIcon({ id: deviceId })"
-                        :size="ICON_PX.in28"
-                        class="shrink-0 text-fg-muted"
-                      />
-                      <span class="min-w-0 flex-1 truncate">{{ deviceLabel }}</span>
-                      <ChevronDown
-                        :size="ICON_PX.in24"
-                        class="shrink-0 text-fg-subtle transition-transform duration-200 ease-out"
-                        :class="isOpen ? 'rotate-180' : ''"
-                      />
-                    </span>
-                  </template>
-                  <template #content="{ close, triggerWidth }">
-                    <Menu :style="{ minWidth: `${triggerWidth}px` }">
-                      <MenuItem
-                        v-for="entry in devices"
-                        :key="entry.id"
-                        :icon="hostIcon(entry)"
-                        :label="entry.name"
-                        :indicator="entry.online ? 'success' : 'muted'"
-                        :indicator-label="entry.online ? 'Online' : 'Offline'"
-                        :note="entry.online ? undefined : 'offline'"
-                        :disabled="!entry.online"
-                        disabled-reason="This device is offline."
-                        choice
-                        :is-selected="deviceId === entry.id"
-                        @select="selectDevice(entry.id, close)"
-                      />
-                      <div
-                        v-if="!devices.length"
-                        class="select-none px-2 py-3 text-center text-chrome text-fg-subtle"
-                      >
-                        No devices yet.
-                      </div>
-                    </Menu>
-                  </template>
-                </Dropdown>
-                <Button
-                  class="shrink-0"
-                  @click="emit('connectDevice')"
-                >
-                  <Plus :size="14" />
-                  Add device
-                </Button>
-              </span>
+            <Menu class="w-full" iconless>
+              <MenuItem
+                label="No project"
+                choice
+                :is-selected="!currentProjectId"
+                :disabled="locked"
+                @select="emit('select', null)"
+              />
+              <MenuItem
+                v-for="project in projects"
+                :key="project.id"
+                :label="project.name"
+                :value="project.host"
+                :title="project.path"
+                choice
+                :is-selected="currentProjectId === project.id"
+                :disabled="locked"
+                @select="emit('select', project.id)"
+              />
+            </Menu>
+            <div>
+              <Button :disabled="locked" @click="showCreate = true">
+                <Plus :size="14" />
+                New project
+              </Button>
             </div>
-            <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-              Directory
-              <span class="flex items-center gap-2">
-                <TextInput
-                  v-model="path"
-                  placeholder="/path/to/project"
-                  class="min-w-0 flex-1"
-                />
-                <Button
-                  class="shrink-0"
-                  :disabled="!online"
-                  @click="browsing = true"
-                >
-                  <FolderOpen :size="14" />
-                  Browse…
-                </Button>
-              </span>
-              <span class="text-[12px] leading-4 text-fg-subtle">{{
-                projectName
-                  ? `The project will be called ${projectName}.`
-                  : "The project takes the folder's name."
-              }}</span>
-            </label>
           </template>
-          <InlineError
-            v-if="message"
-            :message="message"
-          />
-          <div>
-            <Button
-              variant="primary"
-              :disabled="!canCreate"
-              @click="create"
-              >Create project</Button
+          <form v-else class="flex flex-col gap-4" @submit.prevent="create">
+            <ChoiceCards v-if="cloud" v-model="kind" :options="kindOptions" />
+            <label
+              v-if="kind === 'cloud'"
+              class="flex flex-col gap-1.5 text-chrome text-fg-muted"
             >
-          </div>
-        </form>
-      </div>
+              Project name
+              <TextInput
+                v-model="name"
+                :disabled="pending"
+                focused
+                maxlength="64"
+                placeholder="My next idea"
+              />
+            </label>
+            <template v-else>
+              <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
+                Device
+                <span class="flex items-center gap-2">
+                  <!-- The menu fills the row, the way the file browser's device picker does; Add device sits after it. -->
+                  <Dropdown
+                    :overlay-store="overlayStore"
+                    :disabled="pending"
+                    class="min-w-0 flex-1 [&>div]:w-full"
+                  >
+                    <template #trigger="{ isOpen }">
+                      <span
+                        role="button"
+                        aria-label="Device"
+                        class="flex h-7 w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
+                        :class="
+                          isOpen ? 'bg-active' : 'bg-hover hover:bg-active'
+                        "
+                      >
+                        <component
+                          :is="hostIcon({ id: deviceId })"
+                          :size="ICON_PX.in28"
+                          class="shrink-0 text-fg-muted"
+                        />
+                        <span class="min-w-0 flex-1 truncate">{{
+                          deviceLabel
+                        }}</span>
+                        <ChevronDown
+                          :size="ICON_PX.in24"
+                          class="shrink-0 text-fg-subtle transition-transform duration-200 ease-out"
+                          :class="isOpen ? 'rotate-180' : ''"
+                        />
+                      </span>
+                    </template>
+                    <template #content="{ close, triggerWidth }">
+                      <Menu :style="{ minWidth: `${triggerWidth}px` }">
+                        <MenuItem
+                          v-for="entry in devices"
+                          :key="entry.id"
+                          :icon="hostIcon(entry)"
+                          :label="entry.name"
+                          :indicator="entry.online ? 'success' : 'muted'"
+                          :indicator-label="entry.online ? 'Online' : 'Offline'"
+                          :note="entry.online ? undefined : 'offline'"
+                          :disabled="!entry.online"
+                          disabled-reason="This device is offline."
+                          choice
+                          :is-selected="deviceId === entry.id"
+                          @select="selectDevice(entry.id, close)"
+                        />
+                        <div
+                          v-if="!devices.length"
+                          class="select-none px-2 py-3 text-center text-chrome text-fg-subtle"
+                        >
+                          No devices yet.
+                        </div>
+                      </Menu>
+                    </template>
+                  </Dropdown>
+                  <Button
+                    class="shrink-0"
+                    :disabled="pending"
+                    @click="emit('connectDevice')"
+                  >
+                    <Plus :size="14" />
+                    Add device
+                  </Button>
+                </span>
+              </div>
+              <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
+                Directory
+                <span class="flex items-center gap-2">
+                  <TextInput
+                    v-model="path"
+                    :disabled="pending"
+                    placeholder="/path/to/project"
+                    class="min-w-0 flex-1"
+                  />
+                  <Button
+                    class="shrink-0"
+                    :disabled="!online || pending"
+                    @click="browsing = true"
+                  >
+                    <FolderOpen :size="14" />
+                    Browse…
+                  </Button>
+                </span>
+                <span class="text-[12px] leading-4 text-fg-subtle">{{
+                  projectName
+                    ? `The project will be called ${projectName}.`
+                    : "The project takes the folder's name."
+                }}</span>
+              </label>
+            </template>
+            <InlineError v-if="message" :message="message" />
+            <div>
+              <Button
+                variant="primary"
+                :disabled="!canCreate && !pending"
+                :loading="pending"
+                @click="create"
+                >Create project</Button
+              >
+            </div>
+          </form>
+        </div>
+      </AsyncRegion>
     </template>
   </Dialog>
 </template>

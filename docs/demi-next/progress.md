@@ -170,3 +170,20 @@ Browser checks verified immediate-reload persistence, a successful first send,
 an offline first-send failure, restored failure state, and retry in the original
 conversation. Chrome's file-upload permission prevented the automated picker
 check; local staging tests and backend workspace-file tests passed.
+
+## Loading and operation feedback checkpoint (2026-09-10)
+
+`web/state/product.ts` shares vendor reads, caches loaded catalogs and reports
+initial loading separately from empty results. Provider draft IDs and subscription
+order remain stable across settings opens. Account-scoped provider and device
+stores keep submitted writes running after panel closure. Shared loading controls
+and regions cover forms, model selection, settings lists, project selection, host
+changes, conversation metadata and directory creation. Failed configuration and
+model edits retain their inputs for retry. Email/password submissions continue
+when their dialogs close and clear credentials on success.
+
+Validation uses mocked HTTP and the isolated scripted-provider browser fixture.
+The browser checks confirmed stable selection after reopening, equal button widths
+before and during save, retained failed model input, and a successful retry whose
+request completed after settings closed. Gallery Control layout includes the shared
+loading examples. No validation in this checkpoint calls a real model.

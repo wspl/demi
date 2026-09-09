@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Archive, Pin, PinOff } from '@lucide/vue'
+import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -23,6 +24,7 @@ const props = defineProps<{
   /** The row's menu is showing, so it stays lit and its actions stay out. */
   menuOpen: boolean
   renaming: boolean
+  pending?: boolean
   hidePin?: boolean
   /** Inside a project: the row starts at the header's icon column, so its dot sits under the
       folder icon and its title aligns with the project name. */
@@ -44,8 +46,9 @@ const renameValue = ref(props.conversation.title)
 watch(
   () => props.renaming,
   (renaming) => {
-    if (!renaming)
+    if (!renaming) {
       return
+    }
     renameValue.value = props.conversation.title
     nextTick(() => {
       renameInputRef.value?.focus()
@@ -58,14 +61,18 @@ watch(
 // when the conversation needs the user (it failed or was stopped). Nothing when settled.
 const dotClass = computed(() => {
   const { status, unread } = props.conversation
-  if (status === 'active')
+  if (status === 'active') {
     return 'sidebar-breath bg-fg'
-  if (props.open || !unread)
+  }
+  if (props.open || !unread) {
     return null
-  if (status === 'error' || status === 'aborted')
+  }
+  if (status === 'error' || status === 'aborted') {
     return 'bg-on-warning'
-  if (status === 'done' && unread)
+  }
+  if (status === 'done' && unread) {
     return 'bg-on-success'
+  }
   return null
 })
 
@@ -92,11 +99,13 @@ function startMarquee(): void {
   hoverTimer = setTimeout(() => {
     const clip = titleClip.value
     const text = titleText.value
-    if (!clip || !text)
+    if (!clip || !text) {
       return
+    }
     const width = text.getBoundingClientRect().width
-    if (width - clip.clientWidth <= 2)
+    if (width - clip.clientWidth <= 2) {
       return
+    }
     marquee.value = { ms: ((width + MARQUEE_GAP_PX) / MARQUEE_PX_PER_S) * 1000 }
   }, MARQUEE_DELAY_MS)
 }
@@ -120,11 +129,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     @mouseleave="stopMarquee"
   >
     <span class="flex size-3.5 shrink-0 items-center justify-center">
-      <span
-        v-if="dotClass"
-        class="size-1.5 rounded-full"
-        :class="dotClass"
-      />
+      <span v-if="dotClass" class="size-1.5 rounded-full" :class="dotClass" />
     </span>
     <input
       v-if="renaming"
@@ -156,10 +161,15 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
       <span
         v-if="marquee"
         class="sidebar-marquee inline-flex w-max"
-        :style="{ '--marquee-gap': `${MARQUEE_GAP_PX}px`, '--marquee-ms': `${marquee.ms}ms` }"
+        :style="{
+          '--marquee-gap': `${MARQUEE_GAP_PX}px`,
+          '--marquee-ms': `${marquee.ms}ms`,
+        }"
       >
         <span class="sidebar-marquee-copy">{{ conversation.title }}</span>
-        <span class="sidebar-marquee-copy" aria-hidden="true">{{ conversation.title }}</span>
+        <span class="sidebar-marquee-copy" aria-hidden="true">{{
+          conversation.title
+        }}</span>
       </span>
       <span v-else ref="titleText">{{ conversation.title }}</span>
     </span>
@@ -168,7 +178,9 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
       v-if="!renaming"
       class="absolute inset-y-0 right-1 flex items-center gap-0.5 transition-opacity"
       :class="
-        menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100'
+        menuOpen || pending
+          ? 'opacity-100'
+          : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100'
       "
     >
       <!-- Archive first, Pin at the end: the pin lands where the pinned glyph already sits, and the
@@ -179,7 +191,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
           size="sm"
           variant="ghost"
           aria-label="Archive conversation"
-          :disabled="conversation.status === 'active'"
+          :disabled="pending || conversation.status === 'active'"
           @click.stop="emit('archive')"
         />
       </Tooltip>
@@ -194,7 +206,10 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
           size="sm"
           variant="ghost"
           :aria-pressed="conversation.pinned"
-          :aria-label="conversation.pinned ? 'Unpin conversation' : 'Pin conversation'"
+          :disabled="pending"
+          :aria-label="
+            conversation.pinned ? 'Unpin conversation' : 'Pin conversation'
+          "
           @click.stop="emit('togglePin')"
         />
       </Tooltip>
