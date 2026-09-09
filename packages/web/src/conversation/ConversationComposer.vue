@@ -13,6 +13,7 @@ import type { ThinkingConfig } from '@demicodes/core'
 import { executionFor } from '../targets/execution'
 import { composerModel } from '@demicodes/web-ui/agent/model-selection'
 import { useConversations } from './store'
+import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
 import { fileSourceFor, placesFor } from '../devices/files'
 import type { Conversation } from '../state/types'
@@ -20,6 +21,7 @@ import type { Conversation } from '../state/types'
 const props = defineProps<{ conversation: Conversation }>()
 const store = useConversations()
 const resources = useResources()
+const product = useProduct()
 
 const modelState = computed(() =>
   composerModel(
@@ -100,7 +102,8 @@ const remoteHosts = computed(() => {
       })),
   ]
   return hosts.map((host) => {
-    const device = resources.devices.find((device) => device.id === host.id) ?? null
+    const device =
+      resources.devices.find((device) => device.id === host.id) ?? null
     const cwd =
       host.id === main.deviceId
         ? main.path
@@ -117,7 +120,11 @@ const remoteHosts = computed(() => {
 })
 const remotePicker = ref<InstanceType<typeof RemoteFilePicker>>()
 function attachRemote(file: { deviceId: string; host: string; path: string }) {
-  const error = remoteAttachmentError(file.path, file.host, props.conversation.files)
+  const error = remoteAttachmentError(
+    file.path,
+    file.host,
+    props.conversation.files,
+  )
   if (error) {
     store.notice = error
     return
@@ -132,14 +139,22 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
 <template>
   <div>
     <SessionComposer
+      :model-load="product.catalogLoad"
+      @retry-models="product.revalidate"
       v-model:draft="conversation.draft"
       placeholder="Ask Demi…"
       :conversation-id="conversation.id"
       :running="conversation.phase === 'running'"
       :compacting="conversation.phase === 'compacting'"
-      :disabled="conversation.submission === 'sending' || !!conversation.pendingSend"
+      :disabled="
+        conversation.submission === 'sending' || !!conversation.pendingSend
+      "
       :can-configure="resources.canConfigure"
-      :attachments="conversation.files.filter((file) => !conversation.pendingSend?.fileIds.includes(file.id))"
+      :attachments="
+        conversation.files.filter(
+          (file) => !conversation.pendingSend?.fileIds.includes(file.id),
+        )
+      "
       :providers="resources.providerInfos"
       :models="resources.models"
       :selected-provider-id="conversation.model.providerId"

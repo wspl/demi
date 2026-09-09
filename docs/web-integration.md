@@ -70,7 +70,8 @@ configuration and service tier to the agent.
 
 ## Providers and accounts
 
-`settings/ProvidersPanel.vue` supplies API handlers to `SettingsProvidersPage`.
+`settings/providers.ts` owns account-scoped provider drafts and API operations.
+`settings/ProvidersPanel.vue` passes this state to `SettingsProvidersPage`.
 The provider page selects the first subscription or API entry when no valid selection
 exists. OpenAI API and Anthropic API appear as unconfigured local drafts when
 absent; entering a key creates the backend provider. Their protocol and endpoint
@@ -99,9 +100,42 @@ windows only. Explicit refresh probes quota only when supported and free.
 `settings/SettingsDialog.vue` connects nickname, verified email change and
 password change to the account APIs. New accounts have no nickname; shared account
 headers display the email until a nickname is set, and avatars use its first character. Email delivery remains the backend's
-injected `accountMail` adapter. Closing a credential flow aborts its pending
-request and clears temporary credentials. Authentication expiry aborts
+injected `accountMail` adapter. Closing an email or password dialog leaves a
+submitted request running. Reopening shows its current phase and retained input;
+success clears temporary credentials. A failure after closing also produces a
+toast. Provider device-login polling is cancelled when its dialog closes.
+Authentication expiry aborts
 account-scoped activity and returns to sign-in. See [authentication](web-authentication.md).
+
+## Loading and submitted operations
+
+`state/product.ts` distinguishes an initial catalog read from an empty catalog.
+Concurrent vendor reads share a request; subsequent opens reuse the account's
+cached catalog. Background model and state refreshes retain existing content,
+including after a failed refresh. `web-ui/ui/AsyncRegion.vue` supplies initial
+loading, failure and retry presentation for provider, device, archive and project
+lists. `ModelSelector` displays loading or retry before reporting model availability.
+The app mounts before its startup session check finishes and shows a shared
+loading region until routing is ready.
+
+Provider draft IDs and subscription order survive closing and reopening settings.
+Provider and device writes live in account-scoped stores, so closing a panel does
+not cancel a submitted write. Account changes abort those operations. Provider
+configuration failures retain unsaved fields with Retry save. The product retains
+`SettingsModelEditor` data across panel unmounts; Review model reopens a failed
+submission with its inputs. Display-name autosave reports Saving, Saved or Not
+saved and allows retry.
+
+`Button` and `IconButton` expose `loading`, keep their dimensions and accessible
+names, and suppress repeated activation. Form submissions use these controls;
+related inputs are locked while the request runs. Conversation metadata and host
+changes are guarded per conversation. Archive, restore, provider-account and
+device-revoke actions expose pending feedback on the affected row or control.
+Folder creation uses one idle/naming/saving phase and releases it on completion,
+failure or cancellation. No minimum loading duration is imposed.
+
+The Gallery's Control layout page includes `GalleryLoadingStates` examples for
+initial reads, cached content, failure/retry and submitted controls.
 
 ## Devices, Cloud and files
 

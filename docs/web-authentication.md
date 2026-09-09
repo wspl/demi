@@ -35,7 +35,11 @@ Production serves the built web directory through `DEMI_WEB_DIRECTORY`.
 ## Account settings and product state
 
 Nickname, verified email changes and password changes use the real account APIs.
-Closing their dialogs aborts pending requests and clears temporary credentials.
+Closing email or password dialogs leaves submitted requests running. Reopening
+restores the current phase and inputs; a failure while closed also shows a toast.
+Successful completion clears temporary credentials. Signing out or leaving the
+authenticated app aborts account requests. Display-name autosave reports its save
+state and retains failed input for retry.
 The signed-in route opens the backend-integrated product; state polling, provider
 configuration, devices, files and live conversations are described in
 [web integration](web-integration.md). Tests use disposable accounts and fake mail

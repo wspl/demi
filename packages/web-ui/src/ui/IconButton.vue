@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, useAttrs } from 'vue'
+import { blockUnavailableButtonEvent } from './button-events'
 import { useButtonIconSpin } from './button-icon-spin'
 import type { Component } from 'vue'
 import { disabledTooltip } from './disabled'
 import { ICON_PX } from './icon-metrics'
+import IndeterminateSpinner from './IndeterminateSpinner.vue'
 import Tooltip from './Tooltip.vue'
 
 defineOptions({ inheritAttrs: false })
@@ -11,42 +13,54 @@ const attrs = useAttrs()
 const restAttrs = computed(() => {
   const next: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(attrs)) {
-    if (key !== 'class')
+    if (key !== 'class') {
       next[key] = value
+    }
   }
   return next
 })
 
-const props = withDefaults(defineProps<{
-  icon: Component
-  iconSize?: number
-  size?: 'xs' | 'sm' | 'md' | 'lg'
-  variant?: 'default' | 'ghost' | 'danger' | 'accent'
-  circle?: boolean
-  disabled?: boolean
-  /** Why it is disabled, as a tooltip; only read while `disabled`. */
-  disabledReason?: string
-  pressed?: boolean
-  spinning?: boolean
-  spinOnClick?: boolean
-}>(), {
-  size: 'md',
-  variant: 'default',
-})
+const props = withDefaults(
+  defineProps<{
+    icon: Component
+    iconSize?: number
+    size?: 'xs' | 'sm' | 'md' | 'lg'
+    variant?: 'default' | 'ghost' | 'danger' | 'accent'
+    circle?: boolean
+    disabled?: boolean
+    loading?: boolean
+    /** Why it is disabled, as a tooltip; only read while `disabled`. */
+    disabledReason?: string
+    pressed?: boolean
+    spinning?: boolean
+    spinOnClick?: boolean
+  }>(),
+  {
+    size: 'md',
+    variant: 'default',
+  },
+)
 
 const pressed = computed(() => props.pressed === true)
-const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
+const tooltipContent = computed(() =>
+  disabledTooltip(props.disabled, props.disabledReason),
+)
 const emit = defineEmits<{ spinEnd: [] }>()
 const root = ref<HTMLElement | null>(null)
-const { rotating, onClick } = useButtonIconSpin(root, props, () => emit('spinEnd'))
+const { rotating, onClick } = useButtonIconSpin(root, props, () =>
+  emit('spinEnd'),
+)
 
 const glyphPx = computed(() => {
-  if (props.iconSize != null)
+  if (props.iconSize != null) {
     return props.iconSize
-  if (props.size === 'xs')
+  }
+  if (props.size === 'xs') {
     return ICON_PX.in20
-  if (props.size === 'lg')
+  }
+  if (props.size === 'lg') {
     return ICON_PX.in32
+  }
   return ICON_PX.in28
 })
 </script>
@@ -65,17 +79,31 @@ const glyphPx = computed(() => {
       v-bind="restAttrs"
       :data-spinning="rotating || undefined"
       @click="onClick"
+      @click.capture="blockUnavailableButtonEvent($event, disabled || loading)"
+      @keydown.capture="
+        blockUnavailableButtonEvent($event, disabled || loading)
+      "
       role="button"
       class="inline-flex shrink-0 cursor-default items-center justify-center transition-[color,background-color,box-shadow,filter] duration-200 ease-out"
-      :aria-disabled="disabled || undefined"
+      :aria-disabled="disabled || loading || undefined"
+      :aria-busy="loading || undefined"
       :data-pressed="!disabled && pressed ? true : undefined"
       :class="[
         circle ? 'rounded-full' : 'rounded-md',
-        size === 'xs' ? 'size-hit-xs' : size === 'sm' ? 'size-hit-sm' : size === 'lg' ? 'size-hit-lg' : 'size-hit',
+        size === 'xs'
+          ? 'size-hit-xs'
+          : size === 'sm'
+            ? 'size-hit-sm'
+            : size === 'lg'
+              ? 'size-hit-lg'
+              : 'size-hit',
         disabled
           ? 'pointer-events-none cursor-not-allowed text-fg-ghost'
           : variant === 'accent'
-            ? ['btn-primary text-white', pressed ? 'brightness-110' : 'hover:brightness-110']
+            ? [
+                'btn-primary text-white',
+                pressed ? 'brightness-110' : 'hover:brightness-110',
+              ]
             : variant === 'ghost'
               ? circle
                 ? pressed
@@ -89,7 +117,9 @@ const glyphPx = computed(() => {
                 : 'btn text-fg-body',
       ]"
     >
+      <IndeterminateSpinner v-if="loading" :size="glyphPx" />
       <component
+        v-else
         :is="icon"
         :size="glyphPx"
         :width="glyphPx"

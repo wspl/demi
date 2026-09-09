@@ -68,10 +68,15 @@ function report(title: string, error: unknown): void {
   })
 }
 
+const nameSave = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
+const nameDraft = ref<string | null>(null)
+
 async function rename(nickname: string): Promise<void> {
-  if (!nickname.trim()) {
+  if (!nickname.trim() || nameSave.value === 'saving') {
     return
   }
+  nameSave.value = 'saving'
+  nameDraft.value = nickname
   try {
     const response = await apiRequest('/auth/me', {
       method: 'PATCH',
@@ -87,36 +92,39 @@ async function rename(nickname: string): Promise<void> {
     if (product.snapshot) {
       product.snapshot.user = user
     }
+    nameDraft.value = null
+    nameSave.value = 'saved'
     await product.revalidate()
   } catch (error) {
+    nameSave.value = 'failed'
     report('Could not change your name', error)
   }
 }
 
+const emailDraft = ref({ email: '', password: '', code: '' })
+const passwordDraft = ref({ current: '', next: '', confirm: '' })
 const emailOpen = ref(false)
 const emailPhase = ref<ChangeEmailPhase>({
   kind: 'form',
   currentEmail: '',
 })
 let emailRequest: AbortController | null = null
-let emailCredentials: {
-  email: string
-  password: string
-} | null = null
 let challengeId: string | null = null
 
 function closeEmailRequest(): void {
   emailRequest?.abort()
   emailRequest = null
-  emailCredentials = null
   challengeId = null
 }
 
 function openChangeEmail(): void {
-  closeEmailRequest()
-  emailPhase.value = {
-    kind: 'form',
-    currentEmail: resources.email,
+  if (
+    emailPhase.value.kind === 'done' ||
+    (emailPhase.value.kind === 'form' &&
+      !emailPhase.value.busy &&
+      !emailPhase.value.error)
+  ) {
+    emailPhase.value = { kind: 'form', currentEmail: resources.email }
   }
   emailOpen.value = true
 }
@@ -150,10 +158,6 @@ async function submitEmail(email: string, password: string): Promise<void> {
     )
     controller.signal.throwIfAborted()
     challengeId = result.challenge.id
-    emailCredentials = {
-      email,
-      password,
-    }
     emailPhase.value = {
       kind: 'verify',
       email,
@@ -161,6 +165,9 @@ async function submitEmail(email: string, password: string): Promise<void> {
     }
   } catch (error) {
     if (!controller.signal.aborted) {
+      if (!emailOpen.value) {
+        report('Could not change email', error)
+      }
       emailPhase.value = {
         ...previous,
         busy: false,
@@ -175,13 +182,17 @@ async function submitEmail(email: string, password: string): Promise<void> {
 }
 
 function resendEmail(): void {
-  if (emailCredentials) {
-    void submitEmail(emailCredentials.email, emailCredentials.password)
+  if (emailPhase.value.kind === 'verify') {
+    void submitEmail(emailPhase.value.email, emailDraft.value.password)
   }
 }
 
 async function verifyEmail(code: string): Promise<void> {
-  if (!challengeId || emailPhase.value.kind !== 'verify' || emailPhase.value.busy) {
+  if (
+    !challengeId ||
+    emailPhase.value.kind !== 'verify' ||
+    emailPhase.value.busy
+  ) {
     return
   }
   const previous = emailPhase.value
@@ -210,7 +221,7 @@ async function verifyEmail(code: string): Promise<void> {
     if (product.snapshot) {
       product.snapshot.user = user
     }
-    emailCredentials = null
+    emailDraft.value = { email: '', password: '', code: '' }
     challengeId = null
     emailPhase.value = {
       kind: 'done',
@@ -219,6 +230,9 @@ async function verifyEmail(code: string): Promise<void> {
     await product.revalidate()
   } catch (error) {
     if (!controller.signal.aborted) {
+      if (!emailOpen.value) {
+        report('Could not change email', error)
+      }
       emailPhase.value = {
         ...previous,
         busy: false,
@@ -237,9 +251,9 @@ const passwordPhase = ref<ChangePasswordPhase>({ kind: 'form' })
 let passwordRequest: AbortController | null = null
 
 function openChangePassword(): void {
-  passwordRequest?.abort()
-  passwordRequest = null
-  passwordPhase.value = { kind: 'form' }
+  if (passwordPhase.value.kind === 'done') {
+    passwordPhase.value = { kind: 'form' }
+  }
   passwordOpen.value = true
 }
 
@@ -263,9 +277,13 @@ async function submitPassword(current: string, next: string): Promise<void> {
       signal: controller.signal,
     })
     controller.signal.throwIfAborted()
+    passwordDraft.value = { current: '', next: '', confirm: '' }
     passwordPhase.value = { kind: 'done' }
   } catch (error) {
     if (!controller.signal.aborted) {
+      if (!passwordOpen.value) {
+        report('Could not change password', error)
+      }
       passwordPhase.value = {
         kind: 'form',
         error: error instanceof Error ? error.message : String(error),
@@ -278,17 +296,6 @@ async function submitPassword(current: string, next: string): Promise<void> {
   }
 }
 
-watch(emailOpen, (open) => {
-  if (!open) {
-    closeEmailRequest()
-  }
-})
-watch(passwordOpen, (open) => {
-  if (!open) {
-    passwordRequest?.abort()
-    passwordRequest = null
-  }
-})
 watch(
   () => resources.settingsOpen,
   (open) => {
@@ -313,6 +320,9 @@ const archived = computed(() =>
     })),
 )
 async function restore(id: string): Promise<void> {
+  if (conversations.pendingChanges.includes(id)) {
+    return
+  }
   if (await conversations.archive([id], false)) {
     resources.settingsOpen = false
     await router.push(`/chat/${id}`)
@@ -367,11 +377,16 @@ function resetShortcuts(): void {
       @update:theme="preferences.update({ appearance: { theme: $event } })"
       @update:tone="preferences.update({ appearance: { tone: $event } })"
       @update:accent="preferences.update({ appearance: { accent: $event } })"
-      @update:font-size="preferences.update({ appearance: { fontSize: $event } })"
+      @update:font-size="
+        preferences.update({ appearance: { fontSize: $event } })
+      "
     />
     <SettingsAccount
       v-else-if="tab === 'account'"
-      :name="resources.username"
+      :name="nameDraft ?? resources.username"
+      :name-save="nameSave"
+      v-model:email-draft="emailDraft"
+      v-model:password-draft="passwordDraft"
       v-model:email-open="emailOpen"
       v-model:password-open="passwordOpen"
       :overlay-store="appOverlayStore"
@@ -379,6 +394,7 @@ function resetShortcuts(): void {
       :email-phase="emailPhase"
       :password-phase="passwordPhase"
       @update:name="rename"
+      @retry-name="rename(nameDraft ?? resources.username)"
       @change-email="openChangeEmail"
       @change-password="openChangePassword"
       @submit-email="submitEmail"
@@ -392,6 +408,9 @@ function resetShortcuts(): void {
     <SettingsArchived
       v-else-if="tab === 'archived'"
       :conversations="archived"
+      :load="conversations.listStatus"
+      :pending-ids="conversations.pendingChanges"
+      @retry="conversations.reloadList"
       @restore="restore"
     />
     <SettingsKeyboard

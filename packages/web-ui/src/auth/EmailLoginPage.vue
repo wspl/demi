@@ -28,12 +28,11 @@ const emit = defineEmits<{
 }>()
 
 const canSubmit = computed(
-  () => !props.phase.busy && isEmail(email.value) && password.value.length > 0
+  () => !props.phase.busy && isEmail(email.value) && password.value.length > 0,
 )
 
 function submit() {
-  if (!canSubmit.value)
-    return
+  if (!canSubmit.value) return
   emit('submit', email.value.trim(), password.value)
 }
 </script>
@@ -52,7 +51,9 @@ function submit() {
         <header class="select-none">
           <h1 class="text-[22px] font-medium text-fg-emphasis">Sign in</h1>
           <p class="mt-1 text-[13px] leading-5 text-fg-muted">
-            <template v-if="phase.reason === 'expired'">Your session ended. Sign in again.</template>
+            <template v-if="phase.reason === 'expired'"
+              >Your session ended. Sign in again.</template
+            >
             <template v-else>Sign in with your email.</template>
           </p>
         </header>
@@ -87,11 +88,11 @@ function submit() {
             size="lg"
             variant="primary"
             class="mt-1 w-full"
-            :disabled="!canSubmit"
-            :spinning="phase.busy"
+            :disabled="!canSubmit && !phase.busy"
+            :loading="phase.busy"
             @click="submit"
           >
-            {{ phase.busy ? 'Signing in…' : 'Sign in' }}
+            Sign in
           </Button>
         </form>
       </div>

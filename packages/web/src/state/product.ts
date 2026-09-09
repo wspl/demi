@@ -18,13 +18,30 @@ export const useProduct = defineStore('product', () => {
   const error = ref<string | null>(null)
   const catalogs = ref<Record<string, CatalogProvider[]>>({})
   const vendors = ref<VendorCatalog | null>(null)
+  const modelErrors = ref<Record<string, string>>({})
+  const vendorError = ref<string | null>(null)
+  const vendorLoad = computed(() =>
+    vendors.value !== null ? 'ready' : vendorError.value ? 'failed' : 'loading',
+  )
+  const catalogLoad = computed(() => {
+    const key = activeConversationId.value ?? ''
+    if (catalogs.value[key] || catalogs.value['']) {
+      return 'ready'
+    }
+    return modelErrors.value[key] || modelErrors.value['']
+      ? 'failed'
+      : 'loading'
+  })
   const activeConversationId = ref<string | null>(null)
   const catalog = computed(
     () =>
-      catalogs.value[activeConversationId.value ?? ''] ?? catalogs.value[''] ?? [],
+      catalogs.value[activeConversationId.value ?? ''] ??
+      catalogs.value[''] ??
+      [],
   )
   const reads = new SerialQueue()
   const modelRequests = new Map<string, symbol>()
+  let vendorRequest: Promise<void> | null = null
   let controller: AbortController | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
   let etag: string | null = null
@@ -41,22 +58,36 @@ export const useProduct = defineStore('product', () => {
     if (!current) {
       return
     }
-    await reads.run(async () => {
-      current.signal.throwIfAborted()
-      const response = await apiRequest('/state', {
-        signal: current.signal,
-        headers: etag ? { 'If-None-Match': etag } : {},
-        allowNotModified: true,
-      })
-      if (response.status !== 304) {
-        const next = await readResponse(response, productStateSchema)
+    if (!snapshot.value) {
+      load.value = 'loading'
+    }
+    try {
+      await reads.run(async () => {
         current.signal.throwIfAborted()
-        snapshot.value = next
-        etag = response.headers.get('ETag')
+        const response = await apiRequest('/state', {
+          signal: current.signal,
+          headers: etag ? { 'If-None-Match': etag } : {},
+          allowNotModified: true,
+        })
+        if (response.status !== 304) {
+          const next = await readResponse(response, productStateSchema)
+          current.signal.throwIfAborted()
+          snapshot.value = next
+          etag = response.headers.get('ETag')
+        }
+        load.value = 'ready'
+        error.value = null
+      })
+    } catch (cause) {
+      if (
+        controller === current &&
+        !current.signal.aborted &&
+        !snapshot.value
+      ) {
+        load.value = 'failed'
       }
-      load.value = 'ready'
-      error.value = null
-    })
+      throw cause
+    }
   }
 
   async function revalidate(): Promise<void> {
@@ -82,12 +113,16 @@ export const useProduct = defineStore('product', () => {
     if (!current) {
       return
     }
-    if (conversationId && !snapshot.value?.conversations.some((item) => item.id === conversationId)) {
+    if (
+      conversationId &&
+      !snapshot.value?.conversations.some((item) => item.id === conversationId)
+    ) {
       conversationId = null
     }
     const key = conversationId ?? ''
     const requestId = Symbol()
     modelRequests.set(key, requestId)
+    delete modelErrors.value[key]
     const query = new URLSearchParams()
     if (conversationId) {
       query.set('conversationId', conversationId)
@@ -95,28 +130,62 @@ export const useProduct = defineStore('product', () => {
     if (force) {
       query.set('refresh', 'true')
     }
-    const response = await apiRequest(`/models?${query}`, {
-      signal: current.signal,
-    })
-    const next = await readResponse(response, modelCatalogSchema)
-    current.signal.throwIfAborted()
-    if (modelRequests.get(key) === requestId) {
-      modelRequests.delete(key)
-      catalogs.value[key] = next.providers
+    try {
+      const response = await apiRequest(`/models?${query}`, {
+        signal: current.signal,
+      })
+      const next = await readResponse(response, modelCatalogSchema)
+      current.signal.throwIfAborted()
+      if (modelRequests.get(key) === requestId) {
+        catalogs.value[key] = next.providers
+        delete modelErrors.value[key]
+      }
+    } catch (cause) {
+      if (!current.signal.aborted && modelRequests.get(key) === requestId) {
+        modelErrors.value[key] =
+          cause instanceof Error ? cause.message : String(cause)
+      }
+      throw cause
+    } finally {
+      if (modelRequests.get(key) === requestId) {
+        modelRequests.delete(key)
+      }
     }
   }
 
   async function loadVendors(): Promise<void> {
     const current = controller
-    if (!current) {
+    if (!current || vendors.value !== null) {
       return
     }
-    const response = await apiRequest('/providers/catalog', {
-      signal: current.signal,
-    })
-    const next = await readResponse(response, vendorCatalogSchema)
-    current.signal.throwIfAborted()
-    vendors.value = next
+    if (vendorRequest) {
+      return vendorRequest
+    }
+    vendorError.value = null
+    const request = (async () => {
+      try {
+        const response = await apiRequest('/providers/catalog', {
+          signal: current.signal,
+        })
+        const next = await readResponse(response, vendorCatalogSchema)
+        current.signal.throwIfAborted()
+        vendors.value = next
+      } catch (cause) {
+        if (!current.signal.aborted) {
+          vendorError.value =
+            cause instanceof Error ? cause.message : String(cause)
+        }
+        throw cause
+      }
+    })()
+    vendorRequest = request
+    try {
+      await request
+    } finally {
+      if (vendorRequest === request) {
+        vendorRequest = null
+      }
+    }
   }
 
   async function poll(): Promise<void> {
@@ -160,6 +229,9 @@ export const useProduct = defineStore('product', () => {
     catalogs.value = {}
     modelRequests.clear()
     vendors.value = null
+    vendorRequest = null
+    vendorError.value = null
+    modelErrors.value = {}
     activeConversationId.value = null
     load.value = 'loading'
     error.value = null
@@ -172,6 +244,8 @@ export const useProduct = defineStore('product', () => {
     catalogs,
     catalog,
     vendors,
+    vendorLoad,
+    catalogLoad,
     activeConversationId,
     refresh,
     revalidate,

@@ -93,10 +93,7 @@ defineExpose({ browse })
         class="min-w-0 [&>div]:min-w-0"
       >
         <template #trigger>
-          <Tooltip
-            class="min-w-0"
-            :content="path"
-          >
+          <Tooltip class="min-w-0" :content="path">
             <Button
               class="max-w-full"
               variant="ghost"
@@ -145,7 +142,8 @@ defineExpose({ browse })
       :hosts="hosts"
       :host-id="browsingDevice ?? undefined"
       confirm-label="Use this folder"
-      :confirm-disabled="locked || pending"
+      :confirm-disabled="locked"
+      :confirm-pending="pending"
       @select="selectFolder"
       @close="browserOpen = false"
       @update:host-id="switchBrowserHost"
