@@ -13,6 +13,7 @@ import type { ControlService } from '../storage/control'
 import type { ApiKeyProviderConfig, ProviderEntry, ProviderConfig, ProviderVault } from '../vault/providers'
 import type { VendorCatalog } from './vendors'
 import { applyConfiguredModel, configuredCatalogModel, runtimeModelOptions } from './model-config'
+import { providerDetails } from './provider-details'
 import { vendorRequestOptions } from './vendor-requests'
 
 /**
@@ -111,6 +112,8 @@ export interface CatalogProvider {
   sourceFetchedAt: string
   stale: boolean
   warnings: string[]
+  auth: import('@demicodes/provider').ProviderAuthState
+  runtime: import('@demicodes/provider').ProviderRuntimeState
 }
 
 /**
@@ -248,10 +251,19 @@ export class ProviderAssembly {
     return Promise.all(entries.map(async entry => {
       const provider = (await this.providerFor(entry.id))?.provider ?? null
       const list = await this.catalogOf(entry, provider, refresh)
+      let health: Pick<CatalogProvider, 'auth' | 'runtime'> = { auth: { status: 'unknown' }, runtime: { status: 'unknown' } }
+      if (provider) {
+        try {
+          health = await providerDetails(provider, entry.config.kind === 'subscription')
+        } catch (error) {
+          health = { auth: { status: 'error', message: errorMessage(error) }, runtime: { status: 'unknown' } }
+        }
+      }
       return {
         providerId: entry.id, displayName: entry.label,
         requiresProcessCapableHost: provider?.requiresProcessCapableHost ?? false,
         ...list,
+        auth: health.auth, runtime: health.runtime,
       }
     }))
   }
