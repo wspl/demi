@@ -3,10 +3,10 @@ import { z } from 'zod'
 import { outranks, type AuthEnv } from '../auth/identity'
 import { hashPassword } from '../auth/passwords'
 import type { ControlService } from '../storage/control'
-import { passwordSchema, usernameSchema } from './auth'
+import { passwordSchema, emailSchema } from './auth'
 import { requireAdmin } from './authenticate'
 
-const createUserBodySchema = z.object({ username: usernameSchema, password: passwordSchema, role: z.enum(['admin', 'user']) })
+const createUserBodySchema = z.object({ email: emailSchema, password: passwordSchema, role: z.enum(['admin', 'user']) })
 const patchUserBodySchema = z.object({ password: passwordSchema })
 
 /**
@@ -26,11 +26,11 @@ export function userRoutes(options: { control: ControlService }): Hono<AuthEnv> 
 
   app.post('/', async (c) => {
     const parsed = createUserBodySchema.safeParse(await c.req.json().catch(() => null))
-    if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { username, password (8+ characters), role: admin | user }' }, 400)
-    const { username, password, role } = parsed.data
+    if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { email, password (8+ characters), role: admin | user }' }, 400)
+    const { email, password, role } = parsed.data
     if (!outranks(c.get('user').role, role)) return c.json({ code: 'forbidden', message: 'Only the master creates admins' }, 403)
-    const user = await control.createUser({ username, passwordHash: await hashPassword(password), role })
-    if (!user) return c.json({ code: 'username_taken', message: 'That username exists' }, 409)
+    const user = await control.createUser({ email, passwordHash: await hashPassword(password), role })
+    if (!user) return c.json({ code: 'email_taken', message: 'That email exists' }, 409)
     return c.json({ user }, 201)
   })
 

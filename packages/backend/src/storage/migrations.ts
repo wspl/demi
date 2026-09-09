@@ -23,10 +23,22 @@ export const CONTROL_MIGRATIONS: Migration[] = [
     sql: `
 CREATE TABLE users (
   id            TEXT PRIMARY KEY,
-  username      TEXT NOT NULL UNIQUE,
+  email         TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  nickname      TEXT NOT NULL DEFAULT '',
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL CHECK (role IN ('master', 'admin', 'user')),
   created_at    TEXT NOT NULL
+);
+
+CREATE TABLE email_challenges (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  id TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  code_hash TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  sent_at INTEGER NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE web_sessions (

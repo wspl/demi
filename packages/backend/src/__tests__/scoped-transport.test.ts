@@ -13,7 +13,7 @@ async function fixture(blobs?: BlobStore, wrap: (control: ControlService) => Con
   const db = openSqliteDatabase(':memory:')
   migrate(db, CONTROL_MIGRATIONS)
   const control = new LocalControlService(db)
-  const user = await control.createUser({ username: 'reader', passwordHash: 'unused', role: 'user' })
+  const user = await control.createUser({ email: 'reader@example.test', passwordHash: 'unused', role: 'user' })
   const conversation = await control.createConversation(user!.id)
   const pair = createInProcessTransportPair()
   const scoped = conversationScopedTransport(pair.server, conversation, {

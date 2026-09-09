@@ -8,6 +8,7 @@ import { toBytes } from '@demicodes/utils'
 import type { Host, ShellEnvironment } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
 import type { InstanceMode } from './auth/identity'
+import { EmailChanges, type AccountMailSender } from './auth/email-change'
 import { LoginLimiter, type LoginLimiterOptions } from './auth/login-limiter'
 import { ownerFitsMode } from './vault/scope'
 import { WebSessions, type WebSessionsOptions } from './auth/sessions'
@@ -39,6 +40,8 @@ import { CONTROL_MIGRATIONS, migrate } from './storage/migrations'
 export interface BackendOptions {
   /** Directory produced by runner/runtime/release.ts; exposes paired client/runner downloads. */
   runnerReleaseDir?: string
+  /** Delivers account email verification codes. */
+  accountMail?: AccountMailSender
   /** Data directory: control database, conversation databases, blobs and machine images. */
   dataDir: string
   /** The instance mode, a deployment decision: `DEMI_INSTANCE_MODE`. */
@@ -141,7 +144,9 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     ...options.runner,
   })
 
-  const vault = new ProviderVault(control, loadOrCreateInstanceSecret(options.dataDir))
+  const instanceSecret = loadOrCreateInstanceSecret(options.dataDir)
+  const emailChanges = new EmailChanges(control, instanceSecret, options.accountMail, options.auth?.now)
+  const vault = new ProviderVault(control, instanceSecret)
   const vaultRoot = join(options.dataDir, 'vault')
   const vendors = new VendorCatalog(options.modelsDev ?? {})
   const assembly = new ProviderAssembly(vault, { ...builtinProviderTypes(), ...options.providerTypes }, vaultRoot, vendors)
@@ -263,6 +268,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       : null,
     sessions,
     loginLimiter,
+    emailChanges,
     mode: options.mode,
   })
 
