@@ -71,6 +71,11 @@ images, video formats and PDF. Save errors retain the model dialog's input.
 The final persisted manual model cannot be removed individually; the provider
 can be deleted or switched back to its catalog.
 
+The backend vendor catalog fills omitted OpenAI and Anthropic endpoints from the
+corresponding provider runtime constants. The product and Gallery prefill these
+addresses for default API entries, vendor additions and bare protocol additions;
+users can edit the address before configuring the entry.
+
 Claude Code imports a setup-token. Codex and Grok use device login, including
 polling and cancellation. Account lists support adding, switching and removing
 credentials under backend permissions. Shared mode exposes configuration only

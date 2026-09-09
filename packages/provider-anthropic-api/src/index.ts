@@ -1,4 +1,5 @@
 export {
+  DEFAULT_ANTHROPIC_API_BASE_URL,
   createAnthropicApiProvider,
   type AnthropicApiProviderOptions,
   type AnthropicApiRequestOptions,

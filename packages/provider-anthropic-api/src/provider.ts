@@ -93,7 +93,7 @@ interface AnthropicApiRuntimeOptions {
   fetch: AnthropicApiFetch
 }
 
-const DEFAULT_ANTHROPIC_API_BASE_URL = 'https://api.anthropic.com/v1'
+export const DEFAULT_ANTHROPIC_API_BASE_URL = 'https://api.anthropic.com/v1'
 const DEFAULT_ANTHROPIC_VERSION = '2023-06-01'
 // Agent turns routinely stream long tool-heavy responses; 4k-class defaults
 // truncate them. Used only when the catalog has no outputLimit for the model.
