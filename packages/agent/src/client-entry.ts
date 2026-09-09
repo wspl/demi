@@ -4,8 +4,16 @@
 export { AgentClient, type AgentClientListener } from './client/client'
 export type { AgentActionOptions } from './client/client'
 export type { AgentMetadata } from './types'
-export { createWebSocketClientTransport, createWebSocketServerTransport, type JsonWebSocket } from './protocol/websocket-transport'
-export type { AgentTransport, AgentClientTransport, AgentServerTransport } from './protocol/transport'
+export {
+  createWebSocketClientTransport,
+  createWebSocketServerTransport,
+  type JsonWebSocket
+} from './protocol/websocket-transport'
+export type {
+  AgentTransport,
+  AgentClientTransport,
+  AgentServerTransport
+} from './protocol/transport'
 export type {
   ClientFrame,
   ServerFrame,

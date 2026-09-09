@@ -16,7 +16,10 @@ const props = withDefaults(
     running?: boolean
     compacting?: boolean
     draft?: string
-    attachments?: { name: string; src?: string }[]
+    attachments?: {
+      name: string;
+      src?: string
+    }[]
     focused?: boolean
     attachOpen?: boolean
     dropping?: boolean
@@ -33,36 +36,58 @@ const props = withDefaults(
     selectedModelId: 'claude-sonnet',
   },
 )
-const emit = defineEmits<{ send: [text: string]; queue: [text: string]; stop: []; compact: [] }>()
+const emit = defineEmits<{
+  send: [text: string];
+  queue: [text: string];
+  stop: [];
+  compact: []
+}>()
 const draft = ref(props.draft)
 const attached = ref(props.attachments.map((item) => ({ ...item })))
 const providerId = ref(props.selectedProviderId)
 const modelId = ref(props.selectedModelId)
 const tier = ref(props.serviceTierId ?? null)
-const thinking = ref<ThinkingConfig>({ type: 'effort', effort: 'medium', summary: null })
+const thinking = ref<ThinkingConfig>({
+  type: 'effort',
+  effort: 'medium',
+  summary: null
+})
 
 function remove(index: number) {
   const item = attached.value[index]
-  if (item?.src?.startsWith('blob:')) URL.revokeObjectURL(item.src)
+  if (item?.src?.startsWith('blob:'))
+    URL.revokeObjectURL(item.src)
   attached.value.splice(index, 1)
 }
 function submit() {
   const text = draft.value.trim() || attached.value.map((item) => item.name).join(', ')
-  if (!text) return
+  if (!text)
+    return
   draft.value = ''
   while (attached.value.length) remove(0)
-  if (props.running) emit('queue', text)
+  if (props.running)
+    emit('queue', text)
   else emit('send', text)
 }
 function addFiles(files: File[]) {
-  attached.value.push(...files.map((file) => ({ name: file.name, src: filePreviewUrl(file) })))
+  attached.value.push(
+    ...files.map((file) => ({
+      name: file.name,
+      src: filePreviewUrl(file)
+    }))
+  )
 }
 // A remote file: the fixture laptop's project; the chosen path joins the draft.
 const remoteHosts = createGalleryFileHosts()
 const remoteHostId = ref<string | null>(null)
-const remoteHost = computed(() => remoteHosts.find((host) => host.id === remoteHostId.value) ?? remoteHosts[0]!)
+const remoteHost = computed(
+  () =>
+    remoteHosts.find((host) => host.id === remoteHostId.value) ?? remoteHosts[0]!
+)
 function attachRemote(path: string) {
-  draft.value = draft.value && !/\s$/.test(draft.value) ? `${draft.value} ${path}` : `${draft.value}${path}`
+  draft.value = draft.value && !/\s$/.test(draft.value)
+    ? `${draft.value} ${path}`
+    : `${draft.value}${path}`
   remoteHostId.value = null
 }
 function selectModel(provider: string, model: string) {

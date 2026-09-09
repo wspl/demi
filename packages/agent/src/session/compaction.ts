@@ -1,6 +1,14 @@
 import { throwIfAborted } from '@demicodes/utils'
-import type { Block, ModelSelection, Transcript as CoreTranscript, UserContentBlock } from '@demicodes/core'
-import { TranscriptLog, estimateTranscriptBlockTokens } from '../transcript/transcript'
+import type {
+  Block,
+  ModelSelection,
+  Transcript as CoreTranscript,
+  UserContentBlock
+} from '@demicodes/core'
+import {
+  TranscriptLog,
+  estimateTranscriptBlockTokens
+} from '../transcript/transcript'
 import { isContextLengthExceeded } from './provider-stream-error'
 import type { SessionEvent, SessionEventListener } from '../types'
 
@@ -23,20 +31,28 @@ export interface CompactionHost {
   readonly model: ModelSelection
   readonly keepRecentTokens: number
   readonly thresholdRatio: number
-  /** Absolute compact threshold; null falls back to `contextWindow * thresholdRatio`. */
+  /**
+   * Absolute compact threshold; null falls back to `contextWindow *
+   * thresholdRatio`.
+   */
   readonly thresholdTokens: number | null
   currentSignal(): AbortSignal
   clone(transcript: CoreTranscript): CompactionClone
   commitTranscript(): Promise<void>
-  /** Runs `fn` with the session marked as compacting, restoring the prior phase afterwards. */
+  /**
+   * Runs `fn` with the session marked as compacting, restoring the prior phase
+   * afterwards.
+   */
   runWithCompactingPhase<T>(fn: () => Promise<T>): Promise<T>
   emit(event: SessionEvent): void
 }
 
 /**
- * Owns the compaction algorithm: pick a window of old transcript blocks, summarize
+ * Owns the compaction algorithm: pick a window of old transcript blocks,
+ * summarize
  * them through a session clone's normal turn path, and splice in a compaction
- * boundary — retrying with a smaller window if the summary request itself overflows
+ * boundary — retrying with a smaller window if the summary request itself
+ * overflows
  * the context.
  */
 export class CompactionController {
@@ -48,71 +64,105 @@ export class CompactionController {
    */
   async compactToFit(targetModel: ModelSelection): Promise<boolean> {
     const contextWindow = targetModel.model.contextWindow
-    if (contextWindow <= 0) return false
+    if (contextWindow <= 0)
+      return false
     const threshold = resolveCompactionThreshold(
       contextWindow,
       this.host.thresholdRatio,
       this.host.thresholdTokens,
     )
-    if (this.host.transcript.estimateContextTokens(contextWindow) < threshold) return false
+    if (this.host.transcript.estimateContextTokens(contextWindow) < threshold)
+      return false
     return this.host.runWithCompactingPhase(async () => {
       let compacted = false
-      for (let attempt = 0; attempt < 8 && this.host.transcript.estimateContextTokens(contextWindow) >= threshold; attempt += 1) {
-        if (!(await this.run())) break
+      for (let attempt = 0; attempt < 8
+        && this.host.transcript.estimateContextTokens(contextWindow) >= threshold; attempt += 1) {
+        if (!(await this.run()))
+          break
         compacted = true
       }
       return compacted
     })
   }
 
-  /** Runs one compaction pass before a turn when the current model is over threshold. */
+  /**
+   * Runs one compaction pass before a turn when the current model is over
+   * threshold.
+   */
   async preflight(): Promise<void> {
     const contextWindow = this.host.model.model.contextWindow
-    if (contextWindow <= 0) return
+    if (contextWindow <= 0)
+      return
     const threshold = resolveCompactionThreshold(
       contextWindow,
       this.host.thresholdRatio,
       this.host.thresholdTokens,
     )
-    if (this.host.transcript.estimateContextTokens(contextWindow) < threshold) return
+    if (this.host.transcript.estimateContextTokens(contextWindow) < threshold)
+      return
     await this.host.runWithCompactingPhase(() => this.run())
   }
 
   /** Runs one compaction pass; returns whether it compacted anything. */
   async run(): Promise<boolean> {
     const transcript = this.host.transcript
-    if (transcript.pendingToolCalls().length > 0) return false
+    if (transcript.pendingToolCalls().length > 0)
+      return false
 
     const window = transcript.findCompactionWindow(this.host.keepRecentTokens)
-    if (window === null) return false
+    if (window === null)
+      return false
     // The window slice starts at the previous boundary so its summary folds into the new one.
     // It must also cover at least one content block beyond the leading boundary/marker pair —
     // re-summarizing the previous summary alone frees nothing and only degrades it.
     let minCutPoint = window.startIndex
     while (minCutPoint < window.cutPoint) {
       const type = transcript.blocks[minCutPoint]?.type
-      if (type !== 'compaction_boundary' && type !== 'compaction_marker') break
+      if (type !== 'compaction_boundary' && type !== 'compaction_marker')
+        break
       minCutPoint += 1
     }
-    if (window.cutPoint <= minCutPoint) return false
+    if (window.cutPoint <= minCutPoint)
+      return false
 
     let cutPoint = window.cutPoint
     while (cutPoint > minCutPoint) {
-      const compactedBlocks = transcript.blocks.slice(window.startIndex, cutPoint)
-      const compactedTokens = compactedBlocks.reduce((total, block) => total + estimateTranscriptBlockTokens(block), 0)
+      const compactedBlocks = transcript.blocks.slice(
+        window.startIndex,
+        cutPoint
+      )
+      const compactedTokens = compactedBlocks.reduce(
+        (total, block) => total + estimateTranscriptBlockTokens(block),
+        0
+      )
 
       try {
         const summary = await this.generateSummary(compactedBlocks)
-        if (!summary) return false
+        if (!summary)
+          return false
 
-        const boundary = transcript.insertCompactionBoundary(cutPoint, this.host.model, summary, estimateTokens(summary))
-        transcript.appendCompactionMarker(this.host.model, boundary.id, compactedTokens)
+        const boundary = transcript.insertCompactionBoundary(
+          cutPoint,
+          this.host.model,
+          summary,
+          estimateTokens(summary)
+        )
+        transcript.appendCompactionMarker(
+          this.host.model,
+          boundary.id,
+          compactedTokens
+        )
         await this.host.commitTranscript()
         return true
       } catch (error) {
-        if (!isContextLengthExceeded(error)) throw error
-        const nextCutPoint = nextSmallerCompactionCutPoint(window.startIndex, cutPoint)
-        if (nextCutPoint === null) throw error
+        if (!isContextLengthExceeded(error))
+          throw error
+        const nextCutPoint = nextSmallerCompactionCutPoint(
+          window.startIndex,
+          cutPoint
+        )
+        if (nextCutPoint === null)
+          throw error
         cutPoint = nextCutPoint
       }
     }
@@ -128,7 +178,8 @@ export class CompactionController {
       void clone.abort()
     }
     const unsubscribe = clone.subscribe((event) => {
-      if (event.type === 'retry_scheduled') this.host.emit(event)
+      if (event.type === 'retry_scheduled')
+        this.host.emit(event)
     })
     parentSignal.addEventListener('abort', abortClone, { once: true })
     try {
@@ -144,10 +195,16 @@ export class CompactionController {
   }
 }
 
-function lastAssistantText(transcript: TranscriptLog, startIndex: number): string {
-  for (let index = transcript.blocks.length - 1; index >= startIndex; index -= 1) {
+function lastAssistantText(
+  transcript: TranscriptLog,
+  startIndex: number
+): string {
+  for (let index = transcript.blocks.length
+    - 1; index
+    >= startIndex; index -= 1) {
     const block = transcript.blocks[index]
-    if (block?.type === 'text') return block.text
+    if (block?.type === 'text')
+      return block.text
   }
   return ''
 }
@@ -169,18 +226,27 @@ export function resolveCompactionThreshold(
   thresholdRatio: number,
   thresholdTokens: number | null | undefined,
 ): number {
-  if (contextWindow <= 0) return 0
-  if (!Number.isFinite(thresholdRatio)) return Number.POSITIVE_INFINITY
+  if (contextWindow <= 0)
+    return 0
+  if (!Number.isFinite(thresholdRatio))
+    return Number.POSITIVE_INFINITY
   if (thresholdTokens != null && Number.isFinite(thresholdTokens)) {
     return Math.min(Math.max(0, Math.floor(thresholdTokens)), contextWindow)
   }
   return Math.floor(contextWindow * thresholdRatio)
 }
 
-/** The next (smaller) cut point to retry compaction with, or null when nothing more can be compacted. */
-export function nextSmallerCompactionCutPoint(startIndex: number, cutPoint: number): number | null {
+/**
+ * The next (smaller) cut point to retry compaction with, or null when nothing
+ * more can be compacted.
+ */
+export function nextSmallerCompactionCutPoint(
+  startIndex: number,
+  cutPoint: number
+): number | null {
   const compactedBlockCount = cutPoint - startIndex
-  if (compactedBlockCount <= 1) return null
+  if (compactedBlockCount <= 1)
+    return null
   return startIndex + Math.max(1, Math.floor(compactedBlockCount / 2))
 }
 

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test'
-import { parseJsonObject, parseJsonOrString, parsePortableJson, stringifyPortableJson } from '../json'
+import {
+  parseJsonObject,
+  parseJsonOrString,
+  parsePortableJson,
+  stringifyPortableJson
+} from '../json'
 import { normalizeBaseUrl } from '../strings'
 
 describe('parseJsonOrString', () => {
@@ -51,24 +56,32 @@ describe('portable JSON codec', () => {
     expect([...decoded.two]).toEqual([254, 253])
   })
 
-  it('round-trips Date values, including nested, top-level, and in arrays', () => {
-    const date = new Date('2026-08-31T12:34:56.789Z')
-    const decoded = parsePortableJson<{ at: Date; list: Date[] }>(
-      stringifyPortableJson({ at: date, list: [date] }),
-    )
-    expect(decoded.at).toBeInstanceOf(Date)
-    expect(decoded.at.toISOString()).toBe(date.toISOString())
-    expect(decoded.list[0]).toBeInstanceOf(Date)
+  it(
+    'round-trips Date values, including nested, top-level, and in arrays',
+    () => {
+      const date = new Date('2026-08-31T12:34:56.789Z')
+      const decoded = parsePortableJson<{
+        at: Date;
+        list: Date[]
+      }>(
+        stringifyPortableJson({ at: date, list: [date] }),
+      )
+      expect(decoded.at).toBeInstanceOf(Date)
+      expect(decoded.at.toISOString()).toBe(date.toISOString())
+      expect(decoded.list[0]).toBeInstanceOf(Date)
 
-    const top = parsePortableJson<Date>(stringifyPortableJson(date))
-    expect(top).toBeInstanceOf(Date)
-    expect(top.getTime()).toBe(date.getTime())
+      const top = parsePortableJson<Date>(stringifyPortableJson(date))
+      expect(top).toBeInstanceOf(Date)
+      expect(top.getTime()).toBe(date.getTime())
 
-    // A plain ISO string stays a string — only marked Dates revive.
-    expect(parsePortableJson<{ s: string }>(stringifyPortableJson({ s: date.toISOString() })).s).toBe(
-      date.toISOString(),
-    )
-  })
+      // A plain ISO string stays a string — only marked Dates revive.
+      expect(parsePortableJson<{ s: string }>(stringifyPortableJson({
+        s: date.toISOString()
+      })).s).toBe(
+        date.toISOString(),
+      )
+    }
+  )
 
   it('round-trips Buffer as Uint8Array despite Buffer.toJSON', () => {
     const decoded = parsePortableJson<{ bytes: Uint8Array }>(
@@ -79,7 +92,9 @@ describe('portable JSON codec', () => {
   })
 
   it('parses plain JSON without markers unchanged', () => {
-    expect(parsePortableJson<{ a: number[] }>('{"a":[1,2]}')).toEqual({ a: [1, 2] })
+    expect(parsePortableJson<{ a: number[] }>('{"a":[1,2]}')).toEqual({
+      a: [1, 2]
+    })
   })
 
   it('supports pretty-printing via the space parameter', () => {
@@ -89,8 +104,11 @@ describe('portable JSON codec', () => {
 
 describe('normalizeBaseUrl', () => {
   it('strips trailing slashes', () => {
-    expect(normalizeBaseUrl('https://api.example.com/')).toBe('https://api.example.com')
-    expect(normalizeBaseUrl('https://api.example.com///')).toBe('https://api.example.com')
-    expect(normalizeBaseUrl('https://api.example.com/v1')).toBe('https://api.example.com/v1')
+    expect(normalizeBaseUrl('https://api.example.com/'))
+      .toBe('https://api.example.com')
+    expect(normalizeBaseUrl('https://api.example.com///'))
+      .toBe('https://api.example.com')
+    expect(normalizeBaseUrl('https://api.example.com/v1'))
+      .toBe('https://api.example.com/v1')
   })
 })

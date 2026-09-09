@@ -5,7 +5,10 @@ import type { User } from './identity'
 export interface WebSessionsOptions {
   /** How long a session lives from its last renewal. Default 30 days. */
   ttlMs?: number
-  /** A request that finds less than this left renews the session to a full ttl. Default 15 days. */
+  /**
+   * A request that finds less than this left renews the session to a full ttl.
+   * Default 15 days.
+   */
   renewBelowMs?: number
   /** The clock — tests move it. */
   now?: () => number
@@ -32,20 +35,39 @@ export class WebSessions {
     this.now = options.now ?? Date.now
   }
 
-  async open(userId: string): Promise<{ token: string; expiresAt: Date }> {
+  async open(userId: string): Promise<{
+    token: string;
+    expiresAt: Date
+  }> {
     // A login is the one moment the table grows; it also drops the sessions that ran out unnoticed.
-    await this.control.deleteExpiredWebSessions(new Date(this.now()).toISOString())
+    await this.control.deleteExpiredWebSessions(
+      new Date(this.now()).toISOString()
+    )
     const token = randomBytes(32).toString('base64url')
     const expiresAt = new Date(this.now() + this.ttlMs)
-    await this.control.createWebSession({ tokenHash: hashSessionToken(token), userId, expiresAt: expiresAt.toISOString() })
+    await this.control.createWebSession({
+      tokenHash: hashSessionToken(token),
+      userId,
+      expiresAt: expiresAt.toISOString()
+    })
     return { token, expiresAt }
   }
 
-  /** The session's user, or null when the token is unknown or expired; renews a session near its end. */
-  async resolve(token: string): Promise<{ user: User; expiresAt: Date; renewed: boolean } | null> {
+  /**
+   * The session's user, or null when the token is unknown or expired; renews a
+   * session near its end.
+   */
+  async resolve(
+    token: string
+  ): Promise<{
+    user: User;
+    expiresAt: Date;
+    renewed: boolean
+  } | null> {
     const tokenHash = hashSessionToken(token)
     const session = await this.control.getWebSession(tokenHash)
-    if (!session) return null
+    if (!session)
+      return null
     const now = this.now()
     let expiresAt = new Date(session.expiresAt)
     if (expiresAt.getTime() <= now) {
@@ -53,7 +75,8 @@ export class WebSessions {
       return null
     }
     const user = await this.control.getUser(session.userId)
-    if (!user) return null
+    if (!user)
+      return null
     let renewed = false
     if (expiresAt.getTime() - now < this.renewBelowMs) {
       expiresAt = new Date(now + this.ttlMs)

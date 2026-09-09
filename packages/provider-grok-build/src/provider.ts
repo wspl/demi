@@ -16,13 +16,24 @@ import {
   type GrokAuthStore,
   type GrokResolvedAuth,
 } from './auth'
-import { buildGrokChatCompletionsBody, mapGrokChatCompletionStream, readServerSentEvents } from './chat'
-import { createGrokBuildCredentials, openGrokCredentialPool, PoolAwareGrokAuthStore } from './credentials'
+import {
+  buildGrokChatCompletionsBody,
+  mapGrokChatCompletionStream,
+  readServerSentEvents
+} from './chat'
+import {
+  createGrokBuildCredentials,
+  openGrokCredentialPool,
+  PoolAwareGrokAuthStore
+} from './credentials'
 import { DEFAULT_GROK_BUILD_BASE_URL, buildGrokBuildHeaders } from './headers'
 import { listGrokBuildModels } from './models'
 import { createGrokBuildQuota } from './quota'
 
-export type GrokBuildFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+export type GrokBuildFetch = (
+  input: string | URL | Request,
+  init?: RequestInit
+) => Promise<Response>
 
 export interface GrokBuildProviderOptions {
   id?: string
@@ -99,12 +110,15 @@ export class GrokBuildProvider implements AgentProvider {
         headers.set('accept', 'text/event-stream')
         headers.set('content-type', 'application/json')
 
-        const response = await this.options.fetch(chatCompletionsUrl(this.options.baseUrl), {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(buildGrokChatCompletionsBody(request)),
-          signal: request.cancel,
-        })
+        const response = await this.options.fetch(
+          chatCompletionsUrl(this.options.baseUrl),
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(buildGrokChatCompletionsBody(request)),
+            signal: request.cancel,
+          }
+        )
 
         try {
           observeQuota?.({ headers: response.headers, status: response.status })
@@ -118,11 +132,18 @@ export class GrokBuildProvider implements AgentProvider {
           continue
         }
         if (!response.ok) {
-          yield await httpRequestFailedEvent(response, accessToken, 'Grok Build')
+          yield await httpRequestFailedEvent(
+            response,
+            accessToken,
+            'Grok Build'
+          )
           return
         }
 
-        yield* mapGrokChatCompletionStream(readServerSentEvents(response.body, request.cancel), request.cancel)
+        yield* mapGrokChatCompletionStream(
+          readServerSentEvents(response.body, request.cancel),
+          request.cancel
+        )
         return
       } catch (error) {
         if (request.cancel.aborted || isAbortError(error)) {
@@ -136,17 +157,25 @@ export class GrokBuildProvider implements AgentProvider {
   }
 }
 
-export function createGrokBuildProvider(options: GrokBuildProviderOptions = {}): Provider {
+export function createGrokBuildProvider(
+  options: GrokBuildProviderOptions = {}
+): Provider {
   const id = options.id ?? 'grok-build'
   const displayName = options.displayName ?? 'Grok Build'
-  const enableCredentials = options.credentials ?? options.authStore === undefined
-  const pool = !options.authStore && enableCredentials ? openGrokCredentialPool({ stateDir: options.stateDir }) : null
+  const enableCredentials = options.credentials
+    ?? options.authStore === undefined
+  const pool = !options.authStore && enableCredentials ? openGrokCredentialPool(
+    {
+      stateDir: options.stateDir
+    }
+  ) : null
   const authStore =
     options.authStore ??
     (pool
       ? new PoolAwareGrokAuthStore(pool, { grokHome: options.grokHome })
       : new FileGrokAuthStore({ grokHome: options.grokHome }))
-  const baseUrl = normalizeBaseUrl(options.baseUrl ?? DEFAULT_GROK_BUILD_BASE_URL)
+  const baseUrl = normalizeBaseUrl(options.baseUrl
+    ?? DEFAULT_GROK_BUILD_BASE_URL)
   const fetchImpl = options.fetch ?? fetch
   const quota = createGrokBuildQuota({
     providerId: id,
@@ -157,7 +186,11 @@ export function createGrokBuildProvider(options: GrokBuildProviderOptions = {}):
     fetch: fetchImpl as GrokBuildFetch,
   })
   const credentialsApi = pool
-    ? createGrokBuildCredentials(pool, authStore, { grokHome: options.grokHome, quota })
+    ? createGrokBuildCredentials(
+      pool,
+      authStore,
+      { grokHome: options.grokHome, quota }
+    )
     : undefined
   const runtimeOptions: GrokBuildRuntimeOptions = {
     baseUrl,
@@ -194,23 +227,41 @@ export function createGrokBuildProvider(options: GrokBuildProviderOptions = {}):
   })
 }
 
-export function parseGrokBuildProviderConfig(config: unknown): Pick<GrokBuildProviderOptions, 'grokHome' | 'baseUrl' | 'headers'> {
-  if (config === undefined || config === null) return {}
-  if (!isRecord(config)) throw new Error('Grok Build provider config must be an object')
-  const parsed: Pick<GrokBuildProviderOptions, 'grokHome' | 'baseUrl' | 'headers'> = {}
+export function parseGrokBuildProviderConfig(
+  config: unknown
+): Pick<GrokBuildProviderOptions, 'grokHome' | 'baseUrl' | 'headers'> {
+  if (config === undefined || config === null)
+    return {}
+  if (!isRecord(config))
+    throw new Error('Grok Build provider config must be an object')
+  const parsed: Pick<GrokBuildProviderOptions, 'grokHome'
+    | 'baseUrl'
+    | 'headers'> = {}
   if (config.grokHome !== undefined) {
-    if (typeof config.grokHome !== 'string') throw new Error('Grok Build provider config field "grokHome" must be a string')
+    if (typeof config.grokHome !== 'string')
+      throw new Error(
+        'Grok Build provider config field "grokHome" must be a string'
+      )
     parsed.grokHome = config.grokHome
   }
   if (config.baseUrl !== undefined) {
-    if (typeof config.baseUrl !== 'string') throw new Error('Grok Build provider config field "baseUrl" must be a string')
+    if (typeof config.baseUrl !== 'string')
+      throw new Error(
+        'Grok Build provider config field "baseUrl" must be a string'
+      )
     parsed.baseUrl = config.baseUrl
   }
   if (config.headers !== undefined) {
-    if (!isRecord(config.headers)) throw new Error('Grok Build provider config field "headers" must be an object')
+    if (!isRecord(config.headers))
+      throw new Error(
+        'Grok Build provider config field "headers" must be an object'
+      )
     const headers: Record<string, string> = {}
     for (const [key, value] of Object.entries(config.headers)) {
-      if (typeof value !== 'string') throw new Error(`Grok Build provider config headers.${key} must be a string`)
+      if (typeof value !== 'string')
+        throw new Error(
+          `Grok Build provider config headers.${key} must be a string`
+        )
       headers[key] = value
     }
     parsed.headers = headers
@@ -220,5 +271,7 @@ export function parseGrokBuildProviderConfig(config: unknown): Pick<GrokBuildPro
 
 function chatCompletionsUrl(baseUrl: string): string {
   const normalized = normalizeBaseUrl(baseUrl)
-  return normalized.endsWith('/chat/completions') ? normalized : `${normalized}/chat/completions`
+  return normalized.endsWith('/chat/completions')
+    ? normalized
+    : `${normalized}/chat/completions`
 }

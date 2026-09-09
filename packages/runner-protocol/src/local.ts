@@ -1,7 +1,10 @@
 import { z } from 'zod'
 import contract from './local-contract.json'
 
-/** Shared by the TS decoder and the generated C header. Length excludes the type byte. */
+/**
+ * Shared by the TS decoder and the generated C header. Length excludes the type
+ * byte.
+ */
 export const LOCAL = contract
 const id = z.string().regex(/^[a-f0-9]{32}$/)
 export const localInvokeSchema = z.object({
@@ -26,7 +29,10 @@ export const localManageSchema = z.object({
 }).strict()
 export type LocalInvoke = z.infer<typeof localInvokeSchema>
 
-export function localFrame(type: number, body: Uint8Array = new Uint8Array()): Uint8Array {
+export function localFrame(
+  type: number,
+  body: Uint8Array = new Uint8Array()
+): Uint8Array {
   if (body.length > LOCAL.maxFrame) {
     throw new Error('local IPC frame exceeds limit')
   }
@@ -39,7 +45,10 @@ export function localFrame(type: number, body: Uint8Array = new Uint8Array()): U
 
 export async function* localFrames(
   input: AsyncIterable<Uint8Array>,
-): AsyncIterable<{ type: number; body: Uint8Array }> {
+): AsyncIterable<{
+  type: number;
+  body: Uint8Array
+}> {
   let buffer = new Uint8Array(0)
   for await (const chunk of input) {
     const joined = new Uint8Array(buffer.length + chunk.length)
@@ -47,7 +56,11 @@ export async function* localFrames(
     joined.set(chunk, buffer.length)
     buffer = joined
     while (buffer.length >= 5) {
-      const length = new DataView(buffer.buffer, buffer.byteOffset, 4).getUint32(0)
+      const length = new DataView(
+        buffer.buffer,
+        buffer.byteOffset,
+        4
+      ).getUint32(0)
       if (length > LOCAL.maxFrame) {
         throw new Error('local IPC frame exceeds limit')
       }

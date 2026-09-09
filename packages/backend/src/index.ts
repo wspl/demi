@@ -1,13 +1,40 @@
 export { createBackend, type Backend, type BackendOptions } from './backend'
 export type { User, Role, InstanceMode } from './auth/identity'
-export { ProviderAssembly, builtinProviderTypes, type ProviderType, type ProviderTypeFactory, type CatalogProvider } from './llm/assembly'
+export {
+  ProviderAssembly,
+  builtinProviderTypes,
+  type ProviderType,
+  type ProviderTypeFactory,
+  type CatalogProvider
+} from './llm/assembly'
 export { VendorCatalog, type Vendor } from './llm/vendors'
-export { ProviderVault, type ProviderEntry, type ProviderConfig, type ApiKeyProviderConfig } from './vault/providers'
-export { CLOUD_HOME, cloudSessionDirectory } from './conversation/execution-target'
-export { openSqliteDatabase, type SqlDatabase, type SqlParams } from './storage/database'
-export { migrate, CONTROL_MIGRATIONS, CONVERSATION_MIGRATIONS, type Migration } from './storage/migrations'
+export {
+  ProviderVault,
+  type ProviderEntry,
+  type ProviderConfig,
+  type ApiKeyProviderConfig
+} from './vault/providers'
+export {
+  CLOUD_HOME,
+  cloudSessionDirectory
+} from './conversation/execution-target'
+export {
+  openSqliteDatabase,
+  type SqlDatabase,
+  type SqlParams
+} from './storage/database'
+export {
+  migrate,
+  CONTROL_MIGRATIONS,
+  CONVERSATION_MIGRATIONS,
+  type Migration
+} from './storage/migrations'
 export { DbHostStore } from './storage/host-store'
-export { LocalControlService, type ControlService, type ConversationRecord } from './storage/control'
+export {
+  LocalControlService,
+  type ControlService,
+  type ConversationRecord
+} from './storage/control'
 export { ConversationStores } from './storage/conversation-store'
 export { DirBlobStore } from './storage/blob-store'
 

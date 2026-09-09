@@ -1,5 +1,8 @@
 import { webAssetRoutes } from './web-assets'
-import { runnerInstallRoutes, type RunnerInstallationOptions } from './runner-install'
+import {
+  runnerInstallRoutes,
+  type RunnerInstallationOptions
+} from './runner-install'
 import type { AgentServer } from '@demicodes/agent'
 import { Hono } from 'hono'
 import type { UpgradeWebSocket } from 'hono/ws'
@@ -43,7 +46,10 @@ import { usageRoutes } from './usage'
 import { cloudRoutes } from './cloud'
 import { workspaceRoutes } from './workspaces'
 
-/** Assembles the external HTTP surface: error shape, 404 shape, one route module per resource. */
+/**
+ * Assembles the external HTTP surface: error shape, 404 shape, one route module
+ * per resource.
+ */
 export function createApp(options: {
   webDirectory?: string
   runnerInstallation?: RunnerInstallationOptions
@@ -63,9 +69,16 @@ export function createApp(options: {
   pipes: PipeBroker
   upgradeWebSocket: UpgradeWebSocket
   blobs: UserBlobStores
-  withHost: <T>(conversationId: string, operation: (host: Host) => Promise<T>, signal?: AbortSignal) => Promise<T>
+  withHost: <T>(
+    conversationId: string,
+    operation: (host: Host) => Promise<T>,
+    signal?: AbortSignal
+  ) => Promise<T>
   managedHosts: ManagedHosts | null
-  createCloudWorkspace: ((userId: string, name: string) => Promise<WorkspaceRecord>) | null
+  createCloudWorkspace: ((
+    userId: string,
+    name: string
+  ) => Promise<WorkspaceRecord>) | null
   sessions: WebSessions
   loginLimiter: LoginLimiter
   emailChanges: EmailChanges
@@ -73,35 +86,99 @@ export function createApp(options: {
 }): Hono {
   const app = new Hono()
 
-  app.onError((error, c) => c.json({ code: 'internal_error', message: error.message }, 500))
-  app.notFound((c) => c.json({ code: 'not_found', message: `No route for ${c.req.method} ${c.req.path}` }, 404))
+  app.onError(
+    (error, c) => c.json(
+      { code: 'internal_error', message: error.message },
+      500
+    )
+  )
+  app.notFound((c) => c.json({
+    code: 'not_found',
+    message: `No route for ${c.req.method} ${c.req.path}`
+  }, 404))
 
   // Everything under /api needs a session except the two entrances and the
   // routes runners dial with their device token.
-  app.use('/api/*', authenticate(options.sessions, ['/api/setup', '/api/auth/login', '/api/runner', '/api/pipes']))
+  app.use('/api/*', authenticate(options.sessions, [
+    '/api/setup',
+    '/api/auth/login',
+    '/api/runner',
+    '/api/pipes'
+  ]))
 
   app.route('/', runnerInstallRoutes(options.runnerInstallation))
-  app.route('/api/setup', setupRoutes({ control: options.control, sessions: options.sessions }))
-  app.route('/api/auth/email', emailChangeRoutes(options.emailChanges, options.control))
-  app.route('/api/auth', authRoutes({ control: options.control, sessions: options.sessions, limiter: options.loginLimiter }))
+  app.route('/api/setup', setupRoutes({
+    control: options.control,
+    sessions: options.sessions
+  }))
+  app.route(
+    '/api/auth/email',
+    emailChangeRoutes(options.emailChanges, options.control)
+  )
+  app.route('/api/auth', authRoutes({
+    control: options.control,
+    sessions: options.sessions,
+    limiter: options.loginLimiter
+  }))
   app.route('/api/users', userRoutes({ control: options.control }))
   app.route('/api/state', stateRoutes(options.productState))
   app.route('/api/sidebar', sidebarRoutes(options.control))
-  app.route('/api/settings', settingsRoutes({ mode: options.mode, control: options.control }))
-  app.route('/api/models', modelRoutes({ control: options.control, registry: options.runnerRegistry, cloudConfigured: options.managedHosts !== null, assembly: options.assembly, mode: options.mode }))
-  app.route('/api/providers', providerRoutes({ accounts: options.providerAccounts, operations: options.providerOperations, vault: options.vault, assembly: options.assembly, vendors: options.vendors, logins: options.logins, mode: options.mode }))
-  app.route('/api/usage', usageRoutes({ control: options.control, mode: options.mode }))
-  app.route('/api/runner', runnerSocketRoutes({ registry: options.runnerRegistry, upgradeWebSocket: options.upgradeWebSocket }))
-  app.route('/api/pipes', pipeRoutes({ control: options.control, broker: options.pipes }))
-  app.route('/api/devices', deviceRoutes({ control: options.control, registry: options.runnerRegistry }))
+  app.route(
+    '/api/settings',
+    settingsRoutes({ mode: options.mode, control: options.control })
+  )
+  app.route('/api/models', modelRoutes({
+    control: options.control,
+    registry: options.runnerRegistry,
+    cloudConfigured: options.managedHosts !== null,
+    assembly: options.assembly,
+    mode: options.mode
+  }))
+  app.route('/api/providers', providerRoutes({
+    accounts: options.providerAccounts,
+    operations: options.providerOperations,
+    vault: options.vault,
+    assembly: options.assembly,
+    vendors: options.vendors,
+    logins: options.logins,
+    mode: options.mode
+  }))
+  app.route(
+    '/api/usage',
+    usageRoutes({ control: options.control, mode: options.mode })
+  )
+  app.route('/api/runner', runnerSocketRoutes({
+    registry: options.runnerRegistry,
+    upgradeWebSocket: options.upgradeWebSocket
+  }))
+  app.route('/api/pipes', pipeRoutes({
+    control: options.control,
+    broker: options.pipes
+  }))
+  app.route('/api/devices', deviceRoutes({
+    control: options.control,
+    registry: options.runnerRegistry
+  }))
   app.route('/api/cloud', cloudRoutes(options.managedHosts))
-  app.route('/api/workspaces', workspaceRoutes({ control: options.control, managedHosts: options.managedHosts, createCloudWorkspace: options.createCloudWorkspace }))
-  app.route('/api/attachments', attachmentRoutes({ control: options.control, blobsFor: (id) => options.blobs.forUser(id) }))
-  app.route('/api/blobs', blobRoutes({ blobsFor: (id) => options.blobs.forUser(id) }))
+  app.route('/api/workspaces', workspaceRoutes({
+    control: options.control,
+    managedHosts: options.managedHosts,
+    createCloudWorkspace: options.createCloudWorkspace
+  }))
+  app.route('/api/attachments', attachmentRoutes({
+    control: options.control,
+    blobsFor: (id) => options.blobs.forUser(id)
+  }))
+  app.route(
+    '/api/blobs',
+    blobRoutes({ blobsFor: (id) => options.blobs.forUser(id) })
+  )
   // The stream route registers first so `/:id/stream` wins over the REST group's `/:id/*`.
   app.route(
     '/api/conversations',
-    streamRoutes({ admitFrame: options.admitFrame, assembly: options.assembly,
+    streamRoutes({
+      admitFrame: options.admitFrame,
+      assembly: options.assembly,
       registry: options.runnerRegistry,
       control: options.control,
       agentServer: options.agentServer,

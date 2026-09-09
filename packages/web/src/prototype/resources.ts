@@ -19,9 +19,19 @@ function modelInfo(provider: PrototypeProvider, model: SettingsProviderModel): M
     inputLimit: model.contextWindow,
     acceptedExtensions: model.extensions.map((extension) => extension.replace(/^\./, '')),
     reasoning: model.efforts.length
-      ? { efforts: model.efforts, defaultEffort: model.efforts[Math.min(1, model.efforts.length - 1)] ?? null, canDisable: provider.kind !== 'subscription' }
+      ? {
+        efforts: model.efforts,
+        defaultEffort: model.efforts[Math.min(1, model.efforts.length - 1)] ?? null,
+        canDisable: provider.kind !== 'subscription'
+      }
       : null,
-    serviceTiers: model.fastTier ? [{ id: model.fastTier, label: 'Fast', fast: true }] : null,
+    serviceTiers: model.fastTier ? [
+      {
+        id: model.fastTier,
+        label: 'Fast',
+        fast: true
+      }
+    ] : null,
   }
 }
 
@@ -50,22 +60,41 @@ export const useResources = defineStore('resources', {
   actions: {
     reorderProject(id: string, beforeId: string | null) {
       const item = this.projects.find((item) => item.id === id)
-      const before = beforeId === null ? null : this.projects.find((item) => item.id === beforeId)
-      if (!item || before === undefined) return
+      const before = beforeId === null
+        ? null
+        : this.projects.find((item) => item.id === beforeId)
+      if (!item || before === undefined)
+        return
       this.projects = moveBefore(this.projects, item, before)
     },
     rememberProject(id: string) {
-      this.recentProjectIds = [id, ...this.recentProjectIds.filter((item) => item !== id)]
+      this.recentProjectIds = [
+        id,
+        ...this.recentProjectIds.filter((item) => item !== id)
+      ]
     },
   },
   getters: {
     /** What the composer lists: every provider, available when it can send. */
     providerInfos: (state): ProviderInfo[] =>
-      state.providers.map((provider) => ({ id: provider.id, label: provider.name, isAvailable: providerAvailable(provider) })),
+      state.providers.map(
+        (provider) => ({
+          id: provider.id,
+          label: provider.name,
+          isAvailable: providerAvailable(provider)
+        })
+      ),
     /** The models the composer offers per provider: the ones switched on in settings. */
     models: (state): Record<string, ModelInfo[]> =>
       Object.fromEntries(
-        state.providers.map((provider) => [provider.id, provider.models.filter((model) => model.enabled).map((model) => modelInfo(provider, model))]),
+        state.providers.map(
+          (provider) => [
+            provider.id,
+            provider.models.filter((model) => model.enabled).map(
+              (model) => modelInfo(provider, model)
+            )
+          ]
+        ),
       ),
   },
 })

@@ -5,6 +5,9 @@ import { Cloud, Monitor } from '@lucide/vue'
 export const CLOUD_HOST_ID = 'cloud'
 
 /** One glyph per kind of host: the cloud for the managed workspace, a monitor for a device, unless the host names its own. */
-export function hostIcon(host: { id: string; icon?: Component }): Component {
+export function hostIcon(host: {
+  id: string;
+  icon?: Component
+}): Component {
   return host.icon ?? (host.id === CLOUD_HOST_ID ? Cloud : Monitor)
 }

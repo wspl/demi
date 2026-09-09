@@ -33,7 +33,11 @@ function rollFace(): void {
   iconFace.value = faceFaces[faceIndex.value]!
 }
 
-const exploratoryMarks: { kind: ExploratoryMarkKind; name: string; note: string }[] = [
+const exploratoryMarks: {
+  kind: ExploratoryMarkKind;
+  name: string;
+  note: string
+}[] = [
   { kind: 'orbit', name: 'Orbit', note: 'One tick on a faint ring.' },
   { kind: 'cluster', name: 'Cluster', note: 'Dock Agents mark.' },
   { kind: 'signal', name: 'Signal', note: 'Radar ping.' },
@@ -44,92 +48,120 @@ const exploratoryMarks: { kind: ExploratoryMarkKind; name: string; note: string 
 
 <template>
   <div class="space-y-8">
-  <GallerySection title="ActivityMark" note="The product's wait mark: a hairline sweep.">
-    <div class="specimen-row">
-      <GallerySpecimen variant="sweep">
-        <div class="flex h-7 w-7 items-center justify-center text-fg-muted">
-          <ActivityMark />
-        </div>
-      </GallerySpecimen>
-    </div>
-  </GallerySection>
-
-  <GallerySection title="Exploratory marks" note="Candidates for dock and wait states. Not in the product.">
-    <div class="specimen-row">
-      <GallerySpecimen v-for="mark in exploratoryMarks" :key="mark.kind" :variant="mark.kind">
-        <div class="flex flex-col gap-2">
+    <GallerySection
+      title="ActivityMark"
+      note="The product's wait mark: a hairline sweep."
+    >
+      <div class="specimen-row">
+        <GallerySpecimen variant="sweep">
           <div class="flex h-7 w-7 items-center justify-center text-fg-muted">
-            <ExploratoryMark :kind="mark.kind" />
+            <ActivityMark />
           </div>
-          <div class="text-[12px] leading-4 text-fg-subtle">
-            <span class="text-fg-muted">{{ mark.name }}</span>
-            — {{ mark.note }}
-          </div>
-        </div>
-      </GallerySpecimen>
-    </div>
-  </GallerySection>
+        </GallerySpecimen>
+      </div>
+    </GallerySection>
 
-  <GallerySection title="IndeterminateSpinner" note="Context ring spinner.">
-    <div class="specimen-row">
-      <GallerySpecimen variant="chrome">
-        <div class="flex h-7 w-7 items-center justify-center text-fg-muted">
-          <IndeterminateSpinner :size="ICON_PX.in28" />
-        </div>
-      </GallerySpecimen>
-    </div>
-  </GallerySection>
-
-  <GallerySection title="ChromeRoll" note="28px face. Label rolls type; icon change rolls the face.">
-    <div class="specimen-row specimen-row-wide items-start">
-      <GallerySpecimen variant="label">
-        <div class="flex flex-col gap-3">
-          <div class="h-7 w-56 text-chrome text-fg-muted">
-            <ChromeRoll :face-key="labelFace" icon-key="sweep">
-              <template #icon>
-                <ActivityMark />
-              </template>
-              {{ labelFace }}
-            </ChromeRoll>
-          </div>
-          <Button size="sm" variant="ghost" @click="rollLabel">Roll label</Button>
-        </div>
-      </GallerySpecimen>
-      <GallerySpecimen variant="face">
-        <div class="flex flex-col gap-3">
-          <div class="h-7 w-56 text-chrome text-fg-muted">
-            <ChromeRoll :face-key="iconFace.key" :icon-key="iconFace.icon">
-              <template #icon>
-                <ActivityMark v-if="iconFace.icon === 'sweep'" />
-                <Brain v-else :size="ICON_PX.in28" />
-              </template>
-              {{ iconFace.label }}
-            </ChromeRoll>
-          </div>
-          <Button size="sm" variant="ghost" @click="rollFace">Roll face</Button>
-        </div>
-      </GallerySpecimen>
-    </div>
-  </GallerySection>
-
-  <GallerySection title="Fold" note="Height and chevron share one duration. Used by skill packs and transcript blocks.">
-    <div class="specimen-row">
-      <GallerySpecimen variant="toggle">
-        <div class="w-56">
-          <button type="button" class="flex h-7 w-full cursor-default items-center justify-between text-chrome text-fg" @click="foldOpen = !foldOpen">
-            Pack
-            <FoldChevron :open="foldOpen" class="text-fg-subtle" />
-          </button>
-          <Fold :open="foldOpen">
-            <div class="space-y-1 py-1 text-[12px] leading-4 text-fg-muted">
-              <div>web-design-guidelines</div>
-              <div>vercel-react-best-practices</div>
-              <div>tdd</div>
+    <GallerySection
+      title="Exploratory marks"
+      note="Candidates for dock and wait states. Not in the product."
+    >
+      <div class="specimen-row">
+        <GallerySpecimen
+          v-for="mark in exploratoryMarks"
+          :key="mark.kind"
+          :variant="mark.kind"
+        >
+          <div class="flex flex-col gap-2">
+            <div class="flex h-7 w-7 items-center justify-center text-fg-muted">
+              <ExploratoryMark :kind="mark.kind" />
             </div>
-          </Fold>
-        </div>
-      </GallerySpecimen>
-    </div>
-  </GallerySection>
+            <div class="text-[12px] leading-4 text-fg-subtle">
+              <span class="text-fg-muted">{{ mark.name }}</span>
+            — {{ mark.note }}
+            </div>
+          </div>
+        </GallerySpecimen>
+      </div>
+    </GallerySection>
+
+    <GallerySection title="IndeterminateSpinner" note="Context ring spinner.">
+      <div class="specimen-row">
+        <GallerySpecimen variant="chrome">
+          <div class="flex h-7 w-7 items-center justify-center text-fg-muted">
+            <IndeterminateSpinner :size="ICON_PX.in28" />
+          </div>
+        </GallerySpecimen>
+      </div>
+    </GallerySection>
+
+    <GallerySection
+      title="ChromeRoll"
+      note="28px face. Label rolls type; icon change rolls the face."
+    >
+      <div class="specimen-row specimen-row-wide items-start">
+        <GallerySpecimen variant="label">
+          <div class="flex flex-col gap-3">
+            <div class="h-7 w-56 text-chrome text-fg-muted">
+              <ChromeRoll :face-key="labelFace" icon-key="sweep">
+                <template #icon>
+                  <ActivityMark />
+                </template>
+              {{ labelFace }}
+              </ChromeRoll>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              @click="rollLabel"
+            >Roll label</Button>
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="face">
+          <div class="flex flex-col gap-3">
+            <div class="h-7 w-56 text-chrome text-fg-muted">
+              <ChromeRoll :face-key="iconFace.key" :icon-key="iconFace.icon">
+                <template #icon>
+                  <ActivityMark v-if="iconFace.icon === 'sweep'" />
+                  <Brain v-else :size="ICON_PX.in28" />
+                </template>
+              {{ iconFace.label }}
+              </ChromeRoll>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              @click="rollFace"
+            >Roll face</Button>
+          </div>
+        </GallerySpecimen>
+      </div>
+    </GallerySection>
+
+    <GallerySection
+      title="Fold"
+      note="Height and chevron share one duration. Used by skill packs and transcript blocks."
+    >
+      <div class="specimen-row">
+        <GallerySpecimen variant="toggle">
+          <div class="w-56">
+            <button
+              type="button"
+              class="flex h-7 w-full cursor-default items-center justify-between text-chrome text-fg"
+              @click="foldOpen = !foldOpen"
+            >
+            Pack
+              <FoldChevron :open="foldOpen" class="text-fg-subtle" />
+            </button>
+            <Fold :open="foldOpen">
+              <div class="space-y-1 py-1 text-[12px] leading-4 text-fg-muted">
+                <div>web-design-guidelines</div>
+                <div>vercel-react-best-practices</div>
+                <div>tdd</div>
+              </div>
+            </Fold>
+          </div>
+        </GallerySpecimen>
+      </div>
+    </GallerySection>
   </div>
 </template>

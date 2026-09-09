@@ -20,7 +20,11 @@ import {
   type ProviderRun,
   type ProviderSelection,
 } from '@demicodes/provider'
-import { StubProvider, createProviderRun, events } from '@demicodes/provider/testing'
+import {
+  StubProvider,
+  createProviderRun,
+  events
+} from '@demicodes/provider/testing'
 import {
   AgentClient,
   AgentServer,
@@ -43,353 +47,532 @@ const model: ModelSelection = {
   thinking: null,
 }
 
-test('tree mutation queues admitted actions and execution context persists per node', async () => {
-  const roots: string[] = []
-  const { client, server } = createAgentClientHarness({
-    providerTurns: [[events.text('done'), events.response()]],
-    harness: {
-      ...createTextHarness(),
-      context: ctx => {
-        roots.push(ctx.rootSessionId)
-        return ctx.transcript.blocks.some(block => block.type === 'user' && block.preamble === 'current target') ? null : 'current target'
+test(
+  'tree mutation queues admitted actions and execution context persists per node',
+  async () => {
+    const roots: string[] = []
+    const { client, server } = createAgentClientHarness({
+      providerTurns: [[events.text('done'), events.response()]],
+      harness: {
+        ...createTextHarness(),
+        context: ctx => {
+          roots.push(ctx.rootSessionId)
+          return ctx.transcript.blocks.some(block => block.type === 'user'
+            && block.preamble === 'current target')
+            ? null
+            : 'current target'
+        },
       },
-    },
-  })
-  const id = globalThis.crypto.randomUUID()
-  await client.open(providerConfig([]), '/workspace', id)
-  const release = server.reserveTreeMutation(id)!
-  expect(release).toBeFunction()
-  const sending = client.send([{ type: 'text', text: 'hi' }])
-  await Promise.resolve()
-  expect(roots).toEqual([])
-  expect(server.reserveTreeMutation(id)).toBeNull()
-  release()
-  await sending
-  expect(roots).toEqual([id])
-  expect(client.transcript().blocks.some(block => block.type === 'user' && block.preamble === 'current target')).toBe(true)
-  await waitFor(() => !server.treeActive(id))
-  server.reserveTreeMutation(id)!()
-  await server.close()
-})
-
-test('AgentClient.open and send run through InProcessTransport and emit transcript/phase frames', async () => {
-  const turns: ConstructorParameters<typeof StubProvider>[0] = [
-    [
-      events.text('hello'),
-      events.response({ inputTokens: 11, outputTokens: 7, cacheReadTokens: 5, cacheWriteTokens: 3 }),
-    ],
-  ]
-  const { client } = createAgentClientHarness({
-    providerTurns: turns,
-  })
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerConfig(turns), '/workspace', globalThis.crypto.randomUUID())
-  await client.send([{ type: 'text', text: 'hi' }])
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
-
-  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
-  expect(client.transcript().blocks[2]).toMatchObject({
-    type: 'response',
-    usage: { inputTokens: 11, outputTokens: 7, cacheReadTokens: 5, cacheWriteTokens: 3 },
-  })
-  const responsePatch = seen
-    .filter((event) => event.type === 'transcript_patch')
-    .flatMap((event) => (event.type === 'transcript_patch' ? event.patches : []))
-    .find((patch) => patch.op === 'add' && patch.value.type === 'response')
-  expect(responsePatch).toMatchObject({
-    op: 'add',
-    value: {
-      type: 'response',
-      usage: { inputTokens: 11, outputTokens: 7, cacheReadTokens: 5, cacheWriteTokens: 3 },
-    },
-  })
-  expect(seen.map((event) => event.type)).toContain('transcript_reset')
-  expect(seen.map((event) => event.type)).toContain('transcript_patch')
-  expect(seen).toContainEqual({ type: 'phase', phase: 'idle' })
-})
-
-test('AgentClient send metadata reaches the server-side harness context', async () => {
-  const seen: unknown[] = []
-  const harness: AgentHarness<Record<string, never>> = {
-    name: 'metadata',
-    initialState: () => ({}),
-    host: (ctx) => new LocalHost(ctx.cwd),
-    systemPrompt: (ctx) => {
-      seen.push(ctx.metadata)
-      return 'system'
-    },
+    })
+    const id = globalThis.crypto.randomUUID()
+    await client.open(providerConfig([]), '/workspace', id)
+    const release = server.reserveTreeMutation(id)!
+    expect(release).toBeFunction()
+    const sending = client.send([{ type: 'text', text: 'hi' }])
+    await Promise.resolve()
+    expect(roots).toEqual([])
+    expect(server.reserveTreeMutation(id)).toBeNull()
+    release()
+    await sending
+    expect(roots).toEqual([id])
+    expect(client.transcript().blocks.some(block => block.type === 'user'
+      && block.preamble === 'current target')).toBe(true)
+    await waitFor(() => !server.treeActive(id))
+    server.reserveTreeMutation(id)!()
+    await server.close()
   }
-  const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.text('done'), events.response()]]
-  const { client } = createAgentClientHarness({ harness, providerTurns: turns })
+)
 
-  await client.open(providerConfig(turns), '/workspace', globalThis.crypto.randomUUID())
-  await client.send([{ type: 'text', text: 'hi' }], { metadata: { identityOpenId: 'user-a' } })
+test(
+  'AgentClient.open and send run through InProcessTransport and emit transcript/phase frames',
+  async () => {
+    const turns: ConstructorParameters<typeof StubProvider>[0] = [
+      [
+        events.text('hello'),
+        events.response({
+          inputTokens: 11,
+          outputTokens: 7,
+          cacheReadTokens: 5,
+          cacheWriteTokens: 3
+        }),
+      ],
+    ]
+    const { client } = createAgentClientHarness({
+      providerTurns: turns,
+    })
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
 
-  expect(seen).toEqual([{ identityOpenId: 'user-a' }])
-})
-
-test('AgentClient clears its local transcript view when the session is closed', async () => {
-  const { client } = createAgentClientHarness({
-    providerTurns: [[events.text('hello'), events.response()]],
-  })
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerConfig([[events.text('hello'), events.response()]]), '/workspace', globalThis.crypto.randomUUID())
-  await client.send([{ type: 'text', text: 'hi' }])
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
-
-  expect(client.transcript().blocks.length).toBeGreaterThan(0)
-  await client.close()
-
-  expect(seen.some((event) => event.type === 'closed')).toBe(true)
-  expect(client.transcript().blocks).toEqual([])
-})
-
-test('AgentServer persists the root as a node with its journal in the tree store', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-agent-server-store-'))
-  const host = new LocalHost(root)
-  const harness: AgentHarness<Record<string, never>> = {
-    name: 'stored-session',
-    initialState: () => ({}),
-    host: () => host,
-    systemPrompt: () => 'system',
-  }
-  const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.text('stored'), events.response()]]
-  const { client, store } = createAgentClientHarness({ harness, providerTurns: turns })
-  const id = globalThis.crypto.randomUUID()
-
-  await client.open(providerConfig(turns), root, id)
-  await client.send([{ type: 'text', text: 'persist me' }])
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
-
-  // The root is a node row — no parent — and its journal: one row per block, the state beside them,
-  // which says the turn ended.
-  expect(await store.node(id)).toMatchObject({ id, parentId: null, closedPhase: null })
-  const stored = store.nodes.get(id)
-  expect(stored?.blockCount).toBe(3)
-  expect(stored?.state).toMatchObject({ cwd: root, harnessName: 'stored-session', phase: 'idle' })
-  expect((await store.sessionStore(id).load())?.transcript.blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
-})
-
-test('AgentServer resumes a conversation by session id and restores its transcript', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-agent-server-resume-'))
-  const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
-  const harness: AgentHarness<Record<string, never>> = {
-    name: 'resumable',
-    initialState: () => ({}),
-    host: () => host,
-    systemPrompt: () => 'system',
-  }
-  const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.text('remembered'), events.response()]]
-  const { client, server } = createAgentClientHarness({ harness, providerTurns: turns })
-
-  await client.open(providerConfig(turns), root, 'conv-1')
-  await client.send([{ type: 'text', text: 'remember this' }])
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
-  const before = client.transcript().blocks.map((block) => block.type)
-  expect(before).toEqual(['user', 'text', 'response'])
-  await client.close()
-
-  // Reconnecting with the same session id restores the prior transcript.
-  const resumed = server.client()
-  const seen: ClientSessionEvent[] = []
-  resumed.subscribe((event) => seen.push(event))
-  await resumed.open(providerConfig(turns), root, 'conv-1')
-  await waitFor(() => resumed.transcript().blocks.length > 0)
-  expect(resumed.transcript().blocks.map((block) => block.type)).toEqual(before)
-  const snapshotEvent = seen.find((event) => event.type === 'transcript_reset')
-  expect(snapshotEvent?.type === 'transcript_reset' ? snapshotEvent.blocks.length : 0).toBe(3)
-  await resumed.close()
-
-  // A different session id starts empty.
-  const fresh = server.client()
-  await fresh.open(providerConfig(turns), root, 'conv-2')
-  expect(fresh.transcript().blocks.length).toBe(0)
-  await fresh.close()
-})
-
-test('AgentServer renders registered command help into the harness system prompt context', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-agent-commands-prompt-'))
-  const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
-  let seenCommandsPrompt: string | null = null
-  const harness: AgentHarness<Record<string, never>> = {
-    name: 'command-prompt',
-    initialState: () => ({}),
-    host: () => host,
-    commands: () => [
-      {
-        name: 'greet',
-        summary: 'Greets the caller.',
-        subcommands: [{ name: 'hello', summary: 'Say hello.', kind: 'rpc', run: () => ({ exitCode: 0 }) }],
-      },
-    ],
-    systemPrompt: (ctx) => {
-      seenCommandsPrompt = ctx.commandsPrompt
-      return `system\n${ctx.commandsPrompt}`
-    },
-  }
-  const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.text('ok'), events.response()]]
-  const { client } = createAgentClientHarness({ harness, providerTurns: turns })
-
-  await client.open(providerConfig(turns), root, globalThis.crypto.randomUUID())
-  await client.send([{ type: 'text', text: 'hi' }])
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
-
-  expect(seenCommandsPrompt ?? '').toContain('greet: Greets the caller.')
-  expect(seenCommandsPrompt ?? '').toContain('greet hello')
-  await client.close()
-})
-
-test('AgentServer forwards provider error codes once and preserves the transcript error block', async () => {
-  const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.error('auth failed', 'auth')]]
-  const { client } = createAgentClientHarness({ providerTurns: turns })
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerConfig(turns), '/workspace', globalThis.crypto.randomUUID())
-  let rejected: Error | null = null
-  try {
+    await client.open(
+      providerConfig(turns),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
     await client.send([{ type: 'text', text: 'hi' }])
-  } catch (error) {
-    rejected = error instanceof Error ? error : new Error(String(error))
+    await waitFor(
+      () => client.transcript()
+        .blocks.some((block) => block.type === 'response')
+    )
+
+    expect(client.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'text',
+      'response'
+    ])
+    expect(client.transcript().blocks[2]).toMatchObject({
+      type: 'response',
+      usage: {
+        inputTokens: 11,
+        outputTokens: 7,
+        cacheReadTokens: 5,
+        cacheWriteTokens: 3
+      },
+    })
+    const responsePatch = seen
+      .filter((event) => event.type === 'transcript_patch')
+      .flatMap((event) => (event.type === 'transcript_patch'
+        ? event.patches
+        : []))
+      .find((patch) => patch.op === 'add' && patch.value.type === 'response')
+    expect(responsePatch).toMatchObject({
+      op: 'add',
+      value: {
+        type: 'response',
+        usage: {
+          inputTokens: 11,
+          outputTokens: 7,
+          cacheReadTokens: 5,
+          cacheWriteTokens: 3
+        },
+      },
+    })
+    expect(seen.map((event) => event.type)).toContain('transcript_reset')
+    expect(seen.map((event) => event.type)).toContain('transcript_patch')
+    expect(seen).toContainEqual({ type: 'phase', phase: 'idle' })
   }
-  expect(rejected).toBeInstanceOf(ProviderStreamError)
-  if (!(rejected instanceof ProviderStreamError)) throw new Error('Expected ProviderStreamError')
-  expect(rejected.message).toBe('auth failed')
-  expect(rejected.code).toBe('auth')
-  expect(rejected.diagnostics?.source).toBe('unknown')
-  expect(typeof rejected.diagnostics?.clientRequestId).toBe('string')
-  await waitFor(() => seen.some((event) => event.type === 'error'))
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'error'))
-  await delay(5)
+)
 
-  const errors = seen.filter((event) => event.type === 'error')
-  expect(errors).toHaveLength(1)
-  const error = errors[0]!
-  expect(typeof error.diagnostics?.clientRequestId).toBe('string')
-  expect(error).toEqual({
-    type: 'error',
-    message: 'auth failed',
-    code: 'auth',
-    diagnostics: { source: 'unknown', clientRequestId: error.diagnostics?.clientRequestId },
-  })
-  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'error'])
-  expect(client.transcript().blocks[1]).toMatchObject({
-    type: 'error',
-    message: 'auth failed',
-    code: 'auth',
-  })
-})
+test(
+  'AgentClient send metadata reaches the server-side harness context',
+  async () => {
+    const seen: unknown[] = []
+    const harness: AgentHarness<Record<string, never>> = {
+      name: 'metadata',
+      initialState: () => ({}),
+      host: (ctx) => new LocalHost(ctx.cwd),
+      systemPrompt: (ctx) => {
+        seen.push(ctx.metadata)
+        return 'system'
+      },
+    }
+    const turns: ConstructorParameters<typeof StubProvider>[0] = [[
+      events.text('done'),
+      events.response()
+    ]]
+    const { client } = createAgentClientHarness({ harness, providerTurns: turns })
 
-test('AgentServer maps shell tool progress into shell_output frames', async () => {
-  const { client } = createAgentClientHarness({
-    shell: {
-      initialEnv: { PATH: process.env.PATH ?? '' },
-      shellIdFactory: () => 'agent-shell',
-    },
-    providerTurns: [
-      [events.toolCall('tool-1', 'shell_exec', { script: 'printf hi', timeoutMs: 1_000 })],
-      [events.text('done'), events.response()],
-    ],
-  })
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
+    await client.open(
+      providerConfig(turns),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    await client.send(
+      [{ type: 'text', text: 'hi' }],
+      { metadata: { identityOpenId: 'user-a' } }
+    )
 
-  await client.open(providerConfig([
-      [events.toolCall('tool-1', 'shell_exec', { script: 'printf hi', timeoutMs: 1_000 })],
-      [events.text('done'), events.response()],
-    ]),
-    process.cwd(),
-    globalThis.crypto.randomUUID(),
-  )
-  await client.send([{ type: 'text', text: 'run shell' }])
-  await waitFor(() => seen.some((event) => event.type === 'shell_output'))
+    expect(seen).toEqual([{ identityOpenId: 'user-a' }])
+  }
+)
 
-  const shellOutput = seen.find((event) => event.type === 'shell_output')
-  expect(shellOutput).toMatchObject({
-    type: 'shell_output',
-    shellId: 'agent-shell',
-    commandId: expect.any(String),
-    status: { stdout: { delta: 'hi' } },
-  })
-})
+test(
+  'AgentClient clears its local transcript view when the session is closed',
+  async () => {
+    const { client } = createAgentClientHarness({
+      providerTurns: [[events.text('hello'), events.response()]],
+    })
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
 
-test('AgentServer bridges shell_write frames to the active shell command', async () => {
-  const { client } = createAgentClientHarness({
-    shell: {
-      initialEnv: { PATH: process.env.PATH ?? '' },
-      shellIdFactory: () => 'agent-input-shell',
-      commandIdFactory: () => 'agent-input-command',
-    },
-    providerTurns: [
+    await client.open(
+      providerConfig([[events.text('hello'), events.response()]]),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    await client.send([{ type: 'text', text: 'hi' }])
+    await waitFor(
+      () => client.transcript()
+        .blocks.some((block) => block.type === 'response')
+    )
+
+    expect(client.transcript().blocks.length).toBeGreaterThan(0)
+    await client.close()
+
+    expect(seen.some((event) => event.type === 'closed')).toBe(true)
+    expect(client.transcript().blocks).toEqual([])
+  }
+)
+
+test(
+  'AgentServer persists the root as a node with its journal in the tree store',
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), 'demi-agent-server-store-'))
+    const host = new LocalHost(root)
+    const harness: AgentHarness<Record<string, never>> = {
+      name: 'stored-session',
+      initialState: () => ({}),
+      host: () => host,
+      systemPrompt: () => 'system',
+    }
+    const turns: ConstructorParameters<typeof StubProvider>[0] = [[
+      events.text('stored'),
+      events.response()
+    ]]
+    const { client, store } = createAgentClientHarness({
+      harness,
+      providerTurns: turns
+    })
+    const id = globalThis.crypto.randomUUID()
+
+    await client.open(providerConfig(turns), root, id)
+    await client.send([{ type: 'text', text: 'persist me' }])
+    await waitFor(
+      () => client.transcript()
+        .blocks.some((block) => block.type === 'response')
+    )
+
+    // The root is a node row — no parent — and its journal: one row per block, the state beside them,
+    // which says the turn ended.
+    expect(await store.node(id)).toMatchObject({
+      id,
+      parentId: null,
+      closedPhase: null
+    })
+    const stored = store.nodes.get(id)
+    expect(stored?.blockCount).toBe(3)
+    expect(stored?.state).toMatchObject({
+      cwd: root,
+      harnessName: 'stored-session',
+      phase: 'idle'
+    })
+    expect(
+      (await store.sessionStore(id)
+        .load())?.transcript.blocks.map((block) => block.type)
+    ).toEqual(
       [
-        events.toolCall('tool-1', 'shell_exec', {
-          script: 'probe stdin',
-          timeoutMs: 1,
-        }),
+        'user',
+        'text',
+        'response'
+      ]
+    )
+  }
+)
+
+test(
+  'AgentServer resumes a conversation by session id and restores its transcript',
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), 'demi-agent-server-resume-'))
+    const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
+    const harness: AgentHarness<Record<string, never>> = {
+      name: 'resumable',
+      initialState: () => ({}),
+      host: () => host,
+      systemPrompt: () => 'system',
+    }
+    const turns: ConstructorParameters<typeof StubProvider>[0] = [[
+      events.text('remembered'),
+      events.response()
+    ]]
+    const { client, server } = createAgentClientHarness({
+      harness,
+      providerTurns: turns
+    })
+
+    await client.open(providerConfig(turns), root, 'conv-1')
+    await client.send([{ type: 'text', text: 'remember this' }])
+    await waitFor(
+      () => client.transcript()
+        .blocks.some((block) => block.type === 'response')
+    )
+    const before = client.transcript().blocks.map((block) => block.type)
+    expect(before).toEqual(['user', 'text', 'response'])
+    await client.close()
+
+    // Reconnecting with the same session id restores the prior transcript.
+    const resumed = server.client()
+    const seen: ClientSessionEvent[] = []
+    resumed.subscribe((event) => seen.push(event))
+    await resumed.open(providerConfig(turns), root, 'conv-1')
+    await waitFor(() => resumed.transcript().blocks.length > 0)
+    expect(resumed.transcript().blocks.map((block) => block.type))
+      .toEqual(before)
+    const snapshotEvent = seen.find((event) => event.type === 'transcript_reset')
+    expect(snapshotEvent?.type === 'transcript_reset'
+      ? snapshotEvent.blocks.length
+      : 0).toBe(3)
+    await resumed.close()
+
+    // A different session id starts empty.
+    const fresh = server.client()
+    await fresh.open(providerConfig(turns), root, 'conv-2')
+    expect(fresh.transcript().blocks.length).toBe(0)
+    await fresh.close()
+  }
+)
+
+test(
+  'AgentServer renders registered command help into the harness system prompt context',
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), 'demi-agent-commands-prompt-'))
+    const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
+    let seenCommandsPrompt: string | null = null
+    const harness: AgentHarness<Record<string, never>> = {
+      name: 'command-prompt',
+      initialState: () => ({}),
+      host: () => host,
+      commands: () => [
+        {
+          name: 'greet',
+          summary: 'Greets the caller.',
+          subcommands: [{
+            name: 'hello',
+            summary: 'Say hello.',
+            kind: 'rpc',
+            run: () => ({ exitCode: 0 })
+          }],
+        },
       ],
-      [events.text('waiting'), events.response()],
-    ],
-  })
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
+      systemPrompt: (ctx) => {
+        seenCommandsPrompt = ctx.commandsPrompt
+        return `system\n${ctx.commandsPrompt}`
+      },
+    }
+    const turns: ConstructorParameters<typeof StubProvider>[0] = [[
+      events.text('ok'),
+      events.response()
+    ]]
+    const { client } = createAgentClientHarness({ harness, providerTurns: turns })
 
-  await client.open(providerConfig([
-      [
-        events.toolCall('tool-1', 'shell_exec', {
-          script: 'probe stdin',
-          timeoutMs: 1,
-        }),
+    await client.open(
+      providerConfig(turns),
+      root,
+      globalThis.crypto.randomUUID()
+    )
+    await client.send([{ type: 'text', text: 'hi' }])
+    await waitFor(
+      () => client.transcript()
+        .blocks.some((block) => block.type === 'response')
+    )
+
+    expect(seenCommandsPrompt ?? '').toContain('greet: Greets the caller.')
+    expect(seenCommandsPrompt ?? '').toContain('greet hello')
+    await client.close()
+  }
+)
+
+test(
+  'AgentServer forwards provider error codes once and preserves the transcript error block',
+  async () => {
+    const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.error(
+      'auth failed',
+      'auth'
+    )]]
+    const { client } = createAgentClientHarness({ providerTurns: turns })
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(
+      providerConfig(turns),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    let rejected: Error | null = null
+    try {
+      await client.send([{ type: 'text', text: 'hi' }])
+    } catch (error) {
+      rejected = error instanceof Error ? error : new Error(String(error))
+    }
+    expect(rejected).toBeInstanceOf(ProviderStreamError)
+    if (!(rejected instanceof ProviderStreamError))
+      throw new Error('Expected ProviderStreamError')
+    expect(rejected.message).toBe('auth failed')
+    expect(rejected.code).toBe('auth')
+    expect(rejected.diagnostics?.source).toBe('unknown')
+    expect(typeof rejected.diagnostics?.clientRequestId).toBe('string')
+    await waitFor(() => seen.some((event) => event.type === 'error'))
+    await waitFor(
+      () => client.transcript().blocks.some((block) => block.type === 'error')
+    )
+    await delay(5)
+
+    const errors = seen.filter((event) => event.type === 'error')
+    expect(errors).toHaveLength(1)
+    const error = errors[0]!
+    expect(typeof error.diagnostics?.clientRequestId).toBe('string')
+    expect(error).toEqual({
+      type: 'error',
+      message: 'auth failed',
+      code: 'auth',
+      diagnostics: {
+        source: 'unknown',
+        clientRequestId: error.diagnostics?.clientRequestId
+      },
+    })
+    expect(client.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'error'
+    ])
+    expect(client.transcript().blocks[1]).toMatchObject({
+      type: 'error',
+      message: 'auth failed',
+      code: 'auth',
+    })
+  }
+)
+
+test(
+  'AgentServer maps shell tool progress into shell_output frames',
+  async () => {
+    const { client } = createAgentClientHarness({
+      shell: {
+        initialEnv: { PATH: process.env.PATH ?? '' },
+        shellIdFactory: () => 'agent-shell',
+      },
+      providerTurns: [
+        [events.toolCall(
+          'tool-1',
+          'shell_exec',
+          { script: 'printf hi', timeoutMs: 1_000 }
+        )],
+        [events.text('done'), events.response()],
       ],
-      [events.text('waiting'), events.response()],
-    ]),
-    process.cwd(),
-    globalThis.crypto.randomUUID(),
-  )
-  await client.send([{ type: 'text', text: 'start process' }])
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
+    })
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
 
-  seen.length = 0
-  await client.shellWrite('agent-input-command', 'typed\n')
-  await waitFor(() => seen.some((event) => event.type === 'shell_write_result' && event.commandId === 'agent-input-command'))
+    await client.open(providerConfig([
+        [events.toolCall(
+          'tool-1',
+          'shell_exec',
+          { script: 'printf hi', timeoutMs: 1_000 }
+        )],
+        [events.text('done'), events.response()],
+      ]),
+      process.cwd(),
+      globalThis.crypto.randomUUID(),
+    )
+    await client.send([{ type: 'text', text: 'run shell' }])
+    await waitFor(() => seen.some((event) => event.type === 'shell_output'))
 
-  expect(seen).toContainEqual({
-    type: 'shell_output',
-    shellId: 'agent-input-shell',
-    commandId: 'agent-input-command',
-    status: {
-      status: 'running',
+    const shellOutput = seen.find((event) => event.type === 'shell_output')
+    expect(shellOutput).toMatchObject({
+      type: 'shell_output',
+      shellId: 'agent-shell',
+      commandId: expect.any(String),
+      status: { stdout: { delta: 'hi' } },
+    })
+  }
+)
+
+test(
+  'AgentServer bridges shell_write frames to the active shell command',
+  async () => {
+    const { client } = createAgentClientHarness({
+      shell: {
+        initialEnv: { PATH: process.env.PATH ?? '' },
+        shellIdFactory: () => 'agent-input-shell',
+        commandIdFactory: () => 'agent-input-command',
+      },
+      providerTurns: [
+        [
+          events.toolCall('tool-1', 'shell_exec', {
+            script: 'probe stdin',
+            timeoutMs: 1,
+          }),
+        ],
+        [events.text('waiting'), events.response()],
+      ],
+    })
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(providerConfig([
+        [
+          events.toolCall('tool-1', 'shell_exec', {
+            script: 'probe stdin',
+            timeoutMs: 1,
+          }),
+        ],
+        [events.text('waiting'), events.response()],
+      ]),
+      process.cwd(),
+      globalThis.crypto.randomUUID(),
+    )
+    await client.send([{ type: 'text', text: 'start process' }])
+    await waitFor(
+      () => client.transcript()
+        .blocks.some((block) => block.type === 'response')
+    )
+
+    seen.length = 0
+    await client.shellWrite('agent-input-command', 'typed\n')
+    await waitFor(() => seen.some((event) => event.type === 'shell_write_result'
+      && event.commandId === 'agent-input-command'))
+
+    expect(seen).toContainEqual({
+      type: 'shell_output',
       shellId: 'agent-input-shell',
       commandId: 'agent-input-command',
-      stdout: expect.objectContaining({ delta: '', truncated: false }),
-      stderr: expect.objectContaining({ delta: '', tail: '', bytes: 0, truncated: false }),
-      output: expect.objectContaining({ chunks: expect.any(Array) }),
-      runningMs: expect.any(Number),
-      idleMs: expect.any(Number),
-    },
-  })
-  expect(seen).not.toContainEqual({
-    type: 'tool_progress',
-    toolUseId: 'agent-shell-write:agent-input-command',
-    output: expect.any(Array),
-  })
-})
+      status: {
+        status: 'running',
+        shellId: 'agent-input-shell',
+        commandId: 'agent-input-command',
+        stdout: expect.objectContaining({ delta: '', truncated: false }),
+        stderr: expect.objectContaining({
+          delta: '',
+          tail: '',
+          bytes: 0,
+          truncated: false
+        }),
+        output: expect.objectContaining({ chunks: expect.any(Array) }),
+        runningMs: expect.any(Number),
+        idleMs: expect.any(Number),
+      },
+    })
+    expect(seen).not.toContainEqual({
+      type: 'tool_progress',
+      toolUseId: 'agent-shell-write:agent-input-command',
+      output: expect.any(Array),
+    })
+  }
+)
 
-test('AgentClient.shellWrite waits for shell_write_result and rejects when no session is open', async () => {
-  const unopened = createAgentClientHarness({ providerTurns: [] })
-  await expect(unopened.client.shellWrite('missing-command', 'stdin')).rejects.toThrow('No session is open')
+test(
+  'AgentClient.shellWrite waits for shell_write_result and rejects when no session is open',
+  async () => {
+    const unopened = createAgentClientHarness({ providerTurns: [] })
+    await expect(unopened.client.shellWrite('missing-command', 'stdin'))
+      .rejects.toThrow('No session is open')
 
-  const seen: ClientSessionEvent[] = []
-  const { client } = createAgentClientHarness({
-    shell: {
-      initialEnv: { PATH: process.env.PATH ?? '' },
-      shellIdFactory: () => 'agent-delayed-input-shell',
-      commandIdFactory: () => 'agent-delayed-input-command',
-    },
-    providerTurns: [
+    const seen: ClientSessionEvent[] = []
+    const { client } = createAgentClientHarness({
+      shell: {
+        initialEnv: { PATH: process.env.PATH ?? '' },
+        shellIdFactory: () => 'agent-delayed-input-shell',
+        commandIdFactory: () => 'agent-delayed-input-command',
+      },
+      providerTurns: [
+        [
+          events.toolCall('tool-1', 'shell_exec', {
+            script: 'probe stdin --delay 50',
+            timeoutMs: 1,
+          }),
+        ],
+        [events.text('waiting'), events.response()],
+      ],
+    })
+    client.subscribe((event) => seen.push(event))
+    const turns: ConstructorParameters<typeof StubProvider>[0] = [
       [
         events.toolCall('tool-1', 'shell_exec', {
           script: 'probe stdin --delay 50',
@@ -397,752 +580,1045 @@ test('AgentClient.shellWrite waits for shell_write_result and rejects when no se
         }),
       ],
       [events.text('waiting'), events.response()],
-    ],
-  })
-  client.subscribe((event) => seen.push(event))
-  const turns: ConstructorParameters<typeof StubProvider>[0] = [
-    [
-      events.toolCall('tool-1', 'shell_exec', {
-        script: 'probe stdin --delay 50',
-        timeoutMs: 1,
-      }),
-    ],
-    [events.text('waiting'), events.response()],
-  ]
-  await client.open(providerConfig(turns), process.cwd(), globalThis.crypto.randomUUID())
-  await client.send([{ type: 'text', text: 'start process' }])
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
-
-  let settled = false
-  const writing = client.shellWrite('agent-delayed-input-command', 'accepted\n').then(() => {
-    settled = true
-  })
-  await delay(5)
-  expect(settled).toBe(true)
-
-  await writing
-  expect(settled).toBe(true)
-  expect(seen.some((event) => event.type === 'shell_write_result' && event.commandId === 'agent-delayed-input-command')).toBe(true)
-  expect(seen).not.toContainEqual({
-    type: 'tool_progress',
-    toolUseId: 'agent-shell-write:agent-delayed-input-command',
-    output: expect.any(Array),
-  })
-})
-
-test('AgentServer emits transcript patches with removals on retry', async () => {
-  const { client } = createAgentClientHarness({
-    providerTurns: [
-      [events.text('old'), events.response()],
-      (request: InferenceRequest) => {
-        expect(request.items.map((item) => item.type)).toEqual(['user_message'])
-        return [events.text('new'), events.response()]
-      },
-    ],
-  })
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerConfig([
-      [events.text('old'), events.response()],
-      (request: InferenceRequest) => {
-        expect(request.items.map((item) => item.type)).toEqual(['user_message'])
-        return [events.text('new'), events.response()]
-      },
-    ]),
-    '/workspace',
-    globalThis.crypto.randomUUID(),
-  )
-  await client.send([{ type: 'text', text: 'question' }])
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
-
-  seen.length = 0
-  await client.retry()
-  await waitFor(() => {
-    const textBlocks = client.transcript().blocks.filter((block) => block.type === 'text')
-    return textBlocks.some((block) => block.type === 'text' && block.text === 'new')
-  })
-
-  const patches = seen
-    .filter((event) => event.type === 'transcript_patch')
-    .flatMap((event) => (event.type === 'transcript_patch' ? event.patches : []))
-  // Retry rewrites the transcript in bulk, which replicates as a full replace.
-  expect(patches.some((patch) => patch.op === 'replace')).toBe(true)
-  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
-})
-
-test('AgentServer queues send frames while the session is busy and drains them in order', async () => {
-  const gate = deferred<void>()
-  const provider = new DelayedProvider(gate.promise)
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('delayed', provider)],
-  })
-  const client = server.client()
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerSelection('delayed'), '/workspace', globalThis.crypto.randomUUID())
-  let firstSettled = false
-  const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
-    firstSettled = true
-  })
-  await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
-  expect(firstSettled).toBe(false)
-
-  let secondSettled = false
-  const secondSend = client.send([{ type: 'text', text: 'second' }]).then(() => {
-    secondSettled = true
-  })
-  await waitFor(() => seen.some((event) => event.type === 'queue' && event.queue.some((message) => message.text === 'second')))
-
-  expect(seen.some((event) => event.type === 'rejected' && event.command === 'send')).toBe(false)
-  expect(secondSettled).toBe(false)
-  gate.resolve()
-  await firstSend
-  await secondSend
-  expect(firstSettled).toBe(true)
-  expect(secondSettled).toBe(true)
-  await waitFor(() => provider.calls === 2)
-  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response', 'user', 'text', 'response'])
-  const userTexts = client
-    .transcript()
-    .blocks.filter((block) => block.type === 'user')
-    .map((block) => (block.type === 'user' && block.content[0]?.type === 'text' ? block.content[0].text : ''))
-  expect(userTexts).toEqual(['first', 'second'])
-  expect(seen.some((event) => event.type === 'queue' && event.queue.length === 0)).toBe(true)
-})
-
-test('AgentClient.steer resolves correlated accepted acks and receives transcript patches without queueing', async () => {
-  const provider = new ServerGateProvider({ supportsSteer: true })
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('server-steerable', provider)],
-  })
-  const client = server.client()
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerSelection('server-steerable'), '/workspace', globalThis.crypto.randomUUID())
-  const sending = client.send([{ type: 'text', text: 'start' }])
-  await provider.waitForRun(0)
-  seen.length = 0
-
-  await Promise.all([
-    client.steer([{ type: 'text', text: 'first steer' }]),
-    client.steer([{ type: 'text', text: 'second steer' }]),
-  ])
-
-  const steerResults = seen.filter((event) => event.type === 'steer_result')
-  expect(steerResults).toHaveLength(2)
-  expect(steerResults.every((event) => event.type === 'steer_result' && event.status === 'accepted')).toBe(true)
-  expect(new Set(steerResults.map((event) => (event.type === 'steer_result' ? event.steerId : ''))).size).toBe(2)
-  expect(provider.steers.map((steer) => steer.content)).toEqual([
-    [{ type: 'text', text: 'first steer' }],
-    [{ type: 'text', text: 'second steer' }],
-  ])
-  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer', 'steer'])
-  expect(seen.some((event) => event.type === 'queue')).toBe(false)
-
-  provider.release(0)
-  await sending
-  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer', 'steer', 'text', 'response'])
-})
-
-test('AgentClient.steer rejects when no session is open and does not create transcript state', async () => {
-  const { client } = createAgentClientHarness({ providerTurns: [] })
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await expect(client.steer([{ type: 'text', text: 'orphan steer' }])).rejects.toThrow('No session is open')
-
-  expect(seen).toContainEqual({
-    type: 'steer_result',
-    steerId: expect.any(String),
-    status: 'rejected',
-    reason: 'No session is open on this connection',
-  })
-  expect(client.transcript().blocks).toEqual([])
-})
-
-test('AgentClient.steer accepts active provider without native steer and materializes at the continuation boundary', async () => {
-  const provider = new ServerGateProvider({ supportsSteer: false })
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('server-no-native-steer', provider)],
-  })
-  const client = server.client()
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerSelection('server-no-native-steer'), '/workspace', globalThis.crypto.randomUUID())
-  const sending = client.send([{ type: 'text', text: 'start' }])
-  await provider.waitForRun(0)
-  seen.length = 0
-
-  await client.steer([{ type: 'text', text: 'same turn guidance' }])
-
-  expect(seen).toContainEqual({
-    type: 'steer_result',
-    steerId: expect.any(String),
-    status: 'accepted',
-  })
-  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user'])
-  expect(seen.some((event) => event.type === 'queue')).toBe(false)
-  expect(
-    seen
-      .filter((event) => event.type === 'transcript_patch')
-      .flatMap((event) => (event.type === 'transcript_patch' ? event.patches : []))
-      .some((patch) => patch.op === 'add' && patch.value.type === 'steer'),
-  ).toBe(false)
-
-  provider.release(0)
-  await provider.waitForRun(1)
-  expect(
-    seen
-      .filter((event) => event.type === 'transcript_patch')
-      .flatMap((event) => (event.type === 'transcript_patch' ? event.patches : []))
-      .some((patch) => patch.op === 'add' && patch.value.type === 'steer'),
-  ).toBe(true)
-  expect(provider.requests[1]?.turnId).toBe(provider.requests[0]?.turnId)
-  expect(provider.requests[1]?.items.map((item) => item.type)).toEqual(['user_message', 'assistant_text', 'user_steer'])
-  expect(provider.requests[1]?.items[2]).toEqual({
-    type: 'user_steer',
-    turnId: provider.requests[0]?.turnId,
-    content: [{ type: 'text', text: 'same turn guidance' }],
-  })
-
-  provider.release(1)
-  await sending
-  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response', 'steer', 'text', 'response'])
-})
-
-test('a new AgentClient receives pending steers from the live session and observes their removal', async () => {
-  const provider = new ServerGateProvider({ supportsSteer: false })
-  const selection = providerSelection('pending-reconnect')
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('pending-reconnect', provider)],
-  })
-  const sessionId = globalThis.crypto.randomUUID()
-  const first = server.client()
-  await first.open(selection, '/workspace', sessionId)
-  const sending = first.send([{ type: 'text', text: 'start' }])
-  await provider.waitForRun(0)
-  await first.steer([{ type: 'text', text: 'keep' }], { steerId: 'keep' })
-  await first.steer([{ type: 'text', text: 'cancel' }], { steerId: 'cancel' })
-  expect(first.pendingSteers().map((steer) => steer.id)).toEqual(['keep', 'cancel'])
-
-  const second = server.client()
-  const seen: ClientSessionEvent[] = []
-  second.subscribe((event) => {
-    seen.push(event)
-    const historyIds = new Set(second.transcript().blocks.map((block) => block.id))
-    expect(second.pendingSteers().some((steer) => historyIds.has(steer.id))).toBe(false)
-  })
-  await second.open(selection, '/workspace', sessionId)
-  await waitFor(() => second.pendingSteers().length === 2)
-  expect(provider.calls).toBe(1)
-  expect(first.pendingSteers()).toEqual([])
-  expect(second.pendingSteers()).toMatchObject([
-    { id: 'keep', turnId: provider.requests[0]?.turnId, model: selection.model, content: [{ type: 'text', text: 'keep' }] },
-    { id: 'cancel', content: [{ type: 'text', text: 'cancel' }] },
-  ])
-  const snapshot = second.pendingSteers()
-  snapshot[0]!.content.length = 0
-  expect(second.pendingSteers()[0]!.content).toEqual([{ type: 'text', text: 'keep' }])
-
-  second.cancelPendingSteer('cancel')
-  await waitFor(() => second.pendingSteers().length === 1)
-  expect(second.pendingSteers()[0]!.id).toBe('keep')
-  const third = server.client()
-  await third.open(selection, '/workspace', sessionId)
-  await waitFor(() => third.pendingSteers().length === 1)
-  expect(third.pendingSteers()[0]!.id).toBe('keep')
-  third.subscribe(() => {
-    const historyIds = new Set(third.transcript().blocks.map((block) => block.id))
-    expect(third.pendingSteers().some((steer) => historyIds.has(steer.id))).toBe(false)
-  })
-  provider.release(0)
-  await provider.waitForRun(1)
-  await waitFor(() => third.pendingSteers().length === 0)
-  expect(third.transcript().blocks.filter((block) => block.type === 'steer').map((block) => block.id)).toEqual(['keep'])
-  expect(provider.requests[1]!.items.filter((item) => item.type === 'user_steer')).toEqual([
-    { type: 'user_steer', turnId: provider.requests[0]!.turnId, content: [{ type: 'text', text: 'keep' }] },
-  ])
-  provider.release(1)
-  await waitFor(() => third.transcript().blocks.filter((block) => block.type === 'response').length === 2)
-  await sending
-  expect(seen.some((event) => event.type === 'pending_steers' && event.pendingSteers.length === 1)).toBe(true)
-  await server.close()
-})
-
-test('AgentClient.cancelPendingSteer removes an accepted steer before transcript materialization', async () => {
-  const provider = new ServerGateProvider({ supportsSteer: false })
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('server-cancel-pending-steer', provider)],
-  })
-  const client = server.client()
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerSelection('server-cancel-pending-steer'), '/workspace', globalThis.crypto.randomUUID())
-  const sending = client.send([{ type: 'text', text: 'start' }])
-  await provider.waitForRun(0)
-  seen.length = 0
-
-  await client.steer([{ type: 'text', text: 'delete before materialized' }], { steerId: 'steer-cancel-frame' })
-  client.cancelPendingSteer('steer-cancel-frame')
-
-  provider.release(0)
-  await sending
-
-  expect(provider.requests).toHaveLength(1)
-  expect(seen).toContainEqual({
-    type: 'steer_result',
-    steerId: 'steer-cancel-frame',
-    status: 'accepted',
-  })
-  expect(
-    seen
-      .filter((event) => event.type === 'transcript_patch')
-      .flatMap((event) => (event.type === 'transcript_patch' ? event.patches : []))
-      .some((patch) => patch.op === 'add' && patch.value.type === 'steer'),
-  ).toBe(false)
-  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
-})
-
-test('AgentClient.cancelPendingSteer is silent without an open session', async () => {
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [],
-  })
-  const client = server.client()
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  client.cancelPendingSteer('missing-steer')
-  await Promise.resolve()
-  await Promise.resolve()
-
-  expect(seen).toEqual([])
-  await server.close()
-})
-
-test('AgentServer rejects retry, resume, and compact frames while the session is busy', async () => {
-  const gate = deferred<void>()
-  const provider = new DelayedProvider(gate.promise)
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('delayed-rejects', provider)],
-  })
-  const client = server.client()
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerSelection('delayed-rejects'), '/workspace', globalThis.crypto.randomUUID())
-  const sending = client.send([{ type: 'text', text: 'first' }])
-  await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
-
-  await expect(client.retry()).rejects.toThrow('Session is busy (running)')
-  await expect(client.resume()).rejects.toThrow('Session is busy (running)')
-  await expect(client.compact()).rejects.toThrow('Session is busy (running)')
-
-  expect(
-    seen.filter((event) => event.type === 'rejected').map((event) => (event.type === 'rejected' ? event.command : '')),
-  ).toEqual(['retry', 'resume', 'compact'])
-
-  gate.resolve(undefined)
-  await sending
-
-  expect(provider.calls).toBe(1)
-  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
-})
-
-test('AgentClient resolves each queued send promise on its own phase cycle', async () => {
-  const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
-  const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('sequenced-delayed', provider)],
-  })
-  const client = server.client()
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerSelection('sequenced-delayed'), '/workspace', globalThis.crypto.randomUUID())
-  const settlements: string[] = []
-  const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
-    settlements.push('first')
-  })
-  await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
-
-  const secondSend = client.send([{ type: 'text', text: 'second' }]).then(() => {
-    settlements.push('second')
-  })
-  const thirdSend = client.send([{ type: 'text', text: 'third' }]).then(() => {
-    settlements.push('third')
-  })
-  await waitFor(() =>
-    seen.some(
-      (event) =>
-        event.type === 'queue' &&
-        event.queue.some((message) => message.text === 'second') &&
-        event.queue.some((message) => message.text === 'third'),
-    ),
-  )
-  await delay(5)
-  expect(settlements).toEqual([])
-
-  gates[0].resolve(undefined)
-  await firstSend
-  await waitFor(() => provider.calls === 2)
-  await delay(5)
-  expect(settlements).toEqual(['first'])
-
-  gates[1].resolve(undefined)
-  await secondSend
-  await waitFor(() => provider.calls === 3)
-  await delay(5)
-  expect(settlements).toEqual(['first', 'second'])
-
-  gates[2].resolve(undefined)
-  await thirdSend
-  expect(settlements).toEqual(['first', 'second', 'third'])
-})
-
-test('AgentClient.dequeueMessage resolves the removed queued send without running it', async () => {
-  const gates = [deferred<void>(), deferred<void>()]
-  const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('sequenced-delayed', provider)],
-  })
-  const client = server.client()
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerSelection('sequenced-delayed'), '/workspace', globalThis.crypto.randomUUID())
-  const firstSend = client.send([{ type: 'text', text: 'first' }])
-  await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
-
-  let secondSettled = false
-  const secondSend = client.send([{ type: 'text', text: 'second' }]).then(() => {
-    secondSettled = true
-  })
-  await waitFor(() => queuedMessageId(seen, 'second') !== null)
-  const secondId = queuedMessageId(seen, 'second')!
-
-  client.dequeueMessage(secondId)
-  await secondSend
-  expect(secondSettled).toBe(true)
-  await waitFor(() => seen.some((event) => event.type === 'queue' && event.queue.length === 0))
-
-  gates[0].resolve(undefined)
-  await firstSend
-  await delay(5)
-
-  expect(provider.calls).toBe(1)
-  const userTexts = client
-    .transcript()
-    .blocks.filter((block) => block.type === 'user')
-    .map((block) => (block.type === 'user' && block.content[0]?.type === 'text' ? block.content[0].text : ''))
-  expect(userTexts).toEqual(['first'])
-})
-
-test('AgentClient.sendQueuedMessage moves a queued send to the next phase cycle', async () => {
-  const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
-  const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('sequenced-delayed', provider)],
-  })
-  const client = server.client()
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerSelection('sequenced-delayed'), '/workspace', globalThis.crypto.randomUUID())
-  const settlements: string[] = []
-  const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
-    settlements.push('first')
-  })
-  await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
-
-  const secondSend = client.send([{ type: 'text', text: 'second' }]).then(() => {
-    settlements.push('second')
-  })
-  const thirdSend = client.send([{ type: 'text', text: 'third' }]).then(() => {
-    settlements.push('third')
-  })
-  await waitFor(() => queuedMessageId(seen, 'second') !== null && queuedMessageId(seen, 'third') !== null)
-  const thirdId = queuedMessageId(seen, 'third')!
-
-  client.sendQueuedMessage(thirdId)
-  await waitFor(() => latestQueueTexts(seen).join(',') === 'third,second')
-
-  gates[0].resolve(undefined)
-  await firstSend
-  await waitFor(() => provider.calls === 2)
-  expect(settlements).toEqual(['first'])
-
-  gates[1].resolve(undefined)
-  await thirdSend
-  await waitFor(() => provider.calls === 3)
-  expect(settlements).toEqual(['first', 'third'])
-
-  gates[2].resolve(undefined)
-  await secondSend
-  expect(settlements).toEqual(['first', 'third', 'second'])
-
-  const userTexts = client
-    .transcript()
-    .blocks.filter((block) => block.type === 'user')
-    .map((block) => (block.type === 'user' && block.content[0]?.type === 'text' ? block.content[0].text : ''))
-  expect(userTexts).toEqual(['first', 'third', 'second'])
-})
-
-test('AgentClient.steerQueuedMessage converts a queued send into an active steer', async () => {
-  const gates = [deferred<void>(), deferred<void>()]
-  const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('sequenced-delayed', provider)],
-  })
-  const client = server.client()
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerSelection('sequenced-delayed'), '/workspace', globalThis.crypto.randomUUID())
-  const settlements: string[] = []
-  const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
-    settlements.push('first')
-  })
-  await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
-
-  const secondSend = client.send([{ type: 'text', text: 'second' }]).then(() => {
-    settlements.push('second')
-  })
-  await waitFor(() => queuedMessageId(seen, 'second') !== null)
-  const secondId = queuedMessageId(seen, 'second')!
-
-  await client.steerQueuedMessage(secondId, { steerId: 'steer-queued' })
-  await secondSend
-  expect(settlements).toEqual(['second'])
-  expect(latestQueueTexts(seen)).toEqual([])
-  expect(client.pendingSteers()).toMatchObject([{ id: 'steer-queued', content: [{ type: 'text', text: 'second' }] }])
-
-  gates[0].resolve(undefined)
-  await waitFor(() => provider.calls === 2)
-  expect(client.pendingSteers()).toEqual([])
-  expect(provider.requests[1]!.items.map((item) => item.type)).toEqual([
-    'user_message',
-    'assistant_text',
-    'user_steer',
-  ])
-  expect(provider.requests[1]!.items[2]).toEqual({
-    type: 'user_steer',
-    turnId: expect.any(String),
-    content: [{ type: 'text', text: 'second' }],
-  })
-
-  gates[1].resolve(undefined)
-  await firstSend
-  expect(settlements).toEqual(['second', 'first'])
-
-  const blockTypes = client.transcript().blocks.map((block) => block.type)
-  expect(blockTypes).toEqual(['user', 'text', 'response', 'steer', 'text', 'response'])
-})
-
-test('AgentClient.clearMessageQueue resolves queued sends without canceling the active send', async () => {
-  const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
-  const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('sequenced-delayed', provider)],
-  })
-  const client = server.client()
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerSelection('sequenced-delayed'), '/workspace', globalThis.crypto.randomUUID())
-  const firstSend = client.send([{ type: 'text', text: 'first' }])
-  await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
-
-  let secondSettled = false
-  let thirdSettled = false
-  const secondSend = client.send([{ type: 'text', text: 'second' }]).then(() => {
-    secondSettled = true
-  })
-  const thirdSend = client.send([{ type: 'text', text: 'third' }]).then(() => {
-    thirdSettled = true
-  })
-  await waitFor(() => queuedMessageId(seen, 'second') !== null && queuedMessageId(seen, 'third') !== null)
-
-  client.clearMessageQueue()
-  await Promise.all([secondSend, thirdSend])
-  expect(secondSettled).toBe(true)
-  expect(thirdSettled).toBe(true)
-  await waitFor(() => seen.some((event) => event.type === 'queue' && event.queue.length === 0))
-
-  gates[0].resolve(undefined)
-  await firstSend
-  await delay(5)
-
-  expect(provider.calls).toBe(1)
-  const userTexts = client
-    .transcript()
-    .blocks.filter((block) => block.type === 'user')
-    .map((block) => (block.type === 'user' && block.content[0]?.type === 'text' ? block.content[0].text : ''))
-  expect(userTexts).toEqual(['first'])
-})
-
-test('AgentClient rejects only the active action when queued sends continue after an error', async () => {
-  const errorGate = deferred<void>()
-  const successGate = deferred<void>()
-  const provider = new ErrorThenDelayedProvider(errorGate.promise, successGate.promise)
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('error-then-delayed', provider)],
-  })
-  const client = server.client()
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerSelection('error-then-delayed'), '/workspace', globalThis.crypto.randomUUID())
-  let firstError = ''
-  const firstSend = client.send([{ type: 'text', text: 'first' }]).catch((error) => {
-    firstError = error instanceof Error ? error.message : String(error)
-  })
-  await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
-
-  let secondSettled = false
-  const secondSend = client.send([{ type: 'text', text: 'second' }]).then(() => {
-    secondSettled = true
-  })
-  await waitFor(() => seen.some((event) => event.type === 'queue' && event.queue.some((message) => message.text === 'second')))
-
-  errorGate.resolve(undefined)
-  await firstSend
-  expect(firstError).toBe('first failed')
-  await waitFor(() => provider.calls === 2)
-  await delay(5)
-  expect(secondSettled).toBe(false)
-
-  successGate.resolve(undefined)
-  await secondSend
-  expect(secondSettled).toBe(true)
-})
-
-test('AgentClient.abort returns false while idle and true after aborting active work', async () => {
-  const provider = new AbortAwareProvider()
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('abort-aware', provider)],
-  })
-  const client = server.client()
-
-  await client.open(providerSelection('abort-aware'), '/workspace', globalThis.crypto.randomUUID())
-  expect(await client.abort()).toMatchObject({ aborted: false })
-
-  const sending = client.send([{ type: 'text', text: 'start' }])
-  await provider.started.promise
-  await expect(client.abort()).resolves.toMatchObject({ aborted: true })
-  await provider.aborted.promise
-  await sending
-})
-
-test('AgentServer aborts the active session when a close frame is received', async () => {
-  const provider = new AbortAwareProvider()
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('abort-aware', provider)],
-  })
-  const client = server.client()
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open(providerSelection('abort-aware'), '/workspace', globalThis.crypto.randomUUID())
-  const sending = client.send([{ type: 'text', text: 'start' }])
-  await provider.started.promise
-
-  await client.close()
-  await provider.aborted.promise
-  await sending
-
-  expect(provider.calls).toBe(1)
-  expect(seen.some((event) => event.type === 'closed')).toBe(true)
-})
-
-test('AgentServer disposes shell resources when a close frame is received', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-agent-dispose-'))
-  const leakedPath = join(root, 'agent-leaked.txt')
-  const { client } = createAgentClientHarness({
-    shell: {
-      initialEnv: { PATH: process.env.PATH ?? '' },
-      shellIdFactory: () => 'agent-dispose-shell',
-    },
-    providerTurns: [
-      [
-        events.toolCall('tool-1', 'shell_exec', {
-          script: 'probe hold 200 && printf leaked > agent-leaked.txt',
-          timeoutMs: 1,
-        }),
+    ]
+    await client.open(
+      providerConfig(turns),
+      process.cwd(),
+      globalThis.crypto.randomUUID()
+    )
+    await client.send([{ type: 'text', text: 'start process' }])
+    await waitFor(
+      () => client.transcript()
+        .blocks.some((block) => block.type === 'response')
+    )
+
+    let settled = false
+    const writing = client.shellWrite(
+      'agent-delayed-input-command',
+      'accepted\n'
+    ).then(
+      () => {
+        settled = true
+      }
+    )
+    await delay(5)
+    expect(settled).toBe(true)
+
+    await writing
+    expect(settled).toBe(true)
+    expect(seen.some((event) => event.type === 'shell_write_result'
+      && event.commandId === 'agent-delayed-input-command')).toBe(true)
+    expect(seen).not.toContainEqual({
+      type: 'tool_progress',
+      toolUseId: 'agent-shell-write:agent-delayed-input-command',
+      output: expect.any(Array),
+    })
+  }
+)
+
+test(
+  'AgentServer emits transcript patches with removals on retry',
+  async () => {
+    const { client } = createAgentClientHarness({
+      providerTurns: [
+        [events.text('old'), events.response()],
+        (request: InferenceRequest) => {
+          expect(request.items.map((item) => item.type))
+            .toEqual(['user_message'])
+          return [events.text('new'), events.response()]
+        },
       ],
-      [events.text('waiting'), events.response()],
-    ],
-  })
+    })
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
 
-  await client.open(providerConfig([
+    await client.open(providerConfig([
+        [events.text('old'), events.response()],
+        (request: InferenceRequest) => {
+          expect(request.items.map((item) => item.type))
+            .toEqual(['user_message'])
+          return [events.text('new'), events.response()]
+        },
+      ]),
+      '/workspace',
+      globalThis.crypto.randomUUID(),
+    )
+    await client.send([{ type: 'text', text: 'question' }])
+    await waitFor(
+      () => client.transcript()
+        .blocks.some((block) => block.type === 'response')
+    )
+
+    seen.length = 0
+    await client.retry()
+    await waitFor(() => {
+      const textBlocks = client.transcript()
+        .blocks.filter((block) => block.type === 'text')
+      return textBlocks.some((block) => block.type === 'text'
+        && block.text === 'new')
+    })
+
+    const patches = seen
+      .filter((event) => event.type === 'transcript_patch')
+      .flatMap((event) => (event.type === 'transcript_patch'
+        ? event.patches
+        : []))
+    // Retry rewrites the transcript in bulk, which replicates as a full replace.
+    expect(patches.some((patch) => patch.op === 'replace')).toBe(true)
+    expect(client.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'text',
+      'response'
+    ])
+  }
+)
+
+test(
+  'AgentServer queues send frames while the session is busy and drains them in order',
+  async () => {
+    const gate = deferred<void>()
+    const provider = new DelayedProvider(gate.promise)
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('delayed', provider)],
+    })
+    const client = server.client()
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(
+      providerSelection('delayed'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    let firstSettled = false
+    const firstSend = client.send([{ type: 'text', text: 'first' }]).then(
+      () => {
+        firstSettled = true
+      }
+    )
+    await waitFor(() => seen.some((event) => event.type === 'phase'
+      && event.phase === 'running'))
+    expect(firstSettled).toBe(false)
+
+    let secondSettled = false
+    const secondSend = client.send([{ type: 'text', text: 'second' }]).then(
+      () => {
+        secondSettled = true
+      }
+    )
+    await waitFor(() => seen.some((event) => event.type === 'queue'
+      && event.queue.some((message) => message.text === 'second')))
+
+    expect(seen.some((event) => event.type === 'rejected'
+      && event.command === 'send')).toBe(false)
+    expect(secondSettled).toBe(false)
+    gate.resolve()
+    await firstSend
+    await secondSend
+    expect(firstSettled).toBe(true)
+    expect(secondSettled).toBe(true)
+    await waitFor(() => provider.calls === 2)
+    expect(client.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'text',
+      'response',
+      'user',
+      'text',
+      'response'
+    ])
+    const userTexts = client
+      .transcript()
+      .blocks.filter((block) => block.type === 'user')
+      .map((block) => (block.type === 'user'
+        && block.content[0]?.type === 'text'
+        ? block.content[0].text
+        : ''))
+    expect(userTexts).toEqual(['first', 'second'])
+    expect(
+      seen.some((event) => event.type === 'queue' && event.queue.length === 0)
+    ).toBe(true)
+  }
+)
+
+test(
+  'AgentClient.steer resolves correlated accepted acks and receives transcript patches without queueing',
+  async () => {
+    const provider = new ServerGateProvider({ supportsSteer: true })
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('server-steerable', provider)],
+    })
+    const client = server.client()
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(
+      providerSelection('server-steerable'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    const sending = client.send([{ type: 'text', text: 'start' }])
+    await provider.waitForRun(0)
+    seen.length = 0
+
+    await Promise.all([
+      client.steer([{ type: 'text', text: 'first steer' }]),
+      client.steer([{ type: 'text', text: 'second steer' }]),
+    ])
+
+    const steerResults = seen.filter((event) => event.type === 'steer_result')
+    expect(steerResults).toHaveLength(2)
+    expect(steerResults.every((event) => event.type === 'steer_result'
+      && event.status === 'accepted')).toBe(true)
+    expect(new Set(steerResults.map((event) => (event.type === 'steer_result'
+      ? event.steerId
+      : ''))).size).toBe(2)
+    expect(provider.steers.map((steer) => steer.content)).toEqual([
+      [{ type: 'text', text: 'first steer' }],
+      [{ type: 'text', text: 'second steer' }],
+    ])
+    expect(client.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'steer',
+      'steer'
+    ])
+    expect(seen.some((event) => event.type === 'queue')).toBe(false)
+
+    provider.release(0)
+    await sending
+    expect(client.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'steer',
+      'steer',
+      'text',
+      'response'
+    ])
+  }
+)
+
+test(
+  'AgentClient.steer rejects when no session is open and does not create transcript state',
+  async () => {
+    const { client } = createAgentClientHarness({ providerTurns: [] })
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await expect(client.steer([{ type: 'text', text: 'orphan steer' }]))
+      .rejects.toThrow('No session is open')
+
+    expect(seen).toContainEqual({
+      type: 'steer_result',
+      steerId: expect.any(String),
+      status: 'rejected',
+      reason: 'No session is open on this connection',
+    })
+    expect(client.transcript().blocks).toEqual([])
+  }
+)
+
+test(
+  'AgentClient.steer accepts active provider without native steer and materializes at the continuation boundary',
+  async () => {
+    const provider = new ServerGateProvider({ supportsSteer: false })
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('server-no-native-steer', provider)],
+    })
+    const client = server.client()
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(
+      providerSelection('server-no-native-steer'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    const sending = client.send([{ type: 'text', text: 'start' }])
+    await provider.waitForRun(0)
+    seen.length = 0
+
+    await client.steer([{ type: 'text', text: 'same turn guidance' }])
+
+    expect(seen).toContainEqual({
+      type: 'steer_result',
+      steerId: expect.any(String),
+      status: 'accepted',
+    })
+    expect(client.transcript().blocks.map((block) => block.type))
+      .toEqual(['user'])
+    expect(seen.some((event) => event.type === 'queue')).toBe(false)
+    expect(
+      seen
+        .filter((event) => event.type === 'transcript_patch')
+        .flatMap((event) => (event.type === 'transcript_patch'
+          ? event.patches
+          : []))
+        .some((patch) => patch.op === 'add' && patch.value.type === 'steer'),
+    ).toBe(false)
+
+    provider.release(0)
+    await provider.waitForRun(1)
+    expect(
+      seen
+        .filter((event) => event.type === 'transcript_patch')
+        .flatMap((event) => (event.type === 'transcript_patch'
+          ? event.patches
+          : []))
+        .some((patch) => patch.op === 'add' && patch.value.type === 'steer'),
+    ).toBe(true)
+    expect(provider.requests[1]?.turnId).toBe(provider.requests[0]?.turnId)
+    expect(provider.requests[1]?.items.map((item) => item.type)).toEqual([
+      'user_message',
+      'assistant_text',
+      'user_steer'
+    ])
+    expect(provider.requests[1]?.items[2]).toEqual({
+      type: 'user_steer',
+      turnId: provider.requests[0]?.turnId,
+      content: [{ type: 'text', text: 'same turn guidance' }],
+    })
+
+    provider.release(1)
+    await sending
+    expect(client.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'text',
+      'response',
+      'steer',
+      'text',
+      'response'
+    ])
+  }
+)
+
+test(
+  'a new AgentClient receives pending steers from the live session and observes their removal',
+  async () => {
+    const provider = new ServerGateProvider({ supportsSteer: false })
+    const selection = providerSelection('pending-reconnect')
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('pending-reconnect', provider)],
+    })
+    const sessionId = globalThis.crypto.randomUUID()
+    const first = server.client()
+    await first.open(selection, '/workspace', sessionId)
+    const sending = first.send([{ type: 'text', text: 'start' }])
+    await provider.waitForRun(0)
+    await first.steer([{ type: 'text', text: 'keep' }], { steerId: 'keep' })
+    await first.steer([{ type: 'text', text: 'cancel' }], { steerId: 'cancel' })
+    expect(first.pendingSteers().map((steer) => steer.id)).toEqual([
+      'keep',
+      'cancel'
+    ])
+
+    const second = server.client()
+    const seen: ClientSessionEvent[] = []
+    second.subscribe((event) => {
+      seen.push(event)
+      const historyIds = new Set(second.transcript()
+        .blocks.map((block) => block.id))
+      expect(
+        second.pendingSteers().some((steer) => historyIds.has(steer.id))
+      ).toBe(false)
+    })
+    await second.open(selection, '/workspace', sessionId)
+    await waitFor(() => second.pendingSteers().length === 2)
+    expect(provider.calls).toBe(1)
+    expect(first.pendingSteers()).toEqual([])
+    expect(second.pendingSteers()).toMatchObject([
+      {
+        id: 'keep',
+        turnId: provider.requests[0]?.turnId,
+        model: selection.model,
+        content: [{ type: 'text', text: 'keep' }]
+      },
+      { id: 'cancel', content: [{ type: 'text', text: 'cancel' }] },
+    ])
+    const snapshot = second.pendingSteers()
+    snapshot[0]!.content.length = 0
+    expect(second.pendingSteers()[0]!.content).toEqual([{
+      type: 'text',
+      text: 'keep'
+    }])
+
+    second.cancelPendingSteer('cancel')
+    await waitFor(() => second.pendingSteers().length === 1)
+    expect(second.pendingSteers()[0]!.id).toBe('keep')
+    const third = server.client()
+    await third.open(selection, '/workspace', sessionId)
+    await waitFor(() => third.pendingSteers().length === 1)
+    expect(third.pendingSteers()[0]!.id).toBe('keep')
+    third.subscribe(() => {
+      const historyIds = new Set(third.transcript()
+        .blocks.map((block) => block.id))
+      expect(
+        third.pendingSteers().some((steer) => historyIds.has(steer.id))
+      ).toBe(false)
+    })
+    provider.release(0)
+    await provider.waitForRun(1)
+    await waitFor(() => third.pendingSteers().length === 0)
+    expect(
+      third.transcript().blocks.filter((block) => block.type === 'steer').map((
+        block
+      ) => block.id)
+    ).toEqual(['keep'])
+    expect(
+      provider.requests[1]!.items.filter((item) => item.type === 'user_steer')
+    ).toEqual(
       [
-        events.toolCall('tool-1', 'shell_exec', {
-          script: 'probe hold 200 && printf leaked > agent-leaked.txt',
-          timeoutMs: 1,
-        }),
+        {
+          type: 'user_steer',
+          turnId: provider.requests[0]!.turnId,
+          content: [{ type: 'text', text: 'keep' }]
+        },
+      ]
+    )
+    provider.release(1)
+    await waitFor(
+      () => third.transcript()
+        .blocks.filter((block) => block.type === 'response')
+        .length === 2
+    )
+    await sending
+    expect(seen.some((event) => event.type === 'pending_steers'
+      && event.pendingSteers.length === 1)).toBe(true)
+    await server.close()
+  }
+)
+
+test(
+  'AgentClient.cancelPendingSteer removes an accepted steer before transcript materialization',
+  async () => {
+    const provider = new ServerGateProvider({ supportsSteer: false })
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('server-cancel-pending-steer', provider)],
+    })
+    const client = server.client()
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(
+      providerSelection('server-cancel-pending-steer'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    const sending = client.send([{ type: 'text', text: 'start' }])
+    await provider.waitForRun(0)
+    seen.length = 0
+
+    await client.steer(
+      [{ type: 'text', text: 'delete before materialized' }],
+      { steerId: 'steer-cancel-frame' }
+    )
+    client.cancelPendingSteer('steer-cancel-frame')
+
+    provider.release(0)
+    await sending
+
+    expect(provider.requests).toHaveLength(1)
+    expect(seen).toContainEqual({
+      type: 'steer_result',
+      steerId: 'steer-cancel-frame',
+      status: 'accepted',
+    })
+    expect(
+      seen
+        .filter((event) => event.type === 'transcript_patch')
+        .flatMap((event) => (event.type === 'transcript_patch'
+          ? event.patches
+          : []))
+        .some((patch) => patch.op === 'add' && patch.value.type === 'steer'),
+    ).toBe(false)
+    expect(client.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'text',
+      'response'
+    ])
+  }
+)
+
+test(
+  'AgentClient.cancelPendingSteer is silent without an open session',
+  async () => {
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [],
+    })
+    const client = server.client()
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    client.cancelPendingSteer('missing-steer')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(seen).toEqual([])
+    await server.close()
+  }
+)
+
+test(
+  'AgentServer rejects retry, resume, and compact frames while the session is busy',
+  async () => {
+    const gate = deferred<void>()
+    const provider = new DelayedProvider(gate.promise)
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('delayed-rejects', provider)],
+    })
+    const client = server.client()
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(
+      providerSelection('delayed-rejects'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    const sending = client.send([{ type: 'text', text: 'first' }])
+    await waitFor(() => seen.some((event) => event.type === 'phase'
+      && event.phase === 'running'))
+
+    await expect(client.retry()).rejects.toThrow('Session is busy (running)')
+    await expect(client.resume()).rejects.toThrow('Session is busy (running)')
+    await expect(client.compact()).rejects.toThrow('Session is busy (running)')
+
+    expect(
+      seen.filter((event) => event.type === 'rejected').map(
+        (event) => (event.type === 'rejected'
+          ? event.command
+          : '')
+      ),
+    ).toEqual(['retry', 'resume', 'compact'])
+
+    gate.resolve(undefined)
+    await sending
+
+    expect(provider.calls).toBe(1)
+    expect(client.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'text',
+      'response'
+    ])
+  }
+)
+
+test(
+  'AgentClient resolves each queued send promise on its own phase cycle',
+  async () => {
+    const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
+    const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('sequenced-delayed', provider)],
+    })
+    const client = server.client()
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(
+      providerSelection('sequenced-delayed'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    const settlements: string[] = []
+    const firstSend = client.send([{ type: 'text', text: 'first' }]).then(
+      () => {
+        settlements.push('first')
+      }
+    )
+    await waitFor(() => seen.some((event) => event.type === 'phase'
+      && event.phase === 'running'))
+
+    const secondSend = client.send([{ type: 'text', text: 'second' }]).then(
+      () => {
+        settlements.push('second')
+      }
+    )
+    const thirdSend = client.send([{ type: 'text', text: 'third' }]).then(
+      () => {
+        settlements.push('third')
+      }
+    )
+    await waitFor(() =>
+      seen.some(
+        (event) =>
+          event.type === 'queue' &&
+          event.queue.some((message) => message.text === 'second') &&
+          event.queue.some((message) => message.text === 'third'),
+      ),
+    )
+    await delay(5)
+    expect(settlements).toEqual([])
+
+    gates[0].resolve(undefined)
+    await firstSend
+    await waitFor(() => provider.calls === 2)
+    await delay(5)
+    expect(settlements).toEqual(['first'])
+
+    gates[1].resolve(undefined)
+    await secondSend
+    await waitFor(() => provider.calls === 3)
+    await delay(5)
+    expect(settlements).toEqual(['first', 'second'])
+
+    gates[2].resolve(undefined)
+    await thirdSend
+    expect(settlements).toEqual(['first', 'second', 'third'])
+  }
+)
+
+test(
+  'AgentClient.dequeueMessage resolves the removed queued send without running it',
+  async () => {
+    const gates = [deferred<void>(), deferred<void>()]
+    const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('sequenced-delayed', provider)],
+    })
+    const client = server.client()
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(
+      providerSelection('sequenced-delayed'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    const firstSend = client.send([{ type: 'text', text: 'first' }])
+    await waitFor(() => seen.some((event) => event.type === 'phase'
+      && event.phase === 'running'))
+
+    let secondSettled = false
+    const secondSend = client.send([{ type: 'text', text: 'second' }]).then(
+      () => {
+        secondSettled = true
+      }
+    )
+    await waitFor(() => queuedMessageId(seen, 'second') !== null)
+    const secondId = queuedMessageId(seen, 'second')!
+
+    client.dequeueMessage(secondId)
+    await secondSend
+    expect(secondSettled).toBe(true)
+    await waitFor(() => seen.some((event) => event.type === 'queue'
+      && event.queue.length === 0))
+
+    gates[0].resolve(undefined)
+    await firstSend
+    await delay(5)
+
+    expect(provider.calls).toBe(1)
+    const userTexts = client
+      .transcript()
+      .blocks.filter((block) => block.type === 'user')
+      .map((block) => (block.type === 'user'
+        && block.content[0]?.type === 'text'
+        ? block.content[0].text
+        : ''))
+    expect(userTexts).toEqual(['first'])
+  }
+)
+
+test(
+  'AgentClient.sendQueuedMessage moves a queued send to the next phase cycle',
+  async () => {
+    const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
+    const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('sequenced-delayed', provider)],
+    })
+    const client = server.client()
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(
+      providerSelection('sequenced-delayed'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    const settlements: string[] = []
+    const firstSend = client.send([{ type: 'text', text: 'first' }]).then(
+      () => {
+        settlements.push('first')
+      }
+    )
+    await waitFor(() => seen.some((event) => event.type === 'phase'
+      && event.phase === 'running'))
+
+    const secondSend = client.send([{ type: 'text', text: 'second' }]).then(
+      () => {
+        settlements.push('second')
+      }
+    )
+    const thirdSend = client.send([{ type: 'text', text: 'third' }]).then(
+      () => {
+        settlements.push('third')
+      }
+    )
+    await waitFor(
+      () => queuedMessageId(seen, 'second') !== null && queuedMessageId(
+        seen,
+        'third'
+      ) !== null
+    )
+    const thirdId = queuedMessageId(seen, 'third')!
+
+    client.sendQueuedMessage(thirdId)
+    await waitFor(() => latestQueueTexts(seen).join(',') === 'third,second')
+
+    gates[0].resolve(undefined)
+    await firstSend
+    await waitFor(() => provider.calls === 2)
+    expect(settlements).toEqual(['first'])
+
+    gates[1].resolve(undefined)
+    await thirdSend
+    await waitFor(() => provider.calls === 3)
+    expect(settlements).toEqual(['first', 'third'])
+
+    gates[2].resolve(undefined)
+    await secondSend
+    expect(settlements).toEqual(['first', 'third', 'second'])
+
+    const userTexts = client
+      .transcript()
+      .blocks.filter((block) => block.type === 'user')
+      .map((block) => (block.type === 'user'
+        && block.content[0]?.type === 'text'
+        ? block.content[0].text
+        : ''))
+    expect(userTexts).toEqual(['first', 'third', 'second'])
+  }
+)
+
+test(
+  'AgentClient.steerQueuedMessage converts a queued send into an active steer',
+  async () => {
+    const gates = [deferred<void>(), deferred<void>()]
+    const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('sequenced-delayed', provider)],
+    })
+    const client = server.client()
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(
+      providerSelection('sequenced-delayed'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    const settlements: string[] = []
+    const firstSend = client.send([{ type: 'text', text: 'first' }]).then(
+      () => {
+        settlements.push('first')
+      }
+    )
+    await waitFor(() => seen.some((event) => event.type === 'phase'
+      && event.phase === 'running'))
+
+    const secondSend = client.send([{ type: 'text', text: 'second' }]).then(
+      () => {
+        settlements.push('second')
+      }
+    )
+    await waitFor(() => queuedMessageId(seen, 'second') !== null)
+    const secondId = queuedMessageId(seen, 'second')!
+
+    await client.steerQueuedMessage(secondId, { steerId: 'steer-queued' })
+    await secondSend
+    expect(settlements).toEqual(['second'])
+    expect(latestQueueTexts(seen)).toEqual([])
+    expect(client.pendingSteers()).toMatchObject([{
+      id: 'steer-queued',
+      content: [{ type: 'text', text: 'second' }]
+    }])
+
+    gates[0].resolve(undefined)
+    await waitFor(() => provider.calls === 2)
+    expect(client.pendingSteers()).toEqual([])
+    expect(provider.requests[1]!.items.map((item) => item.type)).toEqual([
+      'user_message',
+      'assistant_text',
+      'user_steer',
+    ])
+    expect(provider.requests[1]!.items[2]).toEqual({
+      type: 'user_steer',
+      turnId: expect.any(String),
+      content: [{ type: 'text', text: 'second' }],
+    })
+
+    gates[1].resolve(undefined)
+    await firstSend
+    expect(settlements).toEqual(['second', 'first'])
+
+    const blockTypes = client.transcript().blocks.map((block) => block.type)
+    expect(blockTypes).toEqual([
+      'user',
+      'text',
+      'response',
+      'steer',
+      'text',
+      'response'
+    ])
+  }
+)
+
+test(
+  'AgentClient.clearMessageQueue resolves queued sends without canceling the active send',
+  async () => {
+    const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
+    const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('sequenced-delayed', provider)],
+    })
+    const client = server.client()
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(
+      providerSelection('sequenced-delayed'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    const firstSend = client.send([{ type: 'text', text: 'first' }])
+    await waitFor(() => seen.some((event) => event.type === 'phase'
+      && event.phase === 'running'))
+
+    let secondSettled = false
+    let thirdSettled = false
+    const secondSend = client.send([{ type: 'text', text: 'second' }]).then(
+      () => {
+        secondSettled = true
+      }
+    )
+    const thirdSend = client.send([{ type: 'text', text: 'third' }]).then(
+      () => {
+        thirdSettled = true
+      }
+    )
+    await waitFor(
+      () => queuedMessageId(seen, 'second') !== null && queuedMessageId(
+        seen,
+        'third'
+      ) !== null
+    )
+
+    client.clearMessageQueue()
+    await Promise.all([secondSend, thirdSend])
+    expect(secondSettled).toBe(true)
+    expect(thirdSettled).toBe(true)
+    await waitFor(() => seen.some((event) => event.type === 'queue'
+      && event.queue.length === 0))
+
+    gates[0].resolve(undefined)
+    await firstSend
+    await delay(5)
+
+    expect(provider.calls).toBe(1)
+    const userTexts = client
+      .transcript()
+      .blocks.filter((block) => block.type === 'user')
+      .map((block) => (block.type === 'user'
+        && block.content[0]?.type === 'text'
+        ? block.content[0].text
+        : ''))
+    expect(userTexts).toEqual(['first'])
+  }
+)
+
+test(
+  'AgentClient rejects only the active action when queued sends continue after an error',
+  async () => {
+    const errorGate = deferred<void>()
+    const successGate = deferred<void>()
+    const provider = new ErrorThenDelayedProvider(
+      errorGate.promise,
+      successGate.promise
+    )
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('error-then-delayed', provider)],
+    })
+    const client = server.client()
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(
+      providerSelection('error-then-delayed'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    let firstError = ''
+    const firstSend = client.send([{ type: 'text', text: 'first' }]).catch(
+      (error) => {
+        firstError = error instanceof Error ? error.message : String(error)
+      }
+    )
+    await waitFor(() => seen.some((event) => event.type === 'phase'
+      && event.phase === 'running'))
+
+    let secondSettled = false
+    const secondSend = client.send([{ type: 'text', text: 'second' }]).then(
+      () => {
+        secondSettled = true
+      }
+    )
+    await waitFor(() => seen.some((event) => event.type === 'queue'
+      && event.queue.some((message) => message.text === 'second')))
+
+    errorGate.resolve(undefined)
+    await firstSend
+    expect(firstError).toBe('first failed')
+    await waitFor(() => provider.calls === 2)
+    await delay(5)
+    expect(secondSettled).toBe(false)
+
+    successGate.resolve(undefined)
+    await secondSend
+    expect(secondSettled).toBe(true)
+  }
+)
+
+test(
+  'AgentClient.abort returns false while idle and true after aborting active work',
+  async () => {
+    const provider = new AbortAwareProvider()
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('abort-aware', provider)],
+    })
+    const client = server.client()
+
+    await client.open(
+      providerSelection('abort-aware'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    expect(await client.abort()).toMatchObject({ aborted: false })
+
+    const sending = client.send([{ type: 'text', text: 'start' }])
+    await provider.started.promise
+    await expect(client.abort()).resolves.toMatchObject({ aborted: true })
+    await provider.aborted.promise
+    await sending
+  }
+)
+
+test(
+  'AgentServer aborts the active session when a close frame is received',
+  async () => {
+    const provider = new AbortAwareProvider()
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider('abort-aware', provider)],
+    })
+    const client = server.client()
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(
+      providerSelection('abort-aware'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    )
+    const sending = client.send([{ type: 'text', text: 'start' }])
+    await provider.started.promise
+
+    await client.close()
+    await provider.aborted.promise
+    await sending
+
+    expect(provider.calls).toBe(1)
+    expect(seen.some((event) => event.type === 'closed')).toBe(true)
+  }
+)
+
+test(
+  'AgentServer disposes shell resources when a close frame is received',
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), 'demi-agent-dispose-'))
+    const leakedPath = join(root, 'agent-leaked.txt')
+    const { client } = createAgentClientHarness({
+      shell: {
+        initialEnv: { PATH: process.env.PATH ?? '' },
+        shellIdFactory: () => 'agent-dispose-shell',
+      },
+      providerTurns: [
+        [
+          events.toolCall('tool-1', 'shell_exec', {
+            script: 'probe hold 200 && printf leaked > agent-leaked.txt',
+            timeoutMs: 1,
+          }),
+        ],
+        [events.text('waiting'), events.response()],
       ],
-      [events.text('waiting'), events.response()],
-    ]),
-    root,
-    globalThis.crypto.randomUUID(),
-  )
-  await client.send([{ type: 'text', text: 'start shell' }])
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
+    })
 
-  await client.close()
+    await client.open(providerConfig([
+        [
+          events.toolCall('tool-1', 'shell_exec', {
+            script: 'probe hold 200 && printf leaked > agent-leaked.txt',
+            timeoutMs: 1,
+          }),
+        ],
+        [events.text('waiting'), events.response()],
+      ]),
+      root,
+      globalThis.crypto.randomUUID(),
+    )
+    await client.send([{ type: 'text', text: 'start shell' }])
+    await waitFor(
+      () => client.transcript()
+        .blocks.some((block) => block.type === 'response')
+    )
 
-  await delay(250)
-  await expect(access(leakedPath)).rejects.toThrow()
-})
+    await client.close()
+
+    await delay(250)
+    await expect(access(leakedPath)).rejects.toThrow()
+  }
+)
 
 test('AgentServer.close disposes harness resources directly', async () => {
   let disposed = false
@@ -1160,7 +1636,11 @@ test('AgentServer.close disposes harness resources directly', async () => {
     providerTurns: [],
   })
 
-  await client.open(providerConfig([]), '/workspace', globalThis.crypto.randomUUID())
+  await client.open(
+    providerConfig([]),
+    '/workspace',
+    globalThis.crypto.randomUUID()
+  )
   await server.close()
 
   expect(disposed).toBe(true)
@@ -1170,13 +1650,20 @@ function createAgentClientHarness(options: {
   harness?: AgentHarness<unknown>
   shell?: ShellEnvironmentOptions
   providerTurns: ConstructorParameters<typeof StubProvider>[0]
-}): { client: AgentClient; server: AgentServer; store: MemoryAgentStore } {
+}): {
+  client: AgentClient;
+  server: AgentServer;
+  store: MemoryAgentStore
+} {
   const store = new MemoryAgentStore()
   const server = new AgentServer({
     store: () => store,
     shellEnvironment: runnerShellFactory,
     agent: options.harness ?? createTextHarness(),
-    providers: [runtimeProvider('stub', () => new StubProvider(options.providerTurns))],
+    providers: [runtimeProvider(
+      'stub',
+      () => new StubProvider(options.providerTurns)
+    )],
     shell: options.shell,
   })
   const client = server.client()
@@ -1204,8 +1691,14 @@ class ServerGateProvider implements AgentProvider {
   calls = 0
   readonly requests: InferenceRequest[] = []
   readonly steers: InferenceSteer[] = []
-  private readonly gates: Array<{ promise: Promise<void>; resolve: (value: void) => void }> = []
-  private readonly started = new Map<number, { promise: Promise<void>; resolve: (value: void) => void }>()
+  private readonly gates: Array<{
+    promise: Promise<void>;
+    resolve: (value: void) => void
+  }> = []
+  private readonly started = new Map<number, {
+    promise: Promise<void>;
+    resolve: (value: void) => void
+  }>()
 
   constructor(private readonly options: { supportsSteer: boolean }) {}
 
@@ -1238,9 +1731,11 @@ class ServerGateProvider implements AgentProvider {
   }
 
   waitForRun(index: number): Promise<void> {
-    if (this.requests.length > index) return Promise.resolve()
+    if (this.requests.length > index)
+      return Promise.resolve()
     const existing = this.started.get(index)
-    if (existing) return existing.promise
+    if (existing)
+      return existing.promise
     const next = deferred<void>()
     this.started.set(index, next)
     return next.promise
@@ -1308,7 +1803,11 @@ class AbortAwareProvider implements AgentProvider {
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     this.calls += 1
-    request.cancel.addEventListener('abort', () => this.aborted.resolve(), { once: true })
+    request.cancel.addEventListener(
+      'abort',
+      () => this.aborted.resolve(),
+      { once: true }
+    )
     this.started.resolve()
     await new Promise(() => {})
   }
@@ -1322,7 +1821,8 @@ function createTextHarness(): AgentHarness<Record<string, never>> {
     commands: () => [probeCommand()],
     host: (ctx) => {
       const existing = hosts.get(ctx.cwd)
-      if (existing) return existing
+      if (existing)
+        return existing
       const host = new LocalHost(ctx.cwd)
       hosts.set(ctx.cwd, host)
       return host
@@ -1331,7 +1831,9 @@ function createTextHarness(): AgentHarness<Record<string, never>> {
   }
 }
 
-function providerConfig(_turns: ConstructorParameters<typeof StubProvider>[0]): ProviderSelection {
+function providerConfig(
+  _turns: ConstructorParameters<typeof StubProvider>[0]
+): ProviderSelection {
   return providerSelection('stub')
 }
 
@@ -1342,20 +1844,29 @@ function providerSelection(providerId: string): ProviderSelection {
   }
 }
 
-function runtimeProvider(id: string, provider: AgentProvider | (() => AgentProvider)): Provider {
+function runtimeProvider(
+  id: string,
+  provider: AgentProvider | (() => AgentProvider)
+): Provider {
   return defineProvider({
     id,
     displayName: id,
-    createRuntime: () => (typeof provider === 'function' ? provider() : provider),
+    createRuntime: () => (typeof provider
+      === 'function' ? provider() : provider),
   })
 }
 
-function queuedMessageId(events: ClientSessionEvent[], text: string): string | null {
+function queuedMessageId(
+  events: ClientSessionEvent[],
+  text: string
+): string | null {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]
-    if (event?.type !== 'queue') continue
+    if (event?.type !== 'queue')
+      continue
     const message = event.queue.find((candidate) => candidate.text === text)
-    if (message) return message.id
+    if (message)
+      return message.id
   }
   return null
 }
@@ -1363,7 +1874,8 @@ function queuedMessageId(events: ClientSessionEvent[], text: string): string | n
 function latestQueueTexts(events: ClientSessionEvent[]): string[] {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]
-    if (event?.type === 'queue') return event.queue.map((message) => message.text)
+    if (event?.type === 'queue')
+      return event.queue.map((message) => message.text)
   }
   return []
 }
@@ -1372,57 +1884,82 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-test('a malformed client frame is rejected at ingress with invalid_frame', async () => {
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: [runtimeProvider('stub', () => new StubProvider([[events.text('ok'), events.response()]]))],
-  })
-  const pair = createInProcessTransportPair()
-  server.attachTransport(pair.server)
-  const received: unknown[] = []
-  pair.client.onFrame((frame) => { received.push(frame) })
+test(
+  'a malformed client frame is rejected at ingress with invalid_frame',
+  async () => {
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: [runtimeProvider(
+        'stub',
+        () => new StubProvider([[events.text('ok'), events.response()]])
+      )],
+    })
+    const pair = createInProcessTransportPair()
+    server.attachTransport(pair.server)
+    const received: unknown[] = []
+    pair.client.onFrame((frame) => {
+      received.push(frame)
+    })
 
-  // Missing required fields: `send` without messageId/content.
-  pair.client.send({ type: 'send' } as never)
-  await waitFor(() => received.length > 0)
-  expect(received[0]).toMatchObject({ type: 'error', code: 'invalid_frame' })
+    // Missing required fields: `send` without messageId/content.
+    pair.client.send({ type: 'send' } as never)
+    await waitFor(() => received.length > 0)
+    expect(received[0]).toMatchObject({ type: 'error', code: 'invalid_frame' })
 
-  // An unknown frame type is equally rejected.
-  pair.client.send({ type: 'definitely_not_a_frame' } as never)
-  await waitFor(() => received.length > 1)
-  expect(received[1]).toMatchObject({ type: 'error', code: 'invalid_frame' })
-  await server.close()
-})
+    // An unknown frame type is equally rejected.
+    pair.client.send({ type: 'definitely_not_a_frame' } as never)
+    await waitFor(() => received.length > 1)
+    expect(received[1]).toMatchObject({ type: 'error', code: 'invalid_frame' })
+    await server.close()
+  }
+)
 
-test('AgentServer accepts a ProviderResolver: session context arrives, unknown ids error', async () => {
-  const contexts: Array<{ providerId: string; agentSessionId: string }> = []
-  const server = new AgentServer({
-    store: () => new MemoryAgentStore(),
-    shellEnvironment: runnerShellFactory,
-    agent: createTextHarness(),
-    providers: (providerId, context) => {
-      contexts.push({ providerId, agentSessionId: context.agentSessionId })
-      if (providerId !== 'dynamic') return null
-      return runtimeProvider('dynamic', new StubProvider([[events.text('resolved'), events.response()]]))
-    },
-  })
+test(
+  'AgentServer accepts a ProviderResolver: session context arrives, unknown ids error',
+  async () => {
+    const contexts: Array<{
+      providerId: string;
+      agentSessionId: string
+    }> = []
+    const server = new AgentServer({
+      store: () => new MemoryAgentStore(),
+      shellEnvironment: runnerShellFactory,
+      agent: createTextHarness(),
+      providers: (providerId, context) => {
+        contexts.push({ providerId, agentSessionId: context.agentSessionId })
+        if (providerId !== 'dynamic')
+          return null
+        return runtimeProvider(
+          'dynamic',
+          new StubProvider([[events.text('resolved'), events.response()]])
+        )
+      },
+    })
 
-  const client = server.client()
-  const sessionId = globalThis.crypto.randomUUID()
-  await client.open(providerSelection('dynamic'), '/workspace', sessionId)
-  await client.send([{ type: 'text', text: 'go' }])
-  expect(client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'resolved')).toBe(true)
-  expect(contexts).toEqual([{ providerId: 'dynamic', agentSessionId: sessionId }])
+    const client = server.client()
+    const sessionId = globalThis.crypto.randomUUID()
+    await client.open(providerSelection('dynamic'), '/workspace', sessionId)
+    await client.send([{ type: 'text', text: 'go' }])
+    expect(client.transcript().blocks.some((block) => block.type === 'text'
+      && block.text === 'resolved')).toBe(true)
+    expect(contexts)
+      .toEqual([{ providerId: 'dynamic', agentSessionId: sessionId }])
 
-  const other = server.client()
-  const errors: string[] = []
-  other.subscribe((event) => {
-    if (event.type === 'error') errors.push(event.message)
-  })
-  void other.open(providerSelection('missing'), '/workspace', globalThis.crypto.randomUUID()).catch(() => {})
-  await waitFor(() => errors.length > 0)
-  expect(errors[0]).toContain('not available')
-  await server.close()
-})
+    const other = server.client()
+    const errors: string[] = []
+    other.subscribe((event) => {
+      if (event.type === 'error')
+        errors.push(event.message)
+    })
+    void other.open(
+      providerSelection('missing'),
+      '/workspace',
+      globalThis.crypto.randomUUID()
+    ).catch(() => {})
+    await waitFor(() => errors.length > 0)
+    expect(errors[0]).toContain('not available')
+    await server.close()
+  }
+)

@@ -27,9 +27,15 @@ export function defineProvider(definition: ProviderFactoryDefinition): Provider 
   ) as Provider
 }
 
-export function providerRuntime(provider: Provider, selection: ProviderSelection): Promise<AgentProvider> | AgentProvider {
+export function providerRuntime(
+  provider: Provider,
+  selection: ProviderSelection
+): Promise<AgentProvider> | AgentProvider {
   const factory = (provider as Partial<ProviderWithRuntimeFactory>)[runtimeFactorySymbol]
-  if (!factory) throw new Error(`Provider "${provider.id}" does not expose a runtime factory`)
+  if (!factory)
+    throw new Error(
+      `Provider "${provider.id}" does not expose a runtime factory`
+    )
   return factory.createRuntime(selection)
 }
 
@@ -41,13 +47,15 @@ export function applyModelPolicy(
   const include = policy?.include ? new Set(policy.include) : null
   const exclude = policy?.exclude ? new Set(policy.exclude) : null
   const models = list.models
-    .filter((model) => (!include || include.has(model.id)) && (!exclude || !exclude.has(model.id)))
+    .filter((model) => (!include || include.has(model.id))
+      && (!exclude || !exclude.has(model.id)))
     .map((model) => withProviderId(model, providerId))
 
   const defaultModelId =
     policy?.default && models.some((model) => model.id === policy.default)
       ? policy.default
-      : list.defaultModelId && models.some((model) => model.id === list.defaultModelId)
+      : list.defaultModelId
+        && models.some((model) => model.id === list.defaultModelId)
         ? list.defaultModelId
         : null
 

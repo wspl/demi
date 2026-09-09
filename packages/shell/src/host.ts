@@ -10,29 +10,95 @@ export interface HostIdentity {
   uid: number
   gid: number
   hostname: string
-  /** The home directory of the user the Host runs as: where session-bound and granted hosts start a shell. */
+  /**
+   * The home directory of the user the Host runs as: where session-bound and
+   * granted hosts start a shell.
+   */
   homeDir: string
 }
 
 export interface HostFileSystem {
   readFile(path: string, options?: { cwd?: string }): Promise<Uint8Array>
-  writeFile(path: string, data: Uint8Array, options?: { cwd?: string; createParents?: boolean }): Promise<void>
-  appendFile(path: string, data: Uint8Array, options?: { cwd?: string; createParents?: boolean }): Promise<void>
+  writeFile(
+    path: string,
+    data: Uint8Array,
+    options?: {
+      cwd?: string;
+      createParents?: boolean
+    }
+  ): Promise<void>
+  appendFile(
+    path: string,
+    data: Uint8Array,
+    options?: {
+      cwd?: string;
+      createParents?: boolean
+    }
+  ): Promise<void>
   exists(path: string, options?: { cwd?: string }): Promise<boolean>
   stat(path: string, options?: { cwd?: string }): Promise<HostFileStat>
   lstat(path: string, options?: { cwd?: string }): Promise<HostFileStat>
-  readdir(path: string, options?: { cwd?: string; withFileTypes?: false }): Promise<string[]>
-  readdir(path: string, options: { cwd?: string; withFileTypes: true }): Promise<HostDirent[]>
-  mkdir(path: string, options?: { cwd?: string; recursive?: boolean }): Promise<void>
-  rm(path: string, options?: { cwd?: string; recursive?: boolean; force?: boolean }): Promise<void>
-  cp(path: string, destination: string, options?: { cwd?: string; recursive?: boolean }): Promise<void>
-  mv(path: string, destination: string, options?: { cwd?: string }): Promise<void>
+  readdir(
+    path: string,
+    options?: {
+      cwd?: string;
+      withFileTypes?: false
+    }
+  ): Promise<string[]>
+  readdir(
+    path: string,
+    options: {
+      cwd?: string;
+      withFileTypes: true
+    }
+  ): Promise<HostDirent[]>
+  mkdir(
+    path: string,
+    options?: {
+      cwd?: string;
+      recursive?: boolean
+    }
+  ): Promise<void>
+  rm(
+    path: string,
+    options?: {
+      cwd?: string;
+      recursive?: boolean;
+      force?: boolean
+    }
+  ): Promise<void>
+  cp(
+    path: string,
+    destination: string,
+    options?: {
+      cwd?: string;
+      recursive?: boolean
+    }
+  ): Promise<void>
+  mv(
+    path: string,
+    destination: string,
+    options?: { cwd?: string }
+  ): Promise<void>
   chmod(path: string, mode: number, options?: { cwd?: string }): Promise<void>
-  symlink(target: string, path: string, options?: { cwd?: string }): Promise<void>
-  link(existingPath: string, path: string, options?: { cwd?: string }): Promise<void>
+  symlink(
+    target: string,
+    path: string,
+    options?: { cwd?: string }
+  ): Promise<void>
+  link(
+    existingPath: string,
+    path: string,
+    options?: { cwd?: string }
+  ): Promise<void>
   readlink(path: string, options?: { cwd?: string }): Promise<string>
   realpath(path: string, options?: { cwd?: string }): Promise<string>
-  utimes(path: string, atime: Date, mtime: Date, options?: { cwd?: string }): Promise<void>
+  utimes(
+    path: string,
+    atime: Date,
+    mtime: Date,
+    options?: { cwd?: string }
+  ): Promise<void>
 }
 
 export interface HostProcess {
@@ -126,7 +192,9 @@ export interface HostSpawnExit {
   spawnError?: HostSpawnError
 }
 
-/** Path-string cwd for test doubles and Hosts that cannot hold a directory fd. */
+/**
+ * Path-string cwd for test doubles and Hosts that cannot hold a directory fd.
+ */
 export function createLogicalHostCwd(initialPath: string): HostCwd {
   let path = initialPath
   return {
@@ -137,7 +205,8 @@ export function createLogicalHostCwd(initialPath: string): HostCwd {
       return path
     },
     async chdir(next: string) {
-      if (next === '.') return
+      if (next === '.')
+        return
       path = resolveLogicalCwd(path, next)
     },
     async snapshot() {
@@ -153,10 +222,12 @@ export function createLogicalHostCwd(initialPath: string): HostCwd {
 }
 
 function resolveLogicalCwd(base: string, next: string): string {
-  if (next.startsWith('/')) return next
+  if (next.startsWith('/'))
+    return next
   const parts = base.split('/').filter(Boolean)
   for (const part of next.split('/')) {
-    if (!part || part === '.') continue
+    if (!part || part === '.')
+      continue
     if (part === '..') parts.pop()
     else parts.push(part)
   }

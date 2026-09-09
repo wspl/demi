@@ -10,8 +10,18 @@ import type {
   ShellStreamView,
 } from '@demicodes/shell'
 import { bytesToBase64 } from '@demicodes/utils'
-import { modelAcceptsMediaType, sniffModelMediaType, type Model, type ModelMediaKind, type ToolResultContentBlock } from '@demicodes/core'
-import type { AgentTool, AgentToolInvokeContext, AgentToolInvokeResult } from './types'
+import {
+  modelAcceptsMediaType,
+  sniffModelMediaType,
+  type Model,
+  type ModelMediaKind,
+  type ToolResultContentBlock
+} from '@demicodes/core'
+import type {
+  AgentTool,
+  AgentToolInvokeContext,
+  AgentToolInvokeResult
+} from './types'
 
 const MAX_CONSECUTIVE_IDENTICAL_EXEC = 6
 const REPEAT_WINDOW_MS = 60_000
@@ -36,9 +46,15 @@ export interface StandardAgentToolOptions<State = unknown> {
     | ShellEnvironment
     | ((
         ctx: AgentToolInvokeContext<State>,
-        handle: { shellId?: string; commandId?: string },
+        handle: {
+          shellId?: string;
+          commandId?: string
+        },
       ) => ShellEnvironment | Promise<ShellEnvironment>)
-  scheduleYield(ctx: AgentToolInvokeContext<State>, durationMs: number): AgentToolInvokeResult
+  scheduleYield(
+    ctx: AgentToolInvokeContext<State>,
+    durationMs: number
+  ): AgentToolInvokeResult
   /**
    * Tool-result preview budget in tokens for a given model context window.
    * Defaults to {@link shellPreviewBudgetTokens}.
@@ -72,16 +88,30 @@ export function createStandardAgentTools<State = unknown>(
       },
       invoke: async (ctx, input) => {
         const parsed = parseShellExecInput(input)
-        const environment = await resolveEnvironment(options.environment, ctx, { shellId: parsed.shellId })
-        const repeatGuard = repeatedShellExecResult(environment, ctx.agentSessionId, parsed.script)
-        if (repeatGuard) return repeatGuard
+        const environment = await resolveEnvironment(
+          options.environment,
+          ctx,
+          { shellId: parsed.shellId }
+        )
+        const repeatGuard = repeatedShellExecResult(
+          environment,
+          ctx.agentSessionId,
+          parsed.script
+        )
+        if (repeatGuard)
+          return repeatGuard
         const result = await environment.exec({
           ...parsed,
           agentSessionId: ctx.agentSessionId,
           signal: ctx.signal,
         })
         ctx.emitProgress(result)
-        return finishShellToolResult(environment, result, ctx, options.previewBudgetTokens)
+        return finishShellToolResult(
+          environment,
+          result,
+          ctx,
+          options.previewBudgetTokens
+        )
       },
     },
     {
@@ -102,10 +132,19 @@ export function createStandardAgentTools<State = unknown>(
       },
       invoke: async (ctx, input) => {
         const parsed = parseShellStatusInput(input)
-        const environment = await resolveEnvironment(options.environment, ctx, { commandId: parsed.commandId })
+        const environment = await resolveEnvironment(
+          options.environment,
+          ctx,
+          { commandId: parsed.commandId }
+        )
         const result = await environment.status(parsed)
         ctx.emitProgress(result)
-        return finishShellToolResult(environment, result, ctx, options.previewBudgetTokens)
+        return finishShellToolResult(
+          environment,
+          result,
+          ctx,
+          options.previewBudgetTokens
+        )
       },
     },
     {
@@ -127,10 +166,19 @@ export function createStandardAgentTools<State = unknown>(
       },
       invoke: async (ctx, input) => {
         const parsed = parseShellWriteInput(input)
-        const environment = await resolveEnvironment(options.environment, ctx, { commandId: parsed.commandId })
+        const environment = await resolveEnvironment(
+          options.environment,
+          ctx,
+          { commandId: parsed.commandId }
+        )
         const result = await environment.write({ ...parsed, signal: ctx.signal })
         ctx.emitProgress(result)
-        return finishShellToolResult(environment, result, ctx, options.previewBudgetTokens)
+        return finishShellToolResult(
+          environment,
+          result,
+          ctx,
+          options.previewBudgetTokens
+        )
       },
     },
     {
@@ -151,10 +199,22 @@ export function createStandardAgentTools<State = unknown>(
       },
       invoke: async (ctx, input) => {
         const parsed = parseShellAbortInput(input)
-        const environment = await resolveEnvironment(options.environment, ctx, { commandId: parsed.commandId })
+        const environment = await resolveEnvironment(
+          options.environment,
+          ctx,
+          { commandId: parsed.commandId }
+        )
         const result = await environment.abort(parsed)
         ctx.emitProgress(result)
-        return { ...(await finishShellToolResult(environment, result, ctx, options.previewBudgetTokens)), isError: false }
+        return {
+          ...(await finishShellToolResult(
+            environment,
+            result,
+            ctx,
+            options.previewBudgetTokens
+          )),
+          isError: false
+        }
       },
     },
     {
@@ -173,7 +233,10 @@ export function createStandardAgentTools<State = unknown>(
           durationMs: { type: 'number', minimum: 1, maximum: MAX_DELAY_MS },
         },
       },
-      invoke: (ctx, input) => options.scheduleYield(ctx, parseYieldDuration(input)),
+      invoke: (ctx, input) => options.scheduleYield(
+        ctx,
+        parseYieldDuration(input)
+      ),
     },
   ]
 }
@@ -181,7 +244,10 @@ export function createStandardAgentTools<State = unknown>(
 function resolveEnvironment<State>(
   source: StandardAgentToolOptions<State>['environment'],
   ctx: AgentToolInvokeContext<State>,
-  handle: { shellId?: string; commandId?: string },
+  handle: {
+    shellId?: string;
+    commandId?: string
+  },
 ): ShellEnvironment | Promise<ShellEnvironment> {
   return typeof source === 'function' ? source(ctx, handle) : source
 }
@@ -192,7 +258,10 @@ export interface ShellToolResultOptions {
   exposeCommandHandle?: boolean
   /** Model receiving this result; gates binary-stream media attachment. */
   model?: Model
-  /** Per-modality byte caps on attached media; unset modalities keep the defaults. */
+  /**
+   * Per-modality byte caps on attached media; unset modalities keep the
+   * defaults.
+   */
   maxMediaBytes?: Partial<Record<ModelMediaKind, number>>
 }
 
@@ -207,7 +276,7 @@ export interface ShellToolResultOptions {
  * image (4 MiB): well past any sane still — a 4000x3000 PNG lands under it — so
  *   crossing this line is a mistake, not a use case.
  * video (16 MiB): roughly ten minutes at a viewing-grade encoding, and
- *   deliberately under the ~20 MB inline-payload ceiling the major APIs enforce.
+ * deliberately under the ~20 MB inline-payload ceiling the major APIs enforce.
  *   A larger cap buys no reach, only a rejection further downstream where the
  *   reason is harder to read.
  *
@@ -220,21 +289,33 @@ export const DEFAULT_MAX_MEDIA_BYTES: Record<ModelMediaKind, number> = {
 }
 
 export function shellPreviewBudgetTokens(contextWindow: number): number {
-  return contextWindow >= LARGE_CONTEXT_THRESHOLD_TOKENS ? LARGE_CONTEXT_PREVIEW_TOKENS : SMALL_CONTEXT_PREVIEW_TOKENS
+  return contextWindow >= LARGE_CONTEXT_THRESHOLD_TOKENS
+    ? LARGE_CONTEXT_PREVIEW_TOKENS
+    : SMALL_CONTEXT_PREVIEW_TOKENS
 }
 
 export function toShellToolResult(
   result: ShellCommandStatus,
   options: ShellToolResultOptions = {},
 ): AgentToolInvokeResult {
-  const output: ToolResultContentBlock[] = [{ type: 'text', text: formatShellToolResult(result, options) }]
+  const output: ToolResultContentBlock[] = [{
+    type: 'text',
+    text: formatShellToolResult(result, options)
+  }]
   if (result.status === 'exited' && result.binaryStdout) {
-    const verdict = binaryStreamVerdict(result.binaryStdout, result.stdout.path, options.model, {
-      ...DEFAULT_MAX_MEDIA_BYTES,
-      ...options.maxMediaBytes,
-    })
-    if (verdict.block) output.push(verdict.block)
-    if (verdict.note) output.push({ type: 'text', text: verdict.note })
+    const verdict = binaryStreamVerdict(
+      result.binaryStdout,
+      result.stdout.path,
+      options.model,
+      {
+        ...DEFAULT_MAX_MEDIA_BYTES,
+        ...options.maxMediaBytes,
+      }
+    )
+    if (verdict.block)
+      output.push(verdict.block)
+    if (verdict.note)
+      output.push({ type: 'text', text: verdict.note })
   }
   return {
     output,
@@ -286,19 +367,27 @@ function shellToolView(result: ShellCommandStatus): ShellToolView {
 function tailChunkWindow(
   chunks: ShellOutputChunk[],
   maxChars: number,
-): { chunks: ShellOutputChunk[]; truncated: boolean } {
+): {
+  chunks: ShellOutputChunk[];
+  truncated: boolean
+} {
   const kept: ShellOutputChunk[] = []
   let total = 0
   for (let i = chunks.length - 1; i >= 0; i -= 1) {
     const chunk = chunks[i]!
-    if (chunk.text.length === 0) continue
+    if (chunk.text.length === 0)
+      continue
     const remaining = maxChars - total
-    if (remaining <= 0) return { chunks: kept, truncated: true }
+    if (remaining <= 0)
+      return { chunks: kept, truncated: true }
     if (chunk.text.length <= remaining) {
       kept.unshift({ stream: chunk.stream, text: chunk.text })
       total += chunk.text.length
     } else {
-      kept.unshift({ stream: chunk.stream, text: chunk.text.slice(chunk.text.length - remaining) })
+      kept.unshift({
+        stream: chunk.stream,
+        text: chunk.text.slice(chunk.text.length - remaining)
+      })
       return { chunks: kept, truncated: true }
     }
   }
@@ -315,9 +404,14 @@ function binaryStreamVerdict(
   rawPath: string | undefined,
   model: Model | undefined,
   maxMediaBytes: Record<ModelMediaKind, number>,
-): { block?: ToolResultContentBlock; note?: string } {
+): {
+  block?: ToolResultContentBlock;
+  note?: string
+} {
   const media = sniffModelMediaType(binary.data)
-  const where = rawPath ? `the raw bytes remain readable at ${rawPath}` : 'the raw bytes were not kept beyond this view'
+  const where = rawPath
+    ? `the raw bytes remain readable at ${rawPath}`
+    : 'the raw bytes were not kept beyond this view'
   if (binary.truncated) {
     return {
       note: `Binary stdout (${binary.totalBytes} bytes${
@@ -344,16 +438,23 @@ function binaryStreamVerdict(
       note: `Binary stdout is ${media.mediaType} (${binary.totalBytes} bytes), over the ${cap}-byte ${media.kind} cap; it was not attached and ${where}. Produce a smaller version — for video, fewer frames or a lower resolution — and re-run.`,
     }
   }
-  const source = { mediaType: media.mediaType, data: bytesToBase64(binary.data) }
+  const source = {
+    mediaType: media.mediaType,
+    data: bytesToBase64(binary.data)
+  }
   return {
-    block: media.kind === 'video' ? { type: 'video', source } : { type: 'image', source },
+    block: media.kind === 'video' ? { type: 'video', source } : {
+      type: 'image',
+      source
+    },
     note: `Attached stdout as ${media.mediaType} (${binary.totalBytes} bytes).`,
   }
 }
 
 function parseShellExecInput(input: unknown): ShellExecInput {
   const record = asRecord(input, 'agent tool input must be an object')
-  if (typeof record.script !== 'string') throw new Error('shell_exec requires string field "script"')
+  if (typeof record.script !== 'string')
+    throw new Error('shell_exec requires string field "script"')
   return {
     script: record.script,
     shellId: asString(record.shellId),
@@ -363,7 +464,8 @@ function parseShellExecInput(input: unknown): ShellExecInput {
 
 function parseShellStatusInput(input: unknown): ShellStatusInput {
   const record = asRecord(input, 'agent tool input must be an object')
-  if (typeof record.commandId !== 'string') throw new Error('shell_status requires string field "commandId"')
+  if (typeof record.commandId !== 'string')
+    throw new Error('shell_status requires string field "commandId"')
   return {
     commandId: record.commandId,
   }
@@ -371,9 +473,14 @@ function parseShellStatusInput(input: unknown): ShellStatusInput {
 
 function parseShellWriteInput(input: unknown): ShellWriteInput {
   const record = asRecord(input, 'agent tool input must be an object')
-  if (typeof record.commandId !== 'string') throw new Error('shell_write requires string field "commandId"')
-  if (typeof record.stdin !== 'string') throw new Error('shell_write requires string field "stdin"')
-  if (record.stdin.length === 0) throw new Error('shell_write field "stdin" must not be empty; use shell_status to poll')
+  if (typeof record.commandId !== 'string')
+    throw new Error('shell_write requires string field "commandId"')
+  if (typeof record.stdin !== 'string')
+    throw new Error('shell_write requires string field "stdin"')
+  if (record.stdin.length === 0)
+    throw new Error(
+      'shell_write field "stdin" must not be empty; use shell_status to poll'
+    )
   return {
     commandId: record.commandId,
     stdin: record.stdin,
@@ -382,7 +489,8 @@ function parseShellWriteInput(input: unknown): ShellWriteInput {
 
 function parseShellAbortInput(input: unknown): ShellAbortInput {
   const record = asRecord(input, 'agent tool input must be an object')
-  if (typeof record.commandId !== 'string') throw new Error('shell_abort requires string field "commandId"')
+  if (typeof record.commandId !== 'string')
+    throw new Error('shell_abort requires string field "commandId"')
   return { commandId: record.commandId }
 }
 
@@ -392,7 +500,8 @@ function parseYieldDuration(input: unknown): number {
 }
 
 function requiredDelay(value: unknown, label: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 1 || value > MAX_DELAY_MS) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 1
+    || value > MAX_DELAY_MS) {
     throw new Error(`${label} must be between 1 and ${MAX_DELAY_MS}`)
   }
   return Math.floor(value)
@@ -404,15 +513,19 @@ function repeatedShellExecResult(
   script: string,
 ): AgentToolInvokeResult | null {
   const now = Date.now()
-  const states = execRepeatStates.get(environment) ?? new Map<string, ShellExecRepeatState>()
+  const states = execRepeatStates.get(environment)
+    ?? new Map<string, ShellExecRepeatState>()
   execRepeatStates.set(environment, states)
 
   const previous = states.get(agentSessionId)
   const withinWindow = previous && now - previous.updatedAt <= REPEAT_WINDOW_MS
-  const count = previous && withinWindow && previous.script === script ? previous.count + 1 : 1
+  const count = previous && withinWindow && previous.script === script
+    ? previous.count + 1
+    : 1
   states.set(agentSessionId, { script, count, updatedAt: now })
 
-  if (count <= MAX_CONSECUTIVE_IDENTICAL_EXEC) return null
+  if (count <= MAX_CONSECUTIVE_IDENTICAL_EXEC)
+    return null
 
   return {
     output: [
@@ -434,11 +547,15 @@ function repeatedShellExecResult(
   }
 }
 
-function formatShellToolResult(result: ShellCommandStatus, options: ShellToolResultOptions): string {
+function formatShellToolResult(
+  result: ShellCommandStatus,
+  options: ShellToolResultOptions
+): string {
   const exposeCommandHandle = options.exposeCommandHandle ?? true
   const lines = [`status: ${result.status}`]
 
-  if (result.status === 'exited') lines.push(`exitCode: ${result.exitCode}`)
+  if (result.status === 'exited')
+    lines.push(`exitCode: ${result.exitCode}`)
 
   if (exposeCommandHandle) {
     lines.push(`shellId: ${result.shellId}`)
@@ -450,7 +567,11 @@ function formatShellToolResult(result: ShellCommandStatus, options: ShellToolRes
   }
 
   if (options.includePreview) {
-    appendPreview(lines, result, options.previewBudgetTokens ?? SMALL_CONTEXT_PREVIEW_TOKENS)
+    appendPreview(
+      lines,
+      result,
+      options.previewBudgetTokens ?? SMALL_CONTEXT_PREVIEW_TOKENS
+    )
   }
 
   if (result.status === 'running') {
@@ -471,12 +592,21 @@ function formatShellToolResult(result: ShellCommandStatus, options: ShellToolRes
   return lines.join('\n')
 }
 
-function appendStream(lines: string[], label: string, stream: ShellStreamView): void {
-  if (stream.path) lines.push(`${label}Path: ${stream.path}`)
+function appendStream(
+  lines: string[],
+  label: string,
+  stream: ShellStreamView
+): void {
+  if (stream.path)
+    lines.push(`${label}Path: ${stream.path}`)
   lines.push(`${label}Bytes: ${stream.bytes}`)
 }
 
-function appendPreview(lines: string[], result: ShellCommandStatus, budgetTokens: number): void {
+function appendPreview(
+  lines: string[],
+  result: ShellCommandStatus,
+  budgetTokens: number
+): void {
   const preview = boundedPreview(result.output.text, budgetTokens)
   lines.push(`previewBudgetTokens: ${budgetTokens}`)
   if (preview.text.length === 0) {
@@ -494,10 +624,21 @@ function appendPreview(lines: string[], result: ShellCommandStatus, budgetTokens
   }
 }
 
-function boundedPreview(text: string, budgetTokens: number): { text: string; truncated: boolean } {
-  const maxChars = Math.max(0, Math.floor(budgetTokens * APPROX_CHARS_PER_TOKEN))
-  if (maxChars === 0) return { text: '', truncated: text.length > 0 }
-  if (text.length <= maxChars) return { text, truncated: false }
+function boundedPreview(
+  text: string,
+  budgetTokens: number
+): {
+  text: string;
+  truncated: boolean
+} {
+  const maxChars = Math.max(
+    0,
+    Math.floor(budgetTokens * APPROX_CHARS_PER_TOKEN)
+  )
+  if (maxChars === 0)
+    return { text: '', truncated: text.length > 0 }
+  if (text.length <= maxChars)
+    return { text, truncated: false }
   return { text: sliceHead(text, maxChars), truncated: true }
 }
 
@@ -508,21 +649,32 @@ export async function finishShellToolResult<State>(
   previewBudget: ShellPreviewBudget = shellPreviewBudgetTokens,
 ): Promise<AgentToolInvokeResult> {
   const previewBudgetTokens = previewBudget(ctx.model.model.contextWindow)
-  const exposeCommandHandle = shellCommandHandleRequired(result, previewBudgetTokens)
+  const exposeCommandHandle = shellCommandHandleRequired(
+    result,
+    previewBudgetTokens
+  )
   const toolResult = toShellToolResult(result, {
     includePreview: true,
     previewBudgetTokens,
     exposeCommandHandle,
     model: ctx.model.model,
   })
-  if (!exposeCommandHandle) await environment.releaseCommand(result.commandId)
+  if (!exposeCommandHandle)
+    await environment.releaseCommand(result.commandId)
   return toolResult
 }
 
-export function shellCommandHandleRequired(result: ShellCommandStatus, budgetTokens: number): boolean {
-  if (result.status === 'running') return true
+export function shellCommandHandleRequired(
+  result: ShellCommandStatus,
+  budgetTokens: number
+): boolean {
+  if (result.status === 'running')
+    return true
   const preview = boundedPreview(result.output.text, budgetTokens)
-  const maxChars = Math.max(0, Math.floor(budgetTokens * APPROX_CHARS_PER_TOKEN))
+  const maxChars = Math.max(
+    0,
+    Math.floor(budgetTokens * APPROX_CHARS_PER_TOKEN)
+  )
   return (
     preview.truncated ||
     result.output.truncated ||

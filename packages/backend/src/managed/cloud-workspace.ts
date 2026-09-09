@@ -25,9 +25,15 @@ export async function createCloudWorkspace(
       throw new Error('Cloud did not report its home directory')
     }
     const path = `${home}/projects/${id}`
-    const host = deps.registry.hostFor({ deviceId: device.id, path }, `workspace-${id}`, administrativeStore)
+    const host = deps.registry.hostFor(
+      { deviceId: device.id, path },
+      `workspace-${id}`,
+      administrativeStore
+    )
     await host.fs.mkdir(path, { recursive: true })
-    return await deps.control.createWorkspace({ id, userId, deviceId: device.id, path, name })
+    return await deps.control.createWorkspace(
+      { id, userId, deviceId: device.id, path, name }
+    )
   } finally {
     release()
   }

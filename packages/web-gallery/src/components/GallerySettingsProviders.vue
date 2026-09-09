@@ -3,7 +3,14 @@ import { computed, ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
-import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsProviderEntry, type SettingsProviderModel, type SettingsVendor, type SettingsWireApi } from '@demicodes/web-ui/settings/types'
+import {
+  WIRE_API_LABELS,
+  type SettingsModelDraft,
+  type SettingsProviderEntry,
+  type SettingsProviderModel,
+  type SettingsVendor,
+  type SettingsWireApi
+} from '@demicodes/web-ui/settings/types'
 import { mockVendors, provider, type MockProvider, type SettingsState } from '../fixtures/settings'
 
 /**
@@ -26,7 +33,10 @@ function addProvider(vendor: SettingsVendor) {
   const id = `p-${Date.now()}`
   s.value.providers.push(provider({
     id, name: vendor.name, kind: 'api_key', family: vendor.id, vendorId: vendor.id,
-    baseUrl: vendor.baseUrl ?? '', wireApi: vendor.wireApi, modelSource: 'catalog', catalogFetched: 'just now',
+    baseUrl: vendor.baseUrl ?? '',
+    wireApi: vendor.wireApi,
+    modelSource: 'catalog',
+    catalogFetched: 'just now',
     logo: vendor.logo, state: 'unconfigured',
   }))
   select(id)
@@ -44,7 +54,8 @@ function addEndpoint(wireApi: SettingsWireApi) {
 function removeProvider(id: string) {
   const list = s.value.providers
   const index = list.findIndex((p) => p.id === id)
-  if (index < 0) return
+  if (index < 0)
+    return
   list.splice(index, 1)
   if (s.value.selectedProviderId === id) {
     const next = list.find((p) => p.kind === 'api_key') ?? list[0]
@@ -87,15 +98,37 @@ function activateAccount(p: SettingsProviderEntry, id: string) {
 
 function removeAccount(p: SettingsProviderEntry, id: string) {
   p.accounts = p.accounts.filter((a) => a.id !== id)
-  if (!p.accounts.length) p.state = 'signed-out'
+  if (!p.accounts.length)
+    p.state = 'signed-out'
 }
 
-function saveModel(p: SettingsProviderEntry, draft: SettingsModelDraft, original: SettingsProviderModel | null) {
+function saveModel(
+  p: SettingsProviderEntry,
+  draft: SettingsModelDraft,
+  original: SettingsProviderModel | null
+) {
   const mock = p as MockProvider
   if (original) {
-    Object.assign(original, { name: draft.name, contextWindow: draft.contextWindow, outputLimit: draft.outputLimit, efforts: draft.efforts, extensions: draft.extensions, fastTier: draft.fastTier })
+    Object.assign(
+      original,
+      {
+        name: draft.name,
+        contextWindow: draft.contextWindow,
+        outputLimit: draft.outputLimit,
+        efforts: draft.efforts,
+        extensions: draft.extensions,
+        fastTier: draft.fastTier
+      }
+    )
   } else if (!mock.models.some((m) => m.id === draft.id)) {
-    mock.models.push({ ...draft, tools: true, defaultEffort: draft.efforts[0] ?? null, enabled: true })
+    mock.models.push(
+      {
+        ...draft,
+        tools: true,
+        defaultEffort: draft.efforts[0] ?? null,
+        enabled: true
+      }
+    )
   }
 }
 
@@ -104,7 +137,10 @@ function removeModel(p: SettingsProviderEntry, m: SettingsProviderModel) {
 }
 
 // Sign-in runs in its own dialog; the mock walks the device-code flow to completion.
-const login = ref<{ provider: SettingsProviderEntry; phase: ProviderLoginPhase } | null>(null)
+const login = ref<{
+  provider: SettingsProviderEntry;
+  phase: ProviderLoginPhase
+} | null>(null)
 const loginOpen = ref(false)
 let loginTimer = 0
 
@@ -119,27 +155,46 @@ function beginLogin(p: SettingsProviderEntry) {
   if (mock.family === 'claude-code') {
     login.value = {
       provider: p,
-      phase: { kind: 'token', command: 'claude setup-token', install: { label: 'Get Claude Code', url: 'https://docs.anthropic.com/en/docs/claude-code/setup' }, prefix: 'sk-ant-oat01-' },
+      phase: {
+        kind: 'token',
+        command: 'claude setup-token',
+        install: {
+          label: 'Get Claude Code',
+          url: 'https://docs.anthropic.com/en/docs/claude-code/setup'
+        },
+        prefix: 'sk-ant-oat01-'
+      },
     }
     return
   }
   login.value = { provider: p, phase: { kind: 'starting' } }
   loginTimer = window.setTimeout(() => {
-    if (!login.value) return
+    if (!login.value)
+      return
     if (mock.family === 'grok-build') {
-      login.value.phase = { kind: 'code-input', url: 'https://accounts.x.ai/device' }
+      login.value.phase = {
+        kind: 'code-input',
+        url: 'https://accounts.x.ai/device'
+      }
       return
     }
-    login.value.phase = { kind: 'device', url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M', expiresIn: '10 min' }
+    login.value.phase = {
+      kind: 'device',
+      url: 'https://auth.openai.com/codex/device',
+      code: 'HXRV-7K2M',
+      expiresIn: '10 min'
+    }
     loginTimer = window.setTimeout(() => {
-      if (!login.value) return
+      if (!login.value)
+        return
       login.value.phase = { kind: 'done', account: 'zan@example.com · Plus' }
     }, 4000)
   }, 900)
 }
 
 function finishLogin(account: string) {
-  if (!login.value) return
+  if (!login.value)
+    return
   window.clearTimeout(loginTimer)
   login.value.phase = { kind: 'done', account }
 }
@@ -153,7 +208,22 @@ function closeLogin() {
   if (login.value?.phase.kind === 'done') {
     const p = login.value.provider
     for (const a of p.accounts) a.active = false
-    p.accounts.push({ id: `a-${Date.now()}`, label: 'zan@example.com', plan: 'Plus', active: true, quota: { hour: { used: 4, max: 100, resets: 'in 4 h 58 min' }, week: { used: 4, max: 100, resets: 'Monday' } } })
+    p.accounts.push(
+      {
+        id: `a-${Date.now()}`,
+        label: 'zan@example.com',
+        plan: 'Plus',
+        active: true,
+        quota: {
+          hour: {
+            used: 4,
+            max: 100,
+            resets: 'in 4 h 58 min'
+          },
+          week: { used: 4, max: 100, resets: 'Monday' }
+        }
+      }
+    )
     p.state = 'ready'
   }
   loginOpen.value = false

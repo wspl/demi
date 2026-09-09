@@ -14,7 +14,10 @@ const fake = new FakeProvisioner()
 let world: World
 
 beforeAll(async () => {
-  world = await World.create({ runners: ['alpha'], managedHosts: { provisioner: fake, config: { maxRunning: 30 } } })
+  world = await World.create({
+    runners: ['alpha'],
+    managedHosts: { provisioner: fake, config: { maxRunning: 30 } }
+  })
 })
 
 afterAll(async () => {
@@ -25,35 +28,65 @@ afterAll(async () => {
 test('cloud → runner → cloud, files staying with their target', async () => {
   const driver = await world.conversation('cloud')
   const created = await driver.turn({
-    model: [model.shell('t1', "demi file create notes.md <<'EOF'\nalpha\nbeta\ngamma\nEOF"), model.say('created')],
+    model: [
+      model.shell(
+        't1',
+        "demi file create notes.md <<'EOF'\nalpha\nbeta\ngamma\nEOF"
+      ),
+      model.say('created')
+    ],
   })
   expect(created.received[0]).toContain('Created notes.md')
 
   // To the runner: the next turn opens with the context block; the file is not here.
   await driver.switchTo('runner:alpha')
   const moved = await driver.turn({
-    model: [model.shell('t2', 'cat notes.md; echo exit=$?'), model.shell('t3', "demi file create notes.md <<'EOF'\nalpha\nbeta\ngamma\nEOF"), model.say('recreated')],
+    model: [
+      model.shell('t2', 'cat notes.md; echo exit=$?'),
+      model.shell(
+        't3',
+        "demi file create notes.md <<'EOF'\nalpha\nbeta\ngamma\nEOF"
+      ),
+      model.say('recreated')
+    ],
   })
-  expect(itemsText(moved.requests[0]!.items)).toContain('[Execution target switched]')
-  expect(itemsText(moved.requests[0]!.items)).toContain('Previous target: the machine "Cloud"')
+  expect(itemsText(moved.requests[0]!.items))
+    .toContain('[Execution target switched]')
+  expect(itemsText(moved.requests[0]!.items))
+    .toContain('Previous target: the machine "Cloud"')
   expect(moved.received[0]).toContain('No such file or directory')
   expect(moved.received[0]).toContain('exit=1')
   expect(moved.received[1]).toContain('Created notes.md')
 
   const edited = await driver.turn({
-    model: [model.shell('t4', 'demi file edit notes.md --old beta --new delta && cat notes.md'), model.say('edited')],
+    model: [
+      model.shell(
+        't4',
+        'demi file edit notes.md --old beta --new delta && cat notes.md'
+      ),
+      model.say('edited')
+    ],
   })
   expect(edited.received[0]).toContain('alpha\ndelta\ngamma')
   expect(await driver.readFile('notes.md')).toBe('alpha\ndelta\ngamma\n')
-  expect(await world.cloudFile(driver.id, 'notes.md')).toBe('alpha\nbeta\ngamma\n')
+  expect(await world.cloudFile(driver.id, 'notes.md'))
+    .toBe('alpha\nbeta\ngamma\n')
 
   // Back to cloud: the original is untouched; the switch attached the runner under its name, so `host shell --host` reaches it.
   await driver.switchTo('cloud')
   const back = await driver.turn({
-    model: [model.shell('t5', 'cat notes.md && demi host shell --host alpha "cat notes.md"'), model.say('back')],
+    model: [
+      model.shell(
+        't5',
+        'cat notes.md && demi host shell --host alpha "cat notes.md"'
+      ),
+      model.say('back')
+    ],
   })
-  expect(itemsText(back.requests[0]!.items)).toContain('[Execution target switched]')
-  expect(itemsText(back.requests[0]!.items)).toContain('Previous target: workspace "alpha workspace"')
+  expect(itemsText(back.requests[0]!.items))
+    .toContain('[Execution target switched]')
+  expect(itemsText(back.requests[0]!.items))
+    .toContain('Previous target: workspace "alpha workspace"')
   expect(back.received[0]).toContain('alpha\nbeta\ngamma\nalpha\ndelta\ngamma')
   expect(driver.lastText()).toBe('back')
 }, 60_000)

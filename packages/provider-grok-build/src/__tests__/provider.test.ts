@@ -1,8 +1,18 @@
 import { expect, test } from 'bun:test'
 import { zeroUsage } from '@demicodes/core'
-import { providerRuntime, type InferenceRequest, type ProviderEvent, type ProviderSelection } from '@demicodes/provider'
+import {
+  providerRuntime,
+  type InferenceRequest,
+  type ProviderEvent,
+  type ProviderSelection
+} from '@demicodes/provider'
 import { StaticGrokAuthStore, type GrokResolvedAuth } from '../auth'
-import { buildGrokChatCompletionsBody, mapGrokChatCompletionStream, readServerSentEvents, type ServerSentEvent } from '../chat'
+import {
+  buildGrokChatCompletionsBody,
+  mapGrokChatCompletionStream,
+  readServerSentEvents,
+  type ServerSentEvent
+} from '../chat'
 import { modelListFromGrokModelsPayload } from '../models'
 import { createGrokBuildProvider } from '../provider'
 
@@ -20,91 +30,127 @@ const staticAuth: GrokResolvedAuth = {
   authFile: '/tmp/auth.json',
 }
 
-test('Grok catalog reads contact the source, including explicit refresh requests', async () => {
-  let calls = 0
-  const provider = createGrokBuildProvider({
-    authStore: new StaticGrokAuthStore(staticAuth),
-    fetch: async () => {
-      calls += 1
-      return Response.json({ data: [{ id: 'grok-test' }] })
-    },
-  })
-  await provider.listModels!()
-  const refreshed = await provider.listModels!({ refresh: true })
-  expect(calls).toBe(2)
-  expect(refreshed.models.map((model) => model.id)).toEqual(['grok-test'])
-  expect(refreshed.stale).toBe(false)
-})
-
-test('Grok Build provider posts chat completions with CLI session headers', async () => {
-  const requests: CapturedRequest[] = []
-  const provider = createGrokBuildProvider({
-    authStore: new StaticGrokAuthStore(staticAuth),
-    baseUrl: 'https://cli-chat-proxy.example/v1',
-    fetch: captureFetch(requests, sseResponse(['data: {"choices":[{"delta":{"content":"hi"}}]}\n\n', 'data: [DONE]\n\n'])),
-  })
-  const runtime = await providerRuntime(provider, selection('grok-build', 'grok-4.5'))
-  const events = await collect(runtime.run(request({ modelId: 'grok-4.5' })))
-
-  expect(events).toEqual([
-    { type: 'text_delta', text: 'hi' },
-    { type: 'response', usage: zeroUsage() },
-  ])
-  expect(requests[0]?.url).toBe('https://cli-chat-proxy.example/v1/chat/completions')
-  expect(requests[0]?.headers.get('authorization')).toBe('Bearer session-token')
-  expect(requests[0]?.headers.get('X-XAI-Token-Auth')).toBe('xai-grok-cli')
-  expect(requests[0]?.headers.get('x-authenticateresponse')).toBe('authenticate-response')
-  expect(requests[0]?.headers.get('x-grok-client-identifier')).toBe('grok-shell')
-  expect(requests[0]?.headers.get('x-grok-client-mode')).toBe('interactive')
-  expect(requests[0]?.headers.get('x-grok-client-surface')).toBeNull()
-  expect(requests[0]?.headers.get('x-grok-client-version')).toBeTruthy()
-  expect(requests[0]?.headers.get('x-userid')).toBe('user-1')
-  expect(requests[0]?.headers.get('x-email')).toBe('user@example.com')
-  expect(requests[0]?.headers.get('x-grok-user-id')).toBe('user-1')
-  expect(requests[0]?.headers.get('x-grok-model-override')).toBe('grok-4.5')
-  expect(requests[0]?.headers.get('x-grok-session-id')).toBe('session-1')
-  expect(requests[0]?.headers.get('x-grok-conv-id')).toBe('session-1')
-  expect(requests[0]?.headers.get('x-grok-turn-idx')).toBe('turn-1')
-})
-
-test('Grok Build provider refreshes once on HTTP 401 then retries', async () => {
-  const requests: CapturedRequest[] = []
-  let resolveCalls = 0
-  const authStore = {
-    async status() {
-      return { status: 'authenticated' as const, accountLabel: 'user@example.com' }
-    },
-    async resolveAuth(options?: { forceRefresh?: boolean }) {
-      resolveCalls += 1
-      if (options?.forceRefresh) {
-        return { ...staticAuth, accessToken: 'refreshed-token' }
-      }
-      return staticAuth
-    },
+test(
+  'Grok catalog reads contact the source, including explicit refresh requests',
+  async () => {
+    let calls = 0
+    const provider = createGrokBuildProvider({
+      authStore: new StaticGrokAuthStore(staticAuth),
+      fetch: async () => {
+        calls += 1
+        return Response.json({ data: [{ id: 'grok-test' }] })
+      },
+    })
+    await provider.listModels!()
+    const refreshed = await provider.listModels!({ refresh: true })
+    expect(calls).toBe(2)
+    expect(refreshed.models.map((model) => model.id)).toEqual(['grok-test'])
+    expect(refreshed.stale).toBe(false)
   }
-  const provider = createGrokBuildProvider({
-    authStore,
-    fetch: async (input, init) => {
-      const url = String(input)
-      const headers = new Headers(init?.headers)
-      requests.push({ url, headers, body: typeof init?.body === 'string' ? init.body : null })
-      if (headers.get('authorization') === 'Bearer session-token') {
-        return new Response('unauthorized', { status: 401 })
-      }
-      return sseResponse(['data: {"choices":[{"delta":{"content":"ok"}}]}\n\n', 'data: [DONE]\n\n'])()
-    },
-  })
-  const runtime = await providerRuntime(provider, selection('grok-build', 'grok-4.5'))
-  const events = await collect(runtime.run(request({ modelId: 'grok-4.5' })))
+)
 
-  expect(resolveCalls).toBe(2)
-  expect(requests).toHaveLength(2)
-  expect(requests[1]?.headers.get('authorization')).toBe('Bearer refreshed-token')
-  expect(events).toEqual([
-    { type: 'text_delta', text: 'ok' },
-    { type: 'response', usage: zeroUsage() },
-  ])
-})
+test(
+  'Grok Build provider posts chat completions with CLI session headers',
+  async () => {
+    const requests: CapturedRequest[] = []
+    const provider = createGrokBuildProvider({
+      authStore: new StaticGrokAuthStore(staticAuth),
+      baseUrl: 'https://cli-chat-proxy.example/v1',
+      fetch: captureFetch(
+        requests,
+        sseResponse([
+          'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',
+          'data: [DONE]\n\n'
+        ])
+      ),
+    })
+    const runtime = await providerRuntime(
+      provider,
+      selection('grok-build', 'grok-4.5')
+    )
+    const events = await collect(runtime.run(request({ modelId: 'grok-4.5' })))
+
+    expect(events).toEqual([
+      { type: 'text_delta', text: 'hi' },
+      { type: 'response', usage: zeroUsage() },
+    ])
+    expect(requests[0]?.url)
+      .toBe('https://cli-chat-proxy.example/v1/chat/completions')
+    expect(requests[0]?.headers.get('authorization'))
+      .toBe('Bearer session-token')
+    expect(requests[0]?.headers.get('X-XAI-Token-Auth')).toBe('xai-grok-cli')
+    expect(requests[0]?.headers.get('x-authenticateresponse'))
+      .toBe('authenticate-response')
+    expect(requests[0]?.headers.get('x-grok-client-identifier'))
+      .toBe('grok-shell')
+    expect(requests[0]?.headers.get('x-grok-client-mode')).toBe('interactive')
+    expect(requests[0]?.headers.get('x-grok-client-surface')).toBeNull()
+    expect(requests[0]?.headers.get('x-grok-client-version')).toBeTruthy()
+    expect(requests[0]?.headers.get('x-userid')).toBe('user-1')
+    expect(requests[0]?.headers.get('x-email')).toBe('user@example.com')
+    expect(requests[0]?.headers.get('x-grok-user-id')).toBe('user-1')
+    expect(requests[0]?.headers.get('x-grok-model-override')).toBe('grok-4.5')
+    expect(requests[0]?.headers.get('x-grok-session-id')).toBe('session-1')
+    expect(requests[0]?.headers.get('x-grok-conv-id')).toBe('session-1')
+    expect(requests[0]?.headers.get('x-grok-turn-idx')).toBe('turn-1')
+  }
+)
+
+test(
+  'Grok Build provider refreshes once on HTTP 401 then retries',
+  async () => {
+    const requests: CapturedRequest[] = []
+    let resolveCalls = 0
+    const authStore = {
+      async status() {
+        return {
+          status: 'authenticated' as const,
+          accountLabel: 'user@example.com'
+        }
+      },
+      async resolveAuth(options?: { forceRefresh?: boolean }) {
+        resolveCalls += 1
+        if (options?.forceRefresh) {
+          return { ...staticAuth, accessToken: 'refreshed-token' }
+        }
+        return staticAuth
+      },
+    }
+    const provider = createGrokBuildProvider({
+      authStore,
+      fetch: async (input, init) => {
+        const url = String(input)
+        const headers = new Headers(init?.headers)
+        requests.push({
+          url,
+          headers,
+          body: typeof init?.body === 'string' ? init.body : null
+        })
+        if (headers.get('authorization') === 'Bearer session-token') {
+          return new Response('unauthorized', { status: 401 })
+        }
+        return sseResponse([
+          'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n',
+          'data: [DONE]\n\n'
+        ])()
+      },
+    })
+    const runtime = await providerRuntime(
+      provider,
+      selection('grok-build', 'grok-4.5')
+    )
+    const events = await collect(runtime.run(request({ modelId: 'grok-4.5' })))
+
+    expect(resolveCalls).toBe(2)
+    expect(requests).toHaveLength(2)
+    expect(requests[1]?.headers.get('authorization'))
+      .toBe('Bearer refreshed-token')
+    expect(events).toEqual([
+      { type: 'text_delta', text: 'ok' },
+      { type: 'response', usage: zeroUsage() },
+    ])
+  }
+)
 
 test('chat body maps tools, tool replay, and reasoning effort', () => {
   const body = buildGrokChatCompletionsBody(
@@ -114,14 +160,28 @@ test('chat body maps tools, tool replay, and reasoning effort', () => {
       items: [
         { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
         { type: 'assistant_text', modelId: 'grok-4.5', text: 'Use tool' },
-        { type: 'tool_use', modelId: 'grok-4.5', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
-        { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'contents' }], isError: false },
+        {
+          type: 'tool_use',
+          modelId: 'grok-4.5',
+          toolUseId: 'call-1',
+          toolName: 'read_file',
+          input: { path: 'a.ts' }
+        },
+        {
+          type: 'tool_result',
+          toolUseId: 'call-1',
+          output: [{ type: 'text', text: 'contents' }],
+          isError: false
+        },
       ],
       tools: [
         {
           name: 'read_file',
           description: 'Read a file',
-          inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
+          inputSchema: {
+            type: 'object',
+            properties: { path: { type: 'string' } }
+          },
         },
       ],
     }),
@@ -138,9 +198,17 @@ test('chat body maps tools, tool replay, and reasoning effort', () => {
   expect(body.messages[2]).toMatchObject({
     role: 'assistant',
     content: 'Use tool',
-    tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } }],
+    tool_calls: [{
+      id: 'call-1',
+      type: 'function',
+      function: { name: 'read_file', arguments: '{"path":"a.ts"}' }
+    }],
   })
-  expect(body.messages[3]).toEqual({ role: 'tool', tool_call_id: 'call-1', content: 'contents' })
+  expect(body.messages[3]).toEqual({
+    role: 'tool',
+    tool_call_id: 'call-1',
+    content: 'contents'
+  })
 })
 
 test('chat body degrades video blocks to text instead of image_url', () => {
@@ -151,8 +219,18 @@ test('chat body degrades video blocks to text instead of image_url', () => {
           type: 'user_message',
           content: [
             { type: 'text', text: 'look' },
-            { type: 'video', source: { type: 'binary', mediaType: 'video/mp4', data: new Uint8Array([1, 2]) } },
-            { type: 'image', source: { type: 'url', url: 'https://example.com/shot.png' } },
+            {
+              type: 'video',
+              source: {
+                type: 'binary',
+                mediaType: 'video/mp4',
+                data: new Uint8Array([1, 2])
+              }
+            },
+            {
+              type: 'image',
+              source: { type: 'url', url: 'https://example.com/shot.png' }
+            },
           ],
         },
       ],
@@ -165,7 +243,10 @@ test('chat body degrades video blocks to text instead of image_url', () => {
     content: [
       { type: 'text', text: 'look' },
       { type: 'text', text: '[video:video/mp4]' },
-      { type: 'image_url', image_url: { url: 'https://example.com/shot.png', detail: 'auto' } },
+      {
+        type: 'image_url',
+        image_url: { url: 'https://example.com/shot.png', detail: 'auto' }
+      },
     ],
   })
 })
@@ -177,7 +258,9 @@ test('chat stream maps reasoning_content and tool calls', async () => {
         yield {
           event: null,
           data: JSON.stringify({
-            choices: [{ delta: { reasoning_content: 'think', role: 'assistant' } }],
+            choices: [{
+              delta: { reasoning_content: 'think', role: 'assistant' }
+            }],
           }),
         }
         yield {
@@ -186,7 +269,11 @@ test('chat stream maps reasoning_content and tool calls', async () => {
             choices: [
               {
                 delta: {
-                  tool_calls: [{ index: 0, id: 'c1', function: { name: 'shell_exec', arguments: '{"cmd"' } }],
+                  tool_calls: [{
+                    index: 0,
+                    id: 'c1',
+                    function: { name: 'shell_exec', arguments: '{"cmd"' }
+                  }],
                 },
               },
             ],
@@ -197,7 +284,9 @@ test('chat stream maps reasoning_content and tool calls', async () => {
           data: JSON.stringify({
             choices: [
               {
-                delta: { tool_calls: [{ index: 0, function: { arguments: ':"ls"}' } }] },
+                delta: {
+                  tool_calls: [{ index: 0, function: { arguments: ':"ls"}' } }]
+                },
                 finish_reason: 'tool_calls',
               },
             ],
@@ -211,39 +300,49 @@ test('chat stream maps reasoning_content and tool calls', async () => {
   expect(events).toEqual([
     { type: 'thinking_start' },
     { type: 'thinking_delta', text: 'think' },
-    { type: 'tool_call_requested', toolUseId: 'c1', toolName: 'shell_exec', input: { cmd: 'ls' } },
-    { type: 'response', usage: zeroUsage() },
-  ])
-})
-
-test('readServerSentEvents joins multi-line data fields per the SSE spec', async () => {
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(
-        new TextEncoder().encode('data: {"choices":\ndata: [{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n'),
-      )
-      controller.close()
+    {
+      type: 'tool_call_requested',
+      toolUseId: 'c1',
+      toolName: 'shell_exec',
+      input: { cmd: 'ls' }
     },
-  })
-  const events: ServerSentEvent[] = []
-  for await (const event of readServerSentEvents(stream)) events.push(event)
-  expect(events).toEqual([
-    { event: null, data: '{"choices":\n[{"delta":{"content":"hi"}}]}' },
-    { event: null, data: '[DONE]' },
-  ])
-
-  const mapped = await collect(
-    mapGrokChatCompletionStream(
-      (async function* (): AsyncIterable<ServerSentEvent> {
-        for (const event of events) yield event
-      })(),
-    ),
-  )
-  expect(mapped).toEqual([
-    { type: 'text_delta', text: 'hi' },
     { type: 'response', usage: zeroUsage() },
   ])
 })
+
+test(
+  'readServerSentEvents joins multi-line data fields per the SSE spec',
+  async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            'data: {"choices":\ndata: [{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n'
+          ),
+        )
+        controller.close()
+      },
+    })
+    const events: ServerSentEvent[] = []
+    for await (const event of readServerSentEvents(stream)) events.push(event)
+    expect(events).toEqual([
+      { event: null, data: '{"choices":\n[{"delta":{"content":"hi"}}]}' },
+      { event: null, data: '[DONE]' },
+    ])
+
+    const mapped = await collect(
+      mapGrokChatCompletionStream(
+        (async function* (): AsyncIterable<ServerSentEvent> {
+          for (const event of events) yield event
+        })(),
+      ),
+    )
+    expect(mapped).toEqual([
+      { type: 'text_delta', text: 'hi' },
+      { type: 'response', usage: zeroUsage() },
+    ])
+  }
+)
 
 test('model catalog maps Grok /v1/models payload', () => {
   const catalog = modelListFromGrokModelsPayload(
@@ -286,7 +385,9 @@ test('model catalog maps Grok /v1/models payload', () => {
     displayName: 'Fast',
     contextWindow: 200_000,
   })
-  expect(catalog.models.every((model) => model.supportsAttachments === true)).toBe(true)
+  expect(
+    catalog.models.every((model) => model.supportsAttachments === true)
+  ).toBe(true)
 })
 
 interface CapturedRequest {
@@ -328,7 +429,15 @@ function selection(providerId: string, modelId: string): ProviderSelection {
     providerId,
     model: {
       providerId,
-      model: { id: modelId, name: modelId, contextWindow: 0, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
+      model: {
+        id: modelId,
+        name: modelId,
+        contextWindow: 0,
+        outputLimit: null,
+        inputLimit: null,
+        thinking: [],
+        acceptedExtensions: []
+      },
       thinking: null,
       serviceTierId: null,
     },
@@ -353,7 +462,9 @@ function request(overrides: Partial<InferenceRequest> = {}): InferenceRequest {
   }
 }
 
-async function collect(events: AsyncIterable<ProviderEvent>): Promise<ProviderEvent[]> {
+async function collect(
+  events: AsyncIterable<ProviderEvent>
+): Promise<ProviderEvent[]> {
   const out: ProviderEvent[] = []
   for await (const event of events) out.push(event)
   return out

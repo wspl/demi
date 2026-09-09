@@ -8,11 +8,25 @@ import {
 } from '../tool-rendering'
 
 test('standard tool titles prefer description and fall back by concrete tool', () => {
-  expect(standardToolTitle('shell_exec', { description: 'Run unit tests', script: 'bun test' })).toBe('Run unit tests')
+  expect(standardToolTitle(
+      'shell_exec',
+      {
+        description: 'Run unit tests',
+        script: 'bun test'
+      }
+    )).toBe(
+    'Run unit tests'
+  )
   expect(standardToolTitle('shell_exec', { script: 'bun test' })).toBe('bun test')
-  expect(standardToolTitle('shell_status', { commandId: 'cmd-1' })).toBe('Check cmd-1')
-  expect(standardToolTitle('shell_write', { commandId: 'cmd-1' })).toBe('Send input to cmd-1')
-  expect(standardToolTitle('shell_abort', { commandId: 'cmd-1' })).toBe('Stop cmd-1')
+  expect(standardToolTitle('shell_status', { commandId: 'cmd-1' })).toBe(
+    'Check cmd-1'
+  )
+  expect(standardToolTitle('shell_write', { commandId: 'cmd-1' })).toBe(
+    'Send input to cmd-1'
+  )
+  expect(standardToolTitle('shell_abort', { commandId: 'cmd-1' })).toBe(
+    'Stop cmd-1'
+  )
   expect(standardToolTitle('yield', { durationMs: 250 })).toBe('Wait 250ms')
 })
 

@@ -9,7 +9,10 @@ export interface RunnerHostOptions {
   defaultCwd?: string
   /** Where `Host.store` keeps its JSON files (default `~/.demi/store`). */
   storeDir?: string
-  /** The identity reported (default the process's own): for PID 1, the guest user's. */
+  /**
+   * The identity reported (default the process's own): for PID 1, the guest
+   * user's.
+   */
   identity?: Host['identity']
 }
 
@@ -25,7 +28,15 @@ export function createRunnerHost(options: RunnerHostOptions = {}): Host {
     defaultCwd,
     fs,
     process: createRunnerProcess(defaultCwd),
-    store: fileHostStore(fs, normalizePath(options.storeDir ?? `${identity.homeDir}/.demi/store`)),
-    identity: options.identity ?? { uid: identity.uid, gid: identity.gid, hostname: identity.hostname, homeDir: identity.homeDir },
+    store: fileHostStore(
+      fs,
+      normalizePath(options.storeDir ?? `${identity.homeDir}/.demi/store`)
+    ),
+    identity: options.identity ?? {
+      uid: identity.uid,
+      gid: identity.gid,
+      hostname: identity.hostname,
+      homeDir: identity.homeDir
+    },
   }
 }

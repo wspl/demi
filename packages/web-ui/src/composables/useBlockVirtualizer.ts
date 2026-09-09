@@ -60,7 +60,8 @@ export function useBlockVirtualizer(
       getScrollElement: () => scrollContainer.value ?? null,
       estimateSize: (index: number) => {
         const block = blocks.value[index]
-        if (!block) return 40
+        if (!block)
+          return 40
         return heightCache.get(block.id) ?? (BLOCK_HEIGHT_ESTIMATES[block.type] ?? 40)
       },
       overscan: OVERSCAN,
@@ -76,12 +77,14 @@ export function useBlockVirtualizer(
   const totalSize = computed(() => virtualizer.value.getTotalSize())
 
   function measureElement(el: Element | null) {
-    if (!el) return
+    if (!el)
+      return
     const index = Number((el as HTMLElement).dataset['index'])
     const block = blocks.value[index]
     virtualizer.value.measureElement(el as HTMLElement)
     const nextMeasurement = virtualizer.value.measurementsCache[index]
-    if (block && nextMeasurement) heightCache.set(block.id, nextMeasurement.size)
+    if (block && nextMeasurement)
+      heightCache.set(block.id, nextMeasurement.size)
   }
 
   const shouldAutoScroll = ref(true)
@@ -106,10 +109,13 @@ export function useBlockVirtualizer(
     if (pendingIntent === 'up' || !shouldAutoScroll.value) {
       furthestDistanceSinceDisengage = Math.max(furthestDistanceSinceDisengage, dist)
     }
-    if (isProgrammaticScroll) return
+    if (isProgrammaticScroll)
+      return
     if (pendingIntent === 'up') {
       shouldAutoScroll.value = false
-    } else if (pendingIntent === 'down' && dist <= threshold && furthestDistanceSinceDisengage > threshold) {
+    } else if (pendingIntent === 'down' &&
+      dist <= threshold &&
+      furthestDistanceSinceDisengage > threshold) {
       shouldAutoScroll.value = true
       furthestDistanceSinceDisengage = 0
     } else if (dist <= AUTO_SCROLL_REENGAGE_THRESHOLD) {
@@ -123,18 +129,23 @@ export function useBlockVirtualizer(
   watch(
     scrollContainer,
     (el, _, onCleanup) => {
-      if (!el) return
+      if (!el)
+        return
       const onWheel = (e: WheelEvent) => {
-        if (e.deltaY < 0) pendingIntent = 'up'
-        if (e.deltaY > 0) pendingIntent = 'down'
+        if (e.deltaY < 0)
+          pendingIntent = 'up'
+        if (e.deltaY > 0)
+          pendingIntent = 'down'
       }
       const onTouchStart = (e: TouchEvent) => {
         touchStartY = e.touches[0]?.clientY ?? 0
       }
       const onTouchMove = (e: TouchEvent) => {
         const touchY = e.touches[0]?.clientY ?? touchStartY
-        if (touchY > touchStartY) pendingIntent = 'up'
-        if (touchY < touchStartY) pendingIntent = 'down'
+        if (touchY > touchStartY)
+          pendingIntent = 'up'
+        if (touchY < touchStartY)
+          pendingIntent = 'down'
         touchStartY = touchY
       }
       el.addEventListener('wheel', onWheel, { passive: true })
@@ -152,7 +163,8 @@ export function useBlockVirtualizer(
   watch(
     () => virtualizer.value.getTotalSize(),
     () => {
-      if (!isRestored.value || !shouldAutoScroll.value) return
+      if (!isRestored.value || !shouldAutoScroll.value)
+        return
       scrollToBottom()
     },
     { flush: 'post' },
@@ -161,8 +173,15 @@ export function useBlockVirtualizer(
   watch(
     virtualizer,
     (instance) => {
-      instance.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, currentInstance) => {
-        const internalInstance = currentInstance as unknown as { getScrollOffset(): number; scrollAdjustments: number }
+      instance.shouldAdjustScrollPositionOnItemSizeChange = (
+        item,
+        _delta,
+        currentInstance
+      ) => {
+        const internalInstance = currentInstance as unknown as {
+          getScrollOffset(): number;
+          scrollAdjustments: number
+        }
         const offset = internalInstance.getScrollOffset()
         const isStreamingTail = item.index === blocks.value.length - 1
         const allowCorrection = shouldAutoScroll.value || !isStreamingTail
@@ -176,13 +195,15 @@ export function useBlockVirtualizer(
 
   function updateAnchor() {
     const el = scrollContainer.value
-    if (!el || blocks.value.length === 0) return
+    if (!el || blocks.value.length === 0)
+      return
     const st = el.scrollTop
     const containerTop = el.getBoundingClientRect().top
     for (const item of virtualizer.value.getVirtualItems()) {
       if (item.start + item.size > st) {
         const anchorEl = el.querySelector(`[data-index="${item.index}"]`) as HTMLElement | null
-        if (!anchorEl) return
+        if (!anchorEl)
+          return
         lastAnchor = {
           blockId: blocks.value[item.index]!.id,
           anchorIndex: item.index,
@@ -208,7 +229,8 @@ export function useBlockVirtualizer(
 
   function restoreScroll() {
     const el = scrollContainer.value
-    if (!el || blocks.value.length === 0 || isRestored.value) return
+    if (!el || blocks.value.length === 0 || isRestored.value)
+      return
     isRestored.value = true
 
     if (!persistedState) {
@@ -228,14 +250,22 @@ export function useBlockVirtualizer(
     correctUntilConverged(el, anchorIndex, persistedState.anchor.offsetPx, 3)
   }
 
-  function correctUntilConverged(el: HTMLElement, anchorIndex: number, targetOffset: number, maxPasses: number) {
+  function correctUntilConverged(
+    el: HTMLElement,
+    anchorIndex: number,
+    targetOffset: number,
+    maxPasses: number
+  ) {
     waitForScrollStable(el, () => {
       const anchorEl = el.querySelector(`[data-index="${anchorIndex}"]`) as HTMLElement | null
       if (!anchorEl) {
         updateAnchor()
         return
       }
-      const correction = anchorEl.getBoundingClientRect().top - el.getBoundingClientRect().top - targetOffset
+      const correction =
+        anchorEl.getBoundingClientRect().top -
+        el.getBoundingClientRect().top -
+        targetOffset
       if (Math.abs(correction) > 1 && maxPasses > 0) {
         el.scrollTop += correction
         correctUntilConverged(el, anchorIndex, targetOffset, maxPasses - 1)
@@ -256,9 +286,13 @@ export function useBlockVirtualizer(
   )
 
   function getPersistedState(): PersistedScrollState | undefined {
-    if (!lastAnchor) return undefined
+    if (!lastAnchor)
+      return undefined
     return {
-      anchor: { ...lastAnchor, scrollTop: scrollContainer.value?.scrollTop ?? lastAnchor.scrollTop },
+      anchor: {
+        ...lastAnchor,
+        scrollTop: scrollContainer.value?.scrollTop ?? lastAnchor.scrollTop
+      },
       heightCache: new Map(heightCache),
     }
   }
@@ -281,7 +315,8 @@ function waitForScrollStable(el: HTMLElement, callback: () => void) {
   let stable = 0
   function check() {
     if (el.scrollTop === prev) {
-      if (++stable >= 2) return callback()
+      if (++stable >= 2)
+        return callback()
     } else {
       stable = 0
       prev = el.scrollTop

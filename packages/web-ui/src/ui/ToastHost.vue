@@ -14,7 +14,8 @@ const overlayMotion = {
 function pinLeavingToast(el: Element) {
   const node = el as HTMLElement
   const parent = node.parentElement
-  if (!parent) return
+  if (!parent)
+    return
   const parentRect = parent.getBoundingClientRect()
   const rect = node.getBoundingClientRect()
   node.style.left = `${rect.left - parentRect.left}px`

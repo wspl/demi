@@ -1,6 +1,12 @@
 import { truncate } from '@demicodes/utils'
 
-export const STANDARD_TOOL_NAMES = ['shell_exec', 'shell_status', 'shell_write', 'shell_abort', 'yield'] as const
+export const STANDARD_TOOL_NAMES = [
+  'shell_exec',
+  'shell_status',
+  'shell_write',
+  'shell_abort',
+  'yield'
+] as const
 
 export type StandardToolName = (typeof STANDARD_TOOL_NAMES)[number]
 export type ControlToolName = Exclude<StandardToolName, 'shell_exec'>
@@ -20,9 +26,13 @@ export function toolRenderKind(toolName: string): ToolRenderKind {
   return isStandardToolName(toolName) ? toolName : 'generic'
 }
 
-export function standardToolTitle(toolName: StandardToolName, input: Record<string, unknown>): string {
+export function standardToolTitle(
+  toolName: StandardToolName,
+  input: Record<string, unknown>
+): string {
   const description = optionalNonEmptyString(input.description)
-  if (description) return description
+  if (description)
+    return description
 
   switch (toolName) {
     case 'shell_exec':
@@ -41,7 +51,9 @@ export function standardToolTitle(toolName: StandardToolName, input: Record<stri
     }
     case 'yield': {
       const duration = optionalFiniteNumber(input.durationMs)
-      return duration === null ? 'Wait for wakeup' : `Wait ${Math.floor(duration)}ms`
+      return duration === null
+        ? 'Wait for wakeup'
+        : `Wait ${Math.floor(duration)}ms`
     }
   }
 }
@@ -51,7 +63,9 @@ export function trimToolSummary(text: string, maxLength = 120): string {
 }
 
 function optionalNonEmptyString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+  return typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : null
 }
 
 function optionalFiniteNumber(value: unknown): number | null {

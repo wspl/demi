@@ -18,7 +18,9 @@ let reducedMotionQuery: MediaQueryList | null | undefined
 /** Read per frame; the query object is live, so it is created once. */
 export function prefersReducedMotion(): boolean {
   if (reducedMotionQuery === undefined) {
-    reducedMotionQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null
+    reducedMotionQuery = typeof matchMedia === 'function'
+      ? matchMedia('(prefers-reduced-motion: reduce)')
+      : null
   }
   return reducedMotionQuery?.matches ?? false
 }
@@ -32,20 +34,24 @@ function segmentWords(text: string): Iterable<Intl.SegmentData> {
 
 /** Word / CJK units that rejoin to the source. Spaces are their own units. */
 export function segmentStreamUnits(text: string): string[] {
-  if (!text) return []
+  if (!text)
+    return []
   return Array.from(segmentWords(text), (part) => part.segment)
 }
 
 /** Longest prefix of `shown` that still matches `target`. */
 export function alignShown(shown: string, target: string): string {
-  if (target.startsWith(shown)) return shown
-  if (shown.startsWith(target)) return target
+  if (target.startsWith(shown))
+    return shown
+  if (shown.startsWith(target))
+    return target
   let index = 0
   const limit = Math.min(shown.length, target.length)
   while (index < limit && shown.charCodeAt(index) === target.charCodeAt(index)) index += 1
   if (index > 0) {
     const lead = shown.charCodeAt(index - 1)
-    if (lead >= 0xd800 && lead <= 0xdbff) index -= 1
+    if (lead >= 0xd800 && lead <= 0xdbff)
+      index -= 1
   }
   return target.slice(0, index)
 }
@@ -54,7 +60,8 @@ export function alignShown(shown: string, target: string): string {
 function takeUnits(remaining: string, budget: number): string {
   let take = ''
   for (const { segment: unit } of segmentWords(remaining)) {
-    if (take.length >= budget && take.length > 0) break
+    if (take.length >= budget && take.length > 0)
+      break
     if (unit.length > budget && take.length === 0) {
       return sliceHead(unit, Math.max(budget, 1))
     }
@@ -64,9 +71,15 @@ function takeUnits(remaining: string, budget: number): string {
 }
 
 /** Next display string: word-aware. `timeLeftMs` is the deadline to finish the current gap. */
-export function nextShownText(shown: string, target: string, dtMs: number, timeLeftMs: number): string {
+export function nextShownText(
+  shown: string,
+  target: string,
+  dtMs: number,
+  timeLeftMs: number
+): string {
   const aligned = alignShown(shown, target)
-  if (aligned === target) return target
+  if (aligned === target)
+    return target
   const remaining = target.slice(aligned.length)
   const dt = Math.max(1, dtMs)
   const paceBudget = Math.max(1, Math.round((STREAM_REVEAL.charsPerSec * dt) / 1000))
@@ -75,10 +88,18 @@ export function nextShownText(shown: string, target: string, dtMs: number, timeL
 }
 
 /** Keep unmatched emphasis / link markers out of the markdown parse until they close. */
-export function holdIncompleteMarkdown(text: string): { visible: string; held: string } {
-  if (!text) return { visible: '', held: '' }
+export function holdIncompleteMarkdown(text: string): {
+  visible: string;
+  held: string
+} {
+  if (!text)
+    return { visible: '', held: '' }
   const linkAt = text.search(INCOMPLETE_LINK)
-  if (linkAt >= 0) return { visible: text.slice(0, linkAt), held: text.slice(linkAt) }
+  if (linkAt >= 0)
+    return {
+    visible: text.slice(0, linkAt),
+    held: text.slice(linkAt)
+  }
   const markers = text.match(TRAILING_OPENERS)
   if (markers) {
     const token = markers[0].replace(/^[(\s]/, '')
@@ -97,7 +118,8 @@ const INLINE_DELIMITER = /(\*{1,3}|_{1,3}|~~|`)/g
 export function closeOpenInlineMarkdown(text: string): string {
   const paragraphStart = text.lastIndexOf('\n\n')
   const paragraph = paragraphStart < 0 ? text : text.slice(paragraphStart + 2)
-  if (paragraph.startsWith('```') || paragraph.startsWith('~~~')) return ''
+  if (paragraph.startsWith('```') || paragraph.startsWith('~~~'))
+    return ''
   const open: string[] = []
   for (const match of paragraph.matchAll(INLINE_DELIMITER)) {
     const run = match[0]
@@ -106,16 +128,20 @@ export function closeOpenInlineMarkdown(text: string): string {
     const after = paragraph[at + run.length] ?? ''
     if (run === '`') {
       const top = open.at(-1)
-      if (top === '`') open.pop()
+      if (top === '`')
+        open.pop()
       else open.push('`')
       continue
     }
-    if (open.at(-1) === '`') continue
+    if (open.at(-1) === '`')
+      continue
     const listMarker = (before === '\n') && /\s/.test(after) && run.length === 1
     const spaced = /\s/.test(before) && /\s/.test(after)
-    if (listMarker || spaced) continue
+    if (listMarker || spaced)
+      continue
     const top = open.at(-1)
-    if (top && top[0] === run[0] && top.length === run.length) open.pop()
+    if (top && top[0] === run[0] && top.length === run.length)
+      open.pop()
     else open.push(run)
   }
   return open.reverse().join('')
@@ -123,10 +149,12 @@ export function closeOpenInlineMarkdown(text: string): string {
 
 /** How much of `frontier` is actually at the end of the rendered visible string. */
 export function visibleFrontierLength(visible: string, frontier: string): number {
-  if (!frontier || !visible) return 0
+  if (!frontier || !visible)
+    return 0
   const max = Math.min(frontier.length, visible.length)
   for (let count = max; count > 0; count -= 1) {
-    if (visible.endsWith(frontier.slice(frontier.length - count))) return count
+    if (visible.endsWith(frontier.slice(frontier.length - count)))
+      return count
   }
   return 0
 }

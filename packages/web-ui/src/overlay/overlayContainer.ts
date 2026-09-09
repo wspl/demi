@@ -5,7 +5,8 @@ import type { InjectionKey, Ref } from 'vue'
  * containing block (`contain: paint`, a transform) keeps fixed-positioned panels inside
  * itself, so a catalog can pin overlays open without them owning the page.
  */
-export const overlayContainerKey: InjectionKey<Ref<HTMLElement | undefined>> = Symbol('overlayContainer')
+export const overlayContainerKey: InjectionKey<Ref<HTMLElement | undefined>> =
+  Symbol('overlayContainer')
 
 /**
  * When true, a dialog renders in flow as a bare panel: no scrim, no centering, its own

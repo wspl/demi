@@ -22,7 +22,9 @@ const router = createRouter({
 })
 const resources = useResources(pinia)
 const conversations = useConversations(pinia)
-router.beforeEach((to) => (!resources.signedIn && to.path !== '/login' ? '/login' : true))
+router.beforeEach(
+  (to) => (!resources.signedIn && to.path !== '/login' ? '/login' : true)
+)
 for (const [axis, value] of Object.entries(productAppearance)) {
   document.documentElement.setAttribute(`data-${axis}`, value)
 }
@@ -33,4 +35,5 @@ applyTranscriptTextSize(resources.settings.general.fontSize)
 applyThemeToDocument()
 createApp(App).use(pinia).use(router).mount('#app')
 const timer = window.setInterval(() => conversations.advance(), 80)
-if (import.meta.hot) import.meta.hot.dispose(() => clearInterval(timer))
+if (import.meta.hot)
+  import.meta.hot.dispose(() => clearInterval(timer))

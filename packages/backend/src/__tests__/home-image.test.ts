@@ -2,7 +2,12 @@ import { mkdir, mkdtemp, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { growImage, makeHomeImage, missingImageTools, runTool } from '../managed/firecracker/image-tools'
+import {
+  growImage,
+  makeHomeImage,
+  missingImageTools,
+  runTool
+} from '../managed/firecracker/image-tools'
 
 // Ext4 tools run only when installed; this test never boots a model.
 const tools = missingImageTools().length === 0 ? test : test.skip

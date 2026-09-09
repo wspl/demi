@@ -90,8 +90,10 @@ export function createTodoCommand(): CommandGroup {
             await io.stderr(`Todo not found: ${parsed.values.id}\n`)
             return { exitCode: 1 }
           }
-          if (parsed.values.text !== undefined) todo.text = String(parsed.values.text)
-          if (parsed.values.status !== undefined) todo.status = parsed.values.status as TodoItem['status']
+          if (parsed.values.text !== undefined)
+            todo.text = String(parsed.values.text)
+          if (parsed.values.status !== undefined)
+            todo.status = parsed.values.status as TodoItem['status']
           await writeTodos(storage, todos)
           if (parsed.json) await io.stdout(JSON.stringify({ todo }))
           else await io.stdout(`${formatTodo(todo)}\n`)
@@ -133,7 +135,10 @@ async function readTodos(storage: CommandStorage): Promise<TodoItem[]> {
   return TodoListSchema.parse((await storage.readJson(TODO_STORAGE_KEY)) ?? [])
 }
 
-async function writeTodos(storage: CommandStorage, todos: TodoItem[]): Promise<void> {
+async function writeTodos(
+  storage: CommandStorage,
+  todos: TodoItem[]
+): Promise<void> {
   await storage.writeJson(TODO_STORAGE_KEY, todos)
 }
 
@@ -145,12 +150,15 @@ function nextTodoId(todos: TodoItem[]): string {
   let max = 0
   for (const todo of todos) {
     const match = /^T(\d+)$/.exec(todo.id)
-    if (match) max = Math.max(max, Number(match[1]))
+    if (match)
+      max = Math.max(max, Number(match[1]))
   }
   return `T${max + 1}`
 }
 
 function formatTodo(todo: TodoItem): string {
-  const marker = todo.status === 'done' ? 'x' : todo.status === 'in_progress' ? '-' : ' '
+  const marker = todo.status === 'done'
+    ? 'x'
+    : todo.status === 'in_progress' ? '-' : ' '
   return `[${marker}] ${todo.id} ${todo.text}`
 }

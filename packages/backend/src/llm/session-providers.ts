@@ -1,11 +1,23 @@
 import type { ProviderResolver } from '@demicodes/agent'
-import { defineProvider, providerRuntime, type AgentProvider, type InferenceRequest, type Provider, type ProviderRun, type ProviderSelection } from '@demicodes/provider'
+import {
+  defineProvider,
+  providerRuntime,
+  type AgentProvider,
+  type InferenceRequest,
+  type Provider,
+  type ProviderRun,
+  type ProviderSelection
+} from '@demicodes/provider'
 import type { Host } from '@demicodes/shell'
 import type { InstanceMode } from '../auth/identity'
 import type { ControlService } from '../storage/control'
 import type { ProviderRateLimiter } from '../usage/rate-limit'
 import { providerOwner } from '../vault/scope'
-import { type ProviderAssembly, type SessionProviderContext, usageAppender } from './assembly'
+import {
+  type ProviderAssembly,
+  type SessionProviderContext,
+  usageAppender
+} from './assembly'
 import { meterRuntime, type MeterOptions } from './metering'
 
 interface SessionProvidersOptions {
@@ -16,19 +28,27 @@ interface SessionProvidersOptions {
   rateLimiter: ProviderRateLimiter
 }
 
-/** Resolves authorization and credentials at every inference boundary while retaining each session's runtime state. */
-export function createSessionProviderResolver(options: SessionProvidersOptions): ProviderResolver {
+/**
+ * Resolves authorization and credentials at every inference boundary while
+ * retaining each session's runtime state.
+ */
+export function createSessionProviderResolver(
+  options: SessionProvidersOptions
+): ProviderResolver {
   return async (providerId, { agentSessionId }) => {
     const conversation = await options.control.getConversation(agentSessionId)
-    if (!conversation) throw new Error(`no conversation ${agentSessionId} behind this session`)
+    if (!conversation)
+      throw new Error(`no conversation ${agentSessionId} behind this session`)
     const ownerUserId = providerOwner(options.mode, conversation.userId)
     const resolve = async () => {
-      if ((await options.control.getConversation(agentSessionId))?.archived) throw new Error('Conversation is archived')
+      if ((await options.control.getConversation(agentSessionId))?.archived)
+        throw new Error('Conversation is archived')
       const resolved = await options.assembly.providerFor(providerId)
       return resolved?.entry.ownerUserId === ownerUserId ? resolved : null
     }
     const initial = await resolve()
-    if (!initial) return null
+    if (!initial)
+      return null
     const host = () => options.hostFor(agentSessionId)
     const session: SessionProviderContext = {
       spawn: async (params) => {
@@ -37,12 +57,22 @@ export function createSessionProviderResolver(options: SessionProvidersOptions):
       },
     }
     const meter: MeterOptions = {
-      observe: usageAppender(options.control, { userId: conversation.userId, conversationId: agentSessionId, providerId }),
+      observe: usageAppender(options.control, {
+        userId: conversation.userId,
+        conversationId: agentSessionId,
+        providerId
+      }),
       beforeRequest: () => options.rateLimiter.take(conversation.userId),
     }
     return defineProvider({
       ...initial.provider,
-      createRuntime: (selection) => SessionProviderRuntime.create({ assembly: options.assembly, resolve, host, session, meter }, selection),
+      createRuntime: (selection) => SessionProviderRuntime.create({
+        assembly: options.assembly,
+        resolve,
+        host,
+        session,
+        meter
+      }, selection),
     })
   }
 }
@@ -70,7 +100,10 @@ class SessionProviderRuntime implements AgentProvider {
     private current?: CurrentRuntime,
   ) {}
 
-  static async create(options: RuntimeOptions, selection: ProviderSelection): Promise<SessionProviderRuntime> {
+  static async create(
+    options: RuntimeOptions,
+    selection: ProviderSelection
+  ): Promise<SessionProviderRuntime> {
     const runtime = new SessionProviderRuntime(options, selection)
     await runtime.runtimeForRequest()
     return runtime
@@ -80,7 +113,10 @@ class SessionProviderRuntime implements AgentProvider {
     let active: ProviderRun | undefined
     const start = async () => {
       const prepared = await this.runtimeForRequest(request)
-      return prepared.runtime.run({ ...request, outputLimit: prepared.selection.model.model.outputLimit })
+      return prepared.runtime.run({
+        ...request,
+        outputLimit: prepared.selection.model.model.outputLimit
+      })
     }
     return {
       async *[Symbol.asyncIterator]() {
@@ -94,11 +130,15 @@ class SessionProviderRuntime implements AgentProvider {
   }
 
   clone(): AgentProvider {
-    return new SessionProviderRuntime(this.options, this.selection, this.current && {
-      base: this.current.base,
-      host: this.current.host,
-      runtime: this.current.runtime.clone(),
-    })
+    return new SessionProviderRuntime(
+      this.options,
+      this.selection,
+      this.current && {
+        base: this.current.base,
+        host: this.current.host,
+        runtime: this.current.runtime.clone(),
+      }
+    )
   }
 
   async dispose(): Promise<void> {
@@ -107,12 +147,21 @@ class SessionProviderRuntime implements AgentProvider {
     this.current = undefined
   }
 
-  private async runtimeForRequest(request?: InferenceRequest): Promise<{ runtime: AgentProvider; selection: ProviderSelection }> {
+  private async runtimeForRequest(
+    request?: InferenceRequest
+  ): Promise<{
+    runtime: AgentProvider;
+    selection: ProviderSelection
+  }> {
     const requested: ProviderSelection = request ? {
       ...this.selection,
       model: {
         ...this.selection.model,
-        model: { ...this.selection.model.model, id: request.modelId, outputLimit: request.outputLimit },
+        model: {
+          ...this.selection.model.model,
+          id: request.modelId,
+          outputLimit: request.outputLimit
+        },
         thinking: request.thinking,
         serviceTierId: request.serviceTierId ?? null,
       },
@@ -121,22 +170,39 @@ class SessionProviderRuntime implements AgentProvider {
     if (!resolved) {
       await this.current?.runtime.dispose?.()
       this.current = undefined
-      throw new Error(`Provider "${this.selection.providerId}" is no longer available to this conversation`)
+      throw new Error(
+        `Provider "${this.selection.providerId}" is no longer available to this conversation`
+      )
     }
-    if (resolved.entry.config.kind === 'subscription' && !(await resolved.provider.credentials?.list())?.length) {
+    if (resolved.entry.config.kind === 'subscription' &&
+      !(await resolved.provider.credentials?.list())?.length) {
       throw new Error('No subscription account configured')
     }
-    const selection = { ...requested, model: this.options.assembly.selectionForEntry(resolved.entry, requested.model) }
-    const host = resolved.provider.requiresProcessCapableHost ? await this.options.host() : undefined
-    if (this.disposed) throw new Error('Provider runtime is disposed')
-    if (this.current?.base === resolved.provider && this.current.host === host && this.selection.model.model.id === selection.model.model.id) {
+    const selection = {
+      ...requested,
+      model: this.options.assembly.selectionForEntry(
+        resolved.entry,
+        requested.model
+      )
+    }
+    const host = resolved.provider.requiresProcessCapableHost
+      ? await this.options.host()
+      : undefined
+    if (this.disposed)
+      throw new Error('Provider runtime is disposed')
+    if (this.current?.base === resolved.provider &&
+      this.current.host === host &&
+      this.selection.model.model.id === selection.model.model.id) {
       this.selection = selection
       return { runtime: this.current.runtime, selection }
     }
     const provider = resolved.provider.requiresProcessCapableHost
       ? this.options.assembly.forSession(resolved.entry, this.options.session)
       : resolved.provider
-    const runtime = meterRuntime(await providerRuntime(provider, selection), this.options.meter)
+    const runtime = meterRuntime(
+      await providerRuntime(provider, selection),
+      this.options.meter
+    )
     if (this.disposed) {
       await runtime.dispose?.()
       throw new Error('Provider runtime is disposed')

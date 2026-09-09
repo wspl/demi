@@ -14,7 +14,8 @@ const props = defineProps<{
 
 const summary = computed(() => {
   const entries = Object.entries(props.input)
-  if (entries.length === 0) return ''
+  if (entries.length === 0)
+    return ''
   return entries
     .map(([k, v]) => {
       const val = typeof v === 'string' ? v : JSON.stringify(v)

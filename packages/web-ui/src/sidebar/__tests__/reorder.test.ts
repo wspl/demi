@@ -27,15 +27,21 @@ const conversations: SidebarConversation[] = [
 
 test('drop resolves both sides and the end without changing group or pin partition', () => {
   const source = { kind: 'conversation' as const, id: 'one' }
-  expect(sidebarDrop(source, { ...source, id: 'two' }, true, projects, conversations)).toEqual({
+  expect(
+    sidebarDrop(source, { ...source, id: 'two' }, true, projects, conversations)
+  ).toEqual({
     ...source,
     beforeId: 'three',
   })
-  expect(sidebarDrop(source, { ...source, id: 'three' }, true, projects, conversations)).toEqual({
+  expect(
+    sidebarDrop(source, { ...source, id: 'three' }, true, projects, conversations)
+  ).toEqual({
     ...source,
     beforeId: null,
   })
-  expect(sidebarDrop(source, { ...source, id: 'two' }, false, projects, conversations)).toBeNull()
+  expect(
+    sidebarDrop(source, { ...source, id: 'two' }, false, projects, conversations)
+  ).toBeNull()
   for (const id of ['one', 'pinned', 'other', 'missing'])
     expect(sidebarDrop(source, { ...source, id }, true, projects, conversations)).toBeNull()
   expect(

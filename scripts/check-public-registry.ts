@@ -10,8 +10,14 @@ const bannedHosts = [
 
 const failures: string[] = []
 
-assertFileContains('.npmrc', /^registry\s*=\s*https:\/\/registry\.npmjs\.org\/?\s*$/m)
-assertFileContains('bunfig.toml', /registry\s*=\s*"https:\/\/registry\.npmjs\.org\/?"/)
+assertFileContains(
+  '.npmrc',
+  /^registry\s*=\s*https:\/\/registry\.npmjs\.org\/?\s*$/m
+)
+assertFileContains(
+  'bunfig.toml',
+  /registry\s*=\s*"https:\/\/registry\.npmjs\.org\/?"/
+)
 assertNpmConfig()
 scanRepository()
 
@@ -28,40 +34,54 @@ function assertFileContains(file: string, pattern: RegExp): void {
     return
   }
   const content = readFileSync(file, 'utf8')
-  if (!pattern.test(content)) failures.push(`${file} must pin ${publicRegistry}`)
+  if (!pattern.test(content))
+    failures.push(`${file} must pin ${publicRegistry}`)
 }
 
 function assertNpmConfig(): void {
-  const result = spawnSync('npm', ['config', 'get', 'registry'], { encoding: 'utf8' })
+  const result = spawnSync(
+    'npm',
+    ['config', 'get', 'registry'],
+    { encoding: 'utf8' }
+  )
   if (result.status !== 0) {
     failures.push(`npm config get registry failed: ${result.stderr.trim()}`)
     return
   }
   if (normalizeRegistry(result.stdout.trim()) !== normalizeRegistry(publicRegistry)) {
-    failures.push(`npm registry is ${result.stdout.trim()}, expected ${publicRegistry}`)
+    failures.push(
+      `npm registry is ${result.stdout.trim()}, expected ${publicRegistry}`
+    )
   }
 }
 
 function scanRepository(): void {
-  const result = spawnSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], { encoding: 'utf8' })
+  const result = spawnSync(
+    'git',
+    ['ls-files', '--cached', '--others', '--exclude-standard'],
+    { encoding: 'utf8' }
+  )
   if (result.status !== 0) {
     failures.push(`git ls-files failed: ${result.stderr.trim()}`)
     return
   }
 
   for (const file of result.stdout.split('\n')) {
-    if (!file || file.includes('/node_modules/')) continue
+    if (!file || file.includes('/node_modules/'))
+      continue
     let stats: ReturnType<typeof statSync>
     try {
       stats = statSync(file)
     } catch {
       continue
     }
-    if (!stats.isFile()) continue
+    if (!stats.isFile())
+      continue
 
     const content = readFileSync(file, 'utf8')
     for (const host of bannedHosts) {
-      if (content.includes(host)) failures.push(`${file} contains forbidden registry host ${host}`)
+      if (content.includes(host))
+        failures.push(`${file} contains forbidden registry host ${host}`)
     }
   }
 }

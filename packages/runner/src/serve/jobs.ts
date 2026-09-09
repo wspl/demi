@@ -1,6 +1,12 @@
 import type { HostSpawnError, HostSpawnHandle } from '@demicodes/shell'
 import { errorMessage, noop } from '@demicodes/utils'
-import { JOB_VIEW_BYTES, type BackendToRunnerMessage, type JobOutput, type PipeRef, type RunnerToBackendMessage } from '@demicodes/runner-protocol'
+import {
+  JOB_VIEW_BYTES,
+  type BackendToRunnerMessage,
+  type JobOutput,
+  type PipeRef,
+  type RunnerToBackendMessage
+} from '@demicodes/runner-protocol'
 import type { PipeEnds } from '../pipes'
 
 /**
@@ -20,16 +26,33 @@ export interface JobSpawnParams {
   args: string[]
   cwd: string
   env: Record<string, string>
-  /** Where the full streams go; the handle's streams yield the view only. With `stream`, the full stdout is `stdoutStream` too. */
-  tee: { stdoutPath: string; stderrPath: string; viewLimit: number; stream?: boolean }
+  /**
+   * Where the full streams go; the handle's streams yield the view only. With
+   * `stream`, the full stdout is `stdoutStream` too.
+   */
+  tee: {
+    stdoutPath: string;
+    stderrPath: string;
+    viewLimit: number;
+    stream?: boolean
+  }
   uid?: number
   gid?: number
 }
 
 export interface JobSpawnHandle extends Omit<HostSpawnHandle, 'output' | 'wait'> {
-  /** The full stdout when the spawn asked for it: the source of the job's stdout pipe. */
+  /**
+   * The full stdout when the spawn asked for it: the source of the job's stdout
+   * pipe.
+   */
   stdoutStream?: AsyncIterable<Uint8Array>
-  wait(): Promise<{ exitCode: number | null; signal?: string; spawnError?: HostSpawnError; stdoutBytes: number; stderrBytes: number }>
+  wait(): Promise<{
+    exitCode: number | null;
+    signal?: string;
+    spawnError?: HostSpawnError;
+    stdoutBytes: number;
+    stderrBytes: number
+  }>
 }
 
 export interface JobTableOptions {
@@ -52,22 +75,41 @@ export interface JobTableOptions {
   deviceEnv: Record<string, string>
   /** Directories every job finds first in `PATH`: the root-command symlinks. */
   pathPrefix?: string[]
-  /** Entries set in every job's env regardless of what the backend named: where the runner lives (`DEMI_HOME`). */
+  /**
+   * Entries set in every job's env regardless of what the backend named: where
+   * the runner lives (`DEMI_HOME`).
+   */
   fixedEnv?: Record<string, string>
   /** Runner-owned endpoint and execution context, bound before spawning. */
-  executionEnv?: (message: Extract<BackendToRunnerMessage, { type: 'job_start' }>) => Promise<Record<string, string>>
-  /** The device ends of a job's pipes (`runner.md` § Pipes); absent, a job with pipes reports them failed. */
+  executionEnv?: (
+    message: Extract<BackendToRunnerMessage, { type: 'job_start' }>
+  ) => Promise<Record<string, string>>
+  /**
+   * The device ends of a job's pipes (`runner.md` § Pipes); absent, a job with
+   * pipes reports them failed.
+   */
   pipes?: PipeEnds
   send(message: RunnerToBackendMessage): void
 }
 
-/** The env var naming the file a job's `EXIT` trap writes the final `pwd` to (`runner.md` § Jobs and the tee). */
+/**
+ * The env var naming the file a job's `EXIT` trap writes the final `pwd` to
+ * (`runner.md` § Jobs and the tee).
+ */
 export const JOB_CWD_FILE_VAR = 'DEMI_JOB_CWD_FILE'
-/** The env var naming the descriptor the job prelude duplicated the job's stdin onto. */
+/**
+ * The env var naming the descriptor the job prelude duplicated the job's stdin
+ * onto.
+ */
 export const JOB_STDIN_FD_VAR = 'DEMI_JOB_STDIN_FD'
-/** The owning job, carried only on the local relay for lifetime cancellation. */
+/**
+ * The owning job, carried only on the local relay for lifetime cancellation.
+ */
 export const JOB_ID_VAR = 'DEMI_JOB_ID'
-/** That descriptor: fixed, high, and clear of the ones scripts and tools reach for (bash 3.2 has no `{var}<&0`). */
+/**
+ * That descriptor: fixed, high, and clear of the ones scripts and tools reach
+ * for (bash 3.2 has no `{var}<&0`).
+ */
 export const JOB_STDIN_FD = 199
 
 interface Job {
@@ -100,7 +142,8 @@ export class JobTable {
       }
       case 'job_stdin':
         await this.starting.get(message.jobId)
-        await this.jobs.get(message.jobId)?.handle.writeStdin(message.bytes).catch(noop)
+        await this.jobs.get(message.jobId)?.handle.writeStdin(message.bytes)
+          .catch(noop)
         return
       case 'job_stdin_end':
         await this.starting.get(message.jobId)
@@ -108,7 +151,8 @@ export class JobTable {
         return
       case 'job_kill':
         await this.starting.get(message.jobId)
-        await this.jobs.get(message.jobId)?.handle.kill(message.signal).catch(noop)
+        await this.jobs.get(message.jobId)?.handle.kill(message.signal)
+          .catch(noop)
         return
       default:
         return
@@ -123,7 +167,9 @@ export class JobTable {
     await Promise.all(jobs.map((job) => job.handle.kill('SIGKILL').catch(noop)))
   }
 
-  private async start(message: Extract<BackendToRunnerMessage, { type: 'job_start' }>): Promise<void> {
+  private async start(
+    message: Extract<BackendToRunnerMessage, { type: 'job_start' }>
+  ): Promise<void> {
     const { jobId } = message
     const dir = `${this.options.outputDir}/${jobId}`
     const cwdFile = `${dir}/cwd`
@@ -137,29 +183,49 @@ export class JobTable {
         args: ['-c', wrapScript(message.script)],
         cwd: message.cwd,
         env: {
-          ...withPathPrefix({ ...this.options.deviceEnv, ...message.env }, this.options.pathPrefix ?? []),
+          ...withPathPrefix(
+            { ...this.options.deviceEnv, ...message.env },
+            this.options.pathPrefix ?? []
+          ),
           ...this.options.fixedEnv,
           ...await this.options.executionEnv?.(message),
           [JOB_CWD_FILE_VAR]: cwdFile,
           [JOB_STDIN_FD_VAR]: String(JOB_STDIN_FD),
           [JOB_ID_VAR]: jobId,
         },
-        tee: { stdoutPath, stderrPath, viewLimit: JOB_VIEW_BYTES, ...(message.stdout ? { stream: true } : {}) },
+        tee: {
+          stdoutPath,
+          stderrPath,
+          viewLimit: JOB_VIEW_BYTES,
+          ...(message.stdout ? { stream: true } : {})
+        },
       })
     } catch (error) {
-      this.options.send({ type: 'job_exit', jobId, exitCode: null, signal: errorMessage(error), spawnError: { kind: 'other' } })
+      this.options.send({
+        type: 'job_exit',
+        jobId,
+        exitCode: null,
+        signal: errorMessage(error),
+        spawnError: { kind: 'other' }
+      })
       return
     }
     this.jobs.set(jobId, { handle, cwdFile })
-    if (message.stdin) void this.feedStdin(handle, message.stdin)
-    if (message.stdout) void this.sendStdout(handle, message.stdout)
+    if (message.stdin)
+      void this.feedStdin(handle, message.stdin)
+    if (message.stdout)
+      void this.sendStdout(handle, message.stdout)
     void this.pump(jobId, handle, { stdoutPath, stderrPath, cwdFile })
   }
 
-  /** The job's fd 0 is a pipe: its body is fetched and written in as it arrives, then stdin closes. */
+  /**
+   * The job's fd 0 is a pipe: its body is fetched and written in as it arrives,
+   * then stdin closes.
+   */
   private async feedStdin(handle: JobSpawnHandle, ref: PipeRef): Promise<void> {
     try {
-      if (!this.options.pipes) throw new Error('this runner has no pipe ends')
+      if (!this.options.pipes)
+        throw new Error('this runner has no pipe ends')
       for await (const chunk of await this.options.pipes.get(ref.url)) {
         await handle.writeStdin(chunk)
       }
@@ -171,11 +237,14 @@ export class JobTable {
     }
   }
 
-  /** The job's fd 1 is a pipe: the full stdout is `PUT` as the job writes it. */
+  /**
+   * The job's fd 1 is a pipe: the full stdout is `PUT` as the job writes it.
+   */
   private async sendStdout(handle: JobSpawnHandle, ref: PipeRef): Promise<void> {
     const source = handle.stdoutStream
     try {
-      if (!source) throw new Error('this runner cannot stream a job\'s stdout')
+      if (!source)
+        throw new Error('this runner cannot stream a job\'s stdout')
       if (!this.options.pipes) {
         // Released unread, so the child never blocks on a reader that is not coming.
         await source[Symbol.asyncIterator]().return?.()
@@ -192,30 +261,58 @@ export class JobTable {
     if (error === null) {
       this.options.send({ type: 'pipe_done', pipeId: ref.id, ok: true })
     } else {
-      this.options.send({ type: 'pipe_done', pipeId: ref.id, ok: false, error: errorMessage(error) })
+      this.options.send({
+        type: 'pipe_done',
+        pipeId: ref.id,
+        ok: false,
+        error: errorMessage(error)
+      })
     }
   }
 
-  private async pump(jobId: string, handle: JobSpawnHandle, files: { stdoutPath: string; stderrPath: string; cwdFile: string }): Promise<void> {
-    const forward = async (stream: AsyncIterable<Uint8Array>, name: 'stdout' | 'stderr') => {
+  private async pump(
+    jobId: string,
+    handle: JobSpawnHandle,
+    files: {
+      stdoutPath: string;
+      stderrPath: string;
+      cwdFile: string
+    }
+  ): Promise<void> {
+    const forward = async (
+      stream: AsyncIterable<Uint8Array>,
+      name: 'stdout' | 'stderr'
+    ) => {
       try {
         for await (const bytes of stream) {
-          if (!this.jobs.has(jobId)) break
+          if (!this.jobs.has(jobId))
+            break
           this.options.send({ type: 'job_output', jobId, stream: name, bytes })
         }
       } catch {
         // A failed spawn's streams may error; the exit below still reports.
       }
     }
-    const [exit] = await Promise.all([handle.wait(), forward(handle.stdout, 'stdout'), forward(handle.stderr, 'stderr')])
-    if (!this.jobs.delete(jobId)) return
+    const [exit] = await Promise.all([
+      handle.wait(),
+      forward(handle.stdout, 'stdout'),
+      forward(handle.stderr, 'stderr')
+    ])
+    if (!this.jobs.delete(jobId))
+      return
     const output: JobOutput = {
       stdoutPath: files.stdoutPath,
       stderrPath: files.stderrPath,
       stdoutBytes: exit.stdoutBytes,
       stderrBytes: exit.stderrBytes,
-      stdoutTail: await this.options.fs.readTail(files.stdoutPath, JOB_VIEW_BYTES).catch(() => new Uint8Array(0)),
-      stderrTail: await this.options.fs.readTail(files.stderrPath, JOB_VIEW_BYTES).catch(() => new Uint8Array(0)),
+      stdoutTail: await this.options.fs.readTail(
+        files.stdoutPath,
+        JOB_VIEW_BYTES
+      ).catch(() => new Uint8Array(0)),
+      stderrTail: await this.options.fs.readTail(
+        files.stderrPath,
+        JOB_VIEW_BYTES
+      ).catch(() => new Uint8Array(0)),
     }
     const cwd = await this.options.fs
       .readFile(files.cwdFile)
@@ -250,9 +347,17 @@ export function wrapScript(script: string): string {
   ].join('\n')
 }
 
-/** The root-command symlinks first in `PATH`, whatever `PATH` the device or the backend named (`runner.md` § Jobs and the tee). */
-function withPathPrefix(env: Record<string, string>, prefix: string[]): Record<string, string> {
-  if (prefix.length === 0) return env
-  const rest = (env.PATH ?? '').split(':').filter((entry) => entry !== '' && !prefix.includes(entry))
+/**
+ * The root-command symlinks first in `PATH`, whatever `PATH` the device or the
+ * backend named (`runner.md` § Jobs and the tee).
+ */
+function withPathPrefix(
+  env: Record<string, string>,
+  prefix: string[]
+): Record<string, string> {
+  if (prefix.length === 0)
+    return env
+  const rest = (env.PATH ?? '').split(':').filter((entry) => entry !== ''
+    && !prefix.includes(entry))
   return { ...env, PATH: [...prefix, ...rest].join(':') }
 }

@@ -12,7 +12,9 @@ const DEFAULT_UI_OPTIONS: AgentUiOptions = {
 
 const KEY: InjectionKey<AgentUiOptions> = Symbol('agent-ui-options')
 
-export function provideAgentUiOptions(options: Partial<AgentUiOptions> | undefined): void {
+export function provideAgentUiOptions(
+  options: Partial<AgentUiOptions> | undefined
+): void {
   provide(KEY, { ...DEFAULT_UI_OPTIONS, ...options })
 }
 

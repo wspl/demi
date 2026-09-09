@@ -5,7 +5,12 @@ import Dialog from '../ui/Dialog.vue'
 import IconButton from '../ui/IconButton.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import FileBrowser from './FileBrowser.vue'
-import type { FileBrowserHost, FileBrowserMode, FileBrowserPlaceGroup, FileBrowserSource } from './types'
+import type {
+  FileBrowserHost,
+  FileBrowserMode,
+  FileBrowserPlaceGroup,
+  FileBrowserSource
+} from './types'
 
 /**
  * The file browser as a modal: a plain title bar over the browser, which fills a
@@ -35,16 +40,32 @@ const emit = defineEmits<{
 
 const showHidden = defineModel<boolean>('showHidden', { default: false })
 
-const title = computed(() => props.title ?? (props.mode === 'file' ? 'Open file' : 'Select folder'))
+const title = computed(
+  () => props.title ?? (props.mode === 'file' ? 'Open file' : 'Select folder')
+)
 </script>
 
 <template>
-  <Dialog :is-open="isOpen" :overlay-store="overlayStore" size="lg" :label="title" hide-close @close="emit('close')">
+  <Dialog
+    :is-open="isOpen"
+    :overlay-store="overlayStore"
+    size="lg"
+    :label="title"
+    hide-close
+    @close="emit('close')"
+  >
     <div class="flex h-[32rem] min-h-0 flex-col">
       <!-- The title bar carries its own close so the button centers on the bar. -->
-      <header class="flex h-11 shrink-0 select-none items-center justify-between gap-2 border-b border-line pl-4 pr-2">
+      <header
+        class="flex h-11 shrink-0 select-none items-center justify-between gap-2 border-b border-line pl-4 pr-2"
+      >
         <h3 class="truncate text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
-        <IconButton :icon="X" variant="ghost" aria-label="Close" @click="emit('close')" />
+        <IconButton
+          :icon="X"
+          variant="ghost"
+          aria-label="Close"
+          @click="emit('close')"
+        />
       </header>
       <FileBrowser
         v-model:show-hidden="showHidden"

@@ -31,11 +31,18 @@ import {
 export class PoolAwareGrokAuthStore implements GrokAuthStore {
   private readonly pool: FileCredentialPool
   private readonly vendorHome: string
-  private readonly fileAuthOptions: Omit<FileGrokAuthStoreOptions, 'grokHome' | 'authFile' | 'entryKey'>
+  private readonly fileAuthOptions: Omit<FileGrokAuthStoreOptions, 'grokHome'
+    | 'authFile'
+    | 'entryKey'>
 
   constructor(
     pool: FileCredentialPool,
-    options: { grokHome?: string; fileAuthOptions?: Omit<FileGrokAuthStoreOptions, 'grokHome' | 'authFile' | 'entryKey'> } = {},
+    options: {
+      grokHome?: string;
+      fileAuthOptions?: Omit<FileGrokAuthStoreOptions, 'grokHome'
+        | 'authFile'
+        | 'entryKey'>
+    } = {},
   ) {
     this.pool = pool
     this.vendorHome = options.grokHome ?? defaultGrokHome()
@@ -70,7 +77,9 @@ export class PoolAwareGrokAuthStore implements GrokAuthStore {
   }
 }
 
-export function openGrokCredentialPool(options: { stateDir?: string } = {}): FileCredentialPool {
+export function openGrokCredentialPool(
+  options: { stateDir?: string } = {}
+): FileCredentialPool {
   return new FileCredentialPool({
     stateDir: options.stateDir,
     providerKey: 'grok-build',
@@ -105,7 +114,9 @@ export function createGrokBuildCredentials(
     return { credentialId, status }
   }
 
-  const setActive = async (credentialId: string): Promise<ProviderCredentialActive> => {
+  const setActive = async (
+    credentialId: string
+  ): Promise<ProviderCredentialActive> => {
     await pool.setActiveId(credentialId)
     options.quota?.clearLatest?.()
     return getActive()
@@ -132,29 +143,50 @@ export function createGrokBuildCredentials(
     }
     await pool.writeEntry(meta, `${JSON.stringify(file, null, 2)}\n`)
     const active = await pool.getActiveId()
-    if (!active) await pool.setActiveId(id)
+    if (!active)
+      await pool.setActiveId(id)
     options.quota?.clearLatest?.()
-    return { id: meta.id, label: meta.label, detail: meta.detail, updatedAt: meta.updatedAt }
+    return {
+      id: meta.id,
+      label: meta.label,
+      detail: meta.detail,
+      updatedAt: meta.updatedAt
+    }
   }
 
-  const importFromAuthJsonText = async (text: string, source: string): Promise<ProviderCredentialInfo[]> => {
+  const importFromAuthJsonText = async (
+    text: string,
+    source: string
+  ): Promise<ProviderCredentialInfo[]> => {
     let file: GrokAuthDotJson
     try {
       file = JSON.parse(text) as GrokAuthDotJson
     } catch {
-      throw new GrokAuthError('auth_invalid', 'Grok auth material is not valid JSON')
+      throw new GrokAuthError(
+        'auth_invalid',
+        'Grok auth material is not valid JSON'
+      )
     }
-    if (!isRecord(file)) throw new GrokAuthError('auth_invalid', 'Grok auth material is not an object')
+    if (!isRecord(file))
+      throw new GrokAuthError(
+        'auth_invalid',
+        'Grok auth material is not an object'
+      )
 
     const imported: ProviderCredentialInfo[] = []
     for (const [entryKey, value] of Object.entries(file)) {
-      if (!isRecord(value)) continue
+      if (!isRecord(value))
+        continue
       const entry = value as GrokAuthEntry
-      if (!nonEmptyString(entry.key)) continue
+      if (!nonEmptyString(entry.key))
+        continue
       imported.push(await importEntry(entryKey, entry, source))
     }
     if (imported.length === 0) {
-      throw new GrokAuthError('auth_missing', 'No Grok OAuth entries with access tokens found to import')
+      throw new GrokAuthError(
+        'auth_missing',
+        'No Grok OAuth entries with access tokens found to import'
+      )
     }
     return imported
   }
@@ -166,7 +198,9 @@ export function createGrokBuildCredentials(
     setActive,
     // Native RFC 8628 device flow: pending material streams out via onPending, the completed
     // entry never touches the vendor home and is imported straight into the pool.
-    beginLogin: async (loginOptions?: ProviderCredentialLoginOptions): Promise<ProviderCredentialLoginResult> => {
+    beginLogin: async (
+      loginOptions?: ProviderCredentialLoginOptions
+    ): Promise<ProviderCredentialLoginResult> => {
       try {
         const { entryKey, entry } = await runGrokDeviceLogin({
           signal: loginOptions?.signal,
@@ -177,7 +211,8 @@ export function createGrokBuildCredentials(
         const info = await importEntry(entryKey, entry, 'login:device')
         return { status: 'completed', credentialId: info.id }
       } catch (error) {
-        if (loginOptions?.signal?.aborted) return { status: 'cancelled' }
+        if (loginOptions?.signal?.aborted)
+          return { status: 'cancelled' }
         return { status: 'failed', message: errorMessage(error) }
       }
     },
@@ -187,7 +222,10 @@ export function createGrokBuildCredentials(
       try {
         text = await readFile(authFile, 'utf8')
       } catch {
-        throw new GrokAuthError('auth_missing', `No Grok auth at ${authFile}. Run grok login or beginLogin first.`)
+        throw new GrokAuthError(
+          'auth_missing',
+          `No Grok auth at ${authFile}. Run grok login or beginLogin first.`
+        )
       }
       // Import all entries, then activate the vendor-preferred one. Entries are
       // upserted by identityKey (= map entry key), so the preferred entry is
@@ -199,25 +237,42 @@ export function createGrokBuildCredentials(
         if (byKey) {
           await pool.setActiveId(byKey.id)
           options.quota?.clearLatest?.()
-          return { id: byKey.id, label: byKey.label, detail: byKey.detail, updatedAt: byKey.updatedAt }
+          return {
+            id: byKey.id,
+            label: byKey.label,
+            detail: byKey.detail,
+            updatedAt: byKey.updatedAt
+          }
         }
       }
       return all[0]!
     },
     add: async (input: ProviderCredentialAddInput) => {
       if (typeof input.authJsonText === 'string') {
-        const all = await importFromAuthJsonText(input.authJsonText, 'add:authJsonText')
+        const all = await importFromAuthJsonText(
+          input.authJsonText,
+          'add:authJsonText'
+        )
         return all[0]!
       }
       if (typeof input.authFile === 'string') {
         const text = await readFile(input.authFile, 'utf8')
-        const all = await importFromAuthJsonText(text, `add:authFile:${input.authFile}`)
+        const all = await importFromAuthJsonText(
+          text,
+          `add:authFile:${input.authFile}`
+        )
         return all[0]!
       }
       if (typeof input.entryKey === 'string' && isRecord(input.entry)) {
-        return importEntry(input.entryKey, input.entry as GrokAuthEntry, 'add:entry')
+        return importEntry(
+          input.entryKey,
+          input.entry as GrokAuthEntry,
+          'add:entry'
+        )
       }
-      throw new Error('Grok credentials.add expects authJsonText, authFile, or { entryKey, entry }')
+      throw new Error(
+        'Grok credentials.add expects authJsonText, authFile, or { entryKey, entry }'
+      )
     },
     remove: async (credentialId: string) => {
       await pool.remove(credentialId)

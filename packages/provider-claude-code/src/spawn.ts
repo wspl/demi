@@ -27,4 +27,6 @@ export interface ClaudeSpawnExit {
   spawnError?: { kind: string }
 }
 
-export type ClaudeSpawn = (params: ClaudeSpawnParams) => Promise<ClaudeSpawnHandle>
+export type ClaudeSpawn = (
+  params: ClaudeSpawnParams
+) => Promise<ClaudeSpawnHandle>

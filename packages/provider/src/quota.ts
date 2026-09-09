@@ -29,7 +29,10 @@ export interface ProviderQuotaWindow {
   /** ISO-8601 reset time when known. */
   resetsAt: string | null
   severity?: ProviderQuotaSeverity | null
-  scope?: { kind: string; label?: string } | null
+  scope?: {
+    kind: string;
+    label?: string
+  } | null
 }
 
 export interface ProviderQuotaPlan {
@@ -59,14 +62,19 @@ export type ProviderQuotaCapability =
       mode: 'supported'
       canProbe: boolean
       canObserve: boolean
-      /** free = dedicated usage API; minimal_request = burns a tiny inference */
+      /**
+       * free = dedicated usage API; minimal_request = burns a tiny inference
+       */
       probeCost?: ProviderQuotaProbeCost
       staleAfterMs?: number
     }
 
 export interface ProviderQuotaProbeOptions {
   signal?: AbortSignal
-  /** Bypass in-memory cache freshness for probe implementations that short-circuit. */
+  /**
+   * Bypass in-memory cache freshness for probe implementations that
+   * short-circuit.
+   */
   force?: boolean
 }
 
@@ -81,13 +89,18 @@ export interface ProviderQuotaObserveInput {
   body?: unknown
 }
 
-export type ProviderQuotaObserver = (input: ProviderQuotaObserveInput) => ProviderQuotaSnapshot | null
+export type ProviderQuotaObserver = (
+  input: ProviderQuotaObserveInput
+) => ProviderQuotaSnapshot | null
 
 export interface ProviderQuota {
   capability(): ProviderQuotaCapability
   probe(options?: ProviderQuotaProbeOptions): Promise<ProviderQuotaSnapshot>
   latest(): ProviderQuotaSnapshot | null
-  /** Capture before an async request; clearLatest invalidates this observer so old replies cannot refill the cache. */
+  /**
+   * Capture before an async request; clearLatest invalidates this observer so
+   * old replies cannot refill the cache.
+   */
   captureObserver(): ProviderQuotaObserver
   /**
    * Drop the in-memory latest snapshot (e.g. after credentials.setActive so the
@@ -98,12 +111,16 @@ export interface ProviderQuota {
    * Optional passive update from a vendor HTTP response (headers, etc.).
    * Returns the new snapshot when observation succeeded; otherwise null.
    */
-  observeResponse?(input: ProviderQuotaObserveInput): ProviderQuotaSnapshot | null
+  observeResponse?(
+    input: ProviderQuotaObserveInput
+  ): ProviderQuotaSnapshot | null
 }
 
 export class ProviderQuotaInvalidatedError extends Error {
   constructor(readonly providerId: string) {
-    super(`Provider "${providerId}" quota request was invalidated; query the current account again`)
+    super(
+      `Provider "${providerId}" quota request was invalidated; query the current account again`
+    )
     this.name = 'ProviderQuotaInvalidatedError'
   }
 }
@@ -132,7 +149,8 @@ export async function ensureQuota(
   options: EnsureQuotaOptions = {},
 ): Promise<ProviderQuotaSnapshot | null> {
   const cap = quota.capability()
-  if (cap.mode === 'none') return null
+  if (cap.mode === 'none')
+    return null
 
   const latest = quota.latest()
   const maxStale = options.maxStaleMs ?? cap.staleAfterMs ?? 60_000
@@ -146,7 +164,10 @@ export async function ensureQuota(
   }
 
   if (cap.canProbe) {
-    return quota.probe({ signal: options.signal, force: options.prefer === 'probe' })
+    return quota.probe({
+      signal: options.signal,
+      force: options.prefer === 'probe'
+    })
   }
 
   return latest
@@ -162,12 +183,16 @@ export interface CreateProviderQuotaOptions {
    * Active fetch. Should return plan/windows/account/raw; controller fills
    * providerId, observedAt, source.
    */
-  probe: (options: ProviderQuotaProbeOptions) => Promise<ProviderQuotaProbeResult>
+  probe: (
+    options: ProviderQuotaProbeOptions
+  ) => Promise<ProviderQuotaProbeResult>
   /**
    * Optional passive header/body observation. Return null when headers do not
    * carry quota windows.
    */
-  observe?: (input: ProviderQuotaObserveInput) => ProviderQuotaProbeResult | null
+  observe?: (
+    input: ProviderQuotaObserveInput
+  ) => ProviderQuotaProbeResult | null
 }
 
 export interface ProviderQuotaProbeResult {
@@ -178,13 +203,16 @@ export interface ProviderQuotaProbeResult {
 }
 
 /** In-memory latest snapshot + capability wiring for concrete providers. */
-export function createProviderQuota(options: CreateProviderQuotaOptions): ProviderQuota {
+export function createProviderQuota(
+  options: CreateProviderQuotaOptions
+): ProviderQuota {
   let latest: ProviderQuotaSnapshot | null = null
   let generation = 0
   const canObserve = options.canObserve ?? Boolean(options.observe)
 
   const capability = (): ProviderQuotaCapability => {
-    if (!options.canProbe && !canObserve) return { mode: 'none' }
+    if (!options.canProbe && !canObserve)
+      return { mode: 'none' }
     return {
       mode: 'supported',
       canProbe: options.canProbe,
@@ -204,8 +232,12 @@ export function createProviderQuota(options: CreateProviderQuotaOptions): Provid
       observedAt: new Date().toISOString(),
       source,
       plan: partial.plan === undefined ? previous?.plan ?? null : partial.plan,
-      accountLabel: partial.accountLabel === undefined ? previous?.accountLabel ?? null : partial.accountLabel,
-      windows: previous ? mergeQuotaWindows(previous.windows, partial.windows) : partial.windows,
+      accountLabel: partial.accountLabel === undefined
+        ? previous?.accountLabel ?? null
+        : partial.accountLabel,
+      windows: previous
+        ? mergeQuotaWindows(previous.windows, partial.windows)
+        : partial.windows,
       raw: partial.raw,
     }
     latest = snapshot
@@ -217,17 +249,21 @@ export function createProviderQuota(options: CreateProviderQuotaOptions): Provid
     latest: () => latest,
     captureObserver: () => {
       const captured = generation
-      return (input) => captured === generation ? quota.observeResponse?.(input) ?? null : null
+      return (input) => captured === generation
+        ? quota.observeResponse?.(input) ?? null
+        : null
     },
     clearLatest: () => {
       generation += 1
       latest = null
     },
     async probe(probeOptions = {}) {
-      if (!options.canProbe) throw new ProviderQuotaUnsupportedError(options.providerId)
+      if (!options.canProbe)
+        throw new ProviderQuotaUnsupportedError(options.providerId)
       const captured = generation
       const partial = await options.probe(probeOptions)
-      if (captured !== generation) throw new ProviderQuotaInvalidatedError(options.providerId)
+      if (captured !== generation)
+        throw new ProviderQuotaInvalidatedError(options.providerId)
       return materialize(partial, 'probe')
     },
   }
@@ -236,7 +272,8 @@ export function createProviderQuota(options: CreateProviderQuotaOptions): Provid
     const observe = options.observe
     quota.observeResponse = (input) => {
       const partial = observe(input)
-      if (!partial) return null
+      if (!partial)
+        return null
       return materialize(partial, 'observation')
     }
   }
@@ -252,22 +289,31 @@ function mergeQuotaWindows(
   const merged = previous.map((window) => observedById.get(window.id) ?? window)
   const previousIds = new Set(previous.map((window) => window.id))
   for (const window of observed) {
-    if (!previousIds.has(window.id)) merged.push(window)
+    if (!previousIds.has(window.id))
+      merged.push(window)
   }
   return merged
 }
 
 /** Clamp percent into 0–100 or null. */
 export function clampUsedPercent(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null
-  if (value < 0) return 0
-  if (value > 100) return 100
+  if (typeof value !== 'number' || !Number.isFinite(value))
+    return null
+  if (value < 0)
+    return 0
+  if (value > 100)
+    return 100
   return value
 }
 
 /** used/limit → percent, or null when limit is missing/zero. */
-export function usedPercentFromRatio(used: number | null | undefined, limit: number | null | undefined): number | null {
-  if (used == null || limit == null || !Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return null
+export function usedPercentFromRatio(
+  used: number | null | undefined,
+  limit: number | null | undefined
+): number | null {
+  if (used == null || limit == null || !Number.isFinite(used)
+    || !Number.isFinite(limit)
+    || limit <= 0) return null
   return clampUsedPercent((used / limit) * 100)
 }
 
@@ -283,14 +329,20 @@ export function unixSecondsToIso(value: unknown): string | null {
       return unixSecondsToIso(asNum)
     }
     const parsed = Date.parse(value)
-    if (Number.isFinite(parsed)) return new Date(parsed).toISOString()
+    if (Number.isFinite(parsed))
+      return new Date(parsed).toISOString()
   }
   return null
 }
 
-export function severityFromUsedPercent(usedPercent: number | null): ProviderQuotaSeverity | null {
-  if (usedPercent == null) return null
-  if (usedPercent >= 95) return 'critical'
-  if (usedPercent >= 80) return 'warning'
+export function severityFromUsedPercent(
+  usedPercent: number | null
+): ProviderQuotaSeverity | null {
+  if (usedPercent == null)
+    return null
+  if (usedPercent >= 95)
+    return 'critical'
+  if (usedPercent >= 80)
+    return 'warning'
   return 'normal'
 }

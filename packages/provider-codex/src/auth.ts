@@ -1,9 +1,27 @@
-import { delay, errorCode, errorMessage, isRecord, nonEmptyString, stringOrNull } from '@demicodes/utils'
+import {
+  delay,
+  errorCode,
+  errorMessage,
+  isRecord,
+  nonEmptyString,
+  stringOrNull
+} from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
-import { chmod, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  rm,
+  writeFile
+} from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { redactCredentialText, type ProviderAuthState } from '@demicodes/provider'
+import {
+  redactCredentialText,
+  type ProviderAuthState
+} from '@demicodes/provider'
 
 export type CodexAuthMode =
   | 'apiKey'
@@ -70,7 +88,9 @@ export interface CodexAuthStore {
   resolveAuth(options?: { forceRefresh?: boolean }): Promise<CodexResolvedAuth>
 }
 
-export async function codexAuthStatus(options: FileCodexAuthStoreOptions = {}): Promise<ProviderAuthState> {
+export async function codexAuthStatus(
+  options: FileCodexAuthStoreOptions = {}
+): Promise<ProviderAuthState> {
   return new FileCodexAuthStore(options).status()
 }
 
@@ -90,9 +110,15 @@ export interface RefreshTokenResponse {
   refresh_token?: string
 }
 
-export type CodexTokenRefresh = (refreshToken: string, signal?: AbortSignal) => Promise<RefreshTokenResponse>
+export type CodexTokenRefresh = (
+  refreshToken: string,
+  signal?: AbortSignal
+) => Promise<RefreshTokenResponse>
 
-/** Codex error text may embed the env-provided API key by name; redact it alongside the standard fields. */
+/**
+ * Codex error text may embed the env-provided API key by name; redact it
+ * alongside the standard fields.
+ */
 const SECRET_FIELD_PATTERNS = ['OPENAI_API_KEY']
 
 export function redactCodexSecretText(text: string): string {
@@ -131,33 +157,70 @@ export class FileCodexAuthStore implements CodexAuthStore {
     try {
       const auth = await this.resolveAuth()
       if (auth.kind === 'chatgpt') {
-        return { status: 'authenticated', accountLabel: auth.email ?? auth.accountId }
+        return {
+          status: 'authenticated',
+          accountLabel: auth.email ?? auth.accountId
+        }
       }
-      if (auth.kind === 'apiKey') return { status: 'authenticated', accountLabel: 'OPENAI_API_KEY' }
-      if (auth.kind === 'personalAccessToken') return { status: 'authenticated', accountLabel: auth.accountId ?? 'personal access token' }
+      if (auth.kind === 'apiKey')
+        return {
+          status: 'authenticated',
+          accountLabel: 'OPENAI_API_KEY'
+        }
+      if (auth.kind === 'personalAccessToken')
+        return {
+          status: 'authenticated',
+          accountLabel: auth.accountId ?? 'personal access token'
+        }
       return { status: 'authenticated', accountLabel: auth.accountId }
     } catch (error) {
-      if (error instanceof CodexAuthError && error.code === 'auth_missing') return { status: 'unauthenticated', message: error.message }
-      if (error instanceof CodexAuthError && error.code === 'auth_unsupported') return { status: 'error', message: error.message }
-      return { status: 'error', message: redactCodexSecretText(error instanceof Error ? error.message : String(error)) }
+      if (error instanceof CodexAuthError && error.code === 'auth_missing')
+        return {
+        status: 'unauthenticated',
+        message: error.message
+      }
+      if (error instanceof CodexAuthError && error.code === 'auth_unsupported')
+        return {
+        status: 'error',
+        message: error.message
+      }
+      return {
+        status: 'error',
+        message: redactCodexSecretText(error instanceof Error
+          ? error.message
+          : String(error))
+      }
     }
   }
 
-  async resolveAuth(options: { forceRefresh?: boolean } = {}): Promise<CodexResolvedAuth> {
+  async resolveAuth(
+    options: { forceRefresh?: boolean } = {}
+  ): Promise<CodexResolvedAuth> {
     const auth = await this.readAuthFile()
     const mode = resolvedAuthMode(auth)
 
     if (mode === 'bedrockApiKey') {
-      throw new CodexAuthError('auth_unsupported', 'Codex provider does not support Bedrock auth')
+      throw new CodexAuthError(
+        'auth_unsupported',
+        'Codex provider does not support Bedrock auth'
+      )
     }
     if (mode === 'apiKey') {
       const key = nonEmptyString(auth.OPENAI_API_KEY)
-      if (!key) throw new CodexAuthError('auth_missing', `No OPENAI_API_KEY found in ${this.authFile}`)
+      if (!key)
+        throw new CodexAuthError(
+          'auth_missing',
+          `No OPENAI_API_KEY found in ${this.authFile}`
+        )
       return { kind: 'apiKey', mode, apiKey: key, authFile: this.authFile }
     }
     if (mode === 'personalAccessToken') {
       const token = nonEmptyString(auth.personal_access_token)
-      if (!token) throw new CodexAuthError('auth_missing', `No personal access token found in ${this.authFile}`)
+      if (!token)
+        throw new CodexAuthError(
+          'auth_missing',
+          `No personal access token found in ${this.authFile}`
+        )
       const claims = parseChatGptClaims(token)
       return {
         kind: 'personalAccessToken',
@@ -173,16 +236,28 @@ export class FileCodexAuthStore implements CodexAuthStore {
 
     const tokens = auth.tokens
     if (!tokens || typeof tokens !== 'object') {
-      throw new CodexAuthError('auth_missing', `No ChatGPT tokens found in ${this.authFile}`)
+      throw new CodexAuthError(
+        'auth_missing',
+        `No ChatGPT tokens found in ${this.authFile}`
+      )
     }
     const accessToken = nonEmptyString(tokens.access_token)
-    if (!accessToken) throw new CodexAuthError('auth_missing', `No ChatGPT access token found in ${this.authFile}`)
+    if (!accessToken)
+      throw new CodexAuthError(
+        'auth_missing',
+        `No ChatGPT access token found in ${this.authFile}`
+      )
 
     const refreshToken = nonEmptyString(tokens.refresh_token) ?? null
     const claims = parseChatGptClaims(accessToken)
     const idClaims = parseIdTokenClaims(tokens.id_token)
-    const accountId = nonEmptyString(tokens.account_id) ?? claims.accountId ?? idClaims.accountId
-    if (!accountId) throw new CodexAuthError('auth_missing', `No ChatGPT account id found in ${this.authFile}`)
+    const accountId = nonEmptyString(tokens.account_id) ?? claims.accountId
+      ?? idClaims.accountId
+    if (!accountId)
+      throw new CodexAuthError(
+        'auth_missing',
+        `No ChatGPT account id found in ${this.authFile}`
+      )
 
     const expiresAt = parseJwtExpiration(accessToken)
     const lastRefresh = parseDate(auth.last_refresh)
@@ -208,18 +283,26 @@ export class FileCodexAuthStore implements CodexAuthStore {
     }
   }
 
-  private async refreshAndResolve(auth: CodexAuthDotJson, refreshToken: string): Promise<CodexResolvedAuth> {
+  private async refreshAndResolve(
+    auth: CodexAuthDotJson,
+    refreshToken: string
+  ): Promise<CodexResolvedAuth> {
     return this.withAuthFileLock(async () => {
       const latest = await this.readAuthFile()
       const latestTokens = latest.tokens
       const latestRefreshToken =
-        latestTokens && typeof latestTokens === 'object' ? nonEmptyString(latestTokens.refresh_token) ?? refreshToken : refreshToken
+        latestTokens && typeof latestTokens === 'object'
+          ? nonEmptyString(latestTokens.refresh_token) ?? refreshToken
+          : refreshToken
       const response = await this.refreshImpl(latestRefreshToken)
       const nextTokens: CodexTokenData = {
-        ...(latestTokens && typeof latestTokens === 'object' ? latestTokens : {}),
+        ...(latestTokens && typeof latestTokens
+          === 'object' ? latestTokens : {}),
         ...(response.id_token ? { id_token: response.id_token } : {}),
         ...(response.access_token ? { access_token: response.access_token } : {}),
-        ...(response.refresh_token ? { refresh_token: response.refresh_token } : {}),
+        ...(response.refresh_token
+          ? { refresh_token: response.refresh_token }
+          : {}),
       }
       const nextAuth: CodexAuthDotJson = {
         ...latest,
@@ -237,9 +320,15 @@ export class FileCodexAuthStore implements CodexAuthStore {
       return JSON.parse(await readFile(this.authFile, 'utf8')) as CodexAuthDotJson
     } catch (error) {
       if (errorCode(error) === 'ENOENT') {
-        throw new CodexAuthError('auth_missing', `Codex auth file not found: ${this.authFile}`)
+        throw new CodexAuthError(
+          'auth_missing',
+          `Codex auth file not found: ${this.authFile}`
+        )
       }
-      throw new CodexAuthError('auth_invalid', `Failed to read Codex auth file ${this.authFile}: ${redactCodexSecretText(errorMessage(error))}`)
+      throw new CodexAuthError(
+        'auth_invalid',
+        `Failed to read Codex auth file ${this.authFile}: ${redactCodexSecretText(errorMessage(error))}`
+      )
     }
   }
 
@@ -252,8 +341,12 @@ export class FileCodexAuthStore implements CodexAuthStore {
       try {
         handle = await open(lockFile, 'wx', 0o600)
       } catch (error) {
-        if (errorCode(error) !== 'EEXIST' || Date.now() - started > this.lockTimeoutMs) {
-          throw new CodexAuthError('auth_lock_failed', `Failed to lock Codex auth file: ${redactCodexSecretText(errorMessage(error))}`)
+        if (errorCode(error) !== 'EEXIST'
+          || Date.now() - started > this.lockTimeoutMs) {
+          throw new CodexAuthError(
+            'auth_lock_failed',
+            `Failed to lock Codex auth file: ${redactCodexSecretText(errorMessage(error))}`
+          )
         }
         await delay(this.lockRetryDelayMs)
       }
@@ -297,15 +390,24 @@ export class CodexAuthError extends Error {
 }
 
 export function defaultCodexHome(): string {
-  return process.env.CODEX_HOME && process.env.CODEX_HOME.trim() ? process.env.CODEX_HOME : join(homedir(), '.codex')
+  return process.env.CODEX_HOME
+    && process.env.CODEX_HOME.trim() ? process.env.CODEX_HOME : join(
+    homedir(),
+    '.codex'
+  )
 }
 
 export function resolvedAuthMode(auth: CodexAuthDotJson): CodexAuthMode {
-  if (auth.auth_mode) return auth.auth_mode
-  if (auth.personal_access_token) return 'personalAccessToken'
-  if (auth.bedrock_api_key) return 'bedrockApiKey'
-  if (auth.OPENAI_API_KEY) return 'apiKey'
-  if (auth.agent_identity) return 'agentIdentity'
+  if (auth.auth_mode)
+    return auth.auth_mode
+  if (auth.personal_access_token)
+    return 'personalAccessToken'
+  if (auth.bedrock_api_key)
+    return 'bedrockApiKey'
+  if (auth.OPENAI_API_KEY)
+    return 'apiKey'
+  if (auth.agent_identity)
+    return 'agentIdentity'
   return 'chatgpt'
 }
 
@@ -315,14 +417,20 @@ export function parseJwtExpiration(jwt: string): Date | null {
   return typeof exp === 'number' ? new Date(exp * 1000) : null
 }
 
-export function parseChatGptClaims(jwt: string): {
+export function parseChatGptClaims(
+  jwt: string
+): {
   accountId: string | null
   email: string | null
   isFedrampAccount: boolean
 } {
   const payload = decodeJwtPayload(jwt)
-  const auth = isRecord(payload?.['https://api.openai.com/auth']) ? payload['https://api.openai.com/auth'] : null
-  const profile = isRecord(payload?.['https://api.openai.com/profile']) ? payload['https://api.openai.com/profile'] : null
+  const auth = isRecord(payload?.['https://api.openai.com/auth'])
+    ? payload['https://api.openai.com/auth']
+    : null
+  const profile = isRecord(payload?.['https://api.openai.com/profile'])
+    ? payload['https://api.openai.com/profile']
+    : null
   return {
     accountId: stringOrNull(auth?.chatgpt_account_id),
     email: stringOrNull(payload?.email) ?? stringOrNull(profile?.email),
@@ -330,13 +438,21 @@ export function parseChatGptClaims(jwt: string): {
   }
 }
 
-export function parseIdTokenClaims(idToken: unknown): {
+export function parseIdTokenClaims(
+  idToken: unknown
+): {
   accountId: string | null
   email: string | null
   isFedrampAccount: boolean
 } {
-  if (typeof idToken === 'string') return parseChatGptClaims(idToken)
-  if (!isRecord(idToken)) return { accountId: null, email: null, isFedrampAccount: false }
+  if (typeof idToken === 'string')
+    return parseChatGptClaims(idToken)
+  if (!isRecord(idToken))
+    return {
+      accountId: null,
+      email: null,
+      isFedrampAccount: false
+    }
   return {
     accountId: stringOrNull(idToken.chatgpt_account_id),
     email: stringOrNull(idToken.email),
@@ -344,7 +460,10 @@ export function parseIdTokenClaims(idToken: unknown): {
   }
 }
 
-export async function refreshCodexToken(refreshToken: string, signal?: AbortSignal): Promise<RefreshTokenResponse> {
+export async function refreshCodexToken(
+  refreshToken: string,
+  signal?: AbortSignal
+): Promise<RefreshTokenResponse> {
   const response = await fetch(TOKEN_REFRESH_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -356,24 +475,45 @@ export async function refreshCodexToken(refreshToken: string, signal?: AbortSign
     signal,
   })
   if (!response.ok) {
-    throw new CodexAuthError('auth_refresh_failed', `Codex token refresh failed with HTTP ${response.status}`)
+    throw new CodexAuthError(
+      'auth_refresh_failed',
+      `Codex token refresh failed with HTTP ${response.status}`
+    )
   }
   return (await response.json()) as RefreshTokenResponse
 }
 
 
-function resolveChatGptAuthFromFile(auth: CodexAuthDotJson, authFile: string): CodexResolvedAuth {
+function resolveChatGptAuthFromFile(
+  auth: CodexAuthDotJson,
+  authFile: string
+): CodexResolvedAuth {
   const tokens = auth.tokens
-  if (!tokens || typeof tokens !== 'object') throw new CodexAuthError('auth_missing', `No ChatGPT tokens found in ${authFile}`)
+  if (!tokens || typeof tokens !== 'object')
+    throw new CodexAuthError(
+      'auth_missing',
+      `No ChatGPT tokens found in ${authFile}`
+    )
   const accessToken = nonEmptyString(tokens.access_token)
-  if (!accessToken) throw new CodexAuthError('auth_missing', `No ChatGPT access token found in ${authFile}`)
+  if (!accessToken)
+    throw new CodexAuthError(
+      'auth_missing',
+      `No ChatGPT access token found in ${authFile}`
+    )
   const claims = parseChatGptClaims(accessToken)
   const idClaims = parseIdTokenClaims(tokens.id_token)
-  const accountId = nonEmptyString(tokens.account_id) ?? claims.accountId ?? idClaims.accountId
-  if (!accountId) throw new CodexAuthError('auth_missing', `No ChatGPT account id found in ${authFile}`)
+  const accountId = nonEmptyString(tokens.account_id) ?? claims.accountId
+    ?? idClaims.accountId
+  if (!accountId)
+    throw new CodexAuthError(
+      'auth_missing',
+      `No ChatGPT account id found in ${authFile}`
+    )
   return {
     kind: 'chatgpt',
-    mode: resolvedAuthMode(auth) === 'chatgptAuthTokens' ? 'chatgptAuthTokens' : 'chatgpt',
+    mode: resolvedAuthMode(auth) === 'chatgptAuthTokens'
+      ? 'chatgptAuthTokens'
+      : 'chatgpt',
     accessToken,
     refreshToken: nonEmptyString(tokens.refresh_token) ?? null,
     accountId,
@@ -384,10 +524,16 @@ function resolveChatGptAuthFromFile(auth: CodexAuthDotJson, authFile: string): C
   }
 }
 
-function resolveAgentIdentity(auth: CodexAuthDotJson, authFile: string): CodexResolvedAuth {
+function resolveAgentIdentity(
+  auth: CodexAuthDotJson,
+  authFile: string
+): CodexResolvedAuth {
   const value = auth.agent_identity
   if (!isRecord(value)) {
-    throw new CodexAuthError('auth_unsupported', 'Codex agent identity auth requires an auth record')
+    throw new CodexAuthError(
+      'auth_unsupported',
+      'Codex agent identity auth requires an auth record'
+    )
   }
   const authorization = nonEmptyString(value.authorization)
   const accountId = nonEmptyString(value.account_id)
@@ -407,7 +553,10 @@ function resolveAgentIdentity(auth: CodexAuthDotJson, authFile: string): CodexRe
   }
 }
 
-async function writeAuthJsonAtomic(authFile: string, auth: CodexAuthDotJson): Promise<void> {
+async function writeAuthJsonAtomic(
+  authFile: string,
+  auth: CodexAuthDotJson
+): Promise<void> {
   await mkdir(dirname(authFile), { recursive: true })
   const temp = `${authFile}.${process.pid}.${Date.now()}.tmp`
   await writeFile(temp, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 })
@@ -417,17 +566,23 @@ async function writeAuthJsonAtomic(authFile: string, auth: CodexAuthDotJson): Pr
 
 function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
   const parts = jwt.split('.')
-  if (parts.length !== 3 || !parts[1]) return null
+  if (parts.length !== 3 || !parts[1])
+    return null
   try {
     const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
-    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8')) as Record<string, unknown>
+    return JSON.parse(Buffer.from(padded, 'base64')
+      .toString('utf8')) as Record<string, unknown>
   } catch {
     return null
   }
 }
 
-function expiresWithin(expiresAt: Date | null, now: Date, skewMs: number): boolean {
+function expiresWithin(
+  expiresAt: Date | null,
+  now: Date,
+  skewMs: number
+): boolean {
   return expiresAt !== null && expiresAt.getTime() - now.getTime() <= skewMs
 }
 
@@ -436,7 +591,8 @@ function olderThan(value: Date | null, now: Date, ageMs: number): boolean {
 }
 
 function parseDate(value: unknown): Date | null {
-  if (typeof value !== 'string' || !value) return null
+  if (typeof value !== 'string' || !value)
+    return null
   const ms = Date.parse(value)
   return Number.isFinite(ms) ? new Date(ms) : null
 }

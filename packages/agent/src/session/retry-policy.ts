@@ -5,7 +5,9 @@
  * retry can never duplicate partially streamed output.
  */
 export interface TurnRetryPolicy {
-  /** Total attempts including the first (default 4 = 1 original + 3 retries). */
+  /**
+   * Total attempts including the first (default 4 = 1 original + 3 retries).
+   */
   maxAttempts: number
   /** Base for exponential backoff with full jitter (default 1000ms). */
   baseDelayMs: number
@@ -22,11 +24,16 @@ export const DEFAULT_TURN_RETRY_POLICY: TurnRetryPolicy = {
   retryableCodes: ['rate_limit', 'overloaded'],
 }
 
-export function resolveRetryPolicy(overrides: Partial<TurnRetryPolicy> | undefined): TurnRetryPolicy {
+export function resolveRetryPolicy(
+  overrides: Partial<TurnRetryPolicy> | undefined
+): TurnRetryPolicy {
   return { ...DEFAULT_TURN_RETRY_POLICY, ...overrides }
 }
 
-export function isRetryableCode(policy: TurnRetryPolicy, code: string | null): boolean {
+export function isRetryableCode(
+  policy: TurnRetryPolicy,
+  code: string | null
+): boolean {
   return code !== null && policy.retryableCodes.includes(code)
 }
 
@@ -34,10 +41,18 @@ export function isRetryableCode(policy: TurnRetryPolicy, code: string | null): b
  * Delay before retry `attempt` (1-based): a provider-supplied Retry-After wins,
  * otherwise exponential backoff with full jitter, capped at `maxDelayMs`.
  */
-export function retryDelayMs(policy: TurnRetryPolicy, attempt: number, retryAfterMs: number | null): number {
-  if (retryAfterMs !== null && Number.isFinite(retryAfterMs) && retryAfterMs >= 0) {
+export function retryDelayMs(
+  policy: TurnRetryPolicy,
+  attempt: number,
+  retryAfterMs: number | null
+): number {
+  if (retryAfterMs !== null && Number.isFinite(retryAfterMs)
+    && retryAfterMs >= 0) {
     return Math.min(Math.floor(retryAfterMs), policy.maxDelayMs)
   }
-  const ceiling = Math.min(policy.maxDelayMs, policy.baseDelayMs * 2 ** (attempt - 1))
+  const ceiling = Math.min(
+    policy.maxDelayMs,
+    policy.baseDelayMs * 2 ** (attempt - 1)
+  )
   return Math.floor(Math.random() * ceiling)
 }

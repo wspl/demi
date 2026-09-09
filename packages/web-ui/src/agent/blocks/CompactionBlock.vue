@@ -9,13 +9,16 @@ const props = defineProps<{
 }>()
 
 function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`
+  if (tokens >= 1_000_000)
+    return `${(tokens / 1_000_000).toFixed(1)}M`
+  if (tokens >= 1_000)
+    return `${(tokens / 1_000).toFixed(1)}K`
   return String(tokens)
 }
 
 const label = computed(() => {
-  if (props.isCompacting) return 'Compacting context...'
+  if (props.isCompacting)
+    return 'Compacting context...'
   return `Context compacted to ~${formatTokens(props.summaryTokens)} tokens`
 })
 </script>

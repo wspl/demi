@@ -16,7 +16,9 @@ export const fileIconTheme = shallowRef<FileIconTheme | null>(null)
 let loading: Promise<void> | undefined
 
 export function ensureFileIconTheme(): void {
-  loading ??= import('material-icon-theme/dist/material-icons.json').then((module) => {
+  loading ??= import('material-icon-theme/dist/material-icons.json').then((
+    module
+  ) => {
     fileIconTheme.value = module.default as FileIconTheme
   })
 }

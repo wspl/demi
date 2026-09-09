@@ -8,7 +8,10 @@
 
 const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 
-/** 128 random bits as 26 Crockford base32 characters, dash-grouped for copy-paste. */
+/**
+ * 128 random bits as 26 Crockford base32 characters, dash-grouped for
+ * copy-paste.
+ */
 export function generateClaimCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16))
   let bits = 0
@@ -22,11 +25,15 @@ export function generateClaimCode(): string {
       out += CROCKFORD_ALPHABET[(acc >> bits) & 31]
     }
   }
-  if (bits > 0) out += CROCKFORD_ALPHABET[(acc << (5 - bits)) & 31]
+  if (bits > 0)
+    out += CROCKFORD_ALPHABET[(acc << (5 - bits)) & 31]
   return out.replace(/(.{4})(?=.)/g, '$1-')
 }
 
-/** Uppercases, strips separators, and maps the Crockford confusables (O→0, I/L→1). */
+/**
+ * Uppercases, strips separators, and maps the Crockford confusables (O→0,
+ * I/L→1).
+ */
 export function normalizeClaimCode(code: string): string {
   return code
     .toUpperCase()

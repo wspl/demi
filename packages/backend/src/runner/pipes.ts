@@ -7,7 +7,13 @@
 // before the handler runs, and the handler decides whether it reads and
 // writes them itself or attaches them to a job elsewhere.
 import type { CommandIO } from '@demicodes/shell'
-import { ByteChannel, deferred, errorMessage, noop, type Deferred } from '@demicodes/utils'
+import {
+  ByteChannel,
+  deferred,
+  errorMessage,
+  noop,
+  type Deferred
+} from '@demicodes/utils'
 import { generateDeviceToken } from './claim-codes'
 
 /** Where a pipe's bytes come from or go, as the wire knows it. */
@@ -22,14 +28,25 @@ export interface Pipe {
   /** Resolves once the sink drained the body; rejects when the pipe failed. */
   done: Promise<void>
   /** The wire's name for this pipe. */
-  ref(): { id: string; url: string }
-  /** The sink is this process: the body, pulled as it is iterated. Fixes the sink on the first pull. */
+  ref(): {
+    id: string;
+    url: string
+  }
+  /**
+   * The sink is this process: the body, pulled as it is iterated. Fixes the
+   * sink on the first pull.
+   */
   stream(): AsyncIterable<Uint8Array>
-  /** The source is this process: a writer with backpressure. Fixes the source on the first write or `end`. */
+  /**
+   * The source is this process: a writer with backpressure. Fixes the source on
+   * the first write or `end`.
+   */
   writer(): PipeWriter
   /** The sink is a device that will `GET`; refused once the sink is fixed. */
   sinkTo(deviceId: string): void
-  /** The source is a device that will `PUT`; refused once the source is fixed. */
+  /**
+   * The source is a device that will `PUT`; refused once the source is fixed.
+   */
   sourceFrom(deviceId: string): void
 }
 
@@ -40,7 +57,10 @@ export interface PipeWriter {
   fail(error: unknown): void
 }
 
-type End = { kind: 'device'; deviceId: string } | { kind: 'process' } | null
+type End = {
+  kind: 'device';
+  deviceId: string
+} | { kind: 'process' } | null
 
 interface PendingPipe {
   source: End
@@ -73,7 +93,10 @@ export class PipeBroker {
       sink: sink ? { kind: 'device', deviceId: sink.deviceId } : null,
       body: deferred(),
       drained: deferred(),
-      timer: setTimeout(() => this.fail(id, 'an end never arrived'), this.options.timeoutMs ?? 120_000),
+      timer: setTimeout(
+        () => this.fail(id, 'an end never arrived'),
+        this.options.timeoutMs ?? 120_000
+      ),
       sourceArrived: false,
       sinkArrived: false,
       failure: null,
@@ -92,19 +115,43 @@ export class PipeBroker {
       stream: () => this.processSink(id),
       writer: () => this.processSource(id),
       sinkTo: (deviceId) => this.fix(id, 'sink', { kind: 'device', deviceId }),
-      sourceFrom: (deviceId) => this.fix(id, 'source', { kind: 'device', deviceId }),
+      sourceFrom: (deviceId) => this.fix(
+        id,
+        'source',
+        { kind: 'device', deviceId }
+      ),
     }
   }
 
-  /** `PUT /api/pipes/:id` by `deviceId`: the body streams to the sink; resolves with the HTTP status once drained. */
-  async put(id: string, deviceId: string, body: ReadableStream<Uint8Array> | null): Promise<{ status: number; message: string }> {
+  /**
+   * `PUT /api/pipes/:id` by `deviceId`: the body streams to the sink; resolves
+   * with the HTTP status once drained.
+   */
+  async put(
+    id: string,
+    deviceId: string,
+    body: ReadableStream<Uint8Array> | null
+  ): Promise<{
+    status: number;
+    message: string
+  }> {
     const pipe = this.pipes.get(id)
-    if (!pipe || pipe.source?.kind !== 'device' || pipe.source.deviceId !== deviceId) return { status: 404, message: 'no such pipe' }
-    if (!body) return { status: 400, message: 'a body is required' }
-    if (pipe.sourceArrived) return { status: 409, message: 'source already connected' }
+    if (!pipe ||
+      pipe.source?.kind !== 'device' ||
+      pipe.source.deviceId !== deviceId)
+      return { status: 404, message: 'no such pipe' }
+    if (!body)
+      return { status: 400, message: 'a body is required' }
+    if (pipe.sourceArrived)
+      return {
+        status: 409,
+        message: 'source already connected'
+      }
     pipe.sourceArrived = true
     this.updateArrivalTimer(id, pipe)
-    pipe.cancelBody = () => { void body.cancel().catch(noop) }
+    pipe.cancelBody = () => {
+      void body.cancel().catch(noop)
+    }
     pipe.body.resolve(body)
     try {
       await pipe.drained.promise
@@ -114,11 +161,27 @@ export class PipeBroker {
     }
   }
 
-  /** `GET /api/pipes/:id` by `deviceId`: the body once the source arrived. Its completion settles the pipe. */
-  async get(id: string, deviceId: string): Promise<{ status: 200; body: ReadableStream<Uint8Array> } | { status: number; message: string }> {
+  /**
+   * `GET /api/pipes/:id` by `deviceId`: the body once the source arrived. Its
+   * completion settles the pipe.
+   */
+  async get(
+    id: string,
+    deviceId: string
+  ): Promise<{
+    status: 200;
+    body: ReadableStream<Uint8Array>
+  } | {
+    status: number;
+    message: string
+  }> {
     const pipe = this.pipes.get(id)
-    if (!pipe || pipe.sink?.kind !== 'device' || pipe.sink.deviceId !== deviceId) return { status: 404, message: 'no such pipe' }
-    if (pipe.sinkArrived) return { status: 409, message: 'sink already connected' }
+    if (!pipe ||
+      pipe.sink?.kind !== 'device' ||
+      pipe.sink.deviceId !== deviceId)
+      return { status: 404, message: 'no such pipe' }
+    if (pipe.sinkArrived)
+      return { status: 409, message: 'sink already connected' }
     pipe.sinkArrived = true
     this.updateArrivalTimer(id, pipe)
     let body: ReadableStream<Uint8Array>
@@ -127,21 +190,25 @@ export class PipeBroker {
     } catch (error) {
       return { status: 409, message: errorMessage(error) }
     }
-    if (pipe.failure) return { status: 409, message: pipe.failure.message }
+    if (pipe.failure)
+      return { status: 409, message: pipe.failure.message }
     return { status: 200, body: this.settling(id, body) }
   }
 
   /** Fails every pipe a device is an end of — its connection dropped. */
   deviceGone(deviceId: string): void {
     for (const [id, pipe] of this.pipes) {
-      const isEnd = (end: End) => end?.kind === 'device' && end.deviceId === deviceId
-      if (isEnd(pipe.source) || isEnd(pipe.sink)) this.fail(id, `device ${deviceId} disconnected`)
+      const isEnd = (end: End) => end?.kind === 'device' &&
+        end.deviceId === deviceId
+      if (isEnd(pipe.source) || isEnd(pipe.sink))
+        this.fail(id, `device ${deviceId} disconnected`)
     }
   }
 
   fail(id: string, reason: string): void {
     const pipe = this.pipes.get(id)
-    if (!pipe) return
+    if (!pipe)
+      return
     this.finish(id)
     const error = new Error(`pipe failed: ${reason}`)
     pipe.failure = error
@@ -152,45 +219,68 @@ export class PipeBroker {
   }
 
   close(): void {
-    for (const id of [...this.pipes.keys()]) this.fail(id, 'backend shutting down')
+    for (const id of [...this.pipes.keys()])
+      this.fail(id, 'backend shutting down')
   }
 
-  private fix(id: string, which: 'source' | 'sink', end: NonNullable<End>): void {
+  private fix(
+    id: string,
+    which: 'source' | 'sink',
+    end: NonNullable<End>
+  ): void {
     const pipe = this.pipes.get(id)
-    if (!pipe) throw new Error('pipe: already settled')
-    if (pipe[which] !== null) throw new Error(`pipe: the ${which} is already fixed`)
+    if (!pipe)
+      throw new Error('pipe: already settled')
+    if (pipe[which] !== null)
+      throw new Error(`pipe: the ${which} is already fixed`)
     pipe[which] = end
-    if (which === 'source') pipe.sourceArrived = false
+    if (which === 'source')
+      pipe.sourceArrived = false
     else pipe.sinkArrived = false
     this.updateArrivalTimer(id, pipe)
   }
 
   private updateArrivalTimer(id: string, pipe: PendingPipe): void {
     if (pipe.sourceArrived && pipe.sinkArrived) {
-      if (pipe.timer !== null) clearTimeout(pipe.timer)
+      if (pipe.timer !== null)
+        clearTimeout(pipe.timer)
       pipe.timer = null
     } else if (pipe.timer === null) {
-      pipe.timer = setTimeout(() => this.fail(id, 'an end never arrived'), this.options.timeoutMs ?? 120_000)
+      pipe.timer = setTimeout(
+        () => this.fail(id, 'an end never arrived'),
+        this.options.timeoutMs ?? 120_000
+      )
     }
   }
 
-  /** The in-process sink: pulls the body chunk by chunk; stopping early counts as drained, the way a closed pipe does. */
+  /**
+   * The in-process sink: pulls the body chunk by chunk; stopping early counts
+   * as drained, the way a closed pipe does.
+   */
   private async *processSink(id: string): AsyncIterable<Uint8Array> {
     const pipe = this.pipes.get(id)
-    if (!pipe) throw new Error('pipe: already settled')
-    if (pipe.sink === null) pipe.sink = { kind: 'process' }
-    else if (pipe.sink.kind !== 'process') throw new Error('pipe: the sink is a device')
-    if (pipe.sinkArrived) throw new Error('pipe: sink already connected')
+    if (!pipe)
+      throw new Error('pipe: already settled')
+    if (pipe.sink === null)
+      pipe.sink = { kind: 'process' }
+    else if (pipe.sink.kind !== 'process')
+      throw new Error('pipe: the sink is a device')
+    if (pipe.sinkArrived)
+      throw new Error('pipe: sink already connected')
     pipe.sinkArrived = true
     this.updateArrivalTimer(id, pipe)
     const reader = (await pipe.body.promise).getReader()
-    pipe.cancelBody = () => { void reader.cancel().catch(noop) }
+    pipe.cancelBody = () => {
+      void reader.cancel().catch(noop)
+    }
     let ended = false
     try {
       for (;;) {
         const next = await reader.read()
-        if (pipe.failure) throw pipe.failure
-        if (next.done) break
+        if (pipe.failure)
+          throw pipe.failure
+        if (next.done)
+          break
         yield next.value
       }
       ended = true
@@ -198,13 +288,17 @@ export class PipeBroker {
       this.fail(id, errorMessage(error))
       throw error
     } finally {
-      if (!ended) reader.cancel().catch(noop)
+      if (!ended)
+        reader.cancel().catch(noop)
       this.finish(id)
       pipe.drained.resolve()
     }
   }
 
-  /** The in-process source: a bounded channel behind a readable body; the writer waits for the sink's pull. */
+  /**
+   * The in-process source: a bounded channel behind a readable body; the writer
+   * waits for the sink's pull.
+   */
   private processSource(id: string): PipeWriter {
     // A handler owns this writer before it produces its first byte. It may
     // hand the source to a device before writing; that device must then PUT.
@@ -215,8 +309,10 @@ export class PipeBroker {
     }
     const fixed = (): PendingPipe | null => {
       const pipe = this.pipes.get(id)
-      if (!pipe) return null
-      if (pipe.source?.kind === 'device') return null
+      if (!pipe)
+        return null
+      if (pipe.source?.kind === 'device')
+        return null
       if (pipe.source === null) {
         pipe.source = { kind: 'process' }
         const channel = new ByteChannel()
@@ -226,7 +322,8 @@ export class PipeBroker {
           new ReadableStream<Uint8Array>({
             pull: async (controller) => {
               const next = await chunks.next()
-              if (next.done) controller.close()
+              if (next.done)
+                controller.close()
               else controller.enqueue(next.value)
             },
             cancel: () => void chunks.return?.(),
@@ -238,16 +335,24 @@ export class PipeBroker {
     return {
       write: async (chunk) => {
         const pipe = fixed()
-        if (!pipe) throw new Error('pipe: not writable from this process')
-        if (chunk.byteLength > 0) await pipe.channel!.push(chunk)
+        if (!pipe)
+          throw new Error('pipe: not writable from this process')
+        if (chunk.byteLength > 0)
+          await pipe.channel!.push(chunk)
       },
       end: () => fixed()?.channel?.close(),
       fail: (error) => fixed()?.channel?.fail(error),
     }
   }
 
-  /** Wraps the source body so the pipe settles with the sink's read; a sink stopping early counts as drained. */
-  private settling(id: string, body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+  /**
+   * Wraps the source body so the pipe settles with the sink's read; a sink
+   * stopping early counts as drained.
+   */
+  private settling(
+    id: string,
+    body: ReadableStream<Uint8Array>
+  ): ReadableStream<Uint8Array> {
     const reader = body.getReader()
     const pipe = this.pipes.get(id)
     const settle = (): void => {
@@ -257,10 +362,11 @@ export class PipeBroker {
     }
     return new ReadableStream<Uint8Array>({
       start: (controller) => {
-        if (pipe) pipe.cancelBody = (error) => {
-          controller.error(error)
-          void reader.cancel().catch(noop)
-        }
+        if (pipe)
+          pipe.cancelBody = (error) => {
+            controller.error(error)
+            void reader.cancel().catch(noop)
+          }
       },
       pull: async (controller) => {
         let next: Awaited<ReturnType<typeof reader.read>>
@@ -287,8 +393,10 @@ export class PipeBroker {
 
   private finish(id: string): void {
     const pipe = this.pipes.get(id)
-    if (!pipe) return
-    if (pipe.timer !== null) clearTimeout(pipe.timer)
+    if (!pipe)
+      return
+    if (pipe.timer !== null)
+      clearTimeout(pipe.timer)
     this.pipes.delete(id)
   }
 }
@@ -305,10 +413,14 @@ export interface RelayedPipes {
 
 const RELAYED_PIPES = Symbol('relayedPipes')
 
-export function withRelayedPipes(io: CommandIO, pipes: RelayedPipes): CommandIO {
+export function withRelayedPipes(
+  io: CommandIO,
+  pipes: RelayedPipes
+): CommandIO {
   return Object.assign(io, { [RELAYED_PIPES]: pipes })
 }
 
 export function relayedPipesOf(io: CommandIO): RelayedPipes | null {
-  return (io as CommandIO & { [RELAYED_PIPES]?: RelayedPipes })[RELAYED_PIPES] ?? null
+  return (io as CommandIO & { [RELAYED_PIPES]?: RelayedPipes })[RELAYED_PIPES] ??
+    null
 }

@@ -22,7 +22,10 @@ const props = withDefaults(defineProps<{
 
 const model = defineModel<T>({ required: true })
 
-const selectedIndex = computed(() => Math.max(0, props.options.findIndex((option) => option.value === model.value)))
+const selectedIndex = computed(
+  () =>
+    Math.max(0, props.options.findIndex((option) => option.value === model.value))
+)
 </script>
 
 <template>
@@ -50,7 +53,11 @@ const selectedIndex = computed(() => Math.max(0, props.options.findIndex((option
       ]"
       @click="model = option.value"
     >
-      <component :is="option.icon" v-if="option.icon" :size="ICON_PX.in24" />
+      <component
+        :is="option.icon"
+        v-if="option.icon"
+        :size="ICON_PX.in24"
+      />
       {{ option.label }}
     </span>
   </div>

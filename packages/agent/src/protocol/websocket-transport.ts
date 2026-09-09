@@ -1,26 +1,43 @@
 import type { ClientFrame, ServerFrame } from './frames'
 import { parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
-import type { AgentTransport, AgentClientTransport, AgentServerTransport } from './transport'
+import type {
+  AgentTransport,
+  AgentClientTransport,
+  AgentServerTransport
+} from './transport'
 
 export interface JsonWebSocket {
   send(data: string): void
   close(): void
-  addEventListener(type: 'message', listener: (event: { data: unknown }) => void): void
-  removeEventListener(type: 'message', listener: (event: { data: unknown }) => void): void
+  addEventListener(
+    type: 'message',
+    listener: (event: { data: unknown }) => void
+  ): void
+  removeEventListener(
+    type: 'message',
+    listener: (event: { data: unknown }) => void
+  ): void
 }
 
-export function createWebSocketClientTransport(socket: JsonWebSocket): AgentClientTransport {
+export function createWebSocketClientTransport(
+  socket: JsonWebSocket
+): AgentClientTransport {
   return new WebSocketJsonTransport<ClientFrame, ServerFrame>(socket)
 }
 
-export function createWebSocketServerTransport(socket: JsonWebSocket): AgentServerTransport {
+export function createWebSocketServerTransport(
+  socket: JsonWebSocket
+): AgentServerTransport {
   return new WebSocketJsonTransport<ServerFrame, ClientFrame>(socket)
 }
 
-class WebSocketJsonTransport<SendFrame, ReceiveFrame> implements AgentTransport<SendFrame, ReceiveFrame> {
+class WebSocketJsonTransport<SendFrame, ReceiveFrame>
+  implements AgentTransport<SendFrame, ReceiveFrame> {
   private readonly handlers = new Set<(frame: ReceiveFrame) => void>()
   private readonly onMessage = (event: { data: unknown }): void => {
-    const text = typeof event.data === 'string' ? event.data : String(event.data)
+    const text = typeof event.data === 'string'
+      ? event.data
+      : String(event.data)
     const frame = parsePortableJson<ReceiveFrame>(text)
     for (const handler of this.handlers) handler(frame)
   }

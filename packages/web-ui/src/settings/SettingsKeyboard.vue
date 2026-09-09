@@ -21,10 +21,21 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <SettingsPage title="Keyboard" description="Click one to change it. The browser keeps some keys for itself.">
+  <SettingsPage
+    title="Keyboard"
+    description="Click one to change it. The browser keeps some keys for itself."
+  >
     <SettingsGroup title="Shortcuts">
-      <SettingsRow v-for="binding in bindings" :key="binding.id" :label="binding.action">
-        <ShortcutRecorder :model-value="binding.keys" size="sm" @update:model-value="emit('rebind', binding.id, $event)" />
+      <SettingsRow
+        v-for="binding in bindings"
+        :key="binding.id"
+        :label="binding.action"
+      >
+        <ShortcutRecorder
+          :model-value="binding.keys"
+          size="sm"
+          @update:model-value="emit('rebind', binding.id, $event)"
+        />
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup>

@@ -1,14 +1,29 @@
 import { onBeforeUnmount, ref } from 'vue'
 
-export type PairingDevice = { id: string; name: string }
+export type PairingDevice = {
+  id: string;
+  name: string
+}
 export type PairingResult =
-  | { ok: true; device: PairingDevice }
-  | { ok: false; code: 'invalid_code' | 'rate_limited' | 'unavailable' }
+  | {
+    ok: true;
+    device: PairingDevice
+  }
+  | {
+    ok: false;
+    code: 'invalid_code' | 'rate_limited' | 'unavailable'
+  }
 export type PairingPhase =
   | { kind: 'setup' }
-  | { kind: 'code'; error?: string }
+  | {
+    kind: 'code';
+    error?: string
+  }
   | { kind: 'pairing' }
-  | { kind: 'done'; device: PairingDevice }
+  | {
+    kind: 'done';
+    device: PairingDevice
+  }
 
 export const pairingErrors = {
   invalid_code: 'This code is unavailable. Keep the runner open and paste its latest code.',
@@ -21,17 +36,36 @@ export function useDevicePairing(claim: (code: string) => Promise<PairingResult>
   const isOpen = ref(false)
   const phase = ref<PairingPhase>({ kind: 'setup' })
   let generation = 0
-  function reset(next: PairingPhase = { kind: 'setup' }) { generation++; phase.value = next }
-  function close() { generation++; isOpen.value = false }
-  function open() { generation++; phase.value = { kind: 'setup' }; isOpen.value = true }
+  function reset(next: PairingPhase = { kind: 'setup' }) {
+    generation++;
+    phase.value = next
+  }
+  function close() {
+    generation++;
+    isOpen.value = false
+  }
+  function open() {
+    generation++;
+    phase.value = { kind: 'setup' };
+    isOpen.value = true
+  }
   async function submit(code: string) {
-    if (phase.value.kind !== 'code' || !code.trim()) return
+    if (phase.value.kind !== 'code' || !code.trim())
+      return
     const request = ++generation
     phase.value = { kind: 'pairing' }
     let result: PairingResult
-    try { result = await claim(code.trim()) } catch { result = { ok: false, code: 'unavailable' } }
-    if (request !== generation) return
-    phase.value = result.ok ? { kind: 'done', device: result.device } : { kind: 'code', error: pairingErrors[result.code] }
+    try {
+      result = await claim(code.trim())
+    } catch {
+      result = { ok: false, code: 'unavailable' }
+    }
+    if (request !== generation)
+      return
+    phase.value = result.ok ? { kind: 'done', device: result.device } : {
+      kind: 'code',
+      error: pairingErrors[result.code]
+    }
   }
   onBeforeUnmount(close)
   return { isOpen, phase, open, close, reset, submit }

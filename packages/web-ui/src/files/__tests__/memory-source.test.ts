@@ -10,8 +10,17 @@ function source(offline = false) {
     root: dir({
       home: dir({
         zan: dir({
-          Projects: dir({ demi: dir({ 'README.md': file(120, '2026-09-01T10:00:00Z') }) }),
-          locked: dir({}, { failure: { kind: 'permission', message: 'Permission denied' } }),
+          Projects: dir({
+            demi: dir({
+              'README.md': file(120, '2026-09-01T10:00:00Z')
+            })
+          }),
+          locked: dir({}, {
+            failure: {
+              kind: 'permission',
+              message: 'Permission denied'
+            }
+          }),
           'notes.txt': file(10, '2026-09-02T10:00:00Z'),
         }),
       }),
@@ -24,23 +33,45 @@ test('lists a directory with sizes and times', async () => {
   expect(entries).toEqual([
     { name: 'Projects', isDirectory: true, modifiedAt: undefined },
     { name: 'locked', isDirectory: true, modifiedAt: undefined },
-    { name: 'notes.txt', isDirectory: false, size: 10, modifiedAt: '2026-09-02T10:00:00Z' },
+    {
+      name: 'notes.txt',
+      isDirectory: false,
+      size: 10,
+      modifiedAt: '2026-09-02T10:00:00Z'
+    },
   ])
 })
 
 test('a missing path, a failing directory and an offline device reject with their kinds', async () => {
-  await expect(source().list('/home/alex/none')).rejects.toMatchObject({ kind: 'not-found' })
-  await expect(source().list('/home/alex/notes.txt')).rejects.toMatchObject({ kind: 'not-found' })
-  await expect(source().list('/home/alex/locked')).rejects.toMatchObject({ kind: 'permission', message: 'Permission denied' })
+  await expect(source().list('/home/alex/none')).rejects.toMatchObject(
+    { kind: 'not-found' }
+  )
+  await expect(source().list('/home/alex/notes.txt')).rejects.toMatchObject(
+    { kind: 'not-found' }
+  )
+  await expect(source().list('/home/alex/locked')).rejects.toMatchObject(
+    {
+      kind: 'permission',
+      message: 'Permission denied'
+    }
+  )
   await expect(source(true).list('/home/alex')).rejects.toBeInstanceOf(FileBrowserError)
-  await expect(source(true).list('/home/alex')).rejects.toMatchObject({ kind: 'offline' })
+  await expect(source(true).list('/home/alex')).rejects.toMatchObject(
+    { kind: 'offline' }
+  )
 })
 
 test('createDirectory adds an empty directory once', async () => {
   const s = source()
   await s.createDirectory!('/home/alex/Projects/next')
-  expect((await s.list('/home/alex/Projects')).map((entry) => entry.name)).toEqual(['demi', 'next'])
+  expect((await s.list('/home/alex/Projects')).map((entry) => entry.name)).toEqual(
+    ['demi', 'next']
+  )
   expect(await s.list('/home/alex/Projects/next')).toEqual([])
-  await expect(s.createDirectory!('/home/alex/Projects/next')).rejects.toMatchObject({ kind: 'other' })
-  await expect(s.createDirectory!('/home/alex/locked/x')).rejects.toMatchObject({ kind: 'permission' })
+  await expect(s.createDirectory!('/home/alex/Projects/next')).rejects.toMatchObject(
+    { kind: 'other' }
+  )
+  await expect(s.createDirectory!('/home/alex/locked/x')).rejects.toMatchObject(
+    { kind: 'permission' }
+  )
 })

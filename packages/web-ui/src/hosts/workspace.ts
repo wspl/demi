@@ -18,5 +18,12 @@ export interface WorkspaceDevice {
  * managed; on a device a directory on it, the project taking the directory's name.
  */
 export type WorkspaceDraft =
-  | { kind: 'cloud'; name: string }
-  | { kind: 'device'; deviceId: string; path: string }
+  | {
+    kind: 'cloud';
+    name: string
+  }
+  | {
+    kind: 'device';
+    deviceId: string;
+    path: string
+  }

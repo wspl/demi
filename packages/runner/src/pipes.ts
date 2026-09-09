@@ -6,9 +6,14 @@
 import { httpGet, httpPut } from './machine'
 import { collectBytes, decodeUtf8 } from '@demicodes/utils'
 
-/** What a device end does with its URL: the shape the relay and the job table are given. */
+/**
+ * What a device end does with its URL: the shape the relay and the job table
+ * are given.
+ */
 export interface PipeEnds {
-  /** `PUT`s the stream; resolves once the backend confirmed the sink drained it. */
+  /**
+   * `PUT`s the stream; resolves once the backend confirmed the sink drained it.
+   */
   put(url: string, body: AsyncIterable<Uint8Array>): Promise<void>
   /** `GET`s the stream. */
   get(url: string): Promise<AsyncIterable<Uint8Array>>
@@ -28,13 +33,15 @@ export class PipeClient implements PipeEnds {
 
   async get(url: string): Promise<AsyncIterable<Uint8Array>> {
     const response = await httpGet(this.resolve(url), await this.headers())
-    if (response.status !== 200) await expectOk(response)
+    if (response.status !== 200)
+      await expectOk(response)
     return response.body
   }
 
   private async headers(): Promise<Record<string, string>> {
     const token = await this.token()
-    if (!token) throw new Error('pipe: this runner holds no device token')
+    if (!token)
+      throw new Error('pipe: this runner holds no device token')
     return { authorization: `Bearer ${token}` }
   }
 
@@ -43,15 +50,25 @@ export class PipeClient implements PipeEnds {
   }
 }
 
-/** `ws(s)://host/api/runner` or `http(s)://host` plus an origin-relative path ⇒ the HTTP URL. */
+/**
+ * `ws(s)://host/api/runner` or `http(s)://host` plus an origin-relative path ⇒
+ * the HTTP URL.
+ */
 export function pipeUrl(backendUrl: string, path: string): string {
   const base = new URL(backendUrl)
   if (base.protocol === 'ws:') base.protocol = 'http:'
-  else if (base.protocol === 'wss:') base.protocol = 'https:'
+  else if (base.protocol === 'wss:')
+    base.protocol = 'https:'
   return new URL(path, base.origin).toString()
 }
 
-async function expectOk(response: { status: number; body: AsyncIterable<Uint8Array> }): Promise<void> {
+async function expectOk(response: {
+  status: number;
+  body: AsyncIterable<Uint8Array>
+}): Promise<void> {
   const text = decodeUtf8(await collectBytes(response.body)).trim()
-  if (response.status !== 200) throw new Error(`pipe refused (${response.status})${text ? `: ${text}` : ''}`)
+  if (response.status !== 200)
+    throw new Error(
+      `pipe refused (${response.status})${text ? `: ${text}` : ''}`
+    )
 }

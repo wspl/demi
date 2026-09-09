@@ -17,7 +17,10 @@ export interface ShellCommandRecord {
   id: string
   shellId: string
   commandStorageId: string
-  /** The target directory holding the output files (the runner's tee); optional when no output files are retained. */
+  /**
+   * The target directory holding the output files (the runner's tee); optional
+   * when no output files are retained.
+   */
   outputDir?: string
   script: string
   startedAt: number
@@ -68,7 +71,10 @@ export function createCommandRecord(fields: {
  * The status the tools see: each stream's delta since the last view (the
  * record keeps the cursor), capped at `maxOutputBytes`, plus its tail.
  */
-export function commandStatusView(record: ShellCommandRecord, maxOutputBytes: number): ShellCommandStatus {
+export function commandStatusView(
+  record: ShellCommandRecord,
+  maxOutputBytes: number
+): ShellCommandStatus {
   const stdout = streamView(record, 'stdout', maxOutputBytes)
   const stderr = streamView(record, 'stderr', maxOutputBytes)
   const output = mergedOutputView(record, maxOutputBytes)
@@ -88,11 +94,19 @@ export function commandStatusView(record: ShellCommandRecord, maxOutputBytes: nu
       status: 'exited',
       exitCode: record.exitCode ?? 0,
     }
-    if (record.binaryStdout) result.binaryStdout = record.binaryStdout
+    if (record.binaryStdout)
+      result.binaryStdout = record.binaryStdout
     return result
   }
-  if (record.status === 'aborted') return { ...base, status: 'aborted' }
-  return { ...base, status: 'running', ...(record.runningHint !== undefined ? { runningHint: record.runningHint } : {}) }
+  if (record.status === 'aborted')
+    return { ...base, status: 'aborted' }
+  return {
+    ...base,
+    status: 'running',
+    ...(record.runningHint !== undefined
+      ? { runningHint: record.runningHint }
+      : {})
+  }
 }
 
 /**
@@ -107,9 +121,13 @@ export function finalStdoutBoundary(
   binaryLimitBytes: number,
   /** Where the raw stream lives on the target; absent when it was not kept. */
   rawPath?: string,
-): { text: string; binary?: BinaryStdout } {
+): {
+  text: string;
+  binary?: BinaryStdout
+} {
   const strict = decodeUtf8Strict(bytes)
-  if (strict !== null) return { text: strict }
+  if (strict !== null)
+    return { text: strict }
   const truncated = bytes.length > binaryLimitBytes
   const binary: BinaryStdout = {
     data: truncated ? bytes.slice(0, binaryLimitBytes) : bytes,
@@ -123,8 +141,17 @@ export function finalStdoutBoundary(
   return { text, binary }
 }
 
-/** Marks the record exited with the given streams, replacing any streamed view of a binary stream. */
-export function settleExited(record: ShellCommandRecord, exitCode: number, stdout: string, stderr: string, binary: BinaryStdout | undefined): void {
+/**
+ * Marks the record exited with the given streams, replacing any streamed view
+ * of a binary stream.
+ */
+export function settleExited(
+  record: ShellCommandRecord,
+  exitCode: number,
+  stdout: string,
+  stderr: string,
+  binary: BinaryStdout | undefined
+): void {
   record.stdout = stdout
   record.stderr = stderr
   if (binary) {
@@ -144,7 +171,11 @@ export function settleExited(record: ShellCommandRecord, exitCode: number, stdou
   record.exitCode = exitCode
 }
 
-function streamView(record: ShellCommandRecord, stream: 'stdout' | 'stderr', maxOutputBytes: number): ShellStreamView {
+function streamView(
+  record: ShellCommandRecord,
+  stream: 'stdout' | 'stderr',
+  maxOutputBytes: number
+): ShellStreamView {
   const text = stream === 'stdout' ? record.stdout : record.stderr
   const totalBytes = utf8Bytes(text)
   const offset = stream === 'stdout' ? record.stdoutOffset : record.stderrOffset
@@ -158,17 +189,26 @@ function streamView(record: ShellCommandRecord, stream: 'stdout' | 'stderr', max
   if (stream === 'stdout') record.stdoutOffset = nextOffset
   else record.stderrOffset = nextOffset
   return {
-    ...(record.outputDir !== undefined ? { path: `${record.outputDir}/${stream}.txt` } : {}),
+    ...(record.outputDir !== undefined ? {
+      path: `${record.outputDir}/${stream}.txt`
+    } : {}),
     offset: nextOffset,
     delta,
     tail: tailString(text),
-    bytes: (stream === 'stdout' ? record.stdoutBytes : record.stderrBytes) ?? totalBytes,
+    bytes: (stream === 'stdout' ? record.stdoutBytes : record.stderrBytes)
+      ?? totalBytes,
     truncated,
   }
 }
 
-function mergedOutputView(record: ShellCommandRecord, maxOutputBytes: number): ShellOutputView {
-  const totalBytes = record.outputChunks.reduce((total, chunk) => total + chunk.bytes, 0)
+function mergedOutputView(
+  record: ShellCommandRecord,
+  maxOutputBytes: number
+): ShellOutputView {
+  const totalBytes = record.outputChunks.reduce(
+    (total, chunk) => total + chunk.bytes,
+    0
+  )
   const offset = clampOffset(record.outputOffset, totalBytes)
   const byteLimit = Math.max(0, Math.floor(maxOutputBytes))
   const available = Math.max(0, totalBytes - offset)
@@ -176,10 +216,12 @@ function mergedOutputView(record: ShellCommandRecord, maxOutputBytes: number): S
   const chunks: ShellOutputChunk[] = []
 
   for (const chunk of record.outputChunks) {
-    if (remaining <= 0) break
+    if (remaining <= 0)
+      break
     const chunkStart = chunk.offset
     const chunkEnd = chunk.offset + chunk.bytes
-    if (chunkEnd <= offset) continue
+    if (chunkEnd <= offset)
+      continue
     const start = Math.max(0, offset - chunkStart)
     const take = Math.min(chunk.bytes - start, remaining)
     const text = utf8Slice(chunk.text, start, start + take)
@@ -206,9 +248,17 @@ function mergedOutputView(record: ShellCommandRecord, maxOutputBytes: number): S
   }
 }
 
-export function appendRecordOutput(record: ShellCommandRecord, stream: 'stdout' | 'stderr', text: string): void {
-  if (text.length === 0) return
-  const offset = record.outputChunks.reduce((total, chunk) => total + chunk.bytes, 0)
+export function appendRecordOutput(
+  record: ShellCommandRecord,
+  stream: 'stdout' | 'stderr',
+  text: string
+): void {
+  if (text.length === 0)
+    return
+  const offset = record.outputChunks.reduce(
+    (total, chunk) => total + chunk.bytes,
+    0
+  )
   record.outputChunks.push({ stream, text, offset, bytes: utf8Bytes(text) })
 }
 
@@ -219,7 +269,8 @@ export function ensureRecordOutputCoverage(record: ShellCommandRecord): void {
   const stderrBytes = record.outputChunks
     .filter((chunk) => chunk.stream === 'stderr')
     .reduce((total, chunk) => total + chunk.bytes, 0)
-  if (stdoutBytes === utf8Bytes(record.stdout) && stderrBytes === utf8Bytes(record.stderr)) return
+  if (stdoutBytes === utf8Bytes(record.stdout)
+    && stderrBytes === utf8Bytes(record.stderr)) return
   // The chunks no longer describe the texts: rebuilt, and the merged cursor with them.
   record.outputChunks = []
   record.outputOffset = 0
@@ -237,7 +288,8 @@ function tailOutputText(chunks: readonly ShellOutputRecordChunk[]): string {
 }
 
 function clampOffset(value: number, max: number): number {
-  if (!Number.isFinite(value) || value <= 0) return 0
+  if (!Number.isFinite(value) || value <= 0)
+    return 0
   return Math.min(Math.floor(value), max)
 }
 

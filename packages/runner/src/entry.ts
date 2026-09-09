@@ -1,6 +1,16 @@
 import { manageRunner } from './management'
 // The standalone runner entry. The separate native client owns root-command invocation.
-import { argv, createRunnerHost, dropPrivileges, env, exit, identity, onSignal, pid, stderrWriter } from './machine'
+import {
+  argv,
+  createRunnerHost,
+  dropPrivileges,
+  env,
+  exit,
+  identity,
+  onSignal,
+  pid,
+  stderrWriter
+} from './machine'
 import { dirnamePath, errorMessage } from '@demicodes/utils'
 import { GUEST_USER, bootGuest } from './init/boot'
 import { RunnerMode } from './runner-mode'
@@ -8,16 +18,21 @@ import { RunnerState } from './state'
 
 async function main(): Promise<number> {
   // The kernel started this binary as init: a managed guest (`managed-hosts.md` § Lifecycle).
-  if (pid === 1) return initMain()
+  if (pid === 1)
+    return initMain()
   return runnerMain(argv.slice(1))
 }
 
-/** PID 1: the init duties, then the runner as a managed host with the guest user for every job; exiting is the VM's death. */
+/**
+ * PID 1: the init duties, then the runner as a managed host with the guest user
+ * for every job; exiting is the VM's death.
+ */
 async function initMain(): Promise<number> {
   const stderr = stderrWriter()
   // Every line reaches the serial console before PID 1 exits: an exit here is the VM's death, and the console is its only trace.
   const pending: Promise<void>[] = []
-  const log = (line: string) => void pending.push(Promise.resolve(stderr(`${line}\n`)).catch(() => {}))
+  const log = (line: string) => void pending.push(Promise.resolve(stderr(`${line}\n`))
+    .catch(() => {}))
   const flush = () => Promise.all(pending.splice(0))
   const host = createRunnerHost()
   let boot
@@ -61,7 +76,8 @@ async function runnerMain(args: readonly string[]): Promise<number> {
     return 2
   }
   const action = args[0]
-  if (action !== 'run' && action !== 'status' && action !== 'drain') return usage()
+  if (action !== 'run' && action !== 'status' && action !== 'drain')
+    return usage()
   let backendUrl: string | null = null
   for (let index = 1; index < args.length; index += 1) {
     if (args[index] === '--backend' && args[index + 1]) {
@@ -77,15 +93,19 @@ async function runnerMain(args: readonly string[]): Promise<number> {
   }
   const hash = backendUrl ? await backendInstanceId(backendUrl) : ''
   const dir = env.DEMI_HOME ?? `${identity.homeDir}/.demi/instances/${hash}`
-  if (action !== 'run') return manageRunner(dir, action)
+  if (action !== 'run')
+    return manageRunner(dir, action)
   const host = createRunnerHost()
-  backendUrl ??= (await new RunnerState(host.fs, dir).readConfig())?.backendUrl ?? null
+  backendUrl ??= (await new RunnerState(host.fs, dir).readConfig())?.backendUrl
+    ?? null
   if (!backendUrl) {
     await stderr('No backend URL: pass --backend <url> on first start.\n')
     return 2
   }
   // The matching native client is installed beside the runner.
-  const executable = argv[0]!.includes('/') ? await host.fs.realpath(argv[0]!) : argv[0]!
+  const executable = argv[0]!.includes('/')
+    ? await host.fs.realpath(argv[0]!)
+    : argv[0]!
   const runner = new RunnerMode({
     backendUrl,
     stateDir: dir,
@@ -94,16 +114,26 @@ async function runnerMain(args: readonly string[]): Promise<number> {
     // Jobs run in the environment the runner was started with: the device user's own.
     deviceEnv: { PATH: '/usr/bin:/bin', HOME: identity.homeDir, ...env },
     ...(env.DEMI_RUNNER_MANAGED ? { managed: true } : {}),
-    reconnect: env.DEMI_RUNNER_RECONNECT_MS ? { initialDelayMs: Number(env.DEMI_RUNNER_RECONNECT_MS) } : undefined,
+    reconnect: env.DEMI_RUNNER_RECONNECT_MS ? {
+      initialDelayMs: Number(env.DEMI_RUNNER_RECONNECT_MS)
+    } : undefined,
   })
   return (await runner.run()) === 'rejected' ? 1 : 0
 }
 
-/** Canonical backend URLs select stable, installation-local state directories. */
+/**
+ * Canonical backend URLs select stable, installation-local state directories.
+ */
 async function backendInstanceId(backendUrl: string): Promise<string> {
   const url = new URL(backendUrl).toString()
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(url))
-  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(url)
+  )
+  return Array.from(
+    new Uint8Array(digest),
+    byte => byte.toString(16).padStart(2, '0')
+  ).join('')
 }
 
 try {

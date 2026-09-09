@@ -14,13 +14,18 @@ export interface RunnerInstallationOptions {
   backendUrl?: string
 }
 
-/** Public downloads contain no credential; device access still requires pairing. */
+/**
+ * Public downloads contain no credential; device access still requires pairing.
+ */
 export function runnerInstallRoutes(options?: RunnerInstallationOptions): Hono {
   const app = new Hono()
 
   app.get('/install.sh', async context => {
     if (!options) {
-      return context.text('Runner releases are not configured on this backend.\n', 503)
+      return context.text(
+        'Runner releases are not configured on this backend.\n',
+        503
+      )
     }
     const manifest = await Bun.file(join(options.directory, 'manifest.json')).json()
     const release = runnerReleaseSchema.parse(manifest)
@@ -39,10 +44,14 @@ export function runnerInstallRoutes(options?: RunnerInstallationOptions): Hono {
     if (!options) {
       return context.notFound()
     }
-    const requestedRelease = releaseDigest.safeParse(context.req.param('release'))
+    const requestedRelease = releaseDigest.safeParse(
+      context.req.param('release')
+    )
     const platform = releaseTarget.safeParse(context.req.param('target'))
     const name = context.req.param('file')
-    if (!requestedRelease.success || !platform.success || !['demi', 'demi-runner'].includes(name)) {
+    if (!requestedRelease.success ||
+      !platform.success ||
+      !['demi', 'demi-runner'].includes(name)) {
       return context.notFound()
     }
 
@@ -52,7 +61,8 @@ export function runnerInstallRoutes(options?: RunnerInstallationOptions): Hono {
       return context.notFound()
     }
     const release = runnerReleaseSchema.parse(await manifest.json())
-    if (release.release !== requestedRelease.data || !release.targets[platform.data]) {
+    if (release.release !== requestedRelease.data ||
+      !release.targets[platform.data]) {
       return context.notFound()
     }
 

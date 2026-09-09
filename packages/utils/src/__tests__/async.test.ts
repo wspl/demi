@@ -14,7 +14,11 @@ describe('waitFor', () => {
 
   it('rejects with the described context on timeout', async () => {
     await expect(
-      waitFor(() => false, () => 'never ready', { timeoutMs: 5, intervalMs: 1 }),
+      waitFor(
+        () => false,
+        () => 'never ready',
+        { timeoutMs: 5, intervalMs: 1 }
+      ),
     ).rejects.toThrow('Timed out waiting for condition: never ready')
   })
 })

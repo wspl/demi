@@ -2,11 +2,19 @@ import { expect, test } from 'bun:test'
 import { providerRuntime } from '@demicodes/provider'
 import type { GrokAuthStore, GrokResolvedAuth } from '../auth'
 import { createGrokBuildProvider } from '../provider'
-import { createGrokBuildQuota, mapGrokQuotaProbe, observeGrokRateLimitHeaders } from '../quota'
+import {
+  createGrokBuildQuota,
+  mapGrokQuotaProbe,
+  observeGrokRateLimitHeaders
+} from '../quota'
 
 test('mapGrokQuotaProbe maps billing + subscription tier', () => {
   const snap = mapGrokQuotaProbe(
-    { subscriptionTier: 'XPremiumPlus', email: 'a@b.com', hasGrokCodeAccess: true },
+    {
+      subscriptionTier: 'XPremiumPlus',
+      email: 'a@b.com',
+      hasGrokCodeAccess: true
+    },
     {
       config: {
         monthlyLimit: { val: 20000 },
@@ -28,33 +36,36 @@ test('mapGrokQuotaProbe maps billing + subscription tier', () => {
   })
 })
 
-test('mapGrokQuotaProbe prefers credits-config percent and current period', () => {
-  const snap = mapGrokQuotaProbe(
-    { subscriptionTier: 'XPremiumPlus' },
-    {
-      config: {
-        creditUsagePercent: 2,
-        currentPeriod: {
-          type: 'USAGE_PERIOD_TYPE_WEEKLY',
-          start: '2026-08-14T10:45:24.951512+00:00',
-          end: '2026-08-21T10:45:24.951512+00:00',
+test(
+  'mapGrokQuotaProbe prefers credits-config percent and current period',
+  () => {
+    const snap = mapGrokQuotaProbe(
+      { subscriptionTier: 'XPremiumPlus' },
+      {
+        config: {
+          creditUsagePercent: 2,
+          currentPeriod: {
+            type: 'USAGE_PERIOD_TYPE_WEEKLY',
+            start: '2026-08-14T10:45:24.951512+00:00',
+            end: '2026-08-21T10:45:24.951512+00:00',
+          },
+          onDemandCap: { val: 0 },
+          billingPeriodEnd: '2026-08-21T10:45:24.951512+00:00',
         },
-        onDemandCap: { val: 0 },
-        billingPeriodEnd: '2026-08-21T10:45:24.951512+00:00',
       },
-    },
-    { email: 'a@b.com' },
-  )
-  expect(snap.windows[0]).toMatchObject({
-    id: 'weekly',
-    label: 'Weekly credits',
-    usedPercent: 2,
-    used: null,
-    limit: null,
-    resetsAt: '2026-08-21T10:45:24.951512+00:00',
-    severity: 'normal',
-  })
-})
+      { email: 'a@b.com' },
+    )
+    expect(snap.windows[0]).toMatchObject({
+      id: 'weekly',
+      label: 'Weekly credits',
+      usedPercent: 2,
+      used: null,
+      limit: null,
+      resetsAt: '2026-08-21T10:45:24.951512+00:00',
+      severity: 'normal',
+    })
+  }
+)
 
 test('observeGrokRateLimitHeaders maps short windows', () => {
   const headers = new Headers({
@@ -64,110 +75,136 @@ test('observeGrokRateLimitHeaders maps short windows', () => {
     'x-ratelimit-remaining-tokens': '4000',
   })
   const observed = observeGrokRateLimitHeaders(headers)
-  expect(observed?.windows.find((w) => w.id === 'rpm')).toMatchObject({ used: 20, limit: 120 })
-  expect(observed?.windows.find((w) => w.id === 'tpm')).toMatchObject({ used: 1000, limit: 5000 })
+  expect(observed?.windows.find((w) => w.id === 'rpm')).toMatchObject({
+    used: 20,
+    limit: 120
+  })
+  expect(observed?.windows.find((w) => w.id === 'tpm')).toMatchObject({
+    used: 1000,
+    limit: 5000
+  })
 })
 
-test.each([false, true])('Grok response quota respects account invalidation: %s', async (invalidate) => {
-  const auth: GrokResolvedAuth = {
-    accessToken: 'tok',
-    refreshToken: null,
-    expiresAt: null,
-    email: 'a@b.com',
-    userId: 'user-1',
-    principalType: null,
-    principalId: null,
-    issuer: null,
-    clientId: null,
-    entryKey: 'k',
-    authFile: '/tmp/auth.json',
-  }
-  const store: GrokAuthStore = {
-    status: async () => ({ status: 'authenticated', accountLabel: 'a@b.com' }),
-    resolveAuth: async () => auth,
-  }
-  const provider = createGrokBuildProvider({
-    authStore: store,
-    fetch: async () => {
-      if (invalidate) provider.quota!.clearLatest!()
-      return new Response('data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n', {
-        status: 200,
-        headers: {
-          'content-type': 'text/event-stream',
-          'x-ratelimit-limit-requests': '100',
-          'x-ratelimit-remaining-requests': '90',
-        },
-      })
-    },
-  })
-  expect(provider.quota?.latest()).toBeNull()
-  const runtime = await providerRuntime(provider, {
-    providerId: 'grok-build',
-    model: {
-      providerId: 'grok-build',
-      model: {
-        id: 'grok-code-fast-1',
-        name: 'Grok',
-        contextWindow: 100_000,
-        outputLimit: null,
-        inputLimit: null,
-        thinking: [],
-        acceptedExtensions: [],
-      },
-      thinking: null,
-    },
-  })
-  for await (const _ of runtime.run({
-    requestId: 'r1',
-    turnId: 't1',
-    sessionId: 's1',
-    outputLimit: null,
-    modelId: 'grok-code-fast-1',
-    systemPrompt: 'sys',
-    cwd: '/tmp',
-    items: [{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }],
-    tools: [],
-    thinking: null,
-    cancel: new AbortController().signal,
-  })) {
-    // drain
-  }
-  if (invalidate) expect(provider.quota?.latest()).toBeNull()
-  else {
-    expect(provider.quota?.latest()?.source).toBe('observation')
-    expect(provider.quota?.latest()?.windows.find((w) => w.id === 'rpm')?.used).toBe(10)
-  }
-})
-
-test('Grok quota probe hits credits billing and subscription user', async () => {
-  const urls: string[] = []
-  const auth: GrokResolvedAuth = {
-    accessToken: 'tok',
-    refreshToken: null,
-    expiresAt: null,
-    email: 'a@b.com',
-    userId: 'user-1',
-    principalType: null,
-    principalId: null,
-    issuer: null,
-    clientId: null,
-    entryKey: 'k',
-    authFile: '/tmp/auth.json',
-  }
-  const quota = createGrokBuildQuota({
-    authStore: {
+test.each([false, true])(
+  'Grok response quota respects account invalidation: %s',
+  async (
+    invalidate
+  ) => {
+    const auth: GrokResolvedAuth = {
+      accessToken: 'tok',
+      refreshToken: null,
+      expiresAt: null,
+      email: 'a@b.com',
+      userId: 'user-1',
+      principalType: null,
+      principalId: null,
+      issuer: null,
+      clientId: null,
+      entryKey: 'k',
+      authFile: '/tmp/auth.json',
+    }
+    const store: GrokAuthStore = {
       status: async () => ({ status: 'authenticated', accountLabel: 'a@b.com' }),
       resolveAuth: async () => auth,
-    },
-    baseUrl: 'https://cli-chat-proxy.example/v1',
-    fetch: async (input) => {
-      urls.push(String(input))
-      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } })
-    },
-  })
-  await quota.probe()
-  expect(urls.sort()).toEqual([
-    'https://cli-chat-proxy.example/v1/billing?format=credits',
-    'https://cli-chat-proxy.example/v1/user?include=subscription',
-  ])
-})
+    }
+    const provider = createGrokBuildProvider({
+      authStore: store,
+      fetch: async () => {
+        if (invalidate)
+          provider.quota!.clearLatest!()
+        return new Response(
+          'data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n',
+          {
+            status: 200,
+            headers: {
+              'content-type': 'text/event-stream',
+              'x-ratelimit-limit-requests': '100',
+              'x-ratelimit-remaining-requests': '90',
+            },
+          }
+        )
+      },
+    })
+    expect(provider.quota?.latest()).toBeNull()
+    const runtime = await providerRuntime(provider, {
+      providerId: 'grok-build',
+      model: {
+        providerId: 'grok-build',
+        model: {
+          id: 'grok-code-fast-1',
+          name: 'Grok',
+          contextWindow: 100_000,
+          outputLimit: null,
+          inputLimit: null,
+          thinking: [],
+          acceptedExtensions: [],
+        },
+        thinking: null,
+      },
+    })
+    for await (const _ of runtime.run({
+      requestId: 'r1',
+      turnId: 't1',
+      sessionId: 's1',
+      outputLimit: null,
+      modelId: 'grok-code-fast-1',
+      systemPrompt: 'sys',
+      cwd: '/tmp',
+      items: [{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }],
+      tools: [],
+      thinking: null,
+      cancel: new AbortController().signal,
+    })) {
+      // drain
+    }
+    if (invalidate) expect(provider.quota?.latest()).toBeNull()
+    else {
+      expect(provider.quota?.latest()?.source).toBe('observation')
+      expect(
+        provider.quota?.latest()?.windows.find((w) => w.id === 'rpm')?.used
+      ).toBe(10)
+    }
+  }
+)
+
+test(
+  'Grok quota probe hits credits billing and subscription user',
+  async () => {
+    const urls: string[] = []
+    const auth: GrokResolvedAuth = {
+      accessToken: 'tok',
+      refreshToken: null,
+      expiresAt: null,
+      email: 'a@b.com',
+      userId: 'user-1',
+      principalType: null,
+      principalId: null,
+      issuer: null,
+      clientId: null,
+      entryKey: 'k',
+      authFile: '/tmp/auth.json',
+    }
+    const quota = createGrokBuildQuota({
+      authStore: {
+        status: async () => ({
+          status: 'authenticated',
+          accountLabel: 'a@b.com'
+        }),
+        resolveAuth: async () => auth,
+      },
+      baseUrl: 'https://cli-chat-proxy.example/v1',
+      fetch: async (input) => {
+        urls.push(String(input))
+        return new Response(
+          JSON.stringify({}),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      },
+    })
+    await quota.probe()
+    expect(urls.sort()).toEqual([
+      'https://cli-chat-proxy.example/v1/billing?format=credits',
+      'https://cli-chat-proxy.example/v1/user?include=subscription',
+    ])
+  }
+)

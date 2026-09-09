@@ -38,7 +38,9 @@ export function compareCodeUnits(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
-/** Orders strings by their UTF-8 bytes, as the C locale orders names and lines. */
+/**
+ * Orders strings by their UTF-8 bytes, as the C locale orders names and lines.
+ */
 export function compareUtf8Bytes(a: string, b: string): number {
   return compareCodeUnits(utf8AsLatin1(a), utf8AsLatin1(b))
 }
@@ -64,7 +66,8 @@ export function decodeUtf8Strict(bytes: Uint8Array): string | null {
 
 /** Slices a string by UTF-8 byte offsets, returning the decoded substring. */
 export function utf8Slice(text: string, start: number, end: number): string {
-  if (start <= 0 && end >= utf8Bytes(text)) return text
+  if (start <= 0 && end >= utf8Bytes(text))
+    return text
   return decoder.decode(encoder.encode(text).slice(start, end))
 }
 
@@ -73,7 +76,9 @@ export function utf8Slice(text: string, start: number, end: number): string {
  * preceding `\r`) are stripped; a trailing chunk without a final newline is
  * still yielded. Multi-byte sequences split across chunks decode correctly.
  */
-export async function* utf8Lines(chunks: AsyncIterable<Uint8Array>): AsyncIterable<string> {
+export async function* utf8Lines(
+  chunks: AsyncIterable<Uint8Array>
+): AsyncIterable<string> {
   const streamDecoder = new TextDecoder()
   let buffer = ''
   for await (const chunk of chunks) {
@@ -87,7 +92,10 @@ export async function* utf8Lines(chunks: AsyncIterable<Uint8Array>): AsyncIterab
     }
   }
   buffer += streamDecoder.decode()
-  if (buffer.length > 0) yield buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer
+  if (buffer.length > 0)
+    yield buffer.endsWith('\r')
+      ? buffer.slice(0, -1)
+      : buffer
 }
 
 /** Concatenates byte chunks into a single `Uint8Array`. */
@@ -104,7 +112,9 @@ export function concatBytes(chunks: readonly Uint8Array[]): Uint8Array {
 
 const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
-/** Encodes bytes as standard base64 (platform-neutral, no Node or DOM globals). */
+/**
+ * Encodes bytes as standard base64 (platform-neutral, no Node or DOM globals).
+ */
 export function bytesToBase64(bytes: Uint8Array): string {
   let output = ''
   for (let index = 0; index < bytes.byteLength; index += 3) {
@@ -113,7 +123,9 @@ export function bytesToBase64(bytes: Uint8Array): string {
     const third = bytes[index + 2]
     output += BASE64_ALPHABET[first >> 2]
     output += BASE64_ALPHABET[((first & 0x03) << 4) | ((second ?? 0) >> 4)]
-    output += second === undefined ? '=' : BASE64_ALPHABET[((second & 0x0f) << 2) | ((third ?? 0) >> 6)]
+    output += second === undefined
+      ? '='
+      : BASE64_ALPHABET[((second & 0x0f) << 2) | ((third ?? 0) >> 6)]
     output += third === undefined ? '=' : BASE64_ALPHABET[third & 0x3f]
   }
   return output
@@ -122,8 +134,10 @@ export function bytesToBase64(bytes: Uint8Array): string {
 /** Decodes standard base64 to bytes, throwing on malformed payloads. */
 export function base64ToBytes(base64: string): Uint8Array {
   const clean = base64.replace(/\s+/g, '')
-  if (clean.length === 0) return new Uint8Array()
-  if (clean.length % 4 !== 0) throw new Error('Invalid base64 payload length')
+  if (clean.length === 0)
+    return new Uint8Array()
+  if (clean.length % 4 !== 0)
+    throw new Error('Invalid base64 payload length')
 
   const padding = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0
   const bytes = new Uint8Array((clean.length / 4) * 3 - padding)
@@ -136,18 +150,23 @@ export function base64ToBytes(base64: string): Uint8Array {
     const fourth = clean[index + 3] === '=' ? 0 : base64Value(clean[index + 3])
     const triple = (first << 18) | (second << 12) | (third << 6) | fourth
 
-    if (offset < bytes.byteLength) bytes[offset++] = (triple >> 16) & 0xff
-    if (offset < bytes.byteLength) bytes[offset++] = (triple >> 8) & 0xff
-    if (offset < bytes.byteLength) bytes[offset++] = triple & 0xff
+    if (offset < bytes.byteLength)
+      bytes[offset++] = (triple >> 16) & 0xff
+    if (offset < bytes.byteLength)
+      bytes[offset++] = (triple >> 8) & 0xff
+    if (offset < bytes.byteLength)
+      bytes[offset++] = triple & 0xff
   }
 
   return bytes
 }
 
 function base64Value(char: string | undefined): number {
-  if (!char || char === '=') throw new Error('Invalid base64 payload')
+  if (!char || char === '=')
+    throw new Error('Invalid base64 payload')
   const value = BASE64_ALPHABET.indexOf(char)
-  if (value === -1) throw new Error('Invalid base64 payload')
+  if (value === -1)
+    throw new Error('Invalid base64 payload')
   return value
 }
 
@@ -161,16 +180,21 @@ export async function* emptyByteStream(): AsyncIterable<Uint8Array> {}
 
 /** A byte stream of one chunk (none when the chunk is empty). */
 export async function* bytesStream(bytes: Uint8Array): AsyncIterable<Uint8Array> {
-  if (bytes.byteLength > 0) yield bytes
+  if (bytes.byteLength > 0)
+    yield bytes
 }
 
 /** The streams one after another. */
-export async function* concatByteStreams(...streams: AsyncIterable<Uint8Array>[]): AsyncIterable<Uint8Array> {
+export async function* concatByteStreams(
+  ...streams: AsyncIterable<Uint8Array>[]
+): AsyncIterable<Uint8Array> {
   for (const stream of streams) yield* stream
 }
 
 /** Drains a byte stream into one `Uint8Array`. */
-export async function collectBytes(stream: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
+export async function collectBytes(
+  stream: AsyncIterable<Uint8Array>
+): Promise<Uint8Array> {
   const chunks: Uint8Array[] = []
   for await (const chunk of stream) chunks.push(chunk)
   return concatBytes(chunks)
@@ -181,7 +205,9 @@ export async function collectBytes(stream: AsyncIterable<Uint8Array>): Promise<U
  * early leaves the stream open for the next, the way processes share a shell's
  * stdin. The stream ends only when the source ends.
  */
-export function shareByteStream(source: AsyncIterable<Uint8Array>): AsyncIterable<Uint8Array> {
+export function shareByteStream(
+  source: AsyncIterable<Uint8Array>
+): AsyncIterable<Uint8Array> {
   const iterator = source[Symbol.asyncIterator]()
   return {
     [Symbol.asyncIterator]: () => ({
@@ -191,20 +217,25 @@ export function shareByteStream(source: AsyncIterable<Uint8Array>): AsyncIterabl
   }
 }
 
-/** Async chunk queue: each pushed chunk is delivered once, in order; close ends the stream. */
+/**
+ * Async chunk queue: each pushed chunk is delivered once, in order; close ends
+ * the stream.
+ */
 export class ByteQueue {
   private readonly chunks: Uint8Array[] = []
   private waiter: (() => void) | null = null
   private isClosed = false
 
   push(data: Uint8Array): void {
-    if (this.isClosed) return
+    if (this.isClosed)
+      return
     this.chunks.push(data)
     this.wake()
   }
 
   close(): void {
-    if (this.isClosed) return
+    if (this.isClosed)
+      return
     this.isClosed = true
     this.wake()
   }
@@ -220,7 +251,8 @@ export class ByteQueue {
         yield chunk
         continue
       }
-      if (this.isClosed) return
+      if (this.isClosed)
+        return
       await new Promise<void>((resolve) => {
         this.waiter = resolve
       })
@@ -242,13 +274,17 @@ export class ByteQueue {
  * `push`, the way a closed pipe does.
  */
 export class ByteChannel {
-  private pending: { chunk: Uint8Array; taken: Deferred<void> } | null = null
+  private pending: {
+    chunk: Uint8Array;
+    taken: Deferred<void>
+  } | null = null
   private waiting: Deferred<void> | null = null
   private ended: { error?: unknown } | null = null
 
   async push(chunk: Uint8Array): Promise<void> {
     while (this.pending) await this.pending.taken.promise.catch(() => {})
-    if (this.ended) throw this.ended.error ?? new Error('channel closed')
+    if (this.ended)
+      throw this.ended.error ?? new Error('channel closed')
     const taken = deferred<void>()
     this.pending = { chunk, taken }
     this.wake()
@@ -274,7 +310,8 @@ export class ByteChannel {
           continue
         }
         if (this.ended) {
-          if ('error' in this.ended) throw this.ended.error
+          if ('error' in this.ended)
+            throw this.ended.error
           return
         }
         this.waiting = deferred<void>()
@@ -287,7 +324,8 @@ export class ByteChannel {
   }
 
   private end(ended: { error?: unknown }): void {
-    if (this.ended) return
+    if (this.ended)
+      return
     this.ended = ended
     this.pending?.taken.reject(ended.error ?? new Error('channel closed'))
     this.pending = null

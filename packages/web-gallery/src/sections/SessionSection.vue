@@ -112,14 +112,39 @@ function onSelectFastModel(providerId: string, modelId: string): void {
   fastModel.value = modelId
 }
 const attachmentBubble = [
-  { type: 'image' as const, source: { type: 'url' as const, url: demoImageUrl } },
-  { type: 'document' as const, source: { data: new Uint8Array(), mediaType: 'application/pdf', fileName: 'login-failure.pdf' } },
+  {
+    type: 'image' as const,
+    source: { type: 'url' as const, url: demoImageUrl }
+  },
+  {
+    type: 'document' as const,
+    source: {
+      data: new Uint8Array(),
+      mediaType: 'application/pdf',
+      fileName: 'login-failure.pdf'
+    }
+  },
   { type: 'text' as const, text: 'Failing log and the screenshot from CI.' },
 ]
 const overflowBubble = [{ type: 'text' as const, text: longUserText }]
-const userBubble = [{ type: 'text' as const, text: 'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename.' }]
-const queuedBubble = [{ type: 'text' as const, text: 'Also add a case for the expired cookie.' }]
-const stuckBubble = [{ type: 'text' as const, text: 'Do not touch the cookie helper. Only fix the assertion.' }]
+const userBubble = [
+  {
+    type: 'text' as const,
+    text: 'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename.'
+  }
+]
+const queuedBubble = [
+  {
+    type: 'text' as const,
+    text: 'Also add a case for the expired cookie.'
+  }
+]
+const stuckBubble = [
+  {
+    type: 'text' as const,
+    text: 'Do not touch the cookie helper. Only fix the assertion.'
+  }
+]
 const pendingSteerShown = ref(true)
 const queuedShown = ref(true)
 const functionalCollapsed = ref(false)
@@ -128,14 +153,18 @@ const functionalTool = ref(false)
 const functionalShellExpanded = ref(true)
 const functionalError = ref(true)
 const functionalThinkingStartedAt = new Date().toISOString()
-const functionalThinkingEndedAt = new Date(Date.parse(functionalThinkingStartedAt) + 8_000).toISOString()
+const functionalThinkingEndedAt = new Date(
+  Date.parse(functionalThinkingStartedAt) + 8_000
+).toISOString()
 
 function hideBlock(id: string): void {
   hiddenIds.value = new Set(hiddenIds.value).add(id)
 }
 
 function takePendingSteer(pendingSteerId: string): PendingSteerRenderBlock | undefined {
-  const block = pendingSteers.value.find((candidate) => candidate.pendingSteerId === pendingSteerId)
+  const block = pendingSteers.value.find(
+    (candidate) => candidate.pendingSteerId === pendingSteerId
+  )
   pendingSteers.value = pendingSteers.value.filter((candidate) => candidate !== block)
   return block
 }
@@ -146,8 +175,13 @@ function deletePendingSteer(pendingSteerId: string): void {
 
 function interruptPendingSteer(pendingSteerId: string): void {
   const block = takePendingSteer(pendingSteerId)
-  if (!block) return
-  const text = block.content.find((part): part is Extract<typeof part, { type: 'text' }> => part.type === 'text')?.text
+  if (!block)
+    return
+  const text = block.content.find(
+    (part): part is Extract<typeof part, {
+      type: 'text'
+    }> => part.type === 'text'
+  )?.text
   if (text) {
     extras.value = [
       ...extras.value,
@@ -179,7 +213,8 @@ function removeQueued(id: string): void {
 
 function sendNow(id: string): void {
   const item = queue.value.find((entry) => entry.id === id)
-  if (!item) return
+  if (!item)
+    return
   queue.value = queue.value.filter((entry) => entry.id !== id)
   pendingSteers.value = [
     ...pendingSteers.value,
@@ -194,7 +229,11 @@ function sendNow(id: string): void {
 }
 
 function editUser(content: UserContentBlock[]): void {
-  const text = content.find((part): part is Extract<UserContentBlock, { type: 'text' }> => part.type === 'text')?.text
+  const text = content.find(
+    (part): part is Extract<UserContentBlock, {
+      type: 'text'
+    }> => part.type === 'text'
+  )?.text
   fullComposer.value?.setDraft(text ?? '')
 }
 
@@ -221,11 +260,17 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-10">
-    <GallerySection title="Tab bar" note="Session tabs and the conversation list.">
+    <GallerySection
+      title="Tab bar"
+      note="Session tabs and the conversation list."
+    >
       <GalleryTabBar />
     </GallerySection>
 
-    <GallerySection title="Composer" note="Idle through Fast Mode, attachments, and queue. One send; a running turn queues.">
+    <GallerySection
+      title="Composer"
+      note="Idle through Fast Mode, attachments, and queue. One send; a running turn queues."
+    >
       <div class="specimen-stack specimen-stack-loose">
         <GallerySpecimen variant="idle · empty" wide>
           <GalleryComposer placeholder="Ask Demi…" />
@@ -234,7 +279,10 @@ onMounted(() => {
           <GalleryComposer placeholder="Ask Demi…" focused />
         </GallerySpecimen>
         <GallerySpecimen variant="send-ready" wide>
-          <GalleryComposer placeholder="Ask Demi…" draft="The login test in packages/web/src/auth.test.ts is failing after the session cookie rename." />
+          <GalleryComposer
+            placeholder="Ask Demi…"
+            draft="The login test in packages/web/src/auth.test.ts is failing after the session cookie rename."
+          />
         </GallerySpecimen>
         <GallerySpecimen variant="multiline" wide>
           <GalleryComposer
@@ -286,7 +334,10 @@ onMounted(() => {
       </div>
     </GallerySection>
 
-    <GallerySection title="ModelSelector" note="Chip naming the model and, quieter, its reasoning level; the menu behind it: Fast Mode, Reasoning, and Model. Submenus are on the Overlays page.">
+    <GallerySection
+      title="ModelSelector"
+      note="Chip naming the model and, quieter, its reasoning level; the menu behind it: Fast Mode, Reasoning, and Model. Submenus are on the Overlays page."
+    >
       <div class="specimen-stack">
         <GallerySpecimen variant="chip">
           <ModelSelector
@@ -332,7 +383,10 @@ onMounted(() => {
       </div>
     </GallerySection>
 
-    <GallerySection title="SessionDockChip" note="28px capsule with status dots and the agents cluster.">
+    <GallerySection
+      title="SessionDockChip"
+      note="28px capsule with status dots and the agents cluster."
+    >
       <div class="specimen-row">
         <GallerySpecimen variant="resume">
           <SessionDockChip>
@@ -358,7 +412,10 @@ onMounted(() => {
       </div>
     </GallerySection>
 
-    <GallerySection title="UserBlock" note="User, attachments, overflow, pending steer, queued, and stuck.">
+    <GallerySection
+      title="UserBlock"
+      note="User, attachments, overflow, pending steer, queued, and stuck."
+    >
       <div class="specimen-stack specimen-stack-loose">
         <GallerySpecimen variant="user" wide>
           <div class="gallery-frame gallery-user-frame bg-surface">
@@ -366,7 +423,9 @@ onMounted(() => {
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="user · actions" wide>
-          <div class="gallery-frame gallery-user-frame gallery-user-frame-actions bg-surface">
+          <div
+            class="gallery-frame gallery-user-frame gallery-user-frame-actions bg-surface"
+          >
             <UserBlock :content="userBubble" actions-pinned />
           </div>
         </GallerySpecimen>
@@ -383,7 +442,9 @@ onMounted(() => {
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="pending steer" wide>
-          <div class="gallery-frame gallery-user-frame gallery-user-frame-actions bg-surface">
+          <div
+            class="gallery-frame gallery-user-frame gallery-user-frame-actions bg-surface"
+          >
             <UserBlock
               v-if="pendingSteerShown"
               :content="steerPrompt"
@@ -397,7 +458,9 @@ onMounted(() => {
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="queued" wide>
-          <div class="gallery-frame gallery-user-frame gallery-user-frame-actions bg-surface">
+          <div
+            class="gallery-frame gallery-user-frame gallery-user-frame-actions bg-surface"
+          >
             <UserBlock
               v-if="queuedShown"
               :content="queuedBubble"
@@ -422,7 +485,10 @@ onMounted(() => {
       </div>
     </GallerySection>
 
-    <GallerySection title="FunctionalBlock" note="Thinking, shell (collapsed and expanded), loading, and error.">
+    <GallerySection
+      title="FunctionalBlock"
+      note="Thinking, shell (collapsed and expanded), loading, and error."
+    >
       <div class="gallery-frame gallery-block-frame bg-surface">
         <div class="specimen-stack [--agent-pad-x:0px]">
           <GallerySpecimen variant="collapsed" wide>
@@ -478,7 +544,10 @@ onMounted(() => {
       </div>
     </GallerySection>
 
-    <GallerySection title="LoadingBlock" note="Requesting row before the first block.">
+    <GallerySection
+      title="LoadingBlock"
+      note="Requesting row before the first block."
+    >
       <GallerySpecimen variant="requesting" wide>
         <div class="gallery-frame gallery-activity-frame bg-surface">
           <LoadingBlock />
@@ -486,7 +555,10 @@ onMounted(() => {
       </GallerySpecimen>
     </GallerySection>
 
-    <GallerySection title="ActivitySlot" note="Connecting, resuming, retrying, and requesting.">
+    <GallerySection
+      title="ActivitySlot"
+      note="Connecting, resuming, retrying, and requesting."
+    >
       <GallerySpecimen variant="connecting" wide>
         <div class="gallery-frame gallery-activity-frame bg-surface">
           <ActivitySlot kind="connecting" label="Connecting" />
@@ -494,7 +566,11 @@ onMounted(() => {
       </GallerySpecimen>
     </GallerySection>
 
-    <GallerySessionPane ref="fullPane" label="Session" tall>
+    <GallerySessionPane
+      ref="fullPane"
+      label="Session"
+      tall
+    >
       <GalleryTranscript
         :blocks="sessionBlocks"
         :streaming-thinking-id="sessionStreamingId ?? 'thinking-streaming'"
@@ -573,7 +649,11 @@ onMounted(() => {
 
     <GallerySection title="Stream" note="Thinking then reply, same reveal.">
       <div class="mb-3">
-        <Button variant="ghost" size="sm" @click="playStream">Replay</Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          @click="playStream"
+        >Replay</Button>
       </div>
       <div class="gallery-frame gallery-block-frame-y bg-surface">
         <GalleryTranscript

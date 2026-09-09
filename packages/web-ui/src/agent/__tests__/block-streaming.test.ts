@@ -17,11 +17,24 @@ const model: ModelSelection = {
 }
 
 function thinking(): Block {
-  return { type: 'thinking', id: 't1', createdAt: '2026-01-01T00:00:00.000Z', model, text: '…', signature: null }
+  return {
+    type: 'thinking',
+    id: 't1',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    model,
+    text: '…',
+    signature: null
+  }
 }
 
 function text(): Block {
-  return { type: 'text', id: 'a1', createdAt: '2026-01-01T00:00:00.000Z', model, text: 'hello' }
+  return {
+    type: 'text',
+    id: 'a1',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    model,
+    text: 'hello'
+  }
 }
 
 test('thinking is live only as the running tail', () => {

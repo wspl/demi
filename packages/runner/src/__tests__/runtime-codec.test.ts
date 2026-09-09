@@ -3,27 +3,83 @@ import { mkdtemp, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { bundleForTxiki, txikiBinary } from '../testing'
-import { RUNNER_PROTOCOL_VERSION, createRunnerWire, type RunnerProtocolMessage } from '@demicodes/runner-protocol'
+import {
+  RUNNER_PROTOCOL_VERSION,
+  createRunnerWire,
+  type RunnerProtocolMessage
+} from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 
 // The shared codec must preserve frames identically across Bun and txiki.js.
-test('frames encoded on Bun are read and reproduced identically by txiki.js', async () => {
-  const wire = createRunnerWire(msgpackCodec)
-  const messages: RunnerProtocolMessage[] = [
-    { type: 'hello', protocol: RUNNER_PROTOCOL_VERSION, deviceToken: 't', runner: { name: 'n', platform: 'p', version: '1', identity: { uid: 501, gid: 20, hostname: 'h', homeDir: '/h' } } },
-    { type: 'rpc_cancel', callId: 'cancelled-call' },
-    { type: 'job_running_hint', jobId: 'j1', invocationId: 'i1', hint: 'attending; do not poll' },
-    { type: 'job_running_hint', jobId: 'j1', invocationId: 'i1', hint: null },
-    { type: 'pong', jobs: 3 },
-    { type: 'fs_utimes', id: 'a', path: '/x', atime: new Date(1_600_000_000_000), mtime: new Date(1_600_000_000_250), cwd: '/' },
-    { type: 'fs_ok', id: 'a', op: 'readFile', result: new Uint8Array([0, 1, 254, 255]) },
-    { type: 'fs_ok', id: 'b', op: 'stat', result: { isFile: true, isDirectory: false, isSymbolicLink: false, mode: 0o100644, size: 2 ** 40, mtime: new Date(-1000) } },
-    { type: 'fs_error', id: 'c', code: 'ENOENT', message: 'no' },
-    { type: 'spawn_output', spawnId: 's', stream: 'stderr', bytes: new Uint8Array(70_000).fill(7) },
-    { type: 'spawn_exit', spawnId: 's', exitCode: null, signal: 'SIGKILL', spawnError: { kind: 'other' } },
-  ]
-  const work = await realpath(await mkdtemp(join(tmpdir(), 'demi-codec-')))
-  await Bun.write(join(work, 'entry.ts'), `
+test(
+  'frames encoded on Bun are read and reproduced identically by txiki.js',
+  async () => {
+    const wire = createRunnerWire(msgpackCodec)
+    const messages: RunnerProtocolMessage[] = [
+      {
+        type: 'hello',
+        protocol: RUNNER_PROTOCOL_VERSION,
+        deviceToken: 't',
+        runner: {
+          name: 'n',
+          platform: 'p',
+          version: '1',
+          identity: { uid: 501, gid: 20, hostname: 'h', homeDir: '/h' }
+        }
+      },
+      { type: 'rpc_cancel', callId: 'cancelled-call' },
+      {
+        type: 'job_running_hint',
+        jobId: 'j1',
+        invocationId: 'i1',
+        hint: 'attending; do not poll'
+      },
+      { type: 'job_running_hint', jobId: 'j1', invocationId: 'i1', hint: null },
+      { type: 'pong', jobs: 3 },
+      {
+        type: 'fs_utimes',
+        id: 'a',
+        path: '/x',
+        atime: new Date(1_600_000_000_000),
+        mtime: new Date(1_600_000_000_250),
+        cwd: '/'
+      },
+      {
+        type: 'fs_ok',
+        id: 'a',
+        op: 'readFile',
+        result: new Uint8Array([0, 1, 254, 255])
+      },
+      {
+        type: 'fs_ok',
+        id: 'b',
+        op: 'stat',
+        result: {
+          isFile: true,
+          isDirectory: false,
+          isSymbolicLink: false,
+          mode: 0o100644,
+          size: 2 ** 40,
+          mtime: new Date(-1000)
+        }
+      },
+      { type: 'fs_error', id: 'c', code: 'ENOENT', message: 'no' },
+      {
+        type: 'spawn_output',
+        spawnId: 's',
+        stream: 'stderr',
+        bytes: new Uint8Array(70_000).fill(7)
+      },
+      {
+        type: 'spawn_exit',
+        spawnId: 's',
+        exitCode: null,
+        signal: 'SIGKILL',
+        spawnError: { kind: 'other' }
+      },
+    ]
+    const work = await realpath(await mkdtemp(join(tmpdir(), 'demi-codec-')))
+    await Bun.write(join(work, 'entry.ts'), `
 import { msgpackCodec } from '${join(import.meta.dir, '../../../runner-protocol/src/codec.ts')}'
 const { encode: msgpackEncode, decode: msgpackDecode } = msgpackCodec
 const { env, exit } = tjs
@@ -31,22 +87,45 @@ const frames = msgpackDecode(await tjs.readFile(env.FRAMES)) as Uint8Array[]
 await tjs.writeFile(env.FRAMES_BACK, msgpackEncode(frames.map((frame) => msgpackEncode(msgpackDecode(frame)))))
 exit(0)
 `)
-  const bundle = join(work, 'entry.mjs')
-  await bundleForTxiki(join(work, 'entry.ts'), bundle)
-  const frames = messages.map((message) => wire.encode(message))
-  await Bun.write(join(work, 'frames.bin'), msgpackCodec.encode(frames))
-  const run = Bun.spawnSync([txikiBinary(), 'run', bundle], {
-    env: { PATH: process.env.PATH ?? '', FRAMES: join(work, 'frames.bin'), FRAMES_BACK: join(work, 'back.bin') },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  expect(run.exitCode, run.stderr.toString()).toBe(0)
-  const back = msgpackCodec.decode(new Uint8Array(await Bun.file(join(work, 'back.bin')).arrayBuffer())) as Uint8Array[]
-  expect(back.length).toBe(frames.length)
-  for (const [index, frame] of frames.entries()) {
-    expect(Buffer.from(back[index]!).equals(Buffer.from(frame)), `frame ${index} (${messages[index]!.type})`).toBe(true)
-    const runnerToBackend = ['hello', 'pong', 'fs_ok', 'fs_error', 'spawn_output', 'spawn_exit', 'rpc_cancel', 'job_running_hint'].includes(messages[index]!.type)
-    const decoded = runnerToBackend ? wire.decodeRunnerToBackend(back[index]!) : wire.decodeBackendToRunner(back[index]!)
-    expect(decoded).toEqual(messages[index])
-  }
-}, 60_000)
+    const bundle = join(work, 'entry.mjs')
+    await bundleForTxiki(join(work, 'entry.ts'), bundle)
+    const frames = messages.map((message) => wire.encode(message))
+    await Bun.write(join(work, 'frames.bin'), msgpackCodec.encode(frames))
+    const run = Bun.spawnSync([txikiBinary(), 'run', bundle], {
+      env: {
+        PATH: process.env.PATH ?? '',
+        FRAMES: join(work, 'frames.bin'),
+        FRAMES_BACK: join(work, 'back.bin')
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(run.exitCode, run.stderr.toString()).toBe(0)
+    const back = msgpackCodec.decode(new Uint8Array(await Bun.file(join(
+      work,
+      'back.bin'
+    )).arrayBuffer())) as Uint8Array[]
+    expect(back.length).toBe(frames.length)
+    for (const [index, frame] of frames.entries()) {
+      expect(
+        Buffer.from(back[index]!).equals(Buffer.from(frame)),
+        `frame ${index} (${messages[index]!.type})`
+      ).toBe(true)
+      const runnerToBackend = [
+        'hello',
+        'pong',
+        'fs_ok',
+        'fs_error',
+        'spawn_output',
+        'spawn_exit',
+        'rpc_cancel',
+        'job_running_hint'
+      ].includes(messages[index]!.type)
+      const decoded = runnerToBackend
+        ? wire.decodeRunnerToBackend(back[index]!)
+        : wire.decodeBackendToRunner(back[index]!)
+      expect(decoded).toEqual(messages[index])
+    }
+  },
+  60_000
+)

@@ -1,18 +1,30 @@
 import type { AgentCommandsContext, AgentHarness } from '@demicodes/agent'
-import { CommandRegistry, RESERVED_COMMAND_NAMES, type Command, type Host } from '@demicodes/shell'
+import {
+  CommandRegistry,
+  RESERVED_COMMAND_NAMES,
+  type Command,
+  type Host
+} from '@demicodes/shell'
 import { createDemiCommand } from './demi-command'
 import { createFileReferenceResolver } from './reference-resolver'
 
 export type CodingState = Record<string, never>
 
-/** Per-action Host resolution (`AgentHarness.host` signature) for multi-target products. */
+/**
+ * Per-action Host resolution (`AgentHarness.host` signature) for multi-target
+ * products.
+ */
 export type CodingHostResolver = AgentHarness<CodingState>['host']
 
 /** Session-aware command construction (`AgentHarness.commands` signature). */
-export type CodingCommandsBuilder = (ctx: AgentCommandsContext<CodingState>) => Promise<Command[]> | Command[]
+export type CodingCommandsBuilder = (
+  ctx: AgentCommandsContext<CodingState>
+) => Promise<Command[]> | Command[]
 
 export interface CodingAgentHarnessOptions {
-  /** A fixed Host, or a resolver routing each action to its execution target. */
+  /**
+   * A fixed Host, or a resolver routing each action to its execution target.
+   */
   host: Host | CodingHostResolver
   referenceHost?: Host
   /** Replaces the default command set; a builder closes over the session id. */
@@ -26,18 +38,26 @@ export interface CodingCommandRegistryOptions {
   commands?: Command[]
 }
 
-export function createCodingCommandRegistry(options: CodingCommandRegistryOptions = {}): CommandRegistry {
+export function createCodingCommandRegistry(
+  options: CodingCommandRegistryOptions = {}
+): CommandRegistry {
   const registry = new CommandRegistry(RESERVED_COMMAND_NAMES)
   const commands = options.commands ?? defaultCodingCommands()
   for (const command of commands) registry.register(command)
   return registry
 }
 
-export function createCodingAgentHarness(options: CodingAgentHarnessOptions): AgentHarness<CodingState> {
+export function createCodingAgentHarness(
+  options: CodingAgentHarnessOptions
+): AgentHarness<CodingState> {
   const commands = options.commands ?? defaultCodingCommands()
-  const buildCommands: CodingCommandsBuilder = typeof commands === 'function' ? commands : () => [...commands]
+  const buildCommands: CodingCommandsBuilder = typeof commands === 'function'
+    ? commands
+    : () => [...commands]
   const resolveHost: CodingHostResolver =
-    typeof options.host === 'function' ? options.host : () => options.host as Host
+    typeof options.host === 'function'
+      ? options.host
+      : () => options.host as Host
   const resolveReferences = createFileReferenceResolver<CodingState>(
     options.referenceHost ?? ((ctx) => resolveHost(ctx)),
   )
@@ -58,7 +78,8 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
             'Do not edit, create, or execute anything — report findings instead.',
             'Use shell_exec with a required timeoutMs (an observation window, not a kill deadline); use shell_status to poll a running command.',
           ]
-          if (ctx.commandsPrompt.trim()) sections.push(`Registered commands:\n\n${ctx.commandsPrompt}`)
+          if (ctx.commandsPrompt.trim())
+            sections.push(`Registered commands:\n\n${ctx.commandsPrompt}`)
           return sections.join('\n\n')
         },
       },
@@ -86,7 +107,8 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
         ].join('\n'),
         'File references attached by the client are expanded before provider calls.',
       ]
-      if (ctx.commandsPrompt.trim()) sections.push(`Registered commands:\n\n${ctx.commandsPrompt}`)
+      if (ctx.commandsPrompt.trim())
+        sections.push(`Registered commands:\n\n${ctx.commandsPrompt}`)
       return sections.join('\n\n')
     },
     resolveReferences,
