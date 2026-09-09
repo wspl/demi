@@ -101,8 +101,8 @@ test('DbHostStore round-trips portable JSON and lists by literal prefix', async 
 test('ControlService conversation CRUD and ordering', async () => {
   const db = openControlDb()
   const control = new LocalControlService(db)
-  const user = (await control.createMaster({ username: 'local', passwordHash: '!' }))!
-  expect(await control.createMaster({ username: 'again', passwordHash: '!' })).toBeNull()
+  const user = (await control.createMaster({ email: 'local@example.test', passwordHash: '!' }))!
+  expect(await control.createMaster({ email: 'again@example.test', passwordHash: '!' })).toBeNull()
 
   const first = await control.createConversation(user.id)
   const second = await control.createConversation(user.id)
@@ -135,7 +135,7 @@ test('ControlService conversation CRUD and ordering', async () => {
 test('ControlService device and workspace records', async () => {
   const db = openControlDb()
   const control = new LocalControlService(db)
-  const user = (await control.createMaster({ username: 'local', passwordHash: '!' }))!
+  const user = (await control.createMaster({ email: 'local@example.test', passwordHash: '!' }))!
 
   const device = await control.createDevice({ userId: user.id, name: 'laptop', platform: 'darwin', tokenHash: 'hash-1' })
   expect(device.lastSeenAt).toBeNull()
@@ -326,7 +326,7 @@ test('expired web sessions are swept when a session opens', async () => {
   const db = openSqliteDatabase(':memory:')
   migrate(db, CONTROL_MIGRATIONS)
   const control = new LocalControlService(db)
-  const user = await control.createUser({ username: 'u', passwordHash: 'x', role: 'user' })
+  const user = await control.createUser({ email: 'u@example.test', passwordHash: 'x', role: 'user' })
   let now = Date.parse('2026-01-01T00:00:00.000Z')
   const sessions = new WebSessions(control, { ttlMs: 1000, now: () => now })
   await sessions.open(user!.id)
