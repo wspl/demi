@@ -80,7 +80,9 @@ function presetState(extensions: string[]): {
   checked: boolean
   partial: boolean
 } {
-  const have = extensions.filter((e) => draft.value.extensions?.includes(e)).length
+  const have = extensions.filter((e) =>
+    draft.value.extensions?.includes(e),
+  ).length
   return {
     checked: have === extensions.length,
     partial: have > 0 && have < extensions.length,
@@ -88,7 +90,9 @@ function presetState(extensions: string[]): {
 }
 
 function setPreset(extensions: string[], on: boolean) {
-  const rest = (draft.value.extensions ?? []).filter((e) => !extensions.includes(e))
+  const rest = (draft.value.extensions ?? []).filter(
+    (e) => !extensions.includes(e),
+  )
   draft.value.extensions = on ? [...rest, ...extensions] : rest
 }
 
@@ -129,16 +133,14 @@ const canSave = computed(() => {
         </p>
       </header>
       <ScrollArea
+        :inert="pending"
         class="min-h-0"
         :viewport-class="`flex flex-col gap-4 px-5 ${editable ? '' : 'pb-5'}`"
       >
         <div
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
-          <SettingsRow
-            v-if="editable"
-            label="Model id"
-          >
+          <SettingsRow v-if="editable" label="Model id">
             <TextInput
               v-model="draft.id"
               placeholder="model-id"
@@ -157,27 +159,20 @@ const canSave = computed(() => {
               :placeholder="draft.id"
               class="w-64 max-w-full"
             />
-            <span
-              v-else
-              class="text-chrome text-fg"
-              >{{ draft.name || '—' }}</span
-            >
+            <span v-else class="text-chrome text-fg">{{
+              draft.name || '—'
+            }}</span>
           </SettingsRow>
-          <SettingsRow
-            label="Context window"
-            :compact="!editable"
-          >
+          <SettingsRow label="Context window" :compact="!editable">
             <TokenInput
               v-if="editable"
               v-model="draft.contextWindow"
               placeholder="128"
               class="w-32"
             />
-            <span
-              v-else
-              class="text-chrome tabular-nums text-fg"
-              >{{ formatTokens(draft.contextWindow) }}</span
-            >
+            <span v-else class="text-chrome tabular-nums text-fg">{{
+              formatTokens(draft.contextWindow)
+            }}</span>
           </SettingsRow>
           <SettingsRow
             label="Max output"
@@ -190,11 +185,9 @@ const canSave = computed(() => {
               placeholder="8"
               class="w-32"
             />
-            <span
-              v-else
-              class="text-chrome tabular-nums text-fg"
-              >{{ formatTokens(draft.outputLimit) }}</span
-            >
+            <span v-else class="text-chrome tabular-nums text-fg">{{
+              formatTokens(draft.outputLimit)
+            }}</span>
           </SettingsRow>
           <SettingsRow
             label="Reasoning"
@@ -217,13 +210,9 @@ const canSave = computed(() => {
                 {{ cap(effort) }}
               </button>
             </template>
-            <span
-              v-else
-              class="text-chrome text-fg"
-              >{{
-                draft.efforts.length ? draft.efforts.map(cap).join(' · ') : 'None'
-              }}</span
-            >
+            <span v-else class="text-chrome text-fg">{{
+              draft.efforts.length ? draft.efforts.map(cap).join(' · ') : 'None'
+            }}</span>
           </SettingsRow>
           <SettingsRow
             label="Fast tier"
@@ -237,11 +226,9 @@ const canSave = computed(() => {
               class="w-32"
               @update:model-value="(v) => (draft.fastTier = v.trim() || null)"
             />
-            <span
-              v-else
-              class="font-mono text-[12px] text-fg-muted"
-              >{{ draft.fastTier ?? '—' }}</span
-            >
+            <span v-else class="font-mono text-[12px] text-fg-muted">{{
+              draft.fastTier ?? '—'
+            }}</span>
           </SettingsRow>
         </div>
 
@@ -258,14 +245,10 @@ const canSave = computed(() => {
               class="text-chrome text-fg"
               >{{ draft.extensions === null ? 'Unknown' : 'Text only' }}</span
             >
-            <span
-              v-else-if="!editable"
-              class="flex flex-wrap justify-end gap-1"
-              ><Tag
-                v-for="ext in draft.extensions"
-                :key="ext"
-                >{{ ext }}</Tag
-              ></span
+            <span v-else-if="!editable" class="flex flex-wrap justify-end gap-1"
+              ><Tag v-for="ext in draft.extensions" :key="ext">{{
+                ext
+              }}</Tag></span
             >
           </SettingsRow>
           <template v-if="editable">
@@ -289,10 +272,7 @@ const canSave = computed(() => {
             v-if="editable && draft.extensions?.length"
             class="flex flex-wrap gap-1 px-4 py-3"
           >
-            <Tag
-              v-for="ext in draft.extensions"
-              :key="ext"
-            >
+            <Tag v-for="ext in draft.extensions" :key="ext">
               {{ ext }}
               <button
                 v-if="editable"
@@ -311,21 +291,15 @@ const canSave = computed(() => {
           </div>
         </div>
       </ScrollArea>
-      <p
-        v-if="error"
-        role="alert"
-        class="px-5 pt-3 text-chrome text-on-danger"
-      >
+      <p v-if="error" role="alert" class="px-5 pt-3 text-chrome text-on-danger">
         {{ error }}
       </p>
-      <div
-        v-if="editable"
-        class="flex justify-end gap-2 p-5 pt-4"
-      >
+      <div v-if="editable" class="flex justify-end gap-2 p-5 pt-4">
         <Button @click="emit('close')">Cancel</Button>
         <Button
           variant="primary"
-          :disabled="!canSave || pending"
+          :disabled="!canSave"
+          :loading="pending"
           @click="emit('save', clone(draft))"
           >{{ mode === 'create' ? 'Add model' : 'Save' }}</Button
         >

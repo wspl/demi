@@ -1,5 +1,5 @@
 import { createApp, watch } from 'vue'
-import { createPinia } from 'pinia'
+import { createPinia, disposePinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
 import {
   applyProductAppearance,
@@ -128,11 +128,7 @@ const refreshVisible = () => {
 window.addEventListener('focus', refreshVisible)
 document.addEventListener('visibilitychange', refreshVisible)
 const app = createApp(App).use(pinia).use(router)
-void router.isReady().then(() => {
-  if (!startup.signal.aborted) {
-    app.mount('#app')
-  }
-})
+app.mount('#app')
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     startup.abort()
@@ -148,5 +144,6 @@ if (import.meta.hot) {
     window.removeEventListener('focus', refreshVisible)
     document.removeEventListener('visibilitychange', refreshVisible)
     app.unmount()
+    disposePinia(pinia)
   })
 }

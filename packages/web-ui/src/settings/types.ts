@@ -90,12 +90,7 @@ export interface SettingsVendor {
 
 /** `unconfigured` is a fresh entry that still needs its key or login. */
 export type SettingsProviderState =
-  | 'ready'
-  | 'unconfigured'
-  | 'error'
-  | 'unreachable'
-  | 'signed-out'
-  | 'disabled'
+  'ready' | 'unconfigured' | 'error' | 'unreachable' | 'signed-out' | 'disabled'
 
 /** A model a provider offers, as the page lists and toggles it. */
 export interface SettingsProviderModel extends SettingsModelDraft {
@@ -196,7 +191,13 @@ export interface SettingsSkillDraft {
   origin: string
 }
 
-export const THINKING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'max'] as const
+export const THINKING_EFFORTS = [
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'max',
+] as const
 
 export const EXTENSION_PRESETS: {
   id: string
@@ -219,3 +220,50 @@ export const EXTENSION_PRESETS: {
     extensions: ['.pdf'],
   },
 ]
+
+/** Retained by the host so a submitted model edit survives closing settings. */
+export interface SettingsModelEditor {
+  providerId: string
+  mode: 'create' | 'edit' | 'view'
+  model: SettingsModelDraft
+  original: SettingsProviderModel | null
+  open: boolean
+  status: { kind: 'idle' | 'saving' } | { kind: 'failed'; message: string }
+}
+
+export type ProviderLoginPhase =
+  | { kind: 'starting' }
+  | {
+      kind: 'device'
+      url: string
+      code: string
+      expiresIn?: string
+    }
+  | {
+      kind: 'code-input'
+      url: string
+    }
+  | {
+      kind: 'token'
+      /** The command that prints the token, run in the user's own terminal. */
+      command: string
+      /** Where to get the CLI when it is missing. */
+      install: {
+        label: string
+        url: string
+      }
+      /** What a token starts with, so a paste can be checked before it is sent. */
+      prefix: string
+    }
+  | {
+      kind: 'done'
+      account: string
+    }
+  | {
+      kind: 'failed'
+      message: string
+    }
+
+export type SettingsProviderOperation =
+  | { kind: 'saving' | 'testing' | 'refreshing' | 'removing' }
+  | { kind: 'account'; accountId: string; action: 'activate' | 'remove' }
