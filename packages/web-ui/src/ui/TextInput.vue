@@ -38,9 +38,9 @@ const emit = defineEmits<{
 }>()
 
 const slots = useSlots()
-// Sizing classes belong to the frame; everything else (placeholder rules, maxlength) to the input.
+// Layout classes belong to the outer flex item; native attributes stay on the input.
 const attrs = useAttrs()
-const frameAttrs = computed(() => ({
+const layoutAttrs = computed(() => ({
   class: attrs['class'],
   style: attrs['style']
 }))
@@ -68,19 +68,18 @@ const frameHeightClass = computed(() => {
   return 'h-7'
 })
 
-function insetPad(edge: 'pl' | 'pr'): string {
-  if (props.size === 'sm')
-    return `${edge}-2`
-  if (props.size === 'lg')
-    return `${edge}-3`
-  return `${edge}-2.5`
-}
+// Keep complete class names visible to Tailwind's source scanner.
+const insetPadding = {
+  sm: { left: 'pl-2', right: 'pr-2' },
+  md: { left: 'pl-2.5', right: 'pr-2.5' },
+  lg: { left: 'pl-3', right: 'pr-3' },
+} as const
 
 const inputPadClass = computed(() => [
-  slots['prefix'] ? 'pl-1.5' : props.bare ? 'pl-0' : insetPad('pl'),
+  slots['prefix'] ? 'pl-1.5' : props.bare ? 'pl-0' : insetPadding[props.size].left,
   props.secret || slots['suffix']
     ? 'pr-1.5'
-    : props.bare ? 'pr-0' : insetPad('pr'),
+    : props.bare ? 'pr-0' : insetPadding[props.size].right,
 ])
 
 onMounted(() => {
@@ -104,16 +103,15 @@ defineExpose({
     :content="tooltipContent"
     :disabled="!tooltipContent"
     tag="div"
-    class="min-w-0"
-    :class="attrs['class'] ? '' : 'w-full'"
+    v-bind="layoutAttrs"
+    class="flex min-w-0"
+    :class="[attrs['class'] ? '' : 'w-full', bare ? 'self-stretch' : '']"
     :open-delay-ms="80"
   >
     <div
-      v-bind="frameAttrs"
-      class="flex min-w-0 items-center rounded-md ring-1 transition-[box-shadow,background-color] duration-200 ease-out"
+      class="flex min-w-0 flex-1 items-center rounded-md ring-1 transition-[box-shadow,background-color] duration-200 ease-out"
       :class="[
       frameHeightClass,
-      attrs['class'] ? '' : 'w-full',
       bare ? 'bg-transparent ring-transparent' : ['bg-surface-raised', showFocus || isFocused ? 'ring-line-focus' : 'ring-line'],
       disabled ? 'cursor-not-allowed opacity-40' : '',
     ]"

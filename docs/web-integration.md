@@ -3,6 +3,8 @@
 `packages/web` is the authenticated backend client. `packages/web-ui` owns the
 reusable interface and interaction; `packages/web-gallery` supplies fixtures for
 those same components. The product no longer has a prototype store or reply clock.
+Shared input sizing and the production CSS inspection matrix are documented in
+[control layout](control-layout.md).
 
 ## State and transport
 
