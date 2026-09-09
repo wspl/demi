@@ -1,6 +1,8 @@
 import { errorMessage } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
+import { providerDetails, publicQuota } from '../llm/provider-details'
+import { configuredModelsSchema } from '../llm/model-config'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
 import type { ProviderAssembly } from '../llm/assembly'
 import type { VendorCatalog } from '../llm/vendors'
@@ -8,12 +10,11 @@ import { canConfigureProviders, providerOwner } from '../vault/scope'
 import type { ApiKeyProviderConfig, ProviderEntry, ProviderVault } from '../vault/providers'
 import type { SubscriptionLoginFlows } from '../vault/subscription-login'
 
-const subscriptionLoginBodySchema = z.object({
+const subscriptionLoginBodySchema = z.strictObject({
   providerType: z.string().min(1),
   label: z.string().min(1).optional(),
 })
 
-const modelIdsSchema = z.array(z.string().min(1)).min(1)
 
 /**
  * An API-key entry comes in two shapes: from the vendor catalog — the
@@ -21,29 +22,29 @@ const modelIdsSchema = z.array(z.string().min(1)).min(1)
  * user types one — or a custom endpoint naming the family itself.
  */
 const createProviderBodySchema = z.union([
-  z.object({
+  z.strictObject({
     vendorId: z.string().min(1),
     label: z.string().min(1),
     apiKey: z.string().min(1),
     baseUrl: z.string().url().optional(),
-    modelIds: modelIdsSchema.optional(),
+    models: configuredModelsSchema.optional(),
   }),
-  z.object({
+  z.strictObject({
     providerType: z.string().min(1),
     label: z.string().min(1),
     apiKey: z.string().min(1),
     wireApi: z.enum(['responses', 'chat-completions']).optional(),
     baseUrl: z.string().url().optional(),
-    modelIds: modelIdsSchema.optional(),
+    models: configuredModelsSchema.optional(),
   }),
 ])
 
-/** Edits: the label of any entry; endpoint, key and model list of an API-key entry (`modelIds: null` returns to the live list). */
-const patchProviderBodySchema = z.object({
+/** Edits: the label of any entry; endpoint, key and model list of an API-key entry (`models: null` returns to the live list). */
+const patchProviderBodySchema = z.strictObject({
   label: z.string().min(1).optional(),
   apiKey: z.string().min(1).optional(),
   baseUrl: z.string().url().nullable().optional(),
-  modelIds: modelIdsSchema.nullable().optional(),
+  models: configuredModelsSchema.nullable().optional(),
 })
 
 /**
@@ -80,7 +81,8 @@ export function providerRoutes(options: {
   // Configuring providers — creating, editing, logging in, testing, deleting —
   // is the admin's in shared mode and everyone's own in isolated mode.
   app.use('*', async (c, next) => {
-    if (c.req.method !== 'GET' && !canConfigureProviders(mode, c.get('user').role)) {
+    const refreshingQuota = c.req.method === 'POST' && /^\/api\/providers\/[^/]+\/quota$/.test(c.req.path)
+    if (c.req.method !== 'GET' && !refreshingQuota && !canConfigureProviders(mode, c.get('user').role)) {
       return c.json({ code: 'forbidden', message: 'Providers are configured by administrators on this instance' }, 403)
     }
     await next()
@@ -145,7 +147,7 @@ export function providerRoutes(options: {
         vendorId: vendor.id,
         ...(vendor.wireApi ? { wireApi: vendor.wireApi } : {}),
         ...(baseUrl ? { baseUrl } : {}),
-        ...(body.modelIds ? { modelIds: body.modelIds } : {}),
+        ...(body.models ? { models: body.models } : {}),
       }
     } else {
       const credential = assembly.credentialOf(body.providerType)
@@ -161,7 +163,7 @@ export function providerRoutes(options: {
         apiKey: body.apiKey,
         ...(body.wireApi ? { wireApi: body.wireApi } : {}),
         ...(body.baseUrl ? { baseUrl: body.baseUrl } : {}),
-        ...(body.modelIds ? { modelIds: body.modelIds } : {}),
+        ...(body.models ? { models: body.models } : {}),
       }
     }
     const provider = await vault.create({ ownerUserId: ownerOf(c), label: body.label, config })
@@ -174,7 +176,7 @@ export function providerRoutes(options: {
     const parsed = patchProviderBodySchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return invalidBody(c, parsed.error)
     const body = parsed.data
-    const editsConfig = body.apiKey !== undefined || body.baseUrl !== undefined || body.modelIds !== undefined
+    const editsConfig = body.apiKey !== undefined || body.baseUrl !== undefined || body.models !== undefined
     if (editsConfig && provider.config.kind !== 'api_key') {
       return c.json({ code: 'subscription_only', message: 'A subscription entry only takes a new label' }, 400)
     }
@@ -184,7 +186,7 @@ export function providerRoutes(options: {
             ...provider.config,
             ...(body.apiKey !== undefined ? { apiKey: body.apiKey } : {}),
             ...(body.baseUrl !== undefined ? { baseUrl: body.baseUrl ?? undefined } : {}),
-            ...(body.modelIds !== undefined ? { modelIds: body.modelIds ?? undefined } : {}),
+            ...(body.models !== undefined ? { models: body.models ?? undefined } : {}),
           }
         : undefined
     const updated = await vault.update(provider.id, {
@@ -202,6 +204,32 @@ export function providerRoutes(options: {
     await vault.delete(provider.id)
     await assembly.deleteProviderState(provider.id)
     return c.body(null, 204)
+  })
+
+  app.get('/:id/status', async (c) => {
+    const entry = await scoped(c)
+    if (!entry) return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
+    const resolved = await assembly.providerFor(entry.id)
+    if (!resolved) return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
+    try {
+      return c.json({ providerId: entry.id, ...await providerDetails(resolved.provider) })
+    } catch (error) {
+      return c.json({ code: 'provider_status_failed', message: errorMessage(error) }, 502)
+    }
+  })
+
+  app.post('/:id/quota', async (c) => {
+    const entry = await scoped(c)
+    if (!entry) return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
+    const quota = (await assembly.providerFor(entry.id))?.provider.quota
+    const capability = quota?.capability()
+    if (!quota || capability?.mode !== 'supported' || !capability.canProbe) return c.json({ quota: publicQuota(quota?.latest() ?? null) })
+    if (capability.probeCost !== 'free') return c.json({ code: 'quota_requires_inference', message: 'This provider cannot refresh quota without an inference request' }, 409)
+    try {
+      return c.json({ quota: publicQuota(await quota.probe({ force: true, signal: c.req.raw.signal })) })
+    } catch (error) {
+      return c.json({ code: 'quota_unavailable', message: errorMessage(error) }, 502)
+    }
   })
 
   app.post('/:id/test', async (c) => {
@@ -229,7 +257,8 @@ function redact(provider: ProviderEntry) {
     wireApi: keyed?.wireApi ?? null,
     vendorId: keyed?.vendorId ?? null,
     baseUrl: keyed?.baseUrl ?? null,
-    modelIds: keyed?.modelIds ?? null,
+    models: keyed?.models ?? null,
+    keyConfigured: keyed !== null,
     createdAt: provider.createdAt,
   }
 }

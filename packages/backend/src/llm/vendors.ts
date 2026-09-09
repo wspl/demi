@@ -59,8 +59,8 @@ export class VendorCatalog {
   }
 
   /** The vendor's model list as the catalog of provider entry `providerId`, or null for an unknown vendor. */
-  async models(vendorId: string, providerId: string): Promise<ProviderModelList | null> {
-    const snapshot = await fetchModelsDev(this.options)
+  async models(vendorId: string, providerId: string, refresh = false): Promise<ProviderModelList | null> {
+    const snapshot = await fetchModelsDev({ ...this.options, refresh })
     if (!snapshot.catalog[vendorId] || !vendorOf(snapshot.catalog[vendorId])) return null
     return modelListFromModelsDev(snapshot, vendorId, providerId)
   }

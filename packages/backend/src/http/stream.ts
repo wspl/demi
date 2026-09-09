@@ -5,6 +5,7 @@ import {
   type BlobStore,
   type JsonWebSocket,
 } from '@demicodes/agent'
+import type { ProviderAssembly } from '../llm/assembly'
 import { Hono } from 'hono'
 import type { UpgradeWebSocket } from 'hono/ws'
 import type { WSContext } from 'hono/ws'
@@ -23,6 +24,7 @@ import { visibleProvider } from '../vault/scope'
  * logic in `scoped-transport.ts`.
  */
 export function streamRoutes(options: {
+  assembly: ProviderAssembly
   registry: RunnerRegistry
   control: ControlService
   agentServer: AgentServer
@@ -45,6 +47,7 @@ export function streamRoutes(options: {
         onOpen(_event, ws) {
           const transport = conversationScopedTransport(createWebSocketServerTransport(adapter.socket(ws)), conversation, {
             control,
+            modelSelection: (providerId, selection) => options.assembly.selection(providerId, selection),
             cwd: target.path,
             blobs: blobsFor(conversation.userId),
             providerAllowed: async (providerId) => (await visibleProvider(vault, mode, conversation.userId, providerId)) !== null,
