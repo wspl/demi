@@ -4,7 +4,10 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ProviderLoginDialog, {
   type ProviderLoginPhase,
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
-import { defaultApiVendors } from '@demicodes/web-ui/settings/provider-defaults'
+import {
+  defaultApiVendors,
+  defaultEndpointUrl,
+} from '@demicodes/web-ui/settings/provider-defaults'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import {
   WIRE_API_LABELS,
@@ -95,6 +98,7 @@ function addEndpoint(wireApi: SettingsWireApi) {
       family: 'custom',
       vendorId: null,
       wireApi,
+      baseUrl: defaultEndpointUrl(mockVendors, wireApi),
       modelSource: 'manual',
       state: 'unconfigured',
     }),

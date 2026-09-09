@@ -7,7 +7,10 @@ import { showToast } from '@demicodes/web-ui/infra/toast'
 import ProviderLoginDialog, {
   type ProviderLoginPhase,
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
-import { defaultApiVendors } from '@demicodes/web-ui/settings/provider-defaults'
+import {
+  defaultApiVendors,
+  defaultEndpointUrl,
+} from '@demicodes/web-ui/settings/provider-defaults'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import {
   WIRE_API_LABELS,
@@ -152,6 +155,7 @@ function addEndpoint(wireApi: SettingsWireApi): void {
     'api_key',
   )
   provider.wireApi = wireApi
+  provider.baseUrl = defaultEndpointUrl(resources.vendors, wireApi)
   provider.modelSource = 'manual'
   drafts.value.push(provider)
   select(provider.id)

@@ -85,7 +85,7 @@ export const mockVendors: MockVendor[] = [
     name: 'Anthropic',
     family: 'anthropic',
     wireApi: 'anthropic-messages',
-    baseUrl: null,
+    baseUrl: 'https://api.anthropic.com/v1',
     logo: '/logos/anthropic.svg'
   },
   {
@@ -93,7 +93,7 @@ export const mockVendors: MockVendor[] = [
     name: 'OpenAI',
     family: 'openai',
     wireApi: 'openai-responses',
-    baseUrl: null,
+    baseUrl: 'https://api.openai.com/v1',
     logo: '/logos/openai.svg'
   },
   {

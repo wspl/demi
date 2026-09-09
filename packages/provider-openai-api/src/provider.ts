@@ -98,7 +98,7 @@ interface OpenAIApiRuntimeOptions {
   fetch: OpenAIApiFetch
 }
 
-const DEFAULT_OPENAI_API_BASE_URL = 'https://api.openai.com/v1'
+export const DEFAULT_OPENAI_API_BASE_URL = 'https://api.openai.com/v1'
 
 export class OpenAIChatCompletionsProvider implements AgentProvider {
   constructor(private readonly options: OpenAIApiRuntimeOptions) {}

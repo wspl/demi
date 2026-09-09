@@ -1,3 +1,5 @@
+import { DEFAULT_OPENAI_API_BASE_URL } from '@demicodes/provider-openai-api'
+import { DEFAULT_ANTHROPIC_API_BASE_URL } from '@demicodes/provider-anthropic-api'
 import {
   fetchModelsDev,
   modelListFromModelsDev,
@@ -26,6 +28,11 @@ const FAMILY_BY_NPM: Record<string, VendorFamily> = {
   '@ai-sdk/openai': { providerType: 'openai', wireApi: 'responses' },
   '@ai-sdk/anthropic': { providerType: 'anthropic' },
   '@ai-sdk/google': { providerType: 'google' },
+}
+
+const OFFICIAL_BASE_URLS: Record<string, string> = {
+  openai: DEFAULT_OPENAI_API_BASE_URL,
+  anthropic: DEFAULT_ANTHROPIC_API_BASE_URL,
 }
 
 /**
@@ -97,7 +104,7 @@ function vendorOf(entry: ModelsDevProvider): Vendor | null {
     id: entry.id,
     name: entry.name,
     ...family,
-    baseUrl: entry.api ?? null,
+    baseUrl: entry.api ?? OFFICIAL_BASE_URLS[entry.id] ?? null,
     doc: entry.doc ?? null
   }
 }
