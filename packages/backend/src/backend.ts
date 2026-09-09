@@ -14,6 +14,8 @@ import { ownerFitsMode } from './vault/scope'
 import { WebSessions, type WebSessionsOptions } from './auth/sessions'
 import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { transpileCommandModule } from './conversation/command-manifest'
+import { ProductState } from './sync/product-state'
+import { ConversationUpdates } from './conversation/updates'
 import { ConversationTargets } from './conversation/target'
 import { CLOUD_HOME } from './conversation/execution-target'
 import { createCloudWorkspace } from './managed/cloud-workspace'
@@ -42,6 +44,8 @@ import { CONTROL_MIGRATIONS, migrate } from './storage/migrations'
 export interface BackendOptions {
   /** Directory produced by runner/runtime/release.ts; exposes paired client/runner downloads. */
   runnerReleaseDir?: string
+  /** Optional directory containing a built browser application. */
+  webDirectory?: string
   /** Delivers account email verification codes. */
   accountMail?: AccountMailSender
   /** Data directory: control database, conversation databases, blobs and machine images. */
@@ -251,9 +255,13 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const { upgradeWebSocket, websocket } = createBunWebSocket()
   const runnerReleaseDir = options.runnerReleaseDir ?? process.env.DEMI_RUNNER_RELEASE_DIR
   const app = createApp({
+    webDirectory: options.webDirectory,
     ...(runnerReleaseDir ? { runnerInstallation: { directory: runnerReleaseDir, backendUrl: options.publicUrl } } : {}),
     control,
     conversationStores,
+    productState: new ProductState({ control, stores: conversationStores, server: agentServer, registry: runnerRegistry, vault, assembly, managed: managedHosts, mode: options.mode }),
+    conversationUpdates: new ConversationUpdates({ control, vault, mode: options.mode, targets, agentServer }),
+    admitFrame: (id) => targets.files(id).tryEnter(),
     vault,
     assembly,
     vendors,
@@ -266,7 +274,6 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     upgradeWebSocket,
     blobs,
     withHost: (id, operation, signal) => targets.withHost(id, operation, signal),
-    switchTarget: (conversationId, toWorkspaceId) => targets.switch(conversationId, toWorkspaceId),
     managedHosts,
     createCloudWorkspace: managedHosts
       ? (userId, name) => createCloudWorkspace({ control, managedHosts, registry: runnerRegistry }, userId, name)

@@ -47,9 +47,7 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
     this.deps = options.deps
     this.store = options.store
     this.sessions = options.sessions
-    this.unsubscribeTransport = this.transport.onFrame((frame) => {
-      void this.handleFrame(frame)
-    })
+    this.unsubscribeTransport = this.transport.onFrame((frame) => this.handleFrame(frame))
   }
 
   /**

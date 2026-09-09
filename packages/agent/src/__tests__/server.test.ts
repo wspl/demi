@@ -1382,7 +1382,7 @@ test('a malformed client frame is rejected at ingress with invalid_frame', async
   const pair = createInProcessTransportPair()
   server.attachTransport(pair.server)
   const received: unknown[] = []
-  pair.client.onFrame((frame) => received.push(frame))
+  pair.client.onFrame((frame) => { received.push(frame) })
 
   // Missing required fields: `send` without messageId/content.
   pair.client.send({ type: 'send' } as never)

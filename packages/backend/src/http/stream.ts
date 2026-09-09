@@ -11,6 +11,7 @@ import type { UpgradeWebSocket } from 'hono/ws'
 import type { WSContext } from 'hono/ws'
 import type { RunnerRegistry } from '../runner/registry'
 import { resolveExecutionTarget } from '../conversation/execution-target'
+import { resolveRemoteFileRefs } from '../conversation/remote-file-refs'
 import { conversationScopedTransport } from '../conversation/scoped-transport'
 import type { ControlService } from '../storage/control'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
@@ -24,6 +25,7 @@ import { visibleProvider } from '../vault/scope'
  * logic in `scoped-transport.ts`.
  */
 export function streamRoutes(options: {
+  admitFrame: (id: string) => (() => void) | null
   assembly: ProviderAssembly
   registry: RunnerRegistry
   control: ControlService
@@ -39,6 +41,7 @@ export function streamRoutes(options: {
   app.get('/:id/stream', async (c, next) => {
     const conversation = await control.getConversation(c.req.param('id'))
     if (!conversation || conversation.userId !== c.get('user').id) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    if (conversation.archived) return c.json({ code: 'archived', message: 'Use the transcript endpoint for archived history' }, 409)
     const target = await resolveExecutionTarget(control, options.registry, conversation)
     return upgradeWebSocket(() => {
       const adapter = new WsContextAdapter()
@@ -47,6 +50,8 @@ export function streamRoutes(options: {
         onOpen(_event, ws) {
           const transport = conversationScopedTransport(createWebSocketServerTransport(adapter.socket(ws)), conversation, {
             control,
+            resolveRemoteFiles: (record, content) => resolveRemoteFileRefs(control, options.registry, record, content),
+            admitFrame: () => options.admitFrame(conversation.id),
             modelSelection: (providerId, selection) => options.assembly.selection(providerId, selection),
             cwd: target.path,
             blobs: blobsFor(conversation.userId),
