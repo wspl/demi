@@ -15,7 +15,7 @@ test('session provider clones retain independent state and steering while refres
   const db = openSqliteDatabase(':memory:')
   migrate(db, CONTROL_MIGRATIONS)
   const control = new LocalControlService(db)
-  const owner = (await control.createMaster({ username: 'owner', passwordHash: '!' }))!
+  const owner = (await control.createMaster({ email: 'owner@example.test', passwordHash: '!' }))!
   const conversation = await control.createConversation(owner.id)
   const vault = new ProviderVault(control, crypto.getRandomValues(new Uint8Array(32)))
   const entry = await vault.create({ ownerUserId: owner.id, label: 'Stateful', config: { kind: 'api_key', providerType: 'stateful', apiKey: 'old' } })
@@ -103,7 +103,7 @@ test('a delayed old vault read cannot poison the cache after a provider edit', a
   const db = openSqliteDatabase(':memory:')
   migrate(db, CONTROL_MIGRATIONS)
   const control = new LocalControlService(db)
-  const owner = (await control.createMaster({ username: 'owner', passwordHash: '!' }))!
+  const owner = (await control.createMaster({ email: 'owner@example.test', passwordHash: '!' }))!
   const captured = deferred<void>()
   const release = deferred<void>()
   let pauseNextRead = false

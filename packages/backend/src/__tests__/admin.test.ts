@@ -9,8 +9,8 @@ import { login, openBackend, type WebSession } from './session'
 
 const json = (body: unknown, method = 'POST'): RequestInit => ({ method, body: JSON.stringify(body), headers: { 'content-type': 'application/json' } })
 
-async function createUser(actor: WebSession, username: string, role: 'admin' | 'user', password = `${username}-pass-1`) {
-  const response = await actor.fetch('/api/users', json({ username, password, role }))
+async function createUser(actor: WebSession, email: string, role: 'admin' | 'user', password = `${email.split('@')[0]}-pass-1`) {
+  const response = await actor.fetch('/api/users', json({ email, password, role }))
   return { status: response.status, body: (await response.json().catch(() => null)) as { user?: { id: string; role: string }; code?: string } }
 }
 
@@ -19,35 +19,35 @@ test('accounts: master creates admins and users, admins create users only, nobod
   const backend = await openBackend({ dataDir, port: 0 })
   const master = backend.session
 
-  const admin = await createUser(master, 'alice', 'admin')
+  const admin = await createUser(master, 'alice@example.test', 'admin')
   expect(admin.status).toBe(201)
   expect(admin.body.user).toMatchObject({ role: 'admin' })
-  const user = await createUser(master, 'bob', 'user')
+  const user = await createUser(master, 'bob@example.test', 'user')
   expect(user.status).toBe(201)
-  expect((await createUser(master, 'bob', 'user')).body.code).toBe('username_taken')
-  expect((await master.fetch('/api/users', json({ username: 'x', password: 'short', role: 'user' }))).status).toBe(400)
+  expect((await createUser(master, 'bob@example.test', 'user')).body.code).toBe('email_taken')
+  expect((await master.fetch('/api/users', json({ email: 'x@example.test', password: 'short', role: 'user' }))).status).toBe(400)
 
-  const alice = await login(backend, 'alice', 'alice-pass-1')
-  const bob = await login(backend, 'bob', 'bob-pass-1')
+  const alice = await login(backend, 'alice@example.test', 'alice-pass-1')
+  const bob = await login(backend, 'bob@example.test', 'bob-pass-1')
 
   // Listing: admins see every account; a user sees nothing of it.
-  const listed = (await (await alice.fetch('/api/users')).json()) as { users: Array<{ username: string; role: string }> }
-  expect(listed.users.map((entry) => `${entry.username}:${entry.role}`)).toEqual(['master:master', 'alice:admin', 'bob:user'])
+  const listed = (await (await alice.fetch('/api/users')).json()) as { users: Array<{ email: string; role: string }> }
+  expect(listed.users.map((entry) => `${entry.email}:${entry.role}`)).toEqual(['master@example.test:master', 'alice@example.test:admin', 'bob@example.test:user'])
   expect((await bob.fetch('/api/users')).status).toBe(403)
-  expect((await createUser(bob, 'carol', 'user')).status).toBe(403)
+  expect((await createUser(bob, 'carol@example.test', 'user')).status).toBe(403)
 
   // An admin creates users, not admins.
-  expect((await createUser(alice, 'carol', 'user')).status).toBe(201)
-  expect((await createUser(alice, 'dave', 'admin')).body.code).toBe('forbidden')
+  expect((await createUser(alice, 'carol@example.test', 'user')).status).toBe(201)
+  expect((await createUser(alice, 'dave@example.test', 'admin')).body.code).toBe('forbidden')
 
   // Resets go down the ranks: admin → user, master → admin, never up or sideways.
   const bobId = user.body.user!.id
   expect((await alice.fetch(`/api/users/${bobId}`, json({ password: 'bob-pass-2' }, 'PATCH'))).status).toBe(204)
-  expect((await login(backend, 'bob', 'bob-pass-2')).user.id).toBe(bobId)
+  expect((await login(backend, 'bob@example.test', 'bob-pass-2')).user.id).toBe(bobId)
   expect((await alice.fetch(`/api/users/${admin.body.user!.id}`, json({ password: 'alice-pass-2' }, 'PATCH'))).status).toBe(403)
   expect((await alice.fetch(`/api/users/${master.user.id}`, json({ password: 'master-pass-2' }, 'PATCH'))).status).toBe(403)
   expect((await master.fetch(`/api/users/${admin.body.user!.id}`, json({ password: 'alice-pass-2' }, 'PATCH'))).status).toBe(204)
-  expect((await login(backend, 'alice', 'alice-pass-2')).user.role).toBe('admin')
+  expect((await login(backend, 'alice@example.test', 'alice-pass-2')).user.role).toBe('admin')
   expect((await master.fetch('/api/users/nobody', json({ password: 'whatever-1' }, 'PATCH'))).status).toBe(404)
 
   await backend.close()

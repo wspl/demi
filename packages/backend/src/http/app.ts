@@ -21,6 +21,8 @@ import { settingsRoutes } from './settings'
 import { userRoutes } from './users'
 import type { InstanceMode } from '../auth/identity'
 import { attachmentRoutes } from './attachments'
+import type { EmailChanges } from '../auth/email-change'
+import { emailChangeRoutes } from './email-change'
 import { authRoutes } from './auth'
 import { blobRoutes } from './blobs'
 import { providerRoutes } from './providers'
@@ -55,6 +57,7 @@ export function createApp(options: {
   createCloudWorkspace: ((userId: string, name: string) => Promise<WorkspaceRecord>) | null
   sessions: WebSessions
   loginLimiter: LoginLimiter
+  emailChanges: EmailChanges
   mode: InstanceMode
 }): Hono {
   const app = new Hono()
@@ -68,6 +71,7 @@ export function createApp(options: {
 
   app.route('/', runnerInstallRoutes(options.runnerInstallation))
   app.route('/api/setup', setupRoutes({ control: options.control, sessions: options.sessions }))
+  app.route('/api/auth/email', emailChangeRoutes(options.emailChanges, options.control))
   app.route('/api/auth', authRoutes({ control: options.control, sessions: options.sessions, limiter: options.loginLimiter }))
   app.route('/api/users', userRoutes({ control: options.control }))
   app.route('/api/settings', settingsRoutes({ mode: options.mode }))

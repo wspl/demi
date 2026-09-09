@@ -65,7 +65,7 @@ async function createFixture(host: Host, initialCommands: CommandRegistry): Prom
   const db = openSqliteDatabase(':memory:')
   migrate(db, CONTROL_MIGRATIONS)
   const control = new LocalControlService(db)
-  const user = (await control.createMaster({ username: 'test', passwordHash: '' }))!
+  const user = (await control.createMaster({ email: 'test@example.test', passwordHash: '' }))!
   const token = generateDeviceToken()
   const device = await control.createDevice({ userId: user.id, name: 'test', platform: 'test', tokenHash: hashDeviceToken(token) })
   const pipes = new PipeBroker()

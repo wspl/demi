@@ -10,3 +10,5 @@ export { DbHostStore } from './storage/host-store'
 export { LocalControlService, type ControlService, type ConversationRecord } from './storage/control'
 export { ConversationStores } from './storage/conversation-store'
 export { DirBlobStore } from './storage/blob-store'
+
+export type { AccountMailSender } from './auth/email-change'

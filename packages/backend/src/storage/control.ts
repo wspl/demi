@@ -12,15 +12,19 @@ import type { SqlDatabase } from './database'
  */
 export interface ControlService {
   /** The instance's first account: inserted only while `users` is empty, so two concurrent setups yield one master. */
-  createMaster(user: { username: string; passwordHash: string }): Promise<User | null>
-  /** Null when the username is taken. */
-  createUser(user: { username: string; passwordHash: string; role: Role }): Promise<User | null>
+  createMaster(user: { email: string; passwordHash: string }): Promise<User | null>
+  /** Null when the email is taken. */
+  createUser(user: { email: string; passwordHash: string; role: Role }): Promise<User | null>
   getUser(id: string): Promise<User | null>
   /** The login lookup: the row with its hash. */
-  findUserByUsername(username: string): Promise<(User & { passwordHash: string }) | null>
+  findUserByEmail(email: string): Promise<(User & { passwordHash: string }) | null>
   listUsers(): Promise<User[]>
   countUsers(): Promise<number>
+  setUserNickname(id: string, nickname: string): Promise<void>
   setUserPassword(id: string, passwordHash: string): Promise<void>
+  issueEmailChallenge(challenge: EmailChallenge): Promise<boolean>
+  deleteEmailChallenge(userId: string, id: string): Promise<void>
+  confirmEmailChallenge(userId: string, id: string, codeHash: string, now: number): Promise<'changed' | 'invalid_code' | 'email_taken'>
   createWebSession(session: { tokenHash: string; userId: string; expiresAt: string }): Promise<void>
   getWebSession(tokenHash: string): Promise<{ userId: string; expiresAt: string } | null>
   extendWebSession(tokenHash: string, expiresAt: string): Promise<void>
@@ -124,6 +128,17 @@ export interface ControlService {
   /** Sets the title only when it is still the creation default (first user message becomes the title). */
   defaultConversationTitle(id: string, title: string): Promise<void>
   touchConversation(id: string): Promise<void>
+}
+
+/** One pending email change per user, replaced only after the resend cooldown. */
+export interface EmailChallenge {
+  userId: string
+  id: string
+  email: string
+  passwordHash: string
+  codeHash: string
+  expiresAt: number
+  sentAt: number
 }
 
 export type DeviceKind = 'user' | 'managed'
@@ -269,36 +284,37 @@ const SELECT =
 
 interface UserRow {
   id: string
-  username: string
+  email: string
+  nickname: string
   role: Role
   created_at: string
 }
 
-const USER_SELECT = 'SELECT id, username, role, created_at FROM users'
-const USER_INSERT = 'INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)'
+const USER_SELECT = 'SELECT id, email, nickname, role, created_at FROM users'
+const USER_INSERT = 'INSERT INTO users (id, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)'
 
 function userFromRow(row: UserRow): User {
-  return { id: row.id, username: row.username, role: row.role, createdAt: row.created_at }
+  return { id: row.id, email: row.email, nickname: row.nickname, role: row.role, createdAt: row.created_at }
 }
 
 /** In-process `ControlService` over the control database. */
 export class LocalControlService implements ControlService {
   constructor(private readonly db: SqlDatabase) {}
 
-  async createMaster(user: { username: string; passwordHash: string }): Promise<User | null> {
-    const record: User = { id: createId(), username: user.username, role: 'master', createdAt: new Date().toISOString() }
+  async createMaster(user: { email: string; passwordHash: string }): Promise<User | null> {
+    const record: User = { id: createId(), email: user.email, nickname: '', role: 'master', createdAt: new Date().toISOString() }
     return this.db.transaction(() => {
       if (this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users')?.n) return null
-      this.db.run(USER_INSERT, [record.id, record.username, user.passwordHash, record.role, record.createdAt])
+      this.db.run(USER_INSERT, [record.id, record.email, user.passwordHash, record.role, record.createdAt])
       return record
     })
   }
 
-  async createUser(user: { username: string; passwordHash: string; role: Role }): Promise<User | null> {
-    const record: User = { id: createId(), username: user.username, role: user.role, createdAt: new Date().toISOString() }
+  async createUser(user: { email: string; passwordHash: string; role: Role }): Promise<User | null> {
+    const record: User = { id: createId(), email: user.email, nickname: '', role: user.role, createdAt: new Date().toISOString() }
     return this.db.transaction(() => {
-      if (this.db.get(`${USER_SELECT} WHERE username = ?`, [user.username])) return null
-      this.db.run(USER_INSERT, [record.id, record.username, user.passwordHash, record.role, record.createdAt])
+      if (this.db.get(`${USER_SELECT} WHERE email = ?`, [user.email])) return null
+      this.db.run(USER_INSERT, [record.id, record.email, user.passwordHash, record.role, record.createdAt])
       return record
     })
   }
@@ -308,8 +324,8 @@ export class LocalControlService implements ControlService {
     return row ? userFromRow(row) : null
   }
 
-  async findUserByUsername(username: string): Promise<(User & { passwordHash: string }) | null> {
-    const row = this.db.get<UserRow & { password_hash: string }>('SELECT id, username, role, created_at, password_hash FROM users WHERE username = ?', [username])
+  async findUserByEmail(email: string): Promise<(User & { passwordHash: string }) | null> {
+    const row = this.db.get<UserRow & { password_hash: string }>('SELECT id, email, nickname, role, created_at, password_hash FROM users WHERE email = ?', [email])
     return row ? { ...userFromRow(row), passwordHash: row.password_hash } : null
   }
 
@@ -321,8 +337,47 @@ export class LocalControlService implements ControlService {
     return this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users')?.n ?? 0
   }
 
+  async setUserNickname(id: string, nickname: string): Promise<void> {
+    this.db.run('UPDATE users SET nickname = ? WHERE id = ?', [nickname, id])
+  }
+
   async setUserPassword(id: string, passwordHash: string): Promise<void> {
     this.db.run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, id])
+  }
+
+  async issueEmailChallenge(challenge: EmailChallenge): Promise<boolean> {
+    return this.db.transaction(() => {
+      const previous = this.db.get<{ sent_at: number }>('SELECT sent_at FROM email_challenges WHERE user_id = ?', [challenge.userId])
+      if (previous && challenge.sentAt - previous.sent_at < 60_000) return false
+      this.db.run(`INSERT INTO email_challenges (user_id, id, email, password_hash, code_hash, expires_at, sent_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET
+        id = excluded.id, email = excluded.email, password_hash = excluded.password_hash,
+        code_hash = excluded.code_hash, expires_at = excluded.expires_at, sent_at = excluded.sent_at, attempts = 0`,
+        [challenge.userId, challenge.id, challenge.email, challenge.passwordHash, challenge.codeHash, challenge.expiresAt, challenge.sentAt])
+      return true
+    })
+  }
+
+  async deleteEmailChallenge(userId: string, id: string): Promise<void> {
+    this.db.run('DELETE FROM email_challenges WHERE user_id = ? AND id = ?', [userId, id])
+  }
+
+  async confirmEmailChallenge(userId: string, id: string, codeHash: string, now: number): Promise<'changed' | 'invalid_code' | 'email_taken'> {
+    return this.db.transaction(() => {
+      const challenge = this.db.get<{ email: string; password_hash: string; code_hash: string; expires_at: number; attempts: number }>(
+        'SELECT email, password_hash, code_hash, expires_at, attempts FROM email_challenges WHERE user_id = ? AND id = ?', [userId, id])
+      const user = this.db.get<{ password_hash: string }>('SELECT password_hash FROM users WHERE id = ?', [userId])
+      if (!challenge || !user) return 'invalid_code'
+      if (challenge.expires_at <= now || challenge.attempts >= 5 || challenge.password_hash !== user.password_hash) return 'invalid_code'
+      if (challenge.code_hash !== codeHash) {
+        this.db.run('UPDATE email_challenges SET attempts = attempts + 1 WHERE user_id = ?', [userId])
+        return 'invalid_code'
+      }
+      if (this.db.get('SELECT id FROM users WHERE email = ? AND id != ?', [challenge.email, userId])) return 'email_taken'
+      this.db.run('UPDATE users SET email = ? WHERE id = ?', [challenge.email, userId])
+      this.db.run('DELETE FROM email_challenges WHERE user_id = ?', [userId])
+      return 'changed'
+    })
   }
 
   async createWebSession(session: { tokenHash: string; userId: string; expiresAt: string }): Promise<void> {

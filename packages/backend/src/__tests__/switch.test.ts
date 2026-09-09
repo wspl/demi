@@ -45,7 +45,7 @@ test('target compare-and-swap admits one winner and preserves the losing switch 
   migrate(db, CONTROL_MIGRATIONS)
   const control = new LocalControlService(db)
   try {
-    const user = (await control.createMaster({ username: 'test', passwordHash: '' }))!
+    const user = (await control.createMaster({ email: 'test@example.test', passwordHash: '' }))!
     const conversation = await control.createConversation(user.id)
     const device = await control.createDevice({ userId: user.id, name: 'device', platform: 'test', tokenHash: 'token' })
     const from = { kind: 'cloud' as const, deviceId: null, path: `/home/demi/sessions/${conversation.id}` }

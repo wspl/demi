@@ -46,7 +46,7 @@ test('ProviderVault: rows carry ciphertext only; CRUD round-trips typed configs'
   const db = openSqliteDatabase(':memory:')
   migrate(db, CONTROL_MIGRATIONS)
   const control = new LocalControlService(db)
-  const user = (await control.createMaster({ username: 'local', passwordHash: '!' }))!
+  const user = (await control.createMaster({ email: 'local@example.test', passwordHash: '!' }))!
   const vault = new ProviderVault(control, crypto.getRandomValues(new Uint8Array(32)))
 
   const created = await vault.create({
@@ -72,7 +72,7 @@ test('subscription uniqueness belongs to the scope and family; API-key entries r
   const db = openSqliteDatabase(':memory:')
   migrate(db, CONTROL_MIGRATIONS)
   const control = new LocalControlService(db)
-  const user = (await control.createMaster({ username: 'owner', passwordHash: '!' }))!
+  const user = (await control.createMaster({ email: 'owner@example.test', passwordHash: '!' }))!
   const vault = new ProviderVault(control, crypto.getRandomValues(new Uint8Array(32)))
   try {
     for (const ownerUserId of [null, user.id]) {

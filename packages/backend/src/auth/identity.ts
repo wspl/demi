@@ -7,7 +7,8 @@ export type Role = 'master' | 'admin' | 'user'
 /** The authenticated caller as every route sees it: the user row without its hash. */
 export interface User {
   id: string
-  username: string
+  email: string
+  nickname: string
   role: Role
   createdAt: string
 }

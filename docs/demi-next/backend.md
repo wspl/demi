@@ -147,7 +147,7 @@ the blob route ride the same cookie. Exempt from the gate: `/api/setup`
 and `/api/auth/login` (the entrances) and `/api/runner`, `/api/pipes`
 (device-token authenticated; runners never hold a cookie). Answers:
 another user's object 404 as if absent, a role short of the action 403,
-no session 401. Login failures lock the username for a minute after
+no session 401. Login failures lock the email for a minute after
 five in a row.
 
 **The provider scope.** The instance mode names whose providers a
@@ -208,3 +208,31 @@ ready or failure. Retrying the same operation id returns the same operation.
 A reset affects every job on the user's Cloud and preserves home. Requests
 cannot name another user's device or arbitrary image paths. Settings use this
 API even when the guest is offline or broken (`managed-hosts.md`).
+
+## Account API
+
+`POST /api/setup`, `POST /api/users` and `POST /api/auth/login` accept `email`
+instead of username. HTTP validation trims and lowercases addresses; storage
+uniqueness and lookups are case-insensitive. User responses expose `id`, `email`,
+`nickname`, `role` and `createdAt`, never the password hash.
+
+- `PATCH /api/auth/me` takes `{ nickname }` (1–80 characters after trimming).
+- `PUT /api/auth/password` takes `{ current, next }` and checks the current password.
+- `POST /api/auth/email` takes `{ email, password }`, checks the current password,
+  and sends a six-digit code to the new address. Its 202 response contains
+  `{ challenge: { id, email, expiresAt } }`; the code is never returned.
+- `POST /api/auth/email/confirm` takes `{ id, code }`. A successful response
+  contains the updated user. Existing sessions keep their user identity; the
+  next login uses the new address. Resending repeats the start request after
+  its 60-second cooldown and replaces the previous code.
+
+`auth/email-change.ts` owns issuance and delivery through the injected
+`BackendOptions.accountMail` (`AccountMailSender`). No sender returns 503
+`mail_unavailable`; delivery failure returns 503 `mail_failed` and removes that
+challenge so the user can retry. Codes expire after ten minutes, allow at most
+five wrong attempts, and can be used only once. A password change invalidates
+previously issued challenges. The control service atomically checks uniqueness,
+updates the email, and consumes the challenge. Tests use captured mail only.
+Setup/admin-created accounts can sign in without a verification email; this
+flow proves the new address when an existing account changes it. Registration
+and password recovery are not provided.

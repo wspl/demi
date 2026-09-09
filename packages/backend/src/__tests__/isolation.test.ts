@@ -14,10 +14,10 @@ import { login, openBackend, type TestBackend, type WebSession } from './session
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01])
 const json = (body: unknown, method = 'POST'): RequestInit => ({ method, body: JSON.stringify(body), headers: { 'content-type': 'application/json' } })
 
-async function createUser(backend: TestBackend, username: string): Promise<WebSession> {
-  const response = await backend.session.fetch('/api/users', json({ username, password: `${username}-pass-1`, role: 'user' }))
-  if (response.status !== 201) throw new Error(`create ${username}: HTTP ${response.status}`)
-  return login(backend, username, `${username}-pass-1`)
+async function createUser(backend: TestBackend, email: string): Promise<WebSession> {
+  const response = await backend.session.fetch('/api/users', json({ email, password: `${email.split('@')[0]}-pass-1`, role: 'user' }))
+  if (response.status !== 201) throw new Error(`create ${email}: HTTP ${response.status}`)
+  return login(backend, email, `${email.split('@')[0]}-pass-1`)
 }
 
 async function must<T>(response: Response, status: number): Promise<T> {
@@ -40,8 +40,8 @@ test("the matrix: another user's objects answer 404 on every route, to users and
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-isolation-state-'))
   const home = await mkdtemp(join(tmpdir(), 'demi-isolation-home-'))
   const backend = await openBackend({ managedHosts: { provisioner: new FakeProvisioner() }, dataDir, port: 0, runner: { pingIntervalMs: 0 } })
-  const alice = await createUser(backend, 'alice')
-  const bob = await createUser(backend, 'bob')
+  const alice = await createUser(backend, 'alice@example.test')
+  const bob = await createUser(backend, 'bob@example.test')
 
   // Alice's world: a device, a workspace on it, a conversation with an attached host, an attachment.
   const runner = await startTxikiRunner({ backendUrl: backend.url, stateDir, home, name: 'alice-laptop' })
@@ -93,11 +93,11 @@ test("the matrix: another user's objects answer 404 on every route, to users and
             ? { method, body, headers: { 'content-type': 'application/octet-stream' } }
             : json(body, method)
       const response = await actor.fetch(path, init)
-      expect(response.status, `${actor.user.username} ${method} ${path}`).toBe(404)
+      expect(response.status, `${actor.user.email} ${method} ${path}`).toBe(404)
     }
-    expect(await streamOpens(actor, `/api/conversations/${conversation.id}/stream`), `${actor.user.username} stream`).toBe(false)
+    expect(await streamOpens(actor, `/api/conversations/${conversation.id}/stream`), `${actor.user.email} stream`).toBe(false)
     const lists = await Promise.all(['/api/conversations', '/api/devices', '/api/workspaces'].map(async (path) => Object.values(await must<Record<string, unknown[]>>(await actor.fetch(path), 200))[0]))
-    expect(lists.map((list) => list?.length ?? 0), `${actor.user.username} lists`).toEqual(actor === bob ? [1, 0, 0] : [0, 0, 0])
+    expect(lists.map((list) => list?.length ?? 0), `${actor.user.email} lists`).toEqual(actor === bob ? [1, 0, 0] : [0, 0, 0])
   }
   // Alice still has everything.
   expect((await must<{ hosts: unknown[] }>(await alice.fetch(`/api/conversations/${conversation.id}/hosts`), 200)).hosts).toHaveLength(1)
