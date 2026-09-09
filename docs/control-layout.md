@@ -42,3 +42,19 @@ viewport. To repeat the check, build `packages/web` and `packages/web-gallery`, 
 the production Gallery preview at `/control-layout`, and inspect the computed
 padding, bounding rectangles and horizontal overflow of the labeled cases. Compare
 against the same controls in account, provider and model dialogs in the product.
+
+## Filtering surfaces
+
+Filter dialogs use `web-ui/ui/FilterDialog.vue`: a stable 36rem preferred height,
+capped by `Dialog` to the viewport minus its outer margins. Typing, clearing the
+query and displaying zero results do not resize or recenter the dialog. The title
+and search stay fixed; only the results scroll. Add provider uses this component.
+Gallery's provider page uses the same dialog.
+
+All visible text that matched a filter must use the shared `HighlightText`
+component, which performs case-insensitive literal matching and uses the shared
+highlight color tokens. Render matched text as text, never injected HTML. If an
+alternate field caused a match (for example a vendor ID rather than its name),
+show that field and highlight it so the result is understandable. Empty queries
+have no highlights. Keep the empty-result message in the same results region.
+The generic `Menu` already follows the label-highlighting rule.
