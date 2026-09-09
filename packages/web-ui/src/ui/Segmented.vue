@@ -92,6 +92,7 @@ function select(value: T) {
 }
 
 html[data-theme="dark"] .segmented-thumb {
-  background: color-mix(in srgb, var(--color-overlay) 12%, var(--color-surface));
+  /* Blend with the actual parent surface so the thumb stays lighter on panels. */
+  background: color-mix(in srgb, var(--color-overlay) 20%, transparent);
 }
 </style>

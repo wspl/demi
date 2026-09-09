@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Search } from '@lucide/vue'
+import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import CopyCode from '@demicodes/web-ui/ui/CopyCode.vue'
@@ -11,6 +12,19 @@ const sizes = ['sm', 'md', 'lg'] as const
 const widths = [240, 400] as const
 const variants = ['plain', 'prefix', 'suffix', 'secret', 'disabled', 'bare'] as const
 const value = ref('Example value')
+const selected = ref('first')
+const segmentOptions = [
+  { value: 'first', label: 'First' },
+  { value: 'second', label: 'Second' },
+  { value: 'third', label: 'Third' },
+]
+const surfaces = [
+  { name: 'base', class: 'bg-surface-base' },
+  { name: 'surface', class: 'bg-surface' },
+  { name: 'raised', class: 'bg-surface-raised' },
+  { name: 'float', class: 'bg-surface-float' },
+]
+
 </script>
 
 <template>
@@ -18,6 +32,20 @@ const value = ref('Example value')
     title="Control layout"
     note="Production CSS checks: all input sizes, fixed and flexible widths, adornments, disabled and bare fields. Command text and copy controls share a vertical center."
   >
+    <div class="mb-6 flex flex-wrap gap-4">
+      <div
+        v-for="surface in surfaces"
+        :key="surface.name"
+        :class="surface.class"
+        :data-segment-surface="surface.name"
+        class="flex flex-col items-start gap-3 rounded-xl border border-line p-4"
+      >
+        <p class="text-chrome text-fg-muted">{{ surface.name }}</p>
+        <Segmented v-model="selected" :options="segmentOptions" size="sm" />
+        <Segmented v-model="selected" :options="segmentOptions" />
+        <Segmented v-model="selected" :options="segmentOptions" disabled />
+      </div>
+    </div>
     <div class="flex flex-wrap items-start gap-6">
       <GallerySpecimen
         v-for="width in widths"

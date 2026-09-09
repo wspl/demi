@@ -58,3 +58,11 @@ alternate field caused a match (for example a vendor ID rather than its name),
 show that field and highlight it so the result is understandable. Empty queries
 have no highlights. Keep the empty-result message in the same results region.
 The generic `Menu` already follows the label-highlighting rule.
+
+## Segmented selection
+
+`web-ui/ui/Segmented.vue` blends its dark selected thumb with the actual parent
+surface, using a 20% overlay fill and the shared button outline. It must remain
+visibly distinct on base, regular, raised and floating surfaces. Light mode uses
+the button fill. The Gallery `/control-layout` page shows both sizes and the
+disabled state on all four surfaces; selecting an option moves the shared thumb.
