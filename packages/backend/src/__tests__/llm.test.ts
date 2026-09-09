@@ -19,6 +19,10 @@ import { openBackend, type TestBackend } from './session'
 // request lands in the usage ledger, and the rate limit refuses at the
 // inference entry.
 
+function manualModel(id: string) {
+  return { id, displayName: id, contextWindow: 128000, outputLimit: null, thinkingEfforts: [], acceptedExtensions: null, fastTier: null }
+}
+
 function selectionFor(providerId: string) {
   const model: ModelSelection = {
     providerId: providerId,
@@ -87,7 +91,7 @@ test('providers: create/list redact key material, unknown types rejected, delete
   const created = await api<{ provider: Record<string, unknown> }>(
     backend,
     '/api/providers',
-    post({ providerType: 'stub', label: 'My Stub', apiKey: 'sk-super-secret', modelIds: ['custom-1', 'custom-2'] }),
+    post({ providerType: 'stub', label: 'My Stub', apiKey: 'sk-super-secret', models: [manualModel('custom-1'), manualModel('custom-2')] }),
   )
   expect(created.status).toBe(201)
   expect(JSON.stringify(created.body)).not.toContain('sk-super-secret')
@@ -95,7 +99,7 @@ test('providers: create/list redact key material, unknown types rejected, delete
 
   const listed = await api<{ providers: Array<Record<string, unknown>> }>(backend, '/api/providers')
   expect(listed.body.providers).toEqual([
-    expect.objectContaining({ id: providerId, providerType: 'stub', label: 'My Stub', modelIds: ['custom-1', 'custom-2'] }),
+    expect.objectContaining({ id: providerId, providerType: 'stub', label: 'My Stub', models: [manualModel('custom-1'), manualModel('custom-2')] }),
   ])
   expect(JSON.stringify(listed.body)).not.toContain('sk-super-secret')
 
@@ -285,7 +289,7 @@ test('the vendor catalog: entries from models.dev vendors carry the family and a
   const created = await api<{ provider: Record<string, unknown> }>(backend, '/api/providers', post({ vendorId: 'deepseek', label: 'DeepSeek', apiKey: 'sk-1' }))
   expect(created.status).toBe(201)
   expect(created.body.provider).toEqual(
-    expect.objectContaining({ providerType: 'openai', wireApi: 'chat-completions', vendorId: 'deepseek', baseUrl: 'https://api.deepseek.com', modelIds: null }),
+    expect.objectContaining({ providerType: 'openai', wireApi: 'chat-completions', vendorId: 'deepseek', baseUrl: 'https://api.deepseek.com', models: null }),
   )
   const providerId = created.body.provider.id as string
   type Catalog = { providers: Array<{ providerId: string; models: Array<Record<string, unknown>> }> }
@@ -296,12 +300,12 @@ test('the vendor catalog: entries from models.dev vendors carry the family and a
   )
 
   // Editing: a typed model list replaces the live one; null returns to it; the endpoint and key can change.
-  const typed = await api<{ provider: Record<string, unknown> }>(backend, `/api/providers/${providerId}`, patch({ label: 'DS', modelIds: ['deepseek-v4'], baseUrl: 'https://proxy.example/v1', apiKey: 'sk-2' }))
-  expect(typed.body.provider).toEqual(expect.objectContaining({ label: 'DS', modelIds: ['deepseek-v4'], baseUrl: 'https://proxy.example/v1', vendorId: 'deepseek' }))
+  const typed = await api<{ provider: Record<string, unknown> }>(backend, `/api/providers/${providerId}`, patch({ label: 'DS', models: [manualModel('deepseek-v4')], baseUrl: 'https://proxy.example/v1', apiKey: 'sk-2' }))
+  expect(typed.body.provider).toEqual(expect.objectContaining({ label: 'DS', models: [manualModel('deepseek-v4')], baseUrl: 'https://proxy.example/v1', vendorId: 'deepseek' }))
   expect(JSON.stringify(typed.body)).not.toContain('sk-2')
   const typedCatalog = (await api<Catalog>(backend, '/api/models')).body.providers.find((p) => p.providerId === providerId)!
   expect(typedCatalog.models.map((m) => m.id)).toEqual(['deepseek-v4'])
-  await api(backend, `/api/providers/${providerId}`, patch({ modelIds: null }))
+  await api(backend, `/api/providers/${providerId}`, patch({ models: null }))
   const liveAgain = (await api<Catalog>(backend, '/api/models')).body.providers.find((p) => p.providerId === providerId)!
   expect(liveAgain.models.map((m) => m.id)).toEqual(['deepseek-v4', 'deepseek-v4-flash'])
 
@@ -309,10 +313,10 @@ test('the vendor catalog: entries from models.dev vendors carry the family and a
   const custom = await api<{ provider: Record<string, unknown> }>(
     backend,
     '/api/providers',
-    post({ providerType: 'openai', wireApi: 'chat-completions', label: 'Gateway', apiKey: 'k', baseUrl: 'https://gw.example/v1', modelIds: ['internal-70b'] }),
+    post({ providerType: 'openai', wireApi: 'chat-completions', label: 'Gateway', apiKey: 'k', baseUrl: 'https://gw.example/v1', models: [manualModel('internal-70b')] }),
   )
   expect(custom.status).toBe(201)
-  expect(custom.body.provider).toEqual(expect.objectContaining({ providerType: 'openai', wireApi: 'chat-completions', vendorId: null, modelIds: ['internal-70b'] }))
+  expect(custom.body.provider).toEqual(expect.objectContaining({ providerType: 'openai', wireApi: 'chat-completions', vendorId: null, models: [manualModel('internal-70b')] }))
   expect((await api<{ code: string }>(backend, '/api/providers', post({ providerType: 'claude-code', label: 'x', apiKey: 'k' }))).body.code).toBe('subscription_only')
 
   await backend.close()
@@ -545,7 +549,7 @@ test('a DeepSeek vendor tool continuation replays reasoning to the compatible en
   const backend = await openBackend({ dataDir, port: 0 })
   let client: AgentClient | undefined
   try {
-    const created = await api<{ provider: { id: string } }>(backend, '/api/providers', post({ vendorId: 'deepseek', label: 'DeepSeek', apiKey: 'fake-key', baseUrl: upstream.url.toString(), modelIds: ['test-model'] }))
+    const created = await api<{ provider: { id: string } }>(backend, '/api/providers', post({ vendorId: 'deepseek', label: 'DeepSeek', apiKey: 'fake-key', baseUrl: upstream.url.toString(), models: [manualModel('test-model')] }))
     client = await openConversation(backend, created.body.provider.id)
     const errors: string[] = []
     client.subscribe((event) => { if (event.type === 'error') errors.push(event.message) })

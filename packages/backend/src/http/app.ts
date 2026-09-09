@@ -88,7 +88,7 @@ export function createApp(options: {
   // The stream route registers first so `/:id/stream` wins over the REST group's `/:id/*`.
   app.route(
     '/api/conversations',
-    streamRoutes({
+    streamRoutes({ assembly: options.assembly,
       registry: options.runnerRegistry,
       control: options.control,
       agentServer: options.agentServer,

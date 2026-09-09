@@ -77,10 +77,13 @@ class SessionProviderRuntime implements AgentProvider {
 
   run(request: InferenceRequest): ProviderRun {
     let active: ProviderRun | undefined
-    const start = () => this.runtimeForRequest(request)
+    const start = async () => {
+      const prepared = await this.runtimeForRequest(request)
+      return prepared.runtime.run({ ...request, outputLimit: prepared.selection.model.model.outputLimit })
+    }
     return {
       async *[Symbol.asyncIterator]() {
-        active = (await start()).run(request)
+        active = await start()
         yield* active
       },
       get steer() {
@@ -103,12 +106,12 @@ class SessionProviderRuntime implements AgentProvider {
     this.current = undefined
   }
 
-  private async runtimeForRequest(request?: InferenceRequest): Promise<AgentProvider> {
-    const selection: ProviderSelection = request ? {
+  private async runtimeForRequest(request?: InferenceRequest): Promise<{ runtime: AgentProvider; selection: ProviderSelection }> {
+    const requested: ProviderSelection = request ? {
       ...this.selection,
       model: {
         ...this.selection.model,
-        model: { ...this.selection.model.model, id: request.modelId },
+        model: { ...this.selection.model.model, id: request.modelId, outputLimit: request.outputLimit },
         thinking: request.thinking,
         serviceTierId: request.serviceTierId ?? null,
       },
@@ -119,11 +122,12 @@ class SessionProviderRuntime implements AgentProvider {
       this.current = undefined
       throw new Error(`Provider "${this.selection.providerId}" is no longer available to this conversation`)
     }
+    const selection = { ...requested, model: this.options.assembly.selectionForEntry(resolved.entry, requested.model) }
     const host = resolved.provider.requiresProcessCapableHost ? await this.options.host() : undefined
     if (this.disposed) throw new Error('Provider runtime is disposed')
     if (this.current?.base === resolved.provider && this.current.host === host && this.selection.model.model.id === selection.model.model.id) {
       this.selection = selection
-      return this.current.runtime
+      return { runtime: this.current.runtime, selection }
     }
     const provider = resolved.provider.requiresProcessCapableHost
       ? this.options.assembly.forSession(resolved.entry, this.options.session)
@@ -136,6 +140,6 @@ class SessionProviderRuntime implements AgentProvider {
     await this.current?.runtime.dispose?.()
     this.selection = selection
     this.current = { base: resolved.provider, host, runtime }
-    return runtime
+    return { runtime, selection }
   }
 }
