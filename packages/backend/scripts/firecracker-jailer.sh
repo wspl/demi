@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Privileged Firecracker setup. The backend waits for this process for the VM's lifetime.
+# Privileged Firecracker setup. The backend waits for this process for the VM's
+# lifetime.
 set -euo pipefail
 
 fail() {
@@ -15,11 +16,16 @@ require_absolute_path() {
   local flag=$1
   local value=$2
   case "$value" in
-    /*) ;;
-    *) fail "$flag must be an absolute path" ;;
+    /*)
+      ;;
+    *)
+      fail "$flag must be an absolute path"
+      ;;
   esac
   case "$value/" in
-    */../*) fail "$flag must not contain .." ;;
+    */../*)
+      fail "$flag must not contain .."
+      ;;
   esac
 }
 
@@ -52,18 +58,42 @@ parse_arguments() {
     seen+="$flag "
 
     case "$action:$flag" in
-      start:--id|kill:--id) vm_id=$value ;;
-      start:--chroot-base|kill:--chroot-base) chroot_base=$value ;;
-      start:--jailer) jailer=$value ;;
-      start:--firecracker) firecracker=$value ;;
-      start:--uid) vm_uid=$value ;;
-      start:--gid) vm_gid=$value ;;
-      start:--backend-gid) backend_gid=$value ;;
-      start:--kernel) kernel=$value ;;
-      start:--rootfs) rootfs=$value ;;
-      start:--home) home_image=$value ;;
-      start:--system) system_image=$value ;;
-      *) fail "unknown argument $flag" ;;
+      start:--id|kill:--id)
+        vm_id=$value
+        ;;
+      start:--chroot-base|kill:--chroot-base)
+        chroot_base=$value
+        ;;
+      start:--jailer)
+        jailer=$value
+        ;;
+      start:--firecracker)
+        firecracker=$value
+        ;;
+      start:--uid)
+        vm_uid=$value
+        ;;
+      start:--gid)
+        vm_gid=$value
+        ;;
+      start:--backend-gid)
+        backend_gid=$value
+        ;;
+      start:--kernel)
+        kernel=$value
+        ;;
+      start:--rootfs)
+        rootfs=$value
+        ;;
+      start:--home)
+        home_image=$value
+        ;;
+      start:--system)
+        system_image=$value
+        ;;
+      *)
+        fail "unknown argument $flag"
+        ;;
     esac
     shift 2
   done
@@ -151,17 +181,20 @@ cleanup_start() {
   trap - EXIT HUP INT TERM
   set +e
 
-  # Stop the launcher first, so it cannot create another child after cleanup starts.
+  # Stop the launcher first, so it cannot create another child after cleanup
+  # starts.
   if [[ -n "$launcher_pid" ]]; then
     force_stop "$launcher_pid" || cleanup_failed=1
-    # A launcher killed during cleanup is expected to have a nonzero wait status.
+    # A launcher killed during cleanup is expected to have a nonzero wait
+    # status.
     wait "$launcher_pid" 2>/dev/null
   fi
 
   if [[ -z "$vm_pid" ]]; then
     vm_pid=$(read_pid "$namespace_pid_file") || vm_pid=''
     if [[ -z "$vm_pid" && -e "$namespace_pid_file" ]]; then
-      printf 'firecracker-jailer: cannot read VM PID from %s\n' "$namespace_pid_file" >&2
+      printf 'firecracker-jailer: cannot read VM PID from %s\n' \
+        "$namespace_pid_file" >&2
       cleanup_failed=1
     fi
   fi
@@ -175,7 +208,9 @@ cleanup_start() {
       cleanup_failed=1
     fi
   else
-    printf 'firecracker-jailer: leaving jail intact because VM shutdown could not be confirmed: %s\n' "$jail" >&2
+    printf \
+      'firecracker-jailer: leaving jail intact because VM shutdown could not be confirmed: %s\n' \
+      "$jail" >&2
   fi
   if (( status == 0 && cleanup_failed != 0 )); then
     status=2
@@ -185,7 +220,8 @@ cleanup_start() {
 
 start_vm() {
   local exec_name=${firecracker##*/}
-  [[ -n "$exec_name" && "$exec_name" != . && "$exec_name" != .. ]] || fail '--firecracker has no file name'
+  [[ -n "$exec_name" && "$exec_name" != . && "$exec_name" != .. ]] ||
+    fail '--firecracker has no file name'
   jail="$chroot_base/$exec_name/$vm_id"
   local root="$jail/root"
   local run="$root/run"
@@ -251,7 +287,8 @@ start_vm() {
   done
   [[ -S "$socket" ]] || fail 'VM did not create its API socket'
 
-  # The jailer replaces directory modes. Restore the backend's API access afterward.
+  # The jailer replaces directory modes. Restore the backend's API access
+  # afterward.
   chgrp -- "$backend_gid" "$root" "$run" "$socket"
   chmod 750 -- "$root" "$run"
   chmod 660 -- "$socket"

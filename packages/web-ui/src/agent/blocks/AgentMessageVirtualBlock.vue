@@ -86,17 +86,30 @@ const attrs = useAttrs()
       :content="block.text"
       :is-streaming="isTextStreaming"
     />
-    <div v-else-if="block.type === 'tool_call'" class="overflow-hidden px-[var(--agent-pad-x,2rem)]">
-      <ToolCallBlock :block="block" :conversation-id="props.conversationId" :is-streaming="block.status === 'executing'" />
+    <div
+      v-else-if="block.type === 'tool_call'"
+      class="overflow-hidden px-[var(--agent-pad-x,2rem)]"
+    >
+      <ToolCallBlock
+        :block="block"
+        :conversation-id="props.conversationId"
+        :is-streaming="block.status === 'executing'"
+      />
     </div>
-    <div v-else-if="block.type === 'error'" class="px-[var(--agent-pad-x,2rem)]">
+    <div
+      v-else-if="block.type === 'error'"
+      class="px-[var(--agent-pad-x,2rem)]"
+    >
       <ErrorBlock
         :message="block.message"
         :code="block.code"
         :diagnostics="block.diagnostics"
       />
     </div>
-    <div v-else-if="block.type === 'abort'" class="px-[var(--agent-pad-x,2rem)]">
+    <div
+      v-else-if="block.type === 'abort'"
+      class="px-[var(--agent-pad-x,2rem)]"
+    >
       <AbortedBlock />
     </div>
     <CompactionBlock

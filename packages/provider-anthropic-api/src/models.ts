@@ -18,7 +18,9 @@ export interface AnthropicApiModelOptions {
 
 const SOURCE_FETCHED_AT = '1970-01-01T00:00:00.000Z'
 
-export function anthropicApiDefaultModels(providerId = 'anthropic'): ProviderModelList {
+export function anthropicApiDefaultModels(
+  providerId = 'anthropic'
+): ProviderModelList {
   return modelListFromAnthropicApiModels(
     [
       {
@@ -101,15 +103,25 @@ export function modelListFromAnthropicApiModels(
     id: model.id,
     displayName: model.displayName ?? model.id,
     description: model.description,
-    contextWindow: positiveInteger(model.contextWindow, `models[${model.id}].contextWindow`),
-    outputLimit: model.outputLimit == null ? null : positiveInteger(model.outputLimit, `models[${model.id}].outputLimit`),
+    contextWindow: positiveInteger(
+      model.contextWindow,
+      `models[${model.id}].contextWindow`
+    ),
+    outputLimit: model.outputLimit == null ? null : positiveInteger(
+      model.outputLimit,
+      `models[${model.id}].outputLimit`
+    ),
     supportsTools: model.supportsTools ?? null,
     supportsAttachments: model.supportsAttachments ?? null,
     supportsReasoning: model.supportsReasoning ?? null,
-    supportedThinkingEfforts: model.supportedThinkingEfforts ? [...model.supportedThinkingEfforts] : null,
+    supportedThinkingEfforts: model.supportedThinkingEfforts
+      ? [...model.supportedThinkingEfforts]
+      : null,
     defaultThinkingEffort: model.defaultThinkingEffort ?? null,
     canDisableThinking: model.canDisableThinking ?? null,
-    serviceTiers: model.serviceTiers ? model.serviceTiers.map((tier) => ({ ...tier })) : model.serviceTiers,
+    serviceTiers: model.serviceTiers ? model.serviceTiers.map((tier) => ({
+      ...tier
+    })) : model.serviceTiers,
     defaultServiceTierId: model.defaultServiceTierId ?? null,
     sourceFetchedAt,
     stale,
@@ -118,7 +130,8 @@ export function modelListFromAnthropicApiModels(
     providerId: options.providerId,
     models: mapped,
     defaultModelId:
-      options.defaultModelId && mapped.some((model) => model.id === options.defaultModelId)
+      options.defaultModelId
+        && mapped.some((model) => model.id === options.defaultModelId)
         ? options.defaultModelId
         : mapped[0]?.id ?? null,
     warnings: [],
@@ -128,6 +141,7 @@ export function modelListFromAnthropicApiModels(
 }
 
 function positiveInteger(value: number, field: string): number {
-  if (!Number.isInteger(value) || value <= 0) throw new Error(`${field} must be a positive integer`)
+  if (!Number.isInteger(value) || value <= 0)
+    throw new Error(`${field} must be a positive integer`)
   return value
 }

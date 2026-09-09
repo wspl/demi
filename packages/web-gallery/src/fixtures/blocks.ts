@@ -41,7 +41,9 @@ function iso(offsetMs: number): string {
   return new Date(Date.now() - offsetMs).toISOString()
 }
 
-function toolCall(partial: Pick<ToolCallBlock, 'id' | 'toolName' | 'input' | 'status'> & Partial<ToolCallBlock>): ToolCallBlock {
+function toolCall(
+  partial: Pick<ToolCallBlock, 'id' | 'toolName' | 'input' | 'status'> & Partial<ToolCallBlock>
+): ToolCallBlock {
   return {
     type: 'tool_call',
     createdAt: iso(120_000),
@@ -55,11 +57,17 @@ function toolCall(partial: Pick<ToolCallBlock, 'id' | 'toolName' | 'input' | 'st
 }
 
 export const userPrompt: UserContentBlock[] = [
-  { type: 'text', text: 'The login test in `packages/web/src/auth.test.ts` is failing after the session cookie rename. Keep the fix in that file.' },
+  {
+    type: 'text',
+    text: 'The login test in `packages/web/src/auth.test.ts` is failing after the session cookie rename. Keep the fix in that file.'
+  },
 ]
 
 export const steerPrompt: UserContentBlock[] = [
-  { type: 'text', text: 'Do not touch the cookie helper. Only fix the assertion.' },
+  {
+    type: 'text',
+    text: 'Do not touch the cookie helper. Only fix the assertion.'
+  },
 ]
 
 export const assistantMarkdown = `The cookie helper is fine. The test still expects \`sid\`.
@@ -86,7 +94,10 @@ export const shellTool = toolCall({
   }),
   view: {
     chunks: [
-      { stream: 'stdout', text: 'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")\n' },
+      {
+        stream: 'stdout',
+        text: 'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")\n'
+      },
     ],
   },
 })
@@ -115,7 +126,12 @@ export const statusTool = toolCall({
   id: 'tool-status',
   toolName: 'shell_status',
   status: 'completed',
-  input: JSON.stringify({ commandId: 'cmd_1', description: 'Check long-running command' }),
+  input: JSON.stringify(
+    {
+      commandId: 'cmd_1',
+      description: 'Check long-running command'
+    }
+  ),
 })
 
 export const writeTool = toolCall({
@@ -185,7 +201,12 @@ export function transcriptDemoBlocks(): Block[] {
       turnId: 'turn-1',
       createdAt: iso(100_000),
       model: demoModel,
-      content: [{ type: 'text', text: 'Also add a case for the expired cookie.' }],
+      content: [
+        {
+          type: 'text',
+          text: 'Also add a case for the expired cookie.'
+        }
+      ],
     },
     runningShellTool as Block,
     statusTool as Block,
@@ -237,7 +258,14 @@ export function transcriptDemoBlocks(): Block[] {
       model: demoModel,
       content: [
         { type: 'image', source: { type: 'url', url: demoImageUrl } },
-        { type: 'document', source: { data: new Uint8Array(), mediaType: 'application/pdf', fileName: 'login-failure.pdf' } },
+        {
+          type: 'document',
+          source: {
+            data: new Uint8Array(),
+            mediaType: 'application/pdf',
+            fileName: 'login-failure.pdf'
+          }
+        },
         { type: 'text', text: 'Failing log and the screenshot from CI.' },
       ],
       preamble: null,

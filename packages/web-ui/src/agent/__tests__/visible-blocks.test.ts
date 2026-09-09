@@ -9,7 +9,9 @@ test('visible blocks hide response blocks because web no longer renders response
     tool('status-1', 'shell_status'),
   ]
 
-  expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(['yield-1', 'status-1'])
+  expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(
+    ['yield-1', 'status-1']
+  )
 })
 
 test('visible blocks hide ordinary response blocks too', () => {
@@ -19,7 +21,9 @@ test('visible blocks hide ordinary response blocks too', () => {
     tool('status-1', 'shell_status'),
   ]
 
-  expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(['exec-1', 'status-1'])
+  expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(
+    ['exec-1', 'status-1']
+  )
 })
 
 test('visible blocks hide resume blocks because web has no resume row renderer', () => {
@@ -29,7 +33,9 @@ test('visible blocks hide resume blocks because web has no resume row renderer',
     tool('status-1', 'shell_status'),
   ]
 
-  expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(['yield-1', 'status-1'])
+  expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(
+    ['yield-1', 'status-1']
+  )
 })
 
 test('visible blocks hide hidden user/steer turns (internal yield wakeups) but keep real ones', () => {
@@ -41,10 +47,14 @@ test('visible blocks hide hidden user/steer turns (internal yield wakeups) but k
     steer('real-steer', false),
   ]
 
-  expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(['user-1', 'exec-1', 'real-steer'])
+  expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(
+    ['user-1', 'exec-1', 'real-steer']
+  )
 })
 
-function tool(id: string, toolName: string): Extract<Block, { type: 'tool_call' }> {
+function tool(id: string, toolName: string): Extract<Block, {
+  type: 'tool_call'
+}> {
   return {
     type: 'tool_call',
     id,

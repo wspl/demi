@@ -57,13 +57,45 @@ const actions = computed<BubbleAction[]>(() => {
       icon: copied.value ? Check : Copy,
       emit: () => void copy(userText.value),
     })
-    list.push({ key: 'edit', hint: t('agent.user.edit'), icon: Pencil, emit: () => emit('edit') })
+    list.push(
+      {
+        key: 'edit',
+        hint: t('agent.user.edit'),
+        icon: Pencil,
+        emit: () => emit('edit')
+      }
+    )
   }
   if (props.deletable) {
-    list.push({ key: 'delete', hint: props.sendable ? t('agent.queue.remove') : t('agent.steer.discard'), icon: X, emit: () => emit('delete') })
+    list.push(
+      {
+        key: 'delete',
+        hint: props.sendable
+          ? t('agent.queue.remove')
+          : t('agent.steer.discard'),
+        icon: X,
+        emit: () => emit('delete')
+      }
+    )
   }
-  if (props.sendable) list.push({ key: 'send', hint: t('agent.queue.sendNow'), icon: ArrowUp, emit: () => emit('sendNow') })
-  if (props.interruptible) list.push({ key: 'interrupt', hint: t('agent.steer.interrupt'), icon: ChevronsUp, emit: () => emit('interrupt') })
+  if (props.sendable)
+    list.push(
+    {
+      key: 'send',
+      hint: t('agent.queue.sendNow'),
+      icon: ArrowUp,
+      emit: () => emit('sendNow')
+    }
+  )
+  if (props.interruptible)
+    list.push(
+    {
+      key: 'interrupt',
+      hint: t('agent.steer.interrupt'),
+      icon: ChevronsUp,
+      emit: () => emit('interrupt')
+    }
+  )
   return list
 })
 
@@ -72,27 +104,41 @@ const imageBlocks = computed(() =>
 )
 
 const documentBlocks = computed(() =>
-  props.content.filter((b): b is Extract<UserContentBlock, { type: 'document' }> => b.type === 'document'),
+  props.content.filter(
+    (b): b is Extract<UserContentBlock, { type: 'document' }> =>
+      b.type === 'document'
+  ),
 )
 
 /** Transcript frames carry media by reference: the bytes are one GET away. */
-type RefSource = { type: 'ref'; ref: string; mediaType: string }
+type RefSource = {
+  type: 'ref';
+  ref: string;
+  mediaType: string
+}
 
 function imageSrc(source: ImageBlock['source'] | RefSource): string {
-  if (source.type === 'url') return source.url
-  if (source.type === 'ref') return `/api/blobs/${source.ref}?type=${encodeURIComponent(source.mediaType)}`
-  return URL.createObjectURL(new Blob([source.data as BlobPart], { type: source.mediaType }))
+  if (source.type === 'url')
+    return source.url
+  if (source.type === 'ref')
+    return `/api/blobs/${source.ref}?type=${encodeURIComponent(source.mediaType)}`
+  return URL.createObjectURL(
+    new Blob([source.data as BlobPart], { type: source.mediaType })
+  )
 }
 
 function imageName(source: ImageBlock['source'], index: number): string {
-  if (source.type !== 'url') return `image-${index}`
+  if (source.type !== 'url')
+    return `image-${index}`
   const leaf = source.url.split('/').pop()
   return leaf ? decodeURIComponent(leaf) : `image-${index}`
 }
 
 const renderedMarkdown = computed(() => md.renderUser(userText.value))
 
-const textClass = computed(() => props.pending ? 'text-fg-subtle' : 'text-fg-body')
+const textClass = computed(() => props.pending
+  ? 'text-fg-subtle'
+  : 'text-fg-body')
 
 const contentRef = ref<HTMLElement>()
 const isOverflowing = ref(false)
@@ -103,7 +149,8 @@ const MAX_CONTENT_PX = 192
 
 useResizeObserver(contentRef, () => {
   const el = contentRef.value
-  if (!el) return
+  if (!el)
+    return
   const top = el.getBoundingClientRect().top
   const lineHeight = Number.parseFloat(getComputedStyle(el.firstElementChild ?? el).lineHeight) || 0
   const range = document.createRange()
@@ -113,7 +160,8 @@ useResizeObserver(contentRef, () => {
   for (const rect of range.getClientRects()) {
     // Client rects are glyph boxes; extend to the line box so the clip does not cut descenders.
     const bottom = Math.round(rect.bottom - top + Math.max(0, (lineHeight - rect.height) / 2))
-    if (bottom <= MAX_CONTENT_PX) lastFit = Math.max(lastFit, bottom)
+    if (bottom <= MAX_CONTENT_PX)
+      lastFit = Math.max(lastFit, bottom)
     else overflow = true
   }
   isOverflowing.value = overflow
@@ -132,7 +180,12 @@ useResizeObserver(contentRef, () => {
         class="user-actions absolute bottom-2.5 left-0 flex -translate-x-[calc(100%+6px)] items-center transition-opacity group-hover/user:opacity-100 focus-within:opacity-100"
         :class="actionsPinned ? 'opacity-100' : 'opacity-0'"
       >
-        <Tooltip v-for="action in actions" :key="action.key" :content="action.hint" class="inline-flex">
+        <Tooltip
+          v-for="action in actions"
+          :key="action.key"
+          :content="action.hint"
+          class="inline-flex"
+        >
           <button
             type="button"
             :aria-label="action.hint"
@@ -143,7 +196,10 @@ useResizeObserver(contentRef, () => {
           </button>
         </Tooltip>
       </div>
-      <div v-if="imageBlocks.length > 0 || documentBlocks.length > 0" class="mb-2 flex flex-wrap gap-1.5">
+      <div
+        v-if="imageBlocks.length > 0 || documentBlocks.length > 0"
+        class="mb-2 flex flex-wrap gap-1.5"
+      >
         <AttachmentTile
           v-for="(block, i) in imageBlocks"
           :key="`img-${i}`"
@@ -161,7 +217,12 @@ useResizeObserver(contentRef, () => {
         class="overflow-hidden"
         :style="isOverflowing ? { height: `${clipHeight}px`, maskImage: 'linear-gradient(to bottom, black calc(100% - 2rem), transparent)' } : undefined"
       >
-        <div v-if="userText" class="markdown-body select-text text-conversation" :class="textClass" v-html="renderedMarkdown" />
+        <div
+          v-if="userText"
+          class="markdown-body select-text text-conversation"
+          :class="textClass"
+          v-html="renderedMarkdown"
+        />
       </div>
     </div>
   </div>

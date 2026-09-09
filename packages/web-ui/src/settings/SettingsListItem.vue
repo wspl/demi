@@ -33,7 +33,12 @@ const emit = defineEmits<{
   >
     <span class="relative flex shrink-0 items-center">
       <slot name="leading">
-        <component :is="icon" v-if="icon" :size="ICON_PX.in28" class="text-fg-muted" />
+        <component
+          :is="icon"
+          v-if="icon"
+          :size="ICON_PX.in28"
+          class="text-fg-muted"
+        />
       </slot>
       <span
         v-if="badge"
@@ -42,11 +47,20 @@ const emit = defineEmits<{
       />
     </span>
     <span class="flex min-w-0 flex-1 flex-col leading-4">
-      <span class="truncate text-chrome" :class="selected ? 'text-fg-emphasis' : 'text-fg'">{{ label }}</span>
+      <span
+        class="truncate text-chrome"
+        :class="selected ? 'text-fg-emphasis' : 'text-fg'"
+      >{{ label }}</span>
       <span v-if="detail" class="truncate text-[11px] text-fg-subtle">{{ detail }}</span>
     </span>
     <span v-if="removable" class="hidden shrink-0 group-hover:flex">
-      <IconButton :icon="Trash2" variant="danger" size="xs" aria-label="Remove" @click.stop="emit('remove')" />
+      <IconButton
+        :icon="Trash2"
+        variant="danger"
+        size="xs"
+        aria-label="Remove"
+        @click.stop="emit('remove')"
+      />
     </span>
   </div>
 </template>

@@ -8,7 +8,8 @@ function joinPath(cwd: string, path: string): string {
 
 export function normalizeFilePath(rawPath: string): string {
   const trimmedPath = rawPath.trim()
-  if (!trimmedPath) return ''
+  if (!trimmedPath)
+    return ''
 
   const withoutScheme = trimmedPath.startsWith('file://')
     ? trimmedPath.slice('file://'.length)
@@ -24,8 +25,11 @@ export function normalizeFilePath(rawPath: string): string {
 
 export function resolveAbsolutePath(cwd: string, rawPath: string): string {
   const normalizedPath = normalizeFilePath(rawPath)
-  if (!normalizedPath) return ''
-  return normalizedPath.startsWith('/') ? normalizedPath : joinPath(cwd, normalizedPath)
+  if (!normalizedPath)
+    return ''
+  return normalizedPath.startsWith('/')
+    ? normalizedPath
+    : joinPath(cwd, normalizedPath)
 }
 
 export function isHttpUrl(path: string): boolean {
@@ -35,12 +39,17 @@ export function isHttpUrl(path: string): boolean {
 export function isLikelyFilePath(rawPath: string): boolean {
   const trimmedPath = rawPath.trim()
   const normalizedPath = normalizeFilePath(trimmedPath)
-  if (!normalizedPath) return false
-  if (normalizedPath.startsWith('#')) return false
-  if (normalizedPath.startsWith('mailto:')) return false
-  if (isHttpUrl(normalizedPath)) return false
+  if (!normalizedPath)
+    return false
+  if (normalizedPath.startsWith('#'))
+    return false
+  if (normalizedPath.startsWith('mailto:'))
+    return false
+  if (isHttpUrl(normalizedPath))
+    return false
 
-  if (trimmedPath.endsWith('/')) return true
+  if (trimmedPath.endsWith('/'))
+    return true
 
   return normalizedPath.startsWith('/')
     || normalizedPath.startsWith('./')

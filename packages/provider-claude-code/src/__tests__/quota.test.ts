@@ -23,7 +23,12 @@ test('mapClaudeUsagePayload maps five_hour and seven_day', () => {
         },
       ],
     },
-    { accessToken: 'tok', source: 'static' as const, subscriptionType: 'max', rateLimitTier: 'default_claude_max_20x' },
+    {
+      accessToken: 'tok',
+      source: 'static' as const,
+      subscriptionType: 'max',
+      rateLimitTier: 'default_claude_max_20x'
+    },
   )
   expect(snap.plan?.id).toBe('max')
   expect(snap.windows.find((w) => w.id === 'five_hour')?.usedPercent).toBe(4)
@@ -33,7 +38,11 @@ test('mapClaudeUsagePayload maps five_hour and seven_day', () => {
 
 test('createClaudeCodeQuota probes with mock fetch', async () => {
   const quota = createClaudeCodeQuota({
-    resolveAccess: async () => ({ accessToken: 'tok', source: 'static' as const, subscriptionType: 'pro' }),
+    resolveAccess: async () => ({
+      accessToken: 'tok',
+      source: 'static' as const,
+      subscriptionType: 'pro'
+    }),
     fetch: async () =>
       new Response(
         JSON.stringify({
@@ -69,60 +78,74 @@ test('observeClaudeStreamBody maps rate_limits on stream messages', () => {
       seven_day: { utilization: 50, resets_at: '2026-07-11T08:00:00.000Z' },
     },
   })
-  expect(observed?.windows.find((w) => w.id === 'five_hour')?.usedPercent).toBe(33)
-  expect(observed?.windows.find((w) => w.id === 'seven_day')?.usedPercent).toBe(50)
+  expect(observed?.windows.find((w) => w.id === 'five_hour')?.usedPercent)
+    .toBe(33)
+  expect(observed?.windows.find((w) => w.id === 'seven_day')?.usedPercent)
+    .toBe(50)
 })
 
-test.each([false, true])('Claude stream quota respects account invalidation: %s', async (invalidate) => {
-  const transport = new FakeClaudeTransport([
-    {
-      type: 'result',
-      subtype: 'success',
-      result: 'ok',
-      usage: { input_tokens: 1, output_tokens: 1 },
-      rate_limits: {
-        five_hour: { utilization: 18, resets_at: '2026-07-09T12:00:00.000Z' },
+test.each([false, true])(
+  'Claude stream quota respects account invalidation: %s',
+  async (
+    invalidate
+  ) => {
+    const transport = new FakeClaudeTransport([
+      {
+        type: 'result',
+        subtype: 'success',
+        result: 'ok',
+        usage: { input_tokens: 1, output_tokens: 1 },
+        rate_limits: {
+          five_hour: { utilization: 18, resets_at: '2026-07-09T12:00:00.000Z' },
+        },
       },
-    },
-  ])
-  const factory: ClaudeTransportFactory = { start: async () => {
-    if (invalidate) quota.clearLatest!()
-    return transport
-  } }
-  const quota = createClaudeCodeQuota({ providerId: 'claude-code' })
-  const { ClaudeCodeProvider } = await import('../provider')
-  const runtime = new ClaudeCodeProvider({ transportFactory: factory, quota })
-  const events = []
-  for await (const event of runtime.run({
-    requestId: 'req-1',
-    turnId: 'turn-1',
-    sessionId: 'sess-1',
-    outputLimit: null,
-    modelId: 'claude-sonnet-4-6',
-    systemPrompt: 'sys',
-    cwd: '/tmp',
-    items: [{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }],
-    tools: [],
-    thinking: null,
-    cancel: new AbortController().signal,
-  })) {
-    events.push(event)
-  }
-  expect(events.some((e) => e.type === 'response')).toBe(true)
-  if (invalidate) expect(quota.latest()).toBeNull()
-  else {
-    expect(quota.latest()?.source).toBe('observation')
-    expect(quota.latest()?.windows.find((w) => w.id === 'five_hour')?.usedPercent).toBe(18)
-  }
+    ])
+    const factory: ClaudeTransportFactory = { start: async () => {
+      if (invalidate)
+        quota.clearLatest!()
+      return transport
+    } }
+    const quota = createClaudeCodeQuota({ providerId: 'claude-code' })
+    const { ClaudeCodeProvider } = await import('../provider')
+    const runtime = new ClaudeCodeProvider({ transportFactory: factory, quota })
+    const events = []
+    for await (const event of runtime.run({
+      requestId: 'req-1',
+      turnId: 'turn-1',
+      sessionId: 'sess-1',
+      outputLimit: null,
+      modelId: 'claude-sonnet-4-6',
+      systemPrompt: 'sys',
+      cwd: '/tmp',
+      items: [{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }],
+      tools: [],
+      thinking: null,
+      cancel: new AbortController().signal,
+    })) {
+      events.push(event)
+    }
+    expect(events.some((e) => e.type === 'response')).toBe(true)
+    if (invalidate) expect(quota.latest()).toBeNull()
+    else {
+      expect(quota.latest()?.source).toBe('observation')
+      expect(
+        quota.latest()?.windows.find((w) => w.id === 'five_hour')?.usedPercent
+      ).toBe(18)
+    }
 
-  // Public shell exposes quota.observeResponse.
-  const shell = createClaudeCodeProvider()
-  expect(shell.quota).toBeDefined()
-  shell.quota!.observeResponse?.({
-    body: { rate_limits: { seven_day: { utilization: 9, resets_at: '2026-07-12T00:00:00.000Z' } } },
-  })
-  expect(shell.quota!.latest()?.windows[0]?.usedPercent).toBe(9)
-})
+    // Public shell exposes quota.observeResponse.
+    const shell = createClaudeCodeProvider()
+    expect(shell.quota).toBeDefined()
+    shell.quota!.observeResponse?.({
+      body: {
+        rate_limits: {
+          seven_day: { utilization: 9, resets_at: '2026-07-12T00:00:00.000Z' }
+        }
+      },
+    })
+    expect(shell.quota!.latest()?.windows[0]?.usedPercent).toBe(9)
+  }
+)
 
 class FakeClaudeTransport implements ClaudeTransport, AsyncIterator<unknown> {
   private index = 0
@@ -132,7 +155,8 @@ class FakeClaudeTransport implements ClaudeTransport, AsyncIterator<unknown> {
     return { [Symbol.asyncIterator]: () => this }
   }
   async next(): Promise<IteratorResult<unknown>> {
-    if (this.index >= this.queue.length) return { done: true, value: undefined }
+    if (this.index >= this.queue.length)
+      return { done: true, value: undefined }
     const value = this.queue[this.index++]
     return { done: false, value }
   }

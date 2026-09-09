@@ -7,7 +7,12 @@ import { createBunWebSocket } from 'hono/bun'
 import { buildManifest, inProcessRpc } from '@demicodes/command-loader'
 import { RemoteShellEnvironment } from '@demicodes/host-remote'
 import { startTxikiRunner } from '@demicodes/runner/testing'
-import { AgentSessionCommandStorage, type CommandRegistry, type Host, type ShellEnvironmentOptions } from '@demicodes/shell'
+import {
+  AgentSessionCommandStorage,
+  type CommandRegistry,
+  type Host,
+  type ShellEnvironmentOptions
+} from '@demicodes/shell'
 import { waitFor } from '@demicodes/utils'
 import { transpileCommandModule } from './conversation/command-manifest'
 import { runnerSocketRoutes } from './http/runner-socket'
@@ -28,7 +33,11 @@ interface RunnerFixture {
   close(): Promise<void>
 }
 
-export async function runnerShell(options: ShellEnvironmentOptions & { host: Host; commands: CommandRegistry; agentSessionId?: string }) {
+export async function runnerShell(options: ShellEnvironmentOptions & {
+  host: Host;
+  commands: CommandRegistry;
+  agentSessionId?: string
+}) {
   const { host, commands, agentSessionId = 'test-session', ...shell } = options
   let pending = fixtures.get(host)
   if (!pending) {
@@ -39,8 +48,18 @@ export async function runnerShell(options: ShellEnvironmentOptions & { host: Hos
   const fixture = await pending
   fixture.users++
   fixture.commands.set(agentSessionId, commands)
-  const remote = fixture.registry.hostFor({ deviceId: fixture.deviceId, path: host.defaultCwd }, agentSessionId, host.store)
-  const environment = new RemoteShellEnvironment({ ...shell, initialEnv: { DEMI_SESSION_ID: agentSessionId, ...shell.initialEnv }, host: remote })
+  const remote = fixture.registry.hostFor({
+    deviceId: fixture.deviceId,
+    path: host.defaultCwd
+  }, agentSessionId, host.store)
+  const environment = new RemoteShellEnvironment({
+    ...shell,
+    initialEnv: {
+      DEMI_SESSION_ID: agentSessionId,
+      ...shell.initialEnv
+    },
+    host: remote
+  })
   const exec = environment.exec.bind(environment)
   const sessions = new Set([agentSessionId])
   environment.exec = input => {
@@ -52,32 +71,71 @@ export async function runnerShell(options: ShellEnvironmentOptions & { host: Hos
   const dispose = environment.disposeAllShells.bind(environment)
   let disposed = false
   environment.disposeAllShells = async () => {
-    if (disposed) return
+    if (disposed)
+      return
     disposed = true
     await dispose()
-    for (const id of sessions) fixture.commands.delete(id)
-    if (--fixture.users === 0) { fixtures.delete(host); await fixture.close() }
+    for (const id of sessions)
+      fixture.commands.delete(id)
+    if (--fixture.users === 0) {
+      fixtures.delete(host);
+      await fixture.close()
+    }
   }
   return environment
 }
 
-async function createFixture(host: Host, initialCommands: CommandRegistry): Promise<RunnerFixture> {
+async function createFixture(
+  host: Host,
+  initialCommands: CommandRegistry
+): Promise<RunnerFixture> {
   const db = openSqliteDatabase(':memory:')
   migrate(db, CONTROL_MIGRATIONS)
   const control = new LocalControlService(db)
-  const user = (await control.createMaster({ email: 'test@example.test', passwordHash: '' }))!
+  const user = (await control.createMaster(
+    { email: 'test@example.test', passwordHash: '' }
+  ))!
   const token = generateDeviceToken()
-  const device = await control.createDevice({ userId: user.id, name: 'test', platform: 'test', tokenHash: hashDeviceToken(token) })
+  const device = await control.createDevice({
+    userId: user.id,
+    name: 'test',
+    platform: 'test',
+    tokenHash: hashDeviceToken(token)
+  })
   const pipes = new PipeBroker()
   const roots = initialCommands.list()
   const commands = new Map<string, CommandRegistry>()
-  const manifest = await buildManifest(roots, { transpile: transpileCommandModule })
+  const manifest = await buildManifest(
+    roots,
+    { transpile: transpileCommandModule }
+  )
   const registry = new RunnerRegistry({
-    control, pipes, pingIntervalMs: 0, manifest: async () => manifest,
+    control,
+    pipes,
+    pingIntervalMs: 0,
+    manifest: async () => manifest,
     rpc: async (call, io, execution) => {
-      const result = await inProcessRpc(commands.get(call.agentSessionId)!.list(), { host: execution.host, storage: new AgentSessionCommandStorage(host.store, call.agentSessionId) })({
-        root: call.root, path: call.path, argv: call.argv, args: call.args, json: call.json,
-        stdin: io.stdin?.stream() ?? null, cwd: call.cwd, env: call.env, io: io.commandIO(), signal: io.signal, stdinStream: io.stdinStream,
+      const result = await inProcessRpc(
+        commands.get(call.agentSessionId)!.list(),
+        {
+          host: execution.host,
+          storage: new AgentSessionCommandStorage(
+            host.store,
+            call.agentSessionId
+          )
+        }
+      )({
+        root: call.root,
+        path: call.path,
+        argv: call.argv,
+        args: call.args,
+        json: call.json,
+        stdin: io.stdin?.stream() ?? null,
+        cwd: call.cwd,
+        env: call.env,
+        io: io.commandIO(),
+        signal: io.signal,
+        stdinStream: io.stdinStream,
       })
       return result.exitCode
     },
@@ -97,15 +155,37 @@ async function createFixture(host: Host, initialCommands: CommandRegistry): Prom
     db.close()
   }
   try {
-    runner = await startTxikiRunner({ backendUrl: `http://localhost:${server.port}`, stateDir, home: host.defaultCwd, deviceToken: token })
+    runner = await startTxikiRunner({
+      backendUrl: `http://localhost:${server.port}`,
+      stateDir,
+      home: host.defaultCwd,
+      deviceToken: token
+    })
     await registry.whenOnline(device.id)
-    await waitFor(() => runner!.log.some(line => line.includes(' installed:')), () => runner!.log.join('\n'), { timeoutMs: 15_000 })
+    await waitFor(
+      () => runner!.log.some(line => line.includes(' installed:')),
+      () => runner!.log.join('\n'),
+      { timeoutMs: 15_000 }
+    )
     return { registry, deviceId: device.id, commands, users: 0, close }
-  } catch (error) { await close(); throw error }
+  } catch (error) {
+    await close();
+    throw error
+  }
 }
 
-export function runnerShellFactory(ctx: { agentSessionId: string; host: Host; commands: CommandRegistry; shell: ShellEnvironmentOptions }) {
-  return runnerShell({ ...ctx.shell, host: ctx.host, commands: ctx.commands, agentSessionId: ctx.agentSessionId })
+export function runnerShellFactory(ctx: {
+  agentSessionId: string;
+  host: Host;
+  commands: CommandRegistry;
+  shell: ShellEnvironmentOptions
+}) {
+  return runnerShell({
+    ...ctx.shell,
+    host: ctx.host,
+    commands: ctx.commands,
+    agentSessionId: ctx.agentSessionId
+  })
 }
 
 import { type Command } from '@demicodes/shell'
@@ -126,8 +206,17 @@ export function probeCommand(): Command {
         run: async ({ parsed, signal }) => {
           const ms = parsed.values.ms as number
           const held = delay(ms)
-          const aborted = new Promise<'aborted'>((resolve) => signal.addEventListener('abort', () => resolve('aborted'), { once: true }))
-          return (await Promise.race([held.then(() => 'held' as const), aborted])) === 'aborted' ? { exitCode: 130 } : { exitCode: 0 }
+          const aborted = new Promise<'aborted'>(
+            (resolve) => signal.addEventListener(
+              'abort',
+              () => resolve('aborted'),
+              { once: true }
+            )
+          )
+          return (await Promise.race([
+            held.then(() => 'held' as const),
+            aborted
+          ])) === 'aborted' ? { exitCode: 130 } : { exitCode: 0 }
         },
       },
       {
@@ -138,7 +227,8 @@ export function probeCommand(): Command {
         run: async ({ parsed, stdinStream, io }) => {
           for await (const line of utf8Lines(stdinStream)) {
             const wait = parsed.values.delay as number | undefined
-            if (wait) await delay(wait)
+            if (wait)
+              await delay(wait)
             await io.stdout(line)
             return { exitCode: 0 }
           }

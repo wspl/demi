@@ -1,4 +1,9 @@
-import { preferencesSchema, patchPreferences, type UserPreferences, type PreferencesPatch } from '../settings/preferences'
+import {
+  preferencesSchema,
+  patchPreferences,
+  type UserPreferences,
+  type PreferencesPatch
+} from '../settings/preferences'
 import { z } from 'zod'
 import { createId, moveBefore } from '@demicodes/utils'
 import type { Role, User } from '../auth/identity'
@@ -12,27 +17,58 @@ import type { SqlDatabase } from './database'
  * N>1 without changing a caller.
  */
 export interface ControlService {
-  /** The instance's first account: inserted only while `users` is empty, so two concurrent setups yield one master. */
-  createMaster(user: { email: string; passwordHash: string }): Promise<User | null>
+  /**
+   * The instance's first account: inserted only while `users` is empty, so two
+   * concurrent setups yield one master.
+   */
+  createMaster(user: {
+    email: string;
+    passwordHash: string
+  }): Promise<User | null>
   /** Null when the email is taken. */
-  createUser(user: { email: string; passwordHash: string; role: Role }): Promise<User | null>
+  createUser(user: {
+    email: string;
+    passwordHash: string;
+    role: Role
+  }): Promise<User | null>
   getUser(id: string): Promise<User | null>
   /** The login lookup: the row with its hash. */
-  findUserByEmail(email: string): Promise<(User & { passwordHash: string }) | null>
+  findUserByEmail(
+    email: string
+  ): Promise<(User & { passwordHash: string }) | null>
   listUsers(): Promise<User[]>
   countUsers(): Promise<number>
   getUserPreferences(userId: string): Promise<UserPreferences>
-  patchUserPreferences(userId: string, patch: PreferencesPatch): Promise<UserPreferences>
+  patchUserPreferences(
+    userId: string,
+    patch: PreferencesPatch
+  ): Promise<UserPreferences>
   setUserNickname(id: string, nickname: string): Promise<void>
   setUserPassword(id: string, passwordHash: string): Promise<void>
   issueEmailChallenge(challenge: EmailChallenge): Promise<boolean>
   deleteEmailChallenge(userId: string, id: string): Promise<void>
-  confirmEmailChallenge(userId: string, id: string, codeHash: string, now: number): Promise<'changed' | 'invalid_code' | 'email_taken'>
-  createWebSession(session: { tokenHash: string; userId: string; expiresAt: string }): Promise<void>
-  getWebSession(tokenHash: string): Promise<{ userId: string; expiresAt: string } | null>
+  confirmEmailChallenge(
+    userId: string,
+    id: string,
+    codeHash: string,
+    now: number
+  ): Promise<'changed' | 'invalid_code' | 'email_taken'>
+  createWebSession(session: {
+    tokenHash: string;
+    userId: string;
+    expiresAt: string
+  }): Promise<void>
+  getWebSession(
+    tokenHash: string
+  ): Promise<{
+    userId: string;
+    expiresAt: string
+  } | null>
   extendWebSession(tokenHash: string, expiresAt: string): Promise<void>
   deleteWebSession(tokenHash: string): Promise<void>
-  /** Drops every session whose expiry is at or before `before` (an ISO instant). */
+  /**
+   * Drops every session whose expiry is at or before `before` (an ISO instant).
+   */
   deleteExpiredWebSessions(before: string): Promise<void>
   /** Devices are owned by users. */
   createDevice(device: {
@@ -48,20 +84,40 @@ export interface ControlService {
   getManagedDevice(userId: string): Promise<DeviceRecord | null>
   getOrCreateCloudDevice(userId: string): Promise<DeviceRecord>
   listUserConversationIds(userId: string): Promise<string[]>
-  getManagedOperation(deviceId: string, operationId: string): Promise<ManagedOperation | null>
-  listManagedOperations(): Promise<Array<{ deviceId: string; operation: ManagedOperation }>>
-  putManagedOperation(deviceId: string, operation: ManagedOperation): Promise<void>
+  getManagedOperation(
+    deviceId: string,
+    operationId: string
+  ): Promise<ManagedOperation | null>
+  listManagedOperations(): Promise<Array<{
+    deviceId: string;
+    operation: ManagedOperation
+  }>>
+  putManagedOperation(
+    deviceId: string,
+    operation: ManagedOperation
+  ): Promise<void>
   announceCloudReset(userId: string, operationId: string): Promise<void>
-  /** A managed host's token is minted fresh at every provision and wake; the row keeps only the current hash. */
+  /**
+   * A managed host's token is minted fresh at every provision and wake; the row
+   * keeps only the current hash.
+   */
   rotateDeviceToken(id: string, tokenHash: string): Promise<void>
-  /** The user's paired devices — managed hosts never appear in a device list. */
+  /**
+   * The user's paired devices — managed hosts never appear in a device list.
+   */
   listDevices(userId: string): Promise<DeviceRecord[]>
   /** Workspaces pointing at the device: a revoke is refused while any exist. */
   countWorkspacesOnDevice(deviceId: string): Promise<number>
-  /** Drops the device with its grants — a grant is a permission, gone with the machine. */
+  /**
+   * Drops the device with its grants — a grant is a permission, gone with the
+   * machine.
+   */
   deleteDevice(id: string): Promise<void>
   touchDeviceSeen(id: string): Promise<void>
-  /** `config` is opaque here — the vault encrypts/decrypts; storage never sees plaintext. */
+  /**
+   * `config` is opaque here — the vault encrypts/decrypts; storage never sees
+   * plaintext.
+   */
   createProvider(provider: {
     id?: string
     ownerUserId: string | null
@@ -71,27 +127,56 @@ export interface ControlService {
     config: string
   }): Promise<ProviderRecord>
   getProvider(id: string): Promise<ProviderRecord | null>
-  /** The providers of one scope — the instance's (owner null) or a user's — or every row for the startup check. */
+  /**
+   * The providers of one scope — the instance's (owner null) or a user's — or
+   * every row for the startup check.
+   */
   listProviders(scope: ProviderScope): Promise<ProviderRecord[]>
-  /** Rewrites label and/or config (already encrypted); null when the row is gone. */
-  updateProvider(id: string, patch: { label?: string; config?: string }): Promise<ProviderRecord | null>
+  /**
+   * Rewrites label and/or config (already encrypted); null when the row is
+   * gone.
+   */
+  updateProvider(
+    id: string,
+    patch: {
+      label?: string;
+      config?: string
+    }
+  ): Promise<ProviderRecord | null>
   deleteProvider(id: string): Promise<void>
   appendUsage(row: Omit<UsageRow, 'id' | 'createdAt'>): Promise<void>
   listUsage(userId: string): Promise<UsageRow[]>
   /** The whole ledger — the shared-mode admin view. */
   listAllUsage(): Promise<UsageRow[]>
   /** Metadata only — the bytes live in the blob store under `sha256`. */
-  createAttachment(attachment: { userId: string; mediaType: string; sizeBytes: number; sha256: string }): Promise<AttachmentRecord>
+  createAttachment(attachment: {
+    userId: string;
+    mediaType: string;
+    sizeBytes: number;
+    sha256: string
+  }): Promise<AttachmentRecord>
   getAttachment(id: string): Promise<AttachmentRecord | null>
-  /** `id` pre-chosen by the caller when something must exist under it before the row does (a Cloud project directory). */
-  createWorkspace(workspace: { id?: string; userId: string; deviceId: string; path: string; name: string }): Promise<WorkspaceRecord>
+  /**
+   * `id` pre-chosen by the caller when something must exist under it before the
+   * row does (a Cloud project directory).
+   */
+  createWorkspace(workspace: {
+    id?: string;
+    userId: string;
+    deviceId: string;
+    path: string;
+    name: string
+  }): Promise<WorkspaceRecord>
   getWorkspace(id: string): Promise<WorkspaceRecord | null>
   listWorkspaces(userId: string): Promise<WorkspaceRecord[]>
   renameWorkspace(id: string, name: string): Promise<void>
   deleteWorkspace(id: string): Promise<void>
   countConversationsInWorkspace(workspaceId: string): Promise<number>
   listConversationIdsInWorkspace(workspaceId: string): Promise<string[]>
-  setConversationWorkspace(conversationId: string, workspaceId: string | null): Promise<void>
+  setConversationWorkspace(
+    conversationId: string,
+    workspaceId: string | null
+  ): Promise<void>
   /**
    * The target-switch write (`sessions-and-targets.md` § Switching): moves
    * the target pointers, records the switch for the next turn's
@@ -106,7 +191,13 @@ export interface ControlService {
     from: ConversationTargetPointer,
     to: ConversationTargetPointer,
     transition: TargetSwitch,
-    ends: { departed: { deviceId: string; cwd: string | null } | null; arrivingDeviceId: string | null },
+    ends: {
+      departed: {
+        deviceId: string;
+        cwd: string | null
+      } | null;
+      arrivingDeviceId: string | null
+    },
   ): Promise<boolean>
   /**
    * The attached hosts (`sessions-and-targets.md` § Attached hosts). `attachHost`
@@ -115,28 +206,68 @@ export interface ControlService {
    * where `cwd` says (`null`: its home). `announce` marks the change for the
    * next turn's context block.
    */
-  attachHost(conversationId: string, deviceId: string, name: string, cwd: string | null, announce: boolean): Promise<AttachedHostRecord>
+  attachHost(
+    conversationId: string,
+    deviceId: string,
+    name: string,
+    cwd: string | null,
+    announce: boolean
+  ): Promise<AttachedHostRecord>
   detachHost(conversationId: string, deviceId: string): Promise<boolean>
   listAttachedHosts(conversationId: string): Promise<AttachedHostRecord[]>
-  getAttachedHost(conversationId: string, deviceId: string): Promise<AttachedHostRecord | null>
-  renameAttachedHost(conversationId: string, deviceId: string, name: string): Promise<'renamed' | 'name_taken' | 'not_attached'>
-  /** Where work on the attached host last stood: written back from the job's exit. */
-  setAttachedHostCwd(conversationId: string, deviceId: string, cwd: string): Promise<void>
-  createConversation(userId: string, options?: { title?: string }): Promise<ConversationRecord>
+  getAttachedHost(
+    conversationId: string,
+    deviceId: string
+  ): Promise<AttachedHostRecord | null>
+  renameAttachedHost(
+    conversationId: string,
+    deviceId: string,
+    name: string
+  ): Promise<'renamed' | 'name_taken' | 'not_attached'>
+  /**
+   * Where work on the attached host last stood: written back from the job's
+   * exit.
+   */
+  setAttachedHostCwd(
+    conversationId: string,
+    deviceId: string,
+    cwd: string
+  ): Promise<void>
+  createConversation(
+    userId: string,
+    options?: { title?: string }
+  ): Promise<ConversationRecord>
   getConversation(id: string): Promise<ConversationRecord | null>
-  listConversations(userId: string, options?: { archived?: boolean }): Promise<ConversationRecord[]>
+  listConversations(
+    userId: string,
+    options?: { archived?: boolean }
+  ): Promise<ConversationRecord[]>
   setConversationPinned(id: string, pinned: boolean): Promise<void>
   markConversationRead(id: string, revision: number): Promise<void>
-  reorderSidebar(userId: string, kind: 'conversation' | 'workspace', id: string, beforeId: string | null): Promise<boolean>
+  reorderSidebar(
+    userId: string,
+    kind: 'conversation' | 'workspace',
+    id: string,
+    beforeId: string | null
+  ): Promise<boolean>
   renameConversation(id: string, title: string): Promise<void>
   setConversationArchived(id: string, archived: boolean): Promise<void>
-  setConversationModel(id: string, providerId: string | null, modelId: string | null): Promise<void>
-  /** Sets the title only when it is still the creation default (first user message becomes the title). */
+  setConversationModel(
+    id: string,
+    providerId: string | null,
+    modelId: string | null
+  ): Promise<void>
+  /**
+   * Sets the title only when it is still the creation default (first user
+   * message becomes the title).
+   */
   defaultConversationTitle(id: string, title: string): Promise<void>
   touchConversation(id: string): Promise<void>
 }
 
-/** One pending email change per user, replaced only after the resend cooldown. */
+/**
+ * One pending email change per user, replaced only after the resend cooldown.
+ */
 export interface EmailChallenge {
   userId: string
   id: string
@@ -152,7 +283,10 @@ export type DeviceKind = 'user' | 'managed'
 export interface DeviceRecord {
   id: string
   userId: string
-  /** `user`: paired through the claim flow; `managed`: a VM the backend provisioned, owned by its user. */
+  /**
+   * `user`: paired through the claim flow; `managed`: a VM the backend
+   * provisioned, owned by its user.
+   */
   kind: DeviceKind
   name: string
   platform: string
@@ -164,9 +298,14 @@ export interface DeviceRecord {
 export interface AttachedHostRecord {
   conversationId: string
   deviceId: string
-  /** What the model and the user call the host; unique within the conversation. */
+  /**
+   * What the model and the user call the host; unique within the conversation.
+   */
   name: string
-  /** The directory the last `demi host shell --host` there ended in; `null` until one ran — its home. */
+  /**
+   * The directory the last `demi host shell --host` there ended in; `null`
+   * until one ran — its home.
+   */
   cwd: string | null
   attachedAt: string
 }
@@ -211,7 +350,10 @@ export interface AttachmentRecord {
   createdAt: string
 }
 
-/** A provider listing's scope: one owner (null = the instance's, shared mode) or every row. */
+/**
+ * A provider listing's scope: one owner (null = the instance's, shared mode) or
+ * every row.
+ */
 export type ProviderScope = { ownerUserId: string | null } | 'all'
 
 export interface UsageRow {
@@ -227,28 +369,61 @@ export interface UsageRow {
   createdAt: string
 }
 
-/** Persisted target selection; all external inputs and stored rows use this schema. */
+/**
+ * Persisted target selection; all external inputs and stored rows use this
+ * schema.
+ */
 export const conversationTargetSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('cloud') }).strict(),
-  z.object({ kind: z.literal('device'), deviceId: z.string().min(1), path: z.string().min(1) }).strict(),
-  z.object({ kind: z.literal('workspace'), workspaceId: z.string().min(1) }).strict(),
+  z.object({
+    kind: z.literal('device'),
+    deviceId: z.string().min(1),
+    path: z.string().min(1)
+  }).strict(),
+  z.object({
+    kind: z.literal('workspace'),
+    workspaceId: z.string().min(1)
+  }).strict(),
 ])
 export type ConversationTargetPointer = z.infer<typeof conversationTargetSchema>
 export const executionTargetSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('cloud'), deviceId: z.string().nullable(), path: z.string() }),
-  z.object({ kind: z.literal('device'), deviceId: z.string(), path: z.string() }),
-  z.object({ kind: z.literal('workspace'), workspaceId: z.string(), deviceId: z.string(), path: z.string() }),
+  z.object({
+    kind: z.literal('cloud'),
+    deviceId: z.string().nullable(),
+    path: z.string()
+  }),
+  z.object({
+    kind: z.literal('device'),
+    deviceId: z.string(),
+    path: z.string()
+  }),
+  z.object({
+    kind: z.literal('workspace'),
+    workspaceId: z.string(),
+    deviceId: z.string(),
+    path: z.string()
+  }),
 ])
 export type ExecutionTarget = z.infer<typeof executionTargetSchema>
 export const managedOperationSchema = z.object({
   id: z.string().min(1),
   baseVersion: z.string().min(1),
-  phase: z.enum(['stopping', 'saving', 'rebuilding', 'booting', 'ready', 'failed']),
+  phase: z.enum([
+    'stopping',
+    'saving',
+    'rebuilding',
+    'booting',
+    'ready',
+    'failed'
+  ]),
   error: z.string().nullable(),
 })
 export type ManagedOperation = z.infer<typeof managedOperationSchema>
 
-/** The latest explicit target switch, retained for every node's execution context. */
+/**
+ * The latest explicit target switch, retained for every node's execution
+ * context.
+ */
 export interface TargetSwitch {
   from: ExecutionTarget
   to: ExecutionTarget
@@ -304,27 +479,66 @@ const USER_SELECT = 'SELECT id, email, nickname, role, created_at FROM users'
 const USER_INSERT = 'INSERT INTO users (id, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)'
 
 function userFromRow(row: UserRow): User {
-  return { id: row.id, email: row.email, nickname: row.nickname, role: row.role, createdAt: row.created_at }
+  return {
+    id: row.id,
+    email: row.email,
+    nickname: row.nickname,
+    role: row.role,
+    createdAt: row.created_at
+  }
 }
 
 /** In-process `ControlService` over the control database. */
 export class LocalControlService implements ControlService {
   constructor(private readonly db: SqlDatabase) {}
 
-  async createMaster(user: { email: string; passwordHash: string }): Promise<User | null> {
-    const record: User = { id: createId(), email: user.email, nickname: '', role: 'master', createdAt: new Date().toISOString() }
+  async createMaster(user: {
+    email: string;
+    passwordHash: string
+  }): Promise<User | null> {
+    const record: User = {
+      id: createId(),
+      email: user.email,
+      nickname: '',
+      role: 'master',
+      createdAt: new Date().toISOString()
+    }
     return this.db.transaction(() => {
-      if (this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users')?.n) return null
-      this.db.run(USER_INSERT, [record.id, record.email, user.passwordHash, record.role, record.createdAt])
+      if (this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users')?.n)
+        return null
+      this.db.run(USER_INSERT, [
+        record.id,
+        record.email,
+        user.passwordHash,
+        record.role,
+        record.createdAt
+      ])
       return record
     })
   }
 
-  async createUser(user: { email: string; passwordHash: string; role: Role }): Promise<User | null> {
-    const record: User = { id: createId(), email: user.email, nickname: '', role: user.role, createdAt: new Date().toISOString() }
+  async createUser(user: {
+    email: string;
+    passwordHash: string;
+    role: Role
+  }): Promise<User | null> {
+    const record: User = {
+      id: createId(),
+      email: user.email,
+      nickname: '',
+      role: user.role,
+      createdAt: new Date().toISOString()
+    }
     return this.db.transaction(() => {
-      if (this.db.get(`${USER_SELECT} WHERE email = ?`, [user.email])) return null
-      this.db.run(USER_INSERT, [record.id, record.email, user.passwordHash, record.role, record.createdAt])
+      if (this.db.get(`${USER_SELECT} WHERE email = ?`, [user.email]))
+        return null
+      this.db.run(USER_INSERT, [
+        record.id,
+        record.email,
+        user.passwordHash,
+        record.role,
+        record.createdAt
+      ])
       return record
     })
   }
@@ -334,13 +548,19 @@ export class LocalControlService implements ControlService {
     return row ? userFromRow(row) : null
   }
 
-  async findUserByEmail(email: string): Promise<(User & { passwordHash: string }) | null> {
-    const row = this.db.get<UserRow & { password_hash: string }>('SELECT id, email, nickname, role, created_at, password_hash FROM users WHERE email = ?', [email])
+  async findUserByEmail(
+    email: string
+  ): Promise<(User & { passwordHash: string }) | null> {
+    const row = this.db.get<UserRow & { password_hash: string }>(
+      'SELECT id, email, nickname, role, created_at, password_hash FROM users WHERE email = ?',
+      [email]
+    )
     return row ? { ...userFromRow(row), passwordHash: row.password_hash } : null
   }
 
   async listUsers(): Promise<User[]> {
-    return this.db.all<UserRow>(`${USER_SELECT} ORDER BY created_at`).map(userFromRow)
+    return this.db.all<UserRow>(`${USER_SELECT} ORDER BY created_at`)
+      .map(userFromRow)
   }
 
   async countUsers(): Promise<number> {
@@ -351,18 +571,32 @@ export class LocalControlService implements ControlService {
     return this.readUserPreferences(userId)
   }
 
-  async patchUserPreferences(userId: string, patch: PreferencesPatch): Promise<UserPreferences> {
+  async patchUserPreferences(
+    userId: string,
+    patch: PreferencesPatch
+  ): Promise<UserPreferences> {
     return this.db.transaction(() => {
-      const preferences = patchPreferences(this.readUserPreferences(userId), patch)
-      this.db.run(`INSERT INTO user_preferences (user_id, preferences_json) VALUES (?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET preferences_json = excluded.preferences_json`, [userId, JSON.stringify(preferences)])
+      const preferences = patchPreferences(
+        this.readUserPreferences(userId),
+        patch
+      )
+      this.db.run(
+        `INSERT INTO user_preferences (user_id, preferences_json) VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET preferences_json = excluded.preferences_json`,
+        [userId, JSON.stringify(preferences)]
+      )
       return preferences
     })
   }
 
   private readUserPreferences(userId: string): UserPreferences {
-    const row = this.db.get<{ preferences_json: string }>('SELECT preferences_json FROM user_preferences WHERE user_id = ?', [userId])
-    return row ? preferencesSchema.parse(JSON.parse(row.preferences_json)) : { appearance: {}, shortcuts: {} }
+    const row = this.db.get<{ preferences_json: string }>(
+      'SELECT preferences_json FROM user_preferences WHERE user_id = ?',
+      [userId]
+    )
+    return row
+      ? preferencesSchema.parse(JSON.parse(row.preferences_json))
+      : { appearance: {}, shortcuts: {} }
   }
 
   async setUserNickname(id: string, nickname: string): Promise<void> {
@@ -370,55 +604,125 @@ export class LocalControlService implements ControlService {
   }
 
   async setUserPassword(id: string, passwordHash: string): Promise<void> {
-    this.db.run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, id])
+    this.db.run(
+      'UPDATE users SET password_hash = ? WHERE id = ?',
+      [passwordHash, id]
+    )
   }
 
   async issueEmailChallenge(challenge: EmailChallenge): Promise<boolean> {
     return this.db.transaction(() => {
-      const previous = this.db.get<{ sent_at: number }>('SELECT sent_at FROM email_challenges WHERE user_id = ?', [challenge.userId])
-      if (previous && challenge.sentAt - previous.sent_at < 60_000) return false
-      this.db.run(`INSERT INTO email_challenges (user_id, id, email, password_hash, code_hash, expires_at, sent_at)
+      const previous = this.db.get<{ sent_at: number }>(
+        'SELECT sent_at FROM email_challenges WHERE user_id = ?',
+        [challenge.userId]
+      )
+      if (previous && challenge.sentAt - previous.sent_at < 60_000)
+        return false
+      this.db.run(
+        `INSERT INTO email_challenges (user_id, id, email, password_hash, code_hash, expires_at, sent_at)
         VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET
         id = excluded.id, email = excluded.email, password_hash = excluded.password_hash,
         code_hash = excluded.code_hash, expires_at = excluded.expires_at, sent_at = excluded.sent_at, attempts = 0`,
-        [challenge.userId, challenge.id, challenge.email, challenge.passwordHash, challenge.codeHash, challenge.expiresAt, challenge.sentAt])
+        [
+          challenge.userId,
+          challenge.id,
+          challenge.email,
+          challenge.passwordHash,
+          challenge.codeHash,
+          challenge.expiresAt,
+          challenge.sentAt
+        ]
+      )
       return true
     })
   }
 
   async deleteEmailChallenge(userId: string, id: string): Promise<void> {
-    this.db.run('DELETE FROM email_challenges WHERE user_id = ? AND id = ?', [userId, id])
+    this.db.run(
+      'DELETE FROM email_challenges WHERE user_id = ? AND id = ?',
+      [userId, id]
+    )
   }
 
-  async confirmEmailChallenge(userId: string, id: string, codeHash: string, now: number): Promise<'changed' | 'invalid_code' | 'email_taken'> {
+  async confirmEmailChallenge(
+    userId: string,
+    id: string,
+    codeHash: string,
+    now: number
+  ): Promise<'changed' | 'invalid_code' | 'email_taken'> {
     return this.db.transaction(() => {
-      const challenge = this.db.get<{ email: string; password_hash: string; code_hash: string; expires_at: number; attempts: number }>(
+      const challenge = this.db.get<{
+        email: string;
+        password_hash: string;
+        code_hash: string;
+        expires_at: number;
+        attempts: number
+      }>(
         'SELECT email, password_hash, code_hash, expires_at, attempts FROM email_challenges WHERE user_id = ? AND id = ?', [userId, id])
-      const user = this.db.get<{ password_hash: string }>('SELECT password_hash FROM users WHERE id = ?', [userId])
-      if (!challenge || !user) return 'invalid_code'
-      if (challenge.expires_at <= now || challenge.attempts >= 5 || challenge.password_hash !== user.password_hash) return 'invalid_code'
+      const user = this.db.get<{ password_hash: string }>(
+        'SELECT password_hash FROM users WHERE id = ?',
+        [userId]
+      )
+      if (!challenge || !user)
+        return 'invalid_code'
+      if (challenge.expires_at <= now ||
+        challenge.attempts >= 5 ||
+        challenge.password_hash !== user.password_hash)
+        return 'invalid_code'
       if (challenge.code_hash !== codeHash) {
-        this.db.run('UPDATE email_challenges SET attempts = attempts + 1 WHERE user_id = ?', [userId])
+        this.db.run(
+          'UPDATE email_challenges SET attempts = attempts + 1 WHERE user_id = ?',
+          [userId]
+        )
         return 'invalid_code'
       }
-      if (this.db.get('SELECT id FROM users WHERE email = ? AND id != ?', [challenge.email, userId])) return 'email_taken'
-      this.db.run('UPDATE users SET email = ? WHERE id = ?', [challenge.email, userId])
+      if (this.db.get(
+        'SELECT id FROM users WHERE email = ? AND id != ?',
+        [challenge.email, userId]
+      ))
+        return 'email_taken'
+      this.db.run(
+        'UPDATE users SET email = ? WHERE id = ?',
+        [challenge.email, userId]
+      )
       this.db.run('DELETE FROM email_challenges WHERE user_id = ?', [userId])
       return 'changed'
     })
   }
 
-  async createWebSession(session: { tokenHash: string; userId: string; expiresAt: string }): Promise<void> {
-    this.db.run('INSERT INTO web_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)', [session.tokenHash, session.userId, session.expiresAt])
+  async createWebSession(session: {
+    tokenHash: string;
+    userId: string;
+    expiresAt: string
+  }): Promise<void> {
+    this.db.run(
+      'INSERT INTO web_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+      [
+        session.tokenHash,
+        session.userId,
+        session.expiresAt
+      ]
+    )
   }
 
-  async getWebSession(tokenHash: string): Promise<{ userId: string; expiresAt: string } | null> {
-    const row = this.db.get<{ user_id: string; expires_at: string }>('SELECT user_id, expires_at FROM web_sessions WHERE token_hash = ?', [tokenHash])
+  async getWebSession(
+    tokenHash: string
+  ): Promise<{
+    userId: string;
+    expiresAt: string
+  } | null> {
+    const row = this.db.get<{
+      user_id: string;
+      expires_at: string
+    }>('SELECT user_id, expires_at FROM web_sessions WHERE token_hash = ?', [tokenHash])
     return row ? { userId: row.user_id, expiresAt: row.expires_at } : null
   }
 
   async extendWebSession(tokenHash: string, expiresAt: string): Promise<void> {
-    this.db.run('UPDATE web_sessions SET expires_at = ? WHERE token_hash = ?', [expiresAt, tokenHash])
+    this.db.run(
+      'UPDATE web_sessions SET expires_at = ? WHERE token_hash = ?',
+      [expiresAt, tokenHash]
+    )
   }
 
   async deleteWebSession(tokenHash: string): Promise<void> {
@@ -467,57 +771,118 @@ export class LocalControlService implements ControlService {
   }
 
   async getDeviceByTokenHash(tokenHash: string): Promise<DeviceRecord | null> {
-    const row = this.db.get<DeviceRow>(`${DEVICE_SELECT} WHERE token_hash = ?`, [tokenHash])
+    const row = this.db.get<DeviceRow>(
+      `${DEVICE_SELECT} WHERE token_hash = ?`,
+      [tokenHash]
+    )
     return row ? deviceFromRow(row) : null
   }
 
   async getManagedDevice(userId: string): Promise<DeviceRecord | null> {
-    const row = this.db.get<DeviceRow>(`${DEVICE_SELECT} WHERE kind = 'managed' AND user_id = ?`, [userId])
+    const row = this.db.get<DeviceRow>(
+      `${DEVICE_SELECT} WHERE kind = 'managed' AND user_id = ?`,
+      [userId]
+    )
     return row ? deviceFromRow(row) : null
   }
 
   async getOrCreateCloudDevice(userId: string): Promise<DeviceRecord> {
     return this.db.transaction(() => {
-      this.db.run("INSERT INTO devices (id, user_id, kind, name, platform, token_hash, claimed_at) VALUES (?, ?, 'managed', 'Cloud', 'linux', '', ?) ON CONFLICT DO NOTHING", [createId(), userId, new Date().toISOString()])
-      const row = this.db.get<DeviceRow>(`${DEVICE_SELECT} WHERE kind = 'managed' AND user_id = ?`, [userId])
-      if (!row) throw new Error('Cloud device allocation failed')
+      this.db.run(
+        "INSERT INTO devices (id, user_id, kind, name, platform, token_hash, claimed_at) VALUES (?, ?, 'managed', 'Cloud', 'linux', '', ?) ON CONFLICT DO NOTHING",
+        [
+          createId(),
+          userId,
+          new Date().toISOString()
+        ]
+      )
+      const row = this.db.get<DeviceRow>(
+        `${DEVICE_SELECT} WHERE kind = 'managed' AND user_id = ?`,
+        [userId]
+      )
+      if (!row)
+        throw new Error('Cloud device allocation failed')
       return deviceFromRow(row)
     })
   }
 
   async listUserConversationIds(userId: string): Promise<string[]> {
-    return this.db.all<{ id: string }>('SELECT id FROM conversations WHERE user_id = ?', [userId]).map(row => row.id)
+    return this.db.all<{ id: string }>(
+      'SELECT id FROM conversations WHERE user_id = ?',
+      [userId]
+    )
+      .map(row => row.id)
   }
 
-  async getManagedOperation(deviceId: string, operationId: string): Promise<ManagedOperation | null> {
-    const row = this.db.get<{ operation_json: string }>('SELECT operation_json FROM managed_operations WHERE device_id = ? AND operation_id = ?', [deviceId, operationId])
-    return row ? managedOperationSchema.parse(JSON.parse(row.operation_json)) : null
+  async getManagedOperation(
+    deviceId: string,
+    operationId: string
+  ): Promise<ManagedOperation | null> {
+    const row = this.db.get<{ operation_json: string }>(
+      'SELECT operation_json FROM managed_operations WHERE device_id = ? AND operation_id = ?',
+      [deviceId, operationId]
+    )
+    return row
+      ? managedOperationSchema.parse(JSON.parse(row.operation_json))
+      : null
   }
 
-  async listManagedOperations(): Promise<Array<{ deviceId: string; operation: ManagedOperation }>> {
-    return this.db.all<{ device_id: string; operation_json: string }>('SELECT device_id, operation_json FROM managed_operations ORDER BY updated_at, rowid').map(row => ({ deviceId: row.device_id, operation: managedOperationSchema.parse(JSON.parse(row.operation_json)) }))
+  async listManagedOperations(): Promise<Array<{
+    deviceId: string;
+    operation: ManagedOperation
+  }>> {
+    return this.db.all<{
+      device_id: string;
+      operation_json: string
+    }>('SELECT device_id, operation_json FROM managed_operations ORDER BY updated_at, rowid').map(row => ({
+      deviceId: row.device_id,
+      operation: managedOperationSchema.parse(JSON.parse(row.operation_json))
+    }))
   }
 
-  async putManagedOperation(deviceId: string, operation: ManagedOperation): Promise<void> {
+  async putManagedOperation(
+    deviceId: string,
+    operation: ManagedOperation
+  ): Promise<void> {
     const parsed = managedOperationSchema.parse(operation)
-    this.db.run('INSERT INTO managed_operations (device_id, operation_id, operation_json, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (device_id, operation_id) DO UPDATE SET operation_json = excluded.operation_json, updated_at = excluded.updated_at', [deviceId, parsed.id, JSON.stringify(parsed), Date.now()])
+    this.db.run(
+      'INSERT INTO managed_operations (device_id, operation_id, operation_json, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (device_id, operation_id) DO UPDATE SET operation_json = excluded.operation_json, updated_at = excluded.updated_at',
+      [
+        deviceId,
+        parsed.id,
+        JSON.stringify(parsed),
+        Date.now()
+      ]
+    )
   }
 
   async announceCloudReset(userId: string, operationId: string): Promise<void> {
-    this.db.run('UPDATE conversations SET context_version = context_version + 1, cloud_reset_id = ? WHERE user_id = ? AND (cloud_reset_id IS NULL OR cloud_reset_id <> ?)', [operationId, userId, operationId])
+    this.db.run(
+      'UPDATE conversations SET context_version = context_version + 1, cloud_reset_id = ? WHERE user_id = ? AND (cloud_reset_id IS NULL OR cloud_reset_id <> ?)',
+      [operationId, userId, operationId]
+    )
   }
 
   async rotateDeviceToken(id: string, tokenHash: string): Promise<void> {
-    this.db.run('UPDATE devices SET token_hash = ? WHERE id = ?', [tokenHash, id])
+    this.db.run(
+      'UPDATE devices SET token_hash = ? WHERE id = ?',
+      [tokenHash, id]
+    )
   }
 
   async listDevices(userId: string): Promise<DeviceRecord[]> {
-    const rows = this.db.all<DeviceRow>(`${DEVICE_SELECT} WHERE user_id = ? AND kind = 'user' ORDER BY claimed_at`, [userId])
+    const rows = this.db.all<DeviceRow>(
+      `${DEVICE_SELECT} WHERE user_id = ? AND kind = 'user' ORDER BY claimed_at`,
+      [userId]
+    )
     return rows.map(deviceFromRow)
   }
 
   async countWorkspacesOnDevice(deviceId: string): Promise<number> {
-    return this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM workspaces WHERE device_id = ?', [deviceId])?.n ?? 0
+    return this.db.get<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM workspaces WHERE device_id = ?',
+      [deviceId]
+    )?.n ?? 0
   }
 
   async deleteDevice(id: string): Promise<void> {
@@ -528,7 +893,10 @@ export class LocalControlService implements ControlService {
   }
 
   async touchDeviceSeen(id: string): Promise<void> {
-    this.db.run('UPDATE devices SET last_seen_at = ? WHERE id = ?', [new Date().toISOString(), id])
+    this.db.run(
+      'UPDATE devices SET last_seen_at = ? WHERE id = ?',
+      [new Date().toISOString(), id]
+    )
   }
 
   async createProvider(provider: {
@@ -548,21 +916,28 @@ export class LocalControlService implements ControlService {
       config: provider.config,
       createdAt: new Date().toISOString(),
     }
-    const inserted = this.db.get<{ id: string }>("INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, config, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(COALESCE(owner_user_id, ''), provider_type) WHERE credential_kind = 'subscription' DO NOTHING RETURNING id", [
-      record.id,
-      record.ownerUserId,
-      record.providerType,
-      record.credentialKind,
-      record.label,
-      record.config,
-      record.createdAt,
-    ])
-    if (!inserted) throw new ProviderExistsError(provider.providerType)
+    const inserted = this.db.get<{ id: string }>(
+      "INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, config, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(COALESCE(owner_user_id, ''), provider_type) WHERE credential_kind = 'subscription' DO NOTHING RETURNING id",
+      [
+        record.id,
+        record.ownerUserId,
+        record.providerType,
+        record.credentialKind,
+        record.label,
+        record.config,
+        record.createdAt,
+      ]
+    )
+    if (!inserted)
+      throw new ProviderExistsError(provider.providerType)
     return record
   }
 
   async getProvider(id: string): Promise<ProviderRecord | null> {
-    const row = this.db.get<ProviderRow>(`${PROVIDER_SELECT} WHERE id = ?`, [id])
+    const row = this.db.get<ProviderRow>(
+      `${PROVIDER_SELECT} WHERE id = ?`,
+      [id]
+    )
     return row ? providerFromRow(row) : null
   }
 
@@ -571,14 +946,33 @@ export class LocalControlService implements ControlService {
       scope === 'all'
         ? this.db.all<ProviderRow>(`${PROVIDER_SELECT} ORDER BY created_at`)
         : scope.ownerUserId === null
-          ? this.db.all<ProviderRow>(`${PROVIDER_SELECT} WHERE owner_user_id IS NULL ORDER BY created_at`)
-          : this.db.all<ProviderRow>(`${PROVIDER_SELECT} WHERE owner_user_id = ? ORDER BY created_at`, [scope.ownerUserId])
+          ? this.db.all<ProviderRow>(
+            `${PROVIDER_SELECT} WHERE owner_user_id IS NULL ORDER BY created_at`
+          )
+          : this.db.all<ProviderRow>(
+            `${PROVIDER_SELECT} WHERE owner_user_id = ? ORDER BY created_at`,
+            [scope.ownerUserId]
+          )
     return rows.map(providerFromRow)
   }
 
-  async updateProvider(id: string, patch: { label?: string; config?: string }): Promise<ProviderRecord | null> {
-    if (patch.label !== undefined) this.db.run('UPDATE providers SET label = ? WHERE id = ?', [patch.label, id])
-    if (patch.config !== undefined) this.db.run('UPDATE providers SET config = ? WHERE id = ?', [patch.config, id])
+  async updateProvider(
+    id: string,
+    patch: {
+      label?: string;
+      config?: string
+    }
+  ): Promise<ProviderRecord | null> {
+    if (patch.label !== undefined)
+      this.db.run(
+        'UPDATE providers SET label = ? WHERE id = ?',
+        [patch.label, id]
+      )
+    if (patch.config !== undefined)
+      this.db.run(
+        'UPDATE providers SET config = ? WHERE id = ?',
+        [patch.config, id]
+      )
     return this.getProvider(id)
   }
 
@@ -618,14 +1012,17 @@ export class LocalControlService implements ControlService {
       sha256: attachment.sha256,
       createdAt: new Date().toISOString(),
     }
-    this.db.run('INSERT INTO attachments (id, user_id, media_type, size_bytes, sha256, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
-      record.id,
-      record.userId,
-      record.mediaType,
-      record.sizeBytes,
-      record.sha256,
-      record.createdAt,
-    ])
+    this.db.run(
+      'INSERT INTO attachments (id, user_id, media_type, size_bytes, sha256, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [
+        record.id,
+        record.userId,
+        record.mediaType,
+        record.sizeBytes,
+        record.sha256,
+        record.createdAt,
+      ]
+    )
     return record
   }
 
@@ -636,22 +1033,27 @@ export class LocalControlService implements ControlService {
     )
     return row
       ? {
-          id: row.id,
-          userId: row.user_id,
-          mediaType: row.media_type,
-          sizeBytes: row.size_bytes,
-          sha256: row.sha256,
-          createdAt: row.created_at,
-        }
+        id: row.id,
+        userId: row.user_id,
+        mediaType: row.media_type,
+        sizeBytes: row.size_bytes,
+        sha256: row.sha256,
+        createdAt: row.created_at,
+      }
       : null
   }
 
   async listUsage(userId: string): Promise<UsageRow[]> {
-    return this.db.all<UsageLedgerRow>(`${USAGE_SELECT} WHERE user_id = ? ORDER BY created_at`, [userId]).map(usageFromRow)
+    return this.db.all<UsageLedgerRow>(
+      `${USAGE_SELECT} WHERE user_id = ? ORDER BY created_at`,
+      [userId]
+    )
+      .map(usageFromRow)
   }
 
   async listAllUsage(): Promise<UsageRow[]> {
-    return this.db.all<UsageLedgerRow>(`${USAGE_SELECT} ORDER BY created_at`).map(usageFromRow)
+    return this.db.all<UsageLedgerRow>(`${USAGE_SELECT} ORDER BY created_at`)
+      .map(usageFromRow)
   }
 
 
@@ -670,29 +1072,35 @@ export class LocalControlService implements ControlService {
       name: workspace.name,
       createdAt: new Date().toISOString(),
     }
-    this.db.run('INSERT INTO workspaces (id, user_id, device_id, path, name, created_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM workspaces WHERE user_id = ?))', [
-      record.id,
-      record.userId,
-      record.deviceId,
-      record.path,
-      record.name,
-      record.createdAt,
-      record.userId,
-    ])
+    this.db.run(
+      'INSERT INTO workspaces (id, user_id, device_id, path, name, created_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM workspaces WHERE user_id = ?))',
+      [
+        record.id,
+        record.userId,
+        record.deviceId,
+        record.path,
+        record.name,
+        record.createdAt,
+        record.userId,
+      ]
+    )
     return record
   }
 
   async getWorkspace(id: string): Promise<WorkspaceRecord | null> {
-    const row = this.db.get<WorkspaceRow>('SELECT id, user_id, device_id, path, name, created_at FROM workspaces WHERE id = ?', [id])
+    const row = this.db.get<WorkspaceRow>(
+      'SELECT id, user_id, device_id, path, name, created_at FROM workspaces WHERE id = ?',
+      [id]
+    )
     return row
       ? {
-          id: row.id,
-          userId: row.user_id,
-          deviceId: row.device_id,
-          path: row.path,
-          name: row.name,
-          createdAt: row.created_at,
-        }
+        id: row.id,
+        userId: row.user_id,
+        deviceId: row.device_id,
+        path: row.path,
+        name: row.name,
+        createdAt: row.created_at,
+      }
       : null
   }
 
@@ -720,19 +1128,36 @@ export class LocalControlService implements ControlService {
   }
 
   async countConversationsInWorkspace(workspaceId: string): Promise<number> {
-    return this.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM conversations WHERE json_extract(target_json, '$.workspaceId') = ?", [workspaceId])?.n ?? 0
+    return this.db.get<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM conversations WHERE json_extract(target_json, '$.workspaceId') = ?",
+      [workspaceId]
+    )?.n ?? 0
   }
 
   async listConversationIdsInWorkspace(workspaceId: string): Promise<string[]> {
-    return this.db.all<{ id: string }>("SELECT id FROM conversations WHERE json_extract(target_json, '$.workspaceId') = ?", [workspaceId]).map((row) => row.id)
+    return this.db.all<{ id: string }>(
+      "SELECT id FROM conversations WHERE json_extract(target_json, '$.workspaceId') = ?",
+      [workspaceId]
+    )
+      .map((row) => row.id)
   }
 
-  async setConversationWorkspace(conversationId: string, workspaceId: string | null): Promise<void> {
-    this.db.run('UPDATE conversations SET target_json = ?, updated_at = ? WHERE id = ?', [
-      JSON.stringify(workspaceId === null ? { kind: 'cloud' } : { kind: 'workspace', workspaceId }),
-      new Date().toISOString(),
-      conversationId,
-    ])
+  async setConversationWorkspace(
+    conversationId: string,
+    workspaceId: string | null
+  ): Promise<void> {
+    this.db.run(
+      'UPDATE conversations SET target_json = ?, updated_at = ? WHERE id = ?',
+      [
+        JSON.stringify(
+          workspaceId === null
+            ? { kind: 'cloud' }
+            : { kind: 'workspace', workspaceId }
+        ),
+        new Date().toISOString(),
+        conversationId,
+      ]
+    )
   }
 
   async switchConversationTarget(
@@ -740,87 +1165,195 @@ export class LocalControlService implements ControlService {
     from: ConversationTargetPointer,
     to: ConversationTargetPointer,
     transition: TargetSwitch,
-    ends: { departed: { deviceId: string; cwd: string | null } | null; arrivingDeviceId: string | null },
+    ends: {
+      departed: {
+        deviceId: string;
+        cwd: string | null
+      } | null;
+      arrivingDeviceId: string | null
+    },
   ): Promise<boolean> {
     return this.db.transaction(() => {
       const now = new Date().toISOString()
       this.db.run(
         'UPDATE conversations SET target_json = ?, last_switch_json = ?, context_version = context_version + 1, updated_at = ? WHERE id = ? AND target_json = ?',
-        [JSON.stringify(conversationTargetSchema.parse(to)), JSON.stringify(transition), now, conversationId, JSON.stringify(conversationTargetSchema.parse(from))],
+        [
+          JSON.stringify(conversationTargetSchema.parse(to)),
+          JSON.stringify(transition),
+          now,
+          conversationId,
+          JSON.stringify(conversationTargetSchema.parse(from))
+        ],
       )
-      const won = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
-      if (!won) return false
-      if (ends.arrivingDeviceId !== null) this.db.run('DELETE FROM conversation_hosts WHERE conversation_id = ? AND device_id = ?', [conversationId, ends.arrivingDeviceId])
-      if (ends.departed !== null && ends.departed.deviceId !== ends.arrivingDeviceId) {
-        const name = this.db.get<{ name: string }>('SELECT name FROM devices WHERE id = ?', [ends.departed.deviceId])?.name ?? ends.departed.deviceId
-        this.insertAttachedHost(conversationId, ends.departed.deviceId, name, ends.departed.cwd, now)
+      const won = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ??
+        0) > 0
+      if (!won)
+        return false
+      if (ends.arrivingDeviceId !== null)
+        this.db.run(
+          'DELETE FROM conversation_hosts WHERE conversation_id = ? AND device_id = ?',
+          [conversationId, ends.arrivingDeviceId]
+        )
+      if (ends.departed !== null &&
+        ends.departed.deviceId !== ends.arrivingDeviceId) {
+        const name = this.db.get<{ name: string }>(
+          'SELECT name FROM devices WHERE id = ?',
+          [ends.departed.deviceId]
+        )?.name ?? ends.departed.deviceId
+        this.insertAttachedHost(
+          conversationId,
+          ends.departed.deviceId,
+          name,
+          ends.departed.cwd,
+          now
+        )
       }
       return true
     })
   }
 
-  async attachHost(conversationId: string, deviceId: string, name: string, cwd: string | null, announce: boolean): Promise<AttachedHostRecord> {
+  async attachHost(
+    conversationId: string,
+    deviceId: string,
+    name: string,
+    cwd: string | null,
+    announce: boolean
+  ): Promise<AttachedHostRecord> {
     return this.db.transaction(() => {
       const existing = this.attachedHost(conversationId, deviceId)
-      if (existing) return existing
-      this.insertAttachedHost(conversationId, deviceId, name, cwd, new Date().toISOString())
-      if (announce) this.db.run('UPDATE conversations SET context_version = context_version + 1 WHERE id = ?', [conversationId])
+      if (existing)
+        return existing
+      this.insertAttachedHost(
+        conversationId,
+        deviceId,
+        name,
+        cwd,
+        new Date().toISOString()
+      )
+      if (announce)
+        this.db.run(
+          'UPDATE conversations SET context_version = context_version + 1 WHERE id = ?',
+          [conversationId]
+        )
       return this.attachedHost(conversationId, deviceId)!
     })
   }
 
   async detachHost(conversationId: string, deviceId: string): Promise<boolean> {
     return this.db.transaction(() => {
-      this.db.run('DELETE FROM conversation_hosts WHERE conversation_id = ? AND device_id = ?', [conversationId, deviceId])
-      const removed = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
-      if (removed) this.db.run('UPDATE conversations SET context_version = context_version + 1 WHERE id = ?', [conversationId])
+      this.db.run(
+        'DELETE FROM conversation_hosts WHERE conversation_id = ? AND device_id = ?',
+        [conversationId, deviceId]
+      )
+      const removed = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ??
+        0) > 0
+      if (removed)
+        this.db.run(
+          'UPDATE conversations SET context_version = context_version + 1 WHERE id = ?',
+          [conversationId]
+        )
       return removed
     })
   }
 
-  async listAttachedHosts(conversationId: string): Promise<AttachedHostRecord[]> {
+  async listAttachedHosts(
+    conversationId: string
+  ): Promise<AttachedHostRecord[]> {
     return this.db
-      .all<AttachedHostRow>(`${ATTACHED_HOST_SELECT} WHERE conversation_id = ? ORDER BY attached_at, name`, [conversationId])
+      .all<AttachedHostRow>(
+        `${ATTACHED_HOST_SELECT} WHERE conversation_id = ? ORDER BY attached_at, name`,
+        [conversationId]
+      )
       .map(attachedHostFromRow)
   }
 
-  async getAttachedHost(conversationId: string, deviceId: string): Promise<AttachedHostRecord | null> {
+  async getAttachedHost(
+    conversationId: string,
+    deviceId: string
+  ): Promise<AttachedHostRecord | null> {
     return this.attachedHost(conversationId, deviceId)
   }
 
-  async renameAttachedHost(conversationId: string, deviceId: string, name: string): Promise<'renamed' | 'name_taken' | 'not_attached'> {
+  async renameAttachedHost(
+    conversationId: string,
+    deviceId: string,
+    name: string
+  ): Promise<'renamed' | 'name_taken' | 'not_attached'> {
     return this.db.transaction(() => {
-      if (!this.attachedHost(conversationId, deviceId)) return 'not_attached'
-      const holder = this.db.get<{ device_id: string }>('SELECT device_id FROM conversation_hosts WHERE conversation_id = ? AND name = ?', [conversationId, name])
-      if (holder && holder.device_id !== deviceId) return 'name_taken'
-      this.db.run('UPDATE conversation_hosts SET name = ? WHERE conversation_id = ? AND device_id = ?', [name, conversationId, deviceId])
-      this.db.run('UPDATE conversations SET context_version = context_version + 1 WHERE id = ?', [conversationId])
+      if (!this.attachedHost(conversationId, deviceId))
+        return 'not_attached'
+      const holder = this.db.get<{ device_id: string }>(
+        'SELECT device_id FROM conversation_hosts WHERE conversation_id = ? AND name = ?',
+        [conversationId, name]
+      )
+      if (holder && holder.device_id !== deviceId)
+        return 'name_taken'
+      this.db.run(
+        'UPDATE conversation_hosts SET name = ? WHERE conversation_id = ? AND device_id = ?',
+        [name, conversationId, deviceId]
+      )
+      this.db.run(
+        'UPDATE conversations SET context_version = context_version + 1 WHERE id = ?',
+        [conversationId]
+      )
       return 'renamed'
     })
   }
 
-  async setAttachedHostCwd(conversationId: string, deviceId: string, cwd: string): Promise<void> {
-    this.db.run('UPDATE conversation_hosts SET cwd = ? WHERE conversation_id = ? AND device_id = ?', [cwd, conversationId, deviceId])
+  async setAttachedHostCwd(
+    conversationId: string,
+    deviceId: string,
+    cwd: string
+  ): Promise<void> {
+    this.db.run(
+      'UPDATE conversation_hosts SET cwd = ? WHERE conversation_id = ? AND device_id = ?',
+      [cwd, conversationId, deviceId]
+    )
   }
 
-  private attachedHost(conversationId: string, deviceId: string): AttachedHostRecord | null {
-    const row = this.db.get<AttachedHostRow>(`${ATTACHED_HOST_SELECT} WHERE conversation_id = ? AND device_id = ?`, [conversationId, deviceId])
+  private attachedHost(
+    conversationId: string,
+    deviceId: string
+  ): AttachedHostRecord | null {
+    const row = this.db.get<AttachedHostRow>(
+      `${ATTACHED_HOST_SELECT} WHERE conversation_id = ? AND device_id = ?`,
+      [conversationId, deviceId]
+    )
     return row ? attachedHostFromRow(row) : null
   }
 
-  /** Inserts the row under the first free name: `name`, then `name-2`, `name-3`, … within the conversation. */
-  private insertAttachedHost(conversationId: string, deviceId: string, name: string, cwd: string | null, attachedAt: string): void {
+  /**
+   * Inserts the row under the first free name: `name`, then `name-2`, `name-3`,
+   * … within the conversation.
+   */
+  private insertAttachedHost(
+    conversationId: string,
+    deviceId: string,
+    name: string,
+    cwd: string | null,
+    attachedAt: string
+  ): void {
     const base = name.trim() || deviceId
-    const taken = new Set(this.db.all<{ name: string }>('SELECT name FROM conversation_hosts WHERE conversation_id = ?', [conversationId]).map((row) => row.name))
+    const taken = new Set(
+      this.db.all<{ name: string }>(
+        'SELECT name FROM conversation_hosts WHERE conversation_id = ?',
+        [conversationId]
+      )
+        .map((row) => row.name)
+    )
     let candidate = base
-    for (let n = 2; taken.has(candidate); n += 1) candidate = `${base}-${n}`
+    for (let n = 2; taken.has(candidate); n += 1)
+      candidate = `${base}-${n}`
     this.db.run(
       'INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (conversation_id, device_id) DO NOTHING',
       [conversationId, deviceId, candidate, cwd, attachedAt],
     )
   }
 
-  async createConversation(userId: string, options: { title?: string } = {}): Promise<ConversationRecord> {
+  async createConversation(
+    userId: string,
+    options: { title?: string } = {}
+  ): Promise<ConversationRecord> {
     const now = new Date().toISOString()
     const record: ConversationRecord = {
       id: createId(),
@@ -840,7 +1373,18 @@ export class LocalControlService implements ControlService {
     }
     this.db.run(
       'INSERT INTO conversations (id, user_id, title, archived, target_json, provider_id, model_id, created_at, updated_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?))',
-      [record.id, userId, record.title, 0, JSON.stringify(record.target), null, null, now, now, userId],
+      [
+        record.id,
+        userId,
+        record.title,
+        0,
+        JSON.stringify(record.target),
+        null,
+        null,
+        now,
+        now,
+        userId
+      ],
     )
     return record
   }
@@ -850,81 +1394,140 @@ export class LocalControlService implements ControlService {
     return row ? fromRow(row) : null
   }
 
-  async listConversations(userId: string, options: { archived?: boolean } = {}): Promise<ConversationRecord[]> {
+  async listConversations(
+    userId: string,
+    options: { archived?: boolean } = {}
+  ): Promise<ConversationRecord[]> {
     const archived = options.archived ?? false
-    const rows = this.db.all<ConversationRow>(`${SELECT} WHERE user_id = ? AND archived = ? ORDER BY pinned DESC, sort_order, id`, [
-      userId,
-      archived ? 1 : 0,
-    ])
+    const rows = this.db.all<ConversationRow>(
+      `${SELECT} WHERE user_id = ? AND archived = ? ORDER BY pinned DESC, sort_order, id`,
+      [
+        userId,
+        archived ? 1 : 0,
+      ]
+    )
     return rows.map(fromRow)
   }
 
   async setConversationPinned(id: string, pinned: boolean): Promise<void> {
-    this.db.run('UPDATE conversations SET pinned = ? WHERE id = ?', [pinned ? 1 : 0, id])
+    this.db.run(
+      'UPDATE conversations SET pinned = ? WHERE id = ?',
+      [pinned ? 1 : 0, id]
+    )
   }
 
   async markConversationRead(id: string, revision: number): Promise<void> {
-    this.db.run('UPDATE conversations SET read_revision = MAX(read_revision, ?) WHERE id = ?', [revision, id])
+    this.db.run(
+      'UPDATE conversations SET read_revision = MAX(read_revision, ?) WHERE id = ?',
+      [revision, id]
+    )
   }
 
-  async reorderSidebar(userId: string, kind: 'conversation' | 'workspace', id: string, beforeId: string | null): Promise<boolean> {
+  async reorderSidebar(
+    userId: string,
+    kind: 'conversation' | 'workspace',
+    id: string,
+    beforeId: string | null
+  ): Promise<boolean> {
     return this.db.transaction(() => {
       if (kind === 'workspace') {
-        const peers = this.db.all<{ id: string }>('SELECT id FROM workspaces WHERE user_id = ? ORDER BY sort_order, id', [userId]).map(row => row.id)
+        const peers = this.db.all<{ id: string }>(
+          'SELECT id FROM workspaces WHERE user_id = ? ORDER BY sort_order, id',
+          [userId]
+        )
+          .map(row => row.id)
         return this.writeSidebarOrder('workspaces', peers, id, beforeId)
       }
-      const row = this.db.get<ConversationRow>(`${SELECT} WHERE user_id = ? AND id = ?`, [userId, id])
-      if (!row || row.archived) return false
-      const peers = this.db.all<ConversationRow>(`${SELECT} WHERE user_id = ? AND archived = 0 AND pinned = ? ORDER BY sort_order, id`, [userId, row.pinned])
+      const row = this.db.get<ConversationRow>(
+        `${SELECT} WHERE user_id = ? AND id = ?`,
+        [userId, id]
+      )
+      if (!row || row.archived)
+        return false
+      const peers = this.db.all<ConversationRow>(
+        `${SELECT} WHERE user_id = ? AND archived = 0 AND pinned = ? ORDER BY sort_order, id`,
+        [userId, row.pinned]
+      )
       const group = (target: string) => {
         const pointer = conversationTargetSchema.parse(JSON.parse(target))
         return pointer.kind === 'workspace' ? pointer.workspaceId : null
       }
-      const ids = peers.filter(peer => group(peer.target_json) === group(row.target_json)).map(peer => peer.id)
+      const ids = peers.filter(peer => group(peer.target_json) === group(row.target_json))
+        .map(peer => peer.id)
       return this.writeSidebarOrder('conversations', ids, id, beforeId)
     })
   }
 
-  private writeSidebarOrder(table: 'conversations' | 'workspaces', peers: string[], id: string, beforeId: string | null): boolean {
-    if (!peers.includes(id) || (beforeId !== null && !peers.includes(beforeId))) return false
-    if (id === beforeId) return true
+  private writeSidebarOrder(
+    table: 'conversations' | 'workspaces',
+    peers: string[],
+    id: string,
+    beforeId: string | null
+  ): boolean {
+    if (!peers.includes(id) || (beforeId !== null && !peers.includes(beforeId)))
+      return false
+    if (id === beforeId)
+      return true
     const next = moveBefore(peers, id, beforeId)
-    for (const [position, peer] of next.entries()) this.db.run(`UPDATE ${table} SET sort_order = ? WHERE id = ?`, [position, peer])
+    for (const [position, peer] of next.entries())
+      this.db.run(
+        `UPDATE ${table} SET sort_order = ? WHERE id = ?`,
+        [position, peer]
+      )
     return true
   }
 
   async renameConversation(id: string, title: string): Promise<void> {
-    this.db.run('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?', [title, new Date().toISOString(), id])
+    this.db.run(
+      'UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?',
+      [title, new Date().toISOString(), id]
+    )
   }
 
   async setConversationArchived(id: string, archived: boolean): Promise<void> {
-    this.db.run('UPDATE conversations SET archived = ?, updated_at = ? WHERE id = ?', [
-      archived ? 1 : 0,
-      new Date().toISOString(),
-      id,
-    ])
+    this.db.run(
+      'UPDATE conversations SET archived = ?, updated_at = ? WHERE id = ?',
+      [
+        archived ? 1 : 0,
+        new Date().toISOString(),
+        id,
+      ]
+    )
   }
 
-  async setConversationModel(id: string, providerId: string | null, modelId: string | null): Promise<void> {
-    this.db.run('UPDATE conversations SET provider_id = ?, model_id = ?, updated_at = ? WHERE id = ?', [
-      providerId,
-      modelId,
-      new Date().toISOString(),
-      id,
-    ])
+  async setConversationModel(
+    id: string,
+    providerId: string | null,
+    modelId: string | null
+  ): Promise<void> {
+    this.db.run(
+      'UPDATE conversations SET provider_id = ?, model_id = ?, updated_at = ? WHERE id = ?',
+      [
+        providerId,
+        modelId,
+        new Date().toISOString(),
+        id,
+      ]
+    )
   }
 
   async defaultConversationTitle(id: string, title: string): Promise<void> {
-    this.db.run('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ? AND title = ?', [
-      title,
-      new Date().toISOString(),
-      id,
-      'New conversation',
-    ])
+    this.db.run(
+      'UPDATE conversations SET title = ?, updated_at = ? WHERE id = ? AND title = ?',
+      [
+        title,
+        new Date().toISOString(),
+        id,
+        'New conversation',
+      ]
+    )
   }
 
   async touchConversation(id: string): Promise<void> {
-    this.db.run('UPDATE conversations SET updated_at = ? WHERE id = ?', [new Date().toISOString(), id])
+    this.db.run(
+      'UPDATE conversations SET updated_at = ? WHERE id = ?',
+      [new Date().toISOString(), id]
+    )
   }
 }
 
@@ -949,7 +1552,13 @@ interface AttachedHostRow {
 const ATTACHED_HOST_SELECT = 'SELECT conversation_id, device_id, name, cwd, attached_at FROM conversation_hosts'
 
 function attachedHostFromRow(row: AttachedHostRow): AttachedHostRecord {
-  return { conversationId: row.conversation_id, deviceId: row.device_id, name: row.name, cwd: row.cwd, attachedAt: row.attached_at }
+  return {
+    conversationId: row.conversation_id,
+    deviceId: row.device_id,
+    name: row.name,
+    cwd: row.cwd,
+    attachedAt: row.attached_at
+  }
 }
 
 interface WorkspaceRow {
@@ -1049,7 +1658,10 @@ function fromRow(row: ConversationRow): ConversationRecord {
     readRevision: row.read_revision,
     target: conversationTargetSchema.parse(JSON.parse(row.target_json)),
     cloudResetId: row.cloud_reset_id,
-    lastSwitch: row.last_switch_json ? z.object({ from: executionTargetSchema, to: executionTargetSchema }).parse(JSON.parse(row.last_switch_json)) : null,
+    lastSwitch: row.last_switch_json ? z.object({
+      from: executionTargetSchema,
+      to: executionTargetSchema
+    }).parse(JSON.parse(row.last_switch_json)) : null,
     contextVersion: row.context_version,
     providerId: row.provider_id,
     modelId: row.model_id,

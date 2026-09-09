@@ -22,16 +22,24 @@ const props = withDefaults(
 
 ensureFileIconTheme()
 
-const icon = computed(() => props.icon ?? (fileIconTheme.value ? fileIconName(fileIconTheme.value, props.name, props.isDirectory) : null))
+const icon = computed(
+  () =>
+    props.icon ??
+    (fileIconTheme.value
+    ? fileIconName(fileIconTheme.value, props.name, props.isDirectory)
+    : null)
+)
 const src = shallowRef<string | null>(null)
 
 watch(
   icon,
   (id) => {
     src.value = null
-    if (!id) return
+    if (!id)
+      return
     fileIconUrl(id).then((url) => {
-      if (icon.value === id) src.value = url
+      if (icon.value === id)
+        src.value = url
     })
   },
   { immediate: true },
@@ -39,6 +47,19 @@ watch(
 </script>
 
 <template>
-  <img v-if="src" :src="src" :width="size" :height="size" class="shrink-0" alt="" draggable="false" />
-  <component :is="isDirectory ? Folder : File" v-else :size="size - 2" class="shrink-0" />
+  <img
+    v-if="src"
+    :src="src"
+    :width="size"
+    :height="size"
+    class="shrink-0"
+    alt=""
+    draggable="false"
+  />
+  <component
+    :is="isDirectory ? Folder : File"
+    v-else
+    :size="size - 2"
+    class="shrink-0"
+  />
 </template>

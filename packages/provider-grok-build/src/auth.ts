@@ -1,10 +1,29 @@
-import { delay, errorCode, errorMessage, isRecord, nonEmptyString, stringOrNull } from '@demicodes/utils'
+import {
+  delay,
+  errorCode,
+  errorMessage,
+  isRecord,
+  nonEmptyString,
+  stringOrNull
+} from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
-import { open, readFile, rename, rm, writeFile, mkdir, chmod, stat } from 'node:fs/promises'
+import {
+  open,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+  mkdir,
+  chmod,
+  stat
+} from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
-import { redactCredentialText, type ProviderAuthState } from '@demicodes/provider'
+import {
+  redactCredentialText,
+  type ProviderAuthState
+} from '@demicodes/provider'
 
 /** One credential entry as written by the Grok CLI (`~/.grok/auth.json`). */
 export interface GrokAuthEntry {
@@ -80,7 +99,10 @@ export type GrokTokenRefresh = (
   signal?: AbortSignal,
 ) => Promise<GrokRefreshTokenResponse>
 
-/** Grok auth.json stores the access token under `key`; redact it alongside the standard fields. */
+/**
+ * Grok auth.json stores the access token under `key`; redact it alongside the
+ * standard fields.
+ */
 const SECRET_FIELD_PATTERNS = ['\\bkey\\b']
 
 function redactGrokSecretText(text: string): string {
@@ -90,7 +112,9 @@ function redactGrokSecretText(text: string): string {
 const DEFAULT_TOKEN_ENDPOINT = 'https://auth.x.ai/oauth2/token'
 const REFRESH_EXPIRY_SKEW_MS = 5 * 60 * 1000
 
-export async function grokBuildAuthStatus(options: FileGrokAuthStoreOptions = {}): Promise<ProviderAuthState> {
+export async function grokBuildAuthStatus(
+  options: FileGrokAuthStoreOptions = {}
+): Promise<ProviderAuthState> {
   return new FileGrokAuthStore(options).status()
 }
 
@@ -119,16 +143,26 @@ export class FileGrokAuthStore implements GrokAuthStore {
   async status(): Promise<ProviderAuthState> {
     try {
       const auth = await this.resolveAuth()
-      return { status: 'authenticated', accountLabel: auth.email ?? auth.entryKey }
+      return {
+        status: 'authenticated',
+        accountLabel: auth.email ?? auth.entryKey
+      }
     } catch (error) {
       if (error instanceof GrokAuthError && error.code === 'auth_missing') {
         return { status: 'unauthenticated', message: error.message }
       }
-      return { status: 'error', message: redactGrokSecretText(error instanceof Error ? error.message : String(error)) }
+      return {
+        status: 'error',
+        message: redactGrokSecretText(error instanceof Error
+          ? error.message
+          : String(error))
+      }
     }
   }
 
-  async resolveAuth(options: { forceRefresh?: boolean } = {}): Promise<GrokResolvedAuth> {
+  async resolveAuth(
+    options: { forceRefresh?: boolean } = {}
+  ): Promise<GrokResolvedAuth> {
     const file = await this.readAuthFile()
     const selected = this.entryKey
       ? selectAuthEntryByKey(file, this.entryKey)
@@ -145,15 +179,25 @@ export class FileGrokAuthStore implements GrokAuthStore {
     const { entryKey, entry } = selected
     const accessToken = nonEmptyString(entry.key)
     if (!accessToken) {
-      throw new GrokAuthError('auth_missing', `Grok auth entry "${entryKey}" has no access token (key)`)
+      throw new GrokAuthError(
+        'auth_missing',
+        `Grok auth entry "${entryKey}" has no access token (key)`
+      )
     }
 
     const refreshToken = nonEmptyString(entry.refresh_token) ?? null
-    const clientId = nonEmptyString(entry.oidc_client_id) ?? parseClientIdFromEntryKey(entryKey)
-    const issuer = nonEmptyString(entry.oidc_issuer) ?? parseIssuerFromEntryKey(entryKey)
-    const expiresAt = parseExpiresAt(entry.expires_at) ?? parseJwtExpiration(accessToken)
+    const clientId = nonEmptyString(entry.oidc_client_id)
+      ?? parseClientIdFromEntryKey(entryKey)
+    const issuer = nonEmptyString(entry.oidc_issuer)
+      ?? parseIssuerFromEntryKey(entryKey)
+    const expiresAt = parseExpiresAt(entry.expires_at)
+      ?? parseJwtExpiration(accessToken)
     const shouldRefresh =
-      options.forceRefresh === true || expiresWithin(expiresAt, this.now(), REFRESH_EXPIRY_SKEW_MS)
+      options.forceRefresh === true || expiresWithin(
+        expiresAt,
+        this.now(),
+        REFRESH_EXPIRY_SKEW_MS
+      )
 
     if (shouldRefresh && refreshToken && clientId) {
       return this.refreshAndResolve(accessToken, entryKey, {
@@ -190,19 +234,30 @@ export class FileGrokAuthStore implements GrokAuthStore {
       const latest = await this.readAuthFile()
       const latestEntry = latest[entryKey]
       if (!latestEntry || typeof latestEntry !== 'object') {
-        throw new GrokAuthError('auth_missing', `Grok auth entry "${entryKey}" disappeared during refresh`)
+        throw new GrokAuthError(
+          'auth_missing',
+          `Grok auth entry "${entryKey}" disappeared during refresh`
+        )
       }
-      const refreshToken = nonEmptyString(latestEntry.refresh_token) ?? refreshInput.refreshToken
-      const clientId = nonEmptyString(latestEntry.oidc_client_id) ?? refreshInput.clientId
-      const issuer = nonEmptyString(latestEntry.oidc_issuer) ?? parseIssuerFromEntryKey(entryKey)
+      const refreshToken = nonEmptyString(latestEntry.refresh_token)
+        ?? refreshInput.refreshToken
+      const clientId = nonEmptyString(latestEntry.oidc_client_id)
+        ?? refreshInput.clientId
+      const issuer = nonEmptyString(latestEntry.oidc_issuer)
+        ?? parseIssuerFromEntryKey(entryKey)
 
       // Another process may have refreshed while we waited for the lock. If the
       // token changed and is no longer near expiry, use it — refreshing again
       // wastes a round-trip and needlessly rotates the refresh token.
       const latestAccessToken = nonEmptyString(latestEntry.key)
       if (latestAccessToken && latestAccessToken !== staleAccessToken) {
-        const latestExpiresAt = parseExpiresAt(latestEntry.expires_at) ?? parseJwtExpiration(latestAccessToken)
-        if (!expiresWithin(latestExpiresAt, this.now(), REFRESH_EXPIRY_SKEW_MS)) {
+        const latestExpiresAt = parseExpiresAt(latestEntry.expires_at)
+          ?? parseJwtExpiration(latestAccessToken)
+        if (!expiresWithin(
+          latestExpiresAt,
+          this.now(),
+          REFRESH_EXPIRY_SKEW_MS
+        )) {
           return resolvedAuthFromEntry(latestEntry, latestAccessToken, {
             refreshToken: nonEmptyString(latestEntry.refresh_token) ?? null,
             expiresAt: latestExpiresAt,
@@ -217,24 +272,33 @@ export class FileGrokAuthStore implements GrokAuthStore {
       const response = await this.refreshImpl({
         refreshToken,
         clientId,
-        tokenEndpoint: tokenEndpointForIssuer(issuer) || refreshInput.tokenEndpoint,
-        principalType: stringOrNull(latestEntry.principal_type) ?? refreshInput.principalType,
-        principalId: stringOrNull(latestEntry.principal_id) ?? refreshInput.principalId,
+        tokenEndpoint: tokenEndpointForIssuer(issuer)
+          || refreshInput.tokenEndpoint,
+        principalType: stringOrNull(latestEntry.principal_type)
+          ?? refreshInput.principalType,
+        principalId: stringOrNull(latestEntry.principal_id)
+          ?? refreshInput.principalId,
       })
       const accessToken = nonEmptyString(response.access_token)
       if (!accessToken) {
-        throw new GrokAuthError('auth_refresh_failed', 'Grok token refresh returned no access_token')
+        throw new GrokAuthError(
+          'auth_refresh_failed',
+          'Grok token refresh returned no access_token'
+        )
       }
 
       const expiresAt =
-        typeof response.expires_in === 'number' && Number.isFinite(response.expires_in)
+        typeof response.expires_in === 'number'
+          && Number.isFinite(response.expires_in)
           ? new Date(this.now().getTime() + response.expires_in * 1000)
           : parseJwtExpiration(accessToken)
 
       const nextEntry: GrokAuthEntry = {
         ...latestEntry,
         key: accessToken,
-        ...(nonEmptyString(response.refresh_token) ? { refresh_token: response.refresh_token } : {}),
+        ...(nonEmptyString(response.refresh_token) ? {
+          refresh_token: response.refresh_token
+        } : {}),
         ...(expiresAt ? { expires_at: expiresAt.toISOString() } : {}),
       }
       const nextFile: GrokAuthDotJson = { ...latest, [entryKey]: nextEntry }
@@ -255,13 +319,20 @@ export class FileGrokAuthStore implements GrokAuthStore {
     try {
       const parsed = JSON.parse(await readFile(this.authFile, 'utf8')) as unknown
       if (!isRecord(parsed)) {
-        throw new GrokAuthError('auth_invalid', `Grok auth file is not an object: ${this.authFile}`)
+        throw new GrokAuthError(
+          'auth_invalid',
+          `Grok auth file is not an object: ${this.authFile}`
+        )
       }
       return parsed as GrokAuthDotJson
     } catch (error) {
-      if (error instanceof GrokAuthError) throw error
+      if (error instanceof GrokAuthError)
+        throw error
       if (errorCode(error) === 'ENOENT') {
-        throw new GrokAuthError('auth_missing', `Grok auth file not found: ${this.authFile}. Run \`grok login\` first.`)
+        throw new GrokAuthError(
+          'auth_missing',
+          `Grok auth file not found: ${this.authFile}. Run \`grok login\` first.`
+        )
       }
       throw new GrokAuthError(
         'auth_invalid',
@@ -281,12 +352,20 @@ export class FileGrokAuthStore implements GrokAuthStore {
         handle = await open(lockFile, 'wx', 0o600)
       } catch (error) {
         if (errorCode(error) !== 'EEXIST') {
-          throw new GrokAuthError('auth_lock_failed', `Failed to lock Grok auth file: ${redactGrokSecretText(errorMessage(error))}`)
+          throw new GrokAuthError(
+            'auth_lock_failed',
+            `Failed to lock Grok auth file: ${redactGrokSecretText(errorMessage(error))}`
+          )
         }
         // Grok CLI writes `auth.json.lock` as `pid:unix_ts` and may leave it behind
         // after a crash. Steal only abandoned locks; wait if another live process holds it.
-        const staleIdentity = brokeStaleLock ? null : await fileIdentity(lockFile)
-        if (staleIdentity && (await isAbandonedGrokAuthLock(lockFile, this.now()))) {
+        const staleIdentity = brokeStaleLock
+          ? null
+          : await fileIdentity(lockFile)
+        if (staleIdentity && (await isAbandonedGrokAuthLock(
+          lockFile,
+          this.now()
+        ))) {
           if (await removeLockFileIfSame(lockFile, staleIdentity)) {
             brokeStaleLock = true
           }
@@ -304,12 +383,18 @@ export class FileGrokAuthStore implements GrokAuthStore {
 
     try {
       // Match Grok CLI lock payload shape so concurrent tools can detect ownership.
-      await writeFile(lockFile, `${process.pid}:${Math.floor(this.now().getTime() / 1000)}`, { mode: 0o600 })
+      await writeFile(
+        lockFile,
+        `${process.pid}:${Math.floor(this.now().getTime() / 1000)}`,
+        { mode: 0o600 }
+      )
       return await fn()
     } finally {
-      const ownedIdentity = await handle.stat().then(toFileIdentity).catch(() => null)
+      const ownedIdentity = await handle.stat().then(toFileIdentity)
+        .catch(() => null)
       await handle.close().catch(() => undefined)
-      if (ownedIdentity) await removeLockFileIfSame(lockFile, ownedIdentity)
+      if (ownedIdentity)
+        await removeLockFileIfSame(lockFile, ownedIdentity)
     }
   }
 }
@@ -318,7 +403,10 @@ export class StaticGrokAuthStore implements GrokAuthStore {
   constructor(private readonly auth: GrokResolvedAuth) {}
 
   async status(): Promise<ProviderAuthState> {
-    return { status: 'authenticated', accountLabel: this.auth.email ?? this.auth.entryKey }
+    return {
+      status: 'authenticated',
+      accountLabel: this.auth.email ?? this.auth.entryKey
+    }
   }
 
   async resolveAuth(): Promise<GrokResolvedAuth> {
@@ -328,7 +416,10 @@ export class StaticGrokAuthStore implements GrokAuthStore {
 
 export class GrokAuthError extends Error {
   constructor(
-    readonly code: 'auth_missing' | 'auth_invalid' | 'auth_refresh_failed' | 'auth_lock_failed',
+    readonly code: 'auth_missing'
+      | 'auth_invalid'
+      | 'auth_refresh_failed'
+      | 'auth_lock_failed',
     message: string,
   ) {
     super(message)
@@ -341,30 +432,50 @@ export function defaultGrokHome(): string {
   return fromEnv && fromEnv.trim() ? fromEnv : join(homedir(), '.grok')
 }
 
-export function selectAuthEntry(file: GrokAuthDotJson): { entryKey: string; entry: GrokAuthEntry } | null {
-  const candidates: Array<{ entryKey: string; entry: GrokAuthEntry; score: number }> = []
+export function selectAuthEntry(
+  file: GrokAuthDotJson
+): {
+  entryKey: string;
+  entry: GrokAuthEntry
+} | null {
+  const candidates: Array<{
+    entryKey: string;
+    entry: GrokAuthEntry;
+    score: number
+  }> = []
   for (const [entryKey, value] of Object.entries(file)) {
-    if (!isRecord(value)) continue
+    if (!isRecord(value))
+      continue
     const entry = value as GrokAuthEntry
-    if (!nonEmptyString(entry.key)) continue
+    if (!nonEmptyString(entry.key))
+      continue
     let score = 0
-    if (entry.auth_mode === 'oidc') score += 4
-    if (nonEmptyString(entry.refresh_token)) score += 2
-    if (entryKey.includes('auth.x.ai') || entry.oidc_issuer === 'https://auth.x.ai') score += 1
+    if (entry.auth_mode === 'oidc')
+      score += 4
+    if (nonEmptyString(entry.refresh_token))
+      score += 2
+    if (entryKey.includes('auth.x.ai')
+      || entry.oidc_issuer === 'https://auth.x.ai') score += 1
     candidates.push({ entryKey, entry, score })
   }
-  candidates.sort((a, b) => b.score - a.score || a.entryKey.localeCompare(b.entryKey))
+  candidates.sort((a, b) => b.score - a.score
+    || a.entryKey.localeCompare(b.entryKey))
   return candidates[0] ?? null
 }
 
 export function selectAuthEntryByKey(
   file: GrokAuthDotJson,
   entryKey: string,
-): { entryKey: string; entry: GrokAuthEntry } | null {
+): {
+  entryKey: string;
+  entry: GrokAuthEntry
+} | null {
   const value = file[entryKey]
-  if (!isRecord(value)) return null
+  if (!isRecord(value))
+    return null
   const entry = value as GrokAuthEntry
-  if (!nonEmptyString(entry.key)) return null
+  if (!nonEmptyString(entry.key))
+    return null
   return { entryKey, entry }
 }
 
@@ -384,32 +495,50 @@ export async function refreshGrokOidcToken(
     client_id: input.clientId,
   })
   const principalType = nonEmptyString(input.principalType)
-  if (principalType) body.set('principal_type', principalType)
+  if (principalType)
+    body.set('principal_type', principalType)
   const principalId = nonEmptyString(input.principalId)
-  if (principalId) body.set('principal_id', principalId)
+  if (principalId)
+    body.set('principal_id', principalId)
   const response = await fetch(input.tokenEndpoint, {
     method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      accept: 'application/json'
+    },
     body,
     signal,
   })
   if (!response.ok) {
-    throw new GrokAuthError('auth_refresh_failed', `Grok token refresh failed with HTTP ${response.status}`)
+    throw new GrokAuthError(
+      'auth_refresh_failed',
+      `Grok token refresh failed with HTTP ${response.status}`
+    )
   }
   return (await response.json()) as GrokRefreshTokenResponse
 }
 
-export function peekGrokAccessTokenPrincipal(accessToken: string): {
+export function peekGrokAccessTokenPrincipal(
+  accessToken: string
+): {
   principalType: string
   principalId: string
   teamId: string | null
 } | null {
   const payload = decodeGrokJwtPayload(accessToken)
-  if (!payload) return null
-  const principalType = nonEmptyString(payload.principal_type) ?? nonEmptyString(payload.principalType)
-  const principalId = nonEmptyString(payload.principal_id) ?? nonEmptyString(payload.principalId)
-  if (!principalType || !principalId) return null
-  return { principalType, principalId, teamId: nonEmptyString(payload.team_id) ?? null }
+  if (!payload)
+    return null
+  const principalType = nonEmptyString(payload.principal_type)
+    ?? nonEmptyString(payload.principalType)
+  const principalId = nonEmptyString(payload.principal_id)
+    ?? nonEmptyString(payload.principalId)
+  if (!principalType || !principalId)
+    return null
+  return {
+    principalType,
+    principalId,
+    teamId: nonEmptyString(payload.team_id) ?? null
+  }
 }
 
 export function parseJwtExpiration(jwt: string): Date | null {
@@ -419,34 +548,46 @@ export function parseJwtExpiration(jwt: string): Date | null {
 }
 
 function tokenEndpointForIssuer(issuer: string | null): string {
-  if (!issuer) return DEFAULT_TOKEN_ENDPOINT
-  if (issuer === 'https://auth.x.ai' || issuer === 'https://auth.x.ai/') return DEFAULT_TOKEN_ENDPOINT
+  if (!issuer)
+    return DEFAULT_TOKEN_ENDPOINT
+  if (issuer === 'https://auth.x.ai' || issuer === 'https://auth.x.ai/')
+    return DEFAULT_TOKEN_ENDPOINT
   return `${issuer.replace(/\/$/, '')}/oauth2/token`
 }
 
 function parseIssuerFromEntryKey(entryKey: string): string | null {
   const sep = entryKey.indexOf('::')
-  if (sep <= 0) return null
+  if (sep <= 0)
+    return null
   return entryKey.slice(0, sep)
 }
 
 function parseClientIdFromEntryKey(entryKey: string): string | null {
   const sep = entryKey.indexOf('::')
-  if (sep < 0 || sep === entryKey.length - 2) return null
+  if (sep < 0 || sep === entryKey.length - 2)
+    return null
   return entryKey.slice(sep + 2) || null
 }
 
 function parseExpiresAt(value: unknown): Date | null {
-  if (typeof value !== 'string' || !value) return null
+  if (typeof value !== 'string' || !value)
+    return null
   const ms = Date.parse(value)
   return Number.isFinite(ms) ? new Date(ms) : null
 }
 
-function expiresWithin(expiresAt: Date | null, now: Date, skewMs: number): boolean {
+function expiresWithin(
+  expiresAt: Date | null,
+  now: Date,
+  skewMs: number
+): boolean {
   return expiresAt !== null && expiresAt.getTime() - now.getTime() <= skewMs
 }
 
-async function writeAuthJsonAtomic(authFile: string, auth: GrokAuthDotJson): Promise<void> {
+async function writeAuthJsonAtomic(
+  authFile: string,
+  auth: GrokAuthDotJson
+): Promise<void> {
   await mkdir(dirname(authFile), { recursive: true })
   const temp = `${authFile}.${process.pid}.${Date.now()}.tmp`
   await writeFile(temp, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 })
@@ -454,19 +595,26 @@ async function writeAuthJsonAtomic(authFile: string, auth: GrokAuthDotJson): Pro
   await rename(temp, authFile)
 }
 
-export function decodeGrokJwtPayload(jwt: string): Record<string, unknown> | null {
+export function decodeGrokJwtPayload(
+  jwt: string
+): Record<string, unknown> | null {
   const parts = jwt.split('.')
-  if (parts.length !== 3 || !parts[1]) return null
+  if (parts.length !== 3 || !parts[1])
+    return null
   try {
     const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
-    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8')) as Record<string, unknown>
+    return JSON.parse(Buffer.from(padded, 'base64')
+      .toString('utf8')) as Record<string, unknown>
   } catch {
     return null
   }
 }
 
-function resolveGrokUserId(entry: GrokAuthEntry, accessToken: string): string | null {
+function resolveGrokUserId(
+  entry: GrokAuthEntry,
+  accessToken: string
+): string | null {
   return (
     stringOrNull(entry.user_id) ??
     peekGrokAccessTokenPrincipal(accessToken)?.principalId ??
@@ -493,8 +641,10 @@ function resolvedAuthFromEntry(
     expiresAt: rest.expiresAt,
     email: stringOrNull(entry.email),
     userId: resolveGrokUserId(entry, accessToken),
-    principalType: stringOrNull(entry.principal_type) ?? peeked?.principalType ?? null,
-    principalId: stringOrNull(entry.principal_id) ?? peeked?.principalId ?? null,
+    principalType: stringOrNull(entry.principal_type) ?? peeked?.principalType
+      ?? null,
+    principalId: stringOrNull(entry.principal_id) ?? peeked?.principalId
+      ?? null,
     issuer: rest.issuer,
     clientId: rest.clientId,
     entryKey: rest.entryKey,
@@ -503,16 +653,25 @@ function resolvedAuthFromEntry(
 }
 
 
-/** Grok CLI lock format is `pid:unix_seconds`. A valid live PID always owns its lock. */
-export async function isAbandonedGrokAuthLock(lockFile: string, now: Date, maxAgeMs = 30_000): Promise<boolean> {
+/**
+ * Grok CLI lock format is `pid:unix_seconds`. A valid live PID always owns its
+ * lock.
+ */
+export async function isAbandonedGrokAuthLock(
+  lockFile: string,
+  now: Date,
+  maxAgeMs = 30_000
+): Promise<boolean> {
   try {
     const raw = (await readFile(lockFile, 'utf8')).trim()
     const match = /^(\d+):(\d+)$/.exec(raw)
     if (match) {
       const pid = Number(match[1])
       const tsSec = Number(match[2])
-      if (Number.isFinite(pid) && pid > 0) return !isProcessAlive(pid)
-      if (Number.isFinite(tsSec) && now.getTime() - tsSec * 1000 > maxAgeMs) return true
+      if (Number.isFinite(pid) && pid > 0)
+        return !isProcessAlive(pid)
+      if (Number.isFinite(tsSec) && now.getTime() - tsSec * 1000 > maxAgeMs)
+        return true
       return false
     }
     // Unknown lock payload: fall back to mtime age (covers empty/corrupt leftovers).
@@ -528,7 +687,10 @@ interface FileIdentity {
   ino: number | bigint
 }
 
-function toFileIdentity(info: { dev: number | bigint; ino: number | bigint }): FileIdentity {
+function toFileIdentity(info: {
+  dev: number | bigint;
+  ino: number | bigint
+}): FileIdentity {
   return { dev: info.dev, ino: info.ino }
 }
 
@@ -536,9 +698,13 @@ async function fileIdentity(path: string): Promise<FileIdentity | null> {
   return stat(path).then(toFileIdentity).catch(() => null)
 }
 
-async function removeLockFileIfSame(lockFile: string, expected: FileIdentity): Promise<boolean> {
+async function removeLockFileIfSame(
+  lockFile: string,
+  expected: FileIdentity
+): Promise<boolean> {
   const current = await fileIdentity(lockFile)
-  if (!current || current.dev !== expected.dev || current.ino !== expected.ino) return false
+  if (!current || current.dev !== expected.dev || current.ino !== expected.ino)
+    return false
   return rm(lockFile).then(() => true).catch(() => false)
 }
 
@@ -547,7 +713,8 @@ function isProcessAlive(pid: number): boolean {
     process.kill(pid, 0)
     return true
   } catch (error) {
-    if (errorCode(error) === 'EPERM') return true
+    if (errorCode(error) === 'EPERM')
+      return true
     return false
   }
 }

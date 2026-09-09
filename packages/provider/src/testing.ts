@@ -1,4 +1,10 @@
-import type { AgentProvider, InferenceRequest, InferenceSteer, ProviderEvent, ProviderRun } from './types'
+import type {
+  AgentProvider,
+  InferenceRequest,
+  InferenceSteer,
+  ProviderEvent,
+  ProviderRun
+} from './types'
 
 /**
  * Scripted provider for testing. Each "turn" is a list of events to yield.
@@ -37,7 +43,9 @@ export class StubProvider implements AgentProvider {
     const turn = this.turns[this.cursor]
     this.cursor += 1
     if (turn === undefined) {
-      throw new Error(`StubProvider: no turn scripted for call #${this.cursor} (ran out of turns)`)
+      throw new Error(
+        `StubProvider: no turn scripted for call #${this.cursor} (ran out of turns)`
+      )
     }
     const events = typeof turn === 'function' ? turn(request) : turn
     for (const event of events) {
@@ -51,7 +59,8 @@ export class StubProvider implements AgentProvider {
   }
 }
 
-type TurnScript = ProviderEvent[] | ((request: InferenceRequest) => ProviderEvent[])
+type TurnScript = ProviderEvent[]
+  | ((request: InferenceRequest) => ProviderEvent[])
 
 export function createProviderRun(
   output: Iterable<ProviderEvent> | AsyncIterable<ProviderEvent>,
@@ -60,7 +69,8 @@ export function createProviderRun(
   const run: ProviderRun = {
     [Symbol.asyncIterator]: () => toAsyncIterator(output),
   }
-  if (options.steer) run.steer = options.steer
+  if (options.steer)
+    run.steer = options.steer
   return run
 }
 
@@ -96,8 +106,11 @@ interface UsageLike {
   cacheWriteTokens: number
 }
 
-function toAsyncIterator(output: Iterable<ProviderEvent> | AsyncIterable<ProviderEvent>): AsyncIterator<ProviderEvent> {
-  if (Symbol.asyncIterator in output) return output[Symbol.asyncIterator]()
+function toAsyncIterator(
+  output: Iterable<ProviderEvent> | AsyncIterable<ProviderEvent>
+): AsyncIterator<ProviderEvent> {
+  if (Symbol.asyncIterator in output)
+    return output[Symbol.asyncIterator]()
   return (async function* () {
     for (const event of output) yield event
   })()

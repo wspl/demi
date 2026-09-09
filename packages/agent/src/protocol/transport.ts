@@ -2,7 +2,10 @@ import type { ClientFrame, ServerFrame } from './frames'
 
 export interface AgentTransport<SendFrame, ReceiveFrame> {
   send(frame: SendFrame): void
-  /** Async completion lets transport adapters hold admission until frame handling finishes. */
+  /**
+   * Async completion lets transport adapters hold admission until frame
+   * handling finishes.
+   */
   onFrame(handler: (frame: ReceiveFrame) => void | Promise<void>): () => void
   close(): void
 }
@@ -23,7 +26,8 @@ export function createInProcessTransportPair(): InProcessTransportPair {
   return { client: clientEndpoint, server: serverEndpoint }
 }
 
-class InProcessEndpoint<SendFrame, ReceiveFrame> implements AgentTransport<SendFrame, ReceiveFrame> {
+class InProcessEndpoint<SendFrame, ReceiveFrame>
+  implements AgentTransport<SendFrame, ReceiveFrame> {
   private peer: InProcessEndpoint<ReceiveFrame, SendFrame> | null = null
   private readonly handlers = new Set<(frame: ReceiveFrame) => void>()
   private closed = false
@@ -33,8 +37,10 @@ class InProcessEndpoint<SendFrame, ReceiveFrame> implements AgentTransport<SendF
   }
 
   send(frame: SendFrame): void {
-    if (this.closed) throw new Error('Agent transport is closed')
-    if (!this.peer) throw new Error('Agent transport is not connected')
+    if (this.closed)
+      throw new Error('Agent transport is closed')
+    if (!this.peer)
+      throw new Error('Agent transport is not connected')
     this.peer.receive(frame)
   }
 
@@ -51,7 +57,8 @@ class InProcessEndpoint<SendFrame, ReceiveFrame> implements AgentTransport<SendF
   }
 
   private receive(frame: ReceiveFrame): void {
-    if (this.closed) return
+    if (this.closed)
+      return
     queueMicrotask(() => {
       for (const handler of this.handlers) handler(frame)
     })

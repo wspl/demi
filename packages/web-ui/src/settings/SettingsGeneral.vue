@@ -39,26 +39,58 @@ const toneOptions = PRODUCT_TONES.map((entry) => ({ value: entry.id, label: entr
     <SettingsGroup title="Appearance">
       <template #aside><AppearancePreview :font-size="fontSize" /></template>
       <SettingsRow label="Language">
-        <Dropdown size="sm" :overlay-store="overlayStore" variant="default" trigger-label="Language">
+        <Dropdown
+          size="sm"
+          :overlay-store="overlayStore"
+          variant="default"
+          trigger-label="Language"
+        >
           <template #trigger>{{ language }}</template>
           <template #content="{ close }">
             <Menu>
-              <MenuItem v-for="entry in languages" :key="entry" :label="entry" choice :is-selected="language === entry" @select="language = entry; close()" />
+              <MenuItem
+                v-for="entry in languages"
+                :key="entry"
+                :label="entry"
+                choice
+                :is-selected="language === entry"
+                @select="language = entry; close()"
+              />
             </Menu>
           </template>
         </Dropdown>
       </SettingsRow>
       <SettingsRow label="Theme">
-        <Segmented size="sm" :model-value="theme" :options="themeOptions" @update:model-value="theme = $event as ThemeChoice" />
+        <Segmented
+          size="sm"
+          :model-value="theme"
+          :options="themeOptions"
+          @update:model-value="theme = $event as ThemeChoice"
+        />
       </SettingsRow>
       <SettingsRow label="Tone">
-        <Segmented size="sm" :model-value="tone" :options="toneOptions" @update:model-value="tone = $event as ProductTone" />
+        <Segmented
+          size="sm"
+          :model-value="tone"
+          :options="toneOptions"
+          @update:model-value="tone = $event as ProductTone"
+        />
       </SettingsRow>
       <SettingsRow label="Accent">
-        <SwatchPicker :model-value="accent" :options="PRODUCT_ACCENTS" @update:model-value="accent = $event as ProductAccent" />
+        <SwatchPicker
+          :model-value="accent"
+          :options="PRODUCT_ACCENTS"
+          @update:model-value="accent = $event as ProductAccent"
+        />
       </SettingsRow>
       <SettingsRow label="Transcript text size" description="Messages only.">
-        <Slider v-model="fontSize" :min="12" :max="18" :value-label="`${fontSize}px`" class="w-48" />
+        <Slider
+          v-model="fontSize"
+          :min="12"
+          :max="18"
+          :value-label="`${fontSize}px`"
+          class="w-48"
+        />
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>

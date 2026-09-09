@@ -9,7 +9,8 @@ export interface PendingSteerRenderBlock {
   content: UserContentBlock[]
 }
 
-export type MessageListBlock = Block | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock
+export type MessageListBlock =
+  Block | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock
 
 export function createPendingSteerMessage(
   id: string,
@@ -19,7 +20,9 @@ export function createPendingSteerMessage(
   return {
     id,
     content: cloneUserContent(content),
-    baselineSteerBlockIds: blocks.flatMap((block) => (block.type === 'steer' ? [block.id] : [])),
+    baselineSteerBlockIds: blocks.flatMap((block) => (block.type === 'steer'
+      ? [block.id]
+      : [])),
   }
 }
 
@@ -27,17 +30,26 @@ export function reconcilePendingSteers(
   blocks: readonly Block[],
   pendingSteers: readonly PendingSteerMessage[],
 ): PendingSteerMessage[] {
-  if (pendingSteers.length === 0) return pendingSteers as PendingSteerMessage[]
+  if (pendingSteers.length === 0)
+    return pendingSteers as PendingSteerMessage[]
 
-  const steerBlocks = blocks.filter((block): block is Extract<Block, { type: 'steer' }> => block.type === 'steer')
+  const steerBlocks = blocks.filter(
+    (block): block is Extract<Block, {
+      type: 'steer'
+    }> => block.type === 'steer'
+  )
   const consumedBlockIds = new Set<string>()
   const remaining: PendingSteerMessage[] = []
 
   for (const pending of pendingSteers) {
     const candidates = steerBlocks.filter(
-      (block) => !consumedBlockIds.has(block.id) && !pending.baselineSteerBlockIds.includes(block.id),
+      (block) =>
+        !consumedBlockIds.has(block.id) &&
+        !pending.baselineSteerBlockIds.includes(block.id),
     )
-    const exactMatch = candidates.find((block) => contentKey(block.content) === contentKey(pending.content))
+    const exactMatch = candidates.find(
+      (block) => contentKey(block.content) === contentKey(pending.content)
+    )
     const materializedBlock = exactMatch ?? candidates[0]
 
     if (materializedBlock) {
@@ -47,10 +59,14 @@ export function reconcilePendingSteers(
     }
   }
 
-  return remaining.length === pendingSteers.length ? (pendingSteers as PendingSteerMessage[]) : remaining
+  return remaining.length === pendingSteers.length
+    ? (pendingSteers as PendingSteerMessage[])
+    : remaining
 }
 
-export function pendingSteersToRenderBlocks(pendingSteers: readonly PendingSteerMessage[]): PendingSteerRenderBlock[] {
+export function pendingSteersToRenderBlocks(
+  pendingSteers: readonly PendingSteerMessage[]
+): PendingSteerRenderBlock[] {
   return pendingSteers.map((pending) => ({
     type: 'pending_steer',
     id: `pending-steer:${pending.id}`,
@@ -76,7 +92,11 @@ function normalizeContentBlock(block: UserContentBlock): unknown {
         source:
           block.source.type === 'url'
             ? block.source
-            : { type: 'binary', mediaType: block.source.mediaType, data: normalizeBinary(block.source.data) },
+            : {
+              type: 'binary',
+              mediaType: block.source.mediaType,
+              data: normalizeBinary(block.source.data)
+            },
       }
     case 'document':
       return {

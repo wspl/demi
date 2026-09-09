@@ -13,7 +13,17 @@ import {
 } from '@demicodes/agent'
 import type { InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { CommandRegistry, type Command, type Host, type HostDirent, type HostFileSystem, type HostProcess, type HostStore, createLogicalHostCwd, type ShellEnvironment } from '@demicodes/shell'
+import {
+  CommandRegistry,
+  type Command,
+  type Host,
+  type HostDirent,
+  type HostFileSystem,
+  type HostProcess,
+  type HostStore,
+  createLogicalHostCwd,
+  type ShellEnvironment
+} from '@demicodes/shell'
 import { runnerShell, runnerShellFactory } from '@demicodes/backend/testing'
 import { LocalHost } from '@demicodes/runner/testing'
 import { createCodingAgentHarness } from '../index'
@@ -32,57 +42,100 @@ const model: ModelSelection = {
   thinking: null,
 }
 
-test('coding agent harness exposes shell session tools and registered command prompt', async () => {
-  const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
-  const state = harness.initialState()
-  const commands = (await harness.commands?.({ state, cwd: process.cwd(), agentSessionId: 'test-session' })) ?? []
-  const { environment, runtime } = await createRuntimeFromHarness(harness, process.cwd())
+test(
+  'coding agent harness exposes shell session tools and registered command prompt',
+  async () => {
+    const harness = createCodingAgentHarness({
+      host: new LocalHost(process.cwd())
+    })
+    const state = harness.initialState()
+    const commands = (await harness.commands?.({
+      state,
+      cwd: process.cwd(),
+      agentSessionId: 'test-session'
+    })) ?? []
+    const { environment, runtime } = await createRuntimeFromHarness(
+      harness,
+      process.cwd()
+    )
 
-  expect(harness.name).toBe('coding')
-  expect(commands.map((command) => command.name)).toEqual(['demi'])
-  const tools = runtime.tools({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd(), metadata: null })
-  expect(tools.map((tool) => tool.name)).toEqual([
-    'shell_exec',
-    'shell_status',
-    'shell_write',
-    'shell_abort',
-    'yield',
-  ])
-  for (const tool of tools) {
-    const properties = tool.inputSchema.properties as Record<string, unknown> | undefined
-    expect(properties?.description).toEqual(expect.objectContaining({ type: 'string' }))
+    expect(harness.name).toBe('coding')
+    expect(commands.map((command) => command.name)).toEqual(['demi'])
+    const tools = runtime.tools({
+      agentSessionId: 'coding-test-agent',
+      state,
+      cwd: process.cwd(),
+      metadata: null
+    })
+    expect(tools.map((tool) => tool.name)).toEqual([
+      'shell_exec',
+      'shell_status',
+      'shell_write',
+      'shell_abort',
+      'yield',
+    ])
+    for (const tool of tools) {
+      const properties = tool.inputSchema.properties as Record<string, unknown>
+        | undefined
+      expect(properties?.description).toEqual(expect.objectContaining({
+        type: 'string'
+      }))
+    }
+    const prompt = await harness.systemPrompt({
+      agentSessionId: 'coding-test-agent',
+      state,
+      cwd: process.cwd(),
+      transcript: {} as never,
+      commandsPrompt: renderCommandsPrompt(commands),
+      metadata: null,
+    })
+    expect(prompt).toContain('demi: The Demi platform command')
+    expect(prompt).toContain('Treat cwd as the task workspace')
+    expect(prompt)
+      .toContain('do not create a separate project directory under /tmp')
+    expect(prompt).toContain('demi file create')
+    expect(prompt)
+      .toContain('Success output: writes "Created <path>" to stdout')
+    expect(prompt).toContain(
+      'Failure output: writes the reason to stderr and exits non-zero'
+    )
+    expect(prompt).toContain('todo: Manage an agent-session-scoped task list')
+    expect(prompt)
+      .toContain('run them in the foreground with a short timeoutMs')
+    expect(prompt).toContain(
+      'Tool description: concise title for the concrete user-visible state/result'
+    )
+    expect(prompt).toContain('Do not describe waiting, pausing, tool mechanics')
+    expect(prompt).toContain(
+      'shell_status to observe (and yield to wait between checks)'
+    )
+    expect(prompt).toContain('avoid pkill/killall by process name')
+    expect(prompt).toContain(
+      'instead of restarting it to demonstrate the same behavior again'
+    )
+    expect(prompt).toContain(
+      'include a newline such as "Alice\\n" for line-oriented prompts'
+    )
+    expect(prompt).toContain(
+      'do not rely on the session script builtin read across turns'
+    )
+    expect(prompt).toContain(
+      'File references attached by the client are expanded before provider calls.'
+    )
+
+    const todo = await environment.exec({
+      script: 'demi todo add "Verify default registration"'
+    })
+    expect(todo.stdout.delta).toBe('[ ] T1 Verify default registration\n')
+    const demiHelp = await environment.exec({
+      shellId: todo.shellId,
+      script: 'demi --help'
+    })
+    expect(demiHelp.stdout.delta).toContain('demi file create')
+    expect(demiHelp.stdout.delta)
+      .toContain('Success output: writes "Created <path>" to stdout')
   }
-  const prompt = await harness.systemPrompt({
-    agentSessionId: 'coding-test-agent',
-    state,
-    cwd: process.cwd(),
-    transcript: {} as never,
-    commandsPrompt: renderCommandsPrompt(commands),
-    metadata: null,
-  })
-  expect(prompt).toContain('demi: The Demi platform command')
-  expect(prompt).toContain('Treat cwd as the task workspace')
-  expect(prompt).toContain('do not create a separate project directory under /tmp')
-  expect(prompt).toContain('demi file create')
-  expect(prompt).toContain('Success output: writes "Created <path>" to stdout')
-  expect(prompt).toContain('Failure output: writes the reason to stderr and exits non-zero')
-  expect(prompt).toContain('todo: Manage an agent-session-scoped task list')
-  expect(prompt).toContain('run them in the foreground with a short timeoutMs')
-  expect(prompt).toContain('Tool description: concise title for the concrete user-visible state/result')
-  expect(prompt).toContain('Do not describe waiting, pausing, tool mechanics')
-  expect(prompt).toContain('shell_status to observe (and yield to wait between checks)')
-  expect(prompt).toContain('avoid pkill/killall by process name')
-  expect(prompt).toContain('instead of restarting it to demonstrate the same behavior again')
-  expect(prompt).toContain('include a newline such as "Alice\\n" for line-oriented prompts')
-  expect(prompt).toContain('do not rely on the session script builtin read across turns')
-  expect(prompt).toContain('File references attached by the client are expanded before provider calls.')
-
-  const todo = await environment.exec({ script: 'demi todo add "Verify default registration"' })
-  expect(todo.stdout.delta).toBe('[ ] T1 Verify default registration\n')
-  const demiHelp = await environment.exec({ shellId: todo.shellId, script: 'demi --help' })
-  expect(demiHelp.stdout.delta).toContain('demi file create')
-  expect(demiHelp.stdout.delta).toContain('Success output: writes "Created <path>" to stdout')
-})
+)
 
 test('coding agent resolves file references through Host.fs', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-refs-'))
@@ -90,7 +143,8 @@ test('coding agent resolves file references through Host.fs', async () => {
   const spacedPath = join(root, 'space note.txt')
   await writeFile(spacedPath, 'hello from encoded file URL\n', 'utf8')
   const harness = createCodingAgentHarness({ host: new LocalHost(root) })
-  if (!harness.resolveReferences) throw new Error('expected resolveReferences')
+  if (!harness.resolveReferences)
+    throw new Error('expected resolveReferences')
 
   const resolved = await harness.resolveReferences(
     {
@@ -101,7 +155,10 @@ test('coding agent resolves file references through Host.fs', async () => {
       signal: new AbortController().signal,
       metadata: null,
     },
-    [{ type: 'text', text: 'read this' }, { type: 'reference', reference: 'note.txt' }],
+    [
+      { type: 'text', text: 'read this' },
+      { type: 'reference', reference: 'note.txt' }
+    ],
   )
 
   expect(resolved).toEqual([
@@ -118,18 +175,25 @@ test('coding agent resolves file references through Host.fs', async () => {
       signal: new AbortController().signal,
       metadata: null,
     },
-    [{ type: 'reference', reference: `file://${spacedPath.replaceAll(' ', '%20')}` }],
+    [{
+      type: 'reference',
+      reference: `file://${spacedPath.replaceAll(' ', '%20')}`
+    }],
   )
 
   expect(resolvedUrl).toEqual([
-    { type: 'text', text: `<file path="${spacedPath}">\nhello from encoded file URL\n\n</file>` },
+    {
+      type: 'text',
+      text: `<file path="${spacedPath}">\nhello from encoded file URL\n\n</file>`
+    },
   ])
 })
 
 test('coding agent file references read through Host.fs', async () => {
   const host = new RecordingHost('/workspace', 'hello from fake host\n')
   const harness = createCodingAgentHarness({ host })
-  if (!harness.resolveReferences) throw new Error('expected resolveReferences')
+  if (!harness.resolveReferences)
+    throw new Error('expected resolveReferences')
 
   const resolved = await harness.resolveReferences(
     {
@@ -143,114 +207,161 @@ test('coding agent file references read through Host.fs', async () => {
     [{ type: 'reference', reference: 'note.txt' }],
   )
 
-  expect(resolved).toEqual([{ type: 'text', text: '<file path="note.txt">\nhello from fake host\n\n</file>' }])
+  expect(resolved).toEqual([{
+    type: 'text',
+    text: '<file path="note.txt">\nhello from fake host\n\n</file>'
+  }])
   expect(host.fs.calls).toEqual([['readFile', 'note.txt', '/workspace']])
   expect(host.processSpawnCalls).toBe(0)
 })
 
-test('coding agent resolves file references before AgentSession sends the provider request', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-coding-session-refs-'))
-  await writeFile(join(root, 'note.txt'), 'hello from session file\n', 'utf8')
-  const harness = createCodingAgentHarness({ host: new LocalHost(root) })
-  const { runtime } = await createRuntimeFromHarness(harness, root)
-  const provider = new StubProvider([
-    (request: InferenceRequest) => {
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [
-            { type: 'text', text: 'inspect this file' },
-            { type: 'text', text: '<file path="note.txt">\nhello from session file\n\n</file>' },
-          ],
-        },
-      ])
-      expect(JSON.stringify(request.items)).not.toContain('"reference"')
-      return [events.text('read file'), events.response()]
-    },
-  ])
-  const session = new AgentSession({ provider, model, cwd: root, runtime }, { agentSessionId: 'coding-ref-session' })
+test(
+  'coding agent resolves file references before AgentSession sends the provider request',
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), 'demi-coding-session-refs-'))
+    await writeFile(join(root, 'note.txt'), 'hello from session file\n', 'utf8')
+    const harness = createCodingAgentHarness({ host: new LocalHost(root) })
+    const { runtime } = await createRuntimeFromHarness(harness, root)
+    const provider = new StubProvider([
+      (request: InferenceRequest) => {
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [
+              { type: 'text', text: 'inspect this file' },
+              {
+                type: 'text',
+                text: '<file path="note.txt">\nhello from session file\n\n</file>'
+              },
+            ],
+          },
+        ])
+        expect(JSON.stringify(request.items)).not.toContain('"reference"')
+        return [events.text('read file'), events.response()]
+      },
+    ])
+    const session = new AgentSession(
+      { provider, model, cwd: root, runtime },
+      { agentSessionId: 'coding-ref-session' }
+    )
 
-  await session.send([{ type: 'text', text: 'inspect this file' }, { type: 'reference', reference: 'note.txt' }])
-
-  expect(session.transcript().blocks[0]).toMatchObject({
-    type: 'user',
-    content: [
+    await session.send([
       { type: 'text', text: 'inspect this file' },
-      { type: 'text', text: '<file path="note.txt">\nhello from session file\n\n</file>' },
-    ],
-  })
-})
+      { type: 'reference', reference: 'note.txt' }
+    ])
 
-test('coding agent resolves file references outside default cwd when Host.fs allows them', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-coding-ref-root-'))
-  const outside = await mkdtemp(join(tmpdir(), 'demi-coding-ref-outside-'))
-  const outsidePath = join(outside, 'secret.txt')
-  await writeFile(outsidePath, 'outside\n', 'utf8')
-  const harness = createCodingAgentHarness({ host: new LocalHost(root) })
-  if (!harness.resolveReferences) throw new Error('expected resolveReferences')
+    expect(session.transcript().blocks[0]).toMatchObject({
+      type: 'user',
+      content: [
+        { type: 'text', text: 'inspect this file' },
+        {
+          type: 'text',
+          text: '<file path="note.txt">\nhello from session file\n\n</file>'
+        },
+      ],
+    })
+  }
+)
 
-  const resolved = await harness.resolveReferences(
-    {
-      agentSessionId: 'coding-ref-agent',
-      state: harness.initialState(),
-      cwd: root,
+test(
+  'coding agent resolves file references outside default cwd when Host.fs allows them',
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), 'demi-coding-ref-root-'))
+    const outside = await mkdtemp(join(tmpdir(), 'demi-coding-ref-outside-'))
+    const outsidePath = join(outside, 'secret.txt')
+    await writeFile(outsidePath, 'outside\n', 'utf8')
+    const harness = createCodingAgentHarness({ host: new LocalHost(root) })
+    if (!harness.resolveReferences)
+      throw new Error('expected resolveReferences')
+
+    const resolved = await harness.resolveReferences(
+      {
+        agentSessionId: 'coding-ref-agent',
+        state: harness.initialState(),
+        cwd: root,
+        transcript: {} as never,
+        signal: new AbortController().signal,
+        metadata: null,
+      },
+      [{ type: 'reference', reference: outsidePath }],
+    )
+
+    expect(resolved).toEqual([{
+      type: 'text',
+      text: `<file path="${outsidePath}">\noutside\n\n</file>`
+    }])
+  }
+)
+
+test(
+  'coding agent harness ships only the explore subagent profile; omitting --profile inherits',
+  async () => {
+    const harness = createCodingAgentHarness({
+      host: new LocalHost(process.cwd())
+    })
+    const state = harness.initialState()
+    const profiles = (await harness.agents?.({ state, cwd: process.cwd() }))
+      ?? []
+
+    expect(profiles.map((profile) => profile.name)).toEqual(['explore'])
+
+    const explore = profiles[0]!
+    const explorePrompt = await explore.systemPrompt!({
+      agentSessionId: 'explore-child',
+      state,
+      cwd: process.cwd(),
       transcript: {} as never,
-      signal: new AbortController().signal,
+      commandsPrompt: 'COMMANDS-MARKER',
       metadata: null,
-    },
-    [{ type: 'reference', reference: outsidePath }],
-  )
+    })
+    expect(explorePrompt).toContain('You are an exploration agent')
+    expect(explorePrompt).toContain('Do not edit, create, or execute anything')
+    expect(explorePrompt).toContain('COMMANDS-MARKER')
+  }
+)
 
-  expect(resolved).toEqual([{ type: 'text', text: `<file path="${outsidePath}">\noutside\n\n</file>` }])
-})
+test(
+  'the injected demi agent command help teaches self-contained spawn prompts',
+  async () => {
+    const harness = createCodingAgentHarness({
+      host: new LocalHost(process.cwd())
+    })
+    const state = harness.initialState()
+    const harnessContext = {
+      state,
+      cwd: process.cwd(),
+      agentSessionId: 'test-session'
+    }
+    const commands = (await harness.commands?.(harnessContext)) ?? []
+    const profiles = (await harness.agents?.(harnessContext)) ?? []
+    const agentCommands = subagentCommandShape(profiles.map((profile) => profile.name))
+    const registry = new CommandRegistry()
+    for (const command of injectSubagentCommand(
+      commands,
+      agentCommands
+    )) registry.register(command)
+    const help = registry.renderHelp()
 
-test('coding agent harness ships only the explore subagent profile; omitting --profile inherits', async () => {
-  const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
-  const state = harness.initialState()
-  const profiles = (await harness.agents?.({ state, cwd: process.cwd() })) ?? []
-
-  expect(profiles.map((profile) => profile.name)).toEqual(['explore'])
-
-  const explore = profiles[0]!
-  const explorePrompt = await explore.systemPrompt!({
-    agentSessionId: 'explore-child',
-    state,
-    cwd: process.cwd(),
-    transcript: {} as never,
-    commandsPrompt: 'COMMANDS-MARKER',
-    metadata: null,
-  })
-  expect(explorePrompt).toContain('You are an exploration agent')
-  expect(explorePrompt).toContain('Do not edit, create, or execute anything')
-  expect(explorePrompt).toContain('COMMANDS-MARKER')
-})
-
-test('the injected demi agent command help teaches self-contained spawn prompts', async () => {
-  const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
-  const state = harness.initialState()
-  const harnessContext = { state, cwd: process.cwd(), agentSessionId: 'test-session' }
-  const commands = (await harness.commands?.(harnessContext)) ?? []
-  const profiles = (await harness.agents?.(harnessContext)) ?? []
-  const agentCommands = subagentCommandShape(profiles.map((profile) => profile.name))
-  const registry = new CommandRegistry()
-  for (const command of injectSubagentCommand(commands, agentCommands)) registry.register(command)
-  const help = registry.renderHelp()
-
-  // Spawn is grafted under the harness's existing demi root, beside file editing.
-  expect(help).toContain('demi file create')
-  expect(help).toContain('demi agent')
-  expect(help).toContain('demi agent steer')
-  expect(help).toContain('demi agent abort')
-  expect(help).toContain('demi agent list')
-  expect(help).toContain('demi agent show')
-  // The prompt field teaches that the child cannot see this conversation.
-  expect(help).toContain('cannot see this conversation')
-  expect(help).toContain('State the exact shape of the last assistant text it should return.')
-  expect(help).toContain('Available: explore')
-})
+    // Spawn is grafted under the harness's existing demi root, beside file editing.
+    expect(help).toContain('demi file create')
+    expect(help).toContain('demi agent')
+    expect(help).toContain('demi agent steer')
+    expect(help).toContain('demi agent abort')
+    expect(help).toContain('demi agent list')
+    expect(help).toContain('demi agent show')
+    // The prompt field teaches that the child cannot see this conversation.
+    expect(help).toContain('cannot see this conversation')
+    expect(help).toContain(
+      'State the exact shape of the last assistant text it should return.'
+    )
+    expect(help).toContain('Available: explore')
+  }
+)
 
 test('coding agent harness leaves shell lifecycle to host assembly', () => {
-  const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
+  const harness = createCodingAgentHarness({
+    host: new LocalHost(process.cwd())
+  })
 
   expect('tools' in harness).toBe(false)
   expect(harness.dispose).toBeUndefined()
@@ -259,15 +370,21 @@ test('coding agent harness leaves shell lifecycle to host assembly', () => {
 async function createRuntimeFromHarness(
   harness: AgentHarness<Record<string, never>>,
   cwd: string,
-): Promise<{ environment: ShellEnvironment; runtime: AgentHarnessRuntime<Record<string, never>>; state: Record<string, never> }> {
+): Promise<{
+  environment: ShellEnvironment;
+  runtime: AgentHarnessRuntime<Record<string, never>>;
+  state: Record<string, never>
+}> {
   const state = harness.initialState()
   const harnessContext = { state, cwd, agentSessionId: 'test-session' }
   const registry = new CommandRegistry()
   const commands = harness.commands?.(harnessContext) ?? []
-  if (commands instanceof Promise) throw new Error('test harness commands must be synchronous')
+  if (commands instanceof Promise)
+    throw new Error('test harness commands must be synchronous')
   for (const command of commands) registry.register(command)
   const host = harness.host(harnessContext)
-  if (host instanceof Promise) throw new Error('test harness host must be synchronous')
+  if (host instanceof Promise)
+    throw new Error('test harness host must be synchronous')
   const environment = await runnerShell({
     host,
     commands: registry,
@@ -276,15 +393,24 @@ async function createRuntimeFromHarness(
   const runtime: AgentHarnessRuntime<Record<string, never>> = {
     harnessName: harness.name,
     initialState: () => state,
-    systemPrompt: (ctx) => harness.systemPrompt({ ...ctx, commandsPrompt: registry.renderHelp() }),
+    systemPrompt: (ctx) => harness.systemPrompt({
+      ...ctx,
+      commandsPrompt: registry.renderHelp()
+    }),
     preamble: (ctx) => harness.preamble?.(ctx) ?? null,
-    resolveReferences: (ctx, content) => harness.resolveReferences?.(ctx, content) ?? content,
+    resolveReferences: (ctx, content) => harness.resolveReferences?.(
+      ctx,
+      content
+    ) ?? content,
     lifecycle: (event) => harness.lifecycle?.(event),
     tools: () =>
       createStandardAgentTools({
         environment,
         scheduleYield: (_ctx, durationMs) => ({
-          output: [{ type: 'text', text: `yield scheduled\nwakeupId: test\ndurationMs: ${durationMs}` }],
+          output: [{
+            type: 'text',
+            text: `yield scheduled\nwakeupId: test\ndurationMs: ${durationMs}`
+          }],
           stopAfterToolResult: true,
         }),
       }),
@@ -324,10 +450,14 @@ class RecordingHost implements Host {
 }
 
 class MemoryHostStore implements HostStore {
-  async readJson<T>(): Promise<T | null> { return null }
+  async readJson<T>(): Promise<T | null> {
+    return null
+  }
   async writeJson<T>(): Promise<void> {}
   async delete(): Promise<void> {}
-  async list(): Promise<string[]> { return [] }
+  async list(): Promise<string[]> {
+    return []
+  }
 }
 
 class RecordingFileSystem implements HostFileSystem {
@@ -340,22 +470,60 @@ class RecordingFileSystem implements HostFileSystem {
     return new TextEncoder().encode(this.text)
   }
 
-  async writeFile(): Promise<void> { throw new Error('not implemented') }
-  async appendFile(): Promise<void> { throw new Error('not implemented') }
-  async exists(): Promise<boolean> { throw new Error('not implemented') }
-  async stat(): Promise<never> { throw new Error('not implemented') }
-  async lstat(): Promise<never> { throw new Error('not implemented') }
-  async readdir(path: string, options: { cwd?: string; withFileTypes: true }): Promise<HostDirent[]>
-  async readdir(path: string, options?: { cwd?: string; withFileTypes?: false }): Promise<string[]>
-  async readdir(): Promise<string[] | HostDirent[]> { throw new Error('not implemented') }
-  async mkdir(): Promise<void> { throw new Error('not implemented') }
-  async rm(): Promise<void> { throw new Error('not implemented') }
-  async cp(): Promise<void> { throw new Error('not implemented') }
-  async mv(): Promise<void> { throw new Error('not implemented') }
-  async chmod(): Promise<void> { throw new Error('not implemented') }
-  async symlink(): Promise<void> { throw new Error('not implemented') }
-  async link(): Promise<void> { throw new Error('not implemented') }
-  async readlink(): Promise<string> { throw new Error('not implemented') }
-  async realpath(): Promise<string> { throw new Error('not implemented') }
-  async utimes(): Promise<void> { throw new Error('not implemented') }
+  async writeFile(): Promise<void> {
+    throw new Error('not implemented')
+  }
+  async appendFile(): Promise<void> {
+    throw new Error('not implemented')
+  }
+  async exists(): Promise<boolean> {
+    throw new Error('not implemented')
+  }
+  async stat(): Promise<never> {
+    throw new Error('not implemented')
+  }
+  async lstat(): Promise<never> {
+    throw new Error('not implemented')
+  }
+  async readdir(path: string, options: {
+    cwd?: string;
+    withFileTypes: true
+  }): Promise<HostDirent[]>
+  async readdir(path: string, options?: {
+    cwd?: string;
+    withFileTypes?: false
+  }): Promise<string[]>
+  async readdir(): Promise<string[] | HostDirent[]> {
+    throw new Error('not implemented')
+  }
+  async mkdir(): Promise<void> {
+    throw new Error('not implemented')
+  }
+  async rm(): Promise<void> {
+    throw new Error('not implemented')
+  }
+  async cp(): Promise<void> {
+    throw new Error('not implemented')
+  }
+  async mv(): Promise<void> {
+    throw new Error('not implemented')
+  }
+  async chmod(): Promise<void> {
+    throw new Error('not implemented')
+  }
+  async symlink(): Promise<void> {
+    throw new Error('not implemented')
+  }
+  async link(): Promise<void> {
+    throw new Error('not implemented')
+  }
+  async readlink(): Promise<string> {
+    throw new Error('not implemented')
+  }
+  async realpath(): Promise<string> {
+    throw new Error('not implemented')
+  }
+  async utimes(): Promise<void> {
+    throw new Error('not implemented')
+  }
 }

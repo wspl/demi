@@ -40,14 +40,16 @@ export function createSubmenuController(): SubmenuController {
   }
 
   function close(id: symbol): void {
-    if (activeId.value !== id) return
+    if (activeId.value !== id)
+      return
     window.clearTimeout(closeTimer)
     instant.value = false
     activeId.value = null
   }
 
   function scheduleClose(id: symbol): void {
-    if (activeId.value !== id) return
+    if (activeId.value !== id)
+      return
     window.clearTimeout(closeTimer)
     closeTimer = window.setTimeout(() => close(id), SUBMENU_CLOSE_DELAY_MS)
   }

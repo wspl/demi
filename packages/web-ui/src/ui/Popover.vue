@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { computed, inject, provide, ref, watch } from 'vue'
-import { useFloating, offset as offsetMiddleware, flip, shift, limitShift, size, autoUpdate } from '@floating-ui/vue'
+import {
+  useFloating,
+  offset as offsetMiddleware,
+  flip,
+  shift,
+  limitShift,
+  size,
+  autoUpdate
+} from '@floating-ui/vue'
 import type { Placement } from '@floating-ui/vue'
 import { onClickOutside } from '@vueuse/core'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -72,9 +80,11 @@ function snapshotPointOffset() {
 }
 
 watch(
-  () => [props.isOpen, props.anchorX, props.anchorY, props.anchorContextEl] as const,
+  () =>
+    [props.isOpen, props.anchorX, props.anchorY, props.anchorContextEl] as const,
   ([open]) => {
-    if (!open || props.anchorEl) return
+    if (!open || props.anchorEl)
+      return
     snapshotPointOffset()
   },
   { immediate: true },
@@ -133,7 +143,13 @@ const { floatingStyles, placement: resolvedPlacement } = useFloating(virtualRef,
     offsetMiddleware(props.offset),
     flip({ padding: EDGE_PADDING, boundary: boundary.value }),
     // Keep the panel on-screen, but stop following once the trigger scrolls away.
-    shift({ padding: props.shiftPadding, limiter: limitShift(), boundary: boundary.value }),
+    shift(
+      {
+        padding: props.shiftPadding,
+        limiter: limitShift(),
+        boundary: boundary.value
+      }
+    ),
     size({
       padding: EDGE_PADDING,
       boundary: boundary.value,
@@ -152,7 +168,11 @@ const { floatingStyles, placement: resolvedPlacement } = useFloating(virtualRef,
 const transformOrigin = computed(() => {
   const p = resolvedPlacement.value
   const y = p.startsWith('top') ? 'bottom' : 'top'
-  const x = p.endsWith('start') ? 'left' : p.endsWith('end') ? 'right' : 'center'
+  const x = p.endsWith('start')
+    ? 'left'
+    : p.endsWith('end')
+    ? 'right'
+    : 'center'
   return `${y} ${x}`
 })
 
@@ -163,12 +183,14 @@ provide(overlayFamilyKey, family)
 
 
 watch(floatingRef, (el, _prev, onCleanup) => {
-  if (!el) return
+  if (!el)
+    return
   onCleanup(family.register(el))
 })
 
 onClickOutside(floatingRef, () => {
-  if (props.isOpen) emit('close')
+  if (props.isOpen)
+    emit('close')
 }, {
   ignore: () => [
     ...(props.ignoreEls ?? []),

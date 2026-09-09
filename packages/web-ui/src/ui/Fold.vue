@@ -11,7 +11,11 @@ defineProps<{
 </script>
 
 <template>
-  <div class="fold" :class="open ? 'is-open' : ''" :style="{ '--fold-ms': `${FOLD_MS}ms` }">
+  <div
+    class="fold"
+    :class="open ? 'is-open' : ''"
+    :style="{ '--fold-ms': `${FOLD_MS}ms` }"
+  >
     <div class="fold-clip" :inert="!open">
       <slot />
     </div>

@@ -25,9 +25,12 @@ const root = ref<HTMLElement | null>(null)
 const { rotating, onClick } = useButtonIconSpin(root, props, () => emit('spinEnd'))
 
 const glyphPx = computed(() => {
-  if (props.iconSize != null) return props.iconSize
-  if (props.size === 'xs') return ICON_PX.in20
-  if (props.size === 'lg') return ICON_PX.in32
+  if (props.iconSize != null)
+    return props.iconSize
+  if (props.size === 'xs')
+    return ICON_PX.in20
+  if (props.size === 'lg')
+    return ICON_PX.in32
   return ICON_PX.in28
 })
 </script>
@@ -60,6 +63,11 @@ const glyphPx = computed(() => {
               : 'btn text-fg-body',
     ]"
   >
-    <component :is="icon" :size="glyphPx" :width="glyphPx" :height="glyphPx" />
+    <component
+      :is="icon"
+      :size="glyphPx"
+      :width="glyphPx"
+      :height="glyphPx"
+    />
   </span>
 </template>

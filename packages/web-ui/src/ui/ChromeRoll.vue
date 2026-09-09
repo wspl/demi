@@ -30,16 +30,19 @@ function cloneChildren(el: HTMLElement | undefined): Node[] {
 // so ordinary updates cost nothing: slots are never re-invoked to keep a copy warm.
 function snapshotFace(mode: RollMode): HTMLElement | null {
   const face = faceRef.value
-  if (!face) return null
+  if (!face)
+    return null
   const wrap = document.createElement('div')
   wrap.className = 'flex h-7 items-center gap-2'
-  if (mode === 'face' && rollMode.value === 'label') wrap.append(...cloneChildren(iconRef.value))
+  if (mode === 'face' && rollMode.value === 'label')
+    wrap.append(...cloneChildren(iconRef.value))
   wrap.append(...cloneChildren(face))
   return wrap.childNodes.length > 0 ? wrap : null
 }
 
 function clearRollTimer(): void {
-  if (!rollTimer) return
+  if (!rollTimer)
+    return
   clearTimeout(rollTimer)
   rollTimer = undefined
 }
@@ -51,7 +54,8 @@ function finishRoll(): void {
 
 function startRoll(mode: RollMode, snapshot: HTMLElement): void {
   clearRollTimer()
-  if (rolling.value) finishRoll()
+  if (rolling.value)
+    finishRoll()
   rollMode.value = mode
   outgoing.value = snapshot
   rolling.value = false
@@ -68,9 +72,12 @@ function startRoll(mode: RollMode, snapshot: HTMLElement): void {
 watch(
   () => [props.faceKey, props.iconKey ?? ''] as const,
   ([, icon], [, prevIcon]) => {
-    const mode: RollMode = icon === prevIcon && iconPresent.value ? 'label' : 'face'
+    const mode: RollMode = icon === prevIcon && iconPresent.value
+      ? 'label'
+      : 'face'
     const snapshot = snapshotFace(mode)
-    if (snapshot) startRoll(mode, snapshot)
+    if (snapshot)
+      startRoll(mode, snapshot)
   },
   { flush: 'pre' },
 )
@@ -79,14 +86,21 @@ onBeforeUnmount(clearRollTimer)
 </script>
 
 <template>
-  <div class="chrome-roll flex min-w-0 items-center gap-2" :style="{ '--chrome-roll-ms': `${CHROME_ROLL_MS}ms` }">
+  <div
+    class="chrome-roll flex min-w-0 items-center gap-2"
+    :style="{ '--chrome-roll-ms': `${CHROME_ROLL_MS}ms` }"
+  >
     <template v-if="iconPresent && rollMode === 'label'">
       <div ref="iconRef" class="flex h-7 shrink-0 items-center">
         <slot name="icon" />
       </div>
       <div class="chrome-roll-clip min-w-0 flex-1">
         <div class="chrome-roll-track" :class="rolling ? 'is-rolling' : ''">
-          <div v-if="outgoing" ref="outgoingRef" class="chrome-roll-face" />
+          <div
+            v-if="outgoing"
+            ref="outgoingRef"
+            class="chrome-roll-face"
+          />
           <div ref="faceRef" class="chrome-roll-face">
             <slot />
           </div>
@@ -95,7 +109,11 @@ onBeforeUnmount(clearRollTimer)
     </template>
     <div v-else class="chrome-roll-clip min-w-0 flex-1">
       <div class="chrome-roll-track" :class="rolling ? 'is-rolling' : ''">
-        <div v-if="outgoing" ref="outgoingRef" class="chrome-roll-face" />
+        <div
+          v-if="outgoing"
+          ref="outgoingRef"
+          class="chrome-roll-face"
+        />
         <div class="chrome-roll-face">
           <div ref="faceRef" class="flex h-7 items-center gap-2">
             <slot v-if="iconPresent" name="icon" />

@@ -99,7 +99,10 @@ export interface SettingsProviderAccount {
   plan: string
   active: boolean
   /** Rate-window quotas, when the vendor exposes them. */
-  quota: { hour: SettingsQuotaWindow; week: SettingsQuotaWindow } | null
+  quota: {
+    hour: SettingsQuotaWindow;
+    week: SettingsQuotaWindow
+  } | null
 }
 
 /**
@@ -180,8 +183,26 @@ export interface SettingsSkillDraft {
 
 export const THINKING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'max'] as const
 
-export const EXTENSION_PRESETS: { id: string; label: string; extensions: string[] }[] = [
-  { id: 'images', label: 'Images', extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp'] },
+export const EXTENSION_PRESETS: {
+  id: string;
+  label: string;
+  extensions: string[]
+}[] = [
+  {
+    id: 'images',
+    label: 'Images',
+    extensions: [
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.gif',
+      '.webp'
+    ]
+  },
   { id: 'videos', label: 'Videos', extensions: ['.mp4', '.mov', '.webm'] },
-  { id: 'documents', label: 'Documents', extensions: ['.pdf', '.txt', '.md', '.docx', '.csv'] },
+  {
+    id: 'documents',
+    label: 'Documents',
+    extensions: ['.pdf', '.txt', '.md', '.docx', '.csv']
+  },
 ]

@@ -12,7 +12,10 @@ const props = defineProps<{
 }>()
 
 const renderedHtml = computed(() =>
-  props.renderMarkdown(content.value, props.basePath ? { basePath: props.basePath } : undefined),
+  props.renderMarkdown(
+    content.value,
+    props.basePath ? { basePath: props.basePath } : undefined
+  ),
 )
 
 function handleClick(event: MouseEvent) {
@@ -20,13 +23,16 @@ function handleClick(event: MouseEvent) {
   if (target instanceof HTMLInputElement && target.type === 'checkbox') {
     const root = event.currentTarget as HTMLElement
     const index = [...root.querySelectorAll('input[type="checkbox"]')].indexOf(target)
-    if (index >= 0) content.value = toggleGfmTask(content.value, index)
+    if (index >= 0)
+      content.value = toggleGfmTask(content.value, index)
     return
   }
   const link = target.closest('a')
-  if (!link) return
+  if (!link)
+    return
   const href = link.getAttribute('href')
-  if (!href) return
+  if (!href)
+    return
   props.onLinkClick?.({ href, event, basePath: props.basePath })
 }
 </script>

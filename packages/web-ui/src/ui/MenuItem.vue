@@ -6,7 +6,13 @@ import { appOverlayStore } from '../overlay/appOverlay'
 import Popover from './Popover.vue'
 import Tooltip from './Tooltip.vue'
 import { ICON_PX } from './icon-metrics'
-import { createSubmenuController, menuIconlessKey, menuRootKey, menuSubmenuKey, shouldDismissMenuTree } from './menu-context'
+import {
+  createSubmenuController,
+  menuIconlessKey,
+  menuRootKey,
+  menuSubmenuKey,
+  shouldDismissMenuTree
+} from './menu-context'
 
 defineOptions({ inheritAttrs: false })
 
@@ -39,7 +45,11 @@ const emit = defineEmits<{
 const slots = useSlots()
 const isChoice = computed(() => props.choice === true)
 const isDisabled = computed(() => props.disabled === true)
-const tooltipContent = computed(() => (isDisabled.value ? props.disabledReason?.trim() || undefined : undefined))
+const tooltipContent = computed(
+  () => (isDisabled.value
+    ? props.disabledReason?.trim() || undefined
+    : undefined)
+)
 const menuIconless = inject(
   menuIconlessKey,
   computed(() => false),
@@ -48,7 +58,10 @@ const menuRoot = inject(menuRootKey, null)
 const showIconGutter = computed(() => props.iconless !== true && !menuIconless.value)
 const showsSubmenu = computed(() => props.hasSubmenu || slots.submenu != null)
 // The suffix column only exists when something renders in it, so empty rows add no width.
-const hasSuffix = computed(() => slots.suffix != null || isChoice.value || showsSubmenu.value || !!props.shortcut)
+const hasSuffix = computed(
+  () =>
+    slots.suffix != null || isChoice.value || showsSubmenu.value || !!props.shortcut
+)
 
 const triggerRef = ref<HTMLElement | null>(null)
 /** Pins the submenu open regardless of hover (gallery specimens). */
@@ -62,7 +75,8 @@ const submenuId = Symbol('submenu')
 const submenuOpen = computed(() => pinnedOpen.value || submenus.activeId.value === submenuId)
 
 function openSubmenu() {
-  if (!showsSubmenu.value || isDisabled.value) return
+  if (!showsSubmenu.value || isDisabled.value)
+    return
   submenus.open(submenuId)
 }
 
@@ -102,14 +116,19 @@ onBeforeUnmount(() => {
 })
 
 const toneClass = computed(() => {
-  if (isDisabled.value) return 'cursor-not-allowed text-fg-faint'
-  if (props.isDanger) return 'text-on-danger hover:bg-tint-danger-strong hover:text-on-danger'
+  if (isDisabled.value)
+    return 'cursor-not-allowed text-fg-faint'
+  if (props.isDanger)
+    return 'text-on-danger hover:bg-tint-danger-strong hover:text-on-danger'
   if (isChoice.value) {
-    if (props.isSelected) return 'bg-active text-fg-emphasis'
-    if (props.isFocused || submenuOpen.value) return 'bg-hover text-fg'
+    if (props.isSelected)
+      return 'bg-active text-fg-emphasis'
+    if (props.isFocused || submenuOpen.value)
+      return 'bg-hover text-fg'
     return 'text-fg-muted hover:bg-hover hover:text-fg'
   }
-  if (submenuOpen.value) return 'bg-active text-fg-emphasis'
+  if (submenuOpen.value)
+    return 'bg-active text-fg-emphasis'
   return 'text-fg-body hover:bg-active hover:text-fg-emphasis'
 })
 </script>
@@ -137,8 +156,15 @@ const toneClass = computed(() => {
       @mouseenter="openSubmenu"
       @mouseleave="scheduleCloseSubmenu"
     >
-      <span v-if="showIconGutter" class="menu-cell-gutter relative flex size-4 shrink-0 items-center justify-center">
-        <component :is="icon" v-if="icon" :size="ICON_PX.in28" />
+      <span
+        v-if="showIconGutter"
+        class="menu-cell-gutter relative flex size-4 shrink-0 items-center justify-center"
+      >
+        <component
+          :is="icon"
+          v-if="icon"
+          :size="ICON_PX.in28"
+        />
         <!-- The dot rides the icon's corner, or stands alone in the gutter. -->
         <span
           v-if="indicator"
@@ -155,13 +181,27 @@ const toneClass = computed(() => {
         <!-- The note follows the name; the label cell is the grid column, so nothing needs to stretch. -->
         <span v-if="note" class="shrink-0 pl-1 text-fg-subtle">({{ note }})</span>
       </span>
-      <span v-if="value" class="menu-cell-value truncate text-right text-fg-muted" :title="value">
+      <span
+        v-if="value"
+        class="menu-cell-value truncate text-right text-fg-muted"
+        :title="value"
+      >
         {{ value }}
       </span>
-      <span v-if="hasSuffix" class="menu-cell-suffix flex items-center justify-end">
+      <span
+        v-if="hasSuffix"
+        class="menu-cell-suffix flex items-center justify-end"
+      >
         <slot name="suffix">
-          <span v-if="isChoice" class="flex size-3.5 shrink-0 items-center justify-center">
-            <Check v-if="isSelected" :size="ICON_PX.in28" class="text-fg-body" />
+          <span
+            v-if="isChoice"
+            class="flex size-3.5 shrink-0 items-center justify-center"
+          >
+            <Check
+              v-if="isSelected"
+              :size="ICON_PX.in28"
+              class="text-fg-body"
+            />
           </span>
           <span
             v-else-if="showsSubmenu"
@@ -169,7 +209,10 @@ const toneClass = computed(() => {
           >
             <ChevronRight :size="ICON_PX.in28" />
           </span>
-          <span v-else-if="shortcut" class="shrink-0 text-right text-[11px] text-fg-subtle">
+          <span
+            v-else-if="shortcut"
+            class="shrink-0 text-right text-[11px] text-fg-subtle"
+          >
             {{ shortcut }}
           </span>
         </slot>

@@ -1,20 +1,51 @@
-import { AbortError, abortable, asError, delay, isAbortError, parseJsonOrString, throwIfAborted } from '@demicodes/utils'
-import type { ModelSelection, ProviderErrorDiagnostics, TokenUsage } from '@demicodes/core'
-import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun, ToolDefinition } from '@demicodes/provider'
+import {
+  AbortError,
+  abortable,
+  asError,
+  delay,
+  isAbortError,
+  parseJsonOrString,
+  throwIfAborted
+} from '@demicodes/utils'
+import type {
+  ModelSelection,
+  ProviderErrorDiagnostics,
+  TokenUsage
+} from '@demicodes/core'
+import type {
+  AgentProvider,
+  InferenceRequest,
+  ProviderEvent,
+  ProviderRun,
+  ToolDefinition
+} from '@demicodes/provider'
 import { TranscriptLog } from '../transcript/transcript'
 import { ProviderStreamError } from './provider-stream-error'
-import { isRetryableCode, retryDelayMs, type TurnRetryPolicy } from './retry-policy'
+import {
+  isRetryableCode,
+  retryDelayMs,
+  type TurnRetryPolicy
+} from './retry-policy'
 import { findResumePoint } from './recovery'
 import { resolveCompactionThreshold } from './compaction'
 import type { ActiveTurnPhase } from './session'
-import type { AgentHarnessRuntime, AgentMetadata, AgentTool, AgentToolInvokeResult, SessionEvent } from '../types'
+import type {
+  AgentHarnessRuntime,
+  AgentMetadata,
+  AgentTool,
+  AgentToolInvokeResult,
+  SessionEvent
+} from '../types'
 
 const MAX_AUTO_COMPACTIONS_PER_TURN = 3
 
 /**
- * What ProviderTurnLoop needs from its owning session. This is the session's hot path, so the
- * coupling is wide and intentional: the loop drives the provider stream, applies events to the
- * transcript, executes tools, and triggers steer materialization / auto-recover compaction, all
+ * What ProviderTurnLoop needs from its owning session. This is the session's
+ * hot path, so the
+ * coupling is wide and intentional: the loop drives the provider stream,
+ * applies events to the
+ * transcript, executes tools, and triggers steer materialization / auto-recover
+ * compaction, all
  * against the session's live turn state — exposed here as an explicit contract.
  */
 export interface ProviderTurnLoopHost<State> {
@@ -26,7 +57,10 @@ export interface ProviderTurnLoopHost<State> {
   readonly cwd: string
   readonly agentState: State
   readonly thresholdRatio: number
-  /** Absolute compact threshold; null falls back to `contextWindow * thresholdRatio`. */
+  /**
+   * Absolute compact threshold; null falls back to `contextWindow *
+   * thresholdRatio`.
+   */
   readonly thresholdTokens: number | null
   readonly steerContinuationCount: number
   readonly retryPolicy: TurnRetryPolicy
@@ -45,13 +79,22 @@ export interface ProviderTurnLoopHost<State> {
   setActiveTurnPhase(phase: ActiveTurnPhase | null): void
   getActiveProviderRun(): ProviderRun | null
   setActiveProviderRun(run: ProviderRun | null): void
-  streamProvider(request: InferenceRequest, run: ProviderRun): AsyncIterable<ProviderEvent>
-  /** Applies a model/provider switch recorded with apply 'immediate'; returns whether it had to compact first. */
+  streamProvider(
+    request: InferenceRequest,
+    run: ProviderRun
+  ): AsyncIterable<ProviderEvent>
+  /**
+   * Applies a model/provider switch recorded with apply 'immediate'; returns
+   * whether it had to compact first.
+   */
   applyImmediateModelSwitch(): Promise<boolean>
   runCompaction(): Promise<boolean>
   runWithCompactingPhase<T>(fn: () => Promise<T>): Promise<T>
   commitTranscript(): Promise<void>
-  /** Writes the checkpoint now: what the transcript holds is durable before the caller acts on it. */
+  /**
+   * Writes the checkpoint now: what the transcript holds is durable before the
+   * caller acts on it.
+   */
   persistNow(): Promise<void>
   emit(event: SessionEvent): void
   materializeSteersArrivedSince(continuationCount: number): Promise<boolean>
@@ -59,8 +102,10 @@ export interface ProviderTurnLoopHost<State> {
 }
 
 /**
- * Runs a provider turn to completion: stream once, materialize steers that arrived, execute any
- * requested tools, and — if usage neared the context limit — auto-compact and resume, looping until
+ * Runs a provider turn to completion: stream once, materialize steers that
+ * arrived, execute any
+ * requested tools, and — if usage neared the context limit — auto-compact and
+ * resume, looping until
  * the model produces a terminal turn (or a tool asks to stop).
  */
 export class ProviderTurnLoop<State> {
@@ -77,7 +122,10 @@ export class ProviderTurnLoop<State> {
       // (smaller target window), mark the continuation the way auto-compaction does so the
       // model resumes against the rewritten history.
       if (await this.host.applyImmediateModelSwitch()) {
-        this.host.transcript.pushResumeTurn(this.host.currentTurnId(), this.host.model)
+        this.host.transcript.pushResumeTurn(
+          this.host.currentTurnId(),
+          this.host.model
+        )
         await this.host.commitTranscript()
       }
       // Drain steers that queued while no stream was live (preflight compaction, the gap
@@ -90,25 +138,34 @@ export class ProviderTurnLoop<State> {
       if (!shouldAutoRecover) {
         await this.host.materializeSteersArrivedSince(steerContinuationBeforeStream)
       }
-      const toolExecution = await this.executePendingTools({ deferSteerMaterialization: shouldAutoRecover })
-      if (shouldAutoRecover && autoCompactions < MAX_AUTO_COMPACTIONS_PER_TURN) {
+      const toolExecution = await this.executePendingTools({
+        deferSteerMaterialization: shouldAutoRecover
+      })
+      if (shouldAutoRecover && autoCompactions
+        < MAX_AUTO_COMPACTIONS_PER_TURN) {
         const tokensBefore = this.host.transcript.estimateContextTokens()
         const compacted = await this.host.runWithCompactingPhase(() => this.host.runCompaction())
         // Only loop if compaction actually shrank the transcript. Otherwise we'd keep compacting
         // our own summaries and pile up resume turns (a storm) until the model rejects the history.
-        if (compacted && this.host.transcript.estimateContextTokens() < tokensBefore) {
+        if (compacted
+          && this.host.transcript.estimateContextTokens() < tokensBefore) {
           autoCompactions += 1
-          this.host.transcript.pushResumeTurn(this.host.currentTurnId(), this.host.model)
+          this.host.transcript.pushResumeTurn(
+            this.host.currentTurnId(),
+            this.host.model
+          )
           await this.host.commitTranscript()
           continue
         }
       }
-      if (toolExecution.stopAfterToolResult) return
+      if (toolExecution.stopAfterToolResult)
+        return
       if (this.host.steerContinuationCount > steerContinuationBeforeStream) {
         await this.host.materializeSteersArrivedSince(steerContinuationBeforeStream)
         continue
       }
-      if (!toolExecution.executed) return
+      if (!toolExecution.executed)
+        return
     }
   }
 
@@ -126,7 +183,8 @@ export class ProviderTurnLoop<State> {
     try {
       for (let attempt = 1; ; attempt += 1) {
         const outcome = await this.streamAttempt(attempt, policy)
-        if (outcome.type === 'done') return outcome.shouldAutoRecover
+        if (outcome.type === 'done')
+          return outcome.shouldAutoRecover
         this.host.emit({
           type: 'retry_scheduled',
           attempt: outcome.attempt,
@@ -137,7 +195,8 @@ export class ProviderTurnLoop<State> {
         await abortable(delay(outcome.delayMs), this.host.currentSignal())
       }
     } finally {
-      if (this.host.getActiveTurnPhase() === 'provider_streaming') this.host.setActiveTurnPhase(null)
+      if (this.host.getActiveTurnPhase() === 'provider_streaming')
+        this.host.setActiveTurnPhase(null)
     }
   }
 
@@ -145,7 +204,10 @@ export class ProviderTurnLoop<State> {
     attempt: number,
     policy: TurnRetryPolicy,
   ): Promise<
-    | { type: 'done'; shouldAutoRecover: boolean }
+    | {
+        type: 'done';
+        shouldAutoRecover: boolean
+      }
     | {
         type: 'retry'
         attempt: number
@@ -163,7 +225,8 @@ export class ProviderTurnLoop<State> {
     try {
       for await (const event of this.host.streamProvider(request, run)) {
         throwIfAborted(request.cancel)
-        if (event.type === 'abort') throw new AbortError()
+        if (event.type === 'abort')
+          throw new AbortError()
         // A provider can announce a reasoning item before emitting any content.
         // Keep that lifecycle marker pending so a stream that ends right after it
         // does not leave an empty thinking block in the transcript.
@@ -185,19 +248,32 @@ export class ProviderTurnLoop<State> {
           // acted on: the resume point has to reach back past where it started.
           // Otherwise the failure is terminal here and `resume` continues from the
           // progress instead, which is the one thing a silent retry cannot do.
-          const isUnwindable = findResumePoint(this.host.transcript.blocks).cut <= attemptStart
-          if (isUnwindable && attempt < policy.maxAttempts && isRetryableCode(policy, errorEvent.code)) {
-            if (this.host.transcript.truncateFrom(attemptStart)) await this.host.commitTranscript()
+          const isUnwindable = findResumePoint(this.host.transcript.blocks)
+            .cut <= attemptStart
+          if (isUnwindable && attempt < policy.maxAttempts && isRetryableCode(
+            policy,
+            errorEvent.code
+          )) {
+            if (this.host.transcript.truncateFrom(attemptStart))
+              await this.host.commitTranscript()
             return {
               type: 'retry',
               attempt,
-              delayMs: retryDelayMs(policy, attempt, errorEvent.retryAfterMs ?? null),
+              delayMs: retryDelayMs(
+                policy,
+                attempt,
+                errorEvent.retryAfterMs ?? null
+              ),
               code: errorEvent.code,
               diagnostics: errorEvent.diagnostics,
             }
           }
           await this.applyProviderEvent(errorEvent)
-          throw new ProviderStreamError(errorEvent.message, errorEvent.code, errorEvent.diagnostics)
+          throw new ProviderStreamError(
+            errorEvent.message,
+            errorEvent.code,
+            errorEvent.diagnostics
+          )
         }
         if (hasPendingThinkingStart) {
           await this.applyProviderEvent({ type: 'thinking_start' })
@@ -209,16 +285,24 @@ export class ProviderTurnLoop<State> {
         }
       }
     } finally {
-      if (this.host.getActiveProviderRun() === run) this.host.setActiveProviderRun(null)
+      if (this.host.getActiveProviderRun() === run)
+        this.host.setActiveProviderRun(null)
     }
     return { type: 'done', shouldAutoRecover }
   }
 
   private async executePendingTools(
     options: { deferSteerMaterialization?: boolean } = {},
-  ): Promise<{ executed: boolean; stopAfterToolResult: boolean }> {
+  ): Promise<{
+    executed: boolean;
+    stopAfterToolResult: boolean
+  }> {
     const pending = this.host.transcript.pendingToolCalls()
-    if (pending.length === 0) return { executed: false, stopAfterToolResult: false }
+    if (pending.length === 0)
+      return {
+        executed: false,
+        stopAfterToolResult: false
+      }
 
     const tools = this.currentTools()
     const toolsByName = new Map(tools.map((tool) => [tool.name, tool]))
@@ -250,7 +334,11 @@ export class ProviderTurnLoop<State> {
         }
 
         const input = parseJsonOrString(toolCall.input)
-        const result = await this.invokeToolAsResult(tool, toolCall.toolUseId, input)
+        const result = await this.invokeToolAsResult(
+          tool,
+          toolCall.toolUseId,
+          input
+        )
         this.host.transcript.completeToolCall(
           toolCall.toolUseId,
           result.output,
@@ -280,7 +368,11 @@ export class ProviderTurnLoop<State> {
     return { executed: true, stopAfterToolResult }
   }
 
-  private async invokeTool(tool: AgentTool<State>, toolCallId: string, input: unknown): Promise<AgentToolInvokeResult> {
+  private async invokeTool(
+    tool: AgentTool<State>,
+    toolCallId: string,
+    input: unknown
+  ): Promise<AgentToolInvokeResult> {
     const signal = this.host.currentSignal()
     return abortable(
       Promise.resolve(
@@ -294,7 +386,12 @@ export class ProviderTurnLoop<State> {
             signal,
             metadata: this.host.metadata,
             emitProgress: (progress) => {
-              this.host.emit({ type: 'tool_progress', toolCallId, toolName: tool.name, progress })
+              this.host.emit({
+                type: 'tool_progress',
+                toolCallId,
+                toolName: tool.name,
+                progress
+              })
             },
           },
           input,
@@ -312,7 +409,8 @@ export class ProviderTurnLoop<State> {
     try {
       return await this.invokeTool(tool, toolCallId, input)
     } catch (error) {
-      if (isAbortError(error)) throw error
+      if (isAbortError(error))
+        throw error
       const normalized = asError(error)
       return {
         output: [{ type: 'text', text: `Tool failed: ${normalized.message}` }],
@@ -334,7 +432,13 @@ export class ProviderTurnLoop<State> {
   private async buildInferenceRequest(): Promise<InferenceRequest> {
     const context = await this.host.runtime.context?.(this.host.promptContext())
     if (context) {
-      this.host.transcript.pushUserTurn(this.host.currentTurnId(), this.host.model, [], context, true)
+      this.host.transcript.pushUserTurn(
+        this.host.currentTurnId(),
+        this.host.model,
+        [],
+        context,
+        true
+      )
       await this.host.commitTranscript()
       await this.host.persistNow()
     }
@@ -357,14 +461,21 @@ export class ProviderTurnLoop<State> {
   }
 
   private async applyProviderEvent(event: ProviderEvent): Promise<void> {
-    const block = this.host.transcript.applyProviderEvent(this.host.model, event)
-    if (block) await this.host.commitTranscript()
+    const block = this.host.transcript.applyProviderEvent(
+      this.host.model,
+      event
+    )
+    if (block)
+      await this.host.commitTranscript()
   }
 
   private isUsageNearLimit(usage: TokenUsage): boolean {
     const contextWindow = this.host.model.model.contextWindow
-    if (contextWindow <= 0) return false
-    const usedTokens = usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
+    if (contextWindow <= 0)
+      return false
+    const usedTokens = usage.inputTokens + usage.outputTokens
+      + usage.cacheReadTokens
+      + usage.cacheWriteTokens
     const threshold = resolveCompactionThreshold(
       contextWindow,
       this.host.thresholdRatio,

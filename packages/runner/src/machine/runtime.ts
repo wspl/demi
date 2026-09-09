@@ -13,15 +13,28 @@ export const onSignal = (signal: tjs.Signal, listener: () => void): (() => void)
 
 // Read lazily: PID 1 mounts the guest filesystem before consulting passwd.
 export const identity: Host['identity'] = {
-  get uid() { return tjs.system.userInfo.userId },
-  get gid() { return tjs.system.userInfo.groupId },
-  get hostname() { return tjs.hostName },
-  get homeDir() { return tjs.homeDir },
+  get uid() {
+    return tjs.system.userInfo.userId
+  },
+  get gid() {
+    return tjs.system.userInfo.groupId
+  },
+  get hostname() {
+    return tjs.hostName
+  },
+  get homeDir() {
+    return tjs.homeDir
+  },
 }
 
 export function dropPrivileges(uid: number, gid: number): Host['identity'] {
   const user = tjs.dropPrivileges(uid, gid)
-  return { uid: user.userId, gid: user.groupId, hostname: tjs.hostName, homeDir: user.homeDir ?? '/' }
+  return {
+    uid: user.userId,
+    gid: user.groupId,
+    hostname: tjs.hostName,
+    homeDir: user.homeDir ?? '/'
+  }
 }
 
 export async function fdNode(fd: number): Promise<string | null> {
@@ -29,7 +42,8 @@ export async function fdNode(fd: number): Promise<string | null> {
     const stat = await tjs.fstat(fd)
     return `${stat.dev}:${stat.ino}`
   } catch (error) {
-    if ((error as { code?: string }).code === 'EBADF') return null
+    if ((error as { code?: string }).code === 'EBADF')
+      return null
     throw error
   }
 }

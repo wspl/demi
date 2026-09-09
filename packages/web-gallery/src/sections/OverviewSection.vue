@@ -14,7 +14,8 @@ const sampleBlocks = computed(() => transcriptDemoBlocks().filter((block) => (
 function sampleThinkingEndedAt(index: number): string | null {
   const block = sampleBlocks.value[index]
   const next = sampleBlocks.value[index + 1]
-  if (block?.type !== 'thinking' || !next || !('createdAt' in next)) return null
+  if (block?.type !== 'thinking' || !next || !('createdAt' in next))
+    return null
   return next.createdAt
 }
 </script>

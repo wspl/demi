@@ -5,13 +5,22 @@ import { cloneBlocks } from '../transcript/patch'
 import type { ClientFrame, ServerFrame } from '../protocol/frames'
 import { clientFrameSchema } from '../protocol/schemas'
 import type { AgentServerTransport } from '../protocol/transport'
-import type { AgentHarness, AgentNodeRecord, AgentTreeStore, ModelSwitchApply } from '../types'
+import type {
+  AgentHarness,
+  AgentNodeRecord,
+  AgentTreeStore,
+  ModelSwitchApply
+} from '../types'
 import { assembleNode, type NodeDeps, type TreeContext } from '../node/assemble'
 import { ROOT_POLICY } from '../node/node'
 import { AgentDirectory } from '../subagent/directory'
 import { LiveSession } from './live-session'
 import type { SessionAttachment, SessionOwnershipRegistry } from './ownership'
-import { errorDiagnostics, progressToOutput, progressToShellOutput } from './summaries'
+import {
+  errorDiagnostics,
+  progressToOutput,
+  progressToShellOutput
+} from './summaries'
 import type { AgentTransportBinding, ProviderResolver } from './server'
 
 export interface AgentTransportBindingOptions {
@@ -29,7 +38,8 @@ export interface AgentTransportBindingOptions {
  * running session itself lives in the ownership registry, not here — this
  * object is only ever the currently attached view onto it.
  */
-export class AgentTransportBindingImpl implements AgentTransportBinding, SessionAttachment {
+export class AgentTransportBindingImpl
+  implements AgentTransportBinding, SessionAttachment {
   private readonly transport: AgentServerTransport
   private readonly agent: AgentHarness<unknown>
   private readonly resolveProvider: ProviderResolver
@@ -66,7 +76,8 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
    * only the explicit `close` frame (or server shutdown) disposes it.
    */
   async close(): Promise<void> {
-    if (this.closed) return
+    if (this.closed)
+      return
     this.closed = true
     this.detach()
     this.unsubscribeTransport?.()
@@ -77,7 +88,8 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
   private detach(): void {
     const live = this.live
     this.live = null
-    if (!live) return
+    if (!live)
+      return
     live.detachSink()
     this.sessions.release(live.agentSessionId, this)
   }
@@ -102,31 +114,49 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
           return
         case 'send': {
           const session = this.sessionFor('send')
-          if (!session) return
-          this.observeSessionAction(session.send(frame.content, { id: frame.messageId, metadata: frame.metadata }))
+          if (!session)
+            return
+          this.observeSessionAction(session.send(
+            frame.content,
+            { id: frame.messageId, metadata: frame.metadata }
+          ))
           return
         }
         case 'dequeue_message': {
           const session = this.sessionFor('dequeue_message')
-          if (!session) return
+          if (!session)
+            return
           session.dequeueMessage(frame.messageId)
           return
         }
         case 'send_queued_message': {
           const session = this.sessionFor('send_queued_message')
-          if (!session) return
+          if (!session)
+            return
           session.sendQueuedMessage(frame.messageId)
           return
         }
         case 'steer_queued_message': {
           const session = this.live?.session ?? null
           if (!session) {
-            this.send({ type: 'steer_result', steerId: frame.steerId, status: 'rejected', reason: 'No session is open on this connection' })
+            this.send({
+              type: 'steer_result',
+              steerId: frame.steerId,
+              status: 'rejected',
+              reason: 'No session is open on this connection'
+            })
             return
           }
           try {
-            const accepted = await session.steerQueuedMessage(frame.messageId, { id: frame.steerId })
-            if (accepted) this.send({ type: 'steer_result', steerId: frame.steerId, status: 'accepted' })
+            const accepted = await session.steerQueuedMessage(
+              frame.messageId,
+              { id: frame.steerId }
+            )
+            if (accepted) this.send({
+              type: 'steer_result',
+              steerId: frame.steerId,
+              status: 'accepted'
+            })
             else {
               this.send({
                 type: 'steer_result',
@@ -136,29 +166,53 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
               })
             }
           } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
-            this.send({ type: 'steer_result', steerId: frame.steerId, status: 'rejected', reason: message })
+            const message = error instanceof Error
+              ? error.message
+              : String(error)
+            this.send({
+              type: 'steer_result',
+              steerId: frame.steerId,
+              status: 'rejected',
+              reason: message
+            })
           }
           return
         }
         case 'clear_message_queue': {
           const session = this.sessionFor('clear_message_queue')
-          if (!session) return
+          if (!session)
+            return
           session.clearMessageQueue()
           return
         }
         case 'steer': {
           const session = this.live?.session ?? null
           if (!session) {
-            this.send({ type: 'steer_result', steerId: frame.steerId, status: 'rejected', reason: 'No session is open on this connection' })
+            this.send({
+              type: 'steer_result',
+              steerId: frame.steerId,
+              status: 'rejected',
+              reason: 'No session is open on this connection'
+            })
             return
           }
           try {
             await session.steer(frame.content, { id: frame.steerId })
-            this.send({ type: 'steer_result', steerId: frame.steerId, status: 'accepted' })
+            this.send({
+              type: 'steer_result',
+              steerId: frame.steerId,
+              status: 'accepted'
+            })
           } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
-            this.send({ type: 'steer_result', steerId: frame.steerId, status: 'rejected', reason: message })
+            const message = error instanceof Error
+              ? error.message
+              : String(error)
+            this.send({
+              type: 'steer_result',
+              steerId: frame.steerId,
+              status: 'rejected',
+              reason: message
+            })
           }
           return
         }
@@ -171,25 +225,29 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
           return
         case 'retry': {
           const session = this.sessionFor('retry')
-          if (!session || this.rejectIfBusy(session, 'retry')) return
+          if (!session || this.rejectIfBusy(session, 'retry'))
+            return
           this.observeSessionAction(session.retry({ metadata: frame.metadata }))
           return
         }
         case 'resume': {
           const session = this.sessionFor('resume')
-          if (!session || this.rejectIfBusy(session, 'resume')) return
+          if (!session || this.rejectIfBusy(session, 'resume'))
+            return
           this.observeSessionAction(session.resume({ metadata: frame.metadata }))
           return
         }
         case 'compact': {
           const session = this.sessionFor('compact')
-          if (!session || this.rejectIfBusy(session, 'compact')) return
+          if (!session || this.rejectIfBusy(session, 'compact'))
+            return
           this.observeSessionAction(session.compact({ metadata: frame.metadata }))
           return
         }
         case 'abort': {
           const session = this.sessionFor('abort')
-          if (!session) return
+          if (!session)
+            return
           const result = await session.abort()
           this.send({ type: 'abort_result', result })
           return
@@ -203,7 +261,8 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
           return
         case 'sync_transcript': {
           const session = this.sessionFor('sync_transcript')
-          if (!session) return
+          if (!session)
+            return
           this.sendTranscriptReset(session)
           this.live?.supervisor.replay()
           return
@@ -218,9 +277,15 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
     }
   }
 
-  private async open(frame: Extract<ClientFrame, { type: 'open' }>): Promise<void> {
+  private async open(
+    frame: Extract<ClientFrame, { type: 'open' }>
+  ): Promise<void> {
     if (this.live) {
-      this.send({ type: 'rejected', command: 'open', reason: 'A session is already open on this connection' })
+      this.send({
+        type: 'rejected',
+        command: 'open',
+        reason: 'A session is already open on this connection'
+      })
       return
     }
 
@@ -248,7 +313,10 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
       store: this.store(agentSessionId),
       directory: new AgentDirectory<unknown>(),
       hostSessionId: agentSessionId,
-      profiles: (await agent.agents?.({ state: agent.initialState(), cwd: frame.cwd })) ?? null,
+      profiles: (await agent.agents?.({
+        state: agent.initialState(),
+        cwd: frame.cwd
+      })) ?? null,
       emit: (serverFrame) => live?.sink(serverFrame),
     }
     const record: AgentNodeRecord = {
@@ -270,9 +338,16 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
       cwd: frame.cwd,
       provider,
       model: frame.provider.model,
-      prompt: { systemPrompt: agent.systemPrompt.bind(agent), preamble: agent.preamble?.bind(agent) },
+      prompt: {
+        systemPrompt: agent.systemPrompt.bind(agent),
+        preamble: agent.preamble?.bind(agent)
+      },
       preambleSuffix: null,
-      commands: async (state) => (await agent.commands?.({ state, cwd: frame.cwd, agentSessionId })) ?? [],
+      commands: async (state) => (await agent.commands?.({
+        state,
+        cwd: frame.cwd,
+        agentSessionId
+      })) ?? [],
       shellEnv: {},
       policy: ROOT_POLICY,
       firstMessage: null,
@@ -285,7 +360,8 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
     live.attachSink((serverFrame) => this.send(serverFrame))
     // A restored root keeps its checkpoint's model; align it with the model the
     // client opened with (which may differ from when it was saved).
-    if (restored) node.session.updateModel(null, frame.provider.model)
+    if (restored)
+      node.session.updateModel(null, frame.provider.model)
 
     this.sendOpenHandshake(live)
     if (restored) {
@@ -303,11 +379,17 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
     this.sendTranscriptReset(live.session)
     this.send({ type: 'phase', phase: live.session.phase() })
     this.send({ type: 'queue', queue: live.session.queuedMessages() })
-    this.send({ type: 'pending_steers', pendingSteers: live.session.pendingSteers() })
+    this.send({
+      type: 'pending_steers',
+      pendingSteers: live.session.pendingSteers()
+    })
   }
 
   /** Aligns an adopted live session with the model/provider this open named. */
-  private async alignProvider(live: LiveSession, selection: ProviderSelection): Promise<void> {
+  private async alignProvider(
+    live: LiveSession,
+    selection: ProviderSelection
+  ): Promise<void> {
     if (selection.providerId === live.providerId) {
       live.session.updateModel(null, selection.model)
       return
@@ -319,13 +401,24 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
 
   private sendTranscriptReset(session: AgentSession<unknown>): void {
     const transcript = session.transcript()
-    this.send({ type: 'transcript_reset', blocks: cloneBlocks(transcript.blocks), revision: transcript.revision })
+    this.send({
+      type: 'transcript_reset',
+      blocks: cloneBlocks(transcript.blocks),
+      revision: transcript.revision
+    })
   }
 
-  private async setProvider(provider: ProviderSelection, apply?: ModelSwitchApply): Promise<void> {
+  private async setProvider(
+    provider: ProviderSelection,
+    apply?: ModelSwitchApply
+  ): Promise<void> {
     const live = this.live
     if (!live) {
-      this.send({ type: 'rejected', command: 'set_provider', reason: 'No session is open on this connection' })
+      this.send({
+        type: 'rejected',
+        command: 'set_provider',
+        reason: 'No session is open on this connection'
+      })
       return
     }
     if (provider.providerId === live.providerId) {
@@ -339,31 +432,45 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
     live.providerId = provider.providerId
   }
 
-  private async createRuntime(selection: ProviderSelection, agentSessionId: string) {
+  private async createRuntime(
+    selection: ProviderSelection,
+    agentSessionId: string
+  ) {
     if (selection.model.providerId !== selection.providerId) {
       throw new Error(
         `Provider selection mismatch: providerId "${selection.providerId}" does not match model providerId "${selection.model.providerId}"`,
       )
     }
-    const provider = await this.resolveProvider(selection.providerId, { agentSessionId })
-    if (!provider) throw new Error(`Provider "${selection.providerId}" is not available`)
+    const provider = await this.resolveProvider(
+      selection.providerId,
+      { agentSessionId }
+    )
+    if (!provider)
+      throw new Error(`Provider "${selection.providerId}" is not available`)
     return providerRuntime(provider, selection)
   }
 
-  /** Explicit `close` frame: the session is disposed for real, not just detached. */
+  /**
+   * Explicit `close` frame: the session is disposed for real, not just
+   * detached.
+   */
   private async closeSession(): Promise<void> {
     const live = this.live
     this.live = null
-    if (!live) return
+    if (!live)
+      return
     this.sessions.unregister(live.agentSessionId)
     this.sessions.release(live.agentSessionId, this)
     await live.dispose()
   }
 
-  private async handleShellWrite(frame: Extract<ClientFrame, { type: 'shell_write' }>): Promise<void> {
+  private async handleShellWrite(
+    frame: Extract<ClientFrame, { type: 'shell_write' }>
+  ): Promise<void> {
     const live = this.live
     const session = this.sessionFor('shell_write')
-    if (!session || !live) return
+    if (!session || !live)
+      return
 
     const environment = await live.resolveEnvironment(
       { state: session.state(), metadata: frame.metadata ?? null },
@@ -386,8 +493,13 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
 
   private rejectIfBusy(session: AgentSession<unknown>, command: string): boolean {
     const phase = session.phase()
-    if (phase === 'idle') return false
-    this.send({ type: 'rejected', command, reason: `Session is busy (${phase})` })
+    if (phase === 'idle')
+      return false
+    this.send({
+      type: 'rejected',
+      command,
+      reason: `Session is busy (${phase})`
+    })
     return true
   }
 
@@ -401,7 +513,11 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
         status: shell.status,
       })
     }
-    this.send({ type: 'shell_write_result', commandId, output: progressToOutput(progress) })
+    this.send({
+      type: 'shell_write_result',
+      commandId,
+      output: progressToOutput(progress)
+    })
   }
 
   private send(frame: ServerFrame): void {

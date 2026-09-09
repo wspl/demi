@@ -1,6 +1,11 @@
 import { importCommandModule } from '@demicodes/shell'
 import type { CommandWriter } from '@demicodes/shell'
-import { deferred, errorMessage, encodeUtf8, type Deferred } from '@demicodes/utils'
+import {
+  deferred,
+  errorMessage,
+  encodeUtf8,
+  type Deferred
+} from '@demicodes/utils'
 import { createRunnerFileSystem } from '../machine/fs'
 import type {
   InputRequest,

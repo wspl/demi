@@ -1,4 +1,8 @@
-import type { ProviderRecord, ProviderScope, ControlService } from '../storage/control'
+import type {
+  ProviderRecord,
+  ProviderScope,
+  ControlService
+} from '../storage/control'
 import { decryptJson, encryptJson } from './crypto'
 
 import { z } from 'zod'
@@ -13,8 +17,14 @@ const apiKeyConfigSchema = z.strictObject({
   vendorId: z.string().min(1).optional(),
   models: configuredModelsSchema.optional(),
 })
-const subscriptionConfigSchema = z.strictObject({ kind: z.literal('subscription'), providerType: z.string().min(1) })
-const providerConfigSchema = z.discriminatedUnion('kind', [apiKeyConfigSchema, subscriptionConfigSchema])
+const subscriptionConfigSchema = z.strictObject({
+  kind: z.literal('subscription'),
+  providerType: z.string().min(1)
+})
+const providerConfigSchema = z.discriminatedUnion('kind', [
+  apiKeyConfigSchema,
+  subscriptionConfigSchema
+])
 export type ApiKeyProviderConfig = z.infer<typeof apiKeyConfigSchema>
 export type SubscriptionProviderConfig = z.infer<typeof subscriptionConfigSchema>
 export type ProviderConfig = z.infer<typeof providerConfigSchema>
@@ -38,7 +48,12 @@ export class ProviderVault {
     private readonly secret: Uint8Array,
   ) {}
 
-  async create(options: { id?: string; ownerUserId: string | null; label: string; config: ProviderConfig }): Promise<ProviderEntry> {
+  async create(options: {
+    id?: string;
+    ownerUserId: string | null;
+    label: string;
+    config: ProviderConfig
+  }): Promise<ProviderEntry> {
     const record = await this.control.createProvider({
       ...(options.id ? { id: options.id } : {}),
       ownerUserId: options.ownerUserId,
@@ -56,14 +71,27 @@ export class ProviderVault {
   }
 
   async list(scope: ProviderScope): Promise<ProviderEntry[]> {
-    return (await this.control.listProviders(scope)).map((record) => this.decode(record))
+    return (await this.control.listProviders(scope)).map(
+      (record) => this.decode(record)
+    )
   }
 
-  /** Rewrites an entry's label and/or config; the row keeps its id, owner, type and creation time. */
-  async update(id: string, patch: { label?: string; config?: ProviderConfig }): Promise<ProviderEntry | null> {
+  /**
+   * Rewrites an entry's label and/or config; the row keeps its id, owner, type
+   * and creation time.
+   */
+  async update(
+    id: string,
+    patch: {
+      label?: string;
+      config?: ProviderConfig
+    }
+  ): Promise<ProviderEntry | null> {
     const record = await this.control.updateProvider(id, {
       ...(patch.label !== undefined ? { label: patch.label } : {}),
-      ...(patch.config ? { config: encryptJson(this.secret, patch.config) } : {}),
+      ...(patch.config
+        ? { config: encryptJson(this.secret, patch.config) }
+        : {}),
     })
     return record ? this.decode(record) : null
   }
@@ -77,7 +105,9 @@ export class ProviderVault {
       id: record.id,
       ownerUserId: record.ownerUserId,
       label: record.label,
-      config: providerConfigSchema.parse(decryptJson<unknown>(this.secret, record.config)),
+      config: providerConfigSchema.parse(
+        decryptJson<unknown>(this.secret, record.config)
+      ),
       createdAt: record.createdAt,
     }
   }

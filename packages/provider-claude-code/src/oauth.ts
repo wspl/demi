@@ -28,10 +28,12 @@ export function injectableCliToken(access: ClaudeCodeOAuthAccess): string | null
 
 /**
  * Resolve Claude Code consumer OAuth access for quota APIs.
- * Order: options env CLAUDE_CODE_OAUTH_TOKEN, then macOS Keychain "Claude Code-credentials".
+ * Order: options env CLAUDE_CODE_OAUTH_TOKEN, then macOS Keychain "Claude
+ * Code-credentials".
  * Prefer injecting {@link ClaudeCodeAuthStore} when multi-credential is enabled.
  */
-export async function resolveClaudeCodeOAuthAccess(): Promise<ClaudeCodeOAuthAccess | null> {
+export async function resolveClaudeCodeOAuthAccess(): Promise<ClaudeCodeOAuthAccess
+  | null> {
   try {
     return await new FileClaudeCodeAuthStore().resolveAccess()
   } catch {
@@ -39,7 +41,9 @@ export async function resolveClaudeCodeOAuthAccess(): Promise<ClaudeCodeOAuthAcc
   }
 }
 
-export async function resolveAccessFromStore(store: ClaudeCodeAuthStore): Promise<ClaudeCodeOAuthAccess | null> {
+export async function resolveAccessFromStore(
+  store: ClaudeCodeAuthStore
+): Promise<ClaudeCodeOAuthAccess | null> {
   try {
     return await store.resolveAccess()
   } catch {

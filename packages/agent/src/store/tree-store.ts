@@ -15,20 +15,27 @@ export function completionMessageId(childId: string): string {
  * The children whose completion message a checkpoint carries — still queued,
  * or as the user turn it opened (`docs/subagent.md` § Persistence).
  */
-export function completedChildrenCarriedBy(update: Pick<AgentSessionPersistUpdate<unknown>, 'queue' | 'changedBlocks'>): string[] {
+export function completedChildrenCarriedBy(
+  update: Pick<AgentSessionPersistUpdate<unknown>, 'queue' | 'changedBlocks'>
+): string[] {
   const ids = new Set<string>()
   for (const message of update.queue) {
     const id = childOf(message.id)
-    if (id) ids.add(id)
+    if (id)
+      ids.add(id)
   }
   for (const { block } of update.changedBlocks) {
-    if (block.type !== 'user') continue
+    if (block.type !== 'user')
+      continue
     const id = childOf(block.turnId)
-    if (id) ids.add(id)
+    if (id)
+      ids.add(id)
   }
   return [...ids]
 }
 
 function childOf(messageId: string): string | null {
-  return messageId.startsWith(COMPLETION_PREFIX) ? messageId.slice(COMPLETION_PREFIX.length) : null
+  return messageId.startsWith(COMPLETION_PREFIX)
+    ? messageId.slice(COMPLETION_PREFIX.length)
+    : null
 }

@@ -10,11 +10,18 @@ const execFileAsync = promisify(execFile)
 
 export interface ClaudeCodeAuthStore {
   status(): Promise<ProviderAuthState>
-  resolveAccess(options?: { forceRefresh?: boolean }): Promise<ClaudeCodeOAuthAccess>
+  resolveAccess(
+    options?: { forceRefresh?: boolean }
+  ): Promise<ClaudeCodeOAuthAccess>
 }
 
-/** Renews a pool oauth secret (wired to `refreshClaudeCodeSecret`; injectable in tests). */
-export type ClaudeCodeSecretRefresh = (secret: Record<string, unknown>) => Promise<Record<string, unknown>>
+/**
+ * Renews a pool oauth secret (wired to `refreshClaudeCodeSecret`; injectable in
+ * tests).
+ */
+export type ClaudeCodeSecretRefresh = (
+  secret: Record<string, unknown>
+) => Promise<Record<string, unknown>>
 
 const OAUTH_EXPIRY_SKEW_MS = 5 * 60 * 1000
 
@@ -28,7 +35,8 @@ export interface FileClaudeCodeAuthStoreOptions {
 }
 
 /**
- * Resolves Claude OAuth: explicit token → oauth file → CLAUDE_CODE_OAUTH_TOKEN → keychain.
+ * Resolves Claude OAuth: explicit token → oauth file → CLAUDE_CODE_OAUTH_TOKEN
+ * → keychain.
  */
 export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
   private readonly oauthFile: string | null
@@ -49,10 +57,14 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
         accountLabel: nonEmptyString(access.subscriptionType) ?? 'Claude Code',
       }
     } catch (error) {
-      if (error instanceof ClaudeCodeAuthError && error.code === 'auth_missing') {
+      if (error instanceof ClaudeCodeAuthError && error.code
+        === 'auth_missing') {
         return { status: 'unauthenticated', message: error.message }
       }
-      return { status: 'error', message: error instanceof Error ? error.message : String(error) }
+      return {
+        status: 'error',
+        message: error instanceof Error ? error.message : String(error)
+      }
     }
   }
 
@@ -63,16 +75,30 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
     if (this.oauthFile) {
       try {
         let raw = JSON.parse(await readFile(this.oauthFile, 'utf8')) as unknown
-        if (!isRecord(raw)) throw new ClaudeCodeAuthError('auth_invalid', `Invalid OAuth file: ${this.oauthFile}`)
+        if (!isRecord(raw))
+          throw new ClaudeCodeAuthError(
+            'auth_invalid',
+            `Invalid OAuth file: ${this.oauthFile}`
+          )
         const expiresAt = nonEmptyString(raw.expiresAt)
-        const isExpiring = expiresAt !== undefined && Date.parse(expiresAt) - Date.now() < OAUTH_EXPIRY_SKEW_MS
+        const isExpiring = expiresAt !== undefined
+          && Date.parse(expiresAt) - Date.now() < OAUTH_EXPIRY_SKEW_MS
         if (isExpiring && nonEmptyString(raw.refreshToken) && this.refresh) {
           raw = await this.refresh(raw)
           await writeFile(this.oauthFile, `${JSON.stringify(raw, null, 2)}\n`)
         }
-        if (!isRecord(raw)) throw new ClaudeCodeAuthError('auth_invalid', `Invalid OAuth file: ${this.oauthFile}`)
-        const accessToken = nonEmptyString(raw.accessToken) ?? nonEmptyString(raw.access_token)
-        if (!accessToken) throw new ClaudeCodeAuthError('auth_missing', `No accessToken in ${this.oauthFile}`)
+        if (!isRecord(raw))
+          throw new ClaudeCodeAuthError(
+            'auth_invalid',
+            `Invalid OAuth file: ${this.oauthFile}`
+          )
+        const accessToken = nonEmptyString(raw.accessToken)
+          ?? nonEmptyString(raw.access_token)
+        if (!accessToken)
+          throw new ClaudeCodeAuthError(
+            'auth_missing',
+            `No accessToken in ${this.oauthFile}`
+          )
         return {
           accessToken,
           source: 'file',
@@ -80,7 +106,8 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
           rateLimitTier: nonEmptyString(raw.rateLimitTier) ?? null,
         }
       } catch (error) {
-        if (error instanceof ClaudeCodeAuthError) throw error
+        if (error instanceof ClaudeCodeAuthError)
+          throw error
         throw new ClaudeCodeAuthError(
           'auth_missing',
           `Failed to read Claude OAuth file ${this.oauthFile}: ${error instanceof Error ? error.message : String(error)}`,
@@ -89,7 +116,8 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
     }
 
     const fromEnv = nonEmptyString(process.env.CLAUDE_CODE_OAUTH_TOKEN)
-    if (fromEnv) return { accessToken: fromEnv, source: 'env' }
+    if (fromEnv)
+      return { accessToken: fromEnv, source: 'env' }
 
     if (process.platform === 'darwin') {
       try {
@@ -100,12 +128,25 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
         )
         const parsed = JSON.parse(stdout.trim()) as unknown
         if (!isRecord(parsed)) {
-          throw new ClaudeCodeAuthError('auth_missing', 'Claude Code keychain item is not a JSON object')
+          throw new ClaudeCodeAuthError(
+            'auth_missing',
+            'Claude Code keychain item is not a JSON object'
+          )
         }
-        const oauth = isRecord(parsed.claudeAiOauth) ? parsed.claudeAiOauth : null
-        if (!oauth) throw new ClaudeCodeAuthError('auth_missing', 'Claude Code keychain missing claudeAiOauth')
+        const oauth = isRecord(parsed.claudeAiOauth)
+          ? parsed.claudeAiOauth
+          : null
+        if (!oauth)
+          throw new ClaudeCodeAuthError(
+            'auth_missing',
+            'Claude Code keychain missing claudeAiOauth'
+          )
         const accessToken = nonEmptyString(oauth.accessToken)
-        if (!accessToken) throw new ClaudeCodeAuthError('auth_missing', 'Claude Code keychain missing accessToken')
+        if (!accessToken)
+          throw new ClaudeCodeAuthError(
+            'auth_missing',
+            'Claude Code keychain missing accessToken'
+          )
         return {
           accessToken,
           source: 'keychain',
@@ -113,7 +154,8 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
           rateLimitTier: nonEmptyString(oauth.rateLimitTier) ?? null,
         }
       } catch (error) {
-        if (error instanceof ClaudeCodeAuthError) throw error
+        if (error instanceof ClaudeCodeAuthError)
+          throw error
         // fall through
       }
     }
@@ -131,7 +173,8 @@ export class StaticClaudeCodeAuthStore implements ClaudeCodeAuthStore {
   async status(): Promise<ProviderAuthState> {
     return {
       status: 'authenticated',
-      accountLabel: nonEmptyString(this.access.subscriptionType) ?? 'Claude Code',
+      accountLabel: nonEmptyString(this.access.subscriptionType)
+        ?? 'Claude Code',
     }
   }
 

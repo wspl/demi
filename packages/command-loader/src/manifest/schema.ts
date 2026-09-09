@@ -39,7 +39,11 @@ export type ManifestNode = ManifestGroup | ManifestLeaf
 
 const manifestNodeSchema: z.ZodType<ManifestNode> = z.lazy(() =>
   z.union([
-    z.object({ name: z.string(), summary: z.string(), subcommands: z.array(manifestNodeSchema) }),
+    z.object({
+      name: z.string(),
+      summary: z.string(),
+      subcommands: z.array(manifestNodeSchema)
+    }),
     manifestLeafSchema,
   ]),
 )

@@ -1,4 +1,7 @@
-import { resetModelsDevCacheForTests, type ModelsDevFetch } from '@demicodes/provider'
+import {
+  resetModelsDevCacheForTests,
+  type ModelsDevFetch
+} from '@demicodes/provider'
 
 /**
  * A small models.dev catalog: two vendors our runtimes speak to (one
@@ -22,7 +25,10 @@ export function modelsDevFixture(): unknown {
           limit: { context: 128_000, output: 32_000 },
           cost: { input: 0.3, output: 1.2, cache_read: 0.03, cache_write: 0 },
         },
-        'deepseek-v4-flash': { name: 'DeepSeek V4 Flash', limit: { context: 128_000 } },
+        'deepseek-v4-flash': {
+          name: 'DeepSeek V4 Flash',
+          limit: { context: 128_000 }
+        },
       },
     },
     minimax: {
@@ -30,7 +36,10 @@ export function modelsDevFixture(): unknown {
       name: 'MiniMax',
       npm: '@ai-sdk/anthropic',
       api: 'https://api.minimax.io/anthropic/v1',
-      models: { 'minimax-m3': { name: 'MiniMax M3', limit: { context: 200_000, output: 64_000 } } },
+      models: { 'minimax-m3': {
+          name: 'MiniMax M3',
+          limit: { context: 200_000, output: 64_000 }
+        } },
     },
     'amazon-bedrock': {
       id: 'amazon-bedrock',
@@ -48,8 +57,14 @@ export function modelsDevFixture(): unknown {
   }
 }
 
-/** A fetch serving the fixture; the shared cache is reset so each backend starts from it. */
+/**
+ * A fetch serving the fixture; the shared cache is reset so each backend starts
+ * from it.
+ */
 export function modelsDevFetch(): ModelsDevFetch {
   resetModelsDevCacheForTests()
-  return async () => Response.json(modelsDevFixture(), { headers: { etag: 'fixture' } })
+  return async () => Response.json(
+    modelsDevFixture(),
+    { headers: { etag: 'fixture' } }
+  )
 }

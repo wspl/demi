@@ -16,7 +16,10 @@ import { browserHosts, fileSourceFor, placesFor } from '../prototype/files'
 import { useConversations } from '../conversation/store'
 import HostMenu from './HostMenu.vue'
 
-const props = defineProps<{ project?: Project; conversation: Conversation }>()
+const props = defineProps<{
+  project?: Project;
+  conversation: Conversation
+}>()
 const resources = useResources()
 const conversations = useConversations()
 const directoryOpen = ref(false)
@@ -29,7 +32,9 @@ const recentDirectories = computed(() =>
 const browsingDevice = ref<string | null>(null)
 const browserPath = ref<string | undefined>()
 const locked = computed(() => !!props.conversation.stream || props.conversation.archived)
-const browsingHost = computed(() => resources.devices.find((item) => item.id === browsingDevice.value) ?? null)
+const browsingHost = computed(
+  () => resources.devices.find((item) => item.id === browsingDevice.value) ?? null
+)
 const browserSource = computed(() => fileSourceFor(browsingHost.value))
 const browserPlaces = computed(() => placesFor(browsingHost.value, resources.projects))
 const browserHostList = computed(() => browserHosts(resources.devices, true))
@@ -49,9 +54,11 @@ function switchBrowserHost(deviceId: string) {
   browsingDevice.value = deviceId
 }
 function selectRecent(id: string) {
-  if (locked.value) return
+  if (locked.value)
+    return
   const project = resources.projects.find((item) => item.id === id)
-  if (!project || project.deviceId !== props.project?.deviceId) return
+  if (!project || project.deviceId !== props.project?.deviceId)
+    return
   if (
     project.hostKind !== 'cloud' &&
     !resources.devices.find((item) => item.id === project.deviceId)?.online
@@ -62,11 +69,15 @@ function selectRecent(id: string) {
   directoryOpen.value = false
 }
 function selectFolder(path: string) {
-  if (locked.value || !browsingDevice.value) return
+  if (locked.value || !browsingDevice.value)
+    return
   const deviceId = browsingDevice.value
   const device = resources.devices.find((item) => item.id === deviceId)
-  if (deviceId !== 'cloud' && !device?.online) return
-  let project = resources.projects.find((item) => item.deviceId === deviceId && item.path === path)
+  if (deviceId !== 'cloud' && !device?.online)
+    return
+  let project = resources.projects.find(
+    (item) => item.deviceId === deviceId && item.path === path
+  )
   if (!project) {
     project = {
       id: crypto.randomUUID(),
@@ -87,7 +98,11 @@ function selectFolder(path: string) {
 
 <template>
   <div class="flex min-w-0 max-w-full items-center gap-1">
-    <HostMenu :conversation="conversation" :project="project" @switch-main="browse" />
+    <HostMenu
+      :conversation="conversation"
+      :project="project"
+      @switch-main="browse"
+    />
     <template v-if="project">
       <Dropdown
         v-model:open="directoryOpen"
@@ -96,7 +111,11 @@ function selectFolder(path: string) {
       >
         <template #trigger>
           <Tooltip class="min-w-0" :content="project.path">
-            <Button class="max-w-full" variant="ghost" aria-label="Switch directory">
+            <Button
+              class="max-w-full"
+              variant="ghost"
+              aria-label="Switch directory"
+            >
               <Folder :size="ICON_PX.in28" />
               <span class="max-w-32 truncate">{{ project.name }}</span>
             </Button>
@@ -120,7 +139,11 @@ function selectFolder(path: string) {
               @select="selectRecent(item.id)"
             />
             <MenuDivider />
-            <MenuItem :icon="Folder" label="Choose another directory…" @select="browse()" />
+            <MenuItem
+              :icon="Folder"
+              label="Choose another directory…"
+              @select="browse()"
+            />
           </Menu>
         </template>
       </Dropdown>

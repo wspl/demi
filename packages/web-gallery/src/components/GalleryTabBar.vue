@@ -85,7 +85,8 @@ function selectTab(id: string): void {
 
 function closeTab(id: string): void {
   const index = tabs.value.findIndex((entry) => entry.tab.id === id)
-  if (index < 0 || tabs.value.length === 1) return
+  if (index < 0 || tabs.value.length === 1)
+    return
   tabs.value.splice(index, 1)
   if (activeTabId.value === id) {
     activeTabId.value = tabs.value[Math.max(0, index - 1)]!.tab.id
@@ -103,7 +104,8 @@ function addTab(): void {
 
 function beginRename(id: string): void {
   const entry = tabs.value.find((item) => item.tab.id === id)
-  if (!entry) return
+  if (!entry)
+    return
   renamingTabId.value = id
   renameValue.value = entry.tab.title
 }
@@ -121,7 +123,9 @@ function openContextMenu(event: MouseEvent, id: string): void {
   contextTabId.value = id
   contextX.value = event.clientX
   contextY.value = event.clientY
-  contextEl.value = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+  contextEl.value = event.currentTarget instanceof HTMLElement
+    ? event.currentTarget
+    : null
   contextOpen.value = true
 }
 
@@ -182,10 +186,17 @@ function closeContextMenu(): void {
     @close="closeContextMenu"
   >
     <Menu @click="closeContextMenu">
-      <MenuItem label="Rename" @select="contextTabId && beginRename(contextTabId)" />
+      <MenuItem
+        label="Rename"
+        @select="contextTabId && beginRename(contextTabId)"
+      />
       <MenuItem label="New tab" @select="addTab" />
       <MenuDivider />
-      <MenuItem label="Close" :disabled="tabs.length === 1" @select="contextTabId && closeTab(contextTabId)" />
+      <MenuItem
+        label="Close"
+        :disabled="tabs.length === 1"
+        @select="contextTabId && closeTab(contextTabId)"
+      />
     </Menu>
   </Popover>
 </template>

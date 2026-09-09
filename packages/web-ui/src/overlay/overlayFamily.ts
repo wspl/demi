@@ -13,10 +13,12 @@ export function createOverlayFamily(): OverlayFamily {
   return {
     panels,
     register(el) {
-      if (!panels.includes(el)) panels.push(el)
+      if (!panels.includes(el))
+        panels.push(el)
       return () => {
         const index = panels.indexOf(el)
-        if (index >= 0) panels.splice(index, 1)
+        if (index >= 0)
+          panels.splice(index, 1)
       }
     },
   }

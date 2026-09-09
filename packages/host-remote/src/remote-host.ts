@@ -13,11 +13,25 @@ import type {
 } from '@demicodes/shell'
 import { createLogicalHostCwd } from '@demicodes/shell'
 import { createId, deferred, type Deferred } from '@demicodes/utils'
-import type { BackendToRunnerMessage, FsOp, FsParams, FsResult, JobExitMessage, PipeRef, RunnerToBackendMessage } from '@demicodes/runner-protocol'
+import type {
+  BackendToRunnerMessage,
+  FsOp,
+  FsParams,
+  FsResult,
+  JobExitMessage,
+  PipeRef,
+  RunnerToBackendMessage
+} from '@demicodes/runner-protocol'
 
-/** One job on the runner as the backend drives it (`runner.md` § Jobs and the tee). */
+/**
+ * One job on the runner as the backend drives it (`runner.md` § Jobs and the
+ * tee).
+ */
 export interface RemoteJob {
-  /** The latest active registered invocation's hint; absent when none declares one. */
+  /**
+   * The latest active registered invocation's hint; absent when none declares
+   * one.
+   */
   readonly runningHint?: string
   /** The view: ordered, stream-tagged chunks while the job runs. */
   output: AsyncIterable<HostProcessOutputChunk>
@@ -35,7 +49,10 @@ export interface RemoteHostOptions {
   admit?: () => () => void
   /** From the runner `hello` — read synchronously at shell creation. */
   identity: HostIdentity
-  /** Backend-composed store; conversation state never crosses the runner protocol. */
+  /**
+   * Backend-composed store; conversation state never crosses the runner
+   * protocol.
+   */
   store: HostStore
 }
 
@@ -74,18 +91,30 @@ export class RemoteHost implements Host {
     }
   }
 
-  /** The runner's identity from its hello; a Host made while its runner was offline carries a placeholder until the first attach. */
+  /**
+   * The runner's identity from its hello; a Host made while its runner was
+   * offline carries a placeholder until the first attach.
+   */
   get identity(): HostIdentity {
     return this.currentIdentity
   }
 
-  /** Binds the current connection, and the runner's identity when the caller has it. In-flight work from a previous connection must already be detached. */
-  attach(send: (message: BackendToRunnerMessage) => void, identity?: HostIdentity): void {
+  /**
+   * Binds the current connection, and the runner's identity when the caller has
+   * it. In-flight work from a previous connection must already be detached.
+   */
+  attach(
+    send: (message: BackendToRunnerMessage) => void,
+    identity?: HostIdentity
+  ): void {
     this.send = send
-    if (identity) this.currentIdentity = identity
+    if (identity)
+      this.currentIdentity = identity
   }
 
-  /** Marks the runner offline: pending fs calls reject and in-flight spawns die. */
+  /**
+   * Marks the runner offline: pending fs calls reject and in-flight spawns die.
+   */
   detach(reason = 'runner disconnected'): void {
     this.send = null
     const pending = [...this.pendingCalls.values()]
@@ -96,12 +125,20 @@ export class RemoteHost implements Host {
     const spawns = [...this.activeSpawns.values()]
     this.activeSpawns.clear()
     for (const spawn of spawns) {
-      spawn.finish({ exitCode: null, signal: reason, spawnError: { kind: 'other' } })
+      spawn.finish({
+        exitCode: null,
+        signal: reason,
+        spawnError: { kind: 'other' }
+      })
     }
     const jobs = [...this.activeJobs.values()]
     this.activeJobs.clear()
     for (const job of jobs) {
-      job.finish({ exitCode: null, signal: reason, spawnError: { kind: 'other' } })
+      job.finish({
+        exitCode: null,
+        signal: reason,
+        spawnError: { kind: 'other' }
+      })
     }
   }
 
@@ -119,7 +156,10 @@ export class RemoteHost implements Host {
     return this.activeJobs.size
   }
 
-  /** The immutable environment of a live job, recorded before dispatch; absent after exit/disconnect. */
+  /**
+   * The immutable environment of a live job, recorded before dispatch; absent
+   * after exit/disconnect.
+   */
   jobEnvironment(jobId: string): Readonly<Record<string, string>> | null {
     return this.activeJobs.get(jobId)?.env ?? null
   }
@@ -129,13 +169,27 @@ export class RemoteHost implements Host {
    * at once. `stdin` / `stdout` attach the job's fd 0 / fd 1 to pipes whose
    * other ends are elsewhere (`runner.md` § Pipes).
    */
-  startJob(params: { script: string; cwd: string; env: Record<string, string>; stdin?: PipeRef; stdout?: PipeRef }): RemoteJob {
+  startJob(params: {
+    script: string;
+    cwd: string;
+    env: Record<string, string>;
+    stdin?: PipeRef;
+    stdout?: PipeRef
+  }): RemoteJob {
     const release = this.options.admit?.()
     const jobId = createId()
-    const job = new RemoteJobState(jobId, (message) => this.dispatch(message), Object.freeze({ ...params.env }))
+    const job = new RemoteJobState(
+      jobId,
+      (message) => this.dispatch(message),
+      Object.freeze({ ...params.env })
+    )
     void job.handle().wait().finally(() => release?.())
     if (!this.send) {
-      job.finish({ exitCode: null, signal: 'runner disconnected', spawnError: { kind: 'other' } })
+      job.finish({
+        exitCode: null,
+        signal: 'runner disconnected',
+        spawnError: { kind: 'other' }
+      })
       return job.handle()
     }
     this.activeJobs.set(jobId, job)
@@ -157,23 +211,31 @@ export class RemoteHost implements Host {
     return job.handle()
   }
 
-  /** Routes runner messages that belong to this Host (fs results, spawn streams). */
+  /**
+   * Routes runner messages that belong to this Host (fs results, spawn
+   * streams).
+   */
   handleMessage(message: RunnerToBackendMessage): void {
     if (message.type === 'fs_ok' || message.type === 'fs_error') {
       const pending = this.pendingCalls.get(message.id)
-      if (!pending) return
+      if (!pending)
+        return
       this.pendingCalls.delete(message.id)
       if (message.type === 'fs_ok') pending.resolve(message.result)
       else pending.reject(fsError(message.code, message.message))
       return
     }
     if (message.type === 'spawn_output') {
-      this.activeSpawns.get(message.spawnId)?.pushChunk({ stream: message.stream, chunk: message.bytes })
+      this.activeSpawns.get(message.spawnId)?.pushChunk({
+        stream: message.stream,
+        chunk: message.bytes
+      })
       return
     }
     if (message.type === 'spawn_exit') {
       const spawn = this.activeSpawns.get(message.spawnId)
-      if (!spawn) return
+      if (!spawn)
+        return
       this.activeSpawns.delete(message.spawnId)
       spawn.finish({
         exitCode: message.exitCode,
@@ -183,16 +245,23 @@ export class RemoteHost implements Host {
       return
     }
     if (message.type === 'job_output') {
-      this.activeJobs.get(message.jobId)?.pushChunk({ stream: message.stream, chunk: message.bytes })
+      this.activeJobs.get(message.jobId)?.pushChunk({
+        stream: message.stream,
+        chunk: message.bytes
+      })
       return
     }
     if (message.type === 'job_running_hint') {
-      this.activeJobs.get(message.jobId)?.setRunningHint(message.invocationId, message.hint)
+      this.activeJobs.get(message.jobId)?.setRunningHint(
+        message.invocationId,
+        message.hint
+      )
       return
     }
     if (message.type === 'job_exit') {
       const job = this.activeJobs.get(message.jobId)
-      if (!job) return
+      if (!job)
+        return
       this.activeJobs.delete(message.jobId)
       const { type: _type, jobId: _jobId, ...exit } = message
       job.finish(exit)
@@ -200,29 +269,42 @@ export class RemoteHost implements Host {
   }
 
   private dispatch(message: BackendToRunnerMessage): void {
-    if (!this.send) throw offlineError('runner disconnected')
+    if (!this.send)
+      throw offlineError('runner disconnected')
     this.send(message)
   }
 
   /** One `fs_<op>` request, answered by `fs_ok` or `fs_error` under its id. */
-  private async call<Op extends FsOp>(op: Op, params: FsParams<Op>): Promise<FsResult<Op>> {
-    if (!this.send) throw offlineError('runner disconnected')
+  private async call<Op extends FsOp>(
+    op: Op,
+    params: FsParams<Op>
+  ): Promise<FsResult<Op>> {
+    if (!this.send)
+      throw offlineError('runner disconnected')
     const release = this.options.admit?.()
     const id = createId()
     const pending = deferred<unknown>()
     this.pendingCalls.set(id, pending)
     try {
-      this.send({ type: `fs_${op}`, id, ...definedFields(params) } as BackendToRunnerMessage)
+      this.send(
+        { type: `fs_${op}`, id, ...definedFields(params) } as BackendToRunnerMessage
+      )
       return (await pending.promise) as FsResult<Op>
     } catch (error) {
       this.pendingCalls.delete(id)
       throw error
-    } finally { release?.() }
+    } finally {
+      release?.()
+    }
   }
 
   private async spawn(params: HostSpawnParams): Promise<HostSpawnHandle> {
     if (!this.send) {
-      return failedSpawnHandle({ exitCode: null, signal: 'runner disconnected', spawnError: { kind: 'other' } })
+      return failedSpawnHandle({
+        exitCode: null,
+        signal: 'runner disconnected',
+        spawnError: { kind: 'other' }
+      })
     }
     const release = this.options.admit?.()
     const spawnId = createId()
@@ -237,7 +319,9 @@ export class RemoteHost implements Host {
         ...(params.args ? { args: params.args } : {}),
         ...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
         ...(params.env ? { env: params.env } : {}),
-        ...(params.killProcessGroup !== undefined ? { killProcessGroup: params.killProcessGroup } : {}),
+        ...(params.killProcessGroup !== undefined ? {
+          killProcessGroup: params.killProcessGroup
+        } : {}),
       })
     } catch (error) {
       this.activeSpawns.delete(spawnId)
@@ -258,7 +342,8 @@ function offlineError(reason: string): Error {
 
 function fsError(code: string | undefined, message: string): Error {
   const rebuilt = new Error(message)
-  if (code) Object.assign(rebuilt, { code })
+  if (code)
+    Object.assign(rebuilt, { code })
   return rebuilt
 }
 
@@ -282,13 +367,15 @@ class RemoteSpawn {
   ) {}
 
   pushChunk(chunk: HostProcessOutputChunk): void {
-    if (this.done) return
+    if (this.done)
+      return
     this.chunks.push(chunk)
     this.wake()
   }
 
   finish(exit: HostSpawnExit): void {
-    if (this.done) return
+    if (this.done)
+      return
     this.done = true
     this.exit = exit
     this.exitPromise.resolve(exit)
@@ -301,16 +388,23 @@ class RemoteSpawn {
       stderr: this.bytesView('stderr'),
       output: this.mergedView(),
       writeStdin: async (data) => {
-        if (this.done) return
+        if (this.done)
+          return
         this.send({ type: 'spawn_stdin', spawnId: this.spawnId, bytes: data })
       },
       closeStdin: async () => {
-        if (this.done) return
+        if (this.done)
+          return
         this.send({ type: 'spawn_stdin_end', spawnId: this.spawnId })
       },
       kill: async (signal) => {
-        if (this.done) return
-        this.send({ type: 'spawn_kill', spawnId: this.spawnId, ...(signal ? { signal } : {}) })
+        if (this.done)
+          return
+        this.send({
+          type: 'spawn_kill',
+          spawnId: this.spawnId,
+          ...(signal ? { signal } : {})
+        })
       },
       wait: () => this.exitPromise.promise,
     }
@@ -332,16 +426,20 @@ class RemoteSpawn {
         yield item
         continue
       }
-      if (this.done) return
+      if (this.done)
+        return
       await new Promise<void>((resolve) => {
         this.waiters.add(resolve)
       })
     }
   }
 
-  private async *bytesView(stream: 'stdout' | 'stderr'): AsyncIterable<Uint8Array> {
+  private async *bytesView(
+    stream: 'stdout' | 'stderr'
+  ): AsyncIterable<Uint8Array> {
     for await (const item of this.entries()) {
-      if (item.stream === stream) yield item.chunk
+      if (item.stream === stream)
+        yield item.chunk
     }
   }
 
@@ -365,19 +463,22 @@ class RemoteJobState {
   ) {}
 
   pushChunk(chunk: HostProcessOutputChunk): void {
-    if (this.done) return
+    if (this.done)
+      return
     this.chunks.push(chunk)
     this.wake()
   }
 
   setRunningHint(invocationId: string, hint: string | null): void {
-    if (this.done) return
+    if (this.done)
+      return
     if (hint === null) this.runningHints.delete(invocationId)
     else this.runningHints.set(invocationId, hint)
   }
 
   finish(exit: RemoteJobExit): void {
-    if (this.done) return
+    if (this.done)
+      return
     this.done = true
     this.runningHints.clear()
     this.exitPromise.resolve(exit)
@@ -387,19 +488,28 @@ class RemoteJobState {
   handle(): RemoteJob {
     const hints = this.runningHints
     return {
-      get runningHint() { return [...hints.values()].at(-1) },
+      get runningHint() {
+        return [...hints.values()].at(-1)
+      },
       output: this.entries(),
       writeStdin: async (data) => {
-        if (this.done) return
+        if (this.done)
+          return
         this.send({ type: 'job_stdin', jobId: this.jobId, bytes: data })
       },
       closeStdin: async () => {
-        if (this.done) return
+        if (this.done)
+          return
         this.send({ type: 'job_stdin_end', jobId: this.jobId })
       },
       kill: async (signal) => {
-        if (this.done) return
-        this.send({ type: 'job_kill', jobId: this.jobId, ...(signal ? { signal } : {}) })
+        if (this.done)
+          return
+        this.send({
+          type: 'job_kill',
+          jobId: this.jobId,
+          ...(signal ? { signal } : {})
+        })
       },
       wait: () => this.exitPromise.promise,
     }
@@ -420,7 +530,8 @@ class RemoteJobState {
         yield item
         continue
       }
-      if (this.done) return
+      if (this.done)
+        return
       await new Promise<void>((resolve) => {
         this.waiters.add(resolve)
       })
@@ -442,36 +553,84 @@ function failedSpawnHandle(exit: HostSpawnExit): HostSpawnHandle {
 
 async function* emptyStream(): AsyncIterable<never> {}
 
-type RemoteCall = <Op extends FsOp>(op: Op, params: FsParams<Op>) => Promise<FsResult<Op>>
+type RemoteCall = <Op extends FsOp>(
+  op: Op,
+  params: FsParams<Op>
+) => Promise<FsResult<Op>>
 
 function createRemoteFs(call: RemoteCall): HostFileSystem {
   return {
     readFile: (path, options) => call('readFile', { path, cwd: options?.cwd }),
-    writeFile: async (path, data, options) => void (await call('writeFile', { path, data, cwd: options?.cwd, createParents: options?.createParents })),
-    appendFile: async (path, data, options) => void (await call('appendFile', { path, data, cwd: options?.cwd, createParents: options?.createParents })),
+    writeFile: async (path, data, options) => void (await call(
+      'writeFile',
+      { path, data, cwd: options?.cwd, createParents: options?.createParents }
+    )),
+    appendFile: async (path, data, options) => void (await call(
+      'appendFile',
+      { path, data, cwd: options?.cwd, createParents: options?.createParents }
+    )),
     exists: (path, options) => call('exists', { path, cwd: options?.cwd }),
     stat: (path, options) => call('stat', { path, cwd: options?.cwd }),
     lstat: (path, options) => call('lstat', { path, cwd: options?.cwd }),
-    readdir: ((path: string, options?: { cwd?: string; withFileTypes?: boolean }) =>
-      call('readdir', { path, cwd: options?.cwd, withFileTypes: options?.withFileTypes })) as HostFileSystem['readdir'],
-    mkdir: async (path, options) => void (await call('mkdir', { path, cwd: options?.cwd, recursive: options?.recursive })),
-    rm: async (path, options) => void (await call('rm', { path, cwd: options?.cwd, recursive: options?.recursive, force: options?.force })),
-    cp: async (path, destination, options) => void (await call('cp', { path, destination, cwd: options?.cwd, recursive: options?.recursive })),
-    mv: async (path, destination, options) => void (await call('mv', { path, destination, cwd: options?.cwd })),
-    chmod: async (path, mode, options) => void (await call('chmod', { path, mode, cwd: options?.cwd })),
-    symlink: async (target, path, options) => void (await call('symlink', { target, path, cwd: options?.cwd })),
-    link: async (existingPath, path, options) => void (await call('link', { existingPath, path, cwd: options?.cwd })),
+    readdir: ((path: string, options?: {
+      cwd?: string;
+      withFileTypes?: boolean
+    }) =>
+      call(
+        'readdir',
+        { path, cwd: options?.cwd, withFileTypes: options?.withFileTypes }
+      )) as HostFileSystem['readdir'],
+    mkdir: async (path, options) => void (await call(
+      'mkdir',
+      { path, cwd: options?.cwd, recursive: options?.recursive }
+    )),
+    rm: async (path, options) => void (await call(
+      'rm',
+      {
+        path,
+        cwd: options?.cwd,
+        recursive: options?.recursive,
+        force: options?.force
+      }
+    )),
+    cp: async (path, destination, options) => void (await call(
+      'cp',
+      { path, destination, cwd: options?.cwd, recursive: options?.recursive }
+    )),
+    mv: async (path, destination, options) => void (await call(
+      'mv',
+      { path, destination, cwd: options?.cwd }
+    )),
+    chmod: async (path, mode, options) => void (await call(
+      'chmod',
+      { path, mode, cwd: options?.cwd }
+    )),
+    symlink: async (target, path, options) => void (await call(
+      'symlink',
+      { target, path, cwd: options?.cwd }
+    )),
+    link: async (existingPath, path, options) => void (await call(
+      'link',
+      { existingPath, path, cwd: options?.cwd }
+    )),
     readlink: (path, options) => call('readlink', { path, cwd: options?.cwd }),
     realpath: (path, options) => call('realpath', { path, cwd: options?.cwd }),
-    utimes: async (path, atime, mtime, options) => void (await call('utimes', { path, atime, mtime, cwd: options?.cwd })),
+    utimes: async (path, atime, mtime, options) => void (await call(
+      'utimes',
+      { path, atime, mtime, cwd: options?.cwd }
+    )),
   }
 }
 
-/** Undefined options are left off the frame; the wire carries what the caller set. */
+/**
+ * Undefined options are left off the frame; the wire carries what the caller
+ * set.
+ */
 function definedFields<T extends object>(params: T): Partial<T> {
   const defined: Partial<T> = {}
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined) (defined as Record<string, unknown>)[key] = value
+    if (value !== undefined)
+      (defined as Record<string, unknown>)[key] = value
   }
   return defined
 }

@@ -85,13 +85,26 @@ test('running conversations refuse archive and target changes', () => {
 
 test('file-only input is represented in the transcript', () => {
   const { store, conversation } = newConversation()
-  conversation.files.push({ id: 'file', name: 'notes.md', destination: 'workspace' })
+  conversation.files.push(
+    {
+      id: 'file',
+      name: 'notes.md',
+      destination: 'workspace'
+    }
+  )
   store.send(conversation)
   expect(conversation.title).toBe('notes.md')
   const block = conversation.blocks[0]
   expect(block?.type).toBe('user')
   if (block?.type === 'user')
-    expect(block.content).toEqual([{ type: 'text', text: 'Workspace file: notes.md' }])
+    expect(block.content).toEqual(
+      [
+        {
+          type: 'text',
+          text: 'Workspace file: notes.md'
+        }
+      ]
+    )
   expect(conversation.files).toEqual([])
 })
 
@@ -109,7 +122,9 @@ test('switching main hosts preserves the departed directory and promotes attachm
     '/Users/zan/Projects/demi',
   )
   store.move([conversation.id], 'notes')
-  expect(conversation.attachedHosts.map((host) => host.deviceId)).toEqual(['build'])
+  expect(conversation.attachedHosts.map((host) => host.deviceId)).toEqual(
+    ['build']
+  )
   store.detachHost(conversation, 'build')
   expect(conversation.attachedHosts).toEqual([])
 })
@@ -118,7 +133,9 @@ test('cloud attachment names are unique', () => {
   const { store, conversation } = newConversation()
   store.attachHost(conversation, 'mac', '/Users/zan', 'worker')
   store.attachHost(conversation, 'build', '/home/build', 'worker')
-  expect(conversation.attachedHosts.map((host) => host.name)).toEqual(['worker', 'worker-2'])
+  expect(conversation.attachedHosts.map((host) => host.name)).toEqual(
+    ['worker', 'worker-2']
+  )
 })
 
 test('manual order survives new activity and rejects cross-project reorder', () => {
@@ -183,11 +200,19 @@ test('resume continues the interrupted output and retry replaces the error', () 
   const partial = conversation.blocks.find((b) => b.type === 'text')!
   store.start(conversation)
   finish(store)
-  const texts = conversation.blocks.filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
+  const texts = conversation.blocks.filter(
+    (b): b is Extract<typeof b, {
+      type: 'text'
+    }> => b.type === 'text'
+  )
   expect(texts).toHaveLength(2)
-  expect(partial.type === 'text' && texts[1]!.text.startsWith(partial.text)).toBe(false)
+  expect(partial.type === 'text' && texts[1]!.text.startsWith(partial.text)).toBe(
+    false
+  )
   expect(texts[0]!.text + texts[1]!.text).toContain('scripted preview')
-  expect(conversation.blocks.find((b) => b.type === 'abort')).toMatchObject({ isResumed: true })
+  expect(conversation.blocks.find((b) => b.type === 'abort')).toMatchObject(
+    { isResumed: true }
+  )
 
   store.failNext = true
   conversation.draft = 'Again'

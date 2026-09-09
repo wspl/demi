@@ -1,5 +1,10 @@
 import { expect, test } from 'bun:test'
-import { providerRuntime, type InferenceRequest, type ProviderEvent, type ProviderSelection } from '@demicodes/provider'
+import {
+  providerRuntime,
+  type InferenceRequest,
+  type ProviderEvent,
+  type ProviderSelection
+} from '@demicodes/provider'
 import {
   buildOpenAIChatCompletionsBody,
   buildOpenAIResponsesBody,
@@ -9,529 +14,914 @@ import {
   type ServerSentEvent,
 } from '../provider'
 
-test('Responses and Chat Completions forward the per-request output limit', () => {
-  expect(buildOpenAIResponsesBody(request({ outputLimit: 8_000 }), undefined)).toMatchObject({ max_output_tokens: 8_000 })
-  expect(buildOpenAIChatCompletionsBody(request({ outputLimit: 32_000 }), undefined)).toMatchObject({ max_completion_tokens: 32_000 })
-  expect(buildOpenAIChatCompletionsBody(request({ outputLimit: 8_000 }), { maxOutputTokens: 2_000 })).toMatchObject({ max_completion_tokens: 2_000 })
-  const legacyField = buildOpenAIChatCompletionsBody(request({ outputLimit: 8_000 }), { extraBody: { max_tokens: 4_000 } })
-  expect(legacyField).toMatchObject({ max_tokens: 4_000 })
-  expect(legacyField).not.toHaveProperty('max_completion_tokens')
-  expect(buildOpenAIResponsesBody(request({ outputLimit: null }), undefined)).not.toHaveProperty('max_output_tokens')
-  expect(buildOpenAIChatCompletionsBody(request({ outputLimit: null }), undefined)).not.toHaveProperty('max_completion_tokens')
-  expect(buildOpenAIResponsesBody(request({ outputLimit: 8_000 }), { extraBody: { max_output_tokens: 4_000 } })).toMatchObject({ max_output_tokens: 4_000 })
-})
-
-test('OpenAI API provider resolves Responses endpoint and API key from env vars', async () => {
-  await withEnv(
-    {
-      OPENAI_BASE_URL: 'https://openai-gateway.example/v1/',
-      OPENAI_API_KEY: 'env-openai-key',
-    },
-    async () => {
-      const requests: CapturedRequest[] = []
-      const provider = createOpenAIApiProvider({ fetch: captureFetch(requests) })
-      const runtime = await providerRuntime(provider, selection('openai', 'gpt-test'))
-
-      const events = await collect(runtime.run(request({ modelId: 'gpt-test' })))
-
-      expect(events).toEqual([{ type: 'response', usage: zeroUsage() }])
-      expect(requests[0]?.url).toBe('https://openai-gateway.example/v1/responses')
-      expect(requests[0]?.headers.get('authorization')).toBe('Bearer env-openai-key')
-    },
-  )
-})
-
-test('OpenAI API provider can use Chat Completions wire API with explicit endpoint options', async () => {
-  await withEnv(
-    {
-      ROUTER_BASE_URL: 'https://env-router.example/api/v1',
-      ROUTER_API_KEY: 'env-key',
-    },
-    async () => {
-      const requests: CapturedRequest[] = []
-      const provider = createOpenAIApiProvider({
-        id: 'router',
-        wireApi: 'chat-completions',
-        envPrefix: 'ROUTER',
-        baseUrl: 'https://explicit-router.example/openai/v1',
-        apiKey: () => 'explicit-key',
-        headers: () => ({ 'x-router': '1' }),
-        fetch: captureFetch(requests),
-      })
-      const runtime = await providerRuntime(provider, selection('router', 'router-model'))
-
-      await collect(runtime.run(request({ modelId: 'router-model' })))
-
-      expect(requests[0]?.url).toBe('https://explicit-router.example/openai/v1/chat/completions')
-      expect(requests[0]?.headers.get('authorization')).toBe('Bearer explicit-key')
-      expect(requests[0]?.headers.get('x-router')).toBe('1')
-    },
-  )
-})
-
-test('OpenAI API model catalog mirrors Codex-visible defaults and explicit models replace it', async () => {
-  const defaults = await createOpenAIApiProvider().listModels?.()
-
-  expect(defaults?.defaultModelId).toBe('gpt-5.5')
-  expect(defaults?.models.map((model) => model.id)).toEqual([
-    'gpt-5.5',
-    'gpt-5.4',
-    'gpt-5.4-mini',
-    'gpt-5.3-codex-spark',
-  ])
-  expect(defaults?.models[0]).toMatchObject({
-    displayName: 'GPT-5.5',
-    contextWindow: 272_000,
-    supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
-    serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage', fast: true }],
-  })
-
-  const custom = await createOpenAIApiProvider({
-    models: [
+test(
+  'Responses and Chat Completions forward the per-request output limit',
+  () => {
+    expect(
+      buildOpenAIResponsesBody(request({ outputLimit: 8_000 }), undefined)
+    ).toMatchObject(
       {
-        id: 'deepseek-v4-pro',
-        displayName: 'DeepSeek V4 Pro',
-        contextWindow: 1_000_000,
-        supportsReasoning: true,
-        supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-        defaultThinkingEffort: 'medium',
-        canDisableThinking: false,
+        max_output_tokens: 8_000
+      }
+    )
+    expect(buildOpenAIChatCompletionsBody(
+      request({ outputLimit: 32_000 }),
+      undefined
+    )).toMatchObject({
+      max_completion_tokens: 32_000
+    })
+    expect(buildOpenAIChatCompletionsBody(
+      request({ outputLimit: 8_000 }),
+      { maxOutputTokens: 2_000 }
+    )).toMatchObject({
+      max_completion_tokens: 2_000
+    })
+    const legacyField = buildOpenAIChatCompletionsBody(
+      request({ outputLimit: 8_000 }),
+      { extraBody: { max_tokens: 4_000 } }
+    )
+    expect(legacyField).toMatchObject({ max_tokens: 4_000 })
+    expect(legacyField).not.toHaveProperty('max_completion_tokens')
+    expect(
+      buildOpenAIResponsesBody(request({ outputLimit: null }), undefined)
+    ).not.toHaveProperty('max_output_tokens')
+    expect(buildOpenAIChatCompletionsBody(
+      request({ outputLimit: null }),
+      undefined
+    )).not.toHaveProperty('max_completion_tokens')
+    expect(buildOpenAIResponsesBody(
+      request({ outputLimit: 8_000 }),
+      { extraBody: { max_output_tokens: 4_000 } }
+    )).toMatchObject({
+      max_output_tokens: 4_000
+    })
+  }
+)
+
+test(
+  'OpenAI API provider resolves Responses endpoint and API key from env vars',
+  async () => {
+    await withEnv(
+      {
+        OPENAI_BASE_URL: 'https://openai-gateway.example/v1/',
+        OPENAI_API_KEY: 'env-openai-key',
       },
-    ],
-    defaultModelId: 'deepseek-v4-pro',
-  }).listModels?.()
+      async () => {
+        const requests: CapturedRequest[] = []
+        const provider = createOpenAIApiProvider({ fetch: captureFetch(requests) })
+        const runtime = await providerRuntime(
+          provider,
+          selection('openai', 'gpt-test')
+        )
 
-  expect(custom?.defaultModelId).toBe('deepseek-v4-pro')
-  expect(custom?.models.map((model) => model.id)).toEqual(['deepseek-v4-pro'])
-  expect(custom?.models[0]).toMatchObject({
-    displayName: 'DeepSeek V4 Pro',
-    contextWindow: 1_000_000,
-    supportsReasoning: true,
-    supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-    defaultThinkingEffort: 'medium',
-    canDisableThinking: false,
-  })
-})
+        const events = await collect(runtime.run(request({ modelId: 'gpt-test' })))
 
-test('OpenAI Responses request body maps text, tools, tool replay, service tier, and reasoning', () => {
-  const body = buildOpenAIResponsesBody(
-    request({
-      systemPrompt: 'system instructions',
-      serviceTierId: 'priority',
-      thinking: { type: 'effort', effort: 'high', summary: null },
-      items: [
-        { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
-        { type: 'assistant_text', modelId: 'gpt-test', text: 'Use tool' },
-        { type: 'tool_use', modelId: 'gpt-test', toolUseId: 'call-1|fc-1', toolName: 'read_file', input: { path: 'a.ts' } },
-        { type: 'tool_result', toolUseId: 'call-1|fc-1', output: [{ type: 'text', text: 'contents' }], isError: false },
-      ],
-      tools: [
-        {
-          name: 'read_file',
-          description: 'Read a file',
-          inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
-        },
-      ],
-    }),
-    undefined,
-  )
-
-  expect(body).toMatchObject({
-    model: 'gpt-test',
-    instructions: 'system instructions',
-    stream: true,
-    store: false,
-    tool_choice: 'auto',
-    parallel_tool_calls: true,
-    service_tier: 'priority',
-    reasoning: { effort: 'high', summary: 'auto' },
-    include: ['reasoning.encrypted_content'],
-    prompt_cache_key: 'session-1',
-  })
-  expect(body.input[0]).toEqual({ role: 'user', content: [{ type: 'input_text', text: 'hello' }] })
-  // Replayed assistant messages use the minimal item shape — no id/status; strict gateways reject unknown parameters.
-  expect(body.input[1]).toEqual({
-    type: 'message',
-    role: 'assistant',
-    content: [{ type: 'output_text', text: 'Use tool', annotations: [] }],
-  })
-  expect(body.input[2]).toEqual({
-    type: 'function_call',
-    id: 'fc-1',
-    call_id: 'call-1',
-    name: 'read_file',
-    arguments: '{"path":"a.ts"}',
-  })
-  expect(body.input[3]).toEqual({ type: 'function_call_output', call_id: 'call-1', output: 'contents' })
-  expect(body.tools).toEqual([
-    {
-      type: 'function',
-      name: 'read_file',
-      description: 'Read a file',
-      parameters: { type: 'object', properties: { path: { type: 'string' } } },
-    },
-  ])
-  expect(body.stream_options).toBeUndefined()
-})
-
-test('responses tool results with images add a follow-up user message carrying the media', () => {
-  const body = buildOpenAIResponsesBody(
-    request({
-      items: [
-        { type: 'user_message', content: [{ type: 'text', text: 'view it' }] },
-        { type: 'tool_use', modelId: 'gpt-test', toolUseId: 'call-1|fc-1', toolName: 'shell_exec', input: { script: 'demi read shot.png' } },
-        {
-          type: 'tool_result',
-          toolUseId: 'call-1|fc-1',
-          isError: false,
-          output: [
-            { type: 'text', text: '<binary stdout: 75 bytes>' },
-            { type: 'image', source: { mediaType: 'image/png', data: 'QUFBQQ==' } },
-          ],
-        },
-      ],
-    }),
-    undefined,
-  )
-
-  expect(body.input[2]).toEqual({
-    type: 'function_call_output',
-    call_id: 'call-1',
-    output: '<binary stdout: 75 bytes>\n[image:image/png]',
-  })
-  expect(body.input[3]).toEqual({
-    role: 'user',
-    content: [
-      { type: 'input_text', text: '[media returned by tool call call-1]' },
-      { type: 'input_image', image_url: 'data:image/png;base64,QUFBQQ==', detail: 'auto' },
-    ],
-  })
-})
-
-test('chat completions tool results carry media too, and video rides alongside images', () => {
-  // A `tool` message is text-only, so without the follow-up user message the
-  // model never sees what a command rendered — on this wire that used to be a
-  // silent drop while the responses wire handled it.
-  const body = buildOpenAIChatCompletionsBody(
-    request({
-      items: [
-        { type: 'user_message', content: [{ type: 'text', text: 'view it' }] },
-        { type: 'tool_use', modelId: 'gpt-test', toolUseId: 'call-1', toolName: 'shell_exec', input: { script: 'look 3.2' } },
-        {
-          type: 'tool_result',
-          toolUseId: 'call-1',
-          isError: false,
-          output: [
-            { type: 'text', text: '<binary stdout: 75 bytes>' },
-            { type: 'image', source: { mediaType: 'image/png', data: 'QUFBQQ==' } },
-            { type: 'video', source: { mediaType: 'video/mp4', data: 'TVA0' } },
-          ],
-        },
-      ],
-    }),
-    undefined,
-  )
-
-  expect(body.messages[2]).toMatchObject({ role: 'tool', tool_call_id: 'call-1' })
-  expect(body.messages[3]).toEqual({
-    role: 'user',
-    content: [
-      { type: 'text', text: '[media returned by tool call call-1]' },
-      { type: 'image_url', image_url: { url: 'data:image/png;base64,QUFBQQ==', detail: 'auto' } },
-      { type: 'image_url', image_url: { url: 'data:video/mp4;base64,TVA0', detail: 'auto' } },
-    ],
-  })
-})
-
-test('OpenAI Responses stream maps thinking, split text, tool call arguments, and usage', async () => {
-  const reasoning = { type: 'reasoning' as const, id: 'rs-1', encrypted_content: 'enc' }
-  const events = await collect(mapOpenAIResponseStream(eventsFromData([
-    { type: 'response.output_item.added', item: { type: 'reasoning', id: 'rs-1' } },
-    { type: 'response.reasoning_text.delta', delta: 'think' },
-    { type: 'response.output_item.done', item: reasoning },
-    { type: 'response.output_text.delta', delta: 'hi ' },
-    { type: 'response.output_text.delta', delta: 'there' },
-    { type: 'response.output_item.added', item: { type: 'function_call', id: 'fc-1', call_id: 'call-1', name: 'read_file', arguments: '' } },
-    { type: 'response.function_call_arguments.delta', item_id: 'fc-1', delta: '{"path"' },
-    { type: 'response.function_call_arguments.done', item_id: 'fc-1', arguments: '{"path":"a.ts"}' },
-    { type: 'response.output_item.done', item: { type: 'function_call', id: 'fc-1', call_id: 'call-1', name: 'read_file' } },
-    {
-      type: 'response.completed',
-      response: {
-        usage: {
-          input_tokens: 12,
-          output_tokens: 5,
-          input_tokens_details: { cached_tokens: 2 },
-        },
+        expect(events).toEqual([{ type: 'response', usage: zeroUsage() }])
+        expect(requests[0]?.url)
+          .toBe('https://openai-gateway.example/v1/responses')
+        expect(requests[0]?.headers.get('authorization'))
+          .toBe('Bearer env-openai-key')
       },
-    },
-  ])))
+    )
+  }
+)
 
-  expect(events).toEqual([
-    { type: 'thinking_start' },
-    { type: 'thinking_delta', text: 'think' },
-    { type: 'thinking_signature', signature: JSON.stringify(reasoning) },
-    { type: 'text_delta', text: 'hi ' },
-    { type: 'text_delta', text: 'there' },
-    { type: 'tool_call_requested', toolUseId: 'call-1|fc-1', toolName: 'read_file', input: { path: 'a.ts' } },
-    { type: 'response', usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 0 } },
-  ])
-})
+test(
+  'OpenAI API provider can use Chat Completions wire API with explicit endpoint options',
+  async () => {
+    await withEnv(
+      {
+        ROUTER_BASE_URL: 'https://env-router.example/api/v1',
+        ROUTER_API_KEY: 'env-key',
+      },
+      async () => {
+        const requests: CapturedRequest[] = []
+        const provider = createOpenAIApiProvider({
+          id: 'router',
+          wireApi: 'chat-completions',
+          envPrefix: 'ROUTER',
+          baseUrl: 'https://explicit-router.example/openai/v1',
+          apiKey: () => 'explicit-key',
+          headers: () => ({ 'x-router': '1' }),
+          fetch: captureFetch(requests),
+        })
+        const runtime = await providerRuntime(
+          provider,
+          selection('router', 'router-model')
+        )
 
-test('OpenAI Responses replays assistant messages with status only when opted in', () => {
-  const items = [
-    { type: 'user_message' as const, content: [{ type: 'text' as const, text: 'hello' }] },
-    { type: 'assistant_text' as const, modelId: 'gpt-test', text: 'prior reply' },
-  ]
+        await collect(runtime.run(request({ modelId: 'router-model' })))
 
-  // Default stays minimal: relay bridges reject `status` as an unknown parameter.
-  const lean = buildOpenAIResponsesBody(request({ items }), undefined)
-  expect(lean.input[1]).toEqual({
-    type: 'message',
-    role: 'assistant',
-    content: [{ type: 'output_text', text: 'prior reply', annotations: [] }],
-  })
+        expect(requests[0]?.url).toBe(
+          'https://explicit-router.example/openai/v1/chat/completions'
+        )
+        expect(requests[0]?.headers.get('authorization'))
+          .toBe('Bearer explicit-key')
+        expect(requests[0]?.headers.get('x-router')).toBe('1')
+      },
+    )
+  }
+)
 
-  // Opted in for gateways that validate the full item schema (Volcengine Ark rejects
-  // the item with `missing input.status` otherwise).
-  const strict = buildOpenAIResponsesBody(request({ items }), { replayAssistantStatus: true })
-  expect(strict.input[1]).toEqual({
-    type: 'message',
-    role: 'assistant',
-    status: 'completed',
-    content: [{ type: 'output_text', text: 'prior reply', annotations: [] }],
-  })
-})
+test(
+  'OpenAI API model catalog mirrors Codex-visible defaults and explicit models replace it',
+  async () => {
+    const defaults = await createOpenAIApiProvider().listModels?.()
 
-test('OpenAI Responses request omits reasoning.summary when the caller turns summaries off', () => {
-  const off = buildOpenAIResponsesBody(request({ thinking: { type: 'effort', effort: 'high', summary: 'off' } }), undefined)
-  // Strict OpenAI-compatible gateways reject `reasoning.summary` as an unknown field,
-  // so 'off' has to drop the key rather than send null or fall back to 'auto'.
-  expect(off.reasoning).toEqual({ effort: 'high' })
-  expect(Object.keys(off.reasoning ?? {})).not.toContain('summary')
+    expect(defaults?.defaultModelId).toBe('gpt-5.5')
+    expect(defaults?.models.map((model) => model.id)).toEqual([
+      'gpt-5.5',
+      'gpt-5.4',
+      'gpt-5.4-mini',
+      'gpt-5.3-codex-spark',
+    ])
+    expect(defaults?.models[0]).toMatchObject({
+      displayName: 'GPT-5.5',
+      contextWindow: 272_000,
+      supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
+      serviceTiers: [{
+        id: 'priority',
+        label: 'Fast',
+        description: '1.5x speed, increased usage',
+        fast: true
+      }],
+    })
 
-  // An unset summary still defaults to 'auto' — only an explicit 'off' opts out.
-  const unset = buildOpenAIResponsesBody(request({ thinking: { type: 'effort', effort: 'high', summary: null } }), undefined)
-  expect(unset.reasoning).toEqual({ effort: 'high', summary: 'auto' })
-
-  // An explicit summary style is passed through untouched.
-  const concise = buildOpenAIResponsesBody(request({ thinking: { type: 'effort', effort: 'low', summary: 'concise' } }), undefined)
-  expect(concise.reasoning).toEqual({ effort: 'low', summary: 'concise' })
-})
-
-test('OpenAI Chat Completions request body maps text, tools, tool replay, service tier, and reasoning effort', () => {
-  const body = buildOpenAIChatCompletionsBody(
-    request({
-      systemPrompt: 'system instructions',
-      serviceTierId: 'priority',
-      thinking: { type: 'effort', effort: 'high', summary: null },
-      items: [
-        { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
-        { type: 'assistant_text', modelId: 'gpt-test', text: 'Use tool' },
-        { type: 'tool_use', modelId: 'gpt-test', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
-        { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'contents' }], isError: false },
-      ],
-      tools: [
+    const custom = await createOpenAIApiProvider({
+      models: [
         {
-          name: 'read_file',
-          description: 'Read a file',
-          inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
+          id: 'deepseek-v4-pro',
+          displayName: 'DeepSeek V4 Pro',
+          contextWindow: 1_000_000,
+          supportsReasoning: true,
+          supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+          defaultThinkingEffort: 'medium',
+          canDisableThinking: false,
         },
       ],
-    }),
-    undefined,
-  )
+      defaultModelId: 'deepseek-v4-pro',
+    }).listModels?.()
 
-  expect(body).toMatchObject({
-    model: 'gpt-test',
-    stream: true,
-    tool_choice: 'auto',
-    service_tier: 'priority',
-    reasoning_effort: 'high',
-  })
-  expect(body.messages).toEqual([
-    { role: 'system', content: 'system instructions' },
-    { role: 'user', content: 'hello' },
-    {
+    expect(custom?.defaultModelId).toBe('deepseek-v4-pro')
+    expect(custom?.models.map((model) => model.id)).toEqual(['deepseek-v4-pro'])
+    expect(custom?.models[0]).toMatchObject({
+      displayName: 'DeepSeek V4 Pro',
+      contextWindow: 1_000_000,
+      supportsReasoning: true,
+      supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+      defaultThinkingEffort: 'medium',
+      canDisableThinking: false,
+    })
+  }
+)
+
+test(
+  'OpenAI Responses request body maps text, tools, tool replay, service tier, and reasoning',
+  () => {
+    const body = buildOpenAIResponsesBody(
+      request({
+        systemPrompt: 'system instructions',
+        serviceTierId: 'priority',
+        thinking: { type: 'effort', effort: 'high', summary: null },
+        items: [
+          { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+          { type: 'assistant_text', modelId: 'gpt-test', text: 'Use tool' },
+          {
+            type: 'tool_use',
+            modelId: 'gpt-test',
+            toolUseId: 'call-1|fc-1',
+            toolName: 'read_file',
+            input: { path: 'a.ts' }
+          },
+          {
+            type: 'tool_result',
+            toolUseId: 'call-1|fc-1',
+            output: [{ type: 'text', text: 'contents' }],
+            isError: false
+          },
+        ],
+        tools: [
+          {
+            name: 'read_file',
+            description: 'Read a file',
+            inputSchema: {
+              type: 'object',
+              properties: { path: { type: 'string' } }
+            },
+          },
+        ],
+      }),
+      undefined,
+    )
+
+    expect(body).toMatchObject({
+      model: 'gpt-test',
+      instructions: 'system instructions',
+      stream: true,
+      store: false,
+      tool_choice: 'auto',
+      parallel_tool_calls: true,
+      service_tier: 'priority',
+      reasoning: { effort: 'high', summary: 'auto' },
+      include: ['reasoning.encrypted_content'],
+      prompt_cache_key: 'session-1',
+    })
+    expect(body.input[0]).toEqual({
+      role: 'user',
+      content: [{ type: 'input_text', text: 'hello' }]
+    })
+    // Replayed assistant messages use the minimal item shape — no id/status; strict gateways reject unknown parameters.
+    expect(body.input[1]).toEqual({
+      type: 'message',
       role: 'assistant',
-      content: 'Use tool',
-      tool_calls: [
-        {
-          id: 'call-1',
-          type: 'function',
-          function: { name: 'read_file', arguments: '{"path":"a.ts"}' },
-        },
-      ],
-    },
-    { role: 'tool', tool_call_id: 'call-1', content: 'contents' },
-  ])
-  expect(body.tools).toEqual([
-    {
-      type: 'function',
-      function: {
+      content: [{ type: 'output_text', text: 'Use tool', annotations: [] }],
+    })
+    expect(body.input[2]).toEqual({
+      type: 'function_call',
+      id: 'fc-1',
+      call_id: 'call-1',
+      name: 'read_file',
+      arguments: '{"path":"a.ts"}',
+    })
+    expect(body.input[3]).toEqual({
+      type: 'function_call_output',
+      call_id: 'call-1',
+      output: 'contents'
+    })
+    expect(body.tools).toEqual([
+      {
+        type: 'function',
         name: 'read_file',
         description: 'Read a file',
         parameters: { type: 'object', properties: { path: { type: 'string' } } },
       },
-    },
-  ])
-  expect(body.stream_options).toEqual({ include_usage: true })
-})
+    ])
+    expect(body.stream_options).toBeUndefined()
+  }
+)
 
-test('OpenAI Chat Completions drops thinking items unless passBackReasoningContent is set', () => {
-  const body = buildOpenAIChatCompletionsBody(
-    request({
-      items: [
-        { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
-        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'inspect first', signature: null },
-        { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
-        { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'contents' }], isError: false },
-      ],
-    }),
-    undefined,
-  )
-
-  expect(body.messages[1]).toEqual({
-    role: 'assistant',
-    content: null,
-    tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } }],
-  })
-})
-
-test('OpenAI Chat Completions replays reasoning_content for compatible thinking tool loops', () => {
-  const body = buildOpenAIChatCompletionsBody(
-    request({
-      items: [
-        { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
-        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'inspect ', signature: null },
-        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'first', signature: null },
-        { type: 'assistant_redacted_thinking', modelId: 'deepseek-v4-pro', data: 'opaque' },
-        { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
-        { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'contents' }], isError: false },
-      ],
-    }),
-    { passBackReasoningContent: true },
-  )
-
-  expect(body.messages[1]).toEqual({
-    role: 'assistant',
-    content: null,
-    tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } }],
-    reasoning_content: 'inspect first',
-  })
-})
-
-test('OpenAI Chat Completions emits empty reasoning_content for a reasoning-free tool round', () => {
-  const body = buildOpenAIChatCompletionsBody(
-    request({
-      items: [
-        { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
-        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'first thought', signature: null },
-        { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
-        { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'a' }], isError: false },
-        { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-2', toolName: 'read_file', input: { path: 'b.ts' } },
-        { type: 'tool_result', toolUseId: 'call-2', output: [{ type: 'text', text: 'b' }], isError: false },
-      ],
-    }),
-    { passBackReasoningContent: true },
-  )
-
-  expect(body.messages[1]).toMatchObject({ role: 'assistant', reasoning_content: 'first thought' })
-  expect(body.messages[3]).toEqual({
-    role: 'assistant',
-    content: null,
-    tool_calls: [{ id: 'call-2', type: 'function', function: { name: 'read_file', arguments: '{"path":"b.ts"}' } }],
-    reasoning_content: '',
-  })
-})
-
-test('OpenAI Chat Completions keeps reasoning_content within assistant segment boundaries', () => {
-  const body = buildOpenAIChatCompletionsBody(
-    request({
-      items: [
-        { type: 'user_message', content: [{ type: 'text', text: 'first' }] },
-        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'thought one', signature: null },
-        { type: 'assistant_text', modelId: 'deepseek-v4-pro', text: 'answer one' },
-        { type: 'user_message', content: [{ type: 'text', text: 'second' }] },
-        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'orphaned', signature: null },
-        { type: 'user_message', content: [{ type: 'text', text: 'third' }] },
-        { type: 'assistant_text', modelId: 'deepseek-v4-pro', text: 'answer three' },
-      ],
-    }),
-    { passBackReasoningContent: true },
-  )
-
-  expect(body.messages).toEqual([
-    { role: 'user', content: 'first' },
-    { role: 'assistant', content: 'answer one', reasoning_content: 'thought one' },
-    { role: 'user', content: 'second' },
-    { role: 'user', content: 'third' },
-    { role: 'assistant', content: 'answer three' },
-  ])
-})
-
-test('OpenAI Chat Completions stream maps split text, tool call arguments, and usage', async () => {
-  const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
-    {
-      choices: [
-        {
-          delta: {
-            content: 'hi ',
-            tool_calls: [
-              { index: 0, id: 'call-1', function: { name: 'read_file', arguments: '{"path"' } },
+test(
+  'responses tool results with images add a follow-up user message carrying the media',
+  () => {
+    const body = buildOpenAIResponsesBody(
+      request({
+        items: [
+          { type: 'user_message', content: [{ type: 'text', text: 'view it' }] },
+          {
+            type: 'tool_use',
+            modelId: 'gpt-test',
+            toolUseId: 'call-1|fc-1',
+            toolName: 'shell_exec',
+            input: { script: 'demi read shot.png' }
+          },
+          {
+            type: 'tool_result',
+            toolUseId: 'call-1|fc-1',
+            isError: false,
+            output: [
+              { type: 'text', text: '<binary stdout: 75 bytes>' },
+              {
+                type: 'image',
+                source: { mediaType: 'image/png', data: 'QUFBQQ==' }
+              },
             ],
           },
+        ],
+      }),
+      undefined,
+    )
+
+    expect(body.input[2]).toEqual({
+      type: 'function_call_output',
+      call_id: 'call-1',
+      output: '<binary stdout: 75 bytes>\n[image:image/png]',
+    })
+    expect(body.input[3]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'input_text', text: '[media returned by tool call call-1]' },
+        {
+          type: 'input_image',
+          image_url: 'data:image/png;base64,QUFBQQ==',
+          detail: 'auto'
         },
       ],
-    },
-    { choices: [{ delta: { content: 'there', tool_calls: [{ index: 0, function: { arguments: ':"a.ts"}' } }] } }] },
-    { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
-    {
-      choices: [],
-      usage: {
-        prompt_tokens: 12,
-        completion_tokens: 5,
-        prompt_tokens_details: { cached_tokens: 2 },
+    })
+  }
+)
+
+test(
+  'chat completions tool results carry media too, and video rides alongside images',
+  () => {
+    // A `tool` message is text-only, so without the follow-up user message the
+    // model never sees what a command rendered — on this wire that used to be a
+    // silent drop while the responses wire handled it.
+    const body = buildOpenAIChatCompletionsBody(
+      request({
+        items: [
+          { type: 'user_message', content: [{ type: 'text', text: 'view it' }] },
+          {
+            type: 'tool_use',
+            modelId: 'gpt-test',
+            toolUseId: 'call-1',
+            toolName: 'shell_exec',
+            input: { script: 'look 3.2' }
+          },
+          {
+            type: 'tool_result',
+            toolUseId: 'call-1',
+            isError: false,
+            output: [
+              { type: 'text', text: '<binary stdout: 75 bytes>' },
+              {
+                type: 'image',
+                source: { mediaType: 'image/png', data: 'QUFBQQ==' }
+              },
+              {
+                type: 'video',
+                source: { mediaType: 'video/mp4', data: 'TVA0' }
+              },
+            ],
+          },
+        ],
+      }),
+      undefined,
+    )
+
+    expect(body.messages[2]).toMatchObject({
+      role: 'tool',
+      tool_call_id: 'call-1'
+    })
+    expect(body.messages[3]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: '[media returned by tool call call-1]' },
+        {
+          type: 'image_url',
+          image_url: { url: 'data:image/png;base64,QUFBQQ==', detail: 'auto' }
+        },
+        {
+          type: 'image_url',
+          image_url: { url: 'data:video/mp4;base64,TVA0', detail: 'auto' }
+        },
+      ],
+    })
+  }
+)
+
+test(
+  'OpenAI Responses stream maps thinking, split text, tool call arguments, and usage',
+  async () => {
+    const reasoning = {
+      type: 'reasoning' as const,
+      id: 'rs-1',
+      encrypted_content: 'enc'
+    }
+    const events = await collect(mapOpenAIResponseStream(eventsFromData([
+      {
+        type: 'response.output_item.added',
+        item: { type: 'reasoning', id: 'rs-1' }
       },
-    },
-    '[DONE]',
-  ])))
+      { type: 'response.reasoning_text.delta', delta: 'think' },
+      { type: 'response.output_item.done', item: reasoning },
+      { type: 'response.output_text.delta', delta: 'hi ' },
+      { type: 'response.output_text.delta', delta: 'there' },
+      {
+        type: 'response.output_item.added',
+        item: {
+          type: 'function_call',
+          id: 'fc-1',
+          call_id: 'call-1',
+          name: 'read_file',
+          arguments: ''
+        }
+      },
+      {
+        type: 'response.function_call_arguments.delta',
+        item_id: 'fc-1',
+        delta: '{"path"'
+      },
+      {
+        type: 'response.function_call_arguments.done',
+        item_id: 'fc-1',
+        arguments: '{"path":"a.ts"}'
+      },
+      {
+        type: 'response.output_item.done',
+        item: {
+          type: 'function_call',
+          id: 'fc-1',
+          call_id: 'call-1',
+          name: 'read_file'
+        }
+      },
+      {
+        type: 'response.completed',
+        response: {
+          usage: {
+            input_tokens: 12,
+            output_tokens: 5,
+            input_tokens_details: { cached_tokens: 2 },
+          },
+        },
+      },
+    ])))
 
-  expect(events).toEqual([
-    { type: 'text_delta', text: 'hi ' },
-    { type: 'text_delta', text: 'there' },
-    { type: 'tool_call_requested', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
-    { type: 'response', usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 0 } },
-  ])
-})
+    expect(events).toEqual([
+      { type: 'thinking_start' },
+      { type: 'thinking_delta', text: 'think' },
+      { type: 'thinking_signature', signature: JSON.stringify(reasoning) },
+      { type: 'text_delta', text: 'hi ' },
+      { type: 'text_delta', text: 'there' },
+      {
+        type: 'tool_call_requested',
+        toolUseId: 'call-1|fc-1',
+        toolName: 'read_file',
+        input: { path: 'a.ts' }
+      },
+      {
+        type: 'response',
+        usage: {
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheReadTokens: 2,
+          cacheWriteTokens: 0
+        }
+      },
+    ])
+  }
+)
 
-test('OpenAI Chat Completions stream maps compatible reasoning content', async () => {
-  const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
-    { choices: [{ delta: { role: 'assistant', content: null, reasoning_content: '' } }] },
-    { choices: [{ delta: { content: null, reasoning_content: 'think ' } }] },
-    { choices: [{ delta: { content: null, reasoning_content: 'more' } }] },
-    { choices: [{ delta: { content: 'answer' } }] },
-    '[DONE]',
-  ])))
+test(
+  'OpenAI Responses replays assistant messages with status only when opted in',
+  () => {
+    const items = [
+      {
+        type: 'user_message' as const,
+        content: [{ type: 'text' as const, text: 'hello' }]
+      },
+      {
+        type: 'assistant_text' as const,
+        modelId: 'gpt-test',
+        text: 'prior reply'
+      },
+    ]
 
-  expect(events).toEqual([
-    { type: 'thinking_start' },
-    { type: 'thinking_delta', text: 'think ' },
-    { type: 'thinking_delta', text: 'more' },
-    { type: 'text_delta', text: 'answer' },
-    { type: 'response', usage: zeroUsage() },
-  ])
-})
+    // Default stays minimal: relay bridges reject `status` as an unknown parameter.
+    const lean = buildOpenAIResponsesBody(request({ items }), undefined)
+    expect(lean.input[1]).toEqual({
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'output_text', text: 'prior reply', annotations: [] }],
+    })
 
-test('OpenAI Chat Completions stream preserves malformed tool arguments as a string', async () => {
-  const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
-    { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call-1', function: { name: 'bad', arguments: '{' } }] } }] },
-    { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
-    '[DONE]',
-  ])))
+    // Opted in for gateways that validate the full item schema (Volcengine Ark rejects
+    // the item with `missing input.status` otherwise).
+    const strict = buildOpenAIResponsesBody(
+      request({ items }),
+      { replayAssistantStatus: true }
+    )
+    expect(strict.input[1]).toEqual({
+      type: 'message',
+      role: 'assistant',
+      status: 'completed',
+      content: [{ type: 'output_text', text: 'prior reply', annotations: [] }],
+    })
+  }
+)
 
-  expect(events[0]).toEqual({ type: 'tool_call_requested', toolUseId: 'call-1', toolName: 'bad', input: '{' })
-})
+test(
+  'OpenAI Responses request omits reasoning.summary when the caller turns summaries off',
+  () => {
+    const off = buildOpenAIResponsesBody(
+      request({ thinking: { type: 'effort', effort: 'high', summary: 'off' } }),
+      undefined
+    )
+    // Strict OpenAI-compatible gateways reject `reasoning.summary` as an unknown field,
+    // so 'off' has to drop the key rather than send null or fall back to 'auto'.
+    expect(off.reasoning).toEqual({ effort: 'high' })
+    expect(Object.keys(off.reasoning ?? {})).not.toContain('summary')
+
+    // An unset summary still defaults to 'auto' — only an explicit 'off' opts out.
+    const unset = buildOpenAIResponsesBody(
+      request({ thinking: { type: 'effort', effort: 'high', summary: null } }),
+      undefined
+    )
+    expect(unset.reasoning).toEqual({ effort: 'high', summary: 'auto' })
+
+    // An explicit summary style is passed through untouched.
+    const concise = buildOpenAIResponsesBody(
+      request(
+        { thinking: { type: 'effort', effort: 'low', summary: 'concise' } }
+      ),
+      undefined
+    )
+    expect(concise.reasoning).toEqual({ effort: 'low', summary: 'concise' })
+  }
+)
+
+test(
+  'OpenAI Chat Completions request body maps text, tools, tool replay, service tier, and reasoning effort',
+  () => {
+    const body = buildOpenAIChatCompletionsBody(
+      request({
+        systemPrompt: 'system instructions',
+        serviceTierId: 'priority',
+        thinking: { type: 'effort', effort: 'high', summary: null },
+        items: [
+          { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+          { type: 'assistant_text', modelId: 'gpt-test', text: 'Use tool' },
+          {
+            type: 'tool_use',
+            modelId: 'gpt-test',
+            toolUseId: 'call-1',
+            toolName: 'read_file',
+            input: { path: 'a.ts' }
+          },
+          {
+            type: 'tool_result',
+            toolUseId: 'call-1',
+            output: [{ type: 'text', text: 'contents' }],
+            isError: false
+          },
+        ],
+        tools: [
+          {
+            name: 'read_file',
+            description: 'Read a file',
+            inputSchema: {
+              type: 'object',
+              properties: { path: { type: 'string' } }
+            },
+          },
+        ],
+      }),
+      undefined,
+    )
+
+    expect(body).toMatchObject({
+      model: 'gpt-test',
+      stream: true,
+      tool_choice: 'auto',
+      service_tier: 'priority',
+      reasoning_effort: 'high',
+    })
+    expect(body.messages).toEqual([
+      { role: 'system', content: 'system instructions' },
+      { role: 'user', content: 'hello' },
+      {
+        role: 'assistant',
+        content: 'Use tool',
+        tool_calls: [
+          {
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'read_file', arguments: '{"path":"a.ts"}' },
+          },
+        ],
+      },
+      { role: 'tool', tool_call_id: 'call-1', content: 'contents' },
+    ])
+    expect(body.tools).toEqual([
+      {
+        type: 'function',
+        function: {
+          name: 'read_file',
+          description: 'Read a file',
+          parameters: {
+            type: 'object',
+            properties: { path: { type: 'string' } }
+          },
+        },
+      },
+    ])
+    expect(body.stream_options).toEqual({ include_usage: true })
+  }
+)
+
+test(
+  'OpenAI Chat Completions drops thinking items unless passBackReasoningContent is set',
+  () => {
+    const body = buildOpenAIChatCompletionsBody(
+      request({
+        items: [
+          { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+          {
+            type: 'assistant_thinking',
+            modelId: 'deepseek-v4-pro',
+            text: 'inspect first',
+            signature: null
+          },
+          {
+            type: 'tool_use',
+            modelId: 'deepseek-v4-pro',
+            toolUseId: 'call-1',
+            toolName: 'read_file',
+            input: { path: 'a.ts' }
+          },
+          {
+            type: 'tool_result',
+            toolUseId: 'call-1',
+            output: [{ type: 'text', text: 'contents' }],
+            isError: false
+          },
+        ],
+      }),
+      undefined,
+    )
+
+    expect(body.messages[1]).toEqual({
+      role: 'assistant',
+      content: null,
+      tool_calls: [{
+        id: 'call-1',
+        type: 'function',
+        function: { name: 'read_file', arguments: '{"path":"a.ts"}' }
+      }],
+    })
+  }
+)
+
+test(
+  'OpenAI Chat Completions replays reasoning_content for compatible thinking tool loops',
+  () => {
+    const body = buildOpenAIChatCompletionsBody(
+      request({
+        items: [
+          { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+          {
+            type: 'assistant_thinking',
+            modelId: 'deepseek-v4-pro',
+            text: 'inspect ',
+            signature: null
+          },
+          {
+            type: 'assistant_thinking',
+            modelId: 'deepseek-v4-pro',
+            text: 'first',
+            signature: null
+          },
+          {
+            type: 'assistant_redacted_thinking',
+            modelId: 'deepseek-v4-pro',
+            data: 'opaque'
+          },
+          {
+            type: 'tool_use',
+            modelId: 'deepseek-v4-pro',
+            toolUseId: 'call-1',
+            toolName: 'read_file',
+            input: { path: 'a.ts' }
+          },
+          {
+            type: 'tool_result',
+            toolUseId: 'call-1',
+            output: [{ type: 'text', text: 'contents' }],
+            isError: false
+          },
+        ],
+      }),
+      { passBackReasoningContent: true },
+    )
+
+    expect(body.messages[1]).toEqual({
+      role: 'assistant',
+      content: null,
+      tool_calls: [{
+        id: 'call-1',
+        type: 'function',
+        function: { name: 'read_file', arguments: '{"path":"a.ts"}' }
+      }],
+      reasoning_content: 'inspect first',
+    })
+  }
+)
+
+test(
+  'OpenAI Chat Completions emits empty reasoning_content for a reasoning-free tool round',
+  () => {
+    const body = buildOpenAIChatCompletionsBody(
+      request({
+        items: [
+          { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+          {
+            type: 'assistant_thinking',
+            modelId: 'deepseek-v4-pro',
+            text: 'first thought',
+            signature: null
+          },
+          {
+            type: 'tool_use',
+            modelId: 'deepseek-v4-pro',
+            toolUseId: 'call-1',
+            toolName: 'read_file',
+            input: { path: 'a.ts' }
+          },
+          {
+            type: 'tool_result',
+            toolUseId: 'call-1',
+            output: [{ type: 'text', text: 'a' }],
+            isError: false
+          },
+          {
+            type: 'tool_use',
+            modelId: 'deepseek-v4-pro',
+            toolUseId: 'call-2',
+            toolName: 'read_file',
+            input: { path: 'b.ts' }
+          },
+          {
+            type: 'tool_result',
+            toolUseId: 'call-2',
+            output: [{ type: 'text', text: 'b' }],
+            isError: false
+          },
+        ],
+      }),
+      { passBackReasoningContent: true },
+    )
+
+    expect(body.messages[1]).toMatchObject({
+      role: 'assistant',
+      reasoning_content: 'first thought'
+    })
+    expect(body.messages[3]).toEqual({
+      role: 'assistant',
+      content: null,
+      tool_calls: [{
+        id: 'call-2',
+        type: 'function',
+        function: { name: 'read_file', arguments: '{"path":"b.ts"}' }
+      }],
+      reasoning_content: '',
+    })
+  }
+)
+
+test(
+  'OpenAI Chat Completions keeps reasoning_content within assistant segment boundaries',
+  () => {
+    const body = buildOpenAIChatCompletionsBody(
+      request({
+        items: [
+          { type: 'user_message', content: [{ type: 'text', text: 'first' }] },
+          {
+            type: 'assistant_thinking',
+            modelId: 'deepseek-v4-pro',
+            text: 'thought one',
+            signature: null
+          },
+          {
+            type: 'assistant_text',
+            modelId: 'deepseek-v4-pro',
+            text: 'answer one'
+          },
+          { type: 'user_message', content: [{ type: 'text', text: 'second' }] },
+          {
+            type: 'assistant_thinking',
+            modelId: 'deepseek-v4-pro',
+            text: 'orphaned',
+            signature: null
+          },
+          { type: 'user_message', content: [{ type: 'text', text: 'third' }] },
+          {
+            type: 'assistant_text',
+            modelId: 'deepseek-v4-pro',
+            text: 'answer three'
+          },
+        ],
+      }),
+      { passBackReasoningContent: true },
+    )
+
+    expect(body.messages).toEqual([
+      { role: 'user', content: 'first' },
+      {
+        role: 'assistant',
+        content: 'answer one',
+        reasoning_content: 'thought one'
+      },
+      { role: 'user', content: 'second' },
+      { role: 'user', content: 'third' },
+      { role: 'assistant', content: 'answer three' },
+    ])
+  }
+)
+
+test(
+  'OpenAI Chat Completions stream maps split text, tool call arguments, and usage',
+  async () => {
+    const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
+      {
+        choices: [
+          {
+            delta: {
+              content: 'hi ',
+              tool_calls: [
+                {
+                  index: 0,
+                  id: 'call-1',
+                  function: { name: 'read_file', arguments: '{"path"' }
+                },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        choices: [{
+          delta: {
+            content: 'there',
+            tool_calls: [{ index: 0, function: { arguments: ':"a.ts"}' } }]
+          }
+        }]
+      },
+      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      {
+        choices: [],
+        usage: {
+          prompt_tokens: 12,
+          completion_tokens: 5,
+          prompt_tokens_details: { cached_tokens: 2 },
+        },
+      },
+      '[DONE]',
+    ])))
+
+    expect(events).toEqual([
+      { type: 'text_delta', text: 'hi ' },
+      { type: 'text_delta', text: 'there' },
+      {
+        type: 'tool_call_requested',
+        toolUseId: 'call-1',
+        toolName: 'read_file',
+        input: { path: 'a.ts' }
+      },
+      {
+        type: 'response',
+        usage: {
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheReadTokens: 2,
+          cacheWriteTokens: 0
+        }
+      },
+    ])
+  }
+)
+
+test(
+  'OpenAI Chat Completions stream maps compatible reasoning content',
+  async () => {
+    const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
+      {
+        choices: [{
+          delta: { role: 'assistant', content: null, reasoning_content: '' }
+        }]
+      },
+      { choices: [{ delta: { content: null, reasoning_content: 'think ' } }] },
+      { choices: [{ delta: { content: null, reasoning_content: 'more' } }] },
+      { choices: [{ delta: { content: 'answer' } }] },
+      '[DONE]',
+    ])))
+
+    expect(events).toEqual([
+      { type: 'thinking_start' },
+      { type: 'thinking_delta', text: 'think ' },
+      { type: 'thinking_delta', text: 'more' },
+      { type: 'text_delta', text: 'answer' },
+      { type: 'response', usage: zeroUsage() },
+    ])
+  }
+)
+
+test(
+  'OpenAI Chat Completions stream preserves malformed tool arguments as a string',
+  async () => {
+    const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
+      {
+        choices: [{
+          delta: {
+            tool_calls: [{
+              index: 0,
+              id: 'call-1',
+              function: { name: 'bad', arguments: '{' }
+            }]
+          }
+        }]
+      },
+      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      '[DONE]',
+    ])))
+
+    expect(events[0]).toEqual({
+      type: 'tool_call_requested',
+      toolUseId: 'call-1',
+      toolName: 'bad',
+      input: '{'
+    })
+  }
+)
 
 interface CapturedRequest {
   url: string
@@ -540,7 +930,10 @@ interface CapturedRequest {
 }
 
 function captureFetch(requests: CapturedRequest[]) {
-  return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+  return async (
+    input: string | URL | Request,
+    init?: RequestInit
+  ): Promise<Response> => {
     requests.push({
       url: String(input),
       headers: new Headers(init?.headers),
@@ -574,26 +967,44 @@ function selection(providerId: string, modelId: string): ProviderSelection {
     providerId,
     model: {
       providerId,
-      model: { id: modelId, name: modelId, contextWindow: 0, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
+      model: {
+        id: modelId,
+        name: modelId,
+        contextWindow: 0,
+        outputLimit: null,
+        inputLimit: null,
+        thinking: [],
+        acceptedExtensions: []
+      },
       thinking: null,
       serviceTierId: null,
     },
   }
 }
 
-async function collect(iterable: AsyncIterable<ProviderEvent>): Promise<ProviderEvent[]> {
+async function collect(
+  iterable: AsyncIterable<ProviderEvent>
+): Promise<ProviderEvent[]> {
   const events: ProviderEvent[] = []
   for await (const event of iterable) events.push(event)
   return events
 }
 
-async function* eventsFromData(values: Array<Record<string, unknown> | string>): AsyncIterable<ServerSentEvent> {
+async function* eventsFromData(
+  values: Array<Record<string, unknown> | string>
+): AsyncIterable<ServerSentEvent> {
   for (const value of values) {
-    yield { event: null, data: [typeof value === 'string' ? value : JSON.stringify(value)] }
+    yield {
+      event: null,
+      data: [typeof value === 'string' ? value : JSON.stringify(value)]
+    }
   }
 }
 
-async function withEnv(env: Record<string, string>, run: () => Promise<void>): Promise<void> {
+async function withEnv(
+  env: Record<string, string>,
+  run: () => Promise<void>
+): Promise<void> {
   const previous = new Map<string, string | undefined>()
   for (const [key, value] of Object.entries(env)) {
     previous.set(key, process.env[key])
@@ -610,5 +1021,10 @@ async function withEnv(env: Record<string, string>, run: () => Promise<void>): P
 }
 
 function zeroUsage() {
-  return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0
+  }
 }

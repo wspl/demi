@@ -1,10 +1,19 @@
 /**
  * Demi multi-credential pool on disk:
- *   <stateDir>/credentials/<providerKey>/{active,entries/<id>/{meta.json,secret}}
+ * <stateDir>/credentials/<providerKey>/{active,entries/<id>/{meta.json,secret}}
  */
 import { errorCode, isRecord, nonEmptyString } from '@demicodes/utils'
 import { createHash, randomUUID } from 'node:crypto'
-import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile
+} from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { ProviderCredentialInfo } from './types'
@@ -15,7 +24,9 @@ export interface CredentialEntryMeta {
   detail?: string | null
   updatedAt: string
   source?: string | null
-  /** Stable account key for upsert on re-import (email, accountId, entryKey, …). */
+  /**
+   * Stable account key for upsert on re-import (email, accountId, entryKey, …).
+   */
   identityKey?: string | null
 }
 
@@ -33,13 +44,18 @@ export interface FileCredentialPoolOptions {
  * re-exports this for its bridge layout.
  */
 export function resolveDemiHome(explicit?: string): string {
-  if (explicit && explicit.trim()) return resolve(explicit.trim())
+  if (explicit && explicit.trim())
+    return resolve(explicit.trim())
   const fromEnv = process.env.DEMI_HOME
-  if (fromEnv && fromEnv.trim()) return resolve(fromEnv.trim())
+  if (fromEnv && fromEnv.trim())
+    return resolve(fromEnv.trim())
   return join(homedir(), '.demi')
 }
 
-export function credentialIdFromIdentity(identityKey: string | null | undefined, fallbackLabel: string): string {
+export function credentialIdFromIdentity(
+  identityKey: string | null | undefined,
+  fallbackLabel: string
+): string {
   const basis = nonEmptyString(identityKey) ?? fallbackLabel
   const hash = createHash('sha256').update(basis).digest('hex').slice(0, 16)
   return `cred-${hash}`
@@ -99,7 +115,8 @@ export class FileCredentialPool {
     const out: CredentialEntryMeta[] = []
     for (const name of names) {
       const meta = await this.readMeta(name)
-      if (meta) out.push(meta)
+      if (meta)
+        out.push(meta)
     }
     out.sort((a, b) => a.id.localeCompare(b.id))
     return out
@@ -108,10 +125,12 @@ export class FileCredentialPool {
   async readMeta(id: string): Promise<CredentialEntryMeta | null> {
     try {
       const raw = JSON.parse(await readFile(this.metaPath(id), 'utf8')) as unknown
-      if (!isRecord(raw)) return null
+      if (!isRecord(raw))
+        return null
       const entryId = nonEmptyString(raw.id) ?? id
       const label = nonEmptyString(raw.label)
-      if (!label) return null
+      if (!label)
+        return null
       return {
         id: entryId,
         label,
@@ -128,7 +147,8 @@ export class FileCredentialPool {
   async getActiveId(): Promise<string | null> {
     try {
       const id = (await readFile(this.activePath(), 'utf8')).trim()
-      if (!id) return null
+      if (!id)
+        return null
       const meta = await this.readMeta(id)
       return meta ? id : null
     } catch {
@@ -138,11 +158,18 @@ export class FileCredentialPool {
 
   async setActiveId(id: string): Promise<void> {
     const meta = await this.readMeta(id)
-    if (!meta) throw new CredentialPoolError('credential_not_found', `Credential "${id}" not found`)
+    if (!meta)
+      throw new CredentialPoolError(
+        'credential_not_found',
+        `Credential "${id}" not found`
+      )
     try {
       await readFile(this.secretPath(id), 'utf8')
     } catch {
-      throw new CredentialPoolError('credential_not_found', `Credential "${id}" has no secret material`)
+      throw new CredentialPoolError(
+        'credential_not_found',
+        `Credential "${id}" has no secret material`
+      )
     }
     await this.withWriteLock(async () => {
       const tmp = this.tmpPath(this.activePath())
@@ -155,7 +182,10 @@ export class FileCredentialPool {
     await rm(this.activePath(), { force: true }).catch(() => undefined)
   }
 
-  async writeEntry(meta: CredentialEntryMeta, secretText: string): Promise<CredentialEntryMeta> {
+  async writeEntry(
+    meta: CredentialEntryMeta,
+    secretText: string
+  ): Promise<CredentialEntryMeta> {
     return this.withWriteLock(async () => {
       const dir = this.entryDir(meta.id)
       await mkdir(dir, { recursive: true, mode: 0o700 })
@@ -164,7 +194,11 @@ export class FileCredentialPool {
       await writeFile(secretTmp, secretText, { mode: 0o600 })
       await chmod(secretTmp, 0o600).catch(() => undefined)
       await rename(secretTmp, this.secretPath(meta.id))
-      await writeFile(metaTmp, `${JSON.stringify(meta, null, 2)}\n`, { mode: 0o600 })
+      await writeFile(
+        metaTmp,
+        `${JSON.stringify(meta, null, 2)}\n`,
+        { mode: 0o600 }
+      )
       await rename(metaTmp, this.metaPath(meta.id))
       return meta
     })
@@ -178,7 +212,8 @@ export class FileCredentialPool {
     await this.withWriteLock(async () => {
       const active = await this.getActiveId()
       await rm(this.entryDir(id), { recursive: true, force: true })
-      if (active === id) await this.clearActive()
+      if (active === id)
+        await this.clearActive()
     })
   }
 
@@ -196,17 +231,25 @@ export class FileCredentialPool {
     const started = Date.now()
     while (true) {
       try {
-        await writeFile(lockPath, `${process.pid}\n`, { flag: 'wx', mode: 0o600 })
+        await writeFile(
+          lockPath,
+          `${process.pid}\n`,
+          { flag: 'wx', mode: 0o600 }
+        )
         break
       } catch (error) {
-        if (errorCode(error) !== 'EEXIST') throw error
+        if (errorCode(error) !== 'EEXIST')
+          throw error
         const info = await stat(lockPath).catch(() => null)
         if (info && Date.now() - info.mtimeMs > 30_000) {
           await rm(lockPath, { force: true }).catch(() => undefined)
           continue
         }
         if (Date.now() - started > 5_000) {
-          throw new CredentialPoolError('credential_invalid', `Timed out waiting for credential pool lock ${lockPath}`)
+          throw new CredentialPoolError(
+            'credential_invalid',
+            `Timed out waiting for credential pool lock ${lockPath}`
+          )
         }
         await new Promise((resolve) => setTimeout(resolve, 25))
       }
@@ -218,17 +261,23 @@ export class FileCredentialPool {
     }
   }
 
-  async findByIdentityKey(identityKey: string): Promise<CredentialEntryMeta | null> {
+  async findByIdentityKey(
+    identityKey: string
+  ): Promise<CredentialEntryMeta | null> {
     const all = await this.listMeta()
     return all.find((m) => m.identityKey === identityKey) ?? null
   }
 
-  /** If active missing but entries exist, pick first and repair active pointer. */
+  /**
+   * If active missing but entries exist, pick first and repair active pointer.
+   */
   async ensureActivePointer(): Promise<string | null> {
     const active = await this.getActiveId()
-    if (active) return active
+    if (active)
+      return active
     const all = await this.listMeta()
-    if (all.length === 0) return null
+    if (all.length === 0)
+      return null
     await this.setActiveId(all[0]!.id)
     return all[0]!.id
   }

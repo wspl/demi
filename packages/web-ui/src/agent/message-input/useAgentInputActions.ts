@@ -55,13 +55,21 @@ export function useAgentInputActions(params: UseAgentInputActionsParams) {
 
   function handleChangeThinking(config: ThinkingConfig): void {
     const current = params.workspace.sessions[params.conversationId]?.model
-    if (!current) return
-    params.workspace.setModel(params.conversationId, { ...current, thinkingEffort: thinkingConfigToEffort(config) })
+    if (!current)
+      return
+    params.workspace.setModel(
+      params.conversationId,
+      {
+        ...current,
+        thinkingEffort: thinkingConfigToEffort(config)
+      }
+    )
   }
 
   function handleChangeServiceTier(serviceTierId: string | null): void {
     const current = params.workspace.sessions[params.conversationId]?.model
-    if (!current) return
+    if (!current)
+      return
     params.workspace.setModel(params.conversationId, { ...current, serviceTierId })
   }
 
@@ -77,5 +85,12 @@ export function useAgentInputActions(params: UseAgentInputActionsParams) {
     })
   }
 
-  return { handleSubmit, handleSelectModel, handleChangeThinking, handleChangeServiceTier, handleAbort, handleCompact }
+  return {
+    handleSubmit,
+    handleSelectModel,
+    handleChangeThinking,
+    handleChangeServiceTier,
+    handleAbort,
+    handleCompact
+  }
 }

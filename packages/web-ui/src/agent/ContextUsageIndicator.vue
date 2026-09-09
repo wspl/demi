@@ -19,7 +19,12 @@ const emit = defineEmits<{
   compact: []
 }>()
 
-const EMPTY_USAGE: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
+const EMPTY_USAGE: TokenUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0
+}
 
 const displayUsage = computed(() => props.usage ?? EMPTY_USAGE)
 const isUsageAvailable = computed(() => props.usage != null)
@@ -32,12 +37,15 @@ const usedTokens = computed(() =>
   + (displayUsage.value.cacheReadTokens ?? 0) + (displayUsage.value.cacheWriteTokens ?? 0),
 )
 const effectiveLimit = computed(() => {
-  if (props.inputLimit != null && props.inputLimit > 0) return props.inputLimit
-  if (props.contextWindow != null && props.contextWindow > 0) return props.contextWindow
+  if (props.inputLimit != null && props.inputLimit > 0)
+    return props.inputLimit
+  if (props.contextWindow != null && props.contextWindow > 0)
+    return props.contextWindow
   return 1
 })
 const ratio = computed(() => {
-  if (!isTokenLimitAvailable.value) return 0
+  if (!isTokenLimitAvailable.value)
+    return 0
   return Math.min(usedTokens.value / effectiveLimit.value, 1)
 })
 const percentage = computed(() => Math.round(ratio.value * 100))
@@ -47,20 +55,26 @@ const circumference = 2 * Math.PI * radius
 const strokeDashoffset = computed(() => circumference * (1 - ratio.value))
 
 const ringColor = computed(() => {
-  if (!isTokenLimitAvailable.value) return 'text-fg-subtle'
-  if (ratio.value >= 0.9) return 'text-on-danger'
-  if (ratio.value >= 0.7) return 'text-on-warning'
+  if (!isTokenLimitAvailable.value)
+    return 'text-fg-subtle'
+  if (ratio.value >= 0.9)
+    return 'text-on-danger'
+  if (ratio.value >= 0.7)
+    return 'text-on-warning'
   return 'text-fg-muted'
 })
 
 function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`
+  if (tokens >= 1_000_000)
+    return `${(tokens / 1_000_000).toFixed(1)}M`
+  if (tokens >= 1_000)
+    return `${(tokens / 1_000).toFixed(1)}K`
   return String(tokens)
 }
 
 function handleClick() {
-  if (!props.isClickable || props.isCompacting) return
+  if (!props.isClickable || props.isCompacting)
+    return
   emit('compact')
 }
 </script>
@@ -77,7 +91,13 @@ function handleClick() {
       @click="handleClick"
     >
       <IndeterminateSpinner v-if="isCompacting" />
-      <svg v-else width="14" height="14" viewBox="0 0 14 14" class="-rotate-90">
+      <svg
+        v-else
+        width="14"
+        height="14"
+        viewBox="0 0 14 14"
+        class="-rotate-90"
+      >
         <circle
           cx="7" cy="7" :r="radius"
           fill="none"
@@ -103,7 +123,9 @@ function handleClick() {
       </template>
       <template v-else>
         <template v-if="isTokenLimitAvailable">
-          <div class="text-fg">{{ percentage }}% used <span class="text-fg-subtle">({{ formatTokens(usedTokens) }} / {{ formatTokens(effectiveLimit) }})</span></div>
+          <div class="text-fg">{{ percentage }}% used <span
+              class="text-fg-subtle"
+            >({{ formatTokens(usedTokens) }} / {{ formatTokens(effectiveLimit) }})</span></div>
           <div v-if="!isUsageAvailable" class="mt-0.5 text-fg-subtle">{{ t('agent.context.noUsage') }}</div>
         </template>
         <div v-else class="text-fg-muted">{{ t('agent.context.unavailable') }}</div>

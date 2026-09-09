@@ -4,7 +4,8 @@
 export function normalizePath(path: string): string {
   const segments: string[] = []
   for (const segment of path.split('/')) {
-    if (segment === '' || segment === '.') continue
+    if (segment === '' || segment === '.')
+      continue
     if (segment === '..') {
       segments.pop()
       continue
@@ -32,7 +33,10 @@ export function baseName(path: string): string {
 }
 
 /** Every ancestor from the root down to the path itself, for a breadcrumb. */
-export function pathSegments(path: string): { name: string; path: string }[] {
+export function pathSegments(path: string): {
+  name: string;
+  path: string
+}[] {
   const normalized = normalizePath(path)
   const crumbs = [{ name: '/', path: '/' }]
   let current = ''
@@ -50,14 +54,20 @@ export function isHiddenName(name: string): boolean {
 /** A name a directory entry may take: no separator, not empty, not the two dot names. */
 export function isValidEntryName(name: string): boolean {
   const trimmed = name.trim()
-  return trimmed.length > 0 && trimmed !== '.' && trimmed !== '..' && !trimmed.includes('/')
+  return trimmed.length > 0 &&
+    trimmed !== '.' &&
+    trimmed !== '..' &&
+    !trimmed.includes('/')
 }
 
 /** `Home` shortens the home directory to `~`; other paths stay absolute. */
 export function displayPath(path: string, home?: string): string {
-  if (!home) return path
+  if (!home)
+    return path
   const normalizedHome = normalizePath(home)
-  if (path === normalizedHome) return '~'
-  if (path.startsWith(`${normalizedHome}/`)) return `~${path.slice(normalizedHome.length)}`
+  if (path === normalizedHome)
+    return '~'
+  if (path.startsWith(`${normalizedHome}/`))
+    return `~${path.slice(normalizedHome.length)}`
   return path
 }

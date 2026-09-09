@@ -1,6 +1,16 @@
 import { Buffer } from 'node:buffer'
-import { toolResultContentToText, type InferenceItem, type InferenceRequest, type ToolDefinition } from '@demicodes/provider'
-import type { DocumentSource, ImageSource, ToolResultContentBlock, UserContentBlock } from '@demicodes/core'
+import {
+  toolResultContentToText,
+  type InferenceItem,
+  type InferenceRequest,
+  type ToolDefinition
+} from '@demicodes/provider'
+import type {
+  DocumentSource,
+  ImageSource,
+  ToolResultContentBlock,
+  UserContentBlock
+} from '@demicodes/core'
 
 export interface ClaudeInputMessage {
   type: 'user' | 'assistant' | 'control_response'
@@ -12,13 +22,16 @@ export interface ClaudeInputMessage {
   response?: unknown
 }
 
-export function requestToInputMessages(request: InferenceRequest): ClaudeInputMessage[] {
+export function requestToInputMessages(
+  request: InferenceRequest
+): ClaudeInputMessage[] {
   const messages: ClaudeInputMessage[] = []
   let pending: ClaudeInputMessage | null = null
   let pendingUserKind: 'user_message' | 'tool_result' | null = null
 
   const flush = (): void => {
-    if (pending) messages.push(pending)
+    if (pending)
+      messages.push(pending)
     pending = null
     pendingUserKind = null
   }
@@ -28,17 +41,24 @@ export function requestToInputMessages(request: InferenceRequest): ClaudeInputMe
       case 'user_message':
       case 'user_steer':
         flush()
-        messages.push({ type: 'user', message: { role: 'user', content: userContentToClaude(item.content) } })
+        messages.push({
+          type: 'user',
+          message: { role: 'user', content: userContentToClaude(item.content) }
+        })
         break
       case 'assistant_text':
       case 'assistant_thinking':
       case 'assistant_redacted_thinking':
       case 'tool_use': {
         const content = assistantItemToClaudeContent(item)
-        if (content === null) break
+        if (content === null)
+          break
         if (pending?.type !== 'assistant') {
           flush()
-          pending = { type: 'assistant', message: { role: 'assistant', content: [] } }
+          pending = {
+            type: 'assistant',
+            message: { role: 'assistant', content: [] }
+          }
         }
         pending.message?.content.push(content)
         break
@@ -58,8 +78,10 @@ export function requestToInputMessages(request: InferenceRequest): ClaudeInputMe
 }
 
 /**
- * Builds the input messages used to prime a *fresh* Claude CLI process with prior
- * conversation history — i.e. on a cold start: the first turn, a resume after the process
+ * Builds the input messages used to prime a *fresh* Claude CLI process with
+ * prior
+ * conversation history — i.e. on a cold start: the first turn, a resume after
+ * the process
  * died, or a restart forced by compaction.
  *
  * Two invariants:
@@ -69,26 +91,39 @@ export function requestToInputMessages(request: InferenceRequest): ClaudeInputMe
  *    SDK-MCP session is exactly what makes Claude reject the request with
  *    `API Error: 400 ... tool use concurrency`.
  * 2. A `user` message contains ONLY real user input. Both the tool call and its result are
- *    folded into the *assistant* narrative ("I ran X, it returned Y"), so we never synthesize
- *    a user turn the human did not type, and never merge a tool result into the next real
- *    prompt. This keeps the conversation cleanly alternating without fabricated user messages.
+ * folded into the *assistant* narrative ("I ran X, it returned Y"), so we never
+ * synthesize
+ * a user turn the human did not type, and never merge a tool result into the
+ * next real
+ * prompt. This keeps the conversation cleanly alternating without fabricated
+ * user messages.
  *
- * The live, in-process path never calls this: there the CLI keeps the structured tool history
+ * The live, in-process path never calls this: there the CLI keeps the
+ * structured tool history
  * in its own native context, so no replay happens at all.
  */
-export function coldStartInputMessages(items: InferenceItem[]): ClaudeInputMessage[] {
+export function coldStartInputMessages(
+  items: InferenceItem[]
+): ClaudeInputMessage[] {
   const messages: ClaudeInputMessage[] = []
-  let pending: { role: 'user' | 'assistant'; content: unknown[] } | null = null
+  let pending: {
+    role: 'user' | 'assistant';
+    content: unknown[]
+  } | null = null
   const toolNames = new Map<string, string>()
 
   const flush = (): void => {
     if (pending && pending.content.length > 0) {
-      messages.push({ type: pending.role, message: { role: pending.role, content: pending.content } })
+      messages.push({
+        type: pending.role,
+        message: { role: pending.role, content: pending.content }
+      })
     }
     pending = null
   }
   const append = (role: 'user' | 'assistant', blocks: unknown[]): void => {
-    if (blocks.length === 0) return
+    if (blocks.length === 0)
+      return
     if (!pending || pending.role !== role) {
       flush()
       pending = { role, content: [] }
@@ -103,15 +138,27 @@ export function coldStartInputMessages(items: InferenceItem[]): ClaudeInputMessa
         append('user', userContentToClaude(item.content))
         break
       case 'assistant_text':
-        append('assistant', item.text ? [{ type: 'text', text: item.text }] : [])
+        append(
+          'assistant',
+          item.text ? [{ type: 'text', text: item.text }] : []
+        )
         break
       case 'tool_use':
         toolNames.set(item.toolUseId, item.toolName)
-        append('assistant', [{ type: 'text', text: renderToolUseText(item.toolName, item.input) }])
+        append(
+          'assistant',
+          [{ type: 'text', text: renderToolUseText(item.toolName, item.input) }]
+        )
         break
       case 'tool_result':
         // Folded into the assistant narrative, never a user turn — see invariant 2 above.
-        append('assistant', [{ type: 'text', text: renderToolResultText(toolNames.get(item.toolUseId), item) }])
+        append(
+          'assistant',
+          [{
+            type: 'text',
+            text: renderToolResultText(toolNames.get(item.toolUseId), item)
+          }]
+        )
         break
       // assistant_thinking / assistant_redacted_thinking are intentionally skipped: thinking is
       // internal, and its signatures will not validate against a different (fresh) process.
@@ -125,10 +172,15 @@ function renderToolUseText(toolName: string, input: unknown): string {
   return `[Earlier in this conversation I called the tool ${toolName} with input: ${safeJson(input)}.`
 }
 
-function renderToolResultText(toolName: string | undefined, item: Extract<InferenceItem, { type: 'tool_result' }>): string {
+function renderToolResultText(
+  toolName: string | undefined,
+  item: Extract<InferenceItem, { type: 'tool_result' }>
+): string {
   const body = toolResultContentToText(item.output)
   const suffix = toolName ? ` from ${toolName}` : ''
-  return item.isError ? `It returned an error${suffix}: ${body}]` : `It returned${suffix}: ${body}]`
+  return item.isError
+    ? `It returned an error${suffix}: ${body}]`
+    : `It returned${suffix}: ${body}]`
 }
 
 function safeJson(value: unknown): string {
@@ -139,18 +191,27 @@ function safeJson(value: unknown): string {
   }
 }
 
-export function inferenceItemToClaudeMessage(item: InferenceItem): ClaudeInputMessage | null {
+export function inferenceItemToClaudeMessage(
+  item: InferenceItem
+): ClaudeInputMessage | null {
   switch (item.type) {
     case 'user_message':
     case 'user_steer':
-      return { type: 'user', message: { role: 'user', content: userContentToClaude(item.content) } }
+      return {
+        type: 'user',
+        message: { role: 'user', content: userContentToClaude(item.content) }
+      }
     case 'assistant_text':
     case 'assistant_thinking':
     case 'assistant_redacted_thinking':
     case 'tool_use': {
       const content = assistantItemToClaudeContent(item)
-      if (content === null) return null
-      return { type: 'assistant', message: { role: 'assistant', content: [content] } }
+      if (content === null)
+        return null
+      return {
+        type: 'assistant',
+        message: { role: 'assistant', content: [content] }
+      }
     }
     case 'tool_result':
       return toolResultsToClaudeMessage([item])
@@ -158,7 +219,9 @@ export function inferenceItemToClaudeMessage(item: InferenceItem): ClaudeInputMe
   return null
 }
 
-export function toolResultsToClaudeMessage(results: Array<Extract<InferenceItem, { type: 'tool_result' }>>): ClaudeInputMessage {
+export function toolResultsToClaudeMessage(
+  results: Array<Extract<InferenceItem, { type: 'tool_result' }>>
+): ClaudeInputMessage {
   return {
     type: 'user',
     message: {
@@ -182,35 +245,61 @@ export function toolsListResponse(tools: ToolDefinition[]): unknown {
   }
 }
 
-export function controlResponse(id: string | number, response: unknown): ClaudeInputMessage {
+export function controlResponse(
+  id: string | number,
+  response: unknown
+): ClaudeInputMessage {
   return { type: 'control_response', id, response }
 }
 
 function userContentToClaude(content: UserContentBlock[]): unknown[] {
   return content.map((block) => {
-    if (block.type === 'text') return { type: 'text', text: block.text }
-    if (block.type === 'image') return { type: 'image', source: imageSourceToClaude(block.source) }
+    if (block.type === 'text')
+      return { type: 'text', text: block.text }
+    if (block.type === 'image')
+      return {
+        type: 'image',
+        source: imageSourceToClaude(block.source)
+      }
     // Claude's API has no video content type; the model catalog marks video unsupported so
     // videos never get attached here, but degrade defensively rather than emit a bad block.
-    if (block.type === 'video') return { type: 'text', text: '[video]' }
-    if (block.type === 'document') return documentSourceToClaude(block.source)
+    if (block.type === 'video')
+      return { type: 'text', text: '[video]' }
+    if (block.type === 'document')
+      return documentSourceToClaude(block.source)
     return { type: 'text', text: block.reference }
   })
 }
 
 function assistantItemToClaudeContent(
-  item: Extract<InferenceItem, { type: 'assistant_text' | 'assistant_thinking' | 'assistant_redacted_thinking' | 'tool_use' }>,
+  item: Extract<InferenceItem, { type: 'assistant_text'
+    | 'assistant_thinking'
+    | 'assistant_redacted_thinking'
+    | 'tool_use' }>,
 ): unknown | null {
-  if (item.type === 'assistant_text') return { type: 'text', text: item.text }
+  if (item.type === 'assistant_text')
+    return { type: 'text', text: item.text }
   if (item.type === 'assistant_thinking') {
-    if (!item.signature) return null
+    if (!item.signature)
+      return null
     return { type: 'thinking', thinking: item.text, signature: item.signature }
   }
-  if (item.type === 'assistant_redacted_thinking') return { type: 'redacted_thinking', data: item.data }
-  return { type: 'tool_use', id: item.toolUseId, name: toolNameToClaude(item.toolName), input: item.input }
+  if (item.type === 'assistant_redacted_thinking')
+    return {
+      type: 'redacted_thinking',
+      data: item.data
+    }
+  return {
+    type: 'tool_use',
+    id: item.toolUseId,
+    name: toolNameToClaude(item.toolName),
+    input: item.input
+  }
 }
 
-function toolResultToClaudeContent(item: Extract<InferenceItem, { type: 'tool_result' }>): unknown {
+function toolResultToClaudeContent(
+  item: Extract<InferenceItem, { type: 'tool_result' }>
+): unknown {
   // Plain text results stay a string (the common case); as soon as an image is
   // present, send the full block array so the image rides through to the model
   // instead of being flattened to a `[image:…]` placeholder.
@@ -219,19 +308,34 @@ function toolResultToClaudeContent(item: Extract<InferenceItem, { type: 'tool_re
     type: 'tool_result',
     tool_use_id: item.toolUseId,
     is_error: item.isError,
-    content: hasImage ? item.output.map(toolResultBlockToClaude) : toolResultContentToText(item.output),
+    content: hasImage
+      ? item.output.map(toolResultBlockToClaude)
+      : toolResultContentToText(item.output),
   }
 }
 
 function toolResultBlockToClaude(block: ToolResultContentBlock): unknown {
-  if (block.type === 'text') return { type: 'text', text: block.text }
+  if (block.type === 'text')
+    return { type: 'text', text: block.text }
   // Claude has no video content type (catalog marks it unsupported); degrade defensively.
-  if (block.type === 'video') return { type: 'text', text: `[video:${block.source.mediaType}]` }
-  return { type: 'image', source: { type: 'base64', media_type: block.source.mediaType, data: block.source.data } }
+  if (block.type === 'video')
+    return {
+      type: 'text',
+      text: `[video:${block.source.mediaType}]`
+    }
+  return {
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: block.source.mediaType,
+      data: block.source.data
+    }
+  }
 }
 
 function imageSourceToClaude(source: ImageSource): unknown {
-  if (source.type === 'url') return { type: 'url', url: source.url }
+  if (source.type === 'url')
+    return { type: 'url', url: source.url }
   return {
     type: 'base64',
     media_type: source.mediaType,
@@ -253,10 +357,12 @@ function documentSourceToClaude(source: DocumentSource): unknown {
 
 
 function bytesToBase64(data: Uint8Array): string {
-  return Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('base64')
+  return Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+    .toString('base64')
 }
 
 function toolNameToClaude(name: string): string {
-  if (/^mcp__[^_]+__.+$/.test(name)) return name
+  if (/^mcp__[^_]+__.+$/.test(name))
+    return name
   return `mcp__main__${name}`
 }

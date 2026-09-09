@@ -1,8 +1,21 @@
-import { isAbortError, isRecord, normalizeBaseUrl, numberOrNull, numberOrZero, parseJsonObject, parseJsonOrString, stringOrNull } from '@demicodes/utils'
+import {
+  isAbortError,
+  isRecord,
+  normalizeBaseUrl,
+  numberOrNull,
+  numberOrZero,
+  parseJsonObject,
+  parseJsonOrString,
+  stringOrNull
+} from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 import { zeroUsage } from '@demicodes/core'
-import type { TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demicodes/core'
+import type {
+  TokenUsage,
+  ToolResultContentBlock,
+  UserContentBlock
+} from '@demicodes/core'
 import {
   authStatusFromKey,
   defineProvider,
@@ -26,12 +39,22 @@ import {
   type AnthropicApiModelOptions,
 } from './models'
 
-export type AnthropicApiSecretResolver = () => string | Promise<string> | null | undefined
-export type AnthropicApiHeadersResolver = () => Record<string, string> | Promise<Record<string, string>>
-export type AnthropicApiFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+export type AnthropicApiSecretResolver = () => string
+  | Promise<string>
+  | null
+  | undefined
+export type AnthropicApiHeadersResolver = () => Record<string, string>
+  | Promise<Record<string, string>>
+export type AnthropicApiFetch = (
+  input: string | URL | Request,
+  init?: RequestInit
+) => Promise<Response>
 
 export interface AnthropicApiRequestOptions {
-  /** Overrides the derived max_tokens (default: the model's outputLimit, else 32000). */
+  /**
+   * Overrides the derived max_tokens (default: the model's outputLimit, else
+   * 32000).
+   */
   maxTokens?: number
   /**
    * Budget tokens used when an effort/adaptive thinking config is mapped onto
@@ -103,7 +126,11 @@ export class AnthropicApiProvider implements AgentProvider {
       apiKey = await this.options.apiKey()
       headers = await this.buildHeaders(apiKey)
       if (!apiKey && !headers.has('x-api-key')) {
-        yield { type: 'error', message: 'Anthropic API key is missing', code: 'auth_missing' }
+        yield {
+          type: 'error',
+          message: 'Anthropic API key is missing',
+          code: 'auth_missing'
+        }
         return
       }
     } catch (error) {
@@ -112,17 +139,26 @@ export class AnthropicApiProvider implements AgentProvider {
     }
 
     try {
-      const response = await this.options.fetch(anthropicMessagesUrl(this.options.baseUrl), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(buildAnthropicMessagesBody(request, this.options.request)),
-        signal: request.cancel,
-      })
+      const response = await this.options.fetch(
+        anthropicMessagesUrl(this.options.baseUrl),
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(buildAnthropicMessagesBody(
+            request,
+            this.options.request
+          )),
+          signal: request.cancel,
+        }
+      )
       if (!response.ok) {
         yield await httpRequestFailedEvent(response, apiKey, 'Anthropic')
         return
       }
-      yield* mapAnthropicMessageStream(readServerSentEvents(response.body, request.cancel), request.cancel)
+      yield* mapAnthropicMessageStream(
+        readServerSentEvents(response.body, request.cancel),
+        request.cancel
+      )
     } catch (error) {
       if (request.cancel.aborted || isAbortError(error)) {
         yield { type: 'abort' }
@@ -132,26 +168,36 @@ export class AnthropicApiProvider implements AgentProvider {
     }
   }
 
-  private async buildHeaders(apiKey: string | null | undefined): Promise<Headers> {
+  private async buildHeaders(
+    apiKey: string | null | undefined
+  ): Promise<Headers> {
     const headers = new Headers(await this.options.headers?.())
     headers.set('accept', 'text/event-stream')
     headers.set('content-type', 'application/json')
     headers.set('anthropic-version', this.options.anthropicVersion)
-    if (apiKey) headers.set('x-api-key', apiKey)
+    if (apiKey)
+      headers.set('x-api-key', apiKey)
     return headers
   }
 }
 
-export function createAnthropicApiProvider(options: AnthropicApiProviderOptions = {}): Provider {
+export function createAnthropicApiProvider(
+  options: AnthropicApiProviderOptions = {}
+): Provider {
   const id = options.id ?? 'anthropic'
   const displayName = options.displayName ?? 'Anthropic API'
   const envPrefix = options.envPrefix ?? 'ANTHROPIC'
-  const baseUrl = normalizeBaseUrl(options.baseUrl ?? process.env[`${envPrefix}_BASE_URL`] ?? DEFAULT_ANTHROPIC_API_BASE_URL)
+  const baseUrl = normalizeBaseUrl(options.baseUrl
+    ?? process.env[`${envPrefix}_BASE_URL`]
+    ?? DEFAULT_ANTHROPIC_API_BASE_URL)
   const apiKey = options.apiKey ?? (() => process.env[`${envPrefix}_API_KEY`])
   const fetchImpl = options.fetch ?? fetch
   const modelList = (): ProviderModelList =>
     options.models
-      ? modelListFromAnthropicApiModels(options.models, { providerId: id, defaultModelId: options.defaultModelId ?? null })
+      ? modelListFromAnthropicApiModels(
+        options.models,
+        { providerId: id, defaultModelId: options.defaultModelId ?? null }
+      )
       : withProviderId(anthropicApiDefaultModels(id), id)
   const runtimeOptions: AnthropicApiRuntimeOptions = {
     baseUrl,
@@ -165,8 +211,18 @@ export function createAnthropicApiProvider(options: AnthropicApiProviderOptions 
   return defineProvider({
     id,
     displayName,
-    auth: { status: () => authStatusFromKey(apiKey, options.headers, 'x-api-key', 'Anthropic') },
-    state: () => ({ status: 'ready', message: 'Uses the Anthropic Messages API' }),
+    auth: {
+      status: () => authStatusFromKey(
+        apiKey,
+        options.headers,
+        'x-api-key',
+        'Anthropic'
+      )
+    },
+    state: () => ({
+      status: 'ready',
+      message: 'Uses the Anthropic Messages API'
+    }),
     listModels: modelList,
     supportsOutputLimit: true,
     createRuntime: () => new AnthropicApiProvider(runtimeOptions),
@@ -180,7 +236,10 @@ export interface AnthropicMessagesRequestBody {
   stream: true
   system?: string
   tools?: AnthropicTool[]
-  thinking?: { type: 'enabled'; budget_tokens: number }
+  thinking?: {
+    type: 'enabled';
+    budget_tokens: number
+  }
   service_tier?: string
   [key: string]: unknown
 }
@@ -191,14 +250,44 @@ export interface AnthropicMessage {
 }
 
 export type AnthropicContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
-  | { type: 'tool_use'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; tool_use_id: string; content: AnthropicToolResultContent[]; is_error?: boolean }
+  | {
+      type: 'text';
+      text: string
+    }
+  | {
+      type: 'image';
+      source: {
+        type: 'base64';
+        media_type: string;
+        data: string
+      }
+    }
+  | {
+      type: 'tool_use';
+      id: string;
+      name: string;
+      input: unknown
+    }
+  | {
+      type: 'tool_result';
+      tool_use_id: string;
+      content: AnthropicToolResultContent[];
+      is_error?: boolean
+    }
 
 export type AnthropicToolResultContent =
-  | { type: 'text'; text: string }
-  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+  | {
+      type: 'text';
+      text: string
+    }
+  | {
+      type: 'image';
+      source: {
+        type: 'base64';
+        media_type: string;
+        data: string
+      }
+    }
 
 export interface AnthropicTool {
   name: string
@@ -210,21 +299,30 @@ export function buildAnthropicMessagesBody(
   request: InferenceRequest,
   options: AnthropicApiRequestOptions | undefined,
 ): AnthropicMessagesRequestBody {
-  const maxTokens = options?.maxTokens ?? request.outputLimit ?? DEFAULT_MAX_TOKENS
+  const maxTokens = options?.maxTokens ?? request.outputLimit
+    ?? DEFAULT_MAX_TOKENS
   const body: AnthropicMessagesRequestBody = {
     model: request.modelId,
     messages: inferenceItemsToAnthropicMessages(request.items),
     max_tokens: maxTokens,
     stream: true,
   }
-  if (request.systemPrompt.trim()) body.system = request.systemPrompt
-  if (request.tools.length > 0) body.tools = request.tools.map(toolToAnthropicTool)
-  const budgetTokens = thinkingBudgetTokens(request.thinking, maxTokens, options?.effortBudgetTokens)
+  if (request.systemPrompt.trim())
+    body.system = request.systemPrompt
+  if (request.tools.length > 0)
+    body.tools = request.tools.map(toolToAnthropicTool)
+  const budgetTokens = thinkingBudgetTokens(
+    request.thinking,
+    maxTokens,
+    options?.effortBudgetTokens
+  )
   if (budgetTokens !== null) {
     body.thinking = { type: 'enabled', budget_tokens: budgetTokens }
   }
-  if (request.serviceTierId) body.service_tier = request.serviceTierId
-  if (options?.extraBody) Object.assign(body, options.extraBody)
+  if (request.serviceTierId)
+    body.service_tier = request.serviceTierId
+  if (options?.extraBody)
+    Object.assign(body, options.extraBody)
   return body
 }
 
@@ -239,14 +337,18 @@ export function thinkingBudgetTokens(
   maxTokens: number,
   effortBudgets: Record<string, number> | undefined,
 ): number | null {
-  if (!thinking || thinking.type === 'disabled') return null
+  if (!thinking || thinking.type === 'disabled')
+    return null
   const requested =
     thinking.type === 'budget'
       ? thinking.budgetTokens
       : (effortBudgets?.[thinking.effort] ??
         DEFAULT_EFFORT_BUDGET_TOKENS[thinking.effort] ??
         DEFAULT_EFFORT_BUDGET_TOKENS.medium!)
-  const cap = Math.max(MIN_THINKING_BUDGET_TOKENS, maxTokens - MIN_THINKING_BUDGET_TOKENS)
+  const cap = Math.max(
+    MIN_THINKING_BUDGET_TOKENS,
+    maxTokens - MIN_THINKING_BUDGET_TOKENS
+  )
   return Math.max(MIN_THINKING_BUDGET_TOKENS, Math.min(requested, cap))
 }
 
@@ -264,20 +366,29 @@ export async function* mapAnthropicMessageStream(
     }
     for (const data of event.data) {
       const value = parseJsonObject(data)
-      if (!value) continue
+      if (!value)
+        continue
       const type = stringOrNull(value.type) ?? event.event
 
       if (type === 'error') {
         const error = isRecord(value.error) ? value.error : value
-        const message = stringOrNull(error.message) ?? 'Anthropic API stream error'
-        yield { type: 'error', message, code: normalizeErrorCode(stringOrNull(error.type), message) }
+        const message = stringOrNull(error.message)
+          ?? 'Anthropic API stream error'
+        yield {
+          type: 'error',
+          message,
+          code: normalizeErrorCode(stringOrNull(error.type), message)
+        }
         return
       }
 
       if (type === 'message_start') {
         const message = isRecord(value.message) ? value.message : null
-        const messageUsage = message && isRecord(message.usage) ? message.usage : null
-        if (messageUsage) usage = mergeAnthropicUsage(usage, messageUsage)
+        const messageUsage = message && isRecord(message.usage)
+          ? message.usage
+          : null
+        if (messageUsage)
+          usage = mergeAnthropicUsage(usage, messageUsage)
         continue
       }
 
@@ -295,7 +406,8 @@ export async function* mapAnthropicMessageStream(
           yield { type: 'thinking_start' }
         } else if (block?.type === 'text') {
           const text = stringOrNull(block.text)
-          if (text) yield { type: 'text_delta', text }
+          if (text)
+            yield { type: 'text_delta', text }
         }
         continue
       }
@@ -303,19 +415,24 @@ export async function* mapAnthropicMessageStream(
       if (type === 'content_block_delta') {
         const index = numberOrNull(value.index) ?? 0
         const delta = isRecord(value.delta) ? value.delta : null
-        if (!delta) continue
+        if (!delta)
+          continue
         if (delta.type === 'text_delta') {
           const text = stringOrNull(delta.text)
-          if (text) yield { type: 'text_delta', text }
+          if (text)
+            yield { type: 'text_delta', text }
         } else if (delta.type === 'thinking_delta') {
           const text = stringOrNull(delta.thinking)
-          if (text) yield { type: 'thinking_delta', text }
+          if (text)
+            yield { type: 'thinking_delta', text }
         } else if (delta.type === 'signature_delta') {
           const signature = stringOrNull(delta.signature)
-          if (signature) yield { type: 'thinking_signature', signature }
+          if (signature)
+            yield { type: 'thinking_signature', signature }
         } else if (delta.type === 'input_json_delta') {
           const block = toolBlocks.get(index)
-          if (block) block.inputJson += stringOrNull(delta.partial_json) ?? ''
+          if (block)
+            block.inputJson += stringOrNull(delta.partial_json) ?? ''
         }
         continue
       }
@@ -328,7 +445,9 @@ export async function* mapAnthropicMessageStream(
             type: 'tool_call_requested',
             toolUseId: block.id,
             toolName: block.name,
-            input: block.inputJson ? parseJsonOrString(block.inputJson) : block.initialInput ?? {},
+            input: block.inputJson
+              ? parseJsonOrString(block.inputJson)
+              : block.initialInput ?? {},
           }
         }
         toolBlocks.delete(index)
@@ -337,7 +456,8 @@ export async function* mapAnthropicMessageStream(
 
       if (type === 'message_delta') {
         const deltaUsage = isRecord(value.usage) ? value.usage : null
-        if (deltaUsage) usage = mergeAnthropicUsage(usage, deltaUsage)
+        if (deltaUsage)
+          usage = mergeAnthropicUsage(usage, deltaUsage)
         continue
       }
 
@@ -358,10 +478,15 @@ interface AnthropicToolBlock {
   inputJson: string
 }
 
-function inferenceItemsToAnthropicMessages(items: InferenceItem[]): AnthropicMessage[] {
+function inferenceItemsToAnthropicMessages(
+  items: InferenceItem[]
+): AnthropicMessage[] {
   const messages: AnthropicMessage[] = []
 
-  const append = (role: AnthropicMessage['role'], content: AnthropicContentBlock[]) => {
+  const append = (
+    role: AnthropicMessage['role'],
+    content: AnthropicContentBlock[]
+  ) => {
     const last = messages[messages.length - 1]
     if (last?.role === role) {
       last.content.push(...content)
@@ -380,7 +505,15 @@ function inferenceItemsToAnthropicMessages(items: InferenceItem[]): AnthropicMes
         append('assistant', [{ type: 'text', text: item.text }])
         break
       case 'tool_use':
-        append('assistant', [{ type: 'tool_use', id: item.toolUseId, name: item.toolName, input: item.input ?? {} }])
+        append(
+          'assistant',
+          [{
+            type: 'tool_use',
+            id: item.toolUseId,
+            name: item.toolName,
+            input: item.input ?? {}
+          }]
+        )
         break
       case 'tool_result':
         append('user', [{
@@ -399,14 +532,30 @@ function inferenceItemsToAnthropicMessages(items: InferenceItem[]): AnthropicMes
   return messages
 }
 
-function userContentToAnthropic(content: UserContentBlock[]): AnthropicContentBlock[] {
+function userContentToAnthropic(
+  content: UserContentBlock[]
+): AnthropicContentBlock[] {
   return content.flatMap((block): AnthropicContentBlock[] => {
-    if (block.type === 'text') return [{ type: 'text', text: block.text }]
-    if (block.type === 'reference') return [{ type: 'text', text: block.reference }]
-    if (block.type === 'document') return [{ type: 'text', text: `[document:${block.source.fileName} ${block.source.mediaType}]` }]
+    if (block.type === 'text')
+      return [{ type: 'text', text: block.text }]
+    if (block.type === 'reference')
+      return [{
+        type: 'text',
+        text: block.reference
+      }]
+    if (block.type === 'document')
+      return [{
+        type: 'text',
+        text: `[document:${block.source.fileName} ${block.source.mediaType}]`
+      }]
     // Anthropic's API has no video content type (catalog marks video unsupported); degrade defensively.
-    if (block.type === 'video') return [{ type: 'text', text: '[video]' }]
-    if (block.source.type === 'url') return [{ type: 'text', text: `[image:${block.source.url}]` }]
+    if (block.type === 'video')
+      return [{ type: 'text', text: '[video]' }]
+    if (block.source.type === 'url')
+      return [{
+        type: 'text',
+        text: `[image:${block.source.url}]`
+      }]
     return [{
       type: 'image',
       source: {
@@ -418,13 +567,24 @@ function userContentToAnthropic(content: UserContentBlock[]): AnthropicContentBl
   })
 }
 
-function toolResultContentToAnthropic(output: ToolResultContentBlock[]): AnthropicToolResultContent[] {
+function toolResultContentToAnthropic(
+  output: ToolResultContentBlock[]
+): AnthropicToolResultContent[] {
   return output.map((block) => {
-    if (block.type === 'text') return { type: 'text', text: block.text }
-    if (block.type === 'video') return { type: 'text', text: `[video:${block.source.mediaType}]` }
+    if (block.type === 'text')
+      return { type: 'text', text: block.text }
+    if (block.type === 'video')
+      return {
+        type: 'text',
+        text: `[video:${block.source.mediaType}]`
+      }
     return {
       type: 'image',
-      source: { type: 'base64', media_type: block.source.mediaType, data: block.source.data },
+      source: {
+        type: 'base64',
+        media_type: block.source.mediaType,
+        data: block.source.data
+      },
     }
   })
 }
@@ -446,7 +606,8 @@ export async function* readServerSentEvents(
   body: ReadableStream<Uint8Array> | null,
   signal?: AbortSignal,
 ): AsyncIterable<ServerSentEvent> {
-  if (!body) return
+  if (!body)
+    return
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -454,7 +615,8 @@ export async function* readServerSentEvents(
   let data: string[] = []
 
   const flush = function* (): Iterable<ServerSentEvent> {
-    if (data.length === 0) return
+    if (data.length === 0)
+      return
     yield { event: eventName, data }
     eventName = null
     data = []
@@ -462,9 +624,11 @@ export async function* readServerSentEvents(
 
   try {
     while (true) {
-      if (signal?.aborted) return
+      if (signal?.aborted)
+        return
       const { value, done } = await reader.read()
-      if (done) break
+      if (done)
+        break
       buffer += decoder.decode(value, { stream: true })
       let newline = buffer.indexOf('\n')
       while (newline !== -1) {
@@ -484,8 +648,10 @@ export async function* readServerSentEvents(
     buffer += decoder.decode()
     if (buffer) {
       const line = buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer
-      if (line.startsWith('data:')) data.push(line.slice('data:'.length).trimStart())
-      else if (line.startsWith('event:')) eventName = line.slice('event:'.length).trim()
+      if (line.startsWith('data:')) data.push(line.slice('data:'.length)
+        .trimStart())
+      else if (line.startsWith('event:'))
+        eventName = line.slice('event:'.length).trim()
     }
     yield* flush()
   } finally {
@@ -495,10 +661,15 @@ export async function* readServerSentEvents(
 
 function anthropicMessagesUrl(baseUrl: string): string {
   const normalized = normalizeBaseUrl(baseUrl)
-  return normalized.endsWith('/messages') ? normalized : `${normalized}/messages`
+  return normalized.endsWith('/messages')
+    ? normalized
+    : `${normalized}/messages`
 }
 
-function mergeAnthropicUsage(current: TokenUsage, usage: Record<string, unknown>): TokenUsage {
+function mergeAnthropicUsage(
+  current: TokenUsage,
+  usage: Record<string, unknown>
+): TokenUsage {
   const inputTokens = numberOrZero(usage.input_tokens)
   const outputTokens = numberOrZero(usage.output_tokens)
   const cacheReadTokens = numberOrZero(usage.cache_read_input_tokens)

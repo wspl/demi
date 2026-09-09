@@ -17,7 +17,8 @@ export interface ReasoningState {
 
 export function buildReasoningState(model: ModelInfo | null | undefined): ReasoningState | null {
   const reasoning = model?.reasoning
-  if (!reasoning || reasoning.efforts.length === 0) return null
+  if (!reasoning || reasoning.efforts.length === 0)
+    return null
   const defaultEffort = reasoning.defaultEffort ?? reasoning.efforts[0]!
   const effortOptions = reasoning.efforts.map((effort): ReasoningOption => ({
     label: effortLabel(effort),
@@ -34,31 +35,48 @@ export function buildReasoningState(model: ModelInfo | null | undefined): Reason
 }
 
 export function thinkingConfigToEffort(config: ThinkingConfig): string | null {
-  return config.type === 'effort' || config.type === 'adaptive' ? config.effort : null
+  return config.type === 'effort' || config.type === 'adaptive'
+    ? config.effort
+    : null
 }
 
 export function effortToThinkingConfig(effort: string | null): ThinkingConfig {
-  return effort ? { type: 'effort', effort, summary: null } : { type: 'disabled' }
+  return effort
+    ? { type: 'effort', effort, summary: null }
+    : { type: 'disabled' }
 }
 
-export function resolveThinkingConfig(state: ReasoningState, config: ThinkingConfig | undefined): ThinkingConfig {
+export function resolveThinkingConfig(
+  state: ReasoningState,
+  config: ThinkingConfig | undefined
+): ThinkingConfig {
   const cfg = config ?? state.defaultConfig
-  if (!state.canDisable && cfg.type === 'disabled') return state.defaultConfig
+  if (!state.canDisable && cfg.type === 'disabled')
+    return state.defaultConfig
   return cfg
 }
 
 function configsMatch(left: ThinkingConfig, right: ThinkingConfig): boolean {
-  if (left.type !== right.type) return false
-  if (left.type === 'adaptive' && right.type === 'adaptive') return left.effort === right.effort
-  if (left.type === 'effort' && right.type === 'effort') return left.effort === right.effort
+  if (left.type !== right.type)
+    return false
+  if (left.type === 'adaptive' && right.type === 'adaptive')
+    return left.effort === right.effort
+  if (left.type === 'effort' && right.type === 'effort')
+    return left.effort === right.effort
   return true
 }
 
-export function reasoningOptionIndex(state: ReasoningState, config: ThinkingConfig | undefined): number {
+export function reasoningOptionIndex(
+  state: ReasoningState,
+  config: ThinkingConfig | undefined
+): number {
   const resolved = resolveThinkingConfig(state, config)
   const selected = state.options.findIndex((option) => configsMatch(option.config, resolved))
-  if (selected >= 0) return selected
-  const fallback = state.options.findIndex((option) => configsMatch(option.config, state.defaultConfig))
+  if (selected >= 0)
+    return selected
+  const fallback = state.options.findIndex(
+    (option) => configsMatch(option.config, state.defaultConfig)
+  )
   return fallback >= 0 ? fallback : 0
 }
 
@@ -68,11 +86,15 @@ export function reasoningOptionConfig(state: ReasoningState, index: number): Thi
   return state.options[clamped]?.config ?? state.defaultConfig
 }
 
-export function reasoningOptionLabel(state: ReasoningState, config: ThinkingConfig | undefined): string {
+export function reasoningOptionLabel(
+  state: ReasoningState,
+  config: ThinkingConfig | undefined
+): string {
   return state.options[reasoningOptionIndex(state, config)]?.label ?? ''
 }
 
 function effortLabel(effort: string): string {
-  if (effort.length === 0) return effort
+  if (effort.length === 0)
+    return effort
   return effort.charAt(0).toUpperCase() + effort.slice(1)
 }

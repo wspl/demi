@@ -21,7 +21,10 @@ export interface RpcInvocation {
   argv: string[]
   args: Record<string, unknown>
   json: boolean
-  /** The pipe, finite; `null` when the process has none on fd 0 or a `stdinField` consumed it. */
+  /**
+   * The pipe, finite; `null` when the process has none on fd 0 or a
+   * `stdinField` consumed it.
+   */
   stdin: AsyncIterable<Uint8Array> | null
   cwd: string
   env: Record<string, string>
@@ -36,15 +39,28 @@ export type RpcTransport = (invocation: RpcInvocation) => Promise<CommandResult>
  * The backend's transport: the trees that declared the `rpc` handlers are in
  * this process, so an invocation runs its handler directly.
  */
-export function inProcessRpc(roots: readonly Command[], deps: { storage: CommandStorage; host: Host }): RpcTransport {
+export function inProcessRpc(
+  roots: readonly Command[],
+  deps: {
+    storage: CommandStorage;
+    host: Host
+  }
+): RpcTransport {
   return async (invocation) => {
     const root = roots.find((candidate) => candidate.name === invocation.root)
-    if (!root) throw new Error(`rpc: unknown root "${invocation.root}"`)
+    if (!root)
+      throw new Error(`rpc: unknown root "${invocation.root}"`)
     const leaf = resolveCommand(root, invocation.path)
-    if (isCommandGroup(leaf) || leaf.kind !== 'rpc') throw new Error(`rpc: "${invocation.path.join(' ')}" is not an rpc leaf`)
+    if (isCommandGroup(leaf) || leaf.kind !== 'rpc')
+      throw new Error(`rpc: "${invocation.path.join(' ')}" is not an rpc leaf`)
     return leaf.run({
       argv: invocation.argv,
-      parsed: { path: invocation.path, help: false, values: validateCommandValues(leaf.input ?? {}, invocation.args), json: invocation.json },
+      parsed: {
+        path: invocation.path,
+        help: false,
+        values: validateCommandValues(leaf.input ?? {}, invocation.args),
+        json: invocation.json
+      },
       stdin: invocation.stdin,
       env: invocation.env,
       cwd: invocation.cwd,

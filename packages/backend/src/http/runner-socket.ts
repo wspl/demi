@@ -7,7 +7,10 @@ import type { RunnerRegistry, RunnerSocketHandle } from '../runner/registry'
  * logic (hello/claim/liveness/Host RPC routing) lives in the registry; this
  * route only adapts the WebSocket events.
  */
-export function runnerSocketRoutes(options: { registry: RunnerRegistry; upgradeWebSocket: UpgradeWebSocket }): Hono {
+export function runnerSocketRoutes(options: {
+  registry: RunnerRegistry;
+  upgradeWebSocket: UpgradeWebSocket
+}): Hono {
   const { registry, upgradeWebSocket } = options
   const app = new Hono()
 
@@ -30,7 +33,11 @@ export function runnerSocketRoutes(options: { registry: RunnerRegistry; upgradeW
           // Frames are binary MessagePack; a text frame is malformed and the
           // registry closes the socket over it.
           const data = event.data
-          handle?.handleMessage(data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(0))
+          handle?.handleMessage(
+            data instanceof ArrayBuffer
+              ? new Uint8Array(data)
+              : new Uint8Array(0)
+          )
         },
         onClose() {
           handle?.handleClose()

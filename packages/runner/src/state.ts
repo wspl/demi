@@ -45,15 +45,22 @@ export class RunnerState {
 
   async readConfig(): Promise<RunnerConfig | null> {
     try {
-      return runnerConfigSchema.parse(JSON.parse(decodeUtf8(await this.fs.readFile(this.configPath))))
+      return runnerConfigSchema.parse(
+        JSON.parse(decodeUtf8(await this.fs.readFile(this.configPath)))
+      )
     } catch (error) {
-      if (isFileNotFoundError(error)) return null
+      if (isFileNotFoundError(error))
+        return null
       throw error
     }
   }
 
   async writeConfig(config: RunnerConfig): Promise<void> {
-    await this.fs.writeFile(this.configPath, encodeUtf8(`${JSON.stringify(config, null, 2)}\n`), { createParents: true })
+    await this.fs.writeFile(
+      this.configPath,
+      encodeUtf8(`${JSON.stringify(config, null, 2)}\n`),
+      { createParents: true }
+    )
   }
 
   async readToken(): Promise<string | null> {
@@ -61,13 +68,18 @@ export class RunnerState {
       const token = decodeUtf8(await this.fs.readFile(this.tokenPath)).trim()
       return token.length > 0 ? token : null
     } catch (error) {
-      if (isFileNotFoundError(error)) return null
+      if (isFileNotFoundError(error))
+        return null
       throw error
     }
   }
 
   async writeToken(token: string): Promise<void> {
-    await this.fs.writeFile(this.tokenPath, encodeUtf8(`${token}\n`), { createParents: true })
+    await this.fs.writeFile(
+      this.tokenPath,
+      encodeUtf8(`${token}\n`),
+      { createParents: true }
+    )
     await this.fs.chmod(this.tokenPath, 0o600)
   }
 }

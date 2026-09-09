@@ -31,7 +31,8 @@ const triggerRef = ref<HTMLDivElement>()
 const ignoreEls = computed(() => triggerRef.value ? [triggerRef.value] : [])
 const triggerWidth = computed(() => {
   const el = triggerRef.value
-  if (!el) return 0
+  if (!el)
+    return 0
   const inset = props.anchorInset ?? 0
   return Math.max(0, el.getBoundingClientRect().width - inset * 2)
 })
@@ -45,7 +46,8 @@ function open() {
 }
 
 function close() {
-  if (!isOpen.value) return
+  if (!isOpen.value)
+    return
   isOpen.value = false
   emit('close')
 }
@@ -57,11 +59,25 @@ defineExpose({ open, close })
 
 <template>
   <div class="relative inline-flex">
-    <div ref="triggerRef" class="cursor-default" @click="handleClick">
-      <DropdownTrigger v-if="props.variant" :is-open="isOpen" :variant="props.variant" :size="props.size" :aria-label="props.triggerLabel">
+    <div
+      ref="triggerRef"
+      class="cursor-default"
+      @click="handleClick"
+    >
+      <DropdownTrigger
+        v-if="props.variant"
+        :is-open="isOpen"
+        :variant="props.variant"
+        :size="props.size"
+        :aria-label="props.triggerLabel"
+      >
         <slot name="trigger" :is-open="isOpen" />
       </DropdownTrigger>
-      <slot v-else name="trigger" :is-open="isOpen" />
+      <slot
+        v-else
+        name="trigger"
+        :is-open="isOpen"
+      />
     </div>
     <Popover
       :overlay-store="props.overlayStore"
@@ -74,7 +90,11 @@ defineExpose({ open, close })
       :ignore-els="ignoreEls"
       @close="close"
     >
-      <slot name="content" :close="close" :trigger-width="triggerWidth" />
+      <slot
+        name="content"
+        :close="close"
+        :trigger-width="triggerWidth"
+      />
     </Popover>
   </div>
 </template>

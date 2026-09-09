@@ -8,20 +8,44 @@ import { fileURLToPath } from 'node:url'
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 // Order matters: overview first, then how-tos, then the deeper reference specs.
-const sections: Array<{ title: string; path: string }> = [
+const sections: Array<{
+  title: string;
+  path: string
+}> = [
   { title: 'Overview', path: 'README.md' },
   { title: 'Guide: Add a Provider', path: 'docs/guides/add-a-provider.md' },
   { title: 'Reference: Package Boundaries', path: 'docs/package-boundaries.md' },
   { title: 'Reference: Package Versioning', path: 'docs/package-versioning.md' },
   { title: 'Reference: Provider Quota', path: 'docs/provider-quota.md' },
-  { title: 'Reference: Provider Global Credentials', path: 'docs/provider-global-credentials.md' },
-  { title: 'Reference: Provider / Session Clone', path: 'docs/provider-session-clone.md' },
-  { title: 'Reference: Compaction Context Cache', path: 'docs/compaction-context-cache.md' },
-  { title: 'Reference: Provider Errors & Retries', path: 'docs/provider-errors-and-retries.md' },
-  { title: 'Reference: Tool Rendering Spec', path: 'docs/tool-rendering-spec.md' },
-  { title: 'Reference: Session Storage & Naming', path: 'docs/session-storage-and-naming.md' },
+  {
+    title: 'Reference: Provider Global Credentials',
+    path: 'docs/provider-global-credentials.md'
+  },
+  {
+    title: 'Reference: Provider / Session Clone',
+    path: 'docs/provider-session-clone.md'
+  },
+  {
+    title: 'Reference: Compaction Context Cache',
+    path: 'docs/compaction-context-cache.md'
+  },
+  {
+    title: 'Reference: Provider Errors & Retries',
+    path: 'docs/provider-errors-and-retries.md'
+  },
+  {
+    title: 'Reference: Tool Rendering Spec',
+    path: 'docs/tool-rendering-spec.md'
+  },
+  {
+    title: 'Reference: Session Storage & Naming',
+    path: 'docs/session-storage-and-naming.md'
+  },
   { title: 'Reference: Action Metadata', path: 'docs/action-metadata.md' },
-  { title: 'Reference: Tool-Call Concurrency', path: 'docs/tool-call-concurrency.md' },
+  {
+    title: 'Reference: Tool-Call Concurrency',
+    path: 'docs/tool-call-concurrency.md'
+  },
   { title: 'Reference: Command Help', path: 'docs/command-help.md' },
   { title: 'Contributing', path: 'CONTRIBUTING.md' },
 ]
@@ -38,10 +62,18 @@ const header = [
 const blocks: string[] = [header]
 for (const { title, path } of sections) {
   const body = (await readFile(resolve(repoRoot, path), 'utf8')).trim()
-  blocks.push([`---`, '', `# ${title}`, `<!-- source: ${path} -->`, '', body].join('\n'))
+  blocks.push(
+    [`---`, '', `# ${title}`, `<!-- source: ${path} -->`, '', body].join('\n')
+  )
 }
 
-await writeFile(resolve(repoRoot, 'llms-full.txt'), `${blocks.join('\n\n')}\n`, 'utf8')
+await writeFile(
+  resolve(repoRoot, 'llms-full.txt'),
+  `${blocks.join('\n\n')}\n`,
+  'utf8'
+)
 
 const lines = blocks.join('\n\n').split('\n').length
-process.stdout.write(`Wrote llms-full.txt (${sections.length} sections, ${lines} lines)\n`)
+process.stdout.write(
+  `Wrote llms-full.txt (${sections.length} sections, ${lines} lines)\n`
+)

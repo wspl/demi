@@ -48,5 +48,6 @@ export function dismissToast(id: string): void {
     timers.delete(id)
   }
   const index = toasts.findIndex((toast) => toast.id === id)
-  if (index >= 0) toasts.splice(index, 1)
+  if (index >= 0)
+    toasts.splice(index, 1)
 }

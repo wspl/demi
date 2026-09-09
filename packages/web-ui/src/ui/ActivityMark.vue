@@ -17,8 +17,18 @@ withDefaults(defineProps<{
     class="activity-mark"
     aria-hidden="true"
   >
-    <circle class="activity-track" cx="12" cy="12" r="8.25" />
-    <circle class="activity-arc" cx="12" cy="12" r="8.25" />
+    <circle
+      class="activity-track"
+      cx="12"
+      cy="12"
+      r="8.25"
+    />
+    <circle
+      class="activity-arc"
+      cx="12"
+      cy="12"
+      r="8.25"
+    />
   </svg>
 </template>
 

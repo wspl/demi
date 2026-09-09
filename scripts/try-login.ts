@@ -11,14 +11,31 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { ProviderCredentialLoginPending, ProviderCredentials } from '@demicodes/provider'
-import { PoolAwareCodexAuthStore, createCodexCredentials, openCodexCredentialPool } from '@demicodes/provider-codex'
-import { PoolAwareGrokAuthStore, createGrokBuildCredentials, openGrokCredentialPool } from '@demicodes/provider-grok-build'
-import { PoolAwareClaudeCodeAuthStore, createClaudeCodeCredentials, openClaudeCodeCredentialPool } from '@demicodes/provider-claude-code'
+import type {
+  ProviderCredentialLoginPending,
+  ProviderCredentials
+} from '@demicodes/provider'
+import {
+  PoolAwareCodexAuthStore,
+  createCodexCredentials,
+  openCodexCredentialPool
+} from '@demicodes/provider-codex'
+import {
+  PoolAwareGrokAuthStore,
+  createGrokBuildCredentials,
+  openGrokCredentialPool
+} from '@demicodes/provider-grok-build'
+import {
+  PoolAwareClaudeCodeAuthStore,
+  createClaudeCodeCredentials,
+  openClaudeCodeCredentialPool
+} from '@demicodes/provider-claude-code'
 
 const providerId = process.argv[2]
 const stateDirFlag = process.argv.indexOf('--state-dir')
-const stateDir = stateDirFlag > 0 ? process.argv[stateDirFlag + 1]! : mkdtempSync(join(tmpdir(), 'demi-login-trial-'))
+const stateDir = stateDirFlag > 0
+  ? process.argv[stateDirFlag + 1]!
+  : mkdtempSync(join(tmpdir(), 'demi-login-trial-'))
 
 function buildCredentials(): ProviderCredentials {
   if (providerId === 'codex') {
@@ -27,13 +44,23 @@ function buildCredentials(): ProviderCredentials {
   }
   if (providerId === 'grok-build') {
     const pool = openGrokCredentialPool({ stateDir })
-    return createGrokBuildCredentials(pool, new PoolAwareGrokAuthStore(pool), {})
+    return createGrokBuildCredentials(
+      pool,
+      new PoolAwareGrokAuthStore(pool),
+      {}
+    )
   }
   if (providerId === 'claude-code') {
     const pool = openClaudeCodeCredentialPool({ stateDir })
-    return createClaudeCodeCredentials(pool, new PoolAwareClaudeCodeAuthStore(pool), {})
+    return createClaudeCodeCredentials(
+      pool,
+      new PoolAwareClaudeCodeAuthStore(pool),
+      {}
+    )
   }
-  console.error('Usage: bun scripts/try-login.ts <codex|grok-build|claude-code> [--state-dir <dir>]')
+  console.error(
+    'Usage: bun scripts/try-login.ts <codex|grok-build|claude-code> [--state-dir <dir>]'
+  )
   process.exit(1)
 }
 
@@ -48,9 +75,14 @@ const result = await credentials.beginLogin!({
   onPending: (pending: ProviderCredentialLoginPending) => {
     console.log('\n=== ACTION REQUIRED (any browser, any device) ===')
     console.log('Open:', pending.verificationUrl)
-    if (pending.userCode) console.log('Enter code:', pending.userCode)
-    if (pending.expiresAt) console.log('Expires at:', pending.expiresAt)
-    if (pending.requiresCodeInput) console.log('After approving, the page shows a code — paste it back here.')
+    if (pending.userCode)
+      console.log('Enter code:', pending.userCode)
+    if (pending.expiresAt)
+      console.log('Expires at:', pending.expiresAt)
+    if (pending.requiresCodeInput)
+      console.log(
+        'After approving, the page shows a code — paste it back here.'
+      )
     console.log('================================================\n')
   },
   promptForCode: () => readLine('Paste the code from the vendor page: '),
@@ -58,7 +90,10 @@ const result = await credentials.beginLogin!({
 
 console.log('\nresult:', JSON.stringify(result))
 if (result.status === 'completed') {
-  console.log('pool entries:', JSON.stringify(await credentials.list(), null, 2))
+  console.log(
+    'pool entries:',
+    JSON.stringify(await credentials.list(), null, 2)
+  )
   console.log('auth status:', JSON.stringify(await credentials.getActive()))
 }
 console.log('state dir:', stateDir)

@@ -34,7 +34,8 @@ export function createFileGroup(): CommandGroup {
         failureOutput: 'writes the reason to stderr and exits non-zero without overwriting existing files',
         input: {
           path: z.string().describe('Target file path'),
-          content: z.string().describe('File content, passed via stdin/heredoc'),
+          content: z.string()
+            .describe('File content, passed via stdin/heredoc'),
         },
         positionals: ['path'],
         stdinField: 'content',
@@ -50,8 +51,10 @@ export function createFileGroup(): CommandGroup {
           path: z.string().describe('Target file path'),
           old: z.string().describe('Exact text to replace'),
           new: z.string().describe('Replacement text'),
-          occurrence: z.number().int().positive().optional().describe('1-based occurrence to replace'),
-          context: z.number().int().positive().optional().describe('Line number used to choose nearest occurrence'),
+          occurrence: z.number().int().positive().optional()
+            .describe('1-based occurrence to replace'),
+          context: z.number().int().positive().optional()
+            .describe('Line number used to choose nearest occurrence'),
         },
         positionals: ['path'],
       },
@@ -63,7 +66,8 @@ export function createFileGroup(): CommandGroup {
         successOutput: 'writes "Patched <n> file(s)" to stdout',
         failureOutput: 'writes parse, validation, or write errors to stderr and exits non-zero after rolling back partial writes when possible',
         input: {
-          patch: z.string().describe('Unified diff content, passed via stdin/heredoc'),
+          patch: z.string()
+            .describe('Unified diff content, passed via stdin/heredoc'),
         },
         stdinField: 'patch',
       },

@@ -384,7 +384,9 @@ svg.lucide {
   border-radius: var(--composer-shell-radius);
 }
 
-.composer-chips { grid-area: chips; }
+.composer-chips {
+  grid-area: chips;
+}
 .composer-attach {
   grid-area: attach;
   display: flex;
@@ -392,9 +394,16 @@ svg.lucide {
   /* Kill the inline strut so Tooltip/Dropdown wrappers cannot lift the 28px disc. */
   line-height: 0;
 }
-.composer-editor { grid-area: editor; min-width: 0; }
-.composer-model { grid-area: model; }
-.composer-actions { grid-area: actions; }
+.composer-editor {
+  grid-area: editor;
+  min-width: 0;
+}
+.composer-model {
+  grid-area: model;
+}
+.composer-actions {
+  grid-area: actions;
+}
 
 .composer-shell-capsule {
   height: var(--composer-shell-height);
@@ -561,8 +570,12 @@ svg.lucide {
 }
 
 @keyframes thinking-shimmer {
-  0% { background-position: 140% 0; }
-  100% { background-position: -30% 0; }
+  0% {
+    background-position: 140% 0;
+  }
+  100% {
+    background-position: -30% 0;
+  }
 }
 
 .stream-ink {
@@ -570,8 +583,12 @@ svg.lucide {
 }
 
 @keyframes stream-ink {
-  from { opacity: 0.22; }
-  to { opacity: 1; }
+  from {
+    opacity: 0.22;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -694,9 +711,15 @@ svg.lucide {
   text-wrap: balance;
 }
 
-.markdown-body h1 { font-size: 1.25em; }
-.markdown-body h2 { font-size: 1.125em; }
-.markdown-body h3 { font-size: 1em; }
+.markdown-body h1 {
+  font-size: 1.25em;
+}
+.markdown-body h2 {
+  font-size: 1.125em;
+}
+.markdown-body h3 {
+  font-size: 1em;
+}
 
 .markdown-body table {
   width: 100%;

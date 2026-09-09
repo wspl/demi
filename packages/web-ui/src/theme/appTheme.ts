@@ -16,7 +16,8 @@ function systemPrefersLight(): boolean {
 }
 
 function storedMode(): ThemeMode | null {
-  if (typeof localStorage === 'undefined') return null
+  if (typeof localStorage === 'undefined')
+    return null
   const value = localStorage.getItem(STORAGE_KEY)
   return value === 'light' || value === 'dark' ? value : null
 }
@@ -35,7 +36,8 @@ export function useTheme(): { theme: ComputedRef<ThemeMode> } {
 /** Set the theme and remember the choice (so it survives reloads and stops following the OS). */
 export function setTheme(mode: ThemeMode): void {
   appThemeStore.setMode(mode)
-  if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, mode)
+  if (typeof localStorage !== 'undefined')
+    localStorage.setItem(STORAGE_KEY, mode)
 }
 
 /** Flip between light and dark, remembering the choice. */
@@ -45,13 +47,17 @@ export function toggleTheme(): void {
 
 /** Mirror the active mode onto `<html data-theme>`, and follow the OS until the user chooses explicitly. */
 export function applyThemeToDocument(): void {
-  const apply = (): void => document.documentElement.setAttribute('data-theme', appThemeStore.state.mode)
+  const apply = (): void =>
+    document.documentElement.setAttribute('data-theme', appThemeStore.state.mode)
   apply()
   appThemeStore.subscribe(apply)
 
   if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (event) => {
-      if (storedMode()) return // user made an explicit choice — don't override it
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (
+      event
+    ) => {
+      if (storedMode())
+        return // user made an explicit choice — don't override it
       appThemeStore.setMode(event.matches ? 'light' : 'dark')
     })
   }
@@ -68,6 +74,7 @@ export function setThemeChoice(choice: ThemeChoice): void {
     setTheme(choice)
     return
   }
-  if (typeof localStorage !== 'undefined') localStorage.removeItem(STORAGE_KEY)
+  if (typeof localStorage !== 'undefined')
+    localStorage.removeItem(STORAGE_KEY)
   appThemeStore.setMode(systemPrefersLight() ? 'light' : 'dark')
 }

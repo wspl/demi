@@ -22,9 +22,18 @@ const dashMax = circumference * 0.45
 
 onMounted(() => {
   arcRef.value?.animate([
-    { strokeDasharray: `${dashMin} ${circumference - dashMin}`, strokeDashoffset: '0' },
-    { strokeDasharray: `${dashMax} ${circumference - dashMax}`, strokeDashoffset: `${circumference * -0.2}` },
-    { strokeDasharray: `${dashMin} ${circumference - dashMin}`, strokeDashoffset: `${-circumference}` },
+    {
+      strokeDasharray: `${dashMin} ${circumference - dashMin}`,
+      strokeDashoffset: '0'
+    },
+    {
+      strokeDasharray: `${dashMax} ${circumference - dashMax}`,
+      strokeDashoffset: `${circumference * -0.2}`
+    },
+    {
+      strokeDasharray: `${dashMin} ${circumference - dashMin}`,
+      strokeDashoffset: `${-circumference}`
+    },
   ], {
     duration: 1500,
     easing: 'ease-in-out',

@@ -5,10 +5,14 @@
  * transport) owns the rest of that environment. Jobs run in the device
  * environment as a whole (`serve/jobs.ts`).
  */
-export function deviceFallback(env: Record<string, string>, device: Record<string, string>): Record<string, string> {
+export function deviceFallback(
+  env: Record<string, string>,
+  device: Record<string, string>
+): Record<string, string> {
   const merged = { ...env }
   for (const key of ['PATH', 'HOME']) {
-    if (!(key in merged) && device[key] !== undefined) merged[key] = device[key]
+    if (!(key in merged) && device[key] !== undefined)
+      merged[key] = device[key]
   }
   return merged
 }

@@ -4,36 +4,98 @@ import { entryKind, formatBytes, formatModified } from '../format'
 import type { FileBrowserEntry } from '../types'
 
 const entries: FileBrowserEntry[] = [
-  { name: 'file10.txt', isDirectory: false, size: 300, modifiedAt: '2026-09-01T00:00:00Z' },
+  {
+    name: 'file10.txt',
+    isDirectory: false,
+    size: 300,
+    modifiedAt: '2026-09-01T00:00:00Z'
+  },
   { name: '.git', isDirectory: true, modifiedAt: '2026-09-03T00:00:00Z' },
-  { name: 'file2.txt', isDirectory: false, size: 100, modifiedAt: '2026-09-02T00:00:00Z' },
+  {
+    name: 'file2.txt',
+    isDirectory: false,
+    size: 100,
+    modifiedAt: '2026-09-02T00:00:00Z'
+  },
   { name: 'src', isDirectory: true, modifiedAt: '2026-08-01T00:00:00Z' },
 ]
 const names = (list: FileBrowserEntry[]) => list.map((entry) => entry.name)
 
 test('directories lead and names sort naturally', () => {
-  expect(names(sortEntries(entries, { key: 'name', direction: 'asc' }))).toEqual(['.git', 'src', 'file2.txt', 'file10.txt'])
-  expect(names(sortEntries(entries, { key: 'name', direction: 'desc' }))).toEqual(['src', '.git', 'file10.txt', 'file2.txt'])
+  expect(names(sortEntries(entries, { key: 'name', direction: 'asc' }))).toEqual(
+    [
+      '.git',
+      'src',
+      'file2.txt',
+      'file10.txt'
+    ]
+  )
+  expect(names(sortEntries(entries, { key: 'name', direction: 'desc' }))).toEqual(
+    [
+      'src',
+      '.git',
+      'file10.txt',
+      'file2.txt'
+    ]
+  )
 })
 
 test('time and size sort within each kind and fall back to the name', () => {
-  expect(names(sortEntries(entries, { key: 'modifiedAt', direction: 'desc' }))).toEqual(['.git', 'src', 'file2.txt', 'file10.txt'])
-  expect(names(sortEntries(entries, { key: 'size', direction: 'asc' }))).toEqual(['.git', 'src', 'file2.txt', 'file10.txt'])
-  expect(names(sortEntries(entries, { key: 'size', direction: 'desc' }))).toEqual(['.git', 'src', 'file10.txt', 'file2.txt'])
+  expect(names(sortEntries(entries, { key: 'modifiedAt', direction: 'desc' }))).toEqual(
+    [
+      '.git',
+      'src',
+      'file2.txt',
+      'file10.txt'
+    ]
+  )
+  expect(names(sortEntries(entries, { key: 'size', direction: 'asc' }))).toEqual(
+    [
+      '.git',
+      'src',
+      'file2.txt',
+      'file10.txt'
+    ]
+  )
+  expect(names(sortEntries(entries, { key: 'size', direction: 'desc' }))).toEqual(
+    [
+      '.git',
+      'src',
+      'file10.txt',
+      'file2.txt'
+    ]
+  )
 })
 
 test('hidden entries hide until asked for; the query matches anywhere in the name', () => {
-  expect(names(filterEntries(entries, '', false))).toEqual(['file10.txt', 'file2.txt', 'src'])
+  expect(names(filterEntries(entries, '', false))).toEqual(
+    ['file10.txt', 'file2.txt', 'src']
+  )
   expect(names(filterEntries(entries, '', true))).toHaveLength(4)
   expect(names(filterEntries(entries, 'ILE1', true))).toEqual(['file10.txt'])
 })
 
 test('nextSort cycles a column through ascending, descending and the default order', () => {
-  expect(nextSort({ key: null, direction: 'asc' }, 'name')).toEqual({ key: 'name', direction: 'asc' })
-  expect(nextSort({ key: 'name', direction: 'asc' }, 'name')).toEqual({ key: 'name', direction: 'desc' })
-  expect(nextSort({ key: 'name', direction: 'desc' }, 'name')).toEqual({ key: null, direction: 'asc' })
-  expect(nextSort({ key: 'name', direction: 'desc' }, 'size')).toEqual({ key: 'size', direction: 'asc' })
-  expect(names(sortEntries(entries, { key: null, direction: 'desc' }))).toEqual(['.git', 'src', 'file2.txt', 'file10.txt'])
+  expect(nextSort({ key: null, direction: 'asc' }, 'name')).toEqual(
+    { key: 'name', direction: 'asc' }
+  )
+  expect(nextSort({ key: 'name', direction: 'asc' }, 'name')).toEqual(
+    { key: 'name', direction: 'desc' }
+  )
+  expect(nextSort({ key: 'name', direction: 'desc' }, 'name')).toEqual(
+    { key: null, direction: 'asc' }
+  )
+  expect(nextSort({ key: 'name', direction: 'desc' }, 'size')).toEqual(
+    { key: 'size', direction: 'asc' }
+  )
+  expect(names(sortEntries(entries, { key: null, direction: 'desc' }))).toEqual(
+    [
+      '.git',
+      'src',
+      'file2.txt',
+      'file10.txt'
+    ]
+  )
 })
 
 test('history pushes, walks back and forward, and drops the forward stack on a new push', () => {

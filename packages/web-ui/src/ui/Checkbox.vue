@@ -18,7 +18,8 @@ function toggle() {
 }
 
 function onKeydown(event: KeyboardEvent) {
-  if (event.key !== ' ' && event.key !== 'Enter') return
+  if (event.key !== ' ' && event.key !== 'Enter')
+    return
   event.preventDefault()
   toggle()
 }

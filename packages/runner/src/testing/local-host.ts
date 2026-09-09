@@ -27,7 +27,10 @@ import { LocalHostCwd } from './local-cwd'
 
 export interface LocalHostOptions {
   storeRoot?: string
-  /** Bring-your-own persistence, e.g. to wrap or gate writes; defaults to a fileHostStore rooted at storeRoot. */
+  /**
+   * Bring-your-own persistence, e.g. to wrap or gate writes; defaults to a
+   * fileHostStore rooted at storeRoot.
+   */
   store?: HostStore
 }
 
@@ -45,7 +48,12 @@ export class LocalHost implements Host {
     this.process = new LocalHostProcess(this.defaultCwd)
     this.store = options.store ?? fileHostStore(this.fs, resolve(storeRoot))
     const info = userInfo()
-    this.identity = { uid: info.uid, gid: info.gid, hostname: hostname(), homeDir: homedir() }
+    this.identity = {
+      uid: info.uid,
+      gid: info.gid,
+      hostname: hostname(),
+      homeDir: homedir()
+    }
   }
 }
 
@@ -68,7 +76,8 @@ class LocalHostProcess implements HostProcess {
     let settled = false
     const waitPromise = new Promise<HostSpawnExit>((resolveWait) => {
       child.once('error', (error) => {
-        if (settled) return
+        if (settled)
+          return
         settled = true
         void classifySpawnFailure(error, cwd).then((kind) => {
           resolveWait({
@@ -80,7 +89,8 @@ class LocalHostProcess implements HostProcess {
       })
       child.once('close', (exitCode, signal) => {
         setImmediate(() => {
-          if (settled) return
+          if (settled)
+            return
           settled = true
           resolveWait({ exitCode, signal: signal ?? undefined })
         })
@@ -92,7 +102,8 @@ class LocalHostProcess implements HostProcess {
       stderr: streamBytes(child.stderr),
       output: streamMergedOutput(child.stdout, child.stderr),
       writeStdin: async (data) => {
-        if (!child.stdin || child.stdin.destroyed) return
+        if (!child.stdin || child.stdin.destroyed)
+          return
         await new Promise<void>((resolve, reject) => {
           child.stdin.write(data, (error) => {
             if (error) reject(error)
@@ -101,11 +112,13 @@ class LocalHostProcess implements HostProcess {
         })
       },
       closeStdin: async () => {
-        if (!child.stdin || child.stdin.destroyed) return
+        if (!child.stdin || child.stdin.destroyed)
+          return
         child.stdin.end()
       },
       kill: async (signal = 'SIGTERM') => {
-        if (!child.pid) return
+        if (!child.pid)
+          return
         if (params.killProcessGroup === true) {
           try {
             process.kill(-child.pid, signal as NodeJS.Signals)
@@ -114,7 +127,8 @@ class LocalHostProcess implements HostProcess {
             // Fall through to the direct child when process-group signaling is unavailable.
           }
         }
-        if (!child.killed) child.kill(signal as NodeJS.Signals)
+        if (!child.killed)
+          child.kill(signal as NodeJS.Signals)
       },
       wait: () => waitPromise,
     }
@@ -135,15 +149,18 @@ async function* streamMergedOutput(
     wake = null
   }
   const attach = (stream: Readable | null, name: 'stdout' | 'stderr') => {
-    if (!stream) return []
+    if (!stream)
+      return []
     open += 1
     let ended = false
     const onData = (chunk: Buffer) => push({ stream: name, chunk })
     const onEnd = () => {
-      if (ended) return
+      if (ended)
+        return
       ended = true
       open -= 1
-      if (open === 0) push({ done: true })
+      if (open === 0)
+        push({ done: true })
     }
     stream.on('data', onData)
     stream.once('end', onEnd)
@@ -159,7 +176,8 @@ async function* streamMergedOutput(
     ...attach(stdout, 'stdout'),
     ...attach(stderr, 'stderr'),
   ]
-  if (open === 0) push({ done: true })
+  if (open === 0)
+    push({ done: true })
 
   try {
     while (true) {
@@ -169,8 +187,10 @@ async function* streamMergedOutput(
         })
       }
       const item = queue.shift()
-      if (!item) continue
-      if ('done' in item) break
+      if (!item)
+        continue
+      if ('done' in item)
+        break
       yield item
     }
   } finally {
@@ -193,30 +213,41 @@ function defaultStoreRoot(defaultCwd: string): string {
   return root
 }
 
-function definedEnv(env: Record<string, string | undefined>): Record<string, string> {
+function definedEnv(
+  env: Record<string, string | undefined>
+): Record<string, string> {
   const defined: Record<string, string> = {}
   for (const [key, value] of Object.entries(env)) {
-    if (value !== undefined) defined[key] = value
+    if (value !== undefined)
+      defined[key] = value
   }
   return defined
 }
 
-async function classifySpawnFailure(error: Error, cwd: string): Promise<SpawnErrorKind> {
+async function classifySpawnFailure(
+  error: Error,
+  cwd: string
+): Promise<SpawnErrorKind> {
   try {
     const cwdStat = await stat(cwd)
-    if (!cwdStat.isDirectory()) return 'cwd_unusable'
+    if (!cwdStat.isDirectory())
+      return 'cwd_unusable'
   } catch {
     return 'cwd_unusable'
   }
   const code = 'code' in error ? String((error as { code: unknown }).code) : ''
-  if (code === 'ENOENT') return 'executable_not_found'
-  if (code === 'EACCES' || code === 'EPERM') return 'permission_denied'
-  if (code === 'EISDIR') return 'is_directory'
+  if (code === 'ENOENT')
+    return 'executable_not_found'
+  if (code === 'EACCES' || code === 'EPERM')
+    return 'permission_denied'
+  if (code === 'EISDIR')
+    return 'is_directory'
   return 'other'
 }
 
 async function* streamBytes(stream: Readable | null): AsyncIterable<Uint8Array> {
-  if (!stream) return
+  if (!stream)
+    return
   try {
     for await (const chunk of stream) {
       if (chunk instanceof Uint8Array) {
@@ -228,7 +259,9 @@ async function* streamBytes(stream: Readable | null): AsyncIterable<Uint8Array> 
   } catch (error) {
     // A child that failed to spawn closes its stdio pipes without ending them;
     // the process never produced output, so the stream simply ends.
-    if ((error as NodeJS.ErrnoException | null)?.code === 'ERR_STREAM_PREMATURE_CLOSE') return
+    if ((error as NodeJS.ErrnoException | null)?.code
+      === 'ERR_STREAM_PREMATURE_CLOSE')
+      return
     throw error
   }
 }

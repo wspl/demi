@@ -14,17 +14,33 @@ const EXPECTED_RESERVED = [
   'xargs', 'yarn', 'yq',
 ]
 
-test('the reserved set covers every shell word, builtin and system tool', () => {
-  for (const name of EXPECTED_RESERVED) {
-    expect(RESERVED_COMMAND_NAMES.has(name)).toBe(true)
+test(
+  'the reserved set covers every shell word, builtin and system tool',
+  () => {
+    for (const name of EXPECTED_RESERVED) {
+      expect(RESERVED_COMMAND_NAMES.has(name)).toBe(true)
+    }
   }
-})
+)
 
 test('registry rejects reserved names and accepts distinct ones', () => {
   const registry = new CommandRegistry(RESERVED_COMMAND_NAMES)
-  const leaf: Command = { name: 'run', summary: 'x', kind: 'rpc', run: () => ({ exitCode: 0 }) }
-  expect(() => registry.register({ name: 'grep', summary: 'x', subcommands: [leaf] })).toThrow(/reserved/)
-  expect(() => registry.register({ name: 'go', summary: 'x', subcommands: [leaf] })).toThrow(/reserved/)
+  const leaf: Command = {
+    name: 'run',
+    summary: 'x',
+    kind: 'rpc',
+    run: () => ({ exitCode: 0 })
+  }
+  expect(() => registry.register({
+    name: 'grep',
+    summary: 'x',
+    subcommands: [leaf]
+  })).toThrow(/reserved/)
+  expect(() => registry.register({
+    name: 'go',
+    summary: 'x',
+    subcommands: [leaf]
+  })).toThrow(/reserved/)
   registry.register({ name: 'my_tool', summary: 'x', subcommands: [leaf] })
   expect(registry.get('my_tool')).not.toBeNull()
 })

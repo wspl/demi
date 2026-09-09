@@ -16,18 +16,34 @@ export const imageStateSchema = z.object({
 }).strict()
 export type MachineImageState = z.infer<typeof imageStateSchema>
 
-/** Machine operations are serialized by device. Disks never depend on a conversation. */
+/**
+ * Machine operations are serialized by device. Disks never depend on a
+ * conversation.
+ */
 export interface ManagedHostProvisioner {
   reconcile(): Promise<void>
   currentBaseVersion(): Promise<string>
   imageState(deviceId: string): Promise<MachineImageState | null>
-  /** Creates initial disks on first use, otherwise boots the committed generation. */
+  /**
+   * Creates initial disks on first use, otherwise boots the committed
+   * generation.
+   */
   wake(deviceId: string, boot: BootArgs): Promise<void>
   hibernate(deviceId: string): Promise<void>
   checkpoint(deviceId: string): Promise<void>
-  growVolume(deviceId: string, volume: ManagedVolume, bytes: number): Promise<void>
-  /** Idempotent by operation id, even after a backend restart. Does not boot. */
-  reset(deviceId: string, operationId: string, baseVersion: string): Promise<void>
+  growVolume(
+    deviceId: string,
+    volume: ManagedVolume,
+    bytes: number
+  ): Promise<void>
+  /**
+   * Idempotent by operation id, even after a backend restart. Does not boot.
+   */
+  reset(
+    deviceId: string,
+    operationId: string,
+    baseVersion: string
+  ): Promise<void>
   close(): Promise<void>
   onDeath(listener: (deviceId: string) => void): void
 }

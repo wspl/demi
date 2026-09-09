@@ -22,7 +22,10 @@ import { dirname, isAbsolute, resolve } from 'node:path'
 import { isFileNotFoundError } from '@demicodes/utils'
 import type { HostDirent, HostFileStat, HostFileSystem } from '@demicodes/shell'
 
-/** Relative paths resolve against `defaultCwd` unless a call names its own `cwd`. */
+/**
+ * Relative paths resolve against `defaultCwd` unless a call names its own
+ * `cwd`.
+ */
 export function nodeFileSystem(defaultCwd: string): HostFileSystem {
   return new NodeFileSystem(resolve(defaultCwd))
 }
@@ -34,15 +37,37 @@ class NodeFileSystem implements HostFileSystem {
     return readFile(this.resolvePath(path, options?.cwd))
   }
 
-  async writeFile(path: string, data: Uint8Array, options?: { cwd?: string; createParents?: boolean }): Promise<void> {
+  async writeFile(
+    path: string,
+    data: Uint8Array,
+    options?: {
+      cwd?: string;
+      createParents?: boolean
+    }
+  ): Promise<void> {
     const target = this.resolvePath(path, options?.cwd)
-    if (options?.createParents) await mkdir(dirname(target), { recursive: true })
+    if (options?.createParents)
+      await mkdir(
+        dirname(target),
+        { recursive: true }
+      )
     await writeFile(target, data)
   }
 
-  async appendFile(path: string, data: Uint8Array, options?: { cwd?: string; createParents?: boolean }): Promise<void> {
+  async appendFile(
+    path: string,
+    data: Uint8Array,
+    options?: {
+      cwd?: string;
+      createParents?: boolean
+    }
+  ): Promise<void> {
     const target = this.resolvePath(path, options?.cwd)
-    if (options?.createParents) await mkdir(dirname(target), { recursive: true })
+    if (options?.createParents)
+      await mkdir(
+        dirname(target),
+        { recursive: true }
+      )
     await appendFile(target, data)
   }
 
@@ -51,7 +76,8 @@ class NodeFileSystem implements HostFileSystem {
       await lstat(this.resolvePath(path, options?.cwd))
       return true
     } catch (error) {
-      if (isFileNotFoundError(error)) return false
+      if (isFileNotFoundError(error))
+        return false
       throw error
     }
   }
@@ -64,9 +90,21 @@ class NodeFileSystem implements HostFileSystem {
     return toHostFileStat(await lstat(this.resolvePath(path, options?.cwd)))
   }
 
-  async readdir(path: string, options: { cwd?: string; withFileTypes: true }): Promise<HostDirent[]>
-  async readdir(path: string, options?: { cwd?: string; withFileTypes?: false }): Promise<string[]>
-  async readdir(path: string, options?: { cwd?: string; withFileTypes?: boolean }): Promise<string[] | HostDirent[]> {
+  async readdir(path: string, options: {
+    cwd?: string;
+    withFileTypes: true
+  }): Promise<HostDirent[]>
+  async readdir(path: string, options?: {
+    cwd?: string;
+    withFileTypes?: false
+  }): Promise<string[]>
+  async readdir(
+    path: string,
+    options?: {
+      cwd?: string;
+      withFileTypes?: boolean
+    }
+  ): Promise<string[] | HostDirent[]> {
     const target = this.resolvePath(path, options?.cwd)
     if (options?.withFileTypes) {
       return (await readdir(target, { withFileTypes: true })).map(toHostDirent)
@@ -74,38 +112,86 @@ class NodeFileSystem implements HostFileSystem {
     return readdir(target)
   }
 
-  async mkdir(path: string, options?: { cwd?: string; recursive?: boolean }): Promise<void> {
+  async mkdir(
+    path: string,
+    options?: {
+      cwd?: string;
+      recursive?: boolean
+    }
+  ): Promise<void> {
     // Node rejects `{ recursive: undefined }` (must be boolean or omitted).
-    await mkdir(this.resolvePath(path, options?.cwd), { recursive: options?.recursive === true })
+    await mkdir(
+      this.resolvePath(path, options?.cwd),
+      { recursive: options?.recursive === true }
+    )
   }
 
-  async rm(path: string, options?: { cwd?: string; recursive?: boolean; force?: boolean }): Promise<void> {
+  async rm(
+    path: string,
+    options?: {
+      cwd?: string;
+      recursive?: boolean;
+      force?: boolean
+    }
+  ): Promise<void> {
     await rm(this.resolvePath(path, options?.cwd), {
       recursive: options?.recursive === true,
       force: options?.force === true,
     })
   }
 
-  async cp(path: string, destination: string, options?: { cwd?: string; recursive?: boolean }): Promise<void> {
-    await cp(this.resolvePath(path, options?.cwd), this.resolvePath(destination, options?.cwd), {
+  async cp(
+    path: string,
+    destination: string,
+    options?: {
+      cwd?: string;
+      recursive?: boolean
+    }
+  ): Promise<void> {
+    await cp(this.resolvePath(path, options?.cwd), this.resolvePath(
+      destination,
+      options?.cwd
+    ), {
       recursive: options?.recursive === true,
     })
   }
 
-  async mv(path: string, destination: string, options?: { cwd?: string }): Promise<void> {
-    await rename(this.resolvePath(path, options?.cwd), this.resolvePath(destination, options?.cwd))
+  async mv(
+    path: string,
+    destination: string,
+    options?: { cwd?: string }
+  ): Promise<void> {
+    await rename(
+      this.resolvePath(path, options?.cwd),
+      this.resolvePath(destination, options?.cwd)
+    )
   }
 
-  async chmod(path: string, mode: number, options?: { cwd?: string }): Promise<void> {
+  async chmod(
+    path: string,
+    mode: number,
+    options?: { cwd?: string }
+  ): Promise<void> {
     await chmod(this.resolvePath(path, options?.cwd), mode)
   }
 
-  async symlink(target: string, path: string, options?: { cwd?: string }): Promise<void> {
+  async symlink(
+    target: string,
+    path: string,
+    options?: { cwd?: string }
+  ): Promise<void> {
     await symlink(target, this.resolvePath(path, options?.cwd))
   }
 
-  async link(existingPath: string, path: string, options?: { cwd?: string }): Promise<void> {
-    await link(this.resolvePath(existingPath, options?.cwd), this.resolvePath(path, options?.cwd))
+  async link(
+    existingPath: string,
+    path: string,
+    options?: { cwd?: string }
+  ): Promise<void> {
+    await link(
+      this.resolvePath(existingPath, options?.cwd),
+      this.resolvePath(path, options?.cwd)
+    )
   }
 
   async readlink(path: string, options?: { cwd?: string }): Promise<string> {
@@ -116,12 +202,18 @@ class NodeFileSystem implements HostFileSystem {
     return realpath(this.resolvePath(path, options?.cwd))
   }
 
-  async utimes(path: string, atime: Date, mtime: Date, options?: { cwd?: string }): Promise<void> {
+  async utimes(
+    path: string,
+    atime: Date,
+    mtime: Date,
+    options?: { cwd?: string }
+  ): Promise<void> {
     await utimes(this.resolvePath(path, options?.cwd), atime, mtime)
   }
 
   private resolvePath(path: string, cwd?: string): string {
-    if (isAbsolute(path)) return resolve(path)
+    if (isAbsolute(path))
+      return resolve(path)
     return resolve(cwd ?? this.defaultCwd, path)
   }
 }

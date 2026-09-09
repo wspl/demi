@@ -5,120 +5,151 @@ import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { ClaudeCodeProvider } from '../provider'
 
 const e2e = process.env.DEMI_CLAUDE_CODE_E2E === '1' ? test : test.skip
-const cacheE2e = process.env.DEMI_CLAUDE_CODE_CACHE_E2E === '1' ? test : test.skip
-const thinkingE2e = process.env.DEMI_CLAUDE_CODE_THINKING_E2E === '1' ? test : test.skip
-const thinkingAttempts = Math.max(1, Number.parseInt(process.env.DEMI_CLAUDE_CODE_THINKING_E2E_ATTEMPTS ?? '2', 10))
+const cacheE2e = process.env.DEMI_CLAUDE_CODE_CACHE_E2E === '1'
+  ? test
+  : test.skip
+const thinkingE2e = process.env.DEMI_CLAUDE_CODE_THINKING_E2E === '1'
+  ? test
+  : test.skip
+const thinkingAttempts = Math.max(
+  1,
+  Number.parseInt(process.env.DEMI_CLAUDE_CODE_THINKING_E2E_ATTEMPTS ?? '2', 10)
+)
 
-e2e('ClaudeCodeProvider can stream a minimal response from the real claude CLI', async () => {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 60_000)
-  const provider = new ClaudeCodeProvider({})
-  const request: InferenceRequest = {
-    sessionId: 'claude-real-e2e-session',
-    turnId: 'claude-real-e2e-turn',
-    requestId: 'claude-real-e2e-request',
-    outputLimit: null,
-    modelId: process.env.DEMI_CLAUDE_CODE_E2E_MODEL ?? 'claude-sonnet-4-6',
-    systemPrompt: 'Reply tersely and follow exact-output requests.',
-    cwd: process.cwd(),
-    items: [{ type: 'user_message', content: [{ type: 'text', text: 'Reply with exactly OK.' }] }],
-    tools: [],
-    thinking: null,
-    cancel: controller.signal,
-  }
-  const events: ProviderEvent[] = []
-
-  try {
-    for await (const event of provider.run(request)) events.push(event)
-  } finally {
-    clearTimeout(timeout)
-  }
-
-  const errors = events.filter((event) => event.type === 'error')
-  expect(errors).toEqual([])
-  expect(events.some((event) => event.type === 'text_delta' && event.text.includes('OK'))).toBe(true)
-  expect(events.some((event) => event.type === 'response')).toBe(true)
-})
-
-e2e('ClaudeCodeProvider preserves a real parallel SDK MCP tool batch', async () => {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 60_000)
-  const provider = new ClaudeCodeProvider({})
-  const sessionId = `claude-parallel-e2e-${randomUUID()}`
-  const request = (items: InferenceRequest['items']): InferenceRequest => ({
-    sessionId,
-    turnId: 'claude-parallel-e2e-turn',
-    requestId: `claude-parallel-e2e-${randomUUID()}`,
-    outputLimit: null,
-    modelId: process.env.DEMI_CLAUDE_CODE_E2E_MODEL ?? 'claude-fable-5',
-    systemPrompt: 'Follow exact tool-use requests without explaining first.',
-    cwd: process.cwd(),
-    items,
-    tools: [
-      {
-        name: 'alpha',
-        description: 'Record alpha. Independent from beta.',
-        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-      },
-      {
-        name: 'beta',
-        description: 'Record beta. Independent from alpha.',
-        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-      },
-    ],
-    thinking: null,
-    cancel: controller.signal,
-  })
-
-  try {
-    const first: ProviderEvent[] = []
-    for await (const event of provider.run(request([
-      {
+e2e(
+  'ClaudeCodeProvider can stream a minimal response from the real claude CLI',
+  async () => {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 60_000)
+    const provider = new ClaudeCodeProvider({})
+    const request: InferenceRequest = {
+      sessionId: 'claude-real-e2e-session',
+      turnId: 'claude-real-e2e-turn',
+      requestId: 'claude-real-e2e-request',
+      outputLimit: null,
+      modelId: process.env.DEMI_CLAUDE_CODE_E2E_MODEL ?? 'claude-sonnet-4-6',
+      systemPrompt: 'Reply tersely and follow exact-output requests.',
+      cwd: process.cwd(),
+      items: [{
         type: 'user_message',
-        content: [{
-          type: 'text',
-          text: 'Call alpha and beta now in the same response. They are independent and must run in parallel.',
-        }],
-      },
-    ]))) {
-      first.push(event)
+        content: [{ type: 'text', text: 'Reply with exactly OK.' }]
+      }],
+      tools: [],
+      thinking: null,
+      cancel: controller.signal,
     }
-    const calls = first.filter(
-      (event): event is Extract<ProviderEvent, { type: 'tool_call_requested' }> =>
-        event.type === 'tool_call_requested',
-    )
-    expect(calls.map((event) => event.toolName)).toEqual(['alpha', 'beta'])
+    const events: ProviderEvent[] = []
 
-    const second: ProviderEvent[] = []
-    for await (const event of provider.run(request(calls.map((call) => ({
-      type: 'tool_result' as const,
-      toolUseId: call.toolUseId,
-      output: [{ type: 'text' as const, text: `${call.toolName} done` }],
-      isError: false,
-    }))))) {
-      second.push(event)
+    try {
+      for await (const event of provider.run(request)) events.push(event)
+    } finally {
+      clearTimeout(timeout)
     }
-    expect(second.filter((event) => event.type === 'error')).toEqual([])
-    expect(second.some((event) => event.type === 'response')).toBe(true)
-  } finally {
-    clearTimeout(timeout)
-    await provider.dispose()
+
+    const errors = events.filter((event) => event.type === 'error')
+    expect(errors).toEqual([])
+    expect(events.some((event) => event.type === 'text_delta'
+      && event.text.includes('OK'))).toBe(true)
+    expect(events.some((event) => event.type === 'response')).toBe(true)
   }
-}, 70_000)
+)
 
-cacheE2e('ClaudeCodeProvider reports a real provider cache hit on repeated tool-enabled requests', async () => {
-  const cacheKey = `demi-cache-e2e-${randomUUID()}`
-  const systemPrompt = [
-    `Cache smoke key: ${cacheKey}`,
-    'You are a coding agent. '.repeat(200),
-    'When asked for the cache smoke response, output the marker exactly.',
-  ].join('\n')
-  const first = await runCacheRequest(systemPrompt)
-  const second = await runCacheRequest(systemPrompt)
+e2e(
+  'ClaudeCodeProvider preserves a real parallel SDK MCP tool batch',
+  async () => {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 60_000)
+    const provider = new ClaudeCodeProvider({})
+    const sessionId = `claude-parallel-e2e-${randomUUID()}`
+    const request = (items: InferenceRequest['items']): InferenceRequest => ({
+      sessionId,
+      turnId: 'claude-parallel-e2e-turn',
+      requestId: `claude-parallel-e2e-${randomUUID()}`,
+      outputLimit: null,
+      modelId: process.env.DEMI_CLAUDE_CODE_E2E_MODEL ?? 'claude-fable-5',
+      systemPrompt: 'Follow exact tool-use requests without explaining first.',
+      cwd: process.cwd(),
+      items,
+      tools: [
+        {
+          name: 'alpha',
+          description: 'Record alpha. Independent from beta.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: false
+          },
+        },
+        {
+          name: 'beta',
+          description: 'Record beta. Independent from alpha.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: false
+          },
+        },
+      ],
+      thinking: null,
+      cancel: controller.signal,
+    })
 
-  expect(first.cacheWriteTokens + first.cacheReadTokens).toBeGreaterThan(0)
-  expect(second.cacheReadTokens).toBeGreaterThan(0)
-})
+    try {
+      const first: ProviderEvent[] = []
+      for await (const event of provider.run(request([
+        {
+          type: 'user_message',
+          content: [{
+            type: 'text',
+            text: 'Call alpha and beta now in the same response. They are independent and must run in parallel.',
+          }],
+        },
+      ]))) {
+        first.push(event)
+      }
+      const calls = first.filter(
+        (
+          event
+        ): event is Extract<ProviderEvent, { type: 'tool_call_requested' }> =>
+          event.type === 'tool_call_requested',
+      )
+      expect(calls.map((event) => event.toolName)).toEqual(['alpha', 'beta'])
+
+      const second: ProviderEvent[] = []
+      for await (const event of provider.run(request(calls.map((call) => ({
+        type: 'tool_result' as const,
+        toolUseId: call.toolUseId,
+        output: [{ type: 'text' as const, text: `${call.toolName} done` }],
+        isError: false,
+      }))))) {
+        second.push(event)
+      }
+      expect(second.filter((event) => event.type === 'error')).toEqual([])
+      expect(second.some((event) => event.type === 'response')).toBe(true)
+    } finally {
+      clearTimeout(timeout)
+      await provider.dispose()
+    }
+  },
+  70_000
+)
+
+cacheE2e(
+  'ClaudeCodeProvider reports a real provider cache hit on repeated tool-enabled requests',
+  async () => {
+    const cacheKey = `demi-cache-e2e-${randomUUID()}`
+    const systemPrompt = [
+      `Cache smoke key: ${cacheKey}`,
+      'You are a coding agent. '.repeat(200),
+      'When asked for the cache smoke response, output the marker exactly.',
+    ].join('\n')
+    const first = await runCacheRequest(systemPrompt)
+    const second = await runCacheRequest(systemPrompt)
+
+    expect(first.cacheWriteTokens + first.cacheReadTokens).toBeGreaterThan(0)
+    expect(second.cacheReadTokens).toBeGreaterThan(0)
+  }
+)
 
 thinkingE2e(
   'ClaudeCodeProvider streams real medium thinking for a summary request on claude-opus-4-8',
@@ -126,7 +157,8 @@ thinkingE2e(
     const runs: ProviderEvent[][] = []
     for (let attempt = 0; attempt < thinkingAttempts; attempt++) runs.push(await runThinkingRequest())
 
-    expect(runs.some((events) => events.some(isVisibleThinkingEvent))).toBe(true)
+    expect(runs.some((events) => events.some(isVisibleThinkingEvent)))
+      .toBe(true)
   },
   thinkingAttempts * 120_000,
 )
@@ -146,7 +178,10 @@ async function runCacheRequest(systemPrompt: string): Promise<TokenUsage> {
     items: [
       {
         type: 'user_message',
-        content: [{ type: 'text', text: 'Output DEMI_CACHE_TOOL_OK exactly. Do not use tools.' }],
+        content: [{
+          type: 'text',
+          text: 'Output DEMI_CACHE_TOOL_OK exactly. Do not use tools.'
+        }],
       },
     ],
     tools: [
@@ -173,10 +208,20 @@ async function runCacheRequest(systemPrompt: string): Promise<TokenUsage> {
 
   const errors = events.filter((event) => event.type === 'error')
   expect(errors).toEqual([])
-  expect(events.filter((event) => event.type === 'tool_call_requested')).toEqual([])
-  const text = events.filter((event): event is Extract<ProviderEvent, { type: 'text_delta' }> => event.type === 'text_delta').map((event) => event.text).join('')
+  expect(
+    events.filter((event) => event.type === 'tool_call_requested')
+  ).toEqual([])
+  const text = events.filter((
+    event
+  ): event is Extract<ProviderEvent, { type: 'text_delta' }> => event.type
+    === 'text_delta').map((
+    event
+  ) => event.text).join('')
   expect(text).toContain('DEMI_CACHE_TOOL_OK')
-  const response = events.find((event): event is Extract<ProviderEvent, { type: 'response' }> => event.type === 'response')
+  const response = events.find((
+    event
+  ): event is Extract<ProviderEvent, { type: 'response' }> => event.type
+    === 'response')
   expect(response).toBeDefined()
   return response!.usage
 }
@@ -226,10 +271,20 @@ async function runThinkingRequest(): Promise<ProviderEvent[]> {
 
   const errors = events.filter((event) => event.type === 'error')
   expect(errors).toEqual([])
-  expect(events.filter((event) => event.type === 'tool_call_requested')).toEqual([])
-  const text = events.filter((event): event is Extract<ProviderEvent, { type: 'text_delta' }> => event.type === 'text_delta').map((event) => event.text).join('')
+  expect(
+    events.filter((event) => event.type === 'tool_call_requested')
+  ).toEqual([])
+  const text = events.filter((
+    event
+  ): event is Extract<ProviderEvent, { type: 'text_delta' }> => event.type
+    === 'text_delta').map((
+    event
+  ) => event.text).join('')
   expect(text).toContain('DEMI_THINKING_BUDGET_OK')
-  const response = events.find((event): event is Extract<ProviderEvent, { type: 'response' }> => event.type === 'response')
+  const response = events.find((
+    event
+  ): event is Extract<ProviderEvent, { type: 'response' }> => event.type
+    === 'response')
   expect(response).toBeDefined()
   expect(response!.usage.inputTokens).toBeGreaterThan(0)
   expect(response!.usage.outputTokens).toBeGreaterThan(0)

@@ -43,11 +43,15 @@ def roundtrip(binary, data, regular_files=False):
             target = Path(work, "stdout")
             source.write_bytes(data)
             with source.open("rb") as stdin, target.open("wb") as stdout:
-                result = subprocess.run(args, stdin=stdin, stdout=stdout,
-                                        stderr=subprocess.PIPE, timeout=25)
+                result = subprocess.run(
+                    args, stdin=stdin, stdout=stdout,
+                    stderr=subprocess.PIPE, timeout=25
+                )
             output = target.read_bytes()
         else:
-            result = subprocess.run(args, input=data, capture_output=True, timeout=25)
+            result = subprocess.run(
+                args, input=data, capture_output=True, timeout=25
+            )
             output = result.stdout
         thread.join(21)
         assert not thread.is_alive(), "server did not finish"
@@ -57,10 +61,19 @@ def roundtrip(binary, data, regular_files=False):
 
 
 for binary in sys.argv[1:]:
-    for data, regular in [(b"", False), (b"hello\x00\xff\r\n", False),
-                          (payload, False), (payload, True)]:
+    for data, regular in [
+        (b"", False),
+        (b"hello\x00\xff\r\n", False),
+        (payload, False),
+        (payload, True)
+    ]:
         roundtrip(binary, data, regular)
-    missing = subprocess.run([str(Path(binary).resolve()), "/tmp/demi-ipc-size-no-such-socket"],
-                             capture_output=True, timeout=5)
+    missing = subprocess.run(
+        [str(Path(binary).resolve()), "/tmp/demi-ipc-size-no-such-socket"],
+        capture_output=True, timeout=5
+    )
     assert missing.returncode != 0
-    print(f"PASS {binary}: empty/binary/3 MiB pipe/3 MiB file/missing endpoint", flush=True)
+    print(
+        f"PASS {binary}: empty/binary/3 MiB pipe/3 MiB file/missing endpoint",
+        flush=True
+    )

@@ -46,7 +46,11 @@ export const demoModels: Record<string, ModelInfo[]> = {
   ],
 }
 
-export const mediumThinking: ThinkingConfig = { type: 'effort', effort: 'medium', summary: null }
+export const mediumThinking: ThinkingConfig = {
+  type: 'effort',
+  effort: 'medium',
+  summary: null
+}
 
 export function usageAt(ratio: number): TokenUsage {
   const used = Math.round(180_000 * ratio)

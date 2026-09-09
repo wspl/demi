@@ -25,19 +25,25 @@ const pendingSteers = computed(() => session.value?.pendingSteers ?? [])
 const phase = computed(() => session.value?.phase ?? 'idle')
 const canResume = computed(() => canResumeFromDock(phase.value, blocks.value))
 
-const listRef = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
+const listRef = ref<{
+  isAtBottom: boolean;
+  scrollToBottom: () => void
+}>()
 const surfaceRef = ref<{ dockHeight: number }>()
 const showScrollToBottom = computed(() => Boolean(listRef.value && !listRef.value.isAtBottom))
 
 function handleEmptySubmit() {
   const messageId = queuedMessageIdForEmptySubmit(queuedMessages.value)
-  if (!messageId) return
+  if (!messageId)
+    return
   handleQueuedSendNow(messageId)
 }
 
 function handleQueuedSendNow(messageId: string) {
   if (phase.value === 'running') {
-    void workspace.steerQueuedMessage(props.conversationId, messageId).catch((error) => {
+    void workspace.steerQueuedMessage(props.conversationId, messageId).catch((
+      error
+    ) => {
       reportError('Failed to steer queued message', error, { userVisible: true })
     })
     return
@@ -46,8 +52,14 @@ function handleQueuedSendNow(messageId: string) {
 }
 
 function handleInterruptPendingSteer(steerId: string) {
-  void workspace.interruptPendingSteer(props.conversationId, steerId).catch((error) => {
-    reportError('Failed to interrupt the current turn', error, { userVisible: true })
+  void workspace.interruptPendingSteer(props.conversationId, steerId).catch((
+    error
+  ) => {
+    reportError(
+      'Failed to interrupt the current turn',
+      error,
+      { userVisible: true }
+    )
   })
 }
 

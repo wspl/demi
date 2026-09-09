@@ -128,8 +128,14 @@ function fakeWorkspace(
     steer: async (_id: string, content: UserContentBlock[]) => {
       calls.push(`steer:${textContent(content)}`)
     },
-    setModel: (_id: string, model: { providerId: string; modelId: string; serviceTierId: string | null }) => {
-      calls.push(`setModel:${model.providerId}:${model.modelId}:${model.serviceTierId}`)
+    setModel: (_id: string, model: {
+      providerId: string;
+      modelId: string;
+      serviceTierId: string | null
+    }) => {
+      calls.push(
+        `setModel:${model.providerId}:${model.modelId}:${model.serviceTierId}`
+      )
     },
     abort: async () => {},
     compact: async () => {},
@@ -137,5 +143,9 @@ function fakeWorkspace(
 }
 
 function textContent(content: UserContentBlock[]): string {
-  return content.map((block) => (block.type === 'text' ? block.text : `[${block.type}]`)).join('\n')
+  return content.map((block) => (block.type === 'text'
+    ? block.text
+    : `[${block.type}]`)).join(
+    '\n'
+  )
 }

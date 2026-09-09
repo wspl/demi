@@ -8,7 +8,10 @@ export const productAppearance = {
 
 /** The tones a user can pick in settings. */
 export type ProductTone = 'ink' | 'warm'
-export const PRODUCT_TONES: readonly { id: ProductTone; label: string }[] = [
+export const PRODUCT_TONES: readonly {
+  id: ProductTone;
+  label: string
+}[] = [
   { id: 'ink', label: 'Ink' },
   { id: 'warm', label: 'Warm' },
 ]

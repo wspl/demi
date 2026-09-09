@@ -13,7 +13,11 @@ import AddSkillSourceDialog from './AddSkillSourceDialog.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
-import type { SettingsSkillDraft, SettingsSkillSource, SettingsSkillSourceState } from './types'
+import type {
+  SettingsSkillDraft,
+  SettingsSkillSource,
+  SettingsSkillSourceState
+} from './types'
 
 /**
  * Skill sources: one git repository is a pack. Packs start folded. Opening a
@@ -81,7 +85,10 @@ const empty = computed(() => props.sources.length === 0)
 </script>
 
 <template>
-  <SettingsPage title="Skills" description="Packaged workflows the agent can follow. Off keeps the files but hides them from the agent.">
+  <SettingsPage
+    title="Skills"
+    description="Packaged workflows the agent can follow. Off keeps the files but hides them from the agent."
+  >
     <SettingsGroup>
       <template #header>
         <header class="flex items-start justify-between gap-3">
@@ -103,8 +110,13 @@ const empty = computed(() => props.sources.length === 0)
             <GitBranch :size="ICON_PX.in28" />
           </template>
           <template #tags>
-            <span class="inline-grid h-5 grid-cols-1 grid-rows-1 items-center text-[12px] leading-5 text-fg-muted">
-              <span class="invisible col-start-1 row-start-1 inline-flex items-center gap-1.5" aria-hidden="true">
+            <span
+              class="inline-grid h-5 grid-cols-1 grid-rows-1 items-center text-[12px] leading-5 text-fg-muted"
+            >
+              <span
+                class="invisible col-start-1 row-start-1 inline-flex items-center gap-1.5"
+                aria-hidden="true"
+              >
                 <span class="size-1.5 rounded-full" />
                 Updating
               </span>
@@ -112,7 +124,10 @@ const empty = computed(() => props.sources.length === 0)
                 v-if="source.state !== 'ready'"
                 class="col-start-1 row-start-1 inline-flex items-center gap-1.5"
               >
-                <span class="size-1.5 shrink-0 rounded-full" :class="statusDot[source.state]" />
+                <span
+                  class="size-1.5 shrink-0 rounded-full"
+                  :class="statusDot[source.state]"
+                />
                 <Tooltip :content="source.detail" :disabled="!source.detail">
                   <span>{{ statusWord[source.state] }}</span>
                 </Tooltip>
@@ -124,9 +139,17 @@ const empty = computed(() => props.sources.length === 0)
           </template>
           <div class="flex items-center gap-2" @click.stop>
             <template v-if="pack(source).total">
-              <span class="inline-grid h-4 grid-cols-1 grid-rows-1 items-center justify-items-end tabular-nums text-[12px] leading-4 text-fg-subtle">
-                <span class="invisible col-start-1 row-start-1" aria-hidden="true">00/00</span>
-                <span class="col-start-1 row-start-1" :class="pack(source).label ? '' : 'invisible'">{{ pack(source).label || '00/00' }}</span>
+              <span
+                class="inline-grid h-4 grid-cols-1 grid-rows-1 items-center justify-items-end tabular-nums text-[12px] leading-4 text-fg-subtle"
+              >
+                <span
+                  class="invisible col-start-1 row-start-1"
+                  aria-hidden="true"
+                >00/00</span>
+                <span
+                  class="col-start-1 row-start-1"
+                  :class="pack(source).label ? '' : 'invisible'"
+                >{{ pack(source).label || '00/00' }}</span>
               </span>
               <Switch
                 :model-value="pack(source).checked"
@@ -147,10 +170,20 @@ const empty = computed(() => props.sources.length === 0)
               />
             </Tooltip>
             <Tooltip content="Remove source">
-              <IconButton size="sm" :icon="Trash2" variant="danger" aria-label="Remove source" @click="emit('remove', source)" />
+              <IconButton
+                size="sm"
+                :icon="Trash2"
+                variant="danger"
+                aria-label="Remove source"
+                @click="emit('remove', source)"
+              />
             </Tooltip>
           </div>
-          <FoldChevron :open="isOpen(source.id)" :visible="pack(source).total > 0" class="text-fg-subtle" />
+          <FoldChevron
+            :open="isOpen(source.id)"
+            :visible="pack(source).total > 0"
+            class="text-fg-subtle"
+          />
         </SettingsRow>
         <Fold :open="isOpen(source.id) && source.skills.length > 0">
           <div
@@ -173,11 +206,19 @@ const empty = computed(() => props.sources.length === 0)
           </div>
         </Fold>
       </div>
-      <div v-if="empty" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">
+      <div
+        v-if="empty"
+        class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
+      >
         No sources yet.
       </div>
     </SettingsGroup>
-    <AddSkillSourceDialog :is-open="addOpen" :overlay-store="overlayStore" @close="addOpen = false" @add="add" />
+    <AddSkillSourceDialog
+      :is-open="addOpen"
+      :overlay-store="overlayStore"
+      @close="addOpen = false"
+      @add="add"
+    />
   </SettingsPage>
 </template>
 

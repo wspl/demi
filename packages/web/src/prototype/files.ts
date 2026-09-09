@@ -14,7 +14,12 @@ function project(files: Record<string, number>): MemoryDirectory {
   return dir(
     {
       '.git': dir({ HEAD: file(21, when(1)) }, { modifiedAt: when(1) }),
-      src: dir(Object.fromEntries(Object.entries(files).map(([name, size]) => [name, file(size, when(6))])), { modifiedAt: when(6) }),
+      src: dir(
+        Object.fromEntries(
+          Object.entries(files).map(([name, size]) => [name, file(size, when(6))])
+        ),
+        { modifiedAt: when(6) }
+      ),
       'README.md': file(2_048, when(2)),
       'package.json': file(1_244, when(2)),
     },
@@ -33,7 +38,13 @@ const trees: Record<string, () => MemoryDirectory> = {
             Projects: dir(
               {
                 demi: project({ 'index.ts': 1_280, 'server.ts': 6_902 }),
-                notes: dir({ 'outline.md': file(3_100, when(5)), 'draft.md': file(12_400, when(7)) }, { modifiedAt: when(7) }),
+                notes: dir(
+                  {
+                    'outline.md': file(3_100, when(5)),
+                    'draft.md': file(12_400, when(7))
+                  },
+                  { modifiedAt: when(7) }
+                ),
               },
               { modifiedAt: when(7) },
             ),
@@ -45,12 +56,23 @@ const trees: Record<string, () => MemoryDirectory> = {
     }),
   build: () =>
     dir({
-      home: dir({ build: dir({ work: dir({}, { modifiedAt: when(5) }) }, { modifiedAt: when(5) }) }),
-      srv: dir({ assetsfactory: project({ 'pipeline.ts': 9_210 }) }, { modifiedAt: when(2) }),
+      home: dir(
+        {
+          build: dir({ work: dir({}, { modifiedAt: when(5) }) }, { modifiedAt: when(5) })
+        }
+      ),
+      srv: dir(
+        { assetsfactory: project({ 'pipeline.ts': 9_210 }) },
+        { modifiedAt: when(2) }
+      ),
     }),
   cloud: () =>
     dir({
-      home: dir({ demi: dir({ workspace: dir({}, { modifiedAt: when(7) }) }, { modifiedAt: when(7) }) }),
+      home: dir(
+        {
+          demi: dir({ workspace: dir({}, { modifiedAt: when(7) }) }, { modifiedAt: when(7) })
+        }
+      ),
     }),
 }
 
@@ -63,7 +85,14 @@ export function fileSourceFor(device: Device | null): FileBrowserSource {
   const id = device?.id ?? 'cloud'
   let source = sources.get(id)
   if (!source) {
-    source = createMemoryFileSource({ platform: device?.platform ?? 'linux', home: device?.home ?? CLOUD_HOME, root: (trees[id] ?? trees['cloud']!)(), latencyMs: 200 })
+    source = createMemoryFileSource(
+      {
+        platform: device?.platform ?? 'linux',
+        home: device?.home ?? CLOUD_HOME,
+        root: (trees[id] ?? trees['cloud']!)(),
+        latencyMs: 200
+      }
+    )
     sources.set(id, source)
   }
   return source
@@ -72,16 +101,32 @@ export function fileSourceFor(device: Device | null): FileBrowserSource {
 /** Home first, then the workspaces already on that device. */
 export function placesFor(device: Device | null, projects: Project[]): FileBrowserPlaceGroup[] {
   const deviceId = device?.id ?? 'cloud'
-  const recent = projects.filter((item) => item.deviceId === deviceId).map((item) => ({ path: item.path, label: item.name }))
+  const recent = projects.filter((item) => item.deviceId === deviceId).map(
+    (item) => ({ path: item.path, label: item.name })
+  )
   return [
-    { label: 'Quick access', places: [{ path: device?.home ?? CLOUD_HOME, label: 'Home' }] },
+    {
+      label: 'Quick access',
+      places: [
+        {
+          path: device?.home ?? CLOUD_HOME,
+          label: 'Home'
+        }
+      ]
+    },
     ...(recent.length ? [{ label: 'Workspaces', places: recent }] : []),
   ]
 }
 
 export function browserHosts(devices: Device[], includeCloud: boolean): FileBrowserHost[] {
   return [
-    ...devices.map((device) => ({ id: device.id, label: device.name, online: device.online })),
+    ...devices.map(
+      (device) => ({
+        id: device.id,
+        label: device.name,
+        online: device.online
+      })
+    ),
     ...(includeCloud ? [{ id: 'cloud', label: 'Cloud', online: true }] : []),
   ]
 }

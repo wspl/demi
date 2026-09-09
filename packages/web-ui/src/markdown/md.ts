@@ -54,9 +54,16 @@ function escapeBlockSyntax(src: string): string {
 
 export const md = {
   render(src: string, options?: MarkdownRenderOptions): string {
-    return DOMPurify.sanitize(renderMarkdown(src, options), { ADD_ATTR: ['style', 'data-file-link'] })
+    return DOMPurify.sanitize(
+      renderMarkdown(src, options),
+      {
+        ADD_ATTR: ['style', 'data-file-link']
+      }
+    )
   },
   renderUser(src: string): string {
-    return DOMPurify.sanitize(userMarked.parse(escapeBlockSyntax(src), { async: false }) as string)
+    return DOMPurify.sanitize(
+      userMarked.parse(escapeBlockSyntax(src), { async: false }) as string
+    )
   },
 }

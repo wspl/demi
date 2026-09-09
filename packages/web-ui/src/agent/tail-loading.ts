@@ -7,13 +7,18 @@ export function shouldShowTailLoading(
   transcriptBlocks: readonly MessageListBlock[],
   renderBlocks: readonly MessageListBlock[] = transcriptBlocks,
 ): boolean {
-  if (phase !== 'running') return false
-  if (hasActiveOutput(transcriptBlocks)) return false
-  if (renderBlocks.length === 0) return true
+  if (phase !== 'running')
+    return false
+  if (hasActiveOutput(transcriptBlocks))
+    return false
+  if (renderBlocks.length === 0)
+    return true
 
   const last = lastNonQueueBlock(renderBlocks)
-  if (!last) return true
-  if (last.type === 'tool_call') return last.status !== 'executing'
+  if (!last)
+    return true
+  if (last.type === 'tool_call')
+    return last.status !== 'executing'
 
   return (
     last.type === 'user'
@@ -26,7 +31,8 @@ export function shouldShowTailLoading(
 function lastNonQueueBlock(blocks: readonly MessageListBlock[]): MessageListBlock | undefined {
   for (let i = blocks.length - 1; i >= 0; i--) {
     const block = blocks[i]
-    if (block && !isQueueTailBlock(block)) return block
+    if (block && !isQueueTailBlock(block))
+      return block
   }
 }
 

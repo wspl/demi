@@ -23,12 +23,19 @@ export interface ClaudeOutputMapOptions {
   ignoreAssistantToolUse?: boolean
 }
 
-export function mapClaudeStdoutMessage(message: unknown, options: ClaudeOutputMapOptions = {}): OutputMapping {
+export function mapClaudeStdoutMessage(
+  message: unknown,
+  options: ClaudeOutputMapOptions = {}
+): OutputMapping {
   const events: ProviderEvent[] = []
-  if (!isRecord(message)) return { events, terminal: false }
+  if (!isRecord(message))
+    return { events, terminal: false }
 
   if (message.type === 'assistant' && isRecord(message.message)) {
-    events.push(...mapContentArray((message.message as { content?: unknown }).content, options))
+    events.push(...mapContentArray(
+      (message.message as { content?: unknown }).content,
+      options
+    ))
   }
 
   if (message.type === 'stream_event' && isRecord(message.event)) {
@@ -37,13 +44,18 @@ export function mapClaudeStdoutMessage(message: unknown, options: ClaudeOutputMa
 
   if (message.type === 'control_request') {
     const request = parseControlRequest(message)
-    if (request) return { events, controlRequest: request, terminal: false }
+    if (request)
+      return { events, controlRequest: request, terminal: false }
   }
 
   if (message.type === 'result') {
     if (message.is_error === true) {
       const errorMessage = resultErrorMessage(message)
-      events.push({ type: 'error', message: errorMessage, code: classifyProviderError(errorMessage) })
+      events.push({
+        type: 'error',
+        message: errorMessage,
+        code: classifyProviderError(errorMessage)
+      })
     }
     events.push({ type: 'response', usage: mapResultUsage(message.usage) })
     return { events, terminal: true }
@@ -51,17 +63,28 @@ export function mapClaudeStdoutMessage(message: unknown, options: ClaudeOutputMa
 
   if (message.type === 'error') {
     const errorMessage = String(message.message ?? 'Claude Code error')
-    events.push({ type: 'error', message: errorMessage, code: stringOrNull(message.code) ?? classifyProviderError(errorMessage) })
+    events.push({
+      type: 'error',
+      message: errorMessage,
+      code: stringOrNull(message.code) ?? classifyProviderError(errorMessage)
+    })
   }
 
   return { events, terminal: false }
 }
 
-export function controlRequestToToolCall(request: ClaudeControlRequest): ProviderEvent | null {
-  if (request.method !== 'tools/call') return null
-  if (!isRecord(request.params)) return null
-  const name = typeof request.params.name === 'string' ? request.params.name : null
-  if (!name) return null
+export function controlRequestToToolCall(
+  request: ClaudeControlRequest
+): ProviderEvent | null {
+  if (request.method !== 'tools/call')
+    return null
+  if (!isRecord(request.params))
+    return null
+  const name = typeof request.params.name === 'string'
+    ? request.params.name
+    : null
+  if (!name)
+    return null
   return {
     type: 'tool_call_requested',
     toolUseId: request.toolUseId ?? String(request.id),
@@ -70,18 +93,31 @@ export function controlRequestToToolCall(request: ClaudeControlRequest): Provide
   }
 }
 
-function mapContentArray(content: unknown, options: ClaudeOutputMapOptions): ProviderEvent[] {
-  if (!Array.isArray(content)) return []
+function mapContentArray(
+  content: unknown,
+  options: ClaudeOutputMapOptions
+): ProviderEvent[] {
+  if (!Array.isArray(content))
+    return []
   const events: ProviderEvent[] = []
   for (const block of content) {
-    if (!isRecord(block)) continue
+    if (!isRecord(block))
+      continue
     if (block.type === 'text' && !options.ignoreAssistantContent) {
       events.push({ type: 'text_delta', text: String(block.text ?? '') })
     } else if (block.type === 'thinking' && !options.ignoreAssistantContent) {
       events.push({ type: 'thinking_start' })
-      events.push({ type: 'thinking_delta', text: String(block.thinking ?? block.text ?? '') })
-      if (typeof block.signature === 'string') events.push({ type: 'thinking_signature', signature: block.signature })
-    } else if (block.type === 'redacted_thinking' && !options.ignoreAssistantContent) {
+      events.push({
+        type: 'thinking_delta',
+        text: String(block.thinking ?? block.text ?? '')
+      })
+      if (typeof block.signature === 'string')
+        events.push({
+          type: 'thinking_signature',
+          signature: block.signature
+        })
+    } else if (block.type === 'redacted_thinking'
+      && !options.ignoreAssistantContent) {
       events.push({ type: 'redacted_thinking', data: String(block.data ?? '') })
     } else if (block.type === 'tool_use' && !options.ignoreAssistantToolUse) {
       events.push(mapToolUseBlock(block))
@@ -91,10 +127,18 @@ function mapContentArray(content: unknown, options: ClaudeOutputMapOptions): Pro
 }
 
 function mapToolUseBlock(block: Record<string, unknown>): ProviderEvent {
-  const id = typeof block.id === 'string' || typeof block.id === 'number' ? String(block.id) : null
-  const name = typeof block.name === 'string' && block.name.length > 0 ? block.name : null
+  const id = typeof block.id === 'string' || typeof block.id === 'number'
+    ? String(block.id)
+    : null
+  const name = typeof block.name === 'string' && block.name.length > 0
+    ? block.name
+    : null
   if (!id || !name) {
-    return { type: 'error', message: 'Invalid tool_use block from Claude Code', code: null }
+    return {
+      type: 'error',
+      message: 'Invalid tool_use block from Claude Code',
+      code: null
+    }
   }
   return {
     type: 'tool_call_requested',
@@ -107,30 +151,55 @@ function mapToolUseBlock(block: Record<string, unknown>): ProviderEvent {
 function mapStreamEvent(event: Record<string, unknown>): ProviderEvent[] {
   if (event.type === 'content_block_start' && isRecord(event.content_block)) {
     const block = event.content_block
-    if (block.type === 'thinking') return [{ type: 'thinking_start' }]
-    if (block.type === 'text' && typeof block.text === 'string') return [{ type: 'text_delta', text: block.text }]
+    if (block.type === 'thinking')
+      return [{ type: 'thinking_start' }]
+    if (block.type === 'text' && typeof block.text === 'string')
+      return [{
+        type: 'text_delta',
+        text: block.text
+      }]
   }
 
   if (event.type === 'content_block_delta' && isRecord(event.delta)) {
     const delta = event.delta
-    if (delta.type === 'text_delta') return [{ type: 'text_delta', text: String(delta.text ?? '') }]
-    if (delta.type === 'thinking_delta') return [{ type: 'thinking_delta', text: String(delta.thinking ?? '') }]
-    if (delta.type === 'signature_delta') return [{ type: 'thinking_signature', signature: String(delta.signature ?? '') }]
+    if (delta.type === 'text_delta')
+      return [{
+        type: 'text_delta',
+        text: String(delta.text ?? '')
+      }]
+    if (delta.type === 'thinking_delta')
+      return [{
+        type: 'thinking_delta',
+        text: String(delta.thinking ?? '')
+      }]
+    if (delta.type === 'signature_delta')
+      return [{
+        type: 'thinking_signature',
+        signature: String(delta.signature ?? '')
+      }]
   }
 
   return []
 }
 
-function parseControlRequest(message: Record<string, unknown>): ClaudeControlRequest | null {
+function parseControlRequest(
+  message: Record<string, unknown>
+): ClaudeControlRequest | null {
   if (typeof message.request_id === 'string' && isRecord(message.request)) {
     const request = message.request
-    if (request.subtype !== 'mcp_message') return null
-    if (request.server_name !== 'main') return null
-    if (!isRecord(request.message)) return null
+    if (request.subtype !== 'mcp_message')
+      return null
+    if (request.server_name !== 'main')
+      return null
+    if (!isRecord(request.message))
+      return null
     const inner = request.message
-    const id = typeof inner.id === 'string' || typeof inner.id === 'number' ? inner.id : 0
+    const id = typeof inner.id === 'string' || typeof inner.id === 'number'
+      ? inner.id
+      : 0
     const method = typeof inner.method === 'string' ? inner.method : undefined
-    if (!method) return null
+    if (!method)
+      return null
     return {
       protocol: 'sdk-mcp',
       outerRequestId: message.request_id,
@@ -142,14 +211,18 @@ function parseControlRequest(message: Record<string, unknown>): ClaudeControlReq
     }
   }
 
-  const id = typeof message.id === 'string' || typeof message.id === 'number' ? message.id : undefined
+  const id = typeof message.id === 'string' || typeof message.id === 'number'
+    ? message.id
+    : undefined
   const method = typeof message.method === 'string' ? message.method : undefined
-  if (id === undefined || !method) return null
+  if (id === undefined || !method)
+    return null
   return { protocol: 'legacy', id, method, params: message.params }
 }
 
 function sdkMcpToolUseId(params: unknown): string | undefined {
-  if (!isRecord(params) || !isRecord(params._meta)) return undefined
+  if (!isRecord(params) || !isRecord(params._meta))
+    return undefined
   const value = params._meta['claudecode/toolUseId']
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
@@ -165,20 +238,28 @@ function sdkMcpToolUseId(params: unknown): string | undefined {
 function mapResultUsage(usage: unknown): TokenUsage {
   if (isRecord(usage) && Array.isArray(usage.iterations)) {
     const last = usage.iterations[usage.iterations.length - 1]
-    if (isRecord(last)) return mapUsage(last)
+    if (isRecord(last))
+      return mapUsage(last)
   }
   return mapUsage(usage)
 }
 
 function mapUsage(usage: unknown): TokenUsage {
   if (!isRecord(usage)) {
-    return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
+    return {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0
+    }
   }
   return {
     inputTokens: numberValue(usage.input_tokens ?? usage.inputTokens),
     outputTokens: numberValue(usage.output_tokens ?? usage.outputTokens),
-    cacheReadTokens: numberValue(usage.cache_read_input_tokens ?? usage.cacheReadTokens),
-    cacheWriteTokens: numberValue(usage.cache_creation_input_tokens ?? usage.cacheWriteTokens),
+    cacheReadTokens: numberValue(usage.cache_read_input_tokens
+      ?? usage.cacheReadTokens),
+    cacheWriteTokens: numberValue(usage.cache_creation_input_tokens
+      ?? usage.cacheWriteTokens),
   }
 }
 
@@ -188,11 +269,13 @@ function numberValue(value: unknown): number {
 
 function resultErrorMessage(message: Record<string, unknown>): string {
   const parts: string[] = []
-  if (typeof message.result === 'string' && message.result.trim()) parts.push(message.result.trim())
+  if (typeof message.result === 'string' && message.result.trim())
+    parts.push(message.result.trim())
   if (Array.isArray(message.errors)) {
     for (const error of message.errors) {
       const text = String(error).trim()
-      if (text) parts.push(text)
+      if (text)
+        parts.push(text)
     }
   }
   return parts.join('\n') || 'Claude Code returned an error'

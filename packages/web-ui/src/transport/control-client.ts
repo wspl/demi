@@ -22,12 +22,16 @@ export function connectControlClient(url: string): Promise<ControlApi> {
     let nextId = 1
 
     socket.addEventListener('message', (event) => {
-      const text = typeof event.data === 'string' ? event.data : String(event.data)
+      const text = typeof event.data === 'string'
+        ? event.data
+        : String(event.data)
       const response = JSON.parse(text) as ControlResponse
       const waiter = pending.get(response.id)
-      if (!waiter) return
+      if (!waiter)
+        return
       pending.delete(response.id)
-      if (response.ok) waiter.resolve(response.result)
+      if (response.ok)
+        waiter.resolve(response.result)
       else waiter.reject(new Error(response.error))
     })
 
@@ -36,7 +40,11 @@ export function connectControlClient(url: string): Promise<ControlApi> {
       pending.clear()
     })
 
-    socket.addEventListener('error', () => reject(new Error('Control socket failed to connect')), { once: true })
+    socket.addEventListener(
+      'error',
+      () => reject(new Error('Control socket failed to connect')),
+      { once: true }
+    )
 
     function call(method: ControlMethod, params: unknown): Promise<unknown> {
       return new Promise((settle, fail) => {
@@ -53,7 +61,8 @@ export function connectControlClient(url: string): Promise<ControlApi> {
         const api: ControlApi = {
           listProviders: () => call('listProviders', undefined) as Promise<ProviderInfo[]>,
           listModels: (params) => call('listModels', params) as Promise<ModelInfo[]>,
-          prepareSession: (params: PrepareSessionParams) => call('prepareSession', params) as Promise<ProviderSelection>,
+          prepareSession: (params: PrepareSessionParams) =>
+            call('prepareSession', params) as Promise<ProviderSelection>,
           defaultWorkspace: () => call('defaultWorkspace', undefined) as Promise<WorkspaceInfo>,
         }
         resolve(api)

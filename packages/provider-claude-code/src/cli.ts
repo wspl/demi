@@ -24,13 +24,17 @@ export function buildClaudeArgs(params: {
     '--system-prompt',
     params.systemPrompt,
   ]
-  if (params.thinkingEffort) args.push('--effort', params.thinkingEffort)
+  if (params.thinkingEffort)
+    args.push('--effort', params.thinkingEffort)
   return args
 }
 
 export function buildClaudeEnv(
   base: NodeJS.ProcessEnv = process.env,
-  options: { oauthAccessToken?: string | null; overlay?: Record<string, string> } = {},
+  options: {
+    oauthAccessToken?: string | null;
+    overlay?: Record<string, string>
+  } = {},
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...base,
@@ -39,9 +43,11 @@ export function buildClaudeEnv(
   }
   delete env.CLAUDECODE
   const token = options.oauthAccessToken?.trim()
-  if (token) env.CLAUDE_CODE_OAUTH_TOKEN = token
+  if (token)
+    env.CLAUDE_CODE_OAUTH_TOKEN = token
   // Public overlay wins over everything, including the resolved OAuth token
   // (e.g. a backend passthrough sets ANTHROPIC_BASE_URL + its own token).
-  if (options.overlay) Object.assign(env, options.overlay)
+  if (options.overlay)
+    Object.assign(env, options.overlay)
   return env
 }

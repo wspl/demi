@@ -1,7 +1,13 @@
 export interface LoginLimiterOptions {
-  /** Failures on one email within `lockMs` of each other before it locks. Default 5. */
+  /**
+   * Failures on one email within `lockMs` of each other before it locks.
+   * Default 5.
+   */
   lockAfter?: number
-  /** How long the lock holds, and how long a name's failures are remembered. Default 60 s. */
+  /**
+   * How long the lock holds, and how long a name's failures are remembered.
+   * Default 60 s.
+   */
   lockMs?: number
   now?: () => number
 }
@@ -9,7 +15,10 @@ export interface LoginLimiterOptions {
 interface Failures {
   count: number
   lockedUntil: number
-  /** When the entry is forgotten: `lockMs` after its last failure, which is a lock's end at the latest. */
+  /**
+   * When the entry is forgotten: `lockMs` after its last failure, which is a
+   * lock's end at the latest.
+   */
   expiresAt: number
 }
 
@@ -32,17 +41,21 @@ export class LoginLimiter {
 
   locked(email: string): boolean {
     const entry = this.failures.get(email)
-    if (!entry) return false
+    if (!entry)
+      return false
     const now = this.now()
-    if (entry.lockedUntil > now) return true
-    if (entry.expiresAt <= now) this.failures.delete(email)
+    if (entry.lockedUntil > now)
+      return true
+    if (entry.expiresAt <= now)
+      this.failures.delete(email)
     return false
   }
 
   failed(email: string): void {
     const now = this.now()
     this.forgetExpired(now)
-    const entry = this.failures.get(email) ?? { count: 0, lockedUntil: 0, expiresAt: 0 }
+    const entry = this.failures.get(email) ??
+      { count: 0, lockedUntil: 0, expiresAt: 0 }
     entry.count += 1
     if (entry.count >= this.lockAfter) {
       entry.count = 0
@@ -63,7 +76,8 @@ export class LoginLimiter {
 
   private forgetExpired(now: number): void {
     for (const [email, entry] of this.failures) {
-      if (entry.expiresAt <= now) this.failures.delete(email)
+      if (entry.expiresAt <= now)
+        this.failures.delete(email)
     }
   }
 }

@@ -27,34 +27,45 @@ import type { AgentMetadata, ModelSwitchApply } from '../types'
 // stringness and leaves membership to the catalog code that consumes it.
 const fileExtensionSchema = z.custom<FileExtension>((value) => typeof value === 'string')
 
-const thinkingCapabilitySchema: z.ZodType<ThinkingCapability> = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('adaptive'), efforts: z.array(z.string()), defaultEffort: z.string().nullable() }),
-  z.object({
-    type: z.literal('budget'),
-    minBudgetTokens: z.number().nullable(),
-    maxBudgetTokens: z.number().nullable(),
-    defaultBudgetTokens: z.number().nullable(),
-  }),
-  z.object({
-    type: z.literal('effort'),
-    efforts: z.array(z.string()),
-    defaultEffort: z.string().nullable(),
-    summaries: z.array(z.enum(['auto', 'concise', 'detailed', 'off', 'on'])),
-    defaultSummary: z.enum(['auto', 'concise', 'detailed', 'off', 'on']).nullable(),
-  }),
-  z.object({ type: z.literal('disabled') }),
-])
+const thinkingCapabilitySchema: z.ZodType<ThinkingCapability> = z.discriminatedUnion(
+  'type',
+  [
+    z.object({
+      type: z.literal('adaptive'),
+      efforts: z.array(z.string()),
+      defaultEffort: z.string().nullable()
+    }),
+    z.object({
+      type: z.literal('budget'),
+      minBudgetTokens: z.number().nullable(),
+      maxBudgetTokens: z.number().nullable(),
+      defaultBudgetTokens: z.number().nullable(),
+    }),
+    z.object({
+      type: z.literal('effort'),
+      efforts: z.array(z.string()),
+      defaultEffort: z.string().nullable(),
+      summaries: z.array(z.enum(['auto', 'concise', 'detailed', 'off', 'on'])),
+      defaultSummary: z.enum(['auto', 'concise', 'detailed', 'off', 'on'])
+        .nullable(),
+    }),
+    z.object({ type: z.literal('disabled') }),
+  ]
+)
 
-const thinkingConfigSchema: z.ZodType<ThinkingConfig> = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('adaptive'), effort: z.string() }),
-  z.object({ type: z.literal('budget'), budgetTokens: z.number() }),
-  z.object({
-    type: z.literal('effort'),
-    effort: z.string(),
-    summary: z.enum(['auto', 'concise', 'detailed', 'off', 'on']).nullable(),
-  }),
-  z.object({ type: z.literal('disabled') }),
-])
+const thinkingConfigSchema: z.ZodType<ThinkingConfig> = z.discriminatedUnion(
+  'type',
+  [
+    z.object({ type: z.literal('adaptive'), effort: z.string() }),
+    z.object({ type: z.literal('budget'), budgetTokens: z.number() }),
+    z.object({
+      type: z.literal('effort'),
+      effort: z.string(),
+      summary: z.enum(['auto', 'concise', 'detailed', 'off', 'on']).nullable(),
+    }),
+    z.object({ type: z.literal('disabled') }),
+  ]
+)
 
 const modelSchema: z.ZodType<Model> = z.object({
   id: z.string(),
@@ -79,12 +90,20 @@ const providerSelectionSchema: z.ZodType<ProviderSelection> = z.object({
 })
 
 const imageSourceSchema: z.ZodType<ImageSource> = z.union([
-  z.object({ type: z.literal('binary'), data: z.instanceof(Uint8Array), mediaType: z.string() }),
+  z.object({
+    type: z.literal('binary'),
+    data: z.instanceof(Uint8Array),
+    mediaType: z.string()
+  }),
   z.object({ type: z.literal('url'), url: z.string() }),
 ])
 
 const videoSourceSchema: z.ZodType<VideoSource> = z.union([
-  z.object({ type: z.literal('binary'), data: z.instanceof(Uint8Array), mediaType: z.string() }),
+  z.object({
+    type: z.literal('binary'),
+    data: z.instanceof(Uint8Array),
+    mediaType: z.string()
+  }),
   z.object({ type: z.literal('url'), url: z.string() }),
 ])
 
@@ -94,13 +113,16 @@ const documentSourceSchema: z.ZodType<DocumentSource> = z.object({
   fileName: z.string(),
 })
 
-export const userContentBlockSchema: z.ZodType<UserContentBlock> = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('text'), text: z.string() }),
-  z.object({ type: z.literal('image'), source: imageSourceSchema }),
-  z.object({ type: z.literal('video'), source: videoSourceSchema }),
-  z.object({ type: z.literal('document'), source: documentSourceSchema }),
-  z.object({ type: z.literal('reference'), reference: z.string() }),
-])
+export const userContentBlockSchema: z.ZodType<UserContentBlock> = z.discriminatedUnion(
+  'type',
+  [
+    z.object({ type: z.literal('text'), text: z.string() }),
+    z.object({ type: z.literal('image'), source: imageSourceSchema }),
+    z.object({ type: z.literal('video'), source: videoSourceSchema }),
+    z.object({ type: z.literal('document'), source: documentSourceSchema }),
+    z.object({ type: z.literal('reference'), reference: z.string() }),
+  ]
+)
 
 // Accepted user steers returned by AgentServer; validated when AgentClient receives them.
 const pendingSteerSchema: z.ZodType<PendingSteer> = z.object({
@@ -129,9 +151,15 @@ const portableJsonValueSchema: z.ZodType<PortableJsonValue> = z.lazy(() =>
   ]),
 )
 
-const metadataSchema: z.ZodType<AgentMetadata> = z.record(z.string(), portableJsonValueSchema)
+const metadataSchema: z.ZodType<AgentMetadata> = z.record(
+  z.string(),
+  portableJsonValueSchema
+)
 
-const modelSwitchApplySchema: z.ZodType<ModelSwitchApply> = z.enum(['immediate', 'next_turn'])
+const modelSwitchApplySchema: z.ZodType<ModelSwitchApply> = z.enum([
+  'immediate',
+  'next_turn'
+])
 
 // ── the client frames (single source of truth for ClientFrame) ──────
 
@@ -142,18 +170,35 @@ export const sendFrameSchema = z.object({
   metadata: metadataSchema.optional(),
 })
 
-export const steerFrameSchema = z.object({ type: z.literal('steer'), steerId: z.string(), content: z.array(userContentBlockSchema) })
+export const steerFrameSchema = z.object({
+  type: z.literal('steer'),
+  steerId: z.string(),
+  content: z.array(userContentBlockSchema)
+})
 
 export const clientFrameSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('open'), provider: providerSelectionSchema, cwd: z.string(), sessionId: z.string() }),
+  z.object({
+    type: z.literal('open'),
+    provider: providerSelectionSchema,
+    cwd: z.string(),
+    sessionId: z.string()
+  }),
   sendFrameSchema,
   z.object({ type: z.literal('dequeue_message'), messageId: z.string() }),
   z.object({ type: z.literal('send_queued_message'), messageId: z.string() }),
-  z.object({ type: z.literal('steer_queued_message'), messageId: z.string(), steerId: z.string() }),
+  z.object({
+    type: z.literal('steer_queued_message'),
+    messageId: z.string(),
+    steerId: z.string()
+  }),
   z.object({ type: z.literal('clear_message_queue') }),
   steerFrameSchema,
   z.object({ type: z.literal('cancel_pending_steer'), steerId: z.string() }),
-  z.object({ type: z.literal('set_provider'), provider: providerSelectionSchema, apply: modelSwitchApplySchema.optional() }),
+  z.object({
+    type: z.literal('set_provider'),
+    provider: providerSelectionSchema,
+    apply: modelSwitchApplySchema.optional()
+  }),
   z.object({ type: z.literal('abort') }),
   z.object({ type: z.literal('abort_subagents') }),
   z.object({ type: z.literal('retry'), metadata: metadataSchema.optional() }),

@@ -4,7 +4,12 @@ import process from 'node:process'
 import { encodeUtf8, utf8Lines } from '@demicodes/utils'
 import type { InferenceRequest } from '@demicodes/provider'
 import { buildClaudeArgs, buildClaudeEnv } from './cli'
-import type { ClaudeSpawn, ClaudeSpawnExit, ClaudeSpawnHandle, ClaudeSpawnParams } from './spawn'
+import type {
+  ClaudeSpawn,
+  ClaudeSpawnExit,
+  ClaudeSpawnHandle,
+  ClaudeSpawnParams
+} from './spawn'
 import { createClaudeWireLog, type ClaudeWireLog } from './wire-log'
 
 // The session cwd is a logical workspace id for some hosts (e.g. a virtual
@@ -13,7 +18,8 @@ import { createClaudeWireLog, type ClaudeWireLog } from './wire-log'
 // letting posix_spawn fail with ENOENT on a non-existent cwd.
 function resolveSpawnCwd(cwd: string): string {
   try {
-    if (statSync(cwd).isDirectory()) return cwd
+    if (statSync(cwd).isDirectory())
+      return cwd
   } catch {
     // not a real directory — fall through
   }
@@ -24,7 +30,10 @@ export interface ClaudeTransport {
   writeJson(value: unknown): Promise<void>
   messages(): AsyncIterable<unknown>
   kill(): Promise<void>
-  wait(): Promise<{ exitCode: number | null; signal?: string }>
+  wait(): Promise<{
+    exitCode: number | null;
+    signal?: string
+  }>
   stderrText(): string
 }
 
@@ -34,7 +43,9 @@ export interface ClaudeTransportFactory {
 
 export interface ClaudeCliTransportFactoryOptions {
   claudePath?: string
-  /** Resolve OAuth token for CLAUDE_CODE_OAUTH_TOKEN env overlay (multi-cred). */
+  /**
+   * Resolve OAuth token for CLAUDE_CODE_OAUTH_TOKEN env overlay (multi-cred).
+   */
   resolveOAuthAccessToken?: () => Promise<string | null>
   /**
    * `Host.process`-shaped spawn the CLI runs through. When set, the child env
@@ -52,7 +63,8 @@ export interface ClaudeCliTransportFactoryOptions {
 
 export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
   private readonly claudePath: string
-  private readonly resolveOAuthAccessToken: (() => Promise<string | null>) | null
+  private readonly resolveOAuthAccessToken: (() => Promise<string | null>)
+    | null
   private readonly spawnFn: ClaudeSpawn | null
   private readonly envOverlay: Record<string, string> | null
 
@@ -80,7 +92,9 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
       cwd: request.cwd,
       args,
     })
-    const oauthAccessToken = this.resolveOAuthAccessToken ? await this.resolveOAuthAccessToken() : null
+    const oauthAccessToken = this.resolveOAuthAccessToken
+      ? await this.resolveOAuthAccessToken()
+      : null
     const overlay = this.envOverlay ?? undefined
     const handle = this.spawnFn
       ? await this.spawnFn({
@@ -92,7 +106,10 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
           // its config home is pinned inside the workspace's artifacts dir.
           env: buildClaudeEnv({}, {
             oauthAccessToken,
-            overlay: { CLAUDE_CONFIG_DIR: `${request.cwd}/.demi-artifacts/claude-config`, ...overlay },
+            overlay: {
+              CLAUDE_CONFIG_DIR: `${request.cwd}/.demi-artifacts/claude-config`,
+              ...overlay
+            },
           }),
         })
       : await localClaudeSpawn({
@@ -114,8 +131,13 @@ export function buildClaudeArgsForRequest(request: InferenceRequest): string[] {
   })
 }
 
-/** Local default: wraps `child_process.spawn` into the `ClaudeSpawnHandle` shape. */
-async function localClaudeSpawn(params: ClaudeSpawnParams): Promise<ClaudeSpawnHandle> {
+/**
+ * Local default: wraps `child_process.spawn` into the `ClaudeSpawnHandle`
+ * shape.
+ */
+async function localClaudeSpawn(
+  params: ClaudeSpawnParams
+): Promise<ClaudeSpawnHandle> {
   const child = spawn(params.command, params.args ?? [], {
     cwd: params.cwd,
     env: params.env as NodeJS.ProcessEnv,
@@ -145,7 +167,8 @@ async function localClaudeSpawn(params: ClaudeSpawnParams): Promise<ClaudeSpawnH
       child.stdin.end()
     },
     kill: async () => {
-      if (!child.killed) child.kill('SIGTERM')
+      if (!child.killed)
+        child.kill('SIGTERM')
     },
     wait: () => exit,
   }
@@ -153,7 +176,10 @@ async function localClaudeSpawn(params: ClaudeSpawnParams): Promise<ClaudeSpawnH
 
 class SpawnHandleClaudeTransport implements ClaudeTransport {
   private stderr = ''
-  private readonly waitPromise: Promise<{ exitCode: number | null; signal?: string }>
+  private readonly waitPromise: Promise<{
+    exitCode: number | null;
+    signal?: string
+  }>
 
   constructor(
     private readonly handle: ClaudeSpawnHandle,
@@ -177,7 +203,8 @@ class SpawnHandleClaudeTransport implements ClaudeTransport {
 
   async *messages(): AsyncIterable<unknown> {
     for await (const line of utf8Lines(this.handle.stdout)) {
-      if (line.trim() === '') continue
+      if (line.trim() === '')
+        continue
       const parsed = JSON.parse(line)
       this.wireLog.record('out', parsed)
       yield parsed
@@ -188,7 +215,10 @@ class SpawnHandleClaudeTransport implements ClaudeTransport {
     await this.handle.kill('SIGTERM')
   }
 
-  wait(): Promise<{ exitCode: number | null; signal?: string }> {
+  wait(): Promise<{
+    exitCode: number | null;
+    signal?: string
+  }> {
     return this.waitPromise
   }
 
@@ -200,7 +230,8 @@ class SpawnHandleClaudeTransport implements ClaudeTransport {
     const decoder = new TextDecoder()
     for await (const chunk of this.handle.stderr) {
       const text = decoder.decode(chunk, { stream: true })
-      if (text.length === 0) continue
+      if (text.length === 0)
+        continue
       this.stderr += text
       this.wireLog.record('err', text)
     }
@@ -208,8 +239,11 @@ class SpawnHandleClaudeTransport implements ClaudeTransport {
 }
 
 function thinkingEffort(thinking: InferenceRequest['thinking']): string | null {
-  if (!thinking) return null
-  if (thinking.type === 'adaptive') return thinking.effort
-  if (thinking.type === 'effort') return thinking.effort
+  if (!thinking)
+    return null
+  if (thinking.type === 'adaptive')
+    return thinking.effort
+  if (thinking.type === 'effort')
+    return thinking.effort
   return null
 }

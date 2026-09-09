@@ -4,16 +4,23 @@ set(CMAKE_C_STANDARD 11)
 set(LIBUV_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(LIBUV_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LIBUV_BUILD_BENCH OFF CACHE BOOL "" FORCE)
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/txiki.js/deps/libuv" libuv)
+add_subdirectory(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/txiki.js/deps/libuv"
+    libuv
+)
 add_executable(demi src/client.c src/metadata.c)
 target_include_directories(demi PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 target_link_libraries(demi PRIVATE uv_a)
 if(WIN32)
-  target_link_libraries(demi PRIVATE shell32)
+    target_link_libraries(demi PRIVATE shell32)
 endif()
 if(APPLE)
-  target_link_options(demi PRIVATE -Wl,-dead_strip)
-  add_custom_command(TARGET demi POST_BUILD COMMAND strip $<TARGET_FILE:demi> COMMAND codesign --force --sign - $<TARGET_FILE:demi>)
+    target_link_options(demi PRIVATE -Wl,-dead_strip)
+    add_custom_command(
+        TARGET demi POST_BUILD
+        COMMAND strip $<TARGET_FILE:demi>
+        COMMAND codesign --force --sign - $<TARGET_FILE:demi>
+    )
 elseif(UNIX)
-  target_link_options(demi PRIVATE -Wl,--gc-sections -s)
+    target_link_options(demi PRIVATE -Wl,--gc-sections -s)
 endif()

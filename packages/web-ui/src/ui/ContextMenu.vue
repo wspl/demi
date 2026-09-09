@@ -15,7 +15,8 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const { isOpen, anchorX, anchorY, anchorContextEl, menuKey, open, close } = useContextMenuOwner(() => emit('close'))
+const { isOpen, anchorX, anchorY, anchorContextEl, menuKey, open, close } =
+  useContextMenuOwner(() => emit('close'))
 
 provide(menuRootKey, { dismiss: close })
 

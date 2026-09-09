@@ -44,8 +44,11 @@ onUnmounted(stopTimer)
 
 const startMs = computed(() => Date.parse(props.createdAt))
 const elapsedMs = computed(() => {
-  const end = props.endedAt ? Date.parse(props.endedAt) : props.isStreaming ? nowMs.value : null
-  if (end === null || Number.isNaN(startMs.value)) return null
+  const end = props.endedAt
+    ? Date.parse(props.endedAt)
+    : props.isStreaming ? nowMs.value : null
+  if (end === null || Number.isNaN(startMs.value))
+    return null
   return Math.max(0, end - startMs.value)
 })
 const label = computed(() => thinkingFaceLabel(props.isStreaming, elapsedMs.value))
@@ -64,7 +67,10 @@ const rollKey = computed(() => (props.isStreaming ? 'live' : 'done'))
       <template #icon>
         <Brain :size="ICON_PX.in28" />
       </template>
-      <span class="min-w-0 truncate" :class="isStreaming ? 'thinking-shimmer' : ''">{{ label }}</span>
+      <span
+        class="min-w-0 truncate"
+        :class="isStreaming ? 'thinking-shimmer' : ''"
+      >{{ label }}</span>
       <template v-if="hasContent" #body>
         <StreamedMarkdown
           :content="thinking"

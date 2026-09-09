@@ -35,7 +35,12 @@ const emit = defineEmits<{
     ]"
     @click="emit('click')"
   >
-    <component :is="icon" v-if="icon" :size="ICON_PX.in28" class="shrink-0" />
+    <component
+      :is="icon"
+      v-if="icon"
+      :size="ICON_PX.in28"
+      class="shrink-0"
+    />
     <span class="min-w-0 flex-1 truncate">{{ label }}</span>
     <span
       v-if="count !== undefined"
@@ -43,6 +48,9 @@ const emit = defineEmits<{
     >
       {{ count }}
     </span>
-    <span v-else-if="shortcut" class="text-[11px] text-fg-faint [@media(hover:none)]:hidden">{{ shortcut }}</span>
+    <span
+      v-else-if="shortcut"
+      class="text-[11px] text-fg-faint [@media(hover:none)]:hidden"
+    >{{ shortcut }}</span>
   </div>
 </template>

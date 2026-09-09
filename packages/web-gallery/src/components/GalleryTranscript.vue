@@ -33,8 +33,10 @@ function isTextStreaming(blocks: readonly MessageListBlock[], index: number): bo
 
 function thinkingEndedAt(blocks: readonly MessageListBlock[], index: number): string | null {
   const block = blocks[index]
-  if (block?.type !== 'thinking' || block.id === props.streamingThinkingId) return null
-  if (props.endedAtById?.[block.id]) return props.endedAtById[block.id]
+  if (block?.type !== 'thinking' || block.id === props.streamingThinkingId)
+    return null
+  if (props.endedAtById?.[block.id])
+    return props.endedAtById[block.id]
   const next = blocks[index + 1]
   return next && 'createdAt' in next ? next.createdAt : null
 }

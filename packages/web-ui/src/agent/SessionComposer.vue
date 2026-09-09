@@ -26,7 +26,11 @@ const props = withDefaults(
     multiline?: boolean
     canCompact?: boolean
     accept?: string
-    attachments?: { name: string; src?: string; caption?: string }[]
+    attachments?: {
+      name: string;
+      src?: string;
+      caption?: string
+    }[]
     /** The conversation has a host with files: the menu offers a remote file beside local ones. */
     remoteFiles?: boolean
     focused?: boolean
@@ -64,14 +68,18 @@ const hasDraft = computed(
   () => props.hasContent || !!draft.value.trim() || !!props.attachments.length,
 )
 const expanded = computed(
-  () => props.multiline || draft.value.includes('\n') || !!props.attachments.length,
+  () =>
+    props.multiline || draft.value.includes('\n') || !!props.attachments.length,
 )
 const selected = computed(() =>
-  props.models[props.selectedProviderId ?? '']?.find((model) => model.id === props.selectedModelId),
+  props.models[props.selectedProviderId ?? '']?.find(
+    (model) => model.id === props.selectedModelId
+  ),
 )
 
 function submit() {
-  if (!props.disabled && hasDraft.value) emit('submit')
+  if (!props.disabled && hasDraft.value)
+    emit('submit')
 }
 
 function pickFiles(close: () => void) {
@@ -86,7 +94,8 @@ function fileChange(event: Event) {
 }
 
 function keydown(event: KeyboardEvent) {
-  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing)
+    return
   event.preventDefault()
   submit()
 }
@@ -193,7 +202,10 @@ function keydown(event: KeyboardEvent) {
           :is-clickable="!running && canCompact !== false"
           @compact="emit('compact')"
         />
-        <Tooltip v-if="hasDraft" :content="running ? 'Queue next turn' : 'Send message'">
+        <Tooltip
+          v-if="hasDraft"
+          :content="running ? 'Queue next turn' : 'Send message'"
+        >
           <IconButton
             :icon="ArrowUp"
             variant="accent"

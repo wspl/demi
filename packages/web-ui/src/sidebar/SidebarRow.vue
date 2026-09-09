@@ -44,7 +44,8 @@ const renameValue = ref(props.conversation.title)
 watch(
   () => props.renaming,
   (renaming) => {
-    if (!renaming) return
+    if (!renaming)
+      return
     renameValue.value = props.conversation.title
     nextTick(() => {
       renameInputRef.value?.focus()
@@ -57,10 +58,14 @@ watch(
 // when the conversation needs the user (it failed or was stopped). Nothing when settled.
 const dotClass = computed(() => {
   const { status, unread } = props.conversation
-  if (status === 'active') return 'sidebar-breath bg-fg'
-  if (props.open || !unread) return null
-  if (status === 'error' || status === 'aborted') return 'bg-on-warning'
-  if (status === 'done' && unread) return 'bg-on-success'
+  if (status === 'active')
+    return 'sidebar-breath bg-fg'
+  if (props.open || !unread)
+    return null
+  if (status === 'error' || status === 'aborted')
+    return 'bg-on-warning'
+  if (status === 'done' && unread)
+    return 'bg-on-success'
   return null
 })
 
@@ -87,9 +92,11 @@ function startMarquee(): void {
   hoverTimer = setTimeout(() => {
     const clip = titleClip.value
     const text = titleText.value
-    if (!clip || !text) return
+    if (!clip || !text)
+      return
     const width = text.getBoundingClientRect().width
-    if (width - clip.clientWidth <= 2) return
+    if (width - clip.clientWidth <= 2)
+      return
     marquee.value = { ms: ((width + MARQUEE_GAP_PX) / MARQUEE_PX_PER_S) * 1000 }
   }, MARQUEE_DELAY_MS)
 }
@@ -113,7 +120,11 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     @mouseleave="stopMarquee"
   >
     <span class="flex size-3.5 shrink-0 items-center justify-center">
-      <span v-if="dotClass" class="size-1.5 rounded-full" :class="dotClass" />
+      <span
+        v-if="dotClass"
+        class="size-1.5 rounded-full"
+        :class="dotClass"
+      />
     </span>
     <input
       v-if="renaming"
@@ -172,7 +183,10 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
           @click.stop="emit('archive')"
         />
       </Tooltip>
-      <Tooltip :content="conversation.pinned ? 'Unpin' : 'Pin'" class="flex items-center">
+      <Tooltip
+        :content="conversation.pinned ? 'Unpin' : 'Pin'"
+        class="flex items-center"
+      >
         <IconButton
           v-if="!hidePin"
           :icon="conversation.pinned ? PinOff : Pin"

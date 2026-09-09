@@ -6,7 +6,11 @@
 // version — the client knows nothing about vendors.
 import { errorMessage, numberOrNull } from '@demicodes/utils'
 import { z } from 'zod'
-import type { ProviderModel, ProviderModelList, ProviderModelListOptions } from './types'
+import type {
+  ProviderModel,
+  ProviderModelList,
+  ProviderModelListOptions
+} from './types'
 
 const modelsDevReasoningOptionSchema = z.looseObject({
   type: z.string(),
@@ -20,7 +24,10 @@ export const modelsDevModelSchema = z.looseObject({
   reasoning: z.boolean().optional(),
   reasoning_options: z.array(modelsDevReasoningOptionSchema).optional(),
   tool_call: z.boolean().optional(),
-  limit: z.looseObject({ context: z.number().optional(), output: z.number().optional() }).optional(),
+  limit: z.looseObject({
+    context: z.number().optional(),
+    output: z.number().optional()
+  }).optional(),
   cost: z
     .looseObject({
       input: z.number().optional(),
@@ -34,21 +41,33 @@ export const modelsDevModelSchema = z.looseObject({
 export const modelsDevProviderSchema = z.looseObject({
   id: z.string(),
   name: z.string(),
-  /** The client package the data is written for — the catalog's only protocol tag. */
+  /**
+   * The client package the data is written for — the catalog's only protocol
+   * tag.
+   */
   npm: z.string().optional(),
-  /** The vendor's base URL; absent for the first-party vendors whose clients know it. */
+  /**
+   * The vendor's base URL; absent for the first-party vendors whose clients
+   * know it.
+   */
   api: z.string().optional(),
   doc: z.string().optional(),
   models: z.record(z.string(), modelsDevModelSchema),
 })
 
-export const modelsDevCatalogSchema = z.record(z.string(), modelsDevProviderSchema)
+export const modelsDevCatalogSchema = z.record(
+  z.string(),
+  modelsDevProviderSchema
+)
 
 export type ModelsDevModel = z.infer<typeof modelsDevModelSchema>
 export type ModelsDevProvider = z.infer<typeof modelsDevProviderSchema>
 export type ModelsDevCatalog = z.infer<typeof modelsDevCatalogSchema>
 
-export type ModelsDevFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+export type ModelsDevFetch = (
+  input: string | URL | Request,
+  init?: RequestInit
+) => Promise<Response>
 
 export interface ModelsDevOptions extends ProviderModelListOptions {
   fetch?: ModelsDevFetch
@@ -56,7 +75,10 @@ export interface ModelsDevOptions extends ProviderModelListOptions {
   now?: () => Date
 }
 
-/** A catalog snapshot: the data, when it was fetched, and whether it is the stale copy after a failed refresh. */
+/**
+ * A catalog snapshot: the data, when it was fetched, and whether it is the
+ * stale copy after a failed refresh.
+ */
 export interface ModelsDevSnapshot {
   catalog: ModelsDevCatalog
   fetchedAt: string
@@ -83,26 +105,47 @@ let cache: ModelsDevCache | null = null
  * one, or the last good copy marked stale when the refresh fails. Throws
  * only when there is no copy at all.
  */
-export async function fetchModelsDev(options: ModelsDevOptions = {}): Promise<ModelsDevSnapshot> {
+export async function fetchModelsDev(
+  options: ModelsDevOptions = {}
+): Promise<ModelsDevSnapshot> {
   const fetchImpl = options.fetch ?? fetch
   const url = options.url ?? DEFAULT_MODELS_DEV_URL
   const nowDate = (options.now ?? (() => new Date()))()
   const cached = cache?.url === url ? cache : null
 
-  if (!options.refresh && cached && nowDate.getTime() - cached.fetchedAtMs < MODELS_DEV_CACHE_TTL_MS) {
-    return { catalog: cached.catalog, fetchedAt: cached.fetchedAt, stale: false, warnings: [] }
+  if (!options.refresh && cached
+    && nowDate.getTime() - cached.fetchedAtMs < MODELS_DEV_CACHE_TTL_MS) {
+    return {
+      catalog: cached.catalog,
+      fetchedAt: cached.fetchedAt,
+      stale: false,
+      warnings: []
+    }
   }
   const headers = new Headers({ accept: 'application/json' })
-  if (cached?.etag) headers.set('if-none-match', cached.etag)
-  if (cached?.lastModified) headers.set('if-modified-since', cached.lastModified)
+  if (cached?.etag)
+    headers.set('if-none-match', cached.etag)
+  if (cached?.lastModified)
+    headers.set(
+      'if-modified-since',
+      cached.lastModified
+    )
 
   try {
     const response = await fetchImpl(url, { headers })
     if (response.status === 304 && cached) {
       cache = { ...cached, fetchedAtMs: nowDate.getTime() }
-      return { catalog: cached.catalog, fetchedAt: cached.fetchedAt, stale: false, warnings: [] }
+      return {
+        catalog: cached.catalog,
+        fetchedAt: cached.fetchedAt,
+        stale: false,
+        warnings: []
+      }
     }
-    if (!response.ok) throw new Error(`models.dev catalog request failed with HTTP ${response.status}`)
+    if (!response.ok)
+      throw new Error(
+        `models.dev catalog request failed with HTTP ${response.status}`
+      )
     const catalog = modelsDevCatalogSchema.parse(await response.json())
     const fetchedAt = nowDate.toISOString()
     cache = {
@@ -115,7 +158,8 @@ export async function fetchModelsDev(options: ModelsDevOptions = {}): Promise<Mo
     }
     return { catalog, fetchedAt, stale: false, warnings: [] }
   } catch (error) {
-    if (!cached) throw error
+    if (!cached)
+      throw error
     return {
       catalog: cached.catalog,
       fetchedAt: cached.fetchedAt,
@@ -129,12 +173,18 @@ export function resetModelsDevCacheForTests(): void {
   cache = null
 }
 
-/** One models.dev model entry as a catalog model under `providerId`; capabilities the entry omits are null (unknown). */
+/**
+ * One models.dev model entry as a catalog model under `providerId`;
+ * capabilities the entry omits are null (unknown).
+ */
 export function modelFromModelsDev(
   providerId: string,
   id: string,
   entry: ModelsDevModel,
-  meta: { sourceFetchedAt: string; stale: boolean },
+  meta: {
+    sourceFetchedAt: string;
+    stale: boolean
+  },
 ): ProviderModel {
   return {
     providerId,
@@ -163,14 +213,29 @@ export function modelFromModelsDev(
   }
 }
 
-/** A vendor's whole model list from a snapshot, as a catalog under `providerId`; null when the vendor is unknown. */
-export function modelListFromModelsDev(snapshot: ModelsDevSnapshot, vendorId: string, providerId: string): ProviderModelList | null {
+/**
+ * A vendor's whole model list from a snapshot, as a catalog under `providerId`;
+ * null when the vendor is unknown.
+ */
+export function modelListFromModelsDev(
+  snapshot: ModelsDevSnapshot,
+  vendorId: string,
+  providerId: string
+): ProviderModelList | null {
   const vendor = snapshot.catalog[vendorId]
-  if (!vendor) return null
+  if (!vendor)
+    return null
   const meta = { sourceFetchedAt: snapshot.fetchedAt, stale: snapshot.stale }
   return {
     providerId,
-    models: Object.entries(vendor.models).map(([id, entry]) => modelFromModelsDev(providerId, id, entry, meta)),
+    models: Object.entries(vendor.models).map(
+      ([id, entry]) => modelFromModelsDev(
+        providerId,
+        id,
+        entry,
+        meta
+      )
+    ),
     defaultModelId: null,
     warnings: [...snapshot.warnings],
     sourceFetchedAt: snapshot.fetchedAt,
@@ -178,9 +243,15 @@ export function modelListFromModelsDev(snapshot: ModelsDevSnapshot, vendorId: st
   }
 }
 
-function reasoningEfforts(options: ModelsDevModel['reasoning_options']): ProviderModel['supportedThinkingEfforts'] {
+function reasoningEfforts(
+  options: ModelsDevModel['reasoning_options']
+): ProviderModel['supportedThinkingEfforts'] {
   const effort = options?.find((option) => option.type === 'effort')
-  if (!effort?.values) return null
-  const efforts = effort.values.filter((value): value is string => typeof value === 'string' && value.length > 0)
+  if (!effort?.values)
+    return null
+  const efforts = effort.values.filter(
+    (value): value is string => typeof value === 'string'
+      && value.length > 0
+  )
   return efforts.length > 0 ? efforts : []
 }

@@ -4,7 +4,11 @@ import { parsePortableJson } from '@demicodes/utils'
 import type { Block } from '@demicodes/core'
 import type { HostStore } from '@demicodes/shell'
 import type { AgentTreeStore, BlobStore } from '@demicodes/agent'
-import { openSqliteDatabase, type SqlDatabase, type SqlParams } from './database'
+import {
+  openSqliteDatabase,
+  type SqlDatabase,
+  type SqlParams
+} from './database'
 import { DbHostStore } from './host-store'
 import { CONVERSATION_MIGRATIONS, migrate } from './migrations'
 import { readNode, sqliteAgentTreeStore } from './tree-store'
@@ -33,12 +37,17 @@ export class ConversationStores {
     this.maxOpen = options.maxOpen ?? 64
   }
 
-  /** The conversation's database: a stable object whose handle opens on demand. */
+  /**
+   * The conversation's database: a stable object whose handle opens on demand.
+   */
   db(conversationId: string): SqlDatabase {
     const existing = this.databases.get(conversationId)
-    if (existing) return existing
+    if (existing)
+      return existing
     if (!/^[A-Za-z0-9_-]+$/.test(conversationId)) {
-      throw new Error(`ConversationStores: invalid conversation id "${conversationId}"`)
+      throw new Error(
+        `ConversationStores: invalid conversation id "${conversationId}"`
+      )
     }
     const handle = () => this.handle(conversationId)
     const db: SqlDatabase = {
@@ -57,31 +66,52 @@ export class ConversationStores {
     return this.handles.size
   }
 
-  /** The conversation's session tree (`subagent.md` § Persistence); the root node's id is the conversation's. */
+  /**
+   * The conversation's session tree (`subagent.md` § Persistence); the root
+   * node's id is the conversation's.
+   */
   treeStore(conversationId: string): AgentTreeStore<unknown> {
-    return sqliteAgentTreeStore(this.db(conversationId), this.blobsFor(conversationId))
+    return sqliteAgentTreeStore(
+      this.db(conversationId),
+      this.blobsFor(conversationId)
+    )
   }
 
   hostStore(conversationId: string): HostStore {
     return new DbHostStore(this.db(conversationId), 'host')
   }
 
-  /** Cold transcript read of the root node: the raw rows, media left as refs. */
+  /**
+   * Cold transcript read of the root node: the raw rows, media left as refs.
+   */
   transcriptBlocks(conversationId: string): Block[] {
     return readNode(this.db(conversationId), conversationId)?.blocks ?? []
   }
 
   summary(conversationId: string) {
     const db = this.db(conversationId)
-    const node = db.get<{ state_json: string; output_revision: number }>('SELECT state_json, output_revision FROM nodes WHERE id = ?', [conversationId])
-    const phase = node ? z.object({ phase: z.enum(['idle', 'running', 'compacting']) }).parse(parsePortableJson(node.state_json)).phase : 'idle'
-    const terminal = db.get<{ block_json: string }>("SELECT block_json FROM blocks WHERE node_id = ? AND json_extract(block_json, '$.type') IN ('response', 'error', 'abort') ORDER BY idx DESC LIMIT 1", [conversationId])
-    const last = terminal ? z.object({ type: z.enum(['response', 'error', 'abort']) }).parse(parsePortableJson(terminal.block_json)).type : null
+    const node = db.get<{
+      state_json: string;
+      output_revision: number
+    }>('SELECT state_json, output_revision FROM nodes WHERE id = ?', [conversationId])
+    const phase = node
+      ? z.object({ phase: z.enum(['idle', 'running', 'compacting']) })
+        .parse(parsePortableJson(node.state_json)).phase
+      : 'idle'
+    const terminal = db.get<{ block_json: string }>(
+      "SELECT block_json FROM blocks WHERE node_id = ? AND json_extract(block_json, '$.type') IN ('response', 'error', 'abort') ORDER BY idx DESC LIMIT 1",
+      [conversationId]
+    )
+    const last = terminal
+      ? z.object({ type: z.enum(['response', 'error', 'abort']) })
+        .parse(parsePortableJson(terminal.block_json)).type
+      : null
     return { phase, revision: node?.output_revision ?? 0, last }
   }
 
   close(): void {
-    for (const handle of this.handles.values()) handle.close()
+    for (const handle of this.handles.values())
+      handle.close()
     this.handles.clear()
   }
 
@@ -92,12 +122,15 @@ export class ConversationStores {
       this.handles.set(conversationId, open)
       return open
     }
-    const opened = openSqliteDatabase(join(this.root, `${conversationId}.sqlite`))
+    const opened = openSqliteDatabase(
+      join(this.root, `${conversationId}.sqlite`)
+    )
     migrate(opened, CONVERSATION_MIGRATIONS)
     this.handles.set(conversationId, opened)
     while (this.handles.size > this.maxOpen) {
       const oldest = this.handles.keys().next().value
-      if (oldest === undefined) break
+      if (oldest === undefined)
+        break
       this.release(oldest)
     }
     return opened
@@ -105,7 +138,8 @@ export class ConversationStores {
 
   private release(conversationId: string): void {
     const open = this.handles.get(conversationId)
-    if (!open) return
+    if (!open)
+      return
     this.handles.delete(conversationId)
     open.close()
   }

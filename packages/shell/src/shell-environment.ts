@@ -36,7 +36,10 @@ export interface ShellAbortInput {
 }
 
 export interface ShellStreamView {
-  /** Where the full stream lives on the target; absent when nothing beyond the view is kept. */
+  /**
+   * Where the full stream lives on the target; absent when nothing beyond the
+   * view is kept.
+   */
   path?: string
   offset: number
   delta: string
@@ -56,7 +59,10 @@ export interface ShellOutputRecordChunk extends ShellOutputChunk {
 }
 
 export interface ShellOutputView {
-  /** The target directory holding the output files; optional when no output files are retained. */
+  /**
+   * The target directory holding the output files; optional when no output
+   * files are retained.
+   */
   path?: string
   offset: number
   text: string
@@ -66,7 +72,10 @@ export interface ShellOutputView {
   truncated: boolean
 }
 
-/** Final stdout stream that is not valid UTF-8: raw bytes for the boundary above. */
+/**
+ * Final stdout stream that is not valid UTF-8: raw bytes for the boundary
+ * above.
+ */
 export interface BinaryStdout {
   data: Uint8Array
   /** True when the stream exceeded the applicable cap; data is capped. */
@@ -82,7 +91,10 @@ export type ShellCommandStatus =
       status: 'exited'
       shellId: string
       commandId: string
-      /** The directory the target's output files live in; absent when nothing beyond the view is kept. */
+      /**
+       * The directory the target's output files live in; absent when nothing
+       * beyond the view is kept.
+       */
       outputDir?: string
       exitCode: number
       stdout: ShellStreamView
@@ -90,7 +102,10 @@ export type ShellCommandStatus =
       output: ShellOutputView
       runningMs: number
       idleMs: number
-      /** Present when the final stream was binary (bytes that are not valid UTF-8). */
+      /**
+       * Present when the final stream was binary (bytes that are not valid
+       * UTF-8).
+       */
       binaryStdout?: BinaryStdout
     }
   | {
@@ -103,7 +118,9 @@ export type ShellCommandStatus =
       output: ShellOutputView
       runningMs: number
       idleMs: number
-      /** The active registered command's model-facing guidance, when declared. */
+      /**
+       * The active registered command's model-facing guidance, when declared.
+       */
       runningHint?: string
     }
   | {

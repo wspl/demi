@@ -38,7 +38,8 @@ const bodyScroll = ref<HTMLElement>()
 let closeTimer: ReturnType<typeof setTimeout> | undefined
 
 function clearCloseTimer() {
-  if (!closeTimer) return
+  if (!closeTimer)
+    return
   clearTimeout(closeTimer)
   closeTimer = undefined
 }
@@ -46,11 +47,13 @@ function clearCloseTimer() {
 // A failed call keeps its error text on screen: the settle timer never closes over it.
 // Only changes while mounted open a block; a transcript opened later shows every block folded.
 function closeAfterActiveOutputSettles() {
-  if (!isOpen.value) return
+  if (!isOpen.value)
+    return
   clearCloseTimer()
   closeTimer = setTimeout(() => {
     closeTimer = undefined
-    if (!props.openWhile && !props.errorText) isOpen.value = false
+    if (!props.openWhile && !props.errorText)
+      isOpen.value = false
   }, ACTIVE_OUTPUT_CLOSE_DELAY_MS)
 }
 
@@ -62,7 +65,8 @@ watch(
       isOpen.value = true
       return
     }
-    if (openWhile === undefined) return
+    if (openWhile === undefined)
+      return
     if (openWhile && expandable) {
       isOpen.value = true
       return
@@ -89,7 +93,11 @@ onUpdated(() => {
         : isExpandable ? 'group text-fg-muted hover:text-fg-body' : 'text-fg-muted'"
       @click="isExpandable && (isOpen = !isOpen)"
     >
-      <ChromeRoll class="min-w-0" :face-key="rollKey ?? 'static'" :icon-key="iconKey ?? 'icon'">
+      <ChromeRoll
+        class="min-w-0"
+        :face-key="rollKey ?? 'static'"
+        :icon-key="iconKey ?? 'icon'"
+      >
         <template v-if="showIcon" #icon>
           <div
             class="functional-block-icon flex shrink-0 items-center justify-center"
@@ -101,10 +109,22 @@ onUpdated(() => {
           </div>
         </template>
         <div class="flex h-7 min-w-0 items-center gap-2 overflow-hidden">
-          <span v-if="label" class="shrink-0" :class="loading ? 'thinking-shimmer' : ''">{{ label }}</span>
+          <span
+            v-if="label"
+            class="shrink-0"
+            :class="loading ? 'thinking-shimmer' : ''"
+          >{{ label }}</span>
           <slot v-if="slots['default']" :loading="loading" />
-          <span v-else-if="detail" class="min-w-0 truncate font-mono text-fg-body group-hover:text-fg-emphasis" :class="loading ? 'thinking-shimmer' : ''">{{ detail }}</span>
-          <span v-if="suffix" class="shrink-0 text-fg-subtle group-hover:text-fg-muted" :class="loading ? 'thinking-shimmer' : ''">{{ suffix }}</span>
+          <span
+            v-else-if="detail"
+            class="min-w-0 truncate font-mono text-fg-body group-hover:text-fg-emphasis"
+            :class="loading ? 'thinking-shimmer' : ''"
+          >{{ detail }}</span>
+          <span
+            v-if="suffix"
+            class="shrink-0 text-fg-subtle group-hover:text-fg-muted"
+            :class="loading ? 'thinking-shimmer' : ''"
+          >{{ suffix }}</span>
         </div>
       </ChromeRoll>
       <span class="-ml-1 shrink-0 text-xs">
@@ -113,7 +133,10 @@ onUpdated(() => {
           :open="isOpen"
           :class="tone === 'danger' ? 'text-on-danger-muted group-hover:text-on-danger' : 'text-fg-faint group-hover:text-fg-muted'"
         />
-        <span v-else-if="!loading && trailing" class="text-fg-subtle group-hover:text-fg-muted">{{ trailing }}</span>
+        <span
+          v-else-if="!loading && trailing"
+          class="text-fg-subtle group-hover:text-fg-muted"
+        >{{ trailing }}</span>
       </span>
       <div class="flex-1"></div>
     </div>
@@ -124,9 +147,15 @@ onUpdated(() => {
           class="functional-block-rail shrink-0"
           :style="{ width: `${ICON_PX.in28}px` }"
         />
-        <div ref="bodyScroll" class="min-w-0 max-h-80 flex-1 overflow-y-auto py-0.5">
+        <div
+          ref="bodyScroll"
+          class="min-w-0 max-h-80 flex-1 overflow-y-auto py-0.5"
+        >
           <slot v-if="hasBodySlot()" name="body" />
-          <pre v-if="errorText" class="whitespace-pre-wrap px-3 py-1.5 font-mono text-xs text-on-danger-muted">{{ errorText }}</pre>
+          <pre
+            v-if="errorText"
+            class="whitespace-pre-wrap px-3 py-1.5 font-mono text-xs text-on-danger-muted"
+          >{{ errorText }}</pre>
         </div>
       </div>
     </Fold>

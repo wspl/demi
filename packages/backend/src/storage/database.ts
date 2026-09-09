@@ -18,7 +18,8 @@ export interface SqlDatabase {
 export type SqlParams = ReadonlyArray<string | number | bigint | boolean | null | Uint8Array>
 
 export function openSqliteDatabase(path: string): SqlDatabase {
-  if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
+  if (path !== ':memory:')
+    mkdirSync(dirname(path), { recursive: true })
   const db = new Database(path, { create: true, strict: true })
   db.run('PRAGMA journal_mode = WAL')
   db.run('PRAGMA foreign_keys = ON')
@@ -34,7 +35,8 @@ export function openSqliteDatabase(path: string): SqlDatabase {
       return (db.query(sql).get(...normalizeParams(params)) as T | null) ?? null
     },
     transaction<T>(fn: () => T): T {
-      if (transactionDepth > 0) return fn()
+      if (transactionDepth > 0)
+        return fn()
       transactionDepth += 1
       try {
         return db.transaction(fn)()
@@ -48,6 +50,12 @@ export function openSqliteDatabase(path: string): SqlDatabase {
   }
 }
 
-function normalizeParams(params: SqlParams): (string | number | bigint | null | Uint8Array)[] {
-  return params.map((value) => (typeof value === 'boolean' ? (value ? 1 : 0) : value))
+function normalizeParams(
+  params: SqlParams
+): (string | number | bigint | null | Uint8Array)[] {
+  return params.map((value) => (typeof value === 'boolean'
+    ? (value
+      ? 1
+      : 0)
+    : value))
 }

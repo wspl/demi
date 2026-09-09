@@ -14,7 +14,10 @@ import type { FirecrackerConfig } from './config'
 import type { Slot } from './slots'
 
 export interface VmStart {
-  /** Short and unique: it names the run directory and the jail; the API socket path under it must fit a unix socket address. */
+  /**
+   * Short and unique: it names the run directory and the jail; the API socket
+   * path under it must fit a unix socket address.
+   */
   vmId: string
   slot: Slot
   /** The working home image on the host. */
@@ -29,7 +32,10 @@ export interface VmStart {
  * Written beside a VM's socket and console as soon as its process exists:
  * what a later backend process needs to kill a VM this one left running.
  */
-const vmRecordSchema = z.object({ pid: z.number().int().positive(), owner: z.string().min(1) }).strict()
+const vmRecordSchema = z.object({
+  pid: z.number().int().positive(),
+  owner: z.string().min(1)
+}).strict()
 export type VmRecord = z.infer<typeof vmRecordSchema>
 
 const VM_RECORD = 'vm.json'
@@ -37,11 +43,20 @@ const VM_RECORD = 'vm.json'
 export interface RunningVm {
   api: FirecrackerApi
   id: string
-  /** The spawned process: Firecracker directly, or sudo running the script that monitors it. */
+  /**
+   * The spawned process: Firecracker directly, or sudo running the script that
+   * monitors it.
+   */
   pid: number
-  /** The path Firecracker knows the home image by (chroot-relative under the jailer). */
+  /**
+   * The path Firecracker knows the home image by (chroot-relative under the
+   * jailer).
+   */
   volumePaths: Record<'system' | 'home', string>
-  /** Resolves with the exit code (or null on a signal) once the VM process is gone. */
+  /**
+   * Resolves with the exit code (or null on a signal) once the VM process is
+   * gone.
+   */
   exited: Promise<number | null>
   kill(): Promise<void>
 }
@@ -53,10 +68,15 @@ export function vmDirectory(config: FirecrackerConfig, vmId: string): string {
   return join(config.runDir, vmId)
 }
 
-export async function readVmRecord(config: FirecrackerConfig, vmId: string): Promise<VmRecord | null> {
+export async function readVmRecord(
+  config: FirecrackerConfig,
+  vmId: string
+): Promise<VmRecord | null> {
   try {
     return vmRecordSchema.parse(
-      JSON.parse(await readFile(join(vmDirectory(config, vmId), VM_RECORD), 'utf8')),
+      JSON.parse(
+        await readFile(join(vmDirectory(config, vmId), VM_RECORD), 'utf8')
+      ),
     )
   } catch (error) {
     if (errorCode(error) === 'ENOENT') {
@@ -66,8 +86,14 @@ export async function readVmRecord(config: FirecrackerConfig, vmId: string): Pro
   }
 }
 
-/** The record removed once the process is known to be gone, so no later start tries to kill it. */
-export function removeVmRecord(config: FirecrackerConfig, vmId: string): Promise<void> {
+/**
+ * The record removed once the process is known to be gone, so no later start
+ * tries to kill it.
+ */
+export function removeVmRecord(
+  config: FirecrackerConfig,
+  vmId: string
+): Promise<void> {
   return rm(join(vmDirectory(config, vmId), VM_RECORD), { force: true })
 }
 
@@ -76,7 +102,11 @@ export function removeVmRecord(config: FirecrackerConfig, vmId: string): Promise
  * `direct` mode; through the helper in `jailer` mode, where the pid this
  * backend holds is the helper's and the jail records Firecracker's own.
  */
-export async function killVm(config: FirecrackerConfig, vmId: string, pid: number): Promise<void> {
+export async function killVm(
+  config: FirecrackerConfig,
+  vmId: string,
+  pid: number
+): Promise<void> {
   if (config.launch.mode === 'direct') {
     try {
       process.kill(pid, 'SIGKILL')
@@ -99,7 +129,10 @@ export async function killVm(config: FirecrackerConfig, vmId: string, pid: numbe
   await killer.exited
 }
 
-/** Whether a process exists: `kill(pid, 0)` answers, permission denied included (the helper runs as root). */
+/**
+ * Whether a process exists: `kill(pid, 0)` answers, permission denied included
+ * (the helper runs as root).
+ */
 export function processAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)
@@ -119,22 +152,48 @@ export async function startVm(
   await mkdir(vmDir, { recursive: true })
   const console = Bun.file(join(vmDir, 'console.log'))
   let socketPath: string
-  let paths: { kernel: string; rootfs: string; home: string; system: string }
+  let paths: {
+    kernel: string;
+    rootfs: string;
+    home: string;
+    system: string
+  }
   let child: ReturnType<typeof Bun.spawn>
   if (config.launch.mode === 'direct') {
     socketPath = join(vmDir, 'api.sock')
     await rm(socketPath, { force: true })
-    paths = { kernel: config.kernel, rootfs: config.rootfs, home: start.homeImage, system: start.systemImage }
-    child = Bun.spawn([config.firecracker, '--api-sock', socketPath, '--id', start.vmId], {
+    paths = {
+      kernel: config.kernel,
+      rootfs: config.rootfs,
+      home: start.homeImage,
+      system: start.systemImage
+    }
+    child = Bun.spawn([
+      config.firecracker,
+      '--api-sock',
+      socketPath,
+      '--id',
+      start.vmId
+    ], {
       stdout: console,
       stderr: console,
       stdin: 'ignore',
     })
   } else {
     const launch = config.launch
-    const chroot = join(launch.chrootBase, basename(config.firecracker), start.vmId, 'root')
+    const chroot = join(
+      launch.chrootBase,
+      basename(config.firecracker),
+      start.vmId,
+      'root'
+    )
     socketPath = join(chroot, 'run', 'firecracker.socket')
-    paths = { kernel: '/vmlinux', rootfs: '/rootfs.ext4', home: '/home.ext4', system: '/system.ext4' }
+    paths = {
+      kernel: '/vmlinux',
+      rootfs: '/rootfs.ext4',
+      home: '/home.ext4',
+      system: '/system.ext4'
+    }
     const uid = launch.uidBase + start.slot.index
     const gid = launch.gidBase + start.slot.index
     const helperArgs = [
@@ -160,7 +219,11 @@ export async function startVm(
   const pid = child.pid
   const record: VmRecord = { pid, owner: start.owner }
   const kill = () => killVm(config, start.vmId, pid)
-  const exited: Promise<number | null> = child.exited.then(code => (child.signalCode ? null : code))
+  const exited: Promise<number | null> = child.exited.then(
+    code => (child.signalCode
+      ? null
+      : code)
+  )
   const api = new FirecrackerApi(socketPath)
   try {
     await atomicJson(join(vmDir, VM_RECORD), record)
@@ -190,6 +253,15 @@ export async function startVm(
     await kill().catch(cleanupError => log(errorMessage(cleanupError)))
     throw error
   }
-  log(`vm ${start.vmId} started on ${start.slot.tap} (${start.slot.guestAddress})`)
-  return { api, id: start.vmId, pid, volumePaths: { home: paths.home, system: paths.system }, exited, kill }
+  log(
+    `vm ${start.vmId} started on ${start.slot.tap} (${start.slot.guestAddress})`
+  )
+  return {
+    api,
+    id: start.vmId,
+    pid,
+    volumePaths: { home: paths.home, system: paths.system },
+    exited,
+    kill
+  }
 }

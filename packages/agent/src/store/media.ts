@@ -1,5 +1,9 @@
 import { base64ToBytes, bytesToBase64 } from '@demicodes/utils'
-import type { Block, ToolResultContentBlock, UserContentBlock } from '@demicodes/core'
+import type {
+  Block,
+  ToolResultContentBlock,
+  UserContentBlock
+} from '@demicodes/core'
 
 /**
  * Content-addressed byte storage for transcript media. Databases hold block
@@ -32,87 +36,188 @@ interface RefBase64Source {
 }
 
 function isRefSource(value: unknown): value is RefSource {
-  return typeof value === 'object' && value !== null && (value as { type?: unknown }).type === 'ref'
+  return typeof value === 'object' && value !== null
+    && (value as { type?: unknown }).type === 'ref'
 }
 
 function isRefBase64Source(value: unknown): value is RefBase64Source {
-  return typeof value === 'object' && value !== null && typeof (value as { ref?: unknown }).ref === 'string'
+  return typeof value === 'object' && value !== null
+    && typeof (value as { ref?: unknown }).ref === 'string'
 }
 
-/** Returns a copy of the block with every inline media source moved into `blobs`. */
-export async function externalizeBlockMedia(block: Block, blobs: BlobStore): Promise<Block> {
+/**
+ * Returns a copy of the block with every inline media source moved into
+ * `blobs`.
+ */
+export async function externalizeBlockMedia(
+  block: Block,
+  blobs: BlobStore
+): Promise<Block> {
   if (block.type === 'user' || block.type === 'steer') {
-    return { ...block, content: await Promise.all(block.content.map((item) => externalizeUserContent(item, blobs))) }
+    return {
+      ...block,
+      content: await Promise.all(
+        block.content.map((item) => externalizeUserContent(
+          item,
+          blobs
+        ))
+      )
+    }
   }
   if (block.type === 'tool_call') {
     return {
       ...block,
-      output: await Promise.all(block.output.map((item) => externalizeToolResult(item, blobs))),
-      streamingOutput: await Promise.all(block.streamingOutput.map((item) => externalizeToolResult(item, blobs))),
+      output: await Promise.all(
+        block.output.map((item) => externalizeToolResult(
+          item,
+          blobs
+        ))
+      ),
+      streamingOutput: await Promise.all(
+        block.streamingOutput.map((item) => externalizeToolResult(
+          item,
+          blobs
+        ))
+      ),
     }
   }
   return block
 }
 
-/** Inverse of `externalizeBlockMedia`; missing blobs degrade to text placeholders. */
-export async function rehydrateBlockMedia(block: Block, blobs: BlobStore): Promise<Block> {
+/**
+ * Inverse of `externalizeBlockMedia`; missing blobs degrade to text
+ * placeholders.
+ */
+export async function rehydrateBlockMedia(
+  block: Block,
+  blobs: BlobStore
+): Promise<Block> {
   if (block.type === 'user' || block.type === 'steer') {
-    return { ...block, content: await Promise.all(block.content.map((item) => rehydrateUserContent(item, blobs))) }
+    return {
+      ...block,
+      content: await Promise.all(
+        block.content.map((item) => rehydrateUserContent(
+          item,
+          blobs
+        ))
+      )
+    }
   }
   if (block.type === 'tool_call') {
     return {
       ...block,
-      output: await Promise.all(block.output.map((item) => rehydrateToolResult(item, blobs))),
-      streamingOutput: await Promise.all(block.streamingOutput.map((item) => rehydrateToolResult(item, blobs))),
+      output: await Promise.all(block.output.map((item) => rehydrateToolResult(
+        item,
+        blobs
+      ))),
+      streamingOutput: await Promise.all(
+        block.streamingOutput.map((item) => rehydrateToolResult(
+          item,
+          blobs
+        ))
+      ),
     }
   }
   return block
 }
 
-async function externalizeUserContent(item: UserContentBlock, blobs: BlobStore): Promise<UserContentBlock> {
-  if ((item.type === 'image' || item.type === 'video') && item.source.type === 'binary') {
+async function externalizeUserContent(
+  item: UserContentBlock,
+  blobs: BlobStore
+): Promise<UserContentBlock> {
+  if ((item.type === 'image' || item.type === 'video')
+    && item.source.type === 'binary') {
     const ref = await blobs.put(item.source.data)
-    const source: RefSource = { type: 'ref', ref, mediaType: item.source.mediaType }
+    const source: RefSource = {
+      type: 'ref',
+      ref,
+      mediaType: item.source.mediaType
+    }
     return { ...item, source: source as never }
   }
   if (item.type === 'document' && item.source.data instanceof Uint8Array) {
     const ref = await blobs.put(item.source.data)
-    const source: RefSource = { type: 'ref', ref, mediaType: item.source.mediaType, fileName: item.source.fileName }
+    const source: RefSource = {
+      type: 'ref',
+      ref,
+      mediaType: item.source.mediaType,
+      fileName: item.source.fileName
+    }
     return { ...item, source: source as never }
   }
   return item
 }
 
-async function rehydrateUserContent(item: UserContentBlock, blobs: BlobStore): Promise<UserContentBlock> {
-  if (item.type !== 'image' && item.type !== 'video' && item.type !== 'document') return item
+async function rehydrateUserContent(
+  item: UserContentBlock,
+  blobs: BlobStore
+): Promise<UserContentBlock> {
+  if (item.type
+    !== 'image' && item.type
+    !== 'video' && item.type
+    !== 'document')
+    return item
   const source: unknown = item.source
-  if (!isRefSource(source)) return item
+  if (!isRefSource(source))
+    return item
   const data = await blobs.get(source.ref)
-  if (data === null) return missingMediaPlaceholder(item.type, source.ref)
+  if (data === null)
+    return missingMediaPlaceholder(item.type, source.ref)
   if (item.type === 'document') {
-    return { ...item, source: { data, mediaType: source.mediaType, fileName: source.fileName ?? 'document' } }
+    return {
+      ...item,
+      source: {
+        data,
+        mediaType: source.mediaType,
+        fileName: source.fileName ?? 'document'
+      }
+    }
   }
-  return { ...item, source: { type: 'binary', data, mediaType: source.mediaType } as never }
+  return {
+    ...item,
+    source: { type: 'binary', data, mediaType: source.mediaType } as never
+  }
 }
 
-async function externalizeToolResult(item: ToolResultContentBlock, blobs: BlobStore): Promise<ToolResultContentBlock> {
-  if (item.type !== 'image' && item.type !== 'video') return item
-  if (typeof item.source.data !== 'string') return item
+async function externalizeToolResult(
+  item: ToolResultContentBlock,
+  blobs: BlobStore
+): Promise<ToolResultContentBlock> {
+  if (item.type !== 'image' && item.type !== 'video')
+    return item
+  if (typeof item.source.data !== 'string')
+    return item
   const ref = await blobs.put(base64ToBytes(item.source.data))
   const source: RefBase64Source = { ref, mediaType: item.source.mediaType }
   return { ...item, source: source as never }
 }
 
-async function rehydrateToolResult(item: ToolResultContentBlock, blobs: BlobStore): Promise<ToolResultContentBlock> {
-  if (item.type !== 'image' && item.type !== 'video') return item
+async function rehydrateToolResult(
+  item: ToolResultContentBlock,
+  blobs: BlobStore
+): Promise<ToolResultContentBlock> {
+  if (item.type !== 'image' && item.type !== 'video')
+    return item
   const source: unknown = item.source
-  if (typeof (source as { data?: unknown }).data === 'string') return item
-  if (!isRefBase64Source(source)) return item
+  if (typeof (source as { data?: unknown }).data === 'string')
+    return item
+  if (!isRefBase64Source(source))
+    return item
   const data = await blobs.get(source.ref)
-  if (data === null) return { type: 'text', text: `[missing ${item.type} blob ${source.ref}]` }
-  return { ...item, source: { mediaType: source.mediaType, data: bytesToBase64(data) } }
+  if (data === null)
+    return {
+      type: 'text',
+      text: `[missing ${item.type} blob ${source.ref}]`
+    }
+  return {
+    ...item,
+    source: { mediaType: source.mediaType, data: bytesToBase64(data) }
+  }
 }
 
-function missingMediaPlaceholder(kind: 'image' | 'video' | 'document', ref: string): UserContentBlock {
+function missingMediaPlaceholder(
+  kind: 'image' | 'video' | 'document',
+  ref: string
+): UserContentBlock {
   return { type: 'text', text: `[missing ${kind} blob ${ref}]` }
 }

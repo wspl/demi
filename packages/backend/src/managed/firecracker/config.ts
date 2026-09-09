@@ -4,10 +4,17 @@
 import { join } from 'node:path'
 
 export type LaunchMode =
-  /** The backend spawns `firecracker` itself, unprivileged. */
-  | { mode: 'direct' }
-  /** The privileged helper runs the jailer; one uid per slot from `uidBase`. */
-  | { mode: 'jailer'; jailer: string; helper: string; chrootBase: string; uidBase: number; gidBase: number }
+/** The backend spawns `firecracker` itself, unprivileged. */
+| { mode: 'direct' }
+/** The privileged helper runs the jailer; one uid per slot from `uidBase`. */
+| {
+  mode: 'jailer';
+  jailer: string;
+  helper: string;
+  chrootBase: string;
+  uidBase: number;
+  gidBase: number
+}
 
 export interface FirecrackerConfig {
   firecracker: string
@@ -23,7 +30,9 @@ export interface FirecrackerConfig {
   slots: number
   tapPrefix: string
   dns: string[]
-  /** Working files per VM: the API socket, the console log, both working disks. */
+  /**
+   * Working files per VM: the API socket, the console log, both working disks.
+   */
   runDir: string
   /** Immutable paired disk generations and pinned base images. */
   imagesDir: string
@@ -60,7 +69,10 @@ export const DEFAULTS = {
   uidBase: 20000,
 }
 
-/** The configuration the environment describes, or null when `DEMI_MANAGED_FIRECRACKER` is unset. */
+/**
+ * The configuration the environment describes, or null when
+ * `DEMI_MANAGED_FIRECRACKER` is unset.
+ */
 export function firecrackerConfigFromEnv(
   env: Record<string, string | undefined>,
   dataDir: string,
@@ -72,7 +84,9 @@ export function firecrackerConfigFromEnv(
   const required = (name: keyof typeof MANAGED_ENV): string => {
     const value = env[MANAGED_ENV[name]]
     if (!value) {
-      throw new Error(`${MANAGED_ENV[name]} is required when ${MANAGED_ENV.firecracker} is set`)
+      throw new Error(
+        `${MANAGED_ENV[name]} is required when ${MANAGED_ENV.firecracker} is set`
+      )
     }
     return value
   }
@@ -83,7 +97,9 @@ export function firecrackerConfigFromEnv(
     }
     const parsed = Number(value)
     if (!Number.isInteger(parsed) || parsed <= 0) {
-      throw new Error(`${MANAGED_ENV[name]} must be a positive integer, got ${value}`)
+      throw new Error(
+        `${MANAGED_ENV[name]} must be a positive integer, got ${value}`
+      )
     }
     return parsed
   }
@@ -102,7 +118,9 @@ export function firecrackerConfigFromEnv(
       gidBase: uidBase,
     }
   } else {
-    throw new Error(`${MANAGED_ENV.launch} must be direct or jailer, got ${mode}`)
+    throw new Error(
+      `${MANAGED_ENV.launch} must be direct or jailer, got ${mode}`
+    )
   }
   return {
     firecracker,
@@ -116,7 +134,8 @@ export function firecrackerConfigFromEnv(
     subnet: env[MANAGED_ENV.subnet] ?? DEFAULTS.subnet,
     slots: integer('slots', DEFAULTS.slots),
     tapPrefix: DEFAULTS.tapPrefix,
-    dns: (env[MANAGED_ENV.dns] ?? DEFAULTS.dns.join(',')).split(',').filter(entry => entry.length > 0),
+    dns: (env[MANAGED_ENV.dns] ?? DEFAULTS.dns.join(',')).split(',')
+      .filter(entry => entry.length > 0),
     runDir: join(dataDir, 'firecracker'),
     imagesDir: join(dataDir, 'machines'),
   }

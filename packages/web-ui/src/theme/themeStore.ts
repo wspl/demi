@@ -22,11 +22,13 @@ export function createThemeStore(initial: Partial<ThemeStoreState> = {}): ThemeS
     state: store.state,
     subscribe: store.subscribe,
     setMode(mode) {
-      if (store.state.mode === mode) return
+      if (store.state.mode === mode)
+        return
       store.patch({ mode })
     },
     setCodeThemeId(codeThemeId) {
-      if (store.state.codeThemeId === codeThemeId) return
+      if (store.state.codeThemeId === codeThemeId)
+        return
       store.patch({ codeThemeId })
     },
   }

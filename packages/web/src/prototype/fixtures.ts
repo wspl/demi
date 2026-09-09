@@ -5,8 +5,20 @@ import { populateTranscript } from './transcripts'
 
 export function devices(): Device[] {
   return [
-    { id: 'mac', name: 'zan-mbp', online: true, platform: 'linux', home: '/Users/zan' },
-    { id: 'build', name: 'build-01', online: true, platform: 'linux', home: '/home/build' },
+    {
+      id: 'mac',
+      name: 'zan-mbp',
+      online: true,
+      platform: 'linux',
+      home: '/Users/zan'
+    },
+    {
+      id: 'build',
+      name: 'build-01',
+      online: true,
+      platform: 'linux',
+      home: '/home/build'
+    },
   ]
 }
 export function projects(): Project[] {
@@ -69,7 +81,12 @@ export function conversations(): Conversation[] {
       turnId: 'welcome-turn',
       createdAt: c.updatedAt,
       model,
-      content: [{ type: 'text', text: 'Let’s make a workspace for our next idea.' }],
+      content: [
+        {
+          type: 'text',
+          text: 'Let’s make a workspace for our next idea.'
+        }
+      ],
       preamble: null,
     },
     {
@@ -87,8 +104,14 @@ export function conversations(): Conversation[] {
     { ...conversation('reading', 'Reading list for the weekend'), pinned: true },
     conversation('week-plan', 'Plan the next week'),
     conversation('travel-notes', 'Compare a few places for a quiet weekend away'),
-    { ...conversation('web-review', 'Web interface review', 'demi'), pinned: true },
-    { ...conversation('release-plan', 'Release checklist', 'demi'), pinned: true },
+    {
+      ...conversation('web-review', 'Web interface review', 'demi'),
+      pinned: true
+    },
+    {
+      ...conversation('release-plan', 'Release checklist', 'demi'),
+      pinned: true
+    },
     conversation('sidebar-motion', 'Sidebar sorting and animation details', 'demi'),
     conversation('workspace-flow', 'Review the workspace selection flow', 'demi'),
     { ...conversation('outline', 'Article outline', 'notes'), pinned: true },
@@ -133,13 +156,16 @@ export function conversations(): Conversation[] {
     ].map((title, index) => conversation(`notes-${index}`, title, 'notes')),
   ]
   items.forEach((item, index) => {
-    if (item.id !== 'welcome') populateTranscript(item, modelSelection(item), index)
+    if (item.id !== 'welcome')
+      populateTranscript(item, modelSelection(item), index)
   })
   return items
 }
 
 export function modelSelection(c: Conversation): ModelSelection {
-  const entry = providers().find((provider) => provider.id === c.providerId)!.models.find((model) => model.id === c.modelId)!
+  const entry = providers().find((provider) => provider.id === c.providerId)!.models.find(
+    (model) => model.id === c.modelId
+  )!
   return {
     providerId: c.providerId,
     model: {
@@ -149,7 +175,9 @@ export function modelSelection(c: Conversation): ModelSelection {
       outputLimit: entry.outputLimit,
       inputLimit: entry.contextWindow,
       thinking: [],
-      acceptedExtensions: entry.extensions.map((extension) => extension.replace(/^\./, '')) as FileExtension[],
+      acceptedExtensions: entry.extensions.map(
+        (extension) => extension.replace(/^\./, '')
+      ) as FileExtension[],
     },
     thinking: c.thinking,
     serviceTierId: c.serviceTierId,

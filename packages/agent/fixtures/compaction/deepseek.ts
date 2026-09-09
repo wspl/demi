@@ -1,9 +1,15 @@
 /**
- * Shared DeepSeek OpenAI-compatible provider wiring for the compaction fixture harness.
+ * Shared DeepSeek OpenAI-compatible provider wiring for the compaction fixture
+ * harness.
  * Auth: `DEEPSEEK_API_KEY` (optional `DEEPSEEK_BASE_URL`). Bun loads `.env` from the repo root.
  */
 import type { ModelSelection } from '@demicodes/core'
-import { modelSelectionFromCatalog, providerRuntime, type AgentProvider, type Provider } from '@demicodes/provider'
+import {
+  modelSelectionFromCatalog,
+  providerRuntime,
+  type AgentProvider,
+  type Provider
+} from '@demicodes/provider'
 import {
   createOpenAIApiProvider,
   type OpenAIApiModelOptions,
@@ -22,12 +28,17 @@ export interface DeepSeekFlashRuntime {
 export function requireDeepSeekApiKey(): string {
   const key = process.env.DEEPSEEK_API_KEY?.trim()
   if (!key) {
-    throw new Error('DEEPSEEK_API_KEY is not set (put it in the repo-root .env)')
+    throw new Error(
+      'DEEPSEEK_API_KEY is not set (put it in the repo-root .env)'
+    )
   }
   return key
 }
 
-export function flashModelOptions(contextWindow: number, modelId = DEFAULT_FLASH_MODEL_ID): OpenAIApiModelOptions {
+export function flashModelOptions(
+  contextWindow: number,
+  modelId = DEFAULT_FLASH_MODEL_ID
+): OpenAIApiModelOptions {
   return {
     id: modelId,
     displayName: 'DeepSeek V4 Flash',
@@ -40,10 +51,14 @@ export function flashModelOptions(contextWindow: number, modelId = DEFAULT_FLASH
   }
 }
 
-export async function createDeepSeekFlash(contextWindow: number): Promise<DeepSeekFlashRuntime> {
+export async function createDeepSeekFlash(
+  contextWindow: number
+): Promise<DeepSeekFlashRuntime> {
   const apiKey = requireDeepSeekApiKey()
-  const baseUrl = process.env.DEEPSEEK_BASE_URL?.trim() || DEFAULT_DEEPSEEK_BASE_URL
-  const modelId = process.env.DEEPSEEK_FLASH_MODEL?.trim() || DEFAULT_FLASH_MODEL_ID
+  const baseUrl = process.env.DEEPSEEK_BASE_URL?.trim()
+    || DEFAULT_DEEPSEEK_BASE_URL
+  const modelId = process.env.DEEPSEEK_FLASH_MODEL?.trim()
+    || DEFAULT_FLASH_MODEL_ID
   const options = flashModelOptions(contextWindow, modelId)
   const provider = createOpenAIApiProvider({
     id: 'deepseek',
@@ -62,18 +77,27 @@ export async function createDeepSeekFlash(contextWindow: number): Promise<DeepSe
   // Catalog metadata may advertise the vendor's full window; pin the registered window
   // so compaction thresholds stay under our control for the harness.
   model.model.contextWindow = contextWindow
-  const runtime = await providerRuntime(provider, { providerId: 'deepseek', model })
+  const runtime = await providerRuntime(
+    provider,
+    { providerId: 'deepseek', model }
+  )
   return { provider, runtime, model }
 }
 
 type FetchLike = NonNullable<OpenAIApiProviderOptions['fetch']>
 
-/** Map DeepSeek `prompt_cache_hit_tokens` onto OpenAI-style `prompt_tokens_details.cached_tokens`. */
-export function createDeepSeekUsageFetch(fetchImpl: FetchLike = fetch): FetchLike {
+/**
+ * Map DeepSeek `prompt_cache_hit_tokens` onto OpenAI-style
+ * `prompt_tokens_details.cached_tokens`.
+ */
+export function createDeepSeekUsageFetch(
+  fetchImpl: FetchLike = fetch
+): FetchLike {
   return async (input, init) => {
     const response = await fetchImpl(input, init)
     const contentType = response.headers.get('content-type') ?? ''
-    if (!response.ok || !response.body || !contentType.includes('text/event-stream')) return response
+    if (!response.ok || !response.body
+      || !contentType.includes('text/event-stream')) return response
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -84,7 +108,8 @@ export function createDeepSeekUsageFetch(fetchImpl: FetchLike = fetch): FetchLik
       async pull(controller) {
         const { value, done } = await reader.read()
         if (done) {
-          if (buffered) controller.enqueue(encoder.encode(rewriteDeepSeekUsageLine(buffered)))
+          if (buffered)
+            controller.enqueue(encoder.encode(rewriteDeepSeekUsageLine(buffered)))
           controller.close()
           return
         }
@@ -105,11 +130,18 @@ export function createDeepSeekUsageFetch(fetchImpl: FetchLike = fetch): FetchLik
     const headers = new Headers(response.headers)
     headers.delete('content-length')
     headers.delete('content-encoding')
-    return new Response(body, { status: response.status, statusText: response.statusText, headers })
+    return new Response(
+      body,
+      { status: response.status, statusText: response.statusText, headers }
+    )
   }
 }
 
 function rewriteDeepSeekUsageLine(line: string): string {
-  if (!line.includes('prompt_cache_hit_tokens')) return line
-  return line.replace(/"prompt_cache_hit_tokens"\s*:\s*(\d+)/, '"prompt_tokens_details":{"cached_tokens":$1}')
+  if (!line.includes('prompt_cache_hit_tokens'))
+    return line
+  return line.replace(
+    /"prompt_cache_hit_tokens"\s*:\s*(\d+)/,
+    '"prompt_tokens_details":{"cached_tokens":$1}'
+  )
 }

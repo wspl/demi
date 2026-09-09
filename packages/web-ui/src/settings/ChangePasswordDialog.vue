@@ -15,7 +15,11 @@ import SettingsRow from './SettingsRow.vue'
  * is right is the host's answer, reported in the phase.
  */
 export type ChangePasswordPhase =
-  | { kind: 'form'; busy?: boolean; error?: string }
+  | {
+    kind: 'form';
+    busy?: boolean;
+    error?: string
+  }
   | { kind: 'done' }
 
 const props = defineProps<{
@@ -39,16 +43,28 @@ const tooShort = computed(() => next.value.length > 0 && next.value.length < MIN
 const mismatch = computed(() => confirm.value.length > 0 && confirm.value !== next.value)
 const unchanged = computed(() => next.value.length > 0 && next.value === current.value)
 const canSubmit = computed(
-  () => props.phase.kind === 'form' && !props.phase.busy && current.value.length > 0 && next.value.length >= MIN_LENGTH && confirm.value === next.value && !unchanged.value,
+  () =>
+    props.phase.kind === 'form' &&
+    !props.phase.busy &&
+    current.value.length > 0 &&
+    next.value.length >= MIN_LENGTH &&
+    confirm.value === next.value &&
+    !unchanged.value,
 )
 
 function submit() {
-  if (canSubmit.value) emit('submit', current.value, next.value)
+  if (canSubmit.value)
+    emit('submit', current.value, next.value)
 }
 </script>
 
 <template>
-  <Dialog :is-open="isOpen" :overlay-store="overlayStore" label="Change password" @close="emit('close')">
+  <Dialog
+    :is-open="isOpen"
+    :overlay-store="overlayStore"
+    label="Change password"
+    @close="emit('close')"
+  >
     <div class="flex flex-col gap-4 p-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Change password</h3>
@@ -59,20 +75,47 @@ function submit() {
       </header>
 
       <template v-if="phase.kind === 'form'">
-        <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
+        <div
+          class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
+        >
           <SettingsRow label="Current password">
-            <TextInput v-model="current" secret focused class="w-48 max-w-full" @keydown.enter="submit" />
+            <TextInput
+              v-model="current"
+              secret
+              focused
+              class="w-48 max-w-full"
+              @keydown.enter="submit"
+            />
           </SettingsRow>
-          <SettingsRow label="New password" :description="`At least ${MIN_LENGTH} characters.`">
-            <TextInput v-model="next" secret class="w-48 max-w-full" @keydown.enter="submit" />
+          <SettingsRow
+            label="New password"
+            :description="`At least ${MIN_LENGTH} characters.`"
+          >
+            <TextInput
+              v-model="next"
+              secret
+              class="w-48 max-w-full"
+              @keydown.enter="submit"
+            />
           </SettingsRow>
           <SettingsRow label="Confirm new password">
-            <TextInput v-model="confirm" secret class="w-48 max-w-full" @keydown.enter="submit" />
+            <TextInput
+              v-model="confirm"
+              secret
+              class="w-48 max-w-full"
+              @keydown.enter="submit"
+            />
           </SettingsRow>
         </div>
         <InlineError v-if="phase.error" :message="phase.error" />
-        <InlineError v-else-if="tooShort" :message="`A password has at least ${MIN_LENGTH} characters.`" />
-        <InlineError v-else-if="unchanged" message="That is your current password." />
+        <InlineError
+          v-else-if="tooShort"
+          :message="`A password has at least ${MIN_LENGTH} characters.`"
+        />
+        <InlineError
+          v-else-if="unchanged"
+          message="That is your current password."
+        />
         <InlineError v-else-if="mismatch" message="The two passwords differ." />
       </template>
 
@@ -82,10 +125,18 @@ function submit() {
       </div>
 
       <div class="flex justify-end gap-2">
-        <Button v-if="phase.kind === 'done'" variant="primary" @click="emit('close')">Done</Button>
+        <Button
+          v-if="phase.kind === 'done'"
+          variant="primary"
+          @click="emit('close')"
+        >Done</Button>
         <template v-else>
           <Button @click="emit('close')">Cancel</Button>
-          <Button variant="primary" :disabled="!canSubmit" @click="submit">{{ phase.busy ? 'Changing…' : 'Change password' }}</Button>
+          <Button
+            variant="primary"
+            :disabled="!canSubmit"
+            @click="submit"
+          >{{ phase.busy ? 'Changing…' : 'Change password' }}</Button>
         </template>
       </div>
     </div>

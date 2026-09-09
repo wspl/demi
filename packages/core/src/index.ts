@@ -9,14 +9,28 @@ export interface BlockMeta {
 }
 
 export type ImageSource =
-  | { type: 'binary'; data: Uint8Array; mediaType: string }
-  | { type: 'url'; url: string }
+  | {
+      type: 'binary';
+      data: Uint8Array;
+      mediaType: string
+    }
+  | {
+      type: 'url';
+      url: string
+    }
 
 // Native video input (not frame extraction). Only models whose catalog entry marks
 // video support accept it; providers reject it otherwise.
 export type VideoSource =
-  | { type: 'binary'; data: Uint8Array; mediaType: string }
-  | { type: 'url'; url: string }
+  | {
+      type: 'binary';
+      data: Uint8Array;
+      mediaType: string
+    }
+  | {
+      type: 'url';
+      url: string
+    }
 
 export interface DocumentSource {
   data: Uint8Array
@@ -25,11 +39,26 @@ export interface DocumentSource {
 }
 
 export type UserContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'image'; source: ImageSource }
-  | { type: 'video'; source: VideoSource }
-  | { type: 'document'; source: DocumentSource }
-  | { type: 'reference'; reference: string }
+  | {
+      type: 'text';
+      text: string
+    }
+  | {
+      type: 'image';
+      source: ImageSource
+    }
+  | {
+      type: 'video';
+      source: VideoSource
+    }
+  | {
+      type: 'document';
+      source: DocumentSource
+    }
+  | {
+      type: 'reference';
+      reference: string
+    }
 
 export interface Base64ImageSource {
   mediaType: string
@@ -42,9 +71,18 @@ export interface Base64VideoSource {
 }
 
 export type ToolResultContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'image'; source: Base64ImageSource }
-  | { type: 'video'; source: Base64VideoSource }
+  | {
+      type: 'text';
+      text: string
+    }
+  | {
+      type: 'image';
+      source: Base64ImageSource
+    }
+  | {
+      type: 'video';
+      source: Base64VideoSource
+    }
 
 // ── token / model ───────────────────────────────────────────────────
 
@@ -57,21 +95,35 @@ export interface TokenUsage {
 
 /** A `TokenUsage` with every counter at zero. */
 export function zeroUsage(): TokenUsage {
-  return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0
+  }
 }
 
 export type ImageFileExtension = 'png' | 'jpg' | 'jpeg' | 'gif' | 'webp'
 export type VideoFileExtension = 'mp4' | 'mov' | 'webm' | 'm4v'
 export type FileExtension = ImageFileExtension | VideoFileExtension | 'pdf'
 
-export const VIDEO_FILE_EXTENSIONS: readonly VideoFileExtension[] = ['mp4', 'mov', 'webm', 'm4v']
+export const VIDEO_FILE_EXTENSIONS: readonly VideoFileExtension[] = [
+  'mp4',
+  'mov',
+  'webm',
+  'm4v'
+]
 
 export type ThinkingEffort = string
 
 export type ThinkingSummary = 'auto' | 'concise' | 'detailed' | 'off' | 'on'
 
 export type ThinkingCapability =
-  | { type: 'adaptive'; efforts: ThinkingEffort[]; defaultEffort: ThinkingEffort | null }
+  | {
+      type: 'adaptive';
+      efforts: ThinkingEffort[];
+      defaultEffort: ThinkingEffort | null
+    }
   | {
       type: 'budget'
       minBudgetTokens: number | null
@@ -88,9 +140,19 @@ export type ThinkingCapability =
   | { type: 'disabled' }
 
 export type ThinkingConfig =
-  | { type: 'adaptive'; effort: ThinkingEffort }
-  | { type: 'budget'; budgetTokens: number }
-  | { type: 'effort'; effort: ThinkingEffort; summary: ThinkingSummary | null }
+  | {
+      type: 'adaptive';
+      effort: ThinkingEffort
+    }
+  | {
+      type: 'budget';
+      budgetTokens: number
+    }
+  | {
+      type: 'effort';
+      effort: ThinkingEffort;
+      summary: ThinkingSummary | null
+    }
   | { type: 'disabled' }
 
 export interface Model {
@@ -105,16 +167,27 @@ export interface Model {
   acceptedExtensions: FileExtension[] | null
 }
 
-/** Whether an extension is accepted; null preserves unknown capability. Extensions omit the dot. */
-export function fileExtensionSupport(acceptedExtensions: readonly string[] | null, extension: string): boolean | null {
-  if (acceptedExtensions === null) return null
-  if (acceptedExtensions.includes(extension)) return true
+/**
+ * Whether an extension is accepted; null preserves unknown capability.
+ * Extensions omit the dot.
+ */
+export function fileExtensionSupport(
+  acceptedExtensions: readonly string[] | null,
+  extension: string
+): boolean | null {
+  if (acceptedExtensions === null)
+    return null
+  if (acceptedExtensions.includes(extension))
+    return true
   return (extension === 'jpg' && acceptedExtensions.includes('jpeg')) ||
     (extension === 'jpeg' && acceptedExtensions.includes('jpg'))
 }
 
 export function modelAcceptsVideo(model: Model): boolean {
-  return VIDEO_FILE_EXTENSIONS.some((extension) => fileExtensionSupport(model.acceptedExtensions, extension) === true)
+  return VIDEO_FILE_EXTENSIONS.some((extension) => fileExtensionSupport(
+    model.acceptedExtensions,
+    extension
+  ) === true)
 }
 
 // ── model media (closed set) ────────────────────────────────────────
@@ -142,14 +215,22 @@ const MODEL_MEDIA_TYPES: readonly ModelMediaType[] = [
 ]
 
 export function modelMediaTypeFor(mediaType: string): ModelMediaType | null {
-  return MODEL_MEDIA_TYPES.find((entry) => entry.mediaType === mediaType) ?? null
+  return MODEL_MEDIA_TYPES.find((entry) => entry.mediaType === mediaType)
+    ?? null
 }
 
-/** Whether this model accepts the given media type natively (per its catalog extensions). */
+/**
+ * Whether this model accepts the given media type natively (per its catalog
+ * extensions).
+ */
 export function modelAcceptsMediaType(model: Model, mediaType: string): boolean {
   const entry = modelMediaTypeFor(mediaType)
-  if (!entry) return false
-  return fileExtensionSupport(model.acceptedExtensions, entry.extension) === true
+  if (!entry)
+    return false
+  return fileExtensionSupport(
+    model.acceptedExtensions,
+    entry.extension
+  ) === true
 }
 
 /**
@@ -157,24 +238,46 @@ export function modelAcceptsMediaType(model: Model, mediaType: string): boolean 
  * for anything outside the closed set — callers must not guess further.
  */
 export function sniffModelMediaType(bytes: Uint8Array): ModelMediaType | null {
-  if (bytes.length < 12) return null
+  if (bytes.length < 12)
+    return null
   const at = (index: number): number => bytes[index] ?? 0
   const ascii = (start: number, length: number): string => {
     let out = ''
-    for (let i = start; i < start + length && i < bytes.length; i += 1) out += String.fromCharCode(at(i))
+    for (let i = start; i
+      < start + length && i
+      < bytes.length; i += 1) out += String.fromCharCode(at(i))
     return out
   }
 
-  if (at(0) === 0x89 && ascii(1, 3) === 'PNG') return modelMediaTypeFor('image/png')
-  if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return modelMediaTypeFor('image/jpeg')
-  if (ascii(0, 6) === 'GIF87a' || ascii(0, 6) === 'GIF89a') return modelMediaTypeFor('image/gif')
-  if (ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WEBP') return modelMediaTypeFor('image/webp')
+  if (at(0) === 0x89 && ascii(
+    1,
+    3
+  ) === 'PNG') return modelMediaTypeFor('image/png')
+  if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff)
+    return modelMediaTypeFor('image/jpeg')
+  if (ascii(
+    0,
+    6
+  ) === 'GIF87a' || ascii(
+    0,
+    6
+  ) === 'GIF89a') return modelMediaTypeFor('image/gif')
+  if (ascii(
+    0,
+    4
+  ) === 'RIFF' && ascii(
+    8,
+    4
+  ) === 'WEBP') return modelMediaTypeFor('image/webp')
   // EBML header — Matroska family; WebM is the model-relevant container.
-  if (at(0) === 0x1a && at(1) === 0x45 && at(2) === 0xdf && at(3) === 0xa3) return modelMediaTypeFor('video/webm')
+  if (at(0) === 0x1a && at(1) === 0x45 && at(2) === 0xdf && at(3) === 0xa3)
+    return modelMediaTypeFor('video/webm')
   if (ascii(4, 4) === 'ftyp') {
     const brand = ascii(8, 4)
-    if (brand === 'qt  ') return modelMediaTypeFor('video/quicktime')
-    if (brand.startsWith('M4V')) return modelMediaTypeFor('video/x-m4v')
+    if (brand === 'qt  ')
+      return modelMediaTypeFor('video/quicktime')
+    if (brand.startsWith('M4V'))
+      return modelMediaTypeFor('video/x-m4v')
     return modelMediaTypeFor('video/mp4')
   }
   return null
@@ -215,7 +318,13 @@ export type Block =
       // model like any user_message, but never rendered to the user. Absent/false for real input.
       hidden?: boolean
     }
-  | { type: 'resume'; id: string; turnId: string; createdAt: string; model: ModelSelection }
+  | {
+      type: 'resume';
+      id: string;
+      turnId: string;
+      createdAt: string;
+      model: ModelSelection
+    }
   | {
       type: 'steer'
       id: string
@@ -242,7 +351,13 @@ export type Block =
       model: ModelSelection
       data: string
     }
-  | { type: 'text'; id: string; createdAt: string; model: ModelSelection; text: string }
+  | {
+      type: 'text';
+      id: string;
+      createdAt: string;
+      model: ModelSelection;
+      text: string
+    }
   | {
       type: 'tool_call'
       id: string
@@ -278,7 +393,13 @@ export type Block =
       code: string | null
       diagnostics?: ProviderErrorDiagnostics
     }
-  | { type: 'abort'; id: string; createdAt: string; model: ModelSelection; isResumed: boolean }
+  | {
+      type: 'abort';
+      id: string;
+      createdAt: string;
+      model: ModelSelection;
+      isResumed: boolean
+    }
   | {
       type: 'compaction_boundary'
       id: string
@@ -307,7 +428,9 @@ export type Block =
 
 export type SessionPhase = 'idle' | 'running' | 'compacting'
 
-/** A user steer accepted by the session but not yet written to its transcript. */
+/**
+ * A user steer accepted by the session but not yet written to its transcript.
+ */
 export interface PendingSteer {
   id: string
   turnId: string

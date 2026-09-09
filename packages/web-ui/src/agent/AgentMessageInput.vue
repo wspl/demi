@@ -53,13 +53,15 @@ const isMultiline = ref(false)
 function buildSubmitPayload(): UserContentBlock[] | null {
   const currentEditor = editor.value
   const attached = attachments.value.map((item) => item.block)
-  if ((!currentEditor || currentEditor.isEmpty) && attached.length === 0) return null
+  if ((!currentEditor || currentEditor.isEmpty) && attached.length === 0)
+    return null
   const content = docToContent(currentEditor?.getJSON() as InputModel | undefined, attached)
   return content.length > 0 ? content : null
 }
 
 function revokePreview(item: ComposerAttachment): void {
-  if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+  if (item.previewUrl)
+    URL.revokeObjectURL(item.previewUrl)
 }
 
 function clearInput(): void {
@@ -94,7 +96,8 @@ async function addFiles(files: File[]): Promise<void> {
       tone: 'danger',
     })
   }
-  if (accepted.length === 0) return
+  if (accepted.length === 0)
+    return
   const next = await Promise.all(
     accepted.map(async (file) => {
       const block = await fileToUserContent(file)
@@ -112,7 +115,8 @@ async function addFiles(files: File[]): Promise<void> {
 // (the clipboard's text alternative) instead of swallowing the paste.
 function handlePasteAttachments(clipboardData: DataTransfer, _text: string): boolean {
   const files = dataTransferFiles(clipboardData)
-  if (files.length === 0) return false
+  if (files.length === 0)
+    return false
   void addFiles(files)
   return partitionAcceptedFiles(files, acceptedExtensions.value).accepted.length > 0
 }
@@ -144,12 +148,14 @@ watch(
 
 function removeAttachment(index: number): void {
   const item = attachments.value[index]
-  if (item) revokePreview(item)
+  if (item)
+    revokePreview(item)
   attachments.value = attachments.value.filter((_, itemIndex) => itemIndex !== index)
 }
 
 function attachmentName(item: ComposerAttachment): string {
-  if (item.block.type === 'document') return item.block.source.fileName
+  if (item.block.type === 'document')
+    return item.block.source.fileName
   return item.name
 }
 

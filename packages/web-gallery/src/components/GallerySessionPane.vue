@@ -23,7 +23,8 @@ function updateAtBottom(): void {
 function scrollToEnd(): void {
   nextTick(() => {
     const scroller = scrollRef.value
-    if (!scroller) return
+    if (!scroller)
+      return
     scroller.scrollTop = scroller.scrollHeight
     isAtBottom.value = true
   })

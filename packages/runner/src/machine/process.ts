@@ -1,4 +1,9 @@
-import type { HostProcess, HostSpawnExit, HostSpawnHandle, SpawnErrorKind } from '@demicodes/shell'
+import type {
+  HostProcess,
+  HostSpawnExit,
+  HostSpawnHandle,
+  SpawnErrorKind
+} from '@demicodes/shell'
 import { emptyByteStream, errorCode, noop } from '@demicodes/utils'
 import { openRunnerCwd } from './cwd'
 /**
@@ -29,12 +34,16 @@ export function createRunnerProcess(defaultCwd: string): HostProcess {
   }
 }
 
-export function spawnedHandle(child: tjs.Process, group: boolean): HostSpawnHandle {
+export function spawnedHandle(
+  child: tjs.Process,
+  group: boolean
+): HostSpawnHandle {
   const writer = child.stdin?.getWriter()
   let stdinOpen = !!writer
   let exited = false
   const closeStdin = async (): Promise<void> => {
-    if (!stdinOpen || !writer) return
+    if (!stdinOpen || !writer)
+      return
     stdinOpen = false
     // The child may close its input before the caller finishes sending.
     await writer.close().catch(noop)
@@ -44,7 +53,11 @@ export function spawnedHandle(child: tjs.Process, group: boolean): HostSpawnHand
     stdinOpen = false
     // Release pending writes after process exit; the pipe may already be closed.
     void writer?.abort().catch(noop)
-    if (result.term_signal) return { exitCode: null, signal: result.term_signal }
+    if (result.term_signal)
+      return {
+        exitCode: null,
+        signal: result.term_signal
+      }
     return { exitCode: result.exit_status }
   })
   exit.catch(noop)
@@ -52,16 +65,19 @@ export function spawnedHandle(child: tjs.Process, group: boolean): HostSpawnHand
     stdout: child.stdout ?? emptyByteStream(),
     stderr: child.stderr ?? emptyByteStream(),
     writeStdin: async (data) => {
-      if (stdinOpen && writer) await writer.write(data)
+      if (stdinOpen && writer)
+        await writer.write(data)
     },
     closeStdin,
     kill: async (signal = 'SIGTERM') => {
-      if (exited) return
+      if (exited)
+        return
       try {
         tjs.kill(group ? -child.pid : child.pid, signal as tjs.Signal)
       } catch (error) {
         // The process can exit between checking its status and sending the signal.
-        if (errorCode(error) !== 'ESRCH') throw error
+        if (errorCode(error) !== 'ESRCH')
+          throw error
       }
     },
     wait: () => exit,
@@ -80,9 +96,13 @@ function failedSpawn(kind: SpawnErrorKind): HostSpawnHandle {
 }
 
 /** A cwd that is gone explains the failure before the binary does. */
-async function classifySpawnFailure(error: unknown, cwd: string): Promise<SpawnErrorKind> {
+async function classifySpawnFailure(
+  error: unknown,
+  cwd: string
+): Promise<SpawnErrorKind> {
   try {
-    if (!(await tjs.stat(cwd)).isDirectory) return 'cwd_unusable'
+    if (!(await tjs.stat(cwd)).isDirectory)
+      return 'cwd_unusable'
   } catch {
     return 'cwd_unusable'
   }
@@ -99,10 +119,13 @@ async function classifySpawnFailure(error: unknown, cwd: string): Promise<SpawnE
   }
 }
 
-function definedEnv(env: Record<string, string | undefined>): Record<string, string> {
+function definedEnv(
+  env: Record<string, string | undefined>
+): Record<string, string> {
   const defined: Record<string, string> = {}
   for (const [key, value] of Object.entries(env)) {
-    if (value !== undefined) defined[key] = value
+    if (value !== undefined)
+      defined[key] = value
   }
   return defined
 }

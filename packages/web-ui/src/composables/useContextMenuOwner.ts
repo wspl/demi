@@ -9,7 +9,8 @@ const menuKey = ref(0)
 const closeCallbacks = new Map<symbol, () => void>()
 
 function closeActive() {
-  if (activeId.value === null) return
+  if (activeId.value === null)
+    return
   const cb = closeCallbacks.get(activeId.value)
   activeId.value = null
   cb?.()
@@ -17,7 +18,8 @@ function closeActive() {
 
 export function useContextMenuOwner(onClose?: () => void) {
   const id = Symbol()
-  if (onClose) closeCallbacks.set(id, onClose)
+  if (onClose)
+    closeCallbacks.set(id, onClose)
 
   const isOpen = computed(() => activeId.value === id)
 
@@ -25,7 +27,9 @@ export function useContextMenuOwner(onClose?: () => void) {
     closeActive()
     event.preventDefault()
     const el = contextEl
-      ?? (event.currentTarget instanceof HTMLElement ? event.currentTarget : null)
+      ?? (event.currentTarget instanceof HTMLElement
+        ? event.currentTarget
+        : null)
     anchorX.value = event.clientX
     anchorY.value = event.clientY
     anchorContextEl.value = el
@@ -34,14 +38,16 @@ export function useContextMenuOwner(onClose?: () => void) {
   }
 
   function close() {
-    if (activeId.value !== id) return
+    if (activeId.value !== id)
+      return
     activeId.value = null
     onClose?.()
   }
 
   onScopeDispose(() => {
     closeCallbacks.delete(id)
-    if (activeId.value === id) activeId.value = null
+    if (activeId.value === id)
+      activeId.value = null
   })
 
   return { isOpen, anchorX, anchorY, anchorContextEl, menuKey, open, close }

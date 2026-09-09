@@ -24,34 +24,42 @@ const trackRef = ref<HTMLElement>()
 
 const span = computed(() => props.max - props.min)
 const progress = computed(() => {
-  if (span.value <= 0) return 0
+  if (span.value <= 0)
+    return 0
   return clamp((props.modelValue - props.min) / span.value, 0, 1)
 })
 
 function snap(raw: number): number {
   const stepped = props.min + Math.round((raw - props.min) / props.step) * props.step
-  const digits = props.step % 1 === 0 ? 0 : String(props.step).split('.')[1]?.length ?? 0
+  const digits = props.step % 1 === 0
+    ? 0
+    : String(props.step).split('.')[1]?.length ?? 0
   const rounded = digits > 0 ? Number(stepped.toFixed(digits)) : stepped
   return clamp(rounded, props.min, props.max)
 }
 
 function valueFromClientX(clientX: number): number {
   const track = trackRef.value
-  if (!track || span.value <= 0) return props.min
+  if (!track || span.value <= 0)
+    return props.min
   const rect = track.getBoundingClientRect()
-  if (rect.width <= 0) return props.min
+  if (rect.width <= 0)
+    return props.min
   const ratio = clamp((clientX - rect.left) / rect.width, 0, 1)
   return snap(props.min + ratio * span.value)
 }
 
 function commit(clientX: number) {
-  if (props.disabled) return
+  if (props.disabled)
+    return
   const next = valueFromClientX(clientX)
-  if (next !== props.modelValue) emit('update:modelValue', next)
+  if (next !== props.modelValue)
+    emit('update:modelValue', next)
 }
 
 function onPointerDown(event: PointerEvent) {
-  if (props.disabled) return
+  if (props.disabled)
+    return
   const target = event.currentTarget as HTMLElement
   target.setPointerCapture(event.pointerId)
   commit(event.clientX)
@@ -59,17 +67,20 @@ function onPointerDown(event: PointerEvent) {
 
 function onPointerMove(event: PointerEvent) {
   const target = event.currentTarget as HTMLElement
-  if (!target.hasPointerCapture(event.pointerId)) return
+  if (!target.hasPointerCapture(event.pointerId))
+    return
   commit(event.clientX)
 }
 
 function nudge(deltaSteps: number) {
-  if (props.disabled) return
+  if (props.disabled)
+    return
   emit('update:modelValue', snap(props.modelValue + deltaSteps * props.step))
 }
 
 function onKeydown(event: KeyboardEvent) {
-  if (props.disabled) return
+  if (props.disabled)
+    return
   if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
     event.preventDefault()
     nudge(1)
@@ -94,36 +105,42 @@ function onKeydown(event: KeyboardEvent) {
 
 <template>
   <!-- Size the whole control from outside; the track takes what the readout leaves. -->
-  <span class="inline-flex w-20 items-center gap-2" :class="disabled ? 'pointer-events-none opacity-40' : ''">
   <span
-    class="slider inline-flex h-7 min-w-0 flex-1 cursor-default items-center px-1.5 select-none"
-    role="slider"
-    :aria-valuemin="min"
-    :aria-valuemax="max"
-    :aria-valuenow="modelValue"
-    :aria-valuetext="valueLabel"
-    :aria-disabled="disabled || undefined"
-    tabindex="0"
-    @pointerdown="onPointerDown"
-    @pointermove="onPointerMove"
-    @keydown="onKeydown"
+    class="inline-flex w-20 items-center gap-2"
+    :class="disabled ? 'pointer-events-none opacity-40' : ''"
   >
-    <span ref="trackRef" class="relative h-0.5 w-full">
-      <span class="absolute inset-0 rounded-full bg-overlay/10" />
-      <span
-        class="absolute inset-y-0 left-0 rounded-full"
-        :style="{ width: `${progress * 100}%`, background: 'var(--accent-fill)' }"
-      />
-      <span
-        class="slider-thumb absolute top-1/2 size-3 rounded-full bg-white shadow-sm ring-1 ring-line"
-        :style="{ left: `${progress * 100}%` }"
-      />
+    <span
+      class="slider inline-flex h-7 min-w-0 flex-1 cursor-default items-center px-1.5 select-none"
+      role="slider"
+      :aria-valuemin="min"
+      :aria-valuemax="max"
+      :aria-valuenow="modelValue"
+      :aria-valuetext="valueLabel"
+      :aria-disabled="disabled || undefined"
+      tabindex="0"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @keydown="onKeydown"
+    >
+      <span ref="trackRef" class="relative h-0.5 w-full">
+        <span class="absolute inset-0 rounded-full bg-overlay/10" />
+        <span
+          class="absolute inset-y-0 left-0 rounded-full"
+          :style="{ width: `${progress * 100}%`, background: 'var(--accent-fill)' }"
+        />
+        <span
+          class="slider-thumb absolute top-1/2 size-3 rounded-full bg-white shadow-sm ring-1 ring-line"
+          :style="{ left: `${progress * 100}%` }"
+        />
+      </span>
     </span>
-  </span>
   <!-- Fixed width so the track does not shift as digits change. -->
-  <span v-if="valueLabel !== undefined" class="min-w-9 select-none text-right text-[12px] tabular-nums text-fg-muted">
+    <span
+      v-if="valueLabel !== undefined"
+      class="min-w-9 select-none text-right text-[12px] tabular-nums text-fg-muted"
+    >
     {{ valueLabel }}
-  </span>
+    </span>
   </span>
 </template>
 

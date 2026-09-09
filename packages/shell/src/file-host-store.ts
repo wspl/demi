@@ -1,4 +1,12 @@
-import { decodeUtf8, dirnamePath, encodeUtf8, isFileNotFoundError, normalizePath, parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
+import {
+  decodeUtf8,
+  dirnamePath,
+  encodeUtf8,
+  isFileNotFoundError,
+  normalizePath,
+  parsePortableJson,
+  stringifyPortableJson
+} from '@demicodes/utils'
 import type { HostDirent, HostFileSystem, HostStore } from './host'
 
 /**
@@ -17,7 +25,8 @@ export function fileHostStore(fs: HostFileSystem, root: string): HostStore {
       try {
         return parsePortableJson<T>(decodeUtf8(await fs.readFile(pathFor(key))))
       } catch (error) {
-        if (isFileNotFoundError(error)) return null
+        if (isFileNotFoundError(error))
+          return null
         throw error
       }
     },
@@ -44,12 +53,18 @@ export function fileHostStore(fs: HostFileSystem, root: string): HostStore {
   }
 }
 
-async function collectFiles(fs: HostFileSystem, dir: string, root: string, found: string[]): Promise<void> {
+async function collectFiles(
+  fs: HostFileSystem,
+  dir: string,
+  root: string,
+  found: string[]
+): Promise<void> {
   let entries: HostDirent[]
   try {
     entries = await fs.readdir(dir, { withFileTypes: true })
   } catch (error) {
-    if (isFileNotFoundError(error)) return
+    if (isFileNotFoundError(error))
+      return
     throw error
   }
   for (const entry of entries) {
@@ -60,12 +75,15 @@ async function collectFiles(fs: HostFileSystem, dir: string, root: string, found
 }
 
 function validateHostStoreKey(key: string): void {
-  if (key === '' || key === '.') return
-  if (key.includes('\0')) throw new Error(`Invalid HostStore key: ${key}`)
+  if (key === '' || key === '.')
+    return
+  if (key.includes('\0'))
+    throw new Error(`Invalid HostStore key: ${key}`)
   if (key.startsWith('/') || /^[A-Za-z]:[\\/]/.test(key)) {
     throw new Error(`HostStore keys must be relative: ${key}`)
   }
   for (const segment of key.split(/[\\/]+/)) {
-    if (segment === '..') throw new Error(`HostStore keys must not contain path traversal: ${key}`)
+    if (segment === '..')
+      throw new Error(`HostStore keys must not contain path traversal: ${key}`)
   }
 }

@@ -22,14 +22,21 @@ export interface FileIconTheme {
  * A folder matches its name; a file matches its whole name first, then the
  * longest dotted suffix (`app.test.ts` tries `test.ts` before `ts`).
  */
-export function fileIconName(theme: FileIconTheme, name: string, isDirectory: boolean): string {
+export function fileIconName(
+  theme: FileIconTheme,
+  name: string,
+  isDirectory: boolean
+): string {
   const lower = name.toLowerCase()
-  if (isDirectory) return theme.folderNames[lower] ?? theme.folder
+  if (isDirectory)
+    return theme.folderNames[lower] ?? theme.folder
   const whole = theme.fileNames[lower]
-  if (whole) return whole
+  if (whole)
+    return whole
   for (let dot = lower.indexOf('.'); dot !== -1; dot = lower.indexOf('.', dot + 1)) {
     const icon = theme.fileExtensions[lower.slice(dot + 1)]
-    if (icon) return icon
+    if (icon)
+      return icon
   }
   return theme.file
 }
@@ -40,8 +47,13 @@ export function fileIconName(theme: FileIconTheme, name: string, isDirectory: bo
  * `folder-windows`), the home directory `folder-home`. Anywhere else, `undefined`
  * and the name decides.
  */
-export function landmarkIcon(path: string, source: Pick<FileBrowserSource, 'platform' | 'home'>): string | undefined {
-  if (path === '/') return `folder-${source.platform}`
-  if (path === source.home) return 'folder-home'
+export function landmarkIcon(
+  path: string,
+  source: Pick<FileBrowserSource, 'platform' | 'home'>
+): string | undefined {
+  if (path === '/')
+    return `folder-${source.platform}`
+  if (path === source.home)
+    return 'folder-home'
   return undefined
 }

@@ -27,7 +27,15 @@ const props = defineProps<{
   state: SettingsState
 }>()
 
-const cloud = ref<CloudState>({ state: 'running', phase: null, error: null, systemBytes: 16 * 1024 ** 3, homeBytes: 32 * 1024 ** 3 })
+const cloud = ref<CloudState>(
+  {
+    state: 'running',
+    phase: null,
+    error: null,
+    systemBytes: 16 * 1024 ** 3,
+    homeBytes: 32 * 1024 ** 3
+  }
+)
 async function resetCloud() {
   cloud.value.state = 'resetting'
   for (const phase of ['stopping', 'saving', 'rebuilding', 'booting', 'ready'] as const) {
@@ -42,7 +50,8 @@ const s = computed(() => props.state)
 /** Light and dark switch the gallery itself, so the preview and the page follow; System keeps the current mode. */
 function setThemeChoice(choice: ThemeChoice) {
   s.value.general.theme = choice
-  if (choice !== 'system') galleryState.mode = choice
+  if (choice !== 'system')
+    galleryState.mode = choice
 }
 
 // Tone and accent change the gallery itself, the way they would change the app.
@@ -69,9 +78,13 @@ function openChangeEmail() {
   emailOpen.value = true
 }
 function submitEmail(email: string, password: string) {
-  if (emailPhase.value.kind !== 'form') return
+  if (emailPhase.value.kind !== 'form')
+    return
   if (password === 'wrong') {
-    emailPhase.value = { ...emailPhase.value, error: 'That is not your current password.' }
+    emailPhase.value = {
+      ...emailPhase.value,
+      error: 'That is not your current password.'
+    }
     return
   }
   emailPhase.value = { ...emailPhase.value, busy: true, error: undefined }
@@ -80,12 +93,17 @@ function submitEmail(email: string, password: string) {
   }, 700)
 }
 function verifyEmail(code: string) {
-  if (emailPhase.value.kind !== 'verify') return
+  if (emailPhase.value.kind !== 'verify')
+    return
   const { email } = emailPhase.value
   emailPhase.value = { kind: 'verify', email, busy: true }
   emailTimer = window.setTimeout(() => {
     if (code === '000000') {
-      emailPhase.value = { kind: 'verify', email, error: 'That code is not right. Check the newest message.' }
+      emailPhase.value = {
+        kind: 'verify',
+        email,
+        error: 'That code is not right. Check the newest message.'
+      }
       return
     }
     s.value.account.email = email
@@ -106,7 +124,10 @@ function submitPassword(current: string) {
   passwordPhase.value = { kind: 'form', busy: true }
   passwordTimer = window.setTimeout(() => {
     if (current === 'wrong') {
-      passwordPhase.value = { kind: 'form', error: 'That is not your current password.' }
+      passwordPhase.value = {
+        kind: 'form',
+        error: 'That is not your current password.'
+      }
       return
     }
     s.value.account.passwordChanged = 'just now'
@@ -115,7 +136,15 @@ function submitPassword(current: string) {
 }
 
 function addServer(draft: SettingsMcpDraft) {
-  s.value.servers.push({ id: `server-${Date.now()}`, ...draft, state: 'connected', enabled: true, tools: [] })
+  s.value.servers.push(
+    {
+      id: `server-${Date.now()}`,
+      ...draft,
+      state: 'connected',
+      enabled: true,
+      tools: []
+    }
+  )
 }
 
 function restartServer(server: SettingsState['servers'][number]) {
@@ -141,8 +170,18 @@ function addSkillSource(draft: SettingsSkillDraft) {
     origin: draft.origin,
     state: 'ready',
     skills: [
-      { id: `${id}-one`, name: 'example-one', description: 'A skill discovered in this repository.', enabled: true },
-      { id: `${id}-two`, name: 'example-two', description: 'Another skill from the same pack.', enabled: true },
+      {
+        id: `${id}-one`,
+        name: 'example-one',
+        description: 'A skill discovered in this repository.',
+        enabled: true
+      },
+      {
+        id: `${id}-two`,
+        name: 'example-two',
+        description: 'Another skill from the same pack.',
+        enabled: true
+      },
     ],
   })
 }
@@ -169,7 +208,12 @@ function revokeDevice(id: string) {
 async function claimDevice(_code: string) {
   await new Promise((resolve) => window.setTimeout(resolve, 900))
   const n = s.value.devices.length + 1
-  const device = { id: `device-${Date.now()}`, name: `host-${n}`, online: true, seen: 'Now' }
+  const device = {
+    id: `device-${Date.now()}`,
+    name: `host-${n}`,
+    online: true,
+    seen: 'Now'
+  }
   s.value.devices.push(device)
   return { ok: true as const, device }
 }
@@ -180,7 +224,8 @@ const keyMessage = ref('')
 function rebind(id: string, keys: string) {
   const list = s.value.keys
   const target = list.find((b) => b.id === id)
-  if (!target) return
+  if (!target)
+    return
   const taken = list.find((b) => b.id !== id && b.keys === keys)
   if (taken) {
     keyMessage.value = `${keys} is already bound to “${taken.action}”.`
@@ -190,7 +235,15 @@ function rebind(id: string, keys: string) {
   target.keys = keys
 }
 
-const DEFAULT_KEYS: Record<string, string> = { new: '⌘⇧O', send: '⏎', stop: '⎋', sidebar: '⌘B', search: '⌘K', focus: '⌘J', settings: '⌘,' }
+const DEFAULT_KEYS: Record<string, string> = {
+  new: '⌘⇧O',
+  send: '⏎',
+  stop: '⎋',
+  sidebar: '⌘B',
+  search: '⌘K',
+  focus: '⌘J',
+  settings: '⌘,'
+}
 function resetShortcuts() {
   for (const binding of s.value.keys) binding.keys = DEFAULT_KEYS[binding.id] ?? binding.keys
   keyMessage.value = ''
@@ -257,11 +310,30 @@ function resetShortcuts() {
     @update="updateSkillSource"
   />
 
-  <SettingsArchived v-else-if="tab === 'archived'" :conversations="s.archived" @restore="restoreArchived" />
+  <SettingsArchived
+    v-else-if="tab === 'archived'"
+    :conversations="s.archived"
+    @restore="restoreArchived"
+  />
 
-  <SettingsDevices v-else-if="tab === 'devices'" :cloud="cloud" @reset-cloud="resetCloud" :devices="s.devices" :overlay-store="appOverlayStore" :installation="demoDeviceInstallation" :claim-device="claimDevice" @revoke="revokeDevice" />
+  <SettingsDevices
+    v-else-if="tab === 'devices'"
+    :cloud="cloud"
+    @reset-cloud="resetCloud"
+    :devices="s.devices"
+    :overlay-store="appOverlayStore"
+    :installation="demoDeviceInstallation"
+    :claim-device="claimDevice"
+    @revoke="revokeDevice"
+  />
 
-  <SettingsKeyboard v-else-if="tab === 'keyboard'" :bindings="s.keys" :message="keyMessage" @rebind="rebind" @reset="resetShortcuts" />
+  <SettingsKeyboard
+    v-else-if="tab === 'keyboard'"
+    :bindings="s.keys"
+    :message="keyMessage"
+    @rebind="rebind"
+    @reset="resetShortcuts"
+  />
 
   <SettingsData
     v-else-if="tab === 'data'"

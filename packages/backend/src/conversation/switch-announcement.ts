@@ -1,7 +1,11 @@
 import type { AgentHarness } from '@demicodes/agent'
 import type { CodingState } from '@demicodes/coding-agent'
 import type { RunnerRegistry } from '../runner/registry'
-import type { AttachedHostRecord, ControlService, ExecutionTarget } from '../storage/control'
+import type {
+  AttachedHostRecord,
+  ControlService,
+  ExecutionTarget
+} from '../storage/control'
 
 /**
  * Injects the context block the model needs at a turn boundary
@@ -12,25 +16,43 @@ import type { AttachedHostRecord, ControlService, ExecutionTarget } from '../sto
  * with its directory. Each node observes the context revision in its own persisted transcript;
  * no shared announcement is consumed.
  */
-export function switchAnnouncementPreamble(control: ControlService, registry: RunnerRegistry): AgentHarness<CodingState>['context'] {
+export function switchAnnouncementPreamble(
+  control: ControlService,
+  registry: RunnerRegistry
+): AgentHarness<CodingState>['context'] {
   return async (ctx) => {
     const conversation = await control.getConversation(ctx.rootSessionId)
-    if (!conversation) return null
-    if (!conversation.contextVersion) return null
+    if (!conversation)
+      return null
+    if (!conversation.contextVersion)
+      return null
     const marker = `[Execution context ${conversation.contextVersion}]`
-    if (ctx.transcript.blocks.some(block => block.type === 'user' && block.preamble?.includes(marker))) return null
+    if (ctx.transcript.blocks.some(
+      block => block.type === 'user' && block.preamble?.includes(marker)
+    ))
+      return null
     const attached = await control.listAttachedHosts(conversation.id)
     const lines: string[] = [marker]
     const resetMarker = `[Cloud reset ${conversation.cloudResetId}]`
-    if (conversation.cloudResetId && !ctx.transcript.blocks.some(block => block.type === 'user' && block.preamble?.includes(resetMarker))) {
-      lines.push(resetMarker, 'Cloud was reset: system packages and configuration were rebuilt from the base image. Files under /home remain. Running processes, temporary files, and previous shell state are gone; check the environment before continuing.')
+    if (conversation.cloudResetId && !ctx.transcript.blocks.some(
+      block => block.type === 'user' && block.preamble?.includes(resetMarker)
+    )) {
+      lines.push(
+        resetMarker,
+        'Cloud was reset: system packages and configuration were rebuilt from the base image. Files under /home remain. Running processes, temporary files, and previous shell state are gone; check the environment before continuing.'
+      )
     }
 
     const switchDescription = conversation.lastSwitch
       ? `Previous target: ${await describe(control, conversation.lastSwitch.from)}. Current target: ${await describe(control, conversation.lastSwitch.to)}. New shells start in ${conversation.lastSwitch.to.path}.`
       : null
-    const previousSwitch = [...ctx.transcript.blocks].reverse().find(block => block.type === 'user' && block.preamble?.includes('[Execution target switched]'))
-    const switchObserved = switchDescription !== null && previousSwitch?.type === 'user' && previousSwitch.preamble?.includes(switchDescription)
+    const previousSwitch = [...ctx.transcript.blocks].reverse().find(
+      block => block.type === 'user' &&
+        block.preamble?.includes('[Execution target switched]')
+    )
+    const switchObserved = switchDescription !== null &&
+      previousSwitch?.type === 'user' &&
+      previousSwitch.preamble?.includes(switchDescription)
     if (conversation.lastSwitch && !switchObserved) {
       const { from, to } = conversation.lastSwitch
       lines.push(
@@ -38,15 +60,21 @@ export function switchAnnouncementPreamble(control: ControlService, registry: Ru
         switchDescription!,
         'No files were moved: everything created earlier lives on the previous target, and file paths from before the switch — including the full outputs of earlier commands — are stale here.',
       )
-      const departed = from.deviceId === null ? null : attached.find((host) => host.deviceId === from.deviceId)
+      const departed = from.deviceId === null
+        ? null
+        : attached.find((host) => host.deviceId === from.deviceId)
       if (departed) {
         const fromDir = from.path
         lines.push(
           `The previous host stays attached as "${departed.name}": \`demi host shell --host ${departed.name} <script>\` runs a shell string there with byte-faithful stdio, starting in ${fromDir} (e.g. \`demi host shell --host ${departed.name} "tar c -C ${fromDir} ." | tar x\` pulls its files into the current directory).`,
         )
       }
-      if (from.kind === 'workspace' && to.kind === 'workspace' && from.deviceId === to.deviceId) {
-        lines.push(`The previous directory ${from.path} is on the same device, so it is also directly accessible from this shell.`)
+      if (from.kind === 'workspace' &&
+        to.kind === 'workspace' &&
+        from.deviceId === to.deviceId) {
+        lines.push(
+          `The previous directory ${from.path} is on the same device, so it is also directly accessible from this shell.`
+        )
       }
     } else {
       lines.push('[Attached hosts changed]')
@@ -57,19 +85,37 @@ export function switchAnnouncementPreamble(control: ControlService, registry: Ru
   }
 }
 
-/** The attached hosts as one line: name, directory, online, and how to reach them. */
-function attachedHostsLine(attached: AttachedHostRecord[], registry: RunnerRegistry): string {
-  if (attached.length === 0) return 'Attached hosts: none. `demi host list` shows every host this conversation can reach.'
-  const entries = attached.map((host) => `"${host.name}" (${registry.deviceOnline(host.deviceId) ? 'online' : 'offline'}, shells start in ${attachedDirectory(host, registry)})`)
+/**
+ * The attached hosts as one line: name, directory, online, and how to reach
+ * them.
+ */
+function attachedHostsLine(
+  attached: AttachedHostRecord[],
+  registry: RunnerRegistry
+): string {
+  if (attached.length === 0)
+    return 'Attached hosts: none. `demi host list` shows every host this conversation can reach.'
+  const entries = attached.map(
+    (host) => `"${host.name}" (${registry.deviceOnline(host.deviceId) ? 'online' : 'offline'}, shells start in ${attachedDirectory(host, registry)})`
+  )
   return `Attached hosts: ${entries.join(', ')}. \`demi host shell --host <name> <script>\` runs a shell string on one; \`demi host list\` shows every host this conversation can reach.`
 }
 
-export function attachedDirectory(host: AttachedHostRecord, registry: RunnerRegistry): string {
-  return host.cwd ?? registry.deviceIdentity(host.deviceId)?.homeDir ?? 'its home directory'
+export function attachedDirectory(
+  host: AttachedHostRecord,
+  registry: RunnerRegistry
+): string {
+  return host.cwd ??
+    registry.deviceIdentity(host.deviceId)?.homeDir ??
+    'its home directory'
 }
 
-async function describe(control: ControlService, target: ExecutionTarget): Promise<string> {
-  if (target.deviceId === null) return 'Cloud (not allocated)'
+async function describe(
+  control: ControlService,
+  target: ExecutionTarget
+): Promise<string> {
+  if (target.deviceId === null)
+    return 'Cloud (not allocated)'
   const device = await control.getDevice(target.deviceId)
   const name = device ? `"${device.name}"` : target.deviceId
   if (target.kind === 'workspace') {

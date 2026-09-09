@@ -12,7 +12,13 @@ import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotificati
 import SettingsSkills from '@demicodes/web-ui/settings/SettingsSkills.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
-import type { SettingsMcpDraft, SettingsMcpServer, SettingsSkillDraft, SettingsSkillSource, SettingsTab } from '@demicodes/web-ui/settings/types'
+import type {
+  SettingsMcpDraft,
+  SettingsMcpServer,
+  SettingsSkillDraft,
+  SettingsSkillSource,
+  SettingsTab
+} from '@demicodes/web-ui/settings/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import { setThemeChoice } from '@demicodes/web-ui/theme/appTheme'
@@ -42,7 +48,10 @@ const tab = computed({
 
 // General: every choice lands on the document the moment it changes.
 watch(() => s.general.theme, setThemeChoice)
-watch(() => [s.general.tone, s.general.accent] as const, ([tone, accent]) => applyProductAppearance({ tone, accent }))
+watch(
+  () => [s.general.tone, s.general.accent] as const,
+  ([tone, accent]) => applyProductAppearance({ tone, accent })
+)
 watch(() => s.general.fontSize, applyTranscriptTextSize)
 
 // Account: the server would check the password and send the code; here a beat stands in.
@@ -55,9 +64,13 @@ function openChangeEmail() {
   emailOpen.value = true
 }
 function submitEmail(email: string, password: string) {
-  if (emailPhase.value.kind !== 'form') return
+  if (emailPhase.value.kind !== 'form')
+    return
   if (password === 'wrong') {
-    emailPhase.value = { ...emailPhase.value, error: 'That is not your current password.' }
+    emailPhase.value = {
+      ...emailPhase.value,
+      error: 'That is not your current password.'
+    }
     return
   }
   emailPhase.value = { ...emailPhase.value, busy: true, error: undefined }
@@ -66,12 +79,17 @@ function submitEmail(email: string, password: string) {
   }, 700)
 }
 function verifyEmail(code: string) {
-  if (emailPhase.value.kind !== 'verify') return
+  if (emailPhase.value.kind !== 'verify')
+    return
   const { email } = emailPhase.value
   emailPhase.value = { kind: 'verify', email, busy: true }
   emailTimer = window.setTimeout(() => {
     if (code === '000000') {
-      emailPhase.value = { kind: 'verify', email, error: 'That code is not right. Check the newest message.' }
+      emailPhase.value = {
+        kind: 'verify',
+        email,
+        error: 'That code is not right. Check the newest message.'
+      }
       return
     }
     s.account.email = email
@@ -91,7 +109,10 @@ function submitPassword(current: string) {
   passwordPhase.value = { kind: 'form', busy: true }
   passwordTimer = window.setTimeout(() => {
     if (current === 'wrong') {
-      passwordPhase.value = { kind: 'form', error: 'That is not your current password.' }
+      passwordPhase.value = {
+        kind: 'form',
+        error: 'That is not your current password.'
+      }
       return
     }
     s.account.passwordChanged = 'just now'
@@ -108,7 +129,11 @@ function deleteAccount() {
 }
 
 // Archived: restoring brings the conversation back and opens it in place of the settings.
-const archived = computed(() => conversations.items.filter((c) => c.archived).map((c) => ({ id: c.id, title: c.title })))
+const archived = computed(
+  () => conversations.items.filter((c) => c.archived).map(
+    (c) => ({ id: c.id, title: c.title })
+  )
+)
 function restore(id: string) {
   conversations.archive([id], false)
   resources.settingsOpen = false
@@ -117,7 +142,15 @@ function restore(id: string) {
 
 // MCP: adding connects at once; a restart or sign-in clears the fault.
 function addServer(draft: SettingsMcpDraft) {
-  s.servers.push({ id: `server-${Date.now()}`, ...draft, state: 'connected', enabled: true, tools: [] })
+  s.servers.push(
+    {
+      id: `server-${Date.now()}`,
+      ...draft,
+      state: 'connected',
+      enabled: true,
+      tools: []
+    }
+  )
 }
 function reconnectServer(server: SettingsMcpServer) {
   server.state = 'connected'
@@ -133,8 +166,18 @@ function addSkillSource(draft: SettingsSkillDraft) {
     origin: draft.origin,
     state: 'ready',
     skills: [
-      { id: `${id}-one`, name: 'example-one', description: 'A skill discovered in this repository.', enabled: true },
-      { id: `${id}-two`, name: 'example-two', description: 'Another skill from the same pack.', enabled: true },
+      {
+        id: `${id}-one`,
+        name: 'example-one',
+        description: 'A skill discovered in this repository.',
+        enabled: true
+      },
+      {
+        id: `${id}-two`,
+        name: 'example-two',
+        description: 'Another skill from the same pack.',
+        enabled: true
+      },
     ],
   })
 }
@@ -152,7 +195,8 @@ function updateSkillSource(source: SettingsSkillSource) {
 const keyMessage = ref('')
 function rebind(id: string, keys: string) {
   const target = s.keys.find((binding) => binding.id === id)
-  if (!target) return
+  if (!target)
+    return
   const taken = s.keys.find((binding) => binding.id !== id && binding.keys === keys)
   if (taken) {
     keyMessage.value = `${keys} is already bound to “${taken.action}”.`
@@ -162,13 +206,20 @@ function rebind(id: string, keys: string) {
   target.keys = keys
 }
 function resetShortcuts() {
-  for (const binding of s.keys) binding.keys = DEFAULT_KEYS.find((entry) => entry.id === binding.id)?.keys ?? binding.keys
+  for (const binding of s.keys)
+    binding.keys =
+      DEFAULT_KEYS.find((entry) => entry.id === binding.id)?.keys ?? binding.keys
   keyMessage.value = ''
 }
 
 // Data: the export has no surface of its own until it is ready; deleting empties the list in place.
 function requestExport() {
-  showToast({ title: 'Export requested', message: 'A link arrives by email when the archive is ready.' })
+  showToast(
+    {
+      title: 'Export requested',
+      message: 'A link arrives by email when the archive is ready.'
+    }
+  )
 }
 function deleteAllConversations() {
   conversations.items = []
@@ -223,11 +274,35 @@ function deleteAllConversations() {
       v-model:on-error="s.notifications.onError"
     />
     <ProvidersPanel v-else-if="tab === 'models'" />
-    <SettingsMcp v-else-if="tab === 'mcp'" :servers="s.servers" :overlay-store="appOverlayStore" @add="addServer" @sign-in="reconnectServer" @restart="reconnectServer" />
-    <SettingsSkills v-else-if="tab === 'skills'" :sources="s.skillSources" :overlay-store="appOverlayStore" @add="addSkillSource" @remove="removeSkillSource" @update="updateSkillSource" />
+    <SettingsMcp
+      v-else-if="tab === 'mcp'"
+      :servers="s.servers"
+      :overlay-store="appOverlayStore"
+      @add="addServer"
+      @sign-in="reconnectServer"
+      @restart="reconnectServer"
+    />
+    <SettingsSkills
+      v-else-if="tab === 'skills'"
+      :sources="s.skillSources"
+      :overlay-store="appOverlayStore"
+      @add="addSkillSource"
+      @remove="removeSkillSource"
+      @update="updateSkillSource"
+    />
     <DevicesPanel v-else-if="tab === 'devices'" />
-    <SettingsArchived v-else-if="tab === 'archived'" :conversations="archived" @restore="restore" />
-    <SettingsKeyboard v-else-if="tab === 'keyboard'" :bindings="s.keys" :message="keyMessage" @rebind="rebind" @reset="resetShortcuts" />
+    <SettingsArchived
+      v-else-if="tab === 'archived'"
+      :conversations="archived"
+      @restore="restore"
+    />
+    <SettingsKeyboard
+      v-else-if="tab === 'keyboard'"
+      :bindings="s.keys"
+      :message="keyMessage"
+      @rebind="rebind"
+      @reset="resetShortcuts"
+    />
     <SettingsData
       v-else-if="tab === 'data'"
       v-model:retention="s.data.retention"

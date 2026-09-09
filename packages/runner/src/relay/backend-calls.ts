@@ -1,5 +1,9 @@
 import type { RpcInvocation } from '@demicodes/command-loader'
-import type { PipeRef, RunnerToBackendMessage, BackendToRunnerMessage } from '@demicodes/runner-protocol'
+import type {
+  PipeRef,
+  RunnerToBackendMessage,
+  BackendToRunnerMessage
+} from '@demicodes/runner-protocol'
 import type { PipeEnds } from '../pipes'
 import type { ExecutionContext } from '../commands/contexts'
 import { createId, noop, SerialQueue } from '@demicodes/utils'
@@ -11,7 +15,10 @@ interface Call {
   writes: SerialQueue
   stdout: Promise<void>
 }
-/** Backend RPC is a runner responsibility, independent of the local client's wire. */
+/**
+ * Backend RPC is a runner responsibility, independent of the local client's
+ * wire.
+ */
 export class BackendCalls {
   private readonly calls = new Map<string, Call>()
 
@@ -20,8 +27,12 @@ export class BackendCalls {
     private readonly pipes: PipeEnds,
   ) {}
 
-  async invoke(context: ExecutionContext, invocation: RpcInvocation): Promise<{ exitCode: number }> {
-    if (!context.jobId || !context.agentSessionId || !context.shellId) throw new Error('rpc requires a backend-dispatched job and session')
+  async invoke(
+    context: ExecutionContext,
+    invocation: RpcInvocation
+  ): Promise<{ exitCode: number }> {
+    if (!context.jobId || !context.agentSessionId || !context.shellId)
+      throw new Error('rpc requires a backend-dispatched job and session')
     const callId = createId()
     const result = Promise.withResolvers<{ exitCode: number }>()
     this.calls.set(callId, {
@@ -34,7 +45,8 @@ export class BackendCalls {
     // Input and transport failures can settle the call before invoke starts awaiting it.
     result.promise.catch(noop)
     const abort = () => {
-      this.calls.get(callId)?.reject(invocation.signal.reason ?? new Error('command cancelled'))
+      this.calls.get(callId)?.reject(invocation.signal.reason
+        ?? new Error('command cancelled'))
       this.calls.delete(callId)
       try {
         this.send({ type: 'rpc_cancel', callId })
@@ -63,9 +75,11 @@ export class BackendCalls {
         env: invocation.env,
         stdin: invocation.stdin !== null,
       })
-      void this.forwardLiveInput(callId, invocation.stdinStream).catch(error => {
-        this.calls.get(callId)?.reject(error)
-      })
+      void this.forwardLiveInput(callId, invocation.stdinStream).catch(
+        error => {
+          this.calls.get(callId)?.reject(error)
+        }
+      )
       return await result.promise
     } finally {
       invocation.signal.removeEventListener('abort', abort)
@@ -73,15 +87,23 @@ export class BackendCalls {
     }
   }
 
-  handleReply(message: Extract<BackendToRunnerMessage, { type: 'rpc_pipes' | 'rpc_output' | 'rpc_exit' }>): void {
+  handleReply(
+    message: Extract<BackendToRunnerMessage, { type: 'rpc_pipes'
+      | 'rpc_output'
+      | 'rpc_exit' }>
+  ): void {
     const call = this.calls.get(message.callId)
-    if (!call) return
+    if (!call)
+      return
     if (message.type === 'rpc_pipes') {
-      if (message.stdin) void this.upload(call, message.stdin).catch(call.reject)
+      if (message.stdin)
+        void this.upload(call, message.stdin).catch(call.reject)
       call.stdout = this.download(call, message.stdout)
       void call.stdout.catch(call.reject)
     } else if (message.type === 'rpc_output') {
-      void call.writes.run(() => Promise.resolve(call.invocation.io.stderr(message.bytes))).catch(call.reject)
+      void call.writes.run(
+        () => Promise.resolve(call.invocation.io.stderr(message.bytes))
+      ).catch(call.reject)
     } else {
       void this.complete(call, message.exitCode).catch(call.reject)
     }
@@ -100,25 +122,36 @@ export class BackendCalls {
     })
   }
 
-  private async forwardLiveInput(callId: string, input: AsyncIterable<Uint8Array>): Promise<void> {
+  private async forwardLiveInput(
+    callId: string,
+    input: AsyncIterable<Uint8Array>
+  ): Promise<void> {
     for await (const bytes of input) {
-      if (!this.calls.has(callId)) return
+      if (!this.calls.has(callId))
+        return
       this.send({ type: 'rpc_stdin', callId, bytes })
     }
-    if (this.calls.has(callId)) this.send({ type: 'rpc_stdin_end', callId })
+    if (this.calls.has(callId))
+      this.send({ type: 'rpc_stdin_end', callId })
   }
 
   private report(ref: PipeRef, error?: unknown): void {
     if (error === undefined) {
       this.send({ type: 'pipe_done', pipeId: ref.id, ok: true })
     } else {
-      this.send({ type: 'pipe_done', pipeId: ref.id, ok: false, error: String(error) })
+      this.send({
+        type: 'pipe_done',
+        pipeId: ref.id,
+        ok: false,
+        error: String(error)
+      })
     }
   }
 
   private async upload(call: Call, ref: PipeRef): Promise<void> {
     try {
-      if (!call.invocation.stdin) throw new Error('missing command input pipe')
+      if (!call.invocation.stdin)
+        throw new Error('missing command input pipe')
       await this.pipes.put(ref.url, call.invocation.stdin)
       this.report(ref)
     } catch (error) {

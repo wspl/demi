@@ -13,7 +13,10 @@ const CLAUDE_CONSOLE_BASE = 'https://console.anthropic.com'
 const CLAUDE_CODE_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e'
 const CLAUDE_LOGIN_SCOPE = 'org:create_api_key user:profile user:inference'
 
-/** Pool-entry oauth.json shape (demi-owned; refreshable when refreshToken present). */
+/**
+ * Pool-entry oauth.json shape (demi-owned; refreshable when refreshToken
+ * present).
+ */
 export interface ClaudeCodeOAuthSecret {
   accessToken: string
   refreshToken?: string | null
@@ -28,8 +31,13 @@ export interface ClaudeCodeOAuthSecret {
 
 export interface ClaudeCodeLoginOptions {
   signal?: AbortSignal
-  /** Fires once with the authorize URL; the flow then waits on promptForCode. */
-  onPending?: (pending: { verificationUrl: string; requiresCodeInput: true }) => void
+  /**
+   * Fires once with the authorize URL; the flow then waits on promptForCode.
+   */
+  onPending?: (pending: {
+    verificationUrl: string;
+    requiresCodeInput: true
+  }) => void
   /** Collects the "code#state" string the vendor page shows after approval. */
   promptForCode: () => Promise<string>
   fetch?: typeof fetch
@@ -53,26 +61,47 @@ async function requestTokens(
     signal,
   })
   if (!response.ok) {
-    throw new ClaudeCodeAuthError('auth_invalid', `Claude OAuth token request failed with HTTP ${response.status}`)
+    throw new ClaudeCodeAuthError(
+      'auth_invalid',
+      `Claude OAuth token request failed with HTTP ${response.status}`
+    )
   }
   const parsed: unknown = await response.json().catch(() => null)
-  if (!isRecord(parsed)) throw new ClaudeCodeAuthError('auth_invalid', 'Claude OAuth token response is not a JSON object')
+  if (!isRecord(parsed))
+    throw new ClaudeCodeAuthError(
+      'auth_invalid',
+      'Claude OAuth token response is not a JSON object'
+    )
   const accessToken = nonEmptyString(parsed.access_token)
-  if (!accessToken) throw new ClaudeCodeAuthError('auth_invalid', 'Claude OAuth token response is missing access_token')
+  if (!accessToken)
+    throw new ClaudeCodeAuthError(
+      'auth_invalid',
+      'Claude OAuth token response is missing access_token'
+    )
   const expiresIn = Number(parsed.expires_in)
   const account = isRecord(parsed.account) ? parsed.account : {}
   return {
     accessToken,
     refreshToken: nonEmptyString(parsed.refresh_token) ?? null,
-    expiresAt: Number.isFinite(expiresIn) && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
-    scopes: typeof parsed.scope === 'string' ? parsed.scope.split(' ').filter(Boolean) : null,
-    subscriptionType: nonEmptyString(parsed.subscription_type) ?? nonEmptyString(account.subscription_type) ?? null,
-    ...(nonEmptyString(account.email_address) ? { emailAddress: nonEmptyString(account.email_address) } : {}),
+    expiresAt: Number.isFinite(expiresIn) && expiresIn > 0
+      ? new Date(Date.now() + expiresIn * 1000).toISOString()
+      : null,
+    scopes: typeof parsed.scope === 'string'
+      ? parsed.scope.split(' ').filter(Boolean)
+      : null,
+    subscriptionType: nonEmptyString(parsed.subscription_type)
+      ?? nonEmptyString(account.subscription_type)
+      ?? null,
+    ...(nonEmptyString(account.email_address) ? {
+      emailAddress: nonEmptyString(account.email_address)
+    } : {}),
   }
 }
 
 /** Runs the copy-back OAuth flow and returns a refreshable pool secret. */
-export async function runClaudeCodeLogin(options: ClaudeCodeLoginOptions): Promise<ClaudeCodeOAuthSecret> {
+export async function runClaudeCodeLogin(
+  options: ClaudeCodeLoginOptions
+): Promise<ClaudeCodeOAuthSecret> {
   const fetchImpl = options.fetch ?? fetch
   const consoleBase = options.consoleBase ?? CLAUDE_CONSOLE_BASE
 
@@ -91,14 +120,28 @@ export async function runClaudeCodeLogin(options: ClaudeCodeLoginOptions): Promi
     code_challenge_method: 'S256',
     state,
   })
-  options.onPending?.({ verificationUrl: `${CLAUDE_AUTHORIZE_URL}?${params.toString()}`, requiresCodeInput: true })
+  options.onPending?.({
+    verificationUrl: `${CLAUDE_AUTHORIZE_URL}?${params.toString()}`,
+    requiresCodeInput: true
+  })
 
   const pasted = (await options.promptForCode()).trim()
-  if (!pasted) throw new ClaudeCodeAuthError('auth_invalid', 'Empty authorization code')
+  if (!pasted)
+    throw new ClaudeCodeAuthError(
+      'auth_invalid',
+      'Empty authorization code'
+    )
   const [code, returnedState] = pasted.split('#')
-  if (!nonEmptyString(code)) throw new ClaudeCodeAuthError('auth_invalid', 'Authorization code is missing the code part')
+  if (!nonEmptyString(code))
+    throw new ClaudeCodeAuthError(
+      'auth_invalid',
+      'Authorization code is missing the code part'
+    )
   if (returnedState && returnedState !== state) {
-    throw new ClaudeCodeAuthError('auth_invalid', 'Authorization code state mismatch — copy the full string from the callback page')
+    throw new ClaudeCodeAuthError(
+      'auth_invalid',
+      'Authorization code state mismatch — copy the full string from the callback page'
+    )
   }
 
   return requestTokens(fetchImpl, consoleBase, {
@@ -114,15 +157,29 @@ export async function runClaudeCodeLogin(options: ClaudeCodeLoginOptions): Promi
 /** Refreshes a pool secret in place; returns the renewed secret. */
 export async function refreshClaudeCodeSecret(
   secret: ClaudeCodeOAuthSecret,
-  options: { fetch?: typeof fetch; consoleBase?: string; signal?: AbortSignal } = {},
+  options: {
+    fetch?: typeof fetch;
+    consoleBase?: string;
+    signal?: AbortSignal
+  } = {},
 ): Promise<ClaudeCodeOAuthSecret> {
   const refreshToken = nonEmptyString(secret.refreshToken)
-  if (!refreshToken) throw new ClaudeCodeAuthError('auth_missing', 'Claude OAuth secret has no refreshToken to renew with')
-  const renewed = await requestTokens(options.fetch ?? fetch, options.consoleBase ?? CLAUDE_CONSOLE_BASE, {
+  if (!refreshToken)
+    throw new ClaudeCodeAuthError(
+      'auth_missing',
+      'Claude OAuth secret has no refreshToken to renew with'
+    )
+  const renewed = await requestTokens(
+    options.fetch ?? fetch,
+    options.consoleBase
+      ?? CLAUDE_CONSOLE_BASE,
+    {
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
     client_id: CLAUDE_CODE_CLIENT_ID,
-  }, options.signal)
+  },
+    options.signal
+  )
   // Field-wise merge: refresh responses may omit metadata the original login carried.
   return {
     ...secret,
@@ -130,7 +187,10 @@ export async function refreshClaudeCodeSecret(
     refreshToken: renewed.refreshToken ?? refreshToken,
     expiresAt: renewed.expiresAt ?? secret.expiresAt ?? null,
     scopes: renewed.scopes ?? secret.scopes ?? null,
-    subscriptionType: renewed.subscriptionType ?? secret.subscriptionType ?? null,
-    ...(nonEmptyString(renewed.emailAddress) ? { emailAddress: renewed.emailAddress } : {}),
+    subscriptionType: renewed.subscriptionType ?? secret.subscriptionType
+      ?? null,
+    ...(nonEmptyString(renewed.emailAddress) ? {
+      emailAddress: renewed.emailAddress
+    } : {}),
   }
 }

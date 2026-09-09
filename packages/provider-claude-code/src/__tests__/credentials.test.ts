@@ -26,8 +26,14 @@ test('claude credentials add/setActive and pool-aware resolve', async () => {
     })
     const credentials = createClaudeCodeCredentials(pool, authStore, { quota })
 
-    const a = await credentials.add!({ accessToken: 'token-a', subscriptionType: 'pro' })
-    const b = await credentials.add!({ accessToken: 'token-b', subscriptionType: 'max' })
+    const a = await credentials.add!({
+      accessToken: 'token-a',
+      subscriptionType: 'pro'
+    })
+    const b = await credentials.add!({
+      accessToken: 'token-b',
+      subscriptionType: 'max'
+    })
     expect((await credentials.list()).length).toBe(2)
 
     await credentials.setActive(a.id)
@@ -49,8 +55,11 @@ test('claude credentials add/setActive and pool-aware resolve', async () => {
 })
 
 test('injectableCliToken never injects keychain-sourced tokens', () => {
-  expect(injectableCliToken({ accessToken: 'tok', source: 'keychain' })).toBeNull()
-  expect(injectableCliToken({ accessToken: 'tok', source: 'static' })).toBe('tok')
+  expect(
+    injectableCliToken({ accessToken: 'tok', source: 'keychain' })
+  ).toBeNull()
+  expect(injectableCliToken({ accessToken: 'tok', source: 'static' }))
+    .toBe('tok')
   expect(injectableCliToken({ accessToken: 'tok', source: 'file' })).toBe('tok')
   expect(injectableCliToken({ accessToken: 'tok', source: 'env' })).toBe('tok')
 })
@@ -66,9 +75,15 @@ test('createClaudeCodeProvider wires credentials and auth status', async () => {
   try {
     const provider = createClaudeCodeProvider({ stateDir })
     expect(provider.credentials).toBeDefined()
-    await provider.credentials!.add!({ accessToken: 'tok', subscriptionType: 'pro' })
+    await provider.credentials!.add!({
+      accessToken: 'tok',
+      subscriptionType: 'pro'
+    })
     const status = await provider.auth!.status()
-    expect(status).toMatchObject({ status: 'authenticated', accountLabel: 'pro' })
+    expect(status).toMatchObject({
+      status: 'authenticated',
+      accountLabel: 'pro'
+    })
   } finally {
     await rm(stateDir, { recursive: true, force: true })
   }
@@ -76,7 +91,10 @@ test('createClaudeCodeProvider wires credentials and auth status', async () => {
 
 test('custom authStore skips credentials surface', () => {
   const provider = createClaudeCodeProvider({
-    authStore: new StaticClaudeCodeAuthStore({ accessToken: 'x', source: 'static' }),
+    authStore: new StaticClaudeCodeAuthStore({
+      accessToken: 'x',
+      source: 'static'
+    }),
   })
   expect(provider.credentials).toBeUndefined()
 })

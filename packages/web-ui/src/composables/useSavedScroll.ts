@@ -7,9 +7,17 @@ interface ScrollPosition {
 }
 
 /** Restore a scroll viewport by location key, optionally anchored to stable content. */
-export function useSavedScroll(viewport: Ref<HTMLElement | undefined>, key: () => string) {
-  const unwatch = watch([viewport, key], async ([viewportElement, storageKey], _, onCleanup) => {
-    if (!viewportElement) return
+export function useSavedScroll(
+  viewport: Ref<HTMLElement | undefined>,
+  key: () => string
+) {
+  const unwatch = watch([viewport, key], async (
+    [viewportElement, storageKey],
+    _,
+    onCleanup
+  ) => {
+    if (!viewportElement)
+      return
     const element = viewportElement
 
     const saved = readPosition(storageKey)
@@ -28,7 +36,8 @@ export function useSavedScroll(viewport: Ref<HTMLElement | undefined>, key: () =
     }
 
     function save() {
-      if (restoring) return
+      if (restoring)
+        return
 
       const anchor = anchors().find(item => relativeTop(item) + item.offsetHeight > 0)
       writePosition(storageKey, {
@@ -39,7 +48,8 @@ export function useSavedScroll(viewport: Ref<HTMLElement | undefined>, key: () =
     }
 
     function restore() {
-      if (!saved || !restoring) return
+      if (!saved || !restoring)
+        return
 
       const anchor = anchors().find(item => item.dataset.scrollAnchor === saved.anchor)
       element.scrollTop = anchor
@@ -72,7 +82,8 @@ export function useSavedScroll(viewport: Ref<HTMLElement | undefined>, key: () =
     })
 
     await nextTick()
-    if (disposed || !restoring) return
+    if (disposed || !restoring)
+      return
 
     if (!saved) {
       element.scrollTop = 0
@@ -112,7 +123,8 @@ function writePosition(key: string, position: ScrollPosition): void {
 }
 
 function isScrollPosition(value: unknown): value is ScrollPosition {
-  if (typeof value !== 'object' || value === null) return false
+  if (typeof value !== 'object' || value === null)
+    return false
 
   const position = value as Record<string, unknown>
   return typeof position.top === 'number'

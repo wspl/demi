@@ -16,28 +16,34 @@ const dragDepth = ref(0)
 const showDrop = computed(() => props.dropping === true || dragDepth.value > 0)
 
 function onDragEnter(event: DragEvent): void {
-  if (!transferHasFiles(event.dataTransfer)) return
+  if (!transferHasFiles(event.dataTransfer))
+    return
   event.preventDefault()
   dragDepth.value += 1
 }
 
 function onDragOver(event: DragEvent): void {
-  if (!transferHasFiles(event.dataTransfer)) return
+  if (!transferHasFiles(event.dataTransfer))
+    return
   event.preventDefault()
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+  if (event.dataTransfer)
+    event.dataTransfer.dropEffect = 'copy'
 }
 
 function onDragLeave(event: DragEvent): void {
-  if (!transferHasFiles(event.dataTransfer)) return
+  if (!transferHasFiles(event.dataTransfer))
+    return
   dragDepth.value = Math.max(0, dragDepth.value - 1)
 }
 
 function onDrop(event: DragEvent): void {
-  if (!transferHasFiles(event.dataTransfer)) return
+  if (!transferHasFiles(event.dataTransfer))
+    return
   event.preventDefault()
   dragDepth.value = 0
   const files = event.dataTransfer ? dataTransferFiles(event.dataTransfer) : []
-  if (files.length > 0) emit('dropFiles', files)
+  if (files.length > 0)
+    emit('dropFiles', files)
 }
 </script>
 
@@ -54,7 +60,10 @@ function onDrop(event: DragEvent): void {
     @dragleave="onDragLeave"
     @drop="onDrop"
   >
-    <div v-if="$slots.chips" class="composer-chips flex flex-wrap gap-1.5 px-3 pt-2">
+    <div
+      v-if="$slots.chips"
+      class="composer-chips flex flex-wrap gap-1.5 px-3 pt-2"
+    >
       <slot name="chips" />
     </div>
     <div class="composer-attach">

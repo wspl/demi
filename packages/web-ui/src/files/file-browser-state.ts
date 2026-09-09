@@ -11,30 +11,48 @@ export interface FileBrowserSort {
 }
 
 /** Directories first, then the chosen column; names compare naturally so `file2` precedes `file10`. */
-export function sortEntries(entries: readonly FileBrowserEntry[], sort: FileBrowserSort): FileBrowserEntry[] {
+export function sortEntries(
+  entries: readonly FileBrowserEntry[],
+  sort: FileBrowserSort
+): FileBrowserEntry[] {
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
   const sign = sort.direction === 'asc' ? 1 : -1
   return [...entries].sort((a, b) => {
-    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
+    if (a.isDirectory !== b.isDirectory)
+      return a.isDirectory ? -1 : 1
     let order = 0
-    if (sort.key === null) return collator.compare(a.name, b.name)
-    if (sort.key === 'modifiedAt') order = (a.modifiedAt ?? '').localeCompare(b.modifiedAt ?? '')
-    else if (sort.key === 'size') order = (a.size ?? -1) - (b.size ?? -1)
-    if (order === 0) order = collator.compare(a.name, b.name) * (sort.key === 'name' ? 1 : sign)
+    if (sort.key === null)
+      return collator.compare(a.name, b.name)
+    if (sort.key === 'modifiedAt')
+      order = (a.modifiedAt ?? '').localeCompare(b.modifiedAt ?? '')
+    else if (sort.key === 'size')
+      order = (a.size ?? -1) - (b.size ?? -1)
+    if (order === 0)
+      order = collator.compare(a.name, b.name) * (sort.key === 'name' ? 1 : sign)
     return order * sign
   })
 }
 
 /** The rows a query and the hidden-files switch leave visible. */
-export function filterEntries(entries: readonly FileBrowserEntry[], query: string, showHidden: boolean): FileBrowserEntry[] {
+export function filterEntries(
+  entries: readonly FileBrowserEntry[],
+  query: string,
+  showHidden: boolean
+): FileBrowserEntry[] {
   const needle = query.trim().toLowerCase()
-  return entries.filter((entry) => (showHidden || !isHiddenName(entry.name)) && (!needle || entry.name.toLowerCase().includes(needle)))
+  return entries.filter(
+    (entry) =>
+      (showHidden || !isHiddenName(entry.name)) &&
+      (!needle || entry.name.toLowerCase().includes(needle))
+  )
 }
 
 /** A header click cycles its column: ascending, descending, then back to the default order. Another column starts ascending. */
 export function nextSort(current: FileBrowserSort, key: FileBrowserSortKey): FileBrowserSort {
-  if (current.key !== key) return { key, direction: 'asc' }
-  if (current.direction === 'asc') return { key, direction: 'desc' }
+  if (current.key !== key)
+    return { key, direction: 'asc' }
+  if (current.direction === 'asc')
+    return { key, direction: 'desc' }
   return { key: null, direction: 'asc' }
 }
 
@@ -64,17 +82,20 @@ export function createFileBrowserHistory(initial: string): FileBrowserHistory {
       return index < entries.length - 1
     },
     push(path) {
-      if (path === entries[index]) return
+      if (path === entries[index])
+        return
       entries = [...entries.slice(0, index + 1), path]
       index = entries.length - 1
     },
     back() {
-      if (index === 0) return null
+      if (index === 0)
+        return null
       index -= 1
       return entries[index]!
     },
     forward() {
-      if (index >= entries.length - 1) return null
+      if (index >= entries.length - 1)
+        return null
       index += 1
       return entries[index]!
     },

@@ -42,7 +42,8 @@ export function createOverlayStore(): OverlayStore {
 
   function dismissHints(): void {
     const hints = store.state.entries.filter((entry) => entry.layer === 'hint')
-    if (hints.length === 0) return
+    if (hints.length === 0)
+      return
     store.update((state) => {
       state.entries = state.entries.filter(isExclusive)
     })
@@ -52,7 +53,8 @@ export function createOverlayStore(): OverlayStore {
   /** Drops an entry and closes whatever was stacked on it. */
   function drop(id: string): void {
     const index = store.state.entries.findIndex((entry) => entry.id === id)
-    if (index < 0) return
+    if (index < 0)
+      return
     store.update((state) => {
       state.entries.splice(index, 1)
     })
@@ -76,7 +78,8 @@ export function createOverlayStore(): OverlayStore {
     },
     closeTop() {
       const top = exclusives().at(-1)
-      if (!top) return
+      if (!top)
+        return
       top.close()
     },
     push(id, close, layer = 'exclusive') {

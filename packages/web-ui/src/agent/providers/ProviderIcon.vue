@@ -20,7 +20,11 @@ const svgContent = computed(() => BUILTIN_SVGS[props.providerId] ?? '')
 </script>
 
 <template>
-  <span class="inline-block shrink-0" :style="{ width: `${s}px`, height: `${s}px` }" v-html="svgContent" />
+  <span
+    class="inline-block shrink-0"
+    :style="{ width: `${s}px`, height: `${s}px` }"
+    v-html="svgContent"
+  />
 </template>
 
 <style scoped>

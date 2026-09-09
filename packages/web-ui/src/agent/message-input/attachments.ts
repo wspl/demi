@@ -5,10 +5,24 @@ export async function fileToUserContent(file: File): Promise<UserContentBlock> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const sniffed = sniffModelMediaType(bytes)
   if (sniffed?.kind === 'image') {
-    return { type: 'image', source: { type: 'binary', data: bytes, mediaType: sniffed.mediaType } }
+    return {
+      type: 'image',
+      source: {
+        type: 'binary',
+        data: bytes,
+        mediaType: sniffed.mediaType
+      }
+    }
   }
   if (sniffed?.kind === 'video') {
-    return { type: 'video', source: { type: 'binary', data: bytes, mediaType: sniffed.mediaType } }
+    return {
+      type: 'video',
+      source: {
+        type: 'binary',
+        data: bytes,
+        mediaType: sniffed.mediaType
+      }
+    }
   }
   return {
     type: 'document',
@@ -20,9 +34,13 @@ export async function fileToUserContent(file: File): Promise<UserContentBlock> {
   }
 }
 
-export function fileMatchesAcceptedExtensions(file: File, acceptedExtensions: readonly string[] | null): boolean {
+export function fileMatchesAcceptedExtensions(
+  file: File,
+  acceptedExtensions: readonly string[] | null
+): boolean {
   const ext = file.name.split('.').pop()?.toLowerCase()
-  if (!ext) return false
+  if (!ext)
+    return false
   return fileExtensionSupport(acceptedExtensions, ext) === true
 }
 
@@ -30,22 +48,33 @@ export function fileMatchesAcceptedExtensions(file: File, acceptedExtensions: re
 export function partitionAcceptedFiles(
   files: readonly File[],
   acceptedExtensions: readonly string[] | null,
-): { accepted: File[]; rejected: File[] } {
+): {
+  accepted: File[];
+  rejected: File[]
+} {
   const accepted: File[] = []
   const rejected: File[] = []
   for (const file of files) {
-    (fileMatchesAcceptedExtensions(file, acceptedExtensions) ? accepted : rejected).push(file)
+    (fileMatchesAcceptedExtensions(file, acceptedExtensions)
+      ? accepted
+      : rejected).push(
+      file
+    )
   }
   return { accepted, rejected }
 }
 
-export function acceptAttribute(acceptedExtensions: readonly string[] | null): string | undefined {
-  if (acceptedExtensions === null || acceptedExtensions.length === 0) return undefined
+export function acceptAttribute(
+  acceptedExtensions: readonly string[] | null
+): string | undefined {
+  if (acceptedExtensions === null || acceptedExtensions.length === 0)
+    return undefined
   return acceptedExtensions.map((ext) => `.${ext}`).join(',')
 }
 
 export function filePreviewUrl(file: File): string | undefined {
-  if (file.type.startsWith('image/')) return URL.createObjectURL(file)
+  if (file.type.startsWith('image/'))
+    return URL.createObjectURL(file)
   if (file.type === '' && /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name)) {
     return URL.createObjectURL(file)
   }

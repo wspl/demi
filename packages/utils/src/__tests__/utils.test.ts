@@ -63,7 +63,8 @@ test('abortable rejects on abort', async () => {
   const pending = abortable(new Promise<number>(() => {}), controller.signal)
   controller.abort()
   await expect(pending).rejects.toBeInstanceOf(AbortError)
-  await expect(abortable(Promise.resolve(7), new AbortController().signal)).resolves.toBe(7)
+  await expect(abortable(Promise.resolve(7), new AbortController().signal))
+    .resolves.toBe(7)
 })
 
 test('async', async () => {
@@ -87,7 +88,11 @@ test('utf8Lines splits byte streams into lines', async () => {
 
   expect(await collect(['a\nb\n'])).toEqual(['a', 'b'])
   // Lines split across chunk boundaries, CRLF endings, trailing unterminated line.
-  expect(await collect(['first li', 'ne\r\nsec', 'ond\ntail'])).toEqual(['first line', 'second', 'tail'])
+  expect(await collect(['first li', 'ne\r\nsec', 'ond\ntail'])).toEqual([
+    'first line',
+    'second',
+    'tail'
+  ])
   expect(await collect([])).toEqual([])
   expect(await collect(['\n\n'])).toEqual(['', ''])
 
@@ -110,7 +115,8 @@ test('bytes round-trip and slice', () => {
   expect(decodeUtf8(bytes)).toBe('héllo')
   expect(utf8Bytes('héllo')).toBe(6)
   expect(utf8Slice('abcdef', 1, 4)).toBe('bcd')
-  expect(decodeUtf8(concatBytes([encodeUtf8('ab'), encodeUtf8('cd')]))).toBe('abcd')
+  expect(decodeUtf8(concatBytes([encodeUtf8('ab'), encodeUtf8('cd')])))
+    .toBe('abcd')
 })
 
 test('strings', () => {

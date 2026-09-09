@@ -1,6 +1,18 @@
-import type { Host, HostFileSystem, HostProcessOutputChunk, HostSpawnHandle } from '@demicodes/shell'
+import type {
+  Host,
+  HostFileSystem,
+  HostProcessOutputChunk,
+  HostSpawnHandle
+} from '@demicodes/shell'
 import { errorCode, errorMessage } from '@demicodes/utils'
-import type { BackendToRunnerMessage, FsCallMessage, FsOp, FsParams, FsResult, RunnerToBackendMessage } from '@demicodes/runner-protocol'
+import type {
+  BackendToRunnerMessage,
+  FsCallMessage,
+  FsOp,
+  FsParams,
+  FsResult,
+  RunnerToBackendMessage
+} from '@demicodes/runner-protocol'
 import { deviceFallback } from './device-env'
 
 /**
@@ -17,7 +29,9 @@ export class HostRpcServer {
     private readonly host: Pick<Host, 'fs' | 'process'>,
     private readonly send: (message: RunnerToBackendMessage) => void,
     private readonly deviceEnv: Record<string, string> = {},
-    private readonly executionEnv?: (message: Extract<BackendToRunnerMessage, { type: 'spawn' }>) => Promise<Record<string, string>>,
+    private readonly executionEnv?: (
+      message: Extract<BackendToRunnerMessage, { type: 'spawn' }>
+    ) => Promise<Record<string, string>>,
   ) {}
 
   async handleMessage(message: BackendToRunnerMessage): Promise<void> {
@@ -65,35 +79,57 @@ export class HostRpcServer {
     await Promise.all(this.starting.values())
     const spawns = [...this.spawns.values()]
     this.spawns.clear()
-    await Promise.all(spawns.map((spawn) => spawn.kill('SIGKILL').catch(() => {})))
+    await Promise.all(
+      spawns.map((spawn) => spawn.kill('SIGKILL').catch(() => {}))
+    )
   }
 
   private async handleFsCall(message: FsCallMessage): Promise<void> {
     const { type, id, ...params } = message
     const op = type.slice('fs_'.length) as FsOp
     try {
-      const result = await (fsHandlers[op] as FsHandler<FsOp>)(this.host.fs, params as FsParams<FsOp>)
-      this.send({ type: 'fs_ok', id, op, result: result === undefined ? null : result } as RunnerToBackendMessage)
+      const result = await (fsHandlers[op] as FsHandler<FsOp>)(
+        this.host.fs,
+        params as FsParams<FsOp>
+      )
+      this.send({
+        type: 'fs_ok',
+        id,
+        op,
+        result: result === undefined ? null : result
+      } as RunnerToBackendMessage)
     } catch (error) {
       const code = errorCode(error)
-      this.send({ type: 'fs_error', id, ...(code ? { code } : {}), message: errorMessage(error) })
+      this.send({
+        type: 'fs_error',
+        id,
+        ...(code ? { code } : {}),
+        message: errorMessage(error)
+      })
     }
   }
 
-  private async handleSpawn(message: Extract<BackendToRunnerMessage, { type: 'spawn' }>): Promise<void> {
+  private async handleSpawn(
+    message: Extract<BackendToRunnerMessage, { type: 'spawn' }>
+  ): Promise<void> {
     const { spawnId } = message
     let handle: HostSpawnHandle
     try {
       const injected = await this.executionEnv?.(message)
       const env = message.env || injected
-        ? { ...deviceFallback(definedEnv(message.env ?? {}), this.deviceEnv), ...injected }
+        ? {
+          ...deviceFallback(definedEnv(message.env ?? {}), this.deviceEnv),
+          ...injected
+        }
         : undefined
       handle = await this.host.process.spawn({
         command: message.command,
         ...(message.args ? { args: message.args } : {}),
         ...(message.cwd !== undefined ? { cwd: message.cwd } : {}),
         ...(env ? { env } : {}),
-        ...(message.killProcessGroup !== undefined ? { killProcessGroup: message.killProcessGroup } : {}),
+        ...(message.killProcessGroup !== undefined ? {
+          killProcessGroup: message.killProcessGroup
+        } : {}),
       })
     } catch (error) {
       this.send({
@@ -113,14 +149,21 @@ export class HostRpcServer {
   private async pump(spawnId: string, handle: HostSpawnHandle): Promise<void> {
     try {
       for await (const chunk of mergedOutput(handle)) {
-        if (!this.spawns.has(spawnId)) break
-        this.send({ type: 'spawn_output', spawnId, stream: chunk.stream, bytes: chunk.chunk })
+        if (!this.spawns.has(spawnId))
+          break
+        this.send({
+          type: 'spawn_output',
+          spawnId,
+          stream: chunk.stream,
+          bytes: chunk.chunk
+        })
       }
     } catch {
       // Output streams of a failed spawn may error; the exit below still reports.
     }
     const exit = await handle.wait()
-    if (!this.spawns.delete(spawnId)) return
+    if (!this.spawns.delete(spawnId))
+      return
     this.send({
       type: 'spawn_exit',
       spawnId,
@@ -131,20 +174,44 @@ export class HostRpcServer {
   }
 }
 
-type FsHandler<Op extends FsOp> = (fs: HostFileSystem, params: FsParams<Op>) => Promise<FsResult<Op> | void>
+type FsHandler<Op extends FsOp> = (
+  fs: HostFileSystem,
+  params: FsParams<Op>
+) => Promise<FsResult<Op> | void>
 
 /** Each `fs_<op>` request to the `HostFileSystem` method it names. */
 const fsHandlers: { [Op in FsOp]: FsHandler<Op> } = {
   readFile: (fs, p) => fs.readFile(p.path, { cwd: p.cwd }),
-  writeFile: (fs, p) => fs.writeFile(p.path, p.data, { cwd: p.cwd, createParents: p.createParents }),
-  appendFile: (fs, p) => fs.appendFile(p.path, p.data, { cwd: p.cwd, createParents: p.createParents }),
+  writeFile: (fs, p) => fs.writeFile(
+    p.path,
+    p.data,
+    { cwd: p.cwd, createParents: p.createParents }
+  ),
+  appendFile: (fs, p) => fs.appendFile(
+    p.path,
+    p.data,
+    { cwd: p.cwd, createParents: p.createParents }
+  ),
   exists: (fs, p) => fs.exists(p.path, { cwd: p.cwd }),
   stat: (fs, p) => fs.stat(p.path, { cwd: p.cwd }),
   lstat: (fs, p) => fs.lstat(p.path, { cwd: p.cwd }),
-  readdir: (fs, p) => (p.withFileTypes ? fs.readdir(p.path, { cwd: p.cwd, withFileTypes: true }) : fs.readdir(p.path, { cwd: p.cwd })),
+  readdir: (fs, p) => (p.withFileTypes ? fs.readdir(
+    p.path,
+    { cwd: p.cwd, withFileTypes: true }
+  ) : fs.readdir(
+    p.path,
+    { cwd: p.cwd }
+  )),
   mkdir: (fs, p) => fs.mkdir(p.path, { cwd: p.cwd, recursive: p.recursive }),
-  rm: (fs, p) => fs.rm(p.path, { cwd: p.cwd, recursive: p.recursive, force: p.force }),
-  cp: (fs, p) => fs.cp(p.path, p.destination, { cwd: p.cwd, recursive: p.recursive }),
+  rm: (fs, p) => fs.rm(
+    p.path,
+    { cwd: p.cwd, recursive: p.recursive, force: p.force }
+  ),
+  cp: (fs, p) => fs.cp(
+    p.path,
+    p.destination,
+    { cwd: p.cwd, recursive: p.recursive }
+  ),
   mv: (fs, p) => fs.mv(p.path, p.destination, { cwd: p.cwd }),
   chmod: (fs, p) => fs.chmod(p.path, p.mode, { cwd: p.cwd }),
   symlink: (fs, p) => fs.symlink(p.target, p.path, { cwd: p.cwd }),
@@ -154,8 +221,11 @@ const fsHandlers: { [Op in FsOp]: FsHandler<Op> } = {
   utimes: (fs, p) => fs.utimes(p.path, p.atime, p.mtime, { cwd: p.cwd }),
 }
 
-function mergedOutput(handle: HostSpawnHandle): AsyncIterable<HostProcessOutputChunk> {
-  if (handle.output) return handle.output
+function mergedOutput(
+  handle: HostSpawnHandle
+): AsyncIterable<HostProcessOutputChunk> {
+  if (handle.output)
+    return handle.output
   return mergeStreams(handle.stdout, handle.stderr)
 }
 
@@ -170,7 +240,10 @@ async function* mergeStreams(
   const queue: HostProcessOutputChunk[] = []
   let wake: (() => void) | null = null
   let open = 2
-  const drain = async (stream: AsyncIterable<Uint8Array>, name: 'stdout' | 'stderr') => {
+  const drain = async (
+    stream: AsyncIterable<Uint8Array>,
+    name: 'stdout' | 'stderr'
+  ) => {
     try {
       for await (const chunk of stream) {
         queue.push({ stream: name, chunk })
@@ -191,17 +264,21 @@ async function* mergeStreams(
       yield item
       continue
     }
-    if (open === 0) return
+    if (open === 0)
+      return
     await new Promise<void>((resolve) => {
       wake = resolve
     })
   }
 }
 
-function definedEnv(env: Record<string, string | undefined>): Record<string, string> {
+function definedEnv(
+  env: Record<string, string | undefined>
+): Record<string, string> {
   const defined: Record<string, string> = {}
   for (const [key, value] of Object.entries(env)) {
-    if (value !== undefined) defined[key] = value
+    if (value !== undefined)
+      defined[key] = value
   }
   return defined
 }

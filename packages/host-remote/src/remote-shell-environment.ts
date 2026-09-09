@@ -17,7 +17,13 @@ import {
   type ShellStatusInput,
   type ShellWriteInput,
 } from '@demicodes/shell'
-import { concatBytes, decodeUtf8, delay, isAbsolutePath, toBytes } from '@demicodes/utils'
+import {
+  concatBytes,
+  decodeUtf8,
+  delay,
+  isAbsolutePath,
+  toBytes
+} from '@demicodes/utils'
 import type { RemoteHost, RemoteJob, RemoteJobExit } from './remote-host'
 
 export interface RemoteShellEnvironmentOptions extends ShellEnvironmentOptions {
@@ -38,11 +44,17 @@ interface RunningJob {
   record: ShellCommandRecord
   job: RemoteJob
   settled: Promise<void>
-  /** Set by `abort`: the exit that follows is the kill, not the command's own end. */
+  /**
+   * Set by `abort`: the exit that follows is the kill, not the command's own
+   * end.
+   */
   aborted?: boolean
 }
 
-/** How long `abort` waits for the runner to report the job dead after `job_kill`. */
+/**
+ * How long `abort` waits for the runner to report the job dead after
+ * `job_kill`.
+ */
 const ABORT_GRACE_MS = 5_000
 
 /**
@@ -67,10 +79,13 @@ export class RemoteShellEnvironment implements ShellEnvironment {
 
   constructor(options: RemoteShellEnvironmentOptions) {
     this.host = options.host
-    this.shellIdFactory = options.shellIdFactory ?? (() => globalThis.crypto.randomUUID())
-    this.commandIdFactory = options.commandIdFactory ?? (() => globalThis.crypto.randomUUID())
+    this.shellIdFactory = options.shellIdFactory
+      ?? (() => globalThis.crypto.randomUUID())
+    this.commandIdFactory = options.commandIdFactory
+      ?? (() => globalThis.crypto.randomUUID())
     this.initialEnv = options.initialEnv ?? {}
-    this.defaultOutputLimitBytes = options.maxOutputBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES
+    this.defaultOutputLimitBytes = options.maxOutputBytes
+      ?? DEFAULT_OUTPUT_LIMIT_BYTES
     this.binaryLimitBytes = options.maxBinaryBytes ?? DEFAULT_BINARY_LIMIT_BYTES
   }
 
@@ -85,10 +100,14 @@ export class RemoteShellEnvironment implements ShellEnvironment {
   async exec(input: ShellExecInput): Promise<ShellCommandStatus> {
     const timeoutMs = normalizeTimeoutMs(input.timeoutMs ?? DEFAULT_TIMEOUT_MS)
     if (input.shellId && input.ephemeral) {
-      throw new Error('ShellExecInput: "shellId" and "ephemeral" are mutually exclusive')
+      throw new Error(
+        'ShellExecInput: "shellId" and "ephemeral" are mutually exclusive'
+      )
     }
     if (input.cwd !== undefined && !input.ephemeral) {
-      throw new Error('ShellExecInput: "cwd" requires "ephemeral"; a persistent shell owns its cwd')
+      throw new Error(
+        'ShellExecInput: "cwd" requires "ephemeral"; a persistent shell owns its cwd'
+      )
     }
     if (input.cwd !== undefined && !isAbsolutePath(input.cwd)) {
       throw new Error(`Shell exec cwd must be absolute: ${input.cwd}`)
@@ -98,9 +117,12 @@ export class RemoteShellEnvironment implements ShellEnvironment {
       : input.ephemeral
         ? this.createShell(input.agentSessionId, input.cwd)
         : this.defaultShell(input.agentSessionId)
-    if (shell.exited) throw new Error(`Shell session "${shell.id}" has exited`)
+    if (shell.exited)
+      throw new Error(`Shell session "${shell.id}" has exited`)
     if (shell.foreground) {
-      throw new Error(`Shell session "${shell.id}" is already running command "${shell.foreground.record.id}"`)
+      throw new Error(
+        `Shell session "${shell.id}" is already running command "${shell.foreground.record.id}"`
+      )
     }
     const running = this.start(shell, input.script, input.signal)
     await settledOrElapsed(running.settled, timeoutMs)
@@ -114,9 +136,13 @@ export class RemoteShellEnvironment implements ShellEnvironment {
   async write(input: ShellWriteInput): Promise<ShellCommandStatus> {
     const record = this.requireCommand(input.commandId)
     const running = this.runningById.get(record.id)
-    if (record.status !== 'running' || !running) throw new Error(`Command "${record.id}" is not running`)
+    if (record.status !== 'running' || !running)
+      throw new Error(`Command "${record.id}" is not running`)
     const data = toBytes(input.stdin)
-    if (data.byteLength === 0) throw new Error('shell_write field "stdin" must not be empty; use shell_status to poll')
+    if (data.byteLength === 0)
+      throw new Error(
+        'shell_write field "stdin" must not be empty; use shell_status to poll'
+      )
     await running.job.writeStdin(data)
     return this.view(record)
   }
@@ -124,7 +150,8 @@ export class RemoteShellEnvironment implements ShellEnvironment {
   async abort(input: ShellAbortInput): Promise<ShellCommandStatus> {
     const record = this.requireCommand(input.commandId)
     const running = this.runningById.get(record.id)
-    if (record.status !== 'running' || !running) return this.view(record)
+    if (record.status !== 'running' || !running)
+      return this.view(record)
     running.aborted = true
     await running.job.kill('SIGTERM')
     await settledOrElapsed(running.settled, ABORT_GRACE_MS)
@@ -132,14 +159,17 @@ export class RemoteShellEnvironment implements ShellEnvironment {
       await running.job.kill('SIGKILL')
       await settledOrElapsed(running.settled, ABORT_GRACE_MS)
     }
-    if (record.status === 'running') this.markAborted(running)
+    if (record.status === 'running')
+      this.markAborted(running)
     return this.view(record)
   }
 
   async releaseCommand(commandId: string): Promise<boolean> {
     const record = this.commandsById.get(commandId)
-    if (!record) return false
-    if (record.status === 'running') await this.abort({ commandId })
+    if (!record)
+      return false
+    if (record.status === 'running')
+      await this.abort({ commandId })
     this.commandsById.delete(commandId)
     // The output files are the runner's; they stay on the target with the
     // rest of the command's history.
@@ -148,12 +178,17 @@ export class RemoteShellEnvironment implements ShellEnvironment {
 
   async disposeShell(shellId: string): Promise<boolean> {
     const shell = this.shells.get(shellId)
-    if (!shell) return false
-    if (shell.foreground) await this.abort({ commandId: shell.foreground.record.id })
+    if (!shell)
+      return false
+    if (shell.foreground)
+      await this.abort({
+        commandId: shell.foreground.record.id
+      })
     shell.exited = true
     this.shells.delete(shellId)
     for (const [agentSessionId, id] of this.defaultShellByAgentSessionId) {
-      if (id === shellId) this.defaultShellByAgentSessionId.delete(agentSessionId)
+      if (id === shellId)
+        this.defaultShellByAgentSessionId.delete(agentSessionId)
     }
     return true
   }
@@ -162,9 +197,17 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     for (const shellId of [...this.shells.keys()]) await this.disposeShell(shellId)
   }
 
-  private start(shell: RemoteShell, script: string, callerSignal: AbortSignal | undefined): RunningJob {
+  private start(
+    shell: RemoteShell,
+    script: string,
+    callerSignal: AbortSignal | undefined
+  ): RunningJob {
     const id = this.commandIdFactory()
-    const job = this.host.startJob({ script, cwd: shell.cwd, env: { ...shell.env, PWD: shell.cwd } })
+    const job = this.host.startJob({
+      script,
+      cwd: shell.cwd,
+      env: { ...shell.env, PWD: shell.cwd }
+    })
     const record = createCommandRecord({
       id,
       shellId: shell.id,
@@ -179,7 +222,10 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     const ingest = async () => {
       for await (const chunk of job.output) {
         head[chunk.stream].push(chunk.chunk)
-        const text = decoders[chunk.stream].decode(chunk.chunk, { stream: true })
+        const text = decoders[chunk.stream].decode(
+          chunk.chunk,
+          { stream: true }
+        )
         if (chunk.stream === 'stdout') record.stdout += text
         else record.stderr += text
         appendRecordOutput(record, chunk.stream, text)
@@ -195,35 +241,74 @@ export class RemoteShellEnvironment implements ShellEnvironment {
       .then(([, exit]) => this.finish(shell, running, exit, head))
       .finally(() => {
         this.runningById.delete(id)
-        if (shell.foreground === running) shell.foreground = undefined
+        if (shell.foreground === running)
+          shell.foreground = undefined
       })
     shell.foreground = running
     this.runningById.set(id, running)
     return running
   }
 
-  private async finish(shell: RemoteShell, running: RunningJob, exit: RemoteJobExit, head: { stdout: Uint8Array[]; stderr: Uint8Array[] }): Promise<void> {
+  private async finish(
+    shell: RemoteShell,
+    running: RunningJob,
+    exit: RemoteJobExit,
+    head: {
+      stdout: Uint8Array[];
+      stderr: Uint8Array[]
+    }
+  ): Promise<void> {
     const { record } = running
-    if (record.status !== 'running') return
-    if (exit.cwd) shell.cwd = exit.cwd
+    if (record.status !== 'running')
+      return
+    if (exit.cwd)
+      shell.cwd = exit.cwd
     if (exit.spawnError) {
-      const message = exit.signal && exit.spawnError.kind === 'other' ? exit.signal : `bash: ${exit.spawnError.kind}`
-      settleExited(record, 127, decodeUtf8(concatBytes(head.stdout)), `${decodeUtf8(concatBytes(head.stderr))}${message}\n`, undefined)
+      const message = exit.signal && exit.spawnError.kind === 'other'
+        ? exit.signal
+        : `bash: ${exit.spawnError.kind}`
+      settleExited(
+        record,
+        127,
+        decodeUtf8(concatBytes(head.stdout)),
+        `${decodeUtf8(concatBytes(head.stderr))}${message}\n`,
+        undefined
+      )
       return
     }
     const output = exit.output
     // The runner names where its tee wrote: the output files are the target's.
-    if (output) record.outputDir = output.stdoutPath.slice(0, output.stdoutPath.lastIndexOf('/'))
-    const stdout = streamText(concatBytes(head.stdout), output?.stdoutBytes ?? 0, output?.stdoutTail, output?.stdoutPath)
-    const stderr = streamText(concatBytes(head.stderr), output?.stderrBytes ?? 0, output?.stderrTail, output?.stderrPath)
+    if (output)
+      record.outputDir = output.stdoutPath.slice(
+        0,
+        output.stdoutPath.lastIndexOf('/')
+      )
+    const stdout = streamText(
+      concatBytes(head.stdout),
+      output?.stdoutBytes ?? 0,
+      output?.stdoutTail,
+      output?.stdoutPath
+    )
+    const stderr = streamText(
+      concatBytes(head.stderr),
+      output?.stderrBytes ?? 0,
+      output?.stderrTail,
+      output?.stderrPath
+    )
     // A binary final stream: the whole stream is on the target, read back by
     // reference within the binary ceiling so the tools can look at it.
     let binary
     let stdoutText = stdout.text
-    if (output && stdout.binary && output.stdoutBytes <= this.binaryLimitBytes) {
-      const bytes = await this.host.fs.readFile(output.stdoutPath).catch(() => null)
+    if (output && stdout.binary && output.stdoutBytes
+      <= this.binaryLimitBytes) {
+      const bytes = await this.host.fs.readFile(output.stdoutPath)
+        .catch(() => null)
       if (bytes) {
-        const boundary = finalStdoutBoundary(bytes, this.binaryLimitBytes, output.stdoutPath)
+        const boundary = finalStdoutBoundary(
+          bytes,
+          this.binaryLimitBytes,
+          output.stdoutPath
+        )
         stdoutText = boundary.text
         binary = boundary.binary
       }
@@ -232,10 +317,19 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     // adds — a gap note and the tail — follows them, so a cursor into the
     // merged view stays valid. A binary stream is re-presented by settle.
     if (!binary) {
-      appendRecordOutput(record, 'stdout', stdoutText.slice(record.stdout.length))
-      appendRecordOutput(record, 'stderr', stderr.text.slice(record.stderr.length))
+      appendRecordOutput(
+        record,
+        'stdout',
+        stdoutText.slice(record.stdout.length)
+      )
+      appendRecordOutput(
+        record,
+        'stderr',
+        stderr.text.slice(record.stderr.length)
+      )
     }
-    const exitCode = exit.exitCode ?? (exit.signal === 'SIGTERM' || exit.signal === 'SIGKILL' ? 130 : 128)
+    const exitCode = exit.exitCode
+      ?? (exit.signal === 'SIGTERM' || exit.signal === 'SIGKILL' ? 130 : 128)
     settleExited(record, exitCode, stdoutText, stderr.text, binary)
     // The view may be a head and a tail; the model is told the stream's length.
     if (output) {
@@ -251,7 +345,8 @@ export class RemoteShellEnvironment implements ShellEnvironment {
 
   private markAborted(running: RunningJob): void {
     const { record } = running
-    if (record.status !== 'running') return
+    if (record.status !== 'running')
+      return
     record.lastOutputAt = Date.now()
     record.status = 'aborted'
   }
@@ -263,13 +358,15 @@ export class RemoteShellEnvironment implements ShellEnvironment {
 
   private requireShell(shellId: string): RemoteShell {
     const shell = this.shells.get(shellId)
-    if (!shell) throw new Error(`Unknown shell session "${shellId}"`)
+    if (!shell)
+      throw new Error(`Unknown shell session "${shellId}"`)
     return shell
   }
 
   private requireCommand(commandId: string): ShellCommandRecord {
     const record = this.commandsById.get(commandId)
-    if (!record) throw new Error(`Unknown command "${commandId}"`)
+    if (!record)
+      throw new Error(`Unknown command "${commandId}"`)
     return record
   }
 
@@ -280,17 +377,27 @@ export class RemoteShellEnvironment implements ShellEnvironment {
       const shell = this.shells.get(existing)
       // A busy default shell is left to its command: the session gets a fresh
       // shell for this exec, so a long-running command never blocks the next.
-      if (shell && !shell.exited) return shell.foreground && agentSessionId ? this.createShell(agentSessionId) : shell
+      if (shell && !shell.exited)
+        return shell.foreground && agentSessionId
+          ? this.createShell(agentSessionId)
+          : shell
     }
     const shell = this.createShell(agentSessionId)
     this.defaultShellByAgentSessionId.set(key, shell.id)
     return shell
   }
 
-  private createShell(agentSessionId: string | undefined, initialCwd?: string): RemoteShell {
+  private createShell(
+    agentSessionId: string | undefined,
+    initialCwd?: string
+  ): RemoteShell {
     const id = this.shellIdFactory()
-    const env: Record<string, string> = { ...this.initialEnv, DEMI_SHELL_ID: id }
-    if (agentSessionId) env.DEMI_SESSION_ID = agentSessionId
+    const env: Record<string, string> = {
+      ...this.initialEnv,
+      DEMI_SHELL_ID: id
+    }
+    if (agentSessionId)
+      env.DEMI_SESSION_ID = agentSessionId
     const shell: RemoteShell = {
       id,
       agentSessionId: agentSessionId ?? null,
@@ -309,13 +416,32 @@ export class RemoteShellEnvironment implements ShellEnvironment {
  * when the stream outgrew the view, a gap note and the tail the runner read
  * from the output file at exit.
  */
-function streamText(head: Uint8Array, totalBytes: number, tail: Uint8Array | undefined, path: string | undefined): { text: string; binary: boolean } {
-  const bytes = totalBytes <= head.byteLength || !tail ? head : head.byteLength + tail.byteLength >= totalBytes ? concatBytes([head, tail.subarray(head.byteLength + tail.byteLength - totalBytes)]) : null
-  if (bytes) return { text: decodeUtf8(bytes), binary: !isUtf8(bytes) }
+function streamText(
+  head: Uint8Array,
+  totalBytes: number,
+  tail: Uint8Array | undefined,
+  path: string | undefined
+): {
+  text: string;
+  binary: boolean
+} {
+  const bytes = totalBytes
+    <= head.byteLength || !tail ? head : head.byteLength + tail.byteLength
+    >= totalBytes ? concatBytes(
+    [
+      head,
+      tail.subarray(head.byteLength + tail.byteLength - totalBytes)
+    ]
+  ) : null
+  if (bytes)
+    return { text: decodeUtf8(bytes), binary: !isUtf8(bytes) }
   const hidden = totalBytes - head.byteLength - tail!.byteLength
   const note = `\n[... ${hidden} bytes not shown; the full stream is at ${path ?? '?'} ...]\n`
   const shown = concatBytes([head, tail!])
-  return { text: `${decodeUtf8(head)}${note}${decodeUtf8(tail!)}`, binary: !isUtf8(shown) }
+  return {
+    text: `${decodeUtf8(head)}${note}${decodeUtf8(tail!)}`,
+    binary: !isUtf8(shown)
+  }
 }
 
 function isUtf8(bytes: Uint8Array): boolean {
@@ -327,8 +453,14 @@ function isUtf8(bytes: Uint8Array): boolean {
   }
 }
 
-/** Waits for the command or the deadline, whichever comes first; a won race leaves no timer behind. */
-async function settledOrElapsed(settled: Promise<unknown>, ms: number): Promise<void> {
+/**
+ * Waits for the command or the deadline, whichever comes first; a won race
+ * leaves no timer behind.
+ */
+async function settledOrElapsed(
+  settled: Promise<unknown>,
+  ms: number
+): Promise<void> {
   const timer = new AbortController()
   try {
     await Promise.race([settled, delay(ms, timer.signal)])

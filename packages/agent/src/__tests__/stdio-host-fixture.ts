@@ -11,7 +11,10 @@ import { createStdioServerTransport } from '../protocol/stdio-transport'
 const childProvider = defineProvider({
   id: 'child-stub',
   displayName: 'Child Stub',
-  createRuntime: () => new StubProvider([[events.text('from child'), events.response()]]),
+  createRuntime: () => new StubProvider([[
+    events.text('from child'),
+    events.response()
+  ]]),
 })
 
 const server = new AgentServer({ store: memoryAgentStores(),

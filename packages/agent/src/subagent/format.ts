@@ -8,7 +8,10 @@ export interface AgentTreeNode {
   profile: string | null
   phase: SubagentJob['phase']
   closedAgoMs: number | null
-  /** Pre-rendered live status line (id, phase, ages, execution, activity); null for root/archived. */
+  /**
+   * Pre-rendered live status line (id, phase, ages, execution, activity); null
+   * for root/archived.
+   */
   line: string | null
   children: AgentTreeNode[]
 }
@@ -16,16 +19,26 @@ export interface AgentTreeNode {
 /** Compact human duration for subagent roster/status lines. */
 export function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000))
-  if (totalSeconds < 60) return `${totalSeconds}s`
+  if (totalSeconds < 60)
+    return `${totalSeconds}s`
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
-  if (minutes < 60) return seconds > 0 ? `${minutes}m${seconds}s` : `${minutes}m`
+  if (minutes < 60)
+    return seconds > 0
+      ? `${minutes}m${seconds}s`
+      : `${minutes}m`
   const hours = Math.floor(minutes / 60)
   const remMinutes = minutes % 60
   return remMinutes > 0 ? `${hours}h${remMinutes}m` : `${hours}h`
 }
 
-export function renderTreeNode(node: AgentTreeNode, prefix: string, isLast: boolean, selfId: string, lines: string[]): void {
+export function renderTreeNode(
+  node: AgentTreeNode,
+  prefix: string,
+  isLast: boolean,
+  selfId: string,
+  lines: string[]
+): void {
   const marker = node.id === selfId ? ' ← you' : ''
   const body =
     node.kind === 'root'
@@ -35,13 +48,24 @@ export function renderTreeNode(node: AgentTreeNode, prefix: string, isLast: bool
         : `● ${node.line}${marker}`
   if (node.parentId === null) lines.push(body)
   else lines.push(`${prefix}${isLast ? '└─' : '├─'}${body}`)
-  const childPrefix = node.parentId === null ? '' : `${prefix}${isLast ? '  ' : '│ '}`
+  const childPrefix = node.parentId === null
+    ? ''
+    : `${prefix}${isLast ? '  ' : '│ '}`
   node.children.forEach((child, index) => {
-    renderTreeNode(child, childPrefix, index === node.children.length - 1, selfId, lines)
+    renderTreeNode(
+      child,
+      childPrefix,
+      index === node.children.length - 1,
+      selfId,
+      lines
+    )
   })
 }
 
-export function flattenTree(nodes: AgentTreeNode[], selfId: string): Record<string, unknown>[] {
+export function flattenTree(
+  nodes: AgentTreeNode[],
+  selfId: string
+): Record<string, unknown>[] {
   const flat: Record<string, unknown>[] = []
   const visit = (node: AgentTreeNode): void => {
     flat.push({

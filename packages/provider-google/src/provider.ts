@@ -1,8 +1,19 @@
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
-import { isAbortError, isRecord, normalizeBaseUrl, numberOrZero, parseJsonObject, stringOrNull } from '@demicodes/utils'
+import {
+  isAbortError,
+  isRecord,
+  normalizeBaseUrl,
+  numberOrZero,
+  parseJsonObject,
+  stringOrNull
+} from '@demicodes/utils'
 import { zeroUsage } from '@demicodes/core'
-import type { TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demicodes/core'
+import type {
+  TokenUsage,
+  ToolResultContentBlock,
+  UserContentBlock
+} from '@demicodes/core'
 import {
   authStatusFromKey,
   defineProvider,
@@ -18,14 +29,28 @@ import {
   type ProviderModelList,
   type ToolDefinition,
 } from '@demicodes/provider'
-import { googleDefaultModels, modelListFromGoogleModels, type GoogleModelOptions } from './models'
+import {
+  googleDefaultModels,
+  modelListFromGoogleModels,
+  type GoogleModelOptions
+} from './models'
 
-export type GoogleSecretResolver = () => string | Promise<string> | null | undefined
-export type GoogleHeadersResolver = () => Record<string, string> | Promise<Record<string, string>>
-export type GoogleFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+export type GoogleSecretResolver = () => string
+  | Promise<string>
+  | null
+  | undefined
+export type GoogleHeadersResolver = () => Record<string, string>
+  | Promise<Record<string, string>>
+export type GoogleFetch = (
+  input: string | URL | Request,
+  init?: RequestInit
+) => Promise<Response>
 
 export interface GoogleRequestOptions {
-  /** Overrides the derived maxOutputTokens (default: the model's outputLimit, else 32000). */
+  /**
+   * Overrides the derived maxOutputTokens (default: the model's outputLimit,
+   * else 32000).
+   */
   maxOutputTokens?: number
   /**
    * Thinking budget used when an effort config is mapped onto Gemini's
@@ -34,7 +59,8 @@ export interface GoogleRequestOptions {
    */
   effortBudgetTokens?: Record<string, number>
   /**
-   * Ask the API to stream thought summaries. On by default: without it the model
+   * Ask the API to stream thought summaries. On by default: without it the
+   * model
    * still thinks (and still bills `thoughtsTokenCount`) but the product has
    * nothing to show for the pause.
    */
@@ -100,7 +126,11 @@ export class GoogleProvider implements AgentProvider {
       apiKey = await this.options.apiKey()
       headers = await this.buildHeaders(apiKey)
       if (!apiKey && !headers.has('x-goog-api-key')) {
-        yield { type: 'error', message: 'Google API key is missing', code: 'auth_missing' }
+        yield {
+          type: 'error',
+          message: 'Google API key is missing',
+          code: 'auth_missing'
+        }
         return
       }
     } catch (error) {
@@ -109,17 +139,26 @@ export class GoogleProvider implements AgentProvider {
     }
 
     try {
-      const response = await this.options.fetch(googleStreamUrl(this.options.baseUrl, request.modelId), {
+      const response = await this.options.fetch(googleStreamUrl(
+        this.options.baseUrl,
+        request.modelId
+      ), {
         method: 'POST',
         headers,
-        body: JSON.stringify(buildGoogleGenerateContentBody(request, this.options.request)),
+        body: JSON.stringify(buildGoogleGenerateContentBody(
+          request,
+          this.options.request
+        )),
         signal: request.cancel,
       })
       if (!response.ok) {
         yield await httpRequestFailedEvent(response, apiKey, 'Google')
         return
       }
-      yield* mapGoogleContentStream(readServerSentEvents(response.body, request.cancel), request.cancel)
+      yield* mapGoogleContentStream(
+        readServerSentEvents(response.body, request.cancel),
+        request.cancel
+      )
     } catch (error) {
       if (request.cancel.aborted || isAbortError(error)) {
         yield { type: 'abort' }
@@ -129,25 +168,35 @@ export class GoogleProvider implements AgentProvider {
     }
   }
 
-  private async buildHeaders(apiKey: string | null | undefined): Promise<Headers> {
+  private async buildHeaders(
+    apiKey: string | null | undefined
+  ): Promise<Headers> {
     const headers = new Headers(await this.options.headers?.())
     headers.set('accept', 'text/event-stream')
     headers.set('content-type', 'application/json')
-    if (apiKey) headers.set('x-goog-api-key', apiKey)
+    if (apiKey)
+      headers.set('x-goog-api-key', apiKey)
     return headers
   }
 }
 
-export function createGoogleProvider(options: GoogleProviderOptions = {}): Provider {
+export function createGoogleProvider(
+  options: GoogleProviderOptions = {}
+): Provider {
   const id = options.id ?? 'google'
   const displayName = options.displayName ?? 'Google Gemini'
   const envPrefix = options.envPrefix ?? 'GOOGLE'
-  const baseUrl = normalizeBaseUrl(options.baseUrl ?? process.env[`${envPrefix}_BASE_URL`] ?? DEFAULT_GOOGLE_BASE_URL)
+  const baseUrl = normalizeBaseUrl(options.baseUrl
+    ?? process.env[`${envPrefix}_BASE_URL`]
+    ?? DEFAULT_GOOGLE_BASE_URL)
   const apiKey = options.apiKey ?? (() => process.env[`${envPrefix}_API_KEY`])
   const fetchImpl = options.fetch ?? fetch
   const modelList = (): ProviderModelList =>
     options.models
-      ? modelListFromGoogleModels(options.models, { providerId: id, defaultModelId: options.defaultModelId ?? null })
+      ? modelListFromGoogleModels(
+        options.models,
+        { providerId: id, defaultModelId: options.defaultModelId ?? null }
+      )
       : withProviderId(googleDefaultModels(id), id)
   const runtimeOptions: GoogleRuntimeOptions = {
     baseUrl,
@@ -160,8 +209,18 @@ export function createGoogleProvider(options: GoogleProviderOptions = {}): Provi
   return defineProvider({
     id,
     displayName,
-    auth: { status: () => authStatusFromKey(apiKey, options.headers, 'x-goog-api-key', 'Google') },
-    state: () => ({ status: 'ready', message: 'Uses the Gemini generateContent API' }),
+    auth: {
+      status: () => authStatusFromKey(
+        apiKey,
+        options.headers,
+        'x-goog-api-key',
+        'Google'
+      )
+    },
+    state: () => ({
+      status: 'ready',
+      message: 'Uses the Gemini generateContent API'
+    }),
     listModels: modelList,
     supportsOutputLimit: true,
     createRuntime: () => new GoogleProvider(runtimeOptions),
@@ -180,7 +239,10 @@ export interface GoogleGenerateContentBody {
 
 export interface GoogleGenerationConfig {
   maxOutputTokens?: number
-  thinkingConfig?: { includeThoughts?: boolean; thinkingBudget?: number }
+  thinkingConfig?: {
+    includeThoughts?: boolean;
+    thinkingBudget?: number
+  }
 }
 
 export interface GoogleContent {
@@ -189,11 +251,32 @@ export interface GoogleContent {
 }
 
 export type GooglePart =
-  | { text: string; thought?: boolean; thoughtSignature?: string }
-  | { inlineData: { mimeType: string; data: string } }
-  | { fileData: { mimeType?: string; fileUri: string } }
-  | { functionCall: { name: string; args: unknown; id?: string }; thoughtSignature?: string }
-  | { functionResponse: { name: string; id?: string; response: Record<string, unknown> } }
+  | {
+      text: string;
+      thought?: boolean;
+      thoughtSignature?: string
+    }
+  | { inlineData: {
+    mimeType: string;
+    data: string
+  } }
+  | { fileData: {
+    mimeType?: string;
+    fileUri: string
+  } }
+  | {
+      functionCall: {
+        name: string;
+        args: unknown;
+        id?: string
+      };
+      thoughtSignature?: string
+    }
+  | { functionResponse: {
+    name: string;
+    id?: string;
+    response: Record<string, unknown>
+  } }
 
 export interface GoogleFunctionDeclaration {
   name: string
@@ -208,17 +291,27 @@ export function buildGoogleGenerateContentBody(
   const body: GoogleGenerateContentBody = {
     contents: inferenceItemsToGoogleContents(request.items),
   }
-  if (request.systemPrompt.trim()) body.systemInstruction = { parts: [{ text: request.systemPrompt }] }
+  if (request.systemPrompt.trim())
+    body.systemInstruction = {
+      parts: [{ text: request.systemPrompt }]
+    }
   if (request.tools.length > 0) {
-    body.tools = [{ functionDeclarations: request.tools.map(toolToGoogleFunctionDeclaration) }]
+    body.tools = [{
+      functionDeclarations: request.tools.map(toolToGoogleFunctionDeclaration)
+    }]
   }
   const generationConfig: GoogleGenerationConfig = {}
-  const maxOutputTokens = options?.maxOutputTokens ?? request.outputLimit ?? DEFAULT_MAX_OUTPUT_TOKENS
-  if (maxOutputTokens > 0) generationConfig.maxOutputTokens = maxOutputTokens
+  const maxOutputTokens = options?.maxOutputTokens ?? request.outputLimit
+    ?? DEFAULT_MAX_OUTPUT_TOKENS
+  if (maxOutputTokens > 0)
+    generationConfig.maxOutputTokens = maxOutputTokens
   const thinkingConfig = googleThinkingConfig(request.thinking, options)
-  if (thinkingConfig) generationConfig.thinkingConfig = thinkingConfig
-  if (Object.keys(generationConfig).length > 0) body.generationConfig = generationConfig
-  if (options?.extraBody) Object.assign(body, options.extraBody)
+  if (thinkingConfig)
+    generationConfig.thinkingConfig = thinkingConfig
+  if (Object.keys(generationConfig).length > 0)
+    body.generationConfig = generationConfig
+  if (options?.extraBody)
+    Object.assign(body, options.extraBody)
   return body
 }
 
@@ -234,8 +327,13 @@ export function googleThinkingConfig(
   options: GoogleRequestOptions | undefined,
 ): GoogleGenerationConfig['thinkingConfig'] | null {
   const includeThoughts = options?.includeThoughts ?? true
-  if (!thinking) return includeThoughts ? { includeThoughts: true } : null
-  if (thinking.type === 'disabled') return { includeThoughts: false, thinkingBudget: 0 }
+  if (!thinking)
+    return includeThoughts ? { includeThoughts: true } : null
+  if (thinking.type === 'disabled')
+    return {
+      includeThoughts: false,
+      thinkingBudget: 0
+    }
   const budget =
     thinking.type === 'budget'
       ? thinking.budgetTokens
@@ -260,7 +358,9 @@ export function googleThinkingConfig(
  * keeps the signature in the persisted transcript (a runtime-local map would
  * evaporate on session resume and 400 forever after) without touching core.
  */
-export function inferenceItemsToGoogleContents(items: InferenceItem[]): GoogleContent[] {
+export function inferenceItemsToGoogleContents(
+  items: InferenceItem[]
+): GoogleContent[] {
   const contents: GoogleContent[] = []
   // Gemini's functionResponse needs the tool NAME, which only the matching
   // tool_use item carries; remember it as we walk forward.
@@ -271,7 +371,8 @@ export function inferenceItemsToGoogleContents(items: InferenceItem[]): GoogleCo
   let pendingSignature: string | null = null
 
   const append = (role: GoogleContent['role'], parts: GooglePart[]) => {
-    if (parts.length === 0) return
+    if (parts.length === 0)
+      return
     const last = contents[contents.length - 1]
     if (last?.role === role) {
       last.parts.push(...parts)
@@ -306,11 +407,20 @@ export function inferenceItemsToGoogleContents(items: InferenceItem[]): GoogleCo
           // exchange degrades to plain text: the model still sees what ran,
           // it just is not a structured call it could be asked to resume.
           degraded.add(item.toolUseId)
-          append('model', [{ text: `[called ${item.toolName} with ${stringifyToolInput(item.input)}]` }])
+          append(
+            'model',
+            [{
+              text: `[called ${item.toolName} with ${stringifyToolInput(item.input)}]`
+            }]
+          )
           break
         }
         append('model', [{
-          functionCall: { name: item.toolName, args: item.input ?? {}, id: item.toolUseId },
+          functionCall: {
+            name: item.toolName,
+            args: item.input ?? {},
+            id: item.toolUseId
+          },
           thoughtSignature: pendingSignature,
         }])
         pendingSignature = null
@@ -319,7 +429,10 @@ export function inferenceItemsToGoogleContents(items: InferenceItem[]): GoogleCo
       case 'tool_result': {
         const name = toolNames.get(item.toolUseId) ?? 'tool'
         if (degraded.has(item.toolUseId)) {
-          append('user', [{ text: `[${name} returned] ${toolResultText(item.output)}` }])
+          append(
+            'user',
+            [{ text: `[${name} returned] ${toolResultText(item.output)}` }]
+          )
         } else {
           append('user', toolResultToGoogle(item.toolUseId, name, item.output))
         }
@@ -334,21 +447,32 @@ export function inferenceItemsToGoogleContents(items: InferenceItem[]): GoogleCo
 
 function userContentToGoogle(content: UserContentBlock[]): GooglePart[] {
   return content.flatMap((block): GooglePart[] => {
-    if (block.type === 'text') return [{ text: block.text }]
-    if (block.type === 'reference') return [{ text: block.reference }]
+    if (block.type === 'text')
+      return [{ text: block.text }]
+    if (block.type === 'reference')
+      return [{ text: block.reference }]
     // Documents ride inline too (the API reads PDFs and text natively) rather
     // than collapsing to a "[document:…]" placeholder.
-    if (block.type === 'document') return [inlinePart(block.source.mediaType, block.source.data)]
+    if (block.type === 'document')
+      return [inlinePart(
+        block.source.mediaType,
+        block.source.data
+      )]
     // Video and images share one shape. Video is first-class here — the model
     // reads the frames AND the audio track — so nothing has to be degraded the
     // way an adapter without a video part must.
-    if (block.source.type === 'url') return [{ fileData: { fileUri: block.source.url } }]
+    if (block.source.type === 'url')
+      return [{
+        fileData: { fileUri: block.source.url }
+      }]
     return [inlinePart(block.source.mediaType, block.source.data)]
   })
 }
 
 function inlinePart(mimeType: string, data: Uint8Array): GooglePart {
-  return { inlineData: { mimeType, data: Buffer.from(data).toString('base64') } }
+  return {
+    inlineData: { mimeType, data: Buffer.from(data).toString('base64') }
+  }
 }
 
 /**
@@ -357,16 +481,29 @@ function inlinePart(mimeType: string, data: Uint8Array): GooglePart {
  * same user content — which is how the model ends up actually seeing what a
  * command printed.
  */
-function toolResultToGoogle(toolUseId: string, toolName: string, output: ToolResultContentBlock[]): GooglePart[] {
+function toolResultToGoogle(
+  toolUseId: string,
+  toolName: string,
+  output: ToolResultContentBlock[]
+): GooglePart[] {
   const text = output
-    .filter((block): block is Extract<ToolResultContentBlock, { type: 'text' }> => block.type === 'text')
+    .filter((block): block is Extract<ToolResultContentBlock, { type: 'text' }> => block.type
+      === 'text')
     .map((block) => block.text)
     .join('\n')
   const media = output
     .filter((block) => block.type !== 'text')
-    .map((block): GooglePart => ({ inlineData: { mimeType: block.source.mediaType, data: block.source.data } }))
+    .map((block): GooglePart => ({
+      inlineData: { mimeType: block.source.mediaType, data: block.source.data }
+    }))
   return [
-    { functionResponse: { name: toolName, id: toolUseId, response: { output: text } } },
+    {
+      functionResponse: {
+        name: toolName,
+        id: toolUseId,
+        response: { output: text }
+      }
+    },
     ...media,
   ]
 }
@@ -410,12 +547,19 @@ const GOOGLE_SCHEMA_KEYS = new Set([
  * callers over a constraint the transport merely cannot express.
  */
 function toGoogleSchema(schema: unknown): Record<string, unknown> {
-  if (!isRecord(schema)) return {}
+  if (!isRecord(schema))
+    return {}
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(schema)) {
-    if (!GOOGLE_SCHEMA_KEYS.has(key)) continue
+    if (!GOOGLE_SCHEMA_KEYS.has(key))
+      continue
     if (key === 'properties' && isRecord(value)) {
-      out.properties = Object.fromEntries(Object.entries(value).map(([name, child]) => [name, toGoogleSchema(child)]))
+      out.properties = Object.fromEntries(Object.entries(value).map((
+        [name, child]
+      ) => [
+        name,
+        toGoogleSchema(child)
+      ]))
     } else if (key === 'items') {
       out.items = toGoogleSchema(value)
     } else if (key === 'anyOf' && Array.isArray(value)) {
@@ -427,9 +571,13 @@ function toGoogleSchema(schema: unknown): Record<string, unknown> {
   return out
 }
 
-/** Unwraps a signature this provider issued; anything else is not ours to replay. */
+/**
+ * Unwraps a signature this provider issued; anything else is not ours to
+ * replay.
+ */
 function ownSignature(signature: string | null): string | null {
-  if (!signature || !signature.startsWith(SIGNATURE_TAG)) return null
+  if (!signature || !signature.startsWith(SIGNATURE_TAG))
+    return null
   return signature.slice(SIGNATURE_TAG.length) || null
 }
 
@@ -442,10 +590,14 @@ function stringifyToolInput(input: unknown): string {
 }
 
 function toolResultText(output: ToolResultContentBlock[]): string {
-  return output.map((block) => (block.type === 'text' ? block.text : `[${block.source.mediaType}]`)).join('\n')
+  return output.map((block) => (block.type === 'text'
+    ? block.text
+    : `[${block.source.mediaType}]`)).join('\n')
 }
 
-function toolToGoogleFunctionDeclaration(tool: ToolDefinition): GoogleFunctionDeclaration {
+function toolToGoogleFunctionDeclaration(
+  tool: ToolDefinition
+): GoogleFunctionDeclaration {
   return {
     name: tool.name,
     description: tool.description,
@@ -469,25 +621,38 @@ export async function* mapGoogleContentStream(
     }
     for (const data of event.data) {
       const value = parseJsonObject(data)
-      if (!value) continue
+      if (!value)
+        continue
 
       if (isRecord(value.error)) {
-        const message = stringOrNull(value.error.message) ?? 'Google API stream error'
-        yield { type: 'error', message, code: normalizeErrorCode(stringOrNull(value.error.status), message) }
+        const message = stringOrNull(value.error.message)
+          ?? 'Google API stream error'
+        yield {
+          type: 'error',
+          message,
+          code: normalizeErrorCode(stringOrNull(value.error.status), message)
+        }
         return
       }
 
-      if (isRecord(value.usageMetadata)) usage = googleUsage(value.usageMetadata)
+      if (isRecord(value.usageMetadata))
+        usage = googleUsage(value.usageMetadata)
 
       const candidates = Array.isArray(value.candidates) ? value.candidates : []
       for (const candidate of candidates) {
-        if (!isRecord(candidate)) continue
+        if (!isRecord(candidate))
+          continue
         const content = isRecord(candidate.content) ? candidate.content : null
-        const parts = content && Array.isArray(content.parts) ? content.parts : []
+        const parts = content && Array.isArray(content.parts)
+          ? content.parts
+          : []
         for (const part of parts) {
-          if (!isRecord(part)) continue
+          if (!isRecord(part))
+            continue
 
-          const functionCall = isRecord(part.functionCall) ? part.functionCall : null
+          const functionCall = isRecord(part.functionCall)
+            ? part.functionCall
+            : null
           if (functionCall) {
             const signature = stringOrNull(part.thoughtSignature)
             if (signature) {
@@ -498,13 +663,18 @@ export async function* mapGoogleContentStream(
               // started on another provider carries signatures in that
               // provider's own format, and replaying one of those verbatim
               // fails the request outright.
-              if (!thinkingOpen) yield { type: 'thinking_start' }
+              if (!thinkingOpen)
+                yield { type: 'thinking_start' }
               thinkingOpen = true
-              yield { type: 'thinking_signature', signature: `${SIGNATURE_TAG}${signature}` }
+              yield {
+                type: 'thinking_signature',
+                signature: `${SIGNATURE_TAG}${signature}`
+              }
             }
             yield {
               type: 'tool_call_requested',
-              toolUseId: stringOrNull(functionCall.id) ?? `${stringOrNull(functionCall.name) ?? 'tool'}_${nextFallbackToolId()}`,
+              toolUseId: stringOrNull(functionCall.id)
+                ?? `${stringOrNull(functionCall.name) ?? 'tool'}_${nextFallbackToolId()}`,
               toolName: stringOrNull(functionCall.name) ?? '',
               input: functionCall.args ?? {},
             }
@@ -518,12 +688,17 @@ export async function* mapGoogleContentStream(
               yield { type: 'thinking_start' }
               thinkingOpen = true
             }
-            if (text) yield { type: 'thinking_delta', text }
+            if (text)
+              yield { type: 'thinking_delta', text }
             continue
           }
 
           const signature = stringOrNull(part.thoughtSignature)
-          if (signature && thinkingOpen) yield { type: 'thinking_signature', signature: `${SIGNATURE_TAG}${signature}` }
+          if (signature && thinkingOpen)
+            yield {
+              type: 'thinking_signature',
+              signature: `${SIGNATURE_TAG}${signature}`
+            }
           if (text) {
             thinkingOpen = false
             yield { type: 'text_delta', text }
@@ -537,7 +712,10 @@ export async function* mapGoogleContentStream(
 }
 
 let sequence = 0
-/** Fallback tool-call id when the API omits one; only needs to be unique per process. */
+/**
+ * Fallback tool-call id when the API omits one; only needs to be unique per
+ * process.
+ */
 function nextFallbackToolId(): string {
   sequence += 1
   return String(sequence)
@@ -568,7 +746,8 @@ export async function* readServerSentEvents(
   body: ReadableStream<Uint8Array> | null,
   signal?: AbortSignal,
 ): AsyncIterable<ServerSentEvent> {
-  if (!body) return
+  if (!body)
+    return
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -576,7 +755,8 @@ export async function* readServerSentEvents(
   let data: string[] = []
 
   const flush = function* (): Iterable<ServerSentEvent> {
-    if (data.length === 0) return
+    if (data.length === 0)
+      return
     yield { event: eventName, data }
     eventName = null
     data = []
@@ -584,9 +764,11 @@ export async function* readServerSentEvents(
 
   try {
     while (true) {
-      if (signal?.aborted) return
+      if (signal?.aborted)
+        return
       const { value, done } = await reader.read()
-      if (done) break
+      if (done)
+        break
       buffer += decoder.decode(value, { stream: true })
       let newline = buffer.indexOf('\n')
       while (newline !== -1) {
@@ -606,8 +788,10 @@ export async function* readServerSentEvents(
     buffer += decoder.decode()
     if (buffer) {
       const line = buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer
-      if (line.startsWith('data:')) data.push(line.slice('data:'.length).trimStart())
-      else if (line.startsWith('event:')) eventName = line.slice('event:'.length).trim()
+      if (line.startsWith('data:')) data.push(line.slice('data:'.length)
+        .trimStart())
+      else if (line.startsWith('event:'))
+        eventName = line.slice('event:'.length).trim()
     }
     yield* flush()
   } finally {

@@ -28,27 +28,51 @@ export interface AttachmentRefDeps {
   userId: string
 }
 
-export async function resolveAttachmentRefs(deps: AttachmentRefDeps, content: unknown[]): Promise<unknown[]> {
+export async function resolveAttachmentRefs(
+  deps: AttachmentRefDeps,
+  content: unknown[]
+): Promise<unknown[]> {
   return Promise.all(content.map((block) => resolveBlock(deps, block)))
 }
 
-async function resolveBlock(deps: AttachmentRefDeps, block: unknown): Promise<unknown> {
-  if (typeof block !== 'object' || block === null) return block
-  const candidate = block as { type?: unknown; source?: unknown }
-  if (candidate.type !== 'image' && candidate.type !== 'video' && candidate.type !== 'document') return block
+async function resolveBlock(
+  deps: AttachmentRefDeps,
+  block: unknown
+): Promise<unknown> {
+  if (typeof block !== 'object' || block === null)
+    return block
+  const candidate = block as {
+    type?: unknown;
+    source?: unknown
+  }
+  if (candidate.type !== 'image' &&
+    candidate.type !== 'video' &&
+    candidate.type !== 'document')
+    return block
   const parsed = refSourceSchema.safeParse(candidate.source)
-  if (!parsed.success) return block
+  if (!parsed.success)
+    return block
 
   const attachment = await deps.control.getAttachment(parsed.data.ref)
-  if (!attachment || attachment.userId !== deps.userId) return missing(parsed.data.ref)
+  if (!attachment || attachment.userId !== deps.userId)
+    return missing(parsed.data.ref)
   const data = await deps.blobs.get(attachment.sha256)
-  if (!data) return missing(parsed.data.ref)
+  if (!data)
+    return missing(parsed.data.ref)
 
   if (candidate.type === 'document') {
-    const source = { data, mediaType: attachment.mediaType, fileName: parsed.data.fileName ?? parsed.data.ref }
+    const source = {
+      data,
+      mediaType: attachment.mediaType,
+      fileName: parsed.data.fileName ?? parsed.data.ref
+    }
     return { type: 'document', source } satisfies UserContentBlock
   }
-  const source = { type: 'binary', data, mediaType: attachment.mediaType } as const
+  const source = {
+    type: 'binary',
+    data,
+    mediaType: attachment.mediaType
+  } as const
   return { type: candidate.type, source } as UserContentBlock
 }
 

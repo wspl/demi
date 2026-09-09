@@ -1,6 +1,11 @@
 import { expect } from 'bun:test'
 import type { Block, ModelSelection, UserContentBlock } from '@demicodes/core'
-import type { AgentProvider, InferenceItem, InferenceRequest, ProviderEvent } from '@demicodes/provider'
+import type {
+  AgentProvider,
+  InferenceItem,
+  InferenceRequest,
+  ProviderEvent
+} from '@demicodes/provider'
 import {
   AgentSession,
   TranscriptLog,
@@ -94,14 +99,19 @@ export class MemorySessionStore<State> implements AgentSessionStore<State> {
 
   save(update: AgentSessionPersistUpdate<State>): void {
     this.saves.push(structuredClone(update))
-    for (const { index, block } of update.changedBlocks) this.rows.set(index, structuredClone(block))
+    for (const { index, block } of update.changedBlocks) this.rows.set(
+      index,
+      structuredClone(block)
+    )
     for (const index of [...this.rows.keys()]) {
-      if (index >= update.blockCount) this.rows.delete(index)
+      if (index >= update.blockCount)
+        this.rows.delete(index)
     }
     const blocks: Block[] = []
     for (let index = 0; index < update.blockCount; index += 1) {
       const block = this.rows.get(index)
-      if (!block) throw new Error(`MemorySessionStore: missing block row ${index}`)
+      if (!block)
+        throw new Error(`MemorySessionStore: missing block row ${index}`)
       blocks.push(structuredClone(block))
     }
     this.snapshots.push({
@@ -116,17 +126,29 @@ export class MemorySessionStore<State> implements AgentSessionStore<State> {
   }
 
   load(): Promise<AgentSessionCheckpoint<State> | null> {
-    return Promise.resolve(structuredClone(this.snapshots[this.snapshots.length - 1] ?? null))
+    return Promise.resolve(
+      structuredClone(this.snapshots[this.snapshots.length - 1]
+        ?? null)
+    )
   }
 }
 
 export class RecordingProvider implements AgentProvider {
   readonly requests: InferenceRequest[]
-  private readonly scenario: { cursor: number; requests: InferenceRequest[] }
+  private readonly scenario: {
+    cursor: number;
+    requests: InferenceRequest[]
+  }
 
   constructor(
     private readonly turns: TurnScript[],
-    scenario: { cursor: number; requests: InferenceRequest[] } = { cursor: 0, requests: [] },
+    scenario: {
+      cursor: number;
+      requests: InferenceRequest[]
+    } = {
+      cursor: 0,
+      requests: []
+    },
   ) {
     this.scenario = scenario
     this.requests = scenario.requests
@@ -143,7 +165,9 @@ export class RecordingProvider implements AgentProvider {
     this.scenario.cursor += 1
     this.requests.push(request)
     if (turn === undefined) {
-      throw new Error(`RecordingProvider: no turn scripted for call #${this.scenario.cursor}`)
+      throw new Error(
+        `RecordingProvider: no turn scripted for call #${this.scenario.cursor}`
+      )
     }
     const output = await (typeof turn === 'function' ? turn(request) : turn)
     if (isAsyncIterable(output)) {
@@ -198,9 +222,12 @@ export function assertTranscriptInvariants(blocks: Block[]): void {
   }
 }
 
-type TurnOutput = ProviderEvent[] | AsyncIterable<ProviderEvent> | Promise<ProviderEvent[] | AsyncIterable<ProviderEvent>>
+type TurnOutput = ProviderEvent[]
+  | AsyncIterable<ProviderEvent>
+  | Promise<ProviderEvent[] | AsyncIterable<ProviderEvent>>
 type TurnScript = TurnOutput | ((request: InferenceRequest) => TurnOutput)
 
 function isAsyncIterable(value: unknown): value is AsyncIterable<ProviderEvent> {
-  return value !== null && typeof value === 'object' && Symbol.asyncIterator in value
+  return value !== null && typeof value === 'object'
+    && Symbol.asyncIterator in value
 }

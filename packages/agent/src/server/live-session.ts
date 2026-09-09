@@ -5,7 +5,11 @@ import type { AgentSession } from '../session/session'
 import type { ChildSupervisor } from '../subagent/supervisor'
 import type { ServerFrame } from '../protocol/frames'
 import type { AgentToolInvokeContext, SessionEvent } from '../types'
-import { errorDiagnostics, progressToOutput, progressToShellOutput } from './summaries'
+import {
+  errorDiagnostics,
+  progressToOutput,
+  progressToShellOutput
+} from './summaries'
 
 /**
  * The root node as a transport sees it, owned by the server (via the
@@ -73,7 +77,10 @@ export class LiveSession {
 
   resolveEnvironment(
     ctx: Pick<AgentToolInvokeContext<unknown>, 'state' | 'metadata'>,
-    handle: { shellId?: string; commandId?: string },
+    handle: {
+      shellId?: string;
+      commandId?: string
+    },
   ): Promise<ShellEnvironment> {
     return this.node.resolveEnvironment(ctx, handle)
   }
@@ -81,7 +88,11 @@ export class LiveSession {
   private handleSessionEvent(event: SessionEvent): void {
     switch (event.type) {
       case 'transcript_changed':
-        this.sink({ type: 'transcript_patch', patches: event.patches, revision: event.revision })
+        this.sink({
+          type: 'transcript_patch',
+          patches: event.patches,
+          revision: event.revision
+        })
         return
       case 'phase_changed':
         this.sink({ type: 'phase', phase: event.phase })
@@ -90,7 +101,9 @@ export class LiveSession {
         this.sink({ type: 'queue', queue: event.queue })
         return
       case 'pending_steers_changed':
-        this.sink({ type: 'pending_steers', pendingSteers: event.pendingSteers })
+        this.sink(
+          { type: 'pending_steers', pendingSteers: event.pendingSteers }
+        )
         return
       case 'tool_progress': {
         this.emitToolProgress(event.toolCallId, event.toolName, event.progress)
@@ -106,7 +119,9 @@ export class LiveSession {
         })
         return
       case 'error': {
-        const normalized = event.error instanceof Error ? event.error : new Error(String(event.error))
+        const normalized = event.error instanceof Error
+          ? event.error
+          : new Error(String(event.error))
         const code = errorCode(event.error)
         const diagnostics = errorDiagnostics(event.error)
         this.sink({
@@ -120,10 +135,16 @@ export class LiveSession {
     }
   }
 
-  private emitToolProgress(toolCallId: string, toolName: string, progress: unknown): void {
+  private emitToolProgress(
+    toolCallId: string,
+    toolName: string,
+    progress: unknown
+  ): void {
     const output = progressToOutput(progress)
     this.sink({ type: 'tool_progress', toolUseId: toolCallId, output })
-    const shell = toolName === 'shell_status' ? null : progressToShellOutput(progress)
+    const shell = toolName === 'shell_status'
+      ? null
+      : progressToShellOutput(progress)
     if (shell) {
       this.sink({
         type: 'shell_output',

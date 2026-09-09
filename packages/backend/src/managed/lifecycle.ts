@@ -1,14 +1,21 @@
 import { ActivityGate, errorMessage, noop, withTimeout } from '@demicodes/utils'
 import { generateDeviceToken, hashDeviceToken } from '../runner/claim-codes'
 import type { RunnerRegistry } from '../runner/registry'
-import type { ControlService, DeviceRecord, ManagedOperation } from '../storage/control'
+import type {
+  ControlService,
+  DeviceRecord,
+  ManagedOperation
+} from '../storage/control'
 import type { ManagedHostProvisioner, ManagedVolume } from './provisioner'
 
 export interface ManagedHostsConfig {
   idleMs: number
   hardCapMs: number
   checkpointIntervalMs: number
-  crashLoop: { deaths: number; windowMs: number }
+  crashLoop: {
+    deaths: number;
+    windowMs: number
+  }
   bootTimeoutMs: number
   sweepMs: number
   syncTimeoutMs: number
@@ -66,7 +73,10 @@ interface Machine {
   error: string | null
 }
 
-/** User-owned machines. Admission and every VM transition share one device identity. */
+/**
+ * User-owned machines. Admission and every VM transition share one device
+ * identity.
+ */
 export class ManagedHosts {
   private readonly config: ManagedHostsConfig
   private readonly machines = new Map<string, Machine>()
@@ -85,7 +95,9 @@ export class ManagedHosts {
     }, this.config.sweepMs)
     options.provisioner.onDeath(id => {
       const machine = this.machines.get(id)
-      if (!machine || machine.state === 'saving' || machine.state === 'resetting') {
+      if (!machine ||
+        machine.state === 'saving' ||
+        machine.state === 'resetting') {
         return
       }
       machine.deaths.push(this.now())
@@ -135,9 +147,14 @@ export class ManagedHosts {
     if (machine.state === 'running') {
       return
     }
-    const recentDeaths = machine.deaths.filter(at => this.now() - at < this.config.crashLoop.windowMs)
+    const recentDeaths = machine.deaths.filter(
+      at => this.now() - at < this.config.crashLoop.windowMs
+    )
     if (recentDeaths.length >= this.config.crashLoop.deaths) {
-      throw new ManagedHostError('crash_loop', 'Cloud repeatedly failed; reset the environment to recover')
+      throw new ManagedHostError(
+        'crash_loop',
+        'Cloud repeatedly failed; reset the environment to recover'
+      )
     }
 
     // Mark booting synchronously before any await: reservations include boots in flight.
@@ -159,7 +176,10 @@ export class ManagedHosts {
       other => other !== machine && other.state !== 'off',
     ).length
     if (reserved >= this.config.maxRunning) {
-      throw new ManagedHostError('capacity', 'Cloud capacity is currently full; retry later')
+      throw new ManagedHostError(
+        'capacity',
+        'Cloud capacity is currently full; retry later'
+      )
     }
   }
 
@@ -176,7 +196,10 @@ export class ManagedHosts {
   private async bootRunner(machine: Machine): Promise<void> {
     try {
       const token = generateDeviceToken()
-      await this.options.control.rotateDeviceToken(machine.device.id, hashDeviceToken(token))
+      await this.options.control.rotateDeviceToken(
+        machine.device.id,
+        hashDeviceToken(token)
+      )
       await this.options.provisioner.wake(machine.device.id, {
         backendUrl: this.options.backendUrl(),
         deviceToken: token,
@@ -217,14 +240,20 @@ export class ManagedHosts {
     }
   }
 
-  /** Synchronous admission for every RPC, including calls through an already cached Host. */
+  /**
+   * Synchronous admission for every RPC, including calls through an already
+   * cached Host.
+   */
   admit(deviceId: string): () => void {
     const machine = this.machines.get(deviceId)
     if (!machine) {
       return noop
     }
     if (this.closed || machine.state !== 'running' || machine.resetTask) {
-      throw new ManagedHostError('unavailable', 'Cloud is not accepting operations')
+      throw new ManagedHostError(
+        'unavailable',
+        'Cloud is not accepting operations'
+      )
     }
     const release = machine.activity.tryEnter()
     if (!release) {
@@ -271,8 +300,14 @@ export class ManagedHosts {
     }
   }
 
-  async growVolume(deviceId: string, volume: ManagedVolume, bytes: number): Promise<void> {
-    const quota = volume === 'system' ? this.config.systemQuotaBytes : this.config.homeQuotaBytes
+  async growVolume(
+    deviceId: string,
+    volume: ManagedVolume,
+    bytes: number
+  ): Promise<void> {
+    const quota = volume === 'system'
+      ? this.config.systemQuotaBytes
+      : this.config.homeQuotaBytes
     if (!Number.isSafeInteger(bytes) || bytes <= 0 || bytes > quota) {
       throw new ManagedHostError('quota', `${volume} volume quota exceeded`)
     }
@@ -316,7 +351,10 @@ export class ManagedHosts {
     }
     const device = await this.options.control.getOrCreateCloudDevice(userId)
     const machine = this.machine(device)
-    const existing = await this.options.control.getManagedOperation(device.id, operationId)
+    const existing = await this.options.control.getManagedOperation(
+      device.id,
+      operationId
+    )
     if (machine.state === 'resetting') {
       if (machine.resetOperation?.id === operationId) {
         return machine.resetOperation
@@ -328,7 +366,8 @@ export class ManagedHosts {
     }
     const operation: ManagedOperation = {
       id: operationId,
-      baseVersion: existing?.baseVersion ?? (await this.options.provisioner.currentBaseVersion()),
+      baseVersion: existing?.baseVersion ??
+        (await this.options.provisioner.currentBaseVersion()),
       phase: 'stopping',
       error: null,
     }
@@ -355,25 +394,44 @@ export class ManagedHosts {
     return operation
   }
 
-  private async persistAndRunReset(machine: Machine, operation: ManagedOperation): Promise<void> {
+  private async persistAndRunReset(
+    machine: Machine,
+    operation: ManagedOperation
+  ): Promise<void> {
     try {
-      await this.options.control.putManagedOperation(machine.device.id, operation)
+      await this.options.control.putManagedOperation(
+        machine.device.id,
+        operation
+      )
       await this.runReset(machine, operation)
     } catch (error) {
       machine.state = 'off'
       machine.error = errorMessage(error)
-      machine.resetOperation = { ...operation, phase: 'failed', error: machine.error }
+      machine.resetOperation = {
+        ...operation,
+        phase: 'failed',
+        error: machine.error
+      }
       throw error
     }
   }
 
-  private async runReset(machine: Machine, operation: ManagedOperation): Promise<void> {
+  private async runReset(
+    machine: Machine,
+    operation: ManagedOperation
+  ): Promise<void> {
     let releaseMachine: (() => void) | undefined
     let releaseTrees: (() => void) | undefined
-    const recordPhase = async (phase: ManagedOperation['phase'], error: string | null = null) => {
+    const recordPhase = async (
+      phase: ManagedOperation['phase'],
+      error: string | null = null
+    ) => {
       operation = { ...operation, phase, error }
       machine.resetOperation = operation
-      await this.options.control.putManagedOperation(machine.device.id, operation)
+      await this.options.control.putManagedOperation(
+        machine.device.id,
+        operation
+      )
     }
     try {
       // A failed boot/save still needs to finish before reset takes over the disks.
@@ -386,14 +444,23 @@ export class ManagedHosts {
         .sync(machine.device.id, this.config.syncTimeoutMs)
         .catch(error => this.log(errorMessage(error)))
       this.options.registry.disconnect(machine.device.id)
-      releaseMachine = await machine.activity.reserve(AbortSignal.timeout(30_000))
+      releaseMachine = await machine.activity.reserve(
+        AbortSignal.timeout(30_000)
+      )
 
       await recordPhase('saving')
       await this.options.provisioner.hibernate(machine.device.id)
 
       await recordPhase('rebuilding')
-      await this.options.provisioner.reset(machine.device.id, operation.id, operation.baseVersion)
-      await this.options.control.announceCloudReset(machine.device.userId, operation.id)
+      await this.options.provisioner.reset(
+        machine.device.id,
+        operation.id,
+        operation.baseVersion
+      )
+      await this.options.control.announceCloudReset(
+        machine.device.userId,
+        operation.id
+      )
       machine.deaths = []
 
       await recordPhase('booting')
@@ -426,14 +493,24 @@ export class ManagedHosts {
       machine.resetOperation = operation
       // Recovery makes the disk commit determinate before accepting traffic; boot remains lazy.
       if (operation.phase !== 'ready' && operation.phase !== 'failed') {
-        await this.options.provisioner.reset(deviceId, operation.id, operation.baseVersion)
-        await this.options.control.announceCloudReset(device.userId, operation.id)
+        await this.options.provisioner.reset(
+          deviceId,
+          operation.id,
+          operation.baseVersion
+        )
+        await this.options.control.announceCloudReset(
+          device.userId,
+          operation.id
+        )
         machine.resetOperation = {
           ...operation,
           phase: 'failed',
           error: 'Reset disks recovered; retry to start Cloud',
         }
-        await this.options.control.putManagedOperation(deviceId, machine.resetOperation)
+        await this.options.control.putManagedOperation(
+          deviceId,
+          machine.resetOperation
+        )
       }
     }
   }
@@ -449,15 +526,19 @@ export class ManagedHosts {
           continue
         }
         const now = this.now()
-        const turnInFlight = await this.options.turnInFlight(machine.device.userId)
+        const turnInFlight = await this.options.turnInFlight(
+          machine.device.userId
+        )
         const runningJobs = this.options.registry.runningJobs(machine.device.id)
         if (turnInFlight || runningJobs || machine.activity.active) {
           machine.idleSince = null
         } else {
           machine.idleSince ??= now
         }
-        const idleTimeoutReached = machine.idleSince !== null && now - machine.idleSince >= this.config.idleMs
-        const hardCapReached = !turnInFlight && now - machine.startedAt >= this.config.hardCapMs
+        const idleTimeoutReached = machine.idleSince !== null &&
+          now - machine.idleSince >= this.config.idleMs
+        const hardCapReached = !turnInFlight &&
+          now - machine.startedAt >= this.config.hardCapMs
         if (idleTimeoutReached || hardCapReached) {
           await this.hibernateIdleMachine(machine)
         } else if (now - machine.checkpointAt >= this.config.checkpointIntervalMs) {
@@ -491,7 +572,10 @@ export class ManagedHosts {
     }
   }
 
-  private async checkpointMachine(machine: Machine, checkpointAt: number): Promise<void> {
+  private async checkpointMachine(
+    machine: Machine,
+    checkpointAt: number
+  ): Promise<void> {
     const deviceId = machine.device.id
     this.options.registry.pauseLiveness(deviceId)
     try {
@@ -510,7 +594,8 @@ export class ManagedHosts {
       await machine.resetTask?.catch(noop)
     }
     for (const machine of this.machines.values()) {
-      await this.hibernate(machine.device.id).catch(error => this.log(errorMessage(error)))
+      await this.hibernate(machine.device.id)
+        .catch(error => this.log(errorMessage(error)))
     }
     await this.options.provisioner.close()
   }

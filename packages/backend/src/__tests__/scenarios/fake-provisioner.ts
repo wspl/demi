@@ -2,14 +2,20 @@ import { mkdtemp, rm, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startTxikiRunner, type TxikiRunner } from '@demicodes/runner/testing'
-import type { BootArgs, ManagedHostProvisioner } from '../../managed/provisioner'
+import type {
+  BootArgs,
+  ManagedHostProvisioner
+} from '../../managed/provisioner'
 
 interface Guest {
   owner: string
   homeDir: string
   stateDir: string
   runner: TxikiRunner | null
-  /** Set around a stop the provisioner itself performs, so the exit is not reported as a death. */
+  /**
+   * Set around a stop the provisioner itself performs, so the exit is not
+   * reported as a death.
+   */
   stopping: boolean
 }
 
@@ -30,28 +36,51 @@ export class FakeProvisioner implements ManagedHostProvisioner {
   /** Nothing to settle: the fake's guests never outlive the test process. */
   async reconcile(): Promise<void> {}
 
-  async currentBaseVersion(): Promise<string> { return 'test-base' }
+  async currentBaseVersion(): Promise<string> {
+    return 'test-base'
+  }
   async imageState(id: string) {
-    return this.guests.has(id) ? { generation: 'test', baseVersion: 'test-base', resetId: null, systemBytes: 1024 ** 3, homeBytes: 1024 ** 3 } : null
+    return this.guests.has(id) ? {
+      generation: 'test',
+      baseVersion: 'test-base',
+      resetId: null,
+      systemBytes: 1024 ** 3,
+      homeBytes: 1024 ** 3
+    } : null
   }
   async wake(owner: string, boot: BootArgs): Promise<void> {
     this.calls.push(`wake:${owner}`)
     if (!this.guests.has(owner)) {
       const homeDir = await mkdtemp(join(tmpdir(), 'demi-fake-home-'))
       const stateDir = await mkdtemp(join(tmpdir(), 'demi-fake-state-'))
-      this.guests.set(owner, { owner, homeDir, stateDir, runner: null, stopping: false })
+      this.guests.set(owner, {
+        owner,
+        homeDir,
+        stateDir,
+        runner: null,
+        stopping: false
+      })
     }
     await this.start(this.guest(owner), boot)
   }
   async hibernate(owner: string): Promise<void> {
     this.calls.push(`hibernate:${owner}`)
     const guest = this.guests.get(owner)
-    if (guest) await this.stop(guest)
+    if (guest)
+      await this.stop(guest)
   }
-  async growVolume(owner: string, volume: 'system' | 'home', bytes: number): Promise<void> {
+  async growVolume(
+    owner: string,
+    volume: 'system' | 'home',
+    bytes: number
+  ): Promise<void> {
     this.calls.push(`grow:${owner}:${volume}:${bytes}`)
   }
-  async reset(owner: string, operationId: string, baseVersion: string): Promise<void> {
+  async reset(
+    owner: string,
+    operationId: string,
+    baseVersion: string
+  ): Promise<void> {
     this.calls.push(`reset:${owner}:${operationId}:${baseVersion}`)
     const guest = this.guests.get(owner)
     if (guest) {
@@ -63,7 +92,8 @@ export class FakeProvisioner implements ManagedHostProvisioner {
 
   async checkpoint(owner: string): Promise<void> {
     this.calls.push(`checkpoint:${owner}`)
-    if (this.checkpointMs > 0) await new Promise((resolve) => setTimeout(resolve, this.checkpointMs))
+    if (this.checkpointMs > 0)
+      await new Promise((resolve) => setTimeout(resolve, this.checkpointMs))
   }
 
   onDeath(listener: (owner: string) => void): void {
@@ -74,7 +104,8 @@ export class FakeProvisioner implements ManagedHostProvisioner {
   async kill(owner: string): Promise<void> {
     const guest = this.guest(owner)
     const runner = guest.runner
-    if (!runner) return
+    if (!runner)
+      return
     await runner.stop()
   }
 
@@ -87,17 +118,20 @@ export class FakeProvisioner implements ManagedHostProvisioner {
   }
 
   async close(): Promise<void> {
-    for (const guest of this.guests.values()) await this.stop(guest)
+    for (const guest of this.guests.values())
+      await this.stop(guest)
   }
 
   private guest(owner: string): Guest {
     const guest = this.guests.get(owner)
-    if (!guest) throw new Error(`no guest for ${owner}`)
+    if (!guest)
+      throw new Error(`no guest for ${owner}`)
     return guest
   }
 
   private async start(guest: Guest, boot: BootArgs): Promise<void> {
-    if (guest.runner) throw new Error(`guest ${guest.owner} already runs`)
+    if (guest.runner)
+      throw new Error(`guest ${guest.owner} already runs`)
     const runner = await startTxikiRunner({
       backendUrl: boot.backendUrl,
       stateDir: guest.stateDir,
@@ -109,15 +143,19 @@ export class FakeProvisioner implements ManagedHostProvisioner {
     guest.runner = runner
     guest.stopping = false
     void runner.exited.then(() => {
-      if (guest.runner !== runner) return
+      if (guest.runner !== runner)
+        return
       guest.runner = null
-      if (!guest.stopping) for (const listener of this.deathListeners) listener(guest.owner)
+      if (!guest.stopping)
+        for (const listener of this.deathListeners)
+          listener(guest.owner)
     })
   }
 
   private async stop(guest: Guest): Promise<void> {
     const runner = guest.runner
-    if (!runner) return
+    if (!runner)
+      return
     guest.stopping = true
     await runner.stop()
     await runner.exited

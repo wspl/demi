@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, useAttrs, useSlots, watch } from 'vue'
-import { useFloating, offset as offsetMiddleware, flip, shift, limitShift, autoUpdate, getOverflowAncestors } from '@floating-ui/vue'
+import {
+  useFloating,
+  offset as offsetMiddleware,
+  flip,
+  shift,
+  limitShift,
+  autoUpdate,
+  getOverflowAncestors
+} from '@floating-ui/vue'
 import type { Placement } from '@floating-ui/vue'
 import { onClickOutside } from '@vueuse/core'
 import { appOverlayStore } from '../overlay/appOverlay'
@@ -80,7 +88,8 @@ function unbindDismiss() {
 function bindDismiss() {
   unbindDismiss()
   const el = triggerRef.value
-  if (!el) return
+  if (!el)
+    return
   scrollTargets = getOverflowAncestors(el)
   for (const target of scrollTargets) {
     target.addEventListener('scroll', onAnchorScroll, { passive: true })
@@ -92,13 +101,15 @@ function bindDismiss() {
 }
 
 function clearOpenTimer() {
-  if (!openTimer) return
+  if (!openTimer)
+    return
   clearTimeout(openTimer)
   openTimer = null
 }
 
 function clearCloseTimer() {
-  if (!closeTimer) return
+  if (!closeTimer)
+    return
   clearTimeout(closeTimer)
   closeTimer = null
 }
@@ -109,7 +120,8 @@ function clearTimers() {
 }
 
 function openNow() {
-  if (!canShow.value) return
+  if (!canShow.value)
+    return
   hiddenByScroll.value = false
   isOpen.value = true
 }
@@ -121,7 +133,8 @@ function closeNow() {
 function scheduleOpen() {
   clearCloseTimer()
   clearOpenTimer()
-  if (!canShow.value) return
+  if (!canShow.value)
+    return
   hiddenByScroll.value = false
   if (props.openDelayMs <= 0) {
     openNow()
@@ -147,12 +160,14 @@ function scheduleClose() {
 }
 
 watch(isOpen, (open) => {
-  if (open) bindDismiss()
+  if (open)
+    bindDismiss()
   else unbindDismiss()
 })
 
 watch(canShow, (nextCanShow) => {
-  if (nextCanShow) return
+  if (nextCanShow)
+    return
   clearTimers()
   closeNow()
 })

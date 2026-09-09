@@ -17,35 +17,50 @@ const props = defineProps<{
 }>()
 
 const faceKey = computed(() => props.incoming?.id ?? props.kind)
-const iconKey = computed(() => (props.incoming ? `block:${props.incoming.id}` : 'sweep'))
+const iconKey = computed(() => (props.incoming
+  ? `block:${props.incoming.id}`
+  : 'sweep'))
 
 const incomingIcon = computed(() => {
   const block = props.incoming
-  if (block?.type === 'thinking') return Brain
-  if (block?.type === 'tool_call') return toolRenderKind(block.toolName) === 'shell_exec' ? SquareTerminal : Zap
+  if (block?.type === 'thinking')
+    return Brain
+  if (block?.type === 'tool_call')
+    return toolRenderKind(block.toolName) === 'shell_exec'
+      ? SquareTerminal
+      : Zap
   return null
 })
 
 const incomingLabel = computed(() => {
   const block = props.incoming
-  if (block?.type === 'thinking') return thinkingFaceLabel(true, null)
+  if (block?.type === 'thinking')
+    return thinkingFaceLabel(true, null)
   if (block?.type === 'tool_call') {
     const kind = toolRenderKind(block.toolName)
-    return kind === 'generic' ? block.toolName : standardToolTitle(kind, JSON.parse(block.input || '{}'))
+    return kind === 'generic'
+      ? block.toolName
+      : standardToolTitle(kind, JSON.parse(block.input || '{}'))
   }
   return ''
 })
 </script>
 
 <template>
-  <div class="flex h-7 items-center px-[var(--agent-pad-x,2rem)] text-chrome text-fg-muted">
+  <div
+    class="flex h-7 items-center px-[var(--agent-pad-x,2rem)] text-chrome text-fg-muted"
+  >
     <ChromeRoll :face-key="faceKey" :icon-key="iconKey">
       <template #icon>
         <span
           class="flex h-7 shrink-0 items-center justify-center"
           :style="{ width: `${ICON_PX.in28}px`, height: `${ICON_PX.in28}px` }"
         >
-          <component :is="incomingIcon" v-if="incomingIcon" :size="ICON_PX.in28" />
+          <component
+            :is="incomingIcon"
+            v-if="incomingIcon"
+            :size="ICON_PX.in28"
+          />
           <ActivityMark v-else />
         </span>
       </template>

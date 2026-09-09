@@ -62,5 +62,13 @@ export interface ControlRequest {
 }
 
 export type ControlResponse =
-  | { id: number; ok: true; result: unknown }
-  | { id: number; ok: false; error: string }
+  | {
+    id: number;
+    ok: true;
+    result: unknown
+  }
+  | {
+    id: number;
+    ok: false;
+    error: string
+  }

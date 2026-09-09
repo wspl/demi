@@ -15,18 +15,29 @@ export function errorSummary(code: string | null | undefined): string {
 }
 
 /** The short facts a support thread asks for first, in one line under the upstream message. */
-export function errorFacts(code: string | null | undefined, diagnostics: ProviderErrorDiagnostics | undefined): string[] {
+export function errorFacts(
+  code: string | null | undefined,
+  diagnostics: ProviderErrorDiagnostics | undefined
+): string[] {
   const facts: string[] = []
-  if (diagnostics?.httpStatus !== undefined) facts.push(`HTTP ${diagnostics.httpStatus}`)
-  if (code) facts.push(code)
-  if (diagnostics?.clientRequestId) facts.push(diagnostics.clientRequestId)
+  if (diagnostics?.httpStatus !== undefined)
+    facts.push(`HTTP ${diagnostics.httpStatus}`)
+  if (code)
+    facts.push(code)
+  if (diagnostics?.clientRequestId)
+    facts.push(diagnostics.clientRequestId)
   return facts
 }
 
 /** What the copy button puts on the clipboard: the upstream message and every diagnostic. */
-export function errorReportText(message: string, code: string | null | undefined, diagnostics: ProviderErrorDiagnostics | undefined): string {
+export function errorReportText(
+  message: string,
+  code: string | null | undefined,
+  diagnostics: ProviderErrorDiagnostics | undefined
+): string {
   const lines = [message]
-  if (code) lines.push(`code: ${code}`)
+  if (code)
+    lines.push(`code: ${code}`)
   if (diagnostics) {
     const fields: Array<[string, string | number | undefined]> = [
       ['source', diagnostics.source],
@@ -37,7 +48,8 @@ export function errorReportText(message: string, code: string | null | undefined
       ['response', diagnostics.providerResponseId],
     ]
     for (const [key, value] of fields) {
-      if (value !== undefined && value !== '') lines.push(`${key}: ${value}`)
+      if (value !== undefined && value !== '')
+        lines.push(`${key}: ${value}`)
     }
   }
   return lines.join('\n')

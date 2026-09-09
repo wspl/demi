@@ -4,10 +4,19 @@ import { useResources } from './resources'
 import { useConversations } from '../conversation/store'
 
 /** Prototype data source; the shared CloudSettings owns the confirmation flow. */
-export const cloud = reactive<CloudState>({ state: 'running', phase: null, error: null, systemBytes: 16 * 1024 ** 3, homeBytes: 32 * 1024 ** 3 })
+export const cloud = reactive<CloudState>(
+  {
+    state: 'running',
+    phase: null,
+    error: null,
+    systemBytes: 16 * 1024 ** 3,
+    homeBytes: 32 * 1024 ** 3
+  }
+)
 let operation: string | null = null
 export async function resetCloud(operationId: string) {
-  if (cloud.state === 'resetting' || operation === operationId) return
+  if (cloud.state === 'resetting' || operation === operationId)
+    return
   operation = operationId
   cloud.state = 'resetting'
   const conversations = useConversations()

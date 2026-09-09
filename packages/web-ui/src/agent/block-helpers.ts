@@ -11,22 +11,27 @@ export interface ShellTerminalOutputChunk {
 export function getLatestResponseUsage(blocks: readonly Block[]): TokenUsage | null {
   for (let i = blocks.length - 1; i >= 0; i--) {
     const block = blocks[i]!
-    if (block.type === 'response') return block.usage
+    if (block.type === 'response')
+      return block.usage
   }
   return null
 }
 
 export function getToolErrorText(block: ToolCallBlock): string | undefined {
-  if (block.status !== 'error') return undefined
+  if (block.status !== 'error')
+    return undefined
   const texts: string[] = []
   for (const part of block.output) {
-    if (part.type === 'text') texts.push(part.text)
+    if (part.type === 'text')
+      texts.push(part.text)
   }
   return texts.length > 0 ? texts.join('\n') : undefined
 }
 
 export function toolOutputText(block: ToolCallBlock): string {
-  const source = block.status === 'executing' ? block.streamingOutput : block.streamingOutput.length > 0 ? block.streamingOutput : block.output
+  const source = block.status === 'executing'
+    ? block.streamingOutput
+    : block.streamingOutput.length > 0 ? block.streamingOutput : block.output
   return source
     .filter((part): part is Extract<typeof part, { type: 'text' }> => part.type === 'text')
     .map((part) => part.text)
@@ -38,22 +43,30 @@ export function shellTerminalOutputChunks(block: ToolCallBlock): ShellTerminalOu
 }
 
 export function parseToolInput(raw: string): Record<string, unknown> {
-  if (!raw) return {}
+  if (!raw)
+    return {}
   try {
     const parsed = JSON.parse(raw)
-    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {}
+    return typeof parsed === 'object' && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : {}
   } catch {
     return {}
   }
 }
 
 function outputChunks(view: unknown): ShellTerminalOutputChunk[] {
-  if (!isRecord(view) || !Array.isArray(view['chunks'])) return []
+  if (!isRecord(view) || !Array.isArray(view['chunks']))
+    return []
   return view['chunks'].flatMap((chunk): ShellTerminalOutputChunk[] => {
-    if (!isRecord(chunk)) return []
+    if (!isRecord(chunk))
+      return []
     const stream = chunk['stream']
     const text = chunk['text']
-    if ((stream !== 'stdout' && stream !== 'stderr') || typeof text !== 'string' || text.length === 0) return []
+    if ((stream !== 'stdout' && stream !== 'stderr') ||
+      typeof text !== 'string' ||
+      text.length === 0)
+      return []
     return [{ stream, text }]
   })
 }

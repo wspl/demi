@@ -7,8 +7,13 @@ export interface SelectedModel {
 }
 
 /** Providers that are usable right now: available and with at least one catalog model. */
-export function availableProviders(providers: readonly ProviderInfo[], models: Record<string, ModelInfo[]>): ProviderInfo[] {
-  return providers.filter((provider) => provider.isAvailable && (models[provider.id]?.length ?? 0) > 0)
+export function availableProviders(
+  providers: readonly ProviderInfo[],
+  models: Record<string, ModelInfo[]>
+): ProviderInfo[] {
+  return providers.filter(
+    (provider) => provider.isAvailable && (models[provider.id]?.length ?? 0) > 0
+  )
 }
 
 /**
@@ -23,11 +28,13 @@ export function resolveSelectedModel(
 ): SelectedModel | null {
   if (providerId && modelId) {
     const model = (models[providerId] ?? []).find((candidate) => candidate.id === modelId)
-    if (model) return { providerId, modelId, model }
+    if (model)
+      return { providerId, modelId, model }
   }
   for (const provider of availableProviders(providers, models)) {
     const model = models[provider.id]?.[0]
-    if (model) return { providerId: provider.id, modelId: model.id, model }
+    if (model)
+      return { providerId: provider.id, modelId: model.id, model }
   }
   return null
 }

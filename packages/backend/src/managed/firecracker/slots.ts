@@ -7,7 +7,10 @@
 export interface Slot {
   index: number
   tap: string
-  /** The guest's address with the /30 prefix, as the kernel command line carries it. */
+  /**
+   * The guest's address with the /30 prefix, as the kernel command line carries
+   * it.
+   */
   guestAddress: string
   gateway: string
   mac: string
@@ -27,8 +30,10 @@ export function slotOf(options: SlotPoolOptions, index: number): Slot {
   const [network, prefix] = options.subnet.split('/')
   const bits = Number(prefix)
   const base = ipToNumber(network!)
-  if (!Number.isFinite(bits) || bits > 30) throw new Error(`managed subnet ${options.subnet} is not a network of /30s`)
-  if ((index + 1) * 4 > 2 ** (32 - bits)) throw new Error(`slot ${index} does not fit in ${options.subnet}`)
+  if (!Number.isFinite(bits) || bits > 30)
+    throw new Error(`managed subnet ${options.subnet} is not a network of /30s`)
+  if ((index + 1) * 4 > 2 ** (32 - bits))
+    throw new Error(`slot ${index} does not fit in ${options.subnet}`)
   const first = base + index * 4
   return {
     index,
@@ -47,7 +52,8 @@ export class SlotPool {
 
   take(): Slot {
     for (let index = 0; index < this.options.count; index += 1) {
-      if (this.taken.has(index)) continue
+      if (this.taken.has(index))
+        continue
       this.taken.add(index)
       return slotOf(this.options, index)
     }
@@ -65,12 +71,21 @@ export class SlotPool {
 
 function ipToNumber(ip: string): number {
   const parts = ip.split('.').map(Number)
-  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) throw new Error(`not an IPv4 address: ${ip}`)
+  if (parts.length !== 4 ||
+    parts.some((part) => !Number.isInteger(part) ||
+      part < 0 ||
+      part > 255))
+    throw new Error(`not an IPv4 address: ${ip}`)
   return ((parts[0]! << 24) >>> 0) + (parts[1]! << 16) + (parts[2]! << 8) + parts[3]!
 }
 
 function numberToIp(value: number): string {
-  return [value >>> 24, (value >>> 16) & 255, (value >>> 8) & 255, value & 255].join('.')
+  return [
+    value >>> 24,
+    (value >>> 16) & 255,
+    (value >>> 8) & 255,
+    value & 255
+  ].join('.')
 }
 
 function hex(byte: number): string {

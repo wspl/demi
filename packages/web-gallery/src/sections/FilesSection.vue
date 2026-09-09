@@ -16,16 +16,46 @@ import { createGalleryFileHosts, laptopTree } from '../fixtures/files'
 import { baseName } from '@demicodes/web-ui/files/paths'
 
 const anatomy: [string, string][] = [
-  ['Shape', 'The Windows open dialog: a plain title bar; Back, Forward and Up, the device, the path from its root, then New folder and hidden files as icons; places down the left; a detail list; a status row with the confirm button.'],
-  ['Device', 'Its own control before the path: a menu of the devices the caller offers with their online dot. Choosing one asks the caller for that device\'s source and the browser starts over at its home.'],
-  ['Address', 'Crumbs from the root, each a jump; deep paths fold their middle into an ellipsis. Clicking the free space turns the bar into a text field with the full path.'],
-  ['Icons', 'Every row, crumb, place and the status entry carry a Material Icon Theme glyph, chosen by name: src and .git as typed folders, package.json with the Node badge, App.vue with the Vue mark. Until the theme loads, and for a name it does not know, a plain outline.'],
-  ['List', 'Name, date and size, folders first, names in natural order; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'],
-  ['Keys', 'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history.'],
-  ['Status row', 'Says what is selected, as "Selected folder:" or "Selected file:" with the name, or what can be. Right: the confirm button and Cancel. A failure to create a folder reads here.'],
-  ['New project', 'The working-environment dialog: Device or Cloud as two cards, Device first; a device asks which one, with Add device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Switching between projects is the same dialog on its list.'],
-  ['New folder', 'A row at the top of the list with the name ready to type over; Enter creates it and selects it. Only a source that can create directories offers the icon.'],
-  ['States', 'A slow device shows a spinner, an empty folder says so, and a folder that cannot be read explains why: missing, locked, or the device offline.'],
+  [
+    'Shape',
+    'The Windows open dialog: a plain title bar; Back, Forward and Up, the device, the path from its root, then New folder and hidden files as icons; places down the left; a detail list; a status row with the confirm button.'
+  ],
+  [
+    'Device',
+    'Its own control before the path: a menu of the devices the caller offers with their online dot. Choosing one asks the caller for that device\'s source and the browser starts over at its home.'
+  ],
+  [
+    'Address',
+    'Crumbs from the root, each a jump; deep paths fold their middle into an ellipsis. Clicking the free space turns the bar into a text field with the full path.'
+  ],
+  [
+    'Icons',
+    'Every row, crumb, place and the status entry carry a Material Icon Theme glyph, chosen by name: src and .git as typed folders, package.json with the Node badge, App.vue with the Vue mark. Until the theme loads, and for a name it does not know, a plain outline.'
+  ],
+  [
+    'List',
+    'Name, date and size, folders first, names in natural order; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'
+  ],
+  [
+    'Keys',
+    'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history.'
+  ],
+  [
+    'Status row',
+    'Says what is selected, as "Selected folder:" or "Selected file:" with the name, or what can be. Right: the confirm button and Cancel. A failure to create a folder reads here.'
+  ],
+  [
+    'New project',
+    'The working-environment dialog: Device or Cloud as two cards, Device first; a device asks which one, with Add device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Switching between projects is the same dialog on its list.'
+  ],
+  [
+    'New folder',
+    'A row at the top of the list with the name ready to type over; Enter creates it and selects it. Only a source that can create directories offers the icon.'
+  ],
+  [
+    'States',
+    'A slow device shows a spinner, an empty folder says so, and a folder that cannot be read explains why: missing, locked, or the device offline.'
+  ],
 ]
 
 const iconSamples: [string, boolean][] = [
@@ -40,27 +70,73 @@ const hosts = createGalleryFileHosts()
 const workspaceDevices = ref(hosts.map(({ id, label, online }) => ({ id, name: label, online })))
 /** Add device stands in for the pairing flow: a new online device joins the list. */
 function connectWorkspaceDevice() {
-  workspaceDevices.value.push({ id: `device-${Date.now()}`, name: `host-${workspaceDevices.value.length + 1}`, online: true })
+  workspaceDevices.value.push(
+    {
+      id: `device-${Date.now()}`,
+      name: `host-${workspaceDevices.value.length + 1}`,
+      online: true
+    }
+  )
 }
 const workspaceProjects = ref<WorkspaceProject[]>([
-  { id: 'demi', name: 'demi', host: 'zan-mbp', path: '/Users/zan/Projects/demi' },
-  { id: 'assets', name: 'assetsfactory', host: 'build-01', path: '/srv/assetsfactory' },
+  {
+    id: 'demi',
+    name: 'demi',
+    host: 'zan-mbp',
+    path: '/Users/zan/Projects/demi'
+  },
+  {
+    id: 'assets',
+    name: 'assetsfactory',
+    host: 'build-01',
+    path: '/srv/assetsfactory'
+  },
 ])
 const workspaceCurrent = ref<string | null>('demi')
 const workspaceMessage = ref('')
 const workspaceKey = ref(0)
-const cloudSource = createMemoryFileSource({ platform: 'linux', home: '/home/demi', root: dir({ home: dir({ demi: dir({ workspace: dir({}), scratch: dir({}) }) }) }) })
-const sourceFor = (id: string) => (id === 'cloud' ? cloudSource : (hosts.find((host) => host.id === id) ?? hosts[0]!).source)
-const placesFor = (id: string) => (id === 'cloud' ? [{ label: 'Quick access', places: [{ path: '/home/demi', label: 'Home' }] }] : (hosts.find((host) => host.id === id) ?? hosts[0]!).places)
+const cloudSource = createMemoryFileSource(
+  {
+    platform: 'linux',
+    home: '/home/demi',
+    root: dir({
+      home: dir({
+        demi: dir({ workspace: dir({}), scratch: dir({}) })
+      })
+    })
+  }
+)
+const sourceFor = (id: string) =>
+  (id === 'cloud'
+  ? cloudSource
+  : (hosts.find((host) => host.id === id) ?? hosts[0]!).source)
+const placesFor = (id: string) => (id === 'cloud' ? [
+  {
+    label: 'Quick access',
+    places: [{ path: '/home/demi', label: 'Home' }]
+  }
+] : (hosts.find((host) => host.id === id) ?? hosts[0]!).places)
 function createWorkspace(draft: WorkspaceDraft) {
-  const name = draft.kind === 'cloud' ? draft.name : baseName(draft.path) || 'Workspace'
+  const name = draft.kind === 'cloud'
+    ? draft.name
+    : baseName(draft.path) || 'Workspace'
   if (workspaceProjects.value.some((project) => project.name === name)) {
     workspaceMessage.value = `A project called ${name} already exists.`
     return
   }
   workspaceMessage.value = ''
-  const host = draft.kind === 'cloud' ? 'Cloud' : workspaceDevices.value.find((device) => device.id === draft.deviceId)?.name ?? draft.deviceId
-  workspaceProjects.value.push({ id: `p-${Date.now()}`, name, host, path: draft.kind === 'cloud' ? `/home/demi/${name}` : draft.path })
+  const host = draft.kind === 'cloud'
+    ? 'Cloud'
+    : workspaceDevices.value.find((device) => device.id === draft.deviceId)?.name ??
+    draft.deviceId
+  workspaceProjects.value.push(
+    {
+      id: `p-${Date.now()}`,
+      name,
+      host,
+      path: draft.kind === 'cloud' ? `/home/demi/${name}` : draft.path
+    }
+  )
   workspaceCurrent.value = workspaceProjects.value.at(-1)!.id
   workspaceKey.value += 1
 }
@@ -90,15 +166,61 @@ const stateOptions = [
 type StateOption = (typeof stateOptions)[number]['value']
 const state = ref<StateOption>('empty')
 const laptop = laptopTree()
-const stateSources: Record<StateOption, { source: FileBrowserSource; path: string }> = {
-  slow: { source: createMemoryFileSource({ platform: 'linux', home: '/Users/zan', root: laptop, latencyMs: 60_000 }), path: '/Users/zan/Projects' },
-  empty: { source: createMemoryFileSource({ platform: 'linux', home: '/Users/zan', root: laptop }), path: '/Users/zan/Library/Preferences' },
-  locked: { source: createMemoryFileSource({ platform: 'linux', home: '/Users/zan', root: laptop }), path: '/Users/zan/.ssh' },
-  missing: { source: createMemoryFileSource({ platform: 'linux', home: '/Users/zan', root: laptop }), path: '/Users/zan/Projects/gone' },
+const stateSources: Record<StateOption, {
+  source: FileBrowserSource;
+  path: string
+}> = {
+  slow: {
+    source: createMemoryFileSource(
+      {
+        platform: 'linux',
+        home: '/Users/zan',
+        root: laptop,
+        latencyMs: 60_000
+      }
+    ),
+    path: '/Users/zan/Projects'
+  },
+  empty: {
+    source: createMemoryFileSource({
+      platform: 'linux',
+      home: '/Users/zan',
+      root: laptop
+    }),
+    path: '/Users/zan/Library/Preferences'
+  },
+  locked: {
+    source: createMemoryFileSource({
+      platform: 'linux',
+      home: '/Users/zan',
+      root: laptop
+    }),
+    path: '/Users/zan/.ssh'
+  },
+  missing: {
+    source: createMemoryFileSource({
+      platform: 'linux',
+      home: '/Users/zan',
+      root: laptop
+    }),
+    path: '/Users/zan/Projects/gone'
+  },
   offline: { source: hosts[2]!.source, path: '/home/zan' },
   readonly: {
     source: (() => {
-      const { createDirectory: _omit, ...rest } = createMemoryFileSource({ platform: 'linux', home: '/srv', root: dir({ srv: dir({ 'release.tar.gz': file(90_211_004, '2026-09-01T08:00:00Z') }) }) })
+      const { createDirectory: _omit, ...rest } = createMemoryFileSource(
+        {
+          platform: 'linux',
+          home: '/srv',
+          root: dir(
+            {
+              srv: dir({
+                'release.tar.gz': file(90_211_004, '2026-09-01T08:00:00Z')
+              })
+            }
+          )
+        }
+      )
       return rest
     })(),
     path: '/srv',
@@ -123,8 +245,13 @@ function selectHost(target: 'folder' | 'file', id: string) {
 
 <template>
   <div class="flex flex-col gap-10">
-    <GallerySection title="Files" note="One browser for choosing a folder on a device and for opening a file there. Fixture trees; nothing reads a disk.">
-      <dl class="grid max-w-3xl grid-cols-[7rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px] leading-5">
+    <GallerySection
+      title="Files"
+      note="One browser for choosing a folder on a device and for opening a file there. Fixture trees; nothing reads a disk."
+    >
+      <dl
+        class="grid max-w-3xl grid-cols-[7rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px] leading-5"
+      >
         <template v-for="[term, detail] in anatomy" :key="term">
           <dt class="select-none text-fg-subtle">{{ term }}</dt>
           <dd class="text-fg-muted">{{ detail }}</dd>
@@ -132,15 +259,25 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </dl>
     </GallerySection>
 
-    <GallerySection title="Icons" note="The Material Icon Theme, resolved by name; the manifest and each glyph load on first use.">
+    <GallerySection
+      title="Icons"
+      note="The Material Icon Theme, resolved by name; the manifest and each glyph load on first use."
+    >
       <div class="flex flex-wrap gap-x-6 gap-y-2">
-        <span v-for="[name, isDirectory] in iconSamples" :key="name" class="flex select-none items-center gap-2 text-chrome text-fg-body">
+        <span
+          v-for="[name, isDirectory] in iconSamples"
+          :key="name"
+          class="flex select-none items-center gap-2 text-chrome text-fg-body"
+        >
           <FileIcon :name="name" :is-directory="isDirectory" />{{ name }}
         </span>
       </div>
     </GallerySection>
 
-    <GallerySection title="Select folder" note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline one is listed but cannot be chosen.">
+    <GallerySection
+      title="Select folder"
+      note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline one is listed but cannot be chosen."
+    >
       <GalleryDialogFrame>
         <FileBrowserDialog
           :key="folderKey"
@@ -162,7 +299,10 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </p>
     </GallerySection>
 
-    <GallerySection title="Open file" note="The composer's remote attachment: opens inside the conversation's workspace. Folders are entered, a file is the answer.">
+    <GallerySection
+      title="Open file"
+      note="The composer's remote attachment: opens inside the conversation's workspace. Folders are entered, a file is the answer."
+    >
       <GalleryDialogFrame>
         <FileBrowserDialog
           :key="fileKey"
@@ -184,7 +324,10 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </p>
     </GallerySection>
 
-    <GallerySection title="New project" note="The working-environment dialog on its form: Device or Cloud. A device asks which one (Add device after the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form.">
+    <GallerySection
+      title="New project"
+      note="The working-environment dialog on its form: Device or Cloud. A device asks which one (Add device after the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form."
+    >
       <GalleryDialogFrame class="max-w-md">
         <WorkspaceDialog
           :key="workspaceKey"
@@ -207,13 +350,18 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </p>
     </GallerySection>
 
-    <GallerySection title="States" note="The browser alone, without the dialog and without a sidebar, in each state a folder can be in.">
+    <GallerySection
+      title="States"
+      note="The browser alone, without the dialog and without a sidebar, in each state a folder can be in."
+    >
       <div class="mb-3 flex flex-wrap items-center gap-3">
         <Segmented v-model="state" :options="stateOptions" />
         <Segmented v-model="stateMode" :options="modeOptions" />
       </div>
       <GallerySpecimen wide>
-        <div class="gallery-frame flex h-96 w-full max-w-3xl flex-col overflow-hidden">
+        <div
+          class="gallery-frame flex h-96 w-full max-w-3xl flex-col overflow-hidden"
+        >
           <FileBrowser
             :key="`${state}-${stateMode}`"
             :mode="stateMode"
@@ -224,7 +372,10 @@ function selectHost(target: 'folder' | 'file', id: string) {
       </GallerySpecimen>
     </GallerySection>
 
-    <GallerySection title="Narrow" note="At a phone width the path takes its own row under the toolbar, the places become a menu at the toolbar's right, Forward and the date column go, and the address bar folds.">
+    <GallerySection
+      title="Narrow"
+      note="At a phone width the path takes its own row under the toolbar, the places become a menu at the toolbar's right, Forward and the date column go, and the address bar folds."
+    >
       <GalleryDialogFrame class="max-w-[22rem]">
         <FileBrowserDialog
           :is-open="true"

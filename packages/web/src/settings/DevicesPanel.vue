@@ -12,7 +12,13 @@ const conversations = useConversations()
 
 function revoke(id: string) {
   if (resources.projects.some((p) => p.deviceId === id)) {
-    showToast({ title: 'Device is in use', message: 'Remove the projects using this device before revoking it.', tone: 'danger' })
+    showToast(
+      {
+        title: 'Device is in use',
+        message: 'Remove the projects using this device before revoking it.',
+        tone: 'danger'
+      }
+    )
     return
   }
   resources.devices = resources.devices.filter((d) => d.id !== id)

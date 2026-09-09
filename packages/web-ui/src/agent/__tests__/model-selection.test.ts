@@ -3,7 +3,15 @@ import type { ModelInfo, ProviderInfo } from '../../transport/protocol'
 import { availableProviders, resolveSelectedModel } from '../model-selection'
 
 function model(id: string): ModelInfo {
-  return { id, name: id.toUpperCase(), contextWindow: null, inputLimit: null, acceptedExtensions: [], reasoning: null, serviceTiers: null }
+  return {
+    id,
+    name: id.toUpperCase(),
+    contextWindow: null,
+    inputLimit: null,
+    acceptedExtensions: [],
+    reasoning: null,
+    serviceTiers: null
+  }
 }
 
 const providers: ProviderInfo[] = [
@@ -20,15 +28,23 @@ const models: Record<string, ModelInfo[]> = {
 }
 
 test('usable providers are available and carry at least one model', () => {
-  expect(availableProviders(providers, models).map((provider) => provider.id)).toEqual(['openai', 'anthropic'])
+  expect(availableProviders(providers, models).map((provider) => provider.id)).toEqual(
+    ['openai', 'anthropic']
+  )
 })
 
 test('the session choice wins when the catalog has it', () => {
-  expect(resolveSelectedModel(providers, models, 'anthropic', 'sonnet')?.model.name).toBe('SONNET')
+  expect(
+    resolveSelectedModel(providers, models, 'anthropic', 'sonnet')?.model.name
+  ).toBe(
+    'SONNET'
+  )
 })
 
 test('an unknown choice falls back to the first model of the first usable provider', () => {
-  expect(resolveSelectedModel(providers, models, 'anthropic', 'gone')?.modelId).toBe('gpt')
+  expect(resolveSelectedModel(providers, models, 'anthropic', 'gone')?.modelId).toBe(
+    'gpt'
+  )
   expect(resolveSelectedModel(providers, models, null, null)?.modelId).toBe('gpt')
 })
 

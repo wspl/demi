@@ -21,10 +21,29 @@ const emit = defineEmits<{
 
 <template>
   <Menu>
-    <MenuItem :icon="SquarePen" label="New conversation here" @select="emit('create')" />
-    <MenuItem :icon="folded ? ChevronsUpDown : ChevronsDownUp" :label="folded ? 'Unfold' : 'Fold'" shortcut="↵" @select="emit('toggleFold')" />
-    <MenuItem :icon="ListChecks" label="Select conversations" :disabled="count === 0" @select="emit('selectAll')" />
+    <MenuItem
+      :icon="SquarePen"
+      label="New conversation here"
+      @select="emit('create')"
+    />
+    <MenuItem
+      :icon="folded ? ChevronsUpDown : ChevronsDownUp"
+      :label="folded ? 'Unfold' : 'Fold'"
+      shortcut="↵"
+      @select="emit('toggleFold')"
+    />
+    <MenuItem
+      :icon="ListChecks"
+      label="Select conversations"
+      :disabled="count === 0"
+      @select="emit('selectAll')"
+    />
     <MenuDivider />
-    <MenuItem :icon="Trash2" label="Remove project" is-danger @select="emit('remove')" />
+    <MenuItem
+      :icon="Trash2"
+      label="Remove project"
+      is-danger
+      @select="emit('remove')"
+    />
   </Menu>
 </template>

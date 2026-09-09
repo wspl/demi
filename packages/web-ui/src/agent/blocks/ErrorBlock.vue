@@ -25,7 +25,11 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 </script>
 
 <template>
-  <FunctionalBlock v-model:open="isOpen" expandable tone="danger">
+  <FunctionalBlock
+    v-model:open="isOpen"
+    expandable
+    tone="danger"
+  >
     <template #icon>
       <CircleX :size="ICON_PX.in28" />
     </template>
@@ -34,7 +38,10 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
       <div class="flex items-start gap-2 px-3 py-1.5">
         <div class="min-w-0 flex-1 select-text text-xs leading-5">
           <p class="whitespace-pre-wrap break-words text-on-danger">{{ message }}</p>
-          <p v-if="facts.length > 0" class="mt-1 truncate font-mono text-fg-subtle">{{ facts.join(' · ') }}</p>
+          <p
+            v-if="facts.length > 0"
+            class="mt-1 truncate font-mono text-fg-subtle"
+          >{{ facts.join(' · ') }}</p>
         </div>
         <Tooltip :content="copied ? t('common.copied') : t('common.copy')">
           <IconButton

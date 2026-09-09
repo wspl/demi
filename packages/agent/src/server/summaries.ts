@@ -3,7 +3,10 @@
 // arbitrary, so their progress is a real validation boundary).
 import { safeJsonStringify } from '@demicodes/utils'
 import { z } from 'zod'
-import type { ProviderErrorDiagnostics, ToolResultContentBlock } from '@demicodes/core'
+import type {
+  ProviderErrorDiagnostics,
+  ToolResultContentBlock
+} from '@demicodes/core'
 import type { ShellCommandStatusLike } from '../protocol/frames'
 import { ProviderStreamError } from '../session/provider-stream-error'
 
@@ -12,10 +15,14 @@ export function progressToOutput(progress: unknown): ToolResultContentBlock[] {
 }
 
 function progressToText(progress: unknown): string {
-  if (typeof progress === 'string') return progress
-  if (typeof progress === 'bigint') return progress.toString()
-  if (typeof progress === 'symbol') return String(progress)
-  if (typeof progress === 'function') return `[Function ${progress.name || 'anonymous'}]`
+  if (typeof progress === 'string')
+    return progress
+  if (typeof progress === 'bigint')
+    return progress.toString()
+  if (typeof progress === 'symbol')
+    return String(progress)
+  if (typeof progress === 'function')
+    return `[Function ${progress.name || 'anonymous'}]`
   return safeJsonStringify(progress) ?? String(progress)
 }
 
@@ -41,9 +48,14 @@ const shellCommandStatusSchema = z.looseObject({
 
 export function progressToShellOutput(
   progress: unknown,
-): { shellId: string; commandId: string; status: ShellCommandStatusLike } | null {
+): {
+  shellId: string;
+  commandId: string;
+  status: ShellCommandStatusLike
+} | null {
   const parsed = shellCommandStatusSchema.safeParse(progress)
-  if (!parsed.success) return null
+  if (!parsed.success)
+    return null
   return {
     shellId: parsed.data.shellId,
     commandId: parsed.data.commandId,
@@ -51,7 +63,10 @@ export function progressToShellOutput(
   }
 }
 
-export function errorDiagnostics(error: unknown): ProviderErrorDiagnostics | undefined {
-  if (!(error instanceof ProviderStreamError)) return undefined
+export function errorDiagnostics(
+  error: unknown
+): ProviderErrorDiagnostics | undefined {
+  if (!(error instanceof ProviderStreamError))
+    return undefined
   return error.diagnostics
 }

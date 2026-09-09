@@ -25,7 +25,8 @@ export const useConversations = defineStore('conversations', {
   actions: {
     markRead(id: string) {
       const conversation = this.items.find((item) => item.id === id)
-      if (conversation) conversation.unread = false
+      if (conversation)
+        conversation.unread = false
     },
     create(projectId: string | null = null): string {
       const c = conversation(crypto.randomUUID(), 'New conversation', projectId)
@@ -34,11 +35,16 @@ export const useConversations = defineStore('conversations', {
     },
     reorder(id: string, beforeId: string | null) {
       const item = this.items.find((item) => item.id === id)
-      const before = beforeId === null ? null : this.items.find((item) => item.id === beforeId)
-      if (!item || item.archived || before === undefined) return
+      const before = beforeId === null
+        ? null
+        : this.items.find((item) => item.id === beforeId)
+      if (!item || item.archived || before === undefined)
+        return
       if (
         before &&
-        (before.archived || before.projectId !== item.projectId || before.pinned !== item.pinned)
+        (before.archived ||
+          before.projectId !== item.projectId ||
+          before.pinned !== item.pinned)
       )
         return
       this.items = moveBefore(this.items, item, before)
@@ -48,7 +54,8 @@ export const useConversations = defineStore('conversations', {
     },
     rename(id: string, title: string) {
       const c = this.items.find((item) => item.id === id)
-      if (c && title.trim()) c.title = title.trim()
+      if (c && title.trim())
+        c.title = title.trim()
     },
     archive(ids: string[], archived = true) {
       for (const c of this.items.filter((item) => ids.includes(item.id))) {
@@ -85,7 +92,8 @@ export const useConversations = defineStore('conversations', {
       )
         return
       const device = resources.devices.find((item) => item.id === deviceId)
-      if (!device && !cwd) return
+      if (!device && !cwd)
+        return
       const base = name ?? device!.name
       let alias = base
       let suffix = 2
@@ -97,11 +105,15 @@ export const useConversations = defineStore('conversations', {
         c.attachedHosts = c.attachedHosts.filter((host) => host.deviceId !== deviceId)
     },
     send(c: Conversation) {
-      if (c.archived || (!c.draft.trim() && !c.files.length)) return
+      if (c.archived || (!c.draft.trim() && !c.files.length))
+        return
       const content: UserContentBlock[] = []
       const fileReferences = c.files
         .filter((f) => !f.src || f.destination === 'workspace')
-        .map((f) => `${f.destination === 'workspace' ? 'Workspace file' : 'Attachment'}: ${f.name}`)
+        .map((f) =>
+          `${f.destination === 'workspace'
+          ? 'Workspace file'
+          : 'Attachment'}: ${f.name}`)
       const text = [c.draft.trim(), ...fileReferences].filter(Boolean).join('\n\n')
       content.push({ type: 'text', text })
       for (const file of c.files)
@@ -130,14 +142,17 @@ export const useConversations = defineStore('conversations', {
       this.start(c)
     },
     start(c: Conversation, script = REPLY) {
-      if (c.stream || c.archived) return
+      if (c.stream || c.archived)
+        return
       // Retry replaces the failed attempt; Resume continues after the abort marker.
       const last = c.blocks.at(-1)
-      if (c.status === 'error' && last?.type === 'error') c.blocks.pop()
+      if (c.status === 'error' && last?.type === 'error')
+        c.blocks.pop()
       if (c.paused !== null) {
         script = c.paused
         c.paused = null
-        if (last?.type === 'abort') last.isResumed = true
+        if (last?.type === 'abort')
+          last.isResumed = true
       }
       const block: Block = { ...meta(c), type: 'text', text: '' }
       c.blocks.push(block)
@@ -149,9 +164,17 @@ export const useConversations = defineStore('conversations', {
     },
     /** A steer joins the transcript once the current output ends, then gets its own reply. */
     materializeSteers(c: Conversation): boolean {
-      if (!c.pendingSteers.length) return false
+      if (!c.pendingSteers.length)
+        return false
       for (const pending of c.pendingSteers) {
-        c.blocks.push({ ...meta(c), type: 'steer', turnId: c.stream?.blockId ?? '', content: pending.content })
+        c.blocks.push(
+          {
+            ...meta(c),
+            type: 'steer',
+            turnId: c.stream?.blockId ?? '',
+            content: pending.content
+          }
+        )
       }
       c.pendingSteers = []
       return true
@@ -159,7 +182,8 @@ export const useConversations = defineStore('conversations', {
     advance() {
       for (const c of this.items) {
         const stream = c.stream
-        if (!stream) continue
+        if (!stream)
+          continue
         if (stream.fail) {
           c.blocks = c.blocks.filter((b) => b.id !== stream.blockId)
           c.blocks.push({
@@ -174,9 +198,11 @@ export const useConversations = defineStore('conversations', {
           continue
         }
         const block = c.blocks.find((b) => b.id === stream.blockId)
-        if (block?.type === 'text') block.text += stream.remaining.slice(0, 9)
+        if (block?.type === 'text')
+          block.text += stream.remaining.slice(0, 9)
         stream.remaining = stream.remaining.slice(9)
-        if (stream.remaining) continue
+        if (stream.remaining)
+          continue
         const steered = this.materializeSteers(c)
         c.stream = null
         c.status = 'done'
@@ -204,10 +230,13 @@ export const useConversations = defineStore('conversations', {
     },
     sendQueued(c: Conversation, id: string) {
       const item = c.queue.find((item) => item.id === id)
-      if (!item || c.archived) return
+      if (!item || c.archived)
+        return
       this.removeQueued(c, id)
       if (c.stream) {
-        c.pendingSteers.push(createPendingSteerMessage(crypto.randomUUID(), item.content, c.blocks))
+        c.pendingSteers.push(
+          createPendingSteerMessage(crypto.randomUUID(), item.content, c.blocks)
+        )
       } else {
         c.blocks.push({
           ...meta(c),
@@ -225,14 +254,23 @@ export const useConversations = defineStore('conversations', {
     /** Cut the running output short and answer the steer right away. */
     interruptWithSteer(c: Conversation, id: string) {
       const pending = c.pendingSteers.find((item) => item.id === id)
-      if (!pending || !c.stream) return
+      if (!pending || !c.stream)
+        return
       this.removePendingSteer(c, id)
-      c.blocks.push({ ...meta(c), type: 'steer', turnId: c.stream.blockId, content: pending.content })
+      c.blocks.push(
+        {
+          ...meta(c),
+          type: 'steer',
+          turnId: c.stream.blockId,
+          content: pending.content
+        }
+      )
       c.stream = null
       this.start(c, STEER_REPLY)
     },
     stop(c: Conversation) {
-      if (!c.stream) return
+      if (!c.stream)
+        return
       c.paused = c.stream.remaining
       c.stream = null
       c.status = 'aborted'
@@ -240,7 +278,8 @@ export const useConversations = defineStore('conversations', {
       c.blocks.push({ ...meta(c), type: 'abort', isResumed: false })
     },
     compact(c: Conversation) {
-      if (c.stream || !c.blocks.length || c.archived) return
+      if (c.stream || !c.blocks.length || c.archived)
+        return
       c.blocks.push({
         ...meta(c),
         type: 'compaction_boundary',

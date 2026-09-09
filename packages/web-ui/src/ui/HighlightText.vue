@@ -8,9 +8,13 @@ const props = defineProps<{
 
 const segments = computed(() => {
   const q = props.query.trim().toLowerCase()
-  if (!q) return [{ text: props.text, isMatch: false }]
+  if (!q)
+    return [{ text: props.text, isMatch: false }]
 
-  const result: { text: string; isMatch: boolean }[] = []
+  const result: {
+    text: string;
+    isMatch: boolean
+  }[] = []
   const lower = props.text.toLowerCase()
   let cursor = 0
 
@@ -23,7 +27,12 @@ const segments = computed(() => {
     if (matchIdx > cursor) {
       result.push({ text: props.text.slice(cursor, matchIdx), isMatch: false })
     }
-    result.push({ text: props.text.slice(matchIdx, matchIdx + q.length), isMatch: true })
+    result.push(
+      {
+        text: props.text.slice(matchIdx, matchIdx + q.length),
+        isMatch: true
+      }
+    )
     cursor = matchIdx + q.length
   }
 

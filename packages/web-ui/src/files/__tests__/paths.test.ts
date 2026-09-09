@@ -1,5 +1,13 @@
 import { expect, test } from 'bun:test'
-import { baseName, displayPath, isValidEntryName, joinPath, normalizePath, parentPath, pathSegments } from '../paths'
+import {
+  baseName,
+  displayPath,
+  isValidEntryName,
+  joinPath,
+  normalizePath,
+  parentPath,
+  pathSegments
+} from '../paths'
 
 test('normalizePath collapses slashes and resolves dot segments from the root', () => {
   expect(normalizePath('/Users//zan/./Projects/')).toBe('/Users/zan/Projects')

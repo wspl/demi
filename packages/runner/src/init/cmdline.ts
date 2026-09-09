@@ -7,7 +7,10 @@ export interface GuestBootConfig {
   backendUrl: string
   deviceToken: string
   network: GuestNetwork | null
-  /** The home image was just made from a directory: its files carry the backend user's ownership until this boot chowns them. */
+  /**
+   * The home image was just made from a directory: its files carry the backend
+   * user's ownership until this boot chowns them.
+   */
   firstBoot: boolean
 }
 
@@ -19,7 +22,10 @@ export interface GuestNetwork {
   dns: string[]
 }
 
-/** `/proc/cmdline` as key/value pairs; a bare word maps to the empty string. Quoted values (`key="a b"`) are one value. */
+/**
+ * `/proc/cmdline` as key/value pairs; a bare word maps to the empty string.
+ * Quoted values (`key="a b"`) are one value.
+ */
 export function parseKernelCmdline(text: string): Map<string, string> {
   const params = new Map<string, string>()
   for (const word of text.trim().match(/(?:[^\s"]+|"[^"]*")+/g) ?? []) {
@@ -29,22 +35,38 @@ export function parseKernelCmdline(text: string): Map<string, string> {
       continue
     }
     let value = word.slice(eq + 1)
-    if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1)
+    if (value.startsWith('"') && value.endsWith('"'))
+      value = value.slice(1, -1)
     params.set(word.slice(0, eq), value)
   }
   return params
 }
 
-/** The guest's configuration out of the command line; missing backend or token is a fatal boot error. */
+/**
+ * The guest's configuration out of the command line; missing backend or token
+ * is a fatal boot error.
+ */
 export function guestBootConfig(cmdline: string): GuestBootConfig {
   const params = parseKernelCmdline(cmdline)
   const backendUrl = params.get('demi.backend')
   const deviceToken = params.get('demi.token')
-  if (!backendUrl) throw new Error('kernel command line names no demi.backend')
-  if (!deviceToken) throw new Error('kernel command line names no demi.token')
+  if (!backendUrl)
+    throw new Error('kernel command line names no demi.backend')
+  if (!deviceToken)
+    throw new Error('kernel command line names no demi.token')
   const address = params.get('demi.ip')
   const gateway = params.get('demi.gw')
   const network: GuestNetwork | null =
-    address && gateway ? { address, gateway, dns: (params.get('demi.dns') ?? '').split(',').filter((entry) => entry.length > 0) } : null
-  return { backendUrl, deviceToken, network, firstBoot: params.get('demi.firstboot') === '1' }
+    address && gateway ? {
+      address,
+      gateway,
+      dns: (params.get('demi.dns') ?? '').split(',')
+        .filter((entry) => entry.length > 0)
+    } : null
+  return {
+    backendUrl,
+    deviceToken,
+    network,
+    firstBoot: params.get('demi.firstboot') === '1'
+  }
 }

@@ -1,7 +1,11 @@
 import { expect, test } from 'bun:test'
 import { deferred } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
-import type { AgentProvider, InferenceRequest, ProviderEvent } from '@demicodes/provider'
+import type {
+  AgentProvider,
+  InferenceRequest,
+  ProviderEvent
+} from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
 import { TranscriptLog, type AgentSession } from '../index'
 import { COMPACTION_SUMMARY_INSTRUCTION } from '../session/compaction'
@@ -22,7 +26,8 @@ function isSummaryRequest(request: InferenceRequest): boolean {
   const item = request.items.at(-1)
   return (
     item?.type === 'user_message' &&
-    item.content.some((block) => block.type === 'text' && block.text === COMPACTION_SUMMARY_INSTRUCTION)
+    item.content.some((block) => block.type === 'text'
+      && block.text === COMPACTION_SUMMARY_INSTRUCTION)
   )
 }
 
@@ -31,344 +36,526 @@ function summaryMaterial(request: InferenceRequest): string {
   return JSON.stringify(request.items.slice(0, -1))
 }
 
-test('preflight compaction summarizes before the model request and keeps the incoming user once', async () => {
-  const thinkingModel: ModelSelection = {
-    ...model,
-    model: { ...model.model, contextWindow: 100 },
-    thinking: { type: 'effort', effort: 'medium', summary: null },
-  }
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', thinkingModel, text('old question'))
-  transcript.applyProviderEvent(thinkingModel, events.text('old answer'))
-  transcript.applyProviderEvent(thinkingModel, events.response())
+test(
+  'preflight compaction summarizes before the model request and keeps the incoming user once',
+  async () => {
+    const thinkingModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 100 },
+      thinking: { type: 'effort', effort: 'medium', summary: null },
+    }
+    const transcript = makeTranscript()
+    transcript.pushUserTurn('test-turn', thinkingModel, text('old question'))
+    transcript.applyProviderEvent(thinkingModel, events.text('old answer'))
+    transcript.applyProviderEvent(thinkingModel, events.response())
 
-  const provider = new RecordingProvider([
-    (request) => {
-      expect(request.modelId).toBe('test-model')
-      expect(request.cwd).toBe('/workspace')
-      expect(isSummaryRequest(request)).toBe(true)
-      const summary = summaryMaterial(request)
-      expect(summary).toContain('old question')
-      expect(summary).toContain('old answer')
-      return [events.text('old summary'), events.response()]
-    },
-    (request) => {
-      expect(request.systemPrompt).toBe('system prompt')
-      expect(request.tools.map((tool) => tool.name)).toEqual(['noop_tool'])
-      const incomingUserMessages = request.items.filter((item) => {
-        return (
-          item.type === 'user_message' &&
-          item.content.some((block) => block.type === 'text' && block.text === 'new question')
-        )
-      })
-      expect(incomingUserMessages).toHaveLength(1)
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\nold summary' }],
-        },
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'new question' }],
-        },
-      ])
-      return [events.text('new answer'), events.response()]
-    },
-  ])
-  const runtime = createRuntime({
-    tools: () => [
-      {
-        name: 'noop_tool',
-        description: 'No-op.',
-        inputSchema: { type: 'object' },
-        invoke: () => ({ output: [{ type: 'text', text: 'ok' }] }),
+    const provider = new RecordingProvider([
+      (request) => {
+        expect(request.modelId).toBe('test-model')
+        expect(request.cwd).toBe('/workspace')
+        expect(isSummaryRequest(request)).toBe(true)
+        const summary = summaryMaterial(request)
+        expect(summary).toContain('old question')
+        expect(summary).toContain('old answer')
+        return [events.text('old summary'), events.response()]
       },
-    ],
-  })
-  const session = createSession(provider, runtime, transcript, thinkingModel, {
-    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.01 },
-  })
-
-  await session.send(text('new question'))
-
-  expect(provider.requests).toHaveLength(2)
-  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
-    'user',
-    'text',
-    'response',
-    'compaction_boundary',
-    'user',
-    'compaction_marker',
-    'text',
-    'response',
-  ])
-  assertTranscriptInvariants(session.transcript().blocks)
-})
-
-test('preflight honors absolute preflightThresholdTokens over the ratio', async () => {
-  const largeWindowModel: ModelSelection = {
-    ...model,
-    model: { ...model.model, contextWindow: 100_000 },
-  }
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', largeWindowModel, text(`old question ${'x'.repeat(200)}`))
-  transcript.applyProviderEvent(largeWindowModel, events.text(`old answer ${'y'.repeat(300)}`))
-  transcript.applyProviderEvent(largeWindowModel, events.response())
-
-  const provider = new RecordingProvider([
-    (request) => {
-      expect(isSummaryRequest(request)).toBe(true)
-      return [events.text('absolute summary'), events.response()]
-    },
-    () => [events.text('new answer'), events.response()],
-  ])
-  // Ratio alone (0.8 of 100k) would not fire on this short transcript; absolute 1 does.
-  const session = createSession(provider, createRuntime(), transcript, largeWindowModel, {
-    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.8, preflightThresholdTokens: 1 },
-  })
-
-  await session.send(text('new question'))
-
-  expect(provider.requests).toHaveLength(2)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
-  assertTranscriptInvariants(session.transcript().blocks)
-})
-
-test('retry triggers preflight compaction before rerunning the latest user', async () => {
-  const preflightModel: ModelSelection = {
-    ...model,
-    model: { ...model.model, contextWindow: 100 },
-  }
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
-  transcript.applyProviderEvent(model, events.text(`old answer ${'y'.repeat(300)}`))
-  transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn('test-turn', model, text('retry this'))
-  transcript.applyProviderEvent(model, events.text('bad answer'))
-  transcript.applyProviderEvent(model, events.response())
-
-  const provider = new RecordingProvider([
-    (request) => {
-      expect(isSummaryRequest(request)).toBe(true)
-      const summary = summaryMaterial(request)
-      expect(summary).toContain(`old question ${'x'.repeat(200)}`)
-      expect(summary).toContain(`old answer ${'y'.repeat(300)}`)
-      return [events.text('retry summary'), events.response()]
-    },
-    (request) => {
-      expect(request.systemPrompt).toBe('system prompt')
-      expect(request.items).toEqual([
+      (request) => {
+        expect(request.systemPrompt).toBe('system prompt')
+        expect(request.tools.map((tool) => tool.name)).toEqual(['noop_tool'])
+        const incomingUserMessages = request.items.filter((item) => {
+          return (
+            item.type === 'user_message' &&
+            item.content.some((block) => block.type === 'text'
+              && block.text === 'new question')
+          )
+        })
+        expect(incomingUserMessages).toHaveLength(1)
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\nold summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [
+              { type: 'text', text: 'preamble' },
+              { type: 'text', text: 'new question' }
+            ],
+          },
+        ])
+        return [events.text('new answer'), events.response()]
+      },
+    ])
+    const runtime = createRuntime({
+      tools: () => [
         {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\nretry summary' }],
+          name: 'noop_tool',
+          description: 'No-op.',
+          inputSchema: { type: 'object' },
+          invoke: () => ({ output: [{ type: 'text', text: 'ok' }] }),
         },
-        { type: 'user_message', content: [{ type: 'text', text: 'retry this' }] },
-      ])
-      return [events.text('retried answer'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime({ preamble: () => null }), transcript, preflightModel, {
-    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
-  })
+      ],
+    })
+    const session = createSession(
+      provider,
+      runtime,
+      transcript,
+      thinkingModel,
+      {
+        compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.01 },
+      }
+    )
 
-  await session.retry()
+    await session.send(text('new question'))
 
-  expect(provider.requests).toHaveLength(2)
-  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'retried answer' })
-  assertTranscriptInvariants(session.transcript().blocks)
-})
-
-test('resume triggers preflight compaction before continuing an aborted long context', async () => {
-  const preflightModel: ModelSelection = {
-    ...model,
-    model: { ...model.model, contextWindow: 100 },
+    expect(provider.requests).toHaveLength(2)
+    expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'text',
+      'response',
+      'compaction_boundary',
+      'user',
+      'compaction_marker',
+      'text',
+      'response',
+    ])
+    assertTranscriptInvariants(session.transcript().blocks)
   }
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
-  transcript.applyProviderEvent(model, events.text(`partial answer ${'y'.repeat(300)}`))
-  transcript.pushAbort(model)
+)
 
-  const provider = new RecordingProvider([
-    (request) => {
-      expect(isSummaryRequest(request)).toBe(true)
-      const summary = summaryMaterial(request)
-      expect(summary).toContain(`old question ${'x'.repeat(200)}`)
-      expect(summary).toContain(`partial answer ${'y'.repeat(300)}`)
-      return [events.text('resume summary'), events.response()]
-    },
-    (request) => {
-      expect(request.systemPrompt).toBe('system prompt')
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\nresume summary' }],
+test(
+  'preflight honors absolute preflightThresholdTokens over the ratio',
+  async () => {
+    const largeWindowModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 100_000 },
+    }
+    const transcript = makeTranscript()
+    transcript.pushUserTurn(
+      'test-turn',
+      largeWindowModel,
+      text(`old question ${'x'.repeat(200)}`)
+    )
+    transcript.applyProviderEvent(
+      largeWindowModel,
+      events.text(`old answer ${'y'.repeat(300)}`)
+    )
+    transcript.applyProviderEvent(largeWindowModel, events.response())
+
+    const provider = new RecordingProvider([
+      (request) => {
+        expect(isSummaryRequest(request)).toBe(true)
+        return [events.text('absolute summary'), events.response()]
+      },
+      () => [events.text('new answer'), events.response()],
+    ])
+    // Ratio alone (0.8 of 100k) would not fire on this short transcript; absolute 1 does.
+    const session = createSession(
+      provider,
+      createRuntime(),
+      transcript,
+      largeWindowModel,
+      {
+        compaction: {
+          keepRecentTokens: 1,
+          preflightThresholdRatio: 0.8,
+          preflightThresholdTokens: 1
         },
-        { type: 'user_message', content: [{ type: 'text', text: 'Continue from where you left off.' }] },
-      ])
-      return [events.text('continued after compact'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime({ preamble: () => null }), transcript, preflightModel, {
-    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
-  })
+      }
+    )
 
-  await session.resume()
+    await session.send(text('new question'))
 
-  expect(provider.requests).toHaveLength(2)
-  expect(session.transcript().blocks.some((block) => block.type === 'abort' && block.isResumed)).toBe(true)
-  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'continued after compact' })
-  assertTranscriptInvariants(session.transcript().blocks)
-})
-
-test('resume with a pending model switch compacts once and keeps the compaction marker', async () => {
-  const preflightModel: ModelSelection = {
-    ...model,
-    model: { ...model.model, contextWindow: 100 },
+    expect(provider.requests).toHaveLength(2)
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_boundary')
+    ).toBe(true)
+    assertTranscriptInvariants(session.transcript().blocks)
   }
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
-  transcript.applyProviderEvent(model, events.text(`old answer ${'y'.repeat(300)}`))
-  transcript.applyProviderEvent(model, events.response({ inputTokens: 90 }))
-  transcript.pushUserTurn('test-turn', model, text('follow-up'))
-  transcript.applyProviderEvent(model, events.text('partial answer'))
-  transcript.pushAbort(model)
+)
 
-  const provider = new RecordingProvider([
-    (request) => {
-      expect(isSummaryRequest(request)).toBe(true)
-      return [events.text('switch summary'), events.response()]
-    },
-    (request) => {
-      expect(request.systemPrompt).toBe('system prompt')
-      return [events.text('continued after switch'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime({ preamble: () => null }), transcript, preflightModel, {
-    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
-  })
+test(
+  'retry triggers preflight compaction before rerunning the latest user',
+  async () => {
+    const preflightModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 100 },
+    }
+    const transcript = makeTranscript()
+    transcript.pushUserTurn(
+      'test-turn',
+      model,
+      text(`old question ${'x'.repeat(200)}`)
+    )
+    transcript.applyProviderEvent(
+      model,
+      events.text(`old answer ${'y'.repeat(300)}`)
+    )
+    transcript.applyProviderEvent(model, events.response())
+    transcript.pushUserTurn('test-turn', model, text('retry this'))
+    transcript.applyProviderEvent(model, events.text('bad answer'))
+    transcript.applyProviderEvent(model, events.response())
 
-  session.updateModel(null, preflightModel)
-  await session.resume()
+    const provider = new RecordingProvider([
+      (request) => {
+        expect(isSummaryRequest(request)).toBe(true)
+        const summary = summaryMaterial(request)
+        expect(summary).toContain(`old question ${'x'.repeat(200)}`)
+        expect(summary).toContain(`old answer ${'y'.repeat(300)}`)
+        return [events.text('retry summary'), events.response()]
+      },
+      (request) => {
+        expect(request.systemPrompt).toBe('system prompt')
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\nretry summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [{ type: 'text', text: 'retry this' }]
+          },
+        ])
+        return [events.text('retried answer'), events.response()]
+      },
+    ])
+    const session = createSession(
+      provider,
+      createRuntime({ preamble: () => null }),
+      transcript,
+      preflightModel,
+      {
+        compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+      }
+    )
 
-  const summaryRequests = provider.requests.filter((request) => {
-    return isSummaryRequest(request)
-  })
-  expect(summaryRequests).toHaveLength(1)
-  const blocks = session.transcript().blocks
-  const boundaries = blocks.filter((block) => block.type === 'compaction_boundary')
-  expect(boundaries).toHaveLength(1)
-  // The marker must survive the resume truncation: it is what invalidates the stale
-  // pre-compaction usage anchor — losing it makes the next threshold check compact again.
-  const markers = blocks.filter((block) => block.type === 'compaction_marker')
-  expect(markers).toHaveLength(1)
-  expect(markers[0]).toMatchObject({ boundaryId: boundaries[0]!.id })
-  expect(blocks.some((block) => block.type === 'abort' && block.isResumed)).toBe(true)
-  expect(blocks.at(-2)).toMatchObject({ type: 'text', text: 'continued after switch' })
-  assertTranscriptInvariants(blocks)
-})
+    await session.retry()
 
-test('compaction never re-summarizes only the previous boundary summary', async () => {
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text('old question'))
-  transcript.applyProviderEvent(model, events.text('old answer'))
-  transcript.applyProviderEvent(model, events.response())
-  const boundary = transcript.insertCompactionBoundary(3, model, 'old summary', 3)
-  transcript.appendCompactionMarker(model, boundary.id, 30)
-  transcript.pushUserTurn('test-turn', model, text(`recent question ${'z'.repeat(400)}`))
+    expect(provider.requests).toHaveLength(2)
+    expect(session.transcript().blocks.at(-2)).toMatchObject({
+      type: 'text',
+      text: 'retried answer'
+    })
+    assertTranscriptInvariants(session.transcript().blocks)
+  }
+)
 
-  const provider = new RecordingProvider([])
-  const session = createSession(provider, createRuntime(), transcript)
+test(
+  'resume triggers preflight compaction before continuing an aborted long context',
+  async () => {
+    const preflightModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 100 },
+    }
+    const transcript = makeTranscript()
+    transcript.pushUserTurn(
+      'test-turn',
+      model,
+      text(`old question ${'x'.repeat(200)}`)
+    )
+    transcript.applyProviderEvent(
+      model,
+      events.text(`partial answer ${'y'.repeat(300)}`)
+    )
+    transcript.pushAbort(model)
 
-  await session.compact()
+    const provider = new RecordingProvider([
+      (request) => {
+        expect(isSummaryRequest(request)).toBe(true)
+        const summary = summaryMaterial(request)
+        expect(summary).toContain(`old question ${'x'.repeat(200)}`)
+        expect(summary).toContain(`partial answer ${'y'.repeat(300)}`)
+        return [events.text('resume summary'), events.response()]
+      },
+      (request) => {
+        expect(request.systemPrompt).toBe('system prompt')
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\nresume summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Continue from where you left off.'
+            }]
+          },
+        ])
+        return [events.text('continued after compact'), events.response()]
+      },
+    ])
+    const session = createSession(
+      provider,
+      createRuntime({ preamble: () => null }),
+      transcript,
+      preflightModel,
+      {
+        compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+      }
+    )
 
-  expect(provider.requests).toHaveLength(0)
-  expect(session.transcript().blocks.filter((block) => block.type === 'compaction_boundary')).toHaveLength(1)
-})
+    await session.resume()
 
-test('compaction summary provider errors do not leave boundary or marker blocks', async () => {
-  const transcript = oldAndRecentTranscript()
-  const before = transcript.toJSON()
-  const provider = new RecordingProvider([[events.error('summary failed', 'rate_limit')]])
-  const session = createSession(provider, createRuntime(), transcript)
+    expect(provider.requests).toHaveLength(2)
+    expect(session.transcript().blocks.some((block) => block.type === 'abort'
+      && block.isResumed)).toBe(true)
+    expect(session.transcript().blocks.at(-2)).toMatchObject({
+      type: 'text',
+      text: 'continued after compact'
+    })
+    assertTranscriptInvariants(session.transcript().blocks)
+  }
+)
 
-  await expect(session.compact()).rejects.toThrow('summary failed')
+test(
+  'resume with a pending model switch compacts once and keeps the compaction marker',
+  async () => {
+    const preflightModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 100 },
+    }
+    const transcript = makeTranscript()
+    transcript.pushUserTurn(
+      'test-turn',
+      model,
+      text(`old question ${'x'.repeat(200)}`)
+    )
+    transcript.applyProviderEvent(
+      model,
+      events.text(`old answer ${'y'.repeat(300)}`)
+    )
+    transcript.applyProviderEvent(model, events.response({ inputTokens: 90 }))
+    transcript.pushUserTurn('test-turn', model, text('follow-up'))
+    transcript.applyProviderEvent(model, events.text('partial answer'))
+    transcript.pushAbort(model)
 
-  expect(session.phase()).toBe('idle')
-  expect(session.transcript().toJSON()).toEqual(before)
-  expect(provider.requests).toHaveLength(1)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_marker')).toBe(false)
-})
+    const provider = new RecordingProvider([
+      (request) => {
+        expect(isSummaryRequest(request)).toBe(true)
+        return [events.text('switch summary'), events.response()]
+      },
+      (request) => {
+        expect(request.systemPrompt).toBe('system prompt')
+        return [events.text('continued after switch'), events.response()]
+      },
+    ])
+    const session = createSession(
+      provider,
+      createRuntime({ preamble: () => null }),
+      transcript,
+      preflightModel,
+      {
+        compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+      }
+    )
 
-test('aborting a hanging compaction summary does not leave boundary or marker blocks', async () => {
-  const transcript = oldAndRecentTranscript()
-  const before = transcript.toJSON()
-  const provider = new HangingSummaryProvider()
-  const session = createSession(provider, createRuntime(), transcript)
+    session.updateModel(null, preflightModel)
+    await session.resume()
 
-  const compacting = session.compact()
-  await provider.summaryStarted.promise
-  const aborted = await session.abort()
-  await withTimeout(compacting)
+    const summaryRequests = provider.requests.filter((request) => {
+      return isSummaryRequest(request)
+    })
+    expect(summaryRequests).toHaveLength(1)
+    const blocks = session.transcript().blocks
+    const boundaries = blocks.filter((block) => block.type === 'compaction_boundary')
+    expect(boundaries).toHaveLength(1)
+    // The marker must survive the resume truncation: it is what invalidates the stale
+    // pre-compaction usage anchor — losing it makes the next threshold check compact again.
+    const markers = blocks.filter((block) => block.type === 'compaction_marker')
+    expect(markers).toHaveLength(1)
+    expect(markers[0]).toMatchObject({ boundaryId: boundaries[0]!.id })
+    expect(
+      blocks.some((block) => block.type === 'abort' && block.isResumed)
+    ).toBe(true)
+    expect(blocks.at(-2)).toMatchObject({
+      type: 'text',
+      text: 'continued after switch'
+    })
+    assertTranscriptInvariants(blocks)
+  }
+)
 
-  expect(aborted.aborted).toBe(true)
-  await provider.cancelled.promise
-  expect(session.phase()).toBe('idle')
-  expect(session.transcript().blocks.slice(0, before.blocks.length)).toEqual(before.blocks)
-  expect(session.transcript().blocks.at(-1)).toMatchObject({ type: 'abort' })
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_marker')).toBe(false)
-  assertTranscriptInvariants(session.transcript().blocks)
-})
+test(
+  'compaction never re-summarizes only the previous boundary summary',
+  async () => {
+    const transcript = makeTranscript()
+    transcript.pushUserTurn('test-turn', model, text('old question'))
+    transcript.applyProviderEvent(model, events.text('old answer'))
+    transcript.applyProviderEvent(model, events.response())
+    const boundary = transcript.insertCompactionBoundary(
+      3,
+      model,
+      'old summary',
+      3
+    )
+    transcript.appendCompactionMarker(model, boundary.id, 30)
+    transcript.pushUserTurn(
+      'test-turn',
+      model,
+      text(`recent question ${'z'.repeat(400)}`)
+    )
 
-test('empty compaction summaries are no-op and keep the session usable', async () => {
-  const transcript = oldAndRecentTranscript()
-  const provider = new RecordingProvider([
-    [events.response()],
-    [events.text('after empty summary'), events.response()],
-  ])
-  const session = createSession(provider, createRuntime(), transcript)
+    const provider = new RecordingProvider([])
+    const session = createSession(provider, createRuntime(), transcript)
 
-  await session.compact()
-  await session.send(text('follow up'))
+    await session.compact()
 
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_marker')).toBe(false)
-  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'after empty summary' })
-})
+    expect(provider.requests).toHaveLength(0)
+    expect(
+      session.transcript()
+        .blocks.filter((block) => block.type === 'compaction_boundary')
+    ).toHaveLength(1)
+  }
+)
 
-test('compaction summary input keeps completed tool_use and tool_result paired', async () => {
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text('inspect with tool'))
-  transcript.applyProviderEvent(model, events.toolCall('tool-1', 'read_file', { path: 'a.txt' }))
-  transcript.completeToolCall('tool-1', [{ type: 'text', text: 'file content' }])
-  transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn('test-turn', model, text('recent question'))
+test(
+  'compaction summary provider errors do not leave boundary or marker blocks',
+  async () => {
+    const transcript = oldAndRecentTranscript()
+    const before = transcript.toJSON()
+    const provider = new RecordingProvider([[events.error(
+      'summary failed',
+      'rate_limit'
+    )]])
+    const session = createSession(provider, createRuntime(), transcript)
 
-  const provider = new RecordingProvider([
-    (request) => {
-      const summary = summaryMaterial(request)
-      expect(summary).toContain('file content') // the tool result is carried into the summary input
-      return [events.text('tool summary'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime(), transcript)
+    await expect(session.compact()).rejects.toThrow('summary failed')
 
-  await session.compact()
+    expect(session.phase()).toBe('idle')
+    expect(session.transcript().toJSON()).toEqual(before)
+    expect(provider.requests).toHaveLength(1)
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_boundary')
+    ).toBe(false)
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_marker')
+    ).toBe(false)
+  }
+)
 
-  expect(session.transcript().collectInferenceItems()).toEqual([
-    {
-      type: 'user_message',
-      content: [{ type: 'text', text: 'Previous conversation summary:\ntool summary' }],
-    },
-    { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
-  ])
-})
+test(
+  'aborting a hanging compaction summary does not leave boundary or marker blocks',
+  async () => {
+    const transcript = oldAndRecentTranscript()
+    const before = transcript.toJSON()
+    const provider = new HangingSummaryProvider()
+    const session = createSession(provider, createRuntime(), transcript)
+
+    const compacting = session.compact()
+    await provider.summaryStarted.promise
+    const aborted = await session.abort()
+    await withTimeout(compacting)
+
+    expect(aborted.aborted).toBe(true)
+    await provider.cancelled.promise
+    expect(session.phase()).toBe('idle')
+    expect(session.transcript().blocks.slice(0, before.blocks.length))
+      .toEqual(before.blocks)
+    expect(session.transcript().blocks.at(-1)).toMatchObject({ type: 'abort' })
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_boundary')
+    ).toBe(false)
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_marker')
+    ).toBe(false)
+    assertTranscriptInvariants(session.transcript().blocks)
+  }
+)
+
+test(
+  'empty compaction summaries are no-op and keep the session usable',
+  async () => {
+    const transcript = oldAndRecentTranscript()
+    const provider = new RecordingProvider([
+      [events.response()],
+      [events.text('after empty summary'), events.response()],
+    ])
+    const session = createSession(provider, createRuntime(), transcript)
+
+    await session.compact()
+    await session.send(text('follow up'))
+
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_boundary')
+    ).toBe(false)
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_marker')
+    ).toBe(false)
+    expect(session.transcript().blocks.at(-2)).toMatchObject({
+      type: 'text',
+      text: 'after empty summary'
+    })
+  }
+)
+
+test(
+  'compaction summary input keeps completed tool_use and tool_result paired',
+  async () => {
+    const transcript = makeTranscript()
+    transcript.pushUserTurn('test-turn', model, text('inspect with tool'))
+    transcript.applyProviderEvent(
+      model,
+      events.toolCall('tool-1', 'read_file', { path: 'a.txt' })
+    )
+    transcript.completeToolCall(
+      'tool-1',
+      [{ type: 'text', text: 'file content' }]
+    )
+    transcript.applyProviderEvent(model, events.response())
+    transcript.pushUserTurn('test-turn', model, text('recent question'))
+
+    const provider = new RecordingProvider([
+      (request) => {
+        const summary = summaryMaterial(request)
+        expect(summary)
+          .toContain('file content') // the tool result is carried into the summary input
+        return [events.text('tool summary'), events.response()]
+      },
+    ])
+    const session = createSession(provider, createRuntime(), transcript)
+
+    await session.compact()
+
+    expect(session.transcript().collectInferenceItems()).toEqual([
+      {
+        type: 'user_message',
+        content: [{
+          type: 'text',
+          text: 'Previous conversation summary:\ntool summary'
+        }],
+      },
+      {
+        type: 'user_message',
+        content: [{ type: 'text', text: 'recent question' }]
+      },
+    ])
+  }
+)
 
 test('compaction summary input keeps aborted text progress', async () => {
   const transcript = makeTranscript()
   transcript.pushUserTurn('test-turn', model, text('long task'))
-  transcript.applyProviderEvent(model, events.text('partial progress before abort'))
+  transcript.applyProviderEvent(
+    model,
+    events.text('partial progress before abort')
+  )
   transcript.pushAbort(model)
   transcript.pushUserTurn('test-turn', model, text('recent question'))
 
@@ -386,155 +573,244 @@ test('compaction summary input keeps aborted text progress', async () => {
 
   expect(session.transcript().collectInferenceItems()[0]).toEqual({
     type: 'user_message',
-    content: [{ type: 'text', text: 'Previous conversation summary:\naborted progress summary' }],
+    content: [{
+      type: 'text',
+      text: 'Previous conversation summary:\naborted progress summary'
+    }],
   })
 })
 
-test('compaction summary context overflow errors are atomic and classified when no smaller slice is available', async () => {
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
-  transcript.pushUserTurn('test-turn', model, text('recent question'))
-  const before = transcript.toJSON()
-  const provider = new RecordingProvider([
-    [events.error('summary context overflow', 'context_length_exceeded')],
-    (request) => {
-      expect(request.items).toEqual([
-        { type: 'user_message', content: [{ type: 'text', text: `old question ${'x'.repeat(200)}` }] },
-        { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
-        {
+test(
+  'compaction summary context overflow errors are atomic and classified when no smaller slice is available',
+  async () => {
+    const transcript = makeTranscript()
+    transcript.pushUserTurn(
+      'test-turn',
+      model,
+      text(`old question ${'x'.repeat(200)}`)
+    )
+    transcript.pushUserTurn('test-turn', model, text('recent question'))
+    const before = transcript.toJSON()
+    const provider = new RecordingProvider([
+      [events.error('summary context overflow', 'context_length_exceeded')],
+      (request) => {
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{ type: 'text', text: `old question ${'x'.repeat(200)}` }]
+          },
+          {
+            type: 'user_message',
+            content: [{ type: 'text', text: 'recent question' }]
+          },
+          {
+            type: 'user_message',
+            content: [
+              { type: 'text', text: 'preamble' },
+              { type: 'text', text: 'recover after overflow' }
+            ],
+          },
+        ])
+        return [events.text('recovered'), events.response()]
+      },
+    ])
+    const session = createSession(provider, createRuntime(), transcript)
+    const errors: Error[] = []
+    session.subscribe((event) => {
+      if (event.type === 'error')
+        errors.push(event.error)
+    })
+
+    await expect(session.compact()).rejects.toThrow('summary context overflow')
+
+    expect(session.transcript().toJSON()).toEqual(before)
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_boundary')
+    ).toBe(false)
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatchObject({
+      message: 'summary context overflow',
+      code: 'context_length_exceeded'
+    })
+
+    await session.send(text('recover after overflow'))
+
+    expect(session.phase()).toBe('idle')
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_boundary')
+    ).toBe(false)
+    expect(session.transcript().blocks.at(-2)).toMatchObject({
+      type: 'text',
+      text: 'recovered'
+    })
+  }
+)
+
+test(
+  'compaction summary context overflow retries with a smaller summary slice',
+  async () => {
+    const transcript = makeTranscript()
+    transcript.pushUserTurn('test-turn', model, text('old question'))
+    transcript.applyProviderEvent(model, events.text('old answer'))
+    transcript.applyProviderEvent(model, events.response())
+    transcript.pushUserTurn('test-turn', model, text('middle question'))
+    transcript.applyProviderEvent(model, events.text('middle answer'))
+    transcript.applyProviderEvent(model, events.response())
+    transcript.pushUserTurn('test-turn', model, text('recent question'))
+
+    const provider = new RecordingProvider([
+      (request) => {
+        expect(isSummaryRequest(request)).toBe(true)
+        const summary = summaryMaterial(request)
+        expect(summary).toContain('old question')
+        expect(summary).toContain('middle answer')
+        return [events.error(
+          'summary context overflow',
+          'context_length_exceeded'
+        )]
+      },
+      (request) => {
+        expect(isSummaryRequest(request)).toBe(true)
+        const summary = summaryMaterial(request)
+        expect(summary).toContain('old question')
+        expect(summary)
+          .not.toContain('middle question') // retried with a smaller slice
+        return [events.text('trimmed summary'), events.response()]
+      },
+      (request) => {
+        expect(request.systemPrompt).toBe('system prompt')
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\ntrimmed summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [{ type: 'text', text: 'middle question' }]
+          },
+          {
+            type: 'assistant_text',
+            modelId: 'test-model',
+            text: 'middle answer'
+          },
+          {
+            type: 'user_message',
+            content: [{ type: 'text', text: 'recent question' }]
+          },
+          {
+            type: 'user_message',
+            content: [
+              { type: 'text', text: 'preamble' },
+              { type: 'text', text: 'after trimmed compact' }
+            ],
+          },
+        ])
+        return [events.text('after trimmed compact answer'), events.response()]
+      },
+    ])
+    const session = createSession(provider, createRuntime(), transcript)
+
+    await session.compact()
+    await session.send(text('after trimmed compact'))
+
+    expect(provider.requests).toHaveLength(3)
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_boundary')
+    ).toBe(true)
+    expect(session.transcript().blocks.at(-2)).toMatchObject({
+      type: 'text',
+      text: 'after trimmed compact answer'
+    })
+    assertTranscriptInvariants(session.transcript().blocks)
+  }
+)
+
+test(
+  'compaction summary iterator context overflow retries with a smaller summary slice',
+  async () => {
+    const transcript = makeTranscript()
+    transcript.pushUserTurn('test-turn', model, text('old question'))
+    transcript.applyProviderEvent(model, events.text('old answer'))
+    transcript.applyProviderEvent(model, events.response())
+    transcript.pushUserTurn('test-turn', model, text('middle question'))
+    transcript.applyProviderEvent(model, events.text('middle answer'))
+    transcript.applyProviderEvent(model, events.response())
+    transcript.pushUserTurn('test-turn', model, text('recent question'))
+
+    const provider = new RecordingProvider([
+      (request) => {
+        expect(isSummaryRequest(request)).toBe(true)
+        const summary = summaryMaterial(request)
+        expect(summary).toContain('old question')
+        expect(summary).toContain('middle answer')
+        return throwingProviderError(
+          'iterator summary context overflow',
+          'context_length_exceeded'
+        )
+      },
+      (request) => {
+        expect(isSummaryRequest(request)).toBe(true)
+        const summary = summaryMaterial(request)
+        expect(summary).toContain('old question')
+        expect(summary)
+          .not.toContain('middle question') // retried with a smaller slice
+        return [events.text('iterator trimmed summary'), events.response()]
+      },
+      (request) => {
+        expect(request.items[0]).toEqual({
           type: 'user_message',
-          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'recover after overflow' }],
-        },
-      ])
-      return [events.text('recovered'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime(), transcript)
-  const errors: Error[] = []
-  session.subscribe((event) => {
-    if (event.type === 'error') errors.push(event.error)
-  })
+          content: [{
+            type: 'text',
+            text: 'Previous conversation summary:\niterator trimmed summary'
+          }],
+        })
+        return [events.text('after iterator compact'), events.response()]
+      },
+    ])
+    const session = createSession(provider, createRuntime(), transcript)
 
-  await expect(session.compact()).rejects.toThrow('summary context overflow')
+    await session.compact()
+    await session.send(text('after iterator retry'))
 
-  expect(session.transcript().toJSON()).toEqual(before)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
-  expect(errors).toHaveLength(1)
-  expect(errors[0]).toMatchObject({ message: 'summary context overflow', code: 'context_length_exceeded' })
-
-  await session.send(text('recover after overflow'))
-
-  expect(session.phase()).toBe('idle')
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
-  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'recovered' })
-})
-
-test('compaction summary context overflow retries with a smaller summary slice', async () => {
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text('old question'))
-  transcript.applyProviderEvent(model, events.text('old answer'))
-  transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn('test-turn', model, text('middle question'))
-  transcript.applyProviderEvent(model, events.text('middle answer'))
-  transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn('test-turn', model, text('recent question'))
-
-  const provider = new RecordingProvider([
-    (request) => {
-      expect(isSummaryRequest(request)).toBe(true)
-      const summary = summaryMaterial(request)
-      expect(summary).toContain('old question')
-      expect(summary).toContain('middle answer')
-      return [events.error('summary context overflow', 'context_length_exceeded')]
-    },
-    (request) => {
-      expect(isSummaryRequest(request)).toBe(true)
-      const summary = summaryMaterial(request)
-      expect(summary).toContain('old question')
-      expect(summary).not.toContain('middle question') // retried with a smaller slice
-      return [events.text('trimmed summary'), events.response()]
-    },
-    (request) => {
-      expect(request.systemPrompt).toBe('system prompt')
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\ntrimmed summary' }],
-        },
-        { type: 'user_message', content: [{ type: 'text', text: 'middle question' }] },
-        { type: 'assistant_text', modelId: 'test-model', text: 'middle answer' },
-        { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'after trimmed compact' }],
-        },
-      ])
-      return [events.text('after trimmed compact answer'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime(), transcript)
-
-  await session.compact()
-  await session.send(text('after trimmed compact'))
-
-  expect(provider.requests).toHaveLength(3)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
-  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'after trimmed compact answer' })
-  assertTranscriptInvariants(session.transcript().blocks)
-})
-
-test('compaction summary iterator context overflow retries with a smaller summary slice', async () => {
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text('old question'))
-  transcript.applyProviderEvent(model, events.text('old answer'))
-  transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn('test-turn', model, text('middle question'))
-  transcript.applyProviderEvent(model, events.text('middle answer'))
-  transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn('test-turn', model, text('recent question'))
-
-  const provider = new RecordingProvider([
-    (request) => {
-      expect(isSummaryRequest(request)).toBe(true)
-      const summary = summaryMaterial(request)
-      expect(summary).toContain('old question')
-      expect(summary).toContain('middle answer')
-      return throwingProviderError('iterator summary context overflow', 'context_length_exceeded')
-    },
-    (request) => {
-      expect(isSummaryRequest(request)).toBe(true)
-      const summary = summaryMaterial(request)
-      expect(summary).toContain('old question')
-      expect(summary).not.toContain('middle question') // retried with a smaller slice
-      return [events.text('iterator trimmed summary'), events.response()]
-    },
-    (request) => {
-      expect(request.items[0]).toEqual({
-        type: 'user_message',
-        content: [{ type: 'text', text: 'Previous conversation summary:\niterator trimmed summary' }],
-      })
-      return [events.text('after iterator compact'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime(), transcript)
-
-  await session.compact()
-  await session.send(text('after iterator retry'))
-
-  expect(provider.requests).toHaveLength(3)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
-  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'after iterator compact' })
-  assertTranscriptInvariants(session.transcript().blocks)
-})
+    expect(provider.requests).toHaveLength(3)
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_boundary')
+    ).toBe(true)
+    expect(session.transcript().blocks.at(-2)).toMatchObject({
+      type: 'text',
+      text: 'after iterator compact'
+    })
+    assertTranscriptInvariants(session.transcript().blocks)
+  }
+)
 
 test('compaction summary preserves the structured request prefix', async () => {
   const transcript = makeTranscript()
   transcript.pushUserTurn('test-turn', model, text('inspect with tool'))
   transcript.applyProviderEvent(model, { type: 'thinking_start' })
-  transcript.applyProviderEvent(model, { type: 'thinking_delta', text: 'private chain' })
-  transcript.applyProviderEvent(model, { type: 'thinking_signature', signature: 'sig-1' })
-  transcript.applyProviderEvent(model, events.toolCall('tool-1', 'read_file', { path: 'a.txt' }))
-  transcript.completeToolCall('tool-1', [{ type: 'text', text: 'file content' }])
+  transcript.applyProviderEvent(
+    model,
+    { type: 'thinking_delta', text: 'private chain' }
+  )
+  transcript.applyProviderEvent(
+    model,
+    { type: 'thinking_signature', signature: 'sig-1' }
+  )
+  transcript.applyProviderEvent(
+    model,
+    events.toolCall('tool-1', 'read_file', { path: 'a.txt' })
+  )
+  transcript.completeToolCall(
+    'tool-1',
+    [{ type: 'text', text: 'file content' }]
+  )
   transcript.applyProviderEvent(model, events.response())
   transcript.pushUserTurn('test-turn', model, text('recent question'))
 
@@ -544,7 +820,10 @@ test('compaction summary preserves the structured request prefix', async () => {
       expect(request.tools.map((tool) => tool.name)).toEqual(['read_file'])
       expect(request.thinking).toBeNull()
       expect(request.items.slice(0, -1)).toEqual([
-        { type: 'user_message', content: [{ type: 'text', text: 'inspect with tool' }] },
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'inspect with tool' }]
+        },
         {
           type: 'assistant_thinking',
           modelId: 'test-model',
@@ -586,59 +865,77 @@ test('compaction summary preserves the structured request prefix', async () => {
   expect(session.transcript().collectInferenceItems()).toEqual([
     {
       type: 'user_message',
-      content: [{ type: 'text', text: 'Previous conversation summary:\nreplay summary' }],
+      content: [{
+        type: 'text',
+        text: 'Previous conversation summary:\nreplay summary'
+      }],
     },
-    { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
+    {
+      type: 'user_message',
+      content: [{ type: 'text', text: 'recent question' }]
+    },
   ])
 })
 
-test('compaction clone runs the inherited tool loop without mutating parent state', async () => {
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text('old question'))
-  transcript.applyProviderEvent(model, events.text('old answer'))
-  transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn('test-turn', model, text('recent question'))
+test(
+  'compaction clone runs the inherited tool loop without mutating parent state',
+  async () => {
+    const transcript = makeTranscript()
+    transcript.pushUserTurn('test-turn', model, text('old question'))
+    transcript.applyProviderEvent(model, events.text('old answer'))
+    transcript.applyProviderEvent(model, events.response())
+    transcript.pushUserTurn('test-turn', model, text('recent question'))
 
-  const provider = new RecordingProvider([
-    (request) => {
-      expect(isSummaryRequest(request)).toBe(true)
-      return [events.toolCall('tool-1', 'read_file', { path: 'a.txt' }), events.response()]
-    },
-    (request) => {
-      expect(request.items.at(-1)).toEqual({
-        type: 'tool_result',
-        toolUseId: 'tool-1',
-        output: [{ type: 'text', text: 'file content' }],
-        isError: false,
-      })
-      return [events.text('tool-assisted summary'), events.response()]
-    },
-  ])
-  const runtime = createRuntime({
-    tools: () => [
-      {
-        name: 'read_file',
-        description: 'Read a file.',
-        inputSchema: { type: 'object' },
-        invoke: (ctx) => {
-          ctx.state.toolCalls += 1
-          return { output: [{ type: 'text', text: 'file content' }] }
-        },
+    const provider = new RecordingProvider([
+      (request) => {
+        expect(isSummaryRequest(request)).toBe(true)
+        return [
+          events.toolCall('tool-1', 'read_file', { path: 'a.txt' }),
+          events.response()
+        ]
       },
-    ],
-  })
-  const session = createSession(provider, runtime, transcript)
+      (request) => {
+        expect(request.items.at(-1)).toEqual({
+          type: 'tool_result',
+          toolUseId: 'tool-1',
+          output: [{ type: 'text', text: 'file content' }],
+          isError: false,
+        })
+        return [events.text('tool-assisted summary'), events.response()]
+      },
+    ])
+    const runtime = createRuntime({
+      tools: () => [
+        {
+          name: 'read_file',
+          description: 'Read a file.',
+          inputSchema: { type: 'object' },
+          invoke: (ctx) => {
+            ctx.state.toolCalls += 1
+            return { output: [{ type: 'text', text: 'file content' }] }
+          },
+        },
+      ],
+    })
+    const session = createSession(provider, runtime, transcript)
 
-  await session.compact()
+    await session.compact()
 
-  expect(provider.requests).toHaveLength(2)
-  expect(session.state().toolCalls).toBe(0)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
-  expect(session.transcript().collectInferenceItems()[0]).toEqual({
-    type: 'user_message',
-    content: [{ type: 'text', text: 'Previous conversation summary:\ntool-assisted summary' }],
-  })
-})
+    expect(provider.requests).toHaveLength(2)
+    expect(session.state().toolCalls).toBe(0)
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_boundary')
+    ).toBe(true)
+    expect(session.transcript().collectInferenceItems()[0]).toEqual({
+      type: 'user_message',
+      content: [{
+        type: 'text',
+        text: 'Previous conversation summary:\ntool-assisted summary'
+      }],
+    })
+  }
+)
 
 test('multiple compactions replay only the latest boundary summary', () => {
   const transcript = makeTranscript()
@@ -649,16 +946,27 @@ test('multiple compactions replay only the latest boundary summary', () => {
   transcript.applyProviderEvent(model, events.text('second answer'))
   transcript.applyProviderEvent(model, events.response())
 
-  const firstBoundary = transcript.insertCompactionBoundary(3, model, 'first summary', 3)
+  const firstBoundary = transcript.insertCompactionBoundary(
+    3,
+    model,
+    'first summary',
+    3
+  )
   transcript.appendCompactionMarker(model, firstBoundary.id, 30)
 
   transcript.pushUserTurn('test-turn', model, text('third question'))
   transcript.applyProviderEvent(model, events.text('third answer'))
   transcript.applyProviderEvent(model, events.response())
   const thirdQuestionIndex = transcript.blocks.findIndex((block) => {
-    return block.type === 'user' && block.content[0]?.type === 'text' && block.content[0].text === 'third question'
+    return block.type === 'user' && block.content[0]?.type === 'text'
+      && block.content[0].text === 'third question'
   })
-  const secondBoundary = transcript.insertCompactionBoundary(thirdQuestionIndex, model, 'second summary', 4)
+  const secondBoundary = transcript.insertCompactionBoundary(
+    thirdQuestionIndex,
+    model,
+    'second summary',
+    4
+  )
   transcript.appendCompactionMarker(model, secondBoundary.id, 50)
 
   const items = transcript.collectInferenceItems()
@@ -666,83 +974,125 @@ test('multiple compactions replay only the latest boundary summary', () => {
   expect(items).toEqual([
     {
       type: 'user_message',
-      content: [{ type: 'text', text: 'Previous conversation summary:\nsecond summary' }],
+      content: [{
+        type: 'text',
+        text: 'Previous conversation summary:\nsecond summary'
+      }],
     },
-    { type: 'user_message', content: [{ type: 'text', text: 'third question' }] },
+    {
+      type: 'user_message',
+      content: [{ type: 'text', text: 'third question' }]
+    },
     { type: 'assistant_text', modelId: 'test-model', text: 'third answer' },
   ])
   expect(JSON.stringify(items)).not.toContain('first summary')
 })
 
-test('manual compaction after an existing boundary summarizes only the latest replay window', async () => {
-  const transcript = oldAndRecentTranscript()
-  const provider = new RecordingProvider([
-    [events.text('summary one'), events.response()],
-    [events.text('after answer'), events.response()],
-    (request) => {
-      expect(JSON.stringify(request.items)).toContain('summary one')
-      expect(JSON.stringify(request.items)).toContain('recent question')
-      expect(JSON.stringify(request.items)).toContain('after compact')
-      expect(JSON.stringify(request.items)).not.toContain('old question')
-      return [events.text('summary two'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime(), transcript)
+test(
+  'manual compaction after an existing boundary summarizes only the latest replay window',
+  async () => {
+    const transcript = oldAndRecentTranscript()
+    const provider = new RecordingProvider([
+      [events.text('summary one'), events.response()],
+      [events.text('after answer'), events.response()],
+      (request) => {
+        expect(JSON.stringify(request.items)).toContain('summary one')
+        expect(JSON.stringify(request.items)).toContain('recent question')
+        expect(JSON.stringify(request.items)).toContain('after compact')
+        expect(JSON.stringify(request.items)).not.toContain('old question')
+        return [events.text('summary two'), events.response()]
+      },
+    ])
+    const session = createSession(provider, createRuntime(), transcript)
 
-  await session.compact()
-  await session.send(text('after compact'))
-  await session.compact()
+    await session.compact()
+    await session.send(text('after compact'))
+    await session.compact()
 
-  const boundaries = session.transcript().blocks.filter((block) => block.type === 'compaction_boundary')
-  expect(boundaries).toHaveLength(2)
-  expect(session.transcript().collectInferenceItems()).toEqual([
-    {
-      type: 'user_message',
-      content: [{ type: 'text', text: 'Previous conversation summary:\nsummary two' }],
-    },
-  ])
-})
+    const boundaries = session.transcript()
+      .blocks.filter((block) => block.type === 'compaction_boundary')
+    expect(boundaries).toHaveLength(2)
+    expect(session.transcript().collectInferenceItems()).toEqual([
+      {
+        type: 'user_message',
+        content: [{
+          type: 'text',
+          text: 'Previous conversation summary:\nsummary two'
+        }],
+      },
+    ])
+  }
+)
 
-test('single oversized turn can be compacted at a block boundary without orphaning tool history', async () => {
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text('single turn'))
-  transcript.applyProviderEvent(model, events.toolCall('tool-1', 'read_file', { path: 'large.txt' }))
-  transcript.completeToolCall('tool-1', [{ type: 'text', text: 'large output '.repeat(200) }])
-  transcript.applyProviderEvent(model, events.text('recent assistant text'))
+test(
+  'single oversized turn can be compacted at a block boundary without orphaning tool history',
+  async () => {
+    const transcript = makeTranscript()
+    transcript.pushUserTurn('test-turn', model, text('single turn'))
+    transcript.applyProviderEvent(
+      model,
+      events.toolCall('tool-1', 'read_file', { path: 'large.txt' })
+    )
+    transcript.completeToolCall(
+      'tool-1',
+      [{ type: 'text', text: 'large output '.repeat(200) }]
+    )
+    transcript.applyProviderEvent(model, events.text('recent assistant text'))
 
-  const provider = new RecordingProvider([
-    (request) => {
-      const summary = summaryMaterial(request)
-      expect(summary).toContain('large output') // the oversized tool result is carried into the summary
-      return [events.text('single turn summary'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime(), transcript, model, {
-    compaction: { keepRecentTokens: 2 },
-  })
+    const provider = new RecordingProvider([
+      (request) => {
+        const summary = summaryMaterial(request)
+        expect(summary)
+          .toContain('large output') // the oversized tool result is carried into the summary
+        return [events.text('single turn summary'), events.response()]
+      },
+    ])
+    const session = createSession(
+      provider,
+      createRuntime(),
+      transcript,
+      model,
+      {
+        compaction: { keepRecentTokens: 2 },
+      }
+    )
 
-  await session.compact()
+    await session.compact()
 
-  expect(session.transcript().collectInferenceItems()).toEqual([
-    {
-      type: 'user_message',
-      content: [{ type: 'text', text: 'Previous conversation summary:\nsingle turn summary' }],
-    },
-    { type: 'assistant_text', modelId: 'test-model', text: 'recent assistant text' },
-  ])
-})
+    expect(session.transcript().collectInferenceItems()).toEqual([
+      {
+        type: 'user_message',
+        content: [{
+          type: 'text',
+          text: 'Previous conversation summary:\nsingle turn summary'
+        }],
+      },
+      {
+        type: 'assistant_text',
+        modelId: 'test-model',
+        text: 'recent assistant text'
+      },
+    ])
+  }
+)
 
 test('compaction is a no-op while a tool call is still pending', async () => {
   const transcript = makeTranscript()
   transcript.pushUserTurn('test-turn', model, text('start tool'))
-  transcript.applyProviderEvent(model, events.toolCall('tool-1', 'slow_tool', {}))
+  transcript.applyProviderEvent(
+    model,
+    events.toolCall('tool-1', 'slow_tool', {})
+  )
   const provider = new RecordingProvider([])
   const session = createSession(provider, createRuntime(), transcript)
 
   await session.compact()
 
   expect(provider.requests).toHaveLength(0)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
+  expect(
+    session.transcript()
+      .blocks.some((block) => block.type === 'compaction_boundary')
+  ).toBe(false)
   expect(session.transcript().pendingToolCalls()).toHaveLength(1)
 })
 
@@ -757,430 +1107,678 @@ test('manual compaction with no compressible history is a no-op', async () => {
   expect(session.transcript().blocks).toEqual([])
 })
 
-test('aborting during preflight compaction stops before the model request and stays atomic', async () => {
-  const smallModel: ModelSelection = {
-    ...model,
-    model: { ...model.model, contextWindow: 100 },
-  }
-  const transcript = oldAndRecentTranscript()
-  const provider = new HangingSummaryProvider()
-  const session = createSession(provider, createRuntime(), transcript, smallModel, {
-    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.01 },
-  })
-
-  const sending = session.send(text('new question'))
-  await provider.summaryStarted.promise
-  const aborted = await session.abort()
-  await withTimeout(sending)
-
-  expect(aborted.aborted).toBe(true)
-  await provider.cancelled.promise
-  expect(provider.requests).toHaveLength(1)
-  expect(provider.requests[0] !== undefined && isSummaryRequest(provider.requests[0])).toBe(true)
-  expect(session.phase()).toBe('idle')
-  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
-    'user',
-    'text',
-    'response',
-    'user',
-    'user',
-    'abort',
-  ])
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_marker')).toBe(false)
-  assertTranscriptInvariants(session.transcript().blocks)
-})
-
-test('aborting during retry preflight compaction stops before rerunning the model request', async () => {
-  const preflightModel: ModelSelection = {
-    ...model,
-    model: { ...model.model, contextWindow: 100 },
-  }
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
-  transcript.applyProviderEvent(model, events.text(`old answer ${'y'.repeat(300)}`))
-  transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn('test-turn', model, text('retry this'))
-  transcript.applyProviderEvent(model, events.text('bad answer'))
-  transcript.applyProviderEvent(model, events.response())
-  const provider = new HangingSummaryProvider()
-  const session = createSession(provider, createRuntime(), transcript, preflightModel, {
-    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
-  })
-
-  const retrying = session.retry()
-  await provider.summaryStarted.promise
-  const aborted = await session.abort()
-  await withTimeout(retrying)
-
-  expect(aborted.aborted).toBe(true)
-  await provider.cancelled.promise
-  expect(provider.requests).toHaveLength(1)
-  expect(provider.requests[0] !== undefined && isSummaryRequest(provider.requests[0])).toBe(true)
-  expect(session.phase()).toBe('idle')
-  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response', 'user', 'abort'])
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_marker')).toBe(false)
-  assertTranscriptInvariants(session.transcript().blocks)
-})
-
-test('aborting during resume preflight compaction stops before continuing the model request', async () => {
-  const preflightModel: ModelSelection = {
-    ...model,
-    model: { ...model.model, contextWindow: 100 },
-  }
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
-  transcript.applyProviderEvent(model, events.text(`partial answer ${'y'.repeat(300)}`))
-  transcript.pushAbort(model)
-  const provider = new HangingSummaryProvider()
-  const session = createSession(provider, createRuntime(), transcript, preflightModel, {
-    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
-  })
-
-  const resuming = session.resume()
-  await provider.summaryStarted.promise
-  const aborted = await session.abort()
-  await withTimeout(resuming)
-
-  expect(aborted.aborted).toBe(true)
-  await provider.cancelled.promise
-  expect(provider.requests).toHaveLength(1)
-  expect(provider.requests[0] !== undefined && isSummaryRequest(provider.requests[0])).toBe(true)
-  expect(session.phase()).toBe('idle')
-  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'abort', 'resume', 'abort'])
-  expect(session.transcript().blocks.some((block) => block.type === 'abort' && block.isResumed)).toBe(true)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_marker')).toBe(false)
-  assertTranscriptInvariants(session.transcript().blocks)
-})
-
-test('queued send during preflight compaction drains after the original send', async () => {
-  const preflightModel: ModelSelection = {
-    ...model,
-    model: { ...model.model, contextWindow: 100 },
-  }
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
-  transcript.applyProviderEvent(model, events.text(`old answer ${'y'.repeat(300)}`))
-  transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn('test-turn', model, text('recent question'))
-
-  const provider = new CompactGateProvider([
-    (request) => {
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\ngated summary' }],
-        },
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'first question' }],
-        },
-      ])
-      return [events.text('first answer'), events.response()]
-    },
-    (request) => {
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\ngated summary' }],
-        },
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'first question' }],
-        },
-        { type: 'assistant_text', modelId: 'test-model', text: 'first answer' },
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'second question' }],
-        },
-      ])
-      return [events.text('second answer'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime(), transcript, preflightModel, {
-    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
-  })
-
-  const first = session.send(text('first question'))
-  await provider.summaryStarted.promise
-  const second = session.send(text('second question'))
-
-  expect(session.phase()).toBe('compacting')
-  expect(session.queuedMessages()).toMatchObject([{ text: 'second question' }])
-
-  provider.summaryRelease.resolve(undefined)
-  await Promise.all([first, second])
-
-  const summaryRequests = provider.requests.filter((request) => {
-    return isSummaryRequest(request)
-  })
-  expect(summaryRequests).toHaveLength(1)
-  expect(provider.requests).toHaveLength(3)
-  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'second answer' })
-  expect(session.queuedMessages()).toEqual([])
-  assertTranscriptInvariants(session.transcript().blocks)
-})
-
-test('retry queued during preflight compaction reruns the original send after it completes', async () => {
-  const preflightModel: ModelSelection = {
-    ...model,
-    model: { ...model.model, contextWindow: 100 },
-  }
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
-  transcript.applyProviderEvent(model, events.text(`old answer ${'y'.repeat(300)}`))
-  transcript.applyProviderEvent(model, events.response())
-
-  const provider = new CompactGateProvider([
-    (request) => {
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\ngated summary' }],
-        },
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'first question' }],
-        },
-      ])
-      return [events.text('first answer'), events.response()]
-    },
-    (request) => {
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\ngated summary' }],
-        },
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'first question' }],
-        },
-      ])
-      return [events.text('retried answer'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime(), transcript, preflightModel, {
-    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
-  })
-
-  const first = session.send(text('first question'))
-  await provider.summaryStarted.promise
-  const retrying = session.retry()
-
-  provider.summaryRelease.resolve(undefined)
-  await Promise.all([first, retrying])
-
-  const summaryRequests = provider.requests.filter((request) => {
-    return isSummaryRequest(request)
-  })
-  expect(summaryRequests).toHaveLength(1)
-  expect(provider.requests).toHaveLength(3)
-  expect(session.transcript().blocks.some((block) => block.type === 'text' && block.text === 'first answer')).toBe(false)
-  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'retried answer' })
-  assertTranscriptInvariants(session.transcript().blocks)
-})
-
-test('resume queued during preflight compaction continues after the original send', async () => {
-  const preflightModel: ModelSelection = {
-    ...model,
-    model: { ...model.model, contextWindow: 100 },
-  }
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
-  transcript.applyProviderEvent(model, events.text(`partial answer ${'y'.repeat(300)}`))
-  transcript.pushAbort(model)
-
-  const provider = new CompactGateProvider([
-    (request) => {
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\ngated summary' }],
-        },
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'first question' }],
-        },
-      ])
-      return [events.text('first answer'), events.response()]
-    },
-    (request) => {
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\ngated summary' }],
-        },
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'first question' }],
-        },
-        { type: 'assistant_text', modelId: 'test-model', text: 'first answer' },
-        { type: 'user_message', content: [{ type: 'text', text: 'Continue from where you left off.' }] },
-      ])
-      return [events.text('resumed answer'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime(), transcript, preflightModel, {
-    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
-  })
-
-  const first = session.send(text('first question'))
-  await provider.summaryStarted.promise
-  const resuming = session.resume()
-
-  provider.summaryRelease.resolve(undefined)
-  await Promise.all([first, resuming])
-
-  const summaryRequests = provider.requests.filter((request) => {
-    return isSummaryRequest(request)
-  })
-  expect(summaryRequests).toHaveLength(1)
-  expect(provider.requests).toHaveLength(3)
-  expect(session.transcript().blocks.some((block) => block.type === 'abort' && block.isResumed)).toBe(true)
-  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'resumed answer' })
-  assertTranscriptInvariants(session.transcript().blocks)
-})
-
-test('queued send during compaction drains after the summary commits', async () => {
-  const transcript = oldAndRecentTranscript()
-  const provider = new CompactGateProvider()
-  const session = createSession(provider, createRuntime(), transcript)
-
-  const compacting = session.compact()
-  await provider.summaryStarted.promise
-  const queued = session.send(text('queued question'))
-
-  expect(session.phase()).toBe('compacting')
-  expect(session.queuedMessages()).toMatchObject([{ text: 'queued question' }])
-
-  provider.summaryRelease.resolve(undefined)
-  await Promise.all([compacting, queued])
-
-  expect(provider.requests).toHaveLength(2)
-  expect(provider.requests[1]?.items).toEqual([
-    {
-      type: 'user_message',
-      content: [{ type: 'text', text: 'Previous conversation summary:\ngated summary' }],
-    },
-    { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
-    { type: 'user_message', content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'queued question' }] },
-  ])
-  expect(session.phase()).toBe('idle')
-  expect(session.queuedMessages()).toEqual([])
-})
-
-test('retry queued during compaction reruns the latest user after the summary commits', async () => {
-  const transcript = oldAndRecentTranscript()
-  const provider = new CompactGateProvider([
-    (request) => {
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\ngated summary' }],
-        },
-        { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
-      ])
-      return [events.text('retried after compact'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime(), transcript)
-
-  const compacting = session.compact()
-  await provider.summaryStarted.promise
-  const retrying = session.retry()
-
-  provider.summaryRelease.resolve(undefined)
-  await Promise.all([compacting, retrying])
-
-  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
-    'user',
-    'text',
-    'response',
-    'compaction_boundary',
-    'user',
-    'text',
-    'response',
-  ])
-  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'retried after compact' })
-})
-
-test('resume queued during compaction continues from the compacted abort point', async () => {
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text('old question'))
-  transcript.applyProviderEvent(model, events.text('old answer'))
-  transcript.applyProviderEvent(model, events.response())
-  transcript.pushAbort(model)
-  const provider = new CompactGateProvider([
-    (request) => {
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\ngated summary' }],
-        },
-        { type: 'user_message', content: [{ type: 'text', text: 'Continue from where you left off.' }] },
-      ])
-      return [events.text('resumed after compact'), events.response()]
-    },
-  ])
-  const session = createSession(provider, createRuntime(), transcript)
-
-  const compacting = session.compact()
-  await provider.summaryStarted.promise
-  const resuming = session.resume()
-
-  provider.summaryRelease.resolve(undefined)
-  await Promise.all([compacting, resuming])
-
-  expect(session.transcript().blocks.some((block) => block.type === 'abort' && block.isResumed)).toBe(true)
-  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'resumed after compact' })
-})
-
-test('auto compaction after a tool result resumes without re-executing the tool', async () => {
-  const smallModel: ModelSelection = {
-    ...model,
-    model: { ...model.model, contextWindow: 10 },
-  }
-  const provider = new RecordingProvider([
-    [events.toolCall('tool-1', 'count_tool', { value: 1 }), events.response({ inputTokens: 9 })],
-    (request) => {
-      const summary = summaryMaterial(request)
-      expect(summary).toContain('counted') // the tool result is carried into the summary input
-      return [events.text('tool summary'), events.response()]
-    },
-    (request) => {
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\ntool summary' }],
-        },
-        { type: 'user_message', content: [{ type: 'text', text: 'Continue from where you left off.' }] },
-      ])
-      return [events.text('continued'), events.response()]
-    },
-  ])
-  const runtime = createRuntime({
-    tools: (ctx) => [
+test(
+  'aborting during preflight compaction stops before the model request and stays atomic',
+  async () => {
+    const smallModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 100 },
+    }
+    const transcript = oldAndRecentTranscript()
+    const provider = new HangingSummaryProvider()
+    const session = createSession(
+      provider,
+      createRuntime(),
+      transcript,
+      smallModel,
       {
-        name: 'count_tool',
-        description: 'Counts calls.',
-        inputSchema: { type: 'object' },
-        invoke: () => {
-          ctx.state.toolCalls += 1
-          return { output: [{ type: 'text', text: 'counted' }] }
-        },
+        compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.01 },
+      }
+    )
+
+    const sending = session.send(text('new question'))
+    await provider.summaryStarted.promise
+    const aborted = await session.abort()
+    await withTimeout(sending)
+
+    expect(aborted.aborted).toBe(true)
+    await provider.cancelled.promise
+    expect(provider.requests).toHaveLength(1)
+    expect(provider.requests[0] !== undefined
+      && isSummaryRequest(provider.requests[0])).toBe(true)
+    expect(session.phase()).toBe('idle')
+    expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'text',
+      'response',
+      'user',
+      'user',
+      'abort',
+    ])
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_boundary')
+    ).toBe(false)
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_marker')
+    ).toBe(false)
+    assertTranscriptInvariants(session.transcript().blocks)
+  }
+)
+
+test(
+  'aborting during retry preflight compaction stops before rerunning the model request',
+  async () => {
+    const preflightModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 100 },
+    }
+    const transcript = makeTranscript()
+    transcript.pushUserTurn(
+      'test-turn',
+      model,
+      text(`old question ${'x'.repeat(200)}`)
+    )
+    transcript.applyProviderEvent(
+      model,
+      events.text(`old answer ${'y'.repeat(300)}`)
+    )
+    transcript.applyProviderEvent(model, events.response())
+    transcript.pushUserTurn('test-turn', model, text('retry this'))
+    transcript.applyProviderEvent(model, events.text('bad answer'))
+    transcript.applyProviderEvent(model, events.response())
+    const provider = new HangingSummaryProvider()
+    const session = createSession(
+      provider,
+      createRuntime(),
+      transcript,
+      preflightModel,
+      {
+        compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+      }
+    )
+
+    const retrying = session.retry()
+    await provider.summaryStarted.promise
+    const aborted = await session.abort()
+    await withTimeout(retrying)
+
+    expect(aborted.aborted).toBe(true)
+    await provider.cancelled.promise
+    expect(provider.requests).toHaveLength(1)
+    expect(provider.requests[0] !== undefined
+      && isSummaryRequest(provider.requests[0])).toBe(true)
+    expect(session.phase()).toBe('idle')
+    expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'text',
+      'response',
+      'user',
+      'abort'
+    ])
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_boundary')
+    ).toBe(false)
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_marker')
+    ).toBe(false)
+    assertTranscriptInvariants(session.transcript().blocks)
+  }
+)
+
+test(
+  'aborting during resume preflight compaction stops before continuing the model request',
+  async () => {
+    const preflightModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 100 },
+    }
+    const transcript = makeTranscript()
+    transcript.pushUserTurn(
+      'test-turn',
+      model,
+      text(`old question ${'x'.repeat(200)}`)
+    )
+    transcript.applyProviderEvent(
+      model,
+      events.text(`partial answer ${'y'.repeat(300)}`)
+    )
+    transcript.pushAbort(model)
+    const provider = new HangingSummaryProvider()
+    const session = createSession(
+      provider,
+      createRuntime(),
+      transcript,
+      preflightModel,
+      {
+        compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+      }
+    )
+
+    const resuming = session.resume()
+    await provider.summaryStarted.promise
+    const aborted = await session.abort()
+    await withTimeout(resuming)
+
+    expect(aborted.aborted).toBe(true)
+    await provider.cancelled.promise
+    expect(provider.requests).toHaveLength(1)
+    expect(provider.requests[0] !== undefined
+      && isSummaryRequest(provider.requests[0])).toBe(true)
+    expect(session.phase()).toBe('idle')
+    expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'text',
+      'abort',
+      'resume',
+      'abort'
+    ])
+    expect(session.transcript().blocks.some((block) => block.type === 'abort'
+      && block.isResumed)).toBe(true)
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_boundary')
+    ).toBe(false)
+    expect(
+      session.transcript()
+        .blocks.some((block) => block.type === 'compaction_marker')
+    ).toBe(false)
+    assertTranscriptInvariants(session.transcript().blocks)
+  }
+)
+
+test(
+  'queued send during preflight compaction drains after the original send',
+  async () => {
+    const preflightModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 100 },
+    }
+    const transcript = makeTranscript()
+    transcript.pushUserTurn(
+      'test-turn',
+      model,
+      text(`old question ${'x'.repeat(200)}`)
+    )
+    transcript.applyProviderEvent(
+      model,
+      events.text(`old answer ${'y'.repeat(300)}`)
+    )
+    transcript.applyProviderEvent(model, events.response())
+    transcript.pushUserTurn('test-turn', model, text('recent question'))
+
+    const provider = new CompactGateProvider([
+      (request) => {
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\ngated summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [
+              { type: 'text', text: 'preamble' },
+              { type: 'text', text: 'first question' }
+            ],
+          },
+        ])
+        return [events.text('first answer'), events.response()]
       },
-    ],
-  })
-  const session = createSession(provider, runtime, undefined, smallModel)
+      (request) => {
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\ngated summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [
+              { type: 'text', text: 'preamble' },
+              { type: 'text', text: 'first question' }
+            ],
+          },
+          {
+            type: 'assistant_text',
+            modelId: 'test-model',
+            text: 'first answer'
+          },
+          {
+            type: 'user_message',
+            content: [
+              { type: 'text', text: 'preamble' },
+              { type: 'text', text: 'second question' }
+            ],
+          },
+        ])
+        return [events.text('second answer'), events.response()]
+      },
+    ])
+    const session = createSession(
+      provider,
+      createRuntime(),
+      transcript,
+      preflightModel,
+      {
+        compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+      }
+    )
 
-  await session.send(text('use tool'))
+    const first = session.send(text('first question'))
+    await provider.summaryStarted.promise
+    const second = session.send(text('second question'))
 
-  expect(session.state().toolCalls).toBe(1)
-  expect(provider.requests).toHaveLength(3)
-  expect(session.transcript().pendingToolCalls()).toHaveLength(0)
-})
+    expect(session.phase()).toBe('compacting')
+    expect(session.queuedMessages())
+      .toMatchObject([{ text: 'second question' }])
+
+    provider.summaryRelease.resolve(undefined)
+    await Promise.all([first, second])
+
+    const summaryRequests = provider.requests.filter((request) => {
+      return isSummaryRequest(request)
+    })
+    expect(summaryRequests).toHaveLength(1)
+    expect(provider.requests).toHaveLength(3)
+    expect(session.transcript().blocks.at(-2)).toMatchObject({
+      type: 'text',
+      text: 'second answer'
+    })
+    expect(session.queuedMessages()).toEqual([])
+    assertTranscriptInvariants(session.transcript().blocks)
+  }
+)
+
+test(
+  'retry queued during preflight compaction reruns the original send after it completes',
+  async () => {
+    const preflightModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 100 },
+    }
+    const transcript = makeTranscript()
+    transcript.pushUserTurn(
+      'test-turn',
+      model,
+      text(`old question ${'x'.repeat(200)}`)
+    )
+    transcript.applyProviderEvent(
+      model,
+      events.text(`old answer ${'y'.repeat(300)}`)
+    )
+    transcript.applyProviderEvent(model, events.response())
+
+    const provider = new CompactGateProvider([
+      (request) => {
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\ngated summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [
+              { type: 'text', text: 'preamble' },
+              { type: 'text', text: 'first question' }
+            ],
+          },
+        ])
+        return [events.text('first answer'), events.response()]
+      },
+      (request) => {
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\ngated summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [
+              { type: 'text', text: 'preamble' },
+              { type: 'text', text: 'first question' }
+            ],
+          },
+        ])
+        return [events.text('retried answer'), events.response()]
+      },
+    ])
+    const session = createSession(
+      provider,
+      createRuntime(),
+      transcript,
+      preflightModel,
+      {
+        compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+      }
+    )
+
+    const first = session.send(text('first question'))
+    await provider.summaryStarted.promise
+    const retrying = session.retry()
+
+    provider.summaryRelease.resolve(undefined)
+    await Promise.all([first, retrying])
+
+    const summaryRequests = provider.requests.filter((request) => {
+      return isSummaryRequest(request)
+    })
+    expect(summaryRequests).toHaveLength(1)
+    expect(provider.requests).toHaveLength(3)
+    expect(session.transcript().blocks.some((block) => block.type === 'text'
+      && block.text === 'first answer')).toBe(false)
+    expect(session.transcript().blocks.at(-2)).toMatchObject({
+      type: 'text',
+      text: 'retried answer'
+    })
+    assertTranscriptInvariants(session.transcript().blocks)
+  }
+)
+
+test(
+  'resume queued during preflight compaction continues after the original send',
+  async () => {
+    const preflightModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 100 },
+    }
+    const transcript = makeTranscript()
+    transcript.pushUserTurn(
+      'test-turn',
+      model,
+      text(`old question ${'x'.repeat(200)}`)
+    )
+    transcript.applyProviderEvent(
+      model,
+      events.text(`partial answer ${'y'.repeat(300)}`)
+    )
+    transcript.pushAbort(model)
+
+    const provider = new CompactGateProvider([
+      (request) => {
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\ngated summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [
+              { type: 'text', text: 'preamble' },
+              { type: 'text', text: 'first question' }
+            ],
+          },
+        ])
+        return [events.text('first answer'), events.response()]
+      },
+      (request) => {
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\ngated summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [
+              { type: 'text', text: 'preamble' },
+              { type: 'text', text: 'first question' }
+            ],
+          },
+          {
+            type: 'assistant_text',
+            modelId: 'test-model',
+            text: 'first answer'
+          },
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Continue from where you left off.'
+            }]
+          },
+        ])
+        return [events.text('resumed answer'), events.response()]
+      },
+    ])
+    const session = createSession(
+      provider,
+      createRuntime(),
+      transcript,
+      preflightModel,
+      {
+        compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+      }
+    )
+
+    const first = session.send(text('first question'))
+    await provider.summaryStarted.promise
+    const resuming = session.resume()
+
+    provider.summaryRelease.resolve(undefined)
+    await Promise.all([first, resuming])
+
+    const summaryRequests = provider.requests.filter((request) => {
+      return isSummaryRequest(request)
+    })
+    expect(summaryRequests).toHaveLength(1)
+    expect(provider.requests).toHaveLength(3)
+    expect(session.transcript().blocks.some((block) => block.type === 'abort'
+      && block.isResumed)).toBe(true)
+    expect(session.transcript().blocks.at(-2)).toMatchObject({
+      type: 'text',
+      text: 'resumed answer'
+    })
+    assertTranscriptInvariants(session.transcript().blocks)
+  }
+)
+
+test(
+  'queued send during compaction drains after the summary commits',
+  async () => {
+    const transcript = oldAndRecentTranscript()
+    const provider = new CompactGateProvider()
+    const session = createSession(provider, createRuntime(), transcript)
+
+    const compacting = session.compact()
+    await provider.summaryStarted.promise
+    const queued = session.send(text('queued question'))
+
+    expect(session.phase()).toBe('compacting')
+    expect(session.queuedMessages())
+      .toMatchObject([{ text: 'queued question' }])
+
+    provider.summaryRelease.resolve(undefined)
+    await Promise.all([compacting, queued])
+
+    expect(provider.requests).toHaveLength(2)
+    expect(provider.requests[1]?.items).toEqual([
+      {
+        type: 'user_message',
+        content: [{
+          type: 'text',
+          text: 'Previous conversation summary:\ngated summary'
+        }],
+      },
+      {
+        type: 'user_message',
+        content: [{ type: 'text', text: 'recent question' }]
+      },
+      {
+        type: 'user_message',
+        content: [
+          { type: 'text', text: 'preamble' },
+          { type: 'text', text: 'queued question' }
+        ]
+      },
+    ])
+    expect(session.phase()).toBe('idle')
+    expect(session.queuedMessages()).toEqual([])
+  }
+)
+
+test(
+  'retry queued during compaction reruns the latest user after the summary commits',
+  async () => {
+    const transcript = oldAndRecentTranscript()
+    const provider = new CompactGateProvider([
+      (request) => {
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\ngated summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [{ type: 'text', text: 'recent question' }]
+          },
+        ])
+        return [events.text('retried after compact'), events.response()]
+      },
+    ])
+    const session = createSession(provider, createRuntime(), transcript)
+
+    const compacting = session.compact()
+    await provider.summaryStarted.promise
+    const retrying = session.retry()
+
+    provider.summaryRelease.resolve(undefined)
+    await Promise.all([compacting, retrying])
+
+    expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'text',
+      'response',
+      'compaction_boundary',
+      'user',
+      'text',
+      'response',
+    ])
+    expect(session.transcript().blocks.at(-2)).toMatchObject({
+      type: 'text',
+      text: 'retried after compact'
+    })
+  }
+)
+
+test(
+  'resume queued during compaction continues from the compacted abort point',
+  async () => {
+    const transcript = makeTranscript()
+    transcript.pushUserTurn('test-turn', model, text('old question'))
+    transcript.applyProviderEvent(model, events.text('old answer'))
+    transcript.applyProviderEvent(model, events.response())
+    transcript.pushAbort(model)
+    const provider = new CompactGateProvider([
+      (request) => {
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\ngated summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Continue from where you left off.'
+            }]
+          },
+        ])
+        return [events.text('resumed after compact'), events.response()]
+      },
+    ])
+    const session = createSession(provider, createRuntime(), transcript)
+
+    const compacting = session.compact()
+    await provider.summaryStarted.promise
+    const resuming = session.resume()
+
+    provider.summaryRelease.resolve(undefined)
+    await Promise.all([compacting, resuming])
+
+    expect(session.transcript().blocks.some((block) => block.type === 'abort'
+      && block.isResumed)).toBe(true)
+    expect(session.transcript().blocks.at(-2)).toMatchObject({
+      type: 'text',
+      text: 'resumed after compact'
+    })
+  }
+)
+
+test(
+  'auto compaction after a tool result resumes without re-executing the tool',
+  async () => {
+    const smallModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 10 },
+    }
+    const provider = new RecordingProvider([
+      [
+        events.toolCall('tool-1', 'count_tool', { value: 1 }),
+        events.response({ inputTokens: 9 })
+      ],
+      (request) => {
+        const summary = summaryMaterial(request)
+        expect(summary)
+          .toContain('counted') // the tool result is carried into the summary input
+        return [events.text('tool summary'), events.response()]
+      },
+      (request) => {
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\ntool summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Continue from where you left off.'
+            }]
+          },
+        ])
+        return [events.text('continued'), events.response()]
+      },
+    ])
+    const runtime = createRuntime({
+      tools: (ctx) => [
+        {
+          name: 'count_tool',
+          description: 'Counts calls.',
+          inputSchema: { type: 'object' },
+          invoke: () => {
+            ctx.state.toolCalls += 1
+            return { output: [{ type: 'text', text: 'counted' }] }
+          },
+        },
+      ],
+    })
+    const session = createSession(provider, runtime, undefined, smallModel)
+
+    await session.send(text('use tool'))
+
+    expect(session.state().toolCalls).toBe(1)
+    expect(provider.requests).toHaveLength(3)
+    expect(session.transcript().pendingToolCalls()).toHaveLength(0)
+  }
+)
 
 test('auto compaction counts cache usage as context pressure', async () => {
   const smallModel: ModelSelection = {
@@ -1188,7 +1786,10 @@ test('auto compaction counts cache usage as context pressure', async () => {
     model: { ...model.model, contextWindow: 10 },
   }
   const provider = new RecordingProvider([
-    [events.text('cached answer'), events.response({ inputTokens: 1, outputTokens: 1, cacheWriteTokens: 9 })],
+    [
+      events.text('cached answer'),
+      events.response({ inputTokens: 1, outputTokens: 1, cacheWriteTokens: 9 })
+    ],
     (request) => {
       expect(isSummaryRequest(request)).toBe(true)
       const summary = summaryMaterial(request)
@@ -1200,16 +1801,28 @@ test('auto compaction counts cache usage as context pressure', async () => {
       expect(request.items).toEqual([
         {
           type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\ncache pressure summary' }],
+          content: [{
+            type: 'text',
+            text: 'Previous conversation summary:\ncache pressure summary'
+          }],
         },
-        { type: 'user_message', content: [{ type: 'text', text: 'Continue from where you left off.' }] },
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'Continue from where you left off.' }]
+        },
       ])
       return [events.text('continued after cache pressure'), events.response()]
     },
   ])
-  const session = createSession(provider, createRuntime({ preamble: () => null }), undefined, smallModel, {
-    compaction: { keepRecentTokens: 1 },
-  })
+  const session = createSession(
+    provider,
+    createRuntime({ preamble: () => null }),
+    undefined,
+    smallModel,
+    {
+      compaction: { keepRecentTokens: 1 },
+    }
+  )
 
   await session.send(text('cache-heavy question'))
 
@@ -1227,42 +1840,71 @@ test('auto compaction counts cache usage as context pressure', async () => {
   assertTranscriptInvariants(session.transcript().blocks)
 })
 
-test('compaction boundary and marker survive snapshot reconstruction', async () => {
-  const store = new MemorySessionStore<TestState>()
-  const transcript = oldAndRecentTranscript()
-  const provider = new RecordingProvider([[events.text('persisted summary'), events.response()]])
-  const session = createSession(provider, createRuntime(), transcript, model, { store })
+test(
+  'compaction boundary and marker survive snapshot reconstruction',
+  async () => {
+    const store = new MemorySessionStore<TestState>()
+    const transcript = oldAndRecentTranscript()
+    const provider = new RecordingProvider([[
+      events.text('persisted summary'),
+      events.response()
+    ]])
+    const session = createSession(
+      provider,
+      createRuntime(),
+      transcript,
+      model,
+      { store }
+    )
 
-  await session.compact()
+    await session.compact()
 
-  const snapshot = store.snapshots.at(-1)
-  expect(snapshot).toBeDefined()
-  expect(snapshot?.transcript.blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
-  expect(snapshot?.transcript.blocks.some((block) => block.type === 'compaction_marker')).toBe(true)
+    const snapshot = store.snapshots.at(-1)
+    expect(snapshot).toBeDefined()
+    expect(
+      snapshot?.transcript.blocks.some((block) => block.type === 'compaction_boundary')
+    ).toBe(true)
+    expect(
+      snapshot?.transcript.blocks.some((block) => block.type === 'compaction_marker')
+    ).toBe(true)
 
-  const restoredTranscript = new TranscriptLog(snapshot?.transcript.blocks)
-  const restoredProvider = new RecordingProvider([
-    (request) => {
-      expect(request.items).toEqual([
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'Previous conversation summary:\npersisted summary' }],
-        },
-        { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
-        {
-          type: 'user_message',
-          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'after restore' }],
-        },
-      ])
-      return [events.text('restored ok'), events.response()]
-    },
-  ])
-  const restored = createSession(restoredProvider, createRuntime(), restoredTranscript)
+    const restoredTranscript = new TranscriptLog(snapshot?.transcript.blocks)
+    const restoredProvider = new RecordingProvider([
+      (request) => {
+        expect(request.items).toEqual([
+          {
+            type: 'user_message',
+            content: [{
+              type: 'text',
+              text: 'Previous conversation summary:\npersisted summary'
+            }],
+          },
+          {
+            type: 'user_message',
+            content: [{ type: 'text', text: 'recent question' }]
+          },
+          {
+            type: 'user_message',
+            content: [
+              { type: 'text', text: 'preamble' },
+              { type: 'text', text: 'after restore' }
+            ],
+          },
+        ])
+        return [events.text('restored ok'), events.response()]
+      },
+    ])
+    const restored = createSession(
+      restoredProvider,
+      createRuntime(),
+      restoredTranscript
+    )
 
-  await restored.send(text('after restore'))
+    await restored.send(text('after restore'))
 
-  expect(restoredProvider.requests).toHaveLength(1)
-})
+    expect(restoredProvider.requests).toHaveLength(1)
+  }
+)
 
 function oldAndRecentTranscript(): TranscriptLog {
   const transcript = makeTranscript()
@@ -1279,7 +1921,11 @@ class CompactGateProvider implements AgentProvider {
   readonly summaryRelease = deferred<void>()
   private normalCursor = 0
 
-  constructor(private readonly normalTurns: Array<(request: InferenceRequest) => ProviderEvent[]> = []) {}
+  constructor(
+    private readonly normalTurns: Array<(
+      request: InferenceRequest
+    ) => ProviderEvent[]> = []
+  ) {}
 
   clone(): AgentProvider {
     return {
@@ -1339,7 +1985,10 @@ class HangingSummaryProvider implements AgentProvider {
   }
 }
 
-function throwingProviderError(message: string, code: string): AsyncIterable<ProviderEvent> {
+function throwingProviderError(
+  message: string,
+  code: string
+): AsyncIterable<ProviderEvent> {
   return (async function* (): AsyncIterable<ProviderEvent> {
     const error = new Error(message)
     Object.assign(error, { code })
@@ -1349,7 +1998,10 @@ function throwingProviderError(message: string, code: string): AsyncIterable<Pro
 
 function withTimeout<T>(promise: Promise<T>, ms = 1_000): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms)
+    const timeout = setTimeout(
+      () => reject(new Error(`Timed out after ${ms}ms`)),
+      ms
+    )
     promise.then(
       (value) => {
         clearTimeout(timeout)
@@ -1382,86 +2034,117 @@ class AlwaysOverLimitProvider implements AgentProvider {
   }
 }
 
-test('auto compaction is bounded per turn — no storm when usage stays over a too-low threshold', async () => {
-  const smallModel: ModelSelection = { ...model, model: { ...model.model, contextWindow: 10 } }
-  const transcript = makeTranscript()
-  for (let i = 0; i < 6; i += 1) {
-    transcript.pushUserTurn('test-turn', model, text(`question ${i} ${'x'.repeat(120)}`))
-    transcript.applyProviderEvent(model, events.text(`answer ${i} ${'y'.repeat(120)}`))
-    transcript.applyProviderEvent(model, events.response())
+test(
+  'auto compaction is bounded per turn — no storm when usage stays over a too-low threshold',
+  async () => {
+    const smallModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 10 }
+    }
+    const transcript = makeTranscript()
+    for (let i = 0; i < 6; i += 1) {
+      transcript.pushUserTurn(
+        'test-turn',
+        model,
+        text(`question ${i} ${'x'.repeat(120)}`)
+      )
+      transcript.applyProviderEvent(
+        model,
+        events.text(`answer ${i} ${'y'.repeat(120)}`)
+      )
+      transcript.applyProviderEvent(model, events.response())
+    }
+    const session = createSession(
+      new AlwaysOverLimitProvider(),
+      createRuntime(),
+      transcript,
+      smallModel,
+      {
+        compaction: { keepRecentTokens: 1 },
+      }
+    )
+
+    // Without the guard this never returns (it compacts its own summaries forever).
+    await session.send(text('trigger'))
+
+    // Bounded, not a storm: at most one preflight compaction plus the auto-recover cap of 3.
+    // (Before the guard this looped ~40 times until the model rejected the fabricated history.)
+    const boundaries = session.transcript()
+      .blocks.filter((block) => block.type === 'compaction_boundary')
+    expect(boundaries.length).toBeGreaterThan(0)
+    expect(boundaries.length).toBeLessThanOrEqual(4)
+    assertTranscriptInvariants(session.transcript().blocks)
   }
-  const session = createSession(new AlwaysOverLimitProvider(), createRuntime(), transcript, smallModel, {
-    compaction: { keepRecentTokens: 1 },
-  })
+)
 
-  // Without the guard this never returns (it compacts its own summaries forever).
-  await session.send(text('trigger'))
+test(
+  'steer during preflight compaction queues and lands on the same turn request',
+  async () => {
+    const smallModel: ModelSelection = {
+      ...model,
+      model: { ...model.model, contextWindow: 100 }
+    }
+    const transcript = makeTranscript()
+    transcript.pushUserTurn('test-turn', smallModel, text('old question'))
+    transcript.applyProviderEvent(smallModel, events.text('old answer'))
+    transcript.applyProviderEvent(smallModel, events.response())
 
-  // Bounded, not a storm: at most one preflight compaction plus the auto-recover cap of 3.
-  // (Before the guard this looped ~40 times until the model rejected the fabricated history.)
-  const boundaries = session.transcript().blocks.filter((block) => block.type === 'compaction_boundary')
-  expect(boundaries.length).toBeGreaterThan(0)
-  expect(boundaries.length).toBeLessThanOrEqual(4)
-  assertTranscriptInvariants(session.transcript().blocks)
-})
+    let session!: AgentSession<TestState>
+    const provider = new RecordingProvider([
+      async (request) => {
+        expect(isSummaryRequest(request)).toBe(true)
+        // Injected mid-compaction: must queue instead of throwing.
+        await session.steer(text('mid-compaction note'))
+        return [events.text('old summary'), events.response()]
+      },
+      (request) => {
+        expect(JSON.stringify(request.items)).toContain('mid-compaction note')
+        return [events.text('answer'), events.response()]
+      },
+    ])
+    session = createSession(provider, createRuntime(), transcript, smallModel, {
+      compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.01 },
+    })
 
-test('steer during preflight compaction queues and lands on the same turn request', async () => {
-  const smallModel: ModelSelection = { ...model, model: { ...model.model, contextWindow: 100 } }
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', smallModel, text('old question'))
-  transcript.applyProviderEvent(smallModel, events.text('old answer'))
-  transcript.applyProviderEvent(smallModel, events.response())
+    await session.send(text('new question'))
 
-  let session!: AgentSession<TestState>
-  const provider = new RecordingProvider([
-    async (request) => {
-      expect(isSummaryRequest(request)).toBe(true)
-      // Injected mid-compaction: must queue instead of throwing.
-      await session.steer(text('mid-compaction note'))
-      return [events.text('old summary'), events.response()]
-    },
-    (request) => {
-      expect(JSON.stringify(request.items)).toContain('mid-compaction note')
-      return [events.text('answer'), events.response()]
-    },
-  ])
-  session = createSession(provider, createRuntime(), transcript, smallModel, {
-    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.01 },
-  })
+    expect(provider.requests).toHaveLength(2)
+    const steers = session.transcript()
+      .blocks.filter((block) => block.type === 'steer')
+    expect(steers).toHaveLength(1)
+    assertTranscriptInvariants(session.transcript().blocks)
+  }
+)
 
-  await session.send(text('new question'))
+test(
+  'steer during a standalone compaction materializes and the next turn carries it',
+  async () => {
+    const transcript = makeTranscript()
+    transcript.pushUserTurn('test-turn', model, text('old question'))
+    transcript.applyProviderEvent(model, events.text('old answer'))
+    transcript.applyProviderEvent(model, events.response())
 
-  expect(provider.requests).toHaveLength(2)
-  const steers = session.transcript().blocks.filter((block) => block.type === 'steer')
-  expect(steers).toHaveLength(1)
-  assertTranscriptInvariants(session.transcript().blocks)
-})
+    let session!: AgentSession<TestState>
+    const provider = new RecordingProvider([
+      async (request) => {
+        expect(isSummaryRequest(request)).toBe(true)
+        await session.steer(text('mid-compaction note'))
+        return [events.text('old summary'), events.response()]
+      },
+      (request) => {
+        expect(JSON.stringify(request.items)).toContain('mid-compaction note')
+        return [events.text('answer'), events.response()]
+      },
+    ])
+    session = createSession(provider, createRuntime(), transcript)
 
-test('steer during a standalone compaction materializes and the next turn carries it', async () => {
-  const transcript = makeTranscript()
-  transcript.pushUserTurn('test-turn', model, text('old question'))
-  transcript.applyProviderEvent(model, events.text('old answer'))
-  transcript.applyProviderEvent(model, events.response())
+    await session.compact()
+    const steers = session.transcript()
+      .blocks.filter((block) => block.type === 'steer')
+    expect(steers).toHaveLength(1)
 
-  let session!: AgentSession<TestState>
-  const provider = new RecordingProvider([
-    async (request) => {
-      expect(isSummaryRequest(request)).toBe(true)
-      await session.steer(text('mid-compaction note'))
-      return [events.text('old summary'), events.response()]
-    },
-    (request) => {
-      expect(JSON.stringify(request.items)).toContain('mid-compaction note')
-      return [events.text('answer'), events.response()]
-    },
-  ])
-  session = createSession(provider, createRuntime(), transcript)
-
-  await session.compact()
-  const steers = session.transcript().blocks.filter((block) => block.type === 'steer')
-  expect(steers).toHaveLength(1)
-
-  await session.send(text('next question'))
-  expect(provider.requests).toHaveLength(2)
-  assertTranscriptInvariants(session.transcript().blocks)
-})
+    await session.send(text('next question'))
+    expect(provider.requests).toHaveLength(2)
+    assertTranscriptInvariants(session.transcript().blocks)
+  }
+)

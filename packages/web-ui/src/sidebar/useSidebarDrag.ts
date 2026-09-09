@@ -12,9 +12,18 @@ export function useSidebarDrag(
   commit: (request: SidebarReorder) => void,
 ) {
   const source = ref<Entry | null>(null)
-  const target = ref<{ id: string; after: boolean; request: SidebarReorder } | null>(null)
+  const target = ref<{
+    id: string;
+    after: boolean;
+    request: SidebarReorder
+  } | null>(null)
   const pointer = ref({ x: 0, y: 0 })
-  let candidate: { entry: Entry; x: number; y: number; pointerId: number } | null = null
+  let candidate: {
+    entry: Entry;
+    x: number;
+    y: number;
+    pointerId: number
+  } | null = null
   let frame = 0
   let suppressClick = false
 
@@ -44,7 +53,8 @@ export function useSidebarDrag(
 
   function scroll() {
     const element = container.value
-    if (!source.value || !element) return
+    if (!source.value || !element)
+      return
     const rect = element.getBoundingClientRect()
     if (pointer.value.x >= rect.left && pointer.value.x <= rect.right) {
       const edge = 36
@@ -75,10 +85,12 @@ export function useSidebarDrag(
   }
 
   function move(event: PointerEvent) {
-    if (!candidate || event.pointerId !== candidate.pointerId) return
+    if (!candidate || event.pointerId !== candidate.pointerId)
+      return
     pointer.value = { x: event.clientX, y: event.clientY }
     if (!source.value) {
-      if (Math.hypot(event.clientX - candidate.x, event.clientY - candidate.y) < 5) return
+      if (Math.hypot(event.clientX - candidate.x, event.clientY - candidate.y) < 5)
+        return
       source.value = candidate.entry
       suppressClick = true
       frame = requestAnimationFrame(scroll)
@@ -88,7 +100,8 @@ export function useSidebarDrag(
   }
 
   function finish(event: PointerEvent) {
-    if (!candidate || event.pointerId !== candidate.pointerId) return
+    if (!candidate || event.pointerId !== candidate.pointerId)
+      return
     if (source.value) {
       pointer.value = { x: event.clientX, y: event.clientY }
       locate()
@@ -101,7 +114,8 @@ export function useSidebarDrag(
   }
 
   function keydown(event: KeyboardEvent) {
-    if (event.key !== 'Escape') return
+    if (event.key !== 'Escape')
+      return
     event.preventDefault()
     event.stopPropagation()
     cancel()
@@ -117,7 +131,12 @@ export function useSidebarDrag(
     }
     cancel()
     suppressClick = false
-    candidate = { entry, x: event.clientX, y: event.clientY, pointerId: event.pointerId }
+    candidate = {
+      entry,
+      x: event.clientX,
+      y: event.clientY,
+      pointerId: event.pointerId
+    }
     window.addEventListener('pointermove', move, { passive: false })
     window.addEventListener('pointerup', finish)
     window.addEventListener('pointercancel', cancel)
@@ -126,7 +145,8 @@ export function useSidebarDrag(
   }
 
   function click(event: MouseEvent) {
-    if (!suppressClick) return
+    if (!suppressClick)
+      return
     event.preventDefault()
     event.stopPropagation()
     suppressClick = false

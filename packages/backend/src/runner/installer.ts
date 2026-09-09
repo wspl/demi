@@ -5,7 +5,10 @@ function quote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`
 }
 
-export function shellInstaller(backend: string, release: RunnerRelease): string {
+export function shellInstaller(
+  backend: string,
+  release: RunnerRelease
+): string {
   const url = new URL(backend)
   const http = url.protocol === 'https:' || url.protocol === 'http:'
   if (!http || url.username || url.password || url.search || url.hash) {

@@ -16,8 +16,11 @@ export async function openRunnerCwd(path: string): Promise<HostCwd> {
     },
     spawnPath: () => current,
     chdir: async (next) => {
-      if (next === '.') return
-      const target = isAbsolutePath(next) ? normalizePath(next) : normalizePath(`${current}/${next}`)
+      if (next === '.')
+        return
+      const target = isAbsolutePath(next)
+        ? normalizePath(next)
+        : normalizePath(`${current}/${next}`)
       await assertDirectory(target)
       current = target
     },
@@ -35,6 +38,10 @@ export async function openRunnerCwd(path: string): Promise<HostCwd> {
 
 async function assertDirectory(path: string): Promise<void> {
   if (!(await tjs.stat(path)).isDirectory) {
-    throw errnoError('ENOTDIR', `ENOTDIR: not a directory, chdir '${path}'`, { syscall: 'chdir', path })
+    throw errnoError(
+      'ENOTDIR',
+      `ENOTDIR: not a directory, chdir '${path}'`,
+      { syscall: 'chdir', path }
+    )
   }
 }

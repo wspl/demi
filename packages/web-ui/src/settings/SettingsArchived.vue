@@ -21,22 +21,39 @@ const emit = defineEmits<{
 const query = ref('')
 const shown = computed(() => {
   const q = query.value.trim().toLowerCase()
-  return q ? props.conversations.filter((conversation) => conversation.title.toLowerCase().includes(q)) : props.conversations
+  return q ? props.conversations.filter(
+    (conversation) => conversation.title.toLowerCase().includes(q)
+  ) : props.conversations
 })
 </script>
 
 <template>
-  <SettingsPage title="Archived" description="Conversations put away from the sidebar. Restore brings one back and opens it.">
+  <SettingsPage
+    title="Archived"
+    description="Conversations put away from the sidebar. Restore brings one back and opens it."
+  >
     <SettingsGroup>
       <template #header>
-        <TextInput v-model="query" placeholder="Search archived" aria-label="Search archived conversations">
+        <TextInput
+          v-model="query"
+          placeholder="Search archived"
+          aria-label="Search archived conversations"
+        >
           <template #prefix><Search :size="ICON_PX.in24" /></template>
         </TextInput>
       </template>
-      <SettingsRow v-for="conversation in shown" :key="conversation.id" :label="conversation.title" :description="conversation.detail">
+      <SettingsRow
+        v-for="conversation in shown"
+        :key="conversation.id"
+        :label="conversation.title"
+        :description="conversation.detail"
+      >
         <Button size="sm" @click="emit('restore', conversation.id)">Restore</Button>
       </SettingsRow>
-      <div v-if="!shown.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">
+      <div
+        v-if="!shown.length"
+        class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
+      >
         {{ query ? 'No archived conversation matches.' : 'Nothing is archived.' }}
       </div>
     </SettingsGroup>

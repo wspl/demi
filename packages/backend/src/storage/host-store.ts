@@ -30,7 +30,10 @@ export class DbHostStore implements HostStore {
   }
 
   async delete(key: string): Promise<void> {
-    this.db.run('DELETE FROM host_store WHERE scope = ? AND key = ?', [this.scope, key])
+    this.db.run(
+      'DELETE FROM host_store WHERE scope = ? AND key = ?',
+      [this.scope, key]
+    )
   }
 
   async list(prefix: string): Promise<string[]> {
@@ -49,7 +52,9 @@ function escapeLike(value: string): string {
 /** Administrative file operations have no command state. */
 export const administrativeStore: HostStore = {
   readJson: async () => null,
-  writeJson: async () => { throw new Error('No command storage for administrative file operations') },
+  writeJson: async () => {
+    throw new Error('No command storage for administrative file operations')
+  },
   delete: async () => {},
   list: async () => [],
 }

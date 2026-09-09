@@ -1,5 +1,6 @@
 /**
- * Loads the cached large-context fixture and checks that secrets planted before the
+ * Loads the cached large-context fixture and checks that secrets planted before
+ * the
  * first compaction still recall under DeepSeek V4 Flash.
  *
  * After the baseline recall, forces EXTRA_GENERATIONS more compaction rounds
@@ -20,7 +21,10 @@ import { createDeepSeekFlash } from './deepseek'
 
 const FIXTURE = join(import.meta.dir, 'large-context-fixture.json.gz')
 const VERIFY_CONTEXT_WINDOW = 200_000
-/** Extra forced compaction generations after baseline recall (0 = baseline only). */
+/**
+ * Extra forced compaction generations after baseline recall (0 = baseline
+ * only).
+ */
 const EXTRA_GENERATIONS = 3
 /** keepRecent while forcing extras so each compact can still find a window. */
 const KEEP_RECENT = 1_000
@@ -51,7 +55,8 @@ const runtime = {
     createStandardAgentTools({
       environment,
       scheduleYield: (_ctx, durationMs) => {
-        if (!sessionRef) throw new Error('fixture session is not ready for yield scheduling')
+        if (!sessionRef)
+          throw new Error('fixture session is not ready for yield scheduling')
         return sessionRef.scheduleYieldWakeup(durationMs)
       },
     }),
@@ -79,8 +84,12 @@ const session = AgentSession.fromCheckpoint(
 )
 sessionRef = session
 
-const gens = (): number => session.transcript().blocks.filter((b) => b.type === 'compaction_boundary').length
-const errCount = (): number => session.transcript().blocks.filter((b) => b.type === 'error').length
+const gens = (): number => session.transcript()
+  .blocks.filter((b) => b.type === 'compaction_boundary')
+  .length
+const errCount = (): number => session.transcript()
+  .blocks.filter((b) => b.type === 'error')
+  .length
 
 function responseSince(beforeLen: number): string {
   return session
@@ -100,7 +109,9 @@ async function send(label: string, text: string): Promise<string> {
       return responseSince(before)
     } catch (e) {
       lastErr = e
-      log(`   (${label} attempt ${attempt + 1} failed: ${String(e).slice(0, 80)})`)
+      log(
+        `   (${label} attempt ${attempt + 1} failed: ${String(e).slice(0, 80)})`
+      )
     }
   }
   throw lastErr
@@ -112,11 +123,13 @@ function recallCount(text: string): number {
 
 function hasCompactableWindow(): boolean {
   const window = session.transcript().findCompactionWindow(KEEP_RECENT)
-  if (!window) return false
+  if (!window)
+    return false
   let minCut = window.startIndex
   while (minCut < window.cutPoint) {
     const type = session.transcript().blocks[minCut]?.type
-    if (type !== 'compaction_boundary' && type !== 'compaction_marker') break
+    if (type !== 'compaction_boundary' && type !== 'compaction_marker')
+      break
     minCut += 1
   }
   return window.cutPoint > minCut
@@ -128,18 +141,27 @@ async function growUntilCompactable(label: string): Promise<void> {
     const filler = `VERIFY-${label}-${turns}-` + 'x'.repeat(6_000)
     await send(`${label}-grow-${turns}`, `忽略下列填充并只回复 ok。\n\n${filler}`)
     turns += 1
-    if (turns > 30) throw new Error(`${label}: could not create a compactable window`)
+    if (turns > 30)
+      throw new Error(`${label}: could not create a compactable window`)
   }
-  if (turns > 0) log(`   grew ${turns} filler turn(s) for a compactable window`)
+  if (turns > 0)
+    log(`   grew ${turns} filler turn(s) for a compactable window`)
 }
 
 const baselineGens = gens()
 log(
   `loaded fixture: total≈${fx.builtTokens} tokens, ${fx.blocks.length} blocks, ${baselineGens} generations` +
-    (EXTRA_GENERATIONS > 0 ? ` (extra=${EXTRA_GENERATIONS}, keepRecent=${KEEP_RECENT})` : ''),
+    (EXTRA_GENERATIONS > 0
+      ? ` (extra=${EXTRA_GENERATIONS}, keepRecent=${KEEP_RECENT})`
+      : ''),
 )
 
-type Row = { generations: number; recalled: number; answerTail: string; errors: number }
+type Row = {
+  generations: number;
+  recalled: number;
+  answerTail: string;
+  errors: number
+}
 const rows: Row[] = []
 
 log('\n── baseline recall')
@@ -151,7 +173,9 @@ log('\n── baseline recall')
     answerTail: answer.slice(-120),
     errors: errCount(),
   })
-  log(`   gens=${gens()}  recall=${rows[0]!.recalled}/3  errors=${rows[0]!.errors}`)
+  log(
+    `   gens=${gens()}  recall=${rows[0]!.recalled}/3  errors=${rows[0]!.errors}`
+  )
 }
 
 let brokeAt: number | null = null
@@ -166,8 +190,13 @@ for (let extra = 1; extra <= EXTRA_GENERATIONS; extra += 1) {
   await growUntilCompactable(`extra-${extra}`)
   await session.compact()
   if (gens() <= before) {
-    log(`   compact did not add a generation (still ${gens()}); growing harder and retrying once`)
-    await send(`extra-${extra}-force-grow`, `忽略下列填充并只回复 ok。\n\n` + `FORCE-${extra}-` + 'x'.repeat(20_000))
+    log(
+      `   compact did not add a generation (still ${gens()}); growing harder and retrying once`
+    )
+    await send(
+      `extra-${extra}-force-grow`,
+      `忽略下列填充并只回复 ok。\n\n` + `FORCE-${extra}-` + 'x'.repeat(20_000)
+    )
     await session.compact()
   }
   if (gens() <= before) {
@@ -178,7 +207,12 @@ for (let extra = 1; extra <= EXTRA_GENERATIONS; extra += 1) {
 
   const answer = await send(`recall-${extra}`, RECALL_PROMPT)
   const recalled = recallCount(answer)
-  rows.push({ generations: gens(), recalled, answerTail: answer.slice(-120), errors: errCount() })
+  rows.push({
+    generations: gens(),
+    recalled,
+    answerTail: answer.slice(-120),
+    errors: errCount()
+  })
   log(`   gens=${gens()}  recall=${recalled}/3  errors=${errCount()}`)
   if (recalled < 3) {
     brokeAt = gens()
@@ -192,7 +226,9 @@ log('\n===== LONG-SESSION COMPACTION VERIFY =====')
 if (EXTRA_GENERATIONS > 0) {
   log('generations | recall | errors')
   for (const row of rows) {
-    log(`${String(row.generations).padStart(11)} | ${row.recalled}/3    | ${row.errors}`)
+    log(
+      `${String(row.generations).padStart(11)} | ${row.recalled}/3    | ${row.errors}`
+    )
   }
 }
 
@@ -207,7 +243,8 @@ const pass =
 if (brokeAt !== null) {
   log(`\n❌ recall dropped below 3/3 at generation ${brokeAt}`)
   const failed = rows.find((row) => row.generations === brokeAt)
-  if (failed) log(`   answer tail: ${failed.answerTail}`)
+  if (failed)
+    log(`   answer tail: ${failed.answerTail}`)
   process.exit(1)
 }
 

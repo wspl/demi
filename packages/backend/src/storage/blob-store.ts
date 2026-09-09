@@ -20,7 +20,8 @@ export class DirBlobStore implements BlobStore {
     hasher.update(data)
     const sha256 = hasher.digest('hex')
     const path = join(this.root, sha256)
-    if (await Bun.file(path).exists()) return sha256
+    if (await Bun.file(path).exists())
+      return sha256
     await mkdir(this.root, { recursive: true })
     const temp = join(this.root, `.tmp-${createId()}`)
     await writeFile(temp, data)
@@ -28,17 +29,20 @@ export class DirBlobStore implements BlobStore {
       await rename(temp, path)
     } catch (error) {
       await rm(temp, { force: true })
-      if (!(await Bun.file(path).exists())) throw error
+      if (!(await Bun.file(path).exists()))
+        throw error
     }
     return sha256
   }
 
   async get(sha256: string): Promise<Uint8Array | null> {
-    if (!/^[0-9a-f]{64}$/.test(sha256)) return null
+    if (!/^[0-9a-f]{64}$/.test(sha256))
+      return null
     try {
       return new Uint8Array(await readFile(join(this.root, sha256)))
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+        return null
       throw error
     }
   }

@@ -19,16 +19,25 @@ export interface VendorFamily {
  * not offered.
  */
 const FAMILY_BY_NPM: Record<string, VendorFamily> = {
-  '@ai-sdk/openai-compatible': { providerType: 'openai', wireApi: 'chat-completions' },
+  '@ai-sdk/openai-compatible': {
+    providerType: 'openai',
+    wireApi: 'chat-completions'
+  },
   '@ai-sdk/openai': { providerType: 'openai', wireApi: 'responses' },
   '@ai-sdk/anthropic': { providerType: 'anthropic' },
   '@ai-sdk/google': { providerType: 'google' },
 }
 
-/** Vendors whose endpoint needs an auth scheme of its own, which an API key cannot satisfy. */
+/**
+ * Vendors whose endpoint needs an auth scheme of its own, which an API key
+ * cannot satisfy.
+ */
 const NOT_OFFERED = new Set(['github-copilot'])
 
-/** A vendor the providers page can add: its family, prefilled endpoint, and where its docs are. */
+/**
+ * A vendor the providers page can add: its family, prefilled endpoint, and
+ * where its docs are.
+ */
 export interface Vendor extends VendorFamily {
   id: string
   name: string
@@ -42,7 +51,11 @@ export interface Vendor extends VendorFamily {
  * names its vendor by id and the list follows the catalog.
  */
 export class VendorCatalog {
-  constructor(private readonly options: { fetch?: ModelsDevFetch; url?: string; now?: () => Date } = {}) {}
+  constructor(private readonly options: {
+    fetch?: ModelsDevFetch;
+    url?: string;
+    now?: () => Date
+  } = {}) {}
 
   async list(): Promise<Vendor[]> {
     const { catalog } = await fetchModelsDev(this.options)
@@ -58,17 +71,33 @@ export class VendorCatalog {
     return entry ? vendorOf(entry) : null
   }
 
-  /** The vendor's model list as the catalog of provider entry `providerId`, or null for an unknown vendor. */
-  async models(vendorId: string, providerId: string, refresh = false): Promise<ProviderModelList | null> {
+  /**
+   * The vendor's model list as the catalog of provider entry `providerId`, or
+   * null for an unknown vendor.
+   */
+  async models(
+    vendorId: string,
+    providerId: string,
+    refresh = false
+  ): Promise<ProviderModelList | null> {
     const snapshot = await fetchModelsDev({ ...this.options, refresh })
-    if (!snapshot.catalog[vendorId] || !vendorOf(snapshot.catalog[vendorId])) return null
+    if (!snapshot.catalog[vendorId] || !vendorOf(snapshot.catalog[vendorId]))
+      return null
     return modelListFromModelsDev(snapshot, vendorId, providerId)
   }
 }
 
 function vendorOf(entry: ModelsDevProvider): Vendor | null {
-  if (NOT_OFFERED.has(entry.id)) return null
+  if (NOT_OFFERED.has(entry.id))
+    return null
   const family = entry.npm ? FAMILY_BY_NPM[entry.npm] : undefined
-  if (!family) return null
-  return { id: entry.id, name: entry.name, ...family, baseUrl: entry.api ?? null, doc: entry.doc ?? null }
+  if (!family)
+    return null
+  return {
+    id: entry.id,
+    name: entry.name,
+    ...family,
+    baseUrl: entry.api ?? null,
+    doc: entry.doc ?? null
+  }
 }

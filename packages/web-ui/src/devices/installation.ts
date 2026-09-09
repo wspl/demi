@@ -12,7 +12,10 @@ export const deviceSystems = [
   { value: 'windows', label: 'Windows' },
 ] as const
 
-export function deviceInstallCommand(installation: DeviceInstallation, system: DeviceSystem): string {
+export function deviceInstallCommand(
+  installation: DeviceInstallation,
+  system: DeviceSystem
+): string {
   if (system === 'windows') {
     const quote = (value: string) => `'${value.replaceAll("'", "''")}'`
     return `irm ${quote(installation.powershellInstallerUrl)} | iex`

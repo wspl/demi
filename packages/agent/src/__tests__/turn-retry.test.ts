@@ -1,116 +1,187 @@
 import { expect, test } from 'bun:test'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import type { SessionEvent } from '../types'
-import { DEFAULT_TURN_RETRY_POLICY, isRetryableCode, retryDelayMs, resolveRetryPolicy } from '../session/retry-policy'
+import {
+  DEFAULT_TURN_RETRY_POLICY,
+  isRetryableCode,
+  retryDelayMs,
+  resolveRetryPolicy
+} from '../session/retry-policy'
 import { createSession, createRuntime, text } from './helpers'
 
 const fastRetry = { baseDelayMs: 1, maxDelayMs: 2 }
 
-test('transient provider errors before any content are retried silently', async () => {
-  const provider = new StubProvider([
-    [
-      {
-        type: 'error',
-        message: 'throttled',
-        code: 'rate_limit',
-        diagnostics: {
-          source: 'stream',
-          providerCode: 'server_error',
-          providerRequestId: 'provider-request-1',
+test(
+  'transient provider errors before any content are retried silently',
+  async () => {
+    const provider = new StubProvider([
+      [
+        {
+          type: 'error',
+          message: 'throttled',
+          code: 'rate_limit',
+          diagnostics: {
+            source: 'stream',
+            providerCode: 'server_error',
+            providerRequestId: 'provider-request-1',
+          },
         },
+      ],
+      [events.error('busy', 'overloaded')],
+      [events.text('recovered'), events.response()],
+    ])
+    const session = createSession(
+      provider,
+      createRuntime(),
+      undefined,
+      undefined,
+      { retry: fastRetry }
+    )
+    const emitted: SessionEvent[] = []
+    session.subscribe((event) => emitted.push(event))
+
+    await session.send(text('hello'))
+
+    expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'text',
+      'response'
+    ])
+    expect(
+      session.transcript().blocks.some((block) => block.type === 'error')
+    ).toBe(false)
+    const retries = emitted.filter((event) => event.type === 'retry_scheduled')
+    expect(retries).toHaveLength(2)
+    expect(retries[0]).toMatchObject({
+      attempt: 1,
+      code: 'rate_limit',
+      diagnostics: {
+        source: 'stream',
+        providerCode: 'server_error',
+        providerRequestId: 'provider-request-1',
+        clientRequestId: expect.any(String),
       },
-    ],
-    [events.error('busy', 'overloaded')],
-    [events.text('recovered'), events.response()],
-  ])
-  const session = createSession(provider, createRuntime(), undefined, undefined, { retry: fastRetry })
-  const emitted: SessionEvent[] = []
-  session.subscribe((event) => emitted.push(event))
-
-  await session.send(text('hello'))
-
-  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
-  expect(session.transcript().blocks.some((block) => block.type === 'error')).toBe(false)
-  const retries = emitted.filter((event) => event.type === 'retry_scheduled')
-  expect(retries).toHaveLength(2)
-  expect(retries[0]).toMatchObject({
-    attempt: 1,
-    code: 'rate_limit',
-    diagnostics: {
-      source: 'stream',
-      providerCode: 'server_error',
-      providerRequestId: 'provider-request-1',
-      clientRequestId: expect.any(String),
-    },
-  })
-  expect(retries[1]).toMatchObject({ attempt: 2, code: 'overloaded' })
-  expect(provider.consumedTurns).toBe(3)
-})
+    })
+    expect(retries[1]).toMatchObject({ attempt: 2, code: 'overloaded' })
+    expect(provider.consumedTurns).toBe(3)
+  }
+)
 
 test('empty thinking lifecycle does not suppress transient retry', async () => {
   const provider = new StubProvider([
     [{ type: 'thinking_start' }, events.error('busy', 'overloaded')],
     [events.text('recovered'), events.response()],
   ])
-  const session = createSession(provider, createRuntime(), undefined, undefined, { retry: fastRetry })
+  const session = createSession(
+    provider,
+    createRuntime(),
+    undefined,
+    undefined,
+    { retry: fastRetry }
+  )
   const emitted: SessionEvent[] = []
   session.subscribe((event) => emitted.push(event))
 
   await session.send(text('hello'))
 
-  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
-  expect(emitted.filter((event) => event.type === 'retry_scheduled')).toHaveLength(1)
-  expect(provider.consumedTurns).toBe(2)
-})
-
-test('non-retryable error codes surface immediately without retry', async () => {
-  const provider = new StubProvider([[events.error('bad key', 'auth_expired')]])
-  const session = createSession(provider, createRuntime(), undefined, undefined, { retry: fastRetry })
-  const emitted: SessionEvent[] = []
-  session.subscribe((event) => emitted.push(event))
-
-  await expect(session.send(text('hello'))).rejects.toThrow('bad key')
-
-  expect(emitted.some((event) => event.type === 'retry_scheduled')).toBe(false)
-  expect(session.transcript().blocks.some((block) => block.type === 'error')).toBe(true)
-  expect(provider.consumedTurns).toBe(1)
-})
-
-test('an error after streamed thinking is retried, and the thinking is unwound', async () => {
-  const provider = new StubProvider([
-    [
-      { type: 'thinking_start' },
-      { type: 'thinking_delta', text: 'a long first pass' },
-      events.error('busy', 'overloaded'),
-    ],
-    [events.text('recovered'), events.response()],
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'text',
+    'response'
   ])
-  const session = createSession(provider, createRuntime(), undefined, undefined, { retry: fastRetry })
-  const emitted: SessionEvent[] = []
-  session.subscribe((event) => emitted.push(event))
-
-  await session.send(text('hello'))
-
-  // Nobody acts on thinking, so the attempt is unwindable and the retry is silent.
-  // The discarded reasoning must not survive to be replayed to the model.
-  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
-  expect(emitted.filter((event) => event.type === 'retry_scheduled')).toHaveLength(1)
+  expect(emitted.filter((event) => event.type === 'retry_scheduled'))
+    .toHaveLength(1)
   expect(provider.consumedTurns).toBe(2)
 })
 
-test('errors after streamed text are not retried (no duplicate output)', async () => {
-  const provider = new StubProvider([[events.text('partial'), events.error('dropped', 'rate_limit')]])
-  const session = createSession(provider, createRuntime(), undefined, undefined, { retry: fastRetry })
-  const emitted: SessionEvent[] = []
-  session.subscribe((event) => emitted.push(event))
+test(
+  'non-retryable error codes surface immediately without retry',
+  async () => {
+    const provider = new StubProvider([[events.error('bad key', 'auth_expired')]])
+    const session = createSession(
+      provider,
+      createRuntime(),
+      undefined,
+      undefined,
+      { retry: fastRetry }
+    )
+    const emitted: SessionEvent[] = []
+    session.subscribe((event) => emitted.push(event))
 
-  await expect(session.send(text('hello'))).rejects.toThrow('dropped')
+    await expect(session.send(text('hello'))).rejects.toThrow('bad key')
 
-  expect(emitted.some((event) => event.type === 'retry_scheduled')).toBe(false)
-  const textBlocks = session.transcript().blocks.filter((block) => block.type === 'text')
-  expect(textBlocks).toHaveLength(1)
-  expect(provider.consumedTurns).toBe(1)
-})
+    expect(emitted.some((event) => event.type === 'retry_scheduled'))
+      .toBe(false)
+    expect(
+      session.transcript().blocks.some((block) => block.type === 'error')
+    ).toBe(true)
+    expect(provider.consumedTurns).toBe(1)
+  }
+)
+
+test(
+  'an error after streamed thinking is retried, and the thinking is unwound',
+  async () => {
+    const provider = new StubProvider([
+      [
+        { type: 'thinking_start' },
+        { type: 'thinking_delta', text: 'a long first pass' },
+        events.error('busy', 'overloaded'),
+      ],
+      [events.text('recovered'), events.response()],
+    ])
+    const session = createSession(
+      provider,
+      createRuntime(),
+      undefined,
+      undefined,
+      { retry: fastRetry }
+    )
+    const emitted: SessionEvent[] = []
+    session.subscribe((event) => emitted.push(event))
+
+    await session.send(text('hello'))
+
+    // Nobody acts on thinking, so the attempt is unwindable and the retry is silent.
+    // The discarded reasoning must not survive to be replayed to the model.
+    expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'text',
+      'response'
+    ])
+    expect(emitted.filter((event) => event.type === 'retry_scheduled'))
+      .toHaveLength(1)
+    expect(provider.consumedTurns).toBe(2)
+  }
+)
+
+test(
+  'errors after streamed text are not retried (no duplicate output)',
+  async () => {
+    const provider = new StubProvider([[
+      events.text('partial'),
+      events.error('dropped', 'rate_limit')
+    ]])
+    const session = createSession(
+      provider,
+      createRuntime(),
+      undefined,
+      undefined,
+      { retry: fastRetry }
+    )
+    const emitted: SessionEvent[] = []
+    session.subscribe((event) => emitted.push(event))
+
+    await expect(session.send(text('hello'))).rejects.toThrow('dropped')
+
+    expect(emitted.some((event) => event.type === 'retry_scheduled'))
+      .toBe(false)
+    const textBlocks = session.transcript()
+      .blocks.filter((block) => block.type === 'text')
+    expect(textBlocks).toHaveLength(1)
+    expect(provider.consumedTurns).toBe(1)
+  }
+)
 
 test('retries stop at maxAttempts and the final error surfaces', async () => {
   const provider = new StubProvider([
@@ -118,15 +189,22 @@ test('retries stop at maxAttempts and the final error surfaces', async () => {
     [events.error('throttled 2', 'rate_limit')],
     [events.error('throttled 3', 'rate_limit')],
   ])
-  const session = createSession(provider, createRuntime(), undefined, undefined, {
-    retry: { ...fastRetry, maxAttempts: 3 },
-  })
+  const session = createSession(
+    provider,
+    createRuntime(),
+    undefined,
+    undefined,
+    {
+      retry: { ...fastRetry, maxAttempts: 3 },
+    }
+  )
   const emitted: SessionEvent[] = []
   session.subscribe((event) => emitted.push(event))
 
   await expect(session.send(text('hello'))).rejects.toThrow('throttled 3')
 
-  expect(emitted.filter((event) => event.type === 'retry_scheduled')).toHaveLength(2)
+  expect(emitted.filter((event) => event.type === 'retry_scheduled'))
+    .toHaveLength(2)
   expect(provider.consumedTurns).toBe(3)
 })
 
@@ -163,7 +241,13 @@ test('tool-call turns retry transient continuation failures', async () => {
       },
     ],
   })
-  const session = createSession(provider, runtime, undefined, undefined, { retry: fastRetry })
+  const session = createSession(
+    provider,
+    runtime,
+    undefined,
+    undefined,
+    { retry: fastRetry }
+  )
 
   await session.send(text('run'))
 
@@ -177,46 +261,55 @@ test('tool-call turns retry transient continuation failures', async () => {
   expect(provider.consumedTurns).toBe(3)
 })
 
-test('resume preserves completed tools after an exhausted provider error', async () => {
-  let toolCalls = 0
-  let resumedItems = ''
-  const provider = new StubProvider([
-    [events.toolCall('tool-1', 'noop', {}), events.response()],
-    [events.error('backend failed', 'overloaded')],
-    (request) => {
-      resumedItems = JSON.stringify(request.items)
-      return [events.text('recovered'), events.response()]
-    },
-  ])
-  const runtime = createRuntime({
-    tools: () => [
-      {
-        name: 'noop',
-        description: 'does nothing',
-        inputSchema: { type: 'object' },
-        invoke: () => {
-          toolCalls += 1
-          return { output: [{ type: 'text', text: 'preserved result' }] }
-        },
+test(
+  'resume preserves completed tools after an exhausted provider error',
+  async () => {
+    let toolCalls = 0
+    let resumedItems = ''
+    const provider = new StubProvider([
+      [events.toolCall('tool-1', 'noop', {}), events.response()],
+      [events.error('backend failed', 'overloaded')],
+      (request) => {
+        resumedItems = JSON.stringify(request.items)
+        return [events.text('recovered'), events.response()]
       },
-    ],
-  })
-  const session = createSession(provider, runtime, undefined, undefined, { retry: { maxAttempts: 1 } })
+    ])
+    const runtime = createRuntime({
+      tools: () => [
+        {
+          name: 'noop',
+          description: 'does nothing',
+          inputSchema: { type: 'object' },
+          invoke: () => {
+            toolCalls += 1
+            return { output: [{ type: 'text', text: 'preserved result' }] }
+          },
+        },
+      ],
+    })
+    const session = createSession(
+      provider,
+      runtime,
+      undefined,
+      undefined,
+      { retry: { maxAttempts: 1 } }
+    )
 
-  await expect(session.send(text('run'))).rejects.toThrow('backend failed')
-  await session.resume()
+    await expect(session.send(text('run'))).rejects.toThrow('backend failed')
+    await session.resume()
 
-  expect(toolCalls).toBe(1)
-  expect(resumedItems).toContain('preserved result')
-  expect(resumedItems).toContain('Continue from where you left off.')
-  // The tool result and its response survive; the failed attempt's error marker is
-  // unwound with the rest of its leftovers, the same way a full rerun drops it.
-  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
-    'user',
-    'tool_call',
-    'response',
-    'resume',
-    'text',
-    'response',
-  ])
-})
+    expect(toolCalls).toBe(1)
+    expect(resumedItems).toContain('preserved result')
+    expect(resumedItems).toContain('Continue from where you left off.')
+    // The tool result and its response survive; the failed attempt's error marker is
+    // unwound with the rest of its leftovers, the same way a full rerun drops it.
+    expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+      'user',
+      'tool_call',
+      'response',
+      'resume',
+      'text',
+      'response',
+    ])
+  }
+)

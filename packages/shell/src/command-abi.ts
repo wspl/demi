@@ -10,7 +10,9 @@ export type CommandWriter = (data: string | Uint8Array) => Promise<void> | void
 
 /** The whole world a `runtime` module sees. */
 export interface CommandContext<Args = Record<string, unknown>> {
-  /** The parsed arguments, already validated against the leaf's input schema. */
+  /**
+   * The parsed arguments, already validated against the leaf's input schema.
+   */
   args: Args
   /** The filesystem of the Host the command runs against. */
   fs: HostFileSystem
@@ -30,14 +32,19 @@ export interface CommandResult {
 }
 
 /** The one export of a `runtime` module. */
-export type CommandModule<Args = Record<string, unknown>> = (ctx: CommandContext<Args>) => Promise<CommandResult>
+export type CommandModule<Args = Record<string, unknown>> = (
+  ctx: CommandContext<Args>
+) => Promise<CommandResult>
 
 /**
  * The stdio and environment of one command invocation, as a shell hands it
  * to the command loader.
  */
 export interface DispatchIO {
-  /** The pipe: a pipeline, heredoc, `<` file. Finite. Absent when fd 0 is not a pipe. */
+  /**
+   * The pipe: a pipeline, heredoc, `<` file. Finite. Absent when fd 0 is not a
+   * pipe.
+   */
   stdin?: AsyncIterable<Uint8Array>
   /**
    * The script's own stdin, when this command's stdin is not redirected:
@@ -50,7 +57,10 @@ export interface DispatchIO {
   cwd: string
   env: Record<string, string>
   signal?: AbortSignal
-  /** The executing leaf's hint, cleared when it settles; help and invalid invocations never set one. */
+  /**
+   * The executing leaf's hint, cleared when it settles; help and invalid
+   * invocations never set one.
+   */
   onRunningHint?: (hint: string | undefined) => void | Promise<void>
 }
 
@@ -68,7 +78,9 @@ export type RuntimeModule = string & { readonly [runtimeModuleBrand]: true }
  */
 export function runtimeModule(source: unknown): RuntimeModule {
   if (typeof source !== 'string') {
-    throw new TypeError(`runtimeModule: expected the module text, received ${typeof source}; import the module with { type: 'text' } and build with commandModulesAsText`)
+    throw new TypeError(
+      `runtimeModule: expected the module text, received ${typeof source}; import the module with { type: 'text' } and build with commandModulesAsText`
+    )
   }
   return source as RuntimeModule
 }
@@ -87,7 +99,10 @@ export function loadCommandModule(javascript: string): Promise<CommandModule> {
 }
 
 async function importModule(javascript: string): Promise<CommandModule> {
-  const url = URL.createObjectURL(new Blob([javascript], { type: 'text/javascript' }))
+  const url = URL.createObjectURL(new Blob(
+    [javascript],
+    { type: 'text/javascript' }
+  ))
   try {
     return await importCommandModule(url)
   } finally {
@@ -99,7 +114,9 @@ async function importModule(javascript: string): Promise<CommandModule> {
  * Imports a `runtime` module by specifier — a `blob:` URL here, a file in the
  * manifest cache on a target — and checks its one export.
  */
-export async function importCommandModule(specifier: string): Promise<CommandModule> {
+export async function importCommandModule(
+  specifier: string
+): Promise<CommandModule> {
   const loaded = (await import(specifier)) as { default?: unknown }
   if (typeof loaded.default !== 'function') {
     throw new TypeError('a runtime module must default-export its command function')

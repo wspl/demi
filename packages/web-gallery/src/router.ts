@@ -14,7 +14,10 @@ import RoadmapSection from './sections/RoadmapSection.vue'
 
 export type GalleryLayout = 'catalog' | 'session' | 'preview'
 
-export const NAV: { path: string; label: string }[] = [
+export const NAV: {
+  path: string;
+  label: string
+}[] = [
   { path: '/overview', label: 'Overview' },
   { path: '/surfaces', label: 'Surfaces' },
   { path: '/primitives', label: 'Primitives' },
@@ -33,16 +36,40 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', redirect: '/overview' },
-    { path: '/overview', component: OverviewSection, meta: { layout: 'catalog' } },
-    { path: '/surfaces', component: SurfacesSection, meta: { layout: 'catalog' } },
-    { path: '/primitives', component: PrimitivesSection, meta: { layout: 'catalog' } },
+    {
+      path: '/overview',
+      component: OverviewSection,
+      meta: { layout: 'catalog' }
+    },
+    {
+      path: '/surfaces',
+      component: SurfacesSection,
+      meta: { layout: 'catalog' }
+    },
+    {
+      path: '/primitives',
+      component: PrimitivesSection,
+      meta: { layout: 'catalog' }
+    },
     { path: '/motion', component: MotionSection, meta: { layout: 'catalog' } },
-    { path: '/overlays', component: OverlaysSection, meta: { layout: 'catalog' } },
+    {
+      path: '/overlays',
+      component: OverlaysSection,
+      meta: { layout: 'catalog' }
+    },
     { path: '/files', component: FilesSection, meta: { layout: 'catalog' } },
     { path: '/session', component: SessionSection, meta: { layout: 'session' } },
     { path: '/sidebar', component: SidebarSection, meta: { layout: 'catalog' } },
-    { path: '/settings', component: SettingsSection, meta: { layout: 'catalog' } },
-    { path: '/markdown', component: MarkdownSection, meta: { layout: 'preview' } },
+    {
+      path: '/settings',
+      component: SettingsSection,
+      meta: { layout: 'catalog' }
+    },
+    {
+      path: '/markdown',
+      component: MarkdownSection,
+      meta: { layout: 'preview' }
+    },
     { path: '/code', component: CodeSection, meta: { layout: 'preview' } },
     { path: '/roadmap', component: RoadmapSection, meta: { layout: 'catalog' } },
     { path: '/:pathMatch(.*)*', redirect: '/overview' },

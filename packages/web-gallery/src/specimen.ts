@@ -10,7 +10,10 @@ const TOOL_BLOCK_NAME = {
   generic: 'ToolGenericBlock',
 } as const
 
-export function specimenForBlock(block: MessageListBlock): { name: string; variant: string } {
+export function specimenForBlock(block: MessageListBlock): {
+  name: string;
+  variant: string
+} {
   switch (block.type) {
     case 'user':
       return { name: 'UserBlock', variant: 'user' }
@@ -23,7 +26,10 @@ export function specimenForBlock(block: MessageListBlock): { name: string; varia
     case 'queued_message':
       return { name: 'UserBlock', variant: 'queued' }
     case 'thinking':
-      return { name: 'ThinkingBlock', variant: block.id === 'thinking-streaming' ? 'streaming' : 'done' }
+      return {
+        name: 'ThinkingBlock',
+        variant: block.id === 'thinking-streaming' ? 'streaming' : 'done'
+      }
     case 'text':
       return { name: 'AssistantTextBlock', variant: '' }
     case 'tool_call':

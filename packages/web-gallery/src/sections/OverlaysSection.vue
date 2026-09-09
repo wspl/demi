@@ -27,7 +27,11 @@ const hostDevices = [
   { id: 'build', name: 'build-01', online: true },
   { id: 'studio', name: 'studio', online: false },
 ]
-const mainHost = ref<HostMenuMainHost>({ id: 'mac', name: 'zan-mbp', kind: 'device' })
+const mainHost = ref<HostMenuMainHost>({
+  id: 'mac',
+  name: 'zan-mbp',
+  kind: 'device'
+})
 const attachedHosts = ref(hostDevices.filter(device => device.id !== 'mac'))
 
 function switchMainHost(id: string) {
@@ -39,7 +43,8 @@ function switchMainHost(id: string) {
 
 function attachHost(id: string) {
   const device = hostDevices.find(device => device.id === id)
-  if (device) attachedHosts.value.push(device)
+  if (device)
+    attachedHosts.value.push(device)
 }
 
 function detachHost(id: string) {
@@ -94,14 +99,20 @@ const submenuModels = [
   { id: 'gpt', label: 'GPT-5' },
 ]
 
-function itemLabel(id: string, list: { id: string; label: string }[] = items) {
+function itemLabel(id: string, list: {
+  id: string;
+  label: string
+}[] = items) {
   return list.find(item => item.id === id)?.label ?? id
 }
 </script>
 
 <template>
   <div class="space-y-8">
-    <GallerySection title="Tooltip" note="Hover, placement, rich overlay, and suppressed.">
+    <GallerySection
+      title="Tooltip"
+      note="Hover, placement, rich overlay, and suppressed."
+    >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="hover">
           <Tooltip content="Send the current turn">
@@ -137,37 +148,107 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
       </div>
     </GallerySection>
 
-    <GallerySection title="Menu" note="Actions, choices, submenus, tall, and filter.">
+    <GallerySection
+      title="Menu"
+      note="Actions, choices, submenus, tall, and filter."
+    >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="actions">
           <Menu>
-            <MenuItem :icon="Pencil" label="Rename" shortcut="↵" />
-            <MenuItem :icon="Copy" label="Duplicate" shortcut="⌘D" />
+            <MenuItem
+              :icon="Pencil"
+              label="Rename"
+              shortcut="↵"
+            />
+            <MenuItem
+              :icon="Copy"
+              label="Duplicate"
+              shortcut="⌘D"
+            />
             <MenuDivider />
-            <MenuItem label="Delete" :icon="Trash2" is-danger />
+            <MenuItem
+              label="Delete"
+              :icon="Trash2"
+              is-danger
+            />
             <MenuItem label="Disabled" disabled />
-            <MenuItem label="Running" disabled disabled-reason="The session is still running" />
+            <MenuItem
+              label="Running"
+              disabled
+              disabled-reason="The session is still running"
+            />
           </Menu>
         </GallerySpecimen>
         <GallerySpecimen variant="choices">
           <Menu iconless>
             <MenuGroup label="Paradigm">
-              <MenuItem label="Neutral" choice :is-selected="paradigmSelected === 'neutral'" @select="paradigmSelected = 'neutral'" />
-              <MenuItem label="Hairline" choice :is-selected="paradigmSelected === 'hairline'" @select="paradigmSelected = 'hairline'" />
-              <MenuItem label="Carved" choice :is-selected="paradigmSelected === 'carved'" @select="paradigmSelected = 'carved'" />
-              <MenuItem label="Overlay" choice :is-selected="paradigmSelected === 'overlay'" @select="paradigmSelected = 'overlay'" />
+              <MenuItem
+                label="Neutral"
+                choice
+                :is-selected="paradigmSelected === 'neutral'"
+                @select="paradigmSelected = 'neutral'"
+              />
+              <MenuItem
+                label="Hairline"
+                choice
+                :is-selected="paradigmSelected === 'hairline'"
+                @select="paradigmSelected = 'hairline'"
+              />
+              <MenuItem
+                label="Carved"
+                choice
+                :is-selected="paradigmSelected === 'carved'"
+                @select="paradigmSelected = 'carved'"
+              />
+              <MenuItem
+                label="Overlay"
+                choice
+                :is-selected="paradigmSelected === 'overlay'"
+                @select="paradigmSelected = 'overlay'"
+              />
             </MenuGroup>
             <MenuGroup label="Density">
-              <MenuItem label="Compact" choice :is-selected="densitySelected === 'compact'" @select="densitySelected = 'compact'" />
-              <MenuItem label="Regular" choice :is-selected="densitySelected === 'regular'" @select="densitySelected = 'regular'" />
+              <MenuItem
+                label="Compact"
+                choice
+                :is-selected="densitySelected === 'compact'"
+                @select="densitySelected = 'compact'"
+              />
+              <MenuItem
+                label="Regular"
+                choice
+                :is-selected="densitySelected === 'regular'"
+                @select="densitySelected = 'regular'"
+              />
             </MenuGroup>
           </Menu>
         </GallerySpecimen>
         <GallerySpecimen variant="choice · icon · focus">
           <Menu>
-            <MenuItem :icon="Pencil" label="Hairline" choice :is-selected="choiceIconSelected === 'hairline'" :is-focused="choiceIconFocused === 'hairline'" @select="choiceIconSelected = 'hairline'; choiceIconFocused = 'hairline'" />
-            <MenuItem :icon="Pencil" label="Carved" choice :is-selected="choiceIconSelected === 'carved'" :is-focused="choiceIconFocused === 'carved'" @select="choiceIconSelected = 'carved'; choiceIconFocused = 'carved'" />
-            <MenuItem :icon="Pencil" label="Overlay" choice :is-selected="choiceIconSelected === 'overlay'" :is-focused="choiceIconFocused === 'overlay'" @select="choiceIconSelected = 'overlay'; choiceIconFocused = 'overlay'" />
+            <MenuItem
+              :icon="Pencil"
+              label="Hairline"
+              choice
+              :is-selected="choiceIconSelected === 'hairline'"
+              :is-focused="choiceIconFocused === 'hairline'"
+              @select="choiceIconSelected = 'hairline'; choiceIconFocused = 'hairline'"
+            />
+            <MenuItem
+              :icon="Pencil"
+              label="Carved"
+              choice
+              :is-selected="choiceIconSelected === 'carved'"
+              :is-focused="choiceIconFocused === 'carved'"
+              @select="choiceIconSelected = 'carved'; choiceIconFocused = 'carved'"
+            />
+            <MenuItem
+              :icon="Pencil"
+              label="Overlay"
+              choice
+              :is-selected="choiceIconSelected === 'overlay'"
+              :is-focused="choiceIconFocused === 'overlay'"
+              @select="choiceIconSelected = 'overlay'; choiceIconFocused = 'overlay'"
+            />
           </Menu>
         </GallerySpecimen>
       </div>
@@ -176,10 +257,18 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
           <Menu iconless>
             <MenuItem label="Fast Mode" @select="submenuFast = !submenuFast">
               <template #suffix>
-                <Switch v-model="submenuFast" size="sm" @click.stop />
+                <Switch
+                  v-model="submenuFast"
+                  size="sm"
+                  @click.stop
+                />
               </template>
             </MenuItem>
-            <MenuItem submenu-open label="Reasoning" :value="submenuReasoningLabels[submenuReasoning]">
+            <MenuItem
+              submenu-open
+              label="Reasoning"
+              :value="submenuReasoningLabels[submenuReasoning]"
+            >
               <template #submenu>
                 <Menu iconless>
                   <MenuItem
@@ -192,12 +281,30 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
                 </Menu>
               </template>
             </MenuItem>
-            <MenuItem label="Model" :value="itemLabel(submenuModel, submenuModels)">
+            <MenuItem
+              label="Model"
+              :value="itemLabel(submenuModel, submenuModels)"
+            >
               <template #submenu>
                 <Menu iconless>
-                  <MenuItem label="Claude Sonnet" choice :is-selected="submenuModel === 'sonnet'" @select="submenuModel = 'sonnet'" />
-                  <MenuItem label="Claude Opus" choice :is-selected="submenuModel === 'opus'" @select="submenuModel = 'opus'" />
-                  <MenuItem label="GPT-5" choice :is-selected="submenuModel === 'gpt'" @select="submenuModel = 'gpt'" />
+                  <MenuItem
+                    label="Claude Sonnet"
+                    choice
+                    :is-selected="submenuModel === 'sonnet'"
+                    @select="submenuModel = 'sonnet'"
+                  />
+                  <MenuItem
+                    label="Claude Opus"
+                    choice
+                    :is-selected="submenuModel === 'opus'"
+                    @select="submenuModel = 'opus'"
+                  />
+                  <MenuItem
+                    label="GPT-5"
+                    choice
+                    :is-selected="submenuModel === 'gpt'"
+                    @select="submenuModel = 'gpt'"
+                  />
                 </Menu>
               </template>
             </MenuItem>
@@ -218,8 +325,16 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="label/value · columns">
           <Menu iconless>
-            <MenuItem label="Reasoning" value="Medium" has-submenu />
-            <MenuItem label="Model" value="Claude Sonnet 4.5" has-submenu />
+            <MenuItem
+              label="Reasoning"
+              value="Medium"
+              has-submenu
+            />
+            <MenuItem
+              label="Model"
+              value="Claude Sonnet 4.5"
+              has-submenu
+            />
             <MenuItem label="A much longer label" value="On" />
             <MenuItem label="Provider" value="Anthropic" />
           </Menu>
@@ -236,7 +351,11 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="tall">
           <Menu iconless>
-            <MenuItem v-for="label in tallActions" :key="label" :label="label" />
+            <MenuItem
+              v-for="label in tallActions"
+              :key="label"
+              :label="label"
+            />
           </Menu>
         </GallerySpecimen>
         <GallerySpecimen variant="tall · filter">
@@ -283,19 +402,37 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
     <GallerySection title="DropdownTrigger" note="Open and close.">
       <div class="specimen-row">
         <GallerySpecimen variant="default · closed">
-          <DropdownTrigger :is-open="triggerDefaultClosed" @click="triggerDefaultClosed = !triggerDefaultClosed">Menu</DropdownTrigger>
+          <DropdownTrigger
+            :is-open="triggerDefaultClosed"
+            @click="triggerDefaultClosed = !triggerDefaultClosed"
+          >Menu</DropdownTrigger>
         </GallerySpecimen>
         <GallerySpecimen variant="default · open">
-          <DropdownTrigger :is-open="triggerDefaultOpen" @click="triggerDefaultOpen = !triggerDefaultOpen">Menu</DropdownTrigger>
+          <DropdownTrigger
+            :is-open="triggerDefaultOpen"
+            @click="triggerDefaultOpen = !triggerDefaultOpen"
+          >Menu</DropdownTrigger>
         </GallerySpecimen>
         <GallerySpecimen variant="ghost · closed">
-          <DropdownTrigger variant="ghost" :is-open="triggerGhostClosed" @click="triggerGhostClosed = !triggerGhostClosed">claude-sonnet</DropdownTrigger>
+          <DropdownTrigger
+            variant="ghost"
+            :is-open="triggerGhostClosed"
+            @click="triggerGhostClosed = !triggerGhostClosed"
+          >claude-sonnet</DropdownTrigger>
         </GallerySpecimen>
         <GallerySpecimen variant="ghost · open">
-          <DropdownTrigger variant="ghost" :is-open="triggerGhostOpen" @click="triggerGhostOpen = !triggerGhostOpen">claude-sonnet</DropdownTrigger>
+          <DropdownTrigger
+            variant="ghost"
+            :is-open="triggerGhostOpen"
+            @click="triggerGhostOpen = !triggerGhostOpen"
+          >claude-sonnet</DropdownTrigger>
         </GallerySpecimen>
         <GallerySpecimen variant="sm · closed">
-          <DropdownTrigger size="sm" :is-open="triggerSmClosed" @click="triggerSmClosed = !triggerSmClosed">Menu</DropdownTrigger>
+          <DropdownTrigger
+            size="sm"
+            :is-open="triggerSmClosed"
+            @click="triggerSmClosed = !triggerSmClosed"
+          >Menu</DropdownTrigger>
         </GallerySpecimen>
       </div>
     </GallerySection>
@@ -310,7 +447,11 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
                 <MenuItem label="Rename" shortcut="↵" />
                 <MenuItem label="Duplicate" shortcut="⌘D" />
                 <MenuDivider />
-                <MenuItem label="Delete" :icon="Trash2" is-danger />
+                <MenuItem
+                  label="Delete"
+                  :icon="Trash2"
+                  is-danger
+                />
               </Menu>
             </template>
           </Dropdown>
@@ -332,7 +473,11 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
           </Dropdown>
         </GallerySpecimen>
         <GallerySpecimen variant="ghost · sm">
-          <Dropdown variant="ghost" size="sm" :overlay-store="appOverlayStore">
+          <Dropdown
+            variant="ghost"
+            size="sm"
+            :overlay-store="appOverlayStore"
+          >
             <template #trigger>{{ itemLabel(dropdownEffortSelected, effortItems) }}</template>
             <template #content="{ close }">
               <Menu iconless>
@@ -348,7 +493,11 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
           </Dropdown>
         </GallerySpecimen>
         <GallerySpecimen variant="default · sm">
-          <Dropdown variant="default" size="sm" :overlay-store="appOverlayStore">
+          <Dropdown
+            variant="default"
+            size="sm"
+            :overlay-store="appOverlayStore"
+          >
             <template #trigger>Menu</template>
             <template #content="{ close }">
               <Menu iconless @click="close">
@@ -361,11 +510,20 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
         <GallerySpecimen variant="custom trigger">
           <Dropdown :overlay-store="appOverlayStore">
             <template #trigger="{ isOpen }">
-              <IconButton :icon="Plus" variant="ghost" circle :pressed="isOpen" />
+              <IconButton
+                :icon="Plus"
+                variant="ghost"
+                circle
+                :pressed="isOpen"
+              />
             </template>
             <template #content="{ close }">
               <Menu>
-                <MenuItem :icon="Plus" label="Attach files" @select="close()" />
+                <MenuItem
+                  :icon="Plus"
+                  label="Attach files"
+                  @select="close()"
+                />
               </Menu>
             </template>
           </Dropdown>
@@ -387,7 +545,11 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
       </div>
       <GalleryOverlayWell>
         <GallerySpecimen variant="pinned open">
-          <Dropdown variant="ghost" :overlay-store="appOverlayStore" open>
+          <Dropdown
+            variant="ghost"
+            :overlay-store="appOverlayStore"
+            open
+          >
             <template #trigger>{{ itemLabel(dropdownInlineSelected) }}</template>
             <template #content>
               <Menu iconless>
@@ -409,21 +571,34 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
       <GallerySpecimen variant="right-click">
         <ContextMenu :overlay-store="appOverlayStore">
           <template #trigger>
-            <div class="flex h-24 w-72 items-center justify-center rounded-lg bg-surface-raised text-[13px] text-fg-muted ring-1 ring-line">
+            <div
+              class="flex h-24 w-72 items-center justify-center rounded-lg bg-surface-raised text-[13px] text-fg-muted ring-1 ring-line"
+            >
               Right-click this surface
             </div>
           </template>
           <template #menu>
-            <MenuItem :icon="Pencil" label="Rename" shortcut="↵" />
+            <MenuItem
+              :icon="Pencil"
+              label="Rename"
+              shortcut="↵"
+            />
             <MenuItem label="New tab" />
             <MenuDivider />
-            <MenuItem :icon="Trash2" label="Close" is-danger />
+            <MenuItem
+              :icon="Trash2"
+              label="Close"
+              is-danger
+            />
           </template>
         </ContextMenu>
       </GallerySpecimen>
     </GallerySection>
 
-    <GallerySection title="Toast" note="Danger, a rejected action whose title wraps, Copied, and live host.">
+    <GallerySection
+      title="Toast"
+      note="Danger, a rejected action whose title wraps, Copied, and live host."
+    >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="danger">
           <div class="w-80">
@@ -434,7 +609,11 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
               tone="danger"
               @dismiss="pinDangerToast = false"
             />
-            <Button v-else size="md" @click="pinDangerToast = true">Show</Button>
+            <Button
+              v-else
+              size="md"
+              @click="pinDangerToast = true"
+            >Show</Button>
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="rejected">
@@ -445,13 +624,26 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
               tone="danger"
               @dismiss="pinRejectedToast = false"
             />
-            <Button v-else size="md" @click="pinRejectedToast = true">Show</Button>
+            <Button
+              v-else
+              size="md"
+              @click="pinRejectedToast = true"
+            >Show</Button>
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="copied">
           <div class="w-80">
-            <Toast v-if="pinCopiedToast" title="Copied" @dismiss="pinCopiedToast = false" />
-            <Button v-else size="md" variant="ghost" @click="pinCopiedToast = true">Show</Button>
+            <Toast
+              v-if="pinCopiedToast"
+              title="Copied"
+              @dismiss="pinCopiedToast = false"
+            />
+            <Button
+              v-else
+              size="md"
+              variant="ghost"
+              @click="pinCopiedToast = true"
+            >Show</Button>
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="live">
@@ -460,13 +652,20 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
               size="md"
               @click="showToast({ title: 'Failed to send message', message: 'WebSocket is closed', tone: 'danger' })"
             >Fail send</Button>
-            <Button size="md" variant="ghost" @click="showToast({ title: 'Copied' })">Copy id</Button>
+            <Button
+              size="md"
+              variant="ghost"
+              @click="showToast({ title: 'Copied' })"
+            >Copy id</Button>
           </div>
         </GallerySpecimen>
       </div>
     </GallerySection>
 
-    <GallerySection title="Dialog" note="Modal confirm. The pinned one starts open.">
+    <GallerySection
+      title="Dialog"
+      note="Modal confirm. The pinned one starts open."
+    >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="open">
           <Button size="md" @click="dialogOpen = true">Open</Button>
@@ -474,19 +673,35 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
       </div>
       <GalleryOverlayWell size="lg">
         <GallerySpecimen variant="pinned">
-        <Button v-if="!inlineDialogOpen" size="md" @click="inlineDialogOpen = true">Open</Button>
-        <Dialog :is-open="inlineDialogOpen" :overlay-store="appOverlayStore" @close="inlineDialogOpen = false">
-          <div class="space-y-3 p-4">
-            <h3 class="text-[15px] font-medium text-fg-emphasis">Keep this queued follow-up?</h3>
-            <p class="text-[13px] leading-5 text-fg-muted">
+          <Button
+            v-if="!inlineDialogOpen"
+            size="md"
+            @click="inlineDialogOpen = true"
+          >Open</Button>
+          <Dialog
+            :is-open="inlineDialogOpen"
+            :overlay-store="appOverlayStore"
+            @close="inlineDialogOpen = false"
+          >
+            <div class="space-y-3 p-4">
+              <h3 class="text-[15px] font-medium text-fg-emphasis">Keep this queued follow-up?</h3>
+              <p class="text-[13px] leading-5 text-fg-muted">
               The expired-cookie case can wait. Keep the queued message for the next turn?
-            </p>
-            <div class="flex justify-end gap-2">
-              <Button size="md" variant="ghost" @click="inlineDialogOpen = false">Cancel</Button>
-              <Button size="md" variant="primary" @click="inlineDialogOpen = false">Keep</Button>
+              </p>
+              <div class="flex justify-end gap-2">
+                <Button
+                  size="md"
+                  variant="ghost"
+                  @click="inlineDialogOpen = false"
+                >Cancel</Button>
+                <Button
+                  size="md"
+                  variant="primary"
+                  @click="inlineDialogOpen = false"
+                >Keep</Button>
+              </div>
             </div>
-          </div>
-        </Dialog>
+          </Dialog>
         </GallerySpecimen>
       </GalleryOverlayWell>
       <Dialog
@@ -500,8 +715,16 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
             The expired-cookie case can wait. Keep the queued message for the next turn?
           </p>
           <div class="flex justify-end gap-2">
-            <Button size="md" variant="ghost" @click="dialogOpen = false">Cancel</Button>
-            <Button size="md" variant="primary" @click="dialogOpen = false">Keep</Button>
+            <Button
+              size="md"
+              variant="ghost"
+              @click="dialogOpen = false"
+            >Cancel</Button>
+            <Button
+              size="md"
+              variant="primary"
+              @click="dialogOpen = false"
+            >Keep</Button>
           </div>
         </div>
       </Dialog>

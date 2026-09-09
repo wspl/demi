@@ -17,12 +17,15 @@ const props = defineProps<{
 }>()
 
 const parsedInput = computed<Record<string, unknown>>(() => {
-  if (!props.block.input) return {}
+  if (!props.block.input)
+    return {}
   try {
     const result = shouldParsePartialToolInput(props.block.toolName)
       ? parse(props.block.input, Allow.ALL)
       : JSON.parse(props.block.input)
-    return typeof result === 'object' && result !== null ? result as Record<string, unknown> : {}
+    return typeof result === 'object' && result !== null
+      ? result as Record<string, unknown>
+      : {}
   } catch {
     return {}
   }
@@ -31,10 +34,35 @@ const renderKind = computed(() => toolRenderKind(props.block.toolName))
 </script>
 
 <template>
-  <ToolShellBlock v-if="renderKind === 'shell_exec'" :block="block" :input="parsedInput" :is-streaming="isStreaming" />
-  <ToolShellStatusBlock v-else-if="renderKind === 'shell_status'" :block="block" :input="parsedInput" />
-  <ToolShellWriteBlock v-else-if="renderKind === 'shell_write'" :block="block" :input="parsedInput" />
-  <ToolShellAbortBlock v-else-if="renderKind === 'shell_abort'" :block="block" :input="parsedInput" />
-  <ToolYieldBlock v-else-if="renderKind === 'yield'" :block="block" :input="parsedInput" />
-  <ToolGenericBlock v-else :block="block" :input="parsedInput" />
+  <ToolShellBlock
+    v-if="renderKind === 'shell_exec'"
+    :block="block"
+    :input="parsedInput"
+    :is-streaming="isStreaming"
+  />
+  <ToolShellStatusBlock
+    v-else-if="renderKind === 'shell_status'"
+    :block="block"
+    :input="parsedInput"
+  />
+  <ToolShellWriteBlock
+    v-else-if="renderKind === 'shell_write'"
+    :block="block"
+    :input="parsedInput"
+  />
+  <ToolShellAbortBlock
+    v-else-if="renderKind === 'shell_abort'"
+    :block="block"
+    :input="parsedInput"
+  />
+  <ToolYieldBlock
+    v-else-if="renderKind === 'yield'"
+    :block="block"
+    :input="parsedInput"
+  />
+  <ToolGenericBlock
+    v-else
+    :block="block"
+    :input="parsedInput"
+  />
 </template>

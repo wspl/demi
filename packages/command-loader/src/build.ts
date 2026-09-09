@@ -7,11 +7,15 @@ import { readFileSync } from 'node:fs'
  * tsdown build of any package that declares `runtime` leaves serves
  * `*.command.ts` files as their text through this plugin.
  */
-export function commandModulesAsText(): { name: string; load(id: string): string | null } {
+export function commandModulesAsText(): {
+  name: string;
+  load(id: string): string | null
+} {
   return {
     name: 'command-modules-as-text',
     load(id) {
-      if (!id.endsWith('.command.ts')) return null
+      if (!id.endsWith('.command.ts'))
+        return null
       return `export default ${JSON.stringify(readFileSync(id, 'utf8'))}`
     },
   }

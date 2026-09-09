@@ -20,17 +20,26 @@ export { packRuntime }
  * process: an in-process `Bun.build` for a browser target leaves the test
  * process unable to resolve some of the same packages afterwards.
  */
-export async function bundleForTxiki(entry: string, outfile: string): Promise<void> {
+export async function bundleForTxiki(
+  entry: string,
+  outfile: string
+): Promise<void> {
   const built = Bun.spawnSync(
     ['bun', resolve(import.meta.dir, '../runtime/bundle.ts'), entry, outfile],
     { stdout: 'pipe', stderr: 'pipe' },
   )
-  if (!built.success) throw new Error(`bundle failed:\n${built.stderr.toString()}${built.stdout.toString()}`)
+  if (!built.success)
+    throw new Error(
+      `bundle failed:\n${built.stderr.toString()}${built.stdout.toString()}`
+    )
 }
 
 let packed: Promise<string> | null = null
 
-/** The packed txiki.js runner with the native `demi` client beside it, built once per test process. */
+/**
+ * The packed txiki.js runner with the native `demi` client beside it, built
+ * once per test process.
+ */
 export function packedRunner(): Promise<string> {
   return (packed ??= (async () => {
     const cache = resolve(import.meta.dir, '../../..', '.cache/txiki/runners')
@@ -40,7 +49,14 @@ export function packedRunner(): Promise<string> {
     const runtime = runtimeBinary()
     const client = commandClientBinary()
     const hash = createHash('sha256')
-    for (const path of [bundle, runtime, client, resolve(import.meta.dir, '../runtime/build.ts'), resolve(import.meta.dir, '../../../vendor/txiki.js/src/cli.c'), resolve(import.meta.dir, '../../../vendor/txiki.js/CMakeLists.txt')]) {
+    for (const path of [
+      bundle,
+      runtime,
+      client,
+      resolve(import.meta.dir, '../runtime/build.ts'),
+      resolve(import.meta.dir, '../../../vendor/txiki.js/src/cli.c'),
+      resolve(import.meta.dir, '../../../vendor/txiki.js/CMakeLists.txt')
+    ]) {
       hash.update(await readFile(path))
     }
     const work = join(cache, hash.digest('hex'))
@@ -56,12 +72,18 @@ export function packedRunner(): Promise<string> {
 
 export interface TxikiRunnerOptions {
   backendUrl: string
-  /** `DEMI_HOME`: runner.json, runner-token, active.json, runner.lock, commands, output. */
+  /**
+   * `DEMI_HOME`: runner.json, runner-token, active.json, runner.lock, commands,
+   * output.
+   */
   stateDir: string
   /** `HOME` inside the runner: its default working directory. */
   home: string
   name?: string
-  /** A pre-issued device token written to the state directory before the start — how a managed host joins in tests. */
+  /**
+   * A pre-issued device token written to the state directory before the start —
+   * how a managed host joins in tests.
+   */
   deviceToken?: string
   /** Start as a managed host: the hello carries `managed: true`. */
   managed?: boolean
@@ -79,11 +101,17 @@ export interface TxikiRunner {
 }
 
 /** Starts `demi-runner run --backend <url>` and captures its lines. */
-export async function startTxikiRunner(options: TxikiRunnerOptions): Promise<TxikiRunner> {
+export async function startTxikiRunner(
+  options: TxikiRunnerOptions
+): Promise<TxikiRunner> {
   const bin = await packedRunner()
   if (options.deviceToken) {
     await mkdir(options.stateDir, { recursive: true })
-    await writeFile(join(options.stateDir, 'runner-token'), `${options.deviceToken}\n`, { mode: 0o600 })
+    await writeFile(
+      join(options.stateDir, 'runner-token'),
+      `${options.deviceToken}\n`,
+      { mode: 0o600 }
+    )
   }
   const child = Bun.spawn([bin, 'run', '--backend', options.backendUrl], {
     env: {
@@ -97,7 +125,14 @@ export async function startTxikiRunner(options: TxikiRunnerOptions): Promise<Txi
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const runner: TxikiRunner = { codes: [], statuses: [], details: [], log: [], exited: child.exited.then(() => {}), stop: async () => {} }
+  const runner: TxikiRunner = {
+    codes: [],
+    statuses: [],
+    details: [],
+    log: [],
+    exited: child.exited.then(() => {}),
+    stop: async () => {}
+  }
   const read = async (stream: ReadableStream<Uint8Array>) => {
     let buffer = ''
     for await (const chunk of stream) {
@@ -114,7 +149,9 @@ export async function startTxikiRunner(options: TxikiRunnerOptions): Promise<Txi
         } else if (line === 'runner online') runner.statuses.push('online')
         else if (line.startsWith('connecting')) runner.statuses.push('connecting')
         else if (line.startsWith('refused by the backend')) {
-          runner.statuses.push(line.includes('already_connected') ? 'connecting' : 'rejected')
+          runner.statuses.push(line.includes('already_connected')
+            ? 'connecting'
+            : 'rejected')
           runner.details.push(line)
         }
       }
@@ -127,7 +164,11 @@ export async function startTxikiRunner(options: TxikiRunnerOptions): Promise<Txi
     await child.exited
     runner.statuses.push('stopped')
   }
-  await waitFor(() => runner.statuses.length > 0, undefined, { timeoutMs: 10_000 })
+  await waitFor(
+    () => runner.statuses.length > 0,
+    undefined,
+    { timeoutMs: 10_000 }
+  )
   return runner
 }
 

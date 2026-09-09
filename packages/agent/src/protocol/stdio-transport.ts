@@ -2,17 +2,28 @@ import { createInterface } from 'node:readline'
 import type { Readable, Writable } from 'node:stream'
 import type { ClientFrame, ServerFrame } from './frames'
 import { parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
-import type { AgentTransport, AgentClientTransport, AgentServerTransport } from './transport'
+import type {
+  AgentTransport,
+  AgentClientTransport,
+  AgentServerTransport
+} from './transport'
 
-export function createStdioClientTransport(readable: Readable, writable: Writable): AgentClientTransport {
+export function createStdioClientTransport(
+  readable: Readable,
+  writable: Writable
+): AgentClientTransport {
   return new JsonLineTransport<ClientFrame, ServerFrame>(readable, writable)
 }
 
-export function createStdioServerTransport(readable: Readable, writable: Writable): AgentServerTransport {
+export function createStdioServerTransport(
+  readable: Readable,
+  writable: Writable
+): AgentServerTransport {
   return new JsonLineTransport<ServerFrame, ClientFrame>(readable, writable)
 }
 
-class JsonLineTransport<SendFrame, ReceiveFrame> implements AgentTransport<SendFrame, ReceiveFrame> {
+class JsonLineTransport<SendFrame, ReceiveFrame>
+  implements AgentTransport<SendFrame, ReceiveFrame> {
   private readonly handlers = new Set<(frame: ReceiveFrame) => void>()
   private readonly readline
   private closed = false
@@ -23,14 +34,16 @@ class JsonLineTransport<SendFrame, ReceiveFrame> implements AgentTransport<SendF
   ) {
     this.readline = createInterface({ input: readable })
     this.readline.on('line', (line) => {
-      if (this.closed || line.trim() === '') return
+      if (this.closed || line.trim() === '')
+        return
       const frame = parsePortableJson<ReceiveFrame>(line)
       for (const handler of this.handlers) handler(frame)
     })
   }
 
   send(frame: SendFrame): void {
-    if (this.closed) throw new Error('Agent transport is closed')
+    if (this.closed)
+      throw new Error('Agent transport is closed')
     this.writable.write(`${stringifyPortableJson(frame)}\n`)
   }
 

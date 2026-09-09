@@ -14,6 +14,10 @@ const emit = defineEmits<{
 <template>
   <div class="flex flex-col gap-1.5">
     <div class="gallery-label">Accent</div>
-    <SwatchPicker :model-value="modelValue" :options="ACCENTS" @update:model-value="emit('update:modelValue', $event as AccentId)" />
+    <SwatchPicker
+      :model-value="modelValue"
+      :options="ACCENTS"
+      @update:model-value="emit('update:modelValue', $event as AccentId)"
+    />
   </div>
 </template>

@@ -7,7 +7,8 @@ const props = defineProps<{
 }>()
 
 const caps = computed(() => {
-  if (props.keys.includes('+')) return props.keys.split('+').map((key) => key.trim()).filter(Boolean)
+  if (props.keys.includes('+'))
+    return props.keys.split('+').map((key) => key.trim()).filter(Boolean)
   return Array.from(props.keys)
 })
 </script>

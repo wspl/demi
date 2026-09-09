@@ -11,19 +11,24 @@ import type { AgentTreeNode } from './format'
  */
 export class AgentDirectory<State = unknown> {
   private root: SessionNode<State> | null = null
-  private readonly entries = new Map<string, { job: ChildJob<State>; owner: ChildSupervisor<State> }>()
+  private readonly entries = new Map<string, {
+    job: ChildJob<State>;
+    owner: ChildSupervisor<State>
+  }>()
 
   attachRoot(node: SessionNode<State>): void {
     this.root = node
   }
 
   rootId(): string {
-    if (!this.root) throw new Error('agent directory has no root session')
+    if (!this.root)
+      throw new Error('agent directory has no root session')
     return this.root.id
   }
 
   rootSession(): AgentSession<State> {
-    if (!this.root) throw new Error('agent directory has no root session')
+    if (!this.root)
+      throw new Error('agent directory has no root session')
     return this.root.session
   }
 
@@ -35,13 +40,22 @@ export class AgentDirectory<State = unknown> {
     this.entries.delete(id)
   }
 
-  liveEntry(id: string): { job: ChildJob<State>; owner: ChildSupervisor<State> } | null {
+  liveEntry(
+    id: string
+  ): {
+    job: ChildJob<State>;
+    owner: ChildSupervisor<State>
+  } | null {
     return this.entries.get(id) ?? null
   }
 
-  /** The parent session id of a live agent; null for the root, undefined for an unknown id. */
+  /**
+   * The parent session id of a live agent; null for the root, undefined for an
+   * unknown id.
+   */
   parentIdOf(id: string): string | null | undefined {
-    if (this.root && this.root.id === id) return null
+    if (this.root && this.root.id === id)
+      return null
     return this.entries.get(id)?.owner.ownerId()
   }
 
@@ -51,7 +65,8 @@ export class AgentDirectory<State = unknown> {
    * readable). Live children order by spawn time; archived newest first.
    */
   async tree(): Promise<AgentTreeNode[]> {
-    if (!this.root) return []
+    if (!this.root)
+      return []
     const build = async (
       id: string,
       parentId: string | null,
@@ -64,7 +79,13 @@ export class AgentDirectory<State = unknown> {
         .sort((a, b) => a.job.spawnedAt - b.job.spawnedAt)
       const children: AgentTreeNode[] = []
       for (const entry of liveChildren) {
-        children.push(await build(entry.job.id, id, entry.job, entry.owner, entry.job.node.supervisor))
+        children.push(await build(
+          entry.job.id,
+          id,
+          entry.job,
+          entry.owner,
+          entry.job.node.supervisor
+        ))
       }
       const now = Date.now()
       for (const archived of await supervisor.listArchivedJobs()) {
@@ -75,7 +96,9 @@ export class AgentDirectory<State = unknown> {
           description: archived.description,
           profile: archived.profileName,
           phase: archived.closedPhase ?? 'completed',
-          closedAgoMs: archived.closedAt === null ? null : now - archived.closedAt,
+          closedAgoMs: archived.closedAt === null
+            ? null
+            : now - archived.closedAt,
           line: null,
           children: [],
         })

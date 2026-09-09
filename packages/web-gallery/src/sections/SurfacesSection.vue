@@ -30,7 +30,10 @@ const lines = [
 
 <template>
   <div class="space-y-8">
-    <GallerySection title="Surfaces" note="Five fills. float is for menus, tooltips, and dialogs.">
+    <GallerySection
+      title="Surfaces"
+      note="Five fills. float is for menus, tooltips, and dialogs."
+    >
       <div class="grid gap-3 md:grid-cols-5">
         <div
           v-for="item in swatches"
@@ -46,7 +49,11 @@ const lines = [
 
     <GallerySection title="Type ramp" note="Emphasis through ghost.">
       <div class="gallery-frame divide-y divide-line">
-        <div v-for="item in textSteps" :key="item.name" class="flex items-center justify-between px-4 py-3">
+        <div
+          v-for="item in textSteps"
+          :key="item.name"
+          class="flex items-center justify-between px-4 py-3"
+        >
           <span class="text-[13px]" :style="{ color: item.color }">The login test still expects the old cookie name.</span>
           <span class="gallery-label">{{ item.name }}</span>
         </div>
@@ -55,7 +62,11 @@ const lines = [
 
     <GallerySection title="Lines" note="Subtle through overlay.">
       <div class="space-y-3">
-        <div v-for="item in lines" :key="item.name" class="space-y-1">
+        <div
+          v-for="item in lines"
+          :key="item.name"
+          class="space-y-1"
+        >
           <div class="gallery-label">{{ item.name }}</div>
           <div class="h-px" :style="{ background: item.color }" />
         </div>

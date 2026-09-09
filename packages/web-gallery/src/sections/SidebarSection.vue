@@ -17,13 +17,34 @@ const emptyList = ref<SidebarConversation[]>([])
 let nextId = 1
 
 const anatomy: [string, string][] = [
-  ['Top', 'The app name, then the entries: New, Skills, Archived. Skills and Archived open their settings sections. The Conversations heading carries the same New as the entry.'],
-  ['Conversations', 'Plain conversations that run in no checkout. Manual order, pinned on top. The Conversations and Projects headings stick to the top of the list as it scrolls.'],
-  ['Projects', 'Every checkout the agent works in, in manual order, each with the host it lives on. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'],
-  ['Row', 'A title and one quiet dot: breathing while running, green for a result waiting to be read, orange when the conversation needs the user. A cut title fades at the edge and plays as a marquee on hover. Pin and archive appear on hover; rename is inline.'],
-  ['Selection', 'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Project dragging temporarily folds all projects, restores their expansion on release, and smoothly centers the moved header. Right-click acts on the selection: open and rename for one row; pin, move to a project, archive, and delete for any count. Project headers have their own menu.'],
-  ['Keys', 'The list is one tab stop. ↑↓ move and select, Shift+↑↓ extend, ⌘↑↓ jump to the ends, Space toggles, Enter opens a row or folds a project, ← → fold and unfold, ⌘A selects all, Esc collapses to the open conversation, F2 renames, ⌫ deletes, ⌘⇧P pins; Alt+↑↓ reorders the focused entry.'],
-  ['Bottom', 'The account (avatar, name, plan) with settings and sign-out behind it, and Settings itself.'],
+  [
+    'Top',
+    'The app name, then the entries: New, Skills, Archived. Skills and Archived open their settings sections. The Conversations heading carries the same New as the entry.'
+  ],
+  [
+    'Conversations',
+    'Plain conversations that run in no checkout. Manual order, pinned on top. The Conversations and Projects headings stick to the top of the list as it scrolls.'
+  ],
+  [
+    'Projects',
+    'Every checkout the agent works in, in manual order, each with the host it lives on. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
+  ],
+  [
+    'Row',
+    'A title and one quiet dot: breathing while running, green for a result waiting to be read, orange when the conversation needs the user. A cut title fades at the edge and plays as a marquee on hover. Pin and archive appear on hover; rename is inline.'
+  ],
+  [
+    'Selection',
+    'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Project dragging temporarily folds all projects, restores their expansion on release, and smoothly centers the moved header. Right-click acts on the selection: open and rename for one row; pin, move to a project, archive, and delete for any count. Project headers have their own menu.'
+  ],
+  [
+    'Keys',
+    'The list is one tab stop. ↑↓ move and select, Shift+↑↓ extend, ⌘↑↓ jump to the ends, Space toggles, Enter opens a row or folds a project, ← → fold and unfold, ⌘A selects all, Esc collapses to the open conversation, F2 renames, ⌫ deletes, ⌘⇧P pins; Alt+↑↓ reorders the focused entry.'
+  ],
+  [
+    'Bottom',
+    'The account (avatar, name, plan) with settings and sign-out behind it, and Settings itself.'
+  ],
   ['Search', 'Not designed yet.'],
 ]
 
@@ -31,11 +52,13 @@ function reorder(request: SidebarReorder): void {
   if (request.kind === 'project') {
     const item = projects.value.find((item) => item.id === request.id)
     const before = projects.value.find((item) => item.id === request.beforeId) ?? null
-    if (item) projects.value = moveBefore(projects.value, item, before)
+    if (item)
+      projects.value = moveBefore(projects.value, item, before)
   } else {
     const item = conversations.value.find((item) => item.id === request.id)
     const before = conversations.value.find((item) => item.id === request.beforeId) ?? null
-    if (item) conversations.value = moveBefore(conversations.value, item, before)
+    if (item)
+      conversations.value = moveBefore(conversations.value, item, before)
   }
 }
 function select(id: string): void {
@@ -48,7 +71,15 @@ function select(id: string): void {
 function create(projectId: string | null): void {
   const id = `c-new-${nextId++}`
   conversations.value = [
-    { id, title: 'New conversation', updatedAt: new Date().toISOString(), status: 'idle', projectId, pinned: false, unread: false },
+    {
+      id,
+      title: 'New conversation',
+      updatedAt: new Date().toISOString(),
+      status: 'idle',
+      projectId,
+      pinned: false,
+      unread: false
+    },
     ...conversations.value,
   ]
   activeId.value = id
@@ -56,47 +87,89 @@ function create(projectId: string | null): void {
 
 function addProject(): void {
   const id = `p-new-${nextId++}`
-  projects.value = [...projects.value, { id, name: `project-${nextId}`, host: 'zan-mbp', hostKind: 'device', path: `/Users/zan/Projects/project-${nextId}` }]
+  projects.value = [
+    ...projects.value,
+    {
+      id,
+      name: `project-${nextId}`,
+      host: 'zan-mbp',
+      hostKind: 'device',
+      path: `/Users/zan/Projects/project-${nextId}`
+    }
+  ]
 }
 
-function patch(id: string, change: (conversation: SidebarConversation) => SidebarConversation): void {
-  conversations.value = conversations.value.map((conversation) => (conversation.id === id ? change(conversation) : conversation))
+function patch(
+  id: string,
+  change: (conversation: SidebarConversation) => SidebarConversation
+): void {
+  conversations.value = conversations.value.map(
+    (conversation) => (conversation.id === id
+      ? change(conversation)
+      : conversation)
+  )
 }
 
-function patchMany(ids: string[], change: (conversation: SidebarConversation) => SidebarConversation): void {
+function patchMany(
+  ids: string[],
+  change: (conversation: SidebarConversation) => SidebarConversation
+): void {
   const set = new Set(ids)
-  conversations.value = conversations.value.map((conversation) => (set.has(conversation.id) ? change(conversation) : conversation))
+  conversations.value = conversations.value.map(
+    (conversation) =>
+      (set.has(conversation.id)
+      ? change(conversation)
+      : conversation)
+  )
 }
 
 function dropMany(ids: string[]): void {
   const set = new Set(ids)
   conversations.value = conversations.value.filter((conversation) => !set.has(conversation.id))
-  if (activeId.value && set.has(activeId.value)) activeId.value = conversations.value[0]?.id ?? null
+  if (activeId.value && set.has(activeId.value))
+    activeId.value = conversations.value[0]?.id ?? null
 }
 
 /** Removing a project keeps its conversations as plain ones. */
 function removeProject(id: string): void {
   projects.value = projects.value.filter((project) => project.id !== id)
-  patchMany(conversations.value.filter((c) => c.projectId === id).map((c) => c.id), (c) => ({ ...c, projectId: null }))
+  patchMany(
+    conversations.value.filter((c) => c.projectId === id).map((c) => c.id),
+    (c) => ({ ...c, projectId: null })
+  )
 }
 
 const fixedConversations = computed(() => demoConversations())
 const fixedProjects = computed(() => demoProjects())
-const activeTitle = computed(() => conversations.value.find((conversation) => conversation.id === activeId.value)?.title ?? 'No conversation selected')
+const activeTitle = computed(
+  () =>
+    conversations.value.find((conversation) => conversation.id === activeId.value)?.title ??
+    'No conversation selected'
+)
 </script>
 
 <template>
   <div class="flex flex-col gap-10">
-    <GallerySection title="Sidebar" note="The conversation list, by project. Entries at the top, the account at the bottom. Everything here is live: select, fold a project, pin, rename. Skills and Archived report the section they would open.">
+    <GallerySection
+      title="Sidebar"
+      note="The conversation list, by project. Entries at the top, the account at the bottom. Everything here is live: select, fold a project, pin, rename. Skills and Archived report the section they would open."
+    >
       <div class="gallery-frame divide-y divide-line">
-        <div v-for="[name, note] in anatomy" :key="name" class="grid gap-2 px-4 py-3 md:grid-cols-[180px_1fr]">
+        <div
+          v-for="[name, note] in anatomy"
+          :key="name"
+          class="grid gap-2 px-4 py-3 md:grid-cols-[180px_1fr]"
+        >
           <div class="text-[13px] text-fg">{{ name }}</div>
           <div class="text-[13px] leading-5 text-fg-muted">{{ note }}</div>
         </div>
       </div>
     </GallerySection>
 
-    <GallerySection title="Expanded" note="Default width. The sidebar sits on the base surface; the session next to it is raised.">
+    <GallerySection
+      title="Expanded"
+      note="Default width. The sidebar sits on the base surface; the session next to it is raised."
+    >
       <GallerySpecimen variant="expanded · live" wide>
         <div class="gallery-frame flex h-[40rem] w-full overflow-hidden">
           <AppSidebar
@@ -117,7 +190,9 @@ const activeTitle = computed(() => conversations.value.find((conversation) => co
             @remove="dropMany"
             @open-settings="(section) => (opened = section ?? 'account')"
           />
-          <div class="flex min-w-0 flex-1 items-center justify-center bg-surface text-[13px] text-fg-faint">
+          <div
+            class="flex min-w-0 flex-1 items-center justify-center bg-surface text-[13px] text-fg-faint"
+          >
             {{ activeTitle }}<span v-if="opened"> · settings → {{ opened }}</span>
           </div>
         </div>

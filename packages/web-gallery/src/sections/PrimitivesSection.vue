@@ -42,8 +42,18 @@ const enabledSmOff = ref(false)
 const checkboxOn = ref(true)
 const choice = ref<'cloud' | 'device'>('cloud')
 const choiceOptions = [
-  { value: 'cloud', label: 'Cloud', description: 'A managed workspace, ready at once.', icon: Cloud },
-  { value: 'device', label: 'Device', description: 'A directory on one of your devices.', icon: Monitor },
+  {
+    value: 'cloud',
+    label: 'Cloud',
+    description: 'A managed workspace, ready at once.',
+    icon: Cloud
+  },
+  {
+    value: 'device',
+    label: 'Device',
+    description: 'A directory on one of your devices.',
+    icon: Monitor
+  },
 ] as const
 const checkboxOff = ref(false)
 const checkboxPartialOn = ref(false)
@@ -57,7 +67,11 @@ const iconPressed = ref(true)
 const iconCirclePressed = ref(true)
 
 function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
-  const flag = which === 'idle' ? compactIdle : which === 'warn' ? compactWarn : compactDanger
+  const flag = which === 'idle'
+    ? compactIdle
+    : which === 'warn'
+    ? compactWarn
+    : compactDanger
   flag.value = true
   window.setTimeout(() => {
     flag.value = false
@@ -67,16 +81,25 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
 
 <template>
   <div class="space-y-8">
-    <GallerySection title="Button" note="Enabled, disabled, sizes, and pressed.">
+    <GallerySection
+      title="Button"
+      note="Enabled, disabled, sizes, and pressed."
+    >
       <div class="specimen-row">
         <GallerySpecimen variant="spin · full revolution">
           <Button spin-on-click><RefreshCw :size="ICON_PX.in28" />Refresh</Button>
         </GallerySpecimen>
         <GallerySpecimen variant="icon spin · full revolution">
-          <IconButton :icon="RefreshCw" spin-on-click aria-label="Refresh example" />
+          <IconButton
+            :icon="RefreshCw"
+            spin-on-click
+            aria-label="Refresh example"
+          />
         </GallerySpecimen>
         <GallerySpecimen variant="spin · stop after current revolution">
-          <Button :spinning="spinning" @click="spinning = !spinning"><RefreshCw :size="ICON_PX.in28" />{{ spinning ? 'Stop spinning' : 'Start spinning' }}</Button>
+          <Button :spinning="spinning" @click="spinning = !spinning"><RefreshCw
+              :size="ICON_PX.in28"
+            />{{ spinning ? 'Stop spinning' : 'Start spinning' }}</Button>
         </GallerySpecimen>
         <GallerySpecimen variant="spinner · primary">
           <Button variant="primary" disabled><IndeterminateSpinner />Pairing…</Button>
@@ -88,7 +111,11 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
           <Button size="md">Default</Button>
         </GallerySpecimen>
         <GallerySpecimen variant="default · pressed">
-          <Button size="md" :pressed="buttonPressed" @click="buttonPressed = !buttonPressed">Default</Button>
+          <Button
+            size="md"
+            :pressed="buttonPressed"
+            @click="buttonPressed = !buttonPressed"
+          >Default</Button>
         </GallerySpecimen>
         <GallerySpecimen variant="primary">
           <Button size="md" variant="primary">Primary</Button>
@@ -97,7 +124,12 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
           <Button size="md" variant="ghost">Ghost</Button>
         </GallerySpecimen>
         <GallerySpecimen variant="ghost · pressed">
-          <Button size="md" variant="ghost" :pressed="buttonGhostPressed" @click="buttonGhostPressed = !buttonGhostPressed">Ghost</Button>
+          <Button
+            size="md"
+            variant="ghost"
+            :pressed="buttonGhostPressed"
+            @click="buttonGhostPressed = !buttonGhostPressed"
+          >Ghost</Button>
         </GallerySpecimen>
         <GallerySpecimen variant="default · sm">
           <Button size="sm">Small</Button>
@@ -129,7 +161,10 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
       </div>
     </GallerySection>
 
-    <GallerySection title="CopyCode" note="Shared command surface, wrapping and copy feedback.">
+    <GallerySection
+      title="CopyCode"
+      note="Shared command surface, wrapping and copy feedback."
+    >
       <CopyCode code="demi-runner run --backend https://demi.example.com" />
     </GallerySection>
     <GallerySection title="IconButton" note="Chip and circle. Accent is send.">
@@ -149,7 +184,12 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="ghost · pressed">
-          <IconButton :icon="Plus" variant="ghost" :pressed="iconPressed" @click="iconPressed = !iconPressed" />
+          <IconButton
+            :icon="Plus"
+            variant="ghost"
+            :pressed="iconPressed"
+            @click="iconPressed = !iconPressed"
+          />
         </GallerySpecimen>
         <GallerySpecimen variant="accent">
           <IconButton :icon="Send" variant="accent" />
@@ -161,17 +201,35 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
           <div class="flex items-center gap-1">
             <IconButton :icon="Plus" circle />
             <IconButton :icon="ChevronDown" circle />
-            <IconButton :icon="Plus" variant="ghost" circle />
+            <IconButton
+              :icon="Plus"
+              variant="ghost"
+              circle
+            />
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="circle · pressed">
-          <IconButton :icon="Plus" variant="ghost" circle :pressed="iconCirclePressed" @click="iconCirclePressed = !iconCirclePressed" />
+          <IconButton
+            :icon="Plus"
+            variant="ghost"
+            circle
+            :pressed="iconCirclePressed"
+            @click="iconCirclePressed = !iconCirclePressed"
+          />
         </GallerySpecimen>
         <GallerySpecimen variant="circle · accent">
-          <IconButton :icon="Send" variant="accent" circle />
+          <IconButton
+            :icon="Send"
+            variant="accent"
+            circle
+          />
         </GallerySpecimen>
         <GallerySpecimen variant="circle · danger">
-          <IconButton :icon="Trash2" variant="danger" circle />
+          <IconButton
+            :icon="Trash2"
+            variant="danger"
+            circle
+          />
         </GallerySpecimen>
         <GallerySpecimen variant="xs / sm / lg">
           <div class="flex items-center gap-1">
@@ -183,8 +241,16 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
         <GallerySpecimen variant="disabled">
           <div class="flex items-center gap-1">
             <IconButton :icon="Plus" disabled />
-            <IconButton :icon="Send" variant="accent" disabled />
-            <IconButton :icon="Trash2" variant="danger" disabled />
+            <IconButton
+              :icon="Send"
+              variant="accent"
+              disabled
+            />
+            <IconButton
+              :icon="Trash2"
+              variant="danger"
+              disabled
+            />
           </div>
         </GallerySpecimen>
       </div>
@@ -199,10 +265,18 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
           <Switch v-model="enabledOff" label="Available" />
         </GallerySpecimen>
         <GallerySpecimen variant="sm · on">
-          <Switch v-model="enabledSmOn" size="sm" label="Compact" />
+          <Switch
+            v-model="enabledSmOn"
+            size="sm"
+            label="Compact"
+          />
         </GallerySpecimen>
         <GallerySpecimen variant="sm · off">
-          <Switch v-model="enabledSmOff" size="sm" label="Compact" />
+          <Switch
+            v-model="enabledSmOff"
+            size="sm"
+            label="Compact"
+          />
         </GallerySpecimen>
       </div>
     </GallerySection>
@@ -216,12 +290,19 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
           <Checkbox v-model="checkboxOff" label="Show unreads" />
         </GallerySpecimen>
         <GallerySpecimen variant="partial">
-          <Checkbox v-model="checkboxPartialOn" v-model:partial="checkboxPartial" label="Show unreads" />
+          <Checkbox
+            v-model="checkboxPartialOn"
+            v-model:partial="checkboxPartial"
+            label="Show unreads"
+          />
         </GallerySpecimen>
       </div>
     </GallerySection>
 
-    <GallerySection title="TextInput" note="Empty, filled, focus, bare (no frame in any state), a secret with its eye, and a suffix.">
+    <GallerySection
+      title="TextInput"
+      note="Empty, filled, focus, bare (no frame in any state), a secret with its eye, and a suffix."
+    >
       <div class="specimen-row">
         <GallerySpecimen variant="empty">
           <TextInput v-model="emptyQuery" placeholder="Search files" />
@@ -230,15 +311,27 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
           <TextInput v-model="query" placeholder="Search files" />
         </GallerySpecimen>
         <GallerySpecimen variant="focused">
-          <TextInput v-model="query" placeholder="Search files" show-focus />
+          <TextInput
+            v-model="query"
+            placeholder="Search files"
+            show-focus
+          />
         </GallerySpecimen>
         <GallerySpecimen variant="bare">
-          <TextInput v-model="query" placeholder="Search files" bare>
+          <TextInput
+            v-model="query"
+            placeholder="Search files"
+            bare
+          >
             <template #prefix><Search :size="14" /></template>
           </TextInput>
         </GallerySpecimen>
         <GallerySpecimen variant="secret">
-          <TextInput v-model="secret" placeholder="sk-…" secret />
+          <TextInput
+            v-model="secret"
+            placeholder="sk-…"
+            secret
+          />
         </GallerySpecimen>
         <GallerySpecimen variant="suffix">
           <TextInput v-model="query" placeholder="With suffix">
@@ -250,7 +343,10 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
       </div>
     </GallerySection>
 
-    <GallerySection title="SwatchPicker" note="Colour swatches as a radio group; the chosen one wears a ring in its own colour.">
+    <GallerySection
+      title="SwatchPicker"
+      note="Colour swatches as a radio group; the chosen one wears a ring in its own colour."
+    >
       <div class="specimen-row">
         <GallerySpecimen variant="accents">
           <SwatchPicker v-model="swatch" :options="PRODUCT_ACCENTS" />
@@ -258,30 +354,56 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
       </div>
     </GallerySection>
 
-    <GallerySection title="ChoiceCards" note="A few exclusive choices as cards with an icon, a title and a line, for a form that branches on the answer.">
+    <GallerySection
+      title="ChoiceCards"
+      note="A few exclusive choices as cards with an icon, a title and a line, for a form that branches on the answer."
+    >
       <div class="specimen-row">
         <GallerySpecimen variant="two cards" wide>
-          <div class="w-96 max-w-full"><ChoiceCards v-model="choice" :options="choiceOptions" /></div>
+          <div class="w-96 max-w-full"><ChoiceCards
+              v-model="choice"
+              :options="choiceOptions"
+            /></div>
         </GallerySpecimen>
       </div>
     </GallerySection>
 
-    <GallerySection title="ScrollArea" note="The bar takes no room: a thumb drawn over the content, shown on hover or while scrolling, draggable.">
+    <GallerySection
+      title="ScrollArea"
+      note="The bar takes no room: a thumb drawn over the content, shown on hover or while scrolling, draggable."
+    >
       <div class="specimen-row">
         <GallerySpecimen variant="overflowing">
-          <ScrollArea class="h-40 w-64 rounded-md ring-1 ring-line" viewport-class="flex flex-col gap-1 p-2">
-            <div v-for="n in 24" :key="n" class="flex h-7 shrink-0 items-center rounded-md px-2 text-chrome text-fg hover:bg-hover">Row {{ n }}</div>
+          <ScrollArea
+            class="h-40 w-64 rounded-md ring-1 ring-line"
+            viewport-class="flex flex-col gap-1 p-2"
+          >
+            <div
+              v-for="n in 24"
+              :key="n"
+              class="flex h-7 shrink-0 items-center rounded-md px-2 text-chrome text-fg hover:bg-hover"
+            >Row {{ n }}</div>
           </ScrollArea>
         </GallerySpecimen>
         <GallerySpecimen variant="fits">
-          <ScrollArea class="h-40 w-64 rounded-md ring-1 ring-line" viewport-class="flex flex-col gap-1 p-2">
-            <div v-for="n in 3" :key="n" class="flex h-7 shrink-0 items-center rounded-md px-2 text-chrome text-fg hover:bg-hover">Row {{ n }}</div>
+          <ScrollArea
+            class="h-40 w-64 rounded-md ring-1 ring-line"
+            viewport-class="flex flex-col gap-1 p-2"
+          >
+            <div
+              v-for="n in 3"
+              :key="n"
+              class="flex h-7 shrink-0 items-center rounded-md px-2 text-chrome text-fg hover:bg-hover"
+            >Row {{ n }}</div>
           </ScrollArea>
         </GallerySpecimen>
       </div>
     </GallerySection>
 
-    <GallerySection title="ShortcutRecorder" note="Caps beside a Change button; recording shows what is held, a key commits, Escape cancels.">
+    <GallerySection
+      title="ShortcutRecorder"
+      note="Caps beside a Change button; recording shows what is held, a key commits, Escape cancels."
+    >
       <div class="specimen-row">
         <GallerySpecimen variant="bound">
           <ShortcutRecorder v-model="shortcut" size="sm" />
@@ -295,10 +417,17 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
       </div>
     </GallerySection>
 
-    <GallerySection title="TokenInput" note="A count in thousands or millions; the unit toggles inside the field.">
+    <GallerySection
+      title="TokenInput"
+      note="A count in thousands or millions; the unit toggles inside the field."
+    >
       <div class="specimen-row">
         <GallerySpecimen variant="empty">
-          <TokenInput v-model="noTokens" placeholder="128" class="w-32" />
+          <TokenInput
+            v-model="noTokens"
+            placeholder="128"
+            class="w-32"
+          />
         </GallerySpecimen>
         <GallerySpecimen variant="filled">
           <TokenInput v-model="tokens" class="w-32" />
@@ -312,7 +441,10 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
       </div>
     </GallerySection>
 
-    <GallerySection title="ConversationStatusDot" note="Idle, active, done, error, and aborted.">
+    <GallerySection
+      title="ConversationStatusDot"
+      note="Idle, active, done, error, and aborted."
+    >
       <div class="specimen-row">
         <GallerySpecimen variant="idle">
           <div class="relative size-6 rounded-md bg-surface-raised">
@@ -350,7 +482,10 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
       </div>
     </GallerySection>
 
-    <GallerySection title="ContextUsageIndicator" note="Idle, warning, danger, compacting, and unavailable.">
+    <GallerySection
+      title="ContextUsageIndicator"
+      note="Idle, warning, danger, compacting, and unavailable."
+    >
       <div class="specimen-row">
         <GallerySpecimen variant="idle · 34%">
           <ContextUsageIndicator
@@ -419,16 +554,25 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
       </div>
     </GallerySection>
 
-    <GallerySection title="HighlightText" note="Match, multi-match, none, and empty query.">
+    <GallerySection
+      title="HighlightText"
+      note="Match, multi-match, none, and empty query."
+    >
       <div class="specimen-row">
         <GallerySpecimen variant="match">
           <div class="text-[13px] text-fg-body">
-            <HighlightText text="session cookie after the rename" query="session" />
+            <HighlightText
+              text="session cookie after the rename"
+              query="session"
+            />
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="multi-match">
           <div class="text-[13px] text-fg-body">
-            <HighlightText text="session cookie, session header" query="session" />
+            <HighlightText
+              text="session cookie, session header"
+              query="session"
+            />
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="no match">

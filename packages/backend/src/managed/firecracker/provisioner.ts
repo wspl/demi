@@ -1,8 +1,23 @@
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { constants, copyFile, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
+import {
+  constants,
+  copyFile,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat
+} from 'node:fs/promises'
 import { join } from 'node:path'
-import { createId, delay, errorCode, errorMessage, SerialQueue } from '@demicodes/utils'
+import {
+  createId,
+  delay,
+  errorCode,
+  errorMessage,
+  SerialQueue
+} from '@demicodes/utils'
 import {
   atomicJson,
   DirMachineImageStore,
@@ -19,7 +34,12 @@ import {
 } from '../provisioner'
 import { bootArgs } from './boot-args'
 import type { FirecrackerConfig } from './config'
-import { growImage, makeHomeImage, makeSystemImage, missingImageTools } from './image-tools'
+import {
+  growImage,
+  makeHomeImage,
+  makeSystemImage,
+  missingImageTools
+} from './image-tools'
 import { SlotPool, type Slot } from './slots'
 import {
   killVm,
@@ -55,7 +75,10 @@ export interface FirecrackerProvisionerOptions {
   processes?: ProcessControl
 }
 
-/** Working disks survive failed saves. A generation publishes system and home together. */
+/**
+ * Working disks survive failed saves. A generation publishes system and home
+ * together.
+ */
 export class FirecrackerProvisioner implements ManagedHostProvisioner {
   private readonly guests = new Map<string, Guest>()
   private readonly slots: SlotPool
@@ -78,10 +101,17 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
         throw new Error(`managed hosts need ${missing.join(', ')}`)
       }
     }
-    this.slots = new SlotPool({ subnet: config.subnet, count: config.slots, tapPrefix: config.tapPrefix })
+    this.slots = new SlotPool({
+      subnet: config.subnet,
+      count: config.slots,
+      tapPrefix: config.tapPrefix
+    })
     this.store = options.store ?? new DirMachineImageStore(config.imagesDir)
     this.tools = options.tools ?? { makeHomeImage, makeSystemImage, growImage }
-    this.processes = options.processes ?? { alive: processAlive, kill: (id, pid) => killVm(config, id, pid) }
+    this.processes = options.processes ?? {
+      alive: processAlive,
+      kill: (id, pid) => killVm(config, id, pid)
+    }
     this.log = options.log ?? console.warn
   }
 
@@ -131,7 +161,10 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
 
   async reconcile(): Promise<void> {
     await mkdir(this.workDir, { recursive: true })
-    for (const entry of await readdir(this.config.runDir, { withFileTypes: true })) {
+    for (const entry of await readdir(
+      this.config.runDir,
+      { withFileTypes: true }
+    )) {
       if (!entry.isDirectory() || !entry.name.startsWith('vm-')) {
         continue
       }
@@ -141,12 +174,17 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
         const deadline = Date.now() + 15_000
         while (this.processes.alive(record.pid)) {
           if (Date.now() > deadline) {
-            throw new Error(`VM ${entry.name} did not stop; disks cannot be saved`)
+            throw new Error(
+              `VM ${entry.name} did not stop; disks cannot be saved`
+            )
           }
           await delay(100)
         }
       }
-      await rm(vmDirectory(this.config, entry.name), { recursive: true, force: true })
+      await rm(
+        vmDirectory(this.config, entry.name),
+        { recursive: true, force: true }
+      )
     }
     for (const name of await readdir(this.workDir)) {
       if (name.startsWith('.')) {
@@ -175,9 +213,14 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
     return guest
   }
 
-  private async readWorkingState(guest: Guest): Promise<MachineImageState | null> {
+  private async readWorkingState(
+    guest: Guest
+  ): Promise<MachineImageState | null> {
     try {
-      const manifest = await readFile(join(guest.directory, 'manifest.json'), 'utf8')
+      const manifest = await readFile(
+        join(guest.directory, 'manifest.json'),
+        'utf8'
+      )
       return imageStateSchema.parse(JSON.parse(manifest))
     } catch (error) {
       if (errorCode(error) === 'ENOENT') {
@@ -197,7 +240,11 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
     await syncFile(this.workDir)
   }
 
-  private async publishDisks(id: string, state: MachineImageState, directory: string): Promise<void> {
+  private async publishDisks(
+    id: string,
+    state: MachineImageState,
+    directory: string
+  ): Promise<void> {
     const system = await stat(join(directory, 'system.ext4'))
     const home = await stat(join(directory, 'home.ext4'))
     const generation = {
@@ -209,7 +256,10 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
     await this.store.publish(id, generation, directory)
   }
 
-  private async initialize(id: string, baseVersion: string): Promise<MachineImageState> {
+  private async initialize(
+    id: string,
+    baseVersion: string
+  ): Promise<MachineImageState> {
     const directory = join(this.workDir, `.initial-${createId()}`)
     await mkdir(directory, { recursive: true })
     try {
@@ -222,8 +272,15 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
         systemBytes: this.config.systemMib * 1024 ** 2,
         homeBytes: this.config.homeMib * 1024 ** 2,
       }
-      await this.tools.makeHomeImage(home, join(directory, 'home.ext4'), state.homeBytes)
-      await this.tools.makeSystemImage(join(directory, 'system.ext4'), state.systemBytes)
+      await this.tools.makeHomeImage(
+        home,
+        join(directory, 'home.ext4'),
+        state.homeBytes
+      )
+      await this.tools.makeSystemImage(
+        join(directory, 'system.ext4'),
+        state.systemBytes
+      )
       await this.store.publish(id, state, directory)
       return state
     } finally {
@@ -246,7 +303,11 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
 
       const stage = join(this.workDir, `.wake-${createId()}`)
       await this.store.copy(id, state, stage)
-      await Promise.all(['home.ext4', 'system.ext4'].map(volume => syncFile(join(stage, volume))))
+      await Promise.all(
+        ['home.ext4', 'system.ext4'].map(
+          volume => syncFile(join(stage, volume))
+        )
+      )
       await atomicJson(join(stage, 'manifest.json'), state)
       await syncFile(stage)
       await rename(stage, guest.directory)
@@ -256,15 +317,25 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
       const vmId = `vm-${createId().slice(0, 12)}`
       let vm: RunningVm
       try {
-        const base = join(this.config.imagesDir, 'bases', safeImageId(state.baseVersion))
+        const base = join(
+          this.config.imagesDir,
+          'bases',
+          safeImageId(state.baseVersion)
+        )
         vm = await startVm(
-          { ...this.config, kernel: join(base, 'kernel'), rootfs: join(base, 'rootfs') },
+          {
+            ...this.config,
+            kernel: join(base, 'kernel'),
+            rootfs: join(base, 'rootfs')
+          },
           {
             vmId,
             slot,
             homeImage: join(guest.directory, 'home.ext4'),
             systemImage: join(guest.directory, 'system.ext4'),
-            bootArgs: bootArgs({ ...boot, slot, dns: this.config.dns, firstBoot }),
+            bootArgs: bootArgs(
+              { ...boot, slot, dns: this.config.dns, firstBoot }
+            ),
             owner: id,
           },
           this.log,
@@ -360,10 +431,19 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
         await this.store.copy(id, state, stage)
         await rm(join(stage, 'system.ext4'))
         const systemBytes = this.config.systemMib * 1024 ** 2
-        await this.tools.makeSystemImage(join(stage, 'system.ext4'), systemBytes)
+        await this.tools.makeSystemImage(
+          join(stage, 'system.ext4'),
+          systemBytes
+        )
         await this.store.publish(
           id,
-          { ...state, generation: createId(), resetId: operationId, baseVersion, systemBytes },
+          {
+            ...state,
+            generation: createId(),
+            resetId: operationId,
+            baseVersion,
+            systemBytes
+          },
           stage,
         )
       } finally {
@@ -382,7 +462,8 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
 
   async close(): Promise<void> {
     for (const guest of this.guests.values()) {
-      await this.hibernate(guest.id).catch(error => this.log(errorMessage(error)))
+      await this.hibernate(guest.id)
+        .catch(error => this.log(errorMessage(error)))
     }
   }
 

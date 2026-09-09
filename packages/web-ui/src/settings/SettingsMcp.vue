@@ -60,7 +60,10 @@ function add(draft: SettingsMcpDraft) {
 </script>
 
 <template>
-  <SettingsPage title="MCP servers" description="Tool servers the agent can call. Off keeps the config but hides the tools.">
+  <SettingsPage
+    title="MCP servers"
+    description="Tool servers the agent can call. Off keeps the config but hides the tools."
+  >
     <SettingsGroup>
       <template #header>
         <header class="flex items-start justify-between gap-3">
@@ -77,12 +80,20 @@ function add(draft: SettingsMcpDraft) {
         :class="server.enabled ? '' : 'opacity-60'"
       >
         <template #leading>
-          <component :is="server.transport === 'stdio' ? AppWindow : Server" :size="ICON_PX.in28" />
+          <component
+            :is="server.transport === 'stdio' ? AppWindow : Server"
+            :size="ICON_PX.in28"
+          />
         </template>
         <template #tags>
           <Tooltip :content="server.detail" :disabled="!server.detail">
-            <span class="inline-flex items-center gap-1.5 text-[12px] text-fg-muted">
-              <span class="size-1.5 shrink-0 rounded-full" :class="statusDot[statusOf(server)]" />
+            <span
+              class="inline-flex items-center gap-1.5 text-[12px] text-fg-muted"
+            >
+              <span
+                class="size-1.5 shrink-0 rounded-full"
+                :class="statusDot[statusOf(server)]"
+              />
               {{ statusWord[statusOf(server)] }}
             </span>
           </Tooltip>
@@ -95,17 +106,40 @@ function add(draft: SettingsMcpDraft) {
         <template v-if="server.tools.length" #detail>
           <TagLine :items="server.tools" />
         </template>
-        <Button v-if="server.enabled && server.state === 'auth'" size="sm" @click="emit('signIn', server)">Sign in</Button>
-        <Button v-else-if="server.enabled && (server.state === 'crashed' || restarting.has(server.id))" size="sm" spin-on-click :disabled="restarting.has(server.id)" @click="restart(server)" @spin-end="restarting.delete(server.id)">
+        <Button
+          v-if="server.enabled && server.state === 'auth'"
+          size="sm"
+          @click="emit('signIn', server)"
+        >Sign in</Button>
+        <Button
+          v-else-if="server.enabled && (server.state === 'crashed' || restarting.has(server.id))"
+          size="sm"
+          spin-on-click
+          :disabled="restarting.has(server.id)"
+          @click="restart(server)"
+          @spin-end="restarting.delete(server.id)"
+        >
           <RotateCw :size="ICON_PX.in24" />
           Restart
         </Button>
-        <Switch v-model="server.enabled" size="sm" class="ml-1" />
+        <Switch
+          v-model="server.enabled"
+          size="sm"
+          class="ml-1"
+        />
       </SettingsRow>
-      <div v-if="!servers.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">
+      <div
+        v-if="!servers.length"
+        class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
+      >
         No servers yet.
       </div>
     </SettingsGroup>
-    <AddMcpServerDialog :is-open="addOpen" :overlay-store="overlayStore" @close="addOpen = false" @add="add" />
+    <AddMcpServerDialog
+      :is-open="addOpen"
+      :overlay-store="overlayStore"
+      @close="addOpen = false"
+      @add="add"
+    />
   </SettingsPage>
 </template>

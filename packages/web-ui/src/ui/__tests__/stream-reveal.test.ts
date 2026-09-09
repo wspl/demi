@@ -59,11 +59,22 @@ test('flush is faster once the block is no longer live', () => {
 })
 
 test('holdIncompleteMarkdown parks unmatched markers and links', () => {
-  expect(holdIncompleteMarkdown('hello **')).toEqual({ visible: 'hello ', held: '**' })
-  expect(holdIncompleteMarkdown('hello **bold**')).toEqual({ visible: 'hello **bold**', held: '' })
+  expect(holdIncompleteMarkdown('hello **')).toEqual(
+    { visible: 'hello ', held: '**' }
+  )
+  expect(holdIncompleteMarkdown('hello **bold**')).toEqual(
+    { visible: 'hello **bold**', held: '' }
+  )
   expect(holdIncompleteMarkdown('see `')).toEqual({ visible: 'see ', held: '`' })
-  expect(holdIncompleteMarkdown('go [docs')).toEqual({ visible: 'go ', held: '[docs' })
-  expect(holdIncompleteMarkdown('go [docs](https://ex')).toEqual({ visible: 'go ', held: '[docs](https://ex' })
+  expect(holdIncompleteMarkdown('go [docs')).toEqual(
+    { visible: 'go ', held: '[docs' }
+  )
+  expect(holdIncompleteMarkdown('go [docs](https://ex')).toEqual(
+    {
+      visible: 'go ',
+      held: '[docs](https://ex'
+    }
+  )
 })
 
 test('visibleFrontierLength only counts frontier that made it into the visible string', () => {

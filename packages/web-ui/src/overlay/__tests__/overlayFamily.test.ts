@@ -24,5 +24,10 @@ test('a click on a child panel is inside the family', () => {
     composedPath: () => [child],
   } as unknown as Event
   expect(isInsideOverlayFamily(family, event)).toBe(true)
-  expect(isInsideOverlayFamily(family, { composedPath: () => [fakePanel()] } as unknown as Event)).toBe(false)
+  expect(isInsideOverlayFamily(
+      family,
+      { composedPath: () => [fakePanel()] } as unknown as Event
+    )).toBe(
+    false
+  )
 })

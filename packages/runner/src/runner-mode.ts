@@ -23,7 +23,15 @@ import {
 import { HostRpcServer } from './serve/host-rpc-server'
 import { JobTable } from './serve/jobs'
 import type { Host } from '@demicodes/shell'
-import { collectBytes, createId, delay, dirnamePath, errorMessage, noop, SerialQueue } from '@demicodes/utils'
+import {
+  collectBytes,
+  createId,
+  delay,
+  dirnamePath,
+  errorMessage,
+  noop,
+  SerialQueue
+} from '@demicodes/utils'
 import { ManifestCache } from './manifest-cache'
 import { RelayServer } from './relay/server'
 import { DirectoryVolume, type Volume } from './init/volume'
@@ -40,21 +48,40 @@ export interface RunnerModeOptions {
   clientExecutable: string
   /** Device facts jobs fall back to: `PATH`, `HOME`. */
   deviceEnv: Record<string, string>
-  /** Booted as a managed host: the hello says so, and a missing token is a refusal, not a pairing. */
+  /**
+   * Booted as a managed host: the hello says so, and a missing token is a
+   * refusal, not a pairing.
+   */
   managed?: boolean
-  /** A token held in memory only — PID 1's, off the kernel command line — taking precedence over the state directory's. */
+  /**
+   * A token held in memory only — PID 1's, off the kernel command line — taking
+   * precedence over the state directory's.
+   */
   deviceToken?: string
-  /** The identity reported and the user every job and spawn runs as; PID 1 names the guest user here. */
+  /**
+   * The identity reported and the user every job and spawn runs as; PID 1 names
+   * the guest user here.
+   */
   identity?: Host['identity']
   /** The home as the guest sees it (default: a directory that only syncs). */
   volumes?: Partial<Record<'home' | 'system', Volume>>
-  /** How often the home's room is checked between jobs (default a minute; 0 disables). */
+  /**
+   * How often the home's room is checked between jobs (default a minute; 0
+   * disables).
+   */
   volumeCheckMs?: number
-  reconnect?: { initialDelayMs?: number; maxDelayMs?: number }
+  reconnect?: {
+    initialDelayMs?: number;
+    maxDelayMs?: number
+  }
   log?: (line: string) => void
 }
 
-export type RunnerStatus = 'connecting' | 'claim_pending' | 'online' | 'rejected' | 'stopped'
+export type RunnerStatus = 'connecting'
+  | 'claim_pending'
+  | 'online'
+  | 'rejected'
+  | 'stopped'
 
 /** The runner program: `start` runs until `stop`, reconnecting with backoff. */
 export class RunnerMode {
@@ -62,7 +89,10 @@ export class RunnerMode {
   private readonly state: RunnerState
   private readonly cache: ManifestCache
   private readonly pipes: PipeClient
-  private readonly wire = createRunnerWire({ encode: msgpackEncode, decode: msgpackDecode })
+  private readonly wire = createRunnerWire({
+    encode: msgpackEncode,
+    decode: msgpackDecode
+  })
   private readonly log: (line: string) => void
   private readonly volumes: Partial<Record<'home' | 'system', Volume>>
   private readonly contexts = new ExecutionContexts()
@@ -82,14 +112,27 @@ export class RunnerMode {
       identity: runnerIdentity,
     })
     this.state = new RunnerState(this.host.fs, options.stateDir)
-    this.cache = new ManifestCache(this.host.fs, this.state.commandsDir, options.clientExecutable)
+    this.cache = new ManifestCache(
+      this.host.fs,
+      this.state.commandsDir,
+      options.clientExecutable
+    )
     this.pipes = new PipeClient(options.backendUrl, () => this.token())
     this.log = options.log ?? ((line) => console.error(line))
-    this.volumes = options.volumes ?? { home: new DirectoryVolume({ run: (command, args) => this.command(command, args) }) }
+    this.volumes = options.volumes ?? {
+      home: new DirectoryVolume({
+        run: (command, args) => this.command(command, args)
+      })
+    }
   }
 
-  private executionEnvironment(context: ExecutionContext, env: Record<string, string | undefined>): Record<string, string> {
-    const bin = context.manifest ? this.cache.binDirectory(context.manifest) : dirnamePath(this.options.clientExecutable)
+  private executionEnvironment(
+    context: ExecutionContext,
+    env: Record<string, string | undefined>
+  ): Record<string, string> {
+    const bin = context.manifest
+      ? this.cache.binDirectory(context.manifest)
+      : dirnamePath(this.options.clientExecutable)
     return {
       ...this.contexts.environment(context, this.endpoint),
       PATH: `${bin}:${env.PATH ?? this.options.deviceEnv.PATH ?? '/usr/bin:/bin'}`,
@@ -101,22 +144,41 @@ export class RunnerMode {
     return this.options.deviceToken ?? this.state.readToken()
   }
 
-  /** A command from the runner's own machine, run to its end — the home's `sync`, `df`, `resize2fs`. */
-  private async command(command: string, args: string[]): Promise<{ code: number | null; stdout: Uint8Array }> {
+  /**
+   * A command from the runner's own machine, run to its end — the home's
+   * `sync`, `df`, `resize2fs`.
+   */
+  private async command(
+    command: string,
+    args: string[]
+  ): Promise<{
+    code: number | null;
+    stdout: Uint8Array
+  }> {
     const child = await this.host.process.spawn({ command, args })
     await child.closeStdin()
-    const [stdout, exit] = await Promise.all([collectBytes(child.stdout), child.wait()])
+    const [stdout, exit] = await Promise.all([
+      collectBytes(child.stdout),
+      child.wait()
+    ])
     return { code: exit.exitCode, stdout }
   }
 
-  /** Runs until stopped; resolves when the runner was told to stop or the backend refused it for good. */
+  /**
+   * Runs until stopped; resolves when the runner was told to stop or the
+   * backend refused it for good.
+   */
   async run(): Promise<'stopped' | 'rejected'> {
     const initial = this.options.reconnect?.initialDelayMs ?? 1_000
     const max = this.options.reconnect?.maxDelayMs ?? 30_000
     let backoff = initial
     await this.host.fs.mkdir(this.options.stateDir, { recursive: true })
     await this.host.fs.chmod(this.options.stateDir, 0o700)
-    const lease = await tjs.open(`${this.options.stateDir}/runner.lock`, 'a', 0o600)
+    const lease = await tjs.open(
+      `${this.options.stateDir}/runner.lock`,
+      'a',
+      0o600
+    )
     if (!lease.lock()) {
       await lease.close()
       throw new Error('runner already active for this installation')
@@ -125,21 +187,33 @@ export class RunnerMode {
     let published = false
     try {
       const config = await this.state.readConfig()
-      if (config && config.backendUrl !== this.options.backendUrl) throw new Error('state directory belongs to another backend')
-      await this.state.writeConfig(config ?? { backendUrl: this.options.backendUrl })
+      if (config && config.backendUrl !== this.options.backendUrl)
+        throw new Error('state directory belongs to another backend')
+      await this.state.writeConfig(config ?? {
+        backendUrl: this.options.backendUrl
+      })
       const startId = crypto.randomUUID().replaceAll('-', '')
       const windows = navigator.platform.startsWith('Win')
-      runtimeDir = windows ? null : await tjs.makeTempDir(`${tjs.tmpDir}/demi-XXXXXX`)
-      if (runtimeDir) await tjs.chmod(runtimeDir, 0o700)
-      this.endpoint = windows ? String.raw`\\.\pipe\demi-${startId}` : `${runtimeDir}/ipc.sock`
+      runtimeDir = windows
+        ? null
+        : await tjs.makeTempDir(`${tjs.tmpDir}/demi-XXXXXX`)
+      if (runtimeDir)
+        await tjs.chmod(runtimeDir, 0o700)
+      this.endpoint = windows
+        ? String.raw`\\.\pipe\demi-${startId}`
+        : `${runtimeDir}/ipc.sock`
       const secret = crypto.randomUUID().replaceAll('-', '')
       this.relay = await RelayServer.listen(this.endpoint, {
         send: message => this.sendToBackend(message),
         host: this.host,
         contexts: this.contexts,
         source: context => {
-          if (!context.manifest) throw new Error('no command manifest for this execution context')
-          return directorySource(`${this.state.commandsDir}/${context.manifest.hash}`, this.host.fs)
+          if (!context.manifest)
+            throw new Error('no command manifest for this execution context')
+          return directorySource(
+            `${this.state.commandsDir}/${context.manifest.hash}`,
+            this.host.fs
+          )
         },
         pipes: this.pipes,
         manageSecret: secret,
@@ -154,29 +228,48 @@ export class RunnerMode {
         secret,
         release: tjs.env.DEMI_RELEASE_ID ?? RUNNER_VERSION,
       }
-      await this.host.fs.writeFile(this.state.activePath, new TextEncoder().encode(JSON.stringify(activeRunner)))
+      await this.host.fs.writeFile(
+        this.state.activePath,
+        new TextEncoder().encode(JSON.stringify(activeRunner))
+      )
       published = true
       await this.host.fs.chmod(this.state.activePath, 0o600)
       const checkMs = this.options.volumeCheckMs ?? 60_000
-      if (checkMs > 0) this.volumeCheckTimer = setInterval(() => void this.checkVolumes(), checkMs)
+      if (checkMs > 0)
+        this.volumeCheckTimer = setInterval(
+          () => void this.checkVolumes(),
+          checkMs
+        )
       while (!this.stopped) {
         this.log('connecting…')
         const outcome = await this.connectOnce()
-        if (outcome === 'rejected') return 'rejected'
-        if (outcome === 'online') backoff = initial
-        if (this.stopped) break
+        if (outcome === 'rejected')
+          return 'rejected'
+        if (outcome === 'online')
+          backoff = initial
+        if (this.stopped)
+          break
         await delay(backoff)
         backoff = Math.min(backoff * 2, max)
       }
       return 'stopped'
     } finally {
-      if (this.volumeCheckTimer) clearInterval(this.volumeCheckTimer)
+      if (this.volumeCheckTimer)
+        clearInterval(this.volumeCheckTimer)
       this.volumeCheckTimer = null
       this.relay?.close()
       this.relay = null
       this.contexts.clear()
-      if (published) await this.host.fs.rm(this.state.activePath, { force: true })
-      if (runtimeDir) await this.host.fs.rm(runtimeDir, { recursive: true, force: true })
+      if (published)
+        await this.host.fs.rm(
+          this.state.activePath,
+          { force: true }
+        )
+      if (runtimeDir)
+        await this.host.fs.rm(
+          runtimeDir,
+          { recursive: true, force: true }
+        )
       await lease.close()
     }
   }
@@ -187,10 +280,12 @@ export class RunnerMode {
    * request by growing the filesystem into the enlarged image.
    */
   private async checkVolumes(): Promise<void> {
-    if (!this.link) return
+    if (!this.link)
+      return
     for (const volume of ['home', 'system'] as const) {
       const image = this.volumes[volume]
-      if (!image || this.growthPending.has(volume)) continue
+      if (!image || this.growthPending.has(volume))
+        continue
       const id = createId()
       this.growthPending.set(volume, id)
       try {
@@ -214,7 +309,8 @@ export class RunnerMode {
 
   private sendToBackend(message: RunnerToBackendMessage): void {
     const link = this.link
-    if (!link) throw new Error('runner: not connected')
+    if (!link)
+      throw new Error('runner: not connected')
     // The receive loop owns disconnection and tears down all jobs and calls.
     void link.send(this.wire.encode(message)).catch(noop)
     // A job that just ended may have filled the home.
@@ -240,10 +336,19 @@ export class RunnerMode {
     }
     this.growthPending.clear()
     this.link = link
-    const rpc = new HostRpcServer(this.host, (message) => this.sendToBackend(message), this.options.deviceEnv, async message => {
-      const context = this.contexts.create(`spawn:${message.spawnId}`, {}, await this.cache.current())
-      return this.executionEnvironment(context, message.env ?? {})
-    })
+    const rpc = new HostRpcServer(
+      this.host,
+      (message) => this.sendToBackend(message),
+      this.options.deviceEnv,
+      async message => {
+        const context = this.contexts.create(
+          `spawn:${message.spawnId}`,
+          {},
+          await this.cache.current()
+        )
+        return this.executionEnvironment(context, message.env ?? {})
+      }
+    )
     const jobs = new JobTable({
       spawn: spawnTeed,
       outputDir: this.state.outputDir,
@@ -257,7 +362,12 @@ export class RunnerMode {
       // The state location is fixed; per-job context and manifest PATH are injected below.
       fixedEnv: { DEMI_HOME: this.options.stateDir },
       executionEnv: async message => {
-        const context = this.contexts.create(`job:${message.jobId}`, message.env, await this.cache.current(), message.jobId)
+        const context = this.contexts.create(
+          `job:${message.jobId}`,
+          message.env,
+          await this.cache.current(),
+          message.jobId
+        )
         return this.executionEnvironment(context, message.env)
       },
       pipes: this.pipes,
@@ -283,7 +393,8 @@ export class RunnerMode {
       )
       for (;;) {
         const frame = await link.receive()
-        if (frame === null) break
+        if (frame === null)
+          break
         let message: BackendToRunnerMessage
         try {
           message = this.wire.decodeBackendToRunner(frame)
@@ -291,7 +402,9 @@ export class RunnerMode {
           this.log(`malformed frame from the backend: ${errorMessage(error)}`)
           continue
         }
-        if (message.type === 'job_stdin' || message.type === 'job_stdin_end' || message.type === 'spawn_stdin' || message.type === 'spawn_stdin_end') {
+        if (message.type === 'job_stdin' || message.type === 'job_stdin_end'
+          || message.type === 'spawn_stdin'
+          || message.type === 'spawn_stdin_end') {
           this.enqueueInput(message, inputQueues, { rpc, jobs })
           continue
         }
@@ -300,7 +413,8 @@ export class RunnerMode {
           outcome = 'rejected'
           break
         }
-        if (handled === 'online') outcome = 'online'
+        if (handled === 'online')
+          outcome = 'online'
       }
     } catch (error) {
       this.log(`connection lost: ${errorMessage(error)}`)
@@ -315,11 +429,19 @@ export class RunnerMode {
   }
 
   private enqueueInput(
-    message: Extract<BackendToRunnerMessage, { type: 'job_stdin' | 'job_stdin_end' | 'spawn_stdin' | 'spawn_stdin_end' }>,
+    message: Extract<BackendToRunnerMessage, { type: 'job_stdin'
+      | 'job_stdin_end'
+      | 'spawn_stdin'
+      | 'spawn_stdin_end' }>,
     queues: Map<string, SerialQueue>,
-    ends: { rpc: HostRpcServer; jobs: JobTable },
+    ends: {
+      rpc: HostRpcServer;
+      jobs: JobTable
+    },
   ): void {
-    const key = 'jobId' in message ? `job:${message.jobId}` : `spawn:${message.spawnId}`
+    const key = 'jobId' in message
+      ? `job:${message.jobId}`
+      : `spawn:${message.spawnId}`
     let queue = queues.get(key)
     if (!queue) {
       queue = new SerialQueue()
@@ -330,11 +452,18 @@ export class RunnerMode {
       // A child can close stdin before queued writes finish; its exit is reported separately.
       .catch(noop)
       .finally(() => {
-        if (current.idle && queues.get(key) === current) queues.delete(key)
+        if (current.idle && queues.get(key) === current)
+          queues.delete(key)
       })
   }
 
-  private async handle(message: BackendToRunnerMessage, ends: { rpc: HostRpcServer; jobs: JobTable }): Promise<'online' | 'rejected' | undefined> {
+  private async handle(
+    message: BackendToRunnerMessage,
+    ends: {
+      rpc: HostRpcServer;
+      jobs: JobTable
+    }
+  ): Promise<'online' | 'rejected' | undefined> {
     if (this.draining) {
       if (message.type === 'job_start') {
         this.sendToBackend({
@@ -359,8 +488,14 @@ export class RunnerMode {
     }
     switch (message.type) {
       case 'hello_ok': {
-        const config = (await this.state.readConfig()) ?? { backendUrl: this.options.backendUrl }
-        await this.state.writeConfig({ ...config, backendUrl: this.options.backendUrl, deviceId: message.deviceId })
+        const config = (await this.state.readConfig()) ?? {
+          backendUrl: this.options.backendUrl
+        }
+        await this.state.writeConfig({
+          ...config,
+          backendUrl: this.options.backendUrl,
+          deviceId: message.deviceId
+        })
         this.log('runner online')
         return 'online'
       }
@@ -381,18 +516,25 @@ export class RunnerMode {
       case 'sync': {
         let syncError: string | undefined
         try {
-          await Promise.all(Object.values(this.volumes).map(image => image.sync()))
+          await Promise.all(Object.values(this.volumes)
+            .map(image => image.sync()))
         } catch (error) {
           syncError = errorMessage(error)
           this.log(`sync failed: ${syncError}`)
         }
-        this.sendToBackend({ type: 'sync_done', id: message.id, ...(syncError ? { error: syncError } : {}) })
+        this.sendToBackend({
+          type: 'sync_done',
+          id: message.id,
+          ...(syncError ? { error: syncError } : {})
+        })
         return undefined
       }
       case 'volume_grown':
-        if (this.growthPending.get(message.volume) !== message.id) return undefined
+        if (this.growthPending.get(message.volume) !== message.id)
+          return undefined
         try {
-          if (message.error) throw new Error(message.error)
+          if (message.error)
+            throw new Error(message.error)
           await this.volumes[message.volume]?.grown(message.bytes)
         } catch (error) {
           this.log(`${message.volume} growth failed: ${errorMessage(error)}`)
@@ -403,7 +545,9 @@ export class RunnerMode {
       case 'manifest':
         try {
           const manifest = await this.cache.install(message.manifest)
-          this.log(`manifest ${manifest.hash.slice(0, 12)} installed: ${Object.keys(manifest.roots).join(', ')}`)
+          this.log(
+            `manifest ${manifest.hash.slice(0, 12)} installed: ${Object.keys(manifest.roots).join(', ')}`
+          )
         } catch (error) {
           this.log(`manifest refused: ${errorMessage(error)}`)
         }
@@ -417,7 +561,8 @@ export class RunnerMode {
       case 'job_stdin':
       case 'job_stdin_end':
       case 'job_kill':
-        if (message.type === 'job_kill') this.relay?.cancelJob(message.jobId)
+        if (message.type === 'job_kill')
+          this.relay?.cancelJob(message.jobId)
         await ends.jobs.handleMessage(message)
         return undefined
       default:
@@ -431,11 +576,16 @@ export class RunnerMode {
 /** Reported in `hello`; bumped with the runner program. */
 export const RUNNER_VERSION = '0.22.0'
 
-/** `--backend https://demi.example.com` ⇒ `wss://demi.example.com/api/runner`; an explicit path is kept as-is. */
+/**
+ * `--backend https://demi.example.com` ⇒ `wss://demi.example.com/api/runner`;
+ * an explicit path is kept as-is.
+ */
 export function runnerSocketUrl(backendUrl: string): string {
   const url = new URL(backendUrl)
   if (url.protocol === 'http:') url.protocol = 'ws:'
-  else if (url.protocol === 'https:') url.protocol = 'wss:'
-  if (url.pathname === '' || url.pathname === '/') url.pathname = '/api/runner'
+  else if (url.protocol === 'https:')
+    url.protocol = 'wss:'
+  if (url.pathname === '' || url.pathname === '/')
+    url.pathname = '/api/runner'
   return url.toString()
 }

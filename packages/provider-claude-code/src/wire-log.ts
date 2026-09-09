@@ -16,18 +16,24 @@ const NULL_WIRE_LOG: ClaudeWireLog = {
 }
 
 /**
- * Resolves the directory the claude-code wire log is written to. Default-on so the raw
+ * Resolves the directory the claude-code wire log is written to. Default-on so
+ * the raw
  * provider request/response stream is always retained for diagnostics; set
  * `DEMI_CLAUDE_WIRE_LOG=0` to disable, or `DEMI_CLAUDE_WIRE_LOG_DIR` to relocate.
  */
 export function resolveWireLogDir(): string | null {
-  if (process.env.DEMI_CLAUDE_WIRE_LOG === '0') return null
-  return process.env.DEMI_CLAUDE_WIRE_LOG_DIR ?? join(tmpdir(), 'demi-claude-wire')
+  if (process.env.DEMI_CLAUDE_WIRE_LOG === '0')
+    return null
+  return process.env.DEMI_CLAUDE_WIRE_LOG_DIR ?? join(
+    tmpdir(),
+    'demi-claude-wire'
+  )
 }
 
 export function createClaudeWireLog(sessionId: string): ClaudeWireLog {
   const dir = resolveWireLogDir()
-  if (!dir) return NULL_WIRE_LOG
+  if (!dir)
+    return NULL_WIRE_LOG
 
   try {
     mkdirSync(dir, { recursive: true })

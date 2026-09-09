@@ -18,7 +18,8 @@ export type QueueSource = Pick<QueuedMessage, 'id'> & Partial<Pick<QueuedMessage
 export function queuedMessagesToRenderBlocks(
   queue: readonly QueueSource[],
 ): Array<QueueDividerBlock | QueuedRenderBlock> {
-  if (queue.length === 0) return []
+  if (queue.length === 0)
+    return []
   return [
     { type: 'queue_divider', id: 'queue-divider', count: queue.length },
     ...queue.map((item) => ({

@@ -20,13 +20,23 @@ const props = defineProps<{
   installation: DeviceInstallation
   claimDevice: (code: string) => Promise<PairingResult>
 }>()
-const emit = defineEmits<{ revoke: [id: string]; resetCloud: [operationId: string] }>()
+const emit = defineEmits<{
+  revoke: [id: string];
+  resetCloud: [operationId: string]
+}>()
 const { isOpen, phase, open, close, submit } = useDevicePairing((code) => props.claimDevice(code))
 </script>
 
 <template>
-  <SettingsPage title="Devices" description="Machines that can host a conversation's working directory.">
-    <CloudSettings :cloud="cloud" :overlay-store="overlayStore" @reset="emit('resetCloud', $event)" />
+  <SettingsPage
+    title="Devices"
+    description="Machines that can host a conversation's working directory."
+  >
+    <CloudSettings
+      :cloud="cloud"
+      :overlay-store="overlayStore"
+      @reset="emit('resetCloud', $event)"
+    />
     <SettingsGroup>
       <template #header>
         <header class="flex items-center justify-between gap-3">
@@ -51,10 +61,22 @@ const { isOpen, phase, open, close, submit } = useDevicePairing((code) => props.
         </template>
         <Button size="sm" @click="emit('revoke', device.id)">Revoke</Button>
       </SettingsRow>
-      <div v-if="!devices.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">
+      <div
+        v-if="!devices.length"
+        class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
+      >
         No devices connected.
       </div>
     </SettingsGroup>
-    <DevicePairingDialog :is-open="isOpen" :overlay-store="overlayStore" :installation="installation" :phase="phase" @close="close" @next="phase = { kind: 'code' }" @back="phase = { kind: 'setup' }" @submit="submit" />
+    <DevicePairingDialog
+      :is-open="isOpen"
+      :overlay-store="overlayStore"
+      :installation="installation"
+      :phase="phase"
+      @close="close"
+      @next="phase = { kind: 'code' }"
+      @back="phase = { kind: 'setup' }"
+      @submit="submit"
+    />
   </SettingsPage>
 </template>

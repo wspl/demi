@@ -24,14 +24,21 @@ const folded = ref<string[]>([])
 // Connect new device, from the host menu or elsewhere, pairs right here rather than in settings.
 const pairing = useDevicePairing(claimDevice)
 watch(() => resources.pairingOpen, (wanted) => {
-  if (wanted) pairing.open()
+  if (wanted)
+    pairing.open()
   else pairing.close()
 })
-const activeId = computed(() => (typeof route.params.id === 'string' ? route.params.id : null))
+const activeId = computed(() => (typeof route.params.id === 'string'
+  ? route.params.id
+  : null))
 watch(
-  () => [activeId.value, conversations.items.find((item) => item.id === activeId.value)?.unread],
+  () => [
+    activeId.value,
+    conversations.items.find((item) => item.id === activeId.value)?.unread
+  ],
   () => {
-    if (activeId.value) conversations.markRead(activeId.value)
+    if (activeId.value)
+      conversations.markRead(activeId.value)
   },
   { immediate: true },
 )
@@ -42,11 +49,13 @@ const account = computed(() => ({
 }))
 /** The sidebar's Skills and Archived entries open their settings sections. */
 function openSettings(section?: string) {
-  if (section) resources.settingsTab = section
+  if (section)
+    resources.settingsTab = section
   resources.settingsOpen = true
 }
 function reorder(request: SidebarReorder) {
-  if (request.kind === 'project') resources.reorderProject(request.id, request.beforeId)
+  if (request.kind === 'project')
+    resources.reorderProject(request.id, request.beforeId)
   else conversations.reorder(request.id, request.beforeId)
 }
 function open(id: string) {
@@ -84,10 +93,12 @@ const actions: Record<string, () => void> = {
   },
 }
 function shortcut(event: KeyboardEvent) {
-  if (!resources.signedIn) return
+  if (!resources.signedIn)
+    return
   const binding = resources.settings.keys.find((entry) => matchesShortcut(event, entry.keys))
   const action = binding && actions[binding.id]
-  if (!action) return
+  if (!action)
+    return
   event.preventDefault()
   action()
 }
@@ -97,7 +108,8 @@ onUnmounted(() => window.removeEventListener('keydown', shortcut))
 watch(
   () => conversations.notice,
   (message) => {
-    if (!message) return
+    if (!message)
+      return
     // A notice is an action the prototype refused, so it reads as a rejection.
     showToast({ title: message, tone: 'danger' })
     conversations.notice = ''
@@ -106,7 +118,10 @@ watch(
 </script>
 
 <template>
-  <div v-if="route.path !== '/login'" class="flex h-full bg-surface-base text-fg">
+  <div
+    v-if="route.path !== '/login'"
+    class="flex h-full bg-surface-base text-fg"
+  >
     <div
       v-if="resources.sidebarOpen"
       class="fixed inset-0 z-30 bg-black/50 md:hidden"

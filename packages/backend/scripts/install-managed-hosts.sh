@@ -5,36 +5,90 @@
 # as nftables rules the guests cannot alter. Idempotent: rerun after a
 # reboot or to change the pool.
 #
-#   sudo install-managed-hosts.sh --user demi-backend --backend-address 172.16.0.1 --backend-port 3271 \
-#        [--mode direct|jailer] [--uid-base 20000] [--subnet 172.16.0.0/16] [--slots 256] [--egress-iface eth0]
+#   sudo install-managed-hosts.sh --user demi-backend \
+#        --backend-address 172.16.0.1 --backend-port 3271 \
+#        [--mode direct|jailer] [--uid-base 20000] \
+#        [--subnet 172.16.0.0/16] [--slots 256] [--egress-iface eth0]
 set -euo pipefail
-user=""; backend_address=""; backend_port=""; mode=direct; uid_base=20000; subnet=172.16.0.0/16; slots=256; egress=""; prefix=demi
+user=""
+backend_address=""
+backend_port=""
+mode=direct
+uid_base=20000
+subnet=172.16.0.0/16
+slots=256
+egress=""
+prefix=demi
 while [ $# -gt 0 ]; do
   case "$1" in
-    --user) user=$2; shift 2 ;;
-    --backend-address) backend_address=$2; shift 2 ;;
-    --backend-port) backend_port=$2; shift 2 ;;
-    --mode) mode=$2; shift 2 ;;
-    --uid-base) uid_base=$2; shift 2 ;;
-    --subnet) subnet=$2; shift 2 ;;
-    --slots) slots=$2; shift 2 ;;
-    --egress-iface) egress=$2; shift 2 ;;
-    *) echo "unknown argument $1" >&2; exit 2 ;;
+    --user)
+      user=$2
+      shift 2
+      ;;
+    --backend-address)
+      backend_address=$2
+      shift 2
+      ;;
+    --backend-port)
+      backend_port=$2
+      shift 2
+      ;;
+    --mode)
+      mode=$2
+      shift 2
+      ;;
+    --uid-base)
+      uid_base=$2
+      shift 2
+      ;;
+    --subnet)
+      subnet=$2
+      shift 2
+      ;;
+    --slots)
+      slots=$2
+      shift 2
+      ;;
+    --egress-iface)
+      egress=$2
+      shift 2
+      ;;
+    *)
+      echo "unknown argument $1" >&2
+      exit 2
+      ;;
   esac
 done
-[ -n "$user" ] && [ -n "$backend_address" ] && [ -n "$backend_port" ] || { echo "--user, --backend-address and --backend-port are required" >&2; exit 2; }
-[ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 2; }
+[ -n "$user" ] && [ -n "$backend_address" ] && [ -n "$backend_port" ] || {
+  echo "--user, --backend-address and --backend-port are required" >&2
+  exit 2
+}
+[ "$(id -u)" = 0 ] || {
+  echo "run as root" >&2
+  exit 2
+}
 [ -n "$egress" ] || egress=$(ip -o route show default | awk '{print $5; exit}')
 
-ip_to_int() { local IFS=.; read -r a b c d <<<"$1"; echo $(( (a<<24) + (b<<16) + (c<<8) + d )); }
-int_to_ip() { echo "$(( ($1>>24)&255 )).$(( ($1>>16)&255 )).$(( ($1>>8)&255 )).$(( $1&255 ))"; }
+ip_to_int() {
+  local IFS=.
+  read -r a b c d <<<"$1"
+  echo $(( (a<<24) + (b<<16) + (c<<8) + d ))
+}
+int_to_ip() {
+  echo "$(( ($1>>24)&255 )).$(( ($1>>16)&255 )).$(( ($1>>8)&255 )).$(( $1&255 ))"
+}
 network=${subnet%/*}
 base=$(ip_to_int "$network")
 
 for ((i=0; i<slots; i++)); do
   tap="$prefix$i"
-  if [ "$mode" = jailer ]; then owner=$((uid_base + i)); else owner=$user; fi
-  # Recreated every run: the owner follows the mode, and a tap's owner cannot change in place.
+  if [ "$mode" = jailer ]; then
+    owner=$((uid_base + i))
+  else
+    owner=$user
+  fi
+  # Recreated every run: the owner follows the mode, and a tap's owner cannot
+  # change in place.
   ip link show "$tap" >/dev/null 2>&1 && ip link del "$tap"
   ip tuntap add "$tap" mode tap user "$owner"
   gw=$(int_to_ip $((base + i*4 + 1)))
@@ -44,7 +98,8 @@ done
 
 sysctl -qw net.ipv4.ip_forward=1
 
-# /dev/kvm for the backend user (direct mode spawns Firecracker as it; jailer mode's helper runs as root anyway):
+# /dev/kvm for the backend user (direct mode spawns Firecracker as it; jailer
+# mode's helper runs as root anyway):
 # the kvm group, effective at the user's next login.
 getent group kvm >/dev/null && usermod -aG kvm "$user"
 

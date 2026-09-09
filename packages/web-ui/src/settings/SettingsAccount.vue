@@ -41,24 +41,43 @@ const emit = defineEmits<{
   deleteAccount: []
 }>()
 
-const initial = computed(() => name.value.trim().slice(0, 1).toUpperCase() || props.email.slice(0, 1).toUpperCase())
+const initial = computed(
+  () =>
+    name.value.trim().slice(0, 1).toUpperCase() ||
+    props.email.slice(0, 1).toUpperCase()
+)
 </script>
 
 <template>
   <SettingsPage title="Account" description="Who you are here.">
     <SettingsGroup title="Profile">
-      <SettingsRow label="Avatar" description="Your initial, until pictures arrive.">
-        <span class="flex size-8 select-none items-center justify-center rounded-full bg-tint-accent text-[13px] font-medium text-on-accent">{{ initial }}</span>
+      <SettingsRow
+        label="Avatar"
+        description="Your initial, until pictures arrive."
+      >
+        <span
+          class="flex size-8 select-none items-center justify-center rounded-full bg-tint-accent text-[13px] font-medium text-on-accent"
+        >{{ initial }}</span>
       </SettingsRow>
-      <SettingsRow label="Display name" description="Shown on your messages and in the sidebar.">
-        <TextInput v-model="name" maxlength="50" class="w-56 max-w-full" />
+      <SettingsRow
+        label="Display name"
+        description="Shown on your messages and in the sidebar."
+      >
+        <TextInput
+          v-model="name"
+          maxlength="50"
+          class="w-56 max-w-full"
+        />
       </SettingsRow>
       <SettingsRow label="Email">
         <template v-if="emailVerified" #tags><Tag tone="success">Verified</Tag></template>
         <span class="text-chrome text-fg-muted">{{ email }}</span>
         <Button size="sm" @click="emit('changeEmail')">Change</Button>
       </SettingsRow>
-      <SettingsRow label="Password" :description="`Last changed ${passwordChanged}.`">
+      <SettingsRow
+        label="Password"
+        :description="`Last changed ${passwordChanged}.`"
+      >
         <Button size="sm" @click="emit('changePassword')">Change</Button>
       </SettingsRow>
     </SettingsGroup>
@@ -79,13 +98,23 @@ const initial = computed(() => name.value.trim().slice(0, 1).toUpperCase() || pr
       @submit="(current, next) => emit('submitPassword', current, next)"
     />
     <SettingsGroup title="Session">
-      <SettingsRow label="Sign out" description="Ends this browser's session. Conversations stay on the server.">
+      <SettingsRow
+        label="Sign out"
+        description="Ends this browser's session. Conversations stay on the server."
+      >
         <Button size="sm" @click="emit('signOut')">Sign out</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Danger zone">
-      <SettingsRow label="Delete account" description="Removes your account, devices and every conversation. This cannot be undone.">
-        <Button size="sm" variant="danger" @click="emit('deleteAccount')">Delete account</Button>
+      <SettingsRow
+        label="Delete account"
+        description="Removes your account, devices and every conversation. This cannot be undone."
+      >
+        <Button
+          size="sm"
+          variant="danger"
+          @click="emit('deleteAccount')"
+        >Delete account</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>

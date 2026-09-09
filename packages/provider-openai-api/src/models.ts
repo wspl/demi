@@ -30,7 +30,12 @@ export function openAIApiDefaultModels(providerId = 'openai'): ProviderModelList
         supportsAttachments: true,
         supportsReasoning: true,
         supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
-        serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage', fast: true }],
+        serviceTiers: [{
+          id: 'priority',
+          label: 'Fast',
+          description: '1.5x speed, increased usage',
+          fast: true
+        }],
       },
       {
         id: 'gpt-5.4',
@@ -41,7 +46,12 @@ export function openAIApiDefaultModels(providerId = 'openai'): ProviderModelList
         supportsAttachments: true,
         supportsReasoning: true,
         supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
-        serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage', fast: true }],
+        serviceTiers: [{
+          id: 'priority',
+          label: 'Fast',
+          description: '1.5x speed, increased usage',
+          fast: true
+        }],
       },
       {
         id: 'gpt-5.4-mini',
@@ -90,15 +100,25 @@ export function modelListFromOpenAIApiModels(
     id: model.id,
     displayName: model.displayName ?? model.id,
     description: model.description,
-    contextWindow: positiveInteger(model.contextWindow, `models[${model.id}].contextWindow`),
-    outputLimit: model.outputLimit == null ? null : positiveInteger(model.outputLimit, `models[${model.id}].outputLimit`),
+    contextWindow: positiveInteger(
+      model.contextWindow,
+      `models[${model.id}].contextWindow`
+    ),
+    outputLimit: model.outputLimit == null ? null : positiveInteger(
+      model.outputLimit,
+      `models[${model.id}].outputLimit`
+    ),
     supportsTools: model.supportsTools ?? null,
     supportsAttachments: model.supportsAttachments ?? null,
     supportsReasoning: model.supportsReasoning ?? null,
-    supportedThinkingEfforts: model.supportedThinkingEfforts ? [...model.supportedThinkingEfforts] : null,
+    supportedThinkingEfforts: model.supportedThinkingEfforts
+      ? [...model.supportedThinkingEfforts]
+      : null,
     defaultThinkingEffort: model.defaultThinkingEffort ?? null,
     canDisableThinking: model.canDisableThinking ?? null,
-    serviceTiers: model.serviceTiers ? model.serviceTiers.map((tier) => ({ ...tier })) : model.serviceTiers,
+    serviceTiers: model.serviceTiers ? model.serviceTiers.map((tier) => ({
+      ...tier
+    })) : model.serviceTiers,
     defaultServiceTierId: model.defaultServiceTierId ?? null,
     sourceFetchedAt,
     stale,
@@ -107,7 +127,8 @@ export function modelListFromOpenAIApiModels(
     providerId: options.providerId,
     models: mapped,
     defaultModelId:
-      options.defaultModelId && mapped.some((model) => model.id === options.defaultModelId)
+      options.defaultModelId
+        && mapped.some((model) => model.id === options.defaultModelId)
         ? options.defaultModelId
         : mapped[0]?.id ?? null,
     warnings: [],
@@ -117,6 +138,7 @@ export function modelListFromOpenAIApiModels(
 }
 
 function positiveInteger(value: number, field: string): number {
-  if (!Number.isInteger(value) || value <= 0) throw new Error(`${field} must be a positive integer`)
+  if (!Number.isInteger(value) || value <= 0)
+    throw new Error(`${field} must be a positive integer`)
   return value
 }
