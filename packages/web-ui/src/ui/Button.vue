@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useButtonIconSpin } from './button-icon-spin'
 
 const props = withDefaults(defineProps<{
-  size?: 'xs' | 'sm' | 'md'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   variant?: 'default' | 'primary' | 'ghost' | 'danger'
   disabled?: boolean
   pressed?: boolean
@@ -18,6 +18,15 @@ const pressed = computed(() => props.pressed === true)
 const emit = defineEmits<{ spinEnd: [] }>()
 const root = ref<HTMLElement | null>(null)
 const { rotating, onClick } = useButtonIconSpin(root, props, () => emit('spinEnd'))
+const sizeClass = computed(() => {
+  if (props.size === 'lg')
+    return 'h-9 px-3.5 text-chrome'
+  if (props.size === 'xs')
+    return 'h-5 px-1.5 text-[11px]'
+  if (props.size === 'sm')
+    return 'h-6 px-2 text-[12px]'
+  return 'h-7 px-2.5 text-chrome'
+})
 </script>
 
 <template>
@@ -29,7 +38,7 @@ const { rotating, onClick } = useButtonIconSpin(root, props, () => emit('spinEnd
     class="inline-flex cursor-default items-center justify-center gap-1 whitespace-nowrap rounded-md transition-[color,background-color,box-shadow,filter] duration-200 ease-out select-none"
     :data-pressed="!disabled && pressed ? true : undefined"
     :class="[
-      size === 'md' ? 'h-7 px-2.5 text-chrome' : size === 'xs' ? 'h-5 px-1.5 text-[11px]' : 'h-6 px-2 text-[12px]',
+      sizeClass,
       variant === 'primary'
         ? ['btn-primary font-medium text-white', pressed ? 'brightness-110' : 'hover:brightness-110']
         : variant === 'ghost'
