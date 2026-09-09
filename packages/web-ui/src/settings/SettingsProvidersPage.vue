@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import {
   Brain,
   Check,
@@ -101,6 +101,29 @@ const splitOpen = computed({
   set: (value: boolean) => {
     detailOpen.value = value
   },
+})
+
+// Match the visible rail order, including catalogs that arrive after mount.
+watch(
+  () => JSON.stringify([
+    subscriptions.value.map((provider) => provider.id),
+    apiKeys.value.map((provider) => provider.id),
+    selectedId.value,
+  ]),
+  () => {
+    if (selected.value) {
+      return
+    }
+    const first = subscriptions.value[0] ?? apiKeys.value[0]
+    selectedId.value = first?.id ?? null
+    detailOpen.value = !!first
+  },
+  { immediate: true },
+)
+onMounted(() => {
+  if (selected.value) {
+    detailOpen.value = true
+  }
 })
 
 /**
@@ -528,6 +551,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     size="sm"
                     :icon="Plug"
                     aria-label="Test connection"
+                    :disabled="selected.configured === false"
                     @click="emit('test', selected)"
                 /></Tooltip>
               </SettingsRow>
@@ -564,7 +588,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       :icon="RefreshCw"
                       spin-on-click
                       :spinning="refreshing === selected.id"
-                      :disabled="refreshing === selected.id"
+                      :disabled="selected.configured === false || refreshing === selected.id"
                       aria-label="Refresh models"
                       @click="emit('refresh', selected)" /></Tooltip
                 ></span>
@@ -614,7 +638,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   :icon="RefreshCw"
                   spin-on-click
                   :spinning="refreshing === selected.id"
-                  :disabled="refreshing === selected.id"
+                  :disabled="selected.configured === false || refreshing === selected.id"
                   aria-label="Refresh models"
                   @click="emit('refresh', selected)"
               /></Tooltip>
