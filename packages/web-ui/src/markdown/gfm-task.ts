@@ -12,15 +12,20 @@ export function toggleGfmTask(src: string, index: number): string {
     const fenceMatch = FENCE.exec(line)
     if (fenceMatch) {
       const marker = fenceMatch[1]!
-      if (!fence) fence = marker
-      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null
+      if (!fence)
+        fence = marker
+      else if (marker[0] === fence[0] && marker.length >= fence.length)
+        fence = null
       return line
     }
-    if (fence) return line
+    if (fence)
+      return line
     const match = TASK_LINE.exec(line)
-    if (!match) return line
+    if (!match)
+      return line
     seen += 1
-    if (seen !== index) return line
+    if (seen !== index)
+      return line
     return `${match[1]}[${match[2] === ' ' ? 'x' : ' '}]${line.slice(match[0].length)}`
   }).join('\n')
 }

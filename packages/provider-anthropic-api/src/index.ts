@@ -5,4 +5,7 @@ export {
   type AnthropicApiSecretResolver,
   type AnthropicApiHeadersResolver,
 } from './provider'
-export { anthropicApiDefaultModels, type AnthropicApiModelOptions } from './models'
+export {
+  anthropicApiDefaultModels,
+  type AnthropicApiModelOptions
+} from './models'

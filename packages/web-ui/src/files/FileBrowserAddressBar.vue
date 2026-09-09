@@ -35,7 +35,8 @@ const crumbs = computed(() => pathSegments(props.path))
 const shown = computed(() => {
   const all = crumbs.value
   const keep = width.value > 0 && width.value < 360 ? 2 : 3
-  if (all.length <= keep + 2) return all.map((crumb) => ({ ...crumb, folded: false }))
+  if (all.length <= keep + 2)
+    return all.map((crumb) => ({ ...crumb, folded: false }))
   return [
     { ...all[0]!, folded: false },
     { name: '…', path: '', folded: true },
@@ -55,7 +56,8 @@ function startEdit() {
 function commit() {
   editing.value = false
   const next = normalizePath(draft.value)
-  if (next !== props.path) emit('navigate', next)
+  if (next !== props.path)
+    emit('navigate', next)
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -93,7 +95,11 @@ watch(() => props.path, () => {
     @click.self="startEdit"
   >
     <template v-for="(crumb, index) in shown" :key="crumb.path || index">
-      <ChevronRight v-if="index > 0" :size="ICON_PX.in24" class="shrink-0 text-fg-faint" />
+      <ChevronRight
+        v-if="index > 0"
+        :size="ICON_PX.in24"
+        class="shrink-0 text-fg-faint"
+      />
       <span
         v-if="crumb.folded"
         class="flex h-5 shrink-0 items-center px-1 text-fg-subtle"
@@ -112,7 +118,11 @@ watch(() => props.path, () => {
         @click="emit('navigate', crumb.path)"
       >
         <!-- The root and the home wear their landmark glyphs; every crumb has the same shape. -->
-        <FileIcon :name="crumb.name" :is-directory="true" :icon="landmarkIcon(crumb.path, source)" />
+        <FileIcon
+          :name="crumb.name"
+          :is-directory="true"
+          :icon="landmarkIcon(crumb.path, source)"
+        />
         <span class="truncate">{{ crumb.name }}</span>
       </span>
     </template>

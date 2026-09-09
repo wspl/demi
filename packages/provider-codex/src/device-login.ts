@@ -29,11 +29,27 @@ export interface CodexDeviceLoginOptions {
   issuer?: string
 }
 
-type DeviceUserCode = { deviceAuthId: string; userCode: string; intervalSeconds: number }
-type DeviceAuthorization = { authorizationCode: string; codeVerifier: string }
-type ExchangedTokens = { idToken: string; accessToken: string; refreshToken: string }
+type DeviceUserCode = {
+  deviceAuthId: string;
+  userCode: string;
+  intervalSeconds: number
+}
+type DeviceAuthorization = {
+  authorizationCode: string;
+  codeVerifier: string
+}
+type ExchangedTokens = {
+  idToken: string;
+  accessToken: string;
+  refreshToken: string
+}
 
-async function postJson(fetchImpl: typeof fetch, url: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+async function postJson(
+  fetchImpl: typeof fetch,
+  url: string,
+  body: unknown,
+  signal?: AbortSignal
+): Promise<Response> {
   return fetchImpl(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -42,31 +58,62 @@ async function postJson(fetchImpl: typeof fetch, url: string, body: unknown, sig
   })
 }
 
-async function jsonBody(response: Response, what: string): Promise<Record<string, unknown>> {
+async function jsonBody(
+  response: Response,
+  what: string
+): Promise<Record<string, unknown>> {
   const body: unknown = await response.json().catch(() => null)
-  if (!isRecord(body)) throw new CodexAuthError('auth_login_failed', `${what} response is not a JSON object`)
+  if (!isRecord(body))
+    throw new CodexAuthError(
+      'auth_login_failed',
+      `${what} response is not a JSON object`
+    )
   return body
 }
 
-async function requestUserCode(fetchImpl: typeof fetch, issuer: string, clientId: string, signal?: AbortSignal): Promise<DeviceUserCode> {
-  const response = await postJson(fetchImpl, `${issuer}/api/accounts/deviceauth/usercode`, { client_id: clientId }, signal)
+async function requestUserCode(
+  fetchImpl: typeof fetch,
+  issuer: string,
+  clientId: string,
+  signal?: AbortSignal
+): Promise<DeviceUserCode> {
+  const response = await postJson(
+    fetchImpl,
+    `${issuer}/api/accounts/deviceauth/usercode`,
+    { client_id: clientId },
+    signal
+  )
   if (response.status === 404) {
-    throw new CodexAuthError('auth_unsupported', 'Device-code login is not enabled for this Codex account')
+    throw new CodexAuthError(
+      'auth_unsupported',
+      'Device-code login is not enabled for this Codex account'
+    )
   }
   if (!response.ok) {
-    throw new CodexAuthError('auth_login_failed', `Device code request failed with HTTP ${response.status}`)
+    throw new CodexAuthError(
+      'auth_login_failed',
+      `Device code request failed with HTTP ${response.status}`
+    )
   }
   const body = await jsonBody(response, 'Device code')
   const deviceAuthId = nonEmptyString(body.device_auth_id)
-  const userCode = nonEmptyString(body.user_code) ?? nonEmptyString(body.usercode)
+  const userCode = nonEmptyString(body.user_code)
+    ?? nonEmptyString(body.usercode)
   if (!deviceAuthId || !userCode) {
-    throw new CodexAuthError('auth_login_failed', 'Device code response is missing device_auth_id or user_code')
+    throw new CodexAuthError(
+      'auth_login_failed',
+      'Device code response is missing device_auth_id or user_code'
+    )
   }
-  const interval = Number(typeof body.interval === 'string' ? body.interval.trim() : body.interval)
+  const interval = Number(typeof body.interval === 'string'
+    ? body.interval.trim()
+    : body.interval)
   return {
     deviceAuthId,
     userCode,
-    intervalSeconds: Number.isFinite(interval) && interval >= 0 ? interval : DEVICE_LOGIN_FALLBACK_INTERVAL_S,
+    intervalSeconds: Number.isFinite(interval) && interval >= 0
+      ? interval
+      : DEVICE_LOGIN_FALLBACK_INTERVAL_S,
   }
 }
 
@@ -90,16 +137,25 @@ async function pollForAuthorization(
       const authorizationCode = nonEmptyString(body.authorization_code)
       const codeVerifier = nonEmptyString(body.code_verifier)
       if (!authorizationCode || !codeVerifier) {
-        throw new CodexAuthError('auth_login_failed', 'Device authorization response is missing authorization_code or code_verifier')
+        throw new CodexAuthError(
+          'auth_login_failed',
+          'Device authorization response is missing authorization_code or code_verifier'
+        )
       }
       return { authorizationCode, codeVerifier }
     }
     // 403/404 mean "user has not confirmed yet"; anything else is terminal.
     if (response.status !== 403 && response.status !== 404) {
-      throw new CodexAuthError('auth_login_failed', `Device authorization failed with HTTP ${response.status}`)
+      throw new CodexAuthError(
+        'auth_login_failed',
+        `Device authorization failed with HTTP ${response.status}`
+      )
     }
     if (Date.now() - startedAt >= DEVICE_LOGIN_MAX_WAIT_MS) {
-      throw new CodexAuthError('auth_login_failed', 'Device-code login timed out after 15 minutes')
+      throw new CodexAuthError(
+        'auth_login_failed',
+        'Device-code login timed out after 15 minutes'
+      )
     }
     await delay(userCode.intervalSeconds * 1000)
   }
@@ -126,36 +182,62 @@ async function exchangeAuthorizationCode(
     signal,
   })
   if (!response.ok) {
-    throw new CodexAuthError('auth_login_failed', `Device-code token exchange failed with HTTP ${response.status}`)
+    throw new CodexAuthError(
+      'auth_login_failed',
+      `Device-code token exchange failed with HTTP ${response.status}`
+    )
   }
   const body = await jsonBody(response, 'Token exchange')
   const idToken = nonEmptyString(body.id_token)
   const accessToken = nonEmptyString(body.access_token)
   const refreshToken = nonEmptyString(body.refresh_token)
   if (!idToken || !accessToken || !refreshToken) {
-    throw new CodexAuthError('auth_login_failed', 'Token exchange response is missing id_token, access_token, or refresh_token')
+    throw new CodexAuthError(
+      'auth_login_failed',
+      'Token exchange response is missing id_token, access_token, or refresh_token'
+    )
   }
   return { idToken, accessToken, refreshToken }
 }
 
 /** Runs the full device-code flow and returns vendor-shaped auth material. */
-export async function runCodexDeviceLogin(options: CodexDeviceLoginOptions = {}): Promise<CodexAuthDotJson> {
+export async function runCodexDeviceLogin(
+  options: CodexDeviceLoginOptions = {}
+): Promise<CodexAuthDotJson> {
   const fetchImpl = options.fetch ?? fetch
   const issuer = (options.issuer ?? DEVICE_LOGIN_ISSUER).replace(/\/+$/, '')
   const clientId = codexOauthClientId()
   const startedAt = Date.now()
 
-  const userCode = await requestUserCode(fetchImpl, issuer, clientId, options.signal)
+  const userCode = await requestUserCode(
+    fetchImpl,
+    issuer,
+    clientId,
+    options.signal
+  )
   options.onPending?.({
     verificationUrl: `${issuer}/codex/device`,
     userCode: userCode.userCode,
     expiresAt: new Date(startedAt + DEVICE_LOGIN_MAX_WAIT_MS).toISOString(),
   })
 
-  const authorization = await pollForAuthorization(fetchImpl, issuer, userCode, startedAt, options.signal)
-  const tokens = await exchangeAuthorizationCode(fetchImpl, issuer, clientId, authorization, options.signal)
+  const authorization = await pollForAuthorization(
+    fetchImpl,
+    issuer,
+    userCode,
+    startedAt,
+    options.signal
+  )
+  const tokens = await exchangeAuthorizationCode(
+    fetchImpl,
+    issuer,
+    clientId,
+    authorization,
+    options.signal
+  )
 
-  const accountId = parseChatGptClaims(tokens.accessToken).accountId ?? parseIdTokenClaims(tokens.idToken).accountId
+  const accountId = parseChatGptClaims(tokens.accessToken).accountId
+    ?? parseIdTokenClaims(tokens.idToken).accountId
   return {
     auth_mode: 'chatgpt',
     OPENAI_API_KEY: null,

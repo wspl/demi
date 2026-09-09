@@ -16,7 +16,10 @@ import type { TranscriptPatch } from './protocol/frames'
 import type { TurnRetryPolicy } from './session/retry-policy'
 import type { TranscriptLog } from './transcript/transcript'
 
-/** Caller-defined data carried with one agent action. Demi transports it without interpreting it. */
+/**
+ * Caller-defined data carried with one agent action. Demi transports it without
+ * interpreting it.
+ */
 export type AgentMetadata = Readonly<Record<string, PortableJsonValue>>
 
 export interface AgentPromptContext<State> {
@@ -29,7 +32,8 @@ export interface AgentPromptContext<State> {
 
 export interface AgentSystemPromptContext<State> extends AgentPromptContext<State> {
   /**
-   * Rendered help for every registered command (summary, subcommands, parameters,
+   * Rendered help for every registered command (summary, subcommands,
+   * parameters,
    * stdin fields), produced by the server from the session's actual
    * CommandRegistry. Harnesses embed it wherever their system prompt wants the
    * command reference; empty string when no commands are registered.
@@ -92,7 +96,10 @@ export interface SubagentProfile<State = unknown> {
   systemPrompt?(ctx: AgentSystemPromptContext<State>): Promise<string> | string
   /** Derives the child's registered commands from the parent's list. */
   commands?(parentCommands: Command[]): Command[]
-  /** When false, the child cannot spawn subagents of its own (communication and reads remain). */
+  /**
+   * When false, the child cannot spawn subagents of its own (communication and
+   * reads remain).
+   */
   canSpawnSubagents?: boolean
   model?: ModelSelection
 }
@@ -100,18 +107,32 @@ export interface SubagentProfile<State = unknown> {
 export interface AgentHarness<State = unknown> {
   name: string
   initialState(): State
-  /** Return the same Host object for calls that target the same execution environment. */
-  host(ctx: AgentHarnessContext<State> | AgentHostContext<State>): Host | Promise<Host>
+  /**
+   * Return the same Host object for calls that target the same execution
+   * environment.
+   */
+  host(
+    ctx: AgentHarnessContext<State> | AgentHostContext<State>
+  ): Host | Promise<Host>
   commands?(ctx: AgentCommandsContext<State>): Promise<Command[]> | Command[]
   /**
    * Named subagent profiles for `demi agent`. Omitting --profile inherits
    * the parent's setup; the name `default` is reserved.
    */
-  agents?(ctx: AgentHarnessContext<State>): Promise<SubagentProfile<State>[]> | SubagentProfile<State>[]
+  agents?(
+    ctx: AgentHarnessContext<State>
+  ): Promise<SubagentProfile<State>[]> | SubagentProfile<State>[]
   systemPrompt(ctx: AgentSystemPromptContext<State>): Promise<string> | string
-  preamble?(ctx: AgentPromptContext<State>): Promise<string | null> | string | null
-  /** Durable product context, independently applied to every node before inference. */
-  context?(ctx: AgentPromptContext<State> & { rootSessionId: string }): Promise<string | null> | string | null
+  preamble?(
+    ctx: AgentPromptContext<State>
+  ): Promise<string | null> | string | null
+  /**
+   * Durable product context, independently applied to every node before
+   * inference.
+   */
+  context?(
+    ctx: AgentPromptContext<State> & { rootSessionId: string }
+  ): Promise<string | null> | string | null
   resolveReferences?(
     ctx: AgentReferenceResolveContext<State>,
     content: UserContentBlock[],
@@ -134,16 +155,21 @@ export interface AgentToolInvokeContext<State> {
 export interface AgentToolInvokeResult {
   output: ToolResultContentBlock[]
   isError?: boolean
-  /** Bounded UI-facing view data stored on the tool_call block; see the core Block contract. */
+  /**
+   * Bounded UI-facing view data stored on the tool_call block; see the core
+   * Block contract.
+   */
   view?: unknown | null
   stopAfterToolResult?: boolean
 }
 
 /**
  * When a recorded model/provider switch is applied:
- * - 'next_turn' (default): the start of the next queued action — a running turn, if any,
+ * - 'next_turn' (default): the start of the next queued action — a running
+ * turn, if any,
  *   finishes entirely on the old model.
- * - 'immediate': the next inference boundary — mid-turn that is the next sampling/tool
+ * - 'immediate': the next inference boundary — mid-turn that is the next
+ * sampling/tool
  *   continuation, so the very next request already runs on the new model.
  */
 export type ModelSwitchApply = 'immediate' | 'next_turn'
@@ -164,7 +190,10 @@ export interface AbortResult {
 }
 
 export interface AgentTool<State = unknown> extends ToolDefinition {
-  invoke(ctx: AgentToolInvokeContext<State>, input: unknown): Promise<AgentToolInvokeResult> | AgentToolInvokeResult
+  invoke(
+    ctx: AgentToolInvokeContext<State>,
+    input: unknown
+  ): Promise<AgentToolInvokeResult> | AgentToolInvokeResult
 }
 
 export type AgentLifecycleEvent<State> =
@@ -196,13 +225,19 @@ export type AgentLifecycleEvent<State> =
     }
 
 export interface AgentHarnessRuntime<State> {
-  /** Admission for every action, including restore, retry and automatic wakeups. */
+  /**
+   * Admission for every action, including restore, retry and automatic wakeups.
+   */
   enterAction?(signal: AbortSignal): Promise<() => void>
   harnessName: string
   initialState(): State
   systemPrompt(ctx: AgentPromptContext<State>): Promise<string> | string
-  preamble?(ctx: AgentPromptContext<State>): Promise<string | null> | string | null
-  context?(ctx: AgentPromptContext<State>): Promise<string | null> | string | null
+  preamble?(
+    ctx: AgentPromptContext<State>
+  ): Promise<string | null> | string | null
+  context?(
+    ctx: AgentPromptContext<State>
+  ): Promise<string | null> | string | null
   resolveReferences?(
     ctx: AgentReferenceResolveContext<State>,
     content: UserContentBlock[],
@@ -271,7 +306,10 @@ export interface AgentSessionStateSnapshot<State> {
  * state snapshot rides along on every tick — it is small.
  */
 export interface AgentSessionPersistUpdate<State> extends AgentSessionStateSnapshot<State> {
-  changedBlocks: Array<{ index: number; block: Block }>
+  changedBlocks: Array<{
+    index: number;
+    block: Block
+  }>
   blockCount: number
 }
 
@@ -299,9 +337,15 @@ export interface AgentNodeRecord {
   parentId: string | null
   /** Short title; empty for the root. */
   description: string
-  /** The profile the node was spawned with; null inherits the parent's setup (and for the root). */
+  /**
+   * The profile the node was spawned with; null inherits the parent's setup
+   * (and for the root).
+   */
   profileName: string | null
-  /** Action metadata of the round that spawned it — Host routing; null for the root. */
+  /**
+   * Action metadata of the round that spawned it — Host routing; null for the
+   * root.
+   */
   metadata: AgentMetadata | null
   spawnedAt: number
   canSpawnSubagents: boolean
@@ -312,7 +356,10 @@ export interface AgentNodeRecord {
   result: string | null
   /** The reason of an error close; null otherwise. */
   failure: string | null
-  /** Whether the completion has reached its return path (`docs/subagent.md` § Persistence). */
+  /**
+   * Whether the completion has reached its return path (`docs/subagent.md` §
+   * Persistence).
+   */
   delivered: boolean
 }
 
@@ -333,18 +380,40 @@ export interface AgentTreeStore<State = unknown> {
   node(id: string): Promise<AgentNodeRecord | null>
   /** Direct children in spawn order, live and archived alike. */
   children(parentId: string): Promise<AgentNodeRecord[]>
-  /** The node row and its initial checkpoint — the first message queued in it — as one commit. */
-  createNode(record: AgentNodeRecord, checkpoint: AgentSessionPersistUpdate<State>): Promise<void>
+  /**
+   * The node row and its initial checkpoint — the first message queued in it —
+   * as one commit.
+   */
+  createNode(
+    record: AgentNodeRecord,
+    checkpoint: AgentSessionPersistUpdate<State>
+  ): Promise<void>
   /**
    * The node's journal. A save is one commit that also marks delivered every
    * child completion the saved state carries (`completedChildrenCarriedBy`).
    */
   sessionStore(id: string): AgentSessionStore<State>
-  /** The close row, one commit after the final checkpoint; the completion starts undelivered. */
+  /**
+   * The close row, one commit after the final checkpoint; the completion starts
+   * undelivered.
+   */
   closeNode(id: string, close: AgentNodeClose): Promise<void>
-  /** An archived node live again — this round's metadata, a fresh spawn time, the reviving message queued — as one commit. */
-  reopenNode(id: string, fields: { metadata: AgentMetadata | null; spawnedAt: number }, message: QueuedMessage): Promise<void>
-  /** The completion reached its parent by a path the parent's checkpoint cannot show. */
+  /**
+   * An archived node live again — this round's metadata, a fresh spawn time,
+   * the reviving message queued — as one commit.
+   */
+  reopenNode(
+    id: string,
+    fields: {
+      metadata: AgentMetadata | null;
+      spawnedAt: number
+    },
+    message: QueuedMessage
+  ): Promise<void>
+  /**
+   * The completion reached its parent by a path the parent's checkpoint cannot
+   * show.
+   */
   markDelivered(id: string): Promise<void>
   /** The node and every descendant with all their rows. */
   deleteNode(id: string): Promise<void>
@@ -372,7 +441,8 @@ export interface AgentSessionOptions<State = unknown> {
     preflightThresholdTokens?: number
   }
   /**
-   * Maximum interval between checkpoint writes while a turn is streaming. Writes
+   * Maximum interval between checkpoint writes while a turn is streaming.
+   * Writes
    * always flush at action boundaries (turn end, abort, dispose); this only
    * bounds staleness during streaming. Default 1000ms.
    */
@@ -382,11 +452,29 @@ export interface AgentSessionOptions<State = unknown> {
 }
 
 export type SessionEvent =
-  | { type: 'transcript_changed'; patches: TranscriptPatch[]; revision: number }
-  | { type: 'phase_changed'; phase: SessionPhase }
-  | { type: 'queue_changed'; queue: QueuedMessage[] }
-  | { type: 'pending_steers_changed'; pendingSteers: PendingSteer[] }
-  | { type: 'tool_progress'; toolCallId: string; toolName: string; progress: unknown }
+  | {
+      type: 'transcript_changed';
+      patches: TranscriptPatch[];
+      revision: number
+    }
+  | {
+      type: 'phase_changed';
+      phase: SessionPhase
+    }
+  | {
+      type: 'queue_changed';
+      queue: QueuedMessage[]
+    }
+  | {
+      type: 'pending_steers_changed';
+      pendingSteers: PendingSteer[]
+    }
+  | {
+      type: 'tool_progress';
+      toolCallId: string;
+      toolName: string;
+      progress: unknown
+    }
   | {
       type: 'retry_scheduled'
       attempt: number
@@ -394,7 +482,10 @@ export type SessionEvent =
       code: string | null
       diagnostics?: ProviderErrorDiagnostics
     }
-  | { type: 'error'; error: Error }
+  | {
+      type: 'error';
+      error: Error
+    }
 
 export type SessionEventListener = (event: SessionEvent) => void
 

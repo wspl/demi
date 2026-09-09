@@ -3,12 +3,22 @@ import markedKatex from 'marked-katex-extension'
 import type { MarkdownRenderOptions } from './types'
 import { codeToHtml } from './highlight'
 import { liveCheckboxHtml } from './gfm-task'
-import { isHttpUrl, isLikelyFilePath, normalizeFilePath, resolveAbsolutePath, toLocalFileUrl } from './filePath'
+import {
+  isHttpUrl,
+  isLikelyFilePath,
+  normalizeFilePath,
+  resolveAbsolutePath,
+  toLocalFileUrl
+} from './filePath'
 
 // `$...$` inline / `$$...$$` block LaTeX, rendered to self-contained HTML (KaTeX CSS is loaded
 // by the app). `nonStandard` lets inline math sit flush against CJK text the model writes;
 // `throwOnError` keeps malformed math from blowing up the whole message.
-const katexExtension = markedKatex({ throwOnError: false, nonStandard: true, output: 'html' })
+const katexExtension = markedKatex({
+  throwOnError: false,
+  nonStandard: true,
+  output: 'html'
+})
 
 const INLINE_CODE_RE = /`([^`\n]+)`/g
 const MARKDOWN_LINK_RE = /\[[^\]]*]\(([^)]+)\)/g
@@ -23,7 +33,8 @@ function escapeHtml(text: string): string {
 
 function extractLinkHref(rawTarget: string): string {
   const trimmed = rawTarget.trim()
-  if (!trimmed) return ''
+  if (!trimmed)
+    return ''
 
   const unwrapped = trimmed.startsWith('<') && trimmed.endsWith('>')
     ? trimmed.slice(1, -1)
@@ -37,18 +48,23 @@ export function extractFilePathCandidates(src: string): Set<string> {
 
   for (const match of src.matchAll(INLINE_CODE_RE)) {
     const codeText = match[1]
-    if (!codeText || !isLikelyFilePath(codeText)) continue
+    if (!codeText || !isLikelyFilePath(codeText))
+      continue
     const normalizedPath = normalizeFilePath(codeText)
-    if (normalizedPath) candidates.add(normalizedPath)
+    if (normalizedPath)
+      candidates.add(normalizedPath)
   }
 
   for (const match of src.matchAll(MARKDOWN_LINK_RE)) {
     const rawHref = match[1]
-    if (!rawHref) continue
+    if (!rawHref)
+      continue
     const href = extractLinkHref(rawHref)
-    if (!isLikelyFilePath(href)) continue
+    if (!isLikelyFilePath(href))
+      continue
     const normalizedPath = normalizeFilePath(href)
-    if (normalizedPath) candidates.add(normalizedPath)
+    if (normalizedPath)
+      candidates.add(normalizedPath)
   }
 
   return candidates
@@ -56,9 +72,14 @@ export function extractFilePathCandidates(src: string): Set<string> {
 
 function resolveImageSource(href: string, basePath?: string): string {
   const trimmedHref = href.trim()
-  if (!trimmedHref) return ''
-  if (isHttpUrl(trimmedHref) || trimmedHref.startsWith('data:') || trimmedHref.startsWith('local-file:')) return trimmedHref
-  if (!basePath) return trimmedHref
+  if (!trimmedHref)
+    return ''
+  if (isHttpUrl(trimmedHref) ||
+    trimmedHref.startsWith('data:') ||
+    trimmedHref.startsWith('local-file:'))
+    return trimmedHref
+  if (!basePath)
+    return trimmedHref
   const absPath = resolveAbsolutePath(basePath, trimmedHref)
   return absPath ? toLocalFileUrl(absPath) : trimmedHref
 }
@@ -106,7 +127,8 @@ function createMarked() {
       image(token) {
         const href = extractLinkHref(token.href)
         const safeSrc = resolveImageSource(href, activeOptions?.basePath)
-        if (!safeSrc) return escapeHtml(token.text)
+        if (!safeSrc)
+          return escapeHtml(token.text)
 
         const title = token.title ? ` title="${escapeHtml(token.title)}"` : ''
         const alt = escapeHtml(token.text)

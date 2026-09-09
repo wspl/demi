@@ -15,12 +15,16 @@ test('tail loading appears after user-like blocks while the turn is running', ()
 })
 
 test('tail loading appears after a completed tool while waiting for the model to continue', () => {
-  expect(shouldShowTailLoading('running', [toolCallBlock('completed')])).toBe(true)
+  expect(shouldShowTailLoading('running', [toolCallBlock('completed')])).toBe(
+    true
+  )
   expect(shouldShowTailLoading('running', [toolCallBlock('error')])).toBe(true)
 })
 
 test('tail loading stays hidden while the tool row itself is executing', () => {
-  expect(shouldShowTailLoading('running', [toolCallBlock('executing')])).toBe(false)
+  expect(shouldShowTailLoading('running', [toolCallBlock('executing')])).toBe(
+    false
+  )
 })
 
 test('tail loading stays hidden outside running phase', () => {
@@ -38,21 +42,33 @@ test('pending steer does not add tail loading while active thinking is already l
   const transcriptBlocks = [thinkingBlock()]
   const renderBlocks = [...transcriptBlocks, pendingSteerBlock()]
 
-  expect(shouldShowTailLoading('running', transcriptBlocks, renderBlocks)).toBe(false)
+  expect(shouldShowTailLoading('running', transcriptBlocks, renderBlocks)).toBe(
+    false
+  )
 })
 
 test('tail loading appears after a materialized steer before the model continues', () => {
-  expect(shouldShowTailLoading('running', [thinkingBlock(), steerBlock()])).toBe(true)
+  expect(shouldShowTailLoading('running', [thinkingBlock(), steerBlock()])).toBe(
+    true
+  )
 })
 
 test('queued tail does not hide loading while the turn still waits for the model', () => {
   const transcript = [userBlock()]
-  expect(shouldShowTailLoading('running', transcript, [...transcript, ...queuedTail()])).toBe(true)
+  expect(
+    shouldShowTailLoading('running', transcript, [...transcript, ...queuedTail()])
+  ).toBe(
+    true
+  )
 })
 
 test('queued tail does not add loading while thinking is already the latest transcript block', () => {
   const transcript = [thinkingBlock()]
-  expect(shouldShowTailLoading('running', transcript, [...transcript, ...queuedTail()])).toBe(false)
+  expect(
+    shouldShowTailLoading('running', transcript, [...transcript, ...queuedTail()])
+  ).toBe(
+    false
+  )
 })
 
 const createdAt = '2026-06-24T00:00:00.000Z'

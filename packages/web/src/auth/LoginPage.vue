@@ -6,7 +6,8 @@ import { useResources } from '../prototype/resources'
 const resources = useResources()
 const router = useRouter()
 function enter() {
-  if (!resources.username.trim()) return
+  if (!resources.username.trim())
+    return
   resources.signedIn = true
   void router.push('/chat/welcome')
 }
@@ -26,7 +27,11 @@ function enter() {
           focused
         />
       </label>
-      <Button variant="primary" :disabled="!resources.username.trim()" @click="enter">
+      <Button
+        variant="primary"
+        :disabled="!resources.username.trim()"
+        @click="enter"
+      >
         Continue
       </Button>
     </form>

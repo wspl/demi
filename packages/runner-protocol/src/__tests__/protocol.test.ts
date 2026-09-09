@@ -1,19 +1,40 @@
 import { expect, test } from 'bun:test'
-import { RUNNER_PROTOCOL_VERSION, createRunnerWire, type RunnerProtocolMessage } from '../index'
+import {
+  RUNNER_PROTOCOL_VERSION,
+  createRunnerWire,
+  type RunnerProtocolMessage
+} from '../index'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 
 const wire = createRunnerWire(msgpackCodec)
 
 test('runner messages round-trip through the MessagePack wire', () => {
-  const runnerToBackend = new Set(['hello', 'pong', 'fs_ok', 'fs_error', 'spawn_output', 'spawn_exit', 'rpc_call', 'rpc_cancel', 'pipe_done'])
+  const runnerToBackend = new Set([
+    'hello',
+    'pong',
+    'fs_ok',
+    'fs_error',
+    'spawn_output',
+    'spawn_exit',
+    'rpc_call',
+    'rpc_cancel',
+    'pipe_done'
+  ])
   const roundTrip = (message: RunnerProtocolMessage): RunnerProtocolMessage =>
-    runnerToBackend.has(message.type) ? wire.decodeRunnerToBackend(wire.encode(message)) : wire.decodeBackendToRunner(wire.encode(message))
+    runnerToBackend.has(message.type)
+      ? wire.decodeRunnerToBackend(wire.encode(message))
+      : wire.decodeBackendToRunner(wire.encode(message))
 
   const hello: RunnerProtocolMessage = {
     type: 'hello',
     protocol: RUNNER_PROTOCOL_VERSION,
     deviceToken: 'token',
-    runner: { name: 'dev-box', platform: 'darwin', version: '1.0.0', identity: { uid: 501, gid: 20, hostname: 'mac', homeDir: '/Users/dev' } },
+    runner: {
+      name: 'dev-box',
+      platform: 'darwin',
+      version: '1.0.0',
+      identity: { uid: 501, gid: 20, hostname: 'mac', homeDir: '/Users/dev' }
+    },
   }
   expect(roundTrip(hello)).toEqual(hello)
 
@@ -34,7 +55,14 @@ test('runner messages round-trip through the MessagePack wire', () => {
     type: 'fs_ok',
     id: 'c2',
     op: 'stat',
-    result: { isFile: true, isDirectory: false, isSymbolicLink: false, mode: 0o644, size: 3, mtime: new Date(1_600_000_000_000) },
+    result: {
+      isFile: true,
+      isDirectory: false,
+      isSymbolicLink: false,
+      mode: 0o644,
+      size: 3,
+      mtime: new Date(1_600_000_000_000)
+    },
   }
   expect(roundTrip(stat)).toEqual(stat)
 
@@ -49,37 +77,100 @@ test('runner messages round-trip through the MessagePack wire', () => {
   expect([...decodedOutput.bytes]).toEqual([0, 255, 10])
 
   // Pipes carry references only: an id and an origin-relative URL per end; the bytes go over HTTP.
-  const rpcCall: RunnerProtocolMessage = { type: 'rpc_call', jobId: 'j1', callId: 'c9', agentSessionId: 'a', shellId: 's', root: 'demi', path: ['demi', 'file', 'write'], argv: ['demi', 'file', 'write', 'x'], args: { path: 'x' }, json: false, cwd: '/work', env: {}, stdin: true }
+  const rpcCall: RunnerProtocolMessage = {
+    type: 'rpc_call',
+    jobId: 'j1',
+    callId: 'c9',
+    agentSessionId: 'a',
+    shellId: 's',
+    root: 'demi',
+    path: ['demi', 'file', 'write'],
+    argv: ['demi', 'file', 'write', 'x'],
+    args: { path: 'x' },
+    json: false,
+    cwd: '/work',
+    env: {},
+    stdin: true
+  }
   expect(roundTrip(rpcCall)).toEqual(rpcCall)
   const cancel: RunnerProtocolMessage = { type: 'rpc_cancel', callId: 'c9' }
   expect(roundTrip(cancel)).toEqual(cancel)
-  const pipes: RunnerProtocolMessage = { type: 'rpc_pipes', callId: 'c9', stdin: { id: 'p1', url: '/api/pipes/p1' }, stdout: { id: 'p2', url: '/api/pipes/p2' } }
+  const pipes: RunnerProtocolMessage = {
+    type: 'rpc_pipes',
+    callId: 'c9',
+    stdin: { id: 'p1', url: '/api/pipes/p1' },
+    stdout: { id: 'p2', url: '/api/pipes/p2' }
+  }
   expect(roundTrip(pipes)).toEqual(pipes)
-  const job: RunnerProtocolMessage = { type: 'job_start', jobId: 'j1', script: 'tar x', cwd: '/work', env: {}, stdin: { id: 'p1', url: '/api/pipes/p1' } }
+  const job: RunnerProtocolMessage = {
+    type: 'job_start',
+    jobId: 'j1',
+    script: 'tar x',
+    cwd: '/work',
+    env: {},
+    stdin: { id: 'p1', url: '/api/pipes/p1' }
+  }
   expect(roundTrip(job)).toEqual(job)
-  const done: RunnerProtocolMessage = { type: 'pipe_done', pipeId: 'p2', ok: false, error: 'pipe refused (404)' }
+  const done: RunnerProtocolMessage = {
+    type: 'pipe_done',
+    pipeId: 'p2',
+    ok: false,
+    error: 'pipe refused (404)'
+  }
   expect(roundTrip(done)).toEqual(done)
 
-  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode(42))).toThrow('Malformed')
-  expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ no: 'type' }))).toThrow('Malformed')
-  expect(() => wire.decodeBackendToRunner(new TextEncoder().encode('{"type":"ping"}'))).toThrow('Malformed')
+  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode(42)))
+    .toThrow('Malformed')
+  expect(
+    () => wire.decodeBackendToRunner(msgpackCodec.encode({ no: 'type' }))
+  ).toThrow('Malformed')
+  expect(
+    () => wire.decodeBackendToRunner(new TextEncoder()
+      .encode('{"type":"ping"}'))
+  ).toThrow('Malformed')
   // Validation is structural, not just type-tag: a hello without its runner
   // info, an unknown fs op, or a typed result of the wrong shape is refused.
-  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({ type: 'hello', protocol: RUNNER_PROTOCOL_VERSION }))).toThrow('Malformed')
-  expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ type: 'fs_format_disk', id: 'x' }))).toThrow('Malformed')
-  expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ type: 'fs_stat', id: 'x' }))).toThrow('Malformed')
-  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({ type: 'fs_ok', id: 'x', op: 'stat', result: 'nope' }))).toThrow('Malformed')
-  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({ type: 'pong' }))).toThrow('Malformed')
+  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({
+    type: 'hello',
+    protocol: RUNNER_PROTOCOL_VERSION
+  }))).toThrow('Malformed')
+  expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({
+    type: 'fs_format_disk',
+    id: 'x'
+  }))).toThrow('Malformed')
+  expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({
+    type: 'fs_stat',
+    id: 'x'
+  }))).toThrow('Malformed')
+  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({
+    type: 'fs_ok',
+    id: 'x',
+    op: 'stat',
+    result: 'nope'
+  }))).toThrow('Malformed')
+  expect(
+    () => wire.decodeRunnerToBackend(msgpackCodec.encode({ type: 'pong' }))
+  ).toThrow('Malformed')
 })
 
-test('job hint lifetimes cross the wire independently of output and use explicit null to clear', () => {
-  for (const hint of ['next: attending; do not poll.', null]) {
-    const message = { type: 'job_running_hint', jobId: 'j1', invocationId: 'i1', hint } as const
-    expect(wire.decodeRunnerToBackend(wire.encode(message))).toEqual(message)
+test(
+  'job hint lifetimes cross the wire independently of output and use explicit null to clear',
+  () => {
+    for (const hint of ['next: attending; do not poll.', null]) {
+      const message = {
+        type: 'job_running_hint',
+        jobId: 'j1',
+        invocationId: 'i1',
+        hint
+      } as const
+      expect(wire.decodeRunnerToBackend(wire.encode(message))).toEqual(message)
+    }
+    for (const message of [
+      { type: 'job_running_hint', jobId: 'j1', invocationId: 'i1' },
+      { type: 'job_running_hint', jobId: 'j1', hint: 'hint' },
+      { type: 'job_running_hint', jobId: 'j1', invocationId: 'i1', hint: 1 },
+    ]) expect(
+      () => wire.decodeRunnerToBackend(msgpackCodec.encode(message))
+    ).toThrow('Malformed')
   }
-  for (const message of [
-    { type: 'job_running_hint', jobId: 'j1', invocationId: 'i1' },
-    { type: 'job_running_hint', jobId: 'j1', hint: 'hint' },
-    { type: 'job_running_hint', jobId: 'j1', invocationId: 'i1', hint: 1 },
-  ]) expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode(message))).toThrow('Malformed')
-})
+)

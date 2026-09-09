@@ -42,7 +42,8 @@ const ansiConverter = computed(() => {
 })
 
 function normalizeTerminalContent(content: string): string {
-  if (!content.includes('\r')) return content
+  if (!content.includes('\r'))
+    return content
 
   const lines: string[] = []
   let currentLine = ''
@@ -65,11 +66,15 @@ function normalizeTerminalContent(content: string): string {
 }
 
 const renderedHtml = computed(() => {
-  if (!throttledContent.value) return ''
+  if (!throttledContent.value)
+    return ''
   return ansiConverter.value.toHtml(normalizeTerminalContent(throttledContent.value))
 })
 </script>
 
 <template>
-  <pre class="font-mono text-xs leading-5 text-fg-muted whitespace-pre-wrap break-words" v-html="renderedHtml" />
+  <pre
+    class="font-mono text-xs leading-5 text-fg-muted whitespace-pre-wrap break-words"
+    v-html="renderedHtml"
+  />
 </template>

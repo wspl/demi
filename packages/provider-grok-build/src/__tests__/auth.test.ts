@@ -4,53 +4,68 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { redactCredentialText } from '@demicodes/provider'
-import { FileGrokAuthStore, isAbandonedGrokAuthLock, selectAuthEntry } from '../auth'
+import {
+  FileGrokAuthStore,
+  isAbandonedGrokAuthLock,
+  selectAuthEntry
+} from '../auth'
 
-test('FileGrokAuthStore resolves OIDC session from Grok CLI auth.json shape', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'demi-grok-auth-'))
-  try {
-    const access = jwt({ exp: 1_900_000_000, email: 'user@example.com' })
-    const entryKey = 'https://auth.x.ai::client-1'
-    await writeFile(
-      join(dir, 'auth.json'),
-      JSON.stringify({
-        [entryKey]: {
-          key: access,
-          auth_mode: 'oidc',
-          refresh_token: 'refresh-secret',
-          expires_at: '2030-01-01T00:00:00.000Z',
-          oidc_issuer: 'https://auth.x.ai',
-          oidc_client_id: 'client-1',
-          email: 'user@example.com',
-          user_id: 'user-1',
-        },
-      }),
-    )
+test(
+  'FileGrokAuthStore resolves OIDC session from Grok CLI auth.json shape',
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'demi-grok-auth-'))
+    try {
+      const access = jwt({ exp: 1_900_000_000, email: 'user@example.com' })
+      const entryKey = 'https://auth.x.ai::client-1'
+      await writeFile(
+        join(dir, 'auth.json'),
+        JSON.stringify({
+          [entryKey]: {
+            key: access,
+            auth_mode: 'oidc',
+            refresh_token: 'refresh-secret',
+            expires_at: '2030-01-01T00:00:00.000Z',
+            oidc_issuer: 'https://auth.x.ai',
+            oidc_client_id: 'client-1',
+            email: 'user@example.com',
+            user_id: 'user-1',
+          },
+        }),
+      )
 
-    const store = new FileGrokAuthStore({ grokHome: dir, now: () => new Date('2026-06-19T00:00:00.000Z') })
-    const auth = await store.resolveAuth()
+      const store = new FileGrokAuthStore({
+        grokHome: dir,
+        now: () => new Date('2026-06-19T00:00:00.000Z')
+      })
+      const auth = await store.resolveAuth()
 
-    expect(auth.accessToken).toBe(access)
-    expect(auth.email).toBe('user@example.com')
-    expect(auth.userId).toBe('user-1')
-    expect(auth.entryKey).toBe(entryKey)
-    expect(auth.clientId).toBe('client-1')
-    expect(await store.status()).toEqual({ status: 'authenticated', accountLabel: 'user@example.com' })
-  } finally {
-    await rm(dir, { recursive: true, force: true })
+      expect(auth.accessToken).toBe(access)
+      expect(auth.email).toBe('user@example.com')
+      expect(auth.userId).toBe('user-1')
+      expect(auth.entryKey).toBe(entryKey)
+      expect(auth.clientId).toBe('client-1')
+      expect(await store.status()).toEqual({
+        status: 'authenticated',
+        accountLabel: 'user@example.com'
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   }
-})
+)
 
-test('FileGrokAuthStore refreshes near-expiry OIDC tokens and preserves sibling entries', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'demi-grok-refresh-'))
-  const now = new Date('2026-06-19T00:00:00.000Z')
-  const oldAccess = jwt({ exp: Math.floor((now.getTime() + 30_000) / 1000) })
-  const newAccess = jwt({ exp: Math.floor((now.getTime() + 3_600_000) / 1000) })
-  const entryKey = 'https://auth.x.ai::client-1'
-  try {
-    await writeFile(
-      join(dir, 'auth.json'),
-      `${JSON.stringify({
+test(
+  'FileGrokAuthStore refreshes near-expiry OIDC tokens and preserves sibling entries',
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'demi-grok-refresh-'))
+    const now = new Date('2026-06-19T00:00:00.000Z')
+    const oldAccess = jwt({ exp: Math.floor((now.getTime() + 30_000) / 1000) })
+    const newAccess = jwt({ exp: Math.floor((now.getTime() + 3_600_000) / 1000) })
+    const entryKey = 'https://auth.x.ai::client-1'
+    try {
+      await writeFile(
+        join(dir, 'auth.json'),
+        `${JSON.stringify({
         other: { key: 'leave-me', note: true },
         [entryKey]: {
           key: oldAccess,
@@ -65,48 +80,53 @@ test('FileGrokAuthStore refreshes near-expiry OIDC tokens and preserves sibling 
           custom_future_field: { keep: true },
         },
       })}\n`,
-      { mode: 0o600 },
-    )
+        { mode: 0o600 },
+      )
 
-    const store = new FileGrokAuthStore({
-      grokHome: dir,
-      now: () => now,
-      refresh: async (input) => {
-        expect(input.refreshToken).toBe('refresh-old')
-        expect(input.clientId).toBe('client-1')
-        expect(input.tokenEndpoint).toBe('https://auth.x.ai/oauth2/token')
-        expect(input.principalType).toBe('User')
-        expect(input.principalId).toBe('user-1')
-        return {
-          access_token: newAccess,
-          refresh_token: 'refresh-new',
-          expires_in: 3600,
-        }
-      },
-    })
-    const auth = await store.resolveAuth()
-    const written = JSON.parse(await readFile(join(dir, 'auth.json'), 'utf8'))
+      const store = new FileGrokAuthStore({
+        grokHome: dir,
+        now: () => now,
+        refresh: async (input) => {
+          expect(input.refreshToken).toBe('refresh-old')
+          expect(input.clientId).toBe('client-1')
+          expect(input.tokenEndpoint).toBe('https://auth.x.ai/oauth2/token')
+          expect(input.principalType).toBe('User')
+          expect(input.principalId).toBe('user-1')
+          return {
+            access_token: newAccess,
+            refresh_token: 'refresh-new',
+            expires_in: 3600,
+          }
+        },
+      })
+      const auth = await store.resolveAuth()
+      const written = JSON.parse(await readFile(join(dir, 'auth.json'), 'utf8'))
 
-    expect(auth.accessToken).toBe(newAccess)
-    expect(written.other).toEqual({ key: 'leave-me', note: true })
-    expect(written[entryKey].refresh_token).toBe('refresh-new')
-    expect(written[entryKey].custom_future_field).toEqual({ keep: true })
-    expect(written[entryKey].key).toBe(newAccess)
-  } finally {
-    await rm(dir, { recursive: true, force: true })
+      expect(auth.accessToken).toBe(newAccess)
+      expect(written.other).toEqual({ key: 'leave-me', note: true })
+      expect(written[entryKey].refresh_token).toBe('refresh-new')
+      expect(written[entryKey].custom_future_field).toEqual({ keep: true })
+      expect(written[entryKey].key).toBe(newAccess)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   }
-})
+)
 
-test('FileGrokAuthStore reports missing auth without leaking secrets', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'demi-grok-missing-'))
-  try {
-    const store = new FileGrokAuthStore({ grokHome: dir })
-    expect(await store.status()).toMatchObject({ status: 'unauthenticated' })
-    expect(redactCredentialText('Bearer super-secret-token-value')).toBe('Bearer [REDACTED]')
-  } finally {
-    await rm(dir, { recursive: true, force: true })
+test(
+  'FileGrokAuthStore reports missing auth without leaking secrets',
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'demi-grok-missing-'))
+    try {
+      const store = new FileGrokAuthStore({ grokHome: dir })
+      expect(await store.status()).toMatchObject({ status: 'unauthenticated' })
+      expect(redactCredentialText('Bearer super-secret-token-value'))
+        .toBe('Bearer [REDACTED]')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   }
-})
+)
 
 test('selectAuthEntry prefers OIDC entries on auth.x.ai', () => {
   const selected = selectAuthEntry({
@@ -121,100 +141,128 @@ test('selectAuthEntry prefers OIDC entries on auth.x.ai', () => {
   expect(selected?.entryKey).toBe('https://auth.x.ai::cli')
 })
 
-test('FileGrokAuthStore steals abandoned Grok CLI auth.json.lock and refreshes', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'demi-grok-stale-lock-'))
-  const now = new Date('2026-06-19T00:00:00.000Z')
-  const oldAccess = jwt({ exp: Math.floor((now.getTime() + 30_000) / 1000) })
-  const newAccess = jwt({ exp: Math.floor((now.getTime() + 3_600_000) / 1000) })
-  const entryKey = 'https://auth.x.ai::client-1'
-  try {
-    await writeFile(
-      join(dir, 'auth.json'),
-      JSON.stringify({
-        [entryKey]: {
-          key: oldAccess,
-          auth_mode: 'oidc',
-          refresh_token: 'refresh-old',
-          expires_at: new Date(now.getTime() + 30_000).toISOString(),
-          oidc_issuer: 'https://auth.x.ai',
-          oidc_client_id: 'client-1',
-        },
-      }),
-    )
-    // Dead pid + old timestamp — the shape Grok CLI leaves behind after a crash.
-    await writeFile(join(dir, 'auth.json.lock'), '999999:1000')
+test(
+  'FileGrokAuthStore steals abandoned Grok CLI auth.json.lock and refreshes',
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'demi-grok-stale-lock-'))
+    const now = new Date('2026-06-19T00:00:00.000Z')
+    const oldAccess = jwt({ exp: Math.floor((now.getTime() + 30_000) / 1000) })
+    const newAccess = jwt({ exp: Math.floor((now.getTime() + 3_600_000) / 1000) })
+    const entryKey = 'https://auth.x.ai::client-1'
+    try {
+      await writeFile(
+        join(dir, 'auth.json'),
+        JSON.stringify({
+          [entryKey]: {
+            key: oldAccess,
+            auth_mode: 'oidc',
+            refresh_token: 'refresh-old',
+            expires_at: new Date(now.getTime() + 30_000).toISOString(),
+            oidc_issuer: 'https://auth.x.ai',
+            oidc_client_id: 'client-1',
+          },
+        }),
+      )
+      // Dead pid + old timestamp — the shape Grok CLI leaves behind after a crash.
+      await writeFile(join(dir, 'auth.json.lock'), '999999:1000')
 
-    const store = new FileGrokAuthStore({
-      grokHome: dir,
-      now: () => now,
-      refresh: async () => ({ access_token: newAccess, refresh_token: 'refresh-new', expires_in: 3600 }),
-    })
-    const auth = await store.resolveAuth()
-    expect(auth.accessToken).toBe(newAccess)
-  } finally {
-    await rm(dir, { recursive: true, force: true })
+      const store = new FileGrokAuthStore({
+        grokHome: dir,
+        now: () => now,
+        refresh: async () => ({
+          access_token: newAccess,
+          refresh_token: 'refresh-new',
+          expires_in: 3600
+        }),
+      })
+      const auth = await store.resolveAuth()
+      expect(auth.accessToken).toBe(newAccess)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   }
-})
+)
 
-test('FileGrokAuthStore adopts a token refreshed by another process instead of refreshing again', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'demi-grok-lock-race-'))
-  const now = new Date('2026-06-19T00:00:00.000Z')
-  const oldAccess = jwt({ exp: Math.floor((now.getTime() + 30_000) / 1000) })
-  const freshAccess = jwt({ exp: Math.floor((now.getTime() + 3_600_000) / 1000) })
-  const entryKey = 'https://auth.x.ai::client-1'
-  const lockFile = join(dir, 'auth.json.lock')
-  const entry = (key: string, expiresAtMs: number) => ({
-    [entryKey]: {
-      key,
-      auth_mode: 'oidc',
-      refresh_token: 'refresh-old',
-      expires_at: new Date(expiresAtMs).toISOString(),
-      oidc_issuer: 'https://auth.x.ai',
-      oidc_client_id: 'client-1',
-    },
-  })
-  try {
-    await writeFile(join(dir, 'auth.json'), JSON.stringify(entry(oldAccess, now.getTime() + 30_000)))
-    // A live process holds the lock (this test's own pid → never stolen).
-    await writeFile(lockFile, `${process.pid}:${Math.floor(now.getTime() / 1000)}`)
-
-    let refreshCalls = 0
-    const store = new FileGrokAuthStore({
-      grokHome: dir,
-      now: () => now,
-      lockRetryDelayMs: 10,
-      refresh: async () => {
-        refreshCalls += 1
-        return { access_token: 'should-not-be-used', expires_in: 3600 }
+test(
+  'FileGrokAuthStore adopts a token refreshed by another process instead of refreshing again',
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'demi-grok-lock-race-'))
+    const now = new Date('2026-06-19T00:00:00.000Z')
+    const oldAccess = jwt({ exp: Math.floor((now.getTime() + 30_000) / 1000) })
+    const freshAccess = jwt({
+      exp: Math.floor((now.getTime() + 3_600_000) / 1000)
+    })
+    const entryKey = 'https://auth.x.ai::client-1'
+    const lockFile = join(dir, 'auth.json.lock')
+    const entry = (key: string, expiresAtMs: number) => ({
+      [entryKey]: {
+        key,
+        auth_mode: 'oidc',
+        refresh_token: 'refresh-old',
+        expires_at: new Date(expiresAtMs).toISOString(),
+        oidc_issuer: 'https://auth.x.ai',
+        oidc_client_id: 'client-1',
       },
     })
-    const pending = store.resolveAuth()
-    // The lock holder finishes its refresh: writes the new token, releases the lock.
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    await writeFile(join(dir, 'auth.json'), JSON.stringify(entry(freshAccess, now.getTime() + 3_600_000)))
-    await rm(lockFile)
+    try {
+      await writeFile(
+        join(dir, 'auth.json'),
+        JSON.stringify(entry(oldAccess, now.getTime() + 30_000))
+      )
+      // A live process holds the lock (this test's own pid → never stolen).
+      await writeFile(
+        lockFile,
+        `${process.pid}:${Math.floor(now.getTime() / 1000)}`
+      )
 
-    const auth = await pending
-    expect(auth.accessToken).toBe(freshAccess)
-    expect(refreshCalls).toBe(0)
-  } finally {
-    await rm(dir, { recursive: true, force: true })
-  }
-})
+      let refreshCalls = 0
+      const store = new FileGrokAuthStore({
+        grokHome: dir,
+        now: () => now,
+        lockRetryDelayMs: 10,
+        refresh: async () => {
+          refreshCalls += 1
+          return { access_token: 'should-not-be-used', expires_in: 3600 }
+        },
+      })
+      const pending = store.resolveAuth()
+      // The lock holder finishes its refresh: writes the new token, releases the lock.
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      await writeFile(
+        join(dir, 'auth.json'),
+        JSON.stringify(entry(freshAccess, now.getTime() + 3_600_000))
+      )
+      await rm(lockFile)
 
-test('a live Grok auth lock is never abandoned because of age alone', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'demi-grok-live-lock-'))
-  const lockFile = join(dir, 'auth.json.lock')
-  try {
-    await writeFile(lockFile, `${process.pid}:1000`)
-    expect(await isAbandonedGrokAuthLock(lockFile, new Date('2026-06-19T00:00:00.000Z'))).toBe(false)
-  } finally {
-    await rm(dir, { recursive: true, force: true })
+      const auth = await pending
+      expect(auth.accessToken).toBe(freshAccess)
+      expect(refreshCalls).toBe(0)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   }
-})
+)
+
+test(
+  'a live Grok auth lock is never abandoned because of age alone',
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'demi-grok-live-lock-'))
+    const lockFile = join(dir, 'auth.json.lock')
+    try {
+      await writeFile(lockFile, `${process.pid}:1000`)
+      expect(await isAbandonedGrokAuthLock(
+        lockFile,
+        new Date('2026-06-19T00:00:00.000Z')
+      )).toBe(false)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }
+)
 
 function jwt(payload: Record<string, unknown>): string {
-  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url')
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' }))
+    .toString('base64url')
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url')
   return `${header}.${body}.sig`
 }

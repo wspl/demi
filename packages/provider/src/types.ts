@@ -21,16 +21,31 @@ export interface ToolDefinition {
 // ── inference item ──────────────────────────────────────────────────
 
 export type InferenceItem =
-  | { type: 'user_message'; content: UserContentBlock[] }
-  | { type: 'user_steer'; turnId: string; content: UserContentBlock[] }
-  | { type: 'assistant_text'; modelId: string; text: string }
+  | {
+      type: 'user_message';
+      content: UserContentBlock[]
+    }
+  | {
+      type: 'user_steer';
+      turnId: string;
+      content: UserContentBlock[]
+    }
+  | {
+      type: 'assistant_text';
+      modelId: string;
+      text: string
+    }
   | {
       type: 'assistant_thinking'
       modelId: string
       text: string
       signature: string | null
     }
-  | { type: 'assistant_redacted_thinking'; modelId: string; data: string }
+  | {
+      type: 'assistant_redacted_thinking';
+      modelId: string;
+      data: string
+    }
   | {
       type: 'tool_use'
       modelId: string
@@ -50,12 +65,18 @@ export type InferenceItem =
 export interface InferenceRequest {
   /** Stable id for the owning agent session. */
   sessionId: string
-  /** Stable id for the active user/maintenance turn; shared by provider continuations inside that turn. */
+  /**
+   * Stable id for the active user/maintenance turn; shared by provider
+   * continuations inside that turn.
+   */
   turnId: string
   /** Unique id for this concrete provider request. */
   requestId: string
   modelId: string
-  /** The current model's output limit; explicit adapter request options take precedence. */
+  /**
+   * The current model's output limit; explicit adapter request options take
+   * precedence.
+   */
   outputLimit: number | null
   systemPrompt: string
   cwd: string
@@ -70,10 +91,22 @@ export interface InferenceRequest {
 
 export type ProviderEvent =
   | { type: 'thinking_start' }
-  | { type: 'thinking_delta'; text: string }
-  | { type: 'thinking_signature'; signature: string }
-  | { type: 'redacted_thinking'; data: string }
-  | { type: 'text_delta'; text: string }
+  | {
+      type: 'thinking_delta';
+      text: string
+    }
+  | {
+      type: 'thinking_signature';
+      signature: string
+    }
+  | {
+      type: 'redacted_thinking';
+      data: string
+    }
+  | {
+      type: 'text_delta';
+      text: string
+    }
   | {
       type: 'tool_call_requested'
       toolUseId: string
@@ -88,13 +121,18 @@ export type ProviderEvent =
    * carry), so a turn-cumulative total here inflates the estimate and triggers
    * spurious compaction.
    */
-  | { type: 'response'; usage: TokenUsage }
+  | {
+      type: 'response';
+      usage: TokenUsage
+    }
   | {
       type: 'error'
       message: string
       code: string | null
       diagnostics?: ProviderErrorDiagnostics
-      /** Server-suggested retry delay (e.g. from a Retry-After header), if any. */
+      /**
+       * Server-suggested retry delay (e.g. from a Retry-After header), if any.
+       */
       retryAfterMs?: number
     }
   | { type: 'abort' }
@@ -123,8 +161,10 @@ export interface AgentProvider {
    */
   clone(): AgentProvider
   /**
-   * Releases any resources the provider holds open across turns — e.g. a long-lived CLI
-   * subprocess kept alive for a whole session. Called once when the owning session closes.
+   * Releases any resources the provider holds open across turns — e.g. a
+   * long-lived CLI
+   * subprocess kept alive for a whole session. Called once when the owning
+   * session closes.
    */
   dispose?(): Promise<void> | void
 }
@@ -137,10 +177,22 @@ export interface ProviderSelection {
 }
 
 export type ProviderAuthState =
-  | { status: 'unknown'; message?: string }
-  | { status: 'authenticated'; accountLabel?: string }
-  | { status: 'unauthenticated'; message?: string }
-  | { status: 'error'; message: string }
+  | {
+      status: 'unknown';
+      message?: string
+    }
+  | {
+      status: 'authenticated';
+      accountLabel?: string
+    }
+  | {
+      status: 'unauthenticated';
+      message?: string
+    }
+  | {
+      status: 'error';
+      message: string
+    }
 
 export interface ProviderAuth {
   status(): Promise<ProviderAuthState> | ProviderAuthState
@@ -171,7 +223,9 @@ export interface ProviderCredentialActive {
 export interface ProviderCredentialLoginPending {
   /** URL the user opens to confirm the login. */
   verificationUrl: string
-  /** One-time code the user enters at the verification URL (device-code flows). */
+  /**
+   * One-time code the user enters at the verification URL (device-code flows).
+   */
   userCode?: string | null
   /** ISO-8601 expiry of the code, when the vendor exposes one. */
   expiresAt?: string | null
@@ -185,9 +239,14 @@ export interface ProviderCredentialLoginPending {
 export interface ProviderCredentialLoginOptions {
   /** Abort the login flow. */
   signal?: AbortSignal
-  /** Fires once when the flow issues user-facing material (device-code login). */
+  /**
+   * Fires once when the flow issues user-facing material (device-code login).
+   */
   onPending?: (pending: ProviderCredentialLoginPending) => void
-  /** Collects the code the user copied back from the vendor page (`requiresCodeInput` flows). */
+  /**
+   * Collects the code the user copied back from the vendor page
+   * (`requiresCodeInput` flows).
+   */
   promptForCode?: () => Promise<string>
 }
 
@@ -197,10 +256,19 @@ export interface ProviderCredentialLoginOptions {
  * pool `credentialId`.
  */
 export type ProviderCredentialLoginResult =
-  | { status: 'completed'; credentialId: string }
+  | {
+      status: 'completed';
+      credentialId: string
+    }
   | { status: 'cancelled' }
-  | { status: 'unavailable'; message: string }
-  | { status: 'failed'; message: string }
+  | {
+      status: 'unavailable';
+      message: string
+    }
+  | {
+      status: 'failed';
+      message: string
+    }
 
 /**
  * Provider-specific add payloads. Concrete packages document accepted variants.
@@ -239,14 +307,18 @@ export interface ProviderCredentials {
    * Make `credentialId` the process-global active credential for this provider.
    * Subsequent auth / quota / inference use it.
    */
-  setActive(credentialId: string): Promise<ProviderCredentialActive> | ProviderCredentialActive
+  setActive(
+    credentialId: string
+  ): Promise<ProviderCredentialActive> | ProviderCredentialActive
 
   /**
    * Run the vendor's public login protocol natively (device code or copy-back
    * OAuth), surfacing user-facing material via `onPending`. On completion the
    * material is imported into the pool and its `credentialId` is returned.
    */
-  beginLogin?(options?: ProviderCredentialLoginOptions): Promise<ProviderCredentialLoginResult>
+  beginLogin?(
+    options?: ProviderCredentialLoginOptions
+  ): Promise<ProviderCredentialLoginResult>
 
   /**
    * Snapshot current vendor-default material into the demi pool.
@@ -262,13 +334,28 @@ export interface ProviderCredentials {
 }
 
 export type ProviderRuntimeState =
-  | { status: 'unknown'; message?: string }
-  | { status: 'ready'; message?: string }
-  | { status: 'unavailable'; message: string }
-  | { status: 'error'; message: string }
+  | {
+      status: 'unknown';
+      message?: string
+    }
+  | {
+      status: 'ready';
+      message?: string
+    }
+  | {
+      status: 'unavailable';
+      message: string
+    }
+  | {
+      status: 'error';
+      message: string
+    }
 
 export interface ProviderModelListOptions {
-  /** Check the remote catalog even if a cached copy is still within its freshness period. */
+  /**
+   * Check the remote catalog even if a cached copy is still within its
+   * freshness period.
+   */
   refresh?: boolean
 }
 
@@ -288,18 +375,27 @@ export interface Provider {
    * ids. Unset means no requirement.
    */
   requiresProcessCapableHost?: boolean
-  /** This adapter forwards InferenceRequest.outputLimit. Unset means it cannot set this limit. */
+  /**
+   * This adapter forwards InferenceRequest.outputLimit. Unset means it cannot
+   * set this limit.
+   */
   supportsOutputLimit?: boolean
   state?(): Promise<ProviderRuntimeState> | ProviderRuntimeState
-  listModels?(options?: ProviderModelListOptions): Promise<ProviderModelList> | ProviderModelList
+  listModels?(
+    options?: ProviderModelListOptions
+  ): Promise<ProviderModelList> | ProviderModelList
 }
 
 export interface ProviderRuntimeFactory {
-  createRuntime(selection: ProviderSelection): Promise<AgentProvider> | AgentProvider
+  createRuntime(
+    selection: ProviderSelection
+  ): Promise<AgentProvider> | AgentProvider
 }
 
 export interface ProviderFactoryDefinition extends Provider {
-  createRuntime(selection: ProviderSelection): Promise<AgentProvider> | AgentProvider
+  createRuntime(
+    selection: ProviderSelection
+  ): Promise<AgentProvider> | AgentProvider
 }
 
 // Provider model catalog.
@@ -315,7 +411,10 @@ export interface ProviderServiceTier {
   id: string
   label: string
   description?: string
-  /** The provider's Fast Mode tier. The UI's Fast switch writes this tier's id and nothing else. */
+  /**
+   * The provider's Fast Mode tier. The UI's Fast switch writes this tier's id
+   * and nothing else.
+   */
   fast: boolean
 }
 
@@ -329,7 +428,8 @@ export interface ProviderModel {
   supportsTools: boolean | null
   supportsAttachments: boolean | null
   /** Whether the model accepts native video input (not frame extraction). Most models
-   *  (all current Anthropic/Claude Code models) do not — their API has no video block.
+   * (all current Anthropic/Claude Code models) do not — their API has no video
+   * block.
    *  Optional: unset/undefined means "no video", so existing catalogs need no change. */
   supportsVideo?: boolean | null
   supportsReasoning: boolean | null

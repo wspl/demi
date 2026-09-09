@@ -11,7 +11,10 @@ const props = defineProps<{
   selectedId?: string
   boundIds?: string[]
 }>()
-const emit = defineEmits<{ select: [id: string]; connect: [] }>()
+const emit = defineEmits<{
+  select: [id: string];
+  connect: []
+}>()
 const items = computed(() =>
   props.devices.map((device) => ({
     ...device,
@@ -49,7 +52,11 @@ function disabled(device: HostDeviceOption) {
         :disabled="selectedId === 'cloud'"
         @select="emit('select', 'cloud')"
       />
-      <MenuItem :icon="Plus" label="Connect new device" @select="emit('connect')" />
+      <MenuItem
+        :icon="Plus"
+        label="Connect new device"
+        @select="emit('connect')"
+      />
     </template>
   </Menu>
 </template>

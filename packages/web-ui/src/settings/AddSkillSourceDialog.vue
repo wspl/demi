@@ -24,28 +24,38 @@ const emit = defineEmits<{
 const origin = ref('')
 
 watch(() => props.isOpen, (open) => {
-  if (!open) return
+  if (!open)
+    return
   origin.value = ''
 })
 
 const canAdd = computed(() => origin.value.trim().length > 0)
 
 function submit() {
-  if (!canAdd.value) return
+  if (!canAdd.value)
+    return
   emit('add', { origin: origin.value.trim() })
   emit('close')
 }
 </script>
 
 <template>
-  <Dialog :is-open="isOpen" :overlay-store="overlayStore" size="wide" label="Add source" @close="emit('close')">
+  <Dialog
+    :is-open="isOpen"
+    :overlay-store="overlayStore"
+    size="wide"
+    label="Add source"
+    @close="emit('close')"
+  >
     <div class="flex flex-col gap-4 p-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Add source</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">A git repository. Every SKILL.md in it becomes a skill you can turn on.</p>
       </header>
 
-      <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
+      <div
+        class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
+      >
         <SettingsRow label="Repository" description="owner/repo or a git URL.">
           <TextInput
             v-model="origin"
@@ -66,7 +76,11 @@ function submit() {
         >Browse skills.sh</a>
         <div class="flex justify-end gap-2">
           <Button @click="emit('close')">Cancel</Button>
-          <Button variant="primary" :disabled="!canAdd" @click="submit">Add source</Button>
+          <Button
+            variant="primary"
+            :disabled="!canAdd"
+            @click="submit"
+          >Add source</Button>
         </div>
       </div>
     </div>

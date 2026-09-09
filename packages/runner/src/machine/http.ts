@@ -5,12 +5,19 @@ export interface HttpResponse {
 }
 
 /** Fetch pulls the producer only as the network accepts more bytes. */
-export async function httpPut(url: string, source: AsyncIterable<Uint8Array>, headers: Record<string, string>): Promise<HttpResponse> {
-  const reader = source instanceof ReadableStream ? source.getReader() : undefined
+export async function httpPut(
+  url: string,
+  source: AsyncIterable<Uint8Array>,
+  headers: Record<string, string>
+): Promise<HttpResponse> {
+  const reader = source instanceof ReadableStream
+    ? source.getReader()
+    : undefined
   const iterator = reader ? undefined : source[Symbol.asyncIterator]()
   let finished = false
   const releaseSource = async () => {
-    if (finished) return
+    if (finished)
+      return
     finished = true
     if (reader) {
       await reader.cancel()
@@ -22,7 +29,8 @@ export async function httpPut(url: string, source: AsyncIterable<Uint8Array>, he
   const body = new ReadableStream<Uint8Array>({
     async pull(controller) {
       const result = reader ? await reader.read() : await iterator!.next()
-      if (finished) return
+      if (finished)
+        return
       if (result.done) {
         finished = true
         reader?.releaseLock()
@@ -34,13 +42,19 @@ export async function httpPut(url: string, source: AsyncIterable<Uint8Array>, he
     cancel: releaseSource,
   }, { highWaterMark: 0 })
   try {
-    return responseOf(await fetch(url, { method: 'PUT', headers, body, duplex: 'half' }))
+    return responseOf(await fetch(
+      url,
+      { method: 'PUT', headers, body, duplex: 'half' }
+    ))
   } finally {
     await releaseSource()
   }
 }
 
-export async function httpGet(url: string, headers: Record<string, string>): Promise<HttpResponse> {
+export async function httpGet(
+  url: string,
+  headers: Record<string, string>
+): Promise<HttpResponse> {
   return responseOf(await fetch(url, { headers }))
 }
 
@@ -49,7 +63,9 @@ function responseOf(response: Response): HttpResponse {
     status: response.status,
     headers: Object.fromEntries(response.headers),
     body: response.body ?? new ReadableStream({
-      start(controller) { controller.close() },
+      start(controller) {
+        controller.close()
+      },
     }),
   }
 }

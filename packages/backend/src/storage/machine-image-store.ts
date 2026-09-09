@@ -1,8 +1,20 @@
-import { constants, copyFile, mkdir, open, readFile, readdir, rename, rm } from 'node:fs/promises'
+import {
+  constants,
+  copyFile,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  rename,
+  rm
+} from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { createId, errorCode } from '@demicodes/utils'
-import { imageStateSchema, type MachineImageState } from '../managed/provisioner'
+import {
+  imageStateSchema,
+  type MachineImageState
+} from '../managed/provisioner'
 
 export function safeImageId(id: string): string {
   return z.string().regex(/^[A-Za-z0-9_-]+$/).parse(id)
@@ -35,11 +47,22 @@ export async function atomicJson(path: string, value: unknown): Promise<void> {
 
 export interface MachineImageStore {
   read(deviceId: string): Promise<MachineImageState | null>
-  copy(deviceId: string, state: MachineImageState, destination: string): Promise<void>
-  publish(deviceId: string, state: MachineImageState, source: string): Promise<void>
+  copy(
+    deviceId: string,
+    state: MachineImageState,
+    destination: string
+  ): Promise<void>
+  publish(
+    deviceId: string,
+    state: MachineImageState,
+    source: string
+  ): Promise<void>
 }
 
-/** A generation is immutable. Only the manifest pointer is replaced, after both disks are durable. */
+/**
+ * A generation is immutable. Only the manifest pointer is replaced, after both
+ * disks are durable.
+ */
 export class DirMachineImageStore implements MachineImageStore {
   constructor(private readonly root: string) {}
 
@@ -49,7 +72,10 @@ export class DirMachineImageStore implements MachineImageStore {
 
   async read(deviceId: string): Promise<MachineImageState | null> {
     try {
-      const manifest = await readFile(join(this.device(deviceId), 'current.json'), 'utf8')
+      const manifest = await readFile(
+        join(this.device(deviceId), 'current.json'),
+        'utf8'
+      )
       return imageStateSchema.parse(JSON.parse(manifest))
     } catch (error) {
       if (errorCode(error) === 'ENOENT') {
@@ -59,8 +85,16 @@ export class DirMachineImageStore implements MachineImageStore {
     }
   }
 
-  async copy(deviceId: string, state: MachineImageState, destination: string): Promise<void> {
-    const from = join(this.device(deviceId), 'generations', safeImageId(state.generation))
+  async copy(
+    deviceId: string,
+    state: MachineImageState,
+    destination: string
+  ): Promise<void> {
+    const from = join(
+      this.device(deviceId),
+      'generations',
+      safeImageId(state.generation)
+    )
     await mkdir(destination, { recursive: true })
     for (const volume of ['system', 'home']) {
       await copyFile(
@@ -71,7 +105,11 @@ export class DirMachineImageStore implements MachineImageStore {
     }
   }
 
-  async publish(deviceId: string, state: MachineImageState, source: string): Promise<void> {
+  async publish(
+    deviceId: string,
+    state: MachineImageState,
+    source: string
+  ): Promise<void> {
     const parsed = imageStateSchema.parse(state)
     const previous = await this.read(deviceId)
     const device = this.device(deviceId)
@@ -81,7 +119,11 @@ export class DirMachineImageStore implements MachineImageStore {
     await mkdir(directory)
     for (const volume of ['system', 'home']) {
       const destination = join(directory, `${volume}.ext4`)
-      await copyFile(join(source, `${volume}.ext4`), destination, constants.COPYFILE_FICLONE)
+      await copyFile(
+        join(source, `${volume}.ext4`),
+        destination,
+        constants.COPYFILE_FICLONE
+      )
       await syncFile(destination)
     }
     await atomicJson(join(directory, 'manifest.json'), parsed)
@@ -91,7 +133,9 @@ export class DirMachineImageStore implements MachineImageStore {
     await syncFile(device)
     // Keep one fallback generation; obsolete checkpoints must not grow without bound.
     for (const entry of await readdir(generations, { withFileTypes: true })) {
-      if (entry.isDirectory() && entry.name !== parsed.generation && entry.name !== previous?.generation) {
+      if (entry.isDirectory() &&
+        entry.name !== parsed.generation &&
+        entry.name !== previous?.generation) {
         await rm(join(generations, entry.name), { recursive: true })
       }
     }

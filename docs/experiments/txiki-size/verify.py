@@ -58,5 +58,8 @@ for name in tests:
     results.append(result)
     print(json.dumps(result), flush=True)
 
-print(json.dumps({"passed": sum(r["exit"] == 0 for r in results), "total": len(results)}))
+print(json.dumps({
+    "passed": sum(r["exit"] == 0 for r in results),
+    "total": len(results)
+}))
 sys.exit(any(r["exit"] != 0 for r in results))

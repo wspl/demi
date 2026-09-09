@@ -1,7 +1,13 @@
-import { runtimeModule, type Command, type CommandStorage } from '@demicodes/shell'
+import {
+  runtimeModule,
+  type Command,
+  type CommandStorage
+} from '@demicodes/shell'
 import { z } from 'zod'
 
-/** Test roots: a `runtime` leaf, an `rpc` leaf that reads storage, and a group. */
+/**
+ * Test roots: a `runtime` leaf, an `rpc` leaf that reads storage, and a group.
+ */
 
 export const COPY_MODULE = `import type { CommandContext, CommandResult } from '@demicodes/shell'
 
@@ -63,9 +69,12 @@ export function testRoots(): Command[] {
               stdinField: 'text',
               output: { json: z.object({ count: z.number() }) },
               run: async ({ parsed, io, storage }) => {
-                const notes = ((await storage.readJson<string[]>('notes')) ?? []).concat(String(parsed.values.text))
+                const notes = ((await storage.readJson<string[]>('notes'))
+                  ?? []).concat(String(parsed.values.text))
                 await storage.writeJson('notes', notes)
-                await io.stdout(parsed.json ? JSON.stringify({ count: notes.length }) : `${notes.length} notes\n`)
+                await io.stdout(parsed.json ? JSON.stringify({
+                  count: notes.length
+                }) : `${notes.length} notes\n`)
                 return { exitCode: 0 }
               },
             },
@@ -79,7 +88,8 @@ export function testRoots(): Command[] {
 export function memoryStorage(): CommandStorage {
   const data = new Map<string, unknown>()
   return {
-    readJson: async <T>(key: string) => (data.get(key) as T | undefined) ?? null,
+    readJson: async <T>(key: string) => (data.get(key) as T | undefined)
+      ?? null,
     writeJson: async (key, value) => void data.set(key, value),
     delete: async (key) => void data.delete(key),
     list: async (prefix) => [...data.keys()].filter((key) => key.startsWith(prefix)),
@@ -87,5 +97,6 @@ export function memoryStorage(): CommandStorage {
 }
 
 export function transpile(source: string): string {
-  return new Bun.Transpiler({ loader: 'ts', target: 'browser' }).transformSync(source)
+  return new Bun.Transpiler({ loader: 'ts', target: 'browser' })
+    .transformSync(source)
 }

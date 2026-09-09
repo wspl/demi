@@ -27,7 +27,8 @@ const target = ref('')
 const name = ref('')
 
 watch(() => props.isOpen, (open) => {
-  if (!open) return
+  if (!open)
+    return
   transport.value = 'stdio'
   target.value = ''
   name.value = ''
@@ -36,21 +37,36 @@ watch(() => props.isOpen, (open) => {
 const canAdd = computed(() => target.value.trim().length > 0 && name.value.trim().length > 0)
 
 function submit() {
-  if (!canAdd.value) return
-  emit('add', { transport: transport.value, name: name.value.trim(), target: target.value.trim() })
+  if (!canAdd.value)
+    return
+  emit(
+    'add',
+    {
+      transport: transport.value,
+      name: name.value.trim(),
+      target: target.value.trim()
+    }
+  )
   emit('close')
 }
 </script>
 
 <template>
-  <Dialog :is-open="isOpen" :overlay-store="overlayStore" label="Add server" @close="emit('close')">
+  <Dialog
+    :is-open="isOpen"
+    :overlay-store="overlayStore"
+    label="Add server"
+    @close="emit('close')"
+  >
     <div class="flex flex-col gap-4 p-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Add server</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">A command the host runs, or a URL that is already listening.</p>
       </header>
 
-      <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
+      <div
+        class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
+      >
         <SettingsRow label="Transport">
           <Segmented
             size="sm"
@@ -71,13 +87,22 @@ function submit() {
           />
         </SettingsRow>
         <SettingsRow label="Name" description="How tools show up: name_tool.">
-          <TextInput v-model="name" placeholder="FileSystem" class="w-40 max-w-full" @keydown.enter="submit" />
+          <TextInput
+            v-model="name"
+            placeholder="FileSystem"
+            class="w-40 max-w-full"
+            @keydown.enter="submit"
+          />
         </SettingsRow>
       </div>
 
       <div class="flex justify-end gap-2">
         <Button @click="emit('close')">Cancel</Button>
-        <Button variant="primary" :disabled="!canAdd" @click="submit">Add server</Button>
+        <Button
+          variant="primary"
+          :disabled="!canAdd"
+          @click="submit"
+        >Add server</Button>
       </div>
     </div>
   </Dialog>

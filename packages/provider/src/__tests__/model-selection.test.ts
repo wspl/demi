@@ -27,47 +27,74 @@ function providerModel(overrides: Partial<ProviderModel> = {}): ProviderModel {
 
 describe('modelSelectionFromCatalog', () => {
   it('maps a catalog model into a selection', () => {
-    const selection = modelSelectionFromCatalog('p', providerModel({ supportsAttachments: true }))
+    const selection = modelSelectionFromCatalog(
+      'p',
+      providerModel({ supportsAttachments: true })
+    )
     expect(selection.providerId).toBe('p')
     expect(selection.model.id).toBe('m-1')
     expect(selection.model.name).toBe('Model One')
     expect(selection.model.contextWindow).toBe(200_000)
     expect(selection.model.inputLimit).toBeNull()
-    expect(selection.model.acceptedExtensions).toEqual([...DEFAULT_ATTACHMENT_EXTENSIONS])
+    expect(selection.model.acceptedExtensions)
+      .toEqual([...DEFAULT_ATTACHMENT_EXTENSIONS])
     expect(selection.thinking).toBeNull()
     expect(selection.serviceTierId).toBeNull()
   })
 
   it('omits attachment extensions when the model does not support them', () => {
-    const selection = modelSelectionFromCatalog('p', providerModel({ supportsAttachments: false }))
+    const selection = modelSelectionFromCatalog(
+      'p',
+      providerModel({ supportsAttachments: false })
+    )
     expect(selection.model.acceptedExtensions).toEqual([])
   })
 
-  it('adds video extensions only when the model marks native video support', () => {
-    const noVideo = modelSelectionFromCatalog('p', providerModel({ supportsAttachments: true }))
-    expect(noVideo.model.acceptedExtensions).toEqual([...DEFAULT_ATTACHMENT_EXTENSIONS])
+  it(
+    'adds video extensions only when the model marks native video support',
+    () => {
+      const noVideo = modelSelectionFromCatalog(
+        'p',
+        providerModel({ supportsAttachments: true })
+      )
+      expect(noVideo.model.acceptedExtensions)
+        .toEqual([...DEFAULT_ATTACHMENT_EXTENSIONS])
 
-    const withVideo = modelSelectionFromCatalog('p', providerModel({ supportsAttachments: true, supportsVideo: true }))
-    expect(withVideo.model.acceptedExtensions).toEqual([
-      ...DEFAULT_ATTACHMENT_EXTENSIONS,
-      ...VIDEO_FILE_EXTENSIONS,
-    ])
-  })
+      const withVideo = modelSelectionFromCatalog(
+        'p',
+        providerModel({ supportsAttachments: true, supportsVideo: true })
+      )
+      expect(withVideo.model.acceptedExtensions).toEqual([
+        ...DEFAULT_ATTACHMENT_EXTENSIONS,
+        ...VIDEO_FILE_EXTENSIONS,
+      ])
+    }
+  )
 
   it('accepts video-only models (video without other attachments)', () => {
-    const selection = modelSelectionFromCatalog('p', providerModel({ supportsAttachments: false, supportsVideo: true }))
-    expect(selection.model.acceptedExtensions).toEqual([...VIDEO_FILE_EXTENSIONS])
+    const selection = modelSelectionFromCatalog(
+      'p',
+      providerModel({ supportsAttachments: false, supportsVideo: true })
+    )
+    expect(selection.model.acceptedExtensions)
+      .toEqual([...VIDEO_FILE_EXTENSIONS])
   })
 
   it('respects an attachment-extension override', () => {
-    const selection = modelSelectionFromCatalog('p', providerModel({ supportsAttachments: true }), {
+    const selection = modelSelectionFromCatalog('p', providerModel({
+      supportsAttachments: true
+    }), {
       acceptedExtensions: ['png'],
     })
     expect(selection.model.acceptedExtensions).toEqual(['png'])
   })
 
   it('falls back to id/options when the catalog entry is absent', () => {
-    const selection = modelSelectionFromCatalog('p', null, { modelId: 'pending', fallbackName: 'Pending' })
+    const selection = modelSelectionFromCatalog(
+      'p',
+      null,
+      { modelId: 'pending', fallbackName: 'Pending' }
+    )
     expect(selection.model.id).toBe('pending')
     expect(selection.model.name).toBe('Pending')
     expect(selection.model.contextWindow).toBe(0)
@@ -75,20 +102,46 @@ describe('modelSelectionFromCatalog', () => {
     expect(selection.model.thinking).toEqual([])
   })
 
-  it('preserves output limits and unknown attachment types, including explicit overrides', () => {
-    expect(modelSelectionFromCatalog('p', providerModel({ outputLimit: 8_000 })).model.outputLimit).toBe(8_000)
-    expect(modelSelectionFromCatalog('p', providerModel()).model.acceptedExtensions).toBeNull()
-    expect(modelSelectionFromCatalog('p', null, { modelId: 'custom', acceptedExtensions: ['pdf'] }).model.acceptedExtensions).toEqual(['pdf'])
-    expect(modelSelectionFromCatalog('p', providerModel({ supportsAttachments: true }), { acceptedExtensions: [] }).model.acceptedExtensions).toEqual([])
-    expect(modelSelectionFromCatalog('p', providerModel({ supportsAttachments: true }), { acceptedExtensions: null }).model.acceptedExtensions).toBeNull()
-  })
+  it(
+    'preserves output limits and unknown attachment types, including explicit overrides',
+    () => {
+      expect(
+        modelSelectionFromCatalog(
+          'p',
+          providerModel({ outputLimit: 8_000 })
+        ).model.outputLimit
+      ).toBe(8_000)
+      expect(
+        modelSelectionFromCatalog('p', providerModel()).model.acceptedExtensions
+      ).toBeNull()
+      expect(modelSelectionFromCatalog(
+        'p',
+        null,
+        { modelId: 'custom', acceptedExtensions: ['pdf'] }
+      ).model.acceptedExtensions).toEqual(['pdf'])
+      expect(modelSelectionFromCatalog(
+        'p',
+        providerModel({ supportsAttachments: true }),
+        { acceptedExtensions: [] }
+      ).model.acceptedExtensions).toEqual([])
+      expect(modelSelectionFromCatalog(
+        'p',
+        providerModel({ supportsAttachments: true }),
+        { acceptedExtensions: null }
+      ).model.acceptedExtensions).toBeNull()
+    }
+  )
 
   it('passes through thinking config and service tier', () => {
     const selection = modelSelectionFromCatalog('p', providerModel(), {
       thinking: { type: 'effort', effort: 'high', summary: null },
       serviceTierId: 'priority',
     })
-    expect(selection.thinking).toEqual({ type: 'effort', effort: 'high', summary: null })
+    expect(selection.thinking).toEqual({
+      type: 'effort',
+      effort: 'high',
+      summary: null
+    })
     expect(selection.serviceTierId).toBe('priority')
   })
 })
@@ -99,7 +152,9 @@ describe('thinkingCapabilitiesFromProviderModel', () => {
   })
 
   it('reports disabled when reasoning is unsupported', () => {
-    expect(thinkingCapabilitiesFromProviderModel(providerModel({ supportsReasoning: false }))).toEqual([
+    expect(thinkingCapabilitiesFromProviderModel(providerModel({
+      supportsReasoning: false
+    }))).toEqual([
       { type: 'disabled' },
     ])
   })

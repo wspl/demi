@@ -27,7 +27,9 @@ export class FirecrackerApi {
         return
       } catch (error) {
         if (Date.now() > deadline) {
-          throw new Error(`firecracker API did not come up: ${errorMessage(error)}`)
+          throw new Error(
+            `firecracker API did not come up: ${errorMessage(error)}`
+          )
         }
         await new Promise(resolve => setTimeout(resolve, 20))
       }
@@ -35,8 +37,15 @@ export class FirecrackerApi {
   }
 
   async configure(vm: VmDescription): Promise<void> {
-    await this.request('PUT', '/machine-config', { vcpu_count: vm.vcpus, mem_size_mib: vm.memMib })
-    await this.request('PUT', '/boot-source', { kernel_image_path: vm.kernelPath, boot_args: vm.bootArgs })
+    await this.request(
+      'PUT',
+      '/machine-config',
+      { vcpu_count: vm.vcpus, mem_size_mib: vm.memMib }
+    )
+    await this.request('PUT', '/boot-source', {
+      kernel_image_path: vm.kernelPath,
+      boot_args: vm.bootArgs
+    })
     await this.request('PUT', '/drives/rootfs', {
       drive_id: 'rootfs',
       path_on_host: vm.rootfsPath,
@@ -74,12 +83,23 @@ export class FirecrackerApi {
     await this.request('PATCH', '/vm', { state: 'Resumed' })
   }
 
-  /** The backing file changed size: Firecracker re-reads it and the guest sees a bigger block device. */
+  /**
+   * The backing file changed size: Firecracker re-reads it and the guest sees a
+   * bigger block device.
+   */
   async rescanVolume(volume: 'home' | 'system', path: string): Promise<void> {
-    await this.request('PATCH', `/drives/${volume}`, { drive_id: volume, path_on_host: path })
+    await this.request(
+      'PATCH',
+      `/drives/${volume}`,
+      { drive_id: volume, path_on_host: path }
+    )
   }
 
-  private async request(method: string, path: string, body?: unknown): Promise<void> {
+  private async request(
+    method: string,
+    path: string,
+    body?: unknown
+  ): Promise<void> {
     const response = await fetch(`http://firecracker${path}`, {
       method,
       unix: this.socketPath,
@@ -90,6 +110,8 @@ export class FirecrackerApi {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
     if (!response.ok)
-      throw new Error(`firecracker ${method} ${path}: HTTP ${response.status} ${await response.text()}`)
+      throw new Error(
+        `firecracker ${method} ${path}: HTTP ${response.status} ${await response.text()}`
+      )
   }
 }

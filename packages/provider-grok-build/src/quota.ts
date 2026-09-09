@@ -32,14 +32,25 @@ export interface GrokBuildQuotaOptions {
  * - GET /v1/user?include=subscription → tier
  * - GET /v1/billing?format=credits → creditUsagePercent / currentPeriod
  *
- * Optional observation of short-window x-ratelimit-* headers from chat responses
+ * Optional observation of short-window x-ratelimit-* headers from chat
+ * responses
  * (separate windows from monthly subscription quota).
  */
-export function createGrokBuildQuota(options: GrokBuildQuotaOptions = {}): ProviderQuota {
+export function createGrokBuildQuota(
+  options: GrokBuildQuotaOptions = {}
+): ProviderQuota {
   const providerId = options.providerId ?? 'grok-build'
-  const authStore = options.authStore ?? new FileGrokAuthStore({ grokHome: options.grokHome })
-  const baseUrl = (options.baseUrl ?? DEFAULT_GROK_BUILD_BASE_URL).replace(/\/+$/, '')
-  const fetchImpl: GrokBuildFetch = options.fetch ?? ((input, init) => fetch(input, init))
+  const authStore = options.authStore ?? new FileGrokAuthStore({
+    grokHome: options.grokHome
+  })
+  const baseUrl = (options.baseUrl ?? DEFAULT_GROK_BUILD_BASE_URL).replace(
+    /\/+$/,
+    ''
+  )
+  const fetchImpl: GrokBuildFetch = options.fetch ?? ((input, init) => fetch(
+    input,
+    init
+  ))
   const grokHome = options.grokHome
   const clientVersion = options.clientVersion
 
@@ -52,8 +63,20 @@ export function createGrokBuildQuota(options: GrokBuildQuotaOptions = {}): Provi
     probe: async ({ signal } = {}) => {
       const auth = await authStore.resolveAuth()
       const [user, billing] = await Promise.all([
-        fetchJson(fetchImpl, `${baseUrl}/user?include=subscription`, auth, { grokHome, clientVersion }, signal),
-        fetchJson(fetchImpl, `${baseUrl}/billing?format=credits`, auth, { grokHome, clientVersion }, signal),
+        fetchJson(
+          fetchImpl,
+          `${baseUrl}/user?include=subscription`,
+          auth,
+          { grokHome, clientVersion },
+          signal
+        ),
+        fetchJson(
+          fetchImpl,
+          `${baseUrl}/billing?format=credits`,
+          auth,
+          { grokHome, clientVersion },
+          signal
+        ),
       ])
       return mapGrokQuotaProbe(user, billing, auth)
     },
@@ -72,11 +95,16 @@ export function mapGrokQuotaProbe(
 
   const period = isRecord(config.currentPeriod) ? config.currentPeriod : null
   const isWeekly = stringOrNull(period?.type) === 'USAGE_PERIOD_TYPE_WEEKLY'
-  const resetsAt = stringOrNull(period?.end) ?? stringOrNull(config.billingPeriodEnd)
+  const resetsAt = stringOrNull(period?.end)
+    ?? stringOrNull(config.billingPeriodEnd)
   const monthlyLimit = moneyVal(config.monthlyLimit)
   const used = moneyVal(config.used)
   const onDemandCap = moneyVal(config.onDemandCap)
-  const usedPercent = clampUsedPercent(config.creditUsagePercent) ?? usedPercentFromRatio(used, monthlyLimit)
+  const usedPercent = clampUsedPercent(config.creditUsagePercent)
+    ?? usedPercentFromRatio(
+    used,
+    monthlyLimit
+  )
 
   const windows: ProviderQuotaWindow[] = [
     {
@@ -113,13 +141,17 @@ export function mapGrokQuotaProbe(
 }
 
 /** Short-window chat ratelimits — not subscription monthly quota. */
-export function observeGrokRateLimitHeaders(headers: Headers | undefined): ProviderQuotaProbeResult | null {
-  if (!headers) return null
+export function observeGrokRateLimitHeaders(
+  headers: Headers | undefined
+): ProviderQuotaProbeResult | null {
+  if (!headers)
+    return null
   const remReq = numberHeader(headers, 'x-ratelimit-remaining-requests')
   const limReq = numberHeader(headers, 'x-ratelimit-limit-requests')
   const remTok = numberHeader(headers, 'x-ratelimit-remaining-tokens')
   const limTok = numberHeader(headers, 'x-ratelimit-limit-tokens')
-  if (remReq == null && limReq == null && remTok == null && limTok == null) return null
+  if (remReq == null && limReq == null && remTok == null && limTok == null)
+    return null
 
   const windows: ProviderQuotaWindow[] = []
   if (limReq != null) {
@@ -157,25 +189,35 @@ async function fetchJson(
   fetchImpl: GrokBuildFetch,
   url: string,
   auth: GrokResolvedAuth,
-  opts: { grokHome?: string; clientVersion?: string },
+  opts: {
+    grokHome?: string;
+    clientVersion?: string
+  },
   signal?: AbortSignal,
 ): Promise<unknown> {
   const headers = buildGrokBuildHeaders(auth, undefined, {
-    clientVersion: opts.clientVersion ?? resolveGrokClientVersion(undefined, opts.grokHome),
+    clientVersion: opts.clientVersion ?? resolveGrokClientVersion(
+      undefined,
+      opts.grokHome
+    ),
     grokHome: opts.grokHome,
   })
   headers.set('accept', 'application/json')
   const response = await fetchImpl(url, { method: 'GET', headers, signal })
   if (!response.ok) {
     const body = await response.text().catch(() => '')
-    throw new Error(`Grok quota request failed (${response.status}): ${body.slice(0, 200)}`)
+    throw new Error(
+      `Grok quota request failed (${response.status}): ${body.slice(0, 200)}`
+    )
   }
   return response.json()
 }
 
 function moneyVal(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (isRecord(value) && typeof value.val === 'number' && Number.isFinite(value.val)) return value.val
+  if (typeof value === 'number' && Number.isFinite(value))
+    return value
+  if (isRecord(value) && typeof value.val === 'number'
+    && Number.isFinite(value.val)) return value.val
   return null
 }
 

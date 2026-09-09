@@ -3,7 +3,10 @@ project(demi_ipc_size C)
 set(LIBUV_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(LIBUV_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LIBUV_BUILD_BENCH OFF CACHE BOOL "" FORCE)
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../vendor/txiki.js/deps/libuv" libuv)
+add_subdirectory(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../vendor/txiki.js/deps/libuv"
+    libuv
+)
 add_executable(ipc-uv uv.c)
 target_link_libraries(ipc-uv PRIVATE uv_a)
 if(UNIX)

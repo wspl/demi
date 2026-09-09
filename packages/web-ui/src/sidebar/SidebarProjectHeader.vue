@@ -49,7 +49,11 @@ const emit = defineEmits<{
         class="pointer-events-none col-start-1 row-start-1 flex min-w-0 items-center justify-end gap-1 text-[11px] leading-none text-fg-subtle transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0"
         :aria-label="project.host"
       >
-        <Cloud v-if="project.hostKind === 'cloud'" :size="ICON_PX.in20" class="shrink-0" />
+        <Cloud
+          v-if="project.hostKind === 'cloud'"
+          :size="ICON_PX.in20"
+          class="shrink-0"
+        />
         <span v-if="project.hostKind !== 'cloud'" class="truncate">{{ project.host }}</span>
       </span>
       <span

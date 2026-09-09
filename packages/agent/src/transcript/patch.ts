@@ -6,7 +6,10 @@ import type { TranscriptPatch } from '../protocol/frames'
  * array. Touched blocks are replaced (never mutated in place), so callers can
  * safely share block objects between snapshots.
  */
-export function applyTranscriptPatches(blocks: Block[], patches: TranscriptPatch[]): Block[] {
+export function applyTranscriptPatches(
+  blocks: Block[],
+  patches: TranscriptPatch[]
+): Block[] {
   let next = [...blocks]
   for (const patch of patches) {
     switch (patch.op) {

@@ -33,7 +33,14 @@ const emit = defineEmits<{
 }>()
 
 const providersWithModels = computed(() => availableProviders(props.providers, props.models))
-const selected = computed(() => resolveSelectedModel(props.providers, props.models, props.selectedProviderId, props.selectedModelId))
+const selected = computed(
+  () => resolveSelectedModel(
+    props.providers,
+    props.models,
+    props.selectedProviderId,
+    props.selectedModelId
+  )
+)
 const selectedModelLabel = computed(() => selected.value?.model.name ?? '')
 
 const reasoningState = computed(() => buildReasoningState(selected.value?.model ?? null))
@@ -56,13 +63,15 @@ function isSelectedModel(providerId: string, modelId: string): boolean {
 
 function setFast(enabled: boolean) {
   const tier = fastTier.value
-  if (!tier) return
+  if (!tier)
+    return
   emit('changeServiceTier', enabled ? tier.id : null)
 }
 
 function setReasoningIndex(index: number) {
   const state = reasoningState.value
-  if (!state) return
+  if (!state)
+    return
   emit('changeThinking', reasoningOptionConfig(state, index))
 }
 
@@ -70,8 +79,11 @@ function selectModel(providerId: string, modelId: string) {
   const wasFast = fast.value
   emit('selectModel', providerId, modelId)
   // The switch clears the tier; keep Fast Mode on when the new model has a Fast tier of its own.
-  const nextFast = fastServiceTier((props.models[providerId] ?? []).find((model) => model.id === modelId))
-  if (wasFast && nextFast) emit('changeServiceTier', nextFast.id)
+  const nextFast = fastServiceTier(
+    (props.models[providerId] ?? []).find((model) => model.id === modelId)
+  )
+  if (wasFast && nextFast)
+    emit('changeServiceTier', nextFast.id)
 }
 
 // A persisted "disabled" config on a model that cannot disable thinking is coerced to the
@@ -79,8 +91,10 @@ function selectModel(providerId: string, modelId: string) {
 watch(
   () => [reasoningState.value, props.thinkingConfig] as const,
   ([state, config]) => {
-    if (!state || state.canDisable) return
-    if (config?.type === 'disabled') emit('changeThinking', state.defaultConfig)
+    if (!state || state.canDisable)
+      return
+    if (config?.type === 'disabled')
+      emit('changeThinking', state.defaultConfig)
   },
   { immediate: true },
 )
@@ -88,12 +102,25 @@ watch(
 
 <template>
   <Menu iconless>
-    <MenuItem v-if="fastTier" :label="t('providers.fastMode')" @select="setFast(!fast)">
+    <MenuItem
+      v-if="fastTier"
+      :label="t('providers.fastMode')"
+      @select="setFast(!fast)"
+    >
       <template #suffix>
-        <Switch :model-value="fast" size="sm" @click.stop @update:model-value="setFast" />
+        <Switch
+          :model-value="fast"
+          size="sm"
+          @click.stop
+          @update:model-value="setFast"
+        />
       </template>
     </MenuItem>
-    <MenuItem v-if="reasoningState" :label="t('providers.reasoning')" :value="reasoningLabel">
+    <MenuItem
+      v-if="reasoningState"
+      :label="t('providers.reasoning')"
+      :value="reasoningLabel"
+    >
       <template #submenu>
         <Menu iconless>
           <MenuItem

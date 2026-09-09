@@ -6,7 +6,12 @@
 // hand-written types; their validators carry a `z.ZodType<T>` annotation so
 // drift is a compile error.
 import { z } from 'zod'
-import type { HostDirent, HostFileStat, HostIdentity, HostSpawnError } from '@demicodes/shell'
+import type {
+  HostDirent,
+  HostFileStat,
+  HostIdentity,
+  HostSpawnError
+} from '@demicodes/shell'
 
 // z.instanceof(Uint8Array) infers the constructor's ArrayBuffer-bound
 // generic; the wire carries plain Uint8Array views.
@@ -21,7 +26,13 @@ const hostIdentitySchema: z.ZodType<HostIdentity> = z.object({
 })
 
 const hostSpawnErrorSchema: z.ZodType<HostSpawnError> = z.object({
-  kind: z.enum(['executable_not_found', 'permission_denied', 'cwd_unusable', 'is_directory', 'other']),
+  kind: z.enum([
+    'executable_not_found',
+    'permission_denied',
+    'cwd_unusable',
+    'is_directory',
+    'other'
+  ]),
   detail: z.string().optional(),
 })
 
@@ -55,22 +66,89 @@ const hostDirentSchema: z.ZodType<HostDirent> = z.object({
  */
 export const fsOps = {
   readFile: { params: z.object({ path: z.string(), cwd }), result: bytesSchema },
-  writeFile: { params: z.object({ path: z.string(), data: bytesSchema, cwd, createParents: z.boolean().optional() }), result: z.null() },
-  appendFile: { params: z.object({ path: z.string(), data: bytesSchema, cwd, createParents: z.boolean().optional() }), result: z.null() },
+  writeFile: {
+    params: z.object({
+      path: z.string(),
+      data: bytesSchema,
+      cwd,
+      createParents: z.boolean().optional()
+    }),
+    result: z.null()
+  },
+  appendFile: {
+    params: z.object({
+      path: z.string(),
+      data: bytesSchema,
+      cwd,
+      createParents: z.boolean().optional()
+    }),
+    result: z.null()
+  },
   exists: { params: z.object({ path: z.string(), cwd }), result: z.boolean() },
-  stat: { params: z.object({ path: z.string(), cwd }), result: hostFileStatSchema },
-  lstat: { params: z.object({ path: z.string(), cwd }), result: hostFileStatSchema },
-  readdir: { params: z.object({ path: z.string(), cwd, withFileTypes: z.boolean().optional() }), result: z.union([z.array(z.string()), z.array(hostDirentSchema)]) },
-  mkdir: { params: z.object({ path: z.string(), cwd, recursive: z.boolean().optional() }), result: z.null() },
-  rm: { params: z.object({ path: z.string(), cwd, recursive: z.boolean().optional(), force: z.boolean().optional() }), result: z.null() },
-  cp: { params: z.object({ path: z.string(), destination: z.string(), cwd, recursive: z.boolean().optional() }), result: z.null() },
-  mv: { params: z.object({ path: z.string(), destination: z.string(), cwd }), result: z.null() },
-  chmod: { params: z.object({ path: z.string(), mode: z.number(), cwd }), result: z.null() },
-  symlink: { params: z.object({ target: z.string(), path: z.string(), cwd }), result: z.null() },
-  link: { params: z.object({ existingPath: z.string(), path: z.string(), cwd }), result: z.null() },
+  stat: {
+    params: z.object({ path: z.string(), cwd }),
+    result: hostFileStatSchema
+  },
+  lstat: {
+    params: z.object({ path: z.string(), cwd }),
+    result: hostFileStatSchema
+  },
+  readdir: {
+    params: z.object({
+      path: z.string(),
+      cwd,
+      withFileTypes: z.boolean().optional()
+    }),
+    result: z.union([z.array(z.string()), z.array(hostDirentSchema)])
+  },
+  mkdir: {
+    params: z.object({
+      path: z.string(),
+      cwd,
+      recursive: z.boolean().optional()
+    }),
+    result: z.null()
+  },
+  rm: {
+    params: z.object({
+      path: z.string(),
+      cwd,
+      recursive: z.boolean().optional(),
+      force: z.boolean().optional()
+    }),
+    result: z.null()
+  },
+  cp: {
+    params: z.object({
+      path: z.string(),
+      destination: z.string(),
+      cwd,
+      recursive: z.boolean().optional()
+    }),
+    result: z.null()
+  },
+  mv: {
+    params: z.object({ path: z.string(), destination: z.string(), cwd }),
+    result: z.null()
+  },
+  chmod: {
+    params: z.object({ path: z.string(), mode: z.number(), cwd }),
+    result: z.null()
+  },
+  symlink: {
+    params: z.object({ target: z.string(), path: z.string(), cwd }),
+    result: z.null()
+  },
+  link: {
+    params: z.object({ existingPath: z.string(), path: z.string(), cwd }),
+    result: z.null()
+  },
   readlink: { params: z.object({ path: z.string(), cwd }), result: z.string() },
   realpath: { params: z.object({ path: z.string(), cwd }), result: z.string() },
-  utimes: { params: z.object({ path: z.string(), atime: z.date(), mtime: z.date(), cwd }), result: z.null() },
+  utimes: {
+    params: z.object({ path: z.string(), atime: z.date(), mtime: z.date(), cwd }),
+    result: z.null()
+  },
 } as const
 
 export type FsOp = keyof typeof fsOps
@@ -78,29 +156,55 @@ export const FS_OPS = Object.keys(fsOps) as FsOp[]
 export type FsParams<Op extends FsOp> = z.infer<(typeof fsOps)[Op]['params']>
 export type FsResult<Op extends FsOp> = z.infer<(typeof fsOps)[Op]['result']>
 
-/** `fs_stat { id, path, cwd? }` and its siblings: the request of one operation. */
-export type FsCallMessage = { [Op in FsOp]: { type: `fs_${Op}`; id: string } & FsParams<Op> }[FsOp]
+/**
+ * `fs_stat { id, path, cwd? }` and its siblings: the request of one operation.
+ */
+export type FsCallMessage = { [Op in FsOp]: {
+  type: `fs_${Op}`;
+  id: string
+} & FsParams<Op> }[FsOp]
 /** `fs_ok { id, op, result }` with the result typed by `op`. */
-export type FsOkMessage = { [Op in FsOp]: { type: 'fs_ok'; id: string; op: Op; result: FsResult<Op> } }[FsOp]
+export type FsOkMessage = { [Op in FsOp]: {
+  type: 'fs_ok';
+  id: string;
+  op: Op;
+  result: FsResult<Op>
+} }[FsOp]
 
 function fsCallSchema<Op extends FsOp>(op: Op) {
-  return z.object({ type: z.literal(`fs_${op}`), id: z.string() }).extend(fsOps[op].params.shape)
+  return z.object({ type: z.literal(`fs_${op}`), id: z.string() })
+    .extend(fsOps[op].params.shape)
 }
 
 function fsOkSchema<Op extends FsOp>(op: Op) {
-  return z.object({ type: z.literal('fs_ok'), id: z.string(), op: z.literal(op), result: fsOps[op].result })
+  return z.object({
+    type: z.literal('fs_ok'),
+    id: z.string(),
+    op: z.literal(op),
+    result: fsOps[op].result
+  })
 }
 
-const fsCallMessageSchema = z.union(FS_OPS.map(fsCallSchema) as unknown as [z.ZodType<FsCallMessage>, ...z.ZodType<FsCallMessage>[]])
-const fsOkMessageSchema = z.union(FS_OPS.map(fsOkSchema) as unknown as [z.ZodType<FsOkMessage>, ...z.ZodType<FsOkMessage>[]])
+const fsCallMessageSchema = z.union(
+  FS_OPS.map(fsCallSchema) as unknown as [z.ZodType<FsCallMessage>, ...z.ZodType<FsCallMessage>[]]
+)
+const fsOkMessageSchema = z.union(
+  FS_OPS.map(fsOkSchema) as unknown as [z.ZodType<FsOkMessage>, ...z.ZodType<FsOkMessage>[]]
+)
 
 const runnerInfoSchema = z.object({
   name: z.string(),
   platform: z.string(),
   version: z.string(),
-  /** Read synchronously at shell creation, so it must arrive before any Host use. */
+  /**
+   * Read synchronously at shell creation, so it must arrive before any Host
+   * use.
+   */
   identity: hostIdentitySchema,
-  /** A runner booted as a managed host's init: it presents its token or is refused, never paired (`managed-hosts.md` § Joining). */
+  /**
+   * A runner booted as a managed host's init: it presents its token or is
+   * refused, never paired (`managed-hosts.md` § Joining).
+   */
   managed: z.boolean().optional(),
 })
 
@@ -114,7 +218,10 @@ const streamSchema = z.enum(['stdout', 'stderr'])
 export const pipeRefSchema = z.object({ id: z.string(), url: z.string() })
 export type PipeRef = z.infer<typeof pipeRefSchema>
 
-/** Where a job's full output lives on the target, and the last bytes of each stream. */
+/**
+ * Where a job's full output lives on the target, and the last bytes of each
+ * stream.
+ */
 const jobOutputSchema = z.object({
   stdoutPath: z.string(),
   stderrPath: z.string(),
@@ -135,12 +242,32 @@ export const runnerToBackendMessageSchema = z.union([
   /** Liveness plus the count of running jobs, which the idle rule reads. */
   z.object({ type: z.literal('pong'), jobs: z.number().int().nonnegative() }),
   /** Every writable volume was synced, or the runner reports the failure. */
-  z.object({ type: z.literal('sync_done'), id: z.string(), error: z.string().optional() }),
-  /** A writable volume is nearly full: the runner asks for this total size; `volume_grown` answers. */
-  z.object({ type: z.literal('volume_grow'), id: z.string(), volume: z.enum(['system', 'home']), bytes: z.number().int().positive() }),
+  z.object({
+    type: z.literal('sync_done'),
+    id: z.string(),
+    error: z.string().optional()
+  }),
+  /**
+   * A writable volume is nearly full: the runner asks for this total size;
+   * `volume_grown` answers.
+   */
+  z.object({
+    type: z.literal('volume_grow'),
+    id: z.string(),
+    volume: z.enum(['system', 'home']),
+    bytes: z.number().int().positive()
+  }),
   fsOkMessageSchema,
-  /** A failed fs call; `code` carries the errno-style code (ENOENT, …) when there is one. */
-  z.object({ type: z.literal('fs_error'), id: z.string(), code: z.string().optional(), message: z.string() }),
+  /**
+   * A failed fs call; `code` carries the errno-style code (ENOENT, …) when
+   * there is one.
+   */
+  z.object({
+    type: z.literal('fs_error'),
+    id: z.string(),
+    code: z.string().optional(),
+    message: z.string()
+  }),
   z.object({
     type: z.literal('spawn_output'),
     spawnId: z.string(),
@@ -155,16 +282,31 @@ export const runnerToBackendMessageSchema = z.union([
     spawnError: hostSpawnErrorSchema.optional(),
   }),
   /** Live output while the job runs, up to the view budget per stream. */
-  z.object({ type: z.literal('job_output'), jobId: z.string(), stream: streamSchema, bytes: bytesSchema }),
-  /** A registered leaf's guidance while its invocation is active; null clears that invocation. */
-  z.object({ type: z.literal('job_running_hint'), jobId: z.string(), invocationId: z.string(), hint: z.string().nullable() }),
+  z.object({
+    type: z.literal('job_output'),
+    jobId: z.string(),
+    stream: streamSchema,
+    bytes: bytesSchema
+  }),
+  /**
+   * A registered leaf's guidance while its invocation is active; null clears
+   * that invocation.
+   */
+  z.object({
+    type: z.literal('job_running_hint'),
+    jobId: z.string(),
+    invocationId: z.string(),
+    hint: z.string().nullable()
+  }),
   z.object({
     type: z.literal('job_exit'),
     jobId: z.string(),
     exitCode: z.number().nullable(),
     signal: z.string().optional(),
     spawnError: hostSpawnErrorSchema.optional(),
-    /** The directory the script ended in; absent when bash never ran the script. */
+    /**
+     * The directory the script ended in; absent when bash never ran the script.
+     */
     cwd: z.string().optional(),
     output: jobOutputSchema.optional(),
   }),
@@ -189,11 +331,23 @@ export const runnerToBackendMessageSchema = z.union([
     env: z.record(z.string(), z.string()),
     stdin: z.boolean(),
   }),
-  z.object({ type: z.literal('rpc_stdin'), callId: z.string(), bytes: bytesSchema }),
+  z.object({
+    type: z.literal('rpc_stdin'),
+    callId: z.string(),
+    bytes: bytesSchema
+  }),
   z.object({ type: z.literal('rpc_stdin_end'), callId: z.string() }),
   z.object({ type: z.literal('rpc_cancel'), callId: z.string() }),
-  /** This runner's end of a pipe closed: its HTTP exchange completed, or why it did not. */
-  z.object({ type: z.literal('pipe_done'), pipeId: z.string(), ok: z.boolean(), error: z.string().optional() }),
+  /**
+   * This runner's end of a pipe closed: its HTTP exchange completed, or why it
+   * did not.
+   */
+  z.object({
+    type: z.literal('pipe_done'),
+    pipeId: z.string(),
+    ok: z.boolean(),
+    error: z.string().optional()
+  }),
 ])
 
 /**
@@ -201,19 +355,41 @@ export const runnerToBackendMessageSchema = z.union([
  * retries: the token's live connection may be a half-open socket the
  * backend has not timed out yet.
  */
-export const helloErrorCodeSchema = z.enum(['unsupported_protocol', 'unknown_device', 'already_connected', 'revoked', 'internal'])
+export const helloErrorCodeSchema = z.enum([
+  'unsupported_protocol',
+  'unknown_device',
+  'already_connected',
+  'revoked',
+  'internal'
+])
 
 export const backendToRunnerMessageSchema = z.union([
   z.discriminatedUnion('type', [
     z.object({ type: z.literal('hello_ok'), deviceId: z.string() }),
     z.object({ type: z.literal('claim_pending'), claimToken: z.string() }),
     z.object({ type: z.literal('claimed'), deviceToken: z.string() }),
-    z.object({ type: z.literal('hello_error'), code: helloErrorCodeSchema, reason: z.string() }),
+    z.object({
+      type: z.literal('hello_error'),
+      code: helloErrorCodeSchema,
+      reason: z.string()
+    }),
     z.object({ type: z.literal('ping') }),
-    /** Flush writable filesystems before the guest is stopped; `sync_done` answers. */
+    /**
+     * Flush writable filesystems before the guest is stopped; `sync_done`
+     * answers.
+     */
     z.object({ type: z.literal('sync'), id: z.string() }),
-    /** The named backing image is now `bytes` large, or an error explains why growth failed. */
-    z.object({ type: z.literal('volume_grown'), id: z.string(), volume: z.enum(['system', 'home']), bytes: z.number().int().positive(), error: z.string().nullable() }),
+    /**
+     * The named backing image is now `bytes` large, or an error explains why
+     * growth failed.
+     */
+    z.object({
+      type: z.literal('volume_grown'),
+      id: z.string(),
+      volume: z.enum(['system', 'home']),
+      bytes: z.number().int().positive(),
+      error: z.string().nullable()
+    }),
     z.object({
       type: z.literal('spawn'),
       spawnId: z.string(),
@@ -223,9 +399,17 @@ export const backendToRunnerMessageSchema = z.union([
       env: z.record(z.string(), z.string().optional()).optional(),
       killProcessGroup: z.boolean().optional(),
     }),
-    z.object({ type: z.literal('spawn_stdin'), spawnId: z.string(), bytes: bytesSchema }),
+    z.object({
+      type: z.literal('spawn_stdin'),
+      spawnId: z.string(),
+      bytes: bytesSchema
+    }),
     z.object({ type: z.literal('spawn_stdin_end'), spawnId: z.string() }),
-    z.object({ type: z.literal('spawn_kill'), spawnId: z.string(), signal: z.string().optional() }),
+    z.object({
+      type: z.literal('spawn_kill'),
+      spawnId: z.string(),
+      signal: z.string().optional()
+    }),
     /**
      * One job: `bash -c script` in `cwd` with exactly `env`; the shell ids
      * ride in `env`. `stdin` / `stdout` attach the job's fd 0 / fd 1 to pipes
@@ -240,19 +424,43 @@ export const backendToRunnerMessageSchema = z.union([
       stdin: pipeRefSchema.optional(),
       stdout: pipeRefSchema.optional(),
     }),
-    z.object({ type: z.literal('job_stdin'), jobId: z.string(), bytes: bytesSchema }),
+    z.object({
+      type: z.literal('job_stdin'),
+      jobId: z.string(),
+      bytes: bytesSchema
+    }),
     z.object({ type: z.literal('job_stdin_end'), jobId: z.string() }),
-    z.object({ type: z.literal('job_kill'), jobId: z.string(), signal: z.string().optional() }),
+    z.object({
+      type: z.literal('job_kill'),
+      jobId: z.string(),
+      signal: z.string().optional()
+    }),
     /**
      * The call's pipe ends, sent before anything else for the call: the runner
      * `PUT`s the process's pipe into `stdin` (present when the call declared
      * one) and `GET`s `stdout` into the process (`runner.md` § Pipes).
      */
-    z.object({ type: z.literal('rpc_pipes'), callId: z.string(), stdin: pipeRefSchema.optional(), stdout: pipeRefSchema }),
+    z.object({
+      type: z.literal('rpc_pipes'),
+      callId: z.string(),
+      stdin: pipeRefSchema.optional(),
+      stdout: pipeRefSchema
+    }),
     /** The call's stderr view; stdout is the pipe. */
-    z.object({ type: z.literal('rpc_output'), callId: z.string(), bytes: bytesSchema }),
-    /** Follows the stdout pipe's drain, so the process has written everything before it exits with the code. */
-    z.object({ type: z.literal('rpc_exit'), callId: z.string(), exitCode: z.number() }),
+    z.object({
+      type: z.literal('rpc_output'),
+      callId: z.string(),
+      bytes: bytesSchema
+    }),
+    /**
+     * Follows the stdout pipe's drain, so the process has written everything
+     * before it exits with the code.
+     */
+    z.object({
+      type: z.literal('rpc_exit'),
+      callId: z.string(),
+      exitCode: z.number()
+    }),
     /**
      * The command manifest for the runner's cache. Its shape is the loader's
      * (`parseManifest` in `@demicodes/command-loader`), which the runner

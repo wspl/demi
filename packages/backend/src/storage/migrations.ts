@@ -152,7 +152,10 @@ CREATE TABLE attachments (
   },
 ]
 
-/** Per-conversation agent journal and node-scoped command state. Files live on devices. */
+/**
+ * Per-conversation agent journal and node-scoped command state. Files live on
+ * devices.
+ */
 export const CONVERSATION_MIGRATIONS: Migration[] = [
   {
     id: 1,
@@ -196,17 +199,27 @@ CREATE TABLE host_store (
 ]
 
 export function migrate(db: SqlDatabase, migrations: Migration[]): void {
-  db.run('CREATE TABLE IF NOT EXISTS schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)')
-  const applied = new Set(db.all<{ id: number }>('SELECT id FROM schema_migrations').map((row) => row.id))
-  const pending = [...migrations].sort((a, b) => a.id - b.id).filter((migration) => !applied.has(migration.id))
+  db.run(
+    'CREATE TABLE IF NOT EXISTS schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)'
+  )
+  const applied = new Set(
+    db.all<{ id: number }>('SELECT id FROM schema_migrations')
+      .map((row) => row.id)
+  )
+  const pending = [...migrations].sort((a, b) => a.id - b.id)
+    .filter((migration) => !applied.has(migration.id))
   for (const migration of pending) {
     db.transaction(() => {
-      for (const statement of splitStatements(migration.sql)) db.run(statement)
-      db.run('INSERT INTO schema_migrations (id, name, applied_at) VALUES (?, ?, ?)', [
-        migration.id,
-        migration.name,
-        new Date().toISOString(),
-      ])
+      for (const statement of splitStatements(migration.sql))
+        db.run(statement)
+      db.run(
+        'INSERT INTO schema_migrations (id, name, applied_at) VALUES (?, ?, ?)',
+        [
+          migration.id,
+          migration.name,
+          new Date().toISOString(),
+        ]
+      )
     })
   }
 }

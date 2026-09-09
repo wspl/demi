@@ -19,23 +19,28 @@ const emit = defineEmits<{
 type Unit = 'K' | 'M'
 const SCALE: Record<Unit, number> = { K: 1_000, M: 1_000_000 }
 
-const unit = ref<Unit>(props.modelValue !== null && props.modelValue >= 1_000_000 ? 'M' : 'K')
+const unit = ref<Unit>(
+  props.modelValue !== null && props.modelValue >= 1_000_000 ? 'M' : 'K'
+)
 const text = ref(display(props.modelValue, unit.value))
 
 function display(tokens: number | null, u: Unit): string {
-  if (tokens === null) return ''
+  if (tokens === null)
+    return ''
   const n = tokens / SCALE[u]
   return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(3)))
 }
 
 // A value set from outside re-renders in the current unit; local typing does not echo.
 watch(() => props.modelValue, (tokens) => {
-  if (numberOrNull(text.value, unit.value) !== tokens) text.value = display(tokens, unit.value)
+  if (numberOrNull(text.value, unit.value) !== tokens)
+    text.value = display(tokens, unit.value)
 })
 
 function numberOrNull(value: string, u: Unit): number | null {
   const trimmed = value.replace(/[,\s]/g, '')
-  if (!trimmed) return null
+  if (!trimmed)
+    return null
   const n = Number(trimmed)
   return Number.isFinite(n) && n >= 0 ? Math.round(n * SCALE[u]) : null
 }
@@ -56,7 +61,13 @@ const otherUnit = computed(() => (unit.value === 'K' ? 'M' : 'K'))
 </script>
 
 <template>
-  <TextInput :model-value="text" :placeholder="placeholder" :size="size" inputmode="decimal" @update:model-value="onInput">
+  <TextInput
+    :model-value="text"
+    :placeholder="placeholder"
+    :size="size"
+    inputmode="decimal"
+    @update:model-value="onInput"
+  >
     <template #suffix>
       <button
         type="button"

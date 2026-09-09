@@ -2,7 +2,11 @@
 /** A row of colour swatches as a radio group; the chosen one wears a ring in its own colour. */
 defineProps<{
   modelValue: string
-  options: readonly { id: string; name: string; swatch: string }[]
+  options: readonly {
+    id: string;
+    name: string;
+    swatch: string
+  }[]
 }>()
 
 const emit = defineEmits<{
@@ -25,7 +29,10 @@ const emit = defineEmits<{
       :aria-checked="modelValue === item.id"
       @click="emit('update:modelValue', item.id)"
     >
-      <span class="size-3.5 rounded-full" :style="{ background: item.swatch }" />
+      <span
+        class="size-3.5 rounded-full"
+        :style="{ background: item.swatch }"
+      />
     </button>
   </div>
 </template>

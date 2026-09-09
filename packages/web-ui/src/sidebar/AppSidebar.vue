@@ -7,7 +7,12 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Popover from '@demicodes/web-ui/ui/Popover.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import type { SidebarAccount, SidebarConversation, SidebarProject, SidebarReorder } from './types'
+import type {
+  SidebarAccount,
+  SidebarConversation,
+  SidebarProject,
+  SidebarReorder
+} from './types'
 import { plainConversations, projectGroups } from './group-conversations'
 import { useSidebarDrag } from './useSidebarDrag'
 import { reorderPeers } from './reorder'
@@ -71,19 +76,28 @@ const foldedSet = computed(() => {
   return new Set(collapsedProjects.value)
 })
 const entries = computed(() => visibleEntries(plain.value, groups.value, foldedSet.value))
-const byId = computed(() => new Map(props.conversations.map((conversation) => [conversation.id, conversation])))
+const byId = computed(
+  () => new Map(
+    props.conversations.map((conversation) => [conversation.id, conversation])
+  )
+)
 const projectById = computed(() => new Map(props.projects.map((project) => [project.id, project])))
 const displayEntries = computed(() => [
   { kind: 'heading' as const, id: 'conversations-heading' },
-  ...entries.value.filter((entry) => entry.kind === 'conversation' && entry.projectId === null),
+  ...entries.value.filter(
+    (entry) => entry.kind === 'conversation' && entry.projectId === null
+  ),
   { kind: 'heading' as const, id: 'projects-heading' },
-  ...entries.value.filter((entry) => entry.kind === 'project' || entry.projectId !== null),
+  ...entries.value.filter(
+    (entry) => entry.kind === 'project' || entry.projectId !== null
+  ),
 ])
 
 // Folding is transient; reveal the source again after layout has settled on drop or cancellation.
 watch(drag.source, async (source, previous, onCleanup) => {
   const project = source ?? previous
-  if (project?.kind !== 'project') return
+  if (project?.kind !== 'project')
+    return
 
   let cancelled = false
   onCleanup(() => {
@@ -91,17 +105,21 @@ watch(drag.source, async (source, previous, onCleanup) => {
   })
 
   await nextTick()
-  if (cancelled) return
+  if (cancelled)
+    return
 
   const container = listRef.value
-  if (!container) return
+  if (!container)
+    return
   const rows = container.querySelectorAll<HTMLElement>('[data-sidebar-kind="project"]')
   const row = Array.from(rows).find(element => element.dataset.sidebarId === project.id)
-  if (!row) return
+  if (!row)
+    return
 
   // Cancelled transitions still leave a measurable row; only the watcher cancellation stops scrolling.
   await Promise.allSettled(row.getAnimations().map(animation => animation.finished))
-  if (cancelled || !row.isConnected) return
+  if (cancelled || !row.isConnected)
+    return
 
   const bounds = container.getBoundingClientRect()
   const item = row.getBoundingClientRect()
@@ -133,7 +151,8 @@ function isFolded(projectId: string): boolean {
 }
 
 function setFolded(projectId: string, folded: boolean): void {
-  if (folded === isFolded(projectId)) return
+  if (folded === isFolded(projectId))
+    return
   collapsedProjects.value = folded
     ? [...collapsedProjects.value, projectId]
     : collapsedProjects.value.filter((id) => id !== projectId)
@@ -147,7 +166,8 @@ function conversationsOf(ids: readonly string[]): SidebarConversation[] {
 }
 
 function togglePin(ids: string[]): void {
-  if (props.hidePin) return
+  if (props.hidePin)
+    return
   const targets = conversationsOf(ids)
   emit('pin', ids, !targets.every((target) => target.pinned))
 }
@@ -160,14 +180,16 @@ const list = useSidebarList(entries, computed(() => props.activeId), {
     renamingId.value = id
   },
   remove: (ids) => {
-    if (!props.hideDelete) emit('remove', ids)
+    if (!props.hideDelete)
+      emit('remove', ids)
   },
   togglePin,
 })
 
 // The open conversation is the selection until the user makes a wider one.
 watch(() => props.activeId, (id) => {
-  if (id && !list.isSelected(id)) list.selectOnly(id)
+  if (id && !list.isSelected(id))
+    list.selectOnly(id)
 }, { immediate: true })
 watch(entries, list.prune)
 
@@ -203,15 +225,27 @@ function onListKeydown(event: KeyboardEvent): void {
   }
   if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
     const entry = entries.value.find((item) => item.id === list.focusedId.value)
-    if (!entry) return
+    if (!entry)
+      return
     event.preventDefault()
     const peers = reorderPeers(entry, props.projects, props.conversations)
     const index = peers.indexOf(entry.id)
     if (event.key === 'ArrowUp' && index > 0) {
-      emit('reorder', { kind: entry.kind, id: entry.id, beforeId: peers[index - 1]! })
+      emit('reorder', {
+        kind: entry.kind,
+        id: entry.id,
+        beforeId: peers[index - 1]!
+      })
     }
     if (event.key === 'ArrowDown' && index >= 0 && index < peers.length - 1) {
-      emit('reorder', { kind: entry.kind, id: entry.id, beforeId: peers[index + 2] ?? null })
+      emit(
+        'reorder',
+        {
+          kind: entry.kind,
+          id: entry.id,
+          beforeId: peers[index + 2] ?? null
+        }
+      )
     }
     return
   }
@@ -263,13 +297,15 @@ function rowMenuOpenFor(id: string): boolean {
 function submitRename(id: string, title: string): void {
   renamingId.value = null
   const trimmed = title.trim()
-  if (trimmed) emit('rename', id, trimmed)
+  if (trimmed)
+    emit('rename', id, trimmed)
   listRef.value?.focus()
 }
 
 function selectProjectConversations(project: SidebarProject): void {
   const group = groups.value.find((candidate) => candidate.project.id === project.id)
-  if (!group || group.items.length === 0) return
+  if (!group || group.items.length === 0)
+    return
   setFolded(project.id, false)
   list.selected.value = new Set(group.items.map((item) => item.id))
   list.focusedId.value = group.items[0]!.id
@@ -281,14 +317,30 @@ function selectProjectConversations(project: SidebarProject): void {
     class="flex h-full shrink-0 select-none flex-col bg-surface-base text-fg w-64"
   >
     <div class="flex h-11 shrink-0 items-center px-2.5">
-      <span class="min-w-0 flex-1 truncate text-chrome font-medium text-fg-emphasis">Demi</span>
+      <span
+        class="min-w-0 flex-1 truncate text-chrome font-medium text-fg-emphasis"
+      >Demi</span>
     </div>
 
     <!-- The entries: one primary action, then the two settings sections a conversation reaches for. -->
     <div class="flex shrink-0 flex-col gap-px px-2.5">
-      <SidebarNavItem :icon="SquarePen" label="New" shortcut="⌘N" emphasis @click="emit('create', null)" />
-      <SidebarNavItem :icon="WandSparkles" label="Skills" @click="emit('openSettings', 'skills')" />
-      <SidebarNavItem :icon="Archive" label="Archived" @click="emit('openSettings', 'archived')" />
+      <SidebarNavItem
+        :icon="SquarePen"
+        label="New"
+        shortcut="⌘N"
+        emphasis
+        @click="emit('create', null)"
+      />
+      <SidebarNavItem
+        :icon="WandSparkles"
+        label="Skills"
+        @click="emit('openSettings', 'skills')"
+      />
+      <SidebarNavItem
+        :icon="Archive"
+        label="Archived"
+        @click="emit('openSettings', 'archived')"
+      />
     </div>
 
     <!-- Plain conversations first, then the projects. One focusable list; rows are not tab stops. -->
@@ -333,13 +385,36 @@ function selectProjectConversations(project: SidebarProject): void {
           :data-sidebar-kind="entry.kind"
           @pointerdown="entry.kind !== 'heading' && renamingId !== entry.id && drag.start($event, entry)"
         >
-          <div v-if="entry.kind === 'heading'" class="group/projects mb-1.5 flex h-6 items-center px-2 text-[11px] uppercase tracking-wide text-fg-subtle">
+          <div
+            v-if="entry.kind === 'heading'"
+            class="group/projects mb-1.5 flex h-6 items-center px-2 text-[11px] uppercase tracking-wide text-fg-subtle"
+          >
             <span class="flex-1">{{ entry.id === 'projects-heading' ? 'Projects' : 'Conversations' }}</span>
-            <Tooltip v-if="entry.id === 'projects-heading'" content="Add project" placement="right">
-              <IconButton :icon="FolderPlus" size="xs" variant="ghost" class="opacity-0 transition-opacity group-hover/projects:opacity-100" @click="emit('addProject')" />
+            <Tooltip
+              v-if="entry.id === 'projects-heading'"
+              content="Add project"
+              placement="right"
+            >
+              <IconButton
+                :icon="FolderPlus"
+                size="xs"
+                variant="ghost"
+                class="opacity-0 transition-opacity group-hover/projects:opacity-100"
+                @click="emit('addProject')"
+              />
             </Tooltip>
-            <Tooltip v-else content="New conversation" placement="right">
-              <IconButton :icon="SquarePen" size="xs" variant="ghost" class="opacity-0 transition-opacity group-hover/projects:opacity-100" @click="emit('create', null)" />
+            <Tooltip
+              v-else
+              content="New conversation"
+              placement="right"
+            >
+              <IconButton
+                :icon="SquarePen"
+                size="xs"
+                variant="ghost"
+                class="opacity-0 transition-opacity group-hover/projects:opacity-100"
+                @click="emit('create', null)"
+              />
             </Tooltip>
           </div>
           <SidebarProjectHeader
@@ -373,16 +448,32 @@ function selectProjectConversations(project: SidebarProject): void {
       </TransitionGroup>
     </div>
     <Teleport to="body">
-      <div v-if="drag.source.value" class="pointer-events-none fixed z-50 max-w-56 truncate rounded-md border border-line bg-surface-raised px-3 py-1 text-chrome text-fg shadow-md" :style="{ left: `${drag.pointer.value.x + 12}px`, top: `${drag.pointer.value.y + 12}px` }" aria-hidden="true">
+      <div
+        v-if="drag.source.value"
+        class="pointer-events-none fixed z-50 max-w-56 truncate rounded-md border border-line bg-surface-raised px-3 py-1 text-chrome text-fg shadow-md"
+        :style="{ left: `${drag.pointer.value.x + 12}px`, top: `${drag.pointer.value.y + 12}px` }"
+        aria-hidden="true"
+      >
         {{ drag.source.value.kind === 'project' ? projectById.get(drag.source.value.id)?.name : byId.get(drag.source.value.id)?.title }}
       </div>
     </Teleport>
 
     <!-- The account, and settings. -->
-    <div class="flex shrink-0 items-center gap-1 border-t border-line px-2.5 py-2">
-      <SidebarAccountRow :account="account" @open-settings="emit('openSettings')" @sign-out="emit('signOut')" />
+    <div
+      class="flex shrink-0 items-center gap-1 border-t border-line px-2.5 py-2"
+    >
+      <SidebarAccountRow
+        :account="account"
+        @open-settings="emit('openSettings')"
+        @sign-out="emit('signOut')"
+      />
       <Tooltip content="Settings" placement="right">
-        <IconButton :icon="Settings" variant="ghost" aria-label="Settings" @click="emit('openSettings')" />
+        <IconButton
+          :icon="Settings"
+          variant="ghost"
+          aria-label="Settings"
+          @click="emit('openSettings')"
+        />
       </Tooltip>
     </div>
 
@@ -474,8 +565,12 @@ function selectProjectConversations(project: SidebarProject): void {
   transition: transform 180ms ease, opacity 180ms ease, height 180ms ease, margin 180ms ease;
 }
 .sidebar-items-enter-from,
-.sidebar-items-leave-to { opacity: 0; }
-.sidebar-items-leave-active { pointer-events: none; }
+.sidebar-items-leave-to {
+  opacity: 0;
+}
+.sidebar-items-leave-active {
+  pointer-events: none;
+}
 .drop-before::before,
 .drop-after::after {
   content: '';
@@ -489,11 +584,17 @@ function selectProjectConversations(project: SidebarProject): void {
 }
 /* One line per boundary: "after A" and "before B" paint the same two pixels, centred on
    the 1px gap between the rows, so the line never jumps as the pointer crosses the middle. */
-.drop-before::before { top: -2px; }
-.drop-after::after { bottom: -1px; }
+.drop-before::before {
+  top: -2px;
+}
+.drop-after::after {
+  bottom: -1px;
+}
 @media (prefers-reduced-motion: reduce) {
   .sidebar-items-move,
   .sidebar-items-enter-active,
-  .sidebar-items-leave-active { transition: none; }
+  .sidebar-items-leave-active {
+    transition: none;
+  }
 }
 </style>

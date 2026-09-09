@@ -6,7 +6,8 @@ interface QueuedSteer extends PendingSteer {
 
 /**
  * Bookkeeping for steers awaiting materialization: the pending list, the set of
- * steers canceled before delivery, and a monotonic continuation counter the turn
+ * steers canceled before delivery, and a monotonic continuation counter the
+ * turn
  * loop snapshots to detect steers that arrived mid-stream. Pure state — the
  * session owns the delivery and materialization decisions.
  */
@@ -17,12 +18,17 @@ export class PendingSteerQueue {
 
   /** Detached user-facing data; internal wakeups never leave the session. */
   snapshot(): PendingSteer[] {
-    return structuredClone(this.pending.filter((steer) => !steer.hidden).map(({ id, turnId, model, content }) => ({
+    return structuredClone(this.pending.filter((steer) => !steer.hidden).map((
+      { id, turnId, model, content }
+    ) => ({
       id, turnId, model, content,
     })))
   }
 
-  /** Monotonic count of steers ever enqueued (decremented only when a pending one is removed). */
+  /**
+   * Monotonic count of steers ever enqueued (decremented only when a pending
+   * one is removed).
+   */
   get continuationCount(): number {
     return this.continuation
   }
@@ -36,18 +42,23 @@ export class PendingSteerQueue {
   /** Removes a still-pending steer by id; returns whether one was removed. */
   removePending(id: string): boolean {
     const index = this.pending.findIndex((steer) => steer.id === id)
-    if (index === -1) return false
+    if (index === -1)
+      return false
     this.pending.splice(index, 1)
     this.continuation = Math.max(0, this.continuation - 1)
     return true
   }
 
-  /** Records that a not-yet-delivered steer should be dropped when it arrives. */
+  /**
+   * Records that a not-yet-delivered steer should be dropped when it arrives.
+   */
   markCanceled(id: string): void {
     this.canceledIds.add(id)
   }
 
-  /** Consumes a recorded cancellation; returns whether `id` had been canceled. */
+  /**
+   * Consumes a recorded cancellation; returns whether `id` had been canceled.
+   */
   takeCanceled(id: string): boolean {
     return this.canceledIds.delete(id)
   }

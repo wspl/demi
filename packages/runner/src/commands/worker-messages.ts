@@ -5,7 +5,10 @@ export type RunCommand = Pick<CommandContext, 'args' | 'cwd' | 'env'> & {
   path: string
 }
 
-export type InputRequest = { type: 'input'; id: number }
+export type InputRequest = {
+  type: 'input';
+  id: number
+}
 export type OutputRequest = {
   type: 'output'
   id: number
@@ -17,10 +20,24 @@ export type IOReplyValue = Uint8Array | null
 
 export type WorkerMessage =
   | IORequest
-  | { type: 'exit'; exitCode: number }
-  | { type: 'error'; message: string }
+  | {
+      type: 'exit';
+      exitCode: number
+    }
+  | {
+      type: 'error';
+      message: string
+    }
 
 export type RunnerMessage =
   | RunCommand
-  | { type: 'reply'; id: number; value: IOReplyValue }
-  | { type: 'reply'; id: number; error: string }
+  | {
+      type: 'reply';
+      id: number;
+      value: IOReplyValue
+    }
+  | {
+      type: 'reply';
+      id: number;
+      error: string
+    }

@@ -3,7 +3,10 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
-/** Strips trailing slashes from a base URL so paths can be appended consistently. */
+/**
+ * Strips trailing slashes from a base URL so paths can be appended
+ * consistently.
+ */
 export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, '')
 }
@@ -14,8 +17,10 @@ export function normalizeBaseUrl(baseUrl: string): string {
  * back one unit instead.
  */
 export function sliceHead(text: string, maxChars: number): string {
-  if (maxChars <= 0) return ''
-  if (text.length <= maxChars) return text
+  if (maxChars <= 0)
+    return ''
+  if (text.length <= maxChars)
+    return text
   const cut = text.charCodeAt(maxChars - 1)
   return text.slice(0, cut >= 0xd800 && cut <= 0xdbff ? maxChars - 1 : maxChars)
 }
@@ -26,8 +31,10 @@ export function sliceHead(text: string, maxChars: number): string {
  * forward one unit instead.
  */
 export function sliceTail(text: string, maxChars: number): string {
-  if (maxChars <= 0) return ''
-  if (text.length <= maxChars) return text
+  if (maxChars <= 0)
+    return ''
+  if (text.length <= maxChars)
+    return text
   const start = text.length - maxChars
   const cut = text.charCodeAt(start)
   return text.slice(cut >= 0xdc00 && cut <= 0xdfff ? start + 1 : start)
@@ -43,10 +50,15 @@ export function toWellFormedText(text: string): string {
   return text.replace(LONE_SURROGATE, '�')
 }
 
-/** Truncates `text` to at most `maxChars` characters, appending `ellipsis` when shortened. */
+/**
+ * Truncates `text` to at most `maxChars` characters, appending `ellipsis` when
+ * shortened.
+ */
 export function truncate(text: string, maxChars: number, ellipsis = '…'): string {
-  if (text.length <= maxChars) return text
-  if (maxChars <= ellipsis.length) return sliceHead(text, maxChars)
+  if (text.length <= maxChars)
+    return text
+  if (maxChars <= ellipsis.length)
+    return sliceHead(text, maxChars)
   return sliceHead(text, maxChars - ellipsis.length) + ellipsis
 }
 

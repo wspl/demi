@@ -1,6 +1,22 @@
-import { asError, collectBytes, concatByteStreams, concatBytes, decodeUtf8, emptyByteStream, encodeUtf8, throwIfAborted } from '@demicodes/utils'
+import {
+  asError,
+  collectBytes,
+  concatByteStreams,
+  concatBytes,
+  decodeUtf8,
+  emptyByteStream,
+  encodeUtf8,
+  throwIfAborted
+} from '@demicodes/utils'
 import type { z } from 'zod'
-import { loadCommandModule, type CommandModule, type CommandResult, type CommandWriter, type DispatchIO, type RuntimeModule } from './command-abi'
+import {
+  loadCommandModule,
+  type CommandModule,
+  type CommandResult,
+  type CommandWriter,
+  type DispatchIO,
+  type RuntimeModule
+} from './command-abi'
 import type { Host } from './host'
 
 export type CommandInputSpec = Record<string, z.ZodType>
@@ -51,13 +67,18 @@ interface CommandLeafBase {
   runningHint?: string
 }
 
-/** A leaf whose implementation runs in the backend, against conversation or platform state. */
+/**
+ * A leaf whose implementation runs in the backend, against conversation or
+ * platform state.
+ */
 export interface RpcCommand extends CommandLeafBase {
   kind: 'rpc'
   run: (ctx: CommandRunContext) => Promise<CommandResult> | CommandResult
 }
 
-/** A leaf whose implementation is a module run wherever the command is invoked. */
+/**
+ * A leaf whose implementation is a module run wherever the command is invoked.
+ */
 export interface RuntimeCommand extends CommandLeafBase {
   kind: 'runtime'
   module: RuntimeModule
@@ -73,7 +94,10 @@ export interface ParsedCommandInput {
    * For help: path of the node help was requested for.
    */
   path: string[]
-  /** True when the invocation requested `--help`, or named a group with nothing after it. */
+  /**
+   * True when the invocation requested `--help`, or named a group with nothing
+   * after it.
+   */
   help: boolean
   values: Record<string, unknown>
   json: boolean
@@ -95,7 +119,9 @@ export interface CommandRunContext {
   storage: CommandStorage
   /** The Host the invoking shell runs against. */
   host: Host
-  /** Aborted when the shell command is aborted (shell_abort, shell teardown). */
+  /**
+   * Aborted when the shell command is aborted (shell_abort, shell teardown).
+   */
   signal: AbortSignal
   /**
    * Stdin written after the command started: each `shell_write` call arrives
@@ -125,7 +151,10 @@ export interface CommandExecutionContext {
   env: Record<string, string>
   cwd: string
   io: CommandIO
-  /** Session storage for `rpc` handlers run in this process; absent when every rpc leaf forwards elsewhere. */
+  /**
+   * Session storage for `rpc` handlers run in this process; absent when every
+   * rpc leaf forwards elsewhere.
+   */
   storage?: CommandStorage
   host: Host
   signal?: AbortSignal
@@ -145,15 +174,22 @@ const COMMAND_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
 export class CommandRegistry {
   private readonly commands = new Map<string, Command>()
 
-  /** `reserved`: names the executable namespace already owns (a shell's builtins, the system tools); registering one is refused. */
+  /**
+   * `reserved`: names the executable namespace already owns (a shell's
+   * builtins, the system tools); registering one is refused.
+   */
   constructor(private readonly reserved: ReadonlySet<string> = new Set()) {}
 
   register(command: Command): void {
     if (this.reserved.has(command.name)) {
-      throw new Error(`CommandRegistry: command "${command.name}" is reserved for shell/system commands`)
+      throw new Error(
+        `CommandRegistry: command "${command.name}" is reserved for shell/system commands`
+      )
     }
     if (this.commands.has(command.name)) {
-      throw new Error(`CommandRegistry: command "${command.name}" is already registered`)
+      throw new Error(
+        `CommandRegistry: command "${command.name}" is already registered`
+      )
     }
     validateCommandTree(command, command.name)
     this.commands.set(command.name, command)
@@ -171,7 +207,8 @@ export class CommandRegistry {
     const rendered = this.list()
       .map((command) => renderCommandHelp(command))
       .join('\n\n')
-    if (!rendered) return rendered
+    if (!rendered)
+      return rendered
     return `${COMMAND_HELP_DEFAULTS}\n\n${rendered}`
   }
 }
@@ -184,16 +221,32 @@ export const COMMAND_HELP_DEFAULTS =
  * Resolves argv through the tree and parses the leaf's arguments. A group
  * with nothing after it is a help request for that group.
  */
-export function parseCommandInput(root: Command, argv: string[], stdinText = ''): ParsedCommandInput {
+export function parseCommandInput(
+  root: Command,
+  argv: string[],
+  stdinText = ''
+): ParsedCommandInput {
   const { node, path, index } = resolveArgv(root, argv)
-  if (isCommandGroup(node)) return { path, help: true, values: {}, json: false }
+  if (isCommandGroup(node))
+    return { path, help: true, values: {}, json: false }
   return parseArgs(node, path, argv, index, stdinText)
 }
 
-/** The node argv names, with the index of the first token that is an argument. */
-function resolveArgv(root: Command, argv: string[]): { node: Command; path: string[]; index: number } {
+/**
+ * The node argv names, with the index of the first token that is an argument.
+ */
+function resolveArgv(
+  root: Command,
+  argv: string[]
+): {
+  node: Command;
+  path: string[];
+  index: number
+} {
   if (argv[0] !== root.name) {
-    throw new Error(`Expected command "${root.name}", received "${argv[0] ?? ''}"`)
+    throw new Error(
+      `Expected command "${root.name}", received "${argv[0] ?? ''}"`
+    )
   }
   let node: Command = root
   const path: string[] = [root.name]
@@ -203,9 +256,11 @@ function resolveArgv(root: Command, argv: string[]): { node: Command; path: stri
     // --help renders this node's documentation. A flag can never collide
     // with subcommand names (leading '-' is not a valid name), so no
     // reservation or routing precedence is needed.
-    if (token === undefined || token === '--help') return { node, path, index }
+    if (token === undefined || token === '--help')
+      return { node, path, index }
     const child = node.subcommands.find((candidate) => candidate.name === token)
-    if (!child) throw new Error(`Unknown subcommand "${[...path, token].join(' ')}"`)
+    if (!child)
+      throw new Error(`Unknown subcommand "${[...path, token].join(' ')}"`)
     node = child
     path.push(child.name)
     index += 1
@@ -244,19 +299,24 @@ function parseArgs(
     if (token.startsWith('--')) {
       const field = token.slice(2)
       const schema = input[field]
-      if (!schema) throw new Error(`Unknown option "--${field}" for "${displayPath}"`)
+      if (!schema)
+        throw new Error(`Unknown option "--${field}" for "${displayPath}"`)
 
       const next = argv[i + 1]
-      const takesImplicitBoolean = isBooleanSchema(schema) && (next === undefined || next.startsWith('--'))
+      const takesImplicitBoolean = isBooleanSchema(schema)
+        && (next === undefined || next.startsWith('--'))
       const rawValue = takesImplicitBoolean ? true : next
-      if (!takesImplicitBoolean) i += 1
-      if (rawValue === undefined) throw new Error(`Missing value for "--${field}"`)
+      if (!takesImplicitBoolean)
+        i += 1
+      if (rawValue === undefined)
+        throw new Error(`Missing value for "--${field}"`)
       setParsedValue(values, field, rawValue)
       continue
     }
 
     const field = command.positionals?.[positionalIndex]
-    if (!field) throw new Error(`Unexpected positional argument "${token}"`)
+    if (!field)
+      throw new Error(`Unexpected positional argument "${token}"`)
     setParsedValue(values, field, token)
     positionalIndex += 1
   }
@@ -277,13 +337,18 @@ function parseArgs(
 
 export function resolveCommand(root: Command, path: string[]): Command {
   if (path[0] !== root.name) {
-    throw new Error(`Path root "${path[0] ?? ''}" does not match command "${root.name}"`)
+    throw new Error(
+      `Path root "${path[0] ?? ''}" does not match command "${root.name}"`
+    )
   }
   let node: Command = root
   for (let i = 1; i < path.length; i += 1) {
     const segment = path[i]
-    const child = isCommandGroup(node) ? node.subcommands.find((candidate) => candidate.name === segment) : undefined
-    if (!child) throw new Error(`Unknown subcommand "${path.slice(0, i + 1).join(' ')}"`)
+    const child = isCommandGroup(node)
+      ? node.subcommands.find((candidate) => candidate.name === segment)
+      : undefined
+    if (!child)
+      throw new Error(`Unknown subcommand "${path.slice(0, i + 1).join(' ')}"`)
     node = child
   }
   return node
@@ -294,7 +359,10 @@ export function resolveCommand(root: Command, path: string[]): Command {
  * otherwise the leaf — an `rpc` handler in this process, or a `runtime`
  * module loaded from its text against the Host's filesystem.
  */
-export async function runRegisteredCommand(root: Command, ctx: CommandExecutionContext): Promise<CommandResult> {
+export async function runRegisteredCommand(
+  root: Command,
+  ctx: CommandExecutionContext
+): Promise<CommandResult> {
   const { node, path, index } = resolveArgv(root, ctx.argv)
   const displayPath = path.join(' ')
   const stdin = ctx.stdin ?? emptyByteStream()
@@ -306,13 +374,21 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
     await ctx.io.stdout(`${renderCommandHelp(node, parentPath)}\n`)
     return { exitCode: 0 }
   }
-  if (isCommandGroup(node)) return help()
+  if (isCommandGroup(node))
+    return help()
 
   // The pipe is drained before parsing only when the leaf reads it into a
   // field; otherwise it streams into the handler or module as it arrives.
   const consumed = node.stdinField !== undefined
-  const parsed = parseArgs(node, path, ctx.argv, index, consumed ? decodeUtf8(await collectBytes(stdin)) : '')
-  if (parsed.help) return help()
+  const parsed = parseArgs(
+    node,
+    path,
+    ctx.argv,
+    index,
+    consumed ? decodeUtf8(await collectBytes(stdin)) : ''
+  )
+  if (parsed.help)
+    return help()
   if (parsed.json && !node.output?.json) {
     throw new Error(`Command "${displayPath}" does not define JSON output`)
   }
@@ -320,7 +396,8 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
   const capture = new CapturingIO(ctx.io)
   const io = parsed.json ? capture : ctx.io
   try {
-    if (node.runningHint !== undefined) await ctx.onRunningHint?.(node.runningHint)
+    if (node.runningHint !== undefined)
+      await ctx.onRunningHint?.(node.runningHint)
     throwIfAborted(signal)
     let result: CommandResult
     if (node.kind === 'rpc') {
@@ -357,19 +434,24 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
       try {
         json = JSON.parse(raw)
       } catch (error) {
-        throw new Error(`Invalid JSON output for "${displayPath}": ${asError(error).message}`)
+        throw new Error(
+          `Invalid JSON output for "${displayPath}": ${asError(error).message}`
+        )
       }
       const validation = node.output?.json?.safeParse(json)
       if (!validation?.success) {
         const issue = validation?.error.issues[0]
-        throw new Error(`JSON output failed validation for "${displayPath}": ${issue?.message}`)
+        throw new Error(
+          `JSON output failed validation for "${displayPath}": ${issue?.message}`
+        )
       }
       await ctx.io.stdout(raw)
     }
 
     return { exitCode: result.exitCode }
   } finally {
-    if (node.runningHint !== undefined) await ctx.onRunningHint?.(undefined)
+    if (node.runningHint !== undefined)
+      await ctx.onRunningHint?.(undefined)
   }
 }
 
@@ -384,9 +466,12 @@ export function renderCommandHelp(command: Command, parentPath = ''): string {
     lines.push('', `  ${path}`)
     if (command.successOutput) lines.push(`    Success output: ${command.successOutput}`)
     else if (command.output?.json) {
-      lines.push('    Success output: raw text by default; machine-readable JSON when --json is passed')
+      lines.push(
+        '    Success output: raw text by default; machine-readable JSON when --json is passed'
+      )
     }
-    if (command.failureOutput) lines.push(`    Failure output: ${command.failureOutput}`)
+    if (command.failureOutput)
+      lines.push(`    Failure output: ${command.failureOutput}`)
 
     const fields = Object.entries(command.input ?? {})
     if (fields.length > 0) {
@@ -404,7 +489,9 @@ export function renderCommandHelp(command: Command, parentPath = ''): string {
     if (command.output?.json) {
       lines.push('    --json: emits machine-readable JSON for this command')
     } else {
-      lines.push('    --json: accepted only when this command defines JSON output')
+      lines.push(
+        '    --json: accepted only when this command defines JSON output'
+      )
     }
   }
 
@@ -439,7 +526,9 @@ export function validateCommandTree(command: Command, path: string): void {
     const seen = new Set<string>()
     for (const child of command.subcommands) {
       if (seen.has(child.name)) {
-        throw new Error(`CommandRegistry: duplicate subcommand "${path} ${child.name}"`)
+        throw new Error(
+          `CommandRegistry: duplicate subcommand "${path} ${child.name}"`
+        )
       }
       seen.add(child.name)
       validateCommandTree(child, `${path} ${child.name}`)
@@ -451,30 +540,44 @@ export function validateCommandTree(command: Command, path: string): void {
     throw new Error(`CommandRegistry: rpc leaf "${path}" has no run()`)
   }
   if (command.kind === 'runtime' && typeof command.module !== 'string') {
-    throw new Error(`CommandRegistry: runtime leaf "${path}" has no module text`)
+    throw new Error(
+      `CommandRegistry: runtime leaf "${path}" has no module text`
+    )
   }
   const input = command.input ?? {}
   if (command.stdinField && !(command.stdinField in input)) {
-    throw new Error(`CommandRegistry: "${path}" stdinField "${command.stdinField}" is not in input`)
+    throw new Error(
+      `CommandRegistry: "${path}" stdinField "${command.stdinField}" is not in input`
+    )
   }
   if (command.restField && !(command.restField in input)) {
-    throw new Error(`CommandRegistry: "${path}" restField "${command.restField}" is not in input`)
+    throw new Error(
+      `CommandRegistry: "${path}" restField "${command.restField}" is not in input`
+    )
   }
   for (const positional of command.positionals ?? []) {
     if (!(positional in input)) {
-      throw new Error(`CommandRegistry: "${path}" positional "${positional}" is not in input`)
+      throw new Error(
+        `CommandRegistry: "${path}" positional "${positional}" is not in input`
+      )
     }
   }
 }
 
 function unavailableStorage(displayPath: string): CommandStorage {
   const refuse = () => {
-    throw new Error(`"${displayPath}" reads command storage, and this embedder runs rpc commands without one`)
+    throw new Error(
+      `"${displayPath}" reads command storage, and this embedder runs rpc commands without one`
+    )
   }
   return { readJson: refuse, writeJson: refuse, delete: refuse, list: refuse }
 }
 
-function setParsedValue(values: Record<string, unknown>, field: string, value: unknown): void {
+function setParsedValue(
+  values: Record<string, unknown>,
+  field: string,
+  value: unknown
+): void {
   if (values[field] === undefined) {
     values[field] = value
     return
@@ -486,14 +589,19 @@ function setParsedValue(values: Record<string, unknown>, field: string, value: u
   values[field] = [values[field], value]
 }
 
-export function validateCommandValues(input: CommandInputSpec, values: Record<string, unknown>): Record<string, unknown> {
+export function validateCommandValues(
+  input: CommandInputSpec,
+  values: Record<string, unknown>
+): Record<string, unknown> {
   const parsed: Record<string, unknown> = {}
   for (const [field, schema] of Object.entries(input)) {
     const candidate = coerceValue(schema, values[field])
     const result = schema.safeParse(candidate)
     if (!result.success) {
       const issue = result.error.issues[0]
-      throw new Error(`Invalid value for "${field}": ${issue?.message ?? 'validation failed'}`)
+      throw new Error(
+        `Invalid value for "${field}": ${issue?.message ?? 'validation failed'}`
+      )
     }
     parsed[field] = result.data
   }
@@ -501,17 +609,28 @@ export function validateCommandValues(input: CommandInputSpec, values: Record<st
 }
 
 function coerceValue(schema: z.ZodType, value: unknown): unknown {
-  if (value === undefined) return value
-  if (isArraySchema(schema)) return Array.isArray(value) ? value : [value]
-  if (isNumberSchema(schema) && typeof value === 'string' && value.trim() !== '') return Number(value)
+  if (value === undefined)
+    return value
+  if (isArraySchema(schema))
+    return Array.isArray(value) ? value : [value]
+  if (isNumberSchema(schema) && typeof value === 'string'
+    && value.trim() !== '')
+    return Number(value)
   if (isBooleanSchema(schema) && typeof value === 'string') {
-    if (value === 'true') return true
-    if (value === 'false') return false
+    if (value === 'true')
+      return true
+    if (value === 'false')
+      return false
   }
   return value
 }
 
-function formatField(field: string, schema: z.ZodType, positional: boolean, stdin: boolean): string {
+function formatField(
+  field: string,
+  schema: z.ZodType,
+  positional: boolean,
+  stdin: boolean
+): string {
   const prefix = positional ? `<${field}>` : `--${field}`
   const source = stdin ? ' (from stdin/heredoc)' : ''
   // A reconstructed optional schema carries its description on the inner type.
@@ -540,7 +659,8 @@ function unwrapSchema(schema: z.ZodType): z.ZodType {
   let current = schema
   while (true) {
     const inner = (current as unknown as { def?: { innerType?: z.ZodType } }).def?.innerType
-    if (!inner) return current
+    if (!inner)
+      return current
     current = inner
   }
 }

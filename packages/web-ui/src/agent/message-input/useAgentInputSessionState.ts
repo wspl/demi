@@ -4,7 +4,10 @@ import type { AgentWorkspace } from '../workspace'
 import { getLatestResponseUsage } from '../block-helpers'
 import { effortToThinkingConfig } from '../reasoning'
 
-export function useAgentInputSessionState(workspace: AgentWorkspace, conversationId: string) {
+export function useAgentInputSessionState(
+  workspace: AgentWorkspace,
+  conversationId: string
+) {
   const session = computed(() => workspace.sessions[conversationId])
 
   const selectedProviderId = computed<string | null>(() => session.value?.model.providerId ?? null)
@@ -14,14 +17,20 @@ export function useAgentInputSessionState(workspace: AgentWorkspace, conversatio
   const selectedModel = computed(() => {
     const providerId = selectedProviderId.value
     const modelId = selectedModelId.value
-    if (!providerId || !modelId) return null
-    return (workspace.models[providerId] ?? []).find((model) => model.id === modelId) ?? null
+    if (!providerId || !modelId)
+      return null
+    return (workspace.models[providerId] ?? []).find((model) => model.id === modelId) ??
+      null
   })
 
-  const thinkingConfig = computed<ThinkingConfig>(() => effortToThinkingConfig(session.value?.model.thinkingEffort ?? null))
+  const thinkingConfig = computed<ThinkingConfig>(
+    () => effortToThinkingConfig(session.value?.model.thinkingEffort ?? null)
+  )
   const contextWindow = computed<number | null>(() => selectedModel.value?.contextWindow ?? null)
   const inputLimit = computed<number | null>(() => selectedModel.value?.inputLimit ?? null)
-  const acceptedExtensions = computed<string[] | null>(() => selectedModel.value?.acceptedExtensions ?? null)
+  const acceptedExtensions = computed<string[] | null>(
+    () => selectedModel.value?.acceptedExtensions ?? null
+  )
 
   const phase = computed(() => session.value?.phase ?? 'idle')
   const isRunning = computed(() => phase.value === 'running')

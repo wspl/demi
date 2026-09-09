@@ -1,5 +1,10 @@
 import { reactive, watch } from 'vue'
-import { DEFAULT_ACCENT, PRODUCT_ACCENTS, productAppearance, type ProductAccent } from '@demicodes/web-ui/theme/productAppearance'
+import {
+  DEFAULT_ACCENT,
+  PRODUCT_ACCENTS,
+  productAppearance,
+  type ProductAccent
+} from '@demicodes/web-ui/theme/productAppearance'
 import { appThemeStore, setTheme } from '@demicodes/web-ui/theme/appTheme'
 
 type ThemeMode = 'light' | 'dark'
@@ -24,7 +29,12 @@ export interface Paradigm {
 }
 
 export const PARADIGMS: readonly Paradigm[] = [
-  { id: 'demi', name: 'Demi', summary: 'Product appearance: Ink, regular density, medium radius and hairline shadows.', ...productAppearance },
+  {
+    id: 'demi',
+    name: 'Demi',
+    summary: 'Product appearance: Ink, regular density, medium radius and hairline shadows.',
+    ...productAppearance
+  },
   {
     id: 'neutral',
     name: 'Neutral',
@@ -77,7 +87,8 @@ export interface GalleryState {
 
 function paradigmById(id: ParadigmId): Paradigm {
   const found = PARADIGMS.find((item) => item.id === id)
-  if (!found) throw new Error(`unknown paradigm: ${id}`)
+  if (!found)
+    throw new Error(`unknown paradigm: ${id}`)
   return found
 }
 
@@ -101,12 +112,14 @@ interface StoredGalleryState {
 }
 
 function resolveAccent(id: unknown): AccentId {
-  if (typeof id === 'string' && ACCENTS.some((item) => item.id === id)) return id as AccentId
+  if (typeof id === 'string' && ACCENTS.some((item) => item.id === id))
+    return id as AccentId
   return DEFAULT_ACCENT
 }
 
 function readStored(): StoredGalleryState {
-  if (typeof localStorage === 'undefined') return {}
+  if (typeof localStorage === 'undefined')
+    return {}
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     return raw ? JSON.parse(raw) as StoredGalleryState : {}
@@ -169,7 +182,12 @@ export function persistGalleryState(): void {
 }
 
 watch(
-  () => [galleryState.tone, galleryState.density, galleryState.radius, galleryState.shadow] as const,
+  () => [
+    galleryState.tone,
+    galleryState.density,
+    galleryState.radius,
+    galleryState.shadow
+  ] as const,
   () => {
     syncParadigmLabel()
   },

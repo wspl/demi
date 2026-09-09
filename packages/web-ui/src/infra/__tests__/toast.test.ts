@@ -19,7 +19,11 @@ test('reportError is visible only when userVisible, and it is danger', () => {
   resetToasts()
   reportError('Failed to send message', new Error('WebSocket is closed'))
   expect(toasts).toEqual([])
-  reportError('Failed to send message', new Error('WebSocket is closed'), { userVisible: true })
+  reportError(
+    'Failed to send message',
+    new Error('WebSocket is closed'),
+    { userVisible: true }
+  )
   expect(toasts).toHaveLength(1)
   expect(toasts[0]).toMatchObject({
     title: 'Failed to send message',

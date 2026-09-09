@@ -69,7 +69,8 @@ export function useTurnFlow() {
 
   function at(run: number, ms: number, fn: () => void): void {
     timers.push(window.setTimeout(() => {
-      if (run !== token) return
+      if (run !== token)
+        return
       fn()
     }, ms))
   }
@@ -83,7 +84,8 @@ export function useTurnFlow() {
   }
 
   function append(block: MessageListBlock): void {
-    if (blocks.value.some((existing) => existing.id === block.id)) return
+    if (blocks.value.some((existing) => existing.id === block.id))
+      return
     blocks.value = [...blocks.value, block]
   }
 
@@ -110,7 +112,12 @@ export function useTurnFlow() {
 
   function tool(id: string, status: ToolCallBlock['status']): ToolCallBlock {
     const output = status === 'completed'
-      ? [{ type: 'text' as const, text: 'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")\n' }]
+      ? [
+        {
+          type: 'text' as const,
+          text: 'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")\n'
+        }
+      ]
       : []
     return {
       type: 'tool_call',
@@ -145,11 +152,19 @@ export function useTurnFlow() {
         chunk = ''
       }
     }
-    if (chunk || prefixes.length === 0) prefixes.push(acc)
+    if (chunk || prefixes.length === 0)
+      prefixes.push(acc)
     return prefixes
   }
 
-  function streamTextInto(run: number, startMs: number, full: string, apply: (text: string) => void): number {
+  function streamTextInto(
+    run: number,
+    startMs: number,
+    full: string,
+    apply: (
+    text: string
+  ) => void
+  ): number {
     const prefixes = feedPrefixes(full)
     prefixes.forEach((text, index) => {
       at(run, startMs + index * FEED_MS, () => apply(text))
@@ -160,7 +175,8 @@ export function useTurnFlow() {
   function patchThinking(id: string, text: string): void {
     const next = thinkingBlock(id, text)
     replace(id, next)
-    if (slot.value?.incoming?.id === id) slot.value = { ...slot.value, incoming: next }
+    if (slot.value?.incoming?.id === id)
+      slot.value = { ...slot.value, incoming: next }
   }
 
   function reveal(run: number, ms: number, build: () => MessageListBlock): void {
@@ -168,29 +184,39 @@ export function useTurnFlow() {
       const incoming = build()
       if (!slot.value) {
         append(incoming)
-        if (incoming.type === 'thinking') streamingThinkingId.value = incoming.id
+        if (incoming.type === 'thinking')
+          streamingThinkingId.value = incoming.id
         return
       }
       slot.value = { ...slot.value, incoming }
-      if (incoming.type === 'thinking') streamingThinkingId.value = incoming.id
+      if (incoming.type === 'thinking')
+        streamingThinkingId.value = incoming.id
     })
     at(run, ms + HANDOFF_MS, () => {
       const incoming = slot.value?.incoming
-      if (incoming) append(incoming)
+      if (incoming)
+        append(incoming)
       slot.value = null
     })
   }
 
   function endThinking(id: string): void {
     endedAtById.value = { ...endedAtById.value, [id]: now() }
-    if (streamingThinkingId.value === id) streamingThinkingId.value = null
+    if (streamingThinkingId.value === id)
+      streamingThinkingId.value = null
   }
 
   function streamThinking(run: number, startMs: number, id: string, text: string): number {
     return streamTextInto(run, startMs, text, (partial) => patchThinking(id, partial))
   }
 
-  function streamReply(run: number, startMs: number, id: string, text: string, onDone: () => void): void {
+  function streamReply(
+    run: number,
+    startMs: number,
+    id: string,
+    text: string,
+    onDone: () => void
+  ): void {
     let createdAt = ''
     at(run, startMs, () => {
       createdAt = now()
@@ -245,7 +271,8 @@ export function useTurnFlow() {
     if (kind === 'connect') {
       blocks.value = []
       void nextTick(() => {
-        if (run !== token) return
+        if (run !== token)
+          return
         setSlot('connecting')
       })
       at(run, 800, () => setSlot('requesting'))
@@ -256,7 +283,8 @@ export function useTurnFlow() {
     if (kind === 'resume') {
       blocks.value = []
       void nextTick(() => {
-        if (run !== token) return
+        if (run !== token)
+          return
         setSlot('resuming')
       })
       at(run, 800, () => setSlot('requesting'))
@@ -272,10 +300,15 @@ export function useTurnFlow() {
         model: demoModel,
         message: 'Anthropic API request failed with HTTP 529: Overloaded. The upstream service is temporarily unavailable.',
         code: 'overloaded',
-        diagnostics: { source: 'http', httpStatus: 529, providerCode: 'overloaded_error' },
+        diagnostics: {
+          source: 'http',
+          httpStatus: 529,
+          providerCode: 'overloaded_error'
+        },
       }]
       void nextTick(() => {
-        if (run !== token) return
+        if (run !== token)
+          return
         setSlot('retrying')
       })
       at(run, 900, () => setSlot('requesting'))
@@ -289,11 +322,18 @@ export function useTurnFlow() {
       turnId: `turn-${run}`,
       createdAt: now(),
       model: demoModel,
-      content: [{ type: 'text', text: userText?.trim() || 'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename.' }],
+      content: [
+        {
+          type: 'text',
+          text: userText?.trim() ||
+            'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename.'
+        }
+      ],
       preamble: null,
     }]
     void nextTick(() => {
-      if (run !== token) return
+      if (run !== token)
+        return
       setSlot('requesting')
     })
 
@@ -321,7 +361,12 @@ export function useTurnFlow() {
       thinkStartedAt = now()
     })
     reveal(run, afterToolArrive + 1400 + WAIT_MS, () => thinkingBlock(think2, ''))
-    const think2End = streamThinking(run, afterToolArrive + 1400 + WAIT_MS + HANDOFF_MS, think2, THINK_2)
+    const think2End = streamThinking(
+      run,
+      afterToolArrive + 1400 + WAIT_MS + HANDOFF_MS,
+      think2,
+      THINK_2
+    )
     at(run, think2End + 200, () => {
       endThinking(think2)
     })
@@ -332,5 +377,14 @@ export function useTurnFlow() {
 
   onBeforeUnmount(stop)
 
-  return { blocks, slot, endedAtById, streamingThinkingId, streamingTextId, running, play, stop }
+  return {
+    blocks,
+    slot,
+    endedAtById,
+    streamingThinkingId,
+    streamingTextId,
+    running,
+    play,
+    stop
+  }
 }

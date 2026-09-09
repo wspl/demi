@@ -21,21 +21,45 @@ describe.each<Target>(['cloud', 'runner:alpha'])('S4 todo on %s', (target) => {
     const driver = await world.conversation(target)
     world.wire()
     const added = await driver.turn({
-      model: [model.shell('t1', 'demi todo add "draft the outline" && demi todo add "run the suite"'), model.say('added')],
+      model: [
+        model.shell(
+          't1',
+          'demi todo add "draft the outline" && demi todo add "run the suite"'
+        ),
+        model.say('added')
+      ],
     })
     expect(added.received[0]).toContain('exitCode: 0')
 
-    const listed = await driver.turn({ model: [model.shell('t2', 'demi todo list --json'), model.say('listed')] })
-    const json = /preview:\n([\s\S]*?)\nnext:/.exec(listed.received[0]!)?.[1] ?? /preview:\n([\s\S]*)$/.exec(listed.received[0]!)?.[1] ?? ''
-    expect(JSON.parse(json.trim())).toMatchObject({ todos: [{ text: 'draft the outline' }, { text: 'run the suite' }] })
+    const listed = await driver.turn({ model: [
+        model.shell('t2', 'demi todo list --json'),
+        model.say('listed')
+      ] })
+    const json = /preview:\n([\s\S]*?)\nnext:/.exec(listed.received[0]!)?.[1] ??
+      /preview:\n([\s\S]*)$/.exec(listed.received[0]!)?.[1] ??
+      ''
+    expect(JSON.parse(json.trim())).toMatchObject({ todos: [
+        { text: 'draft the outline' },
+        { text: 'run the suite' }
+      ] })
 
     // On a runner the leaf is relayed as rpc; cloud runs it in this process.
-    const relayed = world.wire('alpha').filter((f) => f.message.type === 'rpc_call').map((f) => (f.message.type === 'rpc_call' ? f.message.path.join(' ') : ''))
-    if (target === 'cloud') expect(relayed).toEqual([])
-    else expect(relayed).toEqual(['demi todo add', 'demi todo add', 'demi todo list'])
+    const relayed = world.wire('alpha').filter((f) => f.message.type === 'rpc_call').map(
+      (f) => (f.message.type === 'rpc_call' ? f.message.path.join(' ') : '')
+    )
+    if (target === 'cloud')
+      expect(relayed).toEqual([])
+    else expect(relayed).toEqual([
+      'demi todo add',
+      'demi todo add',
+      'demi todo list'
+    ])
 
     const other = await world.conversation(target)
-    const empty = await other.turn({ model: [model.shell('t1', 'demi todo list --json'), model.say('empty')] })
+    const empty = await other.turn({ model: [
+        model.shell('t1', 'demi todo list --json'),
+        model.say('empty')
+      ] })
     expect(empty.received[0]).toContain('{"todos":[]}')
   }, 30_000)
 })

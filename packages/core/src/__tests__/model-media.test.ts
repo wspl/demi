@@ -1,6 +1,10 @@
 import { fileExtensionSupport } from '../index'
 import { expect, test } from 'bun:test'
-import { modelAcceptsMediaType, sniffModelMediaType, type Model } from '../index'
+import {
+  modelAcceptsMediaType,
+  sniffModelMediaType,
+  type Model
+} from '../index'
 
 function model(acceptedExtensions: Model['acceptedExtensions']): Model {
   return {
@@ -25,14 +29,26 @@ function bytes(...parts: Array<string | number[]>): Uint8Array {
 }
 
 test('sniffModelMediaType detects the closed media set by magic bytes', () => {
-  expect(sniffModelMediaType(bytes([0x89], 'PNG', [0x0d, 0x0a, 0x1a, 0x0a]))?.mediaType).toBe('image/png')
-  expect(sniffModelMediaType(bytes([0xff, 0xd8, 0xff, 0xe0]))?.mediaType).toBe('image/jpeg')
+  expect(
+    sniffModelMediaType(bytes([0x89], 'PNG', [0x0d, 0x0a, 0x1a, 0x0a]))?.mediaType
+  ).toBe('image/png')
+  expect(sniffModelMediaType(bytes([0xff, 0xd8, 0xff, 0xe0]))?.mediaType)
+    .toBe('image/jpeg')
   expect(sniffModelMediaType(bytes('GIF89a'))?.mediaType).toBe('image/gif')
-  expect(sniffModelMediaType(bytes('RIFF', [1, 2, 3, 4], 'WEBP'))?.mediaType).toBe('image/webp')
-  expect(sniffModelMediaType(bytes([0x1a, 0x45, 0xdf, 0xa3]))?.mediaType).toBe('video/webm')
-  expect(sniffModelMediaType(bytes([0, 0, 0, 0x20], 'ftypisom'))?.mediaType).toBe('video/mp4')
-  expect(sniffModelMediaType(bytes([0, 0, 0, 0x20], 'ftypqt  '))?.mediaType).toBe('video/quicktime')
-  expect(sniffModelMediaType(bytes([0, 0, 0, 0x20], 'ftypM4V '))?.mediaType).toBe('video/x-m4v')
+  expect(
+    sniffModelMediaType(bytes('RIFF', [1, 2, 3, 4], 'WEBP'))?.mediaType
+  ).toBe('image/webp')
+  expect(sniffModelMediaType(bytes([0x1a, 0x45, 0xdf, 0xa3]))?.mediaType)
+    .toBe('video/webm')
+  expect(
+    sniffModelMediaType(bytes([0, 0, 0, 0x20], 'ftypisom'))?.mediaType
+  ).toBe('video/mp4')
+  expect(
+    sniffModelMediaType(bytes([0, 0, 0, 0x20], 'ftypqt  '))?.mediaType
+  ).toBe('video/quicktime')
+  expect(
+    sniffModelMediaType(bytes([0, 0, 0, 0x20], 'ftypM4V '))?.mediaType
+  ).toBe('video/x-m4v')
 
   // Outside the closed set: no guessing.
   expect(sniffModelMediaType(bytes('%PDF-1.7'))).toBeNull()
@@ -56,11 +72,14 @@ test('modelAcceptsMediaType gates on catalog extensions', () => {
 })
 
 
-test('attachment checks distinguish unknown, unsupported and explicitly supported types', () => {
-  expect(fileExtensionSupport(null, 'png')).toBeNull()
-  expect(fileExtensionSupport([], 'png')).toBe(false)
-  expect(fileExtensionSupport(['png'], 'png')).toBe(true)
-  expect(fileExtensionSupport(['png'], 'pdf')).toBe(false)
-  expect(fileExtensionSupport(['jpeg'], 'jpg')).toBe(true)
-  expect(fileExtensionSupport(['jpg'], 'jpeg')).toBe(true)
-})
+test(
+  'attachment checks distinguish unknown, unsupported and explicitly supported types',
+  () => {
+    expect(fileExtensionSupport(null, 'png')).toBeNull()
+    expect(fileExtensionSupport([], 'png')).toBe(false)
+    expect(fileExtensionSupport(['png'], 'png')).toBe(true)
+    expect(fileExtensionSupport(['png'], 'pdf')).toBe(false)
+    expect(fileExtensionSupport(['jpeg'], 'jpg')).toBe(true)
+    expect(fileExtensionSupport(['jpg'], 'jpeg')).toBe(true)
+  }
+)

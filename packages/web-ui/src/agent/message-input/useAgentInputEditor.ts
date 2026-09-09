@@ -11,7 +11,9 @@ interface UseAgentInputEditorParams {
   handlePasteAttachments?: (clipboardData: DataTransfer, text: string) => boolean
 }
 
-export function shouldSubmitFromEditorKeydown(event: Pick<KeyboardEvent, 'isComposing' | 'key' | 'shiftKey'>): boolean {
+export function shouldSubmitFromEditorKeydown(
+  event: Pick<KeyboardEvent, 'isComposing' | 'key' | 'shiftKey'>
+): boolean {
   return !event.isComposing && event.key === 'Enter' && !event.shiftKey
 }
 
@@ -46,7 +48,8 @@ export function useAgentInputEditor(params: UseAgentInputEditorParams) {
         class: 'w-full bg-transparent text-conversation text-fg outline-none',
       },
       handleKeyDown(_view, event) {
-        if (event.isComposing) return false
+        if (event.isComposing)
+          return false
 
         if (event.key === 'Escape') {
           params.handleCancel()
@@ -63,7 +66,8 @@ export function useAgentInputEditor(params: UseAgentInputEditorParams) {
       },
       handlePaste(_view, event) {
         const clipboardData = event.clipboardData
-        if (!clipboardData || !params.handlePasteAttachments) return false
+        if (!clipboardData || !params.handlePasteAttachments)
+          return false
         const text = clipboardData.getData('text/plain')
         if (params.handlePasteAttachments(clipboardData, text)) {
           event.preventDefault()

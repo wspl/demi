@@ -1,5 +1,9 @@
 import type { z } from 'zod'
-import { backendToRunnerMessageSchema, helloErrorCodeSchema, runnerToBackendMessageSchema } from './schemas'
+import {
+  backendToRunnerMessageSchema,
+  helloErrorCodeSchema,
+  runnerToBackendMessageSchema
+} from './schemas'
 
 /**
  * Wire protocol between the backend and a runner: one multiplexed connection
@@ -29,12 +33,20 @@ export const RUNNER_PROTOCOL_VERSION = 9
  */
 export const JOB_VIEW_BYTES = 32 * 1024
 
-export type { FsCallMessage, FsOkMessage, FsOp, FsParams, FsResult, PipeRef } from './schemas'
+export type {
+  FsCallMessage,
+  FsOkMessage,
+  FsOp,
+  FsParams,
+  FsResult,
+  PipeRef
+} from './schemas'
 export { FS_OPS } from './schemas'
 
 export type RunnerToBackendMessage = z.infer<typeof runnerToBackendMessageSchema>
 export type BackendToRunnerMessage = z.infer<typeof backendToRunnerMessageSchema>
-export type RunnerProtocolMessage = RunnerToBackendMessage | BackendToRunnerMessage
+export type RunnerProtocolMessage = RunnerToBackendMessage
+  | BackendToRunnerMessage
 
 export type RunnerInfo = Extract<RunnerToBackendMessage, { type: 'hello' }>['runner']
 export type JobExitMessage = Extract<RunnerToBackendMessage, { type: 'job_exit' }>
@@ -48,7 +60,10 @@ export interface MessagePackCodec {
   decode(bytes: Uint8Array): unknown
 }
 
-/** One end's framing: encode any message, decode and validate the inbound direction. */
+/**
+ * One end's framing: encode any message, decode and validate the inbound
+ * direction.
+ */
 export interface RunnerWire {
   encode(message: RunnerProtocolMessage): Uint8Array
   /** A frame arriving at the backend (runner → backend). */
@@ -60,22 +75,38 @@ export interface RunnerWire {
 export function createRunnerWire(codec: MessagePackCodec): RunnerWire {
   return {
     encode: (message) => codec.encode(message),
-    decodeRunnerToBackend: (frame) => decodeWith(runnerToBackendMessageSchema, codec, frame),
-    decodeBackendToRunner: (frame) => decodeWith(backendToRunnerMessageSchema, codec, frame),
+    decodeRunnerToBackend: (frame) => decodeWith(
+      runnerToBackendMessageSchema,
+      codec,
+      frame
+    ),
+    decodeBackendToRunner: (frame) => decodeWith(
+      backendToRunnerMessageSchema,
+      codec,
+      frame
+    ),
   }
 }
 
-function decodeWith<Schema extends z.ZodType>(schema: Schema, codec: MessagePackCodec, frame: Uint8Array): z.infer<Schema> {
+function decodeWith<Schema extends z.ZodType>(
+  schema: Schema,
+  codec: MessagePackCodec,
+  frame: Uint8Array
+): z.infer<Schema> {
   let value: unknown
   try {
     value = codec.decode(frame)
   } catch (error) {
-    throw new Error(`Malformed runner-protocol frame: ${error instanceof Error ? error.message : String(error)}`)
+    throw new Error(
+      `Malformed runner-protocol frame: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
   const parsed = schema.safeParse(value)
   if (!parsed.success) {
     const issue = parsed.error.issues[0]
-    throw new Error(`Malformed runner-protocol frame${issue ? `: ${issue.path.join('.')} ${issue.message}` : ''}`)
+    throw new Error(
+      `Malformed runner-protocol frame${issue ? `: ${issue.path.join('.')} ${issue.message}` : ''}`
+    )
   }
   return parsed.data as z.infer<Schema>
 }

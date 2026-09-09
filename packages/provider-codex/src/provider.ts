@@ -21,10 +21,17 @@ import {
   type CodexAuthStore,
   type CodexResolvedAuth,
 } from './auth'
-import { createCodexCredentials, openCodexCredentialPool, PoolAwareCodexAuthStore } from './credentials'
+import {
+  createCodexCredentials,
+  openCodexCredentialPool,
+  PoolAwareCodexAuthStore
+} from './credentials'
 import { listCodexModels } from './models'
 import { createCodexQuota } from './quota'
-import { buildCodexResponsesRequestBody, mapCodexResponseEvents } from './responses'
+import {
+  buildCodexResponsesRequestBody,
+  mapCodexResponseEvents
+} from './responses'
 import {
   CodexHttpError,
   codexResponsesUrl,
@@ -63,7 +70,10 @@ export interface CodexProviderOptions extends CodexProviderConfig {
 export interface CodexRuntimeOptions extends CodexProviderConfig {
   authStore?: CodexAuthStore
   transportImpl?: CodexResponsesTransport
-  /** Shared with the public Provider shell so inference can passively update quota. */
+  /**
+   * Shared with the public Provider shell so inference can passively update
+   * quota.
+   */
   quota?: ProviderQuota
 }
 
@@ -74,8 +84,14 @@ const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS = 10_000
 
 export class CodexProvider implements AgentProvider {
   private readonly cloneOptions: CodexRuntimeOptions
-  private readonly config: Required<Omit<CodexProviderConfig, 'codexHome' | 'baseUrl' | 'headers' | 'clientVersion'>> &
-    Pick<CodexProviderConfig, 'codexHome' | 'baseUrl' | 'headers' | 'clientVersion'>
+  private readonly config: Required<Omit<CodexProviderConfig, 'codexHome'
+    | 'baseUrl'
+    | 'headers'
+    | 'clientVersion'>> &
+    Pick<CodexProviderConfig, 'codexHome'
+      | 'baseUrl'
+      | 'headers'
+      | 'clientVersion'>
   private readonly authStore: CodexAuthStore
   private readonly transport: CodexResponsesTransport
   private readonly quota: ProviderQuota | null
@@ -89,12 +105,16 @@ export class CodexProvider implements AgentProvider {
       headers: options.headers,
       userAgent: options.userAgent ?? defaultUserAgent(),
       headerTimeoutMs: options.headerTimeoutMs ?? DEFAULT_SSE_HEADER_TIMEOUT_MS,
-      websocketConnectTimeoutMs: options.websocketConnectTimeoutMs ?? DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS,
+      websocketConnectTimeoutMs: options.websocketConnectTimeoutMs
+        ?? DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS,
       streamIdleTimeoutMs: options.streamIdleTimeoutMs ?? 0,
       clientVersion: options.clientVersion,
     }
-    this.authStore = options.authStore ?? new FileCodexAuthStore({ codexHome: options.codexHome })
-    this.transport = options.transportImpl ?? createCodexTransport(this.config.transport)
+    this.authStore = options.authStore ?? new FileCodexAuthStore({
+      codexHome: options.codexHome
+    })
+    this.transport = options.transportImpl
+      ?? createCodexTransport(this.config.transport)
     this.quota = options.quota ?? null
   }
 
@@ -122,20 +142,27 @@ export class CodexProvider implements AgentProvider {
           websocketConnectTimeoutMs: this.config.websocketConnectTimeoutMs,
           streamIdleTimeoutMs: this.config.streamIdleTimeoutMs || undefined,
           onHttpResponse: (response) => {
-            this.observeQuotaResponse(observeQuota, { headers: response.headers, status: response.status })
+            this.observeQuotaResponse(
+              observeQuota,
+              { headers: response.headers, status: response.status }
+            )
           },
         })
         yield* mapCodexResponseEvents(stream)
         return
       } catch (error) {
         if (error instanceof CodexHttpError) {
-          this.observeQuotaResponse(observeQuota, { headers: error.headers, status: error.status })
+          this.observeQuotaResponse(
+            observeQuota,
+            { headers: error.headers, status: error.status }
+          )
         }
         if (request.cancel.aborted) {
           yield { type: 'abort' }
           return
         }
-        if (error instanceof CodexHttpError && error.status === 401 && !forceRefresh) {
+        if (error instanceof CodexHttpError && error.status === 401
+          && !forceRefresh) {
           forceRefresh = true
           continue
         }
@@ -145,7 +172,13 @@ export class CodexProvider implements AgentProvider {
     }
   }
 
-  private observeQuotaResponse(observe: ProviderQuotaObserver | undefined, input: { headers: Headers; status: number }): void {
+  private observeQuotaResponse(
+    observe: ProviderQuotaObserver | undefined,
+    input: {
+      headers: Headers;
+      status: number
+    }
+  ): void {
     try {
       observe?.(input)
     } catch {
@@ -154,11 +187,19 @@ export class CodexProvider implements AgentProvider {
   }
 }
 
-export function createCodexProvider(options: CodexProviderOptions = {}): Provider {
+export function createCodexProvider(
+  options: CodexProviderOptions = {}
+): Provider {
   const id = options.id ?? 'codex'
   const displayName = options.displayName ?? 'Codex'
-  const enableCredentials = options.credentials ?? options.authStore === undefined
-  const pool = !options.authStore && enableCredentials ? openCodexCredentialPool({ stateDir: options.stateDir }) : null
+  const enableCredentials = options.credentials
+    ?? options.authStore === undefined
+  const pool = !options.authStore
+    && enableCredentials ? openCodexCredentialPool(
+    {
+      stateDir: options.stateDir
+    }
+  ) : null
 
   const authStore: CodexAuthStore =
     options.authStore ??
@@ -188,7 +229,11 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
   runtimeOptions.quota = quota
 
   const credentialsApi = pool
-    ? createCodexCredentials(pool, authStore, { codexHome: options.codexHome, quota })
+    ? createCodexCredentials(
+      pool,
+      authStore,
+      { codexHome: options.codexHome, quota }
+    )
     : undefined
 
   return defineProvider({
@@ -204,7 +249,10 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
         : 'Uses official Codex auth storage',
     }),
     listModels: async (listOptions) => {
-      const catalog = await listCodexModels({ ...runtimeOptions, ...listOptions })
+      const catalog = await listCodexModels({
+        ...runtimeOptions,
+        ...listOptions
+      })
       return applyModelPolicy(catalog, id, options.models)
     },
     createRuntime: () => new CodexProvider(runtimeOptions),
@@ -212,26 +260,62 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
 }
 
 export function parseCodexProviderConfig(config: unknown): CodexProviderConfig {
-  if (config === undefined || config === null) return {}
-  if (!isRecord(config)) throw new Error('Codex provider config must be an object')
+  if (config === undefined || config === null)
+    return {}
+  if (!isRecord(config))
+    throw new Error('Codex provider config must be an object')
 
   const parsed: CodexProviderConfig = {}
-  if (config.codexHome !== undefined) parsed.codexHome = expectString(config.codexHome, 'codexHome')
-  if (config.baseUrl !== undefined) parsed.baseUrl = expectString(config.baseUrl, 'baseUrl')
+  if (config.codexHome !== undefined)
+    parsed.codexHome = expectString(
+      config.codexHome,
+      'codexHome'
+    )
+  if (config.baseUrl !== undefined)
+    parsed.baseUrl = expectString(
+      config.baseUrl,
+      'baseUrl'
+    )
   if (config.transport !== undefined) {
-    if (config.transport !== 'auto' && config.transport !== 'sse' && config.transport !== 'websocket') {
-      throw new Error('Codex provider config field "transport" must be auto, sse, or websocket')
+    if (config.transport !== 'auto' && config.transport !== 'sse'
+      && config.transport !== 'websocket') {
+      throw new Error(
+        'Codex provider config field "transport" must be auto, sse, or websocket'
+      )
     }
     parsed.transport = config.transport
   }
-  if (config.headers !== undefined) parsed.headers = expectStringRecord(config.headers, 'headers')
-  if (config.userAgent !== undefined) parsed.userAgent = expectString(config.userAgent, 'userAgent')
-  if (config.headerTimeoutMs !== undefined) parsed.headerTimeoutMs = expectNumber(config.headerTimeoutMs, 'headerTimeoutMs')
+  if (config.headers !== undefined)
+    parsed.headers = expectStringRecord(
+      config.headers,
+      'headers'
+    )
+  if (config.userAgent !== undefined)
+    parsed.userAgent = expectString(
+      config.userAgent,
+      'userAgent'
+    )
+  if (config.headerTimeoutMs !== undefined)
+    parsed.headerTimeoutMs = expectNumber(
+    config.headerTimeoutMs,
+    'headerTimeoutMs'
+  )
   if (config.websocketConnectTimeoutMs !== undefined) {
-    parsed.websocketConnectTimeoutMs = expectNumber(config.websocketConnectTimeoutMs, 'websocketConnectTimeoutMs')
+    parsed.websocketConnectTimeoutMs = expectNumber(
+      config.websocketConnectTimeoutMs,
+      'websocketConnectTimeoutMs'
+    )
   }
-  if (config.streamIdleTimeoutMs !== undefined) parsed.streamIdleTimeoutMs = expectNumber(config.streamIdleTimeoutMs, 'streamIdleTimeoutMs')
-  if (config.clientVersion !== undefined) parsed.clientVersion = expectString(config.clientVersion, 'clientVersion')
+  if (config.streamIdleTimeoutMs !== undefined)
+    parsed.streamIdleTimeoutMs = expectNumber(
+    config.streamIdleTimeoutMs,
+    'streamIdleTimeoutMs'
+  )
+  if (config.clientVersion !== undefined)
+    parsed.clientVersion = expectString(
+      config.clientVersion,
+      'clientVersion'
+    )
   return parsed
 }
 
@@ -241,11 +325,25 @@ export function buildCodexHeaders(
   config: Pick<CodexProviderConfig, 'headers' | 'userAgent'>,
 ): Headers {
   const headers = new Headers(config.headers)
-  if (auth.kind === 'agentIdentity') headers.set('Authorization', auth.authorization)
-  else headers.set('Authorization', `Bearer ${auth.kind === 'apiKey' ? auth.apiKey : auth.accessToken}`)
+  if (auth.kind === 'agentIdentity') headers.set(
+    'Authorization',
+    auth.authorization
+  )
+  else headers.set(
+    'Authorization',
+    `Bearer ${auth.kind === 'apiKey' ? auth.apiKey : auth.accessToken}`
+  )
 
-  if (auth.kind !== 'apiKey' && auth.accountId) headers.set('ChatGPT-Account-ID', auth.accountId)
-  if (auth.kind !== 'apiKey' && 'isFedrampAccount' in auth && auth.isFedrampAccount) headers.set('X-OpenAI-Fedramp', 'true')
+  if (auth.kind !== 'apiKey' && auth.accountId)
+    headers.set(
+      'ChatGPT-Account-ID',
+      auth.accountId
+    )
+  if (auth.kind !== 'apiKey' && 'isFedrampAccount' in auth
+    && auth.isFedrampAccount) headers.set(
+    'X-OpenAI-Fedramp',
+    'true'
+  )
   headers.set('User-Agent', config.userAgent ?? defaultUserAgent())
   headers.set('OpenAI-Beta', 'responses=experimental')
   headers.set('accept', 'text/event-stream')
@@ -259,23 +357,37 @@ export function buildCodexHeaders(
   return headers
 }
 
-export function responsesUrlForAuth(auth: CodexResolvedAuth, baseUrl?: string): string {
-  if (auth.kind === 'apiKey') return openAiResponsesUrl(baseUrl ?? DEFAULT_OPENAI_BASE_URL)
+export function responsesUrlForAuth(
+  auth: CodexResolvedAuth,
+  baseUrl?: string
+): string {
+  if (auth.kind === 'apiKey')
+    return openAiResponsesUrl(baseUrl
+      ?? DEFAULT_OPENAI_BASE_URL)
   return codexResponsesUrl(baseUrl ?? DEFAULT_CHATGPT_CODEX_BASE_URL)
 }
 
 function openAiResponsesUrl(baseUrl: string): string {
   const normalized = baseUrl.replace(/\/+$/, '')
-  return normalized.endsWith('/responses') ? normalized : `${normalized}/responses`
+  return normalized.endsWith('/responses')
+    ? normalized
+    : `${normalized}/responses`
 }
 
 function providerErrorFromUnknown(error: unknown): ProviderEvent {
-  if (error instanceof CodexAuthError) return { type: 'error', message: redactCodexSecretText(error.message), code: error.code }
+  if (error instanceof CodexAuthError)
+    return {
+      type: 'error',
+      message: redactCodexSecretText(error.message),
+      code: error.code
+    }
   if (error instanceof CodexHttpError) {
     const body = parseJsonObject(error.responseText)
     const bodyError = isRecord(body?.error) ? body.error : null
-    const providerCode = stringOrNull(bodyError?.code) ?? stringOrNull(bodyError?.type)
-    const providerRequestId = error.headers.get('x-request-id') ?? stringOrNull(body?.request_id)
+    const providerCode = stringOrNull(bodyError?.code)
+      ?? stringOrNull(bodyError?.type)
+    const providerRequestId = error.headers.get('x-request-id')
+      ?? stringOrNull(body?.request_id)
     const retryAfterMs = retryAfterMsFromHeader(error.headers.get('retry-after'))
     return {
       type: 'error',
@@ -300,22 +412,32 @@ function providerErrorFromUnknown(error: unknown): ProviderEvent {
 }
 
 function expectString(value: unknown, field: string): string {
-  if (typeof value !== 'string') throw new Error(`Codex provider config field "${field}" must be a string`)
+  if (typeof value !== 'string')
+    throw new Error(`Codex provider config field "${field}" must be a string`)
   return value
 }
 
 function expectNumber(value: unknown, field: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`Codex provider config field "${field}" must be a finite number`)
+    throw new Error(
+      `Codex provider config field "${field}" must be a finite number`
+    )
   }
   return value
 }
 
-function expectStringRecord(value: unknown, field: string): Record<string, string> {
-  if (!isRecord(value)) throw new Error(`Codex provider config field "${field}" must be an object`)
+function expectStringRecord(
+  value: unknown,
+  field: string
+): Record<string, string> {
+  if (!isRecord(value))
+    throw new Error(`Codex provider config field "${field}" must be an object`)
   const out: Record<string, string> = {}
   for (const [key, nested] of Object.entries(value)) {
-    if (typeof nested !== 'string') throw new Error(`Codex provider config field "${field}.${key}" must be a string`)
+    if (typeof nested !== 'string')
+      throw new Error(
+        `Codex provider config field "${field}.${key}" must be a string`
+      )
     out[key] = nested
   }
   return out

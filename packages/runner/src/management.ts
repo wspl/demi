@@ -1,28 +1,46 @@
-import { LOCAL, localFrame, localFrames } from '@demicodes/runner-protocol/local'
+import {
+  LOCAL,
+  localFrame,
+  localFrames
+} from '@demicodes/runner-protocol/local'
 import { activeRunnerSchema } from './state'
 import { connectUnix, createRunnerHost, env, stdoutWriter } from './machine'
 import { decodeUtf8, encodeUtf8, delay } from '@demicodes/utils'
 
-/** Installation-local administration; never selects a different backend on failure. */
-export async function manageRunner(dir: string, action: 'status' | 'drain'): Promise<number> {
+/**
+ * Installation-local administration; never selects a different backend on
+ * failure.
+ */
+export async function manageRunner(
+  dir: string,
+  action: 'status' | 'drain'
+): Promise<number> {
   const host = createRunnerHost()
   const activeFile = await host.fs.readFile(`${dir}/active.json`)
   const active = activeRunnerSchema.parse(JSON.parse(decodeUtf8(activeFile)))
   const socket = await connectUnix(active.endpoint)
   try {
     const request = { version: LOCAL.version, secret: active.secret, action }
-    await socket.write(localFrame(LOCAL.frames.manage, encodeUtf8(JSON.stringify(request))))
+    await socket.write(localFrame(
+      LOCAL.frames.manage,
+      encodeUtf8(JSON.stringify(request))
+    ))
     let ready = false
     for await (const reply of localFrames(socket.input)) {
-      if (reply.type === LOCAL.frames.error) throw new Error(decodeUtf8(reply.body))
-      if (reply.type !== LOCAL.frames.ready || reply.body.length) throw new Error('invalid management response')
+      if (reply.type === LOCAL.frames.error)
+        throw new Error(decodeUtf8(reply.body))
+      if (reply.type !== LOCAL.frames.ready || reply.body.length)
+        throw new Error('invalid management response')
       ready = true
       break
     }
-    if (!ready) throw new Error('runner disconnected before management response')
+    if (!ready)
+      throw new Error('runner disconnected before management response')
     if (action === 'status') {
       await stdoutWriter()(`running ${active.release}\n`)
-      return env.DEMI_RELEASE_ID && active.release !== env.DEMI_RELEASE_ID ? 3 : 0
+      return env.DEMI_RELEASE_ID && active.release !== env.DEMI_RELEASE_ID
+        ? 3
+        : 0
     }
   } finally {
     socket.close()

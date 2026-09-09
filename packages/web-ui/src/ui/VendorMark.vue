@@ -30,6 +30,10 @@ const initial = computed(() => props.label.trim().slice(0, 1).toUpperCase())
       :class="size === 'sm' ? 'size-3.5' : 'size-4'"
       :style="{ maskImage: `url(${src})`, maskSize: 'contain', maskRepeat: 'no-repeat', maskPosition: 'center' }"
     />
-    <span v-else class="font-medium" :class="size === 'sm' ? 'text-[11px]' : 'text-[12px]'">{{ initial }}</span>
+    <span
+      v-else
+      class="font-medium"
+      :class="size === 'sm' ? 'text-[11px]' : 'text-[12px]'"
+    >{{ initial }}</span>
   </span>
 </template>

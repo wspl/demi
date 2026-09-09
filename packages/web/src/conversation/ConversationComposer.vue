@@ -20,11 +20,15 @@ const store = useConversations()
 const resources = useResources()
 
 const selectedModel = computed(() =>
-  resources.models[props.conversation.providerId]?.find((m) => m.id === props.conversation.modelId),
+  resources.models[props.conversation.providerId]?.find(
+    (m) => m.id === props.conversation.modelId
+  ),
 )
 const canSend = computed(
   () =>
-    resources.providerInfos.some((p) => p.id === props.conversation.providerId && p.isAvailable) &&
+    resources.providerInfos.some(
+      (p) => p.id === props.conversation.providerId && p.isAvailable
+    ) &&
     !!selectedModel.value,
 )
 
@@ -54,7 +58,8 @@ function addFiles(files: File[]) {
 
 function removeFile(id: string) {
   const file = props.conversation.files.find((f) => f.id === id)
-  if (file?.src) URL.revokeObjectURL(file.src)
+  if (file?.src)
+    URL.revokeObjectURL(file.src)
   props.conversation.files = props.conversation.files.filter((f) => f.id !== id)
 }
 
@@ -68,7 +73,8 @@ function selectModel(providerId: string, modelId: string) {
   props.conversation.serviceTierId = null
 }
 function send() {
-  if (canSend.value) store.send(props.conversation)
+  if (canSend.value)
+    store.send(props.conversation)
 }
 
 /**
@@ -76,35 +82,60 @@ function send() {
  * workspace directory. The chosen path lands in the draft as a reference; the prototype
  * keeps no bytes.
  */
-const project = computed(() => resources.projects.find((item) => item.id === props.conversation.projectId))
+const project = computed(
+  () =>
+    resources.projects.find((item) => item.id === props.conversation.projectId)
+)
 const remoteHosts = computed(() => {
   const main = project.value
-    ? [{ id: project.value.deviceId, label: project.value.host, online: project.value.hostKind === 'cloud' || !!resources.devices.find((d) => d.id === project.value!.deviceId)?.online }]
+    ? [
+      {
+        id: project.value.deviceId,
+        label: project.value.host,
+        online: project.value.hostKind === 'cloud' ||
+          !!resources.devices.find((d) => d.id === project.value!.deviceId)?.online
+      }
+    ]
     : []
-  const attached = props.conversation.attachedHosts.map((host) => ({ id: host.deviceId, label: host.name, online: !!resources.devices.find((d) => d.id === host.deviceId)?.online }))
+  const attached = props.conversation.attachedHosts.map(
+    (host) => ({
+      id: host.deviceId,
+      label: host.name,
+      online: !!resources.devices.find((d) => d.id === host.deviceId)?.online
+    })
+  )
   return [...main, ...attached]
 })
 const remoteHostId = ref<string | null>(null)
-const remoteDevice = computed(() => resources.devices.find((d) => d.id === remoteHostId.value) ?? null)
+const remoteDevice = computed(
+  () => resources.devices.find((d) => d.id === remoteHostId.value) ?? null
+)
 const remoteSource = computed(() => fileSourceFor(remoteDevice.value))
 const remotePlaces = computed(() => placesFor(remoteDevice.value, resources.projects))
 const remoteStart = computed(() => {
-  if (remoteHostId.value === project.value?.deviceId) return project.value?.path
-  return props.conversation.attachedHosts.find((host) => host.deviceId === remoteHostId.value)?.cwd
+  if (remoteHostId.value === project.value?.deviceId)
+    return project.value?.path
+  return props.conversation.attachedHosts.find(
+    (host) => host.deviceId === remoteHostId.value
+  )?.cwd
 })
 function openRemote() {
   remoteHostId.value = remoteHosts.value[0]?.id ?? null
 }
 function attachRemote(path: string) {
   const draft = props.conversation.draft
-  props.conversation.draft = draft && !/\s$/.test(draft) ? `${draft} ${path}` : `${draft}${path}`
+  props.conversation.draft = draft && !/\s$/.test(draft)
+    ? `${draft} ${path}`
+    : `${draft}${path}`
   remoteHostId.value = null
 }
 
 const attachments = computed(() =>
   props.conversation.files.map((file) => ({
     ...file,
-    caption: file.destination === 'message' ? 'Message attachment' : 'Workspace file',
+    caption: file.destination === 'message'
+      ? 'Message attachment'
+      : 'Workspace file',
   })),
 )
 </script>

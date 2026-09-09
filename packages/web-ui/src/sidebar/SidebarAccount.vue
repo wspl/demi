@@ -23,7 +23,12 @@ const initials = computed(() => props.account.name.trim().slice(0, 1).toUpperCas
 </script>
 
 <template>
-  <Dropdown :overlay-store="appOverlayStore" placement="top-start" :offset="8" class="w-full">
+  <Dropdown
+    :overlay-store="appOverlayStore"
+    placement="top-start"
+    :offset="8"
+    class="w-full"
+  >
     <template #trigger="{ isOpen }">
       <div
         role="button"

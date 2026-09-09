@@ -21,8 +21,16 @@ export interface Conversation extends SidebarConversation {
   modelId: string
   thinking: ThinkingConfig
   serviceTierId: string | null
-  attachedHosts: { deviceId: string; name: string; cwd: string }[]
-  stream: { blockId: string; remaining: string; fail: boolean } | null
+  attachedHosts: {
+    deviceId: string;
+    name: string;
+    cwd: string
+  }[]
+  stream: {
+    blockId: string;
+    remaining: string;
+    fail: boolean
+  } | null
   /** Output left unstreamed by Stop; Resume continues it in a fresh block. */
   paused: string | null
 }

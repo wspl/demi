@@ -12,7 +12,8 @@ export function useOverlay(
 
   watch(isOpen, (open) => {
     remove()
-    if (!open) return
+    if (!open)
+      return
     remove = store.push(id, close, layer)
   }, { immediate: true })
 

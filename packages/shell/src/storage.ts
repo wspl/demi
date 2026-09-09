@@ -29,7 +29,9 @@ export class AgentSessionCommandStorage implements CommandStorage {
   async list(prefix: string): Promise<string[]> {
     const scopedPrefix = this.key(prefix)
     const keys = await this.store.list(scopedPrefix)
-    return keys.map((key) => (key.startsWith(this.agentSessionPrefix) ? key.slice(this.agentSessionPrefix.length) : key))
+    return keys.map((key) => (key.startsWith(this.agentSessionPrefix)
+      ? key.slice(this.agentSessionPrefix.length)
+      : key))
   }
 
   private key(key: string): string {
@@ -46,16 +48,22 @@ function validateAgentSessionId(agentSessionId: string): void {
     agentSessionId === '.' ||
     agentSessionId === '..'
   ) {
-    throw new Error(`Invalid command storage agent session id: ${agentSessionId}`)
+    throw new Error(
+      `Invalid command storage agent session id: ${agentSessionId}`
+    )
   }
 }
 
 function validateStorageKey(key: string): void {
-  if (key.includes('\0')) throw new Error(`Invalid CommandStorage key: ${key}`)
+  if (key.includes('\0'))
+    throw new Error(`Invalid CommandStorage key: ${key}`)
   if (key.startsWith('/') || /^[A-Za-z]:[\\/]/.test(key)) {
     throw new Error(`CommandStorage keys must be relative: ${key}`)
   }
   for (const segment of key.split(/[\\/]+/)) {
-    if (segment === '..') throw new Error(`CommandStorage keys must not contain path traversal: ${key}`)
+    if (segment === '..')
+      throw new Error(
+        `CommandStorage keys must not contain path traversal: ${key}`
+      )
   }
 }

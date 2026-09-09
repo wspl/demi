@@ -66,10 +66,14 @@ const lightTheme: TerminalTheme = {
 
 let terminalTheme: ComputedRef<TerminalTheme> | undefined
 
-export function useTerminalTheme(): { terminalTheme: ComputedRef<TerminalTheme> } {
+export function useTerminalTheme(): {
+  terminalTheme: ComputedRef<TerminalTheme>
+} {
   if (!terminalTheme) {
     const { theme } = useTheme()
-    terminalTheme = computed<TerminalTheme>(() => (theme.value === 'dark' ? darkTheme : lightTheme))
+    terminalTheme = computed<TerminalTheme>(() => (theme.value === 'dark'
+      ? darkTheme
+      : lightTheme))
   }
   return { terminalTheme }
 }

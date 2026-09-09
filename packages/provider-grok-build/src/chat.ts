@@ -1,8 +1,21 @@
-import { isRecord, numberOrZero, parseJsonObject, parseJsonOrString, stringOrNull } from '@demicodes/utils'
+import {
+  isRecord,
+  numberOrZero,
+  parseJsonObject,
+  parseJsonOrString,
+  stringOrNull
+} from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import { zeroUsage } from '@demicodes/core'
 import type { UserContentBlock } from '@demicodes/core'
-import { normalizeErrorCode, toolResultContentToText, type InferenceItem, type InferenceRequest, type ProviderEvent, type ToolDefinition } from '@demicodes/provider'
+import {
+  normalizeErrorCode,
+  toolResultContentToText,
+  type InferenceItem,
+  type InferenceRequest,
+  type ProviderEvent,
+  type ToolDefinition
+} from '@demicodes/provider'
 
 export interface GrokChatCompletionsRequestBody {
   model: string
@@ -16,14 +29,37 @@ export interface GrokChatCompletionsRequestBody {
 }
 
 export type GrokChatMessage =
-  | { role: 'system'; content: string }
-  | { role: 'user'; content: string | GrokUserContentPart[] }
-  | { role: 'assistant'; content: string | null; tool_calls?: GrokChatToolCall[] }
-  | { role: 'tool'; tool_call_id: string; content: string }
+  | {
+      role: 'system';
+      content: string
+    }
+  | {
+      role: 'user';
+      content: string | GrokUserContentPart[]
+    }
+  | {
+      role: 'assistant';
+      content: string | null;
+      tool_calls?: GrokChatToolCall[]
+    }
+  | {
+      role: 'tool';
+      tool_call_id: string;
+      content: string
+    }
 
 export type GrokUserContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } }
+  | {
+      type: 'text';
+      text: string
+    }
+  | {
+      type: 'image_url';
+      image_url: {
+        url: string;
+        detail?: 'auto' | 'low' | 'high'
+      }
+    }
 
 export interface GrokChatTool {
   type: 'function'
@@ -45,11 +81,15 @@ export interface GrokChatToolCall {
 
 export interface ServerSentEvent {
   event: string | null
-  /** Event payload: multi-line `data:` fields joined with '\n' per the SSE spec. */
+  /**
+   * Event payload: multi-line `data:` fields joined with '\n' per the SSE spec.
+   */
   data: string
 }
 
-export function buildGrokChatCompletionsBody(request: InferenceRequest): GrokChatCompletionsRequestBody {
+export function buildGrokChatCompletionsBody(
+  request: InferenceRequest
+): GrokChatCompletionsRequestBody {
   const body: GrokChatCompletionsRequestBody = {
     model: request.modelId,
     messages: inferenceItemsToMessages(request.systemPrompt, request.items),
@@ -61,7 +101,8 @@ export function buildGrokChatCompletionsBody(request: InferenceRequest): GrokCha
     body.tool_choice = 'auto'
   }
   const reasoningEffort = thinkingToReasoningEffort(request)
-  if (reasoningEffort) body.reasoning_effort = reasoningEffort
+  if (reasoningEffort)
+    body.reasoning_effort = reasoningEffort
   return body
 }
 
@@ -85,21 +126,27 @@ export async function* mapGrokChatCompletionStream(
       return
     }
     const chunk = parseJsonObject(data)
-    if (!chunk) continue
+    if (!chunk)
+      continue
     const error = isRecord(chunk.error) ? chunk.error : null
     if (error) {
       const message = stringOrNull(error.message) ?? 'Grok Build stream error'
       yield {
         type: 'error',
         message,
-        code: normalizeErrorCode(stringOrNull(error.code) ?? stringOrNull(error.type), message),
+        code: normalizeErrorCode(
+          stringOrNull(error.code) ?? stringOrNull(error.type),
+          message
+        ),
       }
       return
     }
-    if (isRecord(chunk.usage)) usage = grokUsage(chunk.usage)
+    if (isRecord(chunk.usage))
+      usage = grokUsage(chunk.usage)
     const choices = Array.isArray(chunk.choices) ? chunk.choices : []
     for (const choice of choices) {
-      if (!isRecord(choice)) continue
+      if (!isRecord(choice))
+        continue
       const delta = isRecord(choice.delta) ? choice.delta : null
       if (delta) {
         const reasoning = stringOrNull(delta.reasoning_content)
@@ -111,10 +158,16 @@ export async function* mapGrokChatCompletionStream(
           yield { type: 'thinking_delta', text: reasoning }
         }
         const content = stringOrNull(delta.content)
-        if (content) yield { type: 'text_delta', text: content }
-        if (Array.isArray(delta.tool_calls)) collectToolCalls(delta.tool_calls, toolCalls)
+        if (content)
+          yield { type: 'text_delta', text: content }
+        if (Array.isArray(delta.tool_calls))
+          collectToolCalls(
+            delta.tool_calls,
+            toolCalls
+          )
       }
-      if (choice.finish_reason === 'tool_calls') yield* flushToolCalls(toolCalls)
+      if (choice.finish_reason === 'tool_calls')
+        yield* flushToolCalls(toolCalls)
     }
   }
 
@@ -126,7 +179,8 @@ export async function* readServerSentEvents(
   body: ReadableStream<Uint8Array> | null,
   signal?: AbortSignal,
 ): AsyncIterable<ServerSentEvent> {
-  if (!body) return
+  if (!body)
+    return
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -134,7 +188,8 @@ export async function* readServerSentEvents(
   let dataLines: string[] = []
 
   const flush = function* (): Iterable<ServerSentEvent> {
-    if (dataLines.length === 0) return
+    if (dataLines.length === 0)
+      return
     yield { event: eventName, data: dataLines.join('\n') }
     eventName = null
     dataLines = []
@@ -142,9 +197,11 @@ export async function* readServerSentEvents(
 
   try {
     while (true) {
-      if (signal?.aborted) return
+      if (signal?.aborted)
+        return
       const { value, done } = await reader.read()
-      if (done) break
+      if (done)
+        break
       buffer += decoder.decode(value, { stream: true })
       let newline = buffer.indexOf('\n')
       while (newline !== -1) {
@@ -164,8 +221,10 @@ export async function* readServerSentEvents(
     buffer += decoder.decode()
     if (buffer) {
       const line = buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer
-      if (line.startsWith('data:')) dataLines.push(line.slice('data:'.length).trimStart())
-      else if (line.startsWith('event:')) eventName = line.slice('event:'.length).trim()
+      if (line.startsWith('data:')) dataLines.push(line.slice('data:'.length)
+        .trimStart())
+      else if (line.startsWith('event:'))
+        eventName = line.slice('event:'.length).trim()
     }
     yield* flush()
   } finally {
@@ -179,28 +238,44 @@ interface MutableToolCall {
   arguments: string
 }
 
-function inferenceItemsToMessages(systemPrompt: string, items: InferenceItem[]): GrokChatMessage[] {
+function inferenceItemsToMessages(
+  systemPrompt: string,
+  items: InferenceItem[]
+): GrokChatMessage[] {
   const messages: GrokChatMessage[] = []
-  let assistant: { content: string; toolCalls: GrokChatToolCall[] } | null = null
+  let assistant: {
+    content: string;
+    toolCalls: GrokChatToolCall[]
+  } | null = null
 
   const flushAssistant = () => {
-    if (!assistant) return
+    if (!assistant)
+      return
     messages.push({
       role: 'assistant',
       content: assistant.content || null,
-      ...(assistant.toolCalls.length > 0 ? { tool_calls: assistant.toolCalls } : {}),
+      ...(assistant.toolCalls.length > 0
+        ? { tool_calls: assistant.toolCalls }
+        : {}),
     })
     assistant = null
   }
 
-  if (systemPrompt.trim()) messages.push({ role: 'system', content: systemPrompt })
+  if (systemPrompt.trim())
+    messages.push({
+      role: 'system',
+      content: systemPrompt
+    })
 
   for (const item of items) {
     switch (item.type) {
       case 'user_message':
       case 'user_steer':
         flushAssistant()
-        messages.push({ role: 'user', content: userContentToParts(item.content) })
+        messages.push({
+          role: 'user',
+          content: userContentToParts(item.content)
+        })
         break
       case 'assistant_text':
         assistant ??= { content: '', toolCalls: [] }
@@ -211,12 +286,19 @@ function inferenceItemsToMessages(systemPrompt: string, items: InferenceItem[]):
         assistant.toolCalls.push({
           id: item.toolUseId,
           type: 'function',
-          function: { name: item.toolName, arguments: stringifyToolArguments(item.input) },
+          function: {
+            name: item.toolName,
+            arguments: stringifyToolArguments(item.input)
+          },
         })
         break
       case 'tool_result':
         flushAssistant()
-        messages.push({ role: 'tool', tool_call_id: item.toolUseId, content: toolResultContentToText(item.output) })
+        messages.push({
+          role: 'tool',
+          tool_call_id: item.toolUseId,
+          content: toolResultContentToText(item.output)
+        })
         break
       case 'assistant_thinking':
       case 'assistant_redacted_thinking':
@@ -227,19 +309,33 @@ function inferenceItemsToMessages(systemPrompt: string, items: InferenceItem[]):
   return messages
 }
 
-function userContentToParts(content: UserContentBlock[]): string | GrokUserContentPart[] {
+function userContentToParts(
+  content: UserContentBlock[]
+): string | GrokUserContentPart[] {
   const parts: GrokUserContentPart[] = []
   for (const block of content) {
     if (block.type === 'text') parts.push({ type: 'text', text: block.text })
-    else if (block.type === 'reference') parts.push({ type: 'text', text: block.reference })
+    else if (block.type === 'reference') parts.push({
+      type: 'text',
+      text: block.reference
+    })
     else if (block.type === 'document') {
-      parts.push({ type: 'text', text: `[document:${block.source.fileName} ${block.source.mediaType}]` })
+      parts.push({
+        type: 'text',
+        text: `[document:${block.source.fileName} ${block.source.mediaType}]`
+      })
     } else if (block.type === 'video') {
       // The chat-completions surface has no video content type (catalog marks
       // video unsupported); degrade defensively instead of mislabeling it as an image.
-      parts.push({ type: 'text', text: `[video:${block.source.type === 'url' ? block.source.url : block.source.mediaType}]` })
+      parts.push({
+        type: 'text',
+        text: `[video:${block.source.type === 'url' ? block.source.url : block.source.mediaType}]`
+      })
     } else if (block.source.type === 'url') {
-      parts.push({ type: 'image_url', image_url: { url: block.source.url, detail: 'auto' } })
+      parts.push({
+        type: 'image_url',
+        image_url: { url: block.source.url, detail: 'auto' }
+      })
     } else {
       parts.push({
         type: 'image_url',
@@ -250,7 +346,8 @@ function userContentToParts(content: UserContentBlock[]): string | GrokUserConte
       })
     }
   }
-  if (parts.every((part) => part.type === 'text')) return parts.map((part) => part.text).join('\n')
+  if (parts.every((part) => part.type === 'text'))
+    return parts.map((part) => part.text).join('\n')
   return parts
 }
 
@@ -266,25 +363,35 @@ function toolToGrokTool(tool: ToolDefinition): GrokChatTool {
   }
 }
 
-function collectToolCalls(values: unknown[], toolCalls: Map<number, MutableToolCall>): void {
+function collectToolCalls(
+  values: unknown[],
+  toolCalls: Map<number, MutableToolCall>
+): void {
   for (const value of values) {
-    if (!isRecord(value)) continue
+    if (!isRecord(value))
+      continue
     const index = typeof value.index === 'number' ? value.index : toolCalls.size
     const existing = toolCalls.get(index) ?? { id: '', name: '', arguments: '' }
     const fn = isRecord(value.function) ? value.function : null
     const id = stringOrNull(value.id)
-    if (id) existing.id = id
+    if (id)
+      existing.id = id
     const name = stringOrNull(fn?.name)
-    if (name) existing.name = name
+    if (name)
+      existing.name = name
     const delta = stringOrNull(fn?.arguments)
-    if (delta) existing.arguments += delta
+    if (delta)
+      existing.arguments += delta
     toolCalls.set(index, existing)
   }
 }
 
-function* flushToolCalls(toolCalls: Map<number, MutableToolCall>): Iterable<ProviderEvent> {
+function* flushToolCalls(
+  toolCalls: Map<number, MutableToolCall>
+): Iterable<ProviderEvent> {
   for (const [index, call] of [...toolCalls.entries()].sort(([a], [b]) => a - b)) {
-    if (!call.name) continue
+    if (!call.name)
+      continue
     yield {
       type: 'tool_call_requested',
       toolUseId: call.id || `tool_call_${index}`,
@@ -295,9 +402,12 @@ function* flushToolCalls(toolCalls: Map<number, MutableToolCall>): Iterable<Prov
   toolCalls.clear()
 }
 
-function thinkingToReasoningEffort(request: InferenceRequest): string | undefined {
+function thinkingToReasoningEffort(
+  request: InferenceRequest
+): string | undefined {
   const thinking = request.thinking
-  if (!thinking || thinking.type === 'disabled' || thinking.type === 'budget') return undefined
+  if (!thinking || thinking.type === 'disabled' || thinking.type === 'budget')
+    return undefined
   return thinking.effort
 }
 
@@ -308,8 +418,12 @@ function stringifyToolArguments(input: unknown): string {
 function grokUsage(usage: Record<string, unknown>) {
   const inputTokens = numberOrZero(usage.prompt_tokens)
   const outputTokens = numberOrZero(usage.completion_tokens)
-  const promptDetails = isRecord(usage.prompt_tokens_details) ? usage.prompt_tokens_details : null
-  const cachedTokens = promptDetails ? numberOrZero(promptDetails.cached_tokens) : 0
+  const promptDetails = isRecord(usage.prompt_tokens_details)
+    ? usage.prompt_tokens_details
+    : null
+  const cachedTokens = promptDetails
+    ? numberOrZero(promptDetails.cached_tokens)
+    : 0
   return {
     inputTokens: Math.max(0, inputTokens - cachedTokens),
     outputTokens,

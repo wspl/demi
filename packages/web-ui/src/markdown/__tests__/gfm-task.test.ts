@@ -16,7 +16,9 @@ function checkboxCount(markdown: string): number {
 test('toggles the nth GFM task and leaves the others', () => {
   expect(toggleGfmTask(src, 0)).toContain('- [ ] Hairline is a ring, not a drop')
   expect(toggleGfmTask(src, 1)).toContain('- [x] Radio is still missing')
-  expect(toggleGfmTask(src, 2)).toContain('- [x] Toast / Banner has no shared exit')
+  expect(toggleGfmTask(src, 2)).toContain(
+    '- [x] Toast / Banner has no shared exit'
+  )
   expect(toggleGfmTask(src, 1)).toContain('- [x] Hairline is a ring, not a drop')
 })
 
@@ -27,8 +29,12 @@ test('ignores an out-of-range index', () => {
 test('a task mark inside a code fence is not a rendered box', () => {
   const fenced = 'Example:\n\n```md\n- [ ] sample\n```\n\n- [ ] real one\n- [ ] real two\n'
   expect(checkboxCount(fenced)).toBe(2)
-  expect(toggleGfmTask(fenced, 0)).toBe('Example:\n\n```md\n- [ ] sample\n```\n\n- [x] real one\n- [ ] real two\n')
-  expect(toggleGfmTask(fenced, 1)).toBe('Example:\n\n```md\n- [ ] sample\n```\n\n- [ ] real one\n- [x] real two\n')
+  expect(toggleGfmTask(fenced, 0)).toBe(
+    'Example:\n\n```md\n- [ ] sample\n```\n\n- [x] real one\n- [ ] real two\n'
+  )
+  expect(toggleGfmTask(fenced, 1)).toBe(
+    'Example:\n\n```md\n- [ ] sample\n```\n\n- [ ] real one\n- [x] real two\n'
+  )
 })
 
 test('a blockquoted task is a rendered box', () => {

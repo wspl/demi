@@ -1,10 +1,20 @@
 import { readonly, shallowRef } from 'vue'
-import { createHighlighter, type BundledLanguage, type BundledTheme, type Highlighter } from 'shiki'
+import {
+  createHighlighter,
+  type BundledLanguage,
+  type BundledTheme,
+  type Highlighter
+} from 'shiki'
 import { codeThemes, findCodeTheme } from '../theme/codeThemes'
 import type { MarkdownThemeSnapshot } from './types'
 
 const ALL_SHIKI_THEMES: BundledTheme[] = [
-  ...new Set(codeThemes.flatMap((theme) => [theme.dark.shikiTheme, theme.light.shikiTheme])),
+  ...new Set(
+    codeThemes.flatMap((theme) => [
+      theme.dark.shikiTheme,
+      theme.light.shikiTheme
+    ])
+  ),
 ]
 
 const LANGS = [
@@ -33,7 +43,10 @@ const LANG_ALIASES: Record<string, string> = {
 const highlighter = shallowRef<Highlighter | null>(null)
 const renderVersion = shallowRef(0)
 
-const highlighterReady = createHighlighter({ themes: ALL_SHIKI_THEMES, langs: [...LANGS] }).then((instance) => {
+const highlighterReady = createHighlighter({
+  themes: ALL_SHIKI_THEMES,
+  langs: [...LANGS]
+}).then((instance) => {
   highlighter.value = instance
   renderVersion.value += 1
 })
@@ -42,7 +55,10 @@ const highlighterReady = createHighlighter({ themes: ALL_SHIKI_THEMES, langs: [.
 if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
   new MutationObserver(() => {
     renderVersion.value += 1
-  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  }).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme']
+  })
 }
 
 function escapeHtml(str: string): string {
@@ -50,27 +66,44 @@ function escapeHtml(str: string): string {
 }
 
 function detectThemeMode(): 'light' | 'dark' {
-  if (typeof document === 'undefined') return 'dark'
-  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
+  if (typeof document === 'undefined')
+    return 'dark'
+  return document.documentElement.getAttribute('data-theme') === 'light'
+    ? 'light'
+    : 'dark'
 }
 
 function getShikiTheme(theme?: MarkdownThemeSnapshot): BundledTheme {
-  const snapshot = theme ?? { mode: detectThemeMode(), codeThemeId: codeThemes[0]?.id ?? 'one' }
+  const snapshot = theme ?? {
+    mode: detectThemeMode(),
+    codeThemeId: codeThemes[0]?.id ?? 'one'
+  }
   const definition = findCodeTheme(snapshot.codeThemeId)
-  return snapshot.mode === 'light' ? definition.light.shikiTheme : definition.dark.shikiTheme
+  return snapshot.mode === 'light'
+    ? definition.light.shikiTheme
+    : definition.dark.shikiTheme
 }
 
 function resolveLang(lang: string): string {
-  if (!lang || lang === 'text' || lang === 'plaintext') return 'text'
+  if (!lang || lang === 'text' || lang === 'plaintext')
+    return 'text'
   const instance = highlighter.value
-  if (!instance) return 'text'
+  if (!instance)
+    return 'text'
   const resolved = LANG_ALIASES[lang] ?? lang
-  return instance.getLoadedLanguages().includes(resolved as BundledLanguage) ? resolved : 'text'
+  return instance.getLoadedLanguages().includes(resolved as BundledLanguage)
+    ? resolved
+    : 'text'
 }
 
-export function codeToHtml(code: string, lang: string, theme?: MarkdownThemeSnapshot): string {
+export function codeToHtml(
+  code: string,
+  lang: string,
+  theme?: MarkdownThemeSnapshot
+): string {
   const instance = highlighter.value
-  if (!instance) return `<pre><code>${escapeHtml(code)}</code></pre>`
+  if (!instance)
+    return `<pre><code>${escapeHtml(code)}</code></pre>`
 
   return instance.codeToHtml(code, {
     lang: resolveLang(lang),
@@ -89,14 +122,28 @@ export interface TokenSpan {
   color?: string
 }
 
-export function codeToTokenLines(code: string, lang: string, theme?: MarkdownThemeSnapshot): TokenSpan[][] {
+export function codeToTokenLines(
+  code: string,
+  lang: string,
+  theme?: MarkdownThemeSnapshot
+): TokenSpan[][] {
   const instance = highlighter.value
   if (!instance) {
     return splitLines(code).map((line) => [{ content: line }])
   }
   const resolved = resolveLang(lang) as BundledLanguage
-  const { tokens } = instance.codeToTokens(code, { lang: resolved, theme: getShikiTheme(theme) })
-  return tokens.map((line) => line.map((t): TokenSpan => t.color ? { content: t.content, color: t.color } : { content: t.content }))
+  const { tokens } = instance.codeToTokens(code, {
+    lang: resolved,
+    theme: getShikiTheme(theme)
+  })
+  return tokens.map(
+    (line) => line.map(
+      (t): TokenSpan =>
+        t.color
+          ? { content: t.content, color: t.color }
+          : { content: t.content }
+    )
+  )
 }
 
 const EXT_TO_LANG: Record<string, string> = {
@@ -125,9 +172,11 @@ const FILENAME_TO_LANG: Record<string, string> = {
 export function getLanguageFromPath(filepath: string): string {
   const filename = filepath.split('/').pop() ?? ''
   const byName = FILENAME_TO_LANG[filename]
-  if (byName) return byName
+  if (byName)
+    return byName
   const dotIndex = filename.lastIndexOf('.')
-  if (dotIndex <= 0) return 'text'
+  if (dotIndex <= 0)
+    return 'text'
   return EXT_TO_LANG[filename.slice(dotIndex).toLowerCase()] ?? 'text'
 }
 
@@ -141,6 +190,7 @@ export async function waitForMarkdownHighlighter() {
 
 function splitLines(code: string): string[] {
   const lines = code.split('\n')
-  if (lines.at(-1) === '') lines.pop()
+  if (lines.at(-1) === '')
+    lines.pop()
   return lines
 }

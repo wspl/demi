@@ -22,9 +22,13 @@ interface StoredNode<State> {
  * durable, for tests and fixtures. One instance may hold any number of
  * roots. `saves` records every journal write for assertions.
  */
-export class MemoryAgentStore<State = unknown> implements AgentTreeStore<State> {
+export class MemoryAgentStore<State = unknown>
+  implements AgentTreeStore<State> {
   readonly nodes = new Map<string, StoredNode<State>>()
-  readonly saves: Array<{ id: string; update: AgentSessionPersistUpdate<State> }> = []
+  readonly saves: Array<{
+    id: string;
+    update: AgentSessionPersistUpdate<State>
+  }> = []
 
   async node(id: string): Promise<AgentNodeRecord | null> {
     const stored = this.nodes.get(id)
@@ -38,9 +42,18 @@ export class MemoryAgentStore<State = unknown> implements AgentTreeStore<State> 
       .map((stored) => structuredClone(stored.record))
   }
 
-  async createNode(record: AgentNodeRecord, checkpoint: AgentSessionPersistUpdate<State>): Promise<void> {
-    if (this.nodes.has(record.id)) throw new Error(`MemoryAgentStore: node "${record.id}" already exists`)
-    const stored: StoredNode<State> = { record: structuredClone(record), state: snapshotOf(checkpoint), blocks: new Map(), blockCount: 0 }
+  async createNode(
+    record: AgentNodeRecord,
+    checkpoint: AgentSessionPersistUpdate<State>
+  ): Promise<void> {
+    if (this.nodes.has(record.id))
+      throw new Error(`MemoryAgentStore: node "${record.id}" already exists`)
+    const stored: StoredNode<State> = {
+      record: structuredClone(record),
+      state: snapshotOf(checkpoint),
+      blocks: new Map(),
+      blockCount: 0
+    }
     this.nodes.set(record.id, stored)
     this.applySave(record.id, stored, checkpoint)
   }
@@ -56,12 +69,34 @@ export class MemoryAgentStore<State = unknown> implements AgentTreeStore<State> 
 
   async closeNode(id: string, close: AgentNodeClose): Promise<void> {
     const stored = this.require(id)
-    stored.record = { ...stored.record, closedPhase: close.phase, closedAt: close.closedAt, result: close.result, failure: close.failure, delivered: false }
+    stored.record = {
+      ...stored.record,
+      closedPhase: close.phase,
+      closedAt: close.closedAt,
+      result: close.result,
+      failure: close.failure,
+      delivered: false
+    }
   }
 
-  async reopenNode(id: string, fields: { metadata: AgentMetadata | null; spawnedAt: number }, message: QueuedMessage): Promise<void> {
+  async reopenNode(
+    id: string,
+    fields: {
+      metadata: AgentMetadata | null;
+      spawnedAt: number
+    },
+    message: QueuedMessage
+  ): Promise<void> {
     const stored = this.require(id)
-    stored.record = { ...stored.record, ...structuredClone(fields), closedPhase: null, closedAt: null, result: null, failure: null, delivered: false }
+    stored.record = {
+      ...stored.record,
+      ...structuredClone(fields),
+      closedPhase: null,
+      closedAt: null,
+      result: null,
+      failure: null,
+      delivered: false
+    }
     stored.state = { ...stored.state, queue: [structuredClone(message)] }
   }
 
@@ -74,27 +109,40 @@ export class MemoryAgentStore<State = unknown> implements AgentTreeStore<State> 
     this.nodes.delete(id)
   }
 
-  private applySave(id: string, stored: StoredNode<State>, update: AgentSessionPersistUpdate<State>): void {
+  private applySave(
+    id: string,
+    stored: StoredNode<State>,
+    update: AgentSessionPersistUpdate<State>
+  ): void {
     this.saves.push({ id, update: structuredClone(update) })
-    for (const { index, block } of update.changedBlocks) stored.blocks.set(index, structuredClone(block))
+    for (const { index, block } of update.changedBlocks) stored.blocks.set(
+      index,
+      structuredClone(block)
+    )
     for (const index of [...stored.blocks.keys()]) {
-      if (index >= update.blockCount) stored.blocks.delete(index)
+      if (index >= update.blockCount)
+        stored.blocks.delete(index)
     }
     stored.blockCount = update.blockCount
     stored.state = snapshotOf(update)
     for (const childId of completedChildrenCarriedBy(update)) {
       const child = this.nodes.get(childId)
-      if (child && child.record.parentId === id) child.record.delivered = true
+      if (child && child.record.parentId === id)
+        child.record.delivered = true
     }
   }
 
   private load(id: string): AgentSessionCheckpoint<State> | null {
     const stored = this.nodes.get(id)
-    if (!stored) return null
+    if (!stored)
+      return null
     const blocks: Block[] = []
     for (let index = 0; index < stored.blockCount; index += 1) {
       const block = stored.blocks.get(index)
-      if (!block) throw new Error(`MemoryAgentStore: node "${id}" is missing block row ${index}`)
+      if (!block)
+        throw new Error(
+          `MemoryAgentStore: node "${id}" is missing block row ${index}`
+        )
       blocks.push(structuredClone(block))
     }
     return { ...structuredClone(stored.state), transcript: { blocks } }
@@ -102,12 +150,15 @@ export class MemoryAgentStore<State = unknown> implements AgentTreeStore<State> 
 
   private require(id: string): StoredNode<State> {
     const stored = this.nodes.get(id)
-    if (!stored) throw new Error(`MemoryAgentStore: no node "${id}"`)
+    if (!stored)
+      throw new Error(`MemoryAgentStore: no node "${id}"`)
     return stored
   }
 }
 
-function snapshotOf<State>(update: AgentSessionPersistUpdate<State>): Omit<AgentSessionCheckpoint<State>, 'transcript'> {
+function snapshotOf<State>(
+  update: AgentSessionPersistUpdate<State>
+): Omit<AgentSessionCheckpoint<State>, 'transcript'> {
   return {
     state: structuredClone(update.state),
     phase: update.phase,
@@ -118,7 +169,10 @@ function snapshotOf<State>(update: AgentSessionPersistUpdate<State>): Omit<Agent
   }
 }
 
-/** A store factory for one server: every root the server opens shares one in-memory store. */
+/**
+ * A store factory for one server: every root the server opens shares one
+ * in-memory store.
+ */
 export function memoryAgentStores(): (rootSessionId: string) => MemoryAgentStore {
   const store = new MemoryAgentStore()
   return () => store

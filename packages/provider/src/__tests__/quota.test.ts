@@ -27,14 +27,19 @@ test('createProviderQuota probes and caches latest', async () => {
     },
     observe: ({ headers }) => {
       const used = headers?.get('x-used-percent')
-      if (used == null) return null
+      if (used == null)
+        return null
       return {
         windows: [{ id: 'rpm', usedPercent: Number(used), resetsAt: null }],
       }
     },
   })
 
-  expect(quota.capability()).toMatchObject({ mode: 'supported', canProbe: true, canObserve: true })
+  expect(quota.capability()).toMatchObject({
+    mode: 'supported',
+    canProbe: true,
+    canObserve: true
+  })
   expect(quota.latest()).toBeNull()
 
   const snap = await quota.probe()
@@ -47,10 +52,17 @@ test('createProviderQuota probes and caches latest', async () => {
   const headers = new Headers({ 'x-used-percent': '42' })
   const observed = quota.observeResponse?.({ headers })
   expect(observed?.source).toBe('observation')
-  expect(observed?.windows.find((window) => window.id === 'rpm')?.usedPercent).toBe(42)
-  expect(quota.latest()?.windows.find((window) => window.id === 'rpm')?.usedPercent).toBe(42)
+  expect(
+    observed?.windows.find((window) => window.id === 'rpm')?.usedPercent
+  ).toBe(42)
+  expect(
+    quota.latest()?.windows.find((window) => window.id === 'rpm')?.usedPercent
+  ).toBe(42)
 
-  const ensured = await ensureQuota(quota, { prefer: 'cache', maxStaleMs: 60_000 })
+  const ensured = await ensureQuota(
+    quota,
+    { prefer: 'cache', maxStaleMs: 60_000 }
+  )
   expect(ensured?.source).toBe('cache')
   expect(probes).toBe(1)
 
@@ -67,79 +79,94 @@ test('probe throws when unsupported', async () => {
     canProbe: false,
     probe: async () => ({ windows: [] }),
   })
-  await expect(quota.probe()).rejects.toBeInstanceOf(ProviderQuotaUnsupportedError)
+  await expect(quota.probe())
+    .rejects.toBeInstanceOf(ProviderQuotaUnsupportedError)
 })
 
-test('observations merge partial windows without dropping probed plan and quota', async () => {
-  const quota = createProviderQuota({
-    providerId: 'demo',
-    canProbe: true,
-    canObserve: true,
-    probe: async () => ({
-      plan: { id: 'pro' },
-      accountLabel: 'person@example.com',
-      windows: [
-        { id: 'monthly', usedPercent: 25, resetsAt: null },
-        { id: 'rpm', usedPercent: 10, resetsAt: null },
-      ],
-    }),
-    observe: () => ({
-      windows: [
-        { id: 'rpm', usedPercent: 40, resetsAt: null },
-        { id: 'tpm', usedPercent: 5, resetsAt: null },
-      ],
-    }),
-  })
+test(
+  'observations merge partial windows without dropping probed plan and quota',
+  async () => {
+    const quota = createProviderQuota({
+      providerId: 'demo',
+      canProbe: true,
+      canObserve: true,
+      probe: async () => ({
+        plan: { id: 'pro' },
+        accountLabel: 'person@example.com',
+        windows: [
+          { id: 'monthly', usedPercent: 25, resetsAt: null },
+          { id: 'rpm', usedPercent: 10, resetsAt: null },
+        ],
+      }),
+      observe: () => ({
+        windows: [
+          { id: 'rpm', usedPercent: 40, resetsAt: null },
+          { id: 'tpm', usedPercent: 5, resetsAt: null },
+        ],
+      }),
+    })
 
-  await quota.probe()
-  const observed = quota.observeResponse?.({})
+    await quota.probe()
+    const observed = quota.observeResponse?.({})
 
-  expect(observed?.plan?.id).toBe('pro')
-  expect(observed?.accountLabel).toBe('person@example.com')
-  expect(observed?.windows.map((window) => [window.id, window.usedPercent])).toEqual([
-    ['monthly', 25],
-    ['rpm', 40],
-    ['tpm', 5],
-  ])
-})
+    expect(observed?.plan?.id).toBe('pro')
+    expect(observed?.accountLabel).toBe('person@example.com')
+    expect(
+      observed?.windows.map((window) => [window.id, window.usedPercent])
+    ).toEqual(
+      [
+        ['monthly', 25],
+        ['rpm', 40],
+        ['tpm', 5],
+      ]
+    )
+  }
+)
 
-test('clearing quota after an account switch prevents an older probe overwriting the new account', async () => {
-  const old = deferred<void>()
-  let account = 'A'
-  const quota = createProviderQuota({
-    providerId: 'demo', canProbe: true,
-    probe: async () => {
-      const requestedAccount = account
-      if (requestedAccount === 'A') await old.promise
-      return { accountLabel: requestedAccount, windows: [] }
-    },
-  })
-  const probingA = quota.probe().catch((error: unknown) => error)
-  account = 'B'
-  quota.clearLatest!()
-  await quota.probe()
-  expect(quota.latest()?.accountLabel).toBe('B')
-  old.resolve()
-  expect(await probingA).toBeInstanceOf(ProviderQuotaInvalidatedError)
-  expect(quota.latest()?.accountLabel).toBe('B')
-})
+test(
+  'clearing quota after an account switch prevents an older probe overwriting the new account',
+  async () => {
+    const old = deferred<void>()
+    let account = 'A'
+    const quota = createProviderQuota({
+      providerId: 'demo', canProbe: true,
+      probe: async () => {
+        const requestedAccount = account
+        if (requestedAccount === 'A')
+          await old.promise
+        return { accountLabel: requestedAccount, windows: [] }
+      },
+    })
+    const probingA = quota.probe().catch((error: unknown) => error)
+    account = 'B'
+    quota.clearLatest!()
+    await quota.probe()
+    expect(quota.latest()?.accountLabel).toBe('B')
+    old.resolve()
+    expect(await probingA).toBeInstanceOf(ProviderQuotaInvalidatedError)
+    expect(quota.latest()?.accountLabel).toBe('B')
+  }
+)
 
-test('captured observers ignore old account responses after the quota is cleared', () => {
-  const quota = createProviderQuota({
-    providerId: 'demo', canProbe: false,
-    probe: async () => ({ windows: [] }),
-    observe: ({ body }) => ({ accountLabel: String(body), windows: [] }),
-  })
-  const observeA = quota.captureObserver()
-  expect(observeA({ body: 'A' })?.accountLabel).toBe('A')
-  quota.clearLatest!()
-  expect(quota.latest()).toBeNull()
-  expect(observeA({ body: 'A' })).toBeNull()
-  expect(quota.latest()).toBeNull()
-  quota.captureObserver()({ body: 'B' })
-  observeA({ body: 'A' })
-  expect(quota.latest()?.accountLabel).toBe('B')
-})
+test(
+  'captured observers ignore old account responses after the quota is cleared',
+  () => {
+    const quota = createProviderQuota({
+      providerId: 'demo', canProbe: false,
+      probe: async () => ({ windows: [] }),
+      observe: ({ body }) => ({ accountLabel: String(body), windows: [] }),
+    })
+    const observeA = quota.captureObserver()
+    expect(observeA({ body: 'A' })?.accountLabel).toBe('A')
+    quota.clearLatest!()
+    expect(quota.latest()).toBeNull()
+    expect(observeA({ body: 'A' })).toBeNull()
+    expect(quota.latest()).toBeNull()
+    quota.captureObserver()({ body: 'B' })
+    observeA({ body: 'A' })
+    expect(quota.latest()?.accountLabel).toBe('B')
+  }
+)
 
 test('percent helpers', () => {
   expect(clampUsedPercent(150)).toBe(100)
@@ -149,5 +176,6 @@ test('percent helpers', () => {
   expect(severityFromUsedPercent(90)).toBe('warning')
   expect(severityFromUsedPercent(99)).toBe('critical')
   expect(unixSecondsToIso(1_700_000_000)).toMatch(/^\d{4}-/)
-  expect(unixSecondsToIso('2026-07-09T09:00:00.000Z')).toBe('2026-07-09T09:00:00.000Z')
+  expect(unixSecondsToIso('2026-07-09T09:00:00.000Z'))
+    .toBe('2026-07-09T09:00:00.000Z')
 })

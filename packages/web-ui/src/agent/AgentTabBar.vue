@@ -60,19 +60,23 @@ const {
 })
 
 const focusedTabIndex = computed(() =>
-  localTabs.value.findIndex((tab) => tab.id === (focusedTabId.value ?? props.activeTabId)),
+  localTabs.value.findIndex(
+    (tab) => tab.id === (focusedTabId.value ?? props.activeTabId)
+  ),
 )
 const hasOtherTabs = computed(() => localTabs.value.length > 1)
 const hasTabsToLeft = computed(() => focusedTabIndex.value > 0)
 const hasTabsToRight = computed(() => focusedTabIndex.value < localTabs.value.length - 1)
 
 watch(() => props.tabs, (newTabs, oldTabs) => {
-  if (isDragging.value) return
+  if (isDragging.value)
+    return
 
   if (oldTabs) {
     const oldIds = new Set(oldTabs.map((tab) => tab.id))
     for (const tab of newTabs) {
-      if (!oldIds.has(tab.id)) enteringTabIds.value.add(tab.id)
+      if (!oldIds.has(tab.id))
+        enteringTabIds.value.add(tab.id)
     }
   }
 
@@ -95,9 +99,11 @@ watch(() => props.tabs, (newTabs, oldTabs) => {
 }, { deep: true, immediate: true })
 
 watch(pendingRenameTabId, (id) => {
-  if (!id) return
+  if (!id)
+    return
   const tab = localTabs.value.find((entry) => entry.id === id)
-  if (!tab) return
+  if (!tab)
+    return
   renameValue.value = tab.title
 })
 
@@ -110,12 +116,16 @@ function navigateToConversation(conversationId: string) {
 // ── Tab operations ──
 
 function handleCreateTab(afterConversationId?: string) {
-  workspace.createConversation(afterConversationId ? { afterId: afterConversationId } : {})
+  workspace.createConversation(
+    afterConversationId ? { afterId: afterConversationId } : {}
+  )
 }
 
 function handleCloseTabs(conversationIds: string[]) {
-  if (conversationIds.length === 0) return
-  if (closingTabIds.value.size > 0) finishClose()
+  if (conversationIds.length === 0)
+    return
+  if (closingTabIds.value.size > 0)
+    finishClose()
 
   closingTabIds.value = new Set(conversationIds)
   closeTimer = setTimeout(finishClose, 300)
@@ -135,23 +145,27 @@ function handleOpenConversation(conversationId: string) {
 // ── Context menu ──
 
 function handleTabContextMenu(event: MouseEvent, tabId: string) {
-  if (isDragging.value || isSettling.value) return
+  if (isDragging.value || isSettling.value)
+    return
   focusedTabId.value = tabId
   openContextMenu(event)
 }
 
 function handleCopyConversationId() {
   const id = focusedTabId.value ?? props.activeTabId
-  if (!id) return
+  if (!id)
+    return
   void navigator.clipboard.writeText(id).then(
     () => showToast({ title: t('common.copied') }),
-    (error) => reportError('Failed to copy conversation ID', error, { userVisible: true }),
+    (error) =>
+      reportError('Failed to copy conversation ID', error, { userVisible: true }),
   )
 }
 
 function handleNewTabToRight() {
   const tabId = focusedTabId.value ?? props.activeTabId
-  if (tabId) handleCreateTab(tabId)
+  if (tabId)
+    handleCreateTab(tabId)
 }
 
 function handleRenameFocused() {
@@ -160,20 +174,27 @@ function handleRenameFocused() {
 
 function handleCloseFocused() {
   const tabId = focusedTabId.value ?? props.activeTabId
-  if (tabId) handleCloseTab(tabId)
+  if (tabId)
+    handleCloseTab(tabId)
 }
 
 function handleCloseOthers() {
   const tabId = focusedTabId.value ?? props.activeTabId
-  handleCloseTabs(localTabs.value.filter((tab) => tab.id !== tabId).map((tab) => tab.id))
+  handleCloseTabs(
+    localTabs.value.filter((tab) => tab.id !== tabId).map((tab) => tab.id)
+  )
 }
 
 function handleCloseToLeft() {
-  handleCloseTabs(localTabs.value.slice(0, focusedTabIndex.value).map((tab) => tab.id))
+  handleCloseTabs(
+    localTabs.value.slice(0, focusedTabIndex.value).map((tab) => tab.id)
+  )
 }
 
 function handleCloseToRight() {
-  handleCloseTabs(localTabs.value.slice(focusedTabIndex.value + 1).map((tab) => tab.id))
+  handleCloseTabs(
+    localTabs.value.slice(focusedTabIndex.value + 1).map((tab) => tab.id)
+  )
 }
 
 function handleCloseAll() {
@@ -184,7 +205,8 @@ function handleCloseAll() {
 
 function submitRename() {
   const id = pendingRenameTabId.value
-  if (!id) return
+  if (!id)
+    return
   const tab = localTabs.value.find((entry) => entry.id === id)
   const trimmed = renameValue.value.trim()
   pendingRenameTabId.value = null
@@ -200,7 +222,8 @@ function cancelRename() {
 // ── Tab close animation ──
 
 function handleCloseTab(tabId: string) {
-  if (closingTabIds.value.size > 0) finishClose()
+  if (closingTabIds.value.size > 0)
+    finishClose()
 
   closingTabIds.value = new Set([tabId])
   closeTimer = setTimeout(finishClose, 300)
@@ -211,7 +234,8 @@ function finishClose() {
     clearTimeout(closeTimer)
     closeTimer = null
   }
-  if (closingTabIds.value.size === 0) return
+  if (closingTabIds.value.size === 0)
+    return
 
   const ids = [...closingTabIds.value]
   closingTabIds.value = new Set()
@@ -234,22 +258,30 @@ async function closeTabs(conversationIds: readonly string[]) {
 }
 
 function handleTransitionEnd(event: TransitionEvent, tabId: string) {
-  if (!closingTabIds.value.has(tabId)) return
-  if (event.propertyName !== 'max-width') return
+  if (!closingTabIds.value.has(tabId))
+    return
+  if (event.propertyName !== 'max-width')
+    return
   finishClose()
 }
 
 // ── Drag ──
 
 function getTabShift(index: number): number {
-  if (!isDragging.value && !isSettling.value) return 0
-  return index === dragIdx.value ? dragDeltaX.value : (tabShifts.value[index] ?? 0)
+  if (!isDragging.value && !isSettling.value)
+    return 0
+  return index === dragIdx.value
+    ? dragDeltaX.value
+    : (tabShifts.value[index] ?? 0)
 }
 
 function handlePointerDown(event: PointerEvent, index: number) {
-  if (event.button !== 0) return
-  if (closingTabIds.value.size > 0) return
-  if (isSettling.value) return
+  if (event.button !== 0)
+    return
+  if (closingTabIds.value.size > 0)
+    return
+  if (isSettling.value)
+    return
   const target = event.currentTarget as HTMLElement
   target.setPointerCapture(event.pointerId)
   startX = event.clientX
@@ -261,10 +293,12 @@ function handlePointerDown(event: PointerEvent, index: number) {
 }
 
 function handlePointerMove(event: PointerEvent) {
-  if (dragIdx.value < 0 || isSettling.value) return
+  if (dragIdx.value < 0 || isSettling.value)
+    return
 
   const deltaX = event.clientX - startX
-  if (!hasDragged && Math.abs(deltaX) < DRAG_THRESHOLD) return
+  if (!hasDragged && Math.abs(deltaX) < DRAG_THRESHOLD)
+    return
 
   if (!hasDragged) {
     hasDragged = true
@@ -282,7 +316,8 @@ function handlePointerMove(event: PointerEvent) {
   let newIdx = dragIdx.value
 
   for (let i = 0; i < tabRects.length; i++) {
-    if (i === dragIdx.value) continue
+    if (i === dragIdx.value)
+      continue
     const otherCenter = tabRects[i]!.left + tabRects[i]!.width / 2
 
     if (i > dragIdx.value && draggedRight > otherCenter) {
@@ -299,7 +334,8 @@ function handlePointerMove(event: PointerEvent) {
 }
 
 function handlePointerUp() {
-  if (dragIdx.value < 0 || isSettling.value) return
+  if (dragIdx.value < 0 || isSettling.value)
+    return
 
   const idx = dragIdx.value
 
@@ -354,7 +390,10 @@ function finishSettle() {
 
 <template>
   <div class="flex h-11 shrink-0 items-center bg-surface-base px-2">
-    <div ref="containerRef" class="titlebar-no-drag flex min-w-0 items-center gap-0.5 overflow-x-auto">
+    <div
+      ref="containerRef"
+      class="titlebar-no-drag flex min-w-0 items-center gap-0.5 overflow-x-auto"
+    >
       <AgentTabItem
         v-for="(tab, index) in localTabs"
         :key="tab.id"
@@ -407,17 +446,35 @@ function finishSettle() {
     @close="closeContextMenu"
   >
     <Menu @click="closeContextMenu">
-      <MenuItem :label="t('agent.tab.newTabRight')" @select="handleNewTabToRight" />
+      <MenuItem
+        :label="t('agent.tab.newTabRight')"
+        @select="handleNewTabToRight"
+      />
       <MenuDivider />
       <MenuItem :label="t('common.rename')" @select="handleRenameFocused" />
       <MenuDivider />
       <MenuItem :label="t('common.close')" @select="handleCloseFocused" />
-      <MenuItem :label="t('agent.tab.closeOthers')" :disabled="!hasOtherTabs" @select="handleCloseOthers" />
-      <MenuItem :label="t('agent.tab.closeToLeft')" :disabled="!hasTabsToLeft" @select="handleCloseToLeft" />
-      <MenuItem :label="t('agent.tab.closeToRight')" :disabled="!hasTabsToRight" @select="handleCloseToRight" />
+      <MenuItem
+        :label="t('agent.tab.closeOthers')"
+        :disabled="!hasOtherTabs"
+        @select="handleCloseOthers"
+      />
+      <MenuItem
+        :label="t('agent.tab.closeToLeft')"
+        :disabled="!hasTabsToLeft"
+        @select="handleCloseToLeft"
+      />
+      <MenuItem
+        :label="t('agent.tab.closeToRight')"
+        :disabled="!hasTabsToRight"
+        @select="handleCloseToRight"
+      />
       <MenuItem :label="t('agent.tab.closeAll')" @select="handleCloseAll" />
       <MenuDivider />
-      <MenuItem :label="t('agent.tab.copyConversationId')" @select="handleCopyConversationId" />
+      <MenuItem
+        :label="t('agent.tab.copyConversationId')"
+        @select="handleCopyConversationId"
+      />
     </Menu>
   </Popover>
 </template>
