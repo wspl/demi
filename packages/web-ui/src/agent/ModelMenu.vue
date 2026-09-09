@@ -127,7 +127,6 @@ watch(
       v-if="reasoningState"
       :label="t('providers.reasoning')"
       :value="reasoningLabel"
-      submenu-side="left"
     >
       <template #submenu>
         <Menu iconless>
@@ -143,11 +142,7 @@ watch(
       </template>
     </MenuItem>
     <MenuDivider v-if="fastTier || reasoningState" />
-    <MenuItem
-      :label="t('providers.model')"
-      :value="selectedModelLabel"
-      submenu-side="left"
-    >
+    <MenuItem :label="t('providers.model')" :value="selectedModelLabel">
       <template #submenu>
         <Menu iconless>
           <MenuGroup
