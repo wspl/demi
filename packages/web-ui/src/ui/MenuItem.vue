@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, useSlots } from 'vue'
 import type { Component } from 'vue'
-import { Check, ChevronRight } from '@lucide/vue'
+import { Check, ChevronLeft, ChevronRight } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Popover from './Popover.vue'
 import Tooltip from './Tooltip.vue'
@@ -36,6 +36,8 @@ const props = defineProps<{
   isSelected?: boolean
   isFocused?: boolean
   hasSubmenu?: boolean
+  /** Lock a flyout to this side; omitted uses automatic right-first placement. */
+  submenuSide?: 'left' | 'right'
   iconless?: boolean
 }>()
 
@@ -210,7 +212,10 @@ const toneClass = computed(() => {
             v-else-if="showsSubmenu"
             class="flex size-3.5 shrink-0 items-center justify-center text-fg-faint"
           >
-            <ChevronRight :size="ICON_PX.in28" />
+            <component
+              :is="submenuSide === 'left' ? ChevronLeft : ChevronRight"
+              :size="ICON_PX.in28"
+            />
           </span>
           <span
             v-else-if="shortcut"
@@ -228,7 +233,8 @@ const toneClass = computed(() => {
     :is-open="submenuOpen"
     :instant="submenus.instant.value"
     :anchor-el="triggerRef"
-    placement="right-start"
+    :placement="submenuSide === 'left' ? 'left-start' : 'right-start'"
+    :allow-flip="submenuSide === undefined"
     :offset="6"
     @close="closeSubmenu"
   >

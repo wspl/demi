@@ -30,6 +30,8 @@ const props = withDefaults(defineProps<{
   /** Overflow-ancestor root for a point anchor so autoUpdate tracks scroll. */
   anchorContextEl?: HTMLElement | null
   placement?: Placement
+  /** Allow the panel to switch sides when its preferred side has less space. */
+  allowFlip?: boolean
   offset?: number
   shiftPadding?: number
   ignoreEls?: HTMLElement[]
@@ -42,6 +44,7 @@ const props = withDefaults(defineProps<{
   anchorWidth: 0,
   anchorHeight: 0,
   placement: 'bottom-start',
+  allowFlip: true,
   offset: 6,
   shiftPadding: 8,
 })
@@ -141,7 +144,9 @@ const { floatingStyles, placement: resolvedPlacement } = useFloating(virtualRef,
   strategy: 'fixed',
   middleware: computed(() => [
     offsetMiddleware(props.offset),
-    flip({ padding: EDGE_PADDING, boundary: boundary.value }),
+    ...(props.allowFlip
+      ? [flip({ padding: EDGE_PADDING, boundary: boundary.value })]
+      : []),
     // Keep the panel on-screen, but stop following once the trigger scrolls away.
     shift(
       {

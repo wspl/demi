@@ -55,6 +55,7 @@ const reasoningLabel = computed(() => {
     :overlay-store="appOverlayStore"
     variant="ghost"
     trigger-label="Model"
+    placement="bottom-end"
   >
     <template #trigger="{ isOpen }">
       <span class="inline-flex min-w-0 items-center gap-1">
