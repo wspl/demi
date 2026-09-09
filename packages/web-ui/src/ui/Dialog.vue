@@ -18,10 +18,9 @@ import { useOverlay } from '../composables/useOverlay'
  * Nesting: a dialog opened from inside another stacks on it; the one beneath stays,
  * Escape and the scrim close only the top, and closing the one beneath takes the
  * stack with it.
- * Scrolling: a dialog's header, search and footer stay put; only its body scrolls.
- * The panel is a flex column capped at the host's height, so content declares one
- * root with `flex min-h-0 flex-col` and puts the body in a `ScrollArea`. Content
- * without that root simply scrolls as a whole.
+ * Scrolling: content scrolls as a whole by default. Set `scrollContent` to false
+ * when content owns its scroll region: use a `flex min-h-0 flex-col` root,
+ * non-shrinking header/footer and a shrinking ScrollArea for the body.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -30,6 +29,8 @@ const props = defineProps<{
   label?: string
   /** Every dialog closes from its top-right corner; a flow that must finish can hide it. */
   hideClose?: boolean
+  /** False when the slot owns a body scroller beneath a fixed header. */
+  scrollContent?: boolean
   /** Stack on whatever dialog is open instead of replacing it, for a dialog mounted at the app root but opened from inside another. */
   stack?: boolean
 }>()
@@ -96,9 +97,14 @@ onKeyStroke('Escape', (event) => {
             />
           </div>
           <!-- Content with its own scrolling body shrinks inside; anything else scrolls as a whole. -->
-          <ScrollArea class="min-h-0" viewport-class="flex flex-col">
+          <ScrollArea
+            v-if="scrollContent !== false"
+            class="min-h-0"
+            viewport-class="flex flex-col"
+          >
             <slot />
           </ScrollArea>
+          <slot v-else />
         </div>
       </div>
     </Transition>
