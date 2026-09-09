@@ -619,7 +619,7 @@ function abortAgents() {
 
       <GallerySection
         title="ModelSelector"
-        note="Chip naming the model and, quieter, its reasoning level; the menu behind it: Fast Mode, Reasoning, and Model. Submenus are on the Overlays page."
+        note="The menu aligns to the trigger’s right edge; model and reasoning flyouts always open left."
       >
         <div class="specimen-stack">
           <GallerySpecimen variant="chip">
