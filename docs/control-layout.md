@@ -69,9 +69,6 @@ disabled state on all four surfaces; selecting an option moves the shared thumb.
 
 ## Model selector placement
 
-`web-ui/agent/ModelSelector.vue` aligns its dropdown to the trigger's right edge.
-`ModelMenu.vue` locks the model and reasoning flyouts to the left through
-`MenuItem.submenuSide`; the chevron points toward the flyout. Other menus retain
-automatic right-first placement. `Popover.allowFlip` controls side switching,
-while overflow shifting and height limits still apply. The Gallery Session page
-uses the same model selector and menu.
+`web-ui/agent/ModelSelector.vue` aligns its dropdown to the trigger's right edge,
+so the main dropdown extends to the left. The Gallery Session page uses the same
+model selector.
