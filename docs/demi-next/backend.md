@@ -236,3 +236,14 @@ updates the email, and consumes the challenge. Tests use captured mail only.
 Setup/admin-created accounts can sign in without a verification email; this
 flow proves the new address when an existing account changes it. Registration
 and password recovery are not provided.
+
+## User preferences
+
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts } }`
+for the signed-in user. These objects contain saved overrides; absent values use
+the browser host's defaults. `PATCH` accepts any subset of appearance fields
+(`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
+`settings`). A null shortcut removes that override. Unknown fields are rejected.
+The control service reads, merges and writes in one transaction, preserving
+concurrent changes to other fields. Preferences persist across restarts and are
+separate for every user in both instance modes. The browser is not connected yet.

@@ -30,6 +30,11 @@ CREATE TABLE users (
   created_at    TEXT NOT NULL
 );
 
+CREATE TABLE user_preferences (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  preferences_json TEXT NOT NULL
+);
+
 CREATE TABLE email_challenges (
   user_id TEXT PRIMARY KEY REFERENCES users(id),
   id TEXT NOT NULL UNIQUE,

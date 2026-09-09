@@ -168,7 +168,8 @@ Test code may depend upward for integration coverage. Production code must not.
   - `backend.ts` — the composition root (wire and mount only).
   - `testing.ts` — test-only real-runner shell fixtures for agent and command tests; exported through `@demicodes/backend/testing`, never imported by production code.
   - `http/` — the external HTTP surface: app assembly, the session gate over `/api/*` with its exemptions, the cookie helpers, one route module per resource (setup, auth, transfers and blobs included), the WS upgrade adapter.
-  - `auth/` — identity: the roles and the authenticated user shape, password hashing, the cookie sessions over the control plane, the login lockout.
+  - `auth/` — identity: the roles and the authenticated user shape, password hashing, the cookie sessions over the control plane, the login lockout, and email-change verification through an injected mail sender.
+  - `settings/` — validated per-user appearance and shortcut overrides, merged field by field in control storage.
   - `conversation/` — frame scoping/rewrite, attachment references, Cloud/device/workspace target resolution, target/file admission and per-node execution context. The root and subagents resolve the conversation selection per action.
   - `storage/` — the SQLite layer (database seam, migrations, control service, the conversation stores with the `AgentTreeStore` realization, blob store, host store).
   - `runner/` — runner management: pairing-code/device-token primitives, the registry (pending claims, one live socket per device, stable per-target `RemoteHost`s, liveness, the rpc relay), the transfer broker, installation script generation and the shared `demi host` command group. `http/runner-install.ts` serves the generated script and release artifacts; `runner/installer.ts` defines the installation steps.

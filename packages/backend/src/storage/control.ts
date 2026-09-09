@@ -1,3 +1,4 @@
+import { preferencesSchema, patchPreferences, type UserPreferences, type PreferencesPatch } from '../settings/preferences'
 import { z } from 'zod'
 import { createId } from '@demicodes/utils'
 import type { Role, User } from '../auth/identity'
@@ -20,6 +21,8 @@ export interface ControlService {
   findUserByEmail(email: string): Promise<(User & { passwordHash: string }) | null>
   listUsers(): Promise<User[]>
   countUsers(): Promise<number>
+  getUserPreferences(userId: string): Promise<UserPreferences>
+  patchUserPreferences(userId: string, patch: PreferencesPatch): Promise<UserPreferences>
   setUserNickname(id: string, nickname: string): Promise<void>
   setUserPassword(id: string, passwordHash: string): Promise<void>
   issueEmailChallenge(challenge: EmailChallenge): Promise<boolean>
@@ -335,6 +338,24 @@ export class LocalControlService implements ControlService {
 
   async countUsers(): Promise<number> {
     return this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users')?.n ?? 0
+  }
+
+  async getUserPreferences(userId: string): Promise<UserPreferences> {
+    return this.readUserPreferences(userId)
+  }
+
+  async patchUserPreferences(userId: string, patch: PreferencesPatch): Promise<UserPreferences> {
+    return this.db.transaction(() => {
+      const preferences = patchPreferences(this.readUserPreferences(userId), patch)
+      this.db.run(`INSERT INTO user_preferences (user_id, preferences_json) VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET preferences_json = excluded.preferences_json`, [userId, JSON.stringify(preferences)])
+      return preferences
+    })
+  }
+
+  private readUserPreferences(userId: string): UserPreferences {
+    const row = this.db.get<{ preferences_json: string }>('SELECT preferences_json FROM user_preferences WHERE user_id = ?', [userId])
+    return row ? preferencesSchema.parse(JSON.parse(row.preferences_json)) : { appearance: {}, shortcuts: {} }
   }
 
   async setUserNickname(id: string, nickname: string): Promise<void> {
