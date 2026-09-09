@@ -92,10 +92,13 @@ export function modelSelectionFromCatalog(
   options: ModelSelectionFromCatalogOptions = {},
 ): ModelSelection {
   const modelId = options.modelId ?? model?.id ?? ''
-  const acceptedExtensions = options.acceptedExtensions !== undefined
-    ? options.acceptedExtensions === null
+  const extensions = options.acceptedExtensions !== undefined
+    ? options.acceptedExtensions
+    : model?.acceptedExtensions
+  const acceptedExtensions = extensions !== undefined
+    ? extensions === null
       ? null
-      : [...options.acceptedExtensions]
+      : [...extensions]
     : model?.supportsAttachments == null && model?.supportsVideo !== true
       ? null
       : [

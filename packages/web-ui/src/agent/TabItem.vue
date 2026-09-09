@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { X } from '@lucide/vue'
+import { Bot, SquareTerminal, X } from '@lucide/vue'
 import type { ConversationState } from './types'
 import type { ConversationStatus } from './conversation-status'
 import ProviderIcon from './providers/ProviderIcon.vue'
@@ -11,30 +11,41 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
 const uiOptions = useAgentUiOptions()
 
-const TAB_TRANSITION = 'max-width 200ms ease-out, min-width 200ms ease-out, padding 200ms ease-out, opacity 150ms ease, background-color 150ms ease, color 150ms ease'
 const DRAG_TRANSITION = 'transform 120ms ease'
 
-const props = defineProps<{
-  tab: Pick<ConversationState, 'id' | 'title'>
-  isActive: boolean
-  status: ConversationStatus
-  isClosing: boolean
-  isEntering: boolean
-  isDragging: boolean
-  isDragTarget: boolean
-  isSettling: boolean
-  shift: number
-  isRenaming: boolean
-  renameValue: string
-  providerIconId: string | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    tab: Pick<ConversationState, 'id' | 'title'>
+    isActive: boolean
+    status: ConversationStatus
+    isDragging?: boolean
+    isDragTarget?: boolean
+    isSettling?: boolean
+    shift?: number
+    isRenaming?: boolean
+    renameValue?: string
+    providerIconId?: string | null
+    mark?: 'provider' | 'bot' | 'terminal'
+    closable?: boolean
+  }>(),
+  {
+    isDragging: false,
+    isDragTarget: false,
+    isSettling: false,
+    shift: 0,
+    isRenaming: false,
+    renameValue: '',
+    providerIconId: null,
+    mark: 'provider',
+    closable: true,
+  },
+)
 
 const emit = defineEmits<{
   pointerdown: [event: PointerEvent]
   pointermove: [event: PointerEvent]
   pointerup: []
   lostpointercapture: []
-  transitionend: [event: TransitionEvent]
   contextmenu: [event: MouseEvent]
   close: []
   renameSubmit: []
@@ -44,39 +55,36 @@ const emit = defineEmits<{
 
 const renameInputRef = ref<HTMLInputElement | null>(null)
 
-watch(() => props.isRenaming, (val) => {
-  if (!val) return
-  nextTick(() => {
-    renameInputRef.value?.focus()
-    renameInputRef.value?.select()
-  })
-})
+watch(
+  () => props.isRenaming,
+  (val) => {
+    if (!val) {
+      return
+    }
+    nextTick(() => {
+      renameInputRef.value?.focus()
+      renameInputRef.value?.select()
+    })
+  },
+)
 
 const tabStyle = computed(() => {
-  const isCollapsed = props.isClosing || props.isEntering
-
-  if (props.isDragging || props.isSettling) {
-    return {
-      maxWidth: isCollapsed ? '0px' : '220px',
-      minWidth: isCollapsed ? '0px' : undefined,
-      paddingLeft: isCollapsed ? '0px' : undefined,
-      paddingRight: isCollapsed ? '0px' : undefined,
-      opacity: isCollapsed ? '0' : undefined,
-      transform: `translateX(${props.shift}px)`,
-      transition: (props.isSettling || !props.isDragTarget) ? DRAG_TRANSITION : undefined,
-    }
+  if (!props.isDragging && !props.isSettling) {
+    return undefined
   }
 
-  return isCollapsed
-    ? { maxWidth: '0px', minWidth: '0px', paddingLeft: '0px', paddingRight: '0px', opacity: '0', transition: TAB_TRANSITION }
-    : { maxWidth: '220px', transition: TAB_TRANSITION }
+  return {
+    transform: `translateX(${props.shift}px)`,
+    transition:
+      props.isSettling || !props.isDragTarget ? DRAG_TRANSITION : undefined,
+  }
 })
 </script>
 
 <template>
   <span
     role="tab"
-    class="relative flex h-7 shrink cursor-default items-center overflow-hidden rounded-md text-chrome select-none touch-none"
+    class="relative flex h-7 max-w-[220px] shrink cursor-default items-center overflow-hidden rounded-md text-chrome select-none touch-none"
     :class="[
       isActive
         ? 'bg-surface text-fg-emphasis'
@@ -86,22 +94,30 @@ const tabStyle = computed(() => {
       !isDragging && 'group',
       !isDragging && !isActive && 'hover:bg-surface hover:text-fg-body',
       isDragging && isDragTarget && 'z-50',
-      isClosing && 'pointer-events-none',
     ]"
     :style="tabStyle"
     @pointerdown="emit('pointerdown', $event)"
     @pointermove="emit('pointermove', $event)"
     @pointerup="emit('pointerup')"
     @lostpointercapture="emit('lostpointercapture')"
-    @transitionend="emit('transitionend', $event)"
     @contextmenu.prevent="emit('contextmenu', $event)"
   >
     <span
       v-if="uiOptions.showTabIcon"
       class="relative ml-1.5 flex shrink-0 items-center justify-center"
     >
+      <Bot
+        v-if="mark === 'bot'"
+        :size="ICON_PX.markIn28"
+        class="text-fg-subtle"
+      />
+      <SquareTerminal
+        v-else-if="mark === 'terminal'"
+        :size="ICON_PX.markIn28"
+        class="text-fg-subtle"
+      />
       <ProviderIcon
-        v-if="providerIconId"
+        v-else-if="providerIconId"
         :provider-id="providerIconId"
         :size="ICON_PX.markIn28"
         class="text-fg-subtle"
@@ -110,9 +126,7 @@ const tabStyle = computed(() => {
         v-else
         class="inline-block size-4 rounded-full bg-surface-raised"
       />
-      <ConversationStatusDot
-        :status="status"
-      />
+      <ConversationStatusDot :status="status" />
     </span>
     <input
       v-if="isRenaming"
@@ -126,15 +140,24 @@ const tabStyle = computed(() => {
       @pointerdown.stop
       @click.stop
     />
-    <Tooltip v-else :content="tab.title" placement="bottom" class="w-32 truncate whitespace-nowrap px-1.5">{{ tab.title }}</Tooltip>
+    <Tooltip
+      v-else
+      :content="tab.title"
+      placement="bottom"
+      class="w-32 truncate whitespace-nowrap px-1.5"
+      >{{ tab.title }}</Tooltip
+    >
     <span
+      v-if="closable"
       class="pointer-events-none absolute inset-y-0 right-0 z-10 flex w-9 items-center justify-end pr-1.5 opacity-0 transition-opacity group-hover:opacity-100"
     >
       <span
         class="absolute inset-y-0 left-0 w-4"
-        :class="isActive
-          ? 'bg-linear-to-r from-surface/0 to-surface'
-          : 'bg-linear-to-r from-surface-base/0 to-surface-base group-hover:from-surface/0 group-hover:to-surface'"
+        :class="
+          isActive
+            ? 'bg-linear-to-r from-surface/0 to-surface'
+            : 'bg-linear-to-r from-surface-base/0 to-surface-base group-hover:from-surface/0 group-hover:to-surface'
+        "
       />
       <span
         class="absolute inset-y-0 right-0 w-6"

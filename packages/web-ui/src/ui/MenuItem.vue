@@ -6,6 +6,7 @@ import { appOverlayStore } from '../overlay/appOverlay'
 import Popover from './Popover.vue'
 import Tooltip from './Tooltip.vue'
 import { ICON_PX } from './icon-metrics'
+import { disabledTooltip } from './disabled'
 import {
   createSubmenuController,
   menuIconlessKey,
@@ -21,7 +22,7 @@ const props = defineProps<{
   label?: string
   value?: string
   /** A status dot: alone in the gutter, or on the icon's corner when there is one. */
-  indicator?: 'success' | 'muted'
+  indicator?: 'success' | 'muted' | 'accent' | 'danger'
   indicatorLabel?: string
   /** A quiet qualifier after the label, in parentheses: `offline`, `read-only`. */
   note?: string
@@ -45,11 +46,7 @@ const emit = defineEmits<{
 const slots = useSlots()
 const isChoice = computed(() => props.choice === true)
 const isDisabled = computed(() => props.disabled === true)
-const tooltipContent = computed(
-  () => (isDisabled.value
-    ? props.disabledReason?.trim() || undefined
-    : undefined)
-)
+const tooltipContent = computed(() => disabledTooltip(isDisabled.value, props.disabledReason))
 const menuIconless = inject(
   menuIconlessKey,
   computed(() => false),
@@ -169,7 +166,13 @@ const toneClass = computed(() => {
         <span
           v-if="indicator"
           class="size-1.5 shrink-0 rounded-full"
-          :class="[indicator === 'success' ? 'bg-on-success' : 'bg-fg-faint', icon ? 'absolute -right-0.5 -top-0.5 ring-2 ring-surface-float' : '']"
+          :class="[
+            indicator === 'success' ? 'bg-on-success'
+              : indicator === 'accent' ? 'bg-on-accent'
+                : indicator === 'danger' ? 'bg-on-danger'
+                  : 'bg-fg-faint',
+            icon ? 'absolute -right-0.5 -top-0.5 ring-2 ring-surface-float' : '',
+          ]"
           role="img"
           :aria-label="indicatorLabel"
         />
@@ -183,7 +186,7 @@ const toneClass = computed(() => {
       </span>
       <span
         v-if="value"
-        class="menu-cell-value truncate text-right text-fg-muted"
+        class="menu-cell-value truncate text-right text-fg-subtle"
         :title="value"
       >
         {{ value }}

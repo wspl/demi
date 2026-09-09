@@ -22,3 +22,5 @@ export type {
   ShellCommandStatusLike,
 } from './protocol/frames'
 export type { ProviderSelection } from '@demicodes/provider'
+export { modelSelectionSchema, thinkingConfigSchema } from './protocol/schemas'
+export { applyTranscriptPatches } from './transcript/patch'

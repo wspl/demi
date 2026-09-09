@@ -32,10 +32,10 @@ from (`files/types.ts`):
   and modification time when the source knows them. A known failure rejects with a
   `FileBrowserError` of kind `not-found`, `permission`, `offline` or `other`; the
   kind picks the empty-state copy, the message is shown under it.
-- `createDirectory(path)`, optional: without it there is no New folder button.
+- `createDirectory(path, signal)`, optional: without it there is no New folder button.
 
 Paths are POSIX. The backend's device fs (`GET/POST /api/devices/:id/fs`) maps onto
-this directly; prototypes and the gallery use `createMemoryFileSource` over a fixture
+`web/devices/files.ts` supplies this directly; the gallery uses `createMemoryFileSource` over a fixture
 tree (`files/memory-source.ts`).
 
 The caller also supplies `mode` (`file` or `directory`), an `initialPath`, the
@@ -103,4 +103,6 @@ only text cursor is inside the address field and the new-folder name.
 
 The composer's Add menu shows "Attach files" alone for a conversation without a host,
 and "Attach local files" beside "Attach remote file…" when it has one. A chosen remote
-file's path goes into the draft as a text reference; the agent reads it on the host.
+file becomes the same composer tile as a local attachment. The tooltip is
+`host · filename`, matching the local `destination · filename` form; send carries
+a `reference` block and the agent reads the path on the host.

@@ -119,6 +119,9 @@
     rgba(0, 0, 0, 0.125) 0 3px 8px,
     rgba(0, 0, 0, 0.125) 0 2px 5px,
     rgba(0, 0, 0, 0.125) 0 1px 1px;
+  --shadow-window:
+    0 0 0 1px var(--line-overlay),
+    0 10px 28px rgba(0, 0, 0, 0.32);
   --shadow-btn:
     inset 0 0.5px 0 rgba(255, 255, 255, 0.16),
     inset 0 -0.5px 0 rgba(255, 255, 255, 0.04),
@@ -191,6 +194,9 @@
     rgba(0, 0, 0, 0.06) 0 3px 8px,
     rgba(0, 0, 0, 0.04) 0 2px 5px,
     rgba(0, 0, 0, 0.04) 0 1px 1px;
+  --shadow-window:
+    0 0 0 1px var(--line-overlay),
+    0 10px 28px rgba(0, 0, 0, 0.12);
   --shadow-btn:
     inset 0 0.5px 0 rgba(255, 255, 255, 0.9),
     0 0 0 0.5px rgba(0, 0, 0, 0.1);
@@ -258,6 +264,12 @@ svg.lucide {
 .overlay-panel {
   background: var(--surface-float);
   box-shadow: var(--shadow-overlay);
+}
+
+/* Large float on a page surface. One overlay line, modest drop.
+   Menus keep overlay-shell; dialogs sit on a scrim with shadow-2xl. */
+.overlay-window {
+  box-shadow: var(--shadow-window);
 }
 
 @layer components {
@@ -339,7 +351,7 @@ svg.lucide {
 .menu-cell-value {
   grid-column: 3;
   max-width: 12rem;
-  margin-left: 0.75rem;
+  margin-left: 1rem;
 }
 
 /* A row without a value lets its suffix span the value column too, so a wide suffix

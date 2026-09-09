@@ -1,181 +1,120 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Archive, Play, RotateCcw } from '@lucide/vue'
+import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import type { UserContentBlock } from '@demicodes/core'
-import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
-import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
-import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
-import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
-import Button from '@demicodes/web-ui/ui/Button.vue'
-import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
-import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
-import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
+import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
+import { conversationPageKind } from '@demicodes/web-ui/agent/session-status'
 import ConversationComposer from './ConversationComposer.vue'
 import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
 import { useConversations } from './store'
-import { useResources } from '../prototype/resources'
+import { useResources } from '../state/resources'
 
 const store = useConversations()
 const resources = useResources()
 const route = useRoute()
 const router = useRouter()
-const surface = ref<{ dockHeight: number }>()
-const list = ref<{
-  isAtBottom: boolean;
-  scrollToBottom: () => void
-}>()
-const conversation = computed(() => store.items.find((c) => c.id === route.params.id))
+const conversation = computed(() =>
+  store.items.find((c) => c.id === route.params.id),
+)
+const pageKind = computed(() =>
+  !route.params.id && store.listStatus === 'ready'
+    ? 'empty'
+    : conversationPageKind(store.listStatus, !!conversation.value),
+)
+watch(
+  () => route.params.id,
+  (id) => {
+    void store.activate(typeof id === 'string' ? id : null)
+  },
+  { immediate: true },
+)
+onUnmounted(() => void store.activate(null))
+async function create() {
+  const id = await store.create()
+  if (id) {
+    await router.push(`/chat/${id}`)
+  }
+}
 const project = computed(() =>
   resources.projects.find((p) => p.id === conversation.value?.projectId),
 )
 watch(
   () => project.value?.id,
   (id) => {
-    if (id)
+    if (id) {
       resources.rememberProject(id)
+    }
   },
   { immediate: true },
 )
 const hasProvider = computed(() =>
   resources.providerInfos.some(
-    (p) => p.id === conversation.value?.providerId && p.isAvailable
+    (p) => p.id === conversation.value?.model.providerId && p.isAvailable,
   ),
 )
 
+function saveScroll(id: string, state: PersistedScrollState | null): void {
+  const item = store.items.find((item) => item.id === id)
+  if (item) {
+    item.scroll = state
+  }
+}
+
 function editUser(content: UserContentBlock[]) {
-  if (!conversation.value)
+  if (!conversation.value) {
     return
+  }
   const text = content.find(
-    (part): part is Extract<UserContentBlock, {
-      type: 'text'
-    }> => part.type === 'text'
+    (
+      part,
+    ): part is Extract<
+      UserContentBlock,
+      {
+        type: 'text'
+      }
+    > => part.type === 'text',
   )?.text
   conversation.value.draft = text ?? ''
 }
 </script>
 
 <template>
-  <section
-    v-if="conversation"
-    class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-xl bg-surface"
+  <ChatSession
+    v-if="pageKind === 'session' && conversation"
+    :conversation="conversation"
+    :has-provider="hasProvider"
+    @archive="store.archive([conversation.id])"
+    @retry="store.start(conversation)"
+    @retry-load="store.reloadSession(conversation.id)"
+    @abort-subagents="store.abortSubagents(conversation)"
+    @remove-queued="store.removeQueued(conversation, $event)"
+    @send-queued="store.sendQueued(conversation, $event)"
+    @remove-pending-steer="store.removePendingSteer(conversation, $event)"
+    @interrupt-pending-steer="store.interruptWithSteer(conversation, $event)"
+    @edit-user="editUser"
+    @save-scroll="saveScroll"
   >
-    <header
-      class="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-3 py-2"
-    >
-      <div class="col-span-2 flex min-w-0 items-center gap-1 sm:col-span-1">
-        <h1
-          class="min-w-0 select-none truncate text-chrome font-normal text-fg"
-          :title="conversation.title"
-        >
-          {{ conversation.title }}
-        </h1>
-        <Tooltip content="Archive conversation" class="shrink-0">
-          <IconButton
-            :icon="Archive"
-            variant="ghost"
-            aria-label="Archive conversation"
-            :disabled="!!conversation.stream || conversation.archived"
-            @click="store.archive([conversation.id])"
-          />
-        </Tooltip>
-      </div>
-      <div
-        class="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1"
-      >
-        <WorkspaceInfo :project="project" :conversation="conversation" />
-      </div>
-    </header>
-    <SessionSurface ref="surface">
-      <AgentMessageList
-        ref="list"
+    <template #workspace
+      ><WorkspaceInfo
+        :project="project"
+        :conversation="conversation"
+    /></template>
+    <template #composer
+      ><ConversationComposer
         :key="conversation.id"
-        :conversation-id="conversation.id"
-        :blocks="conversation.blocks"
-        :queue="conversation.queue"
-        :pending-steers="conversation.pendingSteers"
-        :phase="conversation.stream ? 'running' : 'idle'"
-        :bottom-offset="surface?.dockHeight ?? 0"
-        :persisted-scroll-state="undefined"
-        @delete-queued="(id) => store.removeQueued(conversation!, id)"
-        @send-queued="(id) => store.sendQueued(conversation!, id)"
-        @delete-pending-steer="(id) => store.removePendingSteer(conversation!, id)"
-        @interrupt-pending-steer="(id) => store.interruptWithSteer(conversation!, id)"
-        @edit-user="editUser"
-      />
-      <template #dock>
-        <SessionDock
-          :show-scroll-to-bottom="!!list && !list.isAtBottom"
-          @scroll-to-bottom="list?.scrollToBottom()"
-        >
-          <template #chips>
-            <SessionDockChip
-              v-if="
-                !conversation.archived &&
-                hasProvider &&
-                (conversation.status === 'error' || conversation.status === 'aborted')
-              "
-              @click="store.start(conversation)"
-            >
-              <component
-                :is="conversation.status === 'error' ? RotateCcw : Play"
-                :size="ICON_PX.in28"
-              />
-              {{ conversation.status === 'error' ? 'Retry' : 'Resume' }}
-            </SessionDockChip>
-          </template>
-          <Transition name="composer-archive" mode="out-in">
-            <div
-              v-if="conversation.archived"
-              key="archived"
-              class="archived-notice flex items-center justify-between rounded-lg bg-surface-raised p-3 text-chrome text-fg-muted"
-            >
-              <span>This conversation is archived.</span>
-              <Button @click="store.archive([conversation.id], false)">Restore conversation</Button>
-            </div>
-            <div v-else key="composer">
-              <ConversationComposer
-                :key="conversation.id"
-                :conversation="conversation"
-              />
-            </div>
-          </Transition>
-        </SessionDock>
-      </template>
-    </SessionSurface>
-  </section>
+        :conversation="conversation"
+    /></template>
+  </ChatSession>
   <section
     v-else
-    class="grid flex-1 place-content-center gap-3 bg-surface p-8 text-center"
+    class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-xl bg-surface"
   >
-    <p class="text-conversation text-fg-muted">
-      {{ route.params.id ? 'Conversation not found.' : 'Open a conversation or start a new one.' }}
-    </p>
-    <Button
-      class="justify-self-center"
-      @click="router.push(`/chat/${store.create()}`)"
-    >
-      New conversation
-    </Button>
+    <SessionStatus
+      :kind="pageKind === 'session' ? 'missing' : pageKind"
+      @retry="store.reloadList()"
+      @create="create"
+    />
   </section>
 </template>
-
-<style scoped>
-.archived-notice.composer-archive-enter-active,
-.composer-archive-leave-active {
-  transition:
-    opacity 140ms ease,
-    transform 140ms ease;
-}
-.archived-notice.composer-archive-enter-from,
-.composer-archive-leave-to {
-  opacity: 0;
-  transform: translateY(6px);
-}
-@media (prefers-reduced-motion: reduce) {
-  .archived-notice.composer-archive-enter-active,
-  .composer-archive-leave-active {
-    transition: none;
-  }
-}
-</style>

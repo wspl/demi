@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { Check, Copy, ExternalLink, TriangleAlert } from '@lucide/vue'
 import CopyCode from '../ui/CopyCode.vue'
@@ -23,7 +23,7 @@ export type ProviderLoginPhase =
     kind: 'device';
     url: string;
     code: string;
-    expiresIn: string
+    expiresIn?: string
   }
   | {
     kind: 'code-input';
@@ -50,7 +50,7 @@ export type ProviderLoginPhase =
     message: string
   }
 
-defineProps<{
+const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
   vendorName: string
@@ -68,6 +68,10 @@ const emit = defineEmits<{
 
 const pasted = ref('')
 const token = ref('')
+watch(() => [props.isOpen, props.phase.kind], () => {
+  token.value = ''
+  pasted.value = ''
+})
 const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 </script>
 
@@ -120,7 +124,7 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
           </Button>
           <span class="flex items-center gap-1.5 text-[12px] text-fg-subtle">
             <IndeterminateSpinner :size="ICON_PX.in20" />
-            Waiting · code expires in {{ phase.expiresIn }}
+            Waiting<template v-if="phase.expiresIn"> · code expires in {{ phase.expiresIn }}</template>
           </span>
         </div>
       </div>

@@ -10,6 +10,7 @@ import Segmented from '../ui/Segmented.vue'
 import Slider from '../ui/Slider.vue'
 import SwatchPicker from '../ui/SwatchPicker.vue'
 import AppearancePreview from './AppearancePreview.vue'
+import { IN_DEVELOPMENT } from '../ui/disabled'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
@@ -38,9 +39,14 @@ const toneOptions = PRODUCT_TONES.map((entry) => ({ value: entry.id, label: entr
   <SettingsPage title="General" description="Language and look.">
     <SettingsGroup title="Appearance">
       <template #aside><AppearancePreview :font-size="fontSize" /></template>
-      <SettingsRow label="Language">
+      <SettingsRow
+        label="Language"
+        disabled
+        :disabled-reason="IN_DEVELOPMENT"
+      >
         <Dropdown
           size="sm"
+          disabled
           :overlay-store="overlayStore"
           variant="default"
           trigger-label="Language"

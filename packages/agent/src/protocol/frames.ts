@@ -17,6 +17,8 @@ export interface SubagentJob {
   description: string
   profile: string | null
   phase: 'running' | 'completed' | 'aborted' | 'error'
+  startedAt: string
+  endedAt: string | null
   /** Action metadata of the round that spawned the child. */
   metadata: AgentMetadata | null
   /** Present on `closed`: the child's last assistant text, at most 32 KiB. */
@@ -240,3 +242,4 @@ export type ClientSessionEvent =
     }
   | { type: 'opened' }
   | { type: 'closed' }
+  | { type: 'disconnected' }

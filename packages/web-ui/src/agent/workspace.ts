@@ -5,12 +5,14 @@ import {
   reactive,
   ref,
   type ComputedRef,
-  type InjectionKey
+  type InjectionKey,
 } from 'vue'
 import type { UserContentBlock } from '@demicodes/core'
 import type { ControlApi, ModelInfo, ProviderInfo } from '../transport/protocol'
 import { ConversationRuntime } from './conversation-runtime'
+import { agentSocketUrl, connectAgentClient } from '../transport/agent-socket'
 import type { ConversationState, ModelIntent } from './types'
+import type { SessionLoad } from './session-status'
 
 export interface AgentWorkspaceParams {
   baseUrl: string
@@ -23,9 +25,9 @@ interface PersistedWorkspace {
   order: string[]
   activeId: string | null
   conversations: {
-    id: string;
-    title: string;
-    createdAt: string;
+    id: string
+    title: string
+    createdAt: string
     model: ModelIntent
   }[]
 }
@@ -53,12 +55,12 @@ export class AgentWorkspace {
   // independent of which tabs are open or of localStorage).
 
   readonly tabs: ComputedRef<ConversationState[]> = computed(() =>
-    this.order.value.map((id) => this.sessions[id]).filter(
-      (state): state is ConversationState => !!state
-    ),
+    this.order.value
+      .map((id) => this.sessions[id])
+      .filter((state): state is ConversationState => !!state),
   )
   readonly activeSession: ComputedRef<ConversationState | null> = computed(() =>
-    this.activeId.value ? this.sessions[this.activeId.value] ?? null : null,
+    this.activeId.value ? (this.sessions[this.activeId.value] ?? null) : null,
   )
 
   private readonly runtimes = new Map<string, ConversationRuntime>()
@@ -85,17 +87,15 @@ export class AgentWorkspace {
     // the server on connect, keyed by the conversation id). Fall back to a
     // fresh one when nothing is persisted.
     const restored = this.restorePersisted()
-    if (!restored)
+    if (!restored) {
       this.createConversation()
+    }
     // Connect the visible conversation so a restored transcript loads on open.
     this.connectActive()
   }
 
   /** Open a conversation by id (an existing tab, or one from the history list). */
-  openConversation(summary: {
-    id: string;
-    title?: string
-  }): void {
+  openConversation(summary: { id: string; title?: string }): void {
     if (!this.sessions[summary.id]) {
       this.materializeConversation({
         id: summary.id,
@@ -111,18 +111,25 @@ export class AgentWorkspace {
 
   private connectActive(): void {
     const id = this.activeId.value
-    if (id)
-      void this.runtimes.get(id)?.connect().catch(() => {})
+    if (id) {
+      void this.runtimes
+        .get(id)
+        ?.connect()
+        .catch(() => {})
+    }
   }
 
   async loadCatalog(): Promise<void> {
     const providers = await this.control.listProviders()
     this.providers.value = providers
     for (const provider of providers) {
-      if (!provider.isAvailable)
+      if (!provider.isAvailable) {
         continue
+      }
       try {
-        this.models[provider.id] = await this.control.listModels({ providerId: provider.id })
+        this.models[provider.id] = await this.control.listModels({
+          providerId: provider.id,
+        })
       } catch {
         this.models[provider.id] = []
       }
@@ -130,10 +137,12 @@ export class AgentWorkspace {
     this.defaultModel = this.resolveDefaultModel()
   }
 
-  createConversation(options: {
-    afterId?: string;
-    title?: string
-  } = {}): string {
+  createConversation(
+    options: {
+      afterId?: string
+      title?: string
+    } = {},
+  ): string {
     const id = this.materializeConversation(
       {
         id: this.idFactory(),
@@ -142,6 +151,7 @@ export class AgentWorkspace {
         model: this.defaultModel ?? this.fallbackModel(),
       },
       options.afterId,
+      'ready',
     )
     this.activeId.value = id
     this.persist()
@@ -152,12 +162,13 @@ export class AgentWorkspace {
   // tab order. Shared by new conversations and persistence restore.
   private materializeConversation(
     meta: {
-      id: string;
-      title: string;
-      createdAt: string;
+      id: string
+      title: string
+      createdAt: string
       model: ModelIntent
     },
     afterId?: string,
+    load: SessionLoad = 'loading',
   ): string {
     const state = reactive<ConversationState>({
       id: meta.id,
@@ -173,11 +184,25 @@ export class AgentWorkspace {
       isResultSeen: true,
       hasContent: false,
       lastError: null,
+      load,
     })
     this.sessions[meta.id] = state
     this.runtimes.set(
       meta.id,
-      new ConversationRuntime(state, this.baseUrl, this.control)
+      new ConversationRuntime({
+        state,
+        connect: (signal) =>
+          connectAgentClient(agentSocketUrl(this.baseUrl, state.cwd), { signal }),
+        prepareModel: () => this.control.prepareSession(state.model),
+        onEvent: (event) => {
+          if (
+            event.type === 'transcript_reset' ||
+            event.type === 'transcript_patch'
+          ) {
+            state.hasContent = event.blocks.length > 0
+          }
+        },
+      }),
     )
     const index = afterId
       ? this.order.value.indexOf(afterId) + 1
@@ -185,7 +210,7 @@ export class AgentWorkspace {
     this.order.value = [
       ...this.order.value.slice(0, index),
       meta.id,
-      ...this.order.value.slice(index)
+      ...this.order.value.slice(index),
     ]
     return meta.id
   }
@@ -193,8 +218,9 @@ export class AgentWorkspace {
   async closeConversation(id: string): Promise<void> {
     this.order.value = this.order.value.filter((entry) => entry !== id)
     delete this.sessions[id]
-    if (this.activeId.value === id)
+    if (this.activeId.value === id) {
       this.activeId.value = this.order.value[0] ?? null
+    }
     const runtime = this.runtimes.get(id)
     this.runtimes.delete(id)
     this.persist()
@@ -202,12 +228,14 @@ export class AgentWorkspace {
   }
 
   setActive(id: string): void {
-    if (!this.sessions[id])
+    if (!this.sessions[id]) {
       return
+    }
     this.activeId.value = id
     const state = this.sessions[id]
-    if (state)
+    if (state) {
       state.isResultSeen = true
+    }
     this.connectActive()
     this.persist()
   }
@@ -219,17 +247,22 @@ export class AgentWorkspace {
 
   renameConversation(id: string, title: string): void {
     const state = this.sessions[id]
-    if (state)
+    if (state) {
       state.title = title
+    }
     this.persist()
   }
 
   setModel(id: string, model: ModelIntent): void {
     const state = this.sessions[id]
-    if (state)
+    if (state) {
       state.model = model
+    }
     // Push to an open session so the next turn uses the new model; no-op until it opens.
-    void this.runtimes.get(id)?.setModel()
+    void this.runtimes
+      .get(id)
+      ?.setModel()
+      .catch((error) => this.recordError(id, error))
     this.persist()
   }
 
@@ -238,11 +271,17 @@ export class AgentWorkspace {
   }
 
   dequeueMessage(id: string, messageId: string): void {
-    this.runtimes.get(id)?.dequeueMessage(messageId)
+    void this.runtimes
+      .get(id)
+      ?.dequeueMessage(messageId)
+      .catch((error) => this.recordError(id, error))
   }
 
   sendQueuedMessage(id: string, messageId: string): void {
-    this.runtimes.get(id)?.sendQueuedMessage(messageId)
+    void this.runtimes
+      .get(id)
+      ?.sendQueuedMessage(messageId)
+      .catch((error) => this.recordError(id, error))
   }
 
   steerQueuedMessage(id: string, messageId: string): Promise<void> {
@@ -254,7 +293,10 @@ export class AgentWorkspace {
   }
 
   deletePendingSteer(id: string, steerId: string): void {
-    this.runtimes.get(id)?.deletePendingSteer(steerId)
+    void this.runtimes
+      .get(id)
+      ?.deletePendingSteer(steerId)
+      .catch((error) => this.recordError(id, error))
   }
 
   interruptPendingSteer(id: string, steerId: string): Promise<void> {
@@ -277,16 +319,28 @@ export class AgentWorkspace {
     return this.runtime(id).compact()
   }
 
+  reconnect(id: string): Promise<void> {
+    return this.runtime(id).reconnect()
+  }
+
   async dispose(): Promise<void> {
     const runtimes = [...this.runtimes.values()]
     this.runtimes.clear()
     await Promise.all(runtimes.map((runtime) => runtime.dispose()))
   }
 
+  private recordError(id: string, error: unknown): void {
+    const state = this.sessions[id]
+    if (state) {
+      state.lastError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
   private runtime(id: string): ConversationRuntime {
     const runtime = this.runtimes.get(id)
-    if (!runtime)
+    if (!runtime) {
       throw new Error(`No conversation runtime for ${id}`)
+    }
     return runtime
   }
 
@@ -294,8 +348,9 @@ export class AgentWorkspace {
   // are not stored here — they are restored from the server by conversation id.
   private persist(): void {
     const storage = workspaceStorage()
-    if (!storage)
+    if (!storage) {
       return
+    }
     const conversations = this.order.value
       .map((id) => this.sessions[id])
       .filter((state): state is ConversationState => !!state)
@@ -303,12 +358,12 @@ export class AgentWorkspace {
         id: state.id,
         title: state.title,
         createdAt: state.createdAt,
-        model: state.model
+        model: state.model,
       }))
     const payload: PersistedWorkspace = {
       order: this.order.value,
       activeId: this.activeId.value,
-      conversations
+      conversations,
     }
     try {
       storage.setItem(this.storageKey, JSON.stringify(payload))
@@ -320,8 +375,9 @@ export class AgentWorkspace {
   // Returns true if conversations were restored from storage.
   private restorePersisted(): boolean {
     const storage = workspaceStorage()
-    if (!storage)
+    if (!storage) {
       return false
+    }
     let payload: PersistedWorkspace | null = null
     try {
       const raw = storage.getItem(this.storageKey)
@@ -330,25 +386,27 @@ export class AgentWorkspace {
       payload = null
     }
     const conversations = payload?.conversations ?? []
-    if (conversations.length === 0)
+    if (conversations.length === 0) {
       return false
-    const byId = new Map(conversations.map((conversation) => [conversation.id, conversation]))
+    }
+    const byId = new Map(
+      conversations.map((conversation) => [conversation.id, conversation]),
+    )
     const order = (payload?.order ?? []).filter((id) => byId.has(id))
     for (const id of order) {
       const meta = byId.get(id)!
-      this.materializeConversation(
-        {
-          id: meta.id,
-          title: meta.title,
-          createdAt: meta.createdAt,
-          model: meta.model
-        }
-      )
+      this.materializeConversation({
+        id: meta.id,
+        title: meta.title,
+        createdAt: meta.createdAt,
+        model: meta.model,
+      })
     }
     this.titleCounter = order.length
-    this.activeId.value = payload?.activeId && byId.has(payload.activeId)
-      ? payload.activeId
-      : order[0] ?? null
+    this.activeId.value =
+      payload?.activeId && byId.has(payload.activeId)
+        ? payload.activeId
+        : (order[0] ?? null)
     return order.length > 0
   }
 
@@ -372,7 +430,7 @@ export class AgentWorkspace {
       providerId: 'claude-code',
       modelId: 'default',
       thinkingEffort: null,
-      serviceTierId: null
+      serviceTierId: null,
     }
   }
 
@@ -382,7 +440,9 @@ export class AgentWorkspace {
   }
 }
 
-const AGENT_WORKSPACE_KEY: InjectionKey<AgentWorkspace> = Symbol('demi.agent-workspace')
+const AGENT_WORKSPACE_KEY: InjectionKey<AgentWorkspace> = Symbol(
+  'demi.agent-workspace',
+)
 
 export function provideAgentWorkspace(workspace: AgentWorkspace): void {
   provide(AGENT_WORKSPACE_KEY, workspace)
@@ -390,7 +450,8 @@ export function provideAgentWorkspace(workspace: AgentWorkspace): void {
 
 export function useAgentWorkspace(): AgentWorkspace {
   const workspace = inject(AGENT_WORKSPACE_KEY)
-  if (!workspace)
+  if (!workspace) {
     throw new Error('AgentWorkspace is not provided')
+  }
   return workspace
 }

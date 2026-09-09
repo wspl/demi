@@ -18,6 +18,15 @@ defineExpose({ dockHeight })
   <div class="relative h-full flex-1 overflow-hidden bg-surface">
     <slot />
     <div
+      v-if="$slots.overDock"
+      class="pointer-events-none absolute inset-x-3 z-20 min-h-0 pb-2"
+      :style="{ bottom: `${dockHeight}px`, height: '50%' }"
+    >
+      <div class="relative h-full min-h-0">
+        <slot name="overDock" />
+      </div>
+    </div>
+    <div
       ref="bottomAreaRef"
       class="absolute bottom-0 left-0 right-0 z-10 px-3 pb-3"
     >
