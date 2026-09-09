@@ -20,6 +20,20 @@
 - Before committing, reread the complete functions you changed, not just the added lines. Check for repeated conditions, duplicate or unused values, ignored errors, and code in the wrong package. Fix those problems before calling the work complete, even when tests pass.
 - Commit completed checkpoints with Conventional Commit subjects and push after each commit.
 
+# Coding Standards
+
+- TypeScript: Google TypeScript Style Guide.
+- JavaScript: Google JavaScript Style Guide.
+- Vue: Vue Style Guide.
+- HTML/CSS: Google HTML/CSS Style Guide.
+- C: LLVM Coding Standards.
+- Bash: Google Shell Style Guide.
+- Python: PEP 8.
+- CMake: KDE CMake Coding Style.
+- JSON: Google JSON Style Guide.
+- YAML: Home Assistant YAML Style Guide.
+- Markdown: Google Markdown Style Guide.
+
 # Project References
 
 - `docs/package-boundaries.md` is the authoritative contract for package responsibilities, dependencies, and module layout.
