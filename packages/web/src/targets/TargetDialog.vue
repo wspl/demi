@@ -96,6 +96,8 @@ async function create(draft: WorkspaceDraft) {
     :current-project-id="current?.projectId ?? null"
     :locked="pending || (current?.phase !== 'idle' && !!current)"
     :pending="pending"
+    :load="product.load"
+    @retry="product.revalidate"
     :devices="resources.devices"
     :cloud="!!product.snapshot?.cloud"
     :message="message"

@@ -17,38 +17,8 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
  * browser, a code the user copies back, or a token the vendor's CLI hands out after
  * its own login. Owns nothing; the host drives the phase.
  */
-export type ProviderLoginPhase =
-  | { kind: 'starting' }
-  | {
-    kind: 'device';
-    url: string;
-    code: string;
-    expiresIn?: string
-  }
-  | {
-    kind: 'code-input';
-    url: string
-  }
-  | {
-      kind: 'token'
-      /** The command that prints the token, run in the user's own terminal. */
-      command: string
-      /** Where to get the CLI when it is missing. */
-      install: {
-        label: string;
-        url: string
-      }
-      /** What a token starts with, so a paste can be checked before it is sent. */
-      prefix: string
-    }
-  | {
-    kind: 'done';
-    account: string
-  }
-  | {
-    kind: 'failed';
-    message: string
-  }
+import type { ProviderLoginPhase } from './types'
+export type { ProviderLoginPhase } from './types'
 
 const props = defineProps<{
   isOpen: boolean
@@ -68,10 +38,13 @@ const emit = defineEmits<{
 
 const pasted = ref('')
 const token = ref('')
-watch(() => [props.isOpen, props.phase.kind], () => {
-  token.value = ''
-  pasted.value = ''
-})
+watch(
+  () => [props.isOpen, props.phase.kind],
+  () => {
+    token.value = ''
+    pasted.value = ''
+  },
+)
 const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 </script>
 
@@ -84,13 +57,28 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
   >
     <div class="flex flex-col gap-5 p-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Sign in to {{ vendorName }}</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">
+          Sign in to {{ vendorName }}
+        </h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          <template v-if="phase.kind === 'device'">Enter this code on the vendor's page. Demi keeps waiting here.</template>
-          <template v-else-if="phase.kind === 'code-input'">Approve in the browser, then paste the code it shows you.</template>
-          <template v-else-if="phase.kind === 'token'">Sign in with the vendor's own tool, then paste the token it prints.</template>
-          <template v-else-if="phase.kind === 'done'">Signed in. This account is now active for {{ vendorName }}.</template>
-          <template v-else-if="phase.kind === 'failed'">The sign-in did not complete.</template>
+          <template v-if="phase.kind === 'device'"
+            >Enter this code on the vendor's page. Demi keeps waiting
+            here.</template
+          >
+          <template v-else-if="phase.kind === 'code-input'"
+            >Approve in the browser, then paste the code it shows you.</template
+          >
+          <template v-else-if="phase.kind === 'token'"
+            >Sign in with the vendor's own tool, then paste the token it
+            prints.</template
+          >
+          <template v-else-if="phase.kind === 'done'"
+            >Signed in. This account is now active for
+            {{ vendorName }}.</template
+          >
+          <template v-else-if="phase.kind === 'failed'"
+            >The sign-in did not complete.</template
+          >
           <template v-else>Contacting {{ vendorName }}…</template>
         </p>
       </header>
@@ -109,7 +97,8 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
         >
           <span
             class="select-all font-mono text-[22px] tracking-[0.25em] text-fg-emphasis"
-          >{{ phase.code }}</span>
+            >{{ phase.code }}</span
+          >
           <IconButton
             :icon="copied ? Check : Copy"
             variant="ghost"
@@ -124,7 +113,9 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
           </Button>
           <span class="flex items-center gap-1.5 text-[12px] text-fg-subtle">
             <IndeterminateSpinner :size="ICON_PX.in20" />
-            Waiting<template v-if="phase.expiresIn"> · code expires in {{ phase.expiresIn }}</template>
+            Waiting<template v-if="phase.expiresIn">
+              · code expires in {{ phase.expiresIn }}</template
+            >
           </span>
         </div>
       </div>
@@ -144,7 +135,8 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
             variant="primary"
             :disabled="!pasted.trim()"
             @click="emit('submitCode', pasted.trim())"
-          >Continue</Button>
+            >Continue</Button
+          >
         </div>
       </div>
 
@@ -153,7 +145,9 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
         <li class="flex items-start gap-3">
           <Tag class="mt-0.5 shrink-0 tabular-nums">1</Tag>
           <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-            <span class="text-chrome text-fg">Install {{ vendorName }} if you have not.</span>
+            <span class="text-chrome text-fg"
+              >Install {{ vendorName }} if you have not.</span
+            >
             <Button class="self-start" @click="emit('open', phase.install.url)">
               {{ phase.install.label }}
               <ExternalLink :size="ICON_PX.in24" />
@@ -163,7 +157,9 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
         <li class="flex items-start gap-3">
           <Tag class="mt-0.5 shrink-0 tabular-nums">2</Tag>
           <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-            <span class="text-chrome text-fg">Run this in a terminal and sign in when the browser opens.</span>
+            <span class="text-chrome text-fg"
+              >Run this in a terminal and sign in when the browser opens.</span
+            >
             <CopyCode :code="phase.command" />
           </div>
         </li>
@@ -177,18 +173,23 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
                 secret
                 :placeholder="`${phase.prefix}…`"
                 class="flex-1"
-                @keydown.enter="token.trim().startsWith(phase.prefix) && emit('submitToken', token.trim())"
+                @keydown.enter="
+                  token.trim().startsWith(phase.prefix) &&
+                  emit('submitToken', token.trim())
+                "
               />
               <Button
                 variant="primary"
                 :disabled="!token.trim().startsWith(phase.prefix)"
                 @click="emit('submitToken', token.trim())"
-              >Continue</Button>
+                >Continue</Button
+              >
             </div>
             <span
               v-if="token.trim() && !token.trim().startsWith(phase.prefix)"
               class="text-[12px] text-on-danger"
-            >A token starts with {{ phase.prefix }}.</span>
+              >A token starts with {{ phase.prefix }}.</span
+            >
           </div>
         </li>
       </ol>
@@ -214,10 +215,13 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
           v-if="phase.kind === 'done'"
           variant="primary"
           @click="emit('close')"
-        >Done</Button>
+          >Done</Button
+        >
         <template v-else>
           <Button @click="emit('close')">Cancel</Button>
-          <Button v-if="phase.kind === 'failed'" @click="emit('retry')">Try again</Button>
+          <Button v-if="phase.kind === 'failed'" @click="emit('retry')"
+            >Try again</Button
+          >
         </template>
       </div>
     </div>

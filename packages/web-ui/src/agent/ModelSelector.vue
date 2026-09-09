@@ -6,6 +6,8 @@ import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { t } from '../infra/i18n'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
+import Button from '../ui/Button.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { isFastMode } from './fast-mode'
@@ -14,6 +16,7 @@ import { buildReasoningState, reasoningOptionLabel } from './reasoning'
 import ModelMenu from './ModelMenu.vue'
 
 const props = defineProps<{
+  load?: 'loading' | 'ready' | 'failed'
   providers: ProviderInfo[]
   models: Record<string, ModelInfo[]>
   selectedProviderId?: string | null
@@ -23,6 +26,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  retry: []
   selectModel: [providerId: string, modelId: string]
   changeThinking: [config: ThinkingConfig]
   changeServiceTier: [serviceTierId: string | null]
@@ -33,14 +37,16 @@ const state = computed(() =>
     props.providers,
     props.models,
     props.selectedProviderId,
-    props.selectedModelId
+    props.selectedModelId,
   ),
 )
 const unavailable = computed(() => state.value.kind === 'unavailable')
-const selected = computed(() => (state.value.kind === 'ready'
-  ? state.value.selected
-  : null))
-const fast = computed(() => isFastMode(selected.value?.model, props.serviceTierId))
+const selected = computed(() =>
+  state.value.kind === 'ready' ? state.value.selected : null,
+)
+const fast = computed(() =>
+  isFastMode(selected.value?.model, props.serviceTierId),
+)
 // The chip names the reasoning level beside the model, quieter than the name, so the
 // current effort is visible without opening the menu.
 const reasoningLabel = computed(() => {
@@ -50,8 +56,17 @@ const reasoningLabel = computed(() => {
 </script>
 
 <template>
+  <span
+    v-if="load === 'loading'"
+    class="inline-flex h-7 items-center gap-1.5 px-2 text-chrome text-fg-subtle"
+    role="status"
+    ><IndeterminateSpinner :size="14" /> Loading models…</span
+  >
+  <Button v-else-if="load === 'failed'" size="sm" @click="emit('retry')"
+    >Retry models</Button
+  >
   <Dropdown
-    v-if="state.kind === 'ready' || state.kind === 'unavailable'"
+    v-else-if="state.kind === 'ready' || state.kind === 'unavailable'"
     :overlay-store="appOverlayStore"
     variant="ghost"
     trigger-label="Model"
@@ -64,17 +79,15 @@ const reasoningLabel = computed(() => {
         <span
           class="truncate"
           :class="isOpen ? 'text-fg-body' : 'text-fg-muted'"
-        >{{ state.label }}</span>
+          >{{ state.label }}</span
+        >
         <span
           v-if="reasoningLabel"
           class="shrink-0"
           :class="isOpen ? 'text-fg-subtle' : 'text-fg-faint'"
-        >{{ reasoningLabel }}</span>
-        <Zap
-          v-if="fast"
-          :size="ICON_PX.in28"
-          class="shrink-0"
-        />
+          >{{ reasoningLabel }}</span
+        >
+        <Zap v-if="fast" :size="ICON_PX.in28" class="shrink-0" />
         <Tooltip v-if="unavailable" :content="t('agent.input.switchModel')">
           <TriangleAlert
             :size="ICON_PX.in28"
@@ -91,7 +104,9 @@ const reasoningLabel = computed(() => {
         :selected-model-id="selectedModelId"
         :thinking-config="thinkingConfig"
         :service-tier-id="serviceTierId"
-        @select-model="(providerId, modelId) => emit('selectModel', providerId, modelId)"
+        @select-model="
+          (providerId, modelId) => emit('selectModel', providerId, modelId)
+        "
         @change-thinking="(config) => emit('changeThinking', config)"
         @change-service-tier="(tierId) => emit('changeServiceTier', tierId)"
       />

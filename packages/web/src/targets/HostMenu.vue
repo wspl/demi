@@ -11,7 +11,9 @@ const props = defineProps<{
   conversation: Conversation
   project?: Project
 }>()
-const emit = defineEmits<{ switchMain: [deviceId: string, cwd?: string | null] }>()
+const emit = defineEmits<{
+  switchMain: [deviceId: string, cwd?: string | null]
+}>()
 const resources = useResources()
 const store = useConversations()
 
@@ -60,6 +62,7 @@ function connect() {
 <template>
   <HostMenu
     :main-host="mainHost"
+    :pending="store.pendingChanges.includes(conversation.id)"
     :attached-hosts="attachedHosts"
     :devices="resources.devices"
     :main-locked="mainLocked"

@@ -41,6 +41,7 @@ const props = defineProps<{
   projects: SidebarProject[]
   conversations: SidebarConversation[]
   activeId: string | null
+  pendingIds?: string[]
   hidePin?: boolean
   hideDelete?: boolean
   /** `loading` is a spinner, not a first-run empty list. */
@@ -455,6 +456,7 @@ function selectProjectConversations(project: SidebarProject): void {
           <SidebarRow
             v-else
             :conversation="byId.get(entry.id)!"
+            :pending="pendingIds?.includes(entry.id)"
             :nested="byId.get(entry.id)!.projectId !== null"
             :hide-pin="hidePin"
             :open="entry.id === activeId"

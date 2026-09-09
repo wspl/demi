@@ -85,13 +85,21 @@ function editUser(content: UserContentBlock[]) {
     v-if="pageKind === 'session' && conversation"
     :conversation="conversation"
     :has-provider="hasProvider"
-    :pending-submission="conversation.pendingSend ? {
-      id: conversation.pendingSend.id,
-      text: conversation.pendingSend.text,
-      fileNames: conversation.files.filter((file) => conversation.pendingSend?.fileIds.includes(file.id)).map((file) => file.name),
-      error: conversation.pendingSend.error,
-      sending: conversation.submission === 'sending',
-    } : null"
+    :pending-submission="
+      conversation.pendingSend
+        ? {
+            id: conversation.pendingSend.id,
+            text: conversation.pendingSend.text,
+            fileNames: conversation.files
+              .filter((file) =>
+                conversation?.pendingSend?.fileIds.includes(file.id),
+              )
+              .map((file) => file.name),
+            error: conversation.pendingSend.error,
+            sending: conversation.submission === 'sending',
+          }
+        : null
+    "
     @retry-submission="store.send(conversation)"
     @archive="store.archive([conversation.id])"
     @retry="store.start(conversation)"
@@ -105,9 +113,7 @@ function editUser(content: UserContentBlock[]) {
     @save-scroll="saveScroll"
   >
     <template #workspace
-      ><WorkspaceInfo
-        :project="project"
-        :conversation="conversation"
+      ><WorkspaceInfo :project="project" :conversation="conversation"
     /></template>
     <template #composer
       ><ConversationComposer

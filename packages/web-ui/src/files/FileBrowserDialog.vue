@@ -9,7 +9,7 @@ import type {
   FileBrowserHost,
   FileBrowserMode,
   FileBrowserPlaceGroup,
-  FileBrowserSource
+  FileBrowserSource,
 } from './types'
 
 /**
@@ -30,6 +30,7 @@ const props = defineProps<{
   hostId?: string
   confirmLabel?: string
   confirmDisabled?: boolean
+  confirmPending?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -41,7 +42,7 @@ const emit = defineEmits<{
 const showHidden = defineModel<boolean>('showHidden', { default: false })
 
 const title = computed(
-  () => props.title ?? (props.mode === 'file' ? 'Open file' : 'Select folder')
+  () => props.title ?? (props.mode === 'file' ? 'Open file' : 'Select folder'),
 )
 </script>
 
@@ -59,7 +60,9 @@ const title = computed(
       <header
         class="flex h-11 shrink-0 select-none items-center justify-between gap-2 border-b border-line pl-4 pr-2"
       >
-        <h3 class="truncate text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
+        <h3 class="truncate text-[15px] font-medium text-fg-emphasis">
+          {{ title }}
+        </h3>
         <IconButton
           :icon="X"
           variant="ghost"
@@ -77,6 +80,7 @@ const title = computed(
         :host-id="hostId"
         :confirm-label="confirmLabel"
         :confirm-disabled="confirmDisabled"
+        :confirm-pending="confirmPending"
         @select="emit('select', $event)"
         @cancel="emit('close')"
         @update:host-id="emit('update:hostId', $event)"

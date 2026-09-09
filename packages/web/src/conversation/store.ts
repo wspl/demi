@@ -48,6 +48,7 @@ export const useConversations = defineStore('conversations', () => {
   const session = useSession()
   const items = ref<Conversation[]>([])
   const notice = ref('')
+  const pendingChanges = ref<string[]>([])
   const listStatus = computed(() => product.load)
   const writes = new SerialQueue()
   const restored = new Set<string>()
@@ -305,7 +306,9 @@ export const useConversations = defineStore('conversations', () => {
     const signal = lifetime.signal
     try {
       const drafts = (await readLocalDrafts(userId)).sort((a, b) =>
-        (a.local?.conversation.createdAt ?? '').localeCompare(b.local?.conversation.createdAt ?? ''),
+        (a.local?.conversation.createdAt ?? '').localeCompare(
+          b.local?.conversation.createdAt ?? '',
+        ),
       )
       signal.throwIfAborted()
       for (const draft of drafts) {
@@ -624,9 +627,39 @@ export const useConversations = defineStore('conversations', () => {
     return failed.length === 0
   }
 
-  async function batch(
+  async function changeConversations<T>(
     ids: string[],
-    changes: Partial<Pick<BackendConversation, 'title' | 'pinned' | 'archived' | 'target'>>,
+    action: () => Promise<T>,
+    busyResult: T,
+  ): Promise<T> {
+    if (ids.some((id) => pendingChanges.value.includes(id))) {
+      return busyResult
+    }
+    const current = lifetime
+    pendingChanges.value.push(...ids)
+    try {
+      return await action()
+    } finally {
+      if (lifetime === current) {
+        pendingChanges.value = pendingChanges.value.filter(
+          (id) => !ids.includes(id),
+        )
+      }
+    }
+  }
+
+  function batch(
+    ids: string[],
+    changes: Parameters<typeof applyBatch>[1],
+  ): Promise<boolean> {
+    return changeConversations(ids, () => applyBatch(ids, changes), false)
+  }
+
+  async function applyBatch(
+    ids: string[],
+    changes: Partial<
+      Pick<BackendConversation, 'title' | 'pinned' | 'archived' | 'target'>
+    >,
   ): Promise<boolean> {
     for (const conversation of items.value) {
       if (
@@ -824,7 +857,9 @@ export const useConversations = defineStore('conversations', () => {
     }
     if (beforeId) {
       const index = items.value.findIndex((item) => item.id === beforeId)
-      beforeId = items.value.slice(index).find((item) => item.persistence === 'synced')?.id ?? null
+      beforeId =
+        items.value.slice(index).find((item) => item.persistence === 'synced')
+          ?.id ?? null
     }
     try {
       await apiRequest('/sidebar/reorder', {
@@ -1013,8 +1048,8 @@ export const useConversations = defineStore('conversations', () => {
       thinking?.type === 'adaptive' || thinking?.type === 'effort'
         ? thinking.effort
         : thinking?.type === 'disabled'
-        ? 'disabled'
-        : null
+          ? 'disabled'
+          : null
     if (activeRuntime?.id === conversation.id) {
       void activeRuntime.runtime.setModel().catch(report)
     }
@@ -1152,6 +1187,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   function stopAll(): void {
+    pendingChanges.value = []
     releaseActive()
     lifetime.abort()
     lifetime = new AbortController()
@@ -1186,9 +1222,25 @@ export const useConversations = defineStore('conversations', () => {
       }),
     switchTarget: (id: string, target: BackendConversation['target']) =>
       batch([id], { target }),
-    attachHost,
-    detachHost,
-    renameHost,
+    pendingChanges,
+    attachHost: (conversation: Conversation, deviceId: string) =>
+      changeConversations(
+        [conversation.id],
+        () => attachHost(conversation, deviceId),
+        undefined,
+      ),
+    detachHost: (conversation: Conversation, deviceId: string) =>
+      changeConversations(
+        [conversation.id],
+        () => detachHost(conversation, deviceId),
+        undefined,
+      ),
+    renameHost: (conversation: Conversation, deviceId: string, name: string) =>
+      changeConversations(
+        [conversation.id],
+        () => renameHost(conversation, deviceId, name),
+        undefined,
+      ),
     selectModel,
     setThinking,
     setTier,

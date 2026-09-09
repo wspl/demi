@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
+import AsyncRegion from '@demicodes/web-ui/ui/AsyncRegion.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -19,6 +20,7 @@ import { useProduct } from './state/product'
 import SessionNoticeBar from '@demicodes/web-ui/agent/SessionNoticeBar.vue'
 import { useSession } from './auth/session'
 import { claimDevice, deviceInstallation } from './devices/pairing'
+const session = useSession()
 const conversations = useConversations()
 const resources = useResources()
 const product = useProduct()
@@ -71,9 +73,12 @@ function openSettings(section?: string) {
 }
 function reorder(request: SidebarReorder) {
   if (request.kind === 'project') {
-    void resources.reorderProject(request.id, request.beforeId).catch((error) => {
-      conversations.notice = error instanceof Error ? error.message : String(error)
-    })
+    void resources
+      .reorderProject(request.id, request.beforeId)
+      .catch((error) => {
+        conversations.notice =
+          error instanceof Error ? error.message : String(error)
+      })
   } else {
     conversations.reorder(request.id, request.beforeId)
   }
@@ -96,7 +101,8 @@ async function removeProject(id: string) {
   try {
     await resources.removeProject(id)
   } catch (error) {
-    conversations.notice = error instanceof Error ? error.message : String(error)
+    conversations.notice =
+      error instanceof Error ? error.message : String(error)
   }
 }
 async function signOut(): Promise<void> {
@@ -145,8 +151,14 @@ watch(
 </script>
 
 <template>
+  <div
+    v-if="session.current.status === 'checking' || !route.matched.length"
+    class="flex h-dvh items-center justify-center"
+  >
+    <AsyncRegion state="loading" label="Loading Demi…" />
+  </div>
   <SidebarLayout
-    v-if="route.path !== '/login'"
+    v-else-if="route.path !== '/login'"
     v-model:open="resources.sidebarOpen"
   >
     <template #sidebar>
@@ -157,6 +169,7 @@ watch(
         :conversations="conversations.items.filter((c) => !c.archived)"
         :active-id="activeId"
         :list-status="conversations.listStatus"
+        :pending-ids="conversations.pendingChanges"
         hide-delete
         @retry-list="conversations.reloadList"
         @reorder="reorder"
@@ -172,10 +185,7 @@ watch(
         @sign-out="signOut"
       />
     </template>
-    <SessionNoticeBar
-      v-if="product.error"
-      :label="product.error"
-    />
+    <SessionNoticeBar v-if="product.error" :label="product.error" />
     <RouterView />
     <template #dialogs>
       <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->
@@ -194,10 +204,7 @@ watch(
       />
     </template>
   </SidebarLayout>
-  <div
-    v-else
-    class="h-full"
-  >
+  <div v-else class="h-full">
     <RouterView />
   </div>
   <ToastHost />

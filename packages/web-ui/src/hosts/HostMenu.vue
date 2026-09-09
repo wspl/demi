@@ -16,6 +16,7 @@ const props = defineProps<{
   mainHost: HostMenuMainHost
   attachedHosts: HostDeviceOption[]
   devices: HostDeviceOption[]
+  pending?: boolean
   mainLocked?: boolean
   attachmentsLocked?: boolean
 }>()
@@ -29,12 +30,13 @@ const emit = defineEmits<{
 const open = ref(false)
 const boundIds = computed(() => [
   props.mainHost.id,
-  ...props.attachedHosts.map(host => host.id),
+  ...props.attachedHosts.map((host) => host.id),
 ])
 
 function selectMain(id: string) {
-  if (props.mainLocked)
+  if (props.mainLocked) {
     return
+  }
   open.value = false
   emit('switchMain', id)
 }
@@ -59,6 +61,7 @@ function connect() {
   <Dropdown
     v-model:open="open"
     :overlay-store="appOverlayStore"
+    :disabled="pending"
     class="min-w-0 [&>div]:min-w-0"
   >
     <template #trigger>
@@ -66,6 +69,7 @@ function connect() {
         variant="ghost"
         class="max-w-full"
         aria-label="Manage conversation hosts"
+        :loading="pending"
       >
         <component
           :is="mainHost.kind === 'cloud' ? Cloud : Monitor"
@@ -143,11 +147,7 @@ function connect() {
             />
           </template>
         </MenuItem>
-        <MenuItem
-          label="Connect new device…"
-          :icon="Link"
-          @select="connect"
-        />
+        <MenuItem label="Connect new device…" :icon="Link" @select="connect" />
       </Menu>
     </template>
   </Dropdown>

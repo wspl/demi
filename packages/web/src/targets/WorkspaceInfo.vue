@@ -17,11 +17,16 @@ const conversations = useConversations()
 const directory = ref<InstanceType<typeof WorkspaceDirectoryMenu>>()
 const execution = computed(() => executionFor(props.conversation))
 const locked = computed(
-  () => props.conversation.phase !== 'idle' || props.conversation.archived,
+  () =>
+    props.conversation.phase !== 'idle' ||
+    props.conversation.archived ||
+    conversations.pendingChanges.includes(props.conversation.id),
 )
 const recentDirectories = computed(() =>
   resources.recentProjectIds
-    .flatMap((id) => resources.projects.find((project) => project.id === id) ?? [])
+    .flatMap(
+      (id) => resources.projects.find((project) => project.id === id) ?? [],
+    )
     .filter((project) => project.deviceId === execution.value.deviceId)
     .slice(0, 8)
     .map((project) => ({
@@ -29,7 +34,8 @@ const recentDirectories = computed(() =>
       path: project.path,
       disabled:
         project.hostKind !== 'cloud' &&
-        !resources.devices.find((device) => device.id === project.deviceId)?.online,
+        !resources.devices.find((device) => device.id === project.deviceId)
+          ?.online,
     })),
 )
 const hosts = computed(() =>

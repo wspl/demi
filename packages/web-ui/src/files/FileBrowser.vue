@@ -80,6 +80,7 @@ const props = withDefaults(
     confirmLabel?: string
     /** Browsing stays open while choosing is not allowed (a running turn, an archived conversation). */
     confirmDisabled?: boolean
+    confirmPending?: boolean
   }>(),
   {
     places: () => [],
@@ -108,20 +109,22 @@ const sort = ref<FileBrowserSort>({
 })
 const selected = ref<string | null>(null)
 const error = ref<string | null>(null)
-const creating = ref(false)
+const folderCreation = ref<'idle' | 'naming' | 'saving'>('idle')
 const list = ref<InstanceType<typeof FileBrowserList>>()
 let pending: AbortController | null = null
 
 /** The rows in view, each folder carrying the glyph its place earns (the home under `/Users`). */
 const visible = computed(() =>
-  sortEntries(filterEntries(entries.value, '', showHidden.value), sort.value).map(
-    (entry) =>
-      entry.isDirectory
-        ? {
-            ...entry,
-            icon: landmarkIcon(joinPath(path.value, entry.name), props.source),
-          }
-        : entry,
+  sortEntries(
+    filterEntries(entries.value, '', showHidden.value),
+    sort.value,
+  ).map((entry) =>
+    entry.isDirectory
+      ? {
+          ...entry,
+          icon: landmarkIcon(joinPath(path.value, entry.name), props.source),
+        }
+      : entry,
   ),
 )
 const selectedEntry = computed(
@@ -143,10 +146,11 @@ function placeIcon(place: FileBrowserPlace): Component {
 }
 
 const confirmLabel = computed(
-  () => props.confirmLabel ?? (props.mode === 'file' ? 'Open' : 'Select Folder'),
+  () =>
+    props.confirmLabel ?? (props.mode === 'file' ? 'Open' : 'Select Folder'),
 )
 const canConfirm = computed(() => {
-  if (props.confirmDisabled) {
+  if (props.confirmDisabled || props.confirmPending) {
     return false
   }
   if (selectedEntry.value) {
@@ -231,7 +235,7 @@ function show(target: string) {
   path.value = target
   selected.value = null
   error.value = null
-  creating.value = false
+  folderCreation.value = 'idle'
   void load(target)
 }
 
@@ -290,9 +294,10 @@ function confirm() {
 
 async function createFolder(folderName: string) {
   const create = props.source.createDirectory
-  if (!create) {
+  if (!create || folderCreation.value === 'saving') {
     return
   }
+  folderCreation.value = 'saving'
   const target = joinPath(path.value, folderName)
   pending?.abort()
   const controller = new AbortController()
@@ -304,11 +309,14 @@ async function createFolder(folderName: string) {
     if (controller.signal.aborted) {
       return
     }
-    creating.value = false
-    error.value = toFailure(err).message ?? `${folderName} could not be created.`
+    error.value =
+      toFailure(err).message ?? `${folderName} could not be created.`
     return
+  } finally {
+    if (pending === controller) {
+      folderCreation.value = 'idle'
+    }
   }
-  creating.value = false
   await load(path.value)
   showHidden.value ||= folderName.startsWith('.')
   selected.value = folderName
@@ -391,7 +399,9 @@ defineExpose({
               "
               :indicator-label="host.online ? 'Online' : 'Offline'"
               :note="
-                host.id !== CLOUD_HOST_ID && !host.online ? 'offline' : undefined
+                host.id !== CLOUD_HOST_ID && !host.online
+                  ? 'offline'
+                  : undefined
               "
               :disabled="host.id !== CLOUD_HOST_ID && !host.online"
               disabled-reason="This device is offline."
@@ -413,10 +423,7 @@ defineExpose({
             @click="back"
           />
         </Tooltip>
-        <Tooltip
-          content="Forward"
-          class="hidden @md:inline-flex"
-        >
+        <Tooltip content="Forward" class="hidden @md:inline-flex">
           <IconButton
             :icon="ArrowRight"
             variant="ghost"
@@ -478,19 +485,18 @@ defineExpose({
             </Menu>
           </template>
         </Dropdown>
-        <Tooltip
-          v-if="source.createDirectory"
-          content="New folder"
-        >
+        <Tooltip v-if="source.createDirectory" content="New folder">
           <IconButton
             :icon="FolderPlus"
             variant="ghost"
             aria-label="New folder"
             :disabled="!!failure || loading"
-            @click="creating = true"
+            @click="folderCreation = 'naming'"
           />
         </Tooltip>
-        <Tooltip :content="showHidden ? 'Hide hidden files' : 'Show hidden files'">
+        <Tooltip
+          :content="showHidden ? 'Hide hidden files' : 'Show hidden files'"
+        >
           <IconButton
             :icon="showHidden ? EyeOff : Eye"
             variant="ghost"
@@ -538,14 +544,15 @@ defineExpose({
         :sort="sort"
         :loading="loading"
         :failure="failure"
-        :creating="creating"
+        :creating="folderCreation !== 'idle'"
+        :create-pending="folderCreation === 'saving'"
         @activate="activate"
         @sort="(key: FileBrowserSortKey) => (sort = nextSort(sort, key))"
         @up="up"
         @back="back"
         @forward="forward"
         @create="createFolder"
-        @cancel-create="creating = false"
+        @cancel-create="folderCreation = 'idle'"
       />
     </div>
     <div
@@ -557,11 +564,9 @@ defineExpose({
           role="status"
         >
           <template v-if="error">
-            <span
-              class="truncate text-on-danger"
-              :title="error"
-              >{{ error }}</span
-            >
+            <span class="truncate text-on-danger" :title="error">{{
+              error
+            }}</span>
           </template>
           <template v-else>
             <span class="shrink-0 text-fg-subtle">{{ status.lead }}</span>
@@ -574,11 +579,9 @@ defineExpose({
                 :is-directory="status.isDirectory"
                 :icon="status.icon"
               />
-              <span
-                class="truncate"
-                :title="status.name"
-                >{{ status.name }}</span
-              >
+              <span class="truncate" :title="status.name">{{
+                status.name
+              }}</span>
             </span>
           </template>
         </div>
@@ -586,7 +589,8 @@ defineExpose({
       <div class="flex shrink-0 items-center justify-end gap-2">
         <Button
           variant="primary"
-          :disabled="!canConfirm"
+          :disabled="!canConfirm && !confirmPending"
+          :loading="confirmPending"
           @click="confirm"
           >{{ confirmLabel }}</Button
         >

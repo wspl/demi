@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { Check } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -47,14 +47,37 @@ const emit = defineEmits<{
   resend: []
 }>()
 
-const email = ref('')
-const password = ref('')
-const code = ref('')
+export interface ChangeEmailDialogDraft {
+  email: string
+  password: string
+  code: string
+}
+const draft = defineModel<ChangeEmailDialogDraft>('draft', {
+  default: () => ({ email: '', password: '', code: '' }),
+})
+const email = computed({
+  get: () => draft.value.email,
+  set: (value: string) => {
+    draft.value = { ...draft.value, email: value }
+  },
+})
+const password = computed({
+  get: () => draft.value.password,
+  set: (value: string) => {
+    draft.value = { ...draft.value, password: value }
+  },
+})
+const code = computed({
+  get: () => draft.value.code,
+  set: (value: string) => {
+    draft.value = { ...draft.value, code: value }
+  },
+})
 
 watch(
   () => [props.isOpen, props.phase.kind],
   () => {
-    if (!props.isOpen || props.phase.kind === 'done') {
+    if (props.phase.kind === 'done') {
       password.value = ''
       code.value = ''
       email.value = ''
@@ -70,12 +93,15 @@ const canSubmit = computed(() => {
   }
   const next = email.value.trim()
   return (
-    isEmail(next) && next !== props.phase.currentEmail && password.value.length > 0
+    isEmail(next) &&
+    next !== props.phase.currentEmail &&
+    password.value.length > 0
   )
 })
 const sameAsCurrent = computed(
   () =>
-    props.phase.kind === 'form' && email.value.trim() === props.phase.currentEmail,
+    props.phase.kind === 'form' &&
+    email.value.trim() === props.phase.currentEmail,
 )
 const canVerify = computed(
   () =>
@@ -119,8 +145,8 @@ function resend() {
             >You sign in with the new address from now on.</template
           >
           <template v-else-if="phase.kind === 'verify'"
-            >A {{ CODE_LENGTH }}-digit code went to {{ phase.email }}. Enter it to
-            finish.</template
+            >A {{ CODE_LENGTH }}-digit code went to {{ phase.email }}. Enter it
+            to finish.</template
           >
           <template v-else>Your email is now {{ phase.email }}.</template>
         </p>
@@ -153,10 +179,7 @@ function resend() {
             />
           </SettingsRow>
         </div>
-        <InlineError
-          v-if="phase.error"
-          :message="phase.error"
-        />
+        <InlineError v-if="phase.error" :message="phase.error" />
         <InlineError
           v-else-if="sameAsCurrent"
           message="That is already your email."
@@ -178,10 +201,7 @@ function resend() {
             />
           </SettingsRow>
         </div>
-        <InlineError
-          v-if="phase.error"
-          :message="phase.error"
-        />
+        <InlineError v-if="phase.error" :message="phase.error" />
         <p class="select-none text-[12px] text-fg-subtle">
           <template v-if="phase.resent"
             >A new code went to {{ phase.email }}.</template
@@ -200,14 +220,8 @@ function resend() {
         </p>
       </template>
 
-      <div
-        v-else
-        class="flex items-center gap-2 py-2 text-chrome text-fg"
-      >
-        <Check
-          :size="ICON_PX.in28"
-          class="text-on-success"
-        />
+      <div v-else class="flex items-center gap-2 py-2 text-chrome text-fg">
+        <Check :size="ICON_PX.in28" class="text-on-success" />
         {{ phase.email }}
       </div>
 
@@ -223,16 +237,18 @@ function resend() {
           <Button
             v-if="phase.kind === 'form'"
             variant="primary"
-            :disabled="!canSubmit"
+            :disabled="!canSubmit && !phase.busy"
+            :loading="phase.busy"
             @click="submit"
-            >{{ phase.busy ? 'Sending code…' : 'Continue' }}</Button
+            >Continue</Button
           >
           <Button
             v-else
             variant="primary"
-            :disabled="!canVerify"
+            :disabled="!canVerify && !phase.busy"
+            :loading="phase.busy"
             @click="verify"
-            >{{ phase.busy ? 'Checking…' : 'Verify' }}</Button
+            >Verify</Button
           >
         </template>
       </div>
