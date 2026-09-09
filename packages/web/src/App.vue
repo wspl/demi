@@ -15,6 +15,7 @@ import SettingsDialog from './settings/SettingsDialog.vue'
 import TargetDialog from './targets/TargetDialog.vue'
 import { useConversations } from './conversation/store'
 import { useResources } from './prototype/resources'
+import { useSession } from './auth/session'
 import { claimDevice, deviceInstallation } from './prototype/pairing'
 const conversations = useConversations()
 const resources = useResources()
@@ -77,10 +78,18 @@ function removeProject(id: string) {
   }
   resources.projects = resources.projects.filter((p) => p.id !== id)
 }
-function signOut() {
-  resources.signedIn = false
-  resources.settingsOpen = false
-  void router.push('/login')
+async function signOut(): Promise<void> {
+  try {
+    await useSession().signOut()
+    // A new document releases account-scoped stores, sockets and draft data.
+    window.location.replace('/login')
+  } catch (error) {
+    showToast({
+      title: 'Could not sign out',
+      message: error instanceof Error ? error.message : String(error),
+      tone: 'danger',
+    })
+  }
 }
 /** The bindings from the keyboard settings, by the action each one names. */
 const actions: Record<string, () => void> = {

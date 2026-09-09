@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { useSession } from '../auth/session'
 import { moveBefore } from '@demicodes/utils'
 import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
 import type { SettingsProviderModel } from '@demicodes/web-ui/settings/types'
@@ -47,7 +48,6 @@ export const useResources = defineStore('resources', {
       providerDetailOpen: false,
       settings: settings(),
       username: 'Zan',
-      signedIn: true,
       settingsTab: 'general',
       settingsOpen: false,
       targetOpen: false,
@@ -75,6 +75,7 @@ export const useResources = defineStore('resources', {
     },
   },
   getters: {
+    signedIn: () => useSession().signedIn,
     /** What the composer lists: every provider, available when it can send. */
     providerInfos: (state): ProviderInfo[] =>
       state.providers.map(

@@ -14,8 +14,8 @@ const props = defineProps<{
   showFocus?: boolean
   /** A key or password: masked, with a built-in eye to reveal it. */
   secret?: boolean
-  /** Height family: md is 28px, sm is 24px. Match the surface's other controls. */
-  size?: 'sm' | 'md'
+  /** Height family: lg is 36px, md is 28px, sm is 24px. Match the surface's other controls. */
+  size?: 'sm' | 'md' | 'lg'
   /**
    * No frame in any state: the value reads as text in its row, and the caret is the
    * only sign of focus. The hit area stretches to its container's height so it fills
@@ -47,6 +47,36 @@ const inputAttrs = computed(
 const inputRef = ref<HTMLInputElement>()
 const isFocused = ref(false)
 
+const frameHeightClass = computed(() => {
+  if (props.bare) {
+    if (props.size === 'sm')
+      return 'min-h-6 self-stretch'
+    if (props.size === 'lg')
+      return 'min-h-9 self-stretch'
+    return 'min-h-7 self-stretch'
+  }
+  if (props.size === 'sm')
+    return 'h-6'
+  if (props.size === 'lg')
+    return 'h-9'
+  return 'h-7'
+})
+
+function insetPad(edge: 'pl' | 'pr'): string {
+  if (props.size === 'sm')
+    return `${edge}-2`
+  if (props.size === 'lg')
+    return `${edge}-3`
+  return `${edge}-2.5`
+}
+
+const inputPadClass = computed(() => [
+  slots['prefix'] ? 'pl-1.5' : props.bare ? 'pl-0' : insetPad('pl'),
+  props.secret || slots['suffix']
+    ? 'pr-1.5'
+    : props.bare ? 'pr-0' : insetPad('pr'),
+])
+
 onMounted(() => {
   if (props.focused)
     inputRef.value?.focus()
@@ -68,7 +98,7 @@ defineExpose({
     v-bind="frameAttrs"
     class="flex min-w-0 items-center rounded-md ring-1 transition-[box-shadow,background-color] duration-200 ease-out"
     :class="[
-      bare ? (size === 'sm' ? 'min-h-6 self-stretch' : 'min-h-7 self-stretch') : size === 'sm' ? 'h-6' : 'h-7',
+      frameHeightClass,
       attrs['class'] ? '' : 'w-full',
       bare ? 'bg-transparent ring-transparent' : ['bg-surface-raised', showFocus || isFocused ? 'ring-line-focus' : 'ring-line'],
     ]"
@@ -89,7 +119,7 @@ defineExpose({
       :value="modelValue"
       :placeholder="placeholder"
       class="h-full min-w-0 flex-1 bg-transparent text-chrome text-fg outline-none placeholder:text-fg-subtle"
-      :class="[slots['prefix'] ? 'pl-1.5' : bare ? 'pl-0' : size === 'sm' ? 'pl-2' : 'pl-2.5', secret || slots['suffix'] ? 'pr-1.5' : bare ? 'pr-0' : size === 'sm' ? 'pr-2' : 'pr-2.5']"
+      :class="inputPadClass"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       @focus="isFocused = true"
       @blur="isFocused = false"

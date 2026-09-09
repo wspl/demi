@@ -15,5 +15,11 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 18934,
     strictPort: true,
+    proxy: {
+      '/api': {
+        target: process.env.DEMI_BACKEND_URL ?? 'http://127.0.0.1:3271',
+        ws: true,
+      },
+    },
   },
 })

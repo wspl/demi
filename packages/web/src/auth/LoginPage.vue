@@ -1,39 +1,53 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
-import Button from '@demicodes/web-ui/ui/Button.vue'
-import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
-import { useResources } from '../prototype/resources'
-const resources = useResources()
+import { onUnmounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import EmailLoginPage, {
+  type EmailLoginPhase,
+} from '@demicodes/web-ui/auth/EmailLoginPage.vue'
+import { useSession } from './session'
+
+const session = useSession()
 const router = useRouter()
-function enter() {
-  if (!resources.username.trim())
+const email = ref('')
+const password = ref('')
+const initial = session.current
+const expired = useRoute().query.reason === 'expired'
+const phase = ref<EmailLoginPhase>(initial.status === 'signedOut'
+  ? { reason: expired ? 'expired' : initial.reason, error: initial.error }
+  : {})
+let request: AbortController | null = null
+
+async function submit(address: string, secret: string): Promise<void> {
+  if (phase.value.busy)
     return
-  resources.signedIn = true
-  void router.push('/chat/welcome')
+  const controller = new AbortController()
+  request = controller
+  phase.value = { busy: true, reason: phase.value.reason }
+  try {
+    await session.signIn(address, secret, controller.signal)
+    password.value = ''
+    await router.replace('/chat/welcome')
+  } catch (error) {
+    if (controller.signal.aborted)
+      return
+    phase.value = {
+      reason: phase.value.reason,
+      error: error instanceof Error ? error.message : 'Sign-in failed.',
+    }
+  } finally {
+    if (request === controller)
+      request = null
+  }
 }
+
+onUnmounted(() => request?.abort())
 </script>
 
 <template>
-  <main class="grid h-full place-items-center bg-surface-base">
-    <form class="w-80 space-y-5 p-4" @submit.prevent="enter">
-      <h1 class="select-none text-[20px] font-medium text-fg-emphasis">Welcome to Demi</h1>
-      <label class="flex flex-col gap-2 text-chrome text-fg-muted">
-        Your name
-        <TextInput
-          v-model="resources.username"
-          required
-          maxlength="50"
-          autocomplete="nickname"
-          focused
-        />
-      </label>
-      <Button
-        variant="primary"
-        :disabled="!resources.username.trim()"
-        @click="enter"
-      >
-        Continue
-      </Button>
-    </form>
-  </main>
+  <EmailLoginPage
+    v-model:email="email"
+    v-model:password="password"
+    :phase="phase"
+    @submit="submit"
+  />
 </template>

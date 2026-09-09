@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import OverviewSection from './sections/OverviewSection.vue'
+import SignInSection from './sections/SignInSection.vue'
 import SurfacesSection from './sections/SurfacesSection.vue'
 import PrimitivesSection from './sections/PrimitivesSection.vue'
 import MotionSection from './sections/MotionSection.vue'
@@ -19,6 +20,7 @@ export const NAV: {
   label: string
 }[] = [
   { path: '/overview', label: 'Overview' },
+  { path: '/signin', label: 'Sign in' },
   { path: '/surfaces', label: 'Surfaces' },
   { path: '/primitives', label: 'Primitives' },
   { path: '/motion', label: 'Motion' },
@@ -41,6 +43,7 @@ export const router = createRouter({
       component: OverviewSection,
       meta: { layout: 'catalog' }
     },
+    { path: '/signin', component: SignInSection, meta: { layout: 'catalog' } },
     {
       path: '/surfaces',
       component: SurfacesSection,

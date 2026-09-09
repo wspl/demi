@@ -264,7 +264,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/web`
 
-- Status: frontend prototype in development (M13.1).
+- Status: backend authentication integrated; other product workflows remain a frontend prototype (M13.3 in progress).
 - Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`.
 - Owns: the Vue SPA application frame, route navigation, product state and frontend
   prototype workflows. Vue 3 + TypeScript + Vite, vue-router, Pinia and Tailwind 4.
@@ -272,11 +272,13 @@ Test code may depend upward for integration coverage. Production code must not.
 - Layout: `main.ts` is the only composition root (app, router, stores and simulation
   clock); `App.vue` is the application frame; `conversation/` owns chat state and
   containers; `targets/` owns environment selection; `settings/` owns settings
-  containers; `auth/` owns the entry experience; `prototype/` owns local fixture
+  containers; `auth/` owns cookie-session state and entry containers; `api/` owns
+  validated browser HTTP requests; `prototype/` owns local fixture
   data and simulated resource state. Reusable UI belongs to `web-ui`.
-- Prototype boundary: the prototype uses browser-local state and scripted responses;
-  it does not import backend code, use provider transports or call real models.
-  Production backend integration belongs to M13.3.
+- Integration boundary: authentication calls the backend over same-origin HTTP.
+  Chat, resources and settings still use browser-local fixtures and scripted
+  responses. The browser does not import backend code or concrete providers.
+  See `docs/web-authentication.md` for the completed checkpoint and pending wiring.
 - Must not: import `web-gallery`, Node, Host implementations or concrete providers.
 
 ### `@demicodes/web-gallery`
