@@ -351,7 +351,7 @@ function resetShortcuts(): void {
     v-model:tab="tab"
     :is-open="resources.settingsOpen"
     :overlay-store="appOverlayStore"
-    :account="{ name: resources.username }"
+    :account="{ name: resources.username, email: resources.email }"
     :sections="sections"
     @close="resources.settingsOpen = false"
   >

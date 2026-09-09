@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { accountInitial } from '../auth/account-display'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import Tag from '../ui/Tag.vue'
@@ -42,11 +43,7 @@ const emit = defineEmits<{
   deleteAccount: []
 }>()
 
-const initial = computed(
-  () =>
-    name.value.trim().slice(0, 1).toUpperCase() ||
-    props.email.slice(0, 1).toUpperCase()
-)
+const initial = computed(() => accountInitial(name.value, props.email))
 </script>
 
 <template>

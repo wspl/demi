@@ -4,6 +4,7 @@ import ChatSession, {
   type ChatSessionState,
 } from '@demicodes/web-ui/agent/ChatSession.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
+import SidebarAccount from '@demicodes/web-ui/sidebar/SidebarAccount.vue'
 import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
@@ -52,9 +53,11 @@ function abortAgents(): void {
 <template>
   <div class="h-[36rem] overflow-hidden rounded-xl border border-border">
     <SidebarLayout label="Shared session">
-      <template #sidebar
-        ><div class="w-20 p-3 text-chrome text-fg-muted">Gallery</div></template
-      >
+      <template #sidebar>
+        <div class="w-48 p-3">
+          <SidebarAccount :account="{ name: '', email: 'new@example.com' }" />
+        </div>
+      </template>
       <ChatSession
         :conversation="session"
         has-provider

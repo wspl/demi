@@ -23,6 +23,7 @@ export interface SettingsNavGroup {
 }
 
 export interface SettingsAccountInfo {
+  email?: string
   name: string
 }
 

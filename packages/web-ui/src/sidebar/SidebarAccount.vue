@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { accountDisplayName, accountInitial } from '../auth/account-display';
 import { CircleUser, LogOut, Settings } from '@lucide/vue';
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay';
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue';
@@ -19,7 +20,12 @@ const emit = defineEmits<{
   signOut: [];
 }>();
 
-const initials = computed(() => props.account.name.trim().slice(0, 1).toUpperCase());
+const displayName = computed(() =>
+  accountDisplayName(props.account.name, props.account.email)
+);
+const initials = computed(() =>
+  accountInitial(props.account.name, props.account.email)
+);
 </script>
 
 <template>
@@ -41,7 +47,7 @@ const initials = computed(() => props.account.name.trim().slice(0, 1).toUpperCas
         >
           {{ initials }}
         </span>
-        <span class="min-w-0 flex-1 truncate text-chrome text-fg">{{ account.name }}</span>
+        <span class="min-w-0 flex-1 truncate text-chrome text-fg">{{ displayName }}</span>
       </div>
     </template>
     <template #content="{ close }">
@@ -49,7 +55,7 @@ const initials = computed(() => props.account.name.trim().slice(0, 1).toUpperCas
         <div class="flex items-center gap-2 px-2 py-1.5">
           <CircleUser :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
           <span class="flex min-w-0 flex-col leading-4">
-            <span class="truncate text-chrome text-fg">{{ account.name }}</span>
+            <span class="truncate text-chrome text-fg">{{ displayName }}</span>
             <span
               v-if="account.email"
               class="truncate text-[11px] text-fg-subtle"

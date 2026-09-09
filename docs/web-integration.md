@@ -73,7 +73,8 @@ are replaced through an empty secret field. Quota rows show actual reported
 windows only. Explicit refresh probes quota only when supported and free.
 
 `settings/SettingsDialog.vue` connects nickname, verified email change and
-password change to the account APIs. Email delivery remains the backend's
+password change to the account APIs. New accounts have no nickname; shared account
+headers display the email until a nickname is set, and avatars use its first character. Email delivery remains the backend's
 injected `accountMail` adapter. Closing a credential flow aborts its pending
 request and clears temporary credentials. Authentication expiry aborts
 account-scoped activity and returns to sign-in. See [authentication](web-authentication.md).
