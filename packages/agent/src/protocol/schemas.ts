@@ -53,7 +53,7 @@ const thinkingCapabilitySchema: z.ZodType<ThinkingCapability> = z.discriminatedU
   ]
 )
 
-const thinkingConfigSchema: z.ZodType<ThinkingConfig> = z.discriminatedUnion(
+export const thinkingConfigSchema: z.ZodType<ThinkingConfig> = z.discriminatedUnion(
   'type',
   [
     z.object({ type: z.literal('adaptive'), effort: z.string() }),
@@ -77,7 +77,7 @@ const modelSchema: z.ZodType<Model> = z.object({
   acceptedExtensions: z.array(fileExtensionSchema).nullable(),
 })
 
-const modelSelectionSchema: z.ZodType<ModelSelection> = z.object({
+export const modelSelectionSchema: z.ZodType<ModelSelection> = z.object({
   providerId: z.string(),
   model: modelSchema,
   thinking: thinkingConfigSchema.nullable(),

@@ -10,6 +10,7 @@ import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import SidebarNavItem from '@demicodes/web-ui/sidebar/SidebarNavItem.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { SETTINGS_SECTIONS } from './sections'
 import type {
@@ -59,9 +60,20 @@ const filteredSections = computed(() =>
   ),
 )
 function openFirstMatch() {
-  const first = filteredSections.value[0]?.items[0]
-  if (first)
-    tab.value = first.id
+  for (const group of filteredSections.value) {
+    const first = group.items.find((item) => !item.disabled)
+    if (first) {
+      tab.value = first.id
+      return
+    }
+  }
+}
+
+function selectSection(id: string) {
+  const item = items.value.find((entry) => entry.id === id)
+  if (!item || item.disabled)
+    return
+  tab.value = id
 }
 const current = computed(
   () => items.value.find((item) => item.id === tab.value) ?? items.value[0]
@@ -101,10 +113,7 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
             >
             {{ initials }}
             </span>
-            <span class="flex min-w-0 flex-col leading-4">
-              <span class="truncate text-chrome text-fg">{{ account.name }}</span>
-              <span class="truncate text-[11px] text-fg-subtle">{{ account.plan }}</span>
-            </span>
+            <span class="min-w-0 truncate text-chrome text-fg">{{ account.name }}</span>
           </div>
           <div class="hidden @md:block">
             <TextInput
@@ -143,7 +152,9 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
                   :icon="item.icon"
                   :label="item.label"
                   :pressed="tab === item.id"
-                  @click="tab = item.id"
+                  :disabled="item.disabled"
+                  :disabled-reason="item.disabledReason"
+                  @click="selectSection(item.id)"
                 />
               </div>
             </nav>
@@ -153,17 +164,26 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
             class="grid grid-cols-4 gap-1 px-2 pb-2 @md:hidden"
             aria-label="Settings sections"
           >
-            <button
+            <Tooltip
               v-for="item in items"
               :key="item.id"
-              type="button"
-              class="flex h-7 cursor-default select-none items-center justify-center rounded-md text-[12px] transition-colors duration-200 ease-out"
-              :class="tab === item.id ? 'bg-active text-fg-emphasis' : 'text-fg-muted hover:bg-hover hover:text-fg'"
-              :aria-pressed="tab === item.id"
-              @click="tab = item.id"
+              :content="item.disabledReason"
+              :disabled="!item.disabled || !item.disabledReason"
+              :open-delay-ms="80"
             >
-            {{ item.label }}
-            </button>
+              <button
+                type="button"
+                class="flex h-7 w-full cursor-default select-none items-center justify-center rounded-md text-[12px] transition-colors duration-200 ease-out"
+                :class="item.disabled
+                ? 'cursor-not-allowed text-fg-faint'
+                : tab === item.id ? 'bg-active text-fg-emphasis' : 'text-fg-muted hover:bg-hover hover:text-fg'"
+                :aria-pressed="tab === item.id"
+                :aria-disabled="item.disabled || undefined"
+                @click="selectSection(item.id)"
+              >
+              {{ item.label }}
+              </button>
+            </Tooltip>
           </nav>
           <div v-else class="px-2 pb-2 @md:hidden">
             <Dropdown
@@ -203,7 +223,9 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
                         :label="item.label"
                         choice
                         :is-selected="tab === item.id"
-                        @select="tab = item.id; close()"
+                        :disabled="item.disabled"
+                        :disabled-reason="item.disabledReason"
+                        @select="selectSection(item.id); close()"
                       />
                     </MenuGroup>
                     <template v-else>
@@ -214,7 +236,9 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
                         :label="item.label"
                         choice
                         :is-selected="tab === item.id"
-                        @select="tab = item.id; close()"
+                        :disabled="item.disabled"
+                        :disabled-reason="item.disabledReason"
+                        @select="selectSection(item.id); close()"
                       />
                     </template>
                   </template>

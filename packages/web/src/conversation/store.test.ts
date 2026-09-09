@@ -1,225 +1,215 @@
-import { beforeEach, expect, test } from 'bun:test'
-import { createPinia, setActivePinia } from 'pinia'
+import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { createPinia, disposePinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
 import { useConversations } from './store'
+import { useProduct } from '../state/product'
+import { productStateSchema, type BackendConversation } from '../api/contracts'
 
-beforeEach(() => setActivePinia(createPinia()))
+const realFetch = globalThis.fetch
+let records: BackendConversation[]
+let rejectCreate: boolean
+let requests: {
+  path: string
+  body: unknown
+}[]
+let pinia: ReturnType<typeof createPinia>
 
-function newConversation() {
-  const store = useConversations()
-  const id = store.create()
-  return { store, conversation: store.items.find((c) => c.id === id)! }
+function record(id: string): BackendConversation {
+  return {
+    id,
+    title: id,
+    pinned: false,
+    archived: false,
+    readRevision: 0,
+    revision: 0,
+    unread: false,
+    target: { kind: 'cloud' },
+    contextVersion: 0,
+    providerId: null,
+    modelId: null,
+    createdAt: '2026-09-09T00:00:00.000Z',
+    updatedAt: '2026-09-09T00:00:00.000Z',
+    status: 'idle',
+  }
 }
 
-function finish(store: ReturnType<typeof useConversations>) {
-  for (let i = 0; i < 200; i++) store.advance()
+function snapshot() {
+  return productStateSchema.parse({
+    user: {
+      id: 'user',
+      email: 'test@example.test',
+      nickname: 'Test',
+      role: 'master',
+      createdAt: '2026-09-09T00:00:00.000Z',
+    },
+    mode: 'shared',
+    preferences: {
+      appearance: {},
+      shortcuts: {},
+    },
+    devices: [],
+    workspaces: [],
+    providers: [],
+    conversations: records,
+    cloud: null,
+  })
 }
 
-test('queued turns keep order and do not consume the next unsent draft', () => {
-  const { store, conversation } = newConversation()
-  conversation.draft = 'First'
-  store.send(conversation)
-  conversation.draft = 'Second'
-  store.send(conversation)
-  conversation.draft = 'Still editing'
-  finish(store)
-  const users = conversation.blocks.filter((b) => b.type === 'user')
-  expect(users.map((b) => b.content)).toEqual([
-    [{ type: 'text', text: 'First' }],
-    [{ type: 'text', text: 'Second' }],
-  ])
-  expect(conversation.draft).toBe('Still editing')
-  expect(conversation.status).toBe('done')
-  expect(conversation.queue).toEqual([])
-})
-
-test('stop preserves partial output and prevents more streaming until resume', () => {
-  const { store, conversation } = newConversation()
-  conversation.draft = 'Hello'
-  store.send(conversation)
-  store.advance()
-  store.stop(conversation)
-  const blocks = JSON.stringify(conversation.blocks)
-  finish(store)
-  expect(JSON.stringify(conversation.blocks)).toBe(blocks)
-  expect(conversation.status).toBe('aborted')
-  store.start(conversation)
-  finish(store)
-  expect(conversation.status).toBe('done')
-})
-
-test('simulated failure is recoverable and does not replay the user message', () => {
-  const { store, conversation } = newConversation()
-  store.failNext = true
-  conversation.draft = 'Try this'
-  store.send(conversation)
-  store.advance()
-  expect(conversation.status).toBe('error')
-  expect(conversation.stream).toBeNull()
-  store.start(conversation)
-  finish(store)
-  expect(conversation.status).toBe('done')
-  expect(conversation.blocks.filter((b) => b.type === 'user')).toHaveLength(1)
-})
-
-test('running conversations refuse archive and target changes', () => {
-  const { store, conversation } = newConversation()
-  conversation.draft = 'Work'
-  store.send(conversation)
-  store.archive([conversation.id])
-  store.move([conversation.id], 'demi')
-  expect(conversation.archived).toBe(false)
-  expect(conversation.projectId).toBeNull()
-  expect(conversation.stream).not.toBeNull()
-  finish(store)
-  store.move([conversation.id], 'demi')
-  store.archive([conversation.id])
-  expect(conversation.projectId).toBe('demi')
-  expect(conversation.archived).toBe(true)
-  conversation.draft = 'Must remain a draft'
-  store.send(conversation)
-  expect(conversation.stream).toBeNull()
-  expect(conversation.draft).toBe('Must remain a draft')
-  store.archive([conversation.id], false)
-  expect(conversation.archived).toBe(false)
-})
-
-test('file-only input is represented in the transcript', () => {
-  const { store, conversation } = newConversation()
-  conversation.files.push(
-    {
-      id: 'file',
-      name: 'notes.md',
-      destination: 'workspace'
+beforeEach(async () => {
+  pinia = createPinia()
+  setActivePinia(pinia)
+  records = [record('first'), record('second')]
+  rejectCreate = false
+  requests = []
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null
+    requests.push({
+      path,
+      body,
+    })
+    if (path === '/api/state') {
+      return Response.json(snapshot())
     }
-  )
-  store.send(conversation)
-  expect(conversation.title).toBe('notes.md')
-  const block = conversation.blocks[0]
-  expect(block?.type).toBe('user')
-  if (block?.type === 'user')
-    expect(block.content).toEqual(
-      [
+    if (path.startsWith('/api/models')) {
+      return Response.json({ providers: [] })
+    }
+    if (path === '/api/conversations') {
+      if (rejectCreate) {
+        return Response.json(
+          {
+            code: 'unavailable',
+            message: 'Not saved',
+          },
+          { status: 503 },
+        )
+      }
+      const created = record('created')
+      records.unshift(created)
+      return Response.json({ conversation: created }, { status: 201 })
+    }
+    if (path === '/api/conversations/batch') {
+      const items = body.items as {
+        id: string
+        patch: Partial<BackendConversation>
+      }[]
+      return Response.json(
         {
-          type: 'text',
-          text: 'Workspace file: notes.md'
-        }
-      ]
-    )
-  expect(conversation.files).toEqual([])
+          results: items.map((item) => {
+            const current = records.find((record) => record.id === item.id)!
+            if (item.id === 'second') {
+              return {
+                id: item.id,
+                conversation: current,
+                results: [
+                  {
+                    field: 'archived',
+                    status: 'failed',
+                    code: 'busy',
+                    message: 'Turn is running',
+                  },
+                ],
+              }
+            }
+            Object.assign(current, item.patch)
+            return {
+              id: item.id,
+              conversation: current,
+              results: Object.keys(item.patch).map((field) => ({
+                field,
+                status: 'applied',
+              })),
+            }
+          }),
+        },
+        { status: 207 },
+      )
+    }
+    if (path.endsWith('/read')) {
+      return new Response(null, { status: 204 })
+    }
+    throw new Error(`Unexpected request: ${path}`)
+  }) as typeof fetch
+  useConversations()
+  await useProduct().start()
+  await nextTick()
 })
 
-test('switching main hosts preserves the departed directory and promotes attachments once', () => {
-  const { store, conversation } = newConversation()
-  store.move([conversation.id], 'demi')
-  store.attachHost(conversation, 'mac')
-  expect(conversation.attachedHosts).toEqual([])
-  store.attachHost(conversation, 'build')
-  store.attachHost(conversation, 'build')
-  expect(conversation.attachedHosts).toHaveLength(1)
-  expect(conversation.attachedHosts[0]!.cwd).toBe('/home/build')
-  store.move([conversation.id], null)
-  expect(conversation.attachedHosts.find((host) => host.deviceId === 'mac')?.cwd).toBe(
-    '/Users/zan/Projects/demi',
-  )
-  store.move([conversation.id], 'notes')
-  expect(conversation.attachedHosts.map((host) => host.deviceId)).toEqual(
-    ['build']
-  )
-  store.detachHost(conversation, 'build')
-  expect(conversation.attachedHosts).toEqual([])
+afterEach(() => {
+  useConversations().stopAll()
+  useProduct().stop()
+  disposePinia(pinia)
+  globalThis.fetch = realFetch
 })
 
-test('cloud attachment names are unique', () => {
-  const { store, conversation } = newConversation()
-  store.attachHost(conversation, 'mac', '/Users/zan', 'worker')
-  store.attachHost(conversation, 'build', '/home/build', 'worker')
-  expect(conversation.attachedHosts.map((host) => host.name)).toEqual(
-    ['worker', 'worker-2']
-  )
+test('a failed create does not insert a fabricated conversation', async () => {
+  const store = useConversations()
+  rejectCreate = true
+  expect(await store.create()).toBeNull()
+  expect(store.items.map((item) => item.id)).toEqual(['first', 'second'])
+  expect(store.notice).toBe('Not saved')
 })
 
-test('manual order survives new activity and rejects cross-project reorder', () => {
-  const { store } = newConversation()
-  const one = store.create('demi')
-  const two = store.create('demi')
-  store.reorder(one, two)
-  expect(store.items.findIndex((item) => item.id === one)).toBeLessThan(
-    store.items.findIndex((item) => item.id === two),
-  )
-  const before = store.items.map((item) => item.id)
-  const item = store.items.find((item) => item.id === two)!
-  item.draft = 'Keep the order'
-  store.send(item)
-  finish(store)
-  expect(store.items.map((item) => item.id)).toEqual(before)
-  store.reorder(one, 'writing')
-  expect(store.items.map((item) => item.id)).toEqual(before)
+test('created IDs and sidebar order come from the server', async () => {
+  const store = useConversations()
+  expect(await store.create()).toBe('created')
+  expect(store.items.map((item) => item.id)).toEqual(['created', 'first', 'second'])
 })
 
-test('reading clears the result marker without clearing error recovery state', () => {
-  const { store, conversation } = newConversation()
-  store.failNext = true
-  store.start(conversation)
-  store.advance()
-  expect(conversation.unread).toBe(true)
-  store.markRead(conversation.id)
-  expect(conversation.unread).toBe(false)
-  expect(conversation.status).toBe('error')
-  expect(conversation.blocks.at(-1)?.type).toBe('error')
-  store.start(conversation)
-  finish(store)
-  expect(conversation.unread).toBe(true)
-  store.markRead(conversation.id)
-  expect(conversation.unread).toBe(false)
+test('snapshot refresh preserves live transcript and unsent draft', async () => {
+  const store = useConversations()
+  const current = store.items[0]!
+  current.draft = 'Still editing'
+  current.phase = 'running'
+  current.blocks = [
+    {
+      type: 'extension_state_snapshot',
+      id: 'block',
+      createdAt: '2026-09-09T00:00:00.000Z',
+      extensionName: 'example',
+      state: { value: 1 },
+    },
+  ]
+  records[0]!.title = 'Server title'
+  records.reverse()
+  await useProduct().refresh()
+  await nextTick()
+  expect(store.items[1]).toBe(current)
+  expect(current.title).toBe('Server title')
+  expect(current.draft).toBe('Still editing')
+  expect(current.blocks[0]?.id).toBe('block')
+  expect(current.phase).toBe('running')
 })
 
-test('a steer waits for the current output, joins the transcript, and gets its own reply', () => {
-  const { store, conversation } = newConversation()
-  conversation.draft = 'First'
-  store.send(conversation)
-  store.advance()
-  conversation.draft = 'Steer'
-  store.send(conversation)
-  const queued = conversation.queue[0]!
-  store.sendQueued(conversation, queued.id)
-  expect(conversation.pendingSteers).toHaveLength(1)
-  expect(conversation.blocks.some((b) => b.type === 'steer')).toBe(false)
-  finish(store)
-  const types = conversation.blocks.map((b) => b.type)
-  expect(types).toEqual(['user', 'text', 'steer', 'text'])
-  expect(conversation.pendingSteers).toHaveLength(0)
-  expect(conversation.status).toBe('done')
+test('batch partial failure applies only the successful server records', async () => {
+  const store = useConversations()
+  expect(await store.archive(['first', 'second'])).toBe(false)
+  expect(store.items.find((item) => item.id === 'first')?.archived).toBe(true)
+  expect(store.items.find((item) => item.id === 'second')?.archived).toBe(false)
+  expect(store.notice).toContain('second: Turn is running')
 })
 
-test('resume continues the interrupted output and retry replaces the error', () => {
-  const { store, conversation } = newConversation()
-  conversation.draft = 'Hello'
-  store.send(conversation)
-  store.advance()
-  store.stop(conversation)
-  const partial = conversation.blocks.find((b) => b.type === 'text')!
-  store.start(conversation)
-  finish(store)
-  const texts = conversation.blocks.filter(
-    (b): b is Extract<typeof b, {
-      type: 'text'
-    }> => b.type === 'text'
-  )
-  expect(texts).toHaveLength(2)
-  expect(partial.type === 'text' && texts[1]!.text.startsWith(partial.text)).toBe(
-    false
-  )
-  expect(texts[0]!.text + texts[1]!.text).toContain('scripted preview')
-  expect(conversation.blocks.find((b) => b.type === 'abort')).toMatchObject(
-    { isResumed: true }
-  )
-
-  store.failNext = true
-  conversation.draft = 'Again'
-  store.send(conversation)
-  store.advance()
-  expect(conversation.blocks.at(-1)?.type).toBe('error')
-  store.start(conversation)
-  finish(store)
-  expect(conversation.blocks.some((b) => b.type === 'error')).toBe(false)
+test('read acknowledgements use the observed revision and wait for history', async () => {
+  const original = globalThis.document
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: { visibilityState: 'visible' },
+  })
+  try {
+    const store = useConversations()
+    const current = store.items[0]!
+    current.unread = true
+    current.revision = 7
+    await store.markRead(current.id)
+    expect(requests.some((request) => request.path.endsWith('/read'))).toBe(false)
+    current.load = 'ready'
+    await store.markRead(current.id)
+    expect(requests.at(-1)?.body).toEqual({ revision: 7 })
+    expect(current.unread).toBe(false)
+  } finally {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: original,
+    })
+  }
 })

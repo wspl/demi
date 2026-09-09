@@ -2,7 +2,8 @@
 import { computed, ref } from 'vue'
 import { Plus } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import AgentTabItem from '@demicodes/web-ui/agent/AgentTabItem.vue'
+import TabItem from '@demicodes/web-ui/agent/TabItem.vue'
+import TabStrip from '@demicodes/web-ui/agent/TabStrip.vue'
 import ConversationListDropdown from '@demicodes/web-ui/agent/ConversationListDropdown.vue'
 import type { ConversationState } from '@demicodes/web-ui/agent/types'
 import type { ConversationStatus } from '@demicodes/web-ui/agent/conversation-status'
@@ -47,6 +48,7 @@ function createTab(
       isResultSeen: seen,
       hasContent: status !== 'active' && status !== 'idle',
       lastError: status === 'error' ? 'rate limited' : null,
+      load: 'ready',
     },
   }
 }
@@ -136,15 +138,13 @@ function closeContextMenu(): void {
 
 <template>
   <div class="flex h-11 items-center">
-    <div class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
-      <AgentTabItem
+    <TabStrip class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+      <TabItem
         v-for="entry in tabs"
         :key="entry.tab.id"
         :tab="entry.tab"
         :is-active="entry.tab.id === activeTabId"
         :status="entry.status"
-        :is-closing="false"
-        :is-entering="false"
         :is-dragging="false"
         :is-drag-target="false"
         :is-settling="false"
@@ -159,7 +159,7 @@ function closeContextMenu(): void {
         @rename-cancel="renamingTabId = null"
         @update:rename-value="renameValue = $event"
       />
-    </div>
+    </TabStrip>
     <Tooltip
       content="New tab"
       class="ml-1 flex size-6 shrink-0 cursor-default items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-hover hover:text-fg-muted"

@@ -250,7 +250,8 @@ Test code may depend upward for integration coverage. Production code must not.
   source exports compiled by the consumer's bundler, which must handle Vue SFC + TypeScript).
 - Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
-  Input surfaces, shared UI primitives, markdown/theme, the conversation/tab store, shared sidebar presentation and list interaction, the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), the reusable device pairing dialog and lifecycle (`devices/`, driven by a host-provided claim adapter), and a
+  Input surfaces, the assembled ChatSession page, sidebar layout, workspace and
+  remote-file selection flows, shared UI primitives, markdown/theme, the conversation/tab store, shared sidebar presentation and list interaction, the sign-in page (`auth/EmailLoginPage`: email and password on the left, a wide empty intro on the right, over a host-reported phase), the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), the reusable device pairing dialog and lifecycle (`devices/`, driven by a host-provided claim adapter), and a
   transport-agnostic control-client interface. Consumes an injected `AgentClient`.
 - Public boundary: source-path exports (`./*`) consumed by web hosts; third parties embed it
   by supplying an `AgentClient` and a control client. External products consume the published
@@ -264,21 +265,20 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/web`
 
-- Status: backend authentication integrated; other product workflows remain a frontend prototype (M13.3 in progress).
+- Status: backend-integrated web product.
 - Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`.
-- Owns: the Vue SPA application frame, route navigation, product state and frontend
-  prototype workflows. Vue 3 + TypeScript + Vite, vue-router, Pinia and Tailwind 4.
+- Owns: the Vue SPA application frame, route navigation, product state and backend request handlers. Vue 3 + TypeScript + Vite, vue-router, Pinia and Tailwind 4.
 - Public boundary: `bun run web:dev` and `bun run web:build`; no published library API.
-- Layout: `main.ts` is the only composition root (app, router, stores and simulation
-  clock); `App.vue` is the application frame; `conversation/` owns chat state and
+- Layout: `main.ts` is the only composition root (app, router, account-scoped stores); `App.vue` is the application frame; `conversation/` owns chat state and
   containers; `targets/` owns environment selection; `settings/` owns settings
   containers; `auth/` owns cookie-session state and entry containers; `api/` owns
-  validated browser HTTP requests; `prototype/` owns local fixture
-  data and simulated resource state. Reusable UI belongs to `web-ui`.
+  validated browser HTTP/agent wire contracts and upload requests; `state/` owns
+  server snapshots, preferences and per-user local state; `devices/` owns pairing
+  and filesystem adapters. Reusable UI belongs to `web-ui`.
 - Integration boundary: authentication calls the backend over same-origin HTTP.
-  Chat, resources and settings still use browser-local fixtures and scripted
-  responses. The browser does not import backend code or concrete providers.
-  See `docs/web-authentication.md` for the completed checkpoint and pending wiring.
+  Chat uses the agent client over WebSocket; resource and settings operations use
+  REST. The browser does not import backend code or concrete providers.
+  See `docs/web-integration.md` for state ownership and operation contracts.
 - Must not: import `web-gallery`, Node, Host implementations or concrete providers.
 
 ### `@demicodes/web-gallery`

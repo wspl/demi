@@ -2,11 +2,11 @@
 
 The conversation's host menu manages one main execution host and any number of
 attached hosts, following `sessions-and-targets.md`. These are execution devices,
-not other chat conversations. Workspace selection and read-only Git branch metadata remain separate
-header controls for the main environment.
+not other chat conversations. Workspace selection is a separate
+header control for the main environment. Git branch is not shown.
 
 ```text
-Conversation c1 header: [zan-mbp +2] [demi] [main]
+Conversation c1 header: [zan-mbp +2] [demi]
                          |
                          +-- [computer] Main host       zan-mbp > Cloud / Connect / search / devices
                          |   ----------------------------------
@@ -56,9 +56,9 @@ Attaching and detaching remain available during a turn; their model
 announcement belongs to the next turn boundary per the execution contract.
 Archived conversations allow inspection but not binding mutations.
 
-The frontend prototype keeps bindings, aliases and cwd in memory. It does not
-connect devices or grant real execution permissions. Store coverage in
-`packages/web/src/conversation/store.test.ts` exercises unique device identity,
-default home directories, duplicate attachment prevention, alias collision,
-main/attached exchange, retained cwd and detach. Browser verification covers the
-menu's binding, detach and Cloud entry flows.
+`web/targets/HostMenu.vue` maps the current target and attached-host records onto
+this component. Mutations use the backend conversation host and target APIs;
+`web/targets/WorkspaceInfo.vue` supplies actual device filesystem sources to
+`web-ui/hosts/WorkspaceDirectoryMenu.vue`. Backend scenario tests cover host
+exchange, retained cwd and attachment lifecycle. Browser verification covers
+pairing, selecting a device directory and the Cloud entry.

@@ -8,10 +8,14 @@ import {
 } from '@demicodes/web-ui/theme/productAppearance'
 import {
   applyThemeToDocument,
-  themeChoice,
+  setThemeChoice,
 } from '@demicodes/web-ui/theme/appTheme'
 import { useConversations } from './conversation/store'
-import { useResources } from './prototype/resources'
+import { closeDraftStorage } from './conversation/drafts'
+import { useResources } from './state/resources'
+import { useProduct } from './state/product'
+import { usePreferences } from './state/preferences'
+import { onSessionExpired } from './api/client'
 import { useSession } from './auth/session'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import ChatPage from './conversation/ChatPage.vue'
@@ -23,10 +27,22 @@ const pinia = createPinia()
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', redirect: '/chat/welcome' },
-    { path: '/chat/:id?', component: ChatPage },
-    { path: '/login', component: LoginPage },
-    { path: '/:pathMatch(.*)*', redirect: '/chat' },
+    {
+      path: '/',
+      redirect: '/chat',
+    },
+    {
+      path: '/chat/:id?',
+      component: ChatPage,
+    },
+    {
+      path: '/login',
+      component: LoginPage,
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/chat',
+    },
   ],
 })
 const resources = useResources(pinia)
@@ -35,62 +51,122 @@ const session = useSession(pinia)
 const startup = new AbortController()
 const restored = session.restore(startup.signal).catch((error) => {
   // Hot replacement can dispose this composition root before startup finishes.
-  if (!startup.signal.aborted)
+  if (!startup.signal.aborted) {
     throw error
-})
-const stopIdentity = watch(() => session.user, (user) => {
-  resources.username = user?.nickname ?? ''
-  resources.settings.account.email = user?.email ?? ''
-}, { immediate: true })
-router.beforeEach(
-  async (to, from) => {
-    await restored
-    if (startup.signal.aborted)
-      return false
-    if (session.signedIn && from.matched.length && from.path !== '/login') {
-      try {
-        await session.restore(startup.signal)
-      } catch (error) {
-        if (startup.signal.aborted)
-          return false
-        showToast({
-          title: 'Could not check your session',
-          message: error instanceof Error ? error.message : String(error),
-          tone: 'danger',
-        })
-        return false
-      }
-      if (!session.signedIn) {
-        window.location.replace('/login?reason=expired')
-        return false
-      }
-    }
-    if (!session.signedIn && to.path !== '/login')
-      return '/login'
-    if (session.signedIn && to.path === '/login')
-      return '/chat/welcome'
-    return true
   }
+})
+const product = useProduct(pinia)
+const preferences = usePreferences(pinia)
+const stopIdentity = watch(
+  () => session.user?.id,
+  (id, previous) => {
+    if (previous && previous !== id) {
+      conversations.stopAll()
+      preferences.stop()
+      product.stop()
+    }
+    if (id) {
+      void product.start()
+    }
+  },
+  { immediate: true },
 )
+const stopExpiry = onSessionExpired(() => {
+  if (!session.signedIn) {
+    return
+  }
+  conversations.saveDrafts()
+  session.current = {
+    status: 'signedOut',
+    reason: 'expired',
+  }
+  void router.replace('/login?reason=expired')
+})
+router.beforeEach(async (to, from) => {
+  await restored
+  if (startup.signal.aborted) {
+    return false
+  }
+  if (session.signedIn && from.matched.length && from.path !== '/login') {
+    try {
+      await session.restore(startup.signal)
+    } catch (error) {
+      if (startup.signal.aborted) {
+        return false
+      }
+      showToast({
+        title: 'Could not check your session',
+        message: error instanceof Error ? error.message : String(error),
+        tone: 'danger',
+      })
+      return false
+    }
+    if (!session.signedIn) {
+      window.location.replace('/login?reason=expired')
+      return false
+    }
+  }
+  if (!session.signedIn && to.path !== '/login') {
+    return '/login'
+  }
+  if (session.signedIn && to.path === '/login') {
+    return '/chat'
+  }
+  return true
+})
 for (const [axis, value] of Object.entries(productAppearance)) {
   document.documentElement.setAttribute(`data-${axis}`, value)
 }
-// Start the appearance from the locally saved General settings.
-resources.settings.general.theme = themeChoice()
-applyProductAppearance(resources.settings.general)
-applyTranscriptTextSize(resources.settings.general.fontSize)
-applyThemeToDocument()
+const stopAppearance = watch(
+  () => resources.appearance,
+  (appearance) => {
+    applyProductAppearance(appearance)
+    applyTranscriptTextSize(appearance.fontSize)
+    setThemeChoice(appearance.theme)
+  },
+  {
+    immediate: true,
+    deep: true,
+  },
+)
+const stopTheme = applyThemeToDocument()
+const saveDrafts = () => {
+  conversations.saveDrafts()
+  closeDraftStorage()
+}
+window.addEventListener('pagehide', saveDrafts)
+const refreshVisible = () => {
+  if (document.visibilityState !== 'visible' || !session.signedIn) {
+    return
+  }
+  void product.revalidate()
+  const id = product.activeConversationId
+  if (id) {
+    void conversations.markRead(id)
+  }
+}
+window.addEventListener('focus', refreshVisible)
+document.addEventListener('visibilitychange', refreshVisible)
 const app = createApp(App).use(pinia).use(router)
 void router.isReady().then(() => {
-  if (!startup.signal.aborted)
+  if (!startup.signal.aborted) {
     app.mount('#app')
+  }
 })
-const timer = window.setInterval(() => conversations.advance(), 80)
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     startup.abort()
     stopIdentity()
-    clearInterval(timer)
+    stopExpiry()
+    stopAppearance()
+    stopTheme()
+    conversations.stopAll()
+    closeDraftStorage()
+    preferences.stop()
+    product.stop()
+    window.removeEventListener('pagehide', saveDrafts)
+    window.removeEventListener('focus', refreshVisible)
+    document.removeEventListener('visibilitychange', refreshVisible)
     app.unmount()
   })
 }

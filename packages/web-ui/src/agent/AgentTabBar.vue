@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Plus } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
@@ -14,7 +14,8 @@ import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import { useAgentWorkspace } from './workspace'
 import { conversationStatus } from './conversation-status'
 import type { ConversationState } from './types'
-import AgentTabItem from './AgentTabItem.vue'
+import TabItem from './TabItem.vue'
+import TabStrip from './TabStrip.vue'
 import ConversationListDropdown from './ConversationListDropdown.vue'
 
 const DRAG_THRESHOLD = 3
@@ -29,12 +30,10 @@ const workspace = useAgentWorkspace()
 
 const localTabs = ref<ConversationState[]>([...props.tabs])
 const isDragging = ref(false)
-const containerRef = ref<HTMLElement>()
+const stripRef = ref<{ el: HTMLElement | null } | null>(null)
 const dragIdx = ref(-1)
 const dragDeltaX = ref(0)
 const tabShifts = ref<number[]>([])
-const closingTabIds = ref(new Set<string>())
-const enteringTabIds = ref(new Set<string>())
 const isSettling = ref(false)
 
 const focusedTabId = ref<string | null>(null)
@@ -45,8 +44,16 @@ let startX = 0
 let tabRects: DOMRect[] = []
 let hasDragged = false
 let currentNewIdx = -1
-let closeTimer: ReturnType<typeof setTimeout> | null = null
 let settleTimer: ReturnType<typeof setTimeout> | null = null
+
+function stripTabs(): HTMLElement[] {
+  const root = stripRef.value?.el
+  if (!root)
+    return []
+  return [...root.children].filter((node): node is HTMLElement => (
+    node instanceof HTMLElement && !node.classList.contains('tabs-leave-active')
+  ))
+}
 
 const {
   isOpen: isContextMenuOpen,
@@ -68,34 +75,10 @@ const hasOtherTabs = computed(() => localTabs.value.length > 1)
 const hasTabsToLeft = computed(() => focusedTabIndex.value > 0)
 const hasTabsToRight = computed(() => focusedTabIndex.value < localTabs.value.length - 1)
 
-watch(() => props.tabs, (newTabs, oldTabs) => {
+watch(() => props.tabs, (newTabs) => {
   if (isDragging.value)
     return
-
-  if (oldTabs) {
-    const oldIds = new Set(oldTabs.map((tab) => tab.id))
-    for (const tab of newTabs) {
-      if (!oldIds.has(tab.id))
-        enteringTabIds.value.add(tab.id)
-    }
-  }
-
-  if (closingTabIds.value.size > 0) {
-    const newTabIds = new Set(newTabs.map((tab) => tab.id))
-    closingTabIds.value = new Set([...closingTabIds.value].filter((id) => newTabIds.has(id)))
-  }
-
   localTabs.value = [...newTabs]
-
-  if (enteringTabIds.value.size > 0) {
-    nextTick(() => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          enteringTabIds.value = new Set()
-        })
-      })
-    })
-  }
 }, { deep: true, immediate: true })
 
 watch(pendingRenameTabId, (id) => {
@@ -124,11 +107,9 @@ function handleCreateTab(afterConversationId?: string) {
 function handleCloseTabs(conversationIds: string[]) {
   if (conversationIds.length === 0)
     return
-  if (closingTabIds.value.size > 0)
-    finishClose()
-
-  closingTabIds.value = new Set(conversationIds)
-  closeTimer = setTimeout(finishClose, 300)
+  const closed = new Set(conversationIds)
+  localTabs.value = localTabs.value.filter((tab) => !closed.has(tab.id))
+  void closeTabs(conversationIds)
 }
 
 function handleRenameTab(conversationId: string, newTitle: string) {
@@ -219,31 +200,8 @@ function cancelRename() {
   pendingRenameTabId.value = null
 }
 
-// ── Tab close animation ──
-
 function handleCloseTab(tabId: string) {
-  if (closingTabIds.value.size > 0)
-    finishClose()
-
-  closingTabIds.value = new Set([tabId])
-  closeTimer = setTimeout(finishClose, 300)
-}
-
-function finishClose() {
-  if (closeTimer) {
-    clearTimeout(closeTimer)
-    closeTimer = null
-  }
-  if (closingTabIds.value.size === 0)
-    return
-
-  const ids = [...closingTabIds.value]
-  closingTabIds.value = new Set()
-
-  const closedSet = new Set(ids)
-  localTabs.value = localTabs.value.filter((tab) => !closedSet.has(tab.id))
-
-  void closeTabs(ids)
+  handleCloseTabs([tabId])
 }
 
 async function closeTabs(conversationIds: readonly string[]) {
@@ -255,14 +213,6 @@ async function closeTabs(conversationIds: readonly string[]) {
     localTabs.value = [...props.tabs]
     reportError('Failed to close conversation tabs', error, { userVisible: true })
   }
-}
-
-function handleTransitionEnd(event: TransitionEvent, tabId: string) {
-  if (!closingTabIds.value.has(tabId))
-    return
-  if (event.propertyName !== 'max-width')
-    return
-  finishClose()
 }
 
 // ── Drag ──
@@ -278,8 +228,6 @@ function getTabShift(index: number): number {
 function handlePointerDown(event: PointerEvent, index: number) {
   if (event.button !== 0)
     return
-  if (closingTabIds.value.size > 0)
-    return
   if (isSettling.value)
     return
   const target = event.currentTarget as HTMLElement
@@ -288,8 +236,7 @@ function handlePointerDown(event: PointerEvent, index: number) {
   dragIdx.value = index
   hasDragged = false
   currentNewIdx = index
-  const children = containerRef.value!.children
-  tabRects = Array.from(children).map((el) => (el as HTMLElement).getBoundingClientRect())
+  tabRects = stripTabs().map((node) => node.getBoundingClientRect())
 }
 
 function handlePointerMove(event: PointerEvent) {
@@ -390,19 +337,17 @@ function finishSettle() {
 
 <template>
   <div class="flex h-11 shrink-0 items-center bg-surface-base px-2">
-    <div
-      ref="containerRef"
+    <TabStrip
+      ref="stripRef"
       class="titlebar-no-drag flex min-w-0 items-center gap-0.5 overflow-x-auto"
     >
-      <AgentTabItem
+      <TabItem
         v-for="(tab, index) in localTabs"
         :key="tab.id"
         :tab="tab"
         :is-active="tab.id === activeTabId"
         :status="conversationStatus(tab)"
         :provider-icon-id="tab.model.providerId"
-        :is-closing="closingTabIds.has(tab.id)"
-        :is-entering="enteringTabIds.has(tab.id)"
         :is-dragging="isDragging"
         :is-drag-target="isDragging && index === dragIdx"
         :is-settling="isSettling"
@@ -413,14 +358,13 @@ function finishSettle() {
         @pointermove="handlePointerMove"
         @pointerup="handlePointerUp"
         @lostpointercapture="handlePointerUp"
-        @transitionend="handleTransitionEnd($event, tab.id)"
         @contextmenu="handleTabContextMenu($event, tab.id)"
         @close="handleCloseTab(tab.id)"
         @rename-submit="submitRename"
         @rename-cancel="cancelRename"
         @update:rename-value="renameValue = $event"
       />
-    </div>
+    </TabStrip>
     <IconButton
       class="titlebar-no-drag ml-1"
       :icon="Plus"

@@ -1,4 +1,5 @@
 import type { Block, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
+import type { SessionLoad } from './session-status'
 
 export interface ModelIntent {
   providerId: string
@@ -36,4 +37,6 @@ export interface ConversationState {
   isResultSeen: boolean
   hasContent: boolean
   lastError: string | null
+  /** History restore and the live socket. A new conversation starts `ready`. */
+  load: SessionLoad
 }

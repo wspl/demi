@@ -9,7 +9,11 @@ import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import TokenInput from '@demicodes/web-ui/ui/TokenInput.vue'
 import SettingsRow from './SettingsRow.vue'
-import { EXTENSION_PRESETS, THINKING_EFFORTS, type SettingsModelDraft } from './types'
+import {
+  EXTENSION_PRESETS,
+  THINKING_EFFORTS,
+  type SettingsModelDraft,
+} from './types'
 
 /**
  * One model, in its own dialog: created or edited for a custom endpoint, or viewed
@@ -17,6 +21,8 @@ import { EXTENSION_PRESETS, THINKING_EFFORTS, type SettingsModelDraft } from './
  * cannot drive the agent, so it is never offered.
  */
 const props = defineProps<{
+  pending?: boolean
+  error?: string | null
   isOpen: boolean
   overlayStore: OverlayStore
   mode: 'create' | 'edit' | 'view'
@@ -29,34 +35,38 @@ const emit = defineEmits<{
 }>()
 
 const draft = ref<SettingsModelDraft>(clone(props.model))
-watch(() => props.model, (next) => {
-  draft.value = clone(next)
-})
+watch(
+  () => props.model,
+  (next) => {
+    draft.value = clone(next)
+  },
+)
 
 function clone(m: SettingsModelDraft): SettingsModelDraft {
-  return { ...m, efforts: [...m.efforts], extensions: [...m.extensions] }
+  return {
+    ...m,
+    efforts: [...m.efforts],
+    extensions: m.extensions === null ? null : [...m.extensions],
+  }
 }
 
 const editable = computed(() => props.mode !== 'view')
-const title = computed(
-  () => (
-    props.mode === 'create'
+const title = computed(() =>
+  props.mode === 'create'
     ? 'New model'
     : props.mode === 'edit'
       ? 'Edit model'
-      : draft.value.name || draft.value.id
-  )
+      : draft.value.name || draft.value.id,
 )
-const customExtension = ref('')
 
 const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1)
 
 function formatTokens(n: number | null): string {
-  if (n === null)
+  if (n === null) {
     return '—'
+  }
   return n >= 1_000_000 ? `${n / 1_000_000}M` : `${Math.round(n / 1000)}K`
 }
-
 
 function toggleEffort(effort: string) {
   const list = draft.value.efforts
@@ -67,33 +77,34 @@ function toggleEffort(effort: string) {
 
 /** A preset is a set to pick from, so it is a checkbox: checked when every extension is in, mixed when some are. */
 function presetState(extensions: string[]): {
-  checked: boolean;
+  checked: boolean
   partial: boolean
 } {
-  const have = extensions.filter((e) => draft.value.extensions.includes(e)).length
+  const have = extensions.filter((e) => draft.value.extensions?.includes(e)).length
   return {
     checked: have === extensions.length,
-    partial: have > 0 && have < extensions.length
+    partial: have > 0 && have < extensions.length,
   }
 }
 
 function setPreset(extensions: string[], on: boolean) {
-  const rest = draft.value.extensions.filter((e) => !extensions.includes(e))
+  const rest = (draft.value.extensions ?? []).filter((e) => !extensions.includes(e))
   draft.value.extensions = on ? [...rest, ...extensions] : rest
 }
 
-function addExtension() {
-  let value = customExtension.value.trim().toLowerCase()
-  if (!value)
-    return
-  if (!value.startsWith('.'))
-    value = `.${value}`
-  if (!draft.value.extensions.includes(value))
-    draft.value.extensions.push(value)
-  customExtension.value = ''
-}
-
-const canSave = computed(() => draft.value.id.trim().length > 0)
+const canSave = computed(() => {
+  const model = draft.value
+  return (
+    model.id.trim().length > 0 &&
+    model.contextWindow !== null &&
+    Number.isInteger(model.contextWindow) &&
+    model.contextWindow > 0 &&
+    (model.outputLimit === null ||
+      (Number.isInteger(model.outputLimit) &&
+        model.outputLimit > 0 &&
+        model.outputLimit <= model.contextWindow))
+  )
+})
 </script>
 
 <template>
@@ -107,21 +118,27 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
   >
     <div class="flex min-h-0 flex-col">
       <header class="min-w-0 select-none p-5 pb-4 pr-10">
-        <h3 class="truncate text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
+        <h3 class="truncate text-[15px] font-medium text-fg-emphasis">
+          {{ title }}
+        </h3>
         <p
           v-if="mode === 'view'"
           class="mt-0.5 font-mono text-[12px] text-fg-subtle"
-        >{{ draft.id }}</p>
+        >
+          {{ draft.id }}
+        </p>
       </header>
       <ScrollArea
         class="min-h-0"
         :viewport-class="`flex flex-col gap-4 px-5 ${editable ? '' : 'pb-5'}`"
       >
-
         <div
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
-          <SettingsRow v-if="editable" label="Model id">
+          <SettingsRow
+            v-if="editable"
+            label="Model id"
+          >
             <TextInput
               v-model="draft.id"
               placeholder="model-id"
@@ -140,16 +157,27 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
               :placeholder="draft.id"
               class="w-64 max-w-full"
             />
-            <span v-else class="text-chrome text-fg">{{ draft.name || '—' }}</span>
+            <span
+              v-else
+              class="text-chrome text-fg"
+              >{{ draft.name || '—' }}</span
+            >
           </SettingsRow>
-          <SettingsRow label="Context window" :compact="!editable">
+          <SettingsRow
+            label="Context window"
+            :compact="!editable"
+          >
             <TokenInput
               v-if="editable"
               v-model="draft.contextWindow"
               placeholder="128"
               class="w-32"
             />
-            <span v-else class="text-chrome tabular-nums text-fg">{{ formatTokens(draft.contextWindow) }}</span>
+            <span
+              v-else
+              class="text-chrome tabular-nums text-fg"
+              >{{ formatTokens(draft.contextWindow) }}</span
+            >
           </SettingsRow>
           <SettingsRow
             label="Max output"
@@ -162,7 +190,11 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
               placeholder="8"
               class="w-32"
             />
-            <span v-else class="text-chrome tabular-nums text-fg">{{ formatTokens(draft.outputLimit) }}</span>
+            <span
+              v-else
+              class="text-chrome tabular-nums text-fg"
+              >{{ formatTokens(draft.outputLimit) }}</span
+            >
           </SettingsRow>
           <SettingsRow
             label="Reasoning"
@@ -175,13 +207,23 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
                 :key="effort"
                 type="button"
                 class="h-6 cursor-default select-none rounded-md px-2 text-[12px] transition-colors duration-200 ease-out"
-                :class="draft.efforts.includes(effort) ? 'bg-tint-accent text-on-accent' : 'bg-hover text-fg-muted hover:text-fg'"
+                :class="
+                  draft.efforts.includes(effort)
+                    ? 'bg-tint-accent text-on-accent'
+                    : 'bg-hover text-fg-muted hover:text-fg'
+                "
                 @click="toggleEffort(effort)"
               >
-              {{ cap(effort) }}
+                {{ cap(effort) }}
               </button>
             </template>
-            <span v-else class="text-chrome text-fg">{{ draft.efforts.length ? draft.efforts.map(cap).join(' · ') : 'None' }}</span>
+            <span
+              v-else
+              class="text-chrome text-fg"
+              >{{
+                draft.efforts.length ? draft.efforts.map(cap).join(' · ') : 'None'
+              }}</span
+            >
           </SettingsRow>
           <SettingsRow
             label="Fast tier"
@@ -195,7 +237,11 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
               class="w-32"
               @update:model-value="(v) => (draft.fastTier = v.trim() || null)"
             />
-            <span v-else class="font-mono text-[12px] text-fg-muted">{{ draft.fastTier ?? '—' }}</span>
+            <span
+              v-else
+              class="font-mono text-[12px] text-fg-muted"
+              >{{ draft.fastTier ?? '—' }}</span
+            >
           </SettingsRow>
         </div>
 
@@ -208,16 +254,19 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
             :compact="!editable"
           >
             <span
-              v-if="!editable && !draft.extensions.length"
+              v-if="!editable && !draft.extensions?.length"
               class="text-chrome text-fg"
-            >Text only</span>
+              >{{ draft.extensions === null ? 'Unknown' : 'Text only' }}</span
+            >
             <span
               v-else-if="!editable"
               class="flex flex-wrap justify-end gap-1"
-            ><Tag
+              ><Tag
                 v-for="ext in draft.extensions"
                 :key="ext"
-              >{{ ext }}</Tag></span>
+                >{{ ext }}</Tag
+              ></span
+            >
           </SettingsRow>
           <template v-if="editable">
             <SettingsRow
@@ -235,41 +284,51 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
                 @update:model-value="(on) => setPreset(preset.extensions, on)"
               />
             </SettingsRow>
-            <SettingsRow inset label="Other extensions">
-              <TextInput
-                v-model="customExtension"
-                placeholder=".heic"
-                class="w-28"
-                @keydown.enter="addExtension"
-              />
-              <Button :disabled="!customExtension.trim()" @click="addExtension">Add</Button>
-            </SettingsRow>
           </template>
           <div
-            v-if="editable && draft.extensions.length"
+            v-if="editable && draft.extensions?.length"
             class="flex flex-wrap gap-1 px-4 py-3"
           >
-            <Tag v-for="ext in draft.extensions" :key="ext">
-            {{ ext }}
+            <Tag
+              v-for="ext in draft.extensions"
+              :key="ext"
+            >
+              {{ ext }}
               <button
                 v-if="editable"
                 type="button"
                 class="ml-1 text-fg-subtle hover:text-fg"
                 :aria-label="`Remove ${ext}`"
-                @click="draft.extensions = draft.extensions.filter((e) => e !== ext)"
-              >×</button>
+                @click="
+                  draft.extensions = (draft.extensions ?? []).filter(
+                    (e) => e !== ext,
+                  )
+                "
+              >
+                ×
+              </button>
             </Tag>
           </div>
         </div>
-
       </ScrollArea>
-      <div v-if="editable" class="flex justify-end gap-2 p-5 pt-4">
+      <p
+        v-if="error"
+        role="alert"
+        class="px-5 pt-3 text-chrome text-on-danger"
+      >
+        {{ error }}
+      </p>
+      <div
+        v-if="editable"
+        class="flex justify-end gap-2 p-5 pt-4"
+      >
         <Button @click="emit('close')">Cancel</Button>
         <Button
           variant="primary"
-          :disabled="!canSave"
+          :disabled="!canSave || pending"
           @click="emit('save', clone(draft))"
-        >{{ mode === 'create' ? 'Add model' : 'Save' }}</Button>
+          >{{ mode === 'create' ? 'Add model' : 'Save' }}</Button
+        >
       </div>
     </div>
   </Dialog>

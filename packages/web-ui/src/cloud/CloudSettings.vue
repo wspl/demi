@@ -9,7 +9,9 @@ import SettingsGroup from '../settings/SettingsGroup.vue'
 import SettingsRow from '../settings/SettingsRow.vue'
 
 const props = defineProps<{
-  cloud: CloudState;
+  cloud: CloudState
+  resetPending?: boolean
+  resetError?: string | null
   overlayStore: OverlayStore
 }>()
 const emit = defineEmits<{ reset: [operationId: string] }>()
@@ -18,10 +20,12 @@ const submitted = ref(false)
 const operationId = ref('')
 const busy = computed(
   () =>
+    props.resetPending ||
     props.cloud.state === 'resetting' ||
     (submitted.value &&
+      !props.resetError &&
       props.cloud.phase !== 'ready' &&
-      props.cloud.phase !== 'failed')
+      props.cloud.phase !== 'failed'),
 )
 const phaseLabels = {
   stopping: 'Stopping Cloud tasks…',
@@ -29,20 +33,20 @@ const phaseLabels = {
   rebuilding: 'Rebuilding the system…',
   booting: 'Starting Cloud…',
   ready: 'Cloud is ready.',
-  failed: 'Reset failed.'
+  failed: 'Reset failed.',
 }
-const label = computed(
-  () => props.cloud.state === 'resetting' && props.cloud.phase
+const label = computed(() =>
+  props.cloud.state === 'resetting' && props.cloud.phase
     ? phaseLabels[props.cloud.phase]
-    : ({
-      unallocated: 'Starts when you need it',
-      off: 'Sleeping',
-      booting: 'Starting…',
-      running: 'Running',
-      saving: 'Saving…',
-      resetting: 'Resetting…',
-      unavailable: 'Unavailable'
-    }[props.cloud.state])
+    : {
+        unallocated: 'Starts when you need it',
+        off: 'Sleeping',
+        booting: 'Starting…',
+        running: 'Running',
+        saving: 'Saving…',
+        resetting: 'Resetting…',
+        unavailable: 'Unavailable',
+      }[props.cloud.state],
 )
 function begin() {
   submitted.value = false
@@ -50,8 +54,9 @@ function begin() {
   open.value = true
 }
 function reset() {
-  if (busy.value || props.cloud.state === 'unavailable')
+  if (busy.value || props.cloud.state === 'unavailable') {
     return
+  }
   submitted.value = true
   emit('reset', operationId.value)
 }
@@ -67,13 +72,19 @@ function reset() {
         size="sm"
         :disabled="cloud.state === 'unavailable' || cloud.state === 'resetting'"
         @click="begin"
-      >Reset environment</Button>
+        >Reset environment</Button
+      >
     </SettingsRow>
     <SettingsRow
       label="Storage limits"
       :description="`System: ${Math.round(cloud.systemBytes / 1024 ** 3)} GiB · Home: ${Math.round(cloud.homeBytes / 1024 ** 3)} GiB`"
     />
-    <p v-if="cloud.error" class="px-4 pb-3 text-[13px] text-fg-muted">{{ cloud.error }}</p>
+    <p
+      v-if="cloud.error"
+      class="px-4 pb-3 text-[13px] text-fg-muted"
+    >
+      {{ cloud.error }}
+    </p>
     <Dialog
       :is-open="open"
       :overlay-store="overlayStore"
@@ -81,26 +92,35 @@ function reset() {
       @close="open = false"
     >
       <div class="flex flex-col gap-4 p-5">
-        <h3 class="pr-8 text-[15px] font-medium text-fg-emphasis">Reset Cloud environment</h3>
-        <p class="text-[13px] leading-5 text-fg-muted">This stops all your Cloud tasks and replaces installed system packages and system settings. Files in your home directory, including every Cloud project, remain.</p>
+        <h3 class="pr-8 text-[15px] font-medium text-fg-emphasis">
+          Reset Cloud environment
+        </h3>
+        <p class="text-[13px] leading-5 text-fg-muted">
+          This stops all your Cloud tasks and replaces installed system packages and
+          system settings. Files in your home directory, including every Cloud
+          project, remain.
+        </p>
         <p
           v-if="submitted && cloud.phase"
           role="status"
           aria-live="polite"
           class="text-[13px] text-fg-body"
-        >{{ phaseLabels[cloud.phase] }}</p>
+        >
+          {{ phaseLabels[cloud.phase] }}
+        </p>
         <InlineError
-          v-if="submitted && cloud.error"
-          :message="cloud.error"
+          v-if="submitted && (resetError || cloud.error)"
+          :message="resetError || cloud.error || ''"
         />
         <div class="flex justify-end gap-2">
           <Button @click="open = false">{{ submitted ? 'Close' : 'Cancel' }}</Button>
           <Button
-            v-if="!submitted || cloud.phase === 'failed'"
+            v-if="!submitted || resetError || cloud.phase === 'failed'"
             variant="danger"
             :disabled="busy"
             @click="reset"
-          >{{ submitted ? 'Retry reset' : 'Reset environment' }}</Button>
+            >{{ submitted ? 'Retry reset' : 'Reset environment' }}</Button
+          >
         </div>
       </div>
     </Dialog>

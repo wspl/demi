@@ -10,7 +10,6 @@ function ago(ms: number): string {
 export const demoAccount: SidebarAccount = {
   name: 'Zan',
   email: 'zan@example.com',
-  plan: 'Pro',
 }
 
 export function demoProjects(): SidebarProject[] {

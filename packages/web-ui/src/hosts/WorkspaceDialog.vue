@@ -34,6 +34,7 @@ const props = defineProps<{
   currentProjectId: string | null
   /** No switching while a turn runs. */
   locked?: boolean
+  pending?: boolean
   devices: WorkspaceDevice[]
   /** Offer the managed Cloud workspace; it is the default. */
   cloud?: boolean
@@ -58,18 +59,18 @@ const kindOptions = [
     value: 'device',
     label: 'Device',
     description: 'A directory on one of your devices.',
-    icon: Monitor
+    icon: Monitor,
   },
   {
     value: 'cloud',
     label: 'Cloud',
     description: 'A managed workspace, ready at once.',
-    icon: Cloud
+    icon: Cloud,
   },
 ] as const satisfies readonly {
-  value: Kind;
-  label: string;
-  description: string;
+  value: Kind
+  label: string
+  description: string
   icon: typeof Cloud
 }[]
 
@@ -81,37 +82,39 @@ const showCreate = ref(false)
 const browsing = ref(false)
 
 const device = computed(
-  () => props.devices.find((entry) => entry.id === deviceId.value) ?? null
+  () => props.devices.find((entry) => entry.id === deviceId.value) ?? null,
 )
 const deviceLabel = computed(() => device.value?.name ?? 'Choose a device')
-const browserHosts = computed(
-  () => props.devices.map(
-    (entry) => ({
-      id: entry.id,
-      label: entry.name,
-      online: entry.online
-    })
-  )
+const browserHosts = computed(() =>
+  props.devices.map((entry) => ({
+    id: entry.id,
+    label: entry.name,
+    online: entry.online,
+  })),
 )
 const browserSource = computed(() => props.sourceFor(deviceId.value))
 const browserPlaces = computed(() => props.placesFor?.(deviceId.value) ?? [])
 const online = computed(() => !!device.value?.online)
 /** What a device project will be called: the directory's name. */
 const projectName = computed(() => baseName(path.value.replace(/\/$/, '')))
-const canCreate = computed(() =>
-  kind.value === 'cloud'
-    ? !!name.value.trim()
-    : online.value && path.value.startsWith('/') && !!projectName.value,
+const canCreate = computed(
+  () =>
+    !props.pending &&
+    (kind.value === 'cloud'
+      ? !!name.value.trim()
+      : online.value && path.value.startsWith('/') && !!projectName.value),
 )
 
 watch(
   () => props.isOpen,
   (open) => {
-    if (!open)
+    if (!open) {
       return
+    }
     kind.value = 'device'
     name.value = ''
-    deviceId.value = props.devices.find((entry) => entry.online)?.id ?? props.devices[0]?.id ?? ''
+    deviceId.value =
+      props.devices.find((entry) => entry.online)?.id ?? props.devices[0]?.id ?? ''
     showCreate.value = props.mode === 'create'
     browsing.value = false
   },
@@ -133,21 +136,25 @@ function pickDirectory(chosen: string) {
 }
 
 function create() {
-  if (!canCreate.value)
+  if (!canCreate.value) {
     return
-  if (kind.value === 'cloud')
+  }
+  if (kind.value === 'cloud') {
     emit('create', {
-    kind: 'cloud',
-    name: name.value.trim()
-  })
-  else emit(
-    'create',
-    {
+      kind: 'cloud',
+      name: name.value.trim(),
+    })
+  } else {
+    emit('create', {
       kind: 'device',
       deviceId: deviceId.value,
-      path: path.value.replace(/\/$/, '') || '/'
-    }
-  )
+      path: path.value.replace(/\/$/, '') || '/',
+    })
+  }
+}
+function selectDevice(id: string, close: () => void): void {
+  deviceId.value = id
+  close()
 }
 </script>
 
@@ -160,7 +167,10 @@ function create() {
     hide-close
     @close="emit('close')"
   >
-    <div v-if="browsing" class="flex h-[32rem] min-h-0 flex-col">
+    <div
+      v-if="browsing"
+      class="flex h-[32rem] min-h-0 flex-col"
+    >
       <header
         class="flex h-11 shrink-0 select-none items-center justify-between gap-2 border-b border-line pl-4 pr-2"
       >
@@ -175,7 +185,9 @@ function create() {
       <FileBrowser
         mode="directory"
         :source="browserSource"
-        :initial-path="path.startsWith('/') ? path.replace(/\/$/, '') || '/' : undefined"
+        :initial-path="
+          path.startsWith('/') ? path.replace(/\/$/, '') || '/' : undefined
+        "
         :places="browserPlaces"
         :hosts="browserHosts"
         :host-id="deviceId"
@@ -188,7 +200,9 @@ function create() {
       <header
         class="flex select-none items-center justify-between border-b border-line px-4 py-3"
       >
-        <h2 class="text-[15px] font-medium text-fg-emphasis">{{ showCreate ? 'New project' : 'Working environment' }}</h2>
+        <h2 class="text-[15px] font-medium text-fg-emphasis">
+          {{ showCreate ? 'New project' : 'Working environment' }}
+        </h2>
         <IconButton
           :icon="X"
           variant="ghost"
@@ -198,7 +212,10 @@ function create() {
       </header>
       <div class="flex flex-col gap-4 p-4">
         <template v-if="!showCreate">
-          <Menu class="w-full" iconless>
+          <Menu
+            class="w-full"
+            iconless
+          >
             <MenuItem
               label="No project"
               choice
@@ -219,7 +236,10 @@ function create() {
             />
           </Menu>
           <div>
-            <Button :disabled="locked" @click="showCreate = true">
+            <Button
+              :disabled="locked"
+              @click="showCreate = true"
+            >
               <Plus :size="14" />
               New project
             </Button>
@@ -290,16 +310,21 @@ function create() {
                         disabled-reason="This device is offline."
                         choice
                         :is-selected="deviceId === entry.id"
-                        @select="deviceId = entry.id; close()"
+                        @select="selectDevice(entry.id, close)"
                       />
                       <div
                         v-if="!devices.length"
                         class="select-none px-2 py-3 text-center text-chrome text-fg-subtle"
-                      >No devices yet.</div>
+                      >
+                        No devices yet.
+                      </div>
                     </Menu>
                   </template>
                 </Dropdown>
-                <Button class="shrink-0" @click="emit('connectDevice')">
+                <Button
+                  class="shrink-0"
+                  @click="emit('connectDevice')"
+                >
                   <Plus :size="14" />
                   Add device
                 </Button>
@@ -322,16 +347,24 @@ function create() {
                   Browse…
                 </Button>
               </span>
-              <span class="text-[12px] leading-4 text-fg-subtle">{{ projectName ? `The project will be called ${projectName}.` : 'The project takes the folder\'s name.' }}</span>
+              <span class="text-[12px] leading-4 text-fg-subtle">{{
+                projectName
+                  ? `The project will be called ${projectName}.`
+                  : "The project takes the folder's name."
+              }}</span>
             </label>
           </template>
-          <InlineError v-if="message" :message="message" />
+          <InlineError
+            v-if="message"
+            :message="message"
+          />
           <div>
             <Button
               variant="primary"
               :disabled="!canCreate"
               @click="create"
-            >Create project</Button>
+              >Create project</Button
+            >
           </div>
         </form>
       </div>

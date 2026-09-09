@@ -10,6 +10,8 @@ The optional `controlsAlign` prop accepts `start` or `center`. When omitted,
 controls align with the title if the `detail` slot is present, and center on the
 text block otherwise. This uses content structure, not measured wrapped lines.
 Callers can explicitly choose `start` for other dense content.
+`disabled` mutes the label side, blocks the row click, ignores pointer events on
+the controls, and shows `disabledReason` as a tooltip.
 
 For example, an MCP row with title, target and tool tags uses first-line controls;
 a Skills source with title and origin uses centered controls. MCP rows without

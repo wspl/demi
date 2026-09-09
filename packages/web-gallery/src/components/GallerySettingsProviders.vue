@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
+import ProviderLoginDialog, {
+  type ProviderLoginPhase,
+} from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import {
   WIRE_API_LABELS,
@@ -9,9 +11,14 @@ import {
   type SettingsProviderEntry,
   type SettingsProviderModel,
   type SettingsVendor,
-  type SettingsWireApi
+  type SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
-import { mockVendors, provider, type MockProvider, type SettingsState } from '../fixtures/settings'
+import {
+  mockVendors,
+  provider,
+  type MockProvider,
+  type SettingsState,
+} from '../fixtures/settings'
 
 /**
  * The shared providers page over the mock state. Everything the page emits is
@@ -31,31 +38,47 @@ function select(id: string) {
 
 function addProvider(vendor: SettingsVendor) {
   const id = `p-${Date.now()}`
-  s.value.providers.push(provider({
-    id, name: vendor.name, kind: 'api_key', family: vendor.id, vendorId: vendor.id,
-    baseUrl: vendor.baseUrl ?? '',
-    wireApi: vendor.wireApi,
-    modelSource: 'catalog',
-    catalogFetched: 'just now',
-    logo: vendor.logo, state: 'unconfigured',
-  }))
+  s.value.providers.push(
+    provider({
+      id,
+      name: vendor.name,
+      kind: 'api_key',
+      family: vendor.id,
+      vendorId: vendor.id,
+      baseUrl: vendor.baseUrl ?? '',
+      wireApi: vendor.wireApi,
+      modelSource: 'catalog',
+      catalogFetched: 'just now',
+      logo: vendor.logo,
+      state: 'unconfigured',
+    }),
+  )
   select(id)
 }
 
 function addEndpoint(wireApi: SettingsWireApi) {
   const id = `p-${Date.now()}`
-  s.value.providers.push(provider({
-    id, name: `${WIRE_API_LABELS[wireApi]} API`, kind: 'api_key', family: 'custom', vendorId: null,
-    wireApi, modelSource: 'manual', state: 'unconfigured',
-  }))
+  s.value.providers.push(
+    provider({
+      id,
+      name: `${WIRE_API_LABELS[wireApi]} API`,
+      kind: 'api_key',
+      family: 'custom',
+      vendorId: null,
+      wireApi,
+      modelSource: 'manual',
+      state: 'unconfigured',
+    }),
+  )
   select(id)
 }
 
 function removeProvider(id: string) {
   const list = s.value.providers
   const index = list.findIndex((p) => p.id === id)
-  if (index < 0)
+  if (index < 0) {
     return
+  }
   list.splice(index, 1)
   if (s.value.selectedProviderId === id) {
     const next = list.find((p) => p.kind === 'api_key') ?? list[0]
@@ -93,42 +116,40 @@ function refresh(p: SettingsProviderEntry) {
 }
 
 function activateAccount(p: SettingsProviderEntry, id: string) {
-  for (const a of p.accounts) a.active = a.id === id
+  for (const a of p.accounts) {
+    a.active = a.id === id
+  }
 }
 
 function removeAccount(p: SettingsProviderEntry, id: string) {
   p.accounts = p.accounts.filter((a) => a.id !== id)
-  if (!p.accounts.length)
+  if (!p.accounts.length) {
     p.state = 'signed-out'
+  }
 }
 
-function saveModel(
+async function saveModel(
   p: SettingsProviderEntry,
   draft: SettingsModelDraft,
-  original: SettingsProviderModel | null
+  original: SettingsProviderModel | null,
 ) {
   const mock = p as MockProvider
   if (original) {
-    Object.assign(
-      original,
-      {
-        name: draft.name,
-        contextWindow: draft.contextWindow,
-        outputLimit: draft.outputLimit,
-        efforts: draft.efforts,
-        extensions: draft.extensions,
-        fastTier: draft.fastTier
-      }
-    )
+    Object.assign(original, {
+      name: draft.name,
+      contextWindow: draft.contextWindow,
+      outputLimit: draft.outputLimit,
+      efforts: draft.efforts,
+      extensions: draft.extensions,
+      fastTier: draft.fastTier,
+    })
   } else if (!mock.models.some((m) => m.id === draft.id)) {
-    mock.models.push(
-      {
-        ...draft,
-        tools: true,
-        defaultEffort: draft.efforts[0] ?? null,
-        enabled: true
-      }
-    )
+    mock.models.push({
+      ...draft,
+      tools: true,
+      defaultEffort: draft.efforts[0] ?? null,
+      enabled: true,
+    })
   }
 }
 
@@ -138,7 +159,7 @@ function removeModel(p: SettingsProviderEntry, m: SettingsProviderModel) {
 
 // Sign-in runs in its own dialog; the mock walks the device-code flow to completion.
 const login = ref<{
-  provider: SettingsProviderEntry;
+  provider: SettingsProviderEntry
   phase: ProviderLoginPhase
 } | null>(null)
 const loginOpen = ref(false)
@@ -160,21 +181,25 @@ function beginLogin(p: SettingsProviderEntry) {
         command: 'claude setup-token',
         install: {
           label: 'Get Claude Code',
-          url: 'https://docs.anthropic.com/en/docs/claude-code/setup'
+          url: 'https://docs.anthropic.com/en/docs/claude-code/setup',
         },
-        prefix: 'sk-ant-oat01-'
+        prefix: 'sk-ant-oat01-',
       },
     }
     return
   }
-  login.value = { provider: p, phase: { kind: 'starting' } }
+  login.value = {
+    provider: p,
+    phase: { kind: 'starting' },
+  }
   loginTimer = window.setTimeout(() => {
-    if (!login.value)
+    if (!login.value) {
       return
+    }
     if (mock.family === 'grok-build') {
       login.value.phase = {
         kind: 'code-input',
-        url: 'https://accounts.x.ai/device'
+        url: 'https://accounts.x.ai/device',
       }
       return
     }
@@ -182,21 +207,29 @@ function beginLogin(p: SettingsProviderEntry) {
       kind: 'device',
       url: 'https://auth.openai.com/codex/device',
       code: 'HXRV-7K2M',
-      expiresIn: '10 min'
+      expiresIn: '10 min',
     }
     loginTimer = window.setTimeout(() => {
-      if (!login.value)
+      if (!login.value) {
         return
-      login.value.phase = { kind: 'done', account: 'zan@example.com · Plus' }
+      }
+      login.value.phase = {
+        kind: 'done',
+        account: 'zan@example.com · Plus',
+      }
     }, 4000)
   }, 900)
 }
 
 function finishLogin(account: string) {
-  if (!login.value)
+  if (!login.value) {
     return
+  }
   window.clearTimeout(loginTimer)
-  login.value.phase = { kind: 'done', account }
+  login.value.phase = {
+    kind: 'done',
+    account,
+  }
 }
 
 function openUrl(url: string) {
@@ -207,23 +240,31 @@ function closeLogin() {
   window.clearTimeout(loginTimer)
   if (login.value?.phase.kind === 'done') {
     const p = login.value.provider
-    for (const a of p.accounts) a.active = false
-    p.accounts.push(
-      {
-        id: `a-${Date.now()}`,
-        label: 'zan@example.com',
-        plan: 'Plus',
-        active: true,
-        quota: {
-          hour: {
-            used: 4,
-            max: 100,
-            resets: 'in 4 h 58 min'
-          },
-          week: { used: 4, max: 100, resets: 'Monday' }
-        }
-      }
-    )
+    for (const a of p.accounts) {
+      a.active = false
+    }
+    p.accounts.push({
+      id: `a-${Date.now()}`,
+      label: 'zan@example.com',
+      plan: 'Plus',
+      active: true,
+      quota: [
+        {
+          id: 'hour',
+          label: '5-hour',
+          used: 4,
+          max: 100,
+          resets: 'in 4 h 58 min',
+        },
+        {
+          id: 'week',
+          label: 'Weekly',
+          used: 4,
+          max: 100,
+          resets: 'Monday',
+        },
+      ],
+    })
     p.state = 'ready'
   }
   loginOpen.value = false
@@ -239,6 +280,8 @@ function closeLogin() {
     :overlay-store="appOverlayStore"
     :testing="testing"
     :refreshing="refreshing"
+    @change="(provider, patch) => Object.assign(provider, patch)"
+    @toggle-model="(_provider, model, enabled) => (model.enabled = enabled)"
     @add="addProvider"
     @add-endpoint="addEndpoint"
     @remove="removeProvider"
@@ -247,7 +290,7 @@ function closeLogin() {
     @refresh="refresh"
     @activate-account="activateAccount"
     @remove-account="removeAccount"
-    @save-model="saveModel"
+    :save-model="saveModel"
     @remove-model="removeModel"
   />
   <ProviderLoginDialog

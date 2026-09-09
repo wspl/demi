@@ -2,37 +2,45 @@
 import { computed } from 'vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import type { HostMenuMainHost } from '@demicodes/web-ui/hosts/types'
-import type { Conversation, Project } from '../prototype/types'
-import { useResources } from '../prototype/resources'
+import type { Conversation, Project } from '../state/types'
+import { useResources } from '../state/resources'
+import { executionFor } from './execution'
 import { useConversations } from '../conversation/store'
 
 const props = defineProps<{
-  conversation: Conversation;
+  conversation: Conversation
   project?: Project
 }>()
-const emit = defineEmits<{ switchMain: [deviceId: string, cwd?: string] }>()
+const emit = defineEmits<{ switchMain: [deviceId: string, cwd?: string | null] }>()
 const resources = useResources()
 const store = useConversations()
 
-const mainLocked = computed(() => !!props.conversation.stream || props.conversation.archived)
-const mainHost = computed<HostMenuMainHost>(() => ({
-  id: props.project?.deviceId ?? 'cloud',
-  name: props.project?.host ?? 'Cloud',
-  kind: !props.project || props.project.hostKind === 'cloud'
-    ? 'cloud'
-    : 'device',
-}))
-const attachedHosts = computed(() => props.conversation.attachedHosts.map(host => ({
-  id: host.deviceId,
-  name: host.name,
-  online: host.deviceId === 'cloud'
-    || !!resources.devices.find(device => device.id === host.deviceId)?.online,
-})))
+const mainLocked = computed(
+  () => props.conversation.phase !== 'idle' || props.conversation.archived,
+)
+const mainHost = computed<HostMenuMainHost>(() => {
+  const execution = executionFor(props.conversation)
+  return {
+    id: execution.deviceId ?? 'cloud',
+    name: execution.name,
+    kind: execution.kind,
+  }
+})
+const attachedHosts = computed(() =>
+  props.conversation.attachedHosts.map((host) => ({
+    id: host.deviceId,
+    name: host.name,
+    online: host.online,
+  })),
+)
 
 function switchMain(id: string) {
-  if (mainLocked.value)
+  if (mainLocked.value) {
     return
-  const attached = props.conversation.attachedHosts.find(host => host.deviceId === id)
+  }
+  const attached = props.conversation.attachedHosts.find(
+    (host) => host.deviceId === id,
+  )
   emit('switchMain', id, attached?.cwd)
 }
 

@@ -7,6 +7,7 @@ import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { isEmail } from '../auth/email'
 import SettingsRow from './SettingsRow.vue'
 
 /**
@@ -16,21 +17,22 @@ import SettingsRow from './SettingsRow.vue'
  */
 export type ChangeEmailPhase =
   | {
-    kind: 'form';
-    currentEmail: string;
-    busy?: boolean;
-    error?: string
-  }
+      kind: 'form'
+      currentEmail: string
+      busy?: boolean
+      error?: string
+    }
   | {
-    kind: 'verify';
-    email: string;
-    busy?: boolean;
-    error?: string
-  }
+      kind: 'verify'
+      email: string
+      resent?: boolean
+      busy?: boolean
+      error?: string
+    }
   | {
-    kind: 'done';
-    email: string
-  }
+      kind: 'done'
+      email: string
+    }
 
 const props = defineProps<{
   isOpen: boolean
@@ -48,48 +50,56 @@ const emit = defineEmits<{
 const email = ref('')
 const password = ref('')
 const code = ref('')
-const resent = ref(false)
 
-watch(() => props.phase.kind, () => {
-  resent.value = false
-})
+watch(
+  () => [props.isOpen, props.phase.kind],
+  () => {
+    if (!props.isOpen || props.phase.kind === 'done') {
+      password.value = ''
+      code.value = ''
+      email.value = ''
+    }
+  },
+)
 
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const CODE_LENGTH = 6
 
 const canSubmit = computed(() => {
-  if (props.phase.kind !== 'form' || props.phase.busy)
+  if (props.phase.kind !== 'form' || props.phase.busy) {
     return false
+  }
   const next = email.value.trim()
-  return EMAIL.test(next) &&
-    next !== props.phase.currentEmail &&
-    password.value.length > 0
+  return (
+    isEmail(next) && next !== props.phase.currentEmail && password.value.length > 0
+  )
 })
 const sameAsCurrent = computed(
   () =>
-    props.phase.kind === 'form' && email.value.trim() === props.phase.currentEmail
+    props.phase.kind === 'form' && email.value.trim() === props.phase.currentEmail,
 )
 const canVerify = computed(
   () =>
     props.phase.kind === 'verify' &&
     !props.phase.busy &&
-    code.value.trim().length === CODE_LENGTH
+    code.value.trim().length === CODE_LENGTH,
 )
 
 function submit() {
-  if (canSubmit.value)
+  if (canSubmit.value) {
     emit('submit', email.value.trim(), password.value)
+  }
 }
 
 function verify() {
-  if (canVerify.value)
+  if (canVerify.value) {
     emit('verify', code.value.trim())
+  }
 }
 
 function resend() {
-  if (props.phase.kind !== 'verify' || props.phase.busy)
+  if (props.phase.kind !== 'verify' || props.phase.busy) {
     return
-  resent.value = true
+  }
   emit('resend')
 }
 </script>
@@ -105,8 +115,13 @@ function resend() {
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Change email</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          <template v-if="phase.kind === 'form'">You sign in with the new address from now on.</template>
-          <template v-else-if="phase.kind === 'verify'">A {{ CODE_LENGTH }}-digit code went to {{ phase.email }}. Enter it to finish.</template>
+          <template v-if="phase.kind === 'form'"
+            >You sign in with the new address from now on.</template
+          >
+          <template v-else-if="phase.kind === 'verify'"
+            >A {{ CODE_LENGTH }}-digit code went to {{ phase.email }}. Enter it to
+            finish.</template
+          >
           <template v-else>Your email is now {{ phase.email }}.</template>
         </p>
       </header>
@@ -118,6 +133,7 @@ function resend() {
           <SettingsRow label="New email">
             <TextInput
               v-model="email"
+              aria-label="New email"
               focused
               :placeholder="phase.currentEmail"
               class="w-48 max-w-full"
@@ -130,13 +146,17 @@ function resend() {
           >
             <TextInput
               v-model="password"
+              aria-label="Current password"
               secret
               class="w-48 max-w-full"
               @keydown.enter="submit"
             />
           </SettingsRow>
         </div>
-        <InlineError v-if="phase.error" :message="phase.error" />
+        <InlineError
+          v-if="phase.error"
+          :message="phase.error"
+        />
         <InlineError
           v-else-if="sameAsCurrent"
           message="That is already your email."
@@ -150,6 +170,7 @@ function resend() {
           <SettingsRow label="Code">
             <TextInput
               v-model="code"
+              aria-label="Verification code"
               focused
               placeholder="000000"
               class="w-32 font-mono"
@@ -157,9 +178,14 @@ function resend() {
             />
           </SettingsRow>
         </div>
-        <InlineError v-if="phase.error" :message="phase.error" />
+        <InlineError
+          v-if="phase.error"
+          :message="phase.error"
+        />
         <p class="select-none text-[12px] text-fg-subtle">
-          <template v-if="resent">A new code went to {{ phase.email }}.</template>
+          <template v-if="phase.resent"
+            >A new code went to {{ phase.email }}.</template
+          >
           <template v-else>
             Nothing arrived?
             <button
@@ -167,13 +193,21 @@ function resend() {
               class="text-on-accent hover:underline"
               :disabled="phase.busy"
               @click="resend"
-            >Send it again</button>
+            >
+              Send it again
+            </button>
           </template>
         </p>
       </template>
 
-      <div v-else class="flex items-center gap-2 py-2 text-chrome text-fg">
-        <Check :size="ICON_PX.in28" class="text-on-success" />
+      <div
+        v-else
+        class="flex items-center gap-2 py-2 text-chrome text-fg"
+      >
+        <Check
+          :size="ICON_PX.in28"
+          class="text-on-success"
+        />
         {{ phase.email }}
       </div>
 
@@ -182,7 +216,8 @@ function resend() {
           v-if="phase.kind === 'done'"
           variant="primary"
           @click="emit('close')"
-        >Done</Button>
+          >Done</Button
+        >
         <template v-else>
           <Button @click="emit('close')">Cancel</Button>
           <Button
@@ -190,13 +225,15 @@ function resend() {
             variant="primary"
             :disabled="!canSubmit"
             @click="submit"
-          >{{ phase.busy ? 'Sending code…' : 'Continue' }}</Button>
+            >{{ phase.busy ? 'Sending code…' : 'Continue' }}</Button
+          >
           <Button
             v-else
             variant="primary"
             :disabled="!canVerify"
             @click="verify"
-          >{{ phase.busy ? 'Checking…' : 'Verify' }}</Button>
+            >{{ phase.busy ? 'Checking…' : 'Verify' }}</Button
+          >
         </template>
       </div>
     </div>

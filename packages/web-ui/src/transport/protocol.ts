@@ -72,3 +72,11 @@ export type ControlResponse =
     ok: false;
     error: string
   }
+
+export {
+  modelSelectionSchema,
+  thinkingConfigSchema,
+} from '@demicodes/agent/client'
+export type { ProviderSelection, ClientFrame, ServerFrame, ClientSessionEvent } from '@demicodes/agent/client'
+
+export { applyTranscriptPatches } from '@demicodes/agent/client'

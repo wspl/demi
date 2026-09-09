@@ -1,198 +1,172 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import Button from '@demicodes/web-ui/ui/Button.vue'
-import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
+import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 
 import {
-  fileMatchesAcceptedExtensions,
-  filePreviewUrl,
+  composerRemoteAttachment,
+  remoteAttachmentError,
 } from '@demicodes/web-ui/agent/message-input/attachments'
+import type { ThinkingConfig } from '@demicodes/core'
+import { executionFor } from '../targets/execution'
+import { composerModel } from '@demicodes/web-ui/agent/model-selection'
 import { useConversations } from './store'
-import { useResources } from '../prototype/resources'
-import { fileSourceFor, placesFor } from '../prototype/files'
-import type { Conversation } from '../prototype/types'
+import { useResources } from '../state/resources'
+import { fileSourceFor, placesFor } from '../devices/files'
+import type { Conversation } from '../state/types'
 
 const props = defineProps<{ conversation: Conversation }>()
 const store = useConversations()
 const resources = useResources()
 
-const selectedModel = computed(() =>
-  resources.models[props.conversation.providerId]?.find(
-    (m) => m.id === props.conversation.modelId
+const modelState = computed(() =>
+  composerModel(
+    resources.providerInfos,
+    resources.models,
+    props.conversation.model.providerId,
+    props.conversation.model.modelId,
   ),
 )
-const canSend = computed(
-  () =>
-    resources.providerInfos.some(
-      (p) => p.id === props.conversation.providerId && p.isAvailable
-    ) &&
-    !!selectedModel.value,
-)
+const selectedModel = computed(() => modelState.value.selected?.model)
+const canSend = computed(() => modelState.value.kind === 'ready')
 
 function addFiles(files: File[]) {
-  for (const file of files) {
-    if (!file.size || file.size > 25 * 1024 * 1024) {
-      store.notice = `${file.name}: choose a nonempty file smaller than 25 MB.`
-      continue
-    }
-    if (props.conversation.files.some((existing) => existing.name === file.name)) {
-      store.notice = `${file.name} is already attached.`
-      continue
-    }
-    props.conversation.files.push({
-      id: crypto.randomUUID(),
-      name: file.name,
-      src: filePreviewUrl(file),
-      destination: fileMatchesAcceptedExtensions(
-        file,
-        selectedModel.value?.acceptedExtensions ?? null,
-      )
-        ? 'message'
-        : 'workspace',
-    })
-  }
+  store.addFiles(
+    props.conversation,
+    files,
+    selectedModel.value?.acceptedExtensions ?? null,
+  )
 }
 
 function removeFile(id: string) {
-  const file = props.conversation.files.find((f) => f.id === id)
-  if (file?.src)
-    URL.revokeObjectURL(file.src)
-  props.conversation.files = props.conversation.files.filter((f) => f.id !== id)
+  store.removeFile(props.conversation, id)
 }
 
+const thinking = computed<ThinkingConfig | undefined>(() => {
+  const effort = props.conversation.model.thinkingEffort
+  if (effort === null) {
+    return undefined
+  }
+  if (effort === 'disabled') {
+    return { type: 'disabled' }
+  }
+  return {
+    type: 'effort',
+    effort,
+    summary: null,
+  }
+})
+const usage = computed(
+  () =>
+    props.conversation.blocks.findLast((block) => block.type === 'response')
+      ?.usage ?? null,
+)
 function openProviders() {
   resources.settingsTab = 'models'
   resources.settingsOpen = true
 }
 function selectModel(providerId: string, modelId: string) {
-  props.conversation.providerId = providerId
-  props.conversation.modelId = modelId
-  props.conversation.serviceTierId = null
+  void store.selectModel(props.conversation, providerId, modelId)
 }
 function send() {
-  if (canSend.value)
-    store.send(props.conversation)
+  if (canSend.value) {
+    void store.send(props.conversation)
+  }
 }
 
-/**
- * A remote file: the conversation's main host and its attached hosts, browsed from the
- * workspace directory. The chosen path lands in the draft as a reference; the prototype
- * keeps no bytes.
- */
-const project = computed(
-  () =>
-    resources.projects.find((item) => item.id === props.conversation.projectId)
-)
+const execution = computed(() => executionFor(props.conversation))
 const remoteHosts = computed(() => {
-  const main = project.value
-    ? [
-      {
-        id: project.value.deviceId,
-        label: project.value.host,
-        online: project.value.hostKind === 'cloud' ||
-          !!resources.devices.find((d) => d.id === project.value!.deviceId)?.online
-      }
-    ]
-    : []
-  const attached = props.conversation.attachedHosts.map(
-    (host) => ({
-      id: host.deviceId,
-      label: host.name,
-      online: !!resources.devices.find((d) => d.id === host.deviceId)?.online
-    })
-  )
-  return [...main, ...attached]
+  const main = execution.value
+  const hosts = [
+    ...(main.kind === 'device' && main.deviceId
+      ? [
+          {
+            id: main.deviceId,
+            label: main.name,
+            online: main.online,
+          },
+        ]
+      : []),
+    ...props.conversation.attachedHosts
+      .filter((host) =>
+        resources.devices.some((device) => device.id === host.deviceId),
+      )
+      .map((host) => ({
+        id: host.deviceId,
+        label: host.name,
+        online: host.online,
+      })),
+  ]
+  return hosts.map((host) => {
+    const device = resources.devices.find((device) => device.id === host.id) ?? null
+    const cwd =
+      host.id === main.deviceId
+        ? main.path
+        : props.conversation.attachedHosts.find(
+            (attached) => attached.deviceId === host.id,
+          )?.cwd
+    return {
+      ...host,
+      source: fileSourceFor(device),
+      places: placesFor(device, resources.projects),
+      cwd: cwd ?? undefined,
+    }
+  })
 })
-const remoteHostId = ref<string | null>(null)
-const remoteDevice = computed(
-  () => resources.devices.find((d) => d.id === remoteHostId.value) ?? null
-)
-const remoteSource = computed(() => fileSourceFor(remoteDevice.value))
-const remotePlaces = computed(() => placesFor(remoteDevice.value, resources.projects))
-const remoteStart = computed(() => {
-  if (remoteHostId.value === project.value?.deviceId)
-    return project.value?.path
-  return props.conversation.attachedHosts.find(
-    (host) => host.deviceId === remoteHostId.value
-  )?.cwd
-})
-function openRemote() {
-  remoteHostId.value = remoteHosts.value[0]?.id ?? null
+const remotePicker = ref<InstanceType<typeof RemoteFilePicker>>()
+function attachRemote(file: { deviceId: string; host: string; path: string }) {
+  const error = remoteAttachmentError(file.path, file.host, props.conversation.files)
+  if (error) {
+    store.notice = error
+    return
+  }
+  props.conversation.files.push({
+    ...composerRemoteAttachment(file),
+    deviceId: file.deviceId,
+  })
 }
-function attachRemote(path: string) {
-  const draft = props.conversation.draft
-  props.conversation.draft = draft && !/\s$/.test(draft)
-    ? `${draft} ${path}`
-    : `${draft}${path}`
-  remoteHostId.value = null
-}
-
-const attachments = computed(() =>
-  props.conversation.files.map((file) => ({
-    ...file,
-    caption: file.destination === 'message'
-      ? 'Message attachment'
-      : 'Workspace file',
-  })),
-)
 </script>
 
 <template>
   <div>
-    <div
-      v-if="!canSend"
-      class="mb-2 flex items-center justify-between gap-2 text-chrome text-fg-muted"
-    >
-      <span>Choose an available provider to send a message.</span>
-      <Button variant="ghost" @click="openProviders">Open settings</Button>
-    </div>
     <SessionComposer
       v-model:draft="conversation.draft"
       placeholder="Ask Demi…"
       :conversation-id="conversation.id"
-      :running="!!conversation.stream"
-      :disabled="!canSend"
-      :attachments="attachments"
+      :running="conversation.phase === 'running'"
+      :compacting="conversation.phase === 'compacting'"
+      :disabled="conversation.submission === 'sending'"
+      :can-configure="resources.canConfigure"
+      :attachments="conversation.files"
       :providers="resources.providerInfos"
       :models="resources.models"
-      :selected-provider-id="conversation.providerId"
-      :selected-model-id="conversation.modelId"
-      :thinking-config="conversation.thinking"
-      :service-tier-id="conversation.serviceTierId"
-      :usage="{
-        inputTokens: conversation.blocks.length * 120,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-      }"
+      :selected-provider-id="conversation.model.providerId"
+      :selected-model-id="conversation.model.modelId"
+      :thinking-config="thinking"
+      :service-tier-id="conversation.model.serviceTierId"
+      :usage="usage"
       :remote-files="remoteHosts.length > 0"
+      :archived="conversation.archived"
       @submit="send"
+      @configure="openProviders"
+      @restore="store.archive([conversation.id], false)"
       @add-files="addFiles"
-      @attach-remote="openRemote"
-      @remove-attachment="(index) => removeFile(conversation.files[index]!.id)"
+      @attach-remote="remotePicker?.open()"
+      @remove-attachment="removeFile"
+      @retry-attachment="store.retryFile(conversation, $event)"
       @select-model="selectModel"
-      @change-thinking="conversation.thinking = $event"
-      @change-service-tier="conversation.serviceTierId = $event"
+      @change-thinking="store.setThinking(conversation, $event)"
+      @change-service-tier="store.setTier(conversation, $event)"
       @stop="store.stop(conversation)"
       @compact="store.compact(conversation)"
     />
-    <FileBrowserDialog
-      :is-open="!!remoteHostId"
+    <RemoteFilePicker
+      ref="remotePicker"
       :overlay-store="appOverlayStore"
-      mode="file"
-      title="Attach remote file"
-      :source="remoteSource"
-      :initial-path="remoteStart"
-      :places="remotePlaces"
       :hosts="remoteHosts"
-      :host-id="remoteHostId ?? undefined"
-      confirm-label="Attach"
       @select="attachRemote"
-      @close="remoteHostId = null"
-      @update:host-id="remoteHostId = $event"
     />
   </div>
 </template>

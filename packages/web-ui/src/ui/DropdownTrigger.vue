@@ -11,6 +11,7 @@ withDefaults(defineProps<{
   variant?: DropdownVariant
   size?: DropdownSize
   ariaLabel?: string
+  disabled?: boolean
 }>(), {
   variant: 'default',
   size: 'md',
@@ -23,6 +24,7 @@ withDefaults(defineProps<{
     :aria-label="ariaLabel"
     :size="size"
     :pressed="isOpen"
+    :disabled="disabled"
   >
     <slot />
     <ChevronDown
@@ -38,7 +40,9 @@ withDefaults(defineProps<{
     class="inline-flex cursor-default select-none items-center gap-0.5 rounded-md text-chrome transition-colors duration-200 ease-out"
     :class="[
       size === 'sm' ? 'h-6 pl-1.5 pr-0.5 text-[12px]' : 'h-7 pl-2 pr-1',
-      isOpen ? 'bg-hover text-fg-body' : 'text-fg-subtle hover:bg-hover hover:text-fg-muted',
+      disabled
+        ? 'pointer-events-none cursor-not-allowed opacity-40'
+        : isOpen ? 'bg-hover text-fg-body' : 'text-fg-subtle hover:bg-hover hover:text-fg-muted',
     ]"
   >
     <slot />

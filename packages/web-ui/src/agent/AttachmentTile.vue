@@ -1,33 +1,114 @@
 <script setup lang="ts">
-import { File, X } from '@lucide/vue'
+import { computed } from 'vue'
+import { RotateCcw, X } from '@lucide/vue'
 import { t } from '../infra/i18n'
 import { ICON_PX } from '../ui/icon-metrics'
+import FileIcon from '../files/FileIcon.vue'
+import {
+  attachmentProgress,
+  type AttachmentDestination,
+  type AttachmentPhase,
+} from './message-input/attachments'
 
-defineProps<{
+const props = defineProps<{
   name: string
   src?: string
   removable?: boolean
+  destination?: AttachmentDestination
+  phase?: AttachmentPhase
+  progress?: number
 }>()
 
 const emit = defineEmits<{
   remove: []
+  retry: []
 }>()
+
+const SIZE = 22
+const STROKE = 2.5
+const radius = (SIZE - STROKE) / 2
+const circumference = 2 * Math.PI * radius
+const percent = computed(() =>
+  props.phase === 'uploading'
+    ? attachmentProgress({
+        phase: 'uploading',
+        progress: props.progress,
+      })
+    : 0,
+)
+const dashOffset = computed(() => circumference * (1 - percent.value))
+const percentLabel = computed(() => Math.round(percent.value * 100))
 </script>
 
 <template>
-  <span class="relative block size-12" :title="name">
+  <span
+    class="relative block size-12"
+    :data-phase="phase"
+    :aria-label="name"
+    :aria-busy="phase === 'uploading' ? true : undefined"
+  >
     <img
       v-if="src"
       :src="src"
       :alt="name"
       class="size-12 rounded-lg object-cover ring-1 ring-line"
-    >
+      :class="phase === 'uploading' && 'opacity-40'"
+    />
     <span
       v-else
-      class="flex size-12 items-center justify-center rounded-lg bg-surface text-fg-muted ring-1 ring-line"
+      class="flex size-12 items-center justify-center rounded-lg bg-surface ring-1 ring-line"
+      :class="phase === 'uploading' && 'opacity-40'"
     >
-      <File :size="18" />
+      <FileIcon
+        :name="name"
+        :is-directory="false"
+        :size="28"
+      />
     </span>
+    <svg
+      v-if="phase === 'uploading'"
+      role="progressbar"
+      :aria-valuemin="0"
+      :aria-valuemax="100"
+      :aria-valuenow="percentLabel"
+      :aria-label="name"
+      :data-progress="percent"
+      class="absolute inset-0 m-auto -rotate-90"
+      :width="SIZE"
+      :height="SIZE"
+      :viewBox="`0 0 ${SIZE} ${SIZE}`"
+    >
+      <circle
+        :cx="SIZE / 2"
+        :cy="SIZE / 2"
+        :r="radius"
+        fill="none"
+        stroke="currentColor"
+        :stroke-width="STROKE"
+        class="text-overlay/8"
+      />
+      <circle
+        :cx="SIZE / 2"
+        :cy="SIZE / 2"
+        :r="radius"
+        fill="none"
+        stroke="currentColor"
+        :stroke-width="STROKE"
+        stroke-linecap="round"
+        :stroke-dasharray="circumference"
+        :stroke-dashoffset="dashOffset"
+        class="text-fg-muted transition-[stroke-dashoffset] duration-75 ease-linear"
+      />
+    </svg>
+    <button
+      v-if="phase === 'failed'"
+      type="button"
+      class="absolute inset-0 m-auto flex size-7 items-center justify-center rounded-full bg-surface-raised text-on-danger ring-1 ring-line"
+      :aria-label="`Retry upload ${name}`"
+      @click.stop="emit('retry')"
+    >
+      <RotateCcw :size="16" />
+    </button>
     <button
       v-if="removable"
       type="button"

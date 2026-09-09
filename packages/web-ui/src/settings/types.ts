@@ -1,4 +1,5 @@
 /** Presentation models for the settings surfaces. Hosts map their own state onto these. */
+import { VIDEO_FILE_EXTENSIONS } from '@demicodes/core'
 import type { Component } from 'vue'
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
@@ -10,6 +11,9 @@ export interface SettingsNavItem {
   icon: Component
   /** What the rail filter also matches: names of settings the section holds. */
   keywords?: string[]
+  disabled?: boolean
+  /** Why it is disabled, as a tooltip; only read while `disabled`. */
+  disabledReason?: string
 }
 
 /** Sections grouped under a small caption, the way a long rail is read. */
@@ -20,7 +24,6 @@ export interface SettingsNavGroup {
 
 export interface SettingsAccountInfo {
   name: string
-  plan: string
 }
 
 export interface SettingsDevice {
@@ -56,14 +59,19 @@ export interface SettingsModelDraft {
   /** Thinking efforts the composer offers; the first is the default. Empty means no control. */
   efforts: string[]
   /** Accepted attachment extensions, dot-prefixed. Empty means text only. */
-  extensions: string[]
+  extensions: string[] | null
   fastTier: string | null
 }
 
 /** The API format an endpoint speaks. */
-export type SettingsWireApi = 'anthropic-messages' | 'openai-responses' | 'openai-chat'
+export type SettingsWireApi =
+  | 'anthropic-messages'
+  | 'openai-responses'
+  | 'openai-chat'
+  | 'google-generative'
 
 export const WIRE_API_LABELS: Record<SettingsWireApi, string> = {
+  'google-generative': 'Google Generative AI',
   'anthropic-messages': 'Anthropic Messages',
   'openai-responses': 'OpenAI Responses',
   'openai-chat': 'OpenAI Chat Completions',
@@ -80,7 +88,13 @@ export interface SettingsVendor {
 }
 
 /** `unconfigured` is a fresh entry that still needs its key or login. */
-export type SettingsProviderState = 'ready' | 'unconfigured' | 'error' | 'unreachable' | 'signed-out' | 'disabled'
+export type SettingsProviderState =
+  | 'ready'
+  | 'unconfigured'
+  | 'error'
+  | 'unreachable'
+  | 'signed-out'
+  | 'disabled'
 
 /** A model a provider offers, as the page lists and toggles it. */
 export interface SettingsProviderModel extends SettingsModelDraft {
@@ -88,9 +102,11 @@ export interface SettingsProviderModel extends SettingsModelDraft {
 }
 
 export interface SettingsQuotaWindow {
+  id: string
+  label: string
   used: number
   max: number
-  resets: string
+  resets: string | null
 }
 
 export interface SettingsProviderAccount {
@@ -99,16 +115,11 @@ export interface SettingsProviderAccount {
   plan: string
   active: boolean
   /** Rate-window quotas, when the vendor exposes them. */
-  quota: {
-    hour: SettingsQuotaWindow;
-    week: SettingsQuotaWindow
-  } | null
+  quota: SettingsQuotaWindow[]
 }
 
 /**
- * A provider as the settings page shows and edits it. The page edits fields in
- * place (name, endpoint, key, enabled, model toggles) and emits everything that
- * needs the host: adding, removing, signing in, testing, refreshing, saving a model.
+ * A provider as the settings page shows and edits it. The page emits field changes and actions for the host: adding, removing, signing in, testing, refreshing, saving a model.
  */
 export interface SettingsProviderEntry {
   id: string
@@ -119,6 +130,8 @@ export interface SettingsProviderEntry {
   baseUrl: string
   wireApi: SettingsWireApi
   apiKey: string
+  keyConfigured?: boolean
+  configured?: boolean
   /** Where the model list comes from: the vendor catalog, or ids the user typed. */
   modelSource: 'catalog' | 'manual'
   catalogFetched: string | null
@@ -128,6 +141,7 @@ export interface SettingsProviderEntry {
   detail?: string
   /** How long the last successful test took, formatted by the host. */
   testedIn?: string
+  testPassed?: boolean
   enabled: boolean
   models: SettingsProviderModel[]
   accounts: SettingsProviderAccount[]
@@ -184,25 +198,23 @@ export interface SettingsSkillDraft {
 export const THINKING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'max'] as const
 
 export const EXTENSION_PRESETS: {
-  id: string;
-  label: string;
+  id: string
+  label: string
   extensions: string[]
 }[] = [
   {
     id: 'images',
     label: 'Images',
-    extensions: [
-      '.png',
-      '.jpg',
-      '.jpeg',
-      '.gif',
-      '.webp'
-    ]
+    extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp'],
   },
-  { id: 'videos', label: 'Videos', extensions: ['.mp4', '.mov', '.webm'] },
+  {
+    id: 'videos',
+    label: 'Videos',
+    extensions: VIDEO_FILE_EXTENSIONS.map((extension) => `.${extension}`),
+  },
   {
     id: 'documents',
     label: 'Documents',
-    extensions: ['.pdf', '.txt', '.md', '.docx', '.csv']
+    extensions: ['.pdf'],
   },
 ]

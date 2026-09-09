@@ -1,4 +1,7 @@
 import type { ConversationStatus } from '@demicodes/web-ui/agent/conversation-status'
+import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
+
+export type { ListLoad }
 
 /** A checkout the agent works in, on the host that has it. Conversations that belong to one run there. */
 export interface SidebarProject {
@@ -27,7 +30,6 @@ export interface SidebarConversation {
 export interface SidebarAccount {
   name: string
   email: string
-  plan: string
 }
 
 

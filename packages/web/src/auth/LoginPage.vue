@@ -12,31 +12,42 @@ const email = ref('')
 const password = ref('')
 const initial = session.current
 const expired = useRoute().query.reason === 'expired'
-const phase = ref<EmailLoginPhase>(initial.status === 'signedOut'
-  ? { reason: expired ? 'expired' : initial.reason, error: initial.error }
-  : {})
+const phase = ref<EmailLoginPhase>(
+  initial.status === 'signedOut'
+    ? {
+        reason: expired ? 'expired' : initial.reason,
+        error: initial.error,
+      }
+    : {},
+)
 let request: AbortController | null = null
 
 async function submit(address: string, secret: string): Promise<void> {
-  if (phase.value.busy)
+  if (phase.value.busy) {
     return
+  }
   const controller = new AbortController()
   request = controller
-  phase.value = { busy: true, reason: phase.value.reason }
+  phase.value = {
+    busy: true,
+    reason: phase.value.reason,
+  }
   try {
     await session.signIn(address, secret, controller.signal)
     password.value = ''
-    await router.replace('/chat/welcome')
+    await router.replace('/chat')
   } catch (error) {
-    if (controller.signal.aborted)
+    if (controller.signal.aborted) {
       return
+    }
     phase.value = {
       reason: phase.value.reason,
       error: error instanceof Error ? error.message : 'Sign-in failed.',
     }
   } finally {
-    if (request === controller)
+    if (request === controller) {
       request = null
+    }
   }
 }
 

@@ -1,12 +1,31 @@
 import { expect, test } from 'bun:test'
+import { delay } from '@demicodes/utils'
 import {
   acceptAttribute,
+  applyAttachmentUpdate,
+  AttachmentUploadQueue,
+  attachmentCaption,
+  attachmentDestination,
+  attachmentFileError,
+  attachmentProgress,
+  attachmentsReady,
+  attachmentSendBlockReason,
+  clampUnit,
+  composerAttachment,
+  composerAttachmentFromFile,
+  composerRemoteAttachment,
+  contentBlockCaption,
+  decodeRemoteReference,
+  encodeRemoteReference,
+  fileNameFromPath,
+  remoteAttachmentError,
   dataTransferFiles,
   fileMatchesAcceptedExtensions,
   filePreviewUrl,
   fileToUserContent,
   partitionAcceptedFiles,
-  transferHasFiles
+  transferHasFiles,
+  type AttachmentUploadUpdate,
 } from '../message-input/attachments'
 
 test('empty or unknown accepted types do not admit files', () => {
@@ -88,6 +107,186 @@ test('png magic bytes become an image block', async () => {
     type: 'image',
     source: { type: 'binary', data: bytes, mediaType: 'image/png' },
   })
+})
+
+test('destination follows the selected model; other files go to the workspace', () => {
+  const png = new File(['x'], 'shot.png')
+  const note = new File(['x'], 'notes.txt')
+  expect(attachmentDestination(png, ['png'])).toBe('message')
+  expect(attachmentDestination(note, ['png'])).toBe('workspace')
+  expect(attachmentDestination(png, null)).toBe('workspace')
+})
+
+test('a composer file starts uploading and becomes sendable only when every file is ready', () => {
+  const file = composerAttachmentFromFile(
+    new File(['x'], 'shot.png', { type: 'image/png' }),
+    ['png']
+  )
+  expect(file.destination).toBe('message')
+  expect(file.phase).toBe('uploading')
+  expect(file.progress).toBe(0)
+  expect(attachmentsReady([file])).toBe(false)
+  expect(attachmentSendBlockReason([file])).toBe(
+    'Wait for attachments to finish uploading'
+  )
+  expect(attachmentsReady([])).toBe(true)
+  expect(attachmentsReady([composerAttachment({ name: 'a', phase: 'ready' })])).toBe(
+    true
+  )
+  expect(
+    attachmentSendBlockReason([
+      composerAttachment({ name: 'a', phase: 'ready' })
+    ])
+  ).toBeUndefined()
+})
+
+test('progress is a 0–1 unit only while uploading', () => {
+  expect(clampUnit(-1)).toBe(0)
+  expect(clampUnit(0.42)).toBe(0.42)
+  expect(clampUnit(2)).toBe(1)
+  expect(attachmentProgress({ phase: 'ready', progress: 0.9 })).toBe(0)
+  expect(attachmentProgress({ phase: 'uploading', progress: 0.42 })).toBe(0.42)
+  const item = composerAttachment({ name: 'a', phase: 'uploading', progress: 0 })
+  applyAttachmentUpdate(item, { phase: 'uploading', progress: 0.5 })
+  expect(item.progress).toBe(0.5)
+  applyAttachmentUpdate(item, { phase: 'ready' })
+  expect(item.phase).toBe('ready')
+  expect(item.progress).toBeUndefined()
+})
+
+test('caption is context · filename and never a path', () => {
+  expect(
+    attachmentCaption(
+      composerAttachment({
+        name: 'shot.png',
+        destination: 'message',
+        phase: 'ready'
+      })
+    )
+  ).toBe(
+    'Message attachment · shot.png',
+  )
+  expect(
+    attachmentCaption(
+      composerAttachment(
+        {
+          name: 'notes.md',
+          destination: 'workspace',
+          phase: 'ready'
+        }
+      )
+    )
+  ).toBe(
+    'Workspace file · notes.md',
+  )
+  expect(
+    attachmentCaption(
+      composerAttachment(
+        {
+          name: 'shot.png',
+          destination: 'message',
+          phase: 'uploading'
+        }
+      )
+    )
+  ).toBe(
+    'Uploading 0% · shot.png',
+  )
+  expect(
+    attachmentCaption(
+      composerAttachment(
+        {
+          name: 'spec.pdf',
+          destination: 'workspace',
+          phase: 'uploading',
+          progress: 0.42
+        }
+      ),
+    ),
+  ).toBe('Uploading 42% · spec.pdf')
+})
+
+test('a remote file is a ready tile whose tooltip identifies its host and full path', () => {
+  const remote = composerRemoteAttachment(
+    {
+      host: 'zan-mbp',
+      path: '/Users/zan/Projects/demi/package.json'
+    }
+  )
+  expect(fileNameFromPath(remote.path)).toBe('package.json')
+  expect(remote.name).toBe('package.json')
+  expect(remote.kind).toBe('reference')
+  expect(attachmentCaption(remote)).toBe('zan-mbp · /Users/zan/Projects/demi/package.json')
+  expect(attachmentCaption(remote)).toContain(remote.path)
+  expect(attachmentsReady([remote])).toBe(true)
+  expect(attachmentSendBlockReason([remote])).toBeUndefined()
+  expect(remoteAttachmentError(remote.path, remote.host, [remote])).toBeDefined()
+  expect(remoteAttachmentError(remote.path, 'build-01', [remote])).toBeUndefined()
+  const encoded = encodeRemoteReference(remote.host, remote.path)
+  expect(encoded.includes(remote.path)).toBe(true)
+  expect(decodeRemoteReference(encoded)).toEqual({
+    host: 'zan-mbp',
+    path: remote.path,
+    name: 'package.json',
+  })
+  expect(contentBlockCaption({ type: 'reference', reference: encoded })).toBe(
+    'zan-mbp · /Users/zan/Projects/demi/package.json'
+  )
+  expect(contentBlockCaption({
+    type: 'document',
+    source: {
+      data: new Uint8Array(),
+      mediaType: 'application/pdf',
+      fileName: 'login-failure.pdf'
+    },
+  })).toBe('Message attachment · login-failure.pdf')
+})
+
+test('empty, oversized, and duplicate files are refused', () => {
+  expect(attachmentFileError(new File([], 'empty.txt'), [])).toBeDefined()
+  expect(attachmentFileError(new File(['x'], 'note.txt'), ['note.txt'])).toBe(
+    'note.txt is already attached.'
+  )
+  expect(attachmentFileError(new File(['x'], 'note.txt'), [])).toBeUndefined()
+})
+
+test('the upload queue applies ready, drops a failure, and ignores a cancelled job', async () => {
+  const queue = new AttachmentUploadQueue()
+  const updates: AttachmentUploadUpdate[] = []
+  const dropped: string[] = []
+  queue.start('a', async (_signal, report) => {
+    report(0.25)
+    report(0.8)
+  }, (update) => updates.push({ ...update }), (id) => dropped.push(id))
+  await delay(5)
+  expect(updates).toEqual([
+    { phase: 'uploading', progress: 0 },
+    { phase: 'uploading', progress: 0.25 },
+    { phase: 'uploading', progress: 0.8 },
+    { phase: 'ready' },
+  ])
+  expect(dropped).toEqual([])
+
+  updates.length = 0
+  queue.start('b', async () => {
+    throw new Error('no')
+  }, (update) => updates.push({ ...update }), (id) => dropped.push(id))
+  await delay(5)
+  expect(updates).toEqual([{ phase: 'uploading', progress: 0 }])
+  expect(dropped).toEqual(['b'])
+
+  updates.length = 0
+  dropped.length = 0
+  queue.start(
+    'c',
+    async (signal) => delay(30, signal),
+    (update) => updates.push({ ...update }),
+    (id) => dropped.push(id)
+  )
+  queue.cancel('c')
+  await delay(40)
+  expect(updates).toEqual([{ phase: 'uploading', progress: 0 }])
+  expect(dropped).toEqual([])
 })
 
 test('unknown bytes become a document block', async () => {

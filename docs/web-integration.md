@@ -1,0 +1,121 @@
+# Web product integration
+
+`packages/web` is the authenticated backend client. `packages/web-ui` owns the
+reusable interface and interaction; `packages/web-gallery` supplies fixtures for
+those same components. The product no longer has a prototype store or reply clock.
+
+## State and transport
+
+`web/main.ts` composes the router and account-scoped stores. `state/product.ts`
+reads conditional `GET /api/state` snapshots every three seconds and refreshes
+when the page becomes visible. It reconciles account, conversation, project,
+device and preference metadata. `api/contracts.ts` validates REST responses;
+`api/transcript.ts` validates persisted blocks and incoming agent frames.
+
+`conversation/store.ts` retains each conversation's draft and loaded transcript
+while replacing its server metadata. Only the visible conversation owns a live
+`ConversationRuntime`. Opening it reads its transcript, descendant histories and
+attached hosts, then attaches to `/api/conversations/:id/stream`. Leaving the
+page closes the client transport without sending a task-close or abort command.
+The backend task continues. A dropped connection retries once automatically;
+a failed reconnect exposes the shared Retry action. Server takeover closes the
+attachment without an automatic reconnect fight between browser windows.
+
+`AgentClient.submit` confirms a send when its message ID appears in the transcript
+or queue. The product then clears only the submitted draft and attachments.
+A rejected or unconfirmed send retains them. Confirmation is not turn completion:
+a later model failure exposes Retry without duplicating the accepted user message.
+If a connection is lost between server acceptance and confirmation, users must
+inspect the restored history before resending; this is not an exactly-once API.
+The visible Retry/Resume recovery action calls `resume`, preserving completed
+tool effects rather than regenerating the latest turn.
+
+`web-ui/agent/ChatSession.vue` owns the title, transcript, dock and inspection
+panels. `useSessionPanels` selects one child agent or terminal at a time. Child
+phases and timestamps come from agent lifecycle frames and persisted tree nodes.
+Terminal output comes from shell frames and stored tool views. Inspection is
+read-only; the child panel's Stop action stops all children supported by the
+agent protocol.
+
+## Persistence and operations
+
+| Data | Owner and behavior |
+| --- | --- |
+| Transcript, queue and pending steers | Backend agent session; reconnect restores the current session snapshot. Pending-steer recovery after process restart is outside this change. |
+| Pins, ordering, read revisions and archive state | Backend conversation/sidebar APIs. A batch keeps successful changes and reports only failures. |
+| Appearance and keyboard shortcuts | Backend per-field preference API. Local pending changes are overlaid until the write and refresh finish. |
+| Draft text, file bytes, scroll state and last model | Per-user IndexedDB records in `conversation/drafts.ts`. Binary previews are recreated, and unfinished uploads restart. |
+| Project folds, recent projects, hidden providers/models | Per-user browser storage in `state/local.ts`. Hiding affects selection menus, not a running task. |
+
+New conversations select the first available model. An explicit previous choice
+that becomes unavailable stays selected with a warning; the product does not
+silently switch it. With no usable model, the composer offers configuration only
+to users with permission. Catalog selections carry full model metadata, thinking
+configuration and service tier to the agent.
+
+## Providers and accounts
+
+`settings/ProvidersPanel.vue` supplies API handlers to `SettingsProvidersPage`.
+API providers support creation, credential replacement, metadata changes,
+explicit connection tests, catalog refresh and deletion. A manual endpoint stays
+a local draft until it has credentials and at least one complete model.
+Manual-model validation requires a positive context window and an optional
+positive output limit no greater than the context window. Supported media are
+images, video formats and PDF. Save errors retain the model dialog's input.
+The final persisted manual model cannot be removed individually; the provider
+can be deleted or switched back to its catalog.
+
+Claude Code imports a setup-token. Codex and Grok use device login, including
+polling and cancellation. Account lists support adding, switching and removing
+credentials under backend permissions. Shared mode exposes configuration only
+to administrators. Queries never return credential material; configured keys
+are replaced through an empty secret field. Quota rows show actual reported
+windows only. Explicit refresh probes quota only when supported and free.
+
+`settings/SettingsDialog.vue` connects nickname, verified email change and
+password change to the account APIs. Email delivery remains the backend's
+injected `accountMail` adapter. Closing a credential flow aborts its pending
+request and clears temporary credentials. Authentication expiry aborts
+account-scoped activity and returns to sign-in. See [authentication](web-authentication.md).
+
+## Devices, Cloud and files
+
+`devices/pairing.ts` claims actual pairing codes. `devices/files.ts` adapts
+`GET/POST /api/devices/:id/fs` to the shared file browser, including directory
+creation, home, size and modification time. `WorkspaceDirectoryMenu` and
+`RemoteFilePicker` own browsing interaction. Product handlers supply device
+sources and submit target changes or file references. Choosing an existing
+project directory moves into that project; another directory sets a direct
+device target. Main-target changes require an idle, unarchived conversation.
+
+`api/uploads.ts` sends file bytes with XHR transfer progress. The selected model's
+accepted extensions distinguish model attachments from workspace files. Upload
+failures retain a tile with Retry; Send remains blocked until uploads are ready.
+Removing a file cancels its transfer. A target change invalidates and repeats
+workspace uploads against the new context. Remote references retain device ID
+and path in a file reference; the backend includes the existing host read command
+in that reference so the agent reads the device at execution time.
+`ContentMedia.vue` renders images, video and document links and releases object
+URLs when a source changes or the component unmounts.
+
+Cloud status and limits come from the user's state snapshot. Reset submits the
+operation ID through `/api/cloud/reset` and follows the reported operation state;
+acceptance alone does not imply completion. Failed reset retries use the same
+operation ID. The backend owns Cloud wake, isolation and home preservation.
+
+## Deliberately deferred
+
+The installation instructions remain a mock. Cloud directory browsing, MCP,
+Skills, notifications, language switching, data/privacy actions, account deletion,
+public registration/recovery, administration pages, Git branch display and manual
+terminal input are not enabled. Their existing deferred entry points remain
+hidden or disabled. No deployment or production email service was provisioned.
+
+## Validation
+
+Tests use scripted providers, fake email delivery, mocked HTTP and local runner
+fixtures; they never call real models. Coverage includes message admission,
+disconnect/cancellation, subagent history, metadata reconciliation, partial batch
+failure, read acknowledgement, file and provider contracts, and shared UI helpers.
+Browser verification uses a disposable backend account and device. Exact check
+results are recorded in [progress](demi-next/progress.md).

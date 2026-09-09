@@ -6,8 +6,13 @@ import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMen
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Popover from '@demicodes/web-ui/ui/Popover.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import { IN_DEVELOPMENT } from '@demicodes/web-ui/ui/disabled'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import Button from '@demicodes/web-ui/ui/Button.vue'
+import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
+import { t } from '@demicodes/web-ui/infra/i18n'
 import type {
+  ListLoad,
   SidebarAccount,
   SidebarConversation,
   SidebarProject,
@@ -26,8 +31,8 @@ import SidebarRow from './SidebarRow.vue'
 import SidebarSelectionMenu from './SidebarSelectionMenu.vue'
 
 /**
- * Top: the app and its entries: New, then Skills and Archived, which open their settings
- * sections. Middle: plain
+ * Top: the app and its entries: New, then Skills (disabled, in development) and Archived,
+ * which opens its settings section. Middle: plain
  * conversations, then every project as a collapsible group of its conversations, with one
  * selection across all of them. Bottom: the account and settings.
  */
@@ -38,6 +43,8 @@ const props = defineProps<{
   activeId: string | null
   hidePin?: boolean
   hideDelete?: boolean
+  /** `loading` is a spinner, not a first-run empty list. */
+  listStatus?: ListLoad
 }>()
 
 const emit = defineEmits<{
@@ -54,6 +61,7 @@ const emit = defineEmits<{
   /** Settings, on a section when an entry names one (`skills`, `archived`). */
   openSettings: [section?: string]
   signOut: []
+  retryList: []
 }>()
 
 const collapsedProjects = defineModel<string[]>('collapsedProjects', { default: () => [] })
@@ -334,7 +342,8 @@ function selectProjectConversations(project: SidebarProject): void {
       <SidebarNavItem
         :icon="WandSparkles"
         label="Skills"
-        @click="emit('openSettings', 'skills')"
+        disabled
+        :disabled-reason="IN_DEVELOPMENT"
       />
       <SidebarNavItem
         :icon="Archive"
@@ -351,13 +360,29 @@ function selectProjectConversations(project: SidebarProject): void {
       tabindex="0"
       role="listbox"
       aria-multiselectable="true"
+      :aria-busy="listStatus === 'loading' || undefined"
       @keydown="onListKeydown"
       @pointerdown="onListPointerDown"
       @click.capture="drag.click"
 
     >
+      <div
+        v-if="listStatus === 'loading'"
+        class="flex h-full min-h-40 items-center justify-center text-fg-subtle"
+      >
+        <IndeterminateSpinner :size="16" />
+      </div>
+      <div
+        v-else-if="listStatus === 'failed'"
+        class="flex h-full min-h-40 flex-col items-center justify-center gap-2 px-3 text-center"
+        role="alert"
+      >
+        <span class="text-chrome text-fg-muted">{{ t('agent.session.listFailed') }}</span>
+        <Button size="sm" @click="emit('retryList')">{{ t('agent.session.retry') }}</Button>
+      </div>
       <!-- Rows sit a hairline apart, the way menu items and the entries above do. -->
       <TransitionGroup
+        v-else
         name="sidebar-items"
         tag="div"
         class="relative flex flex-col gap-px"

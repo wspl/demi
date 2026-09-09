@@ -11,7 +11,10 @@ import { shouldShowTailLoading } from './tail-loading'
 import type { PendingSteerMessage } from './types'
 import AgentMessageVirtualBlock from './blocks/AgentMessageVirtualBlock.vue'
 import LoadingBlock from './blocks/LoadingBlock.vue'
+import SessionStatus from './SessionStatus.vue'
+import { sessionPaneStatus, sessionShowsReconnectTail, type SessionLoad } from './session-status'
 import { COMPOSER_CLEARANCE_PX } from './composer-clearance'
+import { t } from '../infra/i18n'
 
 const props = defineProps<{
   conversationId: string
@@ -21,6 +24,11 @@ const props = defineProps<{
   phase: SessionPhase
   bottomOffset: number
   persistedScrollState: PersistedScrollState | undefined
+  /** Hide composer-bound actions on user bubbles. */
+  readOnly?: boolean
+  /** History restore. `loading` never reads as an empty conversation. */
+  load?: SessionLoad
+  loadError?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -33,6 +41,7 @@ const emit = defineEmits<{
   deleteQueued: [id: string]
   sendQueued: [id: string]
   editUser: [content: UserContentBlock[]]
+  retryLoad: []
 }>()
 
 const visibleTranscriptBlocks = computed(() => getVisibleBlocks(props.blocks))
@@ -42,13 +51,20 @@ const renderBlocks = computed<MessageListBlock[]>(() => [
   ...queuedMessagesToRenderBlocks(props.queue),
 ])
 
-const shouldShowLoading = computed(
-  () => shouldShowTailLoading(
+const paneStatus = computed(() =>
+  sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.length > 0),
+)
+const reconnecting = computed(() => sessionShowsReconnectTail(props.load ?? 'ready'))
+const shouldShowLoading = computed(() =>
+  reconnecting.value || shouldShowTailLoading(
     props.phase,
     visibleTranscriptBlocks.value,
     renderBlocks.value
-  )
+  ),
 )
+const tailLabel = computed(() => (reconnecting.value
+  ? t('agent.block.connecting')
+  : undefined))
 
 // Every streamed delta re-renders the visible rows; the lookup must not rescan the transcript per row.
 const transcriptIndexById = computed(
@@ -132,16 +148,16 @@ defineExpose({
     <div
       ref="scrollContainer"
       class="h-full overflow-y-auto"
-      :class="isScrolling ? 'scrollbar-active' : ''"
+      :class="[isScrolling ? 'scrollbar-active' : '', paneStatus ? 'flex flex-col' : '']"
       style="overflow-anchor: none; scrollbar-gutter: stable;"
       @scroll="onScroll"
     >
-      <div
-        v-if="renderBlocks.length === 0"
-        class="grid h-full place-items-center"
-      >
-        <p class="text-conversation text-fg-faint">No messages yet. Start a conversation.</p>
-      </div>
+      <SessionStatus
+        v-if="paneStatus"
+        :kind="paneStatus"
+        :detail="paneStatus === 'failed' ? (loadError ?? undefined) : undefined"
+        @retry="emit('retryLoad')"
+      />
       <div
         v-else
         class="w-full pt-2"
@@ -162,6 +178,7 @@ defineExpose({
               :is-thinking-streaming="isStreamingThinkingAt(item.index)"
               :is-text-streaming="isStreamingTextAt(item.index)"
               :thinking-ended-at="thinkingEndedAt(item.index)"
+              :editable="!props.readOnly"
               @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
               @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
               @delete-queued="(id) => emit('deleteQueued', id)"
@@ -170,7 +187,7 @@ defineExpose({
             />
           </div>
         </div>
-        <LoadingBlock v-if="shouldShowLoading" />
+        <LoadingBlock v-if="shouldShowLoading" :label="tailLabel" />
       </div>
     </div>
   </div>

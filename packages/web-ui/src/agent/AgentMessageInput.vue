@@ -13,16 +13,21 @@ import { docToContent, type InputModel } from './message-input/input-model'
 import { composerHasLineBreak } from './message-input/composer-multiline'
 import {
   acceptAttribute,
+  applyAttachmentUpdate,
+  AttachmentUploadQueue,
+  attachmentsReady,
+  composerAttachmentFromFile,
   dataTransferFiles,
-  filePreviewUrl,
   fileToUserContent,
   partitionAcceptedFiles,
+  type AttachmentUploadUpdate,
+  type ComposerFileAttachment,
 } from './message-input/attachments'
 
-interface ComposerAttachment {
-  name: string
-  block: UserContentBlock
-  previewUrl?: string
+interface HeldAttachment {
+  item: ComposerFileAttachment
+  file: File
+  block?: UserContentBlock
 }
 
 const props = defineProps<{
@@ -31,6 +36,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'empty-submit': []
+  configure: []
 }>()
 
 const workspace = useAgentWorkspace()
@@ -47,27 +53,52 @@ const {
   usage,
 } = useAgentInputSessionState(workspace, props.conversationId)
 
-const attachments = ref<ComposerAttachment[]>([])
+const attachments = ref<HeldAttachment[]>([])
+const uploads = new AttachmentUploadQueue()
 const isMultiline = ref(false)
 
 function buildSubmitPayload(): UserContentBlock[] | null {
   const currentEditor = editor.value
-  const attached = attachments.value.map((item) => item.block)
+  const pending = attachments.value.map((item) => item.item)
+  if (!attachmentsReady(pending))
+    return null
+  const attached = attachments.value
+    .filter((item) => item.block)
+    .map((item) => item.block!)
   if ((!currentEditor || currentEditor.isEmpty) && attached.length === 0)
     return null
   const content = docToContent(currentEditor?.getJSON() as InputModel | undefined, attached)
   return content.length > 0 ? content : null
 }
 
-function revokePreview(item: ComposerAttachment): void {
-  if (item.previewUrl)
-    URL.revokeObjectURL(item.previewUrl)
+function revokePreview(item: HeldAttachment): void {
+  if (item.item.src)
+    URL.revokeObjectURL(item.item.src)
 }
 
 function clearInput(): void {
   editor.value?.commands.clearContent()
+  uploads.cancelAll()
   for (const item of attachments.value) revokePreview(item)
   attachments.value = []
+}
+
+function applyUpdate(id: string, update: AttachmentUploadUpdate): void {
+  const held = attachments.value.find((item) => item.item.id === id)
+  if (held)
+    applyAttachmentUpdate(held.item, update)
+}
+
+function dropFailed(id: string): void {
+  const held = attachments.value.find((item) => item.item.id === id)
+  if (held) {
+    showToast({
+      title: t('agent.input.attachmentFailed'),
+      message: held.item.name,
+      tone: 'danger',
+    })
+  }
+  removeAttachment(id)
 }
 
 const {
@@ -96,19 +127,26 @@ async function addFiles(files: File[]): Promise<void> {
       tone: 'danger',
     })
   }
-  if (accepted.length === 0)
-    return
-  const next = await Promise.all(
-    accepted.map(async (file) => {
-      const block = await fileToUserContent(file)
-      return {
-        name: file.name,
-        block,
-        previewUrl: block.type === 'image' ? filePreviewUrl(file) : undefined,
-      }
-    }),
+  for (const file of accepted) {
+    const item = composerAttachmentFromFile(file, acceptedExtensions.value)
+    const held: HeldAttachment = { item, file }
+    attachments.value = [...attachments.value, held]
+    readAttachment(held)
+  }
+}
+
+function readAttachment(held: HeldAttachment): void {
+  uploads.start(
+    held.item.id,
+    async (signal, report) => {
+      const block = await fileToUserContent(held.file, { signal, onProgress: report })
+      if (signal.aborted)
+        return
+      held.block = block
+    },
+    (update) => applyUpdate(held.item.id, update),
+    dropFailed,
   )
-  attachments.value = [...attachments.value, ...next]
 }
 
 // Claims the paste only when something was attached; otherwise the editor keeps its default
@@ -146,20 +184,17 @@ watch(
   { immediate: true },
 )
 
-function removeAttachment(index: number): void {
-  const item = attachments.value[index]
-  if (item)
-    revokePreview(item)
-  attachments.value = attachments.value.filter((_, itemIndex) => itemIndex !== index)
-}
-
-function attachmentName(item: ComposerAttachment): string {
-  if (item.block.type === 'document')
-    return item.block.source.fileName
-  return item.name
+function removeAttachment(id: string): void {
+  const item = attachments.value.find((held) => held.item.id === id)
+  if (!item)
+    return
+  uploads.cancel(id)
+  revokePreview(item)
+  attachments.value = attachments.value.filter((held) => held.item.id !== id)
 }
 
 onBeforeUnmount(() => {
+  uploads.cancelAll()
   for (const item of attachments.value) revokePreview(item)
 })
 
@@ -172,12 +207,7 @@ defineExpose({
     nextTick(() => editor.value?.commands.focus('end', { scrollIntoView: false }))
   },
 })
-const displayAttachments = computed(() =>
-  attachments.value.map((item) => ({
-    name: attachmentName(item),
-    src: item.previewUrl,
-  })),
-)
+const displayAttachments = computed(() => attachments.value.map((held) => held.item))
 </script>
 
 <template>
@@ -200,6 +230,7 @@ const displayAttachments = computed(() =>
     :compacting="isCompacting"
     :can-compact="canCompact"
     @submit="handleSubmit"
+    @configure="emit('configure')"
     @add-files="addFiles"
     @remove-attachment="removeAttachment"
     @select-model="handleSelectModel"

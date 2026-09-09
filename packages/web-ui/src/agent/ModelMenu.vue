@@ -10,7 +10,7 @@ import {
   reasoningOptionLabel,
 } from './reasoning'
 import { fastServiceTier, isFastMode } from './fast-mode'
-import { availableProviders, resolveSelectedModel } from './model-selection'
+import { availableProviders, composerModel, resolveSelectedModel } from './model-selection'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
@@ -41,7 +41,14 @@ const selected = computed(
     props.selectedModelId
   )
 )
-const selectedModelLabel = computed(() => selected.value?.model.name ?? '')
+const selectedModelLabel = computed(
+  () => selected.value?.model.name ?? composerModel(
+    props.providers,
+    props.models,
+    props.selectedProviderId,
+    props.selectedModelId
+  ).label
+)
 
 const reasoningState = computed(() => buildReasoningState(selected.value?.model ?? null))
 const fastTier = computed(() => fastServiceTier(selected.value?.model))

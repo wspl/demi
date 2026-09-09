@@ -2,9 +2,22 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import type { ThinkingConfig, TokenUsage } from '@demicodes/core'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
-import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
+import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { filePreviewUrl } from '@demicodes/web-ui/agent/message-input/attachments'
+import {
+  applyAttachmentUpdate,
+  AttachmentUploadQueue,
+  attachmentFileError,
+  composerAttachment,
+  composerAttachmentFromFile,
+  composerFileNames,
+  composerRemoteAttachment,
+  isComposerFile,
+  remoteAttachmentError,
+  type AttachmentUploadUpdate,
+  type ComposerAttachmentInput,
+} from '@demicodes/web-ui/agent/message-input/attachments'
+import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
 import { demoUsage } from '../fixtures/blocks'
 import { demoModels, demoProviders } from '../fixtures/catalog'
 import { createGalleryFileHosts } from '../fixtures/files'
@@ -16,10 +29,7 @@ const props = withDefaults(
     running?: boolean
     compacting?: boolean
     draft?: string
-    attachments?: {
-      name: string;
-      src?: string
-    }[]
+    attachments?: ComposerAttachmentInput[]
     focused?: boolean
     attachOpen?: boolean
     dropping?: boolean
@@ -27,6 +37,10 @@ const props = withDefaults(
     selectedModelId?: string
     serviceTierId?: string | null
     usage?: TokenUsage
+    providers?: ProviderInfo[]
+    models?: Record<string, ModelInfo[]>
+    canConfigure?: boolean
+    archived?: boolean
   }>(),
   {
     conversationId: 'demo',
@@ -34,68 +48,99 @@ const props = withDefaults(
     attachments: () => [],
     selectedProviderId: 'anthropic',
     selectedModelId: 'claude-sonnet',
+    canConfigure: true,
   },
 )
 const emit = defineEmits<{
-  send: [text: string];
-  queue: [text: string];
-  stop: [];
+  send: [text: string]
+  queue: [text: string]
+  stop: []
   compact: []
+  configure: []
+  restore: []
 }>()
 const draft = ref(props.draft)
-const attached = ref(props.attachments.map((item) => ({ ...item })))
+const attached = ref(props.attachments.map((item) => composerAttachment(item)))
+const uploads = new AttachmentUploadQueue()
 const providerId = ref(props.selectedProviderId)
 const modelId = ref(props.selectedModelId)
 const tier = ref(props.serviceTierId ?? null)
 const thinking = ref<ThinkingConfig>({
   type: 'effort',
   effort: 'medium',
-  summary: null
+  summary: null,
 })
-
-function remove(index: number) {
-  const item = attached.value[index]
-  if (item?.src?.startsWith('blob:'))
-    URL.revokeObjectURL(item.src)
-  attached.value.splice(index, 1)
-}
-function submit() {
-  const text = draft.value.trim() || attached.value.map((item) => item.name).join(', ')
-  if (!text)
-    return
-  draft.value = ''
-  while (attached.value.length) remove(0)
-  if (props.running)
-    emit('queue', text)
-  else emit('send', text)
-}
-function addFiles(files: File[]) {
-  attached.value.push(
-    ...files.map((file) => ({
-      name: file.name,
-      src: filePreviewUrl(file)
-    }))
-  )
-}
-// A remote file: the fixture laptop's project; the chosen path joins the draft.
-const remoteHosts = createGalleryFileHosts()
-const remoteHostId = ref<string | null>(null)
-const remoteHost = computed(
+const acceptedExtensions = computed(
   () =>
-    remoteHosts.find((host) => host.id === remoteHostId.value) ?? remoteHosts[0]!
+    demoModels[providerId.value]?.find((model) => model.id === modelId.value)
+      ?.acceptedExtensions ?? null,
 )
-function attachRemote(path: string) {
-  draft.value = draft.value && !/\s$/.test(draft.value)
-    ? `${draft.value} ${path}`
-    : `${draft.value}${path}`
-  remoteHostId.value = null
+
+function applyUpdate(id: string, update: AttachmentUploadUpdate) {
+  const item = attached.value.find((file) => file.id === id)
+  if (item) {
+    applyAttachmentUpdate(item, update)
+  }
+}
+
+function remove(id: string) {
+  uploads.cancel(id)
+  const item = attached.value.find((file) => file.id === id)
+  if (item && isComposerFile(item) && item.src?.startsWith('blob:')) {
+    URL.revokeObjectURL(item.src)
+  }
+  attached.value = attached.value.filter((file) => file.id !== id)
+}
+
+function submit() {
+  const text =
+    draft.value.trim() || attached.value.map((item) => item.name).join(', ')
+  if (!text) {
+    return
+  }
+  draft.value = ''
+  while (attached.value.length) {
+    remove(attached.value[0]!.id)
+  }
+  if (props.running) {
+    emit('queue', text)
+  } else {
+    emit('send', text)
+  }
+}
+
+function retryAttachment(id: string): void {
+  uploads.startPrototype(id, (update) => applyUpdate(id, update), remove)
+}
+
+function addFiles(files: File[]) {
+  for (const file of files) {
+    if (attachmentFileError(file, composerFileNames(attached.value))) {
+      continue
+    }
+    const item = composerAttachmentFromFile(file, acceptedExtensions.value)
+    attached.value.push(item)
+    uploads.startPrototype(item.id, (update) => applyUpdate(item.id, update), remove)
+  }
+}
+
+const remoteHosts = createGalleryFileHosts()
+const remotePicker = ref<InstanceType<typeof RemoteFilePicker>>()
+function attachRemote(file: { host: string; path: string }) {
+  const error = remoteAttachmentError(file.path, file.host, attached.value)
+  if (!error) {
+    attached.value.push(composerRemoteAttachment(file))
+  }
 }
 function selectModel(provider: string, model: string) {
   providerId.value = provider
   modelId.value = model
 }
 onBeforeUnmount(() => {
-  while (attached.value.length) remove(0)
+  uploads.cancelAll()
+  while (attached.value.length) {
+    remove(attached.value[0]!.id)
+  }
 })
 
 defineExpose({
@@ -110,8 +155,10 @@ defineExpose({
     v-bind="props"
     v-model:draft="draft"
     :attachments="attached"
-    :providers="demoProviders"
-    :models="demoModels"
+    :providers="props.providers ?? demoProviders"
+    :models="props.models ?? demoModels"
+    :can-configure="canConfigure !== false"
+    :archived="archived"
     :selected-provider-id="providerId"
     :selected-model-id="modelId"
     :service-tier-id="tier"
@@ -119,28 +166,22 @@ defineExpose({
     :usage="props.usage ?? demoUsage"
     remote-files
     @submit="submit"
+    @configure="emit('configure')"
+    @restore="emit('restore')"
     @add-files="addFiles"
-    @attach-remote="remoteHostId = 'mac'"
+    @attach-remote="remotePicker?.open()"
     @remove-attachment="remove"
+    @retry-attachment="retryAttachment"
     @select-model="selectModel"
     @change-thinking="thinking = $event"
     @change-service-tier="tier = $event"
     @stop="emit('stop')"
     @compact="emit('compact')"
   />
-  <FileBrowserDialog
-    :is-open="!!remoteHostId"
+  <RemoteFilePicker
+    ref="remotePicker"
     :overlay-store="appOverlayStore"
-    mode="file"
-    title="Attach remote file"
-    :source="remoteHost.source"
-    :initial-path="remoteHostId === 'mac' ? '/Users/zan/Projects/demi' : undefined"
-    :places="remoteHost.places"
-    :hosts="remoteHosts.map(({ id, label, online }) => ({ id, label, online }))"
-    :host-id="remoteHostId ?? undefined"
-    confirm-label="Attach"
+    :hosts="remoteHosts"
     @select="attachRemote"
-    @close="remoteHostId = null"
-    @update:host-id="remoteHostId = $event"
   />
 </template>

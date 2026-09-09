@@ -53,7 +53,7 @@ export function runtimeModelOptions(model: ConfiguredModel) {
 export function configuredCatalogModel(
   providerId: string,
   model: ConfiguredModel
-): ProviderModel & { acceptedExtensions: string[] | null } {
+): ProviderModel {
   return {
     ...runtimeModelOptions(model),
     providerId,

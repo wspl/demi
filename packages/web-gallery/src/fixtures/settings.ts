@@ -180,32 +180,32 @@ export function mockProviders(): MockProvider[] {
           label: 'zan@example.com',
           plan: 'Max 5×',
           active: true,
-          quota: {
-            hour: {
+          quota: [
+ { id: 'hour', label: '5-hour',
               used: 62,
               max: 100,
               resets: 'in 2 h 10 min'
-            },
-            week: { used: 31, max: 100, resets: 'Monday' }
-          }
+             },
+ { id: 'week', label: 'Weekly',  used: 31, max: 100, resets: 'Monday'  },
+]
         },
         {
           id: 'a2',
           label: 'zan@work.example',
           plan: 'Pro',
           active: false,
-          quota: {
-            hour: {
+          quota: [
+ { id: 'hour', label: '5-hour',
               used: 100,
               max: 100,
               resets: 'in 4 h'
-            },
-            week: {
+             },
+ { id: 'week', label: 'Weekly',
               used: 88,
               max: 100,
               resets: 'Thursday'
-            }
-          }
+             },
+]
         },
       ],
       catalogFetched: '2 min ago',
@@ -511,7 +511,6 @@ export function createSettingsState() {
       name: 'Zan',
       email: 'zan@example.com',
       passwordChanged: '3 months ago',
-      plan: 'Pro',
     },
     providers: mockProviders(),
     selectedProviderId: 'kimi' as string | null,

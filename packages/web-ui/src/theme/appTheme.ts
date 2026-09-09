@@ -46,20 +46,22 @@ export function toggleTheme(): void {
 }
 
 /** Mirror the active mode onto `<html data-theme>`, and follow the OS until the user chooses explicitly. */
-export function applyThemeToDocument(): void {
+export function applyThemeToDocument(): () => void {
   const apply = (): void =>
     document.documentElement.setAttribute('data-theme', appThemeStore.state.mode)
   apply()
-  appThemeStore.subscribe(apply)
-
-  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (
-      event
-    ) => {
-      if (storedMode())
-        return // user made an explicit choice — don't override it
+  const unsubscribe = appThemeStore.subscribe(apply)
+  const media = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: light)')
+    : null
+  const change = (event: MediaQueryListEvent) => {
+    if (!storedMode())
       appThemeStore.setMode(event.matches ? 'light' : 'dark')
-    })
+  }
+  media?.addEventListener('change', change)
+  return () => {
+    unsubscribe()
+    media?.removeEventListener('change', change)
   }
 }
 

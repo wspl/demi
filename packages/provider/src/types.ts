@@ -1,4 +1,5 @@
 import type {
+  FileExtension,
   ModelSelection,
   ProviderErrorDiagnostics,
   ThinkingConfig,
@@ -427,6 +428,8 @@ export interface ProviderModel {
   outputLimit: number | null
   supportsTools: boolean | null
   supportsAttachments: boolean | null
+  /** Exact accepted extensions when the catalog provides them. */
+  acceptedExtensions?: FileExtension[] | null
   /** Whether the model accepts native video input (not frame extraction). Most models
    * (all current Anthropic/Claude Code models) do not — their API has no video
    * block.

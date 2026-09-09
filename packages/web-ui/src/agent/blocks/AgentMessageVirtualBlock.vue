@@ -19,6 +19,7 @@ const props = defineProps<{
   isThinkingStreaming: boolean
   isTextStreaming?: boolean
   thinkingEndedAt?: string | null
+  editable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -37,6 +38,7 @@ const attrs = useAttrs()
     v-if="block.type === 'user'"
     v-bind="attrs"
     :content="block.content"
+    :editable="editable"
     @edit="emit('editUser', block.content)"
   />
   <UserBlock
@@ -44,6 +46,7 @@ const attrs = useAttrs()
     v-bind="attrs"
     :content="block.content"
     variant="steer"
+    :editable="editable"
     @edit="emit('editUser', block.content)"
   />
   <UserBlock

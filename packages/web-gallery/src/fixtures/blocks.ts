@@ -1,4 +1,5 @@
 import type { Block, ModelSelection, TokenUsage, UserContentBlock } from '@demicodes/core'
+import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { PendingSteerRenderBlock } from '@demicodes/web-ui/agent/pending-steers'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 
@@ -265,6 +266,10 @@ export function transcriptDemoBlocks(): Block[] {
             mediaType: 'application/pdf',
             fileName: 'login-failure.pdf'
           }
+        },
+        {
+          type: 'reference',
+          reference: encodeRemoteReference('zan-mbp', '/Users/zan/Projects/demi/package.json')
         },
         { type: 'text', text: 'Failing log and the screenshot from CI.' },
       ],

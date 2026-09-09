@@ -60,7 +60,7 @@ Product stores and the live gallery apply array moves using the generic
   project order and manual conversation order despite activity changes.
 - `packages/web/src/conversation/store.test.ts`: stored order survives a turn;
   cross-project reorder requests are rejected.
-- `packages/web/src/prototype/resources.test.ts`: project order is independent
+- `packages/backend/src/__tests__/state.test.ts`: project order is independent
   from recently used directory history.
 - Browser checks: pointer reorder for conversations and projects, Alt+Down,
   long-list scrolling and visible scrollbar. The fixture includes 40 conversations
