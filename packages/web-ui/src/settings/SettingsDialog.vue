@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { accountDisplayName, accountInitial } from '../auth/account-display'
 import { ChevronDown, Search } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
@@ -80,7 +81,12 @@ const current = computed(
 )
 // Few sections split one row evenly; a long rail becomes a picker so nothing scrolls off.
 const narrowAsRow = computed(() => items.value.length <= 4)
-const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCase() ?? '')
+const displayName = computed(() =>
+  accountDisplayName(props.account?.name ?? '', props.account?.email)
+)
+const initials = computed(() =>
+  accountInitial(props.account?.name ?? '', props.account?.email)
+)
 </script>
 
 <template>
@@ -113,7 +119,7 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
             >
             {{ initials }}
             </span>
-            <span class="min-w-0 truncate text-chrome text-fg">{{ account.name }}</span>
+            <span class="min-w-0 truncate text-chrome text-fg">{{ displayName }}</span>
           </div>
           <div class="hidden @md:block">
             <TextInput
