@@ -39,16 +39,16 @@ export function conversationPageKind(
   list: ListLoad,
   found: boolean,
 ): SessionStatusKind | 'session' {
+  if (found) {
+    return 'session'
+  }
   if (list === 'loading') {
     return 'loading'
   }
   if (list === 'failed') {
     return 'failed'
   }
-  if (!found) {
-    return 'missing'
-  }
-  return 'session'
+  return 'missing'
 }
 
 export function sessionStatusCopy(kind: SessionStatusKind): {

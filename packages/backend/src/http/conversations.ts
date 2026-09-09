@@ -69,12 +69,29 @@ export function conversationRoutes(options: {
     })
   })
 
-  app.post('/', async (c) =>
-    c.json(
-      { conversation: await control.createConversation(c.get('user').id) },
-      201,
-    ),
-  )
+  app.post('/', async (c) => {
+    const parsed = z.strictObject({ id: z.uuid() }).safeParse(
+      await c.req.json().catch(() => null),
+    )
+    if (!parsed.success) {
+      return c.json(
+        { code: 'invalid_request', message: 'A conversation UUID is required' },
+        400,
+      )
+    }
+    const userId = c.get('user').id
+    const existing = await control.getConversation(parsed.data.id)
+    if (existing && existing.userId !== userId) {
+      return c.json(
+        { code: 'id_unavailable', message: 'Conversation id is unavailable' },
+        409,
+      )
+    }
+    return c.json(
+      { conversation: await control.createConversation(userId, parsed.data) },
+      existing ? 200 : 201,
+    )
+  })
 
   app.post('/batch', async (c) => {
     const parsed = z

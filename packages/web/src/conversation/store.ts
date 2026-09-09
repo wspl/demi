@@ -2,21 +2,17 @@ import { computed, ref, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
 import { SerialQueue } from '@demicodes/utils'
-import {
-  type ThinkingConfig,
-  type UserContentBlock,
-} from '@demicodes/core'
+import { type ThinkingConfig, type UserContentBlock } from '@demicodes/core'
 import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
 import { composerModel } from '@demicodes/web-ui/agent/model-selection'
+import { hasAcceptedSubmission } from '@demicodes/web-ui/agent/submission'
 import {
   attachmentsReady,
   composerAttachmentFromFile,
   isComposerFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { connectAgentClient } from '@demicodes/web-ui/transport/agent-socket'
-import {
-  type ProviderSelection,
-} from '@demicodes/web-ui/transport/protocol'
+import { type ProviderSelection } from '@demicodes/web-ui/transport/protocol'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   conversationBatchSchema,
@@ -38,7 +34,13 @@ import { useSession } from '../auth/session'
 import type { Conversation } from '../state/types'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import { transcriptTerminals } from './terminals'
-import { readDraft, writeDraft, type SavedDraft } from './drafts'
+import {
+  deleteDraft,
+  readDraft,
+  readLocalDrafts,
+  writeDraft,
+  type SavedDraft,
+} from './drafts'
 
 export const useConversations = defineStore('conversations', () => {
   const product = useProduct()
@@ -57,7 +59,6 @@ export const useConversations = defineStore('conversations', () => {
     id: string
     runtime: ConversationRuntime
   } | null = null
-  let draftTimer: ReturnType<typeof setTimeout> | null = null
   let storageErrorReported = false
 
   function report(error: unknown): void {
@@ -72,7 +73,9 @@ export const useConversations = defineStore('conversations', () => {
   function storageError(error: unknown): void {
     if (!storageErrorReported) {
       storageErrorReported = true
-      notice.value = `Drafts remain in this page but could not be saved: ${error instanceof Error ? error.message : String(error)}`
+      notice.value = `Drafts remain in this page but could not be saved: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     }
   }
 
@@ -91,7 +94,22 @@ export const useConversations = defineStore('conversations', () => {
     return status === 'completed' ? 'done' : 'idle'
   }
 
-  function metadata(record: BackendConversation) {
+  function metadata(
+    record: Pick<
+      BackendConversation,
+      | 'id'
+      | 'title'
+      | 'pinned'
+      | 'archived'
+      | 'target'
+      | 'contextVersion'
+      | 'revision'
+      | 'readRevision'
+      | 'unread'
+      | 'createdAt'
+      | 'updatedAt'
+    >,
+  ) {
     return {
       id: record.id,
       title: record.title,
@@ -112,6 +130,7 @@ export const useConversations = defineStore('conversations', () => {
   function newConversation(record: BackendConversation): Conversation {
     return {
       ...metadata(record),
+      persistence: 'synced',
       status: summaryStatus(record.status),
       cwd: '/',
       blocks: [],
@@ -128,6 +147,7 @@ export const useConversations = defineStore('conversations', () => {
       draft: '',
       files: [],
       submission: 'idle',
+      pendingSend: null,
       scroll: null,
       attachedHosts: [],
       subagents: [],
@@ -142,16 +162,28 @@ export const useConversations = defineStore('conversations', () => {
       if (!snapshot) {
         return
       }
-      items.value = snapshot.conversations.map((record) => {
+      const previous = items.value
+      const local = previous.filter(
+        (item) =>
+          item.persistence !== 'synced' &&
+          !snapshot.conversations.some((record) => record.id === item.id),
+      )
+      const next = snapshot.conversations.map((record) => {
         const current = items.value.find((item) => item.id === record.id)
         if (!current) {
           return newConversation(record)
+        }
+        if (current.persistence !== 'synced') {
+          return current
         }
         const revisionChanged = current.revision !== record.revision
         const contextChanged = current.contextVersion !== record.contextVersion
         const archiveChanged = current.archived !== record.archived
         Object.assign(current, metadata(record))
-        if (activeRuntime?.id !== current.id || !activeRuntime.runtime.connected) {
+        if (
+          activeRuntime?.id !== current.id ||
+          !activeRuntime.runtime.connected
+        ) {
           current.status = summaryStatus(record.status)
         }
         if (contextChanged) {
@@ -177,6 +209,16 @@ export const useConversations = defineStore('conversations', () => {
         }
         return current
       })
+      for (const item of local.toReversed()) {
+        const following = previous
+          .slice(previous.indexOf(item) + 1)
+          .find((candidate) => next.some((entry) => entry.id === candidate.id))
+        const index = following
+          ? next.findIndex((entry) => entry.id === following.id)
+          : next.length
+        next.splice(index, 0, item)
+      }
+      items.value = next
       if (product.activeConversationId && !activeController) {
         void activate(product.activeConversationId)
       }
@@ -185,6 +227,27 @@ export const useConversations = defineStore('conversations', () => {
 
   function persisted(conversation: Conversation): SavedDraft {
     return {
+      pendingSend: conversation.pendingSend
+        ? structuredClone(toRaw(conversation.pendingSend))
+        : null,
+      local:
+        conversation.persistence === 'synced'
+          ? null
+          : {
+              phase: conversation.persistence,
+              hosts: conversation.attachedHosts.map(
+                ({ deviceId, name, cwd }) => ({ deviceId, name, cwd }),
+              ),
+              conversation: {
+                id: conversation.id,
+                title: conversation.title,
+                pinned: conversation.pinned,
+                archived: conversation.archived,
+                target: { ...conversation.target },
+                createdAt: conversation.createdAt,
+                updatedAt: conversation.updatedAt,
+              },
+            },
       text: conversation.draft,
       model: { ...conversation.model },
       files: conversation.files.map((file) =>
@@ -206,10 +269,6 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   function saveDrafts(): void {
-    if (draftTimer !== null) {
-      clearTimeout(draftTimer)
-    }
-    draftTimer = null
     const userId = session.user?.id ?? product.snapshot?.user.id
     if (!userId) {
       return
@@ -223,7 +282,14 @@ export const useConversations = defineStore('conversations', () => {
     const current = lifetime
     // IndexedDB serializes readwrite transactions; issue them now, including on pagehide.
     for (const entry of drafts) {
-      void writeDraft(userId, entry.id, entry.draft).catch(error => {
+      const operation =
+        entry.draft.local?.phase === 'draft' &&
+        !entry.draft.pendingSend &&
+        !entry.draft.text.trim() &&
+        !entry.draft.files.length
+          ? deleteDraft(userId, entry.id)
+          : writeDraft(userId, entry.id, entry.draft)
+      void operation.catch((error) => {
         if (current === lifetime) {
           storageError(error)
         }
@@ -231,39 +297,98 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  async function restoreLocalDrafts(): Promise<void> {
+    const userId = session.user?.id
+    if (!userId) {
+      return
+    }
+    const signal = lifetime.signal
+    try {
+      const drafts = (await readLocalDrafts(userId)).sort((a, b) =>
+        (a.local?.conversation.createdAt ?? '').localeCompare(b.local?.conversation.createdAt ?? ''),
+      )
+      signal.throwIfAborted()
+      for (const draft of drafts) {
+        if (
+          !draft.local ||
+          items.value.some((item) => item.id === draft.local?.conversation.id)
+        ) {
+          continue
+        }
+        if (
+          draft.local.phase === 'draft' &&
+          !draft.text.trim() &&
+          !draft.files.length
+        ) {
+          continue
+        }
+        const conversation = newConversation({
+          ...draft.local.conversation,
+          providerId: draft.model.providerId || null,
+          modelId: draft.model.modelId || null,
+          status: 'idle',
+          contextVersion: 0,
+          revision: 0,
+          readRevision: 0,
+          unread: false,
+        })
+        conversation.persistence = draft.local.phase
+        conversation.attachedHosts = draft.local.hosts.map((host) => ({
+          ...host,
+          online: resources.devices.some(
+            (device) => device.id === host.deviceId && device.online,
+          ),
+        }))
+        conversation.load = 'ready'
+        items.value.unshift(conversation)
+        const restoredConversation = items.value.find(
+          (item) => item.id === conversation.id,
+        )!
+        await restoreDraft(restoredConversation, signal, draft)
+      }
+    } catch (error) {
+      if (!signal.aborted) {
+        storageError(error)
+      }
+    }
+  }
+
+  async function initialize(): Promise<void> {
+    const signal = lifetime.signal
+    await restoreLocalDrafts()
+    if (!signal.aborted) {
+      await product.start()
+    }
+  }
+
   watch(
     () =>
       items.value.map((item) => ({
         id: item.id,
-        draft: item.draft,
-        files: item.files,
-        model: item.model,
-        scroll: item.scroll,
+        draft: persisted(item),
       })),
-    () => {
-      if (draftTimer !== null) {
-        clearTimeout(draftTimer)
-      }
-      draftTimer = null
-      if (items.value.length && session.signedIn) {
-        draftTimer = setTimeout(saveDrafts, 250)
-      }
-    },
-    { deep: true },
+    saveDrafts,
+    { flush: 'sync' },
   )
 
   async function restoreDraft(
     conversation: Conversation,
     signal: AbortSignal,
+    saved?: SavedDraft,
   ): Promise<void> {
     if (restored.has(conversation.id) || !session.user) {
       return
     }
     try {
-      const draft = await readDraft(session.user.id, conversation.id)
+      const draft = saved ?? (await readDraft(session.user.id, conversation.id))
       signal.throwIfAborted()
       if (draft) {
         conversation.draft = draft.text
+        conversation.pendingSend = draft.pendingSend
+        if (conversation.pendingSend && !conversation.pendingSend.error) {
+          conversation.pendingSend.error =
+            'Sending was interrupted. Retry to confirm delivery.'
+        }
         conversation.model = draft.model
         conversation.scroll = draft.scroll
         conversation.files = draft.files.map((file) =>
@@ -354,6 +479,20 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   async function activate(id: string | null): Promise<void> {
+    const previous = items.value.find(
+      (item) => item.id === product.activeConversationId,
+    )
+    if (
+      previous &&
+      previous.id !== id &&
+      previous.persistence === 'draft' &&
+      !previous.draft.trim() &&
+      !previous.files.length
+    ) {
+      saveDrafts()
+      items.value = items.value.filter((item) => item !== previous)
+      restored.delete(previous.id)
+    }
     releaseActive()
     product.activeConversationId = id
     const conversation = items.value.find((item) => item.id === id)
@@ -365,6 +504,10 @@ export const useConversations = defineStore('conversations', () => {
     conversation.load = conversation.blocks.length ? 'reconnecting' : 'loading'
     try {
       await restoreDraft(conversation, controller.signal)
+      if (conversation.persistence !== 'synced') {
+        conversation.load = 'ready'
+        return
+      }
       await product.loadModels(conversation.id)
       controller.signal.throwIfAborted()
       await loadHosts(conversation, controller.signal)
@@ -375,6 +518,7 @@ export const useConversations = defineStore('conversations', () => {
       const transcript = await readResponse(response, transcriptSchema)
       controller.signal.throwIfAborted()
       conversation.blocks = transcript.blocks
+      reconcileSubmission(conversation)
       conversation.terminals = transcriptTerminals(transcript.blocks)
       conversation.subagents = transcript.subagents.map((agent) => ({
         ...agent,
@@ -406,8 +550,9 @@ export const useConversations = defineStore('conversations', () => {
             decodeFrame: decodeServerFrame,
           })
         },
-        onEvent: next => {
+        onEvent: (next) => {
           applyConversationEvent(conversation, next)
+          reconcileSubmission(conversation)
           if (next.type === 'phase' && next.phase === 'idle') {
             void product.refresh().catch(report)
           }
@@ -459,11 +604,14 @@ export const useConversations = defineStore('conversations', () => {
 
   async function patch(id: string, changes: unknown): Promise<boolean> {
     const signal = lifetime.signal
-    const response = await apiRequest(`/conversations/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      signal: lifetime.signal,
-      ...jsonBody(changes),
-    })
+    const response = await apiRequest(
+      `/conversations/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        signal: lifetime.signal,
+        ...jsonBody(changes),
+      },
+    )
     const result = await readResponse(response, conversationUpdateSchema)
     signal.throwIfAborted()
     const failed = result.results.filter((field) => field.status === 'failed')
@@ -476,7 +624,30 @@ export const useConversations = defineStore('conversations', () => {
     return failed.length === 0
   }
 
-  async function batch(ids: string[], changes: unknown): Promise<boolean> {
+  async function batch(
+    ids: string[],
+    changes: Partial<Pick<BackendConversation, 'title' | 'pinned' | 'archived' | 'target'>>,
+  ): Promise<boolean> {
+    for (const conversation of items.value) {
+      if (
+        ids.includes(conversation.id) &&
+        conversation.persistence !== 'synced'
+      ) {
+        Object.assign(conversation, changes)
+        conversation.projectId =
+          conversation.target.kind === 'workspace'
+            ? conversation.target.workspaceId
+            : null
+      }
+    }
+    ids = ids.filter(
+      (id) =>
+        items.value.find((item) => item.id === id)?.persistence === 'synced',
+    )
+    saveDrafts()
+    if (!ids.length) {
+      return true
+    }
     const signal = lifetime.signal
     try {
       return await writes.run(async () => {
@@ -501,7 +672,11 @@ export const useConversations = defineStore('conversations', () => {
                   .filter((field) => field.status === 'failed')
                   .map(
                     (field) =>
-                      `${items.value.find((conversation) => conversation.id === item.id)?.title ?? item.id}: ${field.message ?? field.code}`,
+                      `${
+                        items.value.find(
+                          (conversation) => conversation.id === item.id,
+                        )?.title ?? item.id
+                      }: ${field.message ?? field.code}`,
                   )
               : [item.message ?? 'Conversation update failed'],
           )
@@ -519,36 +694,116 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  async function create(projectId: string | null = null): Promise<string | null> {
+  function create(projectId: string | null = null): string {
+    const empty = items.value.find(
+      (item) =>
+        item.persistence === 'draft' &&
+        !item.archived &&
+        item.projectId === projectId &&
+        !item.draft.trim() &&
+        !item.files.length,
+    )
+    if (empty) {
+      return empty.id
+    }
+    const now = new Date().toISOString()
+    const conversation = newConversation({
+      id: crypto.randomUUID(),
+      title: 'New conversation',
+      pinned: false,
+      archived: false,
+      target: projectId
+        ? { kind: 'workspace', workspaceId: projectId }
+        : { kind: 'cloud' },
+      contextVersion: 0,
+      revision: 0,
+      readRevision: 0,
+      unread: false,
+      createdAt: now,
+      updatedAt: now,
+      providerId: null,
+      modelId: null,
+      status: 'idle',
+    })
+    conversation.persistence = 'draft'
+    conversation.load = 'ready'
+    restored.add(conversation.id)
+    items.value.unshift(conversation)
+    return conversation.id
+  }
+
+  async function persistConversation(
+    conversation: Conversation,
+  ): Promise<void> {
+    if (conversation.persistence === 'synced') {
+      return
+    }
     const signal = lifetime.signal
-    try {
-      const response = await apiRequest('/conversations', {
-        method: 'POST',
-        signal: lifetime.signal,
-      })
-      const result = await readResponse(
-        response,
-        z.object({ conversation: conversationRecordSchema }),
+    const response = await apiRequest('/conversations', {
+      method: 'POST',
+      signal,
+      ...jsonBody({ id: conversation.id }),
+    })
+    const result = await readResponse(
+      response,
+      z.object({ conversation: conversationRecordSchema }),
+    )
+    signal.throwIfAborted()
+    if (
+      !(await patch(result.conversation.id, {
+        title: conversation.title,
+        target: conversation.target,
+        pinned: conversation.pinned,
+        ...(conversation.model.providerId && conversation.model.modelId
+          ? {
+              providerId: conversation.model.providerId,
+              modelId: conversation.model.modelId,
+            }
+          : {}),
+      }))
+    ) {
+      throw new Error(
+        'Could not configure the conversation. Try sending again.',
       )
-      signal.throwIfAborted()
-      if (projectId) {
-        await patch(result.conversation.id, {
-          target: {
-            kind: 'workspace',
-            workspaceId: projectId,
-          },
-        })
-      } else {
-        await product.revalidate()
-      }
-      return result.conversation.id
-    } catch (error) {
-      report(error)
-      return null
+    }
+    for (const host of conversation.attachedHosts) {
+      await apiRequest(
+        `/conversations/${encodeURIComponent(conversation.id)}/hosts`,
+        {
+          method: 'POST',
+          signal,
+          ...jsonBody({ deviceId: host.deviceId }),
+        },
+      )
+      await apiRequest(
+        `/conversations/${encodeURIComponent(
+          conversation.id,
+        )}/hosts/${encodeURIComponent(host.deviceId)}`,
+        {
+          method: 'PATCH',
+          signal,
+          ...jsonBody({ name: host.name }),
+        },
+      )
+    }
+    await product.refresh()
+    signal.throwIfAborted()
+    conversation.persistence = 'synced'
+    const stored = product.snapshot?.conversations.find(
+      (item) => item.id === conversation.id,
+    )
+    if (stored) {
+      Object.assign(conversation, metadata(stored))
     }
   }
 
   function rename(id: string, title: string): void {
+    const conversation = items.value.find((item) => item.id === id)
+    if (conversation && conversation.persistence !== 'synced') {
+      conversation.title = title
+      saveDrafts()
+      return
+    }
     const signal = lifetime.signal
     void writes
       .run(() => {
@@ -559,6 +814,18 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   async function reorder(id: string, beforeId: string | null): Promise<void> {
+    const conversation = items.value.find((item) => item.id === id)
+    if (conversation && conversation.persistence !== 'synced') {
+      const reordered = items.value.filter((item) => item.id !== id)
+      const index = reordered.findIndex((item) => item.id === beforeId)
+      reordered.splice(index < 0 ? reordered.length : index, 0, conversation)
+      items.value = reordered
+      return
+    }
+    if (beforeId) {
+      const index = items.value.findIndex((item) => item.id === beforeId)
+      beforeId = items.value.slice(index).find((item) => item.persistence === 'synced')?.id ?? null
+    }
     try {
       await apiRequest('/sidebar/reorder', {
         method: 'POST',
@@ -603,6 +870,22 @@ export const useConversations = defineStore('conversations', () => {
     conversation: Conversation,
     deviceId: string,
   ): Promise<void> {
+    if (conversation.persistence !== 'synced') {
+      const device = resources.devices.find((item) => item.id === deviceId)
+      if (
+        device &&
+        !conversation.attachedHosts.some((host) => host.deviceId === deviceId)
+      ) {
+        conversation.attachedHosts.push({
+          deviceId,
+          name: device.name,
+          cwd: null,
+          online: device.online,
+        })
+        saveDrafts()
+      }
+      return
+    }
     try {
       await apiRequest(
         `/conversations/${encodeURIComponent(conversation.id)}/hosts`,
@@ -622,9 +905,18 @@ export const useConversations = defineStore('conversations', () => {
     conversation: Conversation,
     deviceId: string,
   ): Promise<void> {
+    if (conversation.persistence !== 'synced') {
+      conversation.attachedHosts = conversation.attachedHosts.filter(
+        (host) => host.deviceId !== deviceId,
+      )
+      saveDrafts()
+      return
+    }
     try {
       await apiRequest(
-        `/conversations/${encodeURIComponent(conversation.id)}/hosts/${encodeURIComponent(deviceId)}`,
+        `/conversations/${encodeURIComponent(
+          conversation.id,
+        )}/hosts/${encodeURIComponent(deviceId)}`,
         {
           method: 'DELETE',
           signal: lifetime.signal,
@@ -641,9 +933,21 @@ export const useConversations = defineStore('conversations', () => {
     deviceId: string,
     name: string,
   ): Promise<void> {
+    if (conversation.persistence !== 'synced') {
+      const host = conversation.attachedHosts.find(
+        (item) => item.deviceId === deviceId,
+      )
+      if (host) {
+        host.name = name
+        saveDrafts()
+      }
+      return
+    }
     try {
       await apiRequest(
-        `/conversations/${encodeURIComponent(conversation.id)}/hosts/${encodeURIComponent(deviceId)}`,
+        `/conversations/${encodeURIComponent(
+          conversation.id,
+        )}/hosts/${encodeURIComponent(deviceId)}`,
         {
           method: 'PATCH',
           signal: lifetime.signal,
@@ -661,6 +965,16 @@ export const useConversations = defineStore('conversations', () => {
     providerId: string,
     modelId: string,
   ): Promise<void> {
+    if (conversation.persistence !== 'synced') {
+      conversation.model = {
+        providerId,
+        modelId,
+        thinkingEffort: null,
+        serviceTierId: null,
+      }
+      saveDrafts()
+      return
+    }
     const signal = lifetime.signal
     try {
       await writes.run(async () => {
@@ -699,8 +1013,8 @@ export const useConversations = defineStore('conversations', () => {
       thinking?.type === 'adaptive' || thinking?.type === 'effort'
         ? thinking.effort
         : thinking?.type === 'disabled'
-          ? 'disabled'
-          : null
+        ? 'disabled'
+        : null
     if (activeRuntime?.id === conversation.id) {
       void activeRuntime.runtime.setModel().catch(report)
     }
@@ -715,16 +1029,46 @@ export const useConversations = defineStore('conversations', () => {
 
   async function send(conversation: Conversation): Promise<void> {
     if (
+      conversation.archived ||
       conversation.submission === 'sending' ||
-      !attachmentsReady(conversation.files) ||
-      (!conversation.draft.trim() && !conversation.files.length)
+      (!conversation.pendingSend && !attachmentsReady(conversation.files)) ||
+      (!conversation.pendingSend &&
+        !conversation.draft.trim() &&
+        !conversation.files.length)
     ) {
       return
     }
-    const draft = conversation.draft
-    const files = [...conversation.files]
+    if (conversation.persistence === 'draft') {
+      conversation.persistence = 'pending'
+    }
+    if (!conversation.pendingSend) {
+      conversation.pendingSend = {
+        id: crypto.randomUUID(),
+        text: conversation.draft,
+        fileIds: conversation.files.map((file) => file.id),
+        error: null,
+      }
+      conversation.draft = ''
+    }
+    const pending = conversation.pendingSend
+    const signal = lifetime.signal
+    pending.error = null
+    const draft = pending.text
+    const files = conversation.files.filter((file) =>
+      pending.fileIds.includes(file.id),
+    )
     conversation.submission = 'sending'
+    saveDrafts()
     try {
+      await persistConversation(conversation)
+      for (const file of files) {
+        if (
+          isComposerFile(file) &&
+          (file.phase === 'staged' || file.phase === 'failed')
+        ) {
+          await uploadFile(conversation, file)
+        }
+      }
       const content: UserContentBlock[] = draft.trim()
         ? [
             {
@@ -767,18 +1111,36 @@ export const useConversations = defineStore('conversations', () => {
           )
         }
       }
-      await (await runtimeFor(conversation)).submit(content)
-      if (conversation.draft === draft) {
-        conversation.draft = ''
-      }
-      for (const file of files) {
-        removeFile(conversation, file.id)
-      }
-      saveDrafts()
+      await (await runtimeFor(conversation)).submit(content, pending.id)
+      clearSubmission(conversation, pending.id)
     } catch (error) {
-      report(error)
+      if (!signal.aborted && conversation.pendingSend?.id === pending.id) {
+        pending.error = error instanceof Error ? error.message : String(error)
+      }
     } finally {
       conversation.submission = 'idle'
+      if (!signal.aborted) {
+        saveDrafts()
+      }
+    }
+  }
+
+  function clearSubmission(conversation: Conversation, id: string): void {
+    const pending = conversation.pendingSend
+    if (pending?.id !== id) {
+      return
+    }
+    conversation.pendingSend = null
+    for (const fileId of pending.fileIds) {
+      removeFile(conversation, fileId)
+    }
+    saveDrafts()
+  }
+
+  function reconcileSubmission(conversation: Conversation): void {
+    const id = conversation.pendingSend?.id
+    if (id && hasAcceptedSubmission(conversation, id)) {
+      clearSubmission(conversation, id)
     }
   }
 
@@ -790,7 +1152,6 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   function stopAll(): void {
-    saveDrafts()
     releaseActive()
     lifetime.abort()
     lifetime = new AbortController()
@@ -836,6 +1197,7 @@ export const useConversations = defineStore('conversations', () => {
     removeFile,
     retryFile,
     saveDrafts,
+    initialize,
     stopAll,
     abortSubagents: (conversation: Conversation) =>
       action(conversation, (runtime) => runtime.abortSubagents()),

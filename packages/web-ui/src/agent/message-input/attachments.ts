@@ -4,7 +4,7 @@ import { delay } from '@demicodes/utils'
 import { t } from '../../infra/i18n'
 
 export type AttachmentDestination = 'message' | 'workspace'
-export type AttachmentPhase = 'uploading' | 'ready' | 'failed'
+export type AttachmentPhase = 'staged' | 'uploading' | 'ready' | 'failed'
 
 /** A local file: one phase, and whether it goes to the model or the working directory. */
 export interface ComposerFileAttachment {
@@ -166,10 +166,13 @@ export function attachmentFileError(
 }
 
 export function attachmentsReady(items: readonly ComposerAttachment[]): boolean {
-  return items.every((item) => item.kind === 'reference' || item.phase === 'ready')
+  return items.every((item) => item.kind === 'reference' || item.phase === 'ready' || item.phase === 'staged')
 }
 
 export function attachmentCaption(item: ComposerAttachment): string {
+  if (item.kind === 'file' && item.phase === 'staged') {
+    return `Uploads when you send · ${item.name}`
+  }
   if (item.kind === 'reference') {
     return `${item.host} · ${item.path}`
   }
