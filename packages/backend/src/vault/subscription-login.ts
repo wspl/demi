@@ -3,7 +3,8 @@ import { join } from 'node:path'
 import type { ProviderCredentialLoginOptions, ProviderCredentialLoginResult } from '@demicodes/provider'
 import { createId, errorMessage } from '@demicodes/utils'
 import type { ProviderAssembly } from '../llm/assembly'
-import type { ProviderVault } from './providers'
+import type { ProviderEntry, ProviderVault } from './providers'
+import type { ProviderOperations } from './provider-operations'
 
 export type SubscriptionLoginState =
   | { status: 'pending'; verificationUrl: string | null; userCode: string | null }
@@ -11,101 +12,114 @@ export type SubscriptionLoginState =
   | { status: 'failed'; message: string }
 
 interface LoginFlow {
-  providerType: string
-  label: string
   ownerUserId: string | null
-  pendingDir: string
   state: SubscriptionLoginState
+  abort: AbortController
+  done: Promise<void>
+  finishedAt: number | null
 }
 
-/**
- * Subscription device-login flows: the provider runs its vendor's public
- * protocol natively against a throwaway credential pool; the web UI shows
- * the pending verification URL/code and polls. On completion the pool
- * directory becomes the new provider's vault directory and the provider
- * row is created — nothing token-shaped ever crosses the HTTP surface.
- */
+/** Owns cancellable device logins, their private temporary pools, and publication into the vault. */
 export class SubscriptionLoginFlows {
   private readonly flows = new Map<string, LoginFlow>()
+  private closed = false
 
   constructor(
     private readonly vault: ProviderVault,
     private readonly assembly: ProviderAssembly,
-    private readonly options: { vaultRoot: string },
+    private readonly options: { vaultRoot: string; operations: ProviderOperations },
   ) {}
 
-  /**
-   * Starts one login for the provider scope's owner and returns its poll id.
-   * Refused for a family without a native login flow, and for one the scope
-   * already holds an entry of — a scope has at most one subscription per
-   * family.
-   */
-  async start(
-    providerType: string,
-    label: string,
-    ownerUserId: string | null,
-  ): Promise<{ id: string } | { refused: 'no_login_flow' | 'exists' }> {
-    if (await this.exists(providerType, ownerUserId)) return { refused: 'exists' }
+  async start(providerType: string, label: string, ownerUserId: string | null, existing?: ProviderEntry): Promise<{ id: string } | { refused: 'no_login_flow' | 'exists' | 'busy' }> {
+    if (this.closed) return { refused: 'busy' }
+    if (providerType === 'claude-code') return { refused: 'no_login_flow' }
+    this.prune()
+    if (!existing && (await this.vault.list({ ownerUserId })).some(entry => entry.config.providerType === providerType)) return { refused: 'exists' }
+    const release = existing ? this.options.operations.reserve(existing.id) : () => {}
+    if (!release) return { refused: 'busy' }
     const id = createId()
-    const pendingDir = join(this.options.vaultRoot, `pending-${id}`)
-    let begin: ((options?: ProviderCredentialLoginOptions) => Promise<ProviderCredentialLoginResult>) | undefined
+    const pendingDir = existing ? null : join(this.options.vaultRoot, `pending-${id}`)
     try {
-      // API-key types refuse subscription configs at construction — same answer: no login flow.
-      const provider = this.assembly.buildDetached(providerType, { id, label, vaultDir: pendingDir })
-      begin = provider.credentials?.beginLogin?.bind(provider.credentials)
-    } catch {
-      return { refused: 'no_login_flow' }
-    }
-    if (!begin) return { refused: 'no_login_flow' }
-
-    const flow: LoginFlow = { providerType, label, ownerUserId, pendingDir, state: { status: 'pending', verificationUrl: null, userCode: null } }
-    this.flows.set(id, flow)
-    void (async () => {
-      let publishedDir: string | undefined
-      try {
-        const result = await begin({
-          onPending: (pending) => {
-            if (flow.state.status !== 'pending') return
-            flow.state = {
-              status: 'pending',
-              verificationUrl: pending.verificationUrl,
-              userCode: pending.userCode ?? null,
-            }
-          },
-        })
-        if (result.status !== 'completed') {
-          flow.state = { status: 'failed', message: result.status === 'cancelled' ? 'Login cancelled' : result.message }
-          await rm(pendingDir, { recursive: true, force: true })
-          return
-        }
-        const providerId = createId()
-        publishedDir = this.assembly.vaultDir(providerId)
-        await rename(pendingDir, publishedDir)
-        // The database arbitrates concurrent completions; a visible row always has its credential pool.
-        const provider = await this.vault.create({
-          id: providerId,
-          ownerUserId: flow.ownerUserId,
-          label: flow.label,
-          config: { kind: 'subscription', providerType: flow.providerType },
-        })
-        flow.state = { status: 'completed', providerId: provider.id }
-      } catch (error) {
-        await rm(pendingDir, { recursive: true, force: true }).catch(() => {})
-        if (publishedDir) await rm(publishedDir, { recursive: true, force: true }).catch(() => {})
-        flow.state = { status: 'failed', message: errorMessage(error) }
+      const provider = existing ? (await this.assembly.providerFor(existing.id))?.provider
+        : this.assembly.buildDetached(providerType, { id, label, vaultDir: pendingDir! })
+      const begin = provider?.credentials?.beginLogin?.bind(provider.credentials)
+      if (!begin || this.closed) {
+        release()
+        return { refused: 'no_login_flow' }
       }
-    })()
-    return { id }
+      const flow: LoginFlow = { ownerUserId, state: { status: 'pending', verificationUrl: null, userCode: null }, abort: new AbortController(), done: Promise.resolve(), finishedAt: null }
+      this.flows.set(id, flow)
+      flow.done = this.complete(flow, begin, { providerType, label, existing, pendingDir }).finally(release)
+      return { id }
+    } catch (error) {
+      release()
+      throw error
+    }
   }
 
-  private async exists(providerType: string, ownerUserId: string | null): Promise<boolean> {
-    const entries = await this.vault.list({ ownerUserId })
-    return entries.some((entry) => entry.config.providerType === providerType)
+  private async complete(flow: LoginFlow, begin: (options?: ProviderCredentialLoginOptions) => Promise<ProviderCredentialLoginResult>, input: { providerType: string; label: string; existing?: ProviderEntry; pendingDir: string | null }): Promise<void> {
+    let unpublishedDir = input.pendingDir
+    const timer = setTimeout(() => flow.abort.abort(new Error('Login expired')), 10 * 60_000)
+    try {
+      const result = await begin({
+        signal: flow.abort.signal,
+        onPending: pending => {
+          if (flow.abort.signal.aborted) return
+          flow.state = { status: 'pending', verificationUrl: pending.verificationUrl, userCode: pending.userCode ?? null }
+        },
+      })
+      if (flow.abort.signal.aborted || result.status === 'cancelled') throw new Error('Login cancelled or expired')
+      if (result.status !== 'completed') throw new Error(result.message)
+      let providerId = input.existing?.id
+      if (!providerId) {
+        providerId = createId()
+        const destination = this.assembly.vaultDir(providerId)
+        await rename(input.pendingDir!, destination)
+        unpublishedDir = destination
+        await this.vault.create({ id: providerId, ownerUserId: flow.ownerUserId, label: input.label, config: { kind: 'subscription', providerType: input.providerType } })
+        unpublishedDir = null
+      }
+      this.assembly.invalidate(providerId)
+      flow.state = { status: 'completed', providerId }
+    } catch (error) {
+      flow.state = { status: 'failed', message: errorMessage(error) }
+    } finally {
+      clearTimeout(timer)
+      if (unpublishedDir) {
+        try {
+          await rm(unpublishedDir, { recursive: true, force: true })
+        } catch (error) {
+          flow.state = { status: 'failed', message: `Credential cleanup failed: ${errorMessage(error)}` }
+        }
+      }
+      flow.finishedAt = Date.now()
+    }
   }
 
-  /** A flow is visible to the scope that started it. */
   status(id: string, ownerUserId: string | null): SubscriptionLoginState | null {
+    this.prune()
     const flow = this.flows.get(id)
     return flow && flow.ownerUserId === ownerUserId ? flow.state : null
+  }
+
+  async cancel(id: string, ownerUserId: string | null): Promise<boolean> {
+    const flow = this.flows.get(id)
+    if (!flow || flow.ownerUserId !== ownerUserId) return false
+    flow.abort.abort()
+    await flow.done
+    return true
+  }
+
+  async close(): Promise<void> {
+    this.closed = true
+    for (const flow of this.flows.values()) flow.abort.abort()
+    await Promise.all([...this.flows.values()].map(flow => flow.done))
+    this.flows.clear()
+  }
+
+  private prune(): void {
+    for (const [id, flow] of this.flows) {
+      if (flow.finishedAt !== null && Date.now() - flow.finishedAt > 10 * 60_000) this.flows.delete(id)
+    }
   }
 }

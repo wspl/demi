@@ -276,3 +276,37 @@ provider requiring inference for a probe returns `quota_requires_inference`;
 no data returns null, not a fabricated percentage. Reading status never invokes
 inference. Shared users can read state and refresh free quota; configuring or
 explicitly testing providers still requires admin rights.
+
+## Subscription accounts
+
+Claude subscription creation uses `POST /api/providers/setup-token` with
+`{ token, label }`; no Claude copy-back OAuth flow is exposed. Existing Claude
+providers accept another `{ token }` through `POST /api/providers/:id/accounts`.
+Tokens are imported through the framework's credential API and never returned.
+`GET /api/providers/:id/accounts` lists public account metadata and the active
+account. `PUT …/accounts/active` takes `{ credentialId }`. `DELETE
+…/accounts/:credentialId` refuses the active account: switch first, or delete
+the provider to remove its last account.
+
+Codex/Grok use `POST /api/providers/subscription-login` for the first account and
+`POST /api/providers/:id/accounts/login` for another account on an existing
+provider. Poll `GET /api/providers/subscription-login/:id`; cancel with DELETE
+at the same path. Login expires after ten minutes. Backend shutdown aborts and
+awaits active flows. Failed first logins remove their unpublished credential
+pool. Terminal poll results are retained for ten minutes. Existing-provider
+logins reserve that provider against concurrent edits, deletion and account
+mutations until the flow settles. Added accounts follow the framework's active
+account rule; the explicit active endpoint selects a different account.
+
+Provider account mutations obey the same shared-admin/isolated-owner rule as
+configuration. A switch invalidates the assembly cache so subsequent requests
+use the selected account, while an already-running request finishes with its
+original runtime. An empty subscription pool is refused before inference; the
+backend never falls back to a server operator's default account.
+
+`GET /api/models` includes auth/runtime state and availability. Optional
+`conversationId` evaluates the caller-owned conversation's target; without it,
+the default target is Cloud. This inspection does not wake Cloud or execute a
+model. Unconfigured Cloud or an offline device makes process-based providers
+unavailable. Unknown auth/runtime status stays explicit; availability describes
+known admission constraints, not a successful inference test.

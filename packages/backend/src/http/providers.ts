@@ -1,3 +1,5 @@
+import { AccountRefused, type ProviderAccounts } from '../vault/provider-accounts'
+import type { ProviderOperations } from '../vault/provider-operations'
 import { errorMessage } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
@@ -55,6 +57,8 @@ const patchProviderBodySchema = z.strictObject({
  * vendor and model list.
  */
 export function providerRoutes(options: {
+  accounts: ProviderAccounts
+  operations: ProviderOperations
   vault: ProviderVault
   assembly: ProviderAssembly
   vendors: VendorCatalog
@@ -63,6 +67,10 @@ export function providerRoutes(options: {
 }): Hono<AuthEnv> {
   const { vault, assembly, vendors, logins, mode } = options
   const app = new Hono<AuthEnv>()
+  app.onError((error, c) => {
+    if (error instanceof AccountRefused) return c.json({ code: error.code, message: error.message }, error.status)
+    throw error
+  })
 
   const ownerOf = (c: Context<AuthEnv>) => providerOwner(mode, c.get('user').id)
   // A provider outside the caller's scope answers like a missing one.
@@ -85,7 +93,15 @@ export function providerRoutes(options: {
     if (c.req.method !== 'GET' && !refreshingQuota && !canConfigureProviders(mode, c.get('user').role)) {
       return c.json({ code: 'forbidden', message: 'Providers are configured by administrators on this instance' }, 403)
     }
-    await next()
+    const id = c.req.path.split('/')[3]
+    const providerMutation = id && id !== 'subscription-login' && id !== 'setup-token' && c.req.method !== 'GET' && !refreshingQuota && !c.req.path.endsWith('/accounts/login')
+    const release = providerMutation ? options.operations.reserve(id) : () => {}
+    if (!release) return c.json({ code: 'provider_busy', message: 'Another provider operation is still running' }, 409)
+    try {
+      await next()
+    } finally {
+      release()
+    }
   })
 
   // Literal paths are registered before `/:id` so they win.
@@ -113,6 +129,7 @@ export function providerRoutes(options: {
     }
     const started = await logins.start(providerType, parsed.data.label ?? `${providerType} subscription`, ownerOf(c))
     if ('refused' in started) {
+      if (started.refused === 'busy') return c.json({ code: 'provider_busy', message: 'Provider login is already running' }, 409)
       return started.refused === 'exists'
         ? c.json({ code: 'provider_exists', message: `This scope already has a ${providerType} subscription` }, 409)
         : c.json({ code: 'no_login_flow', message: `Provider type "${providerType}" has no native login flow` }, 400)
@@ -124,6 +141,56 @@ export function providerRoutes(options: {
     const state = logins.status(c.req.param('id') ?? '', ownerOf(c))
     if (!state) return c.json({ code: 'login_not_found', message: 'No such login flow' }, 404)
     return c.json({ login: state })
+  })
+
+  app.delete('/subscription-login/:id', async (c) => {
+    if (!(await logins.cancel(c.req.param('id'), ownerOf(c)))) return c.json({ code: 'login_not_found', message: 'No such login flow' }, 404)
+    return c.body(null, 204)
+  })
+
+  app.post('/setup-token', async (c) => {
+    const parsed = z.strictObject({ token: z.string().trim().min(1).max(16384), label: z.string().trim().min(1).max(80) }).safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { token, label }' }, 400)
+    const entry = await options.accounts.importClaude(ownerOf(c), parsed.data.label, parsed.data.token)
+    return c.json({ provider: redact(entry) }, 201)
+  })
+
+  app.post('/:id/accounts/login', async (c) => {
+    const entry = await scoped(c)
+    if (!entry) return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
+    if (entry.config.kind !== 'subscription') return c.json({ code: 'unsupported', message: 'This provider does not use subscription accounts' }, 400)
+    const started = await logins.start(entry.config.providerType, entry.label, ownerOf(c), entry)
+    if ('refused' in started) return c.json({ code: started.refused, message: 'Device login is unavailable or already running; Claude uses setup-token import' }, 409)
+    return c.json({ login: { id: started.id, status: 'pending' } }, 202)
+  })
+
+  app.get('/:id/accounts', async (c) => {
+    const entry = await scoped(c)
+    if (!entry) return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
+    return c.json(await options.accounts.list(entry))
+  })
+
+  app.post('/:id/accounts', async (c) => {
+    const entry = await scoped(c)
+    if (!entry) return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
+    const parsed = z.strictObject({ token: z.string().trim().min(1).max(16384) }).safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { token }' }, 400)
+    return c.json(await options.accounts.addToken(entry, parsed.data.token), 201)
+  })
+
+  app.put('/:id/accounts/active', async (c) => {
+    const entry = await scoped(c)
+    if (!entry) return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
+    const parsed = z.strictObject({ credentialId: z.string().min(1) }).safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { credentialId }' }, 400)
+    return c.json(await options.accounts.activate(entry, parsed.data.credentialId))
+  })
+
+  app.delete('/:id/accounts/:credentialId', async (c) => {
+    const entry = await scoped(c)
+    if (!entry) return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
+    await options.accounts.remove(entry, c.req.param('credentialId'))
+    return c.body(null, 204)
   })
 
   app.get('/', async (c) => {
@@ -212,7 +279,7 @@ export function providerRoutes(options: {
     const resolved = await assembly.providerFor(entry.id)
     if (!resolved) return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
     try {
-      return c.json({ providerId: entry.id, ...await providerDetails(resolved.provider) })
+      return c.json({ providerId: entry.id, ...await providerDetails(resolved.provider, entry.config.kind === 'subscription') })
     } catch (error) {
       return c.json({ code: 'provider_status_failed', message: errorMessage(error) }, 502)
     }

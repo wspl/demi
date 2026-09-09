@@ -25,6 +25,8 @@ import type { EmailChanges } from '../auth/email-change'
 import { emailChangeRoutes } from './email-change'
 import { authRoutes } from './auth'
 import { blobRoutes } from './blobs'
+import type { ProviderAccounts } from '../vault/provider-accounts'
+import type { ProviderOperations } from '../vault/provider-operations'
 import { providerRoutes } from './providers'
 import type { VendorCatalog } from '../llm/vendors'
 import { conversationRoutes } from './conversations'
@@ -46,6 +48,8 @@ export function createApp(options: {
   assembly: ProviderAssembly
   vendors: VendorCatalog
   logins: SubscriptionLoginFlows
+  providerOperations: ProviderOperations
+  providerAccounts: ProviderAccounts
   agentServer: AgentServer
   runnerRegistry: RunnerRegistry
   pipes: PipeBroker
@@ -75,8 +79,8 @@ export function createApp(options: {
   app.route('/api/auth', authRoutes({ control: options.control, sessions: options.sessions, limiter: options.loginLimiter }))
   app.route('/api/users', userRoutes({ control: options.control }))
   app.route('/api/settings', settingsRoutes({ mode: options.mode, control: options.control }))
-  app.route('/api/models', modelRoutes({ assembly: options.assembly, mode: options.mode }))
-  app.route('/api/providers', providerRoutes({ vault: options.vault, assembly: options.assembly, vendors: options.vendors, logins: options.logins, mode: options.mode }))
+  app.route('/api/models', modelRoutes({ control: options.control, registry: options.runnerRegistry, cloudConfigured: options.managedHosts !== null, assembly: options.assembly, mode: options.mode }))
+  app.route('/api/providers', providerRoutes({ accounts: options.providerAccounts, operations: options.providerOperations, vault: options.vault, assembly: options.assembly, vendors: options.vendors, logins: options.logins, mode: options.mode }))
   app.route('/api/usage', usageRoutes({ control: options.control, mode: options.mode }))
   app.route('/api/runner', runnerSocketRoutes({ registry: options.runnerRegistry, upgradeWebSocket: options.upgradeWebSocket }))
   app.route('/api/pipes', pipeRoutes({ control: options.control, broker: options.pipes }))

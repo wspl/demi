@@ -30,6 +30,8 @@ import { PipeBroker } from './runner/pipes'
 import { ProviderRateLimiter } from './usage/rate-limit'
 import { ProviderVault } from './vault/providers'
 import { loadOrCreateInstanceSecret } from './vault/secret'
+import { ProviderAccounts } from './vault/provider-accounts'
+import { ProviderOperations } from './vault/provider-operations'
 import { SubscriptionLoginFlows } from './vault/subscription-login'
 import { UserBlobStores } from './storage/user-blobs'
 import { ConversationStores } from './storage/conversation-store'
@@ -150,7 +152,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const vaultRoot = join(options.dataDir, 'vault')
   const vendors = new VendorCatalog(options.modelsDev ?? {})
   const assembly = new ProviderAssembly(vault, { ...builtinProviderTypes(), ...options.providerTypes }, vaultRoot, vendors)
-  const logins = new SubscriptionLoginFlows(vault, assembly, { vaultRoot })
+  const providerOperations = new ProviderOperations()
+  const logins = new SubscriptionLoginFlows(vault, assembly, { vaultRoot, operations: providerOperations })
   const rateLimiter = new ProviderRateLimiter(options.usage?.providerRequestsPerMinute)
 
   const resolveProvider = createSessionProviderResolver({ assembly, control, mode: options.mode, hostFor: (id) => targets.hostFor(id), rateLimiter })
@@ -255,6 +258,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     assembly,
     vendors,
     logins,
+    providerOperations,
+    providerAccounts: new ProviderAccounts(vault, assembly),
     agentServer,
     runnerRegistry,
     pipes,
@@ -284,6 +289,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     url,
     managedHosts,
     close: async () => {
+      await logins.close()
       await managedHosts?.close()
       await agentServer.close()
       pipes.close()

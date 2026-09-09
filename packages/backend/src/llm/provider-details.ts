@@ -1,12 +1,13 @@
 import type { Provider, ProviderQuotaSnapshot } from '@demicodes/provider'
 
 /** Public account/runtime facts, never raw vendor envelopes or stored credential material. */
-export async function providerDetails(provider: Provider) {
-  const [auth, runtime, accounts, active] = await Promise.all([
-    provider.auth?.status() ?? { status: 'unknown' as const },
+export async function providerDetails(provider: Provider, requireAccount = false) {
+  const accounts = await provider.credentials?.list() ?? []
+  const missingAccount = requireAccount && accounts.length === 0
+  const [auth, runtime, active] = await Promise.all([
+    missingAccount ? { status: 'unauthenticated' as const, message: 'No subscription account configured' } : provider.auth?.status() ?? { status: 'unknown' as const },
     provider.state?.() ?? { status: 'unknown' as const },
-    provider.credentials?.list() ?? [],
-    provider.credentials?.getActive() ?? null,
+    missingAccount ? null : provider.credentials?.getActive() ?? null,
   ])
   return {
     auth, runtime, accounts, active,
