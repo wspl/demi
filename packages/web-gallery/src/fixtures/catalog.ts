@@ -6,6 +6,16 @@ export const demoProviders: ProviderInfo[] = [
   { id: 'openai', label: 'OpenAI', isAvailable: true },
 ]
 
+export const offlineProviders: ProviderInfo[] = demoProviders.map((provider) => ({
+  ...provider,
+  isAvailable: false,
+}))
+
+export const openaiOnlyProviders: ProviderInfo[] = [
+  { id: 'anthropic', label: 'Anthropic', isAvailable: false },
+  { id: 'openai', label: 'OpenAI', isAvailable: true },
+]
+
 const fastTier = [{ id: 'priority', label: 'Fast', fast: true }]
 
 function model(partial: Pick<ModelInfo, 'id' | 'name'> & Partial<ModelInfo>): ModelInfo {

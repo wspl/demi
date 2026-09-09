@@ -15,12 +15,12 @@ Startup checks `GET /api/auth/me` before the initial route mounts. Further
 navigation checks an existing session again. Missing authentication redirects
 to `/login`; expiry during navigation clears the document and shows the session
 ended message. A network/server failure during navigation reports the failure
-and preserves the existing identity. There is no background session poll yet.
+and preserves the existing identity. Account state polling and API failures also detect expired sessions; all account-scoped stores and transports are released.
 
 `POST /api/auth/login` supplies email and password. Backend errors, including
 rate limiting, appear on the shared form. Unmounting the form aborts its pending
 request, and a late response cannot change the session store. Requests time out
-after 15 seconds. `POST /api/auth/logout` must succeed (or report an already-ended
+after 60 seconds. `POST /api/auth/logout` must succeed (or report an already-ended
 session) before the document reload releases account-scoped stores and drafts.
 Logout failure leaves the account signed in and shows an error.
 
@@ -32,11 +32,11 @@ the backend runs at another address. Initialize an account through the existing
 backend setup API; this checkpoint adds no registration or administration UI.
 Production serves the built web directory through `DEMI_WEB_DIRECTORY`.
 
-## Remaining integration
+## Account settings and product state
 
-The chat, sidebar, provider catalog, device and file operations, Cloud status,
-settings, password changes and email changes still use prototype state. This
-checkpoint does not connect `/api/state` or agent conversations. Authentication
-success therefore opens the existing prototype conversation page, not a live
-model session. Their integration must replace the fixture stores and simulated
-reply clock. No test in this checkpoint calls a real model.
+Nickname, verified email changes and password changes use the real account APIs.
+Closing their dialogs aborts pending requests and clears temporary credentials.
+The signed-in route opens the backend-integrated product; state polling, provider
+configuration, devices, files and live conversations are described in
+[web integration](web-integration.md). Tests use disposable accounts and fake mail
+delivery, without real model calls.

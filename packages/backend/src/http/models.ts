@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { modelSelectionFromCatalog } from '@demicodes/provider'
 import { Hono } from 'hono'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
 import type { ProviderAssembly } from '../llm/assembly'
@@ -49,6 +50,10 @@ export function modelRoutes(options: {
     )
     return c.json({ providers: providers.map(provider => ({
         ...provider,
+        models: provider.models.map(model => ({
+          ...model,
+          selection: modelSelectionFromCatalog(provider.providerId, model),
+        })),
         availability: modelAvailability(provider, execution)
       })) })
   })

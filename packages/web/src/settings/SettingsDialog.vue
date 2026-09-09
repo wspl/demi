@@ -1,232 +1,349 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { z } from 'zod'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
-import SettingsData from '@demicodes/web-ui/settings/SettingsData.vue'
 import SettingsGeneral from '@demicodes/web-ui/settings/SettingsGeneral.vue'
 import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
-import SettingsMcp from '@demicodes/web-ui/settings/SettingsMcp.vue'
-import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotifications.vue'
-import SettingsSkills from '@demicodes/web-ui/settings/SettingsSkills.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
-import type {
-  SettingsMcpDraft,
-  SettingsMcpServer,
-  SettingsSkillDraft,
-  SettingsSkillSource,
-  SettingsTab
-} from '@demicodes/web-ui/settings/types'
+import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { showToast } from '@demicodes/web-ui/infra/toast'
-import { setThemeChoice } from '@demicodes/web-ui/theme/appTheme'
-import { applyProductAppearance, applyTranscriptTextSize } from '@demicodes/web-ui/theme/productAppearance'
-import { useResources } from '../prototype/resources'
+import { apiRequest, jsonBody, readResponse } from '../api/client'
+import { identitySchema } from '../api/contracts'
+import { useSession } from '../auth/session'
+import { useResources } from '../state/resources'
+import { useProduct } from '../state/product'
+import { usePreferences } from '../state/preferences'
 import { useConversations } from '../conversation/store'
-import { DEFAULT_KEYS, LANGUAGES, RETENTIONS } from '../prototype/settings'
 import DevicesPanel from './DevicesPanel.vue'
 import ProvidersPanel from './ProvidersPanel.vue'
 
-/**
- * The product's settings over the prototype's state. Pages are shared; what a row
- * does to the app (the theme, the shortcuts, the conversations) is decided here.
- */
 const emit = defineEmits<{ signOut: [] }>()
 const resources = useResources()
+const product = useProduct()
+const preferences = usePreferences()
+const session = useSession()
 const conversations = useConversations()
 const router = useRouter()
-const s = resources.settings
-
+const lifetime = new AbortController()
+const sections = computed(() =>
+  SETTINGS_SECTIONS.map((group) => ({
+    ...group,
+    items: group.items.filter(
+      (item) => item.id !== 'models' || resources.canConfigure,
+    ),
+  })),
+)
 const tab = computed({
-  get: () => resources.settingsTab as SettingsTab,
-  set: (value: SettingsTab) => {
+  get: () => resources.settingsTab,
+  set: (value) => {
     resources.settingsTab = value
   },
 })
-
-// General: every choice lands on the document the moment it changes.
-watch(() => s.general.theme, setThemeChoice)
 watch(
-  () => [s.general.tone, s.general.accent] as const,
-  ([tone, accent]) => applyProductAppearance({ tone, accent })
-)
-watch(() => s.general.fontSize, applyTranscriptTextSize)
-
-// Account: the server would check the password and send the code; here a beat stands in.
-const emailOpen = ref(false)
-const emailPhase = ref<ChangeEmailPhase>({ kind: 'form', currentEmail: '' })
-let emailTimer = 0
-function openChangeEmail() {
-  window.clearTimeout(emailTimer)
-  emailPhase.value = { kind: 'form', currentEmail: s.account.email }
-  emailOpen.value = true
-}
-function submitEmail(email: string, password: string) {
-  if (emailPhase.value.kind !== 'form')
-    return
-  if (password === 'wrong') {
-    emailPhase.value = {
-      ...emailPhase.value,
-      error: 'That is not your current password.'
+  [tab, sections],
+  () => {
+    const item = sections.value
+      .flatMap((group) => group.items)
+      .find((item) => item.id === tab.value)
+    if (!item || item.disabled) {
+      tab.value = 'general'
     }
+  },
+  { immediate: true },
+)
+
+function report(title: string, error: unknown): void {
+  if (lifetime.signal.aborted) {
     return
   }
-  emailPhase.value = { ...emailPhase.value, busy: true, error: undefined }
-  emailTimer = window.setTimeout(() => {
-    emailPhase.value = { kind: 'verify', email }
-  }, 700)
+  showToast({
+    title,
+    message: error instanceof Error ? error.message : String(error),
+    tone: 'danger',
+  })
 }
-function verifyEmail(code: string) {
-  if (emailPhase.value.kind !== 'verify')
+
+async function rename(nickname: string): Promise<void> {
+  if (!nickname.trim()) {
     return
-  const { email } = emailPhase.value
-  emailPhase.value = { kind: 'verify', email, busy: true }
-  emailTimer = window.setTimeout(() => {
-    if (code === '000000') {
-      emailPhase.value = {
-        kind: 'verify',
-        email,
-        error: 'That code is not right. Check the newest message.'
-      }
-      return
+  }
+  try {
+    const response = await apiRequest('/auth/me', {
+      method: 'PATCH',
+      signal: lifetime.signal,
+      ...jsonBody({ nickname: nickname.trim() }),
+    })
+    const { user } = await readResponse(response, identitySchema)
+    lifetime.signal.throwIfAborted()
+    session.current = {
+      status: 'signedIn',
+      user,
     }
-    s.account.email = email
-    emailPhase.value = { kind: 'done', email }
-  }, 600)
+    if (product.snapshot) {
+      product.snapshot.user = user
+    }
+    await product.revalidate()
+  } catch (error) {
+    report('Could not change your name', error)
+  }
+}
+
+const emailOpen = ref(false)
+const emailPhase = ref<ChangeEmailPhase>({
+  kind: 'form',
+  currentEmail: '',
+})
+let emailRequest: AbortController | null = null
+let emailCredentials: {
+  email: string
+  password: string
+} | null = null
+let challengeId: string | null = null
+
+function closeEmailRequest(): void {
+  emailRequest?.abort()
+  emailRequest = null
+  emailCredentials = null
+  challengeId = null
+}
+
+function openChangeEmail(): void {
+  closeEmailRequest()
+  emailPhase.value = {
+    kind: 'form',
+    currentEmail: resources.email,
+  }
+  emailOpen.value = true
+}
+
+async function submitEmail(email: string, password: string): Promise<void> {
+  if (emailPhase.value.kind === 'done' || emailPhase.value.busy) {
+    return
+  }
+  const previous = emailPhase.value
+  const controller = new AbortController()
+  emailRequest = controller
+  emailPhase.value = {
+    ...previous,
+    busy: true,
+    error: undefined,
+  }
+  try {
+    const response = await apiRequest('/auth/email', {
+      method: 'POST',
+      ...jsonBody({
+        email,
+        password,
+      }),
+      signal: controller.signal,
+    })
+    const result = await readResponse(
+      response,
+      z.object({
+        challenge: z.object({ id: z.string().min(1) }),
+      }),
+    )
+    controller.signal.throwIfAborted()
+    challengeId = result.challenge.id
+    emailCredentials = {
+      email,
+      password,
+    }
+    emailPhase.value = {
+      kind: 'verify',
+      email,
+      resent: previous.kind === 'verify',
+    }
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      emailPhase.value = {
+        ...previous,
+        busy: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  } finally {
+    if (emailRequest === controller) {
+      emailRequest = null
+    }
+  }
+}
+
+function resendEmail(): void {
+  if (emailCredentials) {
+    void submitEmail(emailCredentials.email, emailCredentials.password)
+  }
+}
+
+async function verifyEmail(code: string): Promise<void> {
+  if (!challengeId || emailPhase.value.kind !== 'verify' || emailPhase.value.busy) {
+    return
+  }
+  const previous = emailPhase.value
+  const controller = new AbortController()
+  emailRequest = controller
+  emailPhase.value = {
+    ...previous,
+    busy: true,
+    error: undefined,
+  }
+  try {
+    const response = await apiRequest('/auth/email/confirm', {
+      method: 'POST',
+      ...jsonBody({
+        id: challengeId,
+        code,
+      }),
+      signal: controller.signal,
+    })
+    const { user } = await readResponse(response, identitySchema)
+    controller.signal.throwIfAborted()
+    session.current = {
+      status: 'signedIn',
+      user,
+    }
+    if (product.snapshot) {
+      product.snapshot.user = user
+    }
+    emailCredentials = null
+    challengeId = null
+    emailPhase.value = {
+      kind: 'done',
+      email: user.email,
+    }
+    await product.revalidate()
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      emailPhase.value = {
+        ...previous,
+        busy: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  } finally {
+    if (emailRequest === controller) {
+      emailRequest = null
+    }
+  }
 }
 
 const passwordOpen = ref(false)
 const passwordPhase = ref<ChangePasswordPhase>({ kind: 'form' })
-let passwordTimer = 0
-function openChangePassword() {
-  window.clearTimeout(passwordTimer)
+let passwordRequest: AbortController | null = null
+
+function openChangePassword(): void {
+  passwordRequest?.abort()
+  passwordRequest = null
   passwordPhase.value = { kind: 'form' }
   passwordOpen.value = true
 }
-function submitPassword(current: string) {
-  passwordPhase.value = { kind: 'form', busy: true }
-  passwordTimer = window.setTimeout(() => {
-    if (current === 'wrong') {
+
+async function submitPassword(current: string, next: string): Promise<void> {
+  if (passwordPhase.value.kind !== 'form' || passwordPhase.value.busy) {
+    return
+  }
+  const controller = new AbortController()
+  passwordRequest = controller
+  passwordPhase.value = {
+    kind: 'form',
+    busy: true,
+  }
+  try {
+    await apiRequest('/auth/password', {
+      method: 'PUT',
+      ...jsonBody({
+        current,
+        next,
+      }),
+      signal: controller.signal,
+    })
+    controller.signal.throwIfAborted()
+    passwordPhase.value = { kind: 'done' }
+  } catch (error) {
+    if (!controller.signal.aborted) {
       passwordPhase.value = {
         kind: 'form',
-        error: 'That is not your current password.'
+        error: error instanceof Error ? error.message : String(error),
       }
-      return
     }
-    s.account.passwordChanged = 'just now'
-    passwordPhase.value = { kind: 'done' }
-  }, 600)
+  } finally {
+    if (passwordRequest === controller) {
+      passwordRequest = null
+    }
+  }
 }
 
-/** The prototype keeps no account server-side: deleting is signing out with nothing to come back to. */
-function deleteAccount() {
-  conversations.items = []
-  resources.projects = []
-  resources.devices = []
-  emit('signOut')
-}
-
-// Archived: restoring brings the conversation back and opens it in place of the settings.
-const archived = computed(
-  () => conversations.items.filter((c) => c.archived).map(
-    (c) => ({ id: c.id, title: c.title })
-  )
+watch(emailOpen, (open) => {
+  if (!open) {
+    closeEmailRequest()
+  }
+})
+watch(passwordOpen, (open) => {
+  if (!open) {
+    passwordRequest?.abort()
+    passwordRequest = null
+  }
+})
+watch(
+  () => resources.settingsOpen,
+  (open) => {
+    if (!open) {
+      emailOpen.value = false
+      passwordOpen.value = false
+    }
+  },
 )
-function restore(id: string) {
-  conversations.archive([id], false)
-  resources.settingsOpen = false
-  void router.push(`/chat/${id}`)
+onUnmounted(() => {
+  lifetime.abort()
+  closeEmailRequest()
+  passwordRequest?.abort()
+})
+
+const archived = computed(() =>
+  conversations.items
+    .filter((conversation) => conversation.archived)
+    .map((conversation) => ({
+      id: conversation.id,
+      title: conversation.title,
+    })),
+)
+async function restore(id: string): Promise<void> {
+  if (await conversations.archive([id], false)) {
+    resources.settingsOpen = false
+    await router.push(`/chat/${id}`)
+  }
 }
 
-// MCP: adding connects at once; a restart or sign-in clears the fault.
-function addServer(draft: SettingsMcpDraft) {
-  s.servers.push(
-    {
-      id: `server-${Date.now()}`,
-      ...draft,
-      state: 'connected',
-      enabled: true,
-      tools: []
-    }
-  )
-}
-function reconnectServer(server: SettingsMcpServer) {
-  server.state = 'connected'
-  server.detail = undefined
-}
-
-// Skills: a source is a git repository; the prototype discovers two example skills in any of them.
-function addSkillSource(draft: SettingsSkillDraft) {
-  const id = `src-${Date.now()}`
-  s.skillSources.push({
-    id,
-    name: draft.origin.replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, ''),
-    origin: draft.origin,
-    state: 'ready',
-    skills: [
-      {
-        id: `${id}-one`,
-        name: 'example-one',
-        description: 'A skill discovered in this repository.',
-        enabled: true
-      },
-      {
-        id: `${id}-two`,
-        name: 'example-two',
-        description: 'Another skill from the same pack.',
-        enabled: true
-      },
-    ],
-  })
-}
-function removeSkillSource(source: SettingsSkillSource) {
-  s.skillSources = s.skillSources.filter((entry) => entry.id !== source.id)
-}
-function updateSkillSource(source: SettingsSkillSource) {
-  source.state = 'updating'
-  window.setTimeout(() => {
-    source.state = 'ready'
-  }, 600)
-}
-
-// Keyboard: a binding another action holds is refused; the row keeps its old keys.
 const keyMessage = ref('')
-function rebind(id: string, keys: string) {
-  const target = s.keys.find((binding) => binding.id === id)
-  if (!target)
+function rebind(id: string, keys: string): void {
+  if (id !== 'new' && id !== 'sidebar' && id !== 'settings') {
     return
-  const taken = s.keys.find((binding) => binding.id !== id && binding.keys === keys)
+  }
+  const taken = resources.keys.find(
+    (binding) => binding.id !== id && keys !== '' && binding.keys === keys,
+  )
   if (taken) {
     keyMessage.value = `${keys} is already bound to “${taken.action}”.`
     return
   }
   keyMessage.value = ''
-  target.keys = keys
+  preferences.update({ shortcuts: { [id]: keys } })
 }
-function resetShortcuts() {
-  for (const binding of s.keys)
-    binding.keys =
-      DEFAULT_KEYS.find((entry) => entry.id === binding.id)?.keys ?? binding.keys
+function resetShortcuts(): void {
   keyMessage.value = ''
+  preferences.update({
+    shortcuts: {
+      new: null,
+      sidebar: null,
+      settings: null,
+    },
+  })
 }
-
-// Data: the export has no surface of its own until it is ready; deleting empties the list in place.
-function requestExport() {
-  showToast(
-    {
-      title: 'Export requested',
-      message: 'A link arrives by email when the archive is ready.'
-    }
-  )
-}
-function deleteAllConversations() {
-  conversations.items = []
-  resources.settingsOpen = false
-  void router.push('/chat')
-}
-
 </script>
 
 <template>
@@ -234,62 +351,43 @@ function deleteAllConversations() {
     v-model:tab="tab"
     :is-open="resources.settingsOpen"
     :overlay-store="appOverlayStore"
-    :account="{ name: resources.username || 'Zan', plan: `${s.account.plan} plan` }"
+    :account="{ name: resources.username }"
+    :sections="sections"
     @close="resources.settingsOpen = false"
   >
     <SettingsGeneral
       v-if="tab === 'general'"
-      v-model:language="s.general.language"
-      v-model:theme="s.general.theme"
-      v-model:tone="s.general.tone"
-      v-model:accent="s.general.accent"
-      v-model:font-size="s.general.fontSize"
+      language="English"
+      :theme="resources.appearance.theme"
+      :tone="resources.appearance.tone"
+      :accent="resources.appearance.accent"
+      :font-size="resources.appearance.fontSize"
       :overlay-store="appOverlayStore"
-      :languages="LANGUAGES"
+      :languages="['English']"
+      @update:theme="preferences.update({ appearance: { theme: $event } })"
+      @update:tone="preferences.update({ appearance: { tone: $event } })"
+      @update:accent="preferences.update({ appearance: { accent: $event } })"
+      @update:font-size="preferences.update({ appearance: { fontSize: $event } })"
     />
     <SettingsAccount
       v-else-if="tab === 'account'"
-      v-model:name="resources.username"
+      :name="resources.username"
       v-model:email-open="emailOpen"
       v-model:password-open="passwordOpen"
       :overlay-store="appOverlayStore"
-      :email="s.account.email"
-      email-verified
-      :password-changed="s.account.passwordChanged"
+      :email="resources.email"
       :email-phase="emailPhase"
       :password-phase="passwordPhase"
+      @update:name="rename"
       @change-email="openChangeEmail"
       @change-password="openChangePassword"
       @submit-email="submitEmail"
       @verify-email="verifyEmail"
+      @resend-email="resendEmail"
       @submit-password="submitPassword"
       @sign-out="emit('signOut')"
-      @delete-account="deleteAccount"
     />
-    <SettingsNotifications
-      v-else-if="tab === 'notifications'"
-      v-model:browser="s.notifications.browser"
-      v-model:sound="s.notifications.sound"
-      v-model:on-finish="s.notifications.onFinish"
-      v-model:on-error="s.notifications.onError"
-    />
-    <ProvidersPanel v-else-if="tab === 'models'" />
-    <SettingsMcp
-      v-else-if="tab === 'mcp'"
-      :servers="s.servers"
-      :overlay-store="appOverlayStore"
-      @add="addServer"
-      @sign-in="reconnectServer"
-      @restart="reconnectServer"
-    />
-    <SettingsSkills
-      v-else-if="tab === 'skills'"
-      :sources="s.skillSources"
-      :overlay-store="appOverlayStore"
-      @add="addSkillSource"
-      @remove="removeSkillSource"
-      @update="updateSkillSource"
-    />
+    <ProvidersPanel v-else-if="tab === 'models' && resources.canConfigure" />
     <DevicesPanel v-else-if="tab === 'devices'" />
     <SettingsArchived
       v-else-if="tab === 'archived'"
@@ -298,20 +396,10 @@ function deleteAllConversations() {
     />
     <SettingsKeyboard
       v-else-if="tab === 'keyboard'"
-      :bindings="s.keys"
+      :bindings="resources.keys"
       :message="keyMessage"
       @rebind="rebind"
       @reset="resetShortcuts"
-    />
-    <SettingsData
-      v-else-if="tab === 'data'"
-      v-model:retention="s.data.retention"
-      v-model:share-links="s.data.shareLinks"
-      v-model:telemetry="s.data.telemetry"
-      :overlay-store="appOverlayStore"
-      :retentions="RETENTIONS"
-      @export="requestExport"
-      @delete-all="deleteAllConversations"
     />
   </SettingsDialog>
 </template>

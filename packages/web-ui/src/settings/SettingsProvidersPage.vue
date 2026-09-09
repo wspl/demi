@@ -13,7 +13,7 @@ import {
   TextCursorInput,
   Trash2,
   TriangleAlert,
-  Zap
+  Zap,
 } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -26,6 +26,7 @@ import Meter from '@demicodes/web-ui/ui/Meter.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
+import CommitTextInput from '../ui/CommitTextInput.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
@@ -53,6 +54,11 @@ import {
  * on the entry itself; everything that needs the host is emitted.
  */
 const props = defineProps<{
+  saveModel: (
+    provider: SettingsProviderEntry,
+    draft: SettingsModelDraft,
+    original: SettingsProviderModel | null,
+  ) => Promise<void>
   providers: SettingsProviderEntry[]
   vendors: SettingsVendor[]
   overlayStore: OverlayStore
@@ -63,6 +69,12 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  change: [provider: SettingsProviderEntry, patch: Partial<SettingsProviderEntry>]
+  toggleModel: [
+    provider: SettingsProviderEntry,
+    model: SettingsProviderModel,
+    enabled: boolean,
+  ]
   add: [vendor: SettingsVendor]
   addEndpoint: [wireApi: SettingsWireApi]
   remove: [id: string]
@@ -71,21 +83,19 @@ const emit = defineEmits<{
   refresh: [provider: SettingsProviderEntry]
   activateAccount: [provider: SettingsProviderEntry, accountId: string]
   removeAccount: [provider: SettingsProviderEntry, accountId: string]
-  /** `original` is null when the model is new. */
-  saveModel: [
-    provider: SettingsProviderEntry,
-    draft: SettingsModelDraft,
-    original: SettingsProviderModel | null
-  ]
   removeModel: [provider: SettingsProviderEntry, model: SettingsProviderModel]
 }>()
 
 const selectedId = defineModel<string | null>('selectedId', { default: null })
 const detailOpen = defineModel<boolean>('detailOpen', { default: false })
 
-const subscriptions = computed(() => props.providers.filter((p) => p.kind === 'subscription'))
+const subscriptions = computed(() =>
+  props.providers.filter((p) => p.kind === 'subscription'),
+)
 const apiKeys = computed(() => props.providers.filter((p) => p.kind === 'api_key'))
-const selected = computed(() => props.providers.find((p) => p.id === selectedId.value) ?? null)
+const selected = computed(
+  () => props.providers.find((p) => p.id === selectedId.value) ?? null,
+)
 const splitOpen = computed({
   get: () => detailOpen.value && selected.value !== null,
   set: (value: boolean) => {
@@ -105,7 +115,7 @@ const subscriptionBadge = {
   error: 'danger',
   unreachable: 'danger',
   'signed-out': undefined,
-  disabled: undefined
+  disabled: undefined,
 } as const
 const apiKeyBadge = {
   ready: undefined,
@@ -113,10 +123,13 @@ const apiKeyBadge = {
   error: 'danger',
   unreachable: 'danger',
   'signed-out': 'warning',
-  disabled: undefined
+  disabled: undefined,
 } as const
 const wireOptions = (Object.keys(WIRE_API_LABELS) as SettingsWireApi[]).map(
-  (value) => ({ value, label: WIRE_API_LABELS[value] })
+  (value) => ({
+    value,
+    label: WIRE_API_LABELS[value],
+  }),
 )
 
 function select(id: string) {
@@ -133,8 +146,9 @@ const renameDraft = ref('')
 const renameInput = ref<InstanceType<typeof TextInput>>()
 
 function beginRename() {
-  if (!selected.value)
+  if (!selected.value) {
     return
+  }
   renameDraft.value = selected.value.name
   renaming.value = true
   void nextTick(() => {
@@ -144,20 +158,23 @@ function beginRename() {
 }
 
 function commitRename() {
-  if (!renaming.value)
+  if (!renaming.value) {
     return
+  }
   renaming.value = false
   const name = renameDraft.value.trim()
-  if (name && selected.value)
-    selected.value.name = name
+  if (name && selected.value) {
+    emit('change', selected.value, { name })
+  }
 }
 
 const modelFilter = ref('')
 const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1)
 
 function formatTokens(n: number | null): string {
-  if (n === null)
+  if (n === null) {
     return '—'
+  }
   return n >= 1_000_000 ? `${n / 1_000_000}M` : `${Math.round(n / 1000)}K`
 }
 
@@ -172,12 +189,10 @@ function visibleModels(p: SettingsProviderEntry): SettingsProviderModel[] {
 
 /** The model dialog: create or edit a manual model, or view a catalog one. */
 const modelDialog = ref<{
-    mode: 'create' | 'edit' | 'view';
-    model: SettingsModelDraft;
-    original: SettingsProviderModel | null
-  } | null>(
-  null
-)
+  mode: 'create' | 'edit' | 'view'
+  model: SettingsModelDraft
+  original: SettingsProviderModel | null
+} | null>(null)
 const modelDialogOpen = ref(false)
 
 function toDraft(m: SettingsProviderModel): SettingsModelDraft {
@@ -187,36 +202,56 @@ function toDraft(m: SettingsProviderModel): SettingsModelDraft {
     contextWindow: m.contextWindow,
     outputLimit: m.outputLimit,
     efforts: [...m.efforts],
-    extensions: [...m.extensions],
-    fastTier: m.fastTier
+    extensions: m.extensions === null ? null : [...m.extensions],
+    fastTier: m.fastTier,
   }
 }
 
 function openModel(
   mode: 'create' | 'edit' | 'view',
-  m: SettingsProviderModel | null
+  m: SettingsProviderModel | null,
 ) {
+  modelError.value = null
   modelDialogOpen.value = true
   modelDialog.value = {
     mode,
     original: m,
-    model: m ? toDraft(m) : {
-      id: '',
-      name: '',
-      contextWindow: null,
-      outputLimit: null,
-      efforts: [],
-      extensions: [],
-      fastTier: null
-    },
+    model: m
+      ? toDraft(m)
+      : {
+          id: '',
+          name: '',
+          contextWindow: null,
+          outputLimit: null,
+          efforts: [],
+          extensions: [],
+          fastTier: null,
+        },
   }
 }
 
-function saveModel(draft: SettingsModelDraft) {
-  if (!selected.value || !modelDialog.value)
+const modelSave = ref<'idle' | 'pending'>('idle')
+const modelError = ref<string | null>(null)
+async function saveModel(draft: SettingsModelDraft) {
+  if (!selected.value || !modelDialog.value || modelSave.value === 'pending') {
     return
-  emit('saveModel', selected.value, draft, modelDialog.value.original)
-  modelDialogOpen.value = false
+  }
+  modelSave.value = 'pending'
+  modelError.value = null
+  try {
+    await props.saveModel(selected.value, draft, modelDialog.value.original)
+    modelDialogOpen.value = false
+  } catch (error) {
+    modelError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    modelSave.value = 'idle'
+  }
+}
+function selectWire(wireApi: SettingsWireApi, close: () => void): void {
+  if (selected.value) {
+    emit('change', selected.value, { wireApi })
+  }
+  close()
 }
 </script>
 
@@ -233,7 +268,9 @@ function saveModel(draft: SettingsModelDraft) {
       <template #list>
         <div
           class="select-none px-1 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
-        >Subscriptions</div>
+        >
+          Subscriptions
+        </div>
         <SettingsListItem
           v-for="p in subscriptions"
           :key="p.id"
@@ -243,24 +280,25 @@ function saveModel(draft: SettingsModelDraft) {
           :muted="!p.enabled"
           @select="select(p.id)"
         >
-          <template #leading><VendorMark
+          <template #leading
+            ><VendorMark
               :label="p.name"
               :src="p.logo"
               size="sm"
-            /></template>
+          /></template>
         </SettingsListItem>
         <!-- Adding belongs to this group alone, so its button sits in the group's caption. -->
         <div class="flex h-8 select-none items-center pl-1 pt-2">
           <span
             class="text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
-          >API keys</span>
+            >API keys</span
+          >
           <Button
             size="xs"
             class="ml-auto"
             @click="addOpen = true"
-          ><Plus
-              :size="12"
-            /> Add</Button>
+            ><Plus :size="12" /> Add</Button
+          >
         </div>
         <SettingsListItem
           v-for="p in apiKeys"
@@ -273,16 +311,20 @@ function saveModel(draft: SettingsModelDraft) {
           @select="select(p.id)"
           @remove="emit('remove', p.id)"
         >
-          <template #leading><VendorMark
+          <template #leading
+            ><VendorMark
               :label="p.name"
               :src="p.logo"
               size="sm"
-            /></template>
+          /></template>
         </SettingsListItem>
       </template>
 
       <template #detail>
-        <div v-if="selected" class="flex flex-col gap-6">
+        <div
+          v-if="selected"
+          class="flex flex-col gap-6"
+        >
           <!-- The rail carries the mark; the first card's header names the provider and holds its
                actions. An API key can be renamed and removed; a subscription is a fixture. -->
           <SettingsGroup>
@@ -302,20 +344,25 @@ function saveModel(draft: SettingsModelDraft) {
                   <template v-else>
                     <h3
                       class="min-w-0 truncate text-[15px] font-medium text-fg-emphasis"
-                    >{{ selected.name }}</h3>
+                    >
+                      {{ selected.name }}
+                    </h3>
                     <Tooltip
                       v-if="selected.kind === 'api_key'"
                       content="Rename"
-                    ><IconButton
+                      ><IconButton
                         size="sm"
                         :icon="TextCursorInput"
                         aria-label="Rename provider"
                         @click="beginRename"
-                      /></Tooltip>
+                    /></Tooltip>
                   </template>
                   <div class="ml-auto flex items-center gap-1.5">
                     <Switch
-                      v-model="selected.enabled"
+                      :model-value="selected.enabled"
+                      @update:model-value="
+                        emit('change', selected, { enabled: $event })
+                      "
                       size="sm"
                       class="ml-2"
                     />
@@ -334,71 +381,97 @@ function saveModel(draft: SettingsModelDraft) {
               >
                 <template #tags>
                   <Tag>{{ account.plan }}</Tag>
-                  <Tag v-if="account.active" tone="accent">Active</Tag>
                   <Tag
-                    v-if="account.quota && account.quota.hour.used >= account.quota.hour.max"
+                    v-if="account.active"
+                    tone="accent"
+                    >Active</Tag
+                  >
+                  <Tag
+                    v-if="account.quota.some((window) => window.used >= window.max)"
                     tone="danger"
-                  >Limit reached</Tag>
+                    >Limit reached</Tag
+                  >
                 </template>
-                <template v-if="account.quota" #description>
+                <template
+                  v-if="account.quota.length"
+                  #description
+                >
                   <div
                     class="mt-1 grid max-w-72 grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-[11px] tabular-nums"
                   >
-                    <span>5-hour</span>
-                    <Meter
-                      :value="account.quota.hour.used"
-                      :max="account.quota.hour.max"
-                      label="5-hour window"
-                    />
-                    <span>{{ account.quota.hour.used }}% · resets {{ account.quota.hour.resets }}</span>
-                    <span>Weekly</span>
-                    <Meter
-                      :value="account.quota.week.used"
-                      :max="account.quota.week.max"
-                      label="Weekly window"
-                    />
-                    <span>{{ account.quota.week.used }}% · resets {{ account.quota.week.resets }}</span>
+                    <template
+                      v-for="window in account.quota"
+                      :key="window.id"
+                    >
+                      <span>{{ window.label }}</span>
+                      <Meter
+                        :value="window.used"
+                        :max="window.max"
+                        :label="window.label"
+                      />
+                      <span
+                        >{{ window.used }}%<template v-if="window.resets">
+                          · resets {{ window.resets }}</template
+                        ></span
+                      >
+                    </template>
                   </div>
                 </template>
                 <Button
                   size="sm"
                   v-if="!account.active"
                   @click="emit('activateAccount', selected, account.id)"
-                >Activate</Button>
-                <Tooltip content="Remove account"><IconButton
+                  >Activate</Button
+                >
+                <Tooltip content="Remove account"
+                  ><IconButton
                     size="sm"
                     :icon="Trash2"
                     variant="danger"
                     aria-label="Remove account"
                     @click="emit('removeAccount', selected, account.id)"
-                  /></Tooltip>
+                /></Tooltip>
               </SettingsRow>
               <div
                 v-if="!selected.accounts.length"
                 class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
-              >No account yet. Sign in to use this provider.</div>
+              >
+                No account yet. Sign in to use this provider.
+              </div>
               <SettingsRow label="Add account">
                 <Button
                   size="sm"
                   variant="primary"
                   @click="emit('signIn', selected)"
-                >Sign in</Button>
+                  >Sign in</Button
+                >
               </SettingsRow>
             </template>
 
             <!-- Connection (API key) -->
             <template v-else>
               <SettingsRow label="Base URL">
-                <TextInput v-model="selected.baseUrl" class="w-72 max-w-full" />
+                <CommitTextInput
+                  :model-value="selected.baseUrl"
+                  aria-label="Base URL"
+                  class="w-72 max-w-full"
+                  @commit="emit('change', selected, { baseUrl: $event })"
+                />
               </SettingsRow>
-              <SettingsRow v-if="!selected.vendorId" label="Protocol">
+              <SettingsRow
+                v-if="!selected.vendorId"
+                label="Protocol"
+              >
                 <Dropdown
                   size="sm"
                   :overlay-store="overlayStore"
                   variant="default"
                   trigger-label="Protocol"
+                  :disabled="selected.configured !== false"
                 >
-                  <template #trigger>{{ WIRE_API_LABELS[selected.wireApi] }}</template>
+                  <template #trigger>{{
+                    WIRE_API_LABELS[selected.wireApi]
+                  }}</template>
                   <template #content="{ close }">
                     <Menu>
                       <MenuItem
@@ -407,7 +480,7 @@ function saveModel(draft: SettingsModelDraft) {
                         :label="w.label"
                         choice
                         :is-selected="selected.wireApi === w.value"
-                        @select="selected!.wireApi = w.value; close()"
+                        @select="selectWire(w.value, close)"
                       />
                     </Menu>
                   </template>
@@ -415,10 +488,16 @@ function saveModel(draft: SettingsModelDraft) {
               </SettingsRow>
               <SettingsRow
                 label="API key"
-                :description="selected.vendorId ? undefined : 'Optional'"
+                :description="
+                  selected.keyConfigured
+                    ? 'Key saved. Enter a new key to replace it.'
+                    : undefined
+                "
               >
-                <TextInput
-                  v-model="selected.apiKey"
+                <CommitTextInput
+                  :model-value="selected.apiKey"
+                  aria-label="API key"
+                  @commit="emit('change', selected, { apiKey: $event })"
                   secret
                   placeholder="sk-…"
                   class="w-72 max-w-full"
@@ -428,27 +507,29 @@ function saveModel(draft: SettingsModelDraft) {
                 <span
                   v-if="testing === selected.id"
                   class="flex items-center gap-1.5 text-[12px] text-fg-subtle"
-                ><IndeterminateSpinner
-                    :size="ICON_PX.in24"
-                  /> Testing…</span>
+                  ><IndeterminateSpinner :size="ICON_PX.in24" /> Testing…</span
+                >
                 <span
-                  v-else-if="selected.state === 'ready'"
+                  v-else-if="selected.testPassed || selected.testedIn"
                   class="flex items-center gap-1 text-[12px] text-on-success"
-                ><Check
-                    :size="ICON_PX.in24"
-                  /> OK<template
+                  ><Check :size="ICON_PX.in24" /> OK<template
                     v-if="selected.testedIn"
-                  > · {{ selected.testedIn }}</template></span>
+                  >
+                    · {{ selected.testedIn }}</template
+                  ></span
+                >
                 <span
                   v-else-if="selected.detail"
                   class="min-w-0 truncate font-mono text-[12px] text-on-danger"
-                >{{ selected.detail }}</span>
-                <Tooltip content="Test connection"><IconButton
+                  >{{ selected.detail }}</span
+                >
+                <Tooltip content="Test connection"
+                  ><IconButton
                     size="sm"
                     :icon="Plug"
                     aria-label="Test connection"
                     @click="emit('test', selected)"
-                  /></Tooltip>
+                /></Tooltip>
               </SettingsRow>
             </template>
           </SettingsGroup>
@@ -459,29 +540,46 @@ function saveModel(draft: SettingsModelDraft) {
           <SettingsGroup>
             <template #header>
               <header class="flex h-7 select-none items-center gap-2">
-                <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">Models</h3>
+                <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">
+                  Models
+                </h3>
                 <span
-                  v-if="selected.modelSource === 'catalog' && selected.catalogFetched"
+                  v-if="
+                    selected.modelSource === 'catalog' && selected.catalogFetched
+                  "
                   class="text-[12px] text-fg-subtle"
-                >fetched {{ selected.catalogFetched }}</span>
-                <Tag v-if="selected.stale" tone="warning">Stale</Tag>
-                <span v-if="selected.kind === 'subscription'" class="ml-auto"><Tooltip
-                    content="Refresh the list"
-                  ><IconButton
+                  >fetched {{ selected.catalogFetched }}</span
+                >
+                <Tag
+                  v-if="selected.stale"
+                  tone="warning"
+                  >Stale</Tag
+                >
+                <span
+                  v-if="selected.kind === 'subscription'"
+                  class="ml-auto"
+                  ><Tooltip content="Refresh the list"
+                    ><IconButton
                       size="sm"
                       :icon="RefreshCw"
                       spin-on-click
                       :spinning="refreshing === selected.id"
                       :disabled="refreshing === selected.id"
                       aria-label="Refresh models"
-                      @click="emit('refresh', selected)"
-                    /></Tooltip></span>
+                      @click="emit('refresh', selected)" /></Tooltip
+                ></span>
                 <Segmented
                   size="sm"
                   v-else-if="selected.vendorId"
-                  v-model="selected.modelSource"
+                  :model-value="selected.modelSource"
+                  @update:model-value="
+                    emit('change', selected, { modelSource: $event })
+                  "
                   class="ml-auto"
-                  :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]"
+                  :options="[
+                    { value: 'catalog', label: 'Catalog' },
+                    { value: 'manual', label: 'Manual' },
+                  ]"
                 />
               </header>
             </template>
@@ -502,13 +600,16 @@ function saveModel(draft: SettingsModelDraft) {
               <Tooltip
                 v-if="selected.modelSource === 'manual'"
                 content="Add model"
-              ><IconButton
+                ><IconButton
                   size="sm"
                   :icon="Plus"
                   aria-label="Add model"
                   @click="openModel('create', null)"
-                /></Tooltip>
-              <Tooltip v-else content="Refresh the catalog"><IconButton
+              /></Tooltip>
+              <Tooltip
+                v-else
+                content="Refresh the catalog"
+                ><IconButton
                   size="sm"
                   :icon="RefreshCw"
                   spin-on-click
@@ -516,7 +617,7 @@ function saveModel(draft: SettingsModelDraft) {
                   :disabled="refreshing === selected.id"
                   aria-label="Refresh models"
                   @click="emit('refresh', selected)"
-                /></Tooltip>
+              /></Tooltip>
             </div>
             <SettingsRow
               v-for="m in visibleModels(selected)"
@@ -526,60 +627,70 @@ function saveModel(draft: SettingsModelDraft) {
               :interactive="selected.kind === 'api_key'"
               isolate-controls
               :class="m.enabled ? '' : 'opacity-60'"
-              @click="m.enabled = !m.enabled"
+              @click="emit('toggleModel', selected, m, !m.enabled)"
             >
               <template #tags>
                 <Tooltip
                   v-if="isUnknown(m)"
                   content="Capabilities unknown. Edit to fill them in."
-                ><Tag
-                    tone="warning"
-                  ><TriangleAlert
-                      :size="12"
-                    /></Tag></Tooltip>
-                <Tag v-if="m.contextWindow !== null">{{ formatTokens(m.contextWindow) }}</Tag>
+                  ><Tag tone="warning"><TriangleAlert :size="12" /></Tag
+                ></Tooltip>
+                <Tag v-if="m.contextWindow !== null">{{
+                  formatTokens(m.contextWindow)
+                }}</Tag>
                 <Tooltip
-                  v-if="m.extensions.length"
-                  :content="`Accepts ${m.extensions.join(' ')}`"
-                ><Tag><Image
-                      :size="12"
-                    /></Tag></Tooltip>
+                  v-if="m.extensions?.length"
+                  :content="`Accepts ${m.extensions?.join(' ')}`"
+                  ><Tag><Image :size="12" /></Tag
+                ></Tooltip>
                 <Tooltip
                   v-if="m.efforts.length"
                   :content="`Reasoning · ${m.efforts.map(cap).join(', ')}`"
-                ><Tag><Brain
-                      :size="12"
-                    /></Tag></Tooltip>
-                <Tooltip v-if="m.fastTier" content="Has a fast tier"><Tag><Zap
-                      :size="12"
-                    /></Tag></Tooltip>
+                  ><Tag><Brain :size="12" /></Tag
+                ></Tooltip>
+                <Tooltip
+                  v-if="m.fastTier"
+                  content="Has a fast tier"
+                  ><Tag><Zap :size="12" /></Tag
+                ></Tooltip>
               </template>
               <template
-                v-if="selected.kind === 'api_key' && selected.modelSource === 'manual'"
+                v-if="
+                  selected.kind === 'api_key' && selected.modelSource === 'manual'
+                "
               >
-                <Tooltip content="Edit"><IconButton
+                <Tooltip content="Edit"
+                  ><IconButton
                     size="sm"
                     :icon="SlidersHorizontal"
                     aria-label="Edit model"
                     @click="openModel('edit', m)"
-                  /></Tooltip>
-                <Tooltip content="Remove"><IconButton
+                /></Tooltip>
+                <Tooltip content="Remove"
+                  ><IconButton
                     size="sm"
                     :icon="Trash2"
                     variant="danger"
                     aria-label="Remove model"
+                    :disabled="
+                      selected.configured !== false && selected.models.length === 1
+                    "
                     @click="emit('removeModel', selected, m)"
-                  /></Tooltip>
+                /></Tooltip>
               </template>
-              <Tooltip v-else content="Details"><IconButton
+              <Tooltip
+                v-else
+                content="Details"
+                ><IconButton
                   size="sm"
                   :icon="Info"
                   aria-label="Model details"
                   @click="openModel('view', m)"
-                /></Tooltip>
+              /></Tooltip>
               <Switch
                 v-if="selected.kind === 'api_key'"
-                v-model="m.enabled"
+                :model-value="m.enabled"
+                @update:model-value="emit('toggleModel', selected, m, $event)"
                 size="sm"
                 :aria-label="`Enable ${m.name || m.id}`"
               />
@@ -588,7 +699,13 @@ function saveModel(draft: SettingsModelDraft) {
               v-if="!visibleModels(selected).length"
               class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
             >
-              {{ modelFilter ? 'No model matches.' : selected.kind === 'subscription' ? 'Sign in to see what this account can use.' : 'No models yet.' }}
+              {{
+                modelFilter
+                  ? 'No model matches.'
+                  : selected.kind === 'subscription'
+                    ? 'Sign in to see what this account can use.'
+                    : 'No models yet.'
+              }}
             </div>
           </SettingsGroup>
         </div>
@@ -600,14 +717,26 @@ function saveModel(draft: SettingsModelDraft) {
       :overlay-store="overlayStore"
       :vendors="vendors"
       @close="addOpen = false"
-      @add="(v) => { addOpen = false; emit('add', v) }"
-      @add-endpoint="(w) => { addOpen = false; emit('addEndpoint', w) }"
+      @add="
+        (v) => {
+          addOpen = false
+          emit('add', v)
+        }
+      "
+      @add-endpoint="
+        (w) => {
+          addOpen = false
+          emit('addEndpoint', w)
+        }
+      "
     />
     <ModelDialog
       v-if="modelDialog"
       :is-open="modelDialogOpen"
       :overlay-store="overlayStore"
       :mode="modelDialog.mode"
+      :pending="modelSave === 'pending'"
+      :error="modelError"
       :model="modelDialog.model"
       @close="modelDialogOpen = false"
       @save="saveModel"

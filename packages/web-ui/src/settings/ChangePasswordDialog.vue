@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Check } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -16,10 +16,10 @@ import SettingsRow from './SettingsRow.vue'
  */
 export type ChangePasswordPhase =
   | {
-    kind: 'form';
-    busy?: boolean;
-    error?: string
-  }
+      kind: 'form'
+      busy?: boolean
+      error?: string
+    }
   | { kind: 'done' }
 
 const props = defineProps<{
@@ -39,9 +39,26 @@ const current = ref('')
 const next = ref('')
 const confirm = ref('')
 
-const tooShort = computed(() => next.value.length > 0 && next.value.length < MIN_LENGTH)
-const mismatch = computed(() => confirm.value.length > 0 && confirm.value !== next.value)
-const unchanged = computed(() => next.value.length > 0 && next.value === current.value)
+watch(
+  () => [props.isOpen, props.phase.kind],
+  () => {
+    if (!props.isOpen || props.phase.kind === 'done') {
+      current.value = ''
+      next.value = ''
+      confirm.value = ''
+    }
+  },
+)
+
+const tooShort = computed(
+  () => next.value.length > 0 && next.value.length < MIN_LENGTH,
+)
+const mismatch = computed(
+  () => confirm.value.length > 0 && confirm.value !== next.value,
+)
+const unchanged = computed(
+  () => next.value.length > 0 && next.value === current.value,
+)
 const canSubmit = computed(
   () =>
     props.phase.kind === 'form' &&
@@ -53,8 +70,9 @@ const canSubmit = computed(
 )
 
 function submit() {
-  if (canSubmit.value)
+  if (canSubmit.value) {
     emit('submit', current.value, next.value)
+  }
 }
 </script>
 
@@ -69,8 +87,10 @@ function submit() {
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Change password</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          <template v-if="phase.kind === 'form'">Other sessions are signed out once it changes.</template>
-          <template v-else>Password changed. Other sessions are signed out.</template>
+          <template v-if="phase.kind === 'form'"
+            >Enter your current password and choose a new one.</template
+          >
+          <template v-else>Password changed.</template>
         </p>
       </header>
 
@@ -81,6 +101,7 @@ function submit() {
           <SettingsRow label="Current password">
             <TextInput
               v-model="current"
+              aria-label="Current password"
               secret
               focused
               class="w-48 max-w-full"
@@ -93,6 +114,7 @@ function submit() {
           >
             <TextInput
               v-model="next"
+              aria-label="New password"
               secret
               class="w-48 max-w-full"
               @keydown.enter="submit"
@@ -101,13 +123,17 @@ function submit() {
           <SettingsRow label="Confirm new password">
             <TextInput
               v-model="confirm"
+              aria-label="Confirm new password"
               secret
               class="w-48 max-w-full"
               @keydown.enter="submit"
             />
           </SettingsRow>
         </div>
-        <InlineError v-if="phase.error" :message="phase.error" />
+        <InlineError
+          v-if="phase.error"
+          :message="phase.error"
+        />
         <InlineError
           v-else-if="tooShort"
           :message="`A password has at least ${MIN_LENGTH} characters.`"
@@ -116,11 +142,20 @@ function submit() {
           v-else-if="unchanged"
           message="That is your current password."
         />
-        <InlineError v-else-if="mismatch" message="The two passwords differ." />
+        <InlineError
+          v-else-if="mismatch"
+          message="The two passwords differ."
+        />
       </template>
 
-      <div v-else class="flex items-center gap-2 py-2 text-chrome text-fg">
-        <Check :size="ICON_PX.in28" class="text-on-success" />
+      <div
+        v-else
+        class="flex items-center gap-2 py-2 text-chrome text-fg"
+      >
+        <Check
+          :size="ICON_PX.in28"
+          class="text-on-success"
+        />
         Password changed
       </div>
 
@@ -129,14 +164,16 @@ function submit() {
           v-if="phase.kind === 'done'"
           variant="primary"
           @click="emit('close')"
-        >Done</Button>
+          >Done</Button
+        >
         <template v-else>
           <Button @click="emit('close')">Cancel</Button>
           <Button
             variant="primary"
             :disabled="!canSubmit"
             @click="submit"
-          >{{ phase.busy ? 'Changing…' : 'Change password' }}</Button>
+            >{{ phase.busy ? 'Changing…' : 'Change password' }}</Button
+          >
         </template>
       </div>
     </div>

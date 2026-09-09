@@ -14,17 +14,19 @@ import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
 
 const props = defineProps<{
-  cloud: CloudState
+  cloud: CloudState | null
+  resetPending?: boolean
+  resetError?: string | null
   devices: SettingsDevice[]
   overlayStore: OverlayStore
   installation: DeviceInstallation
-  claimDevice: (code: string) => Promise<PairingResult>
+  claimDevice: (code: string, signal?: AbortSignal) => Promise<PairingResult>
 }>()
 const emit = defineEmits<{
   revoke: [id: string];
   resetCloud: [operationId: string]
 }>()
-const { isOpen, phase, open, close, submit } = useDevicePairing((code) => props.claimDevice(code))
+const { isOpen, phase, open, close, submit } = useDevicePairing((code, signal) => props.claimDevice(code, signal))
 </script>
 
 <template>
@@ -33,6 +35,9 @@ const { isOpen, phase, open, close, submit } = useDevicePairing((code) => props.
     description="Machines that can host a conversation's working directory."
   >
     <CloudSettings
+      v-if="cloud"
+      :reset-pending="resetPending"
+      :reset-error="resetError"
       :cloud="cloud"
       :overlay-store="overlayStore"
       @reset="emit('resetCloud', $event)"

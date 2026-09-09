@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, useAttrs, useSlots } from 'vue'
 import { Eye, EyeOff } from '@lucide/vue'
+import { disabledTooltip } from './disabled'
 import IconButton from './IconButton.vue'
+import Tooltip from './Tooltip.vue'
 
 defineOptions({ inheritAttrs: false })
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   modelValue?: string
   placeholder?: string
   /** Take focus on mount: the field a dialog or form opens on. The ring follows real focus. */
@@ -22,7 +24,12 @@ const props = defineProps<{
    * the row's content box, and the prefix sits flush with the left edge.
    */
   bare?: boolean
-}>()
+  disabled?: boolean
+  /** Why it is disabled, as a tooltip; only read while `disabled`. */
+  disabledReason?: string
+}>(), {
+  size: 'md',
+})
 
 const revealed = ref(false)
 
@@ -39,13 +46,12 @@ const frameAttrs = computed(() => ({
 }))
 const inputAttrs = computed(
   () => Object.fromEntries(
-    Object.entries(attrs).filter(([
-      key
-    ]) => key !== 'class' && key !== 'style')
+    Object.entries(attrs).filter(([key]) => key !== 'class' && key !== 'style')
   )
 )
 const inputRef = ref<HTMLInputElement>()
 const isFocused = ref(false)
+const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
 
 const frameHeightClass = computed(() => {
   if (props.bare) {
@@ -94,47 +100,59 @@ defineExpose({
 </script>
 
 <template>
-  <div
-    v-bind="frameAttrs"
-    class="flex min-w-0 items-center rounded-md ring-1 transition-[box-shadow,background-color] duration-200 ease-out"
-    :class="[
+  <Tooltip
+    :content="tooltipContent"
+    :disabled="!tooltipContent"
+    tag="div"
+    class="min-w-0"
+    :class="attrs['class'] ? '' : 'w-full'"
+    :open-delay-ms="80"
+  >
+    <div
+      v-bind="frameAttrs"
+      class="flex min-w-0 items-center rounded-md ring-1 transition-[box-shadow,background-color] duration-200 ease-out"
+      :class="[
       frameHeightClass,
       attrs['class'] ? '' : 'w-full',
       bare ? 'bg-transparent ring-transparent' : ['bg-surface-raised', showFocus || isFocused ? 'ring-line-focus' : 'ring-line'],
+      disabled ? 'cursor-not-allowed opacity-40' : '',
     ]"
-    :data-bare="bare ? true : undefined"
-    @click="inputRef?.focus()"
-  >
-    <div
-      v-if="slots['prefix']"
-      class="flex shrink-0 items-center text-fg-subtle"
-      :class="bare ? '' : 'pl-2'"
+      :data-bare="bare ? true : undefined"
+      @click="!disabled && inputRef?.focus()"
     >
-      <slot name="prefix" />
-    </div>
-    <input
-      ref="inputRef"
-      :type="secret && !revealed ? 'password' : 'text'"
-      v-bind="inputAttrs"
-      :value="modelValue"
-      :placeholder="placeholder"
-      class="h-full min-w-0 flex-1 bg-transparent text-chrome text-fg outline-none placeholder:text-fg-subtle"
-      :class="inputPadClass"
-      @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
-      @focus="isFocused = true"
-      @blur="isFocused = false"
-    />
-    <div v-if="secret" class="flex shrink-0 items-center pr-1">
-      <IconButton
-        :icon="revealed ? EyeOff : Eye"
-        variant="ghost"
-        size="xs"
-        :aria-label="revealed ? 'Hide' : 'Show'"
-        @click.stop="revealed = !revealed"
+      <div
+        v-if="slots['prefix']"
+        class="flex shrink-0 items-center text-fg-subtle"
+        :class="bare ? '' : 'pl-2'"
+      >
+        <slot name="prefix" />
+      </div>
+      <input
+        ref="inputRef"
+        :type="secret && !revealed ? 'password' : 'text'"
+        v-bind="inputAttrs"
+        :value="modelValue"
+        :placeholder="placeholder"
+        :disabled="disabled || undefined"
+        class="h-full min-w-0 flex-1 bg-transparent text-chrome text-fg outline-none placeholder:text-fg-subtle"
+        :class="inputPadClass"
+        @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+        @focus="isFocused = true"
+        @blur="isFocused = false"
       />
+      <div v-if="secret" class="flex shrink-0 items-center pr-1">
+        <IconButton
+          :icon="revealed ? EyeOff : Eye"
+          variant="ghost"
+          :size="size === 'lg' ? 'sm' : 'xs'"
+          :disabled="disabled"
+          :aria-label="revealed ? 'Hide' : 'Show'"
+          @click.stop="revealed = !revealed"
+        />
+      </div>
+      <div v-if="slots['suffix']" class="flex shrink-0 items-center pr-2">
+        <slot name="suffix" />
+      </div>
     </div>
-    <div v-if="slots['suffix']" class="flex shrink-0 items-center pr-2">
-      <slot name="suffix" />
-    </div>
-  </div>
+  </Tooltip>
 </template>

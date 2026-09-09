@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, ref, shallowRef, watch, type Component } from 'vue'
+import {
+  computed,
+  h,
+  onBeforeUnmount,
+  ref,
+  shallowRef,
+  watch,
+  type Component,
+} from 'vue'
 import {
   ArrowLeft,
   ArrowRight,
@@ -8,7 +16,7 @@ import {
   Eye,
   EyeOff,
   FolderPlus,
-  MapPin
+  MapPin,
 } from '@lucide/vue'
 import { CLOUD_HOST_ID, hostIcon } from '../hosts/icons'
 import { appOverlayStore } from '../overlay/appOverlay'
@@ -32,7 +40,7 @@ import {
   nextSort,
   sortEntries,
   type FileBrowserSort,
-  type FileBrowserSortKey
+  type FileBrowserSortKey,
 } from './file-browser-state'
 import { baseName, joinPath, normalizePath, parentPath } from './paths'
 import {
@@ -43,7 +51,7 @@ import {
   type FileBrowserMode,
   type FileBrowserPlace,
   type FileBrowserPlaceGroup,
-  type FileBrowserSource
+  type FileBrowserSource,
 } from './types'
 
 /**
@@ -58,23 +66,26 @@ import {
  * selected, the history. The caller decides what a chosen path means. Switching a
  * device is the caller's too: it hears `update:hostId` and hands over another source.
  */
-const props = withDefaults(defineProps<{
-  mode: FileBrowserMode
-  source: FileBrowserSource
-  /** Where to open; the source's home when absent. */
-  initialPath?: string
-  places?: FileBrowserPlaceGroup[]
-  /** The devices the address bar's picker offers; none means no picker. */
-  hosts?: FileBrowserHost[]
-  hostId?: string
-  /** The confirm button's label: `Open` for a file, `Select Folder` for a folder. */
-  confirmLabel?: string
-  /** Browsing stays open while choosing is not allowed (a running turn, an archived conversation). */
-  confirmDisabled?: boolean
-}>(), {
-  places: () => [],
-  hosts: () => [],
-})
+const props = withDefaults(
+  defineProps<{
+    mode: FileBrowserMode
+    source: FileBrowserSource
+    /** Where to open; the source's home when absent. */
+    initialPath?: string
+    places?: FileBrowserPlaceGroup[]
+    /** The devices the address bar's picker offers; none means no picker. */
+    hosts?: FileBrowserHost[]
+    hostId?: string
+    /** The confirm button's label: `Open` for a file, `Select Folder` for a folder. */
+    confirmLabel?: string
+    /** Browsing stays open while choosing is not allowed (a running turn, an archived conversation). */
+    confirmDisabled?: boolean
+  }>(),
+  {
+    places: () => [],
+    hosts: () => [],
+  },
+)
 
 const emit = defineEmits<{
   select: [path: string]
@@ -91,7 +102,10 @@ const canForward = ref(false)
 const entries = shallowRef<FileBrowserEntry[]>([])
 const loading = ref(false)
 const failure = ref<FileBrowserFailure | null>(null)
-const sort = ref<FileBrowserSort>({ key: null, direction: 'asc' })
+const sort = ref<FileBrowserSort>({
+  key: null,
+  direction: 'asc',
+})
 const selected = ref<string | null>(null)
 const error = ref<string | null>(null)
 const creating = ref(false)
@@ -100,41 +114,44 @@ let pending: AbortController | null = null
 
 /** The rows in view, each folder carrying the glyph its place earns (the home under `/Users`). */
 const visible = computed(() =>
-  sortEntries(filterEntries(entries.value, '', showHidden.value), sort.value).map((
-    entry
-  ) =>
-    entry.isDirectory ? {
-      ...entry,
-      icon: landmarkIcon(joinPath(path.value, entry.name), props.source)
-    } : entry,
+  sortEntries(filterEntries(entries.value, '', showHidden.value), sort.value).map(
+    (entry) =>
+      entry.isDirectory
+        ? {
+            ...entry,
+            icon: landmarkIcon(joinPath(path.value, entry.name), props.source),
+          }
+        : entry,
   ),
 )
 const selectedEntry = computed(
-  () => visible.value.find((entry) => entry.name === selected.value) ?? null
+  () => visible.value.find((entry) => entry.name === selected.value) ?? null,
 )
-const currentHost = computed(() => props.hosts.find((host) => host.id === props.hostId))
+const currentHost = computed(() =>
+  props.hosts.find((host) => host.id === props.hostId),
+)
 const hasRail = computed(() => props.places.length > 0)
 /** A place's glyph: the theme folder its name resolves to, or the id the caller names. */
 function placeIcon(place: FileBrowserPlace): Component {
   const target = normalizePath(place.path)
-  return () => h(
-    FileIcon,
-    {
+  return () =>
+    h(FileIcon, {
       name: baseName(target) || '/',
       isDirectory: true,
-      icon: place.icon ?? landmarkIcon(target, props.source)
-    }
-  )
+      icon: place.icon ?? landmarkIcon(target, props.source),
+    })
 }
 
 const confirmLabel = computed(
-  () => props.confirmLabel ?? (props.mode === 'file' ? 'Open' : 'Select Folder')
+  () => props.confirmLabel ?? (props.mode === 'file' ? 'Open' : 'Select Folder'),
 )
 const canConfirm = computed(() => {
-  if (props.confirmDisabled)
+  if (props.confirmDisabled) {
     return false
-  if (selectedEntry.value)
+  }
+  if (selectedEntry.value) {
     return true
+  }
   return props.mode === 'directory' && !failure.value
 })
 /** The status row: what is selected, or what can be. */
@@ -148,33 +165,35 @@ const status = computed(() => {
       lead: entry.isDirectory ? 'Selected folder:' : 'Selected file:',
       isDirectory: entry.isDirectory,
       name: entry.name,
-      icon
+      icon,
     }
   }
-  if (props.mode === 'file')
+  if (props.mode === 'file') {
     return {
-    lead: 'Select a file',
-    isDirectory: false,
-    name: null,
-    icon: undefined
+      lead: 'Select a file',
+      isDirectory: false,
+      name: null,
+      icon: undefined,
+    }
   }
   return {
     lead: 'Select a folder, or use',
     isDirectory: true,
     name: baseName(path.value) || '/',
-    icon: landmarkIcon(path.value, props.source)
+    icon: landmarkIcon(path.value, props.source),
   }
 })
 
 function toFailure(err: unknown): FileBrowserFailure {
-  if (err instanceof FileBrowserError)
+  if (err instanceof FileBrowserError) {
     return {
-    kind: err.kind,
-    message: err.message === err.kind ? undefined : err.message
+      kind: err.kind,
+      message: err.message === err.kind ? undefined : err.message,
+    }
   }
   return {
     kind: 'other',
-    message: err instanceof Error ? err.message : String(err)
+    message: err instanceof Error ? err.message : String(err),
   }
 }
 
@@ -187,16 +206,19 @@ async function load(target: string) {
   entries.value = []
   try {
     const listed = await props.source.list(target, controller.signal)
-    if (controller.signal.aborted)
+    if (controller.signal.aborted) {
       return
+    }
     entries.value = listed
   } catch (err) {
-    if (controller.signal.aborted)
+    if (controller.signal.aborted) {
       return
+    }
     failure.value = toFailure(err)
   } finally {
-    if (!controller.signal.aborted)
+    if (!controller.signal.aborted) {
       loading.value = false
+    }
   }
 }
 
@@ -223,49 +245,65 @@ function goTo(target: string) {
 function back() {
   const previous = history.back()
   syncHistory()
-  if (previous !== null)
+  if (previous !== null) {
     show(previous)
+  }
 }
 
 function forward() {
   const next = history.forward()
   syncHistory()
-  if (next !== null)
+  if (next !== null) {
     show(next)
+  }
 }
 
 function up() {
-  if (path.value !== '/')
+  if (path.value !== '/') {
     goTo(parentPath(path.value))
+  }
 }
 
 /** Opens a folder; confirms a file (file mode only, the list enforces it). */
 function activate(entry: FileBrowserEntry) {
-  if (entry.isDirectory)
+  if (entry.isDirectory) {
     goTo(joinPath(path.value, entry.name))
-  else emit('select', joinPath(path.value, entry.name))
+  } else {
+    emit('select', joinPath(path.value, entry.name))
+  }
 }
 
 function confirm() {
   const entry = selectedEntry.value
   if (entry) {
-    if (props.mode === 'file' && entry.isDirectory)
+    if (props.mode === 'file' && entry.isDirectory) {
       goTo(joinPath(path.value, entry.name))
-    else emit('select', joinPath(path.value, entry.name))
+    } else {
+      emit('select', joinPath(path.value, entry.name))
+    }
     return
   }
-  if (props.mode === 'directory' && !failure.value)
+  if (props.mode === 'directory' && !failure.value) {
     emit('select', path.value)
+  }
 }
 
 async function createFolder(folderName: string) {
   const create = props.source.createDirectory
-  if (!create)
+  if (!create) {
     return
+  }
   const target = joinPath(path.value, folderName)
+  pending?.abort()
+  const controller = new AbortController()
+  pending = controller
   try {
-    await create(target)
+    await create(target, controller.signal)
+    controller.signal.throwIfAborted()
   } catch (err) {
+    if (controller.signal.aborted) {
+      return
+    }
     creating.value = false
     error.value = toFailure(err).message ?? `${folderName} could not be created.`
     return
@@ -278,17 +316,21 @@ async function createFolder(folderName: string) {
 }
 
 watch(selected, (next) => {
-  if (next !== null)
+  if (next !== null) {
     error.value = null
+  }
 })
 
 // Another device: the history starts over at its home or the path the caller names.
-watch(() => props.source, (source) => {
-  const start = normalizePath(props.initialPath ?? source.home)
-  history.reset(start)
-  syncHistory()
-  show(start)
-})
+watch(
+  () => props.source,
+  (source) => {
+    const start = normalizePath(props.initialPath ?? source.home)
+    history.reset(start)
+    syncHistory()
+    show(start)
+  },
+)
 
 void load(path.value)
 
@@ -324,7 +366,9 @@ defineExpose({
               :size="ICON_PX.in28"
               class="shrink-0 text-fg-muted"
             />
-            <span class="min-w-0 flex-1 truncate">{{ currentHost?.label ?? 'Device' }}</span>
+            <span class="min-w-0 flex-1 truncate">{{
+              currentHost?.label ?? 'Device'
+            }}</span>
             <ChevronDown
               :size="ICON_PX.in24"
               class="shrink-0 text-fg-subtle transition-transform duration-200 ease-out"
@@ -338,9 +382,17 @@ defineExpose({
               v-for="host in hosts"
               :key="host.id"
               :icon="hostIcon(host)"
-              :indicator="host.id === CLOUD_HOST_ID ? undefined : host.online ? 'success' : 'muted'"
+              :indicator="
+                host.id === CLOUD_HOST_ID
+                  ? undefined
+                  : host.online
+                    ? 'success'
+                    : 'muted'
+              "
               :indicator-label="host.online ? 'Online' : 'Offline'"
-              :note="host.id !== CLOUD_HOST_ID && !host.online ? 'offline' : undefined"
+              :note="
+                host.id !== CLOUD_HOST_ID && !host.online ? 'offline' : undefined
+              "
               :disabled="host.id !== CLOUD_HOST_ID && !host.online"
               disabled-reason="This device is offline."
               :label="host.label"
@@ -361,7 +413,10 @@ defineExpose({
             @click="back"
           />
         </Tooltip>
-        <Tooltip content="Forward" class="hidden @md:inline-flex">
+        <Tooltip
+          content="Forward"
+          class="hidden @md:inline-flex"
+        >
           <IconButton
             :icon="ArrowRight"
             variant="ghost"
@@ -382,7 +437,11 @@ defineExpose({
       </div>
       <span class="flex-1 @md:hidden" />
       <FileBrowserAddressBar
-        :source="source" class="order-1 min-w-0 basis-full @md:order-none @md:flex-1 @md:basis-auto" :path="path" @navigate="goTo" />
+        :source="source"
+        class="order-1 min-w-0 basis-full @md:order-none @md:flex-1 @md:basis-auto"
+        :path="path"
+        @navigate="goTo"
+      />
       <div class="flex shrink-0 items-center gap-0.5">
         <!-- The rail's places, as a menu where the rail has no room. -->
         <Dropdown
@@ -419,7 +478,10 @@ defineExpose({
             </Menu>
           </template>
         </Dropdown>
-        <Tooltip v-if="source.createDirectory" content="New folder">
+        <Tooltip
+          v-if="source.createDirectory"
+          content="New folder"
+        >
           <IconButton
             :icon="FolderPlus"
             variant="ghost"
@@ -428,9 +490,7 @@ defineExpose({
             @click="creating = true"
           />
         </Tooltip>
-        <Tooltip
-          :content="showHidden ? 'Hide hidden files' : 'Show hidden files'"
-        >
+        <Tooltip :content="showHidden ? 'Hide hidden files' : 'Show hidden files'">
           <IconButton
             :icon="showHidden ? EyeOff : Eye"
             variant="ghost"
@@ -497,7 +557,11 @@ defineExpose({
           role="status"
         >
           <template v-if="error">
-            <span class="truncate text-on-danger" :title="error">{{ error }}</span>
+            <span
+              class="truncate text-on-danger"
+              :title="error"
+              >{{ error }}</span
+            >
           </template>
           <template v-else>
             <span class="shrink-0 text-fg-subtle">{{ status.lead }}</span>
@@ -510,7 +574,11 @@ defineExpose({
                 :is-directory="status.isDirectory"
                 :icon="status.icon"
               />
-              <span class="truncate" :title="status.name">{{ status.name }}</span>
+              <span
+                class="truncate"
+                :title="status.name"
+                >{{ status.name }}</span
+              >
             </span>
           </template>
         </div>
@@ -520,7 +588,8 @@ defineExpose({
           variant="primary"
           :disabled="!canConfirm"
           @click="confirm"
-        >{{ confirmLabel }}</Button>
+          >{{ confirmLabel }}</Button
+        >
         <Button @click="emit('cancel')">Cancel</Button>
       </div>
     </div>

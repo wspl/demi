@@ -4,74 +4,86 @@ import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
 import type { WorkspaceDraft } from '@demicodes/web-ui/hosts/workspace'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useConversations } from '../conversation/store'
-import { useResources } from '../prototype/resources'
+import { useResources } from '../state/resources'
+import { useProduct } from '../state/product'
 import { baseName } from '@demicodes/web-ui/files/paths'
-import { CLOUD_HOME, fileSourceFor, placesFor } from '../prototype/files'
+import { fileSourceFor, placesFor } from '../devices/files'
 
-/** The shared working-environment dialog over the prototype's projects and devices. */
 const props = defineProps<{ conversationId: string | null }>()
 const resources = useResources()
+const product = useProduct()
 const conversations = useConversations()
-const current = computed(() => conversations.items.find((c) => c.id === props.conversationId))
+const current = computed(() =>
+  conversations.items.find(
+    (conversation) => conversation.id === props.conversationId,
+  ),
+)
 const message = ref('')
-
-const projects = computed(
-  () => resources.projects.map(
-    (project) => ({
-      id: project.id,
-      name: project.name,
-      host: project.host,
-      path: project.path
-    })
-  )
+const pending = ref(false)
+const projects = computed(() =>
+  resources.projects.map((project) => ({
+    id: project.id,
+    name: project.name,
+    host: project.host,
+    path: project.path,
+  })),
 )
-const devices = computed(
-  () => resources.devices.map(
-    (device) => ({
-      id: device.id,
-      name: device.name,
-      online: device.online
-    })
-  )
-)
-const deviceById = (id: string) => resources.devices.find((device) => device.id === id) ?? null
+const deviceById = (id: string) =>
+  resources.devices.find((device) => device.id === id) ?? null
 
 function close() {
   resources.targetOpen = false
   message.value = ''
 }
 
-function select(id: string | null) {
-  if (!current.value)
-    return
-  conversations.move([current.value.id], id)
-  close()
-}
-
-/** A Cloud project is a managed workspace under the Cloud home, named as typed; a device project is its directory. */
-function create(draft: WorkspaceDraft) {
-  const device = draft.kind === 'device' ? deviceById(draft.deviceId) : null
-  if (draft.kind === 'device' && !device) {
-    message.value = 'Select a device and enter an absolute directory path.'
+async function select(id: string | null) {
+  if (!current.value || pending.value) {
     return
   }
-  const id = crypto.randomUUID()
-  resources.projects.push({
-    id,
-    name: draft.kind === 'cloud'
-      ? draft.name
-      : baseName(draft.path) || 'Workspace',
-    deviceId: draft.kind === 'cloud' ? 'cloud' : draft.deviceId,
-    host: draft.kind === 'cloud' ? 'Cloud' : device!.name,
-    hostKind: draft.kind,
-    path: draft.kind === 'cloud'
-      ? `${CLOUD_HOME}/${draft.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
-      : draft.path,
-    branch: null,
-  })
-  if (resources.targetMode === 'switch')
-    select(id)
-  else close()
+  pending.value = true
+  try {
+    if (await conversations.move([current.value.id], id)) {
+      close()
+    }
+  } finally {
+    pending.value = false
+  }
+}
+
+async function create(draft: WorkspaceDraft) {
+  if (pending.value) {
+    return
+  }
+  const conversationId = current.value?.id
+  const mode = resources.targetMode
+  pending.value = true
+  message.value = ''
+  try {
+    const id = await resources.createProject(
+      draft.kind === 'cloud'
+        ? {
+            cloud: true,
+            name: draft.name,
+          }
+        : {
+            deviceId: draft.deviceId,
+            path: draft.path,
+            name: baseName(draft.path) || 'Workspace',
+          },
+    )
+    if (mode === 'switch' && conversationId) {
+      if (!(await conversations.move([conversationId], id))) {
+        message.value =
+          'Project created. The conversation could not switch; select the project to try again.'
+        return
+      }
+    }
+    close()
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    pending.value = false
+  }
 }
 </script>
 
@@ -82,9 +94,10 @@ function create(draft: WorkspaceDraft) {
     :mode="resources.targetMode"
     :projects="projects"
     :current-project-id="current?.projectId ?? null"
-    :locked="!!current?.stream"
-    :devices="devices"
-    cloud
+    :locked="pending || (current?.phase !== 'idle' && !!current)"
+    :pending="pending"
+    :devices="resources.devices"
+    :cloud="!!product.snapshot?.cloud"
     :message="message"
     :source-for="(id) => fileSourceFor(deviceById(id))"
     :places-for="(id) => placesFor(deviceById(id), resources.projects)"

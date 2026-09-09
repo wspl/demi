@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { Zap } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import ContentMedia from '../ContentMedia.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText } from '../block-helpers'
@@ -14,8 +15,9 @@ const props = defineProps<{
 
 const summary = computed(() => {
   const entries = Object.entries(props.input)
-  if (entries.length === 0)
+  if (entries.length === 0) {
     return ''
+  }
   return entries
     .map(([k, v]) => {
       const val = typeof v === 'string' ? v : JSON.stringify(v)
@@ -38,6 +40,29 @@ const detail = computed(() => {
     :loading="block.status === 'executing'"
     :tone="block.status === 'error' ? 'danger' : undefined"
   >
+    <template
+      v-if="block.output.length"
+      #body
+    >
+      <div class="space-y-2 py-2">
+        <template
+          v-for="(part, index) in block.output"
+          :key="index"
+        >
+          <pre
+            v-if="part.type === 'text'"
+            class="whitespace-pre-wrap break-words text-chrome"
+            >{{ part.text }}</pre
+          >
+          <ContentMedia
+            v-else-if="part.type === 'image' || part.type === 'video'"
+            :kind="part.type"
+            :source="part.source"
+            :name="`${part.type} ${index + 1}`"
+          />
+        </template>
+      </div>
+    </template>
     <template #icon>
       <Zap :size="ICON_PX.in28" />
     </template>
