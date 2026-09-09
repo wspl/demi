@@ -1,9 +1,10 @@
 import { clientFrameSchema, sendFrameSchema, steerFrameSchema, userContentBlockSchema } from '@demicodes/agent'
 import { z } from 'zod'
+import { remoteFileRefSchema } from './remote-file-refs'
 import { attachmentRefBlockSchema } from './attachment-refs'
 
 /** The conversation wire adds uploaded attachment references to content-bearing frames. */
-const content = z.array(z.union([userContentBlockSchema, attachmentRefBlockSchema]))
+const content = z.array(z.union([userContentBlockSchema, attachmentRefBlockSchema, remoteFileRefSchema]))
 export const conversationClientFrameSchema = z.union([
   clientFrameSchema,
   sendFrameSchema.extend({ content }),

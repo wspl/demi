@@ -1,3 +1,4 @@
+import { publicProvider } from '../vault/public-provider'
 import { AccountRefused, type ProviderAccounts } from '../vault/provider-accounts'
 import type { ProviderOperations } from '../vault/provider-operations'
 import { errorMessage } from '@demicodes/utils'
@@ -152,7 +153,7 @@ export function providerRoutes(options: {
     const parsed = z.strictObject({ token: z.string().trim().min(1).max(16384), label: z.string().trim().min(1).max(80) }).safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { token, label }' }, 400)
     const entry = await options.accounts.importClaude(ownerOf(c), parsed.data.label, parsed.data.token)
-    return c.json({ provider: redact(entry) }, 201)
+    return c.json({ provider: publicProvider(entry) }, 201)
   })
 
   app.post('/:id/accounts/login', async (c) => {
@@ -195,7 +196,7 @@ export function providerRoutes(options: {
 
   app.get('/', async (c) => {
     const providers = await vault.list({ ownerUserId: ownerOf(c) })
-    return c.json({ providers: providers.map(redact) })
+    return c.json({ providers: providers.map(publicProvider) })
   })
 
   app.post('/', async (c) => {
@@ -234,7 +235,7 @@ export function providerRoutes(options: {
       }
     }
     const provider = await vault.create({ ownerUserId: ownerOf(c), label: body.label, config })
-    return c.json({ provider: redact(provider) }, 201)
+    return c.json({ provider: publicProvider(provider) }, 201)
   })
 
   app.patch('/:id', async (c) => {
@@ -262,7 +263,7 @@ export function providerRoutes(options: {
     })
     if (!updated) return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
     assembly.invalidate(provider.id)
-    return c.json({ provider: redact(updated) })
+    return c.json({ provider: publicProvider(updated) })
   })
 
   app.delete('/:id', async (c) => {
@@ -311,21 +312,4 @@ export function providerRoutes(options: {
   })
 
   return app
-}
-
-function redact(provider: ProviderEntry) {
-  const { config } = provider
-  const keyed = config.kind === 'api_key' ? config : null
-  return {
-    id: provider.id,
-    kind: config.kind,
-    providerType: config.providerType,
-    label: provider.label,
-    wireApi: keyed?.wireApi ?? null,
-    vendorId: keyed?.vendorId ?? null,
-    baseUrl: keyed?.baseUrl ?? null,
-    models: keyed?.models ?? null,
-    keyConfigured: keyed !== null,
-    createdAt: provider.createdAt,
-  }
 }

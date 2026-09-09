@@ -2,7 +2,8 @@ import type { ClientFrame, ServerFrame } from './frames'
 
 export interface AgentTransport<SendFrame, ReceiveFrame> {
   send(frame: SendFrame): void
-  onFrame(handler: (frame: ReceiveFrame) => void): () => void
+  /** Async completion lets transport adapters hold admission until frame handling finishes. */
+  onFrame(handler: (frame: ReceiveFrame) => void | Promise<void>): () => void
   close(): void
 }
 
@@ -37,7 +38,7 @@ class InProcessEndpoint<SendFrame, ReceiveFrame> implements AgentTransport<SendF
     this.peer.receive(frame)
   }
 
-  onFrame(handler: (frame: ReceiveFrame) => void): () => void {
+  onFrame(handler: (frame: ReceiveFrame) => void | Promise<void>): () => void {
     this.handlers.add(handler)
     return () => {
       this.handlers.delete(handler)
