@@ -1,9 +1,5 @@
-import {
-  errorMessage,
-  isRecord,
-  nonEmptyString,
-  numberOrNull
-} from '@demicodes/utils'
+import { z } from 'zod'
+import { errorMessage } from '@demicodes/utils'
 import type {
   ProviderModel,
   ProviderModelList,
@@ -39,7 +35,8 @@ interface CodexCatalogCache {
 }
 
 const DEFAULT_CHATGPT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api'
-const DEFAULT_CODEX_MODEL_CATALOG_CLIENT_VERSION = '0.130.0'
+// Match a verified Codex CLI release: the backend gates models by this version.
+const DEFAULT_CODEX_MODEL_CATALOG_CLIENT_VERSION = '0.153.4'
 const CODEX_MODEL_CACHE_TTL_MS = 15 * 60 * 1000
 const codexCatalogCache = new Map<string, CodexCatalogCache>()
 
@@ -116,6 +113,30 @@ export async function listCodexModels(
   }
 }
 
+const codexModelSchema = z.object({
+  slug: z.string().min(1),
+  display_name: z.string().min(1),
+  description: z.string().nullish(),
+  visibility: z.enum(['list', 'hide', 'none']),
+  priority: z.number().int(),
+  context_window: z.number().int().positive().nullish(),
+  input_modalities: z.array(z.string()).optional(),
+  supported_reasoning_levels: z.array(z.object({ effort: z.string().min(1) })),
+  default_reasoning_level: z.string().min(1).nullish(),
+  service_tiers: z.array(z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().nullish(),
+  })).optional(),
+  default_service_tier: z.string().min(1).nullish(),
+  tool_mode: z.string().nullish(),
+  experimental_supported_tools: z.array(z.string()).optional(),
+  apply_patch_tool_type: z.string().nullish(),
+  web_search_tool_type: z.string().nullish(),
+})
+const codexModelsResponseSchema = z.object({ models: z.array(codexModelSchema) })
+type CodexBackendModel = z.infer<typeof codexModelSchema>
+
 export function codexBackendModelsToModelList(
   value: unknown,
   options: {
@@ -124,36 +145,21 @@ export function codexBackendModelsToModelList(
     warnings?: string[]
   } = {},
 ): ProviderModelList {
-  if (!isRecord(value) || !Array.isArray(value.models)) {
-    throw new Error('Codex models response does not contain a models array')
-  }
+  const response = codexModelsResponseSchema.parse(value)
   const sourceFetchedAt = options.sourceFetchedAt ?? new Date().toISOString()
-  const warnings = [...(options.warnings ?? [])]
-  const models: ProviderModel[] = []
-  for (const raw of value.models) {
-    if (!isRecord(raw)) {
-      warnings.push('Skipped Codex model with invalid metadata')
-      continue
-    }
-    const id = nonEmptyString(raw.slug)
-    if (!id) {
-      warnings.push('Skipped Codex model without slug')
-      continue
-    }
-    if (nonEmptyString(raw.visibility) === 'hide')
-      continue
-    models.push(codexModelFromBackendEntry(
-      id,
-      raw,
+  const models = response.models
+    .filter((model) => model.visibility === 'list')
+    .sort((a, b) => a.priority - b.priority)
+    .map((model) => codexModelFromBackendEntry(
+      model,
       sourceFetchedAt,
-      options.stale === true
+      options.stale === true,
     ))
-  }
   return {
     providerId: 'codex',
     models,
-    defaultModelId: null,
-    warnings,
+    defaultModelId: models[0]?.id ?? null,
+    warnings: [...(options.warnings ?? [])],
     sourceFetchedAt,
     stale: options.stale === true,
   }
@@ -195,31 +201,34 @@ async function requestCodexModels(options: {
 }
 
 function codexModelFromBackendEntry(
-  id: string,
-  raw: Record<string, unknown>,
+  raw: CodexBackendModel,
   sourceFetchedAt: string,
   stale: boolean,
 ): ProviderModel {
-  const supportedReasoningEfforts = supportedReasoningLevels(raw.supported_reasoning_levels)
-  const tiers = serviceTiers(raw.service_tiers)
+  const supportedReasoningEfforts = raw.supported_reasoning_levels.map(
+    (level) => level.effort,
+  )
   return {
     providerId: 'codex',
-    id,
-    displayName: nonEmptyString(raw.display_name) ?? id,
-    description: nonEmptyString(raw.description),
-    contextWindow: numberOrNull(raw.context_window),
+    id: raw.slug,
+    displayName: raw.display_name,
+    description: raw.description ?? undefined,
+    contextWindow: raw.context_window ?? null,
     outputLimit: null,
     supportsTools: supportsCodexTools(raw),
-    supportsAttachments: Array.isArray(raw.input_modalities)
-      ? raw.input_modalities.includes('image')
-      : null,
-    supportsReasoning: supportedReasoningEfforts
-      ? supportedReasoningEfforts.length > 0
-      : null,
+    supportsAttachments: raw.input_modalities?.includes('image') ?? null,
+    supportsReasoning: supportedReasoningEfforts.length > 0,
+    // Omitting reasoning uses the backend default; it does not turn reasoning off.
+    canDisableThinking: false,
     supportedThinkingEfforts: supportedReasoningEfforts,
-    defaultThinkingEffort: null,
-    serviceTiers: tiers,
-    defaultServiceTierId: null,
+    defaultThinkingEffort: raw.default_reasoning_level ?? null,
+    serviceTiers: raw.service_tiers?.map((tier) => ({
+      id: tier.id,
+      label: tier.name,
+      ...(tier.description ? { description: tier.description } : {}),
+      fast: tier.id === CODEX_FAST_SERVICE_TIER_ID,
+    })) ?? null,
+    defaultServiceTierId: raw.default_service_tier ?? null,
     sourceFetchedAt,
     stale,
   }
@@ -284,42 +293,10 @@ function codexModelCatalogCacheKey(
   ].join('\0')
 }
 
-function supportedReasoningLevels(
-  value: unknown
-): ProviderModel['supportedThinkingEfforts'] {
-  if (!Array.isArray(value))
-    return null
-  const efforts = value
-    .map((level) => isRecord(level) ? nonEmptyString(level.effort) : undefined)
-    .filter((effort): effort is string => effort !== undefined)
-  return efforts.length > 0 ? efforts : []
-}
-
 /** Codex advertises its Fast Mode as the `priority` service tier. */
 const CODEX_FAST_SERVICE_TIER_ID = 'priority'
 
-function serviceTiers(value: unknown): ProviderModel['serviceTiers'] {
-  if (!Array.isArray(value))
-    return null
-  const tiers = value.flatMap((tier) => {
-    if (!isRecord(tier))
-      return []
-    const id = nonEmptyString(tier.id)
-    if (!id)
-      return []
-    return [{
-      id,
-      label: nonEmptyString(tier.name) ?? id,
-      ...(nonEmptyString(tier.description) ? {
-        description: nonEmptyString(tier.description)
-      } : {}),
-      fast: id === CODEX_FAST_SERVICE_TIER_ID,
-    }]
-  })
-  return tiers.length > 0 ? tiers : []
-}
-
-function supportsCodexTools(raw: Record<string, unknown>): boolean | null {
+function supportsCodexTools(raw: CodexBackendModel): boolean | null {
   if (typeof raw.tool_mode === 'string' && raw.tool_mode.length > 0)
     return true
   if (Array.isArray(raw.experimental_supported_tools))

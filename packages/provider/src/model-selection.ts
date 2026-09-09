@@ -56,7 +56,7 @@ export function thinkingCapabilitiesFromProviderModel(
     {
       type: 'effort',
       efforts: model.supportedThinkingEfforts,
-      defaultEffort: null,
+      defaultEffort: model.defaultThinkingEffort,
       summaries,
       defaultSummary: null,
     },
