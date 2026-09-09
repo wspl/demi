@@ -619,7 +619,7 @@ function abortAgents() {
 
       <GallerySection
         title="ModelSelector"
-        note="The menu aligns to the trigger’s right edge; model and reasoning flyouts always open left."
+        note="The model dropdown aligns to the trigger’s right edge, extending to the left."
       >
         <div class="specimen-stack">
           <GallerySpecimen variant="chip">
