@@ -129,13 +129,13 @@ defineExpose({
 
 <template>
   <div
-    class="scroll-area relative min-h-0 overflow-hidden"
+    class="scroll-area relative flex min-h-0 flex-col overflow-hidden"
     @pointerenter="hovered = true"
     @pointerleave="hovered = false"
   >
     <div
       ref="viewport"
-      class="scroll-area-viewport h-full overflow-y-auto"
+      class="scroll-area-viewport min-h-0 flex-auto overflow-y-auto"
       :class="viewportClass"
       @scroll.passive="onScroll"
     >

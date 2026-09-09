@@ -61,11 +61,12 @@ const results = computed(
     :is-open="isOpen"
     :overlay-store="overlayStore"
     size="md"
+    :scroll-content="false"
     label="Add provider"
     @close="emit('close')"
   >
     <div class="flex min-h-0 flex-col">
-      <div class="flex flex-col gap-4 p-5 pb-3">
+      <div class="flex shrink-0 flex-col gap-4 p-5 pb-3">
         <header class="select-none pr-10">
           <h3 class="text-[15px] font-medium text-fg-emphasis">Add provider</h3>
         </header>
@@ -78,7 +79,7 @@ const results = computed(
         </TextInput>
       </div>
       <ScrollArea
-        class="min-h-0"
+        class="min-h-0 flex-1"
         viewport-class="flex flex-col gap-4 px-5 pb-5 pt-2"
       >
         <div v-if="protocolResults.length">
