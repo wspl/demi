@@ -122,6 +122,9 @@ class SessionProviderRuntime implements AgentProvider {
       this.current = undefined
       throw new Error(`Provider "${this.selection.providerId}" is no longer available to this conversation`)
     }
+    if (resolved.entry.config.kind === 'subscription' && !(await resolved.provider.credentials?.list())?.length) {
+      throw new Error('No subscription account configured')
+    }
     const selection = { ...requested, model: this.options.assembly.selectionForEntry(resolved.entry, requested.model) }
     const host = resolved.provider.requiresProcessCapableHost ? await this.options.host() : undefined
     if (this.disposed) throw new Error('Provider runtime is disposed')
