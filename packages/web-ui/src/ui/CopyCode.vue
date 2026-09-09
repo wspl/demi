@@ -22,7 +22,7 @@ async function copyCode() {
 
 <template>
   <div
-    class="flex min-w-0 items-start gap-2 rounded-md border border-line bg-surface px-3 py-2"
+    class="flex min-w-0 items-center gap-2 rounded-md border border-line bg-surface px-3 py-2"
   >
     <code
       class="min-w-0 flex-1 select-text break-words font-mono text-[12px] leading-5 text-fg-body"

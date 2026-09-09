@@ -3,6 +3,7 @@ import OverviewSection from './sections/OverviewSection.vue'
 import SignInSection from './sections/SignInSection.vue'
 import SurfacesSection from './sections/SurfacesSection.vue'
 import PrimitivesSection from './sections/PrimitivesSection.vue'
+import ControlLayoutSection from './sections/ControlLayoutSection.vue'
 import MotionSection from './sections/MotionSection.vue'
 import OverlaysSection from './sections/OverlaysSection.vue'
 import FilesSection from './sections/FilesSection.vue'
@@ -23,6 +24,7 @@ export const NAV: {
   { path: '/signin', label: 'Sign in' },
   { path: '/surfaces', label: 'Surfaces' },
   { path: '/primitives', label: 'Primitives' },
+  { path: '/control-layout', label: 'Control layout' },
   { path: '/motion', label: 'Motion' },
   { path: '/overlays', label: 'Overlays' },
   { path: '/files', label: 'Files' },
@@ -54,6 +56,7 @@ export const router = createRouter({
       component: PrimitivesSection,
       meta: { layout: 'catalog' }
     },
+    { path: '/control-layout', component: ControlLayoutSection, meta: { layout: 'catalog' } },
     { path: '/motion', component: MotionSection, meta: { layout: 'catalog' } },
     {
       path: '/overlays',
