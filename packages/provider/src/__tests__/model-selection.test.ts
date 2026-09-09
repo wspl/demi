@@ -161,13 +161,16 @@ describe('thinkingCapabilitiesFromProviderModel', () => {
 
   it('exposes supported efforts', () => {
     const caps = thinkingCapabilitiesFromProviderModel(
-      providerModel({ supportedThinkingEfforts: ['low', 'high'] }),
+      providerModel({
+        supportedThinkingEfforts: ['low', 'high'],
+        defaultThinkingEffort: 'high',
+      }),
     )
     expect(caps).toEqual([
       {
         type: 'effort',
         efforts: ['low', 'high'],
-        defaultEffort: null,
+        defaultEffort: 'high',
         summaries: ['auto', 'concise', 'detailed', 'off', 'on'],
         defaultSummary: null,
       },

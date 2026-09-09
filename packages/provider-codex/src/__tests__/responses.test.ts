@@ -152,6 +152,16 @@ test(
   }
 )
 
+test('Codex requests preserve catalog reasoning levels without capping them', () => {
+  for (const effort of ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']) {
+    const body = buildCodexResponsesRequestBody({
+      ...makeRequest([]),
+      thinking: { type: 'effort', effort, summary: null },
+    })
+    expect(body.reasoning).toEqual({ effort, summary: 'auto' })
+  }
+})
+
 test(
   'mapCodexResponseEvents streams thinking, text, tool calls, and usage',
   async () => {
