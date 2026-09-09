@@ -513,7 +513,7 @@ export function createSettingsState() {
       passwordChanged: '3 months ago',
     },
     providers: mockProviders(),
-    selectedProviderId: 'kimi' as string | null,
+    selectedProviderId: null as string | null,
     providerDetailOpen: false,
     servers: [
       {

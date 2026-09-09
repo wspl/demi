@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { z } from 'zod'
 import { SerialQueue } from '@demicodes/utils'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -7,6 +7,7 @@ import { showToast } from '@demicodes/web-ui/infra/toast'
 import ProviderLoginDialog, {
   type ProviderLoginPhase,
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
+import { defaultApiVendors } from '@demicodes/web-ui/settings/provider-defaults'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import {
   WIRE_API_LABELS,
@@ -114,14 +115,35 @@ function select(id: string): void {
   resources.providerDetailOpen = true
 }
 
-function addProvider(vendor: SettingsVendor): void {
+function vendorDraft(vendor: SettingsVendor): ProductProvider {
   const provider = emptyProvider(crypto.randomUUID(), vendor.name, 'api_key')
   provider.vendorId = vendor.id
   provider.baseUrl = vendor.baseUrl ?? ''
   provider.wireApi = vendor.wireApi
+  return provider
+}
+
+function addProvider(vendor: SettingsVendor): void {
+  const provider = vendorDraft(vendor)
   drafts.value.push(provider)
   select(provider.id)
 }
+
+watch(
+  () => product.vendors,
+  () => {
+    const defaults = defaultApiVendors(
+      resources.vendors,
+      [...resources.providers, ...drafts.value],
+    )
+    for (const vendor of defaults) {
+      const provider = vendorDraft(vendor)
+      provider.name = `${vendor.name} API`
+      drafts.value.push(provider)
+    }
+  },
+  { immediate: true },
+)
 
 function addEndpoint(wireApi: SettingsWireApi): void {
   const provider = emptyProvider(
@@ -191,9 +213,10 @@ async function saveDraft(provider: ProductProvider): Promise<void> {
   })
   const saved = await readResponse(response, z.object({ provider: providerSchema }))
   provider.apiKey = ''
-  drafts.value = drafts.value.filter((draft) => draft.id !== provider.id)
-  select(saved.provider.id)
+  resources.hideProvider(saved.provider.id, provider.enabled)
   await product.revalidate()
+  select(saved.provider.id)
+  drafts.value = drafts.value.filter((draft) => draft.id !== provider.id)
 }
 
 async function patch(provider: SettingsProviderEntry, body: unknown): Promise<void> {
@@ -211,7 +234,12 @@ function change(
   changes: Partial<SettingsProviderEntry>,
 ): void {
   if (changes.enabled !== undefined) {
-    resources.hideProvider(provider.id, changes.enabled)
+    const draft = drafts.value.find((entry) => entry.id === provider.id)
+    if (draft) {
+      draft.enabled = changes.enabled
+    } else {
+      resources.hideProvider(provider.id, changes.enabled)
+    }
     return
   }
   perform(async () => {

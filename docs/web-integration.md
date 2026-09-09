@@ -56,7 +56,10 @@ configuration and service tier to the agent.
 ## Providers and accounts
 
 `settings/ProvidersPanel.vue` supplies API handlers to `SettingsProvidersPage`.
-API providers support creation, credential replacement, metadata changes,
+The provider page selects the first subscription or API entry when no valid selection
+exists. OpenAI API and Anthropic API appear as unconfigured local drafts when
+absent; entering a key creates the backend provider. Their protocol and endpoint
+come from the vendor catalog. API providers support creation, credential replacement, metadata changes,
 explicit connection tests, catalog refresh and deletion. A manual endpoint stays
 a local draft until it has credentials and at least one complete model.
 Manual-model validation requires a positive context window and an optional

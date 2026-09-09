@@ -4,6 +4,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ProviderLoginDialog, {
   type ProviderLoginPhase,
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
+import { defaultApiVendors } from '@demicodes/web-ui/settings/provider-defaults'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import {
   WIRE_API_LABELS,
@@ -30,6 +31,34 @@ const props = defineProps<{
 
 const s = computed(() => props.state)
 const testing = ref<string | null>(null)
+
+for (const vendor of defaultApiVendors(mockVendors, s.value.providers)) {
+  s.value.providers.push(
+    provider({
+      id: `default-${vendor.id}`,
+      name: `${vendor.name} API`,
+      kind: 'api_key',
+      family: vendor.id,
+      vendorId: vendor.id,
+      baseUrl: vendor.baseUrl ?? '',
+      wireApi: vendor.wireApi,
+      logo: vendor.logo,
+      configured: false,
+      state: 'unconfigured',
+    }),
+  )
+}
+
+function changeProvider(
+  entry: SettingsProviderEntry,
+  patch: Partial<SettingsProviderEntry>,
+): void {
+  Object.assign(entry, patch)
+  if (patch.apiKey) {
+    entry.configured = true
+    entry.keyConfigured = true
+  }
+}
 
 function select(id: string) {
   s.value.selectedProviderId = id
@@ -280,7 +309,7 @@ function closeLogin() {
     :overlay-store="appOverlayStore"
     :testing="testing"
     :refreshing="refreshing"
-    @change="(provider, patch) => Object.assign(provider, patch)"
+    @change="changeProvider"
     @toggle-model="(_provider, model, enabled) => (model.enabled = enabled)"
     @add="addProvider"
     @add-endpoint="addEndpoint"
