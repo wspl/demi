@@ -100,7 +100,7 @@ async function turn(
 ): Promise<void> {
   const created = (await (await actor.fetch(
     '/api/conversations',
-    { method: 'POST' }
+    { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }
   )).json()) as { conversation: { id: string } }
   const socket = actor.socket(
     `/api/conversations/${created.conversation.id}/stream`
@@ -222,7 +222,7 @@ test(
     // The model selection names a provider in the caller's scope.
     const created = (await (await bob.fetch(
       '/api/conversations',
-      { method: 'POST' }
+      { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }
     )).json()) as { conversation: { id: string } }
     const foreign = await bob.fetch(
       `/api/conversations/${created.conversation.id}`,

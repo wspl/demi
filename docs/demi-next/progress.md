@@ -151,3 +151,22 @@ and conversation archive/restore. Gallery checks covered the shared session and
 child-agent panel. Production mail delivery and deployment remain environment
 configuration; the installation instructions and other listed deferred features
 remain outside this integration.
+
+## Local conversation lifecycle (2026-09-10)
+
+New opens a local UUID immediately and reuses an empty draft for the same project.
+The first Send retains the conversation even if the network fails. Server creation
+accepts that UUID idempotently, and unconfirmed messages retain their own IDs,
+content and retry action. Workspace files wait for first Send before uploading.
+Draft changes enter IndexedDB immediately; empty unsent drafts are discarded.
+The shared message list renders unconfirmed sends with the same virtualization
+and scrolling as accepted messages. Gallery fixtures cover staged files and
+submission failure.
+
+Validation used scripted providers only. The backend suite passed 130 tests with
+12 environment-dependent skips. Shared UI and product tests passed, including
+local creation, failed first-send retry, staged files and empty-draft disposal.
+Browser checks verified immediate-reload persistence, a successful first send,
+an offline first-send failure, restored failure state, and retry in the original
+conversation. Chrome's file-upload permission prevented the automated picker
+check; local staging tests and backend workspace-file tests passed.

@@ -10,6 +10,7 @@ import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
 import ModelMenu from '@demicodes/web-ui/agent/ModelMenu.vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
+import PendingSubmission from '@demicodes/web-ui/agent/PendingSubmission.vue'
 import { RestoreSweep } from '@demicodes/web-ui/agent/session-restore'
 import {
   sessionPaneStatus,
@@ -64,6 +65,7 @@ import GalleryTranscript from '../components/GalleryTranscript.vue'
 import { useGalleryView } from '../gallery-views'
 
 const { view } = useGalleryView()
+const submissionError = ref<string | null>('Connection closed before confirmation')
 
 const hiddenIds = ref(new Set<string>())
 const extras = ref<Block[]>([])
@@ -505,6 +507,13 @@ function abortAgents() {
             <GalleryComposer
               placeholder="Ask Demi…"
               dropping
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="local draft · files upload on first send" wide>
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              draft="Review this file."
+              :attachments="[{ id: 'staged-file', name: 'notes.txt', destination: 'workspace', phase: 'staged' }]"
             />
           </GallerySpecimen>
           <GallerySpecimen
@@ -998,9 +1007,22 @@ function abortAgents() {
       </GallerySection>
       <GallerySection
         title="Session load"
-        note="History arriving, a dropped socket, and a failed restore. None of these read as an empty conversation. A dropped socket uses the same tail row as Requesting, labeled Connecting — not a pane or a bar. Retry on failed sweeps loading, then the transcript; Break returns to failed. New conversation on missing becomes empty. Settings writes stay silent — there is no saving chrome."
+        note="History arriving, a dropped socket, and a failed restore. A dropped socket uses the Requesting tail row labeled Connecting. An unconfirmed send keeps its user message and retries with the same ID. New conversation opens a local draft immediately."
       >
         <div class="specimen-stack specimen-stack-loose">
+          <GallerySpecimen variant="unconfirmed send · retry the same message" wide>
+            <div class="gallery-frame bg-surface">
+              <PendingSubmission
+                id="pending-example"
+                text="Review the attached notes."
+                :file-names="['notes.txt']"
+                :sending="submissionError === null"
+                :error="submissionError"
+                @retry="submissionError = null"
+              />
+            </div>
+            <Button size="sm" class="mt-2" @click="submissionError = 'Connection closed before confirmation'">Simulate failure</Button>
+          </GallerySpecimen>
           <GallerySpecimen
             variant="loading"
             wide

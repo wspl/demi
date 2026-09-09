@@ -235,7 +235,7 @@ export interface ControlService {
   ): Promise<void>
   createConversation(
     userId: string,
-    options?: { title?: string }
+    options?: { id?: string; title?: string }
   ): Promise<ConversationRecord>
   getConversation(id: string): Promise<ConversationRecord | null>
   listConversations(
@@ -1352,11 +1352,11 @@ export class LocalControlService implements ControlService {
 
   async createConversation(
     userId: string,
-    options: { title?: string } = {}
+    options: { id?: string; title?: string } = {}
   ): Promise<ConversationRecord> {
     const now = new Date().toISOString()
     const record: ConversationRecord = {
-      id: createId(),
+      id: options.id ?? createId(),
       userId,
       title: options.title ?? 'New conversation',
       archived: false,
@@ -1372,7 +1372,7 @@ export class LocalControlService implements ControlService {
       updatedAt: now,
     }
     this.db.run(
-      'INSERT INTO conversations (id, user_id, title, archived, target_json, provider_id, model_id, created_at, updated_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?))',
+      'INSERT INTO conversations (id, user_id, title, archived, target_json, provider_id, model_id, created_at, updated_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?)) ON CONFLICT(id) DO NOTHING',
       [
         record.id,
         userId,
@@ -1386,7 +1386,11 @@ export class LocalControlService implements ControlService {
         userId
       ],
     )
-    return record
+    const stored = await this.getConversation(record.id)
+    if (!stored || stored.userId !== userId) {
+      throw new Error('Conversation id is unavailable')
+    }
+    return stored
   }
 
   async getConversation(id: string): Promise<ConversationRecord | null> {

@@ -207,7 +207,7 @@ test(
     writeFileSync(join(a.home, 'notes.bin'), payload)
 
     // The conversation starts on alpha and switches to beta: the switch attached alpha under its name, hence reachable.
-    const created = await api(backend, '/api/conversations', { method: 'POST' })
+    const created = await api(backend, '/api/conversations', { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) })
     const { conversation } = (await created.json()) as { conversation: { id: string } }
     expect(
       (await json(
@@ -438,7 +438,7 @@ test(
         const { conversation } = await (await api(
           backend,
           '/api/conversations',
-          { method: 'POST' }
+          { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }
         )).json() as { conversation: { id: string } }
         expect(
           (await json(
