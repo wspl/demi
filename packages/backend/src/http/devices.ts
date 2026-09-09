@@ -1,3 +1,4 @@
+import { browseDirectory } from '../runner/file-browser'
 import { errorCode, errorMessage } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
@@ -15,7 +16,7 @@ export function deviceRoutes(options: { control: ControlService; registry: Runne
 
   app.get('/', async (c) => {
     const devices = await control.listDevices(c.get('user').id)
-    return c.json({ devices: devices.map((device) => ({ ...device, online: registry.deviceOnline(device.id) })) })
+    return c.json({ devices: devices.map((device) => ({ ...device, online: registry.deviceOnline(device.id), home: registry.deviceIdentity(device.id)?.homeDir ?? null })) })
   })
 
   app.post('/claim', async (c) => {
@@ -45,13 +46,12 @@ export function deviceRoutes(options: { control: ControlService; registry: Runne
   app.get('/:id/fs', async (c) => {
     const outcome = await deviceFsFor(c.req.param('id'), c.get('user').id, control, registry)
     if (!outcome.ok) return c.json(outcome.error, outcome.status)
-    const path = c.req.query('path')
+    const home = registry.deviceIdentity(c.req.param('id'))?.homeDir ?? null
+    const path = c.req.query('path') ?? home
     if (!path) return c.json({ code: 'invalid_body', message: 'Missing path query parameter' }, 400)
     try {
-      const entries = await outcome.fs.readdir(path, { withFileTypes: true })
-      return c.json({
-        entries: entries.map((entry) => ({ name: entry.name, isDirectory: entry.isDirectory })),
-      })
+      const entries = await browseDirectory(outcome.fs, path)
+      return c.json({ path, home, entries })
     } catch (error) {
       return fsError(c, error)
     }

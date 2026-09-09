@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
 import { createInProcessTransportPair, type BlobStore, type ClientFrame, type ServerFrame } from '@demicodes/agent'
-import { waitFor } from '@demicodes/utils'
+import { ActivityGate, deferred, waitFor } from '@demicodes/utils'
 import { conversationScopedTransport } from '../conversation/scoped-transport'
 import { LocalControlService, type ControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
@@ -23,8 +23,8 @@ async function fixture(blobs?: BlobStore, wrap: (control: ControlService) => Con
   })
   const received: ClientFrame[] = []
   const replies: ServerFrame[] = []
-  scoped.onFrame((frame) => received.push(frame))
-  pair.client.onFrame((frame) => replies.push(frame))
+  scoped.onFrame((frame) => { received.push(frame) })
+  pair.client.onFrame((frame) => { replies.push(frame) })
   cleanup.push(() => { scoped.close(); pair.client.close(); db.close() })
   return { control, conversation, scoped, client: pair.client, received, replies, user: user! }
 }
@@ -102,4 +102,40 @@ test('an outbound blob write failure is reported without dropping later frames',
   await waitFor(() => f.replies.length === 2)
   expect(f.replies[0]).toMatchObject({ type: 'error', code: 'frame_send_failed' })
   expect(f.replies[1]).toEqual({ type: 'phase', phase: 'idle' })
+})
+
+
+test('frame admission stays held until asynchronous handling finishes, including failure', async () => {
+  const f = await fixture()
+  const gate = new ActivityGate()
+  const entered = deferred<void>()
+  const finish = deferred<void>()
+  const pair = createInProcessTransportPair()
+  const scoped = conversationScopedTransport(pair.server, f.conversation, {
+    control: f.control,
+    providerAllowed: async () => true,
+    admitFrame: () => gate.tryEnter(),
+  })
+  const replies: ServerFrame[] = []
+  pair.client.onFrame(frame => { replies.push(frame) })
+  scoped.onFrame(async () => {
+    entered.resolve()
+    await finish.promise
+    throw new Error('handler failed')
+  })
+  try {
+    pair.client.send({ type: 'abort' })
+    await entered.promise
+    expect(gate.tryReserve()).toBeNull()
+    finish.resolve()
+    await waitFor(() => replies.length === 1)
+    expect(replies[0]).toMatchObject({ type: 'error', code: 'frame_delivery_failed' })
+    const release = gate.tryReserve()
+    expect(release).not.toBeNull()
+    release?.()
+  } finally {
+    finish.resolve()
+    scoped.close()
+    pair.client.close()
+  }
 })

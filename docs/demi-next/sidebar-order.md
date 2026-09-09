@@ -10,8 +10,8 @@ Array order is the ordering contract. Projects follow the resource array.
 Conversations keep their supplied array order within each project, with pinned
 entries partitioned first. Activity timestamps do not change manual placement.
 A new conversation is inserted at the front of the unpinned partition. Ordering
-lives in the prototype stores for the current browser session, like other
-prototype state; reload restores the fixtures.
+in the prototype remains browser-session fixture state. The backend also persists
+ordering independently; frontend wiring to it is pending.
 
 ```text
 Zan drags “First draft” in notes
@@ -65,3 +65,19 @@ Product stores and the live gallery apply array moves using the generic
 - Browser checks: pointer reorder for conversations and projects, Alt+Down,
   long-list scrolling and visible scrollbar. The fixture includes 40 conversations
   across ordinary conversations, demi and notes, including pinned and long names.
+
+
+## Backend persistence
+
+`storage/control.ts` stores conversation pin and sort positions and project sort
+positions in control.sqlite. New conversations enter at the front; new projects
+append. Renaming and inference activity keep positions. Target changes and
+archive/restore retain the saved position; equal positions after group changes
+use the stable conversation ID as the tie-breaker. Pin changes retain the position
+within the new partition. The API returns the resulting order, so callers do not
+need to reproduce the comparison rules.
+
+`POST /api/sidebar/reorder` persists one insertion atomically and rejects targets
+outside the caller's existing group and pin partition. Archived rows cannot be
+reordered. Tests in `packages/backend/src/__tests__/sidebar-backend.test.ts` cover
+persistence across restart, pin partition rejection and activity independence.

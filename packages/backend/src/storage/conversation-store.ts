@@ -1,4 +1,6 @@
 import { join } from 'node:path'
+import { z } from 'zod'
+import { parsePortableJson } from '@demicodes/utils'
 import type { Block } from '@demicodes/core'
 import type { HostStore } from '@demicodes/shell'
 import type { AgentTreeStore, BlobStore } from '@demicodes/agent'
@@ -67,6 +69,15 @@ export class ConversationStores {
   /** Cold transcript read of the root node: the raw rows, media left as refs. */
   transcriptBlocks(conversationId: string): Block[] {
     return readNode(this.db(conversationId), conversationId)?.blocks ?? []
+  }
+
+  summary(conversationId: string) {
+    const db = this.db(conversationId)
+    const node = db.get<{ state_json: string; output_revision: number }>('SELECT state_json, output_revision FROM nodes WHERE id = ?', [conversationId])
+    const phase = node ? z.object({ phase: z.enum(['idle', 'running', 'compacting']) }).parse(parsePortableJson(node.state_json)).phase : 'idle'
+    const terminal = db.get<{ block_json: string }>("SELECT block_json FROM blocks WHERE node_id = ? AND json_extract(block_json, '$.type') IN ('response', 'error', 'abort') ORDER BY idx DESC LIMIT 1", [conversationId])
+    const last = terminal ? z.object({ type: z.enum(['response', 'error', 'abort']) }).parse(parsePortableJson(terminal.block_json)).type : null
+    return { phase, revision: node?.output_revision ?? 0, last }
   }
 
   close(): void {

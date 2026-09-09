@@ -74,7 +74,8 @@ export function sqliteAgentTreeStore(db: SqlDatabase, blobs: BlobStore): AgentTr
       )
     }
     db.run('DELETE FROM blocks WHERE node_id = ? AND idx >= ?', [id, update.blockCount])
-    db.run('UPDATE nodes SET state_json = ?, block_count = ? WHERE id = ?', [stringifyPortableJson(stateOf(update)), update.blockCount, id])
+    const outputChanged = update.changedBlocks.some(({ block }) => !['user', 'steer', 'resume', 'extension_state_snapshot'].includes(block.type))
+    db.run('UPDATE nodes SET state_json = ?, block_count = ?, output_revision = output_revision + ? WHERE id = ?', [stringifyPortableJson(stateOf(update)), update.blockCount, outputChanged ? 1 : 0, id])
     for (const childId of completedChildrenCarriedBy(update)) {
       db.run('UPDATE nodes SET delivered = 1 WHERE id = ? AND parent_id = ?', [childId, id])
     }

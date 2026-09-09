@@ -2,42 +2,31 @@ import type { Host } from '@demicodes/shell'
 import { errorMessage } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import type { AuthEnv, InstanceMode } from '../auth/identity'
-import type { ProviderVault } from '../vault/providers'
-import { visibleProvider } from '../vault/scope'
-import type { SwitchTargetResult } from '../conversation/target'
+import type { AuthEnv } from '../auth/identity'
+import { conversationSummary } from '../conversation/summary'
+import { conversationPatchSchema, type ConversationUpdates } from '../conversation/updates'
+import type { AgentServer } from '@demicodes/agent'
 import { ATTACHMENT_MAX_BYTES } from './attachments'
-import { conversationTargetSchema, type ConversationTargetPointer, type ControlService } from '../storage/control'
+import { type ControlService } from '../storage/control'
 import type { RunnerRegistry } from '../runner/registry'
 import { resolveExecutionTarget } from '../conversation/execution-target'
 import type { ConversationStores } from '../storage/conversation-store'
-import type { ManagedHosts } from '../managed/lifecycle'
 
 const attachBodySchema = z.object({ deviceId: z.string().min(1) })
 const renameHostBodySchema = z.object({ name: z.string().trim().min(1).max(64) })
 
-const patchConversationBodySchema = z.object({
-  title: z.string().optional(),
-  archived: z.boolean().optional(),
-  providerId: z.string().nullable().optional(),
-  modelId: z.string().nullable().optional(),
-  target: conversationTargetSchema.optional(),
-}).strict()
-
 /** `/api/conversations` REST surface (the live stream is `stream.ts`). */
 export function conversationRoutes(options: {
+  admitFrame: (id: string) => (() => void) | null
+  updates: ConversationUpdates
+  agentServer: AgentServer
   control: ControlService
   conversationStores: ConversationStores
   withHost: <T>(conversationId: string, operation: (host: Host) => Promise<T>, signal?: AbortSignal) => Promise<T>
-  /** The target switch (`conversation/target.ts`): the domain decides, the route maps the outcome. */
-  switchTarget: (conversationId: string, to: ConversationTargetPointer) => Promise<SwitchTargetResult>
-  managedHosts: ManagedHosts | null
-  vault: ProviderVault
-  mode: InstanceMode
   /** Whether a device has a live runner socket, for the host list. */
   registry: RunnerRegistry
 }): Hono<AuthEnv> {
-  const { control, conversationStores, withHost, switchTarget, managedHosts, vault, mode, registry } = options
+  const { control, conversationStores, withHost, registry } = options
   const app = new Hono<AuthEnv>()
 
   // The caller's conversation, or null: another user's answers like a missing one.
@@ -47,57 +36,58 @@ export function conversationRoutes(options: {
   }
 
   app.get('/', async (c) => {
-    const archived = c.req.query('archived') === 'true'
-    return c.json({ conversations: await control.listConversations(c.get('user').id, { archived }) })
+    const parsed = z.enum(['true', 'false']).optional().safeParse(c.req.query('archived'))
+    if (!parsed.success) return c.json({ code: 'invalid_query', message: 'archived must be true or false' }, 400)
+    const archived = parsed.data === 'true'
+    const conversations = await control.listConversations(c.get('user').id, { archived })
+    return c.json({ conversations: conversations.map(conversation => conversationSummary(conversation, conversationStores, options.agentServer)) })
   })
 
   app.post('/', async (c) => c.json({ conversation: await control.createConversation(c.get('user').id) }, 201))
 
+  app.post('/batch', async (c) => {
+    const parsed = z.strictObject({ items: z.array(z.strictObject({ id: z.string().min(1), patch: conversationPatchSchema })).min(1).max(100) }).safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected up to 100 { id, patch } items' }, 400)
+    const results = []
+    for (const item of parsed.data.items) {
+      const result = await options.updates.apply(c.get('user').id, item.id, item.patch)
+      results.push({ id: item.id, ...result ?? { code: 'conversation_not_found', message: 'No such conversation' } })
+    }
+    return c.json({ results }, 207)
+  })
+
   app.patch('/:id', async (c) => {
+    const parsed = conversationPatchSchema.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ code: 'invalid_body', message: parsed.error.issues[0]?.message ?? 'Invalid patch' }, 400)
+    const result = await options.updates.apply(c.get('user').id, c.req.param('id'), parsed.data)
+    if (!result) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    const failed = result.results.filter(field => field.status === 'failed')
+    if (failed.length === 0) return c.json(result)
+    const single = result.results.length === 1 ? failed[0] : undefined
+    return c.json({ ...result, ...(single ? { code: single.code, message: single.message } : {}) }, single?.httpStatus ?? 207)
+  })
+
+  app.post('/:id/read', async (c) => {
     const conversation = await own(c)
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
-    const parsed = patchConversationBodySchema.safeParse(await c.req.json().catch(() => null))
-    if (!parsed.success) {
-      const issue = parsed.error.issues[0]
-      return c.json(
-        { code: 'invalid_body', message: `Invalid request body${issue ? `: ${issue.path.join('.')} ${issue.message}` : ''}` },
-        400,
-      )
+    const parsed = z.strictObject({ revision: z.number().int().nonnegative() }).safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { revision }' }, 400)
+    if (parsed.data.revision > conversationStores.summary(conversation.id).revision) return c.json({ code: 'invalid_revision', message: 'Cannot read beyond current output' }, 409)
+    await control.markConversationRead(conversation.id, parsed.data.revision)
+    return c.body(null, 204)
+  })
+
+  app.use('/:id/*', async (c, next) => {
+    if (c.req.method === 'GET') return next()
+    const release = options.admitFrame(c.req.param('id') ?? '')
+    if (!release) return c.json({ code: 'conversation_busy', message: 'A conversation operation is still running' }, 409)
+    try {
+      const conversation = await own(c)
+      if (conversation?.archived) return c.json({ code: 'archived', message: 'Restore the conversation before editing it' }, 409)
+      await next()
+    } finally {
+      release()
     }
-    const body = parsed.data
-    if (body.title !== undefined && body.title.trim()) {
-      await control.renameConversation(conversation.id, body.title.trim())
-    }
-    if (body.archived !== undefined) {
-      await control.setConversationArchived(conversation.id, body.archived)
-    }
-    if (body.providerId !== undefined || body.modelId !== undefined) {
-      if (body.providerId && !(await visibleProvider(vault, mode, conversation.userId, body.providerId))) {
-        return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
-      }
-      await control.setConversationModel(conversation.id, body.providerId ?? null, body.modelId ?? null)
-    }
-    if (body.target !== undefined) {
-      const result = await switchTarget(conversation.id, body.target)
-      switch (result.outcome) {
-        case 'switched':
-        case 'noop':
-          break
-        case 'workspace_not_found':
-          return c.json({ code: 'workspace_not_found', message: 'No such workspace' }, 404)
-        case 'device_not_found':
-          return c.json({ code: 'device_not_found', message: 'No such device' }, 404)
-        case 'archived':
-          return c.json({ code: 'archived', message: 'Restore the conversation before switching' }, 409)
-        case 'turn_in_flight':
-          return c.json({ code: 'turn_in_flight', message: 'Target switches happen at turn boundaries; a turn is running' }, 409)
-        case 'conflict':
-          return c.json({ code: 'switch_conflict', message: 'A concurrent switch won; re-read the conversation' }, 409)
-        case 'conversation_not_found':
-          return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
-      }
-    }
-    return c.json({ conversation: await control.getConversation(conversation.id) })
   })
 
   // The attached hosts (`sessions-and-targets.md` § Attached hosts): the

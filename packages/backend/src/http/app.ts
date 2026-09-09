@@ -1,3 +1,4 @@
+import { webAssetRoutes } from './web-assets'
 import { runnerInstallRoutes, type RunnerInstallationOptions } from './runner-install'
 import type { AgentServer } from '@demicodes/agent'
 import { Hono } from 'hono'
@@ -5,18 +6,20 @@ import type { UpgradeWebSocket } from 'hono/ws'
 import type { ProviderAssembly } from '../llm/assembly'
 import type { RunnerRegistry } from '../runner/registry'
 import type { PipeBroker } from '../runner/pipes'
-import type { ControlService, WorkspaceRecord, ConversationTargetPointer } from '../storage/control'
+import type { ControlService, WorkspaceRecord } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 import type { ProviderVault } from '../vault/providers'
 import type { SubscriptionLoginFlows } from '../vault/subscription-login'
 import type { UserBlobStores } from '../storage/user-blobs'
 import type { Host } from '@demicodes/shell'
 import type { ManagedHosts } from '../managed/lifecycle'
-import type { SwitchTargetResult } from '../conversation/target'
 import type { LoginLimiter } from '../auth/login-limiter'
 import type { WebSessions } from '../auth/sessions'
 import { authenticate } from './authenticate'
 import { setupRoutes } from './setup'
+import type { ProductState } from '../sync/product-state'
+import { stateRoutes } from './state'
+import { sidebarRoutes } from './sidebar'
 import { settingsRoutes } from './settings'
 import { userRoutes } from './users'
 import type { InstanceMode } from '../auth/identity'
@@ -29,6 +32,7 @@ import type { ProviderAccounts } from '../vault/provider-accounts'
 import type { ProviderOperations } from '../vault/provider-operations'
 import { providerRoutes } from './providers'
 import type { VendorCatalog } from '../llm/vendors'
+import type { ConversationUpdates } from '../conversation/updates'
 import { conversationRoutes } from './conversations'
 import { deviceRoutes } from './devices'
 import { modelRoutes } from './models'
@@ -41,7 +45,11 @@ import { workspaceRoutes } from './workspaces'
 
 /** Assembles the external HTTP surface: error shape, 404 shape, one route module per resource. */
 export function createApp(options: {
+  webDirectory?: string
   runnerInstallation?: RunnerInstallationOptions
+  productState: ProductState
+  conversationUpdates: ConversationUpdates
+  admitFrame: (id: string) => (() => void) | null
   control: ControlService
   conversationStores: ConversationStores
   vault: ProviderVault
@@ -56,7 +64,6 @@ export function createApp(options: {
   upgradeWebSocket: UpgradeWebSocket
   blobs: UserBlobStores
   withHost: <T>(conversationId: string, operation: (host: Host) => Promise<T>, signal?: AbortSignal) => Promise<T>
-  switchTarget: (conversationId: string, to: ConversationTargetPointer) => Promise<SwitchTargetResult>
   managedHosts: ManagedHosts | null
   createCloudWorkspace: ((userId: string, name: string) => Promise<WorkspaceRecord>) | null
   sessions: WebSessions
@@ -78,6 +85,8 @@ export function createApp(options: {
   app.route('/api/auth/email', emailChangeRoutes(options.emailChanges, options.control))
   app.route('/api/auth', authRoutes({ control: options.control, sessions: options.sessions, limiter: options.loginLimiter }))
   app.route('/api/users', userRoutes({ control: options.control }))
+  app.route('/api/state', stateRoutes(options.productState))
+  app.route('/api/sidebar', sidebarRoutes(options.control))
   app.route('/api/settings', settingsRoutes({ mode: options.mode, control: options.control }))
   app.route('/api/models', modelRoutes({ control: options.control, registry: options.runnerRegistry, cloudConfigured: options.managedHosts !== null, assembly: options.assembly, mode: options.mode }))
   app.route('/api/providers', providerRoutes({ accounts: options.providerAccounts, operations: options.providerOperations, vault: options.vault, assembly: options.assembly, vendors: options.vendors, logins: options.logins, mode: options.mode }))
@@ -92,7 +101,7 @@ export function createApp(options: {
   // The stream route registers first so `/:id/stream` wins over the REST group's `/:id/*`.
   app.route(
     '/api/conversations',
-    streamRoutes({ assembly: options.assembly,
+    streamRoutes({ admitFrame: options.admitFrame, assembly: options.assembly,
       registry: options.runnerRegistry,
       control: options.control,
       agentServer: options.agentServer,
@@ -105,16 +114,16 @@ export function createApp(options: {
   app.route(
     '/api/conversations',
     conversationRoutes({
+      admitFrame: options.admitFrame,
+      updates: options.conversationUpdates,
+      agentServer: options.agentServer,
       control: options.control,
       conversationStores: options.conversationStores,
       withHost: options.withHost,
-      switchTarget: options.switchTarget,
-      managedHosts: options.managedHosts,
-      vault: options.vault,
-      mode: options.mode,
       registry: options.runnerRegistry,
     }),
   )
 
+  app.route('/', webAssetRoutes(options.webDirectory))
   return app
 }
