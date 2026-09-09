@@ -170,10 +170,10 @@ features; update this inventory when those contracts are defined.
 | setup | `GET /api/setup` (`{ needed }`), `POST /api/setup` (the master account, once; signs it in) | M12 |
 | auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `PUT /api/auth/password` (the caller's own) | M12 |
 | conversations | `GET/POST /api/conversations`; `PATCH /api/conversations/:id` (rename/archive/unarchive/target/model); `GET /api/conversations/:id/transcript`; `WS /api/conversations/:id/stream` | M2 |
-| models | `GET /api/models` (the catalog of the caller's provider scope, grouped by entry; each list live: the typed ids, the models.dev vendor, or the runtime's own) | M2; scoped M12 |
+| models | `GET /api/models` (the catalog of the caller's provider scope, grouped by entry; manual model metadata, the models.dev vendor, or the runtime's own list) | M2; scoped M12 |
 | devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id` (revoke; 409 `device_in_use` while a workspace points at it; the device's attachments go with it), `GET /api/devices/:id/fs?path=…`, `POST /api/devices/:id/fs` (create directory) | M4 |
 | workspaces | `GET/POST /api/workspaces`, `PATCH/DELETE /api/workspaces/:id` (never touches files); creation takes `cloud: true` in place of a deviceId | M6; cloud flag M11 |
-| providers | `GET /api/providers/catalog` (the models.dev vendors our runtimes speak to, and each subscription family with whether the scope holds it), `GET/POST /api/providers` (creation from a vendor `{ vendorId, label, apiKey, baseUrl?, modelIds? }` or as a custom endpoint `{ providerType, wireApi?, label, apiKey, baseUrl?, modelIds? }`), `PATCH /api/providers/:id` (label; endpoint, key and model list of an API-key entry, `modelIds: null` returning to the live list), `DELETE /api/providers/:id`, `POST /api/providers/:id/test`, `POST /api/providers/subscription-login` (409 `provider_exists` when the scope already holds the family) + `GET …/subscription-login/:id` — in the caller's provider scope: the instance's in shared mode (writes are admin-only), the caller's own in isolated mode | M5; scoped M12; catalog and editing M12 |
+| providers | `GET /api/providers/catalog` (the models.dev vendors our runtimes speak to, and each subscription family with whether the scope holds it), `GET/POST /api/providers` (creation from a vendor `{ vendorId, label, apiKey, baseUrl?, models? }` or as a custom endpoint `{ providerType, wireApi?, label, apiKey, baseUrl?, models? }`), `PATCH /api/providers/:id` (label; endpoint, key and model list of an API-key entry, `models: null` returning to the live list), `DELETE /api/providers/:id`, `POST /api/providers/:id/test`, `POST /api/providers/subscription-login` (409 `provider_exists` when the scope already holds the family) + `GET …/subscription-login/:id` — in the caller's provider scope: the instance's in shared mode (writes are admin-only), the caller's own in isolated mode | M5; scoped M12; catalog and editing M12 |
 | usage | `GET /api/usage` (the caller's), `GET /api/usage/instance` (shared mode, admins: by user) | M5; instance view M12 |
 | attachments, blobs | `POST /api/attachments` (returns a reference id), `POST /api/conversations/:id/workspace-files`, `GET /api/blobs/:sha256` | M6; blobs M9 |
 | pipes | `PUT /api/pipes/:id` (the source runner), `GET /api/pipes/:id` (the sink runner); device-token authenticated, single-use, piped in flight (`runner.md` § Pipes) | M9 |
@@ -247,3 +247,32 @@ the browser host's defaults. `PATCH` accepts any subset of appearance fields
 The control service reads, merges and writes in one transaction, preserving
 concurrent changes to other fields. Preferences persist across restarts and are
 separate for every user in both instance modes. The browser is not connected yet.
+
+## Model configuration and provider inspection
+
+API providers accept `models` as a complete manual list. Each entry supplies
+`id`, `displayName`, positive `contextWindow`, nullable `outputLimit`,
+`thinkingEfforts`, nullable `acceptedExtensions` (without dots) and nullable
+`fastTier`. IDs must be unique and output limits cannot exceed context length.
+`models: null` on PATCH explicitly returns to the live catalog; refreshing never
+clears saved models. Subscription catalogs are currently provider-owned.
+
+The LLM assembly supplies these parameters to API provider factories and maps
+manual metadata onto agent model selections at open/model-switch. The session
+provider resolves the current configured output limit again at every inference
+boundary, including after a settings edit. Browser thinking and tier choices
+remain explicit; changing a catalog does not resend a failed message.
+
+`GET /api/models?refresh=true` forwards a forced refresh to the vendor/provider
+catalog. Each provider returns `sourceFetchedAt`, `stale` and `warnings`; one
+catalog failure does not erase other providers or saved models. Static or never
+fetched catalog timestamps use the framework's epoch sentinel.
+
+`GET /api/providers/:id/status` returns auth/runtime state, account metadata,
+active account, capabilities and the last real quota snapshot. No query returns
+key/token material or raw vendor quota envelopes. `POST /api/providers/:id/quota`
+refreshes only a provider's free quota probe, using request cancellation. A
+provider requiring inference for a probe returns `quota_requires_inference`;
+no data returns null, not a fabricated percentage. Reading status never invokes
+inference. Shared users can read state and refresh free quota; configuring or
+explicitly testing providers still requires admin rights.
