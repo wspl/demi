@@ -23,6 +23,7 @@ const blocks = computed(() => session.value?.blocks ?? [])
 const queuedMessages = computed(() => session.value?.queue ?? [])
 const pendingSteers = computed(() => session.value?.pendingSteers ?? [])
 const phase = computed(() => session.value?.phase ?? 'idle')
+const load = computed(() => session.value?.load ?? 'loading')
 const canResume = computed(() => canResumeFromDock(phase.value, blocks.value))
 
 const listRef = ref<{
@@ -68,24 +69,36 @@ function handleResume() {
     reportError('Failed to resume conversation', error, { userVisible: true })
   })
 }
+
+function handleReconnect() {
+  void workspace.reconnect(props.conversationId).catch((error) => {
+    reportError('Failed to reconnect', error, { userVisible: true })
+  })
+}
 </script>
 
 <template>
   <SessionSurface ref="surfaceRef">
-    <AgentMessageList
-      ref="listRef"
-      :conversation-id="conversationId"
-      :blocks="blocks"
-      :pending-steers="pendingSteers"
-      :queue="queuedMessages"
-      :phase="phase"
-      :bottom-offset="surfaceRef?.dockHeight ?? 0"
-      :persisted-scroll-state="undefined"
-      @delete-pending-steer="(steerId) => workspace.deletePendingSteer(conversationId, steerId)"
-      @interrupt-pending-steer="handleInterruptPendingSteer"
-      @delete-queued="(messageId) => workspace.dequeueMessage(conversationId, messageId)"
-      @send-queued="handleQueuedSendNow"
-    />
+    <div class="flex h-full min-h-0 flex-col">
+      <AgentMessageList
+        ref="listRef"
+        class="min-h-0 flex-1"
+        :conversation-id="conversationId"
+        :blocks="blocks"
+        :pending-steers="pendingSteers"
+        :queue="queuedMessages"
+        :phase="phase"
+        :load="load"
+        :load-error="session?.lastError"
+        :bottom-offset="surfaceRef?.dockHeight ?? 0"
+        :persisted-scroll-state="undefined"
+        @delete-pending-steer="(steerId) => workspace.deletePendingSteer(conversationId, steerId)"
+        @interrupt-pending-steer="handleInterruptPendingSteer"
+        @delete-queued="(messageId) => workspace.dequeueMessage(conversationId, messageId)"
+        @send-queued="handleQueuedSendNow"
+        @retry-load="handleReconnect"
+      />
+    </div>
     <template #dock>
       <SessionDock
         :show-scroll-to-bottom="showScrollToBottom"
@@ -98,6 +111,7 @@ function handleResume() {
           </SessionDockChip>
         </template>
         <AgentMessageInput
+          v-if="load === 'ready' || load === 'reconnecting'"
           :conversation-id="conversationId"
           @empty-submit="handleEmptySubmit"
         />

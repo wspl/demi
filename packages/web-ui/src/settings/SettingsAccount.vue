@@ -3,9 +3,10 @@ import { computed } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import Tag from '../ui/Tag.vue'
-import TextInput from '../ui/TextInput.vue'
+import CommitTextInput from '../ui/CommitTextInput.vue'
 import ChangeEmailDialog, { type ChangeEmailPhase } from './ChangeEmailDialog.vue'
 import ChangePasswordDialog, { type ChangePasswordPhase } from './ChangePasswordDialog.vue'
+import { IN_DEVELOPMENT } from '../ui/disabled'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
@@ -20,7 +21,7 @@ const props = defineProps<{
   email: string
   emailVerified?: boolean
   /** When the password last changed, formatted by the host. */
-  passwordChanged: string
+  passwordChanged?: string | null
   emailPhase: ChangeEmailPhase
   passwordPhase: ChangePasswordPhase
 }>()
@@ -63,8 +64,10 @@ const initial = computed(
         label="Display name"
         description="Shown on your messages and in the sidebar."
       >
-        <TextInput
-          v-model="name"
+        <CommitTextInput
+          :model-value="name"
+          aria-label="Display name"
+          @commit="name = $event"
           maxlength="50"
           class="w-56 max-w-full"
         />
@@ -72,13 +75,13 @@ const initial = computed(
       <SettingsRow label="Email">
         <template v-if="emailVerified" #tags><Tag tone="success">Verified</Tag></template>
         <span class="text-chrome text-fg-muted">{{ email }}</span>
-        <Button size="sm" @click="emit('changeEmail')">Change</Button>
+        <Button size="sm" aria-label="Change email" @click="emit('changeEmail')">Change</Button>
       </SettingsRow>
       <SettingsRow
         label="Password"
-        :description="`Last changed ${passwordChanged}.`"
+        :description="passwordChanged ? `Last changed ${passwordChanged}.` : undefined"
       >
-        <Button size="sm" @click="emit('changePassword')">Change</Button>
+        <Button size="sm" aria-label="Change password" @click="emit('changePassword')">Change</Button>
       </SettingsRow>
     </SettingsGroup>
     <ChangeEmailDialog
@@ -109,11 +112,13 @@ const initial = computed(
       <SettingsRow
         label="Delete account"
         description="Removes your account, devices and every conversation. This cannot be undone."
+        disabled
+        :disabled-reason="IN_DEVELOPMENT"
       >
         <Button
           size="sm"
           variant="danger"
-          @click="emit('deleteAccount')"
+          disabled
         >Delete account</Button>
       </SettingsRow>
     </SettingsGroup>

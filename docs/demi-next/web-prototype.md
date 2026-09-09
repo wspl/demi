@@ -1,8 +1,10 @@
-# Web prototype
+# Web application
 
-The application prototype lives in `packages/web`. Run `bun run web:dev` and
-open `http://127.0.0.1:18934`; `bun run web:build` writes `packages/web/dist`.
-No backend, runner, credentials or model service is needed.
+The backend-integrated application lives in `packages/web`. Run the backend,
+then `bun run web:dev` at `http://127.0.0.1:18934`; `bun run web:build` writes
+`packages/web/dist`. The gallery remains independent of credentials and model
+services. State ownership and API behavior are documented in
+[web integration](../web-integration.md).
 
 ## Technology and ownership
 
@@ -24,15 +26,48 @@ still starts folded. The specimen frame owns the outer inset, so thinking blocks
 use a zero `--agent-pad-x` inside it to avoid doubling the padding.
 Gallery catalog pages remember their scroll position per route in session storage.
 The shared `useSavedScroll` composable restores the visible section and its offset
-after refresh or route changes, allowing initial layout changes to settle. This is
-opt-in preview navigation; conversation scrolling retains its existing behavior.
-`SessionComposer` owns the shared input surface used by the gallery, prototype
+after refresh or route changes, allowing initial layout changes to settle. Every
+catalog page has a top-bar view (`?view=`). Long pages split: Session (Tab bar,
+Composer, Blocks, Turns, States, Session, Windows), Primitives (Buttons, Fields, Marks), Overlays
+(Menus, Dialogs), Files (Browser, Dialogs), Settings (Settings, Account, Device,
+Sign in). A short page has one view named after the page. The default view omits
+the query. Session defaults to the assembled Session view, which fills the pane.
+The Session Tab bar specimen closes a tab the way Chrome does: the departing
+tab keeps its place, fades, and collapses from its current width so the
+remaining tabs slide in; reduced motion skips the transition.
+Appearance (paradigm, mode, tone, accent, density, radius, shadow) opens from a
+palette in the top-right as a floating menu. Each view keeps its own scroll. This is opt-in preview navigation;
+conversation scrolling retains its existing behavior.
+`SessionComposer` owns the shared input surface used by the gallery, product
 and `AgentMessageInput`; each caller supplies its own state and editor behavior.
-The application assembles `AgentMessageList`, `SessionSurface`,
-`SessionDock` and the shared dialog, menu and form controls. Application CSS owns
-page and settings layout only; component appearance belongs to `web-ui`.
+The application supplies state and handlers to `ChatSession`, `SidebarLayout`,
+`WorkspaceDirectoryMenu`, and the shared dialog, menu and form controls. Their
+interaction and layout belong to `web-ui`.
+The session dock's Agents chip opens `SubagentPanel` the same way Running opens
+the terminal window: a second click on the chip closes it. The window sits over
+the lower half of the session, above the dock chips: a tab bar with a robot mark
+and status, a History control of completed children, a fold control, the
+child's transcript, and no composer. The tab bar lists every running child; the
+History control opens a searchable menu of finished children, and choosing one
+shows that child beside the running tabs. Its edge is `overlay-window`: one
+`--line-overlay` stroke and a light drop, not a menu hairline and not a dialog
+scrim. Open and close use the same 150ms opacity and scale as menus and
+dialogs, from the dock edge; reduced motion skips the transition. A pointer
+outside the window closes it and is not delivered to what is underneath; a
+click on a floating menu, or on the Running or Agents chip, does not close it
+that way — those chips toggle the window themselves.
+The dock's Running chip opens the same window for live shell jobs: tabs use a
+terminal mark and status, and the body is a read-only xterm that reveals the
+job's output. The 16 ANSI colors are a fixed light/dark palette; the ground,
+cursor and selection follow the live surface and accent tokens so a read-only
+selection stays as visible as a focused one. A running inspect lists every
+running job; an exited inspect is that job only. Opening one window closes the
+other; they occupy the same half-session slot, so a switch crossfades in place
+instead of sharing the height. The Session page's Windows view exhibits both
+windows on their own, without the session behind them.
 Menus use `MenuGroup` for section headings and `MenuItem` for rows. Its `value`
-field owns right-aligned metadata; its indicator owns status-dot size and color.
+field owns right-aligned metadata in the subtle foreground, 16px from the
+label; its indicator owns status-dot size and color.
 The model menu, host menu, project picker and gallery share these row contracts.
 Floating menus use intrinsic content width with a 160px minimum (192px with a
 search field), capped at 384px and the viewport width minus 32px. Labels truncate
@@ -40,66 +75,76 @@ at the cap. Shortcut space exists only for actual shortcuts. The virtualized
 conversation history uses 320px for titles and timestamps; embedded file and
 target lists fill their containing panel. Ordinary menus do not set fixed widths.
 
-`main.ts` composes the app, router and stores, and advances a deterministic
-scripted response clock. The fixture provider's model names are illustrative. Both seeded devices start
-online so main-host switching is available immediately.
-Conversation content and resource edits live in memory and reset on reload.
-Files stay in the browser: image previews use local object URLs, and file
-placement is simulated. The composer's Add menu offers local files and, when the
-conversation has a host, a remote file: the shared browser in file mode over the
-main and attached hosts, whose chosen path joins the draft as a reference. No credential fields send or persist secrets.
+`main.ts` composes the app, router and account-scoped stores. REST snapshots
+reconcile metadata while the agent WebSocket carries live transcript, queue,
+child and terminal updates. Leaving a conversation detaches its client and keeps
+the backend task running. Reload restores history and per-user local drafts.
 
-## Prototype behavior under review
+Local attachments report actual transfer progress. A failed upload retains its
+tile and offers Retry; Send waits until every file is ready. Model-supported
+media go to the model, and other files go to the working directory. Removing a
+file cancels its transfer. Remote-file selection uses real main/attached user
+devices, retaining device identity and the full path in the tooltip and request.
+Credential queries never expose saved secrets.
 
-Zan opens `demi`, then creates a conversation and sends a message. The local
-clock streams a scripted answer. A second message queues behind it. Selecting
-another conversation in the sidebar leaves the simulation running; archiving
-is refused while a turn is running. The sidebar's Skills and Archived entries open
-those settings sections; the Archived page is a searchable list whose Restore brings
-a conversation back into the sidebar and opens it.
+## Conversation and project behavior
+
+A second message queues behind a running turn. Archive and main-environment
+changes are refused while running. Archived conversations can be restored from
+the shared settings list. Skills remains disabled.
 
 The project picker changes the conversation's working environment and sidebar
-group together, and refuses changes while running. A project cannot be removed
-while any conversation still belongs to it. The Cloud option creates a simulated directory/project on the user's one
-Cloud device; creating a second project reuses that identity. These behaviors exercise the current baseline for review;
-prototype additions are decided in M13.2.
+group through backend APIs. A project with conversations cannot be removed.
+Cloud projects use different directories on the same persistent user Cloud.
+Choosing another directory on a device sets a direct target unless that directory
+already identifies a project.
 
 ## Verification
 
-- `packages/web/src/conversation/store.test.ts`: scripted turn completion, queue
-  order, cancellation and recovery, target/archive guards and file-only input.
+- `packages/web/src/conversation/store.test.ts`: HTTP-mocked creation, metadata
+  reconciliation, partial batch failures and read acknowledgement.
 - `packages/core/src/__tests__/platform-entrypoints.test.ts`: workspace and browser
   package boundary enforcement.
 - Existing `packages/web-ui` tests: shared rendering and interaction contracts.
 - Browser walkthrough: create/switch conversations, streaming/queue/stop,
   failure/Retry, archive/restore, project creation/switch, settings, light/dark,
-  mobile sidebar, attachment preview, and unknown-conversation navigation.
+  mobile sidebar, attachment upload phases, session load states, and unknown-conversation navigation.
 - `bun run typecheck:web` and `bun run web:build`: browser compilation.
 
-Prototype acceptance follows the Web delivery stages in `roadmap.md`; verified
+Product acceptance follows the Web delivery stages in `roadmap.md`; verified
 checks are recorded in `progress.md`.
 
 Navigation uses the sidebar and URL only, with no conversation tabs. Interface
 labels and controls are not selectable; message content, paths and editable
 fields remain selectable. Selected sidebar conversations retain normal weight.
 
-Conversation headers show the title with device name/status, workspace name and
-branch to its right. Metadata moves below the title on narrow screens. Hosts,
-and workspace are independent controls; the branch is read-only metadata. The host menu separates the main
+The session pane has one load phase (`ready | loading | reconnecting | failed`).
+Loading history never reads as an empty conversation. A dropped socket keeps a
+cached transcript and shows Connecting as the same tail row as Requesting
+(`LoadingBlock`); without a cache it is that row alone, not a centered pane or
+a bar. A failed restore offers Retry, which sweeps loading then ready. An
+unknown id waits until the sidebar list is ready, then shows Conversation not
+found. The sidebar list uses the same three-way status: a spinner while loading,
+Retry when restore fails (the same sweep), and a first run only after the list
+is ready. `RestoreSweep` times gallery-only simulated restores; real request completion drives the product. `SessionStatus` owns the
+copy and chrome for loading, failed, empty, and missing. The Session States and
+Sidebar States gallery views pin every kind; failed (and missing) are live.
+
+Conversation headers show the title with device name/status and workspace name
+to its right. Metadata moves below the title on narrow screens. Hosts
+and workspace are independent controls. Git branch is not shown. The host menu separates the main
 execution environment from named attached devices, and offers attach,
 detach and device registration entry points (see `host-menu.md`). Main-host
 selection opens a directory chooser on the selected device; choosing a folder moves only this conversation
-to the matching workspace, creating its prototype record when needed. Offline
+to the matching project or sets a direct device target. Offline
 devices can be attached but cannot be selected as the main environment. The workspace control
 opens up to eight recent directories on the current device, marks the current one,
 and switches directly when selected. The bottom action opens the shared file browser
-(`docs/file-browser.md`) in folder mode over the device's fixture tree, with the
+(`docs/file-browser.md`) in folder mode over the device's actual directory source, with the
 device's workspaces as places and the other devices in its sidebar; choosing a
 folder moves the conversation. The new-project form's Browse button opens the same
-browser for the chosen device. Its tooltip shows the full path. The current branch appears as plain text beside its icon,
-without a menu, switching or creation actions. Workspace switching is disabled during a running turn or for an archived conversation, while file
-browsing remains available. Files and branches are fixtures; no real filesystem,
-Git repository or device is modified. Conversations selecting Cloud display its icon and attachment count even before
+browser for the chosen device. Its tooltip shows the full path. Workspace switching is disabled during a running turn or for an archived conversation, while file
+inspection remains available. User-device directory creation and uploads modify that device through its backend adapter. Conversations selecting Cloud display its icon and attachment count even before
 allocation; sleeping and starting are lifecycle states of that same selection.
 Project groups retain the project list's order regardless
 of conversation creation or activity. Sidebar rows
@@ -132,20 +177,25 @@ for the current integration boundary.
 
 ## Settings
 
+The sidebar account and the settings rail show the name only; nothing sits
+under it. The account menu can still show the email.
 The settings dialog is the shared shell with the product rail
 (`web-ui/settings/sections.ts`): General, Account, Notifications; Models &
 providers, MCP servers, Skills; Devices, Archived, Keyboard, Data & privacy. Every page is a `web-ui` component over a presentation model;
-`web/settings/SettingsDialog.vue` supplies the prototype's state
-(`prototype/settings.ts`) and decides what a row does to the app. General writes the
+`web/settings/SettingsDialog.vue` supplies backend state and API handlers. Deferred
+entries stay visible and disabled, with the shared `In development` tooltip.
+A whole unused page is disabled on the rail, not opened as a page of muted
+controls: Notifications, MCP servers, Skills and Data & privacy. Skills is also
+disabled in the sidebar. Rows on an otherwise usable page stay on that page:
+language and delete account. A disabled control keeps pointer events on its
+wrapper so the tooltip can show. General writes the
 theme choice, tone, accent and transcript text size onto the document as they
-change. Account runs the change-email and change-password flows with a timer in
-place of the server (`wrong` is the one password refused, `000000` the one code).
+change, and persists per-field preferences through the backend. There is no saving indicator. Account runs verified email and password changes through real endpoints.
 The providers page edits the same provider entries the composer reads: a provider
-is offered in the model menu while it is enabled and its last check passed, and only
+is offered in the model menu while it is visible and available in the current environment, and only
 its enabled models are listed. Keyboard rebinds the shortcuts `App` listens for,
 through the one notation `web-ui/ui/shortcut.ts` defines; a binding another action
-holds is refused on the page's note. Data & privacy's Delete all empties the
-conversation list in place. A dialog
+holds is refused on the page's note. A dialog
 opened from a settings page (a credential flow, adding a server, pairing a device)
 stacks on the settings dialog: the shell stays, Escape and the scrim close only the
 top, and closing the shell takes the stack with it. Dialogs stay mounted and open
@@ -156,21 +206,24 @@ form that branches on Device or Cloud cards, Device first: a device asks which o
 with Add device beside the menu starting the pairing dialog stacked on the form, and
 a directory on it, the project taking the folder's name; the Cloud asks only a name; the
 folder browser as a page of it); `web/targets/TargetDialog.vue`
-only maps the prototype's projects and devices onto it. Connect new device, from
+maps backend projects/devices and submits create or move requests. Connect new device, from
 the host menu, opens the Add device pairing dialog at the app root; the Devices
 settings page runs the same claim.
 The composer appears immediately on conversation changes and restoration.
+With no usable model, `SessionNoticeBar` replaces the input: No models
+available. on the left, Configure models on the right (hidden if the user
+cannot open that page). If the last chosen model cannot send, the
+chip keeps that name, shows a warning, and send stays blocked until the user
+picks another. An archived conversation uses the same bar: This conversation
+is archived. on the left, Restore conversation on the right.
 Shared typography uses macOS grayscale
 antialiasing with normal-weight interface text.
 
 Sidebar ordering and motion follow `sidebar-order.md`. Projects and conversations
-can be reordered by dragging or Alt+Up/Down. The fixture contains 40 conversations
-to exercise scrolling and animation. Ordering follows the supplied arrays, with
+can be reordered by dragging or Alt+Up/Down. The gallery fixtures exercise scrolling and animation. Ordering follows the supplied arrays, with
 pinned conversations first within each project; activity does not reorder rows.
 
-Seeded conversations include multi-turn text, tables, checklists, code, thinking,
-completed and failed shell outputs, context summaries, and recoverable error/abort
-states. `prototype/transcripts.ts` owns these typed block fixtures. New conversations
+New conversations
 start empty. Sidebar project and conversation action buttons share a 4px right inset
 and centered 24px targets; conversation actions have a 2px gap.
 
@@ -207,18 +260,20 @@ region's edge. Rules:
 
 ## Control size families
 
-Every control comes in height families that line up with each other: 28px
-(`Button` md, `IconButton` md, `TextInput`, `Segmented` md, `Dropdown` md), 24px
-(`sm` of each) and 20px (`xs`). A surface picks one family per kind of control and
-keeps to it: all of its text inputs one height, all of its buttons another. In
-settings cards text inputs are 28px, since a line of text wants that room, and
-buttons, icon buttons, segmented and dropdown controls are 24px, since a bordered
-28px icon button reads heavy in a row. Two buttons of different heights in one
-card, or two inputs, is a mistake. Chrome outside the cards (a dialog's search,
-the narrow back row) stays at 28px, and a rail caption's action or a hover action
+Every control comes in height families that line up with each other: 36px
+(`Button` lg, `TextInput` lg), 28px (`Button` md, `IconButton` md, `TextInput`
+md, `Segmented` md, `Dropdown` md), 24px (`sm` of each) and 20px (`xs`). A
+surface picks one family per kind of control and keeps to it: all of its text
+inputs one height, all of its buttons another. Isolated page forms (sign-in)
+use 36px for both the fields and the submit button. In settings cards text
+inputs are 28px, since a line of text wants that room, and buttons, icon
+buttons, segmented and dropdown controls are 24px, since a bordered 28px icon
+button reads heavy in a row. Two buttons of different heights in one card, or
+two inputs, is a mistake. Chrome outside the cards (a dialog's search, the
+narrow back row) stays at 28px, and a rail caption's action or a hover action
 inside a 32px list row uses 20px. A bare input (no frame in any state) is the
-exception: its hit area stretches to the row's content box, 28px in a compact row
-and 32px in a regular one, so the value is easy to click into.
+exception: its hit area stretches to the row's content box, 28px in a compact
+row and 32px in a regular one, so the value is easy to click into.
 
 The gallery audits this: `demiAuditControlSizes()` in the browser console, and
 automatically after each gallery navigation in development, lists every settings
@@ -242,40 +297,26 @@ transparent black. Any new property found to behave this way gets the same treat
 ## Cloud behavior and backend integration
 
 The current backend gives each user one persistent Cloud device; projects and
-unassigned conversations use directories on that device. The prototype's Cloud,
-project list and environment selector already express this structure. Integrating
-the backend does not require separate machine-ownership controls for projects or
-conversations. Authoritative target and persistence rules live in
+unassigned conversations use directories on that device. The product's Cloud,
+project list and environment selector express this structure without separate machine-ownership controls. Authoritative target and persistence rules live in
 [sessions-and-targets.md](sessions-and-targets.md) and
 [managed-hosts.md](managed-hosts.md); implementation acceptance is recorded in
 [progress.md](progress.md).
 
 `web-ui/cloud/CloudSettings.vue` owns the shared Cloud status, storage-limit
 readout, reset confirmation, progress and retry interaction. `SettingsDevices`
-mounts it in both the product prototype and the gallery. The component emits an
+mounts it in both the product and the gallery. The component emits an
 operation ID; a failed reset retries with that same ID. Its confirmation explains
 that reset stops all of the user's Cloud tasks, replaces system packages and
 settings, and retains home files.
 
-`web/prototype/cloud.ts` supplies simulated phases and stops prototype Cloud
-streams when reset begins. Gallery fixtures supply the same presentation
-contract. Neither currently calls the authenticated backend endpoints
-`GET /api/cloud` and `POST /api/cloud/reset`. Simulated completion verifies the
-presentation flow; it does not verify disk persistence or backend recovery.
+`web/settings/DevicesPanel.vue` maps Cloud state from the account snapshot and
+submits reset operation IDs to `/api/cloud/reset`. It follows actual operation
+phases; request acceptance is distinct from completion. Failed retries reuse
+the same ID. The gallery supplies local phases to the same component.
 
-The remaining product integration maps the authenticated user's Cloud status to
-the shared component, submits its operation ID and reads the operation result.
-Request acceptance is distinct from completion. Loading, unavailable Cloud,
-startup failure and reset failure need observable feedback; the interface does
-not need VM, disk-generation or runner controls. Backend wake is automatic when
-an operation needs the machine, so sleeping must not require manual power-on.
-
-Integration checks should cover sleeping, starting, ready, resetting and failed
-states, including a guest that cannot connect, with consistent product/gallery
-presentation. Backend persistence and reset acceptance belong to the scenarios
-recorded in `progress.md`, rather than to the browser simulation.
-
-The prototype currently includes a fixture Cloud file browser and project move
-controls. Backend support for those operations does not decide which entry points
-the product offers. Product decisions about exposing Cloud browsing or moving a
-conversation out of a project remain separate from this implementation record.
+The backend wakes Cloud automatically when an operation needs it. The product
+keeps Cloud folder browsing disabled, while workspace uploads and execution use
+the existing backend capability. Device browsing remains available. Backend
+persistence/reset scenarios are recorded in `progress.md`; browser verification
+uses a disposable backend and simulated provisioner.

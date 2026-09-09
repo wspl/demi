@@ -10,7 +10,10 @@ import {
   Sparkles,
   WandSparkles
 } from '@lucide/vue'
-import type { SettingsNavGroup } from './types'
+import { IN_DEVELOPMENT } from '../ui/disabled'
+import type { SettingsNavGroup, SettingsTab } from './types'
+
+const deferred = { disabled: true, disabledReason: IN_DEVELOPMENT } as const
 
 /** The product's settings rail: every section, grouped the way the rail reads them. */
 export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
@@ -45,7 +48,8 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
         id: 'notifications',
         label: 'Notifications',
         icon: Bell,
-        keywords: ['browser', 'sound']
+        keywords: ['browser', 'sound'],
+        ...deferred
       },
     ],
   },
@@ -75,13 +79,15 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
           'transport',
           'stdio',
           'server'
-        ]
+        ],
+        ...deferred
       },
       {
         id: 'skills',
         label: 'Skills',
         icon: WandSparkles,
-        keywords: ['skill', 'workflow', 'git', 'SKILL.md']
+        keywords: ['skill', 'workflow', 'git', 'SKILL.md'],
+        ...deferred
       },
     ],
   },
@@ -123,8 +129,31 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
           'export',
           'usage data',
           'delete'
-        ]
+        ],
+        ...deferred
       },
     ],
   },
 ]
+
+/** Whether a rail section can be opened. Deferred pages stay listed and disabled. */
+export function isSettingsSectionEnabled(
+  id: SettingsTab,
+  sections: SettingsNavGroup[] = SETTINGS_SECTIONS
+): boolean {
+  return sections.flatMap((group) => group.items).some(
+    (item) => item.id === id && !item.disabled
+  )
+}
+
+/** First section a host can land on when the current tab is deferred. */
+export function firstEnabledSettingsTab(
+  sections: SettingsNavGroup[] = SETTINGS_SECTIONS
+): SettingsTab {
+  for (const group of sections) {
+    const item = group.items.find((entry) => !entry.disabled)
+    if (item)
+      return item.id
+  }
+  return 'general'
+}

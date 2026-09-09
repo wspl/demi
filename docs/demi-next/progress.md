@@ -85,10 +85,9 @@ The backend implements authenticated `GET /api/cloud` and
 `POST /api/cloud/reset`. The shared settings component receives Cloud state and
 emits a reset operation ID; retries reuse that ID.
 
-As with the rest of the current web prototype, `web/prototype/cloud.ts` and the
-gallery provide local state and simulated handlers. They do not call these REST
-endpoints. Connecting the web prototype to backend authentication and live state
-is product-wide integration work, described in `web-prototype.md`.
+`web/settings/DevicesPanel.vue` now supplies backend Cloud state and reset handlers.
+The gallery retains simulated handlers for the same shared component. Product
+state and operation ownership are described in `../web-integration.md`.
 
 The tests above establish the named scenarios. They do not establish
 production-scale capacity, exhaustive crash injection at every filesystem
@@ -118,3 +117,37 @@ Package-boundary checks: 26 passed. TypeScript checking and backend build passed
 Frontend API wiring, Vite proxy configuration and deployment-specific mail delivery
 remain integration work. Initial/admin-provisioned accounts are trusted provisioning;
 public registration and password recovery are outside this checkpoint.
+
+
+## Web product integration checkpoint (2026-09-10)
+
+`packages/web` now consumes the backend account, state, provider, conversation,
+project, device, file and Cloud APIs. Chat uses the agent WebSocket protocol,
+including admission confirmation, queue/steer controls, recovery, subagent
+history and terminal output. Leaving a conversation detaches the browser while
+the backend task continues. The prototype data and reply timers are removed.
+
+Shared interaction lives in `packages/web-ui`: `ChatSession`, `SidebarLayout`,
+directory and remote-file pickers, attachment retry, media rendering, settings
+validation and keyboard bindings. Gallery examples use these components with
+fixtures. Per-user drafts include file bytes and scroll state; IndexedDB writes
+are issued before page teardown and object URLs are released on removal or exit.
+The current contracts and deliberate exclusions are in
+[web-integration.md](../web-integration.md).
+
+Validation used scripted providers and a disposable local backend/runner, never
+real models. Backend suite: 128 passed, 12 environment-dependent skips; the final
+remote-reference change also passed its targeted regression test. Agent transport,
+admission, recovery and steer checks: 58 passed. Shared UI: 132 passed. Product
+state reconciliation: 5 passed. Package boundaries: 26 passed. Root and all web
+type checks, agent/backend builds and product/gallery production builds passed.
+The web builds retain the existing large-chunk advisory.
+
+Browser checks covered login and expiry, live chat and refreshed history, device
+pairing, directory listing and creation, target switching, image/workspace uploads,
+failed-upload retry and removal, draft restoration after immediate reload, theme
+persistence, nickname/email/password changes, manual-model validation and saving,
+and conversation archive/restore. Gallery checks covered the shared session and
+child-agent panel. Production mail delivery and deployment remain environment
+configuration; the installation instructions and other listed deferred features
+remain outside this integration.

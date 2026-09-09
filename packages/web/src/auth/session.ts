@@ -1,34 +1,26 @@
 import { defineStore } from 'pinia'
-import { z } from 'zod'
+import type { z } from 'zod'
+import { identitySchema } from '../api/contracts'
 import { apiRequest, ApiError, jsonBody } from '../api/client'
-
-const identitySchema = z.object({
-  user: z.object({
-    id: z.string().min(1),
-    email: z.email(),
-    nickname: z.string(),
-    role: z.enum(['master', 'admin', 'user']),
-    createdAt: z.iso.datetime({ offset: true }),
-  }),
-})
 
 type User = z.infer<typeof identitySchema>['user']
 type SessionState =
   | { status: 'checking' }
   | {
-    status: 'signedOut'
-    reason?: 'expired'
-    error?: string
-  }
+      status: 'signedOut'
+      reason?: 'expired'
+      error?: string
+    }
   | {
-    status: 'signedIn'
-    user: User
-  }
+      status: 'signedIn'
+      user: User
+    }
 
 async function readIdentity(response: Response): Promise<User> {
   const parsed = identitySchema.safeParse(await response.json())
-  if (!parsed.success)
+  if (!parsed.success) {
     throw new Error('The server returned an invalid account response.')
+  }
   return parsed.data.user
 }
 
@@ -36,9 +28,8 @@ export const useSession = defineStore('session', {
   state: () => ({ current: { status: 'checking' } as SessionState }),
   getters: {
     signedIn: (state) => state.current.status === 'signedIn',
-    user: (state) => state.current.status === 'signedIn'
-      ? state.current.user
-      : null,
+    user: (state) =>
+      state.current.status === 'signedIn' ? state.current.user : null,
   },
   actions: {
     async restore(signal?: AbortSignal): Promise<void> {
@@ -47,7 +38,10 @@ export const useSession = defineStore('session', {
         const response = await apiRequest('/auth/me', { signal })
         const user = await readIdentity(response)
         signal?.throwIfAborted()
-        this.current = { status: 'signedIn', user }
+        this.current = {
+          status: 'signedIn',
+          user,
+        }
       } catch (error) {
         signal?.throwIfAborted()
         if (error instanceof ApiError && error.code === 'unauthenticated') {
@@ -74,19 +68,26 @@ export const useSession = defineStore('session', {
     ): Promise<void> {
       const response = await apiRequest('/auth/login', {
         method: 'POST',
-        ...jsonBody({ email, password }),
+        ...jsonBody({
+          email,
+          password,
+        }),
         signal,
       })
       const user = await readIdentity(response)
       signal.throwIfAborted()
-      this.current = { status: 'signedIn', user }
+      this.current = {
+        status: 'signedIn',
+        user,
+      }
     },
     async signOut(): Promise<void> {
       try {
         await apiRequest('/auth/logout', { method: 'POST' })
       } catch (error) {
-        if (!(error instanceof ApiError && error.code === 'unauthenticated'))
+        if (!(error instanceof ApiError && error.code === 'unauthenticated')) {
           throw error
+        }
       }
       this.current = { status: 'signedOut' }
     },

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { clamp } from '@demicodes/utils'
+import { disabledTooltip } from './disabled'
+import Tooltip from './Tooltip.vue'
 
 const props = withDefaults(defineProps<{
   modelValue: number
@@ -8,6 +10,8 @@ const props = withDefaults(defineProps<{
   max?: number
   step?: number
   disabled?: boolean
+  /** Why it is disabled, as a tooltip; only read while `disabled`. */
+  disabledReason?: string
   /** The current value, formatted by the host, read out beside the track. */
   valueLabel?: string
 }>(), {
@@ -20,6 +24,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: number]
 }>()
 
+const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
 const trackRef = ref<HTMLElement>()
 
 const span = computed(() => props.max - props.min)
@@ -105,43 +110,51 @@ function onKeydown(event: KeyboardEvent) {
 
 <template>
   <!-- Size the whole control from outside; the track takes what the readout leaves. -->
-  <span
-    class="inline-flex w-20 items-center gap-2"
-    :class="disabled ? 'pointer-events-none opacity-40' : ''"
+  <Tooltip
+    :content="tooltipContent"
+    :disabled="!tooltipContent"
+    tag="span"
+    class="inline-flex w-20"
+    :open-delay-ms="80"
   >
     <span
-      class="slider inline-flex h-7 min-w-0 flex-1 cursor-default items-center px-1.5 select-none"
-      role="slider"
-      :aria-valuemin="min"
-      :aria-valuemax="max"
-      :aria-valuenow="modelValue"
-      :aria-valuetext="valueLabel"
-      :aria-disabled="disabled || undefined"
-      tabindex="0"
-      @pointerdown="onPointerDown"
-      @pointermove="onPointerMove"
-      @keydown="onKeydown"
+      class="inline-flex w-full items-center gap-2"
+      :class="disabled ? 'pointer-events-none cursor-not-allowed opacity-40' : ''"
     >
-      <span ref="trackRef" class="relative h-0.5 w-full">
-        <span class="absolute inset-0 rounded-full bg-overlay/10" />
-        <span
-          class="absolute inset-y-0 left-0 rounded-full"
-          :style="{ width: `${progress * 100}%`, background: 'var(--accent-fill)' }"
-        />
-        <span
-          class="slider-thumb absolute top-1/2 size-3 rounded-full bg-white shadow-sm ring-1 ring-line"
-          :style="{ left: `${progress * 100}%` }"
-        />
+      <span
+        class="slider inline-flex h-7 min-w-0 flex-1 cursor-default items-center px-1.5 select-none"
+        role="slider"
+        :aria-valuemin="min"
+        :aria-valuemax="max"
+        :aria-valuenow="modelValue"
+        :aria-valuetext="valueLabel"
+        :aria-disabled="disabled || undefined"
+        tabindex="0"
+        @pointerdown="onPointerDown"
+        @pointermove="onPointerMove"
+        @keydown="onKeydown"
+      >
+        <span ref="trackRef" class="relative h-0.5 w-full">
+          <span class="absolute inset-0 rounded-full bg-overlay/10" />
+          <span
+            class="absolute inset-y-0 left-0 rounded-full"
+            :style="{ width: `${progress * 100}%`, background: 'var(--accent-fill)' }"
+          />
+          <span
+            class="slider-thumb absolute top-1/2 size-3 rounded-full bg-white shadow-sm ring-1 ring-line"
+            :style="{ left: `${progress * 100}%` }"
+          />
+        </span>
+      </span>
+  <!-- Fixed width so the track does not shift as digits change. -->
+      <span
+        v-if="valueLabel !== undefined"
+        class="min-w-9 select-none text-right text-[12px] tabular-nums text-fg-muted"
+      >
+    {{ valueLabel }}
       </span>
     </span>
-  <!-- Fixed width so the track does not shift as digits change. -->
-    <span
-      v-if="valueLabel !== undefined"
-      class="min-w-9 select-none text-right text-[12px] tabular-nums text-fg-muted"
-    >
-    {{ valueLabel }}
-    </span>
-  </span>
+  </Tooltip>
 </template>
 
 <style scoped>

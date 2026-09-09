@@ -8,6 +8,11 @@ import { md } from '@demicodes/web-ui/markdown/md'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { t } from '@demicodes/web-ui/infra/i18n'
 import AttachmentTile from '../AttachmentTile.vue'
+import ContentMedia from '../ContentMedia.vue'
+import {
+  contentBlockCaption,
+  decodeRemoteReference,
+} from '../message-input/attachments'
 
 type ImageBlock = Extract<UserContentBlock, { type: 'image' }>
 
@@ -21,6 +26,8 @@ const props = defineProps<{
   interruptible?: boolean
   /** Keep the hover actions visible (a catalog specimen, not a hover). */
   actionsPinned?: boolean
+  /** Sent messages can copy back into the composer. Off for a read-only transcript. */
+  editable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -57,45 +64,39 @@ const actions = computed<BubbleAction[]>(() => {
       icon: copied.value ? Check : Copy,
       emit: () => void copy(userText.value),
     })
-    list.push(
-      {
+    if (props.editable !== false) {
+      list.push({
         key: 'edit',
         hint: t('agent.user.edit'),
         icon: Pencil,
-        emit: () => emit('edit')
-      }
-    )
+        emit: () => emit('edit'),
+      })
+    }
   }
   if (props.deletable) {
-    list.push(
-      {
-        key: 'delete',
-        hint: props.sendable
-          ? t('agent.queue.remove')
-          : t('agent.steer.discard'),
-        icon: X,
-        emit: () => emit('delete')
-      }
-    )
+    list.push({
+      key: 'delete',
+      hint: props.sendable ? t('agent.queue.remove') : t('agent.steer.discard'),
+      icon: X,
+      emit: () => emit('delete'),
+    })
   }
-  if (props.sendable)
-    list.push(
-    {
+  if (props.sendable) {
+    list.push({
       key: 'send',
       hint: t('agent.queue.sendNow'),
       icon: ArrowUp,
-      emit: () => emit('sendNow')
-    }
-  )
-  if (props.interruptible)
-    list.push(
-    {
+      emit: () => emit('sendNow'),
+    })
+  }
+  if (props.interruptible) {
+    list.push({
       key: 'interrupt',
       hint: t('agent.steer.interrupt'),
       icon: ChevronsUp,
-      emit: () => emit('interrupt')
-    }
-  )
+      emit: () => emit('interrupt'),
+    })
+  }
   return list
 })
 
@@ -103,42 +104,35 @@ const imageBlocks = computed(() =>
   props.content.filter((b): b is ImageBlock => b.type === 'image'),
 )
 
+const videoBlocks = computed(() =>
+  props.content.filter((block) => block.type === 'video'),
+)
+
 const documentBlocks = computed(() =>
   props.content.filter(
     (b): b is Extract<UserContentBlock, { type: 'document' }> =>
-      b.type === 'document'
+      b.type === 'document',
   ),
 )
 
-/** Transcript frames carry media by reference: the bytes are one GET away. */
-type RefSource = {
-  type: 'ref';
-  ref: string;
-  mediaType: string
-}
-
-function imageSrc(source: ImageBlock['source'] | RefSource): string {
-  if (source.type === 'url')
-    return source.url
-  if (source.type === 'ref')
-    return `/api/blobs/${source.ref}?type=${encodeURIComponent(source.mediaType)}`
-  return URL.createObjectURL(
-    new Blob([source.data as BlobPart], { type: source.mediaType })
-  )
-}
+const referenceBlocks = computed(() =>
+  props.content.filter(
+    (b): b is Extract<UserContentBlock, { type: 'reference' }> =>
+      b.type === 'reference',
+  ),
+)
 
 function imageName(source: ImageBlock['source'], index: number): string {
-  if (source.type !== 'url')
+  if (source.type !== 'url') {
     return `image-${index}`
+  }
   const leaf = source.url.split('/').pop()
   return leaf ? decodeURIComponent(leaf) : `image-${index}`
 }
 
 const renderedMarkdown = computed(() => md.renderUser(userText.value))
 
-const textClass = computed(() => props.pending
-  ? 'text-fg-subtle'
-  : 'text-fg-body')
+const textClass = computed(() => (props.pending ? 'text-fg-subtle' : 'text-fg-body'))
 
 const contentRef = ref<HTMLElement>()
 const isOverflowing = ref(false)
@@ -149,20 +143,26 @@ const MAX_CONTENT_PX = 192
 
 useResizeObserver(contentRef, () => {
   const el = contentRef.value
-  if (!el)
+  if (!el) {
     return
+  }
   const top = el.getBoundingClientRect().top
-  const lineHeight = Number.parseFloat(getComputedStyle(el.firstElementChild ?? el).lineHeight) || 0
+  const lineHeight =
+    Number.parseFloat(getComputedStyle(el.firstElementChild ?? el).lineHeight) || 0
   const range = document.createRange()
   range.selectNodeContents(el)
   let lastFit = 0
   let overflow = false
   for (const rect of range.getClientRects()) {
     // Client rects are glyph boxes; extend to the line box so the clip does not cut descenders.
-    const bottom = Math.round(rect.bottom - top + Math.max(0, (lineHeight - rect.height) / 2))
-    if (bottom <= MAX_CONTENT_PX)
+    const bottom = Math.round(
+      rect.bottom - top + Math.max(0, (lineHeight - rect.height) / 2),
+    )
+    if (bottom <= MAX_CONTENT_PX) {
       lastFit = Math.max(lastFit, bottom)
-    else overflow = true
+    } else {
+      overflow = true
+    }
   }
   isOverflowing.value = overflow
   clipHeight.value = overflow ? lastFit : null
@@ -192,30 +192,71 @@ useResizeObserver(contentRef, () => {
             class="flex size-5 items-center justify-center rounded text-fg-faint transition-colors hover:bg-hover hover:text-fg-muted"
             @click.stop="action.emit()"
           >
-            <component :is="action.icon" :size="13" />
+            <component
+              :is="action.icon"
+              :size="13"
+            />
           </button>
         </Tooltip>
       </div>
       <div
-        v-if="imageBlocks.length > 0 || documentBlocks.length > 0"
+        v-if="
+          imageBlocks.length > 0 ||
+          videoBlocks.length > 0 ||
+          documentBlocks.length > 0 ||
+          referenceBlocks.length > 0
+        "
         class="mb-2 flex flex-wrap gap-1.5"
       >
-        <AttachmentTile
+        <Tooltip
           v-for="(block, i) in imageBlocks"
           :key="`img-${i}`"
-          :name="imageName(block.source, i)"
-          :src="imageSrc(block.source)"
+          :content="contentBlockCaption(block)"
+        >
+          <ContentMedia
+            kind="image"
+            :name="imageName(block.source, i)"
+            :source="block.source"
+          />
+        </Tooltip>
+        <ContentMedia
+          v-for="(block, i) in videoBlocks"
+          :key="`video-${i}`"
+          kind="video"
+          :name="`Video ${i + 1}`"
+          :source="block.source"
         />
-        <AttachmentTile
+        <Tooltip
           v-for="(block, i) in documentBlocks"
           :key="`doc-${i}`"
-          :name="block.source.fileName"
-        />
+          :content="contentBlockCaption(block)"
+        >
+          <ContentMedia
+            kind="document"
+            :name="block.source.fileName"
+            :source="block.source"
+          />
+        </Tooltip>
+        <Tooltip
+          v-for="(block, i) in referenceBlocks"
+          :key="`ref-${i}`"
+          :content="contentBlockCaption(block)"
+        >
+          <AttachmentTile :name="decodeRemoteReference(block.reference).name" />
+        </Tooltip>
       </div>
       <div
         ref="contentRef"
         class="overflow-hidden"
-        :style="isOverflowing ? { height: `${clipHeight}px`, maskImage: 'linear-gradient(to bottom, black calc(100% - 2rem), transparent)' } : undefined"
+        :style="
+          isOverflowing
+            ? {
+                height: `${clipHeight}px`,
+                maskImage:
+                  'linear-gradient(to bottom, black calc(100% - 2rem), transparent)',
+              }
+            : undefined
+        "
       >
         <div
           v-if="userText"
@@ -243,5 +284,4 @@ useResizeObserver(contentRef, () => {
   background: linear-gradient(to bottom, var(--color-surface), transparent);
   pointer-events: none;
 }
-
 </style>

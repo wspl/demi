@@ -41,10 +41,7 @@ const initials = computed(() => props.account.name.trim().slice(0, 1).toUpperCas
         >
           {{ initials }}
         </span>
-        <span class="flex min-w-0 flex-1 flex-col leading-4">
-          <span class="truncate text-chrome text-fg">{{ account.name }}</span>
-          <span class="truncate text-[11px] text-fg-subtle">{{ account.plan }}</span>
-        </span>
+        <span class="min-w-0 flex-1 truncate text-chrome text-fg">{{ account.name }}</span>
       </div>
     </template>
     <template #content="{ close }">
@@ -53,7 +50,10 @@ const initials = computed(() => props.account.name.trim().slice(0, 1).toUpperCas
           <CircleUser :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
           <span class="flex min-w-0 flex-col leading-4">
             <span class="truncate text-chrome text-fg">{{ account.name }}</span>
-            <span class="truncate text-[11px] text-fg-subtle">{{ account.email }}</span>
+            <span
+              v-if="account.email"
+              class="truncate text-[11px] text-fg-subtle"
+            >{{ account.email }}</span>
           </span>
         </div>
         <MenuDivider />
