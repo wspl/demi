@@ -84,8 +84,10 @@ beforeEach(async () => {
           { status: 503 },
         )
       }
-      const created = record('created')
-      records.unshift(created)
+      const created = records.find((item) => item.id === body.id) ?? record(body.id)
+      if (!records.includes(created)) {
+        records.unshift(created)
+      }
       return Response.json({ conversation: created }, { status: 201 })
     }
     if (path === '/api/conversations/batch') {
@@ -142,18 +144,82 @@ afterEach(() => {
   globalThis.fetch = realFetch
 })
 
-test('a failed create does not insert a fabricated conversation', async () => {
+test('new conversation is local and does not depend on the server', async () => {
   const store = useConversations()
   rejectCreate = true
-  expect(await store.create()).toBeNull()
-  expect(store.items.map((item) => item.id)).toEqual(['first', 'second'])
-  expect(store.notice).toBe('Not saved')
+  const id = await store.create()
+  expect(id).toMatch(/^[0-9a-f-]{36}$/)
+  expect(store.items.map((item) => item.id)).toEqual([id!, 'first', 'second'])
+  expect(store.items[0]?.persistence).toBe('draft')
+  expect(store.items[0]?.load).toBe('ready')
+  expect(requests.some((request) => request.path === '/api/conversations')).toBe(false)
 })
 
-test('created IDs and sidebar order come from the server', async () => {
+test('repeated new reuses the active empty draft and polling preserves it', async () => {
   const store = useConversations()
-  expect(await store.create()).toBe('created')
-  expect(store.items.map((item) => item.id)).toEqual(['created', 'first', 'second'])
+  const id = await store.create()
+  await store.activate(id)
+  expect(await store.create()).toBe(id)
+  await useProduct().refresh()
+  await nextTick()
+  expect(store.items[0]?.id).toBe(id)
+  store.items[0]!.draft = 'Keep this draft'
+  expect(await store.create()).not.toBe(id)
+})
+
+test('first send failure preserves the conversation and retries its UUID and message', async () => {
+  const store = useConversations()
+  await store.create()
+  const conversation = store.items[0]!
+  conversation.draft = 'First message'
+  rejectCreate = true
+  await store.send(conversation)
+  expect(conversation.persistence).toBe('pending')
+  expect(conversation.pendingSend?.text).toBe('First message')
+  expect(conversation.pendingSend?.error).toBe('Not saved')
+  expect(conversation.draft).toBe('')
+  const messageId = conversation.pendingSend!.id
+  await useProduct().refresh()
+  await nextTick()
+  expect(store.items[0]?.id).toBe(conversation.id)
+  await store.send(conversation)
+  expect(conversation.pendingSend?.id).toBe(messageId)
+  expect(requests.filter((request) => request.path === '/api/conversations').map((request) => request.body)).toEqual([
+    { id: conversation.id },
+    { id: conversation.id },
+  ])
+})
+
+test('workspace attachments stay local until first send creates the conversation', async () => {
+  const store = useConversations()
+  store.create()
+  const conversation = store.items[0]!
+  store.addFiles(conversation, [new File(['Local notes'], 'notes.txt', { type: 'text/plain' })], ['png', 'pdf'])
+  await nextTick()
+  expect(conversation.files[0]).toMatchObject({
+    kind: 'file',
+    destination: 'workspace',
+    phase: 'staged',
+    upload: null,
+  })
+  expect(requests.some((request) => request.path === '/api/conversations')).toBe(false)
+  rejectCreate = true
+  await store.send(conversation)
+  expect(conversation.pendingSend?.fileIds).toEqual([conversation.files[0]!.id])
+  expect(conversation.files[0]).toMatchObject({ phase: 'staged', upload: null })
+})
+
+test('leaving an empty draft discards it without removing a draft with input', async () => {
+  const store = useConversations()
+  const empty = store.create()
+  await store.activate(empty)
+  await store.activate(null)
+  expect(store.items.some((item) => item.id === empty)).toBe(false)
+  const retained = store.create()
+  await store.activate(retained)
+  store.items.find((item) => item.id === retained)!.draft = 'Keep this'
+  await store.activate(null)
+  expect(store.items.some((item) => item.id === retained)).toBe(true)
 })
 
 test('snapshot refresh preserves live transcript and unsent draft', async () => {

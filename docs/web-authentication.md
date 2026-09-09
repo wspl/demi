@@ -11,11 +11,11 @@ enter the store. Passwords stay in the form/request and are cleared after login;
 the browser receives no session token in JavaScript. The backend's HttpOnly
 cookie accompanies same-origin requests.
 
-Startup checks `GET /api/auth/me` before the initial route mounts. Further
-navigation checks an existing session again. Missing authentication redirects
-to `/login`; expiry during navigation clears the document and shows the session
-ended message. A network/server failure during navigation reports the failure
-and preserves the existing identity. Account state polling and API failures also detect expired sessions; all account-scoped stores and transports are released.
+Startup checks `GET /api/auth/me` before the initial route mounts. Later route
+changes use the current account state, so opening a local conversation does not
+wait for an authentication request. Missing authentication redirects to `/login`.
+Account state polling and API responses detect expired sessions, release
+account-scoped stores and transports, and show the session-ended message.
 
 `POST /api/auth/login` supplies email and password. Backend errors, including
 rate limiting, appear on the shared form. Unmounting the form aborts its pending

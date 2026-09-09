@@ -91,7 +91,7 @@ test(
       })
       const { conversation } = await (await backend.session.fetch(
         '/api/conversations',
-        { method: 'POST' }
+        { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }
       )).json() as { conversation: { id: string } }
       const socket = backend.session.socket(
         `/api/conversations/${conversation.id}/stream`

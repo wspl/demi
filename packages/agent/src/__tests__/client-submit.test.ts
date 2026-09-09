@@ -87,18 +87,19 @@ test('submit confirms its own transcript entry before the model finishes', async
   expect(h.closes()).toBe(1)
 })
 
-test('submit confirms queue admission while a different turn is running', async () => {
+test('submit preserves a supplied message ID through queue admission', async () => {
   const h = harness()
   const pending = h.client.submit([
     {
       type: 'text',
       text: 'next',
     },
-  ])
+  ], 'persisted-message-id')
   const frame = h.sent[0]!
   if (frame.type !== 'send') {
     throw new Error('Expected send')
   }
+  expect(frame.messageId).toBe('persisted-message-id')
   h.receive({
     type: 'queue',
     queue: [

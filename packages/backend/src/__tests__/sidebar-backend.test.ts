@@ -22,7 +22,7 @@ test(
     try {
       const create = async () => (await (await backend.session.fetch(
         '/api/conversations',
-        { method: 'POST' }
+        { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }
       )).json() as { conversation: { id: string } }).conversation.id
       const a = await create()
       const b = await create()
@@ -139,7 +139,7 @@ test(
       )).json() as { provider: { id: string } }
       const { conversation } = await (await backend.session.fetch(
         '/api/conversations',
-        { method: 'POST' }
+        { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }
       )).json() as { conversation: { id: string } }
       const path = `/api/conversations/${conversation.id}`
       const socket = backend.session.socket(`${path}/stream`)

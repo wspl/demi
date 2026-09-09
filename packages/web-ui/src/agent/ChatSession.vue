@@ -13,6 +13,7 @@ import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { useSessionPanels } from './useSessionPanels'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import SessionNoticeBar from '@demicodes/web-ui/agent/SessionNoticeBar.vue'
+import type { PendingSubmissionState } from './types'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -43,11 +44,13 @@ export interface ChatSessionState
 const props = defineProps<{
   conversation: ChatSessionState
   hasProvider: boolean
+  pendingSubmission?: PendingSubmissionState | null
 }>()
 const emit = defineEmits<{
   archive: []
   retry: []
   retryLoad: []
+  retrySubmission: []
   abortSubagents: []
   removeQueued: [id: string]
   sendQueued: [id: string]
@@ -115,6 +118,8 @@ watch(() => props.conversation.id, close)
             :pending-steers="conversation.pendingSteers"
             :phase="conversation.phase"
             :load="conversation.load"
+            :pending-submission="pendingSubmission"
+            @retry-submission="emit('retrySubmission')"
             :bottom-offset="surface?.dockHeight ?? 0"
             :persisted-scroll-state="conversation.scroll ?? undefined"
             @save-scroll-state="(id, state) => emit('saveScroll', id, state ?? null)"
