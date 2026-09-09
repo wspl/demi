@@ -133,8 +133,9 @@ Two kinds of traffic:
    server-side from the conversation record; the browser never names a cwd.
 
 `@demicodes/web-ui` consumes a transport-agnostic client interface, backed
-with fetch by the product shell. No server push beyond the stream; pages
-poll on open and on an interval.
+with fetch by the product shell. The backend provides conditional `GET /api/state`
+polling for application data; there is no server push beyond the conversation
+stream. Connecting this snapshot to browser pages remains frontend work.
 
 **Authentication.** One session gate covers `/api/*`: the `demi_session`
 cookie (`HttpOnly; SameSite=Lax; Path=/`, `Secure` over https) names a
@@ -310,3 +311,69 @@ the default target is Cloud. This inspection does not wake Cloud or execute a
 model. Unconfigured Cloud or an offline device makes process-based providers
 unavailable. Unknown auth/runtime status stays explicit; availability describes
 known admission constraints, not a successful inference test.
+
+
+## Sidebar mutations, read state and page synchronization
+
+`conversation/updates.ts` applies PATCH fields independently and shares the
+existing agent-tree and target/file admission gates. `PATCH /api/conversations/:id`
+accepts title, archived, pinned, target and provider/model selection. A single
+refused field returns its 404/409 status; mixed outcomes return 207 with
+`results: [{ field, status, code?, message?, httpStatus? }]` and the current
+conversation. Unexpected operation failures are reported as 500 field results.
+Applied fields remain applied. Archive is evaluated before the other fields,
+so archiving and renaming together archives successfully but refuses the rename.
+`POST /api/conversations/batch` accepts up to 100 `{ id, patch }` items and returns
+207 with an outcome per item; missing conversations are reported individually.
+
+Running root or child work refuses archive. Archive also refuses while a file
+operation or asynchronous frame admission is in progress. Archived conversations
+allow transcript reads and read acknowledgements; stream upgrades, existing
+socket writes, uploads, host changes and metadata edits are refused until restore.
+The transport waits for frame handling to finish before releasing admission;
+it does not wait for an entire inference turn.
+
+`POST /api/sidebar/reorder` takes `{ kind: "conversation" | "workspace", id,
+beforeId: string | null }`; null appends. Conversation moves stay within the same
+project and pin partition. Storage owns persistent ordering; see
+[sidebar ordering](sidebar-order.md). Activity timestamps never reorder rows.
+
+`GET /api/conversations?archived=true|false` includes `status`, `revision`,
+`readRevision` and `unread`. Status is running/compacting from the live agent tree,
+otherwise completed/error/stopped from its latest terminal block, or idle.
+An unfinished checkpoint without a live session is interrupted. Checkpoint output
+changes advance a persisted revision; user input alone does not. A browser sends
+`POST /api/conversations/:id/read { revision }` for the output it actually showed.
+Acknowledgements only move forward, and revisions beyond current output are refused.
+
+`sync/product-state.ts` assembles `GET /api/state`: current user, mode, preferences,
+projects, active and archived conversation summaries, devices, public provider
+status and Cloud state. It never starts Cloud or runs inference. Responses use a
+private ETag; `If-None-Match` returns 304 when unchanged. Browsers should revalidate
+on open, reconnect and a polling interval. This is a reconstructible snapshot,
+not an atomic transaction across the control and conversation databases; a later
+poll includes changes made during a read. Chat continues using agent frames.
+
+## Device files and remote references
+
+`GET /api/devices` includes the connected runner's `home` (null while unknown).
+`GET /api/devices/:id/fs` defaults to that home when path is omitted and returns
+`{ path, home, entries }`. Each entry has name, isDirectory, isSymbolicLink, byte
+size and ISO modifiedAt. Metadata comes through the existing runner filesystem;
+entries disappearing during the listing are omitted, other errors are returned.
+
+Send and steer content may contain `{ type: "remote_file", deviceId, path }`, where
+path is absolute. The backend validates ownership and current connectivity for
+all referenced devices before adding any attachment grant. It attaches non-main
+devices through the existing host mechanism, then supplies text preserving the
+device identity and a shell-quoted `demi host shell --host` read command. The agent
+reads the file's contents at execution time. Revocation or disconnect before that
+read produces the existing host-command error; the reference is not a byte snapshot.
+
+## Serving the browser build
+
+`createBackend({ webDirectory })`, or `DEMI_WEB_DIRECTORY` for the executable,
+serves a built browser directory alongside the API and conversation sockets.
+Extensionless HTML navigations fall back to index.html, enabling deep-page refresh.
+Missing assets and `/api/*` misses remain 404. Browser build generation, Vite proxy
+configuration and frontend API wiring are separate integration work.

@@ -1,6 +1,6 @@
 import { preferencesSchema, patchPreferences, type UserPreferences, type PreferencesPatch } from '../settings/preferences'
 import { z } from 'zod'
-import { createId } from '@demicodes/utils'
+import { createId, moveBefore } from '@demicodes/utils'
 import type { Role, User } from '../auth/identity'
 import type { SqlDatabase } from './database'
 
@@ -125,6 +125,9 @@ export interface ControlService {
   createConversation(userId: string, options?: { title?: string }): Promise<ConversationRecord>
   getConversation(id: string): Promise<ConversationRecord | null>
   listConversations(userId: string, options?: { archived?: boolean }): Promise<ConversationRecord[]>
+  setConversationPinned(id: string, pinned: boolean): Promise<void>
+  markConversationRead(id: string, revision: number): Promise<void>
+  reorderSidebar(userId: string, kind: 'conversation' | 'workspace', id: string, beforeId: string | null): Promise<boolean>
   renameConversation(id: string, title: string): Promise<void>
   setConversationArchived(id: string, archived: boolean): Promise<void>
   setConversationModel(id: string, providerId: string | null, modelId: string | null): Promise<void>
@@ -256,6 +259,8 @@ export interface ConversationRecord {
   userId: string
   title: string
   archived: boolean
+  pinned: boolean
+  readRevision: number
   target: ConversationTargetPointer
   cloudResetId: string | null
   lastSwitch: TargetSwitch | null
@@ -272,6 +277,8 @@ interface ConversationRow {
   user_id: string
   title: string
   archived: number
+  pinned: number
+  read_revision: number
   target_json: string
   cloud_reset_id: string | null
   last_switch_json: string | null
@@ -283,7 +290,7 @@ interface ConversationRow {
 }
 
 const SELECT =
-  'SELECT id, user_id, title, archived, target_json, last_switch_json, cloud_reset_id, context_version, provider_id, model_id, created_at, updated_at FROM conversations'
+  'SELECT id, user_id, title, archived, pinned, read_revision, target_json, last_switch_json, cloud_reset_id, context_version, provider_id, model_id, created_at, updated_at FROM conversations'
 
 interface UserRow {
   id: string
@@ -663,13 +670,14 @@ export class LocalControlService implements ControlService {
       name: workspace.name,
       createdAt: new Date().toISOString(),
     }
-    this.db.run('INSERT INTO workspaces (id, user_id, device_id, path, name, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+    this.db.run('INSERT INTO workspaces (id, user_id, device_id, path, name, created_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM workspaces WHERE user_id = ?))', [
       record.id,
       record.userId,
       record.deviceId,
       record.path,
       record.name,
       record.createdAt,
+      record.userId,
     ])
     return record
   }
@@ -690,7 +698,7 @@ export class LocalControlService implements ControlService {
 
   async listWorkspaces(userId: string): Promise<WorkspaceRecord[]> {
     const rows = this.db.all<WorkspaceRow>(
-      'SELECT id, user_id, device_id, path, name, created_at FROM workspaces WHERE user_id = ? ORDER BY created_at',
+      'SELECT id, user_id, device_id, path, name, created_at FROM workspaces WHERE user_id = ? ORDER BY sort_order, id',
       [userId],
     )
     return rows.map((row) => ({
@@ -819,6 +827,8 @@ export class LocalControlService implements ControlService {
       userId,
       title: options.title ?? 'New conversation',
       archived: false,
+      pinned: false,
+      readRevision: 0,
       target: { kind: 'cloud' },
       cloudResetId: null,
       lastSwitch: null,
@@ -829,8 +839,8 @@ export class LocalControlService implements ControlService {
       updatedAt: now,
     }
     this.db.run(
-      'INSERT INTO conversations (id, user_id, title, archived, target_json, provider_id, model_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [record.id, userId, record.title, 0, JSON.stringify(record.target), null, null, now, now],
+      'INSERT INTO conversations (id, user_id, title, archived, target_json, provider_id, model_id, created_at, updated_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?))',
+      [record.id, userId, record.title, 0, JSON.stringify(record.target), null, null, now, now, userId],
     )
     return record
   }
@@ -842,11 +852,45 @@ export class LocalControlService implements ControlService {
 
   async listConversations(userId: string, options: { archived?: boolean } = {}): Promise<ConversationRecord[]> {
     const archived = options.archived ?? false
-    const rows = this.db.all<ConversationRow>(`${SELECT} WHERE user_id = ? AND archived = ? ORDER BY updated_at DESC`, [
+    const rows = this.db.all<ConversationRow>(`${SELECT} WHERE user_id = ? AND archived = ? ORDER BY pinned DESC, sort_order, id`, [
       userId,
       archived ? 1 : 0,
     ])
     return rows.map(fromRow)
+  }
+
+  async setConversationPinned(id: string, pinned: boolean): Promise<void> {
+    this.db.run('UPDATE conversations SET pinned = ? WHERE id = ?', [pinned ? 1 : 0, id])
+  }
+
+  async markConversationRead(id: string, revision: number): Promise<void> {
+    this.db.run('UPDATE conversations SET read_revision = MAX(read_revision, ?) WHERE id = ?', [revision, id])
+  }
+
+  async reorderSidebar(userId: string, kind: 'conversation' | 'workspace', id: string, beforeId: string | null): Promise<boolean> {
+    return this.db.transaction(() => {
+      if (kind === 'workspace') {
+        const peers = this.db.all<{ id: string }>('SELECT id FROM workspaces WHERE user_id = ? ORDER BY sort_order, id', [userId]).map(row => row.id)
+        return this.writeSidebarOrder('workspaces', peers, id, beforeId)
+      }
+      const row = this.db.get<ConversationRow>(`${SELECT} WHERE user_id = ? AND id = ?`, [userId, id])
+      if (!row || row.archived) return false
+      const peers = this.db.all<ConversationRow>(`${SELECT} WHERE user_id = ? AND archived = 0 AND pinned = ? ORDER BY sort_order, id`, [userId, row.pinned])
+      const group = (target: string) => {
+        const pointer = conversationTargetSchema.parse(JSON.parse(target))
+        return pointer.kind === 'workspace' ? pointer.workspaceId : null
+      }
+      const ids = peers.filter(peer => group(peer.target_json) === group(row.target_json)).map(peer => peer.id)
+      return this.writeSidebarOrder('conversations', ids, id, beforeId)
+    })
+  }
+
+  private writeSidebarOrder(table: 'conversations' | 'workspaces', peers: string[], id: string, beforeId: string | null): boolean {
+    if (!peers.includes(id) || (beforeId !== null && !peers.includes(beforeId))) return false
+    if (id === beforeId) return true
+    const next = moveBefore(peers, id, beforeId)
+    for (const [position, peer] of next.entries()) this.db.run(`UPDATE ${table} SET sort_order = ? WHERE id = ?`, [position, peer])
+    return true
   }
 
   async renameConversation(id: string, title: string): Promise<void> {
@@ -1001,6 +1045,8 @@ function fromRow(row: ConversationRow): ConversationRecord {
     userId: row.user_id,
     title: row.title,
     archived: row.archived !== 0,
+    pinned: row.pinned !== 0,
+    readRevision: row.read_revision,
     target: conversationTargetSchema.parse(JSON.parse(row.target_json)),
     cloudResetId: row.cloud_reset_id,
     lastSwitch: row.last_switch_json ? z.object({ from: executionTargetSchema, to: executionTargetSchema }).parse(JSON.parse(row.last_switch_json)) : null,

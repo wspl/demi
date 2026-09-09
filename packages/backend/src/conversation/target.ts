@@ -21,7 +21,10 @@ export class ConversationTargets {
 
   files(id: string): ActivityGate {
     let gate = this.fileActivity.get(id)
-    if (!gate) { gate = new ActivityGate(); this.fileActivity.set(id, gate) }
+    if (!gate) {
+      gate = new ActivityGate()
+      this.fileActivity.set(id, gate)
+    }
     return gate
   }
 
@@ -29,12 +32,16 @@ export class ConversationTargets {
     const release = await this.files(id).enter(signal)
     let releaseMachine: (() => void) | undefined
     try {
+      if ((await this.deps.control.getConversation(id))?.archived) throw new Error('Conversation is archived')
       const host = await this.hostFor(id)
       const deviceId = (await this.resolve(id)).deviceId
       const device = deviceId ? await this.deps.control.getDevice(deviceId) : null
       if (device?.kind === 'managed') releaseMachine = await this.deps.managedHosts!.enter(device, signal)
       return await operation(host)
-    } finally { releaseMachine?.(); release() }
+    } finally {
+      releaseMachine?.()
+      release()
+    }
   }
 
   async resolve(id: string): Promise<ExecutionTarget> {
@@ -79,8 +86,12 @@ export class ConversationTargets {
     const releaseTree = this.deps.reserveTree(id)
     if (!releaseTree) return { outcome: 'turn_in_flight' }
     const releaseFiles = this.files(id).tryReserve()
-    if (!releaseFiles) { releaseTree(); return { outcome: 'turn_in_flight' } }
+    if (!releaseFiles) {
+      releaseTree()
+      return { outcome: 'turn_in_flight' }
+    }
     try {
+      if ((await control.getConversation(id))?.archived) return { outcome: 'archived' }
       const from = await resolveExecutionTarget(control, this.deps.registry, conversation)
       const destination = await resolveExecutionTarget(control, this.deps.registry, { ...conversation, target: to })
       const deviceId = from.deviceId
@@ -89,6 +100,9 @@ export class ConversationTargets {
         arrivingDeviceId: destination.deviceId,
       })
       return { outcome: won ? 'switched' : 'conflict' }
-    } finally { releaseFiles(); releaseTree() }
+    } finally {
+      releaseFiles()
+      releaseTree()
+    }
   }
 }

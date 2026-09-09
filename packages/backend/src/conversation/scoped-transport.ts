@@ -6,13 +6,10 @@ import type { ControlService, ConversationRecord } from '../storage/control'
 import { resolveAttachmentRefs } from './attachment-refs'
 import { conversationClientFrameSchema, type ConversationClientFrame } from './client-frames'
 
-/** Virtual working directory every virtual-target conversation starts in. */
-
 /**
  * Scopes an incoming stream to its conversation: the session id and cwd are
  * resolved server-side from the conversation record (the browser never names
- * a cwd — a workspace-bound conversation runs in its workspace path, a
- * virtual one in the virtual constant), the first user message becomes the
+ * a cwd — each conversation uses its resolved Cloud, device or workspace path), the first user message becomes the
  * default title, attachment references inflate to inline bytes, activity
  * bumps the index row, and outbound transcript frames carry media by
  * reference (`backend.md` § Media by reference): every inline source becomes
@@ -23,6 +20,8 @@ export interface ConversationTransportOptions {
   control: ControlService
   /** Whether the conversation's user may name this provider — the same rule as the PATCH route's. */
   providerAllowed: (providerId: string) => Promise<boolean>
+  resolveRemoteFiles?: (conversation: ConversationRecord, content: unknown[]) => Promise<unknown[]>
+  admitFrame?: () => (() => void) | null
   modelSelection?: (providerId: string, selection: ModelSelection) => Promise<ModelSelection>
   /** Where every session of the conversation opens; the conversation’s Cloud session directory or selected target path. */
   cwd?: string
@@ -75,13 +74,27 @@ export function conversationScopedTransport(
             reportError('invalid_frame', `Invalid client frame: ${parsed.error.issues[0]?.message ?? 'invalid shape'}`)
             return
           }
-          const rewritten = await rewriteFrame(parsed.data, conversation, options, cwd)
-          if (!closed && subscribed) handler(rewritten)
+          const release = options.admitFrame ? options.admitFrame() : () => {}
+          if (!release) throw new FrameRefused('conversation_busy', 'A conversation operation is still running')
+          try {
+            const current = await options.control.getConversation(conversation.id)
+            if (!current || (current.archived && parsed.data.type !== 'close')) throw new FrameRefused('archived', 'Restore the conversation before writing to it')
+            const rewritten = await rewriteFrame(parsed.data, current, options, cwd)
+            if (!closed && subscribed) await handler(rewritten)
+          } finally {
+            release()
+          }
         }).catch((error: unknown) => reportError(error instanceof FrameRefused ? error.code : 'frame_delivery_failed', errorMessage(error)))
       })
-      return () => { subscribed = false; unsubscribe() }
+      return () => {
+        subscribed = false
+        unsubscribe()
+      }
     },
-    close: () => { closed = true; inner.close() },
+    close: () => {
+      closed = true
+      inner.close()
+    },
   }
 }
 
@@ -126,21 +139,17 @@ async function rewriteFrame(
     const provider = await recordProvider(frame.provider)
     return { ...frame, provider, sessionId: conversation.id, cwd }
   }
-  if (frame.type === 'send') {
-    const text = frame.content.flatMap((block) => block.type === 'text' ? [block.text] : [])[0]
-    const title = (text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
-    if (title) await control.defaultConversationTitle(conversation.id, title)
-    await control.touchConversation(conversation.id)
-  }
   if (frame.type === 'send' || frame.type === 'steer') {
-    if (!blobs) {
-      return clientFrameSchema.parse(frame)
+    let content: unknown[] = options.resolveRemoteFiles ? await options.resolveRemoteFiles(conversation, frame.content) : frame.content
+    if (blobs) content = await resolveAttachmentRefs({ control, blobs, userId: conversation.userId }, content)
+    const rewritten = clientFrameSchema.parse({ ...frame, content })
+    if (frame.type === 'send') {
+      const text = frame.content.flatMap(block => block.type === 'text' ? [block.text] : [])[0]
+      const title = (text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
+      if (title) await control.defaultConversationTitle(conversation.id, title)
+      await control.touchConversation(conversation.id)
     }
-    const content = (await resolveAttachmentRefs(
-      { control, blobs, userId: conversation.userId },
-      frame.content,
-    )) as Extract<ClientFrame, { type: 'send' }>['content']
-    return { ...frame, content }
+    return rewritten
   }
   if (frame.type === 'set_provider') {
     return { ...frame, provider: await recordProvider(frame.provider) }

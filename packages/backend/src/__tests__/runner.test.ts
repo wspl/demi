@@ -68,8 +68,12 @@ test('pairing: claim, reconnect with the device token, revoke refuses the reconn
   await writeFile(join(runnerDir, 'hello.txt'), 'hi')
   const browse = (await (
     await api(backend, `/api/devices/${device.id}/fs?path=${encodeURIComponent(runnerDir)}`)
-  ).json()) as { entries: Array<{ name: string; isDirectory: boolean }> }
-  expect(browse.entries).toContainEqual({ name: 'hello.txt', isDirectory: false })
+  ).json()) as { path: string; home: string; entries: Array<{ name: string; isDirectory: boolean; isSymbolicLink: boolean; size: number; modifiedAt: string }> }
+  expect(browse.path).toBe(runnerDir)
+  expect(browse.home.startsWith('/')).toBe(true)
+  const file = browse.entries.find(entry => entry.name === 'hello.txt')
+  expect(file).toMatchObject({ name: 'hello.txt', isDirectory: false, isSymbolicLink: false, size: 2 })
+  expect(Number.isFinite(Date.parse(file!.modifiedAt))).toBe(true)
   const makeDir = await api(backend, `/api/devices/${device.id}/fs`, {
     method: 'POST',
     body: JSON.stringify({ path: join(runnerDir, 'made/by/web') }),

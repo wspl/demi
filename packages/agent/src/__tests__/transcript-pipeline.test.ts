@@ -123,7 +123,7 @@ test('client resyncs with a snapshot when the patch revision stream has a gap', 
   const pair = createInProcessTransportPair()
   const client = new AgentClient(pair.client)
   const receivedFrames: ClientFrame[] = []
-  pair.server.onFrame((frame) => receivedFrames.push(frame))
+  pair.server.onFrame((frame) => { receivedFrames.push(frame) })
 
   const blockAt = (id: string, text: string): Block => ({
     type: 'text',

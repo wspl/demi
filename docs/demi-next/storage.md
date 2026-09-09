@@ -287,3 +287,17 @@ time and failed attempt count. Confirmation updates the email and consumes the
 challenge in one control-database transaction. No prior nickname or email history
 is stored. The initial schema defines the current design; there is no legacy
 username migration.
+
+
+## Browser preferences and conversation summaries
+
+Control storage owns `user_preferences`, merged by explicit appearance/shortcut
+fields, and conversation `pinned`, `sort_order`, `read_revision`; workspaces have
+`sort_order`. Conversation node rows own `output_revision`, advanced in the same
+checkpoint transaction that persists changed output blocks. Read acknowledgements
+use MAX with the stored revision, so an older page cannot move read state backward.
+`ConversationStores.summary` reads the root phase, output revision and latest
+response/error/abort block without loading the complete transcript. The
+conversation module combines those facts with live agent activity for the HTTP
+summary. These fields are part of the initial schema; no old-data migration or
+normalization path is provided.

@@ -23,6 +23,7 @@ export function createSessionProviderResolver(options: SessionProvidersOptions):
     if (!conversation) throw new Error(`no conversation ${agentSessionId} behind this session`)
     const ownerUserId = providerOwner(options.mode, conversation.userId)
     const resolve = async () => {
+      if ((await options.control.getConversation(agentSessionId))?.archived) throw new Error('Conversation is archived')
       const resolved = await options.assembly.providerFor(providerId)
       return resolved?.entry.ownerUserId === ownerUserId ? resolved : null
     }

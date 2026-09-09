@@ -71,6 +71,7 @@ CREATE TABLE workspaces (
   device_id  TEXT NOT NULL REFERENCES devices(id),
   path       TEXT NOT NULL,
   name       TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
 
@@ -79,6 +80,9 @@ CREATE TABLE conversations (
   user_id       TEXT NOT NULL REFERENCES users(id),
   title         TEXT NOT NULL,
   archived      INTEGER NOT NULL DEFAULT 0,
+  pinned        INTEGER NOT NULL DEFAULT 0,
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  read_revision INTEGER NOT NULL DEFAULT 0,
   target_json   TEXT NOT NULL DEFAULT '{"kind":"cloud"}',
   last_switch_json TEXT,
       cloud_reset_id TEXT,
@@ -168,6 +172,7 @@ CREATE TABLE nodes (
   failure       TEXT,
   delivered     INTEGER NOT NULL DEFAULT 0,
   state_json    TEXT NOT NULL,
+  output_revision INTEGER NOT NULL DEFAULT 0,
   block_count   INTEGER NOT NULL
 );
 CREATE INDEX idx_nodes_parent ON nodes(parent_id, spawned_at);

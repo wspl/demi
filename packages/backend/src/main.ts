@@ -16,6 +16,7 @@ async function main(): Promise<void> {
   if (firecracker && !publicUrl) throw new Error('DEMI_BACKEND_PUBLIC_URL is required with managed hosts: the URL guests dial')
   const backend = await createBackend({
     dataDir,
+    webDirectory: process.env.DEMI_WEB_DIRECTORY,
     port,
     mode: mode as InstanceMode,
     ...(publicUrl ? { publicUrl } : {}),
