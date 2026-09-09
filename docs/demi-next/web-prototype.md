@@ -115,6 +115,21 @@ caption. Menus, dialogs, settings and the entry page omit instructional and
 prototype commentary. Simulation details belong in documentation. The archive button sits immediately to the
 right of the conversation title.
 
+## Sign in
+
+`/login` is the shared `web-ui` email-and-password page: the form on the
+base surface, a wide empty intro on the session surface. The email field,
+password field and Sign in button use the 36px `lg` family. Below a tablet
+width the intro hides. There is no registration or password recovery.
+`web/auth/LoginPage.vue` submits credentials through `auth/session.ts` to
+`POST /api/auth/login`. The backend reports incorrect credentials and rate
+limits. Startup waits for `GET /api/auth/me` before mounting the route, and
+navigation rechecks an established session. An expired session returns to the
+login page; a temporary server failure preserves the identity and reports the
+error. Logout calls `POST /api/auth/logout` before loading a fresh document,
+which releases account-scoped browser state. See [web authentication](../web-authentication.md)
+for the current integration boundary.
+
 ## Settings
 
 The settings dialog is the shared shell with the product rail

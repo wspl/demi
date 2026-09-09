@@ -89,7 +89,10 @@ function reset() {
           aria-live="polite"
           class="text-[13px] text-fg-body"
         >{{ phaseLabels[cloud.phase] }}</p>
-        <InlineError v-if="submitted && cloud.error">{{ cloud.error }}</InlineError>
+        <InlineError
+          v-if="submitted && cloud.error"
+          :message="cloud.error"
+        />
         <div class="flex justify-end gap-2">
           <Button @click="open = false">{{ submitted ? 'Close' : 'Cancel' }}</Button>
           <Button
