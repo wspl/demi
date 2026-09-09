@@ -104,7 +104,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/provider-codex`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`, `zod`.
 - Owns: Codex auth reuse, Responses transport, model catalog mapping, provider event mapping, rate-limit quota probe (`x-codex-*` headers), provider glue over the shared credential pool (`@demicodes/provider/credentials-pool`; see `docs/provider-global-credentials.md`), and provider-specific tests.
 - Public boundary: `createCodexProvider`, auth status helper, model catalog function, quota helpers, transport mode type, and public option types from root.
 - Secret boundary: auth.json material and pool secret files stay inside the provider creator/auth store and must not cross AgentClient/Web browser-visible frames.

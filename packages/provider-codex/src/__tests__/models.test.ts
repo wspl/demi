@@ -53,7 +53,7 @@ test(
     })
 
     expect(list.providerId).toBe('codex')
-    expect(list.defaultModelId).toBeNull()
+    expect(list.defaultModelId).toBe('gpt-5.5')
     expect(list.models.map((model) => model.id)).toEqual([
       'gpt-5.5',
       'gpt-5.4-mini'
@@ -67,8 +67,9 @@ test(
       supportsTools: true,
       supportsAttachments: true,
       supportsReasoning: true,
+      canDisableThinking: false,
       supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'ultra'],
-      defaultThinkingEffort: null,
+      defaultThinkingEffort: 'medium',
       serviceTiers: [{
         id: 'priority',
         label: 'Fast',
@@ -81,6 +82,50 @@ test(
     })
   }
 )
+
+test('Codex catalog keeps full efforts and defaults in priority order', () => {
+  const template = codexModelsFixture().models[0]!
+  const list = codexBackendModelsToModelList({
+    models: [
+      { ...template, slug: 'later', priority: 20, tool_mode: null },
+      {
+        ...template,
+        slug: 'first',
+        priority: 1,
+        supported_reasoning_levels: [
+          { effort: 'low' },
+          { effort: 'medium' },
+          { effort: 'high' },
+          { effort: 'xhigh' },
+          { effort: 'max' },
+          { effort: 'ultra' },
+        ],
+        default_reasoning_level: 'low',
+        default_service_tier: 'priority',
+      },
+      { ...template, slug: 'hidden', visibility: 'hide', priority: 0 },
+      { ...template, slug: 'internal', visibility: 'none', priority: 0 },
+    ],
+  })
+  expect(list.models.map((model) => model.id)).toEqual(['first', 'later'])
+  expect(list.defaultModelId).toBe('first')
+  expect(list.models[0]).toMatchObject({
+    supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    defaultThinkingEffort: 'low',
+    defaultServiceTierId: 'priority',
+  })
+})
+
+test('Codex catalog rejects malformed metadata instead of dropping entries', () => {
+  const model = codexModelsFixture().models[0]!
+  expect(() => codexBackendModelsToModelList({ models: [
+    model,
+    { ...model, supported_reasoning_levels: [{ effort: 3 }] },
+  ] })).toThrow()
+  expect(() => codexBackendModelsToModelList({ models: [
+    { ...model, default_reasoning_level: 3 },
+  ] })).toThrow()
+})
 
 test(
   'listCodexModels requests Codex backend with auth headers and client version',
@@ -162,7 +207,7 @@ test(
     })
 
     expect(requests).toEqual(
-      ['https://chatgpt.com/backend-api/codex/models?client_version=0.130.0']
+      ['https://chatgpt.com/backend-api/codex/models?client_version=0.153.4']
     )
     resetCodexModelCatalogCacheForTests()
   }
@@ -255,11 +300,13 @@ test(
   }
 )
 
-function codexModelsFixture(): unknown {
+function codexModelsFixture() {
   return {
     models: [
       {
         slug: 'gpt-5.5',
+        visibility: 'list',
+        priority: 1,
         display_name: 'GPT-5.5',
         context_window: 272_000,
         input_modalities: ['text', 'image'],
@@ -283,6 +330,8 @@ function codexModelsFixture(): unknown {
       },
       {
         slug: 'gpt-5.4-mini',
+        visibility: 'list',
+        priority: 2,
         display_name: 'GPT-5.4-Mini',
         context_window: 272_000,
         input_modalities: ['text'],
@@ -294,6 +343,7 @@ function codexModelsFixture(): unknown {
         description: 'Automatic approval review model for Codex.',
         context_window: 272_000,
         visibility: 'hide',
+        priority: 0,
         input_modalities: ['text', 'image'],
         supported_reasoning_levels: [{ effort: 'medium' }],
       },

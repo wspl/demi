@@ -102,3 +102,31 @@ Refresh preserves the provider's configured model filter and default selection
 policy. It does not edit caller-owned custom model configuration or switch the
 model of an active session. Product backends can forward a refresh request to
 this interface; adding that product endpoint is separate from this framework API.
+
+## Codex model catalog
+
+`provider-codex/src/models.ts` requests the authenticated Codex `/models` endpoint.
+Its default `client_version` matches verified CLI release `0.153.4`; the upstream
+service uses this parameter to gate model availability. Keep it current when
+updating the adapter against Codex CLI. Embedders can override `clientVersion` on
+`createCodexProvider`; model discovery never executes the CLI or runs inference.
+
+The adapter validates the response schema, sorts models by upstream `priority`,
+and exposes entries with `visibility: list`, matching the CLI's normal model
+picker. It does not expose hidden internal models. The first visible entry is the
+catalog default. Model IDs and reasoning levels come from the response, not a
+local model allowlist.
+
+`default_reasoning_level`, every advertised `supported_reasoning_levels` entry,
+and `default_service_tier` are preserved in the provider catalog.
+`provider/model-selection.ts` carries the default reasoning level into the
+agent's model capabilities; `web/state/catalog.ts` carries the same default and
+full effort list into the shared model selector. An explicit effort, including
+`max` or `ultra` when advertised, reaches Codex's `reasoning.effort` unchanged.
+The adapter disables the generic Off option: omitting reasoning invokes Codex's
+default rather than turning it off. An advertised `none` effort remains an
+explicit selectable level.
+
+Upstream references: [models request](https://github.com/openai/codex/blob/3dc1e2a58406dc69db5812539adfee7d89fa9ef7/codex-rs/codex-api/src/endpoint/models.rs),
+[model metadata and presets](https://github.com/openai/codex/blob/3dc1e2a58406dc69db5812539adfee7d89fa9ef7/codex-rs/protocol/src/openai_models.rs),
+and [picker visibility](https://github.com/openai/codex/blob/3dc1e2a58406dc69db5812539adfee7d89fa9ef7/codex-rs/app-server/src/models.rs).
