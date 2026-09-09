@@ -1,35 +1,23 @@
 import type { ProviderRecord, ProviderScope, ControlService } from '../storage/control'
 import { decryptJson, encryptJson } from './crypto'
 
-/**
- * An API-key entry: one runtime family (`providerType`, a registered
- * provider type in the LLM module's factory table) at an endpoint. The model
- * source is `modelIds` when the user typed a list, else the models.dev
- * vendor named by `vendorId` (fetched live, never stored), else the
- * runtime's own catalog. `wireApi` is the openai family's protocol choice.
- */
-export interface ApiKeyProviderConfig {
-  kind: 'api_key'
-  providerType: string
-  apiKey: string
-  baseUrl?: string
-  wireApi?: 'responses' | 'chat-completions'
-  vendorId?: string
-  modelIds?: string[]
-}
+import { z } from 'zod'
+import { configuredModelsSchema } from '../llm/model-config'
 
-/**
- * A completed subscription login. The OAuth material itself lives in the
- * provider's own credential pool under the vault directory
- * (`<dataDir>/vault/<providerId>/`) — the provider's login/refresh
- * machinery manages it; the row only names the provider type.
- */
-export interface SubscriptionProviderConfig {
-  kind: 'subscription'
-  providerType: string
-}
-
-export type ProviderConfig = ApiKeyProviderConfig | SubscriptionProviderConfig
+const apiKeyConfigSchema = z.strictObject({
+  kind: z.literal('api_key'),
+  providerType: z.string().min(1),
+  apiKey: z.string().min(1),
+  baseUrl: z.url().optional(),
+  wireApi: z.enum(['responses', 'chat-completions']).optional(),
+  vendorId: z.string().min(1).optional(),
+  models: configuredModelsSchema.optional(),
+})
+const subscriptionConfigSchema = z.strictObject({ kind: z.literal('subscription'), providerType: z.string().min(1) })
+const providerConfigSchema = z.discriminatedUnion('kind', [apiKeyConfigSchema, subscriptionConfigSchema])
+export type ApiKeyProviderConfig = z.infer<typeof apiKeyConfigSchema>
+export type SubscriptionProviderConfig = z.infer<typeof subscriptionConfigSchema>
+export type ProviderConfig = z.infer<typeof providerConfigSchema>
 
 export interface ProviderEntry {
   id: string
@@ -89,7 +77,7 @@ export class ProviderVault {
       id: record.id,
       ownerUserId: record.ownerUserId,
       label: record.label,
-      config: decryptJson<ProviderConfig>(this.secret, record.config),
+      config: providerConfigSchema.parse(decryptJson<unknown>(this.secret, record.config)),
       createdAt: record.createdAt,
     }
   }

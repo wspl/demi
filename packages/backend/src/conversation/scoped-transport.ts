@@ -1,6 +1,6 @@
 import { cloudSessionDirectory } from './execution-target'
 import { clientFrameSchema, externalizeBlockMedia, type AgentServerTransport, type BlobStore, type ClientFrame, type ServerFrame } from '@demicodes/agent'
-import type { Block } from '@demicodes/core'
+import type { Block, ModelSelection } from '@demicodes/core'
 import { errorMessage, SerialQueue } from '@demicodes/utils'
 import type { ControlService, ConversationRecord } from '../storage/control'
 import { resolveAttachmentRefs } from './attachment-refs'
@@ -23,6 +23,7 @@ export interface ConversationTransportOptions {
   control: ControlService
   /** Whether the conversation's user may name this provider — the same rule as the PATCH route's. */
   providerAllowed: (providerId: string) => Promise<boolean>
+  modelSelection?: (providerId: string, selection: ModelSelection) => Promise<ModelSelection>
   /** Where every session of the conversation opens; the conversation’s Cloud session directory or selected target path. */
   cwd?: string
   blobs?: BlobStore
@@ -115,13 +116,15 @@ async function rewriteFrame(
   cwd: string,
 ): Promise<ClientFrame> {
   const { control, blobs } = options
-  const recordProvider = async (provider: { providerId: string; model: { model: { id: string } } }) => {
+  const recordProvider = async (provider: { providerId: string; model: ModelSelection }) => {
     if (!(await options.providerAllowed(provider.providerId))) throw new FrameRefused('provider_not_found', 'No such provider')
-    await control.setConversationModel(conversation.id, provider.providerId, provider.model.model.id)
+    const model = options.modelSelection ? await options.modelSelection(provider.providerId, provider.model) : provider.model
+    await control.setConversationModel(conversation.id, provider.providerId, model.model.id)
+    return { ...provider, model }
   }
   if (frame.type === 'open') {
-    await recordProvider(frame.provider)
-    return { ...frame, sessionId: conversation.id, cwd }
+    const provider = await recordProvider(frame.provider)
+    return { ...frame, provider, sessionId: conversation.id, cwd }
   }
   if (frame.type === 'send') {
     const text = frame.content.flatMap((block) => block.type === 'text' ? [block.text] : [])[0]
@@ -140,8 +143,7 @@ async function rewriteFrame(
     return { ...frame, content }
   }
   if (frame.type === 'set_provider') {
-    await recordProvider(frame.provider)
-    return frame
+    return { ...frame, provider: await recordProvider(frame.provider) }
   }
   return frame
 }

@@ -1,6 +1,7 @@
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { providerRuntime, withProviderId, type Provider, type ProviderModelList } from '@demicodes/provider'
+import { modelSelectionFromCatalog, providerRuntime, type AgentProvider, withProviderId, type Provider, type ProviderModelList } from '@demicodes/provider'
+import type { ModelSelection } from '@demicodes/core'
 import { createId, errorMessage } from '@demicodes/utils'
 import { createAnthropicApiProvider } from '@demicodes/provider-anthropic-api'
 import { createClaudeCodeProvider, type ClaudeSpawn } from '@demicodes/provider-claude-code'
@@ -11,6 +12,7 @@ import { createOpenAIApiProvider } from '@demicodes/provider-openai-api'
 import type { ControlService } from '../storage/control'
 import type { ApiKeyProviderConfig, ProviderEntry, ProviderConfig, ProviderVault } from '../vault/providers'
 import type { VendorCatalog } from './vendors'
+import { applyConfiguredModel, configuredCatalogModel, runtimeModelOptions } from './model-config'
 import { vendorRequestOptions } from './vendor-requests'
 
 /**
@@ -58,7 +60,7 @@ export function builtinProviderTypes(): Record<string, ProviderType> {
     displayName: label,
   })
   const keyed = (
-    create: (options: { id: string; displayName: string; apiKey: () => string; baseUrl?: string }) => Provider,
+    create: (options: { id: string; displayName: string; apiKey: () => string; baseUrl?: string; models?: ReturnType<typeof runtimeModelOptions>[] }) => Provider,
   ): ProviderType => ({
     credential: 'api_key',
     create: (options) => {
@@ -67,6 +69,7 @@ export function builtinProviderTypes(): Record<string, ProviderType> {
         ...common(options),
         apiKey: () => config.apiKey,
         ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
+        ...(config.models ? { models: config.models.map(runtimeModelOptions) } : {}),
       })
     },
   })
@@ -81,6 +84,7 @@ export function builtinProviderTypes(): Record<string, ProviderType> {
           ...common(options),
           apiKey: () => config.apiKey,
           ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
+          ...(config.models ? { models: config.models.map(runtimeModelOptions) } : {}),
           ...(config.wireApi ? { wireApi: config.wireApi } : {}),
           request: vendorRequestOptions(config.vendorId),
         })
@@ -104,6 +108,9 @@ export interface CatalogProvider {
   displayName: string
   requiresProcessCapableHost: boolean
   models: ProviderModelList['models']
+  sourceFetchedAt: string
+  stale: boolean
+  warnings: string[]
 }
 
 /**
@@ -203,92 +210,87 @@ export class ProviderAssembly {
     if (provider.requiresProcessCapableHost) {
       return { ok: false, message: "This provider runs on a conversation's execution target; start a conversation to try it" }
     }
-    const modelId = (await this.modelsOf(entry, provider))[0]?.id
-    if (!modelId) return { ok: false, message: 'No model available to test with' }
-
+    const model = (await this.modelsOf(entry, provider))[0]
+    if (!model) return { ok: false, message: 'No model available to test with' }
+    const selection = await this.selection(entry.id, modelSelectionFromCatalog(entry.id, model))
     const cancel = new AbortController()
+    let runtime: AgentProvider | undefined
     try {
-      const runtime = await providerRuntime(provider, {
-        providerId: entry.id,
-        model: {
-          providerId: entry.id,
-          model: { id: modelId, name: modelId, contextWindow: 128_000, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
-          thinking: null,
-        },
-      })
+      runtime = await providerRuntime(provider, { providerId: entry.id, model: selection })
       const run = runtime.run({
-        sessionId: 'provider-test',
-        turnId: createId(),
-        requestId: createId(),
-        outputLimit: null,
-        modelId,
-        systemPrompt: 'Reply with the word ok.',
-        cwd: '/',
+        sessionId: 'provider-test', turnId: createId(), requestId: createId(),
+        outputLimit: selection.model.outputLimit, modelId: model.id,
+        systemPrompt: 'Reply with the word ok.', cwd: '/',
         items: [{ type: 'user_message', content: [{ type: 'text', text: 'ping' }] }],
-        tools: [],
-        thinking: null,
-        cancel: cancel.signal,
+        tools: [], thinking: null, cancel: cancel.signal,
       })
       for await (const event of run) {
         if (event.type === 'error') return { ok: false, message: event.message }
-        cancel.abort()
-        break
+        if (event.type === 'abort') return { ok: false, message: 'Provider test was cancelled' }
+        return { ok: true }
       }
-      await runtime.dispose?.()
-      return { ok: true }
+      return { ok: false, message: 'Provider returned no events' }
     } catch (error) {
       return { ok: false, message: errorMessage(error) }
+    } finally {
+      cancel.abort()
+      await runtime?.dispose?.()
     }
   }
 
   /**
    * The aggregated model catalog, grouped by entry. Lists come live: the
-   * user-entered ids of a custom endpoint, the models.dev vendor an entry
+   * manual metadata of a custom endpoint, the models.dev vendor an entry
    * names, or the runtime's own catalog.
    */
-  async catalog(ownerUserId: string | null): Promise<CatalogProvider[]> {
+  async catalog(ownerUserId: string | null, refresh = false): Promise<CatalogProvider[]> {
     const entries = await this.vault.list({ ownerUserId })
-    return Promise.all(
-      entries.map(async (entry) => {
-        const provider = (await this.providerFor(entry.id))?.provider ?? null
-        return {
-          providerId: entry.id,
-          displayName: entry.label,
-          requiresProcessCapableHost: provider?.requiresProcessCapableHost ?? false,
-          models: await this.modelsOf(entry, provider),
-        }
-      }),
-    )
+    return Promise.all(entries.map(async entry => {
+      const provider = (await this.providerFor(entry.id))?.provider ?? null
+      const list = await this.catalogOf(entry, provider, refresh)
+      return {
+        providerId: entry.id, displayName: entry.label,
+        requiresProcessCapableHost: provider?.requiresProcessCapableHost ?? false,
+        ...list,
+      }
+    }))
+  }
+
+  async selection(providerId: string, selection: ModelSelection) {
+    const resolved = await this.providerFor(providerId)
+    if (!resolved) throw new Error('Provider is no longer available')
+    return this.selectionForEntry(resolved.entry, selection)
+  }
+
+  selectionForEntry(entry: ProviderEntry, selection: ModelSelection): ModelSelection {
+    if (entry.config.kind !== 'api_key' || !entry.config.models) return selection
+    const model = entry.config.models.find(model => model.id === selection.model.id)
+    if (!model) throw new Error('Model is not configured')
+    return applyConfiguredModel(entry.id, model, selection)
+  }
+
+  private async catalogOf(entry: ProviderEntry, provider: Provider | null, refresh = false) {
+    const models = entry.config.kind === 'api_key' ? entry.config.models : undefined
+    try {
+      const list = entry.config.kind === 'api_key' && entry.config.vendorId
+        ? await this.vendors.models(entry.config.vendorId, entry.id, refresh)
+        : provider?.listModels ? withProviderId(await provider.listModels({ refresh }), entry.id) : null
+      return {
+        models: models ? models.map(model => configuredCatalogModel(entry.id, model)) : list?.models ?? [],
+        sourceFetchedAt: list?.sourceFetchedAt ?? '1970-01-01T00:00:00.000Z',
+        stale: list?.stale ?? false,
+        warnings: list?.warnings ?? [],
+      }
+    } catch (error) {
+      return {
+        models: models?.map(model => configuredCatalogModel(entry.id, model)) ?? [],
+        sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: true, warnings: [errorMessage(error)],
+      }
+    }
   }
 
   private async modelsOf(entry: ProviderEntry, provider: Provider | null): Promise<ProviderModelList['models']> {
-    if (entry.config.kind === 'api_key') {
-      if (entry.config.modelIds) return entry.config.modelIds.map((modelId: string) => userEnteredModel(entry.id, modelId))
-      if (entry.config.vendorId) return (await this.vendors.models(entry.config.vendorId, entry.id))?.models ?? []
-    }
-    return provider?.listModels ? withProviderId(await provider.listModels(), entry.id).models : []
-  }
-}
-
-/**
- * A compatible endpoint's user-entered model id as a catalog entry: the
- * capabilities are unknown to us, so everything capability-shaped is null
- * (unknown) and the context window uses a conservative mainstream default.
- */
-function userEnteredModel(providerId: string, modelId: string) {
-  return {
-    providerId: providerId,
-    id: modelId,
-    displayName: modelId,
-    contextWindow: 128_000,
-    outputLimit: null,
-    supportsTools: null,
-    supportsAttachments: null,
-    supportsReasoning: null,
-    supportedThinkingEfforts: null,
-    defaultThinkingEffort: null,
-    sourceFetchedAt: new Date().toISOString(),
-    stale: false,
+    return (await this.catalogOf(entry, provider)).models
   }
 }
 
