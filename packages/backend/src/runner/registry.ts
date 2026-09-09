@@ -11,16 +11,42 @@ import {
   type RunnerToBackendMessage,
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
-import type { CommandIO, Host, HostFileSystem, HostIdentity, HostStore } from '@demicodes/shell'
-import { ByteQueue, createId, deferred, errorMessage, noop, toBytes, type Deferred } from '@demicodes/utils'
-import type { ControlService, DeviceRecord, WorkspaceRecord } from '../storage/control'
-import { generateClaimCode, generateDeviceToken, hashDeviceToken, normalizeClaimCode } from './claim-codes'
+import type {
+  CommandIO,
+  Host,
+  HostFileSystem,
+  HostIdentity,
+  HostStore
+} from '@demicodes/shell'
+import {
+  ByteQueue,
+  createId,
+  deferred,
+  errorMessage,
+  noop,
+  toBytes,
+  type Deferred
+} from '@demicodes/utils'
+import type {
+  ControlService,
+  DeviceRecord,
+  WorkspaceRecord
+} from '../storage/control'
+import {
+  generateClaimCode,
+  generateDeviceToken,
+  hashDeviceToken,
+  normalizeClaimCode
+} from './claim-codes'
 import { withRelayedPipes, type Pipe, type PipeBroker } from './pipes'
 
 export interface RunnerRegistryOptions {
   admit?: (deviceId: string) => () => void
   control: ControlService
-  /** Pairing-code lifetime; an expired code is re-issued over the waiting socket. */
+  /**
+   * Pairing-code lifetime; an expired code is re-issued over the waiting
+   * socket.
+   */
   claimTtlMs?: number
   /** Backend-driven liveness interval (0 disables — for tests). */
   pingIntervalMs?: number
@@ -30,14 +56,34 @@ export interface RunnerRegistryOptions {
   log?: (line: string) => void
   /** The command manifest pushed to every runner on connect (`commands.md`). */
   manifest?: () => Promise<unknown>
-  /** Runs an `rpc` command a runner relayed; output streams back through `io`, the result is its exit. */
+  /**
+   * Runs an `rpc` command a runner relayed; output streams back through `io`,
+   * the result is its exit.
+   */
   rpc?: RpcRelayHandler
-  /** The pipe broker; the registry mints a relayed call's pipes and fails a device's pipes when its connection drops. */
+  /**
+   * The pipe broker; the registry mints a relayed call's pipes and fails a
+   * device's pipes when its connection drops.
+   */
   pipes?: PipeBroker
-  /** Every message on every authenticated socket, by device — the wire audit tests run. */
-  trace?: (deviceId: string, direction: 'in' | 'out', message: RunnerProtocolMessage) => void
-  /** A guest's `volume_grow`: enlarge the named writable disk and report `volume_grown`. */
-  volumeGrow?: (deviceId: string, volume: 'system' | 'home', bytes: number) => Promise<void>
+  /**
+   * Every message on every authenticated socket, by device — the wire audit
+   * tests run.
+   */
+  trace?: (
+    deviceId: string,
+    direction: 'in' | 'out',
+    message: RunnerProtocolMessage
+  ) => void
+  /**
+   * A guest's `volume_grow`: enlarge the named writable disk and report
+   * `volume_grown`.
+   */
+  volumeGrow?: (
+    deviceId: string,
+    volume: 'system' | 'home',
+    bytes: number
+  ) => Promise<void>
 }
 
 /**
@@ -52,18 +98,28 @@ export interface RpcRelayIO {
   stdout: Pipe
   stderr(bytes: Uint8Array): Promise<void>
   stdinStream: AsyncIterable<Uint8Array>
-  /** The `CommandIO` a handler runs with: stdout into the pipe, stderr to the view, the pipes attached for a handler that forwards them. */
+  /**
+   * The `CommandIO` a handler runs with: stdout into the pipe, stderr to the
+   * view, the pipes attached for a handler that forwards them.
+   */
   commandIO(): CommandIO
 }
 
-/** One relayed `rpc` invocation: the call as it arrived, its live stdin, and where its output goes. */
+/**
+ * One relayed `rpc` invocation: the call as it arrived, its live stdin, and
+ * where its output goes.
+ */
 export interface RpcExecution {
   conversationId: string
   host: Host
   env: Readonly<Record<string, string>>
 }
 
-export type RpcRelayHandler = (call: Omit<RpcCallMessage, 'type'>, io: RpcRelayIO, execution: RpcExecution) => Promise<number>
+export type RpcRelayHandler = (
+  call: Omit<RpcCallMessage, 'type'>,
+  io: RpcRelayIO,
+  execution: RpcExecution
+) => Promise<number>
 
 export interface RunnerSocketHandle {
   /** One MessagePack frame from the runner. */
@@ -71,7 +127,13 @@ export interface RunnerSocketHandle {
   handleClose(): void
 }
 
-export type ClaimResult = { ok: true; device: DeviceRecord } | { ok: false; code: 'rate_limited' | 'invalid_code' }
+export type ClaimResult = {
+  ok: true;
+  device: DeviceRecord
+} | {
+  ok: false;
+  code: 'rate_limited' | 'invalid_code'
+}
 
 interface RunnerConnection {
   closed: boolean
@@ -86,12 +148,20 @@ interface RunnerConnection {
   claimTimer: ReturnType<typeof setTimeout> | null
   pingTimer: ReturnType<typeof setInterval> | null
   pongPending: boolean
-  /** A backend-initiated pause (the checkpoint copy): a missed pong is not a death while set. */
+  /**
+   * A backend-initiated pause (the checkpoint copy): a missed pong is not a
+   * death while set.
+   */
   livenessPaused: boolean
   /** Running jobs as of the last `pong`; the idle rule reads it. */
   jobs: number
   /** Live stdin queues of the rpc calls relayed on this connection. */
-  rpcCalls: Map<string, { jobId: string; live: ByteQueue; controller: AbortController; pipes: Pipe[] }>
+  rpcCalls: Map<string, {
+    jobId: string;
+    live: ByteQueue;
+    controller: AbortController;
+    pipes: Pipe[]
+  }>
   /** `sync` requests in flight, settled by `sync_done`. */
   syncs: Map<string, Deferred<void>>
 }
@@ -114,14 +184,25 @@ export class RunnerRegistry {
   private readonly manifest: (() => Promise<unknown>) | null
   private readonly rpc: RpcRelayHandler | null
   private readonly pipes: PipeBroker | null
-  private readonly trace: ((deviceId: string, direction: 'in' | 'out', message: RunnerProtocolMessage) => void) | null
-  private readonly volumeGrow: ((deviceId: string, volume: 'system' | 'home', bytes: number) => Promise<void>) | null
+  private readonly trace: ((
+    deviceId: string,
+    direction: 'in' | 'out',
+    message: RunnerProtocolMessage
+  ) => void) | null
+  private readonly volumeGrow: ((
+    deviceId: string,
+    volume: 'system' | 'home',
+    bytes: number
+  ) => Promise<void>) | null
   private readonly pendingClaims = new Map<string, RunnerConnection>()
   private readonly sockets = new Set<RunnerConnection>()
   private readonly connections = new Map<string, RunnerConnection>()
   private readonly hosts = new Map<string, Map<string, RemoteHost>>()
   private readonly conversationOfHost = new WeakMap<RemoteHost, string>()
-  /** Last-known identity per device, so a Host can exist while its runner is offline. */
+  /**
+   * Last-known identity per device, so a Host can exist while its runner is
+   * offline.
+   */
   private readonly identities = new Map<string, HostIdentity>()
   private readonly claimAttempts = new Map<string, number[]>()
   private readonly onlineWaiters = new Map<string, Deferred<void>>()
@@ -140,18 +221,25 @@ export class RunnerRegistry {
     this.volumeGrow = options.volumeGrow ?? null
   }
 
-  /** Binds one runner WebSocket; the route feeds frames and the close event in. */
-  openSocket(io: { send(frame: Uint8Array): void; close(): void }): RunnerSocketHandle {
+  /**
+   * Binds one runner WebSocket; the route feeds frames and the close event in.
+   */
+  openSocket(io: {
+    send(frame: Uint8Array): void;
+    close(): void
+  }): RunnerSocketHandle {
     const connection: RunnerConnection = {
       closed: false,
       helloStarted: false,
       send: (message) => {
-        if (connection.closed) return
-        if (connection.deviceId !== null) this.trace?.(connection.deviceId, 'out', message)
+        if (connection.closed)
+          return
+        if (connection.deviceId !== null)
+          this.trace?.(connection.deviceId, 'out', message)
         try {
           io.send(wire.encode(message))
         } catch {
-          // A racing close drops the frame; the close event owns cleanup.
+        // A racing close drops the frame; the close event owns cleanup.
         }
       },
       close: () => {
@@ -172,7 +260,8 @@ export class RunnerRegistry {
     this.sockets.add(connection)
     return {
       handleMessage: (frame) => {
-        if (connection.closed || this.closed) return
+        if (connection.closed || this.closed)
+          return
         let message: RunnerToBackendMessage
         try {
           message = wire.decodeRunnerToBackend(frame)
@@ -187,11 +276,15 @@ export class RunnerRegistry {
     }
   }
 
-  /** Claims a pending runner for `userId` — the `POST /api/devices/claim` core. */
+  /**
+   * Claims a pending runner for `userId` — the `POST /api/devices/claim` core.
+   */
   async claim(userId: string, rawCode: string): Promise<ClaimResult> {
-    if (!this.recordClaimAttempt(userId)) return { ok: false, code: 'rate_limited' }
+    if (!this.recordClaimAttempt(userId))
+      return { ok: false, code: 'rate_limited' }
     const connection = this.pendingClaims.get(normalizeClaimCode(rawCode))
-    if (!connection || !connection.runner) return { ok: false, code: 'invalid_code' }
+    if (!connection || !connection.runner)
+      return { ok: false, code: 'invalid_code' }
 
     this.clearPendingClaim(connection)
     const deviceToken = generateDeviceToken()
@@ -208,16 +301,24 @@ export class RunnerRegistry {
     }
     this.bindDevice(connection, device.id)
     connection.send({ type: 'claimed', deviceToken })
-    if (manifest) connection.send(manifest)
+    if (manifest)
+      connection.send(manifest)
     return { ok: true, device }
   }
 
-  /** Deletes the device row and drops its live connection (the reconnect is refused). */
+  /**
+   * Deletes the device row and drops its live connection (the reconnect is
+   * refused).
+   */
   async revoke(deviceId: string): Promise<void> {
     await this.control.deleteDevice(deviceId)
     const connection = this.connections.get(deviceId)
     if (connection) {
-      connection.send({ type: 'hello_error', code: 'revoked', reason: 'device revoked' })
+      connection.send({
+        type: 'hello_error',
+        code: 'revoked',
+        reason: 'device revoked'
+      })
       connection.close()
     }
   }
@@ -226,9 +327,13 @@ export class RunnerRegistry {
     return this.connections.has(deviceId)
   }
 
-  /** Resolves once the device has an authenticated socket; at once if it has one now. */
+  /**
+   * Resolves once the device has an authenticated socket; at once if it has one
+   * now.
+   */
   whenOnline(deviceId: string): Promise<void> {
-    if (this.connections.has(deviceId)) return Promise.resolve()
+    if (this.connections.has(deviceId))
+      return Promise.resolve()
     let waiter = this.onlineWaiters.get(deviceId)
     if (!waiter) {
       waiter = deferred<void>()
@@ -244,25 +349,36 @@ export class RunnerRegistry {
    */
   pauseLiveness(deviceId: string): void {
     const connection = this.connections.get(deviceId)
-    if (connection) connection.livenessPaused = true
+    if (connection)
+      connection.livenessPaused = true
   }
 
   resumeLiveness(deviceId: string): void {
     const connection = this.connections.get(deviceId)
-    if (!connection) return
+    if (!connection)
+      return
     connection.livenessPaused = false
     connection.pongPending = false
   }
 
-  /** The device's last-known identity (its home directory among it), from any hello it has sent; null before the first. */
+  /**
+   * The device's last-known identity (its home directory among it), from any
+   * hello it has sent; null before the first.
+   */
   deviceIdentity(deviceId: string): HostIdentity | null {
     return this.identities.get(deviceId) ?? null
   }
 
-  /** Running work known from dispatched jobs/spawns and the latest runner report. */
+  /**
+   * Running work known from dispatched jobs/spawns and the latest runner
+   * report.
+   */
   runningJobs(deviceId: string): number {
     const hosts = [...(this.hosts.get(deviceId)?.values() ?? [])]
-    const dispatched = hosts.reduce((count, host) => count + host.activeJobCount + host.activeSpawnCount, 0)
+    const dispatched = hosts.reduce(
+      (count, host) => count + host.activeJobCount + host.activeSpawnCount,
+      0
+    )
     return Math.max(this.connections.get(deviceId)?.jobs ?? 0, dispatched)
   }
 
@@ -272,7 +388,11 @@ export class RunnerRegistry {
    * devices still resolve — operations fail as ordinary tool errors until the
    * runner reattaches.
    */
-  hostFor(workspace: Pick<WorkspaceRecord, 'deviceId' | 'path'>, conversationId: string, store: HostStore): RemoteHost {
+  hostFor(
+    workspace: Pick<WorkspaceRecord, 'deviceId' | 'path'>,
+    conversationId: string,
+    store: HostStore
+  ): RemoteHost {
     const key = `${conversationId}\0${workspace.path}`
     let deviceHosts = this.hosts.get(workspace.deviceId)
     if (!deviceHosts) {
@@ -284,13 +404,19 @@ export class RunnerRegistry {
       host = new RemoteHost({
         defaultCwd: workspace.path,
         admit: () => this.options.admit?.(workspace.deviceId) ?? (() => {}),
-        identity: this.identities.get(workspace.deviceId) ?? { uid: 0, gid: 0, hostname: 'offline', homeDir: workspace.path },
+        identity: this.identities.get(workspace.deviceId) ?? {
+          uid: 0,
+          gid: 0,
+          hostname: 'offline',
+          homeDir: workspace.path
+        },
         store,
       })
       deviceHosts.set(key, host)
       this.conversationOfHost.set(host, conversationId)
       const connection = this.connections.get(workspace.deviceId)
-      if (connection) host.attach((message) => connection.send(message))
+      if (connection)
+        host.attach((message) => connection.send(message))
     }
     return host
   }
@@ -303,15 +429,20 @@ export class RunnerRegistry {
    */
   disconnect(deviceId: string): void {
     const connection = this.connections.get(deviceId)
-    if (!connection) return
+    if (!connection)
+      return
     this.handleSocketClose(connection)
     connection.close()
   }
 
-  /** Flushes runner filesystems before saving; lifecycle policy handles failures. */
+  /**
+   * Flushes runner filesystems before saving; lifecycle policy handles
+   * failures.
+   */
   async sync(deviceId: string, timeoutMs: number): Promise<void> {
     const connection = this.connections.get(deviceId)
-    if (!connection) throw new Error('Runner is offline')
+    if (!connection)
+      throw new Error('Runner is offline')
     const id = createId()
     const done = deferred<void>()
     connection.syncs.set(id, done)
@@ -327,16 +458,25 @@ export class RunnerRegistry {
     }
   }
 
-  /** The device's filesystem for web-UI directory browse/create — `null` while offline. */
+  /**
+   * The device's filesystem for web-UI directory browse/create — `null` while
+   * offline.
+   */
   deviceFs(deviceId: string): HostFileSystem | null {
     const connection = this.connections.get(deviceId)
-    if (!connection) return null
-    return this.hostFor({ deviceId, path: '/' }, BROWSE_CONVERSATION, administrativeStore).fs
+    if (!connection)
+      return null
+    return this.hostFor(
+      { deviceId, path: '/' },
+      BROWSE_CONVERSATION,
+      administrativeStore
+    ).fs
   }
 
   async close(): Promise<void> {
     this.closed = true
-    for (const waiter of this.onlineWaiters.values()) waiter.reject(new Error('registry closed'))
+    for (const waiter of this.onlineWaiters.values())
+      waiter.reject(new Error('registry closed'))
     this.onlineWaiters.clear()
     for (const connection of [...this.sockets]) {
       connection.close()
@@ -344,12 +484,16 @@ export class RunnerRegistry {
     this.pendingClaims.clear()
     this.connections.clear()
     for (const deviceHosts of this.hosts.values()) {
-      for (const host of deviceHosts.values()) host.detach('backend shutting down')
+      for (const host of deviceHosts.values())
+        host.detach('backend shutting down')
     }
     this.hosts.clear()
   }
 
-  private async handleMessage(connection: RunnerConnection, message: RunnerToBackendMessage): Promise<void> {
+  private async handleMessage(
+    connection: RunnerConnection,
+    message: RunnerToBackendMessage
+  ): Promise<void> {
     if (message.type === 'hello') {
       await this.handleHello(connection, message)
       return
@@ -359,7 +503,8 @@ export class RunnerRegistry {
       connection.jobs = message.jobs
       return
     }
-    if (connection.deviceId === null) return
+    if (connection.deviceId === null)
+      return
     this.trace?.(connection.deviceId, 'in', message)
     if (message.type === 'rpc_call') {
       void this.relayRpc(connection, connection.deviceId, message)
@@ -379,13 +524,17 @@ export class RunnerRegistry {
     }
     if (message.type === 'pipe_done') {
       // The broker settles a pipe by its HTTP exchange; the runner's report is for the log.
-      if (!message.ok) this.log(`pipe ${message.pipeId} on device ${connection.deviceId}: ${message.error ?? 'failed'}`)
+      if (!message.ok)
+        this.log(
+          `pipe ${message.pipeId} on device ${connection.deviceId}: ${message.error ?? 'failed'}`
+        )
       return
     }
     if (message.type === 'sync_done') {
       const done = connection.syncs.get(message.id)
       connection.syncs.delete(message.id)
-      if (message.error) done?.reject(new Error(message.error))
+      if (message.error)
+        done?.reject(new Error(message.error))
       else done?.resolve()
       return
     }
@@ -394,22 +543,41 @@ export class RunnerRegistry {
       return
     }
     if (message.type === 'job_exit') {
-      for (const [callId, call] of connection.rpcCalls) if (call.jobId === message.jobId) this.cancelRpc(connection, callId)
+      for (const [callId, call] of connection.rpcCalls)
+        if (call.jobId === message.jobId)
+          this.cancelRpc(connection, callId)
     }
     // fs results, spawn and job streams: each per-target host claims its own ids.
     const deviceHosts = this.hosts.get(connection.deviceId)
-    if (!deviceHosts) return
-    for (const host of deviceHosts.values()) host.handleMessage(message)
+    if (!deviceHosts)
+      return
+    for (const host of deviceHosts.values())
+      host.handleMessage(message)
   }
 
-  /** The guest's home is nearly full: grow its image, then tell the guest the new size so it grows the filesystem. */
-  private async growVolume(connection: RunnerConnection, message: Extract<RunnerToBackendMessage, { type: 'volume_grow' }>): Promise<void> {
+  /**
+   * The guest's home is nearly full: grow its image, then tell the guest the
+   * new size so it grows the filesystem.
+   */
+  private async growVolume(
+    connection: RunnerConnection,
+    message: Extract<RunnerToBackendMessage, { type: 'volume_grow' }>
+  ): Promise<void> {
     let error: string | null = null
     try {
-      if (!this.volumeGrow) throw new Error('Volume growth is unavailable')
+      if (!this.volumeGrow)
+        throw new Error('Volume growth is unavailable')
       await this.volumeGrow(connection.deviceId!, message.volume, message.bytes)
-    } catch (cause) { error = errorMessage(cause) }
-    connection.send({ type: 'volume_grown', id: message.id, volume: message.volume, bytes: message.bytes, error })
+    } catch (cause) {
+      error = errorMessage(cause)
+    }
+    connection.send({
+      type: 'volume_grown',
+      id: message.id,
+      volume: message.volume,
+      bytes: message.bytes,
+      error
+    })
   }
 
   /**
@@ -418,11 +586,16 @@ export class RunnerRegistry {
    * else, its stderr view streamed back, and its exit sent once the stdout
    * pipe drained (`runner.md` § Pipes).
    */
-  private executionFor(deviceId: string, call: Omit<RpcCallMessage, 'type'>): RpcExecution {
+  private executionFor(
+    deviceId: string,
+    call: Omit<RpcCallMessage, 'type'>
+  ): RpcExecution {
     for (const host of this.hosts.get(deviceId)?.values() ?? []) {
       const env = host.jobEnvironment(call.jobId)
-      if (!env) continue
-      if (env.DEMI_SESSION_ID !== call.agentSessionId || env.DEMI_SHELL_ID !== call.shellId) {
+      if (!env)
+        continue
+      if (env.DEMI_SESSION_ID !== call.agentSessionId ||
+        env.DEMI_SHELL_ID !== call.shellId) {
         throw new Error('rpc identity does not match the dispatched job')
       }
       const conversationId = this.conversationOfHost.get(host)!
@@ -431,7 +604,11 @@ export class RunnerRegistry {
     throw new Error('rpc requires a live job dispatched to this device')
   }
 
-  private async relayRpc(connection: RunnerConnection, deviceId: string, message: RpcCallMessage): Promise<void> {
+  private async relayRpc(
+    connection: RunnerConnection,
+    deviceId: string,
+    message: RpcCallMessage
+  ): Promise<void> {
     const { type: _type, ...call } = message
     if (connection.rpcCalls.has(call.callId)) {
       connection.close()
@@ -440,17 +617,29 @@ export class RunnerRegistry {
     const live = new ByteQueue()
     const controller = new AbortController()
     const pipes: Pipe[] = []
-    connection.rpcCalls.set(call.callId, { jobId: call.jobId, live, controller, pipes })
-    const stderr = async (bytes: Uint8Array) => connection.send({ type: 'rpc_output', callId: call.callId, bytes })
+    connection.rpcCalls.set(
+      call.callId,
+      { jobId: call.jobId, live, controller, pipes }
+    )
+    const stderr = async (bytes: Uint8Array) => connection.send(
+      { type: 'rpc_output', callId: call.callId, bytes }
+    )
     let exitCode: number
     try {
       const execution = this.executionFor(deviceId, call)
-      if (!this.rpc) throw new Error('this backend serves no rpc commands to runners')
-      if (!this.pipes) throw new Error('this backend brokers no pipes')
+      if (!this.rpc)
+        throw new Error('this backend serves no rpc commands to runners')
+      if (!this.pipes)
+        throw new Error('this backend brokers no pipes')
       const stdin = call.stdin ? this.pipes.open({ deviceId }) : null
       const stdout = this.pipes.open(undefined, { deviceId })
       pipes.push(stdout, ...(stdin ? [stdin] : []))
-      connection.send({ type: 'rpc_pipes', callId: call.callId, ...(stdin ? { stdin: stdin.ref() } : {}), stdout: stdout.ref() })
+      connection.send({
+        type: 'rpc_pipes',
+        callId: call.callId,
+        ...(stdin ? { stdin: stdin.ref() } : {}),
+        stdout: stdout.ref()
+      })
       const writer = stdout.writer()
       const io: RpcRelayIO = {
         signal: controller.signal,
@@ -458,7 +647,10 @@ export class RunnerRegistry {
         stdout,
         stderr,
         stdinStream: live.stream(),
-        commandIO: () => withRelayedPipes({ stdout: (data) => writer.write(toBytes(data)), stderr: (data) => stderr(toBytes(data)) }, { stdin, stdout }),
+        commandIO: () => withRelayedPipes({
+          stdout: (data) => writer.write(toBytes(data)),
+          stderr: (data) => stderr(toBytes(data))
+        }, { stdin, stdout }),
       }
       try {
         exitCode = await this.rpc(call, io, execution)
@@ -471,55 +663,77 @@ export class RunnerRegistry {
       await stdout.done.catch(noop)
       stdin?.done.catch(noop)
     } catch (error) {
-      await stderr(new TextEncoder().encode(`${call.root}: ${errorMessage(error)}\n`))
+      await stderr(
+        new TextEncoder().encode(`${call.root}: ${errorMessage(error)}\n`)
+      )
       exitCode = 1
     } finally {
       connection.rpcCalls.delete(call.callId)
       live.close()
-      for (const pipe of pipes) this.pipes?.fail(pipe.id, 'rpc call ended')
+      for (const pipe of pipes)
+        this.pipes?.fail(pipe.id, 'rpc call ended')
     }
-    connection.send({ type: 'rpc_exit', callId: call.callId, exitCode: controller.signal.aborted ? 130 : exitCode })
+    connection.send({
+      type: 'rpc_exit',
+      callId: call.callId,
+      exitCode: controller.signal.aborted ? 130 : exitCode
+    })
   }
 
   private cancelRpc(connection: RunnerConnection, callId: string): void {
     const call = connection.rpcCalls.get(callId)
-    if (!call) return
+    if (!call)
+      return
     call.controller.abort()
     call.live.close()
-    for (const pipe of call.pipes) this.pipes?.fail(pipe.id, 'rpc call cancelled')
+    for (const pipe of call.pipes)
+      this.pipes?.fail(pipe.id, 'rpc call cancelled')
   }
 
   private async handleHello(
     connection: RunnerConnection,
     message: Extract<RunnerToBackendMessage, { type: 'hello' }>,
   ): Promise<void> {
-    if (connection.helloStarted || connection.closed || this.closed) return
+    if (connection.helloStarted || connection.closed || this.closed)
+      return
     connection.helloStarted = true
     connection.runner = message.runner
     const refuse = (code: HelloErrorCode, reason: string) => {
-      this.log(`runner hello refused (${code}): ${reason} [${message.runner.name}, ${message.runner.platform}]`)
+      this.log(
+        `runner hello refused (${code}): ${reason} [${message.runner.name}, ${message.runner.platform}]`
+      )
       connection.send({ type: 'hello_error', code, reason })
       connection.close()
     }
     if (message.protocol !== RUNNER_PROTOCOL_VERSION) {
-      refuse('unsupported_protocol', `unsupported protocol ${message.protocol}; this backend speaks ${RUNNER_PROTOCOL_VERSION}`)
+      refuse(
+        'unsupported_protocol',
+        `unsupported protocol ${message.protocol}; this backend speaks ${RUNNER_PROTOCOL_VERSION}`
+      )
       return
     }
     if (message.deviceToken === undefined) {
       // A managed host is born with its token; one without it is misbooted,
       // never a device waiting to be paired (`managed-hosts.md` § Joining).
-      if (message.runner.managed) refuse('unknown_device', 'a managed host presents its device token; it is never paired')
+      if (message.runner.managed)
+        refuse(
+          'unknown_device',
+          'a managed host presents its device token; it is never paired'
+        )
       else this.issueClaimCode(connection)
       return
     }
     let device: DeviceRecord | null
     try {
-      device = await this.control.getDeviceByTokenHash(hashDeviceToken(message.deviceToken))
+      device = await this.control.getDeviceByTokenHash(
+        hashDeviceToken(message.deviceToken)
+      )
     } catch (error) {
       refuse('internal', errorMessage(error))
       return
     }
-    if (connection.closed || this.closed) return
+    if (connection.closed || this.closed)
+      return
     if (!device) {
       refuse('unknown_device', 'unknown device')
       return
@@ -527,18 +741,26 @@ export class RunnerRegistry {
     // Finish asynchronous preparation before atomically checking and binding
     // the device. A socket closed during preparation cannot become online.
     const manifest = await this.manifestFrame()
-    if (connection.closed || this.closed) return
+    if (connection.closed || this.closed)
+      return
     if (this.connections.has(device.id)) {
-      refuse('already_connected', `device ${device.id} already has a live connection`)
+      refuse(
+        'already_connected',
+        `device ${device.id} already has a live connection`
+      )
       return
     }
     this.bindDevice(connection, device.id)
     connection.send({ type: 'hello_ok', deviceId: device.id })
-    if (manifest) connection.send(manifest)
+    if (manifest)
+      connection.send(manifest)
   }
 
-  private async manifestFrame(): Promise<Extract<BackendToRunnerMessage, { type: 'manifest' }> | null> {
-    if (!this.manifest) return null
+  private async manifestFrame(): Promise<
+    Extract<BackendToRunnerMessage, { type: 'manifest' }> | null
+  > {
+    if (!this.manifest)
+      return null
     try {
       return { type: 'manifest', manifest: await this.manifest() }
     } catch (error) {
@@ -548,15 +770,21 @@ export class RunnerRegistry {
   }
 
   private issueClaimCode(connection: RunnerConnection): void {
-    if (this.closed || connection.closed) return
-    if (connection.claimCode) this.pendingClaims.delete(connection.claimCode)
+    if (this.closed || connection.closed)
+      return
+    if (connection.claimCode)
+      this.pendingClaims.delete(connection.claimCode)
     const code = generateClaimCode()
     connection.claimCode = normalizeClaimCode(code)
     this.pendingClaims.set(connection.claimCode, connection)
     connection.send({ type: 'claim_pending', claimToken: code })
     // Single-use and expiring: an expired code rotates on the waiting socket.
-    if (connection.claimTimer) clearTimeout(connection.claimTimer)
-    connection.claimTimer = setTimeout(() => this.issueClaimCode(connection), this.claimTtlMs)
+    if (connection.claimTimer)
+      clearTimeout(connection.claimTimer)
+    connection.claimTimer = setTimeout(
+      () => this.issueClaimCode(connection),
+      this.claimTtlMs
+    )
   }
 
   private bindDevice(connection: RunnerConnection, deviceId: string): void {
@@ -564,15 +792,21 @@ export class RunnerRegistry {
     this.connections.set(deviceId, connection)
     this.onlineWaiters.get(deviceId)?.resolve()
     this.onlineWaiters.delete(deviceId)
-    if (connection.runner) this.identities.set(deviceId, connection.runner.identity)
+    if (connection.runner)
+      this.identities.set(deviceId, connection.runner.identity)
     void this.control.touchDeviceSeen(deviceId).catch(() => {})
     const deviceHosts = this.hosts.get(deviceId)
     if (deviceHosts) {
-      for (const host of deviceHosts.values()) host.attach((message) => connection.send(message), connection.runner?.identity)
+      for (const host of deviceHosts.values())
+        host.attach(
+          (message) => connection.send(message),
+          connection.runner?.identity
+        )
     }
     if (this.pingIntervalMs > 0 && connection.pingTimer === null) {
       connection.pingTimer = setInterval(() => {
-        if (connection.livenessPaused) return
+        if (connection.livenessPaused)
+          return
         if (connection.pongPending) {
           connection.close()
           return
@@ -584,11 +818,13 @@ export class RunnerRegistry {
   }
 
   private handleSocketClose(connection: RunnerConnection): void {
-    if (connection.closed) return
+    if (connection.closed)
+      return
     connection.closed = true
     this.sockets.delete(connection)
     this.teardown(connection)
-    if (connection.deviceId !== null && this.connections.get(connection.deviceId) === connection) {
+    if (connection.deviceId !== null &&
+      this.connections.get(connection.deviceId) === connection) {
       this.connections.delete(connection.deviceId)
       void this.control.touchDeviceSeen(connection.deviceId).catch(() => {})
       this.detachHosts(connection.deviceId, 'runner disconnected')
@@ -598,14 +834,18 @@ export class RunnerRegistry {
 
   private detachHosts(deviceId: string, reason: string): void {
     const deviceHosts = this.hosts.get(deviceId)
-    if (!deviceHosts) return
-    for (const host of deviceHosts.values()) host.detach(reason)
+    if (!deviceHosts)
+      return
+    for (const host of deviceHosts.values())
+      host.detach(reason)
   }
 
   private teardown(connection: RunnerConnection): void {
     this.clearPendingClaim(connection)
-    for (const callId of connection.rpcCalls.keys()) this.cancelRpc(connection, callId)
-    for (const done of connection.syncs.values()) done.reject(new Error('Runner sync interrupted or timed out'))
+    for (const callId of connection.rpcCalls.keys())
+      this.cancelRpc(connection, callId)
+    for (const done of connection.syncs.values())
+      done.reject(new Error('Runner sync interrupted or timed out'))
     connection.syncs.clear()
     if (connection.pingTimer) {
       clearInterval(connection.pingTimer)
@@ -626,13 +866,18 @@ export class RunnerRegistry {
 
   private recordClaimAttempt(userId: string): boolean {
     const now = Date.now()
-    const attempts = (this.claimAttempts.get(userId) ?? []).filter((at) => now - at < 60_000)
-    if (attempts.length >= this.claimAttemptsPerMinute) return false
+    const attempts = (this.claimAttempts.get(userId) ??
+      []).filter((at) => now - at < 60_000)
+    if (attempts.length >= this.claimAttemptsPerMinute)
+      return false
     attempts.push(now)
     this.claimAttempts.set(userId, attempts)
     return true
   }
 }
 
-/** Directory browse is fs-only; the shared browse host needs no real identity or store. */
+/**
+ * Directory browse is fs-only; the shared browse host needs no real identity or
+ * store.
+ */
 const BROWSE_CONVERSATION = '\0browse'

@@ -18,9 +18,14 @@ export interface CodexQuotaOptions {
   codexHome?: string
   baseUrl?: string
   authStore?: CodexAuthStore
-  /** Model id for the minimal probe request (must be accepted by the backend). */
+  /**
+   * Model id for the minimal probe request (must be accepted by the backend).
+   */
   probeModelId?: string
-  fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+  fetch?: (
+    input: string | URL | Request,
+    init?: RequestInit
+  ) => Promise<Response>
   userAgent?: string
 }
 
@@ -36,7 +41,9 @@ const DEFAULT_PROBE_MODEL = 'gpt-5.4'
  */
 export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota {
   const providerId = options.providerId ?? 'codex'
-  const authStore = options.authStore ?? new FileCodexAuthStore({ codexHome: options.codexHome })
+  const authStore = options.authStore ?? new FileCodexAuthStore({
+    codexHome: options.codexHome
+  })
   const fetchImpl = options.fetch ?? fetch
   const probeModelId = options.probeModelId ?? DEFAULT_PROBE_MODEL
 
@@ -49,7 +56,9 @@ export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota
     probe: async ({ signal } = {}) => {
       const auth = await authStore.resolveAuth()
       const status = await authStore.status()
-      const accountLabel = status.status === 'authenticated' ? status.accountLabel ?? null : null
+      const accountLabel = status.status === 'authenticated'
+        ? status.accountLabel ?? null
+        : null
       const headers = buildCodexHeaders(
         auth,
         { sessionId: 'demi-codex-quota-probe', requestId: randomUUID() },
@@ -58,7 +67,11 @@ export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota
       const body = {
         model: probeModelId,
         instructions: 'Reply with pong.',
-        input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'ping' }] }],
+        input: [{
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'ping' }]
+        }],
         tools: [],
         tool_choice: 'auto',
         parallel_tool_calls: true,
@@ -68,7 +81,10 @@ export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota
         prompt_cache_key: 'demi-codex-quota-probe',
         text: { verbosity: 'low' },
       }
-      const response = await fetchImpl(responsesUrlForAuth(auth, options.baseUrl), {
+      const response = await fetchImpl(responsesUrlForAuth(
+        auth,
+        options.baseUrl
+      ), {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
@@ -77,24 +93,34 @@ export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota
       const partial = mapCodexRateLimitHeaders(response.headers)
       await response.body?.cancel().catch(() => {})
       if (!partial || partial.windows.length === 0) {
-        throw new Error(`Codex quota probe got no rate-limit headers (HTTP ${response.status})`)
+        throw new Error(
+          `Codex quota probe got no rate-limit headers (HTTP ${response.status})`
+        )
       }
       return {
         ...partial,
         accountLabel,
-        raw: { ...(isRecord(partial.raw) ? partial.raw : {}), httpStatus: response.status, authKind: auth.kind },
+        raw: {
+          ...(isRecord(partial.raw) ? partial.raw : {}),
+          httpStatus: response.status,
+          authKind: auth.kind
+        },
       }
     },
     observe: ({ headers }) => mapCodexRateLimitHeaders(headers),
   })
 }
 
-export function mapCodexRateLimitHeaders(headers: Headers | undefined): ProviderQuotaProbeResult | null {
-  if (!headers) return null
+export function mapCodexRateLimitHeaders(
+  headers: Headers | undefined
+): ProviderQuotaProbeResult | null {
+  if (!headers)
+    return null
   const primary = parseCodexWindow(headers, 'primary')
   const secondary = parseCodexWindow(headers, 'secondary')
   const windows = [primary, secondary].filter((w): w is ProviderQuotaWindow => w !== null)
-  if (windows.length === 0) return null
+  if (windows.length === 0)
+    return null
   return {
     windows,
     raw: {
@@ -104,11 +130,21 @@ export function mapCodexRateLimitHeaders(headers: Headers | undefined): Provider
   }
 }
 
-function parseCodexWindow(headers: Headers, kind: 'primary' | 'secondary'): ProviderQuotaWindow | null {
-  const usedPercent = clampUsedPercent(numberHeader(headers, `x-codex-${kind}-used-percent`))
-  if (usedPercent == null && !headers.has(`x-codex-${kind}-used-percent`)) return null
+function parseCodexWindow(
+  headers: Headers,
+  kind: 'primary' | 'secondary'
+): ProviderQuotaWindow | null {
+  const usedPercent = clampUsedPercent(numberHeader(
+    headers,
+    `x-codex-${kind}-used-percent`
+  ))
+  if (usedPercent == null && !headers.has(`x-codex-${kind}-used-percent`))
+    return null
   const windowMinutes = numberHeader(headers, `x-codex-${kind}-window-minutes`)
-  const resetAt = unixSecondsToIso(numberHeader(headers, `x-codex-${kind}-reset-at`))
+  const resetAt = unixSecondsToIso(numberHeader(
+    headers,
+    `x-codex-${kind}-reset-at`
+  ))
   const label =
     kind === 'primary'
       ? windowMinutes != null
@@ -127,7 +163,10 @@ function parseCodexWindow(headers: Headers, kind: 'primary' | 'secondary'): Prov
   }
 }
 
-function headerBag(headers: Headers, kind: 'primary' | 'secondary'): Record<string, string | null> {
+function headerBag(
+  headers: Headers,
+  kind: 'primary' | 'secondary'
+): Record<string, string | null> {
   return {
     usedPercent: headers.get(`x-codex-${kind}-used-percent`),
     windowMinutes: headers.get(`x-codex-${kind}-window-minutes`),

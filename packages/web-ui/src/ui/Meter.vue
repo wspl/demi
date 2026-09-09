@@ -8,8 +8,15 @@ const props = withDefaults(defineProps<{
   label?: string
 }>(), {})
 
-const ratio = computed(() => (props.max > 0 ? Math.min(1, Math.max(0, props.value / props.max)) : 0))
-const tone = computed(() => (ratio.value >= 1 ? 'bg-on-danger' : ratio.value >= 0.8 ? 'bg-on-warning' : 'bg-accent-fill'))
+const ratio = computed(
+  () => (props.max > 0 ? Math.min(1, Math.max(0, props.value / props.max)) : 0)
+)
+const tone = computed(
+  () =>
+    (ratio.value >= 1
+    ? 'bg-on-danger'
+    : ratio.value >= 0.8 ? 'bg-on-warning' : 'bg-accent-fill')
+)
 </script>
 
 <template>
@@ -21,6 +28,10 @@ const tone = computed(() => (ratio.value >= 1 ? 'bg-on-danger' : ratio.value >= 
     :aria-valuemax="max"
     :aria-label="label"
   >
-    <div class="h-full rounded-full transition-[width] duration-300 ease-out" :class="tone" :style="{ width: `${ratio * 100}%` }" />
+    <div
+      class="h-full rounded-full transition-[width] duration-300 ease-out"
+      :class="tone"
+      :style="{ width: `${ratio * 100}%` }"
+    />
   </div>
 </template>

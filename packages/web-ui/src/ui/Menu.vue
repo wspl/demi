@@ -34,7 +34,11 @@ const emit = defineEmits<{
 defineSlots<{
   header(): void
   default(): void
-  item(props: { item: T; query: string; isSelected: boolean }): void
+  item(props: {
+    item: T;
+    query: string;
+    isSelected: boolean
+  }): void
 }>()
 
 const filterQuery = ref(props.initialQuery ?? '')
@@ -47,15 +51,19 @@ const listItems = computed(() => props.items ?? [])
 
 const filteredItems = computed(() => {
   const q = filterQuery.value.toLowerCase().trim()
-  if (!q) return listItems.value
+  if (!q)
+    return listItems.value
   const fn = props.filterFn
-  if (fn) return listItems.value.filter(item => fn(item, q))
+  if (fn)
+    return listItems.value.filter(item => fn(item, q))
   return listItems.value.filter(item => item.label.toLowerCase().includes(q))
 })
 
 const iconless = computed(() => {
-  if (props.iconless != null) return props.iconless
-  if (props.items == null) return false
+  if (props.iconless != null)
+    return props.iconless
+  if (props.items == null)
+    return false
   return props.items.every((item) => item.icon == null)
 })
 
@@ -65,7 +73,9 @@ const submenus = createSubmenuController()
 provide(menuSubmenuKey, submenus)
 onBeforeUnmount(submenus.dispose)
 
-const isVirtual = computed(() => props.items != null && props.itemHeight != null && props.itemHeight > 0)
+const isVirtual = computed(
+  () => props.items != null && props.itemHeight != null && props.itemHeight > 0
+)
 const rowHeight = computed(() => props.itemHeight ?? 28)
 
 const virtualizer = useVirtualizer(computed(() => ({
@@ -77,14 +87,17 @@ const virtualizer = useVirtualizer(computed(() => ({
 })))
 
 watch(inputRef, (el) => {
-  if (!el) return
+  if (!el)
+    return
   filterQuery.value = props.initialQuery ?? ''
   focusedIndex.value = -1
-  if (props.autofocus) el.focus({ preventScroll: true })
+  if (props.autofocus)
+    el.focus({ preventScroll: true })
 })
 
 watch(panelRef, (el) => {
-  if (!el || props.filterable || props.items == null || !props.autofocus) return
+  if (!el || props.filterable || props.items == null || !props.autofocus)
+    return
   focusedIndex.value = -1
   el.focus({ preventScroll: true })
 })
@@ -95,7 +108,8 @@ watch(filteredItems, () => {
 
 function handleSelect(id: string) {
   const item = listItems.value.find((item) => item.id === id)
-  if (item && props.isItemDisabled?.(item)) return
+  if (item && props.isItemDisabled?.(item))
+    return
   emit('select', id)
 }
 
@@ -105,21 +119,29 @@ function handleClear() {
 }
 
 function handleKeydown(event: KeyboardEvent) {
-  if (props.items == null) return
+  if (props.items == null)
+    return
   const count = filteredItems.value.length
-  if (count === 0) return
+  if (count === 0)
+    return
 
   if (event.key === 'ArrowDown') {
     event.preventDefault()
-    focusedIndex.value = focusedIndex.value < count - 1 ? focusedIndex.value + 1 : 0
-    if (isVirtual.value) virtualizer.value.scrollToIndex(focusedIndex.value, { align: 'auto' })
+    focusedIndex.value = focusedIndex.value < count - 1
+      ? focusedIndex.value + 1
+      : 0
+    if (isVirtual.value)
+      virtualizer.value.scrollToIndex(focusedIndex.value, { align: 'auto' })
     return
   }
 
   if (event.key === 'ArrowUp') {
     event.preventDefault()
-    focusedIndex.value = focusedIndex.value > 0 ? focusedIndex.value - 1 : count - 1
-    if (isVirtual.value) virtualizer.value.scrollToIndex(focusedIndex.value, { align: 'auto' })
+    focusedIndex.value = focusedIndex.value > 0
+      ? focusedIndex.value - 1
+      : count - 1
+    if (isVirtual.value)
+      virtualizer.value.scrollToIndex(focusedIndex.value, { align: 'auto' })
     return
   }
 
@@ -141,7 +163,10 @@ function handleKeydown(event: KeyboardEvent) {
     <div v-if="$slots.header" class="border-b border-line p-1">
       <slot name="header" />
     </div>
-    <div v-if="filterable" class="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2.5 text-fg-subtle">
+    <div
+      v-if="filterable"
+      class="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2.5 text-fg-subtle"
+    >
       <Search :size="ICON_PX.in28" class="shrink-0" />
       <input
         ref="inputRef"
@@ -170,7 +195,9 @@ function handleKeydown(event: KeyboardEvent) {
       class="overlay-menu-scroll p-1"
     >
       <template v-if="items != null && isVirtual">
-        <div :style="{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }">
+        <div
+          :style="{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }"
+        >
           <MenuItem
             v-for="vItem in virtualizer.getVirtualItems()"
             :key="String(vItem.key)"
@@ -192,7 +219,11 @@ function handleKeydown(event: KeyboardEvent) {
               :is-selected="filteredItems[vItem.index]!.id === selectedId"
             >
               <span class="min-w-0 flex-1 truncate">
-                <HighlightText v-if="filterQuery" :text="filteredItems[vItem.index]!.label" :query="filterQuery" />
+                <HighlightText
+                  v-if="filterQuery"
+                  :text="filteredItems[vItem.index]!.label"
+                  :query="filterQuery"
+                />
                 <template v-else>{{ filteredItems[vItem.index]!.label }}</template>
               </span>
             </slot>
@@ -212,9 +243,18 @@ function handleKeydown(event: KeyboardEvent) {
           :is-focused="index === focusedIndex"
           @select="handleSelect(item.id)"
         >
-          <slot name="item" :item="item" :query="filterQuery" :is-selected="item.id === selectedId">
+          <slot
+            name="item"
+            :item="item"
+            :query="filterQuery"
+            :is-selected="item.id === selectedId"
+          >
             <span class="min-w-0 flex-1 truncate">
-              <HighlightText v-if="filterQuery" :text="item.label" :query="filterQuery" />
+              <HighlightText
+                v-if="filterQuery"
+                :text="item.label"
+                :query="filterQuery"
+              />
               <template v-else>{{ item.label }}</template>
             </span>
           </slot>

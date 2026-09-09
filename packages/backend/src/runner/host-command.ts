@@ -1,5 +1,11 @@
 import { abortable, errorMessage, noop } from '@demicodes/utils'
-import { type Command, type CommandGroup, type CommandIO, type CommandRunContext, type HostStore } from '@demicodes/shell'
+import {
+  type Command,
+  type CommandGroup,
+  type CommandIO,
+  type CommandRunContext,
+  type HostStore
+} from '@demicodes/shell'
 import { z } from 'zod'
 import { resolveExecutionTarget } from '../conversation/execution-target'
 import type { RunnerRegistry } from '../runner/registry'
@@ -11,7 +17,11 @@ export interface HostCommandDeps {
   control: ControlService
   registry: RunnerRegistry
   pipes: PipeBroker
-  /** Wakes a hibernated managed host on `shell --host` (`sessions-and-targets.md` § Attached hosts); null when the backend provisions none. */
+  /**
+   * Wakes a hibernated managed host on `shell --host`
+   * (`sessions-and-targets.md` § Attached hosts); null when the backend
+   * provisions none.
+   */
   managedHosts: ManagedHosts | null
   hostStoreFor: (conversationId: string) => HostStore
 }
@@ -22,15 +32,25 @@ export interface HostCommandDeps {
  * runs as a job on that host with the caller's stdin and stdout attached to
  * the job's as pipes (`runner.md` § Pipes), never over the runner sockets.
  */
-export function createHostCommandGroup(deps: HostCommandDeps, conversationId: string): CommandGroup {
+export function createHostCommandGroup(
+  deps: HostCommandDeps,
+  conversationId: string
+): CommandGroup {
   return {
     name: 'host',
     summary: 'The hosts this conversation reaches: list them, show the main one, run a command on another.',
-    subcommands: [listCommand(deps, conversationId), currentCommand(deps, conversationId), shellCommand(deps, conversationId)],
+    subcommands: [
+      listCommand(deps, conversationId),
+      currentCommand(deps, conversationId),
+      shellCommand(deps, conversationId)
+    ],
   }
 }
 
-/** A host this conversation may dispatch to: its name, its device and the directory commands start in. */
+/**
+ * A host this conversation may dispatch to: its name, its device and the
+ * directory commands start in.
+ */
 interface ReachableHost {
   name: string
   deviceId: string
@@ -44,25 +64,49 @@ interface ReachableHost {
  * in the conversation's directory there, an attached host's where the last
  * shell there ended, its home before one ran. The one place the check lives.
  */
-async function reachableHosts(deps: HostCommandDeps, conversationId: string): Promise<ReachableHost[]> {
+async function reachableHosts(
+  deps: HostCommandDeps,
+  conversationId: string
+): Promise<ReachableHost[]> {
   const conversation = await deps.control.getConversation(conversationId)
-  if (!conversation) return []
-  const target = await resolveExecutionTarget(deps.control, deps.registry, conversation)
+  if (!conversation)
+    return []
+  const target = await resolveExecutionTarget(
+    deps.control,
+    deps.registry,
+    conversation
+  )
   const hosts: ReachableHost[] = []
   const mainDeviceId = target.deviceId
   if (mainDeviceId !== null) {
     const device = await deps.control.getDevice(mainDeviceId)
-    hosts.push({ name: device?.name ?? mainDeviceId, deviceId: mainDeviceId, path: target.path, role: 'main' })
+    hosts.push({
+      name: device?.name ?? mainDeviceId,
+      deviceId: mainDeviceId,
+      path: target.path,
+      role: 'main'
+    })
   }
   for (const attached of await deps.control.listAttachedHosts(conversationId)) {
-    if (attached.deviceId === mainDeviceId) continue
-    hosts.push({ name: attached.name, deviceId: attached.deviceId, path: attachedDirectory(deps, attached), role: 'attached' })
+    if (attached.deviceId === mainDeviceId)
+      continue
+    hosts.push({
+      name: attached.name,
+      deviceId: attached.deviceId,
+      path: attachedDirectory(deps, attached),
+      role: 'attached'
+    })
   }
   return hosts
 }
 
-function attachedDirectory(deps: HostCommandDeps, attached: AttachedHostRecord): string {
-  return attached.cwd ?? deps.registry.deviceIdentity(attached.deviceId)?.homeDir ?? ''
+function attachedDirectory(
+  deps: HostCommandDeps,
+  attached: AttachedHostRecord
+): string {
+  return attached.cwd ??
+    deps.registry.deviceIdentity(attached.deviceId)?.homeDir ??
+    ''
 }
 
 function listCommand(deps: HostCommandDeps, conversationId: string): Command {
@@ -77,7 +121,9 @@ function listCommand(deps: HostCommandDeps, conversationId: string): Command {
         return { exitCode: 0 }
       }
       const lines = hosts.map((host) => {
-        const online = deps.registry.deviceOnline(host.deviceId) ? 'online' : 'offline'
+        const online = deps.registry.deviceOnline(host.deviceId)
+          ? 'online'
+          : 'offline'
         return `${host.name}  ${host.deviceId}  ${online}  ${host.path || '?'}  (${host.role})`
       })
       await io.stdout(`${lines.join('\n')}\n`)
@@ -90,7 +136,7 @@ function shellCommand(deps: HostCommandDeps, conversationId: string): Command {
   return {
     name: 'shell',
     summary:
-      'Run a shell string in another host\'s bash: `demi host shell --host <name|id> <script>`. The script starts where the last shell on that host ended (its home before one ran) with this command\'s stdin and stdout, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci "tar c -C /work ." | tar x`, `tar c . | demi host shell --host ci "tar x -C /work"`). stderr and the exit code pass through.',
+    'Run a shell string in another host\'s bash: `demi host shell --host <name|id> <script>`. The script starts where the last shell on that host ended (its home before one ran) with this command\'s stdin and stdout, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci "tar c -C /work ." | tar x`, `tar c . | demi host shell --host ci "tar x -C /work"`). stderr and the exit code pass through.',
     failureOutput: 'writes the reason to stderr and exits non-zero (127 when the host cannot run bash)',
     input: { host: z.string(), script: z.string() },
     positionals: ['script'],
@@ -99,13 +145,18 @@ function shellCommand(deps: HostCommandDeps, conversationId: string): Command {
       const wanted = ctx.parsed.values.host as string
       const script = ctx.parsed.values.script as string
       if (script.trim() === '') {
-        await ctx.io.stderr('usage: demi host shell --host <name|id> <script>\n')
+        await ctx.io.stderr(
+          'usage: demi host shell --host <name|id> <script>\n'
+        )
         return { exitCode: 2 }
       }
       const hosts = await reachableHosts(deps, conversationId)
-      const host = hosts.find((candidate) => candidate.name === wanted) ?? hosts.find((candidate) => candidate.deviceId === wanted)
+      const host = hosts.find((candidate) => candidate.name === wanted) ??
+        hosts.find((candidate) => candidate.deviceId === wanted)
       if (!host) {
-        await ctx.io.stderr(`host shell: host ${wanted} is not reachable from this conversation (see \`demi host list\`)\n`)
+        await ctx.io.stderr(
+          `host shell: host ${wanted} is not reachable from this conversation (see \`demi host list\`)\n`
+        )
         return { exitCode: 1 }
       }
       try {
@@ -118,7 +169,10 @@ function shellCommand(deps: HostCommandDeps, conversationId: string): Command {
   }
 }
 
-function currentCommand(deps: HostCommandDeps, conversationId: string): Command {
+function currentCommand(
+  deps: HostCommandDeps,
+  conversationId: string
+): Command {
   return {
     name: 'current',
     summary: 'The main host: where the `bash` tool runs.',
@@ -129,19 +183,31 @@ function currentCommand(deps: HostCommandDeps, conversationId: string): Command 
         await io.stderr('host: this session has no conversation record\n')
         return { exitCode: 1 }
       }
-      const target = await resolveExecutionTarget(deps.control, deps.registry, conversation)
+      const target = await resolveExecutionTarget(
+        deps.control,
+        deps.registry,
+        conversation
+      )
       if (target.deviceId === null) {
-        await io.stdout(`host: Cloud (not allocated), directory ${target.path}\n`)
+        await io.stdout(
+          `host: Cloud (not allocated), directory ${target.path}\n`
+        )
         return { exitCode: 0 }
       }
       const device = await deps.control.getDevice(target.deviceId)
       const name = device?.name ?? target.deviceId
-      const online = deps.registry.deviceOnline(target.deviceId) ? 'online' : 'offline'
+      const online = deps.registry.deviceOnline(target.deviceId)
+        ? 'online'
+        : 'offline'
       if (target.kind === 'workspace') {
         const workspace = await deps.control.getWorkspace(target.workspaceId)
-        await io.stdout(`host: workspace "${workspace?.name ?? target.workspaceId}" — ${target.path} on device "${name}" (${online})\n`)
+        await io.stdout(
+          `host: workspace "${workspace?.name ?? target.workspaceId}" — ${target.path} on device "${name}" (${online})\n`
+        )
       } else {
-        await io.stdout(`host: machine "${name}" (${target.deviceId}, ${online}) — ${target.path || 'home'}\n`)
+        await io.stdout(
+          `host: machine "${name}" (${target.deviceId}, ${online}) — ${target.path || 'home'}\n`
+        )
       }
       return { exitCode: 0 }
     },
@@ -163,18 +229,34 @@ async function runOnHost(
   ctx: Pick<CommandRunContext, 'io' | 'stdin' | 'env' | 'stdinStream' | 'signal'>,
 ): Promise<{ exitCode: number }> {
   const device = await deps.control.getDevice(target.deviceId)
-  const release = device?.kind === 'managed' && deps.managedHosts ? await deps.managedHosts.enter(device, ctx.signal) : noop
+  const release = device?.kind === 'managed' &&
+    deps.managedHosts
+    ? await deps.managedHosts.enter(device, ctx.signal)
+    : noop
   try {
-    if (ctx.signal.aborted) return { exitCode: 130 }
+    if (ctx.signal.aborted)
+      return { exitCode: 130 }
     if (!deps.registry.deviceOnline(target.deviceId)) {
       await ctx.io.stderr(`host shell: host ${target.deviceId} is offline\n`)
       return { exitCode: 1 }
     }
-    const host = deps.registry.hostFor(target, conversationId, deps.hostStoreFor(conversationId))
-    const env: Record<string, string> = { DEMI_SESSION_ID: ctx.env.DEMI_SESSION_ID ?? conversationId }
-    if (ctx.env.DEMI_SHELL_ID) env.DEMI_SHELL_ID = ctx.env.DEMI_SHELL_ID
+    const host = deps.registry.hostFor(
+      target,
+      conversationId,
+      deps.hostStoreFor(conversationId)
+    )
+    const env: Record<string, string> = { DEMI_SESSION_ID: ctx.env.DEMI_SESSION_ID ??
+        conversationId }
+    if (ctx.env.DEMI_SHELL_ID)
+      env.DEMI_SHELL_ID = ctx.env.DEMI_SHELL_ID
     const { stdin, stdout } = attachEnds(ctx.io, target.deviceId)
-    const job = host.startJob({ script, cwd: target.path, env, ...(stdin ? { stdin: stdin.ref() } : {}), stdout: stdout.ref() })
+    const job = host.startJob({
+      script,
+      cwd: target.path,
+      env,
+      ...(stdin ? { stdin: stdin.ref() } : {}),
+      stdout: stdout.ref()
+    })
     const forwarding = new AbortController()
     let killTimer: ReturnType<typeof setTimeout> | undefined
     const abort = () => {
@@ -182,10 +264,12 @@ async function runOnHost(
       void job.kill('SIGTERM').catch(noop)
       killTimer = setTimeout(() => void job.kill('SIGKILL').catch(noop), 5_000)
       deps.pipes.fail(stdout.id, 'command aborted')
-      if (stdin) deps.pipes.fail(stdin.id, 'command aborted')
+      if (stdin)
+        deps.pipes.fail(stdin.id, 'command aborted')
     }
     ctx.signal.addEventListener('abort', abort, { once: true })
-    if (ctx.signal.aborted) abort()
+    if (ctx.signal.aborted)
+      abort()
     if (!stdin) {
       const input = ctx.stdinStream[Symbol.asyncIterator]()
       void (async () => {
@@ -205,7 +289,8 @@ async function runOnHost(
     }
     const view = (async () => {
       for await (const chunk of job.output) {
-        if (chunk.stream === 'stderr') await ctx.io.stderr(chunk.chunk)
+        if (chunk.stream === 'stderr')
+          await ctx.io.stderr(chunk.chunk)
       }
     })()
     let exit: Awaited<ReturnType<typeof job.wait>>
@@ -217,22 +302,42 @@ async function runOnHost(
       clearTimeout(killTimer)
     }
     await view.catch(noop)
-    await stdout.done.catch((error: unknown) => ctx.io.stderr(`host shell: stdout ${errorMessage(error)}\n`))
+    await stdout.done.catch(
+      (error: unknown) => ctx.io.stderr(
+        `host shell: stdout ${errorMessage(error)}\n`
+      )
+    )
     stdin?.done.catch(noop)
     // Where the shell ended is where the next one on this attached host starts.
-    if (target.role === 'attached' && exit.cwd !== undefined) await deps.control.setAttachedHostCwd(conversationId, target.deviceId, exit.cwd)
+    if (target.role === 'attached' && exit.cwd !== undefined)
+      await deps.control.setAttachedHostCwd(
+        conversationId,
+        target.deviceId,
+        exit.cwd
+      )
     if (exit.spawnError) {
-      await ctx.io.stderr(`host shell: ${exit.spawnError.kind}${exit.spawnError.detail ? ` — ${exit.spawnError.detail}` : ''}\n`)
+      await ctx.io.stderr(
+        `host shell: ${exit.spawnError.kind}${exit.spawnError.detail ? ` — ${exit.spawnError.detail}` : ''}\n`
+      )
       return { exitCode: 127 }
     }
     return { exitCode: ctx.signal.aborted ? 130 : exit.exitCode ?? 1 }
-  } finally { release() }
+  } finally {
+    release()
+  }
 }
 
 /** Attaches the authenticated calling job's pipes to the destination device. */
-function attachEnds(io: CommandIO, deviceId: string): { stdin: Pipe | null; stdout: Pipe } {
+function attachEnds(
+  io: CommandIO,
+  deviceId: string
+): {
+  stdin: Pipe | null;
+  stdout: Pipe
+} {
   const relayed = relayedPipesOf(io)
-  if (!relayed) throw new Error('cross-host execution requires a machine job')
+  if (!relayed)
+    throw new Error('cross-host execution requires a machine job')
   relayed.stdin?.sinkTo(deviceId)
   relayed.stdout.sourceFrom(deviceId)
   return relayed

@@ -19,14 +19,18 @@ export interface InputModel {
 }
 
 export function docToText(model: InputModel | null | undefined): string {
-  if (!model) return ''
+  if (!model)
+    return ''
   return model.content
     .map((paragraph) => (paragraph.content ?? []).map((node) => node.text).join(''))
     .join('\n')
     .trim()
 }
 
-export function docToContent(model: InputModel | null | undefined, attachments: UserContentBlock[] = []): UserContentBlock[] {
+export function docToContent(
+  model: InputModel | null | undefined,
+  attachments: UserContentBlock[] = []
+): UserContentBlock[] {
   const text = docToText(model)
   const blocks: UserContentBlock[] = text ? [{ type: 'text', text }] : []
   return [...blocks, ...attachments]

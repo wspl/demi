@@ -1,5 +1,14 @@
-import { errorMessage, isRecord, nonEmptyString, numberOrNull } from '@demicodes/utils'
-import type { ProviderModel, ProviderModelList, ProviderModelListOptions } from '@demicodes/provider'
+import {
+  errorMessage,
+  isRecord,
+  nonEmptyString,
+  numberOrNull
+} from '@demicodes/utils'
+import type {
+  ProviderModel,
+  ProviderModelList,
+  ProviderModelListOptions
+} from '@demicodes/provider'
 import {
   CodexAuthError,
   FileCodexAuthStore,
@@ -19,7 +28,10 @@ export interface CodexModelCatalogOptions extends ProviderModelListOptions {
   now?: () => Date
 }
 
-export type ModelCatalogFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+export type ModelCatalogFetch = (
+  input: string | URL | Request,
+  init?: RequestInit
+) => Promise<Response>
 
 interface CodexCatalogCache {
   fetchedAtMs: number
@@ -31,17 +43,27 @@ const DEFAULT_CODEX_MODEL_CATALOG_CLIENT_VERSION = '0.130.0'
 const CODEX_MODEL_CACHE_TTL_MS = 15 * 60 * 1000
 const codexCatalogCache = new Map<string, CodexCatalogCache>()
 
-export async function listCodexModels(options: CodexModelCatalogOptions = {}): Promise<ProviderModelList> {
+export async function listCodexModels(
+  options: CodexModelCatalogOptions = {}
+): Promise<ProviderModelList> {
   const fetchImpl = options.fetch ?? fetch
   const now = options.now ?? (() => new Date())
   const nowDate = now()
-  const authStore = options.authStore ?? new FileCodexAuthStore({ codexHome: options.codexHome })
-  const clientVersion = options.clientVersion ?? DEFAULT_CODEX_MODEL_CATALOG_CLIENT_VERSION
+  const authStore = options.authStore ?? new FileCodexAuthStore({
+    codexHome: options.codexHome
+  })
+  const clientVersion = options.clientVersion
+    ?? DEFAULT_CODEX_MODEL_CATALOG_CLIENT_VERSION
   const auth = await authStore.resolveAuth()
   assertCodexBackendModelCatalogAuth(auth)
-  const cacheKey = codexModelCatalogCacheKey(auth, options.baseUrl, clientVersion)
+  const cacheKey = codexModelCatalogCacheKey(
+    auth,
+    options.baseUrl,
+    clientVersion
+  )
   const cached = codexCatalogCache.get(cacheKey)
-  if (!options.refresh && cached && nowDate.getTime() - cached.fetchedAtMs < CODEX_MODEL_CACHE_TTL_MS) {
+  if (!options.refresh && cached
+    && nowDate.getTime() - cached.fetchedAtMs < CODEX_MODEL_CACHE_TTL_MS) {
     return cloneModelList(markModelListCache(cached.list, false))
   }
 
@@ -70,7 +92,11 @@ export async function listCodexModels(options: CodexModelCatalogOptions = {}): P
         headers: options.headers,
         userAgent: options.userAgent,
       })
-      codexCatalogCache.set(codexModelCatalogCacheKey(refreshed, options.baseUrl, clientVersion), {
+      codexCatalogCache.set(codexModelCatalogCacheKey(
+        refreshed,
+        options.baseUrl,
+        clientVersion
+      ), {
         fetchedAtMs: nowDate.getTime(),
         list,
       })
@@ -80,7 +106,10 @@ export async function listCodexModels(options: CodexModelCatalogOptions = {}): P
       const stale = markModelListCache(cached.list, true)
       return {
         ...cloneModelList(stale),
-        warnings: [...stale.warnings, `Using stale Codex model catalog: ${errorMessage(error)}`],
+        warnings: [
+          ...stale.warnings,
+          `Using stale Codex model catalog: ${errorMessage(error)}`
+        ],
       }
     }
     throw error
@@ -111,8 +140,14 @@ export function codexBackendModelsToModelList(
       warnings.push('Skipped Codex model without slug')
       continue
     }
-    if (nonEmptyString(raw.visibility) === 'hide') continue
-    models.push(codexModelFromBackendEntry(id, raw, sourceFetchedAt, options.stale === true))
+    if (nonEmptyString(raw.visibility) === 'hide')
+      continue
+    models.push(codexModelFromBackendEntry(
+      id,
+      raw,
+      sourceFetchedAt,
+      options.stale === true
+    ))
   }
   return {
     providerId: 'codex',
@@ -137,11 +172,21 @@ async function requestCodexModels(options: {
   headers?: Record<string, string>
   userAgent?: string
 }): Promise<ProviderModelList> {
-  const response = await options.fetch(codexModelsUrl(options.baseUrl ?? DEFAULT_CHATGPT_CODEX_BASE_URL, options.clientVersion), {
-    headers: buildCodexModelCatalogHeaders(options.auth, options.headers, options.userAgent),
+  const response = await options.fetch(codexModelsUrl(
+    options.baseUrl ?? DEFAULT_CHATGPT_CODEX_BASE_URL,
+    options.clientVersion
+  ), {
+    headers: buildCodexModelCatalogHeaders(
+      options.auth,
+      options.headers,
+      options.userAgent
+    ),
   })
   if (!response.ok) {
-    throw new CodexModelCatalogHttpError(response.status, `Codex models request failed with HTTP ${response.status}`)
+    throw new CodexModelCatalogHttpError(
+      response.status,
+      `Codex models request failed with HTTP ${response.status}`
+    )
   }
   return codexBackendModelsToModelList(await response.json(), {
     sourceFetchedAt: options.now.toISOString(),
@@ -165,8 +210,12 @@ function codexModelFromBackendEntry(
     contextWindow: numberOrNull(raw.context_window),
     outputLimit: null,
     supportsTools: supportsCodexTools(raw),
-    supportsAttachments: Array.isArray(raw.input_modalities) ? raw.input_modalities.includes('image') : null,
-    supportsReasoning: supportedReasoningEfforts ? supportedReasoningEfforts.length > 0 : null,
+    supportsAttachments: Array.isArray(raw.input_modalities)
+      ? raw.input_modalities.includes('image')
+      : null,
+    supportsReasoning: supportedReasoningEfforts
+      ? supportedReasoningEfforts.length > 0
+      : null,
     supportedThinkingEfforts: supportedReasoningEfforts,
     defaultThinkingEffort: null,
     serviceTiers: tiers,
@@ -182,10 +231,18 @@ function buildCodexModelCatalogHeaders(
   userAgent: string | undefined,
 ): Headers {
   const headers = new Headers(configuredHeaders)
-  if (auth.kind === 'agentIdentity') headers.set('Authorization', auth.authorization)
+  if (auth.kind === 'agentIdentity') headers.set(
+    'Authorization',
+    auth.authorization
+  )
   else headers.set('Authorization', `Bearer ${auth.accessToken}`)
-  if (auth.accountId) headers.set('ChatGPT-Account-ID', auth.accountId)
-  if ('isFedrampAccount' in auth && auth.isFedrampAccount) headers.set('X-OpenAI-Fedramp', 'true')
+  if (auth.accountId)
+    headers.set('ChatGPT-Account-ID', auth.accountId)
+  if ('isFedrampAccount' in auth && auth.isFedrampAccount)
+    headers.set(
+      'X-OpenAI-Fedramp',
+      'true'
+    )
   headers.set('accept', 'application/json')
   headers.set('User-Agent', userAgent ?? defaultModelCatalogUserAgent())
   return headers
@@ -201,19 +258,37 @@ function codexModelsUrl(baseUrl: string, clientVersion: string): string {
   return `${path}?client_version=${encodeURIComponent(clientVersion)}`
 }
 
-function assertCodexBackendModelCatalogAuth(auth: CodexResolvedAuth): asserts auth is Exclude<CodexResolvedAuth, { kind: 'apiKey' }> {
+function assertCodexBackendModelCatalogAuth(
+  auth: CodexResolvedAuth
+): asserts auth is Exclude<CodexResolvedAuth, { kind: 'apiKey' }> {
   if (auth.kind === 'apiKey') {
-    throw new CodexAuthError('auth_unsupported', 'Codex backend model catalog requires official Codex ChatGPT auth, not OPENAI_API_KEY')
+    throw new CodexAuthError(
+      'auth_unsupported',
+      'Codex backend model catalog requires official Codex ChatGPT auth, not OPENAI_API_KEY'
+    )
   }
 }
 
-function codexModelCatalogCacheKey(auth: CodexResolvedAuth, baseUrl: string | undefined, clientVersion: string): string {
+function codexModelCatalogCacheKey(
+  auth: CodexResolvedAuth,
+  baseUrl: string | undefined,
+  clientVersion: string
+): string {
   const account = 'accountId' in auth ? auth.accountId ?? '' : ''
-  return [auth.kind, auth.mode, account, baseUrl ?? DEFAULT_CHATGPT_CODEX_BASE_URL, clientVersion].join('\0')
+  return [
+    auth.kind,
+    auth.mode,
+    account,
+    baseUrl ?? DEFAULT_CHATGPT_CODEX_BASE_URL,
+    clientVersion
+  ].join('\0')
 }
 
-function supportedReasoningLevels(value: unknown): ProviderModel['supportedThinkingEfforts'] {
-  if (!Array.isArray(value)) return null
+function supportedReasoningLevels(
+  value: unknown
+): ProviderModel['supportedThinkingEfforts'] {
+  if (!Array.isArray(value))
+    return null
   const efforts = value
     .map((level) => isRecord(level) ? nonEmptyString(level.effort) : undefined)
     .filter((effort): effort is string => effort !== undefined)
@@ -224,15 +299,20 @@ function supportedReasoningLevels(value: unknown): ProviderModel['supportedThink
 const CODEX_FAST_SERVICE_TIER_ID = 'priority'
 
 function serviceTiers(value: unknown): ProviderModel['serviceTiers'] {
-  if (!Array.isArray(value)) return null
+  if (!Array.isArray(value))
+    return null
   const tiers = value.flatMap((tier) => {
-    if (!isRecord(tier)) return []
+    if (!isRecord(tier))
+      return []
     const id = nonEmptyString(tier.id)
-    if (!id) return []
+    if (!id)
+      return []
     return [{
       id,
       label: nonEmptyString(tier.name) ?? id,
-      ...(nonEmptyString(tier.description) ? { description: nonEmptyString(tier.description) } : {}),
+      ...(nonEmptyString(tier.description) ? {
+        description: nonEmptyString(tier.description)
+      } : {}),
       fast: id === CODEX_FAST_SERVICE_TIER_ID,
     }]
   })
@@ -240,13 +320,19 @@ function serviceTiers(value: unknown): ProviderModel['serviceTiers'] {
 }
 
 function supportsCodexTools(raw: Record<string, unknown>): boolean | null {
-  if (typeof raw.tool_mode === 'string' && raw.tool_mode.length > 0) return true
-  if (Array.isArray(raw.experimental_supported_tools)) return raw.experimental_supported_tools.length > 0
-  if (raw.apply_patch_tool_type !== undefined || raw.web_search_tool_type !== undefined) return true
+  if (typeof raw.tool_mode === 'string' && raw.tool_mode.length > 0)
+    return true
+  if (Array.isArray(raw.experimental_supported_tools))
+    return raw.experimental_supported_tools.length > 0
+  if (raw.apply_patch_tool_type !== undefined
+    || raw.web_search_tool_type !== undefined) return true
   return null
 }
 
-function markModelListCache(list: ProviderModelList, stale: boolean): ProviderModelList {
+function markModelListCache(
+  list: ProviderModelList,
+  stale: boolean
+): ProviderModelList {
   return {
     ...list,
     stale,
@@ -261,8 +347,12 @@ function cloneModelList(list: ProviderModelList): ProviderModelList {
     models: list.models.map((model) => ({
       ...model,
       ...(model.cost ? { cost: { ...model.cost } } : {}),
-      supportedThinkingEfforts: model.supportedThinkingEfforts ? [...model.supportedThinkingEfforts] : null,
-      serviceTiers: model.serviceTiers ? model.serviceTiers.map((tier) => ({ ...tier })) : model.serviceTiers,
+      supportedThinkingEfforts: model.supportedThinkingEfforts
+        ? [...model.supportedThinkingEfforts]
+        : null,
+      serviceTiers: model.serviceTiers ? model.serviceTiers.map((tier) => ({
+        ...tier
+      })) : model.serviceTiers,
     })),
   }
 }
@@ -272,7 +362,8 @@ function isUnauthorized(error: unknown): boolean {
 }
 
 function isAuthCatalogError(error: unknown): boolean {
-  if (error instanceof CodexModelCatalogHttpError && (error.status === 401 || error.status === 403)) return true
+  if (error instanceof CodexModelCatalogHttpError
+    && (error.status === 401 || error.status === 403)) return true
   return error instanceof CodexAuthError
 }
 

@@ -1,18 +1,51 @@
-import { createId, decodeUtf8, errorMessage, noop, utf8Slice } from '@demicodes/utils'
-import type { Command, CommandGroup, CommandIO, ShellEnvironment } from '@demicodes/shell'
+import {
+  createId,
+  decodeUtf8,
+  errorMessage,
+  noop,
+  utf8Slice
+} from '@demicodes/utils'
+import type {
+  Command,
+  CommandGroup,
+  CommandIO,
+  ShellEnvironment
+} from '@demicodes/shell'
 import type { Block, QueuedMessage, UserContentBlock } from '@demicodes/core'
 import { textContentSummary, type AgentSession } from '../session/session'
-import type { ServerFrame, SubagentJob, TranscriptPatch } from '../protocol/frames'
-import type { AgentHarness, AgentMetadata, AgentNodeClosePhase, AgentNodeRecord, SubagentProfile } from '../types'
-import type { AssembledNode, NodeDeps, NodeParams, TreeContext } from '../node/assemble'
+import type {
+  ServerFrame,
+  SubagentJob,
+  TranscriptPatch
+} from '../protocol/frames'
+import type {
+  AgentHarness,
+  AgentMetadata,
+  AgentNodeClosePhase,
+  AgentNodeRecord,
+  SubagentProfile
+} from '../types'
+import type {
+  AssembledNode,
+  NodeDeps,
+  NodeParams,
+  TreeContext
+} from '../node/assemble'
 import { CHILD_POLICY, type SessionNode } from '../node/node'
 import { completionMessageId } from '../store/tree-store'
-import { injectSubagentCommand, subagentCommandNode, subagentCommandShape } from './commands'
+import {
+  injectSubagentCommand,
+  subagentCommandNode,
+  subagentCommandShape
+} from './commands'
 import { formatDuration } from './format'
 
 export { injectSubagentCommand, subagentCommandShape }
 
-/** Default per-session live-children ceiling; override with `AgentServerOptions.subagents.maxLiveSubagents`. */
+/**
+ * Default per-session live-children ceiling; override with
+ * `AgentServerOptions.subagents.maxLiveSubagents`.
+ */
 export const MAX_LIVE_SUBAGENTS = 8
 export const SUBAGENT_RESULT_MAX_BYTES = 32 * 1024
 const SHOW_RECENT_TOOLS = 8
@@ -49,7 +82,10 @@ interface ChildToolRecord {
   status: 'executing' | 'completed' | 'error'
 }
 
-/** A live child as its supervisor sees it: the node plus the relationship's bookkeeping. */
+/**
+ * A live child as its supervisor sees it: the node plus the relationship's
+ * bookkeeping.
+ */
 export interface ChildJob<State> {
   id: string
   node: SessionNode<State>
@@ -66,13 +102,22 @@ export interface ChildJob<State> {
   closed: Promise<SubagentClose>
   settleClosed: (close: SubagentClose) => void
   isClosing: boolean
-  /** True while the spawn or resume command awaits this child in this process: its exit is the result's return path. */
+  /**
+   * True while the spawn or resume command awaits this child in this process:
+   * its exit is the result's return path.
+   */
   attended: boolean
-  /** Wakes the settle loop when the child set or an inbound send changes the picture. */
+  /**
+   * Wakes the settle loop when the child set or an inbound send changes the
+   * picture.
+   */
   wake: (() => void) | null
 }
 
-/** The reserved word a harness may not use as a profile name: it is not a profile, it is the absence of one. */
+/**
+ * The reserved word a harness may not use as a profile name: it is not a
+ * profile, it is the absence of one.
+ */
 const INHERIT_PROFILE_NAME = 'default'
 const INHERIT_PROFILE_LABEL = '(inherit)'
 const INHERIT_PROFILE: SubagentProfile<unknown> = {
@@ -86,17 +131,32 @@ export interface ChildSupervisorOptions<State> {
   /** The owner node's id; its children are the store's rows under it. */
   ownerId: string
   cwd: string
-  /** The owner's harness commands, before the `demi agent` injection: what an inheriting child receives. */
+  /**
+   * The owner's harness commands, before the `demi agent` injection: what an
+   * inheriting child receives.
+   */
   parentCommands: Command[]
   /** The owner's prompt: what an inheriting child speaks with. */
   prompt: Pick<AgentHarness<State>, 'systemPrompt' | 'preamble'>
-  /** When false, the owner may not spawn: its `demi agent` tree carries communication and reads only. */
+  /**
+   * When false, the owner may not spawn: its `demi agent` tree carries
+   * communication and reads only.
+   */
   canSpawn: boolean
-  /** When false, a child closing never wakes the idle owner; the product orchestrates the wakeup from the `closed` frame. */
+  /**
+   * When false, a child closing never wakes the idle owner; the product
+   * orchestrates the wakeup from the `closed` frame.
+   */
   notifyParentOnIdle: boolean
-  /** Invoked whenever the live-children set changes; wired to the owning job's settle loop. */
+  /**
+   * Invoked whenever the live-children set changes; wired to the owning job's
+   * settle loop.
+   */
   onJobsChanged: (() => void) | null
-  /** The node assembly: the supervisor asks it for every child and never builds one. */
+  /**
+   * The node assembly: the supervisor asks it for every child and never builds
+   * one.
+   */
   assemble(params: NodeParams<State>): Promise<AssembledNode<State>>
 }
 
@@ -116,7 +176,9 @@ export class ChildSupervisor<State = unknown> {
 
   constructor(options: ChildSupervisorOptions<State>) {
     if (options.tree.profiles?.some((profile) => profile.name === INHERIT_PROFILE_NAME)) {
-      throw new Error(`subagent profile name "${INHERIT_PROFILE_NAME}" is reserved: omitting --profile already inherits the parent`)
+      throw new Error(
+        `subagent profile name "${INHERIT_PROFILE_NAME}" is reserved: omitting --profile already inherits the parent`
+      )
     }
     this.options = options
   }
@@ -133,7 +195,10 @@ export class ChildSupervisor<State = unknown> {
     return this.jobs.size > 0
   }
 
-  /** The `agent` node shared by every session, with lifecycle authority scoped to its own children. */
+  /**
+   * The `agent` node shared by every session, with lifecycle authority scoped
+   * to its own children.
+   */
   rootCommandNode(): CommandGroup {
     return subagentCommandNode<ChildJob<State>>({
       canSpawn: this.options.canSpawn,
@@ -149,7 +214,10 @@ export class ChildSupervisor<State = unknown> {
       ownerId: () => this.ownerId(),
       show: (id) => {
         const entry = this.options.tree.directory.liveEntry(id)
-        return entry ? { snapshot: entry.owner.snapshot(entry.job, true), text: entry.owner.renderShow(entry.job) } : null
+        return entry ? {
+          snapshot: entry.owner.snapshot(entry.job, true),
+          text: entry.owner.renderShow(entry.job)
+        } : null
       },
     })
   }
@@ -158,26 +226,45 @@ export class ChildSupervisor<State = unknown> {
     return this.environmentScopeForShell(shellId) !== null
   }
 
-  /** Resolves the descendant scope owning a shell (recursively), for the command bridge dispatch. */
+  /**
+   * Resolves the descendant scope owning a shell (recursively), for the command
+   * bridge dispatch.
+   */
   environmentScopeForShell(
     shellId: string,
-  ): { environment: ShellEnvironment; commandNames: ReadonlySet<string>; agentSessionId: string } | null {
+  ): {
+    environment: ShellEnvironment;
+    commandNames: ReadonlySet<string>;
+    agentSessionId: string
+  } | null {
     for (const job of this.jobs.values()) {
       for (const environment of job.node.environments()) {
         if (environment.getShell(shellId)) {
-          return { environment, commandNames: job.node.commandNames, agentSessionId: job.id }
+          return {
+            environment,
+            commandNames: job.node.commandNames,
+            agentSessionId: job.id
+          }
         }
       }
       const nested = job.node.supervisor.environmentScopeForShell(shellId)
-      if (nested) return nested
+      if (nested)
+        return nested
     }
     return null
   }
 
-  /** Re-emits `subagent started` + transcript reset for the whole live subtree (transcript resync). */
+  /**
+   * Re-emits `subagent started` + transcript reset for the whole live subtree
+   * (transcript resync).
+   */
   replay(): void {
     for (const job of this.jobs.values()) {
-      this.options.tree.emit({ type: 'subagent', event: 'started', job: this.wireJob(job) })
+      this.options.tree.emit({
+        type: 'subagent',
+        event: 'started',
+        job: this.wireJob(job)
+      })
       const transcript = job.node.session.transcript()
       this.options.tree.emit({
         type: 'subagent_transcript_reset',
@@ -219,11 +306,14 @@ export class ChildSupervisor<State = unknown> {
    * delivered now. Recursive: each restored child restores its own subtree.
    */
   async restore(): Promise<void> {
-    if (!this.parentSession || this.isDisposed) return
+    if (!this.parentSession || this.isDisposed)
+      return
     for (const record of await this.options.tree.store.children(this.options.ownerId)) {
-      if (this.jobs.has(record.id)) continue
+      if (this.jobs.has(record.id))
+        continue
       if (record.closedPhase !== null) {
-        if (!record.delivered) await this.deliverCompletion(record)
+        if (!record.delivered)
+          await this.deliverCompletion(record)
         continue
       }
       try {
@@ -246,42 +336,69 @@ export class ChildSupervisor<State = unknown> {
    * session rebuilds from the preserved transcript with the message opening
    * its next turn on top of it.
    */
-  private async resumeArchived(id: string, message: string): Promise<ChildJob<State>> {
+  private async resumeArchived(
+    id: string,
+    message: string
+  ): Promise<ChildJob<State>> {
     const parent = this.requireParent()
-    if (this.isDisposed) throw new Error('owner session is closing')
-    if (this.jobs.has(id)) throw new Error(`subagent "${id}" is still running; send or steer it instead`)
+    if (this.isDisposed)
+      throw new Error('owner session is closing')
+    if (this.jobs.has(id))
+      throw new Error(
+        `subagent "${id}" is still running; send or steer it instead`
+      )
     if (this.jobs.size >= this.options.deps.maxLiveSubagents) {
-      throw new Error(`at most ${this.options.deps.maxLiveSubagents} running subagents per session; abort one or wait for a result`)
+      throw new Error(
+        `at most ${this.options.deps.maxLiveSubagents} running subagents per session; abort one or wait for a result`
+      )
     }
     const record = await this.options.tree.store.node(id)
-    if (!record || record.closedPhase === null || record.parentId !== this.options.ownerId) {
+    if (!record || record.closedPhase === null
+      || record.parentId !== this.options.ownerId) {
       throw new Error(`no archived subagent "${id}" (see \`demi agent list\`)`)
     }
     // Validate before mutating: a profile that no longer exists must leave the archive intact.
     const profile = this.resolveProfile(record.profileName ?? undefined)
     const fields = { metadata: parent.actionMetadata(), spawnedAt: Date.now() }
     const content: UserContentBlock[] = [{ type: 'text', text: message }]
-    await this.options.tree.store.reopenNode(id, fields, { id: createId(), text: textContentSummary(content), content })
-    const live: AgentNodeRecord = { ...record, ...fields, closedPhase: null, closedAt: null, result: null, failure: null, delivered: false }
+    await this.options.tree.store.reopenNode(
+      id,
+      fields,
+      { id: createId(), text: textContentSummary(content), content }
+    )
+    const live: AgentNodeRecord = {
+      ...record,
+      ...fields,
+      closedPhase: null,
+      closedAt: null,
+      result: null,
+      failure: null,
+      delivered: false
+    }
     return this.startChild(live, profile, null)
   }
 
   /** Every archived (finished, revivable) child of this owner, newest first. */
   async listArchivedJobs(): Promise<AgentNodeRecord[]> {
-    if (!this.parentSession) return []
+    if (!this.parentSession)
+      return []
     const children = await this.options.tree.store.children(this.options.ownerId)
     return children
-      .filter((record) => record.closedPhase !== null && !this.jobs.has(record.id))
+      .filter((record) => record.closedPhase !== null
+        && !this.jobs.has(record.id))
       .sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0))
   }
 
   async abortSubtree(id: string): Promise<void> {
     const job = this.jobs.get(id)
-    if (!job) return
+    if (!job)
+      return
     await this.closeJob(job, 'aborted')
   }
 
-  /** Aborts every live child (each with its subtree); the archive is untouched. */
+  /**
+   * Aborts every live child (each with its subtree); the archive is untouched.
+   */
   async abortAll(): Promise<void> {
     for (const id of [...this.jobs.keys()]) await this.abortSubtree(id)
   }
@@ -293,10 +410,14 @@ export class ChildSupervisor<State = unknown> {
     isSpawnForbidden: boolean
   }): Promise<ChildJob<State>> {
     const parent = this.requireParent()
-    if (!this.options.canSpawn) throw new Error('this session may not spawn subagents')
-    if (this.isDisposed) throw new Error('owner session is closing')
+    if (!this.options.canSpawn)
+      throw new Error('this session may not spawn subagents')
+    if (this.isDisposed)
+      throw new Error('owner session is closing')
     if (this.jobs.size >= this.options.deps.maxLiveSubagents) {
-      throw new Error(`at most ${this.options.deps.maxLiveSubagents} running subagents per session; abort one or wait for a result`)
+      throw new Error(
+        `at most ${this.options.deps.maxLiveSubagents} running subagents per session; abort one or wait for a result`
+      )
     }
     const profile = this.resolveProfile(input.profileName)
     const record: AgentNodeRecord = {
@@ -306,7 +427,8 @@ export class ChildSupervisor<State = unknown> {
       profileName: input.profileName ?? null,
       metadata: parent.actionMetadata(),
       spawnedAt: Date.now(),
-      canSpawnSubagents: !input.isSpawnForbidden && profile.canSpawnSubagents !== false,
+      canSpawnSubagents: !input.isSpawnForbidden
+        && profile.canSpawnSubagents !== false,
       closedPhase: null,
       closedAt: null,
       result: null,
@@ -314,7 +436,11 @@ export class ChildSupervisor<State = unknown> {
       delivered: false,
     }
     const content: UserContentBlock[] = [{ type: 'text', text: input.prompt }]
-    return this.startChild(record, profile, { id: createId(), text: textContentSummary(content), content })
+    return this.startChild(
+      record,
+      profile,
+      { id: createId(), text: textContentSummary(content), content }
+    )
   }
 
   /**
@@ -323,11 +449,18 @@ export class ChildSupervisor<State = unknown> {
    * store — then the job, the continuation of what it has to run, its own
    * subtree, and the settle loop that closes it when it is done.
    */
-  private async startChild(record: AgentNodeRecord, profile: SubagentProfile<State>, firstMessage: QueuedMessage | null): Promise<ChildJob<State>> {
-    const release = await this.options.deps.activity(this.options.tree.hostSessionId).enter()
+  private async startChild(
+    record: AgentNodeRecord,
+    profile: SubagentProfile<State>,
+    firstMessage: QueuedMessage | null
+  ): Promise<ChildJob<State>> {
+    const release = await this.options.deps.activity(this.options.tree.hostSessionId)
+      .enter()
     try {
       const parent = this.requireParent()
-      const inherited = profile.commands ? profile.commands([...this.options.parentCommands]) : [...this.options.parentCommands]
+      const inherited = profile.commands
+        ? profile.commands([...this.options.parentCommands])
+        : [...this.options.parentCommands]
       let job: ChildJob<State> | null = null
       const { node } = await this.options.assemble({
         record,
@@ -335,12 +468,21 @@ export class ChildSupervisor<State = unknown> {
         provider: parent.cloneProviderRuntime(),
         model: profile.model ?? structuredClone(parent.modelSelection),
         prompt: {
-          systemPrompt: profile.systemPrompt?.bind(this.options.deps.agent) ?? this.options.prompt.systemPrompt,
-          preamble: profile.systemPrompt ? undefined : this.options.prompt.preamble,
+          systemPrompt: profile.systemPrompt?.bind(this.options.deps.agent)
+            ?? this.options.prompt.systemPrompt,
+          preamble: profile.systemPrompt
+            ? undefined
+            : this.options.prompt.preamble,
         },
-        preambleSuffix: this.subagentPreamble(record.id, record.canSpawnSubagents),
+        preambleSuffix: this.subagentPreamble(
+          record.id,
+          record.canSpawnSubagents
+        ),
         commands: () => inherited,
-        shellEnv: { DEMI_SUBAGENT_ID: record.id, DEMI_PARENT_SESSION_ID: this.options.ownerId },
+        shellEnv: {
+          DEMI_SUBAGENT_ID: record.id,
+          DEMI_PARENT_SESSION_ID: this.options.ownerId
+        },
         policy: CHILD_POLICY,
         firstMessage,
         onJobsChanged: () => job?.wake?.(),
@@ -351,10 +493,15 @@ export class ChildSupervisor<State = unknown> {
       await node.supervisor.restore()
       void this.settleJob(job)
       return job
-    } finally { release() }
+    } finally {
+      release()
+    }
   }
 
-  private attachNode(node: SessionNode<State>, record: AgentNodeRecord): ChildJob<State> {
+  private attachNode(
+    node: SessionNode<State>,
+    record: AgentNodeRecord
+  ): ChildJob<State> {
     let settleClosed!: (close: SubagentClose) => void
     const closed = new Promise<SubagentClose>((resolve) => {
       settleClosed = resolve
@@ -383,7 +530,8 @@ export class ChildSupervisor<State = unknown> {
         job.wake?.()
         return
       }
-      if (event.type !== 'transcript_changed') return
+      if (event.type !== 'transcript_changed')
+        return
       this.recordTelemetry(job, event.patches)
       this.options.tree.emit({
         type: 'subagent_transcript_patch',
@@ -395,7 +543,11 @@ export class ChildSupervisor<State = unknown> {
     this.jobs.set(job.id, job)
     this.options.tree.directory.register(job, this)
     this.options.onJobsChanged?.()
-    this.options.tree.emit({ type: 'subagent', event: 'started', job: this.wireJob(job) })
+    this.options.tree.emit({
+      type: 'subagent',
+      event: 'started',
+      job: this.wireJob(job)
+    })
     const transcript = node.session.transcript()
     this.options.tree.emit({
       type: 'subagent_transcript_reset',
@@ -406,10 +558,18 @@ export class ChildSupervisor<State = unknown> {
     return job
   }
 
-  /** Shared spawn/resume foreground behaviour: announce the id, wire abort and stdin steers, wait for close, report the outcome. */
+  /**
+   * Shared spawn/resume foreground behaviour: announce the id, wire abort and
+   * stdin steers, wait for close, report the outcome.
+   */
   private async attendChild(
     job: ChildJob<State>,
-    ctx: { io: CommandIO; isJson: boolean; signal: AbortSignal; stdinStream: AsyncIterable<Uint8Array> },
+    ctx: {
+      io: CommandIO;
+      isJson: boolean;
+      signal: AbortSignal;
+      stdinStream: AsyncIterable<Uint8Array>
+    },
   ): Promise<{ exitCode: number }> {
     const { io, isJson, signal, stdinStream } = ctx
     await io.stderr(`subagentId: ${job.id}\n`)
@@ -428,14 +588,19 @@ export class ChildSupervisor<State = unknown> {
     if (close.phase === 'completed') {
       const text = close.result ?? ''
       if (isJson) await io.stdout(`${JSON.stringify({ subagentId: job.id, text })}\n`)
-      else if (text.length > 0) await io.stdout(text.endsWith('\n') ? text : `${text}\n`)
+      else if (text.length > 0)
+        await io.stdout(text.endsWith('\n')
+          ? text
+          : `${text}\n`)
       return { exitCode: 0 }
     }
     if (close.phase === 'aborted') {
       await io.stderr(`demi agent: subagent ${job.id} aborted\n`)
       return { exitCode: 130 }
     }
-    await io.stderr(`demi agent: subagent ${job.id} failed: ${close.failure ?? 'unknown error'}\n`)
+    await io.stderr(
+      `demi agent: subagent ${job.id} failed: ${close.failure ?? 'unknown error'}\n`
+    )
     return { exitCode: 1 }
   }
 
@@ -443,7 +608,9 @@ export class ChildSupervisor<State = unknown> {
    * Resolves a send/steer target against the directory. `parent` is the
    * session that spawned the caller; a caller cannot message itself.
    */
-  private resolveTarget(rawId: string): {
+  private resolveTarget(
+    rawId: string
+  ): {
     id: string
     session: AgentSession<State>
     job: ChildJob<State> | null
@@ -454,19 +621,29 @@ export class ChildSupervisor<State = unknown> {
     let id = rawId
     if (id === 'parent') {
       const parentId = directory.parentIdOf(selfId)
-      if (parentId === null) throw new Error('the root session has no parent')
-      if (parentId === undefined) throw new Error('this session is not in the agent directory')
+      if (parentId === null)
+        throw new Error('the root session has no parent')
+      if (parentId === undefined)
+        throw new Error('this session is not in the agent directory')
       id = parentId
     }
-    if (id === selfId) throw new Error('cannot message your own session')
+    if (id === selfId)
+      throw new Error('cannot message your own session')
     if (id === directory.rootId()) {
       return { id, session: directory.rootSession(), job: null, owner: null }
     }
     const entry = directory.liveEntry(id)
     if (!entry || entry.job.isClosing) {
-      throw new Error(`no live agent "${id}" (see \`demi agent list\`; an archived child is revived only by its parent via resume)`)
+      throw new Error(
+        `no live agent "${id}" (see \`demi agent list\`; an archived child is revived only by its parent via resume)`
+      )
     }
-    return { id, session: entry.job.node.session, job: entry.job, owner: entry.owner }
+    return {
+      id,
+      session: entry.job.node.session,
+      job: entry.job,
+      owner: entry.owner
+    }
   }
 
   /**
@@ -478,24 +655,39 @@ export class ChildSupervisor<State = unknown> {
    */
   private deliverSend(rawId: string, message: string): string {
     const target = this.resolveTarget(rawId)
-    const content: UserContentBlock[] = [{ type: 'text', text: `${this.senderPrefix()} ${message}` }]
+    const content: UserContentBlock[] = [{
+      type: 'text',
+      text: `${this.senderPrefix()} ${message}`
+    }]
     const metadata = target.job ? target.job.metadata : this.senderMetadata()
     if (target.job && target.owner) {
-      target.owner.trackTurn(target.job, target.session.send(content, metadata ? { metadata } : {}))
+      target.owner.trackTurn(
+        target.job,
+        target.session.send(content, metadata ? { metadata } : {})
+      )
       target.job.wake?.()
     } else {
-      void target.session.send(content, metadata ? { metadata } : {}).catch(noop)
+      void target.session.send(content, metadata ? { metadata } : {})
+        .catch(noop)
     }
     return target.id
   }
 
-  /** Chime-in delivery: injects into the target's running turn; no fallback when idle. */
+  /**
+   * Chime-in delivery: injects into the target's running turn; no fallback when
+   * idle.
+   */
   private async deliverSteer(rawId: string, message: string): Promise<string> {
     const target = this.resolveTarget(rawId)
     if (target.session.phase() === 'idle') {
-      throw new Error(`agent "${target.id}" has no running turn to steer; use \`demi agent send\``)
+      throw new Error(
+        `agent "${target.id}" has no running turn to steer; use \`demi agent send\``
+      )
     }
-    const content: UserContentBlock[] = [{ type: 'text', text: `${this.senderPrefix()} ${message}` }]
+    const content: UserContentBlock[] = [{
+      type: 'text',
+      text: `${this.senderPrefix()} ${message}`
+    }]
     await target.session.steer(content)
     return target.id
   }
@@ -507,12 +699,19 @@ export class ChildSupervisor<State = unknown> {
     return `[agent ${selfId}${description ? ` — ${description}` : ''}]`
   }
 
-  /** Metadata for a turn on the root: the sender subtree's spawning round, or null from the root itself. */
+  /**
+   * Metadata for a turn on the root: the sender subtree's spawning round, or
+   * null from the root itself.
+   */
   private senderMetadata(): AgentMetadata | null {
-    return this.options.tree.directory.liveEntry(this.ownerId())?.job.metadata ?? null
+    return this.options.tree.directory.liveEntry(this.ownerId())?.job.metadata
+      ?? null
   }
 
-  /** Delivers one stdin chunk from the attending spawner: mid-turn as a steer, otherwise as a new user turn. */
+  /**
+   * Delivers one stdin chunk from the attending spawner: mid-turn as a steer,
+   * otherwise as a new user turn.
+   */
   private async steerChild(job: ChildJob<State>, message: string): Promise<void> {
     const content: UserContentBlock[] = [{ type: 'text', text: message }]
     if (job.node.session.phase() !== 'idle') {
@@ -526,23 +725,32 @@ export class ChildSupervisor<State = unknown> {
     this.trackTurn(job, job.node.session.send(content))
   }
 
-  private async pumpStdinSteers(id: string, stdinStream: AsyncIterable<Uint8Array>): Promise<void> {
+  private async pumpStdinSteers(
+    id: string,
+    stdinStream: AsyncIterable<Uint8Array>
+  ): Promise<void> {
     try {
       for await (const chunk of stdinStream) {
         const job = this.jobs.get(id)
-        if (!job) return
+        if (!job)
+          return
         const message = decodeUtf8(chunk).trim()
-        if (message) await this.steerChild(job, message)
+        if (message)
+          await this.steerChild(job, message)
       }
     } catch {
       // The spawn command result reports the child outcome; stdin pump errors are not a channel.
     }
   }
 
-  /** Observes one turn promise of an own child: a non-abort failure closes the job as an error. */
+  /**
+   * Observes one turn promise of an own child: a non-abort failure closes the
+   * job as an error.
+   */
   private trackTurn(job: ChildJob<State>, turn: Promise<void>): void {
     turn.catch((error: unknown) => {
-      if (job.isClosing) return
+      if (job.isClosing)
+        return
       job.failure = errorMessage(error)
       void this.closeJob(job, 'error')
     })
@@ -558,28 +766,35 @@ export class ChildSupervisor<State = unknown> {
    */
   private async settleJob(job: ChildJob<State>): Promise<void> {
     while (!job.isClosing) {
-      if (job.node.session.isSettled() && !job.node.session.hasPendingYields() && !job.node.supervisor.hasLiveJobs()) {
+      if (job.node.session.isSettled() && !job.node.session.hasPendingYields()
+        && !job.node.supervisor.hasLiveJobs()) {
         void this.closeJob(job, 'completed')
         return
       }
       await new Promise<void>((resolve) => {
         let settled = false
         const finish = (): void => {
-          if (settled) return
+          if (settled)
+            return
           settled = true
           job.wake = null
           resolve()
         }
         job.wake = finish
         void job.closed.then(finish)
-        if (job.node.session.isSettled()) return
+        if (job.node.session.isSettled())
+          return
         void job.node.session.waitUntilDone().then(finish)
       })
     }
   }
 
-  private async closeJob(job: ChildJob<State>, phase: AgentNodeClosePhase): Promise<void> {
-    if (job.isClosing) return
+  private async closeJob(
+    job: ChildJob<State>,
+    phase: AgentNodeClosePhase
+  ): Promise<void> {
+    if (job.isClosing)
+      return
     job.isClosing = true
     job.phase = phase
     job.unsubscribe()
@@ -591,22 +806,42 @@ export class ChildSupervisor<State = unknown> {
     // or error tears the subtree down with it.
     await job.node.supervisor.abortAll()
 
-    const result = phase === 'completed' ? boundedResultText(lastAssistantText(job.node.session.transcript().blocks)) : null
+    const result = phase === 'completed'
+      ? boundedResultText(lastAssistantText(job.node.session.transcript()
+        .blocks))
+      : null
     // dispose() flushes the final checkpoint; the close row is the next commit
     // (`docs/subagent.md` § Persistence), the node quiescent between the two.
     await job.node.session.dispose().catch(noop)
     await job.node.disposeEnvironments()
-    await this.options.tree.store.closeNode(job.id, { phase, closedAt: Date.now(), result, failure: job.failure }).catch(noop)
+    await this.options.tree.store.closeNode(
+      job.id,
+      { phase, closedAt: Date.now(), result, failure: job.failure }
+    ).catch(noop)
 
     const close: SubagentClose = {
       phase,
       ...(result !== null ? { result } : {}),
       ...(job.failure ? { failure: job.failure } : {}),
     }
-    this.options.tree.emit({ type: 'subagent', event: 'closed', job: this.wireJob(job, result ?? undefined) })
+    this.options.tree.emit({
+      type: 'subagent',
+      event: 'closed',
+      job: this.wireJob(job, result ?? undefined)
+    })
     job.settleClosed(close)
     this.options.onJobsChanged?.()
-    await this.deliverClose({ id: job.id, description: job.description, metadata: job.metadata, phase, result, failure: job.failure }, job.attended)
+    await this.deliverClose(
+      {
+        id: job.id,
+        description: job.description,
+        metadata: job.metadata,
+        phase,
+        result,
+        failure: job.failure
+      },
+      job.attended
+    )
   }
 
   /**
@@ -617,17 +852,25 @@ export class ChildSupervisor<State = unknown> {
    * turn boundary if busy — that its own checkpoint records as delivered. A
    * detached owner waits for the restore.
    */
-  private async deliverClose(completion: Completion, attended: boolean): Promise<void> {
+  private async deliverClose(
+    completion: Completion,
+    attended: boolean
+  ): Promise<void> {
     const parent = this.parentSession
-    if (!parent || this.isDisposed) return
-    if (!this.options.notifyParentOnIdle || (attended && parent.phase() !== 'idle')) {
+    if (!parent || this.isDisposed)
+      return
+    if (!this.options.notifyParentOnIdle
+      || (attended && parent.phase() !== 'idle')) {
       await this.options.tree.store.markDelivered(completion.id).catch(noop)
       return
     }
     this.sendCompletion(parent, completion)
   }
 
-  /** A completion the owner never received before the process ended, from the store at restore. */
+  /**
+   * A completion the owner never received before the process ended, from the
+   * store at restore.
+   */
   private async deliverCompletion(record: AgentNodeRecord): Promise<void> {
     const parent = this.requireParent()
     if (!this.options.notifyParentOnIdle || record.closedPhase === null) {
@@ -644,7 +887,10 @@ export class ChildSupervisor<State = unknown> {
     })
   }
 
-  private sendCompletion(parent: AgentSession<State>, completion: Completion): void {
+  private sendCompletion(
+    parent: AgentSession<State>,
+    completion: Completion
+  ): void {
     const label = `subagent ${completion.id}${completion.description ? ` — ${completion.description}` : ''}`
     const body =
       completion.phase === 'completed'
@@ -664,7 +910,8 @@ export class ChildSupervisor<State = unknown> {
   }
 
   private requireParent(): AgentSession<State> {
-    if (!this.parentSession) throw new Error('subagent supervisor has no owner session')
+    if (!this.parentSession)
+      throw new Error('subagent supervisor has no owner session')
     return this.parentSession
   }
 
@@ -674,11 +921,15 @@ export class ChildSupervisor<State = unknown> {
    * declared profile; "default" is not a name.
    */
   private resolveProfile(name: string | undefined): SubagentProfile<State> {
-    if (name === undefined) return INHERIT_PROFILE as SubagentProfile<State>
+    if (name === undefined)
+      return INHERIT_PROFILE as SubagentProfile<State>
     const profile = this.options.tree.profiles?.find((candidate) => candidate.name === name)
-    if (profile) return profile
+    if (profile)
+      return profile
     const names = this.configuredProfileNames()
-    throw new Error(`unknown profile "${name}" (available: ${names.length > 0 ? names.join(', ') : 'none; omit --profile to inherit the parent'})`)
+    throw new Error(
+      `unknown profile "${name}" (available: ${names.length > 0 ? names.join(', ') : 'none; omit --profile to inherit the parent'})`
+    )
   }
 
   private configuredProfileNames(): string[] {
@@ -689,13 +940,18 @@ export class ChildSupervisor<State = unknown> {
     return [
       `You are a subagent: an isolated child agent session (id ${childId}) spawned by parent agent session ${this.ownerId()}. Your transcript starts empty; the task brief in the first user message is your entire context.`,
       'When you end your turn with nothing pending — no queued messages, no scheduled wakeups, no running children of your own — the session ends and your last assistant text is returned to the parent as the result. Write it for the parent agent, in the shape the task brief asked for.',
-      canSpawn ? '`demi agent spawn` spawns your own children.' : 'This session may not spawn subagents.',
+      canSpawn
+        ? '`demi agent spawn` spawns your own children.'
+        : 'This session may not spawn subagents.',
       '`demi agent send <id|parent> <message>` leaves a message any live agent sees at its next turn boundary; `demi agent steer <id> <message>` chimes into a running agent\'s current turn; `demi agent list` renders the whole agent tree with your position.',
       'You are not talking to the product user; do not address them.',
     ].join('\n')
   }
 
-  private recordTelemetry(job: ChildJob<State>, patches: TranscriptPatch[]): void {
+  private recordTelemetry(
+    job: ChildJob<State>,
+    patches: TranscriptPatch[]
+  ): void {
     const now = Date.now()
     for (const patch of patches) {
       if (patch.op === 'add') {
@@ -726,8 +982,12 @@ export class ChildSupervisor<State = unknown> {
       }
       if (patch.op === 'replace_block') {
         const block = patch.value
-        if (block.type !== 'tool_call' || block.status === 'executing') continue
-        const record = job.tools.find((tool) => tool.toolUseId === block.toolUseId && tool.endedAt === null)
+        if (block.type !== 'tool_call' || block.status === 'executing')
+          continue
+        const record = job.tools.find(
+          (tool) => tool.toolUseId === block.toolUseId
+            && tool.endedAt === null
+        )
         if (record) {
           record.endedAt = now
           record.status = block.status === 'error' ? 'error' : 'completed'
@@ -739,22 +999,35 @@ export class ChildSupervisor<State = unknown> {
 
   private executionOf(job: ChildJob<State>): SubagentExecution {
     const phase = job.node.session.phase()
-    if (phase === 'compacting') return 'compacting'
-    if (phase === 'idle') return job.node.session.hasPendingYields() ? 'pending_yield' : 'idle'
+    if (phase === 'compacting')
+      return 'compacting'
+    if (phase === 'idle')
+      return job.node.session.hasPendingYields()
+        ? 'pending_yield'
+        : 'idle'
     return job.node.session.turnPhase() ?? 'provider_streaming'
   }
 
   private activityOf(job: ChildJob<State>, execution: SubagentExecution): string {
-    const inflight = [...job.tools].reverse().find((tool) => tool.endedAt === null)
-    if (execution === 'tool_executing' && inflight) return inflight.title
-    if (execution === 'provider_streaming') return 'streaming'
+    const inflight = [...job.tools].reverse()
+      .find((tool) => tool.endedAt === null)
+    if (execution === 'tool_executing' && inflight)
+      return inflight.title
+    if (execution === 'provider_streaming')
+      return 'streaming'
     return execution
   }
 
-  private executionForMs(job: ChildJob<State>, execution: SubagentExecution, now: number): number {
+  private executionForMs(
+    job: ChildJob<State>,
+    execution: SubagentExecution,
+    now: number
+  ): number {
     if (execution === 'tool_executing') {
-      const inflight = [...job.tools].reverse().find((tool) => tool.endedAt === null)
-      if (inflight) return now - inflight.startedAt
+      const inflight = [...job.tools].reverse()
+        .find((tool) => tool.endedAt === null)
+      if (inflight)
+        return now - inflight.startedAt
     }
     return now - job.lastEventAt
   }
@@ -773,7 +1046,8 @@ export class ChildSupervisor<State = unknown> {
       execution,
       activity: this.activityOf(job, execution),
     }
-    if (!detailed) return base
+    if (!detailed)
+      return base
     const text = lastAssistantText(job.node.session.transcript().blocks)
     return {
       ...base,
@@ -785,7 +1059,9 @@ export class ChildSupervisor<State = unknown> {
         endedAgoMs: tool.endedAt === null ? null : now - tool.endedAt,
       })),
       lastAssistantText: boundedResultText(text),
-      lastAssistantTextAgoMs: job.lastAssistantTextAt === null ? null : now - job.lastAssistantTextAt,
+      lastAssistantTextAgoMs: job.lastAssistantTextAt === null
+        ? null
+        : now - job.lastAssistantTextAt,
     }
   }
 
@@ -824,7 +1100,9 @@ export class ChildSupervisor<State = unknown> {
       lines.push(`recent tool calls (last ${recent.length}):`)
       for (const tool of recent) {
         if (tool.endedAt === null) {
-          lines.push(`  [executing for ${formatDuration(now - tool.startedAt)}] ${tool.title}`)
+          lines.push(
+            `  [executing for ${formatDuration(now - tool.startedAt)}] ${tool.title}`
+          )
         } else {
           lines.push(
             `  [${tool.status} in ${formatDuration(tool.endedAt - tool.startedAt)}, ended ${formatDuration(now - tool.endedAt)} ago] ${tool.title}`,
@@ -832,9 +1110,12 @@ export class ChildSupervisor<State = unknown> {
         }
       }
     }
-    const text = boundedResultText(lastAssistantText(job.node.session.transcript().blocks))
+    const text = boundedResultText(lastAssistantText(job.node.session.transcript()
+      .blocks))
     if (text && job.lastAssistantTextAt !== null) {
-      lines.push(`last assistant text (${formatDuration(now - job.lastAssistantTextAt)} ago):`)
+      lines.push(
+        `last assistant text (${formatDuration(now - job.lastAssistantTextAt)} ago):`
+      )
       lines.push(text)
     } else {
       lines.push('last assistant text: (none yet)')
@@ -858,7 +1139,8 @@ export class ChildSupervisor<State = unknown> {
 function trimToolRecords(tools: ChildToolRecord[]): void {
   while (tools.length > SHOW_RECENT_TOOLS) {
     const index = tools.findIndex((tool) => tool.endedAt !== null)
-    if (index === -1) return
+    if (index === -1)
+      return
     tools.splice(index, 1)
   }
 }
@@ -866,7 +1148,8 @@ function trimToolRecords(tools: ChildToolRecord[]): void {
 function toolCallTitle(block: Extract<Block, { type: 'tool_call' }>): string {
   try {
     const input = JSON.parse(block.input) as Record<string, unknown>
-    if (typeof input.description === 'string' && input.description.trim()) return input.description.trim()
+    if (typeof input.description === 'string' && input.description.trim())
+      return input.description.trim()
   } catch {
     // Fall through to the tool name.
   }
@@ -876,7 +1159,8 @@ function toolCallTitle(block: Extract<Block, { type: 'tool_call' }>): string {
 function lastAssistantText(blocks: Block[]): string {
   for (let i = blocks.length - 1; i >= 0; i -= 1) {
     const block = blocks[i]
-    if (block.type === 'text') return block.text
+    if (block.type === 'text')
+      return block.text
   }
   return ''
 }

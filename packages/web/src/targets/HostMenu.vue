@@ -6,7 +6,10 @@ import type { Conversation, Project } from '../prototype/types'
 import { useResources } from '../prototype/resources'
 import { useConversations } from '../conversation/store'
 
-const props = defineProps<{ conversation: Conversation; project?: Project }>()
+const props = defineProps<{
+  conversation: Conversation;
+  project?: Project
+}>()
 const emit = defineEmits<{ switchMain: [deviceId: string, cwd?: string] }>()
 const resources = useResources()
 const store = useConversations()
@@ -15,7 +18,9 @@ const mainLocked = computed(() => !!props.conversation.stream || props.conversat
 const mainHost = computed<HostMenuMainHost>(() => ({
   id: props.project?.deviceId ?? 'cloud',
   name: props.project?.host ?? 'Cloud',
-  kind: !props.project || props.project.hostKind === 'cloud' ? 'cloud' : 'device',
+  kind: !props.project || props.project.hostKind === 'cloud'
+    ? 'cloud'
+    : 'device',
 }))
 const attachedHosts = computed(() => props.conversation.attachedHosts.map(host => ({
   id: host.deviceId,
@@ -25,7 +30,8 @@ const attachedHosts = computed(() => props.conversation.attachedHosts.map(host =
 })))
 
 function switchMain(id: string) {
-  if (mainLocked.value) return
+  if (mainLocked.value)
+    return
   const attached = props.conversation.attachedHosts.find(host => host.deviceId === id)
   emit('switchMain', id, attached?.cwd)
 }

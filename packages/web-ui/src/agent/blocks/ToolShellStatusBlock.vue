@@ -9,5 +9,9 @@ defineProps<{
 </script>
 
 <template>
-  <ToolShellControlBlock :block="block" :input="input" tool-name="shell_status" />
+  <ToolShellControlBlock
+    :block="block"
+    :input="input"
+    tool-name="shell_status"
+  />
 </template>

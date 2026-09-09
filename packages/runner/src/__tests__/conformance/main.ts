@@ -16,11 +16,17 @@ for (const conformance of cases) {
   const started = performance.now()
   try {
     await conformance.run()
-    console.log(`ok   ${conformance.name} (${(performance.now() - started).toFixed(1)}ms)`)
+    console.log(
+      `ok   ${conformance.name} (${(performance.now() - started).toFixed(1)}ms)`
+    )
   } catch (error) {
     failed += 1
-    const detail = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error)
-    console.log(`FAIL ${conformance.name}\n     ${detail.trimEnd().replace(/\n/g, '\n     ')}`)
+    const detail = error instanceof Error
+      ? `${error.name}: ${error.message}\n${error.stack ?? ''}`
+      : String(error)
+    console.log(
+      `FAIL ${conformance.name}\n     ${detail.trimEnd().replace(/\n/g, '\n     ')}`
+    )
   }
 }
 console.log(`\n${cases.length - failed}/${cases.length} passed`)

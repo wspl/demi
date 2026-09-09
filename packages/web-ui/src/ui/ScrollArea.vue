@@ -34,10 +34,12 @@ const MIN_THUMB = 24
 
 function measure() {
   const el = viewport.value
-  if (!el) return
+  if (!el)
+    return
   const { scrollHeight, clientHeight, scrollTop } = el
   overflowing.value = scrollHeight > clientHeight + 1
-  if (!overflowing.value) return
+  if (!overflowing.value)
+    return
   const trackHeight = track.value?.clientHeight ?? clientHeight
   const height = Math.max(MIN_THUMB, (clientHeight / scrollHeight) * trackHeight)
   const range = trackHeight - height
@@ -61,7 +63,8 @@ let dragStartTop = 0
 
 function onThumbDown(event: PointerEvent) {
   const el = viewport.value
-  if (!el) return
+  if (!el)
+    return
   dragging.value = true
   dragStartY = event.clientY
   dragStartTop = el.scrollTop
@@ -71,10 +74,12 @@ function onThumbDown(event: PointerEvent) {
 
 function onThumbMove(event: PointerEvent) {
   const el = viewport.value
-  if (!dragging.value || !el) return
+  if (!dragging.value || !el)
+    return
   const trackHeight = track.value?.clientHeight ?? el.clientHeight
   const range = trackHeight - thumbHeight.value
-  if (range <= 0) return
+  if (range <= 0)
+    return
   const scrollRange = el.scrollHeight - el.clientHeight
   el.scrollTop = dragStartTop + ((event.clientY - dragStartY) / range) * scrollRange
 }
@@ -86,7 +91,8 @@ function onThumbUp() {
 // A click on the track jumps a page in that direction, as native bars do.
 function onTrackDown(event: PointerEvent) {
   const el = viewport.value
-  if (!el || event.target !== track.value) return
+  if (!el || event.target !== track.value)
+    return
   const rect = track.value.getBoundingClientRect()
   const below = event.clientY - rect.top > thumbTop.value + thumbHeight.value
   el.scrollBy({ top: (below ? 1 : -1) * el.clientHeight, behavior: 'smooth' })
@@ -95,7 +101,8 @@ function onTrackDown(event: PointerEvent) {
 onMounted(() => {
   measure()
   const el = viewport.value
-  if (!el || typeof ResizeObserver === 'undefined') return
+  if (!el || typeof ResizeObserver === 'undefined')
+    return
   observer = new ResizeObserver(measure)
   observer.observe(el)
   for (const child of el.children) observer.observe(child)
@@ -109,7 +116,9 @@ onBeforeUnmount(() => {
 // Content that mounts later (a v-if page) is picked up on the next measurement.
 watch(() => props.viewportClass, measure)
 
-const thumbVisible = computed(() => overflowing.value && (hovered.value || scrolling.value || dragging.value))
+const thumbVisible = computed(
+  () => overflowing.value && (hovered.value || scrolling.value || dragging.value)
+)
 
 defineExpose({
   /** The scrolling element, for scrollTop and scrollTo. */
@@ -119,8 +128,17 @@ defineExpose({
 </script>
 
 <template>
-  <div class="scroll-area relative min-h-0 overflow-hidden" @pointerenter="hovered = true" @pointerleave="hovered = false">
-    <div ref="viewport" class="scroll-area-viewport h-full overflow-y-auto" :class="viewportClass" @scroll.passive="onScroll">
+  <div
+    class="scroll-area relative min-h-0 overflow-hidden"
+    @pointerenter="hovered = true"
+    @pointerleave="hovered = false"
+  >
+    <div
+      ref="viewport"
+      class="scroll-area-viewport h-full overflow-y-auto"
+      :class="viewportClass"
+      @scroll.passive="onScroll"
+    >
       <slot />
     </div>
     <div

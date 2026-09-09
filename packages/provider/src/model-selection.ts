@@ -12,7 +12,10 @@ import { VIDEO_FILE_EXTENSIONS } from '@demicodes/core'
 import type { ProviderModel, ProviderModelList } from './types'
 
 /** Stamps `providerId` onto a model catalog and every model in it. */
-export function withProviderId(list: ProviderModelList, providerId: string): ProviderModelList {
+export function withProviderId(
+  list: ProviderModelList,
+  providerId: string
+): ProviderModelList {
   return {
     ...list,
     providerId,
@@ -20,7 +23,9 @@ export function withProviderId(list: ProviderModelList, providerId: string): Pro
   }
 }
 
-/** Attachment file types a model is offered when it reports attachment support. */
+/**
+ * Attachment file types a model is offered when it reports attachment support.
+ */
 export const DEFAULT_ATTACHMENT_EXTENSIONS: readonly FileExtension[] = [
   'png',
   'jpg',
@@ -31,11 +36,22 @@ export const DEFAULT_ATTACHMENT_EXTENSIONS: readonly FileExtension[] = [
 ]
 
 /** Derive the thinking capabilities a UI can offer from a catalog model. */
-export function thinkingCapabilitiesFromProviderModel(model: ProviderModel | null): ThinkingCapability[] {
-  if (!model) return []
-  if (model.supportsReasoning === false) return [{ type: 'disabled' }]
-  if (!model.supportedThinkingEfforts || model.supportedThinkingEfforts.length === 0) return []
-  const summaries: ThinkingSummary[] = ['auto', 'concise', 'detailed', 'off', 'on']
+export function thinkingCapabilitiesFromProviderModel(
+  model: ProviderModel | null
+): ThinkingCapability[] {
+  if (!model)
+    return []
+  if (model.supportsReasoning === false)
+    return [{ type: 'disabled' }]
+  if (!model.supportedThinkingEfforts
+    || model.supportedThinkingEfforts.length === 0) return []
+  const summaries: ThinkingSummary[] = [
+    'auto',
+    'concise',
+    'detailed',
+    'off',
+    'on'
+  ]
   return [
     {
       type: 'effort',
@@ -48,13 +64,19 @@ export function thinkingCapabilitiesFromProviderModel(model: ProviderModel | nul
 }
 
 export interface ModelSelectionFromCatalogOptions {
-  /** Override the model id (defaults to `model.id`); useful before the catalog has loaded. */
+  /**
+   * Override the model id (defaults to `model.id`); useful before the catalog
+   * has loaded.
+   */
   modelId?: string
   /** Active thinking configuration, if any. */
   thinking?: ThinkingConfig | null
   /** Active service tier, if the model exposes tiers. */
   serviceTierId?: string | null
-  /** Explicit accepted types, overriding catalog flags; null preserves unknown capability. */
+  /**
+   * Explicit accepted types, overriding catalog flags; null preserves unknown
+   * capability.
+   */
   acceptedExtensions?: readonly FileExtension[] | null
   /** Display name to use when the catalog entry is absent. */
   fallbackName?: string
@@ -71,7 +93,9 @@ export function modelSelectionFromCatalog(
 ): ModelSelection {
   const modelId = options.modelId ?? model?.id ?? ''
   const acceptedExtensions = options.acceptedExtensions !== undefined
-    ? options.acceptedExtensions === null ? null : [...options.acceptedExtensions]
+    ? options.acceptedExtensions === null
+      ? null
+      : [...options.acceptedExtensions]
     : model?.supportsAttachments == null && model?.supportsVideo !== true
       ? null
       : [

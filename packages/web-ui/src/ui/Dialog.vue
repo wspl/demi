@@ -53,13 +53,15 @@ const id = useOverlay(
   props.overlayStore,
   () => (container ? false : props.isOpen),
   () => {
-    if (props.isOpen) emit('close')
+    if (props.isOpen)
+      emit('close')
   },
   nested || props.stack ? 'stacked' : 'exclusive',
 )
 
 onKeyStroke('Escape', (event) => {
-  if (!props.isOpen || container || !props.overlayStore.isTop(id)) return
+  if (!props.isOpen || container || !props.overlayStore.isTop(id))
+    return
   event.preventDefault()
   emit('close')
 })
@@ -86,7 +88,12 @@ onKeyStroke('Escape', (event) => {
           :aria-label="label"
         >
           <div v-if="!hideClose" class="absolute right-3 top-3 z-10">
-            <IconButton :icon="X" variant="ghost" aria-label="Close" @click="emit('close')" />
+            <IconButton
+              :icon="X"
+              variant="ghost"
+              aria-label="Close"
+              @click="emit('close')"
+            />
           </div>
           <!-- Content with its own scrolling body shrinks inside; anything else scrolls as a whole. -->
           <ScrollArea class="min-h-0" viewport-class="flex flex-col">

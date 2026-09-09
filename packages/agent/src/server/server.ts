@@ -1,9 +1,17 @@
-import type { CommandRegistry, Host, ShellEnvironment, ShellEnvironmentOptions } from '@demicodes/shell'
+import type {
+  CommandRegistry,
+  Host,
+  ShellEnvironment,
+  ShellEnvironmentOptions
+} from '@demicodes/shell'
 import { ActivityGate } from '@demicodes/utils'
 import type { SessionPhase } from '@demicodes/core'
 import type { Provider } from '@demicodes/provider'
 import { AgentClient } from '../client/client'
-import { createInProcessTransportPair, type AgentServerTransport } from '../protocol/transport'
+import {
+  createInProcessTransportPair,
+  type AgentServerTransport
+} from '../protocol/transport'
 import type { AgentHarness, AgentTreeStore } from '../types'
 import type { TurnRetryPolicy } from '../session/retry-policy'
 import type { ShellPreviewBudget } from '../tools'
@@ -38,7 +46,9 @@ export interface ShellEnvironmentContext {
  * runs (the backend: `HostlessEnvironment` for a `VirtualHost`,
  * `RemoteShellEnvironment` for a `RemoteHost`).
  */
-export type ShellEnvironmentFactory = (ctx: ShellEnvironmentContext) => ShellEnvironment | Promise<ShellEnvironment>
+export type ShellEnvironmentFactory = (
+  ctx: ShellEnvironmentContext
+) => ShellEnvironment | Promise<ShellEnvironment>
 
 /**
  * Dynamic provider lookup: called once per runtime construction (session open,
@@ -52,7 +62,10 @@ export type ProviderResolver = (
 
 export interface AgentServerOptions {
   agent: AgentHarness<unknown>
-  /** A static provider list, or a resolver for products that assemble providers dynamically. */
+  /**
+   * A static provider list, or a resolver for products that assemble providers
+   * dynamically.
+   */
   providers: Provider[] | ProviderResolver
   shell?: ShellEnvironmentOptions
   session?: AgentServerSessionOptions
@@ -63,11 +76,16 @@ export interface AgentServerOptions {
      * Deeper levels always self-notify. Defaults to true.
      */
     notifyParentOnIdle?: boolean
-    /** Maximum live direct children per session; defaults to MAX_LIVE_SUBAGENTS. */
+    /**
+     * Maximum live direct children per session; defaults to MAX_LIVE_SUBAGENTS.
+     */
     maxLiveSubagents?: number
   }
   tools?: {
-    /** Shell preview token budget as a function of the current model's context window. */
+    /**
+     * Shell preview token budget as a function of the current model's context
+     * window.
+     */
     shellPreviewBudgetTokens?: ShellPreviewBudget
   }
   /** The shell engine per Host. */
@@ -106,7 +124,8 @@ export class AgentServer {
       shellEnvironment: options.shellEnvironment,
       sessionOptions: options.session ?? {},
       notifyParentOnIdle: options.subagents?.notifyParentOnIdle ?? true,
-      maxLiveSubagents: options.subagents?.maxLiveSubagents ?? MAX_LIVE_SUBAGENTS,
+      maxLiveSubagents: options.subagents?.maxLiveSubagents
+        ?? MAX_LIVE_SUBAGENTS,
       shellPreviewBudgetTokens: options.tools?.shellPreviewBudgetTokens ?? null,
     }
     this.store = options.store
@@ -138,14 +157,21 @@ export class AgentServer {
     await this.sessionOwnership.disposeAll()
   }
 
-  /** All action entrances in the root and its descendants share this reservation. */
+  /**
+   * All action entrances in the root and its descendants share this
+   * reservation.
+   */
   reserveTreeMutation(rootSessionId: string): (() => void) | null {
     return this.activity(rootSessionId).tryReserve()
   }
 
-  /** Interrupts a tree and holds all new action admission until the caller releases it. */
+  /**
+   * Interrupts a tree and holds all new action admission until the caller
+   * releases it.
+   */
   async interruptTree(rootSessionId: string): Promise<() => void> {
-    const reserved = this.activity(rootSessionId).reserve(AbortSignal.timeout(30_000))
+    const reserved = this.activity(rootSessionId)
+      .reserve(AbortSignal.timeout(30_000))
     reserved.catch(() => {})
     try {
       const live = this.sessionOwnership.get(rootSessionId)
@@ -161,15 +187,23 @@ export class AgentServer {
     }
   }
 
-  treeActive(rootSessionId: string): boolean { return this.activity(rootSessionId).active }
+  treeActive(rootSessionId: string): boolean {
+    return this.activity(rootSessionId).active
+  }
 
   private activity(rootSessionId: string): ActivityGate {
     let gate = this.activities.get(rootSessionId)
-    if (!gate) { gate = new ActivityGate(); this.activities.set(rootSessionId, gate) }
+    if (!gate) {
+      gate = new ActivityGate();
+      this.activities.set(rootSessionId, gate)
+    }
     return gate
   }
 
-  /** Current phase of a live session; null when no live session exists for the id (⇒ nothing is running). */
+  /**
+   * Current phase of a live session; null when no live session exists for the
+   * id (⇒ nothing is running).
+   */
   sessionPhase(agentSessionId: string): SessionPhase | null {
     return this.sessionOwnership.get(agentSessionId)?.session.phase() ?? null
   }
@@ -178,7 +212,10 @@ export class AgentServer {
 function createProviderMap(providers: Provider[]): Map<string, Provider> {
   const map = new Map<string, Provider>()
   for (const provider of providers) {
-    if (map.has(provider.id)) throw new Error(`AgentServer: provider "${provider.id}" is already configured`)
+    if (map.has(provider.id))
+      throw new Error(
+        `AgentServer: provider "${provider.id}" is already configured`
+      )
     map.set(provider.id, provider)
   }
   return map

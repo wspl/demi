@@ -50,16 +50,23 @@ function readManifest(path: string): PackageManifest {
 
 const rootManifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { workspaces: string[] }
 const packages = rootManifest.workspaces
-  .map((dir) => ({ dir: join(ROOT, dir), manifest: readManifest(join(ROOT, dir, 'package.json')) }))
+  .map((dir) => ({
+    dir: join(ROOT, dir),
+    manifest: readManifest(join(ROOT, dir, 'package.json'))
+  }))
   .filter(({ manifest }) => manifest.private !== true)
 
 // Live workspace versions — the source of truth the packed tarballs must match.
-const workspaceVersions = new Map(packages.map(({ manifest }) => [manifest.name, manifest.version]))
+const workspaceVersions = new Map(
+  packages.map(({ manifest }) => [manifest.name, manifest.version])
+)
 
 async function publishedVersions(name: string): Promise<Set<string>> {
   const response = await fetch(`${REGISTRY}/${name.replace('/', '%2F')}`)
-  if (response.status === 404) return new Set()
-  if (!response.ok) throw new Error(`Registry lookup for ${name} failed: ${response.status}`)
+  if (response.status === 404)
+    return new Set()
+  if (!response.ok)
+    throw new Error(`Registry lookup for ${name} failed: ${response.status}`)
   const body = (await response.json()) as { versions?: Record<string, unknown> }
   return new Set(Object.keys(body.versions ?? {}))
 }
@@ -72,10 +79,12 @@ async function publishedVersions(name: string): Promise<Set<string>> {
  * condition by default) to files that do not exist in the published package.
  */
 function stripDevelopmentConditions(node: unknown): unknown {
-  if (typeof node !== 'object' || node === null || Array.isArray(node)) return node
+  if (typeof node !== 'object' || node === null || Array.isArray(node))
+    return node
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(node)) {
-    if (key === 'development') continue
+    if (key === 'development')
+      continue
     out[key] = stripDevelopmentConditions(value)
   }
   return out
@@ -91,19 +100,32 @@ function escapeRegExp(text: string): string {
  * wildcard patterns) resolves to at least one shipped file. This is the
  * invariant the 0.3.1 tarballs violated.
  */
-function validatePackedExports(packedExports: unknown, entries: string[]): string[] {
+function validatePackedExports(
+  packedExports: unknown,
+  entries: string[]
+): string[] {
   const problems: string[] = []
   const visit = (node: unknown, path: string) => {
     if (typeof node === 'string') {
-      if (!node.startsWith('./')) return
+      if (!node.startsWith('./'))
+        return
       const target = `package/${node.slice(2)}`
       const matches = node.includes('*')
-        ? entries.some((entry) => new RegExp(`^${target.split('*').map(escapeRegExp).join('.*')}$`).test(entry))
+        ? entries.some(
+            (entry) =>
+              new RegExp(
+                `^${target.split('*').map(escapeRegExp).join('.*')}$`
+              ).test(entry)
+          )
         : entries.includes(target)
-      if (!matches) problems.push(`exports${path} -> "${node}" matches nothing in the tarball`)
+      if (!matches)
+        problems.push(
+          `exports${path} -> "${node}" matches nothing in the tarball`
+        )
       return
     }
-    if (typeof node !== 'object' || node === null) return
+    if (typeof node !== 'object' || node === null)
+      return
     for (const [key, value] of Object.entries(node)) {
       if (key === 'development') {
         problems.push(`exports${path} still contains a development condition`)
@@ -118,15 +140,24 @@ function validatePackedExports(packedExports: unknown, entries: string[]): strin
 
 function validatePackedManifest(packed: PackageManifest): string[] {
   const problems: string[] = []
-  for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const) {
+  for (const section of [
+    'dependencies',
+    'devDependencies',
+    'peerDependencies',
+    'optionalDependencies'
+  ] as const) {
     for (const [dep, range] of Object.entries(packed[section] ?? {})) {
       if (range.includes('workspace:')) {
-        problems.push(`${section}.${dep} is "${range}" — workspace protocol leaked into the tarball`)
+        problems.push(
+          `${section}.${dep} is "${range}" — workspace protocol leaked into the tarball`
+        )
         continue
       }
       const live = workspaceVersions.get(dep)
       if (live !== undefined && range !== `^${live}`) {
-        problems.push(`${section}.${dep} is "${range}", expected "^${live}" — stale lockfile rewrite`)
+        problems.push(
+          `${section}.${dep} is "${range}", expected "^${live}" — stale lockfile rewrite`
+        )
       }
     }
   }
@@ -148,7 +179,9 @@ let published = 0
 for (const { dir, manifest } of packages) {
   const existing = await publishedVersions(manifest.name)
   if (existing.has(manifest.version)) {
-    console.log(`skip    ${manifest.name}@${manifest.version} (already on registry)`)
+    console.log(
+      `skip    ${manifest.name}@${manifest.version} (already on registry)`
+    )
     continue
   }
 
@@ -158,7 +191,8 @@ for (const { dir, manifest } of packages) {
   const manifestPath = join(dir, 'package.json')
   const originalManifestText = readFileSync(manifestPath, 'utf8')
   const publishManifest = JSON.parse(originalManifestText) as PackageManifest
-  if (publishManifest.exports !== undefined) publishManifest.exports = stripDevelopmentConditions(publishManifest.exports)
+  if (publishManifest.exports !== undefined)
+    publishManifest.exports = stripDevelopmentConditions(publishManifest.exports)
 
   const dest = await mkdtemp(join(tmpdir(), 'demi-release-'))
   writeFileSync(manifestPath, `${JSON.stringify(publishManifest, null, 2)}\n`)
@@ -167,22 +201,39 @@ for (const { dir, manifest } of packages) {
   } finally {
     writeFileSync(manifestPath, originalManifestText)
   }
-  const tarball = join(dest, (await readdir(dest)).find((f) => f.endsWith('.tgz'))!)
-  const packed = JSON.parse(await $`tar -xOf ${tarball} package/package.json`.text()) as PackageManifest
-  const entries = (await $`tar -tf ${tarball}`.text()).split('\n').filter(Boolean)
+  const tarball = join(
+    dest,
+    (await readdir(dest)).find((f) => f.endsWith('.tgz'))!
+  )
+  const packed = JSON.parse(
+    await $`tar -xOf ${tarball} package/package.json`.text()
+  ) as PackageManifest
+  const entries = (await $`tar -tf ${tarball}`.text())
+    .split('\n')
+    .filter(Boolean)
 
-  const problems = [...validatePackedManifest(packed), ...validatePackedExports(packed.exports, entries)]
+  const problems = [
+    ...validatePackedManifest(packed),
+    ...validatePackedExports(packed.exports, entries)
+  ]
   if (problems.length > 0) {
-    failures.push(`${manifest.name}@${manifest.version}:\n  ${problems.join('\n  ')}`)
+    failures.push(
+      `${manifest.name}@${manifest.version}:\n  ${problems.join('\n  ')}`
+    )
     console.error(`INVALID ${manifest.name}@${manifest.version}`)
     continue
   }
 
   if (dryRun) {
-    console.log(`ok      ${manifest.name}@${manifest.version} (dry run, not published)`)
+    console.log(
+      `ok      ${manifest.name}@${manifest.version} (dry run, not published)`
+    )
     continue
   }
-  const env = { ...process.env, ...(process.env.NPM_TOKEN ? { NPM_CONFIG_TOKEN: process.env.NPM_TOKEN } : {}) }
+  const env = {
+    ...process.env,
+    ...(process.env.NPM_TOKEN ? { NPM_CONFIG_TOKEN: process.env.NPM_TOKEN } : {})
+  }
   try {
     await $`bun publish ${tarball} --access public`.cwd(dir).env(env)
   } catch (error) {
@@ -191,7 +242,9 @@ for (const { dir, manifest } of packages) {
     // "publish over previous" rejection as already-published, not a failure.
     const stderr = (error as { stderr?: unknown }).stderr?.toString() ?? ''
     if (stderr.includes('cannot publish over the previously published versions')) {
-      console.log(`skip    ${manifest.name}@${manifest.version} (already on registry; metadata lagging)`)
+      console.log(
+        `skip    ${manifest.name}@${manifest.version} (already on registry; metadata lagging)`
+      )
       continue
     }
     throw error
@@ -201,14 +254,18 @@ for (const { dir, manifest } of packages) {
 }
 
 if (failures.length > 0) {
-  console.error(`\nAborted: ${failures.length} package(s) failed tarball validation; nothing further published.\n`)
+  console.error(
+    `\nAborted: ${failures.length} package(s) failed tarball validation; nothing further published.\n`
+  )
   console.error(failures.join('\n'))
   process.exit(1)
 }
 
 if (!dryRun && published > 0) {
   await $`bun run changeset tag`.cwd(ROOT)
-  console.log(`\nDone: ${published} package(s) published. Push tags with: git push origin --tags`)
+  console.log(
+    `\nDone: ${published} package(s) published. Push tags with: git push origin --tags`
+  )
 } else {
   console.log(`\nDone: nothing published${dryRun ? ' (dry run)' : ''}.`)
 }

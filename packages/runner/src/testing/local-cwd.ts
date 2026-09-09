@@ -25,7 +25,8 @@ export class LocalHostCwd implements HostCwd {
   }
 
   async chdir(path: string): Promise<void> {
-    if (path === '.') return
+    if (path === '.')
+      return
     const target = isAbsolute(path)
       ? path
       : this.fdAnchor()
@@ -34,7 +35,10 @@ export class LocalHostCwd implements HostCwd {
     const next = await open(target, DIR_FLAGS)
     const previous = this.handle
     this.handle = next
-    this.path = isAbsolute(path) ? path : posix.normalize(posix.join(this.path, path))
+    this.path = isAbsolute(path) ? path : posix.normalize(posix.join(
+      this.path,
+      path
+    ))
     await previous?.close().catch(() => {})
   }
 
@@ -70,11 +74,13 @@ export class LocalHostCwd implements HostCwd {
   }
 
   private fdAnchor(): string | undefined {
-    if (!this.handle) return undefined
+    if (!this.handle)
+      return undefined
     // Linux-only: macOS devfs cannot open or traverse a directory through
     // /dev/fd/N (open → ENOTDIR, /dev/fd/N/sub → ENOENT, spawn cwd → ENOTDIR),
     // so darwin falls back to logical path semantics.
-    if (process.platform === 'linux') return `/proc/self/fd/${this.handle.fd}`
+    if (process.platform === 'linux')
+      return `/proc/self/fd/${this.handle.fd}`
     return undefined
   }
 }

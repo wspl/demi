@@ -7,8 +7,12 @@ export type ReferenceHostResolver<State> = (
   ctx: AgentReferenceResolveContext<State>,
 ) => Host | Promise<Host>
 
-export function createFileReferenceResolver<State>(host: Host | ReferenceHostResolver<State>) {
-  const resolveHost: ReferenceHostResolver<State> = typeof host === 'function' ? host : () => host
+export function createFileReferenceResolver<State>(
+  host: Host | ReferenceHostResolver<State>
+) {
+  const resolveHost: ReferenceHostResolver<State> = typeof host === 'function'
+    ? host
+    : () => host
   return async (
     ctx: AgentReferenceResolveContext<State>,
     content: UserContentBlock[],
@@ -21,21 +25,32 @@ export function createFileReferenceResolver<State>(host: Host | ReferenceHostRes
         continue
       }
       contextHost ??= await resolveHost(ctx)
-      resolved.push(await resolveFileReference(contextHost, ctx.cwd, block.reference))
+      resolved.push(await resolveFileReference(
+        contextHost,
+        ctx.cwd,
+        block.reference
+      ))
     }
     return resolved
   }
 }
 
-async function resolveFileReference(host: Host, cwd: string, reference: string): Promise<UserContentBlock> {
+async function resolveFileReference(
+  host: Host,
+  cwd: string,
+  reference: string
+): Promise<UserContentBlock> {
   const path = parseFileReference(reference)
   const pathError = pathValidationError(path)
-  if (pathError) throw new Error(pathError)
+  if (pathError)
+    throw new Error(pathError)
   let stdout: string
   try {
     stdout = decodeUtf8(await host.fs.readFile(path, { cwd }))
   } catch (error) {
-    throw new Error(`Failed to resolve file reference "${reference}": ${errorMessage(error)}`)
+    throw new Error(
+      `Failed to resolve file reference "${reference}": ${errorMessage(error)}`
+    )
   }
 
   return {
@@ -46,9 +61,12 @@ async function resolveFileReference(host: Host, cwd: string, reference: string):
 
 function parseFileReference(reference: string): string {
   const trimmed = reference.trim()
-  if (!trimmed) throw new Error('Empty file reference')
-  if (trimmed.startsWith('file://') || trimmed.startsWith('file:/')) return decodeFileReferencePath(new URL(trimmed).pathname)
-  if (trimmed.startsWith('file:')) return decodeFileReferencePath(trimmed.slice('file:'.length))
+  if (!trimmed)
+    throw new Error('Empty file reference')
+  if (trimmed.startsWith('file://') || trimmed.startsWith('file:/'))
+    return decodeFileReferencePath(new URL(trimmed).pathname)
+  if (trimmed.startsWith('file:'))
+    return decodeFileReferencePath(trimmed.slice('file:'.length))
   return trimmed
 }
 
@@ -61,6 +79,7 @@ function decodeFileReferencePath(path: string): string {
 }
 
 function pathValidationError(path: string): string | null {
-  if (path.includes('\0')) return `File reference contains NUL byte: ${path}`
+  if (path.includes('\0'))
+    return `File reference contains NUL byte: ${path}`
   return null
 }

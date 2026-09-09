@@ -13,7 +13,10 @@ export type PortableJsonValue =
   | readonly PortableJsonValue[]
   | { readonly [key: string]: PortableJsonValue }
 
-/** Parses JSON, returning the value, or the original string if it is not valid JSON. */
+/**
+ * Parses JSON, returning the value, or the original string if it is not valid
+ * JSON.
+ */
 export function parseJsonOrString(value: string): unknown {
   try {
     return JSON.parse(value)
@@ -22,7 +25,9 @@ export function parseJsonOrString(value: string): unknown {
   }
 }
 
-/** Parses JSON and returns it only when it is a plain object; otherwise `null`. */
+/**
+ * Parses JSON and returns it only when it is a plain object; otherwise `null`.
+ */
 export function parseJsonObject(value: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(value)
@@ -41,11 +46,15 @@ export function safeJsonStringify(value: unknown): string | undefined {
   const seen = new WeakSet<object>()
   try {
     return JSON.stringify(value, (_key, nested) => {
-      if (typeof nested === 'bigint') return nested.toString()
-      if (typeof nested === 'symbol') return String(nested)
-      if (typeof nested === 'function') return `[Function ${nested.name || 'anonymous'}]`
+      if (typeof nested === 'bigint')
+        return nested.toString()
+      if (typeof nested === 'symbol')
+        return String(nested)
+      if (typeof nested === 'function')
+        return `[Function ${nested.name || 'anonymous'}]`
       if (nested !== null && typeof nested === 'object') {
-        if (seen.has(nested)) return '[Circular]'
+        if (seen.has(nested))
+          return '[Circular]'
         seen.add(nested)
       }
       return nested
@@ -71,7 +80,9 @@ export function stringifyPortableJson(value: unknown, space?: number): string {
     function (this: unknown, key, nested) {
       // toJSON (Date, Node byte arrays) runs before the replacer, so these
       // must be recovered from the holder object rather than from `nested`.
-      const original = isRecord(this) || Array.isArray(this) ? (this as Record<string, unknown>)[key] : undefined
+      const original = isRecord(this) || Array.isArray(this)
+        ? (this as Record<string, unknown>)[key]
+        : undefined
       if (original instanceof Date) {
         return {
           [DATE_MARKER]: true,
@@ -81,7 +92,9 @@ export function stringifyPortableJson(value: unknown, space?: number): string {
       if (original instanceof Uint8Array || nested instanceof Uint8Array) {
         return {
           [BINARY_MARKER]: true,
-          base64: bytesToBase64(original instanceof Uint8Array ? original : (nested as Uint8Array)),
+          base64: bytesToBase64(original instanceof Uint8Array
+            ? original
+            : (nested as Uint8Array)),
         }
       }
       if (typeof nested === 'bigint') {
@@ -96,7 +109,10 @@ export function stringifyPortableJson(value: unknown, space?: number): string {
   )
 }
 
-/** Parses JSON produced by `stringifyPortableJson`, reviving marked `Uint8Array`, `bigint`, and `Date` values. */
+/**
+ * Parses JSON produced by `stringifyPortableJson`, reviving marked
+ * `Uint8Array`, `bigint`, and `Date` values.
+ */
 export function parsePortableJson<T>(text: string): T {
   return JSON.parse(text, (_key, nested) => {
     if (isEncodedUint8Array(nested)) {
@@ -113,13 +129,16 @@ export function parsePortableJson<T>(text: string): T {
 }
 
 function isEncodedUint8Array(value: unknown): value is { base64: string } {
-  return isRecord(value) && value[BINARY_MARKER] === true && typeof value.base64 === 'string'
+  return isRecord(value) && value[BINARY_MARKER] === true
+    && typeof value.base64 === 'string'
 }
 
 function isEncodedBigInt(value: unknown): value is { value: string } {
-  return isRecord(value) && value[BIGINT_MARKER] === true && typeof value.value === 'string'
+  return isRecord(value) && value[BIGINT_MARKER] === true
+    && typeof value.value === 'string'
 }
 
 function isEncodedDate(value: unknown): value is { iso: string } {
-  return isRecord(value) && value[DATE_MARKER] === true && typeof value.iso === 'string'
+  return isRecord(value) && value[DATE_MARKER] === true
+    && typeof value.iso === 'string'
 }

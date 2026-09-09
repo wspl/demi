@@ -6,7 +6,10 @@ const root = resolve(import.meta.dir, '../..')
 const built = new Map<string, string>()
 
 function run(args: string[], env: NodeJS.ProcessEnv): void {
-  const result = Bun.spawnSync(args, { env, stdout: 'inherit', stderr: 'inherit' })
+  const result = Bun.spawnSync(
+    args,
+    { env, stdout: 'inherit', stderr: 'inherit' }
+  )
   if (!result.success) {
     throw new Error(`native client build failed: ${args.join(' ')}`)
   }
@@ -25,7 +28,10 @@ function writeContractHeader(directory: string): void {
     `#define DEMI_STDIN_FD_ENV "${contract.stdinFdEnv}"`,
   ]
   for (const [name, value] of Object.entries(contract.frames)) {
-    const constant = name.replace(/[A-Z]/g, character => `_${character}`).toUpperCase()
+    const constant = name.replace(
+      /[A-Z]/g,
+      character => `_${character}`
+    ).toUpperCase()
     lines.push(`#define DEMI_${constant} ${value}`)
   }
   const header = `${lines.join('\n')}\n#endif\n`
@@ -46,16 +52,25 @@ function targetConfiguration(target?: string) {
     if (!/^(aarch64|x86_64)-linux-musl$/.test(target)) {
       throw new Error(`unsupported client target: ${target}`)
     }
-    env = { ...env, DEMI_ZIG_TARGET: target, DEMI_ZIG_ARCH: target.split('-')[0] }
-    flags.push(`-DCMAKE_TOOLCHAIN_FILE=${join(root, 'packages/runner/runtime/toolchain/linux-musl.cmake')}`)
+    env = {
+      ...env,
+      DEMI_ZIG_TARGET: target,
+      DEMI_ZIG_ARCH: target.split('-')[0]
+    }
+    flags.push(
+      `-DCMAKE_TOOLCHAIN_FILE=${join(root, 'packages/runner/runtime/toolchain/linux-musl.cmake')}`
+    )
   } else if (target?.endsWith('-macos')) {
-    if (process.platform !== 'darwin' || !/^(arm64|x86_64)-macos$/.test(target)) {
+    if (process.platform !== 'darwin'
+      || !/^(arm64|x86_64)-macos$/.test(target)) {
       throw new Error(`unsupported client target: ${target}`)
     }
     flags.push(`-DCMAKE_OSX_ARCHITECTURES=${target.split('-')[0]}`)
   } else if (target === 'x86_64-windows-gnu') {
     env = { ...env, DEMI_ZIG_TARGET: target, DEMI_ZIG_ARCH: 'AMD64' }
-    flags.push(`-DCMAKE_TOOLCHAIN_FILE=${join(import.meta.dir, 'toolchain/windows-gnu.cmake')}`)
+    flags.push(
+      `-DCMAKE_TOOLCHAIN_FILE=${join(import.meta.dir, 'toolchain/windows-gnu.cmake')}`
+    )
   } else if (target) {
     throw new Error(`unsupported client target: ${target}`)
   }
@@ -63,7 +78,11 @@ function targetConfiguration(target?: string) {
   return { flags, env }
 }
 
-function linkWindowsClient(directory: string, binary: string, env: NodeJS.ProcessEnv): void {
+function linkWindowsClient(
+  directory: string,
+  binary: string,
+  env: NodeJS.ProcessEnv
+): void {
   // Direct linking avoids Zig/CMake whole-archive CRT incompatibility.
   run([
     process.env.ZIG ?? 'zig', 'cc',
@@ -93,7 +112,8 @@ export function commandClientBinary(target?: string): string {
   run([cmake, '-S', import.meta.dir, '-B', directory, ...flags], env)
 
   const crossCompileWindows = target === 'x86_64-windows-gnu'
-  const windowsBinary = crossCompileWindows || (process.platform === 'win32' && !target)
+  const windowsBinary = crossCompileWindows
+    || (process.platform === 'win32' && !target)
   const binary = join(directory, windowsBinary ? 'demi.exe' : 'demi')
   const buildTarget = crossCompileWindows ? 'uv_a' : 'demi'
   run([cmake, '--build', directory, '--target', buildTarget, '-j', '8'], env)

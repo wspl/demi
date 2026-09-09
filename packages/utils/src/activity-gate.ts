@@ -7,43 +7,68 @@ export class ActivityGate {
   private reserved = false
   private changed = deferred<void>()
 
-  get active(): boolean { return this.readers > 0 }
+  get active(): boolean {
+    return this.readers > 0
+  }
 
   async enter(signal?: AbortSignal): Promise<() => void> {
     while (this.reserved) await this.wait(signal)
-    if (signal) throwIfAborted(signal)
+    if (signal)
+      throwIfAborted(signal)
     this.readers++
-    return this.once(() => { this.readers--; this.notify() })
+    return this.once(() => {
+      this.readers--;
+      this.notify()
+    })
   }
 
-  /** Admits immediately, or refuses while an exclusive transition owns the gate. */
+  /**
+   * Admits immediately, or refuses while an exclusive transition owns the gate.
+   */
   tryEnter(): (() => void) | null {
-    if (this.reserved) return null
+    if (this.reserved)
+      return null
     this.readers++
-    return this.once(() => { this.readers--; this.notify() })
+    return this.once(() => {
+      this.readers--;
+      this.notify()
+    })
   }
 
   /** Reserves only an idle gate, synchronously with respect to new entrants. */
   tryReserve(): (() => void) | null {
-    if (this.reserved || this.readers > 0) return null
+    if (this.reserved || this.readers > 0)
+      return null
     this.reserved = true
-    return this.once(() => { this.reserved = false; this.notify() })
+    return this.once(() => {
+      this.reserved = false;
+      this.notify()
+    })
   }
 
   /** Stops new entrants, then waits for admitted operations to finish. */
   async reserve(signal?: AbortSignal): Promise<() => void> {
     while (this.reserved) await this.wait(signal)
-    if (signal) throwIfAborted(signal)
+    if (signal)
+      throwIfAborted(signal)
     this.reserved = true
-    const release = this.once(() => { this.reserved = false; this.notify() })
+    const release = this.once(() => {
+      this.reserved = false;
+      this.notify()
+    })
     try {
       while (this.readers > 0) await this.wait(signal)
       return release
-    } catch (error) { release(); throw error }
+    } catch (error) {
+      release();
+      throw error
+    }
   }
 
   private wait(signal?: AbortSignal): Promise<void> {
-    return signal ? abortable(this.changed.promise, signal) : this.changed.promise
+    return signal
+      ? abortable(this.changed.promise, signal)
+      : this.changed.promise
   }
 
   private notify(): void {
@@ -54,6 +79,11 @@ export class ActivityGate {
 
   private once(action: () => void): () => void {
     let done = false
-    return () => { if (!done) { done = true; action() } }
+    return () => {
+      if (!done) {
+        done = true;
+        action()
+      }
+    }
   }
 }

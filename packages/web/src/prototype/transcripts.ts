@@ -2,7 +2,11 @@ import type { Block, ModelSelection } from '@demicodes/core'
 import type { Conversation } from './types'
 
 /** Curated transcript fixtures use the same block contract as live conversation rendering. */
-export function populateTranscript(c: Conversation, model: ModelSelection, index: number): void {
+export function populateTranscript(
+  c: Conversation,
+  model: ModelSelection,
+  index: number
+): void {
   let sequence = 0
   const meta = () => {
     const order = sequence++
@@ -20,7 +24,12 @@ export function populateTranscript(c: Conversation, model: ModelSelection, index
     content: [{ type: 'text', text }],
   })
   const answer = (text: string): Block => ({ ...meta(), type: 'text', text })
-  const thinking = (text: string): Block => ({ ...meta(), type: 'thinking', text, signature: null })
+  const thinking = (text: string): Block => ({
+    ...meta(),
+    type: 'thinking',
+    text,
+    signature: null
+  })
   const usage = (): Block => ({
     ...meta(),
     type: 'response',
@@ -31,7 +40,12 @@ export function populateTranscript(c: Conversation, model: ModelSelection, index
       cacheWriteTokens: 0,
     },
   })
-  const command = (script: string, description: string, stdout: string, failed = false): Block => ({
+  const command = (
+    script: string,
+    description: string,
+    stdout: string,
+    failed = false
+  ): Block => ({
     ...meta(),
     type: 'tool_call',
     toolUseId: `${c.id}-tool-${sequence}`,
@@ -52,7 +66,9 @@ export function populateTranscript(c: Conversation, model: ModelSelection, index
       answer(
         'Try a short reading list instead of a stack you feel obliged to finish.\n\n| Book | Mood | A good starting point |\n| --- | --- | --- |\n| A Wizard of Earthsea | Reflective fantasy | The first two chapters |\n| The Little Prince | Brief and contemplative | Read it in one sitting |\n| A Room of One’s Own | Thoughtful essay | The opening walk |\n\nChoose **one** for Saturday and keep the others as alternatives.',
       ),
-      user('Let’s go with Earthsea. Can you suggest a relaxed schedule without spoilers?'),
+      user(
+        'Let’s go with Earthsea. Can you suggest a relaxed schedule without spoilers?'
+      ),
       answer(
         '### Saturday\n\n- [ ] Read the opening two chapters with coffee.\n- [ ] Put the book down for a walk.\n- [ ] Write down one image or sentence you want to remember.\n\n### Sunday\n\nContinue only if you feel curious. There is no chapter target.\n\n> A good weekend reading plan leaves room for the book to surprise you.',
       ),
@@ -137,7 +153,9 @@ export function populateTranscript(c: Conversation, model: ModelSelection, index
     ]
   } else if (c.projectId === 'notes') {
     c.blocks = [
-      user(`Help me work on “${c.title}”. I want the writing to be clear and concrete.`),
+      user(
+        `Help me work on “${c.title}”. I want the writing to be clear and concrete.`
+      ),
       answer(
         `## ${c.title}\n\nStart with a scene the reader can picture:\n\n> The room was quiet except for the keyboard. On the screen, three unfinished ideas waited for a decision.\n\nThen explain the choice in one sentence. Avoid summarizing every possibility before the reader knows what matters.\n\n| Draft | Revision |\n| --- | --- |\n| There are a number of considerations | Three things matter |\n| It is possible to observe | You can see |\n| In order to begin | To begin |`,
       ),
@@ -149,7 +167,9 @@ export function populateTranscript(c: Conversation, model: ModelSelection, index
     ]
   } else if (c.projectId === 'demi') {
     c.blocks = [
-      user(`Take a look at ${c.title.toLowerCase()} and give me a concrete checklist.`),
+      user(
+        `Take a look at ${c.title.toLowerCase()} and give me a concrete checklist.`
+      ),
       thinking(
         'I will separate visible behavior from state changes and focus on a few reproducible interactions.',
       ),

@@ -14,34 +14,54 @@ export function normalizePath(path: string): string {
   const body = drive ? slashPath.slice(2) : slashPath
   const parts: string[] = []
   for (const segment of body.split('/')) {
-    if (segment === '' || segment === '.') continue
+    if (segment === '' || segment === '.')
+      continue
     if (segment === '..') {
       if (parts.length > 0 && parts[parts.length - 1] !== '..') parts.pop()
-      else if (!absolute) parts.push(segment)
+      else if (!absolute)
+        parts.push(segment)
       continue
     }
     parts.push(segment)
   }
-  if (drive) return parts.length > 0 ? `${drive}/${parts.join('/')}` : `${drive}/`
-  if (absolute) return `/${parts.join('/')}`
+  if (drive)
+    return parts.length > 0
+      ? `${drive}/${parts.join('/')}`
+      : `${drive}/`
+  if (absolute)
+    return `/${parts.join('/')}`
   return parts.join('/') || '.'
 }
 
-/** The parent directory of a path, after normalization (POSIX `dirname` semantics). */
+/**
+ * The parent directory of a path, after normalization (POSIX `dirname`
+ * semantics).
+ */
 export function dirnamePath(path: string): string {
   const normalized = normalizePath(path)
-  if (normalized === '/' || /^[A-Za-z]:\/?$/.test(normalized)) return normalized
+  if (normalized === '/' || /^[A-Za-z]:\/?$/.test(normalized))
+    return normalized
   const index = normalized.lastIndexOf('/')
-  if (index === -1) return '.'
-  if (index === 0) return '/'
-  if (index === 2 && /^[A-Za-z]:/.test(normalized)) return normalized.slice(0, 3)
+  if (index === -1)
+    return '.'
+  if (index === 0)
+    return '/'
+  if (index === 2 && /^[A-Za-z]:/.test(normalized))
+    return normalized.slice(
+      0,
+      3
+    )
   return normalized.slice(0, index)
 }
 
-/** The last component of a path, trailing slashes ignored (POSIX `basename`: `/` stays `/`). */
+/**
+ * The last component of a path, trailing slashes ignored (POSIX `basename`: `/`
+ * stays `/`).
+ */
 export function basenamePath(path: string): string {
   const trimmed = path.replace(/\/+$/, '')
-  if (trimmed === '') return path.startsWith('/') ? '/' : ''
+  if (trimmed === '')
+    return path.startsWith('/') ? '/' : ''
   return trimmed.slice(trimmed.lastIndexOf('/') + 1)
 }
 

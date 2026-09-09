@@ -12,7 +12,8 @@ export function useStreamReveal(
   let deadline = 0
 
   function stop(): void {
-    if (frame) cancelAnimationFrame(frame)
+    if (frame)
+      cancelAnimationFrame(frame)
     frame = 0
     lastTs = 0
     deadline = 0
@@ -64,10 +65,15 @@ export function useStreamReveal(
       stop()
       return
     }
-    if (!frame) frame = requestAnimationFrame(tick)
+    if (!frame)
+      frame = requestAnimationFrame(tick)
   }
 
-  watch([() => toValue(content), () => toValue(streaming)], ensure, { immediate: true })
+  watch(
+    [() => toValue(content), () => toValue(streaming)],
+    ensure,
+    { immediate: true }
+  )
   onBeforeUnmount(stop)
 
   return { shown, frontier }

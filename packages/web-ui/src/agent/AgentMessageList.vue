@@ -24,7 +24,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  saveScrollState: [conversationId: string, state: PersistedScrollState | undefined]
+  saveScrollState: [
+    conversationId: string,
+    state: PersistedScrollState | undefined
+  ]
   deletePendingSteer: [id: string]
   interruptPendingSteer: [id: string]
   deleteQueued: [id: string]
@@ -39,10 +42,19 @@ const renderBlocks = computed<MessageListBlock[]>(() => [
   ...queuedMessagesToRenderBlocks(props.queue),
 ])
 
-const shouldShowLoading = computed(() => shouldShowTailLoading(props.phase, visibleTranscriptBlocks.value, renderBlocks.value))
+const shouldShowLoading = computed(
+  () => shouldShowTailLoading(
+    props.phase,
+    visibleTranscriptBlocks.value,
+    renderBlocks.value
+  )
+)
 
 // Every streamed delta re-renders the visible rows; the lookup must not rescan the transcript per row.
-const transcriptIndexById = computed(() => new Map(visibleTranscriptBlocks.value.map((block, index) => [block.id, index])))
+const transcriptIndexById = computed(
+  () =>
+    new Map(visibleTranscriptBlocks.value.map((block, index) => [block.id, index]))
+)
 
 function transcriptIndexAt(index: number): number {
   const block = renderBlocks.value[index]
@@ -50,25 +62,43 @@ function transcriptIndexAt(index: number): number {
 }
 
 function isStreamingThinkingAt(index: number): boolean {
-  return isThinkingBlockStreaming(visibleTranscriptBlocks.value, props.phase, transcriptIndexAt(index))
+  return isThinkingBlockStreaming(
+    visibleTranscriptBlocks.value,
+    props.phase,
+    transcriptIndexAt(index)
+  )
 }
 
 function isStreamingTextAt(index: number): boolean {
-  return isTextBlockStreaming(visibleTranscriptBlocks.value, props.phase, transcriptIndexAt(index))
+  return isTextBlockStreaming(
+    visibleTranscriptBlocks.value,
+    props.phase,
+    transcriptIndexAt(index)
+  )
 }
 
 // The next block's createdAt marks when a thinking block stopped (null while it's still the last,
 // i.e. actively thinking). Lets ThinkingBlock show a frozen "thought for Xs" that survives reload.
 function thinkingEndedAt(index: number): string | null {
   const transcriptIndex = transcriptIndexAt(index)
-  if (transcriptIndex < 0) return null
+  if (transcriptIndex < 0)
+    return null
   const next = visibleTranscriptBlocks.value[transcriptIndex + 1]
   return next && 'createdAt' in next ? next.createdAt : null
 }
 
 const scrollContainer = ref<HTMLDivElement>()
 
-const { virtualItems, totalSize, measureElement, scrollOffset, isAtBottom, scrollToBottom, onScroll, getPersistedState } =
+const {
+  virtualItems,
+  totalSize,
+  measureElement,
+  scrollOffset,
+  isAtBottom,
+  scrollToBottom,
+  onScroll,
+  getPersistedState
+} =
   useBlockVirtualizer(scrollContainer, renderBlocks, props.persistedScrollState)
 
 onBeforeUnmount(() => {
@@ -84,7 +114,8 @@ watch(
     const wasAtBottom = isAtBottom.value
     nextTick(() => {
       scrollOffset.value = scrollContainer.value?.scrollTop ?? 0
-      if (wasAtBottom) scrollToBottom()
+      if (wasAtBottom)
+        scrollToBottom()
     })
   },
   { flush: 'post' },
@@ -105,7 +136,10 @@ defineExpose({
       style="overflow-anchor: none; scrollbar-gutter: stable;"
       @scroll="onScroll"
     >
-      <div v-if="renderBlocks.length === 0" class="grid h-full place-items-center">
+      <div
+        v-if="renderBlocks.length === 0"
+        class="grid h-full place-items-center"
+      >
         <p class="text-conversation text-fg-faint">No messages yet. Start a conversation.</p>
       </div>
       <div

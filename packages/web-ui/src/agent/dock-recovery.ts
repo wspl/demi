@@ -6,7 +6,8 @@ import { getVisibleBlocks } from './visible-blocks'
  * provider error, with nothing running. Older aborts and errors are records, not entry points.
  */
 export function canResumeFromDock(phase: SessionPhase, blocks: readonly Block[]): boolean {
-  if (phase !== 'idle') return false
+  if (phase !== 'idle')
+    return false
   const tail = getVisibleBlocks(blocks).at(-1)
   return tail?.type === 'abort' || tail?.type === 'error'
 }

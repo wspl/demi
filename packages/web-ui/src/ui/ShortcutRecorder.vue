@@ -51,7 +51,8 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 function onKeyup(event: KeyboardEvent) {
-  if (!recording.value) return
+  if (!recording.value)
+    return
   held.value = shortcutModifiers(event)
 }
 
@@ -73,6 +74,10 @@ const shown = computed(() => (recording.value ? held.value : props.modelValue))
       <span v-else class="select-none text-[11px] text-fg-subtle">Press keys…</span>
     </span>
     <!-- mousedown would blur the field and stop recording before the click lands. -->
-    <span @mousedown.prevent><Button :size="size" :pressed="recording" @click="recording ? stop() : start()">Change</Button></span>
+    <span @mousedown.prevent><Button
+        :size="size"
+        :pressed="recording"
+        @click="recording ? stop() : start()"
+      >Change</Button></span>
   </span>
 </template>

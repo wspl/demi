@@ -59,7 +59,9 @@ test('a stacked entry keeps what it stands on and goes with it', () => {
     innerClosed += 1
   }, 'stacked')
   expect(outerClosed).toBe(0)
-  expect(store.state.entries.map((entry) => entry.id)).toEqual(['dialog', 'inner'])
+  expect(store.state.entries.map((entry) => entry.id)).toEqual(
+    ['dialog', 'inner']
+  )
   expect(store.isTop('inner')).toBe(true)
   expect(store.isTop('dialog')).toBe(false)
 

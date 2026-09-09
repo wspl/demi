@@ -1,6 +1,28 @@
-import { AbortError, abortable, asError, createId, errorCode, isAbortError, noop, throwIfAborted, truncate } from '@demicodes/utils'
-import type { ModelSelection, PendingSteer, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
-import type { AgentProvider, InferenceItem, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
+import {
+  AbortError,
+  abortable,
+  asError,
+  createId,
+  errorCode,
+  isAbortError,
+  noop,
+  throwIfAborted,
+  truncate
+} from '@demicodes/utils'
+import type {
+  ModelSelection,
+  PendingSteer,
+  QueuedMessage,
+  SessionPhase,
+  UserContentBlock
+} from '@demicodes/core'
+import type {
+  AgentProvider,
+  InferenceItem,
+  InferenceRequest,
+  ProviderEvent,
+  ProviderRun
+} from '@demicodes/provider'
 import { TranscriptLog, type TranscriptOptions } from '../transcript/transcript'
 import type { TranscriptPatch } from '../protocol/frames'
 import { YieldScheduler } from './yield-scheduler'
@@ -44,13 +66,31 @@ type PendingAction =
       resolve: () => void
       reject: (error: unknown) => void
     }
-  | { type: 'retry'; metadata: AgentMetadata | null; resolve: () => void; reject: (error: unknown) => void }
-  | { type: 'resume'; metadata: AgentMetadata | null; resolve: () => void; reject: (error: unknown) => void }
-  | { type: 'compact'; metadata: AgentMetadata | null; resolve: () => void; reject: (error: unknown) => void }
+  | {
+      type: 'retry';
+      metadata: AgentMetadata | null;
+      resolve: () => void;
+      reject: (error: unknown) => void
+    }
+  | {
+      type: 'resume';
+      metadata: AgentMetadata | null;
+      resolve: () => void;
+      reject: (error: unknown) => void
+    }
+  | {
+      type: 'compact';
+      metadata: AgentMetadata | null;
+      resolve: () => void;
+      reject: (error: unknown) => void
+    }
 
 type PendingSendAction = Extract<PendingAction, { type: 'send' }>
 
-export type ActiveTurnPhase = 'provider_streaming' | 'tool_executing' | 'compacting' | 'finalizing'
+export type ActiveTurnPhase = 'provider_streaming'
+  | 'tool_executing'
+  | 'compacting'
+  | 'finalizing'
 
 interface TakenQueuedSend {
   message: QueuedMessage
@@ -62,7 +102,11 @@ interface TakenQueuedSend {
 export class AgentSession<State> {
   private provider: AgentProvider
   private model: ModelSelection
-  private pendingModelSwitch: { provider: AgentProvider | null; model: ModelSelection; apply: ModelSwitchApply } | null = null
+  private pendingModelSwitch: {
+    provider: AgentProvider | null;
+    model: ModelSelection;
+    apply: ModelSwitchApply
+  } | null = null
   private readonly cwd: string
   private readonly runtime: AgentHarnessRuntime<State>
   private readonly agentSessionId: string
@@ -108,7 +152,8 @@ export class AgentSession<State> {
   private dirtyBlockFloor = Number.POSITIVE_INFINITY
 
   /**
-   * Restores a session from a checkpoint. Ownership of the checkpoint (including
+   * Restores a session from a checkpoint. Ownership of the checkpoint
+   * (including
    * `state`) transfers to the session: the caller must not mutate it afterwards.
    * Passing state by reference — not a clone — lets the caller share the same
    * object with harness closures (host/commands), keeping one live state.
@@ -146,32 +191,43 @@ export class AgentSession<State> {
     for (const toolCall of session.transcriptLog.pendingToolCalls()) {
       session.transcriptLog.completeToolCall(
         toolCall.toolUseId,
-        [{ type: 'text', text: `Tool call interrupted: ${toolCall.toolName} (the process died before a result was recorded)` }],
+        [{
+          type: 'text',
+          text: `Tool call interrupted: ${toolCall.toolName} (the process died before a result was recorded)`
+        }],
         true,
       )
     }
     return session
   }
 
-  constructor(params: AgentSessionParams<State>, options: AgentSessionOptions<State> = {}) {
+  constructor(
+    params: AgentSessionParams<State>,
+    options: AgentSessionOptions<State> = {}
+  ) {
     this.provider = params.provider
     this.model = params.model
     this.cwd = params.cwd
     this.runtime = params.runtime
     // Adopted by reference (ownership transfer): the creator may share this
     // object with harness closures so both sides observe the same live state.
-    this.agentState = params.state === undefined ? params.runtime.initialState() : params.state
+    this.agentState = params.state === undefined
+      ? params.runtime.initialState()
+      : params.state
     this.agentSessionId = options.agentSessionId ?? createId()
     this.idFactory = options.idFactory ?? createId
     this.yields = new YieldScheduler(this.idFactory, (wakeupId, metadata) => {
       void this.deliverYieldWakeup(wakeupId, metadata)
     })
     this.store = options.store
-    this.persistIntervalMs = options.persistIntervalMs ?? DEFAULT_PERSIST_INTERVAL_MS
+    this.persistIntervalMs = options.persistIntervalMs
+      ?? DEFAULT_PERSIST_INTERVAL_MS
     this.retryPolicy = resolveRetryPolicy(options.retry)
-    this.compactionKeepRecentTokens = options.compaction?.keepRecentTokens ?? DEFAULT_KEEP_RECENT_TOKENS
+    this.compactionKeepRecentTokens = options.compaction?.keepRecentTokens
+      ?? DEFAULT_KEEP_RECENT_TOKENS
     this.compactionThresholdRatio =
-      options.compaction?.preflightThresholdRatio ?? DEFAULT_PREFLIGHT_THRESHOLD_RATIO
+      options.compaction?.preflightThresholdRatio
+        ?? DEFAULT_PREFLIGHT_THRESHOLD_RATIO
     this.compactionThresholdTokens =
       options.compaction?.preflightThresholdTokens === undefined
         ? null
@@ -188,7 +244,8 @@ export class AgentSession<State> {
     // A session constructed with pre-existing blocks cannot know they are in
     // the store; the first save writes them all. `fromCheckpoint` resets this
     // to clean — its blocks came from the store.
-    if (this.transcriptLog.blocks.length > 0) this.dirtyBlockFloor = 0
+    if (this.transcriptLog.blocks.length > 0)
+      this.dirtyBlockFloor = 0
 
     const self = this
     const compactionHost: CompactionHost = {
@@ -286,7 +343,13 @@ export class AgentSession<State> {
     this.turnLoop = new ProviderTurnLoop(turnLoopHost)
   }
 
-  send(content: UserContentBlock[], options: { id?: string; metadata?: AgentMetadata } = {}): Promise<void> {
+  send(
+    content: UserContentBlock[],
+    options: {
+      id?: string;
+      metadata?: AgentMetadata
+    } = {}
+  ): Promise<void> {
     const id = options.id ?? this.idFactory()
     return this.enqueue({
       type: 'send',
@@ -313,8 +376,11 @@ export class AgentSession<State> {
         model: structuredClone(overrides.model ?? this.model),
         cwd: overrides.cwd ?? this.cwd,
         runtime: overrides.runtime ?? this.runtime,
-        transcript: structuredClone(overrides.transcript ?? this.transcriptLog.toJSON()),
-        state: overrides.state !== undefined ? overrides.state : structuredClone(this.agentState),
+        transcript: structuredClone(overrides.transcript
+          ?? this.transcriptLog.toJSON()),
+        state: overrides.state !== undefined
+          ? overrides.state
+          : structuredClone(this.agentState),
       },
       {
         retry: this.retryPolicy,
@@ -326,33 +392,56 @@ export class AgentSession<State> {
   /**
    * Discards the whole latest turn and runs it again from the user's input.
    *
-   * This is "regenerate": it is only meaningful when the caller wants a different
-   * answer to the same question and knows the turn's effects can be repeated. It is
+   * This is "regenerate": it is only meaningful when the caller wants a
+   * different
+   * answer to the same question and knows the turn's effects can be repeated.
+   * It is
    * NOT the way to recover a failed turn — use `resume`, which unwinds only as far
    * as is safe.
    */
   retry(options: { metadata?: AgentMetadata } = {}): Promise<void> {
-    return this.enqueue({ type: 'retry', metadata: cloneMetadata(options.metadata), resolve: noop, reject: noop })
+    return this.enqueue({
+      type: 'retry',
+      metadata: cloneMetadata(options.metadata),
+      resolve: noop,
+      reject: noop
+    })
   }
 
   /**
    * Finishes a turn that did not finish, after an abort or a terminal provider
    * error. Unwinds to the turn's resume point — dropping the failed attempt's
    * leftovers, keeping everything that already left the process — and re-infers
-   * from there. Callers do not choose the granularity and do not need to know how
+   * from there. Callers do not choose the granularity and do not need to know
+   * how
    * the turn died.
    */
   resume(options: { metadata?: AgentMetadata } = {}): Promise<void> {
-    return this.enqueue({ type: 'resume', metadata: cloneMetadata(options.metadata), resolve: noop, reject: noop })
+    return this.enqueue({
+      type: 'resume',
+      metadata: cloneMetadata(options.metadata),
+      resolve: noop,
+      reject: noop
+    })
   }
 
   compact(options: { metadata?: AgentMetadata } = {}): Promise<void> {
-    return this.enqueue({ type: 'compact', metadata: cloneMetadata(options.metadata), resolve: noop, reject: noop })
+    return this.enqueue({
+      type: 'compact',
+      metadata: cloneMetadata(options.metadata),
+      resolve: noop,
+      reject: noop
+    })
   }
 
-  async steer(content: UserContentBlock[], options: { id?: string } = {}): Promise<void> {
+  async steer(
+    content: UserContentBlock[],
+    options: { id?: string } = {}
+  ): Promise<void> {
     if (this.externalMutationReserved) {
-      throw new Error('AgentSession: cannot steer while external mutation is reserved')
+      throw new Error(
+        'AgentSession: cannot steer while external mutation is reserved'
+      )
     }
 
     this.steerDelivery()
@@ -363,11 +452,15 @@ export class AgentSession<State> {
     throwIfAborted(signal)
 
     const deliveryAfterResolve = this.steerDelivery()
-    if (this.activeTurnId !== turnId) throw new Error('AgentSession: active turn changed before steer could be accepted')
+    if (this.activeTurnId !== turnId)
+      throw new Error(
+        'AgentSession: active turn changed before steer could be accepted'
+      )
 
     let blockId: string | undefined
     if (deliveryAfterResolve.type === 'provider') {
-      if (this.steerQueue.takeCanceled(steerId)) return
+      if (this.steerQueue.takeCanceled(steerId))
+        return
       blockId = steerId
       try {
         await deliveryAfterResolve.run.steer({
@@ -382,14 +475,18 @@ export class AgentSession<State> {
         throw normalized
       }
     }
-    if (this.activeTurnId !== turnId) throw new Error('AgentSession: active turn changed before steer could be accepted')
+    if (this.activeTurnId !== turnId)
+      throw new Error(
+        'AgentSession: active turn changed before steer could be accepted'
+      )
     if (deliveryAfterResolve.type === 'provider') {
       this.transcriptLog.pushSteer(turnId, this.model, resolvedContent, blockId)
       await this.commitTranscript()
       return
     }
 
-    if (this.steerQueue.takeCanceled(steerId)) return
+    if (this.steerQueue.takeCanceled(steerId))
+      return
     this.steerQueue.add({
       id: steerId,
       turnId,
@@ -406,7 +503,8 @@ export class AgentSession<State> {
       this.emitPendingSteers()
       return true
     }
-    if (this.activeTurnId && this.currentAbortController && this.activeTurnPhase !== 'finalizing') {
+    if (this.activeTurnId && this.currentAbortController
+      && this.activeTurnPhase !== 'finalizing') {
       this.steerQueue.markCanceled(id)
       return true
     }
@@ -415,23 +513,34 @@ export class AgentSession<State> {
 
   /**
    * Records a model/provider switch for the rest of the session. A non-null `provider`
-   * replaces the current one (its predecessor is disposed); pass null to keep the same
+   * replaces the current one (its predecessor is disposed); pass null to keep
+   * the same
    * provider instance and only change the model.
    *
    * `apply` picks the boundary the switch lands on: 'next_turn' (default) waits for the
-   * start of the next queued action, so a running turn finishes entirely on the old model;
-   * 'immediate' also applies mid-turn at the next sampling/tool continuation, so the very
-   * next request already runs on the new model (the same "as soon as possible" semantics
-   * steering has). Either way, if the new model can't hold the history, compaction runs
-   * first with the current (pre-switch) model, then the swap happens. Recording is cheap
+   * start of the next queued action, so a running turn finishes entirely on the
+   * old model;
+   * 'immediate' also applies mid-turn at the next sampling/tool continuation,
+   * so the very
+   * next request already runs on the new model (the same "as soon as possible"
+   * semantics
+   * steering has). Either way, if the new model can't hold the history,
+   * compaction runs
+   * first with the current (pre-switch) model, then the swap happens. Recording
+   * is cheap
    * and non-blocking so it never holds up an in-flight turn or other frames.
    */
-  updateModel(provider: AgentProvider | null, model: ModelSelection, apply: ModelSwitchApply = 'next_turn'): void {
+  updateModel(
+    provider: AgentProvider | null,
+    model: ModelSelection,
+    apply: ModelSwitchApply = 'next_turn'
+  ): void {
     this.pendingModelSwitch = { provider, model, apply }
   }
 
   async abort(): Promise<AbortResult> {
-    if (this.currentAbortController && !this.currentAbortController.signal.aborted) {
+    if (this.currentAbortController
+      && !this.currentAbortController.signal.aborted) {
       const target = this.activeAbortTarget()
       this.currentAbortController.abort()
       await this.recordAbort()
@@ -439,22 +548,38 @@ export class AgentSession<State> {
     }
 
     const queuedTarget = this.abortQueuedAction()
-    if (queuedTarget) return { aborted: true, target: queuedTarget, canAbortAgain: this.canAbortAgain() }
+    if (queuedTarget)
+      return {
+        aborted: true,
+        target: queuedTarget,
+        canAbortAgain: this.canAbortAgain()
+      }
 
     if (this.yields.cancelOne()) {
-      return { aborted: true, target: 'pending_yield_wakeup', canAbortAgain: this.canAbortAgain() }
+      return {
+        aborted: true,
+        target: 'pending_yield_wakeup',
+        canAbortAgain: this.canAbortAgain()
+      }
     }
 
     return { aborted: false, target: null, canAbortAgain: false }
   }
 
-  scheduleYieldWakeup(durationMs: number, metadata: AgentMetadata | null = this.activeMetadata): AgentToolInvokeResult {
+  scheduleYieldWakeup(
+    durationMs: number,
+    metadata: AgentMetadata | null = this.activeMetadata
+  ): AgentToolInvokeResult {
     const wakeupId = this.yields.schedule(durationMs, metadata)
     return {
       output: [
         {
           type: 'text',
-          text: [`yield scheduled`, `wakeupId: ${wakeupId}`, `durationMs: ${durationMs}`].join('\n'),
+          text: [
+            `yield scheduled`,
+            `wakeupId: ${wakeupId}`,
+            `durationMs: ${durationMs}`
+          ].join('\n'),
         },
       ],
       view: {
@@ -467,20 +592,26 @@ export class AgentSession<State> {
   }
 
   waitUntilDone(): Promise<void> {
-    if (this.isSettled()) return Promise.resolve()
+    if (this.isSettled())
+      return Promise.resolve()
     return new Promise((resolve) => {
       this.idleResolvers.push(resolve)
     })
   }
 
-  /** True when no turn is running and no action (including queued user sends) is pending. */
+  /**
+   * True when no turn is running and no action (including queued user sends) is
+   * pending.
+   */
   isSettled(): boolean {
     return !this.workerRunning && this.pendingActions.length === 0
   }
 
   /**
-   * Tears the session down: aborts any in-flight turn and releases provider-held resources
-   * (e.g. a long-lived CLI subprocess). Called when the owning connection closes.
+   * Tears the session down: aborts any in-flight turn and releases
+   * provider-held resources
+   * (e.g. a long-lived CLI subprocess). Called when the owning connection
+   * closes.
    */
   async dispose(): Promise<void> {
     await this.abort()
@@ -490,7 +621,8 @@ export class AgentSession<State> {
     const pending = this.pendingModelSwitch?.provider ?? null
     this.pendingModelSwitch = null
     await this.provider.dispose?.()
-    if (pending && pending !== this.provider) await pending.dispose?.()
+    if (pending && pending !== this.provider)
+      await pending.dispose?.()
   }
 
   transcript(): TranscriptLog {
@@ -523,23 +655,33 @@ export class AgentSession<State> {
     return this.activeMetadata
   }
 
-  /** Independent provider runtime with this session's configuration (for child sessions). */
+  /**
+   * Independent provider runtime with this session's configuration (for child
+   * sessions).
+   */
   cloneProviderRuntime(): AgentProvider {
     return this.provider.clone()
   }
 
-  /** Accepted user steers that have not yet entered the transcript; excludes internal wakeups. */
+  /**
+   * Accepted user steers that have not yet entered the transcript; excludes
+   * internal wakeups.
+   */
   pendingSteers(): PendingSteer[] {
     return this.steerQueue.snapshot()
   }
 
   queuedMessages(): QueuedMessage[] {
-    return this.queued.map((message) => ({ ...message, content: [...message.content] }))
+    return this.queued.map((message) => ({
+      ...message,
+      content: [...message.content]
+    }))
   }
 
   dequeueMessage(id: string): boolean {
     const queuedIndex = this.queued.findIndex((message) => message.id === id)
-    if (queuedIndex === -1) return false
+    if (queuedIndex === -1)
+      return false
 
     this.queued.splice(queuedIndex, 1)
     const action = this.removePendingSend(id)
@@ -550,14 +692,19 @@ export class AgentSession<State> {
 
   sendQueuedMessage(id: string): boolean {
     const queuedIndex = this.queued.findIndex((message) => message.id === id)
-    if (queuedIndex === -1) return false
+    if (queuedIndex === -1)
+      return false
 
     if (queuedIndex > 0) {
       const [message] = this.queued.splice(queuedIndex, 1)
-      if (message) this.queued.unshift(message)
+      if (message)
+        this.queued.unshift(message)
     }
 
-    const actionIndex = this.pendingActions.findIndex((action) => action.type === 'send' && action.id === id)
+    const actionIndex = this.pendingActions.findIndex(
+      (action) => action.type === 'send'
+        && action.id === id
+    )
     if (actionIndex !== -1) {
       const [action] = this.pendingActions.splice(actionIndex, 1)
       if (action) {
@@ -572,9 +719,13 @@ export class AgentSession<State> {
     return true
   }
 
-  async steerQueuedMessage(id: string, options: { id?: string } = {}): Promise<boolean> {
+  async steerQueuedMessage(
+    id: string,
+    options: { id?: string } = {}
+  ): Promise<boolean> {
     const queued = this.takeQueuedSend(id)
-    if (!queued) return false
+    if (!queued)
+      return false
 
     try {
       await this.steer(queued.message.content, options)
@@ -588,7 +739,8 @@ export class AgentSession<State> {
   }
 
   clearMessageQueue(): number {
-    if (this.queued.length === 0) return 0
+    if (this.queued.length === 0)
+      return 0
 
     const queuedIds = new Set(this.queued.map((message) => message.id))
     const clearedCount = queuedIds.size
@@ -616,14 +768,18 @@ export class AgentSession<State> {
   }
 
   reserveMutation(): ExternalMutationReservation {
-    if (this.workerRunning || this.pendingActions.length > 0 || this.externalMutationReserved) {
-      throw new Error('AgentSession: cannot reserve mutation while session is busy')
+    if (this.workerRunning || this.pendingActions.length > 0
+      || this.externalMutationReserved) {
+      throw new Error(
+        'AgentSession: cannot reserve mutation while session is busy'
+      )
     }
     this.externalMutationReserved = true
     let released = false
     return {
       release: () => {
-        if (released) return
+        if (released)
+          return
         released = true
         this.externalMutationReserved = false
       },
@@ -646,7 +802,8 @@ export class AgentSession<State> {
 
   private abortQueuedAction(): AbortTarget | null {
     const action = this.pendingActions.shift()
-    if (!action) return null
+    if (!action)
+      return null
 
     if (action.type === 'send') {
       this.removeQueuedMessage(action.id)
@@ -658,7 +815,8 @@ export class AgentSession<State> {
   }
 
   private canAbortAgain(): boolean {
-    if (this.currentAbortController && !this.currentAbortController.signal.aborted) return true
+    if (this.currentAbortController
+      && !this.currentAbortController.signal.aborted) return true
     return this.pendingActions.length > 0 || this.yields.hasPending
   }
 
@@ -671,8 +829,12 @@ export class AgentSession<State> {
     }
   }
 
-  private async deliverYieldWakeup(wakeupId: string, metadata: AgentMetadata | null): Promise<void> {
-    if (!this.yields.take(wakeupId)) return
+  private async deliverYieldWakeup(
+    wakeupId: string,
+    metadata: AgentMetadata | null
+  ): Promise<void> {
+    if (!this.yields.take(wakeupId))
+      return
 
     const content: UserContentBlock[] = [
       {
@@ -705,7 +867,11 @@ export class AgentSession<State> {
     }
   }
 
-  private async steerInternal(content: UserContentBlock[], id: string, hidden = false): Promise<void> {
+  private async steerInternal(
+    content: UserContentBlock[],
+    id: string,
+    hidden = false
+  ): Promise<void> {
     const delivery = this.steerDelivery()
     const turnId = this.currentTurnId()
     if (delivery.type === 'provider') {
@@ -727,10 +893,14 @@ export class AgentSession<State> {
       content,
       hidden,
     })
-    if (!hidden) this.emitPendingSteers()
+    if (!hidden)
+      this.emitPendingSteers()
   }
 
-  private enqueueHiddenSend(content: UserContentBlock[], metadata: AgentMetadata | null): void {
+  private enqueueHiddenSend(
+    content: UserContentBlock[],
+    metadata: AgentMetadata | null
+  ): void {
     void this.enqueue({
       type: 'send',
       id: this.idFactory(),
@@ -743,18 +913,28 @@ export class AgentSession<State> {
   }
 
   private steerDelivery():
-    | { type: 'provider'; run: ProviderRun & { steer: NonNullable<ProviderRun['steer']> } }
+    | {
+        type: 'provider';
+        run: ProviderRun & { steer: NonNullable<ProviderRun['steer']> }
+      }
     | { type: 'next_provider_continuation' } {
-    if (!this.activeTurnId || !this.currentAbortController || !this.activeTurnPhase) {
+    if (!this.activeTurnId || !this.currentAbortController
+      || !this.activeTurnPhase) {
       throw new Error('AgentSession: no active turn to steer')
     }
-    if (this.currentAbortController.signal.aborted) throw new Error('AgentSession: active turn is aborted')
+    if (this.currentAbortController.signal.aborted)
+      throw new Error('AgentSession: active turn is aborted')
     if (this.activeTurnPhase === 'finalizing') {
-      throw new Error('AgentSession: active turn cannot accept steering while finalizing')
+      throw new Error(
+        'AgentSession: active turn cannot accept steering while finalizing'
+      )
     }
     const run = this.activeProviderRun
     if (run?.steer) {
-      return { type: 'provider', run: run as ProviderRun & { steer: NonNullable<ProviderRun['steer']> } }
+      return {
+        type: 'provider',
+        run: run as ProviderRun & { steer: NonNullable<ProviderRun['steer']> }
+      }
     }
     // Compaction is an internal pause within the turn: steers queue like they do during
     // streaming/tool phases and materialize on the post-compaction continuation.
@@ -770,14 +950,19 @@ export class AgentSession<State> {
 
   private enqueue(action: PendingAction): Promise<void> {
     if (this.externalMutationReserved) {
-      return Promise.reject(new Error('AgentSession: cannot enqueue action while external mutation is reserved'))
+      return Promise.reject(
+        new Error(
+          'AgentSession: cannot enqueue action while external mutation is reserved'
+        )
+      )
     }
 
     return new Promise((resolve, reject) => {
       action.resolve = resolve
       action.reject = reject
 
-      if (action.type === 'send' && (this.workerRunning || this.pendingActions.length > 0)) {
+      if (action.type === 'send'
+        && (this.workerRunning || this.pendingActions.length > 0)) {
         this.queued.push({
           id: action.id,
           text: textContentSummary(action.content),
@@ -792,7 +977,8 @@ export class AgentSession<State> {
   }
 
   private kickWorker(): void {
-    if (this.workerRunning) return
+    if (this.workerRunning)
+      return
     this.workerRunning = true
     void this.runWorker()
   }
@@ -801,20 +987,28 @@ export class AgentSession<State> {
     try {
       while (this.pendingActions.length > 0) {
         const action = this.pendingActions.shift()
-        if (!action) continue
+        if (!action)
+          continue
 
-        if (action.type === 'send') this.removeQueuedMessage(action.id)
+        if (action.type === 'send')
+          this.removeQueuedMessage(action.id)
 
         this.currentAbortController = new AbortController()
-        this.activeTurnId = action.type === 'send' ? action.id : this.idFactory()
+        this.activeTurnId = action.type === 'send'
+          ? action.id
+          : this.idFactory()
         this.activeMetadata = action.metadata
         this.abortRecorded = false
 
         let leaveAction = noop
         try {
-          let outcome: { kind: 'done' } | { kind: 'aborted' } | { kind: 'failed'; error: Error }
+          let outcome: { kind: 'done' } | { kind: 'aborted' } | {
+            kind: 'failed';
+            error: Error
+          }
           try {
-            leaveAction = (await this.runtime.enterAction?.(this.currentAbortController.signal)) ?? noop
+            leaveAction = (await this.runtime.enterAction?.(this.currentAbortController.signal))
+              ?? noop
             await this.executeAction(action)
             outcome = { kind: 'done' }
           } catch (error) {
@@ -863,12 +1057,15 @@ export class AgentSession<State> {
           }
           if (outcome.kind === 'failed') action.reject(outcome.error)
           else action.resolve()
-        } finally { leaveAction() }
+        } finally {
+          leaveAction()
+        }
       }
     } finally {
       this.workerRunning = false
       this.resolveIdleWaiters()
-      if (this.pendingActions.length > 0) this.kickWorker()
+      if (this.pendingActions.length > 0)
+        this.kickWorker()
     }
   }
 
@@ -898,16 +1095,22 @@ export class AgentSession<State> {
   }
 
   /**
-   * Applies a queued model/provider switch at an action boundary (turn preflight). If the
-   * new model's context window can't hold the current history, compaction runs FIRST with
-   * the current (pre-switch) model + provider — which can still load it to summarize — and
-   * only then do we swap. Doing it the other way would ask the smaller model to summarize
-   * a history it may not be able to load. Returns whether that compaction actually ran
+   * Applies a queued model/provider switch at an action boundary (turn
+   * preflight). If the
+   * new model's context window can't hold the current history, compaction runs
+   * FIRST with
+   * the current (pre-switch) model + provider — which can still load it to
+   * summarize — and
+   * only then do we swap. Doing it the other way would ask the smaller model to
+   * summarize
+   * a history it may not be able to load. Returns whether that compaction
+   * actually ran
    * (false when no switch was pending).
    */
   private async applyPendingModelSwitch(): Promise<boolean> {
     const pending = this.pendingModelSwitch
-    if (!pending) return false
+    if (!pending)
+      return false
     this.pendingModelSwitch = null
 
     const compacted = await this.compaction.compactToFit(pending.model)
@@ -921,12 +1124,15 @@ export class AgentSession<State> {
   }
 
   /**
-   * Turn-loop variant for mid-turn continuation boundaries: only switches recorded with
-   * apply 'immediate' land here; 'next_turn' switches stay pending until the running turn
+   * Turn-loop variant for mid-turn continuation boundaries: only switches
+   * recorded with
+   * apply 'immediate' land here; 'next_turn' switches stay pending until the
+   * running turn
    * finishes and the next action starts.
    */
   private async applyImmediateModelSwitch(): Promise<boolean> {
-    if (this.pendingModelSwitch?.apply !== 'immediate') return false
+    if (this.pendingModelSwitch?.apply !== 'immediate')
+      return false
     return this.applyPendingModelSwitch()
   }
 
@@ -943,7 +1149,10 @@ export class AgentSession<State> {
     }
   }
 
-  private async executeSend(content: UserContentBlock[], hidden = false): Promise<void> {
+  private async executeSend(
+    content: UserContentBlock[],
+    hidden = false
+  ): Promise<void> {
     await this.runtime.lifecycle?.({
       type: 'before_round_start',
       agentSessionId: this.agentSessionId,
@@ -956,17 +1165,28 @@ export class AgentSession<State> {
     const resolvedContent = await this.resolveReferences(content)
     await this.applyPendingModelSwitch()
     // Hidden internal turns (yield wakeups) are not user rounds, so they don't carry the preamble.
-    const preamble = hidden ? null : ((await this.runtime.preamble?.(this.promptContext())) ?? null)
-    this.transcriptLog.pushUserTurn(this.currentTurnId(), this.model, resolvedContent, preamble, hidden)
+    const preamble = hidden
+      ? null
+      : ((await this.runtime.preamble?.(this.promptContext())) ?? null)
+    this.transcriptLog.pushUserTurn(
+      this.currentTurnId(),
+      this.model,
+      resolvedContent,
+      preamble,
+      hidden
+    )
     await this.commitTranscript()
 
     await this.compaction.preflight()
     await this.turnLoop.run()
   }
 
-  private async resolveReferences(content: UserContentBlock[]): Promise<UserContentBlock[]> {
+  private async resolveReferences(
+    content: UserContentBlock[]
+  ): Promise<UserContentBlock[]> {
     const resolver = this.runtime.resolveReferences
-    if (!resolver) return content
+    if (!resolver)
+      return content
     const signal = this.currentSignal()
     const resolved = await abortable(
       Promise.resolve(
@@ -989,7 +1209,8 @@ export class AgentSession<State> {
 
   private async executeRetry(): Promise<void> {
     const userBlock = this.transcriptLog.rewindToLastUserTurn()
-    if (!userBlock) throw new Error('AgentSession: cannot retry without a user turn')
+    if (!userBlock)
+      throw new Error('AgentSession: cannot retry without a user turn')
     this.activeTurnId = userBlock.turnId
     await this.runtime.lifecycle?.({
       type: 'after_transcript_rewrite',
@@ -1007,9 +1228,11 @@ export class AgentSession<State> {
   }
 
   /**
-   * Finishes an unfinished turn. Unwinds to its resume point — dropping the failed
+   * Finishes an unfinished turn. Unwinds to its resume point — dropping the
+   * failed
    * attempt's leftovers, keeping everything that already left the process — and
-   * re-infers from there. When the whole turn turns out to be discardable this is
+   * re-infers from there. When the whole turn turns out to be discardable this
+   * is
    * a plain rerun, which spares the model a continuation boundary attached to a
    * stub of its own aborted output.
    */
@@ -1033,7 +1256,10 @@ export class AgentSession<State> {
     await this.turnLoop.run()
   }
 
-  private async *providerEvents(request: InferenceRequest, run: ProviderRun): AsyncIterable<ProviderEvent> {
+  private async *providerEvents(
+    request: InferenceRequest,
+    run: ProviderRun
+  ): AsyncIterable<ProviderEvent> {
     const iterator = run[Symbol.asyncIterator]()
     let completed = false
     try {
@@ -1046,7 +1272,8 @@ export class AgentSession<State> {
         yield next.value
       }
     } finally {
-      if (!completed) void iterator.return?.().catch(noop)
+      if (!completed)
+        void iterator.return?.().catch(noop)
     }
   }
 
@@ -1067,17 +1294,20 @@ export class AgentSession<State> {
   }
 
   private currentSignal(): AbortSignal {
-    if (!this.currentAbortController) throw new Error('AgentSession: no active abort controller')
+    if (!this.currentAbortController)
+      throw new Error('AgentSession: no active abort controller')
     return this.currentAbortController.signal
   }
 
   private currentTurnId(): string {
-    if (!this.activeTurnId) throw new Error('AgentSession: no active turn id')
+    if (!this.activeTurnId)
+      throw new Error('AgentSession: no active turn id')
     return this.activeTurnId
   }
 
   private async recordAbort(): Promise<void> {
-    if (this.abortRecorded) return
+    if (this.abortRecorded)
+      return
     this.abortRecorded = true
     await this.materializePendingSteersForCurrentTurn()
     for (const toolCall of this.transcriptLog.pendingToolCalls()) {
@@ -1092,44 +1322,67 @@ export class AgentSession<State> {
   }
 
   private async materializePendingSteersForCurrentTurn(): Promise<boolean> {
-    if (!this.activeTurnId) return false
+    if (!this.activeTurnId)
+      return false
     const steers = this.steerQueue.takeForTurn(this.activeTurnId)
-    if (steers.length === 0) return false
+    if (steers.length === 0)
+      return false
     for (const steer of steers) {
-      this.transcriptLog.pushSteer(steer.turnId, steer.model, steer.content, steer.id, steer.hidden ?? false)
+      this.transcriptLog.pushSteer(
+        steer.turnId,
+        steer.model,
+        steer.content,
+        steer.id,
+        steer.hidden ?? false
+      )
     }
     await this.commitTranscript()
-    if (steers.some((steer) => !steer.hidden)) this.emitPendingSteers()
+    if (steers.some((steer) => !steer.hidden))
+      this.emitPendingSteers()
     return true
   }
 
-  private async materializePendingSteersArrivedSince(continuationCount: number): Promise<boolean> {
-    if (this.steerQueue.continuationCount <= continuationCount) return false
+  private async materializePendingSteersArrivedSince(
+    continuationCount: number
+  ): Promise<boolean> {
+    if (this.steerQueue.continuationCount <= continuationCount)
+      return false
     return this.materializePendingSteersForCurrentTurn()
   }
 
   private discardPendingSteersForCurrentTurn(): void {
-    if (!this.activeTurnId) return
+    if (!this.activeTurnId)
+      return
     const discarded = this.steerQueue.takeForTurn(this.activeTurnId)
-    if (discarded.some((steer) => !steer.hidden)) this.emitPendingSteers()
+    if (discarded.some((steer) => !steer.hidden))
+      this.emitPendingSteers()
   }
 
   private removeQueuedMessage(id: string): void {
     const index = this.queued.findIndex((message) => message.id === id)
-    if (index === -1) return
+    if (index === -1)
+      return
     this.queued.splice(index, 1)
     this.emitQueue()
   }
 
   private takeQueuedSend(id: string): TakenQueuedSend | null {
     const messageIndex = this.queued.findIndex((message) => message.id === id)
-    if (messageIndex === -1) return null
+    if (messageIndex === -1)
+      return null
 
     const [message] = this.queued.splice(messageIndex, 1)
-    if (!message) return null
+    if (!message)
+      return null
 
-    const actionIndex = this.pendingActions.findIndex((action) => action.type === 'send' && action.id === id)
-    const [action] = actionIndex === -1 ? [] : this.pendingActions.splice(actionIndex, 1)
+    const actionIndex = this.pendingActions.findIndex(
+      (action) => action.type === 'send'
+        && action.id === id
+    )
+    const [action] = actionIndex === -1 ? [] : this.pendingActions.splice(
+      actionIndex,
+      1
+    )
     this.emitQueue()
     return {
       message,
@@ -1140,30 +1393,50 @@ export class AgentSession<State> {
   }
 
   private restoreQueuedSend(queued: TakenQueuedSend): void {
-    this.queued.splice(Math.min(queued.messageIndex, this.queued.length), 0, queued.message)
+    this.queued.splice(
+      Math.min(queued.messageIndex, this.queued.length),
+      0,
+      queued.message
+    )
     if (queued.action) {
-      const actionIndex = queued.actionIndex === -1 ? this.pendingActions.length : queued.actionIndex
-      this.pendingActions.splice(Math.min(actionIndex, this.pendingActions.length), 0, queued.action)
+      const actionIndex = queued.actionIndex === -1
+        ? this.pendingActions.length
+        : queued.actionIndex
+      this.pendingActions.splice(
+        Math.min(actionIndex, this.pendingActions.length),
+        0,
+        queued.action
+      )
     }
     this.emitQueue()
     this.kickWorker()
   }
 
-  private removePendingSend(id: string): Extract<PendingAction, { type: 'send' }> | null {
-    const actionIndex = this.pendingActions.findIndex((action) => action.type === 'send' && action.id === id)
-    if (actionIndex === -1) return null
+  private removePendingSend(
+    id: string
+  ): Extract<PendingAction, { type: 'send' }> | null {
+    const actionIndex = this.pendingActions.findIndex(
+      (action) => action.type === 'send'
+        && action.id === id
+    )
+    if (actionIndex === -1)
+      return null
     const [action] = this.pendingActions.splice(actionIndex, 1)
     return action && action.type === 'send' ? action : null
   }
 
   private setPhase(phase: SessionPhase): void {
-    if (this.currentPhase === phase) return
+    if (this.currentPhase === phase)
+      return
     this.currentPhase = phase
     this.emit({ type: 'phase_changed', phase })
   }
 
   private emitPendingSteers(): void {
-    this.emit({ type: 'pending_steers_changed', pendingSteers: this.pendingSteers() })
+    this.emit({
+      type: 'pending_steers_changed',
+      pendingSteers: this.pendingSteers()
+    })
   }
 
   private emitQueue(): void {
@@ -1179,7 +1452,11 @@ export class AgentSession<State> {
     const drained = this.transcriptLog.takePatches()
     if (drained) {
       this.markDirtyBlocks(drained.patches)
-      this.emit({ type: 'transcript_changed', patches: drained.patches, revision: drained.revision })
+      this.emit({
+        type: 'transcript_changed',
+        patches: drained.patches,
+        revision: drained.revision
+      })
     }
     this.schedulePersist()
   }
@@ -1202,16 +1479,19 @@ export class AgentSession<State> {
           break
         case 'replace_block':
         case 'append_text':
-          if (patch.path[1] < this.dirtyBlockFloor) this.dirtyBlockIndices.add(patch.path[1])
+          if (patch.path[1] < this.dirtyBlockFloor)
+            this.dirtyBlockIndices.add(patch.path[1])
           break
       }
     }
   }
 
   private schedulePersist(): void {
-    if (!this.store) return
+    if (!this.store)
+      return
     this.persistDirty = true
-    if (this.persistTimer) return
+    if (this.persistTimer)
+      return
     this.persistTimer = setTimeout(() => {
       this.persistTimer = null
       void this.persistCheckpoint().catch((error: unknown) => {
@@ -1231,7 +1511,8 @@ export class AgentSession<State> {
   }
 
   private async writeCheckpointIfDirty(): Promise<void> {
-    if (!this.store || !this.persistDirty) return
+    if (!this.store || !this.persistDirty)
+      return
     this.persistDirty = false
     const blocks = this.transcriptLog.blocks
     const floor = this.dirtyBlockFloor
@@ -1241,7 +1522,8 @@ export class AgentSession<State> {
 
     const indices = new Set<number>()
     for (const index of pointIndices) {
-      if (index < blocks.length) indices.add(index)
+      if (index < blocks.length)
+        indices.add(index)
     }
     for (let index = floor; index < blocks.length; index += 1) indices.add(index)
     const changedBlocks = [...indices]
@@ -1297,7 +1579,9 @@ export function textContentSummary(content: UserContentBlock[]): string {
   return truncate(text, 120, '...')
 }
 
-function cloneMetadata(metadata: AgentMetadata | undefined): AgentMetadata | null {
+function cloneMetadata(
+  metadata: AgentMetadata | undefined
+): AgentMetadata | null {
   return metadata === undefined ? null : structuredClone(metadata)
 }
 
@@ -1308,7 +1592,8 @@ async function readProviderIterator(
   try {
     return await abortable(iterator.next(), signal)
   } catch (error) {
-    if (isAbortError(error)) throw error
+    if (isAbortError(error))
+      throw error
     const normalized = asError(error)
     return {
       done: false,

@@ -21,7 +21,10 @@ const resources = useResources()
 const route = useRoute()
 const router = useRouter()
 const surface = ref<{ dockHeight: number }>()
-const list = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
+const list = ref<{
+  isAtBottom: boolean;
+  scrollToBottom: () => void
+}>()
 const conversation = computed(() => store.items.find((c) => c.id === route.params.id))
 const project = computed(() =>
   resources.projects.find((p) => p.id === conversation.value?.projectId),
@@ -29,17 +32,25 @@ const project = computed(() =>
 watch(
   () => project.value?.id,
   (id) => {
-    if (id) resources.rememberProject(id)
+    if (id)
+      resources.rememberProject(id)
   },
   { immediate: true },
 )
 const hasProvider = computed(() =>
-  resources.providerInfos.some((p) => p.id === conversation.value?.providerId && p.isAvailable),
+  resources.providerInfos.some(
+    (p) => p.id === conversation.value?.providerId && p.isAvailable
+  ),
 )
 
 function editUser(content: UserContentBlock[]) {
-  if (!conversation.value) return
-  const text = content.find((part): part is Extract<UserContentBlock, { type: 'text' }> => part.type === 'text')?.text
+  if (!conversation.value)
+    return
+  const text = content.find(
+    (part): part is Extract<UserContentBlock, {
+      type: 'text'
+    }> => part.type === 'text'
+  )?.text
   conversation.value.draft = text ?? ''
 }
 </script>
@@ -69,7 +80,9 @@ function editUser(content: UserContentBlock[]) {
           />
         </Tooltip>
       </div>
-      <div class="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1">
+      <div
+        class="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1"
+      >
         <WorkspaceInfo :project="project" :conversation="conversation" />
       </div>
     </header>
@@ -121,18 +134,27 @@ function editUser(content: UserContentBlock[]) {
               <Button @click="store.archive([conversation.id], false)">Restore conversation</Button>
             </div>
             <div v-else key="composer">
-              <ConversationComposer :key="conversation.id" :conversation="conversation" />
+              <ConversationComposer
+                :key="conversation.id"
+                :conversation="conversation"
+              />
             </div>
           </Transition>
         </SessionDock>
       </template>
     </SessionSurface>
   </section>
-  <section v-else class="grid flex-1 place-content-center gap-3 bg-surface p-8 text-center">
+  <section
+    v-else
+    class="grid flex-1 place-content-center gap-3 bg-surface p-8 text-center"
+  >
     <p class="text-conversation text-fg-muted">
       {{ route.params.id ? 'Conversation not found.' : 'Open a conversation or start a new one.' }}
     </p>
-    <Button class="justify-self-center" @click="router.push(`/chat/${store.create()}`)">
+    <Button
+      class="justify-self-center"
+      @click="router.push(`/chat/${store.create()}`)"
+    >
       New conversation
     </Button>
   </section>

@@ -1,4 +1,10 @@
-import { createId, safeJsonStringify, sliceHead, sliceTail, toWellFormedText } from '@demicodes/utils'
+import {
+  createId,
+  safeJsonStringify,
+  sliceHead,
+  sliceTail,
+  toWellFormedText
+} from '@demicodes/utils'
 import type {
   Block,
   ModelSelection,
@@ -25,7 +31,10 @@ export interface TranscriptOptions {
    * Per-text-block bounds applied when replaying to the model (head+tail with
    * an elision marker). Defaults to 8000/8000 characters.
    */
-  replayTextBounds?: { headChars: number; tailChars: number }
+  replayTextBounds?: {
+    headChars: number;
+    tailChars: number
+  }
 }
 
 export interface CompactionWindow {
@@ -55,8 +64,10 @@ export class TranscriptLog implements CoreTranscript {
     this.blocks = [...blocks]
     this.idFactory = options.idFactory ?? createId
     this.now = options.now ?? (() => new Date().toISOString())
-    this.replayHeadChars = options.replayTextBounds?.headChars ?? DEFAULT_MODEL_TEXT_HEAD_CHARS
-    this.replayTailChars = options.replayTextBounds?.tailChars ?? DEFAULT_MODEL_TEXT_TAIL_CHARS
+    this.replayHeadChars = options.replayTextBounds?.headChars
+      ?? DEFAULT_MODEL_TEXT_HEAD_CHARS
+    this.replayTailChars = options.replayTextBounds?.tailChars
+      ?? DEFAULT_MODEL_TEXT_TAIL_CHARS
   }
 
   toJSON(): CoreTranscript {
@@ -73,7 +84,8 @@ export class TranscriptLog implements CoreTranscript {
    * Returns null when nothing changed.
    */
   takePatches(): DrainedTranscriptPatches | null {
-    if (this.journal.length === 0) return null
+    if (this.journal.length === 0)
+      return null
     this.revisionCounter += 1
     return { revision: this.revisionCounter, patches: this.journal.splice(0) }
   }
@@ -90,17 +102,29 @@ export class TranscriptLog implements CoreTranscript {
   }
 
   private recordAdd(index: number, block: Block): void {
-    this.record({ op: 'add', path: ['blocks', index], value: structuredClone(block) })
+    this.record({
+      op: 'add',
+      path: ['blocks', index],
+      value: structuredClone(block)
+    })
   }
 
   private recordBlockReplace(index: number): void {
-    this.record({ op: 'replace_block', path: ['blocks', index], value: structuredClone(this.blocks[index]) })
+    this.record({
+      op: 'replace_block',
+      path: ['blocks', index],
+      value: structuredClone(this.blocks[index])
+    })
   }
 
   private recordReplaceAll(): void {
     // A bulk rewrite invalidates any finer-grained patches recorded before it.
     this.journal = []
-    this.record({ op: 'replace', path: ['blocks'], value: structuredClone(this.blocks) })
+    this.record({
+      op: 'replace',
+      path: ['blocks'],
+      value: structuredClone(this.blocks)
+    })
   }
 
   pushUserTurn(
@@ -184,7 +208,8 @@ export class TranscriptLog implements CoreTranscript {
   rewindToLastUserTurn(): Extract<Block, { type: 'user' }> | null {
     for (let i = this.blocks.length - 1; i >= 0; i -= 1) {
       const block = this.blocks[i]
-      if (block.type !== 'user') continue
+      if (block.type !== 'user')
+        continue
       const preservedSteers = this.blocks
         .slice(i + 1)
         .filter((candidate): candidate is Extract<Block, { type: 'steer' }> => {
@@ -273,7 +298,8 @@ export class TranscriptLog implements CoreTranscript {
     view: unknown | null = null,
   ): Block | null {
     const index = findPendingToolCallIndex(this.blocks, toolUseId)
-    if (index === null) return null
+    if (index === null)
+      return null
     const block = this.blocks[index] as Extract<Block, { type: 'tool_call' }>
 
     block.status = isError ? 'error' : 'completed'
@@ -289,7 +315,9 @@ export class TranscriptLog implements CoreTranscript {
   }
 
   pendingToolCalls(): Extract<Block, { type: 'tool_call' }>[] {
-    return this.blocks.filter((block): block is Extract<Block, { type: 'tool_call' }> => {
+    return this.blocks.filter((
+      block
+    ): block is Extract<Block, { type: 'tool_call' }> => {
       return block.type === 'tool_call' && block.status === 'executing'
     })
   }
@@ -298,7 +326,8 @@ export class TranscriptLog implements CoreTranscript {
     const removed: Block[] = []
     for (let i = this.blocks.length - 1; i >= 0; i -= 1) {
       const block = this.blocks[i]
-      if (block.type !== 'tool_call' || block.status !== 'executing') continue
+      if (block.type !== 'tool_call' || block.status !== 'executing')
+        continue
       removed.unshift(...this.blocks.splice(i, 1))
       this.record({ op: 'remove', path: ['blocks', i] })
     }
@@ -307,7 +336,8 @@ export class TranscriptLog implements CoreTranscript {
 
   findLastCompactionIndex(): number | null {
     for (let i = this.blocks.length - 1; i >= 0; i -= 1) {
-      if (this.blocks[i].type === 'compaction_boundary') return i
+      if (this.blocks[i].type === 'compaction_boundary')
+        return i
     }
     return null
   }
@@ -325,7 +355,11 @@ export class TranscriptLog implements CoreTranscript {
       const block = this.blocks[i]
       recentTokens += estimateBlockTokens(block)
       if (recentTokens >= keepRecentTokens) {
-        if (block.type === 'response') return splitFallback ?? { startIndex, cutPoint: i + 1 }
+        if (block.type === 'response')
+          return splitFallback ?? {
+            startIndex,
+            cutPoint: i + 1
+          }
         splitFallback ??= { startIndex, cutPoint: i }
       }
     }
@@ -351,7 +385,11 @@ export class TranscriptLog implements CoreTranscript {
     return block
   }
 
-  appendCompactionMarker(model: ModelSelection, boundaryId: string, compactedTokens: number): Block {
+  appendCompactionMarker(
+    model: ModelSelection,
+    boundaryId: string,
+    compactedTokens: number
+  ): Block {
     return this.appendBlock({
       type: 'compaction_marker',
       id: this.idFactory(),
@@ -372,11 +410,15 @@ export class TranscriptLog implements CoreTranscript {
     })
   }
 
-  latestExtensionStateSnapshot(extensionName?: string): Extract<Block, { type: 'extension_state_snapshot' }> | null {
+  latestExtensionStateSnapshot(
+    extensionName?: string
+  ): Extract<Block, { type: 'extension_state_snapshot' }> | null {
     for (let i = this.blocks.length - 1; i >= 0; i -= 1) {
       const block = this.blocks[i]
-      if (block.type !== 'extension_state_snapshot') continue
-      if (extensionName === undefined || block.extensionName === extensionName) return block
+      if (block.type !== 'extension_state_snapshot')
+        continue
+      if (extensionName === undefined || block.extensionName === extensionName)
+        return block
     }
     return null
   }
@@ -395,7 +437,11 @@ export class TranscriptLog implements CoreTranscript {
             type: 'user_message',
             content:
               block.preamble === null
-                ? boundUserContent(block.content, this.replayHeadChars, this.replayTailChars)
+                ? boundUserContent(
+                  block.content,
+                  this.replayHeadChars,
+                  this.replayTailChars
+                )
                 : boundUserContent(
                     [{ type: 'text', text: block.preamble }, ...block.content],
                     this.replayHeadChars,
@@ -406,21 +452,32 @@ export class TranscriptLog implements CoreTranscript {
         case 'resume':
           items.push({
             type: 'user_message',
-            content: [{ type: 'text', text: 'Continue from where you left off.' }],
+            content: [{
+              type: 'text',
+              text: 'Continue from where you left off.'
+            }],
           })
           break
         case 'steer':
           items.push({
             type: 'user_steer',
             turnId: block.turnId,
-            content: boundUserContent(block.content, this.replayHeadChars, this.replayTailChars),
+            content: boundUserContent(
+              block.content,
+              this.replayHeadChars,
+              this.replayTailChars
+            ),
           })
           break
         case 'thinking':
           items.push({
             type: 'assistant_thinking',
             modelId: block.model.model.id,
-            text: boundText(block.text, this.replayHeadChars, this.replayTailChars),
+            text: boundText(
+              block.text,
+              this.replayHeadChars,
+              this.replayTailChars
+            ),
             signature: block.signature,
           })
           break
@@ -428,11 +485,23 @@ export class TranscriptLog implements CoreTranscript {
           items.push({
             type: 'assistant_redacted_thinking',
             modelId: block.model.model.id,
-            data: boundText(block.data, this.replayHeadChars, this.replayTailChars),
+            data: boundText(
+              block.data,
+              this.replayHeadChars,
+              this.replayTailChars
+            ),
           })
           break
         case 'text':
-          items.push({ type: 'assistant_text', modelId: block.model.model.id, text: boundText(block.text, this.replayHeadChars, this.replayTailChars) })
+          items.push({
+            type: 'assistant_text',
+            modelId: block.model.model.id,
+            text: boundText(
+              block.text,
+              this.replayHeadChars,
+              this.replayTailChars
+            )
+          })
           break
         case 'tool_call':
           items.push({
@@ -446,7 +515,11 @@ export class TranscriptLog implements CoreTranscript {
             items.push({
               type: 'tool_result',
               toolUseId: block.toolUseId,
-              output: boundToolResultContent(block.output, this.replayHeadChars, this.replayTailChars),
+              output: boundToolResultContent(
+                block.output,
+                this.replayHeadChars,
+                this.replayTailChars
+              ),
               isError: block.status === 'error',
             })
           }
@@ -457,7 +530,11 @@ export class TranscriptLog implements CoreTranscript {
             content: [
               {
                 type: 'text',
-                text: boundText(`Previous conversation summary:\n${block.summary}`, this.replayHeadChars, this.replayTailChars),
+                text: boundText(
+                  `Previous conversation summary:\n${block.summary}`,
+                  this.replayHeadChars,
+                  this.replayTailChars
+                ),
               },
             ],
           })
@@ -481,11 +558,15 @@ export class TranscriptLog implements CoreTranscript {
    */
   estimateContextTokens(contextWindow?: number): number {
     let anchor = this.usageAnchor()
-    if (anchor !== null && contextWindow !== undefined && contextWindow > 0 && anchor.tokens > contextWindow) {
+    if (anchor !== null && contextWindow !== undefined && contextWindow > 0
+      && anchor.tokens > contextWindow) {
       anchor = null
     }
     if (anchor === null) {
-      return this.replayableBlocks().reduce((total, block) => total + estimateBlockTokens(block), 0)
+      return this.replayableBlocks().reduce(
+        (total, block) => total + estimateBlockTokens(block),
+        0
+      )
     }
     let total = anchor.tokens
     for (let i = anchor.blockIndex + 1; i < this.blocks.length; i += 1) {
@@ -498,14 +579,22 @@ export class TranscriptLog implements CoreTranscript {
    * The latest response block's usage, valid only when no compaction happened
    * after it (compaction shrinks the history the usage was measured against).
    */
-  private usageAnchor(): { blockIndex: number; tokens: number } | null {
+  private usageAnchor(): {
+    blockIndex: number;
+    tokens: number
+  } | null {
     for (let i = this.blocks.length - 1; i >= 0; i -= 1) {
       const block = this.blocks[i]
-      if (block.type === 'compaction_boundary' || block.type === 'compaction_marker') return null
-      if (block.type !== 'response') continue
+      if (block.type === 'compaction_boundary'
+        || block.type === 'compaction_marker') return null
+      if (block.type !== 'response')
+        continue
       const usage = block.usage
-      const tokens = usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
-      if (tokens <= 0) continue
+      const tokens = usage.inputTokens + usage.outputTokens
+        + usage.cacheReadTokens
+        + usage.cacheWriteTokens
+      if (tokens <= 0)
+        continue
       return { blockIndex: i, tokens }
     }
     return null
@@ -515,7 +604,11 @@ export class TranscriptLog implements CoreTranscript {
     const previous = this.blocks[this.blocks.length - 1]
     if (previous?.type === 'text') {
       previous.text += text
-      this.record({ op: 'append_text', path: ['blocks', this.blocks.length - 1], delta: text })
+      this.record({
+        op: 'append_text',
+        path: ['blocks', this.blocks.length - 1],
+        delta: text
+      })
       return previous
     }
     return this.appendBlock({
@@ -531,7 +624,11 @@ export class TranscriptLog implements CoreTranscript {
     const previous = this.blocks[this.blocks.length - 1]
     if (previous?.type === 'thinking') {
       previous.text += text
-      this.record({ op: 'append_text', path: ['blocks', this.blocks.length - 1], delta: text })
+      this.record({
+        op: 'append_text',
+        path: ['blocks', this.blocks.length - 1],
+        delta: text
+      })
       return previous
     }
     return this.appendBlock({
@@ -563,10 +660,14 @@ export class TranscriptLog implements CoreTranscript {
   }
 }
 
-function findPendingToolCallIndex(blocks: Block[], toolUseId: string): number | null {
+function findPendingToolCallIndex(
+  blocks: Block[],
+  toolUseId: string
+): number | null {
   for (let index = blocks.length - 1; index >= 0; index -= 1) {
     const block = blocks[index]
-    if (block.type === 'tool_call' && block.status === 'executing' && block.toolUseId === toolUseId) return index
+    if (block.type === 'tool_call' && block.status === 'executing'
+      && block.toolUseId === toolUseId) return index
   }
   return null
 }
@@ -584,7 +685,8 @@ function parseToolInput(input: string): unknown {
 }
 
 function estimateBlockTokens(block: Block): number {
-  return Math.ceil(estimateBlockText(block).length / 4) + estimateBlockMediaTokens(block)
+  return Math.ceil(estimateBlockText(block)
+    .length / 4) + estimateBlockMediaTokens(block)
 }
 
 /** Char-based per-block estimate, exported for compaction metrics. */
@@ -596,9 +698,15 @@ function estimateBlockMediaTokens(block: Block): number {
   switch (block.type) {
     case 'user':
     case 'steer':
-      return block.content.reduce((total, content) => total + userContentMediaTokens(content), 0)
+      return block.content.reduce(
+        (total, content) => total + userContentMediaTokens(content),
+        0
+      )
     case 'tool_call':
-      return block.output.reduce((total, content) => total + toolResultMediaTokens(content), 0)
+      return block.output.reduce(
+        (total, content) => total + toolResultMediaTokens(content),
+        0
+      )
     default:
       return 0
   }
@@ -607,7 +715,10 @@ function estimateBlockMediaTokens(block: Block): number {
 function userContentMediaTokens(content: UserContentBlock): number {
   if (content.type === 'image') {
     if (content.source.type === 'binary') {
-      return Math.max(IMAGE_BASE_TOKENS, Math.ceil(content.source.data.byteLength / IMAGE_BYTES_PER_TOKEN))
+      return Math.max(
+        IMAGE_BASE_TOKENS,
+        Math.ceil(content.source.data.byteLength / IMAGE_BYTES_PER_TOKEN)
+      )
     }
     return IMAGE_BASE_TOKENS
   }
@@ -618,7 +729,8 @@ function userContentMediaTokens(content: UserContentBlock): number {
 }
 
 function toolResultMediaTokens(content: ToolResultContentBlock): number {
-  if (content.type !== 'image') return 0
+  if (content.type !== 'image')
+    return 0
   const bytes = Math.floor((content.source.data.length * 3) / 4)
   return Math.max(IMAGE_BASE_TOKENS, Math.ceil(bytes / IMAGE_BYTES_PER_TOKEN))
 }
@@ -655,7 +767,8 @@ function estimateBlockText(block: Block): string {
 }
 
 function safeStringify(value: unknown, fallback: string): string {
-  if (typeof value === 'string') return value
+  if (typeof value === 'string')
+    return value
   return safeJsonStringify(value) ?? fallback
 }
 
@@ -664,9 +777,13 @@ function stringifyUserContent(content: UserContentBlock): string {
     case 'text':
       return content.text
     case 'image':
-      return content.source.type === 'url' ? content.source.url : content.source.mediaType
+      return content.source.type === 'url'
+        ? content.source.url
+        : content.source.mediaType
     case 'video':
-      return content.source.type === 'url' ? content.source.url : content.source.mediaType
+      return content.source.type === 'url'
+        ? content.source.url
+        : content.source.mediaType
     case 'document':
       return `${content.source.fileName} ${content.source.mediaType}`
     case 'reference':
@@ -685,9 +802,14 @@ function stringifyToolResult(content: ToolResultContentBlock): string {
   }
 }
 
-function boundUserContent(content: UserContentBlock[], headChars: number, tailChars: number): UserContentBlock[] {
+function boundUserContent(
+  content: UserContentBlock[],
+  headChars: number,
+  tailChars: number
+): UserContentBlock[] {
   return content.map((block) => {
-    if (block.type !== 'text') return block
+    if (block.type !== 'text')
+      return block
     const text = boundText(block.text, headChars, tailChars)
     return text === block.text ? block : { ...block, text }
   })
@@ -699,7 +821,8 @@ function boundToolResultContent(
   tailChars: number,
 ): ToolResultContentBlock[] {
   return content.map((block) => {
-    if (block.type !== 'text') return block
+    if (block.type !== 'text')
+      return block
     const text = boundText(block.text, headChars, tailChars)
     return text === block.text ? block : { ...block, text }
   })
@@ -709,9 +832,12 @@ function boundToolResultContent(
 // Unicode also heals transcripts persisted before surrogate-safe truncation.
 function boundText(text: string, headChars: number, tailChars: number): string {
   const maxChars = headChars + tailChars
-  if (text.length <= maxChars) return toWellFormedText(text)
+  if (text.length <= maxChars)
+    return toWellFormedText(text)
   const head = sliceHead(text, headChars)
   const tail = sliceTail(text, tailChars)
   const omitted = text.length - head.length - tail.length
-  return toWellFormedText(`${head}\n\n[... truncated ${omitted} characters ...]\n\n${tail}`)
+  return toWellFormedText(
+    `${head}\n\n[... truncated ${omitted} characters ...]\n\n${tail}`
+  )
 }

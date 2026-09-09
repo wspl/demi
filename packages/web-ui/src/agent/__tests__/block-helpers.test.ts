@@ -34,12 +34,16 @@ test('shell terminal output skips empty and malformed chunks', () => {
     },
   })
 
-  expect(shellTerminalOutputChunks(block)).toEqual([{ stream: 'stderr', text: 'kept\n' }])
+  expect(shellTerminalOutputChunks(block)).toEqual(
+    [{ stream: 'stderr', text: 'kept\n' }]
+  )
 })
 
 test('shell terminal output is empty without a chunked view', () => {
   expect(shellTerminalOutputChunks(tool({}))).toEqual([])
-  expect(shellTerminalOutputChunks(tool({ view: { kind: 'yield_wakeup' } }))).toEqual([])
+  expect(shellTerminalOutputChunks(tool({ view: { kind: 'yield_wakeup' } }))).toEqual(
+    []
+  )
 })
 
 function tool(options: { view?: unknown }): Extract<Block, { type: 'tool_call' }> {

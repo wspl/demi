@@ -24,20 +24,40 @@ const emit = defineEmits<{
 }>()
 
 const ids = computed(() => props.targets.map((target) => target.id))
-const single = computed(() => (props.targets.length === 1 ? props.targets[0] : null))
-const allPinned = computed(() => props.targets.length > 0 && props.targets.every((target) => target.pinned))
+const single = computed(() => (props.targets.length === 1
+  ? props.targets[0]
+  : null))
+const allPinned = computed(
+  () => props.targets.length > 0 && props.targets.every((target) => target.pinned)
+)
 const sharedProjectId = computed(() => {
   const first = props.targets[0]?.projectId ?? null
-  return props.targets.every((target) => target.projectId === first) ? first : undefined
+  return props.targets.every((target) => target.projectId === first)
+    ? first
+    : undefined
 })
-const many = computed(() => (props.targets.length > 1 ? ` ${props.targets.length} conversations` : ''))
+const many = computed(
+  () => (props.targets.length > 1
+    ? ` ${props.targets.length} conversations`
+    : '')
+)
 </script>
 
 <template>
   <Menu>
     <template v-if="single">
-      <MenuItem :icon="ArrowRight" label="Open" shortcut="↵" @select="emit('open', single.id)" />
-      <MenuItem :icon="Pencil" label="Rename" shortcut="F2" @select="emit('rename', single.id)" />
+      <MenuItem
+        :icon="ArrowRight"
+        label="Open"
+        shortcut="↵"
+        @select="emit('open', single.id)"
+      />
+      <MenuItem
+        :icon="Pencil"
+        label="Rename"
+        shortcut="F2"
+        @select="emit('rename', single.id)"
+      />
     </template>
     <MenuItem
       v-if="!hidePin"
@@ -68,8 +88,19 @@ const many = computed(() => (props.targets.length > 1 ? ` ${props.targets.length
         </Menu>
       </template>
     </MenuItem>
-    <MenuItem :icon="Archive" :label="`Archive${many}`" @select="emit('archive', ids)" />
+    <MenuItem
+      :icon="Archive"
+      :label="`Archive${many}`"
+      @select="emit('archive', ids)"
+    />
     <MenuDivider v-if="!hideDelete" />
-    <MenuItem v-if="!hideDelete" :icon="Trash2" :label="`Delete${many}`" shortcut="⌫" is-danger @select="emit('remove', ids)" />
+    <MenuItem
+      v-if="!hideDelete"
+      :icon="Trash2"
+      :label="`Delete${many}`"
+      shortcut="⌫"
+      is-danger
+      @select="emit('remove', ids)"
+    />
   </Menu>
 </template>

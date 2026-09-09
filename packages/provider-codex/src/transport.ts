@@ -16,11 +16,16 @@ export interface CodexTransportRequest {
    * Invoked once an HTTP Responses response is available (SSE path), including
    * non-2xx, so callers can observe rate-limit headers for quota.
    */
-  onHttpResponse?: (response: { headers: Headers; status: number }) => void
+  onHttpResponse?: (response: {
+    headers: Headers;
+    status: number
+  }) => void
 }
 
 export interface CodexResponsesTransport {
-  stream(request: CodexTransportRequest): AsyncIterable<CodexResponseStreamEvent>
+  stream(
+    request: CodexTransportRequest
+  ): AsyncIterable<CodexResponseStreamEvent>
 }
 
 export interface FetchCodexResponsesTransportOptions {
@@ -34,8 +39,13 @@ export class FetchCodexResponsesTransport implements CodexResponsesTransport {
     this.fetchImpl = options.fetch ?? fetch
   }
 
-  async *stream(request: CodexTransportRequest): AsyncIterable<CodexResponseStreamEvent> {
-    const headerTimeout = createAbortTimeout(request.headerTimeoutMs, 'Codex SSE response headers timed out')
+  async *stream(
+    request: CodexTransportRequest
+  ): AsyncIterable<CodexResponseStreamEvent> {
+    const headerTimeout = createAbortTimeout(
+      request.headerTimeoutMs,
+      'Codex SSE response headers timed out'
+    )
     const combined = combineAbortSignals([request.signal, headerTimeout.signal])
     let response: Response
     try {
@@ -51,15 +61,24 @@ export class FetchCodexResponsesTransport implements CodexResponsesTransport {
     }
 
     try {
-      request.onHttpResponse?.({ headers: response.headers, status: response.status })
+      request.onHttpResponse?.({
+        headers: response.headers,
+        status: response.status
+      })
     } catch {
       // Quota observation must never break inference.
     }
 
     if (!response.ok) {
-      throw new CodexHttpError(response.status, response.statusText, await response.text(), response.headers)
+      throw new CodexHttpError(
+        response.status,
+        response.statusText,
+        await response.text(),
+        response.headers
+      )
     }
-    if (!response.body) throw new Error('Codex response did not include a body')
+    if (!response.body)
+      throw new Error('Codex response did not include a body')
 
     yield* parseSseResponseStream(response.body)
   }
@@ -69,14 +88,19 @@ export interface WebSocketCodexResponsesTransportOptions {
   WebSocket?: WebSocketConstructorLike | null
 }
 
-export class WebSocketCodexResponsesTransport implements CodexResponsesTransport {
+export class WebSocketCodexResponsesTransport
+  implements CodexResponsesTransport {
   private readonly WebSocketCtor: WebSocketConstructorLike | null
 
   constructor(options: WebSocketCodexResponsesTransportOptions = {}) {
-    this.WebSocketCtor = options.WebSocket === undefined ? defaultWebSocketConstructor() : options.WebSocket
+    this.WebSocketCtor = options.WebSocket === undefined
+      ? defaultWebSocketConstructor()
+      : options.WebSocket
   }
 
-  async *stream(request: CodexTransportRequest): AsyncIterable<CodexResponseStreamEvent> {
+  async *stream(
+    request: CodexTransportRequest
+  ): AsyncIterable<CodexResponseStreamEvent> {
     const socket = await connectWebSocket(
       this.WebSocketCtor,
       request.websocketUrl,
@@ -97,20 +121,28 @@ export class WebSocketCodexResponsesTransport implements CodexResponsesTransport
       wake()
     }
     const finish = (): void => {
-      if (finished) return
+      if (finished)
+        return
       finished = true
       push(null)
     }
     const armIdleTimer = (): void => {
-      if (!request.streamIdleTimeoutMs) return
-      if (idleTimer) clearTimeout(idleTimer)
+      if (!request.streamIdleTimeoutMs)
+        return
+      if (idleTimer)
+        clearTimeout(idleTimer)
       idleTimer = setTimeout(() => {
-        push(new Error(`Codex WebSocket stream idled for ${request.streamIdleTimeoutMs}ms`))
+        push(
+          new Error(
+            `Codex WebSocket stream idled for ${request.streamIdleTimeoutMs}ms`
+          )
+        )
         socket.close(1000, 'idle_timeout')
       }, request.streamIdleTimeoutMs)
     }
     const cleanup = (): void => {
-      if (idleTimer) clearTimeout(idleTimer)
+      if (idleTimer)
+        clearTimeout(idleTimer)
       socket.removeEventListener('message', onMessage)
       socket.removeEventListener('error', onError)
       socket.removeEventListener('close', onClose)
@@ -144,16 +176,22 @@ export class WebSocketCodexResponsesTransport implements CodexResponsesTransport
     request.signal.addEventListener('abort', onAbort, { once: true })
 
     try {
-      socket.send(JSON.stringify({ type: 'response.create', ...(request.body as Record<string, unknown>) }))
+      socket.send(JSON.stringify({
+        type: 'response.create',
+        ...(request.body as Record<string, unknown>)
+      }))
       armIdleTimer()
       while (true) {
         if (queue.length === 0) {
           await new Promise<void>((resolve) => waiters.push(resolve))
         }
         const next = queue.shift()
-        if (next === undefined) continue
-        if (next === null) return
-        if (next instanceof Error) throw next
+        if (next === undefined)
+          continue
+        if (next === null)
+          return
+        if (next instanceof Error)
+          throw next
         yield next
       }
     } finally {
@@ -169,7 +207,9 @@ export class AutoCodexResponsesTransport implements CodexResponsesTransport {
     private readonly sse: CodexResponsesTransport,
   ) {}
 
-  async *stream(request: CodexTransportRequest): AsyncIterable<CodexResponseStreamEvent> {
+  async *stream(
+    request: CodexTransportRequest
+  ): AsyncIterable<CodexResponseStreamEvent> {
     let started = false
     try {
       for await (const event of this.websocket.stream(request)) {
@@ -178,7 +218,8 @@ export class AutoCodexResponsesTransport implements CodexResponsesTransport {
       }
       return
     } catch (error) {
-      if (started) throw error
+      if (started)
+        throw error
     }
     yield* this.sse.stream(request)
   }
@@ -198,8 +239,10 @@ export class CodexHttpError extends Error {
 
 export function codexResponsesUrl(baseUrl: string): string {
   const normalized = baseUrl.replace(/\/+$/, '')
-  if (normalized.endsWith('/responses')) return normalized
-  if (normalized.endsWith('/codex')) return `${normalized}/responses`
+  if (normalized.endsWith('/responses'))
+    return normalized
+  if (normalized.endsWith('/codex'))
+    return `${normalized}/responses`
   return `${normalized}/codex/responses`
 }
 
@@ -207,11 +250,16 @@ export function codexWebSocketUrl(responsesUrl: string): string {
   return responsesUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')
 }
 
-export function createCodexTransport(mode: CodexTransportMode, options: FetchCodexResponsesTransportOptions & WebSocketCodexResponsesTransportOptions = {}): CodexResponsesTransport {
+export function createCodexTransport(
+  mode: CodexTransportMode,
+  options: FetchCodexResponsesTransportOptions & WebSocketCodexResponsesTransportOptions = {}
+): CodexResponsesTransport {
   const sse = new FetchCodexResponsesTransport(options)
-  if (mode === 'sse') return sse
+  if (mode === 'sse')
+    return sse
   const websocket = new WebSocketCodexResponsesTransport(options)
-  if (mode === 'websocket') return websocket
+  if (mode === 'websocket')
+    return websocket
   return new AutoCodexResponsesTransport(websocket, sse)
 }
 
@@ -222,22 +270,46 @@ interface WebSocketConstructorLike {
 interface WebSocketLike {
   send(data: string): void
   close(code?: number, reason?: string): void
-  addEventListener(type: 'open' | 'message' | 'error' | 'close', listener: (event: never) => void): void
-  removeEventListener(type: 'open' | 'message' | 'error' | 'close', listener: (event: never) => void): void
+  addEventListener(
+    type: 'open' | 'message' | 'error' | 'close',
+    listener: (event: never) => void
+  ): void
+  removeEventListener(
+    type: 'open' | 'message' | 'error' | 'close',
+    listener: (event: never) => void
+  ): void
 }
 
 interface MessageEventLike {
   data: unknown
 }
 
-function createAbortTimeout(ms: number | undefined, message: string): { signal: AbortSignal; clear(): void } {
+function createAbortTimeout(
+  ms: number | undefined,
+  message: string
+): {
+  signal: AbortSignal;
+  clear(): void
+} {
   const controller = new AbortController()
-  if (!ms || ms <= 0) return { signal: controller.signal, clear: () => undefined }
-  const timeout = setTimeout(() => controller.abort(new Error(`${message} after ${ms}ms`)), ms)
+  if (!ms || ms <= 0)
+    return {
+      signal: controller.signal,
+      clear: () => undefined
+    }
+  const timeout = setTimeout(
+    () => controller.abort(new Error(`${message} after ${ms}ms`)),
+    ms
+  )
   return { signal: controller.signal, clear: () => clearTimeout(timeout) }
 }
 
-function combineAbortSignals(signals: AbortSignal[]): { signal: AbortSignal; cleanup(): void } {
+function combineAbortSignals(
+  signals: AbortSignal[]
+): {
+  signal: AbortSignal;
+  cleanup(): void
+} {
   const controller = new AbortController()
   const listeners: Array<() => void> = []
   for (const signal of signals) {
@@ -261,7 +333,10 @@ function connectWebSocket(
   signal: AbortSignal,
   timeoutMs = 10_000,
 ): Promise<WebSocketLike> {
-  if (!WebSocketCtor) return Promise.reject(new Error('WebSocket transport is not available in this runtime'))
+  if (!WebSocketCtor)
+    return Promise.reject(
+      new Error('WebSocket transport is not available in this runtime')
+    )
   const headerRecord = headersToRecord(headers)
   delete headerRecord.accept
   delete headerRecord['content-type']
@@ -270,7 +345,12 @@ function connectWebSocket(
   return new Promise((resolve, reject) => {
     let socket: WebSocketLike
     let settled = false
-    const timeout = setTimeout(() => fail(new Error(`Codex WebSocket connect timed out after ${timeoutMs}ms`)), timeoutMs)
+    const timeout = setTimeout(
+      () => fail(
+        new Error(`Codex WebSocket connect timed out after ${timeoutMs}ms`)
+      ),
+      timeoutMs
+    )
     const cleanup = (): void => {
       clearTimeout(timeout)
       socket?.removeEventListener('open', onOpen)
@@ -279,7 +359,8 @@ function connectWebSocket(
       signal.removeEventListener('abort', onAbort)
     }
     const fail = (error: Error): void => {
-      if (settled) return
+      if (settled)
+        return
       settled = true
       cleanup()
       try {
@@ -290,7 +371,8 @@ function connectWebSocket(
       reject(error)
     }
     const onOpen = (): void => {
-      if (settled) return
+      if (settled)
+        return
       settled = true
       cleanup()
       resolve(socket)
@@ -315,23 +397,36 @@ function connectWebSocket(
 }
 
 function parseWebSocketMessage(data: unknown): CodexResponseStreamEvent | null {
-  if (typeof data === 'string') return parseWebSocketJson(data)
-  if (data instanceof ArrayBuffer) return parseWebSocketJson(new TextDecoder().decode(data))
-  if (data instanceof Uint8Array) return parseWebSocketJson(new TextDecoder().decode(data))
+  if (typeof data === 'string')
+    return parseWebSocketJson(data)
+  if (data instanceof ArrayBuffer)
+    return parseWebSocketJson(new TextDecoder().decode(data))
+  if (data instanceof Uint8Array)
+    return parseWebSocketJson(new TextDecoder().decode(data))
   return null
 }
 
 function parseWebSocketJson(text: string): CodexResponseStreamEvent | null {
-  const parsed = JSON.parse(text) as CodexResponseStreamEvent | { type?: string; event?: CodexResponseStreamEvent; response?: unknown }
-  if (parsed.type === 'response.done') {
-    return { type: 'response.completed', response: parsed.response as CodexResponseStreamEvent['response'] }
+  const parsed = JSON.parse(text) as CodexResponseStreamEvent | {
+    type?: string;
+    event?: CodexResponseStreamEvent;
+    response?: unknown
   }
-  if ('event' in parsed && isRecord(parsed.event)) return parsed.event as CodexResponseStreamEvent
+  if (parsed.type === 'response.done') {
+    return {
+      type: 'response.completed',
+      response: parsed.response as CodexResponseStreamEvent['response']
+    }
+  }
+  if ('event' in parsed && isRecord(parsed.event))
+    return parsed.event as CodexResponseStreamEvent
   return parsed as CodexResponseStreamEvent
 }
 
 function isTerminalResponseEvent(event: CodexResponseStreamEvent): boolean {
-  return event.type === 'response.completed' || event.type === 'response.failed' || event.type === 'response.incomplete' || event.type === 'error'
+  return event.type === 'response.completed' || event.type === 'response.failed'
+    || event.type === 'response.incomplete'
+    || event.type === 'error'
 }
 
 function headersToRecord(headers: Headers): Record<string, string> {
@@ -342,10 +437,16 @@ function headersToRecord(headers: Headers): Record<string, string> {
   return out
 }
 
-function codexHttpErrorMessage(status: number, statusText: string, responseText: string): string {
+function codexHttpErrorMessage(
+  status: number,
+  statusText: string,
+  responseText: string
+): string {
   const body = parseJsonObject(responseText)
   const error = isRecord(body?.error) ? body.error : null
-  return typeof error?.message === 'string' ? error.message : responseText || statusText || `HTTP ${status}`
+  return typeof error?.message === 'string'
+    ? error.message
+    : responseText || statusText || `HTTP ${status}`
 }
 
 function defaultWebSocketConstructor(): WebSocketConstructorLike | null {

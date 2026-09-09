@@ -42,7 +42,11 @@ test('grok credentials import entries and switch active', async () => {
       probe: async () => ({ accountLabel: 'old-account', windows: [] }),
       observe: () => ({ accountLabel: 'old-account', windows: [] }),
     })
-    const credentials = createGrokBuildCredentials(pool, authStore, { grokHome, quota })
+    const credentials = createGrokBuildCredentials(
+      pool,
+      authStore,
+      { grokHome, quota }
+    )
 
     await credentials.importDefault!()
     const list = await credentials.list()

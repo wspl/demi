@@ -9,7 +9,10 @@ import type { ControlService, UsageRow } from '../storage/control'
  * /api/usage/instance` — in shared mode, the admin's view of the instance's
  * ledger, the same aggregation per user.
  */
-export function usageRoutes(options: { control: ControlService; mode: InstanceMode }): Hono<AuthEnv> {
+export function usageRoutes(options: {
+  control: ControlService;
+  mode: InstanceMode
+}): Hono<AuthEnv> {
   const { control, mode } = options
   const app = new Hono<AuthEnv>()
 
@@ -19,12 +22,22 @@ export function usageRoutes(options: { control: ControlService; mode: InstanceMo
   })
 
   app.get('/instance', requireAdmin, async (c) => {
-    if (mode !== 'shared') return c.json({ code: 'forbidden', message: 'The instance ledger is a shared-mode view' }, 403)
+    if (mode !== 'shared')
+      return c.json({
+        code: 'forbidden',
+        message: 'The instance ledger is a shared-mode view'
+      }, 403)
     const users = await control.listUsers()
     const byUser = new Map<string, UsageRow[]>()
-    for (const row of await control.listAllUsage()) byUser.set(row.userId, [...(byUser.get(row.userId) ?? []), row])
+    for (const row of await control.listAllUsage())
+      byUser.set(row.userId, [...(byUser.get(row.userId) ??
+          []), row])
     return c.json({
-      users: users.map((user) => ({ userId: user.id, email: user.email, totals: aggregate(byUser.get(user.id) ?? []) })),
+      users: users.map((user) => ({
+        userId: user.id,
+        email: user.email,
+        totals: aggregate(byUser.get(user.id) ?? [])
+      })),
     })
   })
 

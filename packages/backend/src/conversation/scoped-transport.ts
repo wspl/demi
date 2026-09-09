@@ -1,10 +1,20 @@
 import { cloudSessionDirectory } from './execution-target'
-import { clientFrameSchema, externalizeBlockMedia, type AgentServerTransport, type BlobStore, type ClientFrame, type ServerFrame } from '@demicodes/agent'
+import {
+  clientFrameSchema,
+  externalizeBlockMedia,
+  type AgentServerTransport,
+  type BlobStore,
+  type ClientFrame,
+  type ServerFrame
+} from '@demicodes/agent'
 import type { Block, ModelSelection } from '@demicodes/core'
 import { errorMessage, SerialQueue } from '@demicodes/utils'
 import type { ControlService, ConversationRecord } from '../storage/control'
 import { resolveAttachmentRefs } from './attachment-refs'
-import { conversationClientFrameSchema, type ConversationClientFrame } from './client-frames'
+import {
+  conversationClientFrameSchema,
+  type ConversationClientFrame
+} from './client-frames'
 
 /**
  * Scopes an incoming stream to its conversation: the session id and cwd are
@@ -18,17 +28,32 @@ import { conversationClientFrameSchema, type ConversationClientFrame } from './c
  */
 export interface ConversationTransportOptions {
   control: ControlService
-  /** Whether the conversation's user may name this provider — the same rule as the PATCH route's. */
+  /**
+   * Whether the conversation's user may name this provider — the same rule as
+   * the PATCH route's.
+   */
   providerAllowed: (providerId: string) => Promise<boolean>
-  resolveRemoteFiles?: (conversation: ConversationRecord, content: unknown[]) => Promise<unknown[]>
+  resolveRemoteFiles?: (
+    conversation: ConversationRecord,
+    content: unknown[]
+  ) => Promise<unknown[]>
   admitFrame?: () => (() => void) | null
-  modelSelection?: (providerId: string, selection: ModelSelection) => Promise<ModelSelection>
-  /** Where every session of the conversation opens; the conversation’s Cloud session directory or selected target path. */
+  modelSelection?: (
+    providerId: string,
+    selection: ModelSelection
+  ) => Promise<ModelSelection>
+  /**
+   * Where every session of the conversation opens; the conversation’s Cloud
+   * session directory or selected target path.
+   */
   cwd?: string
   blobs?: BlobStore
 }
 
-/** A frame the conversation refuses; its code goes back to the client as the error frame's code. */
+/**
+ * A frame the conversation refuses; its code goes back to the client as the
+ * error frame's code.
+ */
 class FrameRefused extends Error {
   constructor(readonly code: string, message: string) {
     super(message)
@@ -48,7 +73,8 @@ export function conversationScopedTransport(
   const sends = new SerialQueue()
   let closed = false
   const reportError = (code: string, message: string) => {
-    if (closed) return
+    if (closed)
+      return
     try {
       inner.send({ type: 'error', code, message })
     } catch {
@@ -59,32 +85,62 @@ export function conversationScopedTransport(
   return {
     send: (frame) => {
       void sends.run(async () => {
-        if (closed) return
-        const outbound = blobs ? await externalizeFrameMedia(frame, blobs) : frame
-        if (!closed) inner.send(outbound)
-      }).catch((error: unknown) => reportError('frame_send_failed', errorMessage(error)))
+        if (closed)
+          return
+        const outbound = blobs
+          ? await externalizeFrameMedia(frame, blobs)
+          : frame
+        if (!closed)
+          inner.send(outbound)
+      }).catch((error: unknown) => reportError(
+        'frame_send_failed',
+        errorMessage(error)
+      ))
     },
     onFrame: (handler) => {
       let subscribed = true
       const unsubscribe = inner.onFrame((frame) => {
         void deliveries.run(async () => {
-          if (closed || !subscribed) return
+          if (closed || !subscribed)
+            return
           const parsed = conversationClientFrameSchema.safeParse(frame)
           if (!parsed.success) {
-            reportError('invalid_frame', `Invalid client frame: ${parsed.error.issues[0]?.message ?? 'invalid shape'}`)
+            reportError(
+              'invalid_frame',
+              `Invalid client frame: ${parsed.error.issues[0]?.message ?? 'invalid shape'}`
+            )
             return
           }
           const release = options.admitFrame ? options.admitFrame() : () => {}
-          if (!release) throw new FrameRefused('conversation_busy', 'A conversation operation is still running')
+          if (!release)
+            throw new FrameRefused(
+              'conversation_busy',
+              'A conversation operation is still running'
+            )
           try {
-            const current = await options.control.getConversation(conversation.id)
-            if (!current || (current.archived && parsed.data.type !== 'close')) throw new FrameRefused('archived', 'Restore the conversation before writing to it')
-            const rewritten = await rewriteFrame(parsed.data, current, options, cwd)
-            if (!closed && subscribed) await handler(rewritten)
+            const current = await options.control.getConversation(
+              conversation.id
+            )
+            if (!current || (current.archived && parsed.data.type !== 'close'))
+              throw new FrameRefused(
+                'archived',
+                'Restore the conversation before writing to it'
+              )
+            const rewritten = await rewriteFrame(
+              parsed.data,
+              current,
+              options,
+              cwd
+            )
+            if (!closed && subscribed)
+              await handler(rewritten)
           } finally {
             release()
           }
-        }).catch((error: unknown) => reportError(error instanceof FrameRefused ? error.code : 'frame_delivery_failed', errorMessage(error)))
+        }).catch((error: unknown) => reportError(
+          error instanceof FrameRefused ? error.code : 'frame_delivery_failed',
+          errorMessage(error)
+        ))
       })
       return () => {
         subscribed = false
@@ -99,8 +155,13 @@ export function conversationScopedTransport(
 }
 
 /** Media in the frames that carry transcript blocks leaves as references. */
-async function externalizeFrameMedia(frame: ServerFrame, blobs: BlobStore): Promise<ServerFrame> {
-  const externalize = (blocks: Block[]) => Promise.all(blocks.map((block) => externalizeBlockMedia(block, blobs)))
+async function externalizeFrameMedia(
+  frame: ServerFrame,
+  blobs: BlobStore
+): Promise<ServerFrame> {
+  const externalize = (blocks: Block[]) => Promise.all(
+    blocks.map((block) => externalizeBlockMedia(block, blobs))
+  )
   switch (frame.type) {
     case 'transcript_reset':
     case 'subagent_transcript_reset':
@@ -111,8 +172,16 @@ async function externalizeFrameMedia(frame: ServerFrame, blobs: BlobStore): Prom
         ...frame,
         patches: await Promise.all(
           frame.patches.map(async (patch) => {
-            if (patch.op === 'add' || patch.op === 'replace_block') return { ...patch, value: await externalizeBlockMedia(patch.value, blobs) }
-            if (patch.op === 'replace') return { ...patch, value: await externalize(patch.value) }
+            if (patch.op === 'add' || patch.op === 'replace_block')
+              return {
+                ...patch,
+                value: await externalizeBlockMedia(patch.value, blobs)
+              }
+            if (patch.op === 'replace')
+              return {
+                ...patch,
+                value: await externalize(patch.value)
+              }
             return patch
           }),
         ),
@@ -129,10 +198,20 @@ async function rewriteFrame(
   cwd: string,
 ): Promise<ClientFrame> {
   const { control, blobs } = options
-  const recordProvider = async (provider: { providerId: string; model: ModelSelection }) => {
-    if (!(await options.providerAllowed(provider.providerId))) throw new FrameRefused('provider_not_found', 'No such provider')
-    const model = options.modelSelection ? await options.modelSelection(provider.providerId, provider.model) : provider.model
-    await control.setConversationModel(conversation.id, provider.providerId, model.model.id)
+  const recordProvider = async (provider: {
+    providerId: string;
+    model: ModelSelection
+  }) => {
+    if (!(await options.providerAllowed(provider.providerId)))
+      throw new FrameRefused('provider_not_found', 'No such provider')
+    const model = options.modelSelection
+      ? await options.modelSelection(provider.providerId, provider.model)
+      : provider.model
+    await control.setConversationModel(
+      conversation.id,
+      provider.providerId,
+      model.model.id
+    )
     return { ...provider, model }
   }
   if (frame.type === 'open') {
@@ -140,13 +219,22 @@ async function rewriteFrame(
     return { ...frame, provider, sessionId: conversation.id, cwd }
   }
   if (frame.type === 'send' || frame.type === 'steer') {
-    let content: unknown[] = options.resolveRemoteFiles ? await options.resolveRemoteFiles(conversation, frame.content) : frame.content
-    if (blobs) content = await resolveAttachmentRefs({ control, blobs, userId: conversation.userId }, content)
+    let content: unknown[] = options.resolveRemoteFiles
+      ? await options.resolveRemoteFiles(conversation, frame.content)
+      : frame.content
+    if (blobs)
+      content = await resolveAttachmentRefs(
+        { control, blobs, userId: conversation.userId },
+        content
+      )
     const rewritten = clientFrameSchema.parse({ ...frame, content })
     if (frame.type === 'send') {
-      const text = frame.content.flatMap(block => block.type === 'text' ? [block.text] : [])[0]
+      const text = frame.content.flatMap(block => block.type === 'text'
+        ? [block.text]
+        : [])[0]
       const title = (text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
-      if (title) await control.defaultConversationTitle(conversation.id, title)
+      if (title)
+        await control.defaultConversationTitle(conversation.id, title)
       await control.touchConversation(conversation.id)
     }
     return rewritten

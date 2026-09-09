@@ -37,16 +37,21 @@ export interface CodexCredentialsOptions {
 }
 
 /**
- * Auth store that prefers the demi pool active entry; falls back to vendor ~/.codex.
+ * Auth store that prefers the demi pool active entry; falls back to vendor
+ * ~/.codex.
  */
 export class PoolAwareCodexAuthStore implements CodexAuthStore {
   private readonly pool: FileCredentialPool
   private readonly vendorHome: string
-  private readonly fileAuthOptions: Omit<FileCodexAuthStoreOptions, 'codexHome' | 'authFile'>
+  private readonly fileAuthOptions: Omit<FileCodexAuthStoreOptions, 'codexHome'
+    | 'authFile'>
 
   constructor(
     pool: FileCredentialPool,
-    options: { codexHome?: string; fileAuthOptions?: Omit<FileCodexAuthStoreOptions, 'codexHome' | 'authFile'> } = {},
+    options: {
+      codexHome?: string;
+      fileAuthOptions?: Omit<FileCodexAuthStoreOptions, 'codexHome' | 'authFile'>
+    } = {},
   ) {
     this.pool = pool
     this.vendorHome = options.codexHome ?? defaultCodexHome()
@@ -106,24 +111,38 @@ export function createCodexCredentials(
     return { credentialId, status }
   }
 
-  const setActive = async (credentialId: string): Promise<ProviderCredentialActive> => {
+  const setActive = async (
+    credentialId: string
+  ): Promise<ProviderCredentialActive> => {
     await pool.setActiveId(credentialId)
     options.quota?.clearLatest?.()
     options.onActiveChange?.()
     return getActive()
   }
 
-  const importFromAuthJson = async (authText: string, source: string): Promise<ProviderCredentialInfo> => {
+  const importFromAuthJson = async (
+    authText: string,
+    source: string
+  ): Promise<ProviderCredentialInfo> => {
     let auth: CodexAuthDotJson
     try {
       auth = JSON.parse(authText) as CodexAuthDotJson
     } catch {
-      throw new CodexAuthError('auth_invalid', 'Codex auth material is not valid JSON')
+      throw new CodexAuthError(
+        'auth_invalid',
+        'Codex auth material is not valid JSON'
+      )
     }
-    if (!isRecord(auth)) throw new CodexAuthError('auth_invalid', 'Codex auth material is not an object')
+    if (!isRecord(auth))
+      throw new CodexAuthError(
+        'auth_invalid',
+        'Codex auth material is not an object'
+      )
 
     const { label, identityKey, detail } = labelFromCodexAuth(auth)
-    const existing = identityKey ? await pool.findByIdentityKey(identityKey) : null
+    const existing = identityKey
+      ? await pool.findByIdentityKey(identityKey)
+      : null
     const id = existing?.id ?? credentialIdFromIdentity(identityKey, label)
     const meta: CredentialEntryMeta = {
       id,
@@ -135,10 +154,16 @@ export function createCodexCredentials(
     }
     await pool.writeEntry(meta, `${JSON.stringify(auth, null, 2)}\n`)
     const active = await pool.getActiveId()
-    if (!active) await pool.setActiveId(id)
+    if (!active)
+      await pool.setActiveId(id)
     options.quota?.clearLatest?.()
     options.onActiveChange?.()
-    return { id: meta.id, label: meta.label, detail: meta.detail, updatedAt: meta.updatedAt }
+    return {
+      id: meta.id,
+      label: meta.label,
+      detail: meta.detail,
+      updatedAt: meta.updatedAt
+    }
   }
 
   return {
@@ -148,18 +173,25 @@ export function createCodexCredentials(
     setActive,
     // Native device-code flow: pending material streams out via onPending, the completed
     // material never touches the vendor home and is imported straight into the pool.
-    beginLogin: async (loginOptions?: ProviderCredentialLoginOptions): Promise<ProviderCredentialLoginResult> => {
+    beginLogin: async (
+      loginOptions?: ProviderCredentialLoginOptions
+    ): Promise<ProviderCredentialLoginResult> => {
       try {
         const auth = await runCodexDeviceLogin({
           signal: loginOptions?.signal,
           onPending: loginOptions?.onPending,
           fetch: options.loginFetch,
         })
-        const info = await importFromAuthJson(`${JSON.stringify(auth, null, 2)}\n`, 'login:device')
+        const info = await importFromAuthJson(
+          `${JSON.stringify(auth, null, 2)}\n`,
+          'login:device'
+        )
         return { status: 'completed', credentialId: info.id }
       } catch (error) {
-        if (loginOptions?.signal?.aborted) return { status: 'cancelled' }
-        if (error instanceof CodexAuthError && error.code === 'auth_unsupported') {
+        if (loginOptions?.signal?.aborted)
+          return { status: 'cancelled' }
+        if (error instanceof CodexAuthError && error.code
+          === 'auth_unsupported') {
           return { status: 'unavailable', message: error.message }
         }
         return { status: 'failed', message: errorMessage(error) }
@@ -171,7 +203,10 @@ export function createCodexCredentials(
       try {
         text = await readFile(authFile, 'utf8')
       } catch {
-        throw new CodexAuthError('auth_missing', `No Codex auth at ${authFile}. Run codex login or beginLogin first.`)
+        throw new CodexAuthError(
+          'auth_missing',
+          `No Codex auth at ${authFile}. Run codex login or beginLogin first.`
+        )
       }
       return importFromAuthJson(text, `vendor:${authFile}`)
     },
@@ -185,9 +220,14 @@ export function createCodexCredentials(
       }
       if (isRecord(input.auth) || isRecord(input.authJson)) {
         const obj = (input.auth ?? input.authJson) as CodexAuthDotJson
-        return importFromAuthJson(`${JSON.stringify(obj, null, 2)}\n`, 'add:auth')
+        return importFromAuthJson(
+          `${JSON.stringify(obj, null, 2)}\n`,
+          'add:auth'
+        )
       }
-      throw new Error('Codex credentials.add expects authJsonText, authFile, or auth/authJson object')
+      throw new Error(
+        'Codex credentials.add expects authJsonText, authFile, or auth/authJson object'
+      )
     },
     remove: async (credentialId: string) => {
       await pool.remove(credentialId)
@@ -197,7 +237,9 @@ export function createCodexCredentials(
   }
 }
 
-export function openCodexCredentialPool(options: { stateDir?: string } = {}): FileCredentialPool {
+export function openCodexCredentialPool(
+  options: { stateDir?: string } = {}
+): FileCredentialPool {
   return new FileCredentialPool({
     stateDir: options.stateDir,
     providerKey: 'codex',
@@ -205,7 +247,13 @@ export function openCodexCredentialPool(options: { stateDir?: string } = {}): Fi
   })
 }
 
-function labelFromCodexAuth(auth: CodexAuthDotJson): { label: string; identityKey: string | null; detail: string | null } {
+function labelFromCodexAuth(
+  auth: CodexAuthDotJson
+): {
+  label: string;
+  identityKey: string | null;
+  detail: string | null
+} {
   if (nonEmptyString(auth.OPENAI_API_KEY)) {
     return { label: 'OPENAI_API_KEY', identityKey: 'apiKey', detail: 'apiKey' }
   }
@@ -213,14 +261,23 @@ function labelFromCodexAuth(auth: CodexAuthDotJson): { label: string; identityKe
   if (pat) {
     const claims = parseChatGptClaims(pat)
     const label = claims.email ?? claims.accountId ?? 'personal access token'
-    return { label, identityKey: claims.accountId ?? label, detail: 'personalAccessToken' }
+    return {
+      label,
+      identityKey: claims.accountId ?? label,
+      detail: 'personalAccessToken'
+    }
   }
   const tokens = auth.tokens
   if (tokens && typeof tokens === 'object') {
     const access = nonEmptyString(tokens.access_token)
     const idClaims = parseIdTokenClaims(tokens.id_token)
-    const accessClaims = access ? parseChatGptClaims(access) : { accountId: null, email: null, isFedrampAccount: false }
-    const accountId = nonEmptyString(tokens.account_id) ?? idClaims.accountId ?? accessClaims.accountId
+    const accessClaims = access ? parseChatGptClaims(access) : {
+      accountId: null,
+      email: null,
+      isFedrampAccount: false
+    }
+    const accountId = nonEmptyString(tokens.account_id) ?? idClaims.accountId
+      ?? accessClaims.accountId
     const email = idClaims.email ?? accessClaims.email
     const label = email ?? accountId ?? 'chatgpt'
     return { label, identityKey: accountId ?? email, detail: 'chatgpt' }

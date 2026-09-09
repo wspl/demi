@@ -1,5 +1,11 @@
 import { expect, test } from 'bun:test'
-import { applyModelPolicy, defineProvider, providerRuntime, type ProviderModelList, type ProviderSelection } from '../index'
+import {
+  applyModelPolicy,
+  defineProvider,
+  providerRuntime,
+  type ProviderModelList,
+  type ProviderSelection
+} from '../index'
 import { StubProvider, events } from '../testing'
 
 const selection: ProviderSelection = {
@@ -19,86 +25,105 @@ const selection: ProviderSelection = {
   },
 }
 
-test('defineProvider exposes public provider fields and hides runtime factory from serialization', async () => {
-  const provider = defineProvider({
-    id: 'stub',
-    displayName: 'Stub',
-    state: () => ({ status: 'ready' }),
-    createRuntime: () => new StubProvider([[events.text('ok'), events.response()]]),
-  })
+test(
+  'defineProvider exposes public provider fields and hides runtime factory from serialization',
+  async () => {
+    const provider = defineProvider({
+      id: 'stub',
+      displayName: 'Stub',
+      state: () => ({ status: 'ready' }),
+      createRuntime: () => new StubProvider([[
+        events.text('ok'),
+        events.response()
+      ]]),
+    })
 
-  expect(provider).toMatchObject({ id: 'stub', displayName: 'Stub' })
-  expect(Object.keys(provider)).toEqual(['id', 'displayName', 'state'])
-  expect(JSON.stringify(provider)).toBe('{"id":"stub","displayName":"Stub"}')
+    expect(provider).toMatchObject({ id: 'stub', displayName: 'Stub' })
+    expect(Object.keys(provider)).toEqual(['id', 'displayName', 'state'])
+    expect(JSON.stringify(provider)).toBe('{"id":"stub","displayName":"Stub"}')
 
-  const runtime = await providerRuntime(provider, selection)
-  const output = []
-  for await (const event of runtime.run({
-    sessionId: 'test-session',
-    turnId: 'test-turn',
-    requestId: 'test-request',
-    outputLimit: null,
-    modelId: 'model-1',
-    systemPrompt: '',
-    cwd: '/tmp',
-    items: [],
-    tools: [],
-    thinking: null,
-    cancel: new AbortController().signal,
-  })) {
-    output.push(event)
+    const runtime = await providerRuntime(provider, selection)
+    const output = []
+    for await (const event of runtime.run({
+      sessionId: 'test-session',
+      turnId: 'test-turn',
+      requestId: 'test-request',
+      outputLimit: null,
+      modelId: 'model-1',
+      systemPrompt: '',
+      cwd: '/tmp',
+      items: [],
+      tools: [],
+      thinking: null,
+      cancel: new AbortController().signal,
+    })) {
+      output.push(event)
+    }
+
+    expect(output[0]).toEqual(events.text('ok'))
   }
+)
 
-  expect(output[0]).toEqual(events.text('ok'))
-})
+test(
+  'defineProvider passes the execution-requirement capability flag through',
+  () => {
+    const unset = defineProvider({
+      id: 'plain',
+      displayName: 'Plain',
+      createRuntime: () => new StubProvider([]),
+    })
+    expect(unset.requiresProcessCapableHost).toBeUndefined()
 
-test('defineProvider passes the execution-requirement capability flag through', () => {
-  const unset = defineProvider({
-    id: 'plain',
-    displayName: 'Plain',
-    createRuntime: () => new StubProvider([]),
-  })
-  expect(unset.requiresProcessCapableHost).toBeUndefined()
-
-  const requiring = defineProvider({
-    id: 'cli-backed',
-    displayName: 'CLI backed',
-    requiresProcessCapableHost: true,
-    createRuntime: () => new StubProvider([]),
-  })
-  expect(requiring.requiresProcessCapableHost).toBe(true)
-})
-
-test('applyModelPolicy remaps provider ids and applies include, exclude, and default selection', () => {
-  const list: ProviderModelList = {
-    providerId: 'source',
-    defaultModelId: 'model-2',
-    warnings: ['warning'],
-    sourceFetchedAt: '2026-06-25T00:00:00.000Z',
-    stale: false,
-    models: [
-      model('source', 'model-1'),
-      model('source', 'model-2'),
-      model('source', 'model-3'),
-    ],
+    const requiring = defineProvider({
+      id: 'cli-backed',
+      displayName: 'CLI backed',
+      requiresProcessCapableHost: true,
+      createRuntime: () => new StubProvider([]),
+    })
+    expect(requiring.requiresProcessCapableHost).toBe(true)
   }
+)
 
-  const filtered = applyModelPolicy(list, 'custom', {
-    include: ['model-1', 'model-2', 'model-3'],
-    exclude: ['model-2'],
-    default: 'model-3',
-  })
+test(
+  'applyModelPolicy remaps provider ids and applies include, exclude, and default selection',
+  () => {
+    const list: ProviderModelList = {
+      providerId: 'source',
+      defaultModelId: 'model-2',
+      warnings: ['warning'],
+      sourceFetchedAt: '2026-06-25T00:00:00.000Z',
+      stale: false,
+      models: [
+        model('source', 'model-1'),
+        model('source', 'model-2'),
+        model('source', 'model-3'),
+      ],
+    }
 
-  expect(filtered.providerId).toBe('custom')
-  expect(filtered.models.map((entry) => [entry.providerId, entry.id])).toEqual([
-    ['custom', 'model-1'],
-    ['custom', 'model-3'],
-  ])
-  expect(filtered.defaultModelId).toBe('model-3')
-  expect(filtered.warnings).toEqual(['warning'])
-})
+    const filtered = applyModelPolicy(list, 'custom', {
+      include: ['model-1', 'model-2', 'model-3'],
+      exclude: ['model-2'],
+      default: 'model-3',
+    })
 
-function model(providerId: string, id: string): ProviderModelList['models'][number] {
+    expect(filtered.providerId).toBe('custom')
+    expect(
+      filtered.models.map((entry) => [entry.providerId, entry.id])
+    ).toEqual(
+      [
+        ['custom', 'model-1'],
+        ['custom', 'model-3'],
+      ]
+    )
+    expect(filtered.defaultModelId).toBe('model-3')
+    expect(filtered.warnings).toEqual(['warning'])
+  }
+)
+
+function model(
+  providerId: string,
+  id: string
+): ProviderModelList['models'][number] {
   return {
     providerId,
     id,

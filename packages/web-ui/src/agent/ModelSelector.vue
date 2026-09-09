@@ -26,7 +26,14 @@ const emit = defineEmits<{
   changeServiceTier: [serviceTierId: string | null]
 }>()
 
-const selected = computed(() => resolveSelectedModel(props.providers, props.models, props.selectedProviderId, props.selectedModelId))
+const selected = computed(
+  () => resolveSelectedModel(
+    props.providers,
+    props.models,
+    props.selectedProviderId,
+    props.selectedModelId
+  )
+)
 const fast = computed(() => isFastMode(selected.value?.model, props.serviceTierId))
 // The chip names the reasoning level beside the model, quieter than the name, so the
 // current effort is visible without opening the menu.
@@ -47,9 +54,20 @@ const reasoningLabel = computed(() => {
       <span class="inline-flex min-w-0 items-center gap-1">
         <!-- The name sits a step above the chip's tone and the level a step below it, so the
              two stay two steps apart whether the chip is subtle (closed) or body (open). -->
-        <span class="truncate" :class="isOpen ? 'text-fg-body' : 'text-fg-muted'">{{ selected.model.name }}</span>
-        <span v-if="reasoningLabel" class="shrink-0" :class="isOpen ? 'text-fg-subtle' : 'text-fg-faint'">{{ reasoningLabel }}</span>
-        <Zap v-if="fast" :size="ICON_PX.in28" class="shrink-0" />
+        <span
+          class="truncate"
+          :class="isOpen ? 'text-fg-body' : 'text-fg-muted'"
+        >{{ selected.model.name }}</span>
+        <span
+          v-if="reasoningLabel"
+          class="shrink-0"
+          :class="isOpen ? 'text-fg-subtle' : 'text-fg-faint'"
+        >{{ reasoningLabel }}</span>
+        <Zap
+          v-if="fast"
+          :size="ICON_PX.in28"
+          class="shrink-0"
+        />
       </span>
     </template>
     <template #content>

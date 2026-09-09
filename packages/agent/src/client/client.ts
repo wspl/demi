@@ -1,8 +1,17 @@
-import type { Block, PendingSteer, SessionPhase, UserContentBlock } from '@demicodes/core'
+import type {
+  Block,
+  PendingSteer,
+  SessionPhase,
+  UserContentBlock
+} from '@demicodes/core'
 import { pendingSteersFrameSchema } from '../protocol/schemas'
 import { applyTranscriptPatches } from '../transcript/patch'
 import type { ProviderSelection } from '@demicodes/provider'
-import type { ClientFrame, ClientSessionEvent, ServerFrame } from '../protocol/frames'
+import type {
+  ClientFrame,
+  ClientSessionEvent,
+  ServerFrame
+} from '../protocol/frames'
 import type { AgentClientTransport } from '../protocol/transport'
 import type { AbortResult, AgentMetadata, ModelSwitchApply } from '../types'
 import { ProviderStreamError } from '../session/provider-stream-error'
@@ -55,20 +64,35 @@ export class AgentClient {
   // sessionId is the conversation's stable, caller-owned id: reconnecting with
   // the same id resumes that conversation. Required so a session is never
   // silently un-resumable.
-  open(provider: ProviderSelection, cwd: string, sessionId: string): Promise<void> {
+  open(
+    provider: ProviderSelection,
+    cwd: string,
+    sessionId: string
+  ): Promise<void> {
     const wait = this.waitForFrame('opened')
     this.sendFrame({ type: 'open', provider, cwd, sessionId })
     return wait
   }
 
-  sendMessage(content: UserContentBlock[], options: AgentActionOptions = {}): Promise<void> {
+  sendMessage(
+    content: UserContentBlock[],
+    options: AgentActionOptions = {}
+  ): Promise<void> {
     const messageId = globalThis.crypto.randomUUID()
     const wait = this.waitForAction('send', messageId)
-    this.sendFrame({ type: 'send', messageId, content, metadata: options.metadata })
+    this.sendFrame({
+      type: 'send',
+      messageId,
+      content,
+      metadata: options.metadata
+    })
     return wait
   }
 
-  send(content: UserContentBlock[], options: AgentActionOptions = {}): Promise<void> {
+  send(
+    content: UserContentBlock[],
+    options: AgentActionOptions = {}
+  ): Promise<void> {
     return this.sendMessage(content, options)
   }
 
@@ -83,7 +107,10 @@ export class AgentClient {
     this.sendFrame({ type: 'send_queued_message', messageId })
   }
 
-  steerQueuedMessage(messageId: string, options: { steerId?: string } = {}): Promise<void> {
+  steerQueuedMessage(
+    messageId: string,
+    options: { steerId?: string } = {}
+  ): Promise<void> {
     const steerId = options.steerId ?? globalThis.crypto.randomUUID()
     const wait = this.waitForSteer(steerId)
     this.sendFrame({ type: 'steer_queued_message', messageId, steerId })
@@ -101,7 +128,10 @@ export class AgentClient {
     }
   }
 
-  steer(content: UserContentBlock[], options: { steerId?: string } = {}): Promise<void> {
+  steer(
+    content: UserContentBlock[],
+    options: { steerId?: string } = {}
+  ): Promise<void> {
     const steerId = options.steerId ?? globalThis.crypto.randomUUID()
     const wait = this.waitForSteer(steerId)
     this.sendFrame({ type: 'steer', steerId, content })
@@ -113,19 +143,26 @@ export class AgentClient {
   }
 
   /**
-   * Switches the provider/model for an open session. Fire-and-forget: the server records
+   * Switches the provider/model for an open session. Fire-and-forget: the
+   * server records
    * the switch and applies it per `options.apply` — 'next_turn' (default) waits for the
-   * next queued action, so a running turn finishes on the old model; 'immediate' applies
-   * at the next inference boundary, so mid-turn the very next sampling/tool continuation
+   * next queued action, so a running turn finishes on the old model;
+   * 'immediate' applies
+   * at the next inference boundary, so mid-turn the very next sampling/tool
+   * continuation
    * already runs on the new model.
    */
-  setProvider(provider: ProviderSelection, options: { apply?: ModelSwitchApply } = {}): void {
+  setProvider(
+    provider: ProviderSelection,
+    options: { apply?: ModelSwitchApply } = {}
+  ): void {
     this.sendFrame({ type: 'set_provider', provider, apply: options.apply })
   }
 
   /**
    * Discards the whole latest turn and runs it again from the user's input —
-   * "regenerate". NOT a recovery path: it drops text the turn already emitted and
+   * "regenerate". NOT a recovery path: it drops text the turn already emitted
+   * and
    * tool calls it already ran while their effects remain. Use `resume` to finish a
    * turn that failed.
    */
@@ -167,9 +204,18 @@ export class AgentClient {
     this.sendFrame({ type: 'abort_subagents' })
   }
 
-  shellWrite(commandId: string, stdin: string, options: AgentActionOptions = {}): Promise<void> {
+  shellWrite(
+    commandId: string,
+    stdin: string,
+    options: AgentActionOptions = {}
+  ): Promise<void> {
     const wait = this.waitForShellWrite(commandId)
-    this.sendFrame({ type: 'shell_write', commandId, stdin, metadata: options.metadata })
+    this.sendFrame({
+      type: 'shell_write',
+      commandId,
+      stdin,
+      metadata: options.metadata
+    })
     return wait
   }
 
@@ -193,7 +239,10 @@ export class AgentClient {
     return { blocks: [...this.blocks] }
   }
 
-  /** Detached accepted user steers, excluding any already present in the transcript. */
+  /**
+   * Detached accepted user steers, excluding any already present in the
+   * transcript.
+   */
   pendingSteers(): PendingSteer[] {
     return structuredClone(this.pending)
   }
@@ -212,7 +261,8 @@ export class AgentClient {
         this.emit({ type: 'transcript_reset', blocks: this.blocks })
         return
       case 'transcript_patch':
-        if (this.awaitingResync) return
+        if (this.awaitingResync)
+          return
         // Transports are ordered, so a gap means a dropped frame somewhere in
         // the pipeline — fall back to a full transcript reset instead of diverging.
         if (this.revision !== null && frame.revision !== this.revision + 1) {
@@ -223,7 +273,11 @@ export class AgentClient {
         this.revision = frame.revision
         this.blocks = applyTranscriptPatches(this.blocks, frame.patches)
         this.removeMaterializedSteers()
-        this.emit({ type: 'transcript_patch', patches: frame.patches, blocks: this.blocks })
+        this.emit({
+          type: 'transcript_patch',
+          patches: frame.patches,
+          blocks: this.blocks
+        })
         return
       case 'closed':
         this.pending = []
@@ -254,7 +308,8 @@ export class AgentClient {
         this.emit(frame)
         return
       case 'pending_steers':
-        this.pending = structuredClone(pendingSteersFrameSchema.parse(frame).pendingSteers)
+        this.pending = structuredClone(pendingSteersFrameSchema.parse(frame)
+          .pendingSteers)
         this.removeMaterializedSteers(false)
         this.emitPendingSteers()
         return
@@ -274,22 +329,35 @@ export class AgentClient {
         this.emit(frame)
         return
       case 'subagent_transcript_reset':
-        this.emit({ type: 'subagent_transcript_reset', subagentId: frame.subagentId, blocks: frame.blocks })
+        this.emit({
+          type: 'subagent_transcript_reset',
+          subagentId: frame.subagentId,
+          blocks: frame.blocks
+        })
         return
       case 'subagent_transcript_patch':
-        this.emit({ type: 'subagent_transcript_patch', subagentId: frame.subagentId, patches: frame.patches })
+        this.emit({
+          type: 'subagent_transcript_patch',
+          subagentId: frame.subagentId,
+          patches: frame.patches
+        })
         return
         return
       case 'rejected':
         this.emit(frame)
         this.rejectPendingAction(frame.command, new Error(frame.reason))
-        if (frame.command === 'abort') this.rejectAllAbortWaiters(new Error(frame.reason))
+        if (frame.command === 'abort')
+          this.rejectAllAbortWaiters(new Error(frame.reason))
         return
       case 'error':
         this.emit(frame)
         {
           const error = frame.code
-            ? new ProviderStreamError(frame.message, frame.code, frame.diagnostics)
+            ? new ProviderStreamError(
+              frame.message,
+              frame.code,
+              frame.diagnostics
+            )
             : new Error(frame.message)
           this.rejectErroredAction(error)
           this.rejectAllSteerWaiters(error)
@@ -300,19 +368,28 @@ export class AgentClient {
   }
 
   private removeMaterializedSteers(notify = true): void {
-    if (this.pending.length === 0) return
-    const materializedIds = new Set(this.blocks.filter((block) => block.type === 'steer').map((block) => block.id))
+    if (this.pending.length === 0)
+      return
+    const materializedIds = new Set(
+      this.blocks.filter((block) => block.type === 'steer').map((
+        block
+      ) => block.id)
+    )
     const remaining = this.pending.filter((steer) => !materializedIds.has(steer.id))
-    if (remaining.length === this.pending.length) return
+    if (remaining.length === this.pending.length)
+      return
     this.pending = remaining
-    if (notify) this.emitPendingSteers()
+    if (notify)
+      this.emitPendingSteers()
   }
 
   private emitPendingSteers(): void {
     this.emit({ type: 'pending_steers', pendingSteers: this.pendingSteers() })
   }
 
-  private waitForFrame<T extends ClientSessionEvent['type']>(type: T): Promise<void> {
+  private waitForFrame<T extends ClientSessionEvent['type']>(
+    type: T
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const unsubscribe = this.subscribe((event) => {
         if (event.type === type) {
@@ -329,7 +406,10 @@ export class AgentClient {
     })
   }
 
-  private waitForAction(command: ActionCommand, messageId?: string): Promise<void> {
+  private waitForAction(
+    command: ActionCommand,
+    messageId?: string
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       this.pendingActionWaiters.push({
         command,
@@ -347,17 +427,24 @@ export class AgentClient {
     })
   }
 
-  private handleSteerResult(frame: Extract<ServerFrame, { type: 'steer_result' }>): void {
+  private handleSteerResult(
+    frame: Extract<ServerFrame, { type: 'steer_result' }>
+  ): void {
     const waiter = this.pendingSteerWaiters.get(frame.steerId)
-    if (!waiter) return
+    if (!waiter)
+      return
     this.pendingSteerWaiters.delete(frame.steerId)
     if (frame.status === 'accepted') waiter.resolve()
     else waiter.reject(new Error(frame.reason))
   }
 
-  private handleActionPhase(previousPhase: SessionPhase | null, phase: SessionPhase): void {
+  private handleActionPhase(
+    previousPhase: SessionPhase | null,
+    phase: SessionPhase
+  ): void {
     if (phase !== 'idle') {
-      if (previousPhase === 'idle' || previousPhase === null) this.markNextActionActive()
+      if (previousPhase === 'idle' || previousPhase === null)
+        this.markNextActionActive()
       return
     }
     this.resolveActiveAction()
@@ -365,30 +452,39 @@ export class AgentClient {
 
   private markNextActionActive(): void {
     const waiter = this.pendingActionWaiters.find((candidate) => !candidate.sawActivePhase)
-    if (waiter) waiter.sawActivePhase = true
+    if (waiter)
+      waiter.sawActivePhase = true
   }
 
   private resolveActiveAction(): void {
     const waiter = this.pendingActionWaiters.find((candidate) => candidate.sawActivePhase)
-    if (!waiter) return
+    if (!waiter)
+      return
     this.settleActionWaiter(waiter, () => waiter.resolve())
   }
 
   private resolveQueuedSendWaiter(messageId: string): void {
     const waiter = this.pendingActionWaiters.find(
-      (candidate) => candidate.command === 'send' && candidate.messageId === messageId && !candidate.sawActivePhase,
+      (candidate) => candidate.command === 'send'
+        && candidate.messageId === messageId
+        && !candidate.sawActivePhase,
     )
-    if (!waiter) return
+    if (!waiter)
+      return
     this.settleActionWaiter(waiter, () => waiter.resolve())
   }
 
   private moveQueuedSendWaiterToFront(messageId: string): void {
     const waiter = this.pendingActionWaiters.find(
-      (candidate) => candidate.command === 'send' && candidate.messageId === messageId && !candidate.sawActivePhase,
+      (candidate) => candidate.command === 'send'
+        && candidate.messageId === messageId
+        && !candidate.sawActivePhase,
     )
-    if (!waiter) return
+    if (!waiter)
+      return
     const currentIndex = this.pendingActionWaiters.indexOf(waiter)
-    if (currentIndex === -1) return
+    if (currentIndex === -1)
+      return
     this.pendingActionWaiters.splice(currentIndex, 1)
 
     const insertionIndex = this.pendingActionWaiters.findIndex(
@@ -400,9 +496,13 @@ export class AgentClient {
 
   private rejectPendingAction(command: string, error: Error): void {
     const waiter =
-      this.pendingActionWaiters.find((candidate) => candidate.command === command && !candidate.sawActivePhase) ??
+      this.pendingActionWaiters.find(
+        (candidate) => candidate.command === command
+          && !candidate.sawActivePhase
+      ) ??
       this.pendingActionWaiters.find((candidate) => candidate.command === command)
-    if (!waiter) return
+    if (!waiter)
+      return
     this.settleActionWaiter(waiter, () => waiter.reject(error))
   }
 
@@ -433,7 +533,8 @@ export class AgentClient {
 
   private settleActionWaiter(waiter: ActionWaiter, settle: () => void): void {
     const index = this.pendingActionWaiters.indexOf(waiter)
-    if (index === -1) return
+    if (index === -1)
+      return
     this.pendingActionWaiters.splice(index, 1)
     settle()
   }
@@ -452,7 +553,9 @@ export class AgentClient {
           resolve()
           return
         }
-        if (event.type === 'shell_write_result' && event.commandId === commandId) {
+        if (event.type
+          === 'shell_write_result' && event.commandId
+          === commandId) {
           unsubscribe()
           resolve()
           return
@@ -481,7 +584,8 @@ export class AgentClient {
 
   private resolveAbortWaiter(result: AbortResult): void {
     const waiter = this.pendingAbortWaiters.shift()
-    if (!waiter) return
+    if (!waiter)
+      return
     waiter.resolve(result)
   }
 

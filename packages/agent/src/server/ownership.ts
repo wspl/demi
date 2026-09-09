@@ -1,6 +1,9 @@
 import type { LiveSession } from './live-session'
 
-/** What the registry needs from an attached party: the ability to be detached on takeover. */
+/**
+ * What the registry needs from an attached party: the ability to be detached on
+ * takeover.
+ */
 export interface SessionAttachment {
   handleTakeover(): Promise<void>
 }
@@ -16,10 +19,17 @@ export class SessionOwnershipRegistry {
   private readonly live = new Map<string, LiveSession>()
   private readonly attached = new Map<string, SessionAttachment>()
 
-  /** Detaches any other binding from the id and records this one; returns the live session to adopt. */
-  async claim(sessionId: string, binding: SessionAttachment): Promise<LiveSession | null> {
+  /**
+   * Detaches any other binding from the id and records this one; returns the
+   * live session to adopt.
+   */
+  async claim(
+    sessionId: string,
+    binding: SessionAttachment
+  ): Promise<LiveSession | null> {
     const previous = this.attached.get(sessionId)
-    if (previous && previous !== binding) await previous.handleTakeover()
+    if (previous && previous !== binding)
+      await previous.handleTakeover()
     this.attached.set(sessionId, binding)
     return this.live.get(sessionId) ?? null
   }
@@ -33,7 +43,8 @@ export class SessionOwnershipRegistry {
   }
 
   release(sessionId: string, binding: SessionAttachment): void {
-    if (this.attached.get(sessionId) === binding) this.attached.delete(sessionId)
+    if (this.attached.get(sessionId) === binding)
+      this.attached.delete(sessionId)
   }
 
   get(sessionId: string): LiveSession | null {

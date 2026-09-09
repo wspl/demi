@@ -33,7 +33,8 @@ const boundIds = computed(() => [
 ])
 
 function selectMain(id: string) {
-  if (props.mainLocked) return
+  if (props.mainLocked)
+    return
   open.value = false
   emit('switchMain', id)
 }
@@ -55,9 +56,17 @@ function connect() {
 </script>
 
 <template>
-  <Dropdown v-model:open="open" :overlay-store="appOverlayStore" class="min-w-0 [&>div]:min-w-0">
+  <Dropdown
+    v-model:open="open"
+    :overlay-store="appOverlayStore"
+    class="min-w-0 [&>div]:min-w-0"
+  >
     <template #trigger>
-      <Button variant="ghost" class="max-w-full" aria-label="Manage conversation hosts">
+      <Button
+        variant="ghost"
+        class="max-w-full"
+        aria-label="Manage conversation hosts"
+      >
         <component
           :is="mainHost.kind === 'cloud' ? Cloud : Monitor"
           :size="ICON_PX.in28"
@@ -119,7 +128,12 @@ function connect() {
           </MenuItem>
         </MenuGroup>
         <MenuDivider />
-        <MenuItem label="Attach device…" :icon="Plus" has-submenu :disabled="attachmentsLocked">
+        <MenuItem
+          label="Attach device…"
+          :icon="Plus"
+          has-submenu
+          :disabled="attachmentsLocked"
+        >
           <template #submenu>
             <HostPicker
               :devices="devices"
@@ -129,7 +143,11 @@ function connect() {
             />
           </template>
         </MenuItem>
-        <MenuItem label="Connect new device…" :icon="Link" @select="connect" />
+        <MenuItem
+          label="Connect new device…"
+          :icon="Link"
+          @select="connect"
+        />
       </Menu>
     </template>
   </Dropdown>

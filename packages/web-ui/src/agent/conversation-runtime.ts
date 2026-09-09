@@ -46,7 +46,8 @@ export class ConversationRuntime {
 
   async steerQueuedMessage(messageId: string): Promise<void> {
     const queued = this.state.queue.find((message) => message.id === messageId)
-    if (!queued) return
+    if (!queued)
+      return
 
     const steerId = globalThis.crypto.randomUUID()
     const pending = createPendingSteerMessage(steerId, queued.content, this.state.blocks)
@@ -54,13 +55,16 @@ export class ConversationRuntime {
     this.state.pendingSteers = [...this.state.pendingSteers, pending]
     try {
       const client = await this.ensureOpen()
-      if (this.canceledPendingSteers.has(steerId)) return
+      if (this.canceledPendingSteers.has(steerId))
+        return
       this.state.isResultSeen = true
       await client.steerQueuedMessage(messageId, { steerId })
-      if (this.canceledPendingSteers.has(steerId)) client.cancelPendingSteer(steerId)
+      if (this.canceledPendingSteers.has(steerId))
+        client.cancelPendingSteer(steerId)
     } catch (error) {
       this.removePendingSteer(pending.id)
-      if (this.canceledPendingSteers.has(steerId)) return
+      if (this.canceledPendingSteers.has(steerId))
+        return
       throw error
     } finally {
       this.activePendingSteerRequests.delete(steerId)
@@ -77,13 +81,16 @@ export class ConversationRuntime {
     this.state.pendingSteers = [...this.state.pendingSteers, pending]
     try {
       const client = await this.ensureOpen()
-      if (this.canceledPendingSteers.has(steerId)) return
+      if (this.canceledPendingSteers.has(steerId))
+        return
       this.state.isResultSeen = true
       await client.steer(content, { steerId })
-      if (this.canceledPendingSteers.has(steerId)) client.cancelPendingSteer(steerId)
+      if (this.canceledPendingSteers.has(steerId))
+        client.cancelPendingSteer(steerId)
     } catch (error) {
       this.removePendingSteer(pending.id)
-      if (this.canceledPendingSteers.has(steerId)) return
+      if (this.canceledPendingSteers.has(steerId))
+        return
       throw error
     } finally {
       this.activePendingSteerRequests.delete(steerId)
@@ -97,13 +104,15 @@ export class ConversationRuntime {
     this.canceledPendingSteers.add(id)
     this.removePendingSteer(id)
     this.client?.cancelPendingSteer(id)
-    if (!this.activePendingSteerRequests.has(id)) this.canceledPendingSteers.delete(id)
+    if (!this.activePendingSteerRequests.has(id))
+      this.canceledPendingSteers.delete(id)
   }
 
   /** Stops the running turn and sends the pending steer as the next user turn instead. */
   async interruptPendingSteer(id: string): Promise<void> {
     const pending = this.state.pendingSteers.find((candidate) => candidate.id === id)
-    if (!pending) return
+    if (!pending)
+      return
     this.deletePendingSteer(id)
     await this.abort()
     await this.send(pending.content)
@@ -114,7 +123,8 @@ export class ConversationRuntime {
    * session has not been opened yet, this is a no-op: openSession reads the latest state.model.
    */
   async setModel(): Promise<void> {
-    if (!this.client) return
+    if (!this.client)
+      return
     const intent = this.state.model
     const providerConfig = await this.control.prepareSession({
       providerId: intent.providerId,
@@ -157,7 +167,8 @@ export class ConversationRuntime {
     const client = this.client
     this.client = null
     this.opening = null
-    if (client) await client.close().catch(() => {})
+    if (client)
+      await client.close().catch(() => {})
   }
 
   // Open the connection now (without sending), so a restored conversation
@@ -167,7 +178,8 @@ export class ConversationRuntime {
   }
 
   private ensureOpen(): Promise<AgentClient> {
-    if (this.client) return Promise.resolve(this.client)
+    if (this.client)
+      return Promise.resolve(this.client)
     this.opening ??= this.openSession()
     return this.opening
   }
@@ -198,8 +210,12 @@ export class ConversationRuntime {
       case 'phase':
         this.state.phase = event.phase
         if (event.phase === 'idle' && this.state.pendingSteers.length > 0) {
-          this.state.pendingSteers = reconcilePendingSteers(this.state.blocks, this.state.pendingSteers)
-          if (this.state.pendingSteers.length > 0) this.state.pendingSteers = []
+          this.state.pendingSteers = reconcilePendingSteers(
+            this.state.blocks,
+            this.state.pendingSteers
+          )
+          if (this.state.pendingSteers.length > 0)
+            this.state.pendingSteers = []
         }
         return
       case 'queue':

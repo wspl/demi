@@ -34,8 +34,15 @@ const model = defineModel<T>({ required: true })
       :class="model === option.value ? 'border-accent-fill bg-accent-fill/8' : 'border-line bg-surface-float hover:border-line-strong'"
       @click="model = option.value"
     >
-      <span class="flex items-center gap-2 text-chrome font-medium text-fg-emphasis">
-        <component :is="option.icon" :size="ICON_PX.in28" class="shrink-0" :class="model === option.value ? 'text-accent-fill' : 'text-fg-muted'" />
+      <span
+        class="flex items-center gap-2 text-chrome font-medium text-fg-emphasis"
+      >
+        <component
+          :is="option.icon"
+          :size="ICON_PX.in28"
+          class="shrink-0"
+          :class="model === option.value ? 'text-accent-fill' : 'text-fg-muted'"
+        />
         <span class="choice-card-title truncate">{{ option.label }}</span>
       </span>
       <span class="choice-card-description text-[12px] leading-4 text-fg-muted">{{ option.description }}</span>

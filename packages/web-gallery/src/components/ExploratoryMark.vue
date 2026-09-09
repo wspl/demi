@@ -22,30 +22,95 @@ withDefaults(defineProps<{
     aria-hidden="true"
   >
     <template v-if="kind === 'pulse'">
-      <circle class="mark-pulse-ring" cx="12" cy="12" r="8.25" />
-      <circle class="mark-pulse-core" cx="12" cy="12" r="3.25" />
+      <circle
+        class="mark-pulse-ring"
+        cx="12"
+        cy="12"
+        r="8.25"
+      />
+      <circle
+        class="mark-pulse-core"
+        cx="12"
+        cy="12"
+        r="3.25"
+      />
     </template>
     <template v-else-if="kind === 'dots'">
-      <circle class="mark-dot mark-dot-a" cx="6" cy="12" r="1.7" />
-      <circle class="mark-dot mark-dot-b" cx="12" cy="12" r="1.7" />
-      <circle class="mark-dot mark-dot-c" cx="18" cy="12" r="1.7" />
+      <circle
+        class="mark-dot mark-dot-a"
+        cx="6"
+        cy="12"
+        r="1.7"
+      />
+      <circle
+        class="mark-dot mark-dot-b"
+        cx="12"
+        cy="12"
+        r="1.7"
+      />
+      <circle
+        class="mark-dot mark-dot-c"
+        cx="18"
+        cy="12"
+        r="1.7"
+      />
     </template>
     <template v-else-if="kind === 'signal'">
-      <circle class="mark-signal mark-signal-a" cx="12" cy="12" r="3" />
-      <circle class="mark-signal mark-signal-b" cx="12" cy="12" r="3" />
-      <circle class="mark-signal-core" cx="12" cy="12" r="1.4" />
+      <circle
+        class="mark-signal mark-signal-a"
+        cx="12"
+        cy="12"
+        r="3"
+      />
+      <circle
+        class="mark-signal mark-signal-b"
+        cx="12"
+        cy="12"
+        r="3"
+      />
+      <circle
+        class="mark-signal-core"
+        cx="12"
+        cy="12"
+        r="1.4"
+      />
     </template>
     <template v-else-if="kind === 'orbit'">
-      <circle class="mark-track" cx="12" cy="12" r="8.25" />
-      <circle class="mark-orbit-dot mark-spin" cx="12" cy="3.75" r="1.7" />
+      <circle
+        class="mark-track"
+        cx="12"
+        cy="12"
+        r="8.25"
+      />
+      <circle
+        class="mark-orbit-dot mark-spin"
+        cx="12"
+        cy="3.75"
+        r="1.7"
+      />
     </template>
     <template v-else>
       <!-- A tilted ring seen from the side: the group turns at one speed, each dot only breathes
            in size and opacity as its angle carries it to the front (bottom) and the back (top). -->
       <g class="mark-cluster-ring">
-        <circle class="mark-cluster-dot mark-cluster-a" cx="12" cy="18" r="2.6" />
-        <circle class="mark-cluster-dot mark-cluster-b" cx="17.2" cy="9" r="2.6" />
-        <circle class="mark-cluster-dot mark-cluster-c" cx="6.8" cy="9" r="2.6" />
+        <circle
+          class="mark-cluster-dot mark-cluster-a"
+          cx="12"
+          cy="18"
+          r="2.6"
+        />
+        <circle
+          class="mark-cluster-dot mark-cluster-b"
+          cx="17.2"
+          cy="9"
+          r="2.6"
+        />
+        <circle
+          class="mark-cluster-dot mark-cluster-c"
+          cx="6.8"
+          cy="9"
+          r="2.6"
+        />
       </g>
     </template>
   </svg>
@@ -90,8 +155,12 @@ withDefaults(defineProps<{
 }
 
 /* Each dot is at the front one third of a turn after the previous one. */
-.mark-cluster-b { animation-delay: -2s; }
-.mark-cluster-c { animation-delay: -1s; }
+.mark-cluster-b {
+  animation-delay: -2s;
+}
+.mark-cluster-c {
+  animation-delay: -1s;
+}
 
 .mark-pulse-core,
 .mark-dot,
@@ -109,8 +178,12 @@ withDefaults(defineProps<{
   animation: mark-dot 1.2s ease-in-out infinite;
 }
 
-.mark-dot-b { animation-delay: 0.15s; }
-.mark-dot-c { animation-delay: 0.3s; }
+.mark-dot-b {
+  animation-delay: 0.15s;
+}
+.mark-dot-c {
+  animation-delay: 0.3s;
+}
 
 .mark-signal {
   stroke-linecap: round;
@@ -119,7 +192,9 @@ withDefaults(defineProps<{
   animation: mark-signal 1.6s ease-out infinite;
 }
 
-.mark-signal-b { animation-delay: 0.55s; }
+.mark-signal-b {
+  animation-delay: 0.55s;
+}
 
 .mark-signal-core {
   animation: mark-pulse 1.6s ease-in-out infinite;
@@ -161,8 +236,12 @@ withDefaults(defineProps<{
 }
 
 @keyframes mark-dot {
-  0%, 80%, 100% { opacity: 0.28; }
-  40% { opacity: 1; }
+  0%, 80%, 100% {
+    opacity: 0.28;
+  }
+  40% {
+    opacity: 1;
+  }
 }
 
 @keyframes mark-signal {

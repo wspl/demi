@@ -27,7 +27,10 @@ test('StubProvider yields scripted events across turns', async () => {
   // turn 1
   const out1: ProviderEvent[] = []
   for await (const e of provider.run(makeRequest([]))) out1.push(e)
-  expect(out1).toEqual([events.text('hello'), events.response({ outputTokens: 5 })])
+  expect(out1).toEqual([
+    events.text('hello'),
+    events.response({ outputTokens: 5 })
+  ])
 
   // turn 2
   const out2: ProviderEvent[] = []
@@ -35,39 +38,50 @@ test('StubProvider yields scripted events across turns', async () => {
   expect(out2).toEqual([events.text('world'), events.response()])
 })
 
-test('StubProvider supports tool-call round-trip with function scripts', async () => {
-  const provider = new StubProvider([
-    // turn 1: model requests a tool call
-    [events.toolCall('t1', 'shell_exec', { script: 'echo hi' }), events.response()],
-    // turn 2: function inspects the incoming items (should contain tool_result)
-    (req) => {
-      const hasToolResult = req.items.some((i) => i.type === 'tool_result')
-      if (!hasToolResult) throw new Error('expected tool_result in items')
-      return [events.text(`tool said: result`), events.response()]
-    },
-  ])
-
-  // turn 1: provider requests tool
-  const out1: ProviderEvent[] = []
-  for await (const e of provider.run(makeRequest([]))) out1.push(e)
-  expect(out1[0]).toEqual(events.toolCall('t1', 'shell_exec', { script: 'echo hi' }))
-
-  // AgentSession would execute tool, then call run again with tool_result
-  const out2: ProviderEvent[] = []
-  for await (const e of provider.run(
-    makeRequest([
-      {
-        type: 'tool_result',
-        toolUseId: 't1',
-        output: [{ type: 'text', text: 'hi' }],
-        isError: false,
+test(
+  'StubProvider supports tool-call round-trip with function scripts',
+  async () => {
+    const provider = new StubProvider([
+      // turn 1: model requests a tool call
+      [
+        events.toolCall('t1', 'shell_exec', { script: 'echo hi' }),
+        events.response()
+      ],
+      // turn 2: function inspects the incoming items (should contain tool_result)
+      (req) => {
+        const hasToolResult = req.items.some((i) => i.type === 'tool_result')
+        if (!hasToolResult)
+          throw new Error('expected tool_result in items')
+        return [events.text(`tool said: result`), events.response()]
       },
-    ]),
-  )) {
-    out2.push(e)
+    ])
+
+    // turn 1: provider requests tool
+    const out1: ProviderEvent[] = []
+    for await (const e of provider.run(makeRequest([]))) out1.push(e)
+    expect(out1[0]).toEqual(events.toolCall(
+      't1',
+      'shell_exec',
+      { script: 'echo hi' }
+    ))
+
+    // AgentSession would execute tool, then call run again with tool_result
+    const out2: ProviderEvent[] = []
+    for await (const e of provider.run(
+      makeRequest([
+        {
+          type: 'tool_result',
+          toolUseId: 't1',
+          output: [{ type: 'text', text: 'hi' }],
+          isError: false,
+        },
+      ]),
+    )) {
+      out2.push(e)
+    }
+    expect(out2[0]).toEqual(events.text('tool said: result'))
   }
-  expect(out2[0]).toEqual(events.text('tool said: result'))
-})
+)
 
 test('StubProvider throws when turns run out', async () => {
   const provider = new StubProvider([[events.response()]])
@@ -79,31 +93,34 @@ test('StubProvider throws when turns run out', async () => {
   }).toThrow('ran out of turns')
 })
 
-test('createProviderRun exposes optional steer control without changing stream iteration', async () => {
-  const steers: unknown[] = []
-  const run = createProviderRun([events.text('hello'), events.response()], {
-    steer: (input) => {
-      steers.push(input)
-    },
-  })
+test(
+  'createProviderRun exposes optional steer control without changing stream iteration',
+  async () => {
+    const steers: unknown[] = []
+    const run = createProviderRun([events.text('hello'), events.response()], {
+      steer: (input) => {
+        steers.push(input)
+      },
+    })
 
-  await run.steer?.({
-    id: 'steer-1',
-    sessionId: 'session-1',
-    turnId: 'turn-1',
-    content: [{ type: 'text', text: 'clarify' }],
-  })
-
-  const out: ProviderEvent[] = []
-  for await (const event of run) out.push(event)
-
-  expect(steers).toEqual([
-    {
+    await run.steer?.({
       id: 'steer-1',
       sessionId: 'session-1',
       turnId: 'turn-1',
       content: [{ type: 'text', text: 'clarify' }],
-    },
-  ])
-  expect(out).toEqual([events.text('hello'), events.response()])
-})
+    })
+
+    const out: ProviderEvent[] = []
+    for await (const event of run) out.push(event)
+
+    expect(steers).toEqual([
+      {
+        id: 'steer-1',
+        sessionId: 'session-1',
+        turnId: 'turn-1',
+        content: [{ type: 'text', text: 'clarify' }],
+      },
+    ])
+    expect(out).toEqual([events.text('hello'), events.response()])
+  }
+)

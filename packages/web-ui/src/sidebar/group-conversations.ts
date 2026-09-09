@@ -10,7 +10,8 @@ export function sortConversations(
   conversations: readonly SidebarConversation[],
 ): SidebarConversation[] {
   return [...conversations].sort((a, b) => {
-    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+    if (a.pinned !== b.pinned)
+      return a.pinned ? -1 : 1
     return 0
   })
 }
@@ -19,7 +20,9 @@ export function sortConversations(
 export function plainConversations(
   conversations: readonly SidebarConversation[],
 ): SidebarConversation[] {
-  return sortConversations(conversations.filter((conversation) => conversation.projectId === null))
+  return sortConversations(
+    conversations.filter((conversation) => conversation.projectId === null)
+  )
 }
 
 /**

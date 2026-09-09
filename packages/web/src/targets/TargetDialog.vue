@@ -15,8 +15,25 @@ const conversations = useConversations()
 const current = computed(() => conversations.items.find((c) => c.id === props.conversationId))
 const message = ref('')
 
-const projects = computed(() => resources.projects.map((project) => ({ id: project.id, name: project.name, host: project.host, path: project.path })))
-const devices = computed(() => resources.devices.map((device) => ({ id: device.id, name: device.name, online: device.online })))
+const projects = computed(
+  () => resources.projects.map(
+    (project) => ({
+      id: project.id,
+      name: project.name,
+      host: project.host,
+      path: project.path
+    })
+  )
+)
+const devices = computed(
+  () => resources.devices.map(
+    (device) => ({
+      id: device.id,
+      name: device.name,
+      online: device.online
+    })
+  )
+)
 const deviceById = (id: string) => resources.devices.find((device) => device.id === id) ?? null
 
 function close() {
@@ -25,7 +42,8 @@ function close() {
 }
 
 function select(id: string | null) {
-  if (!current.value) return
+  if (!current.value)
+    return
   conversations.move([current.value.id], id)
   close()
 }
@@ -40,14 +58,19 @@ function create(draft: WorkspaceDraft) {
   const id = crypto.randomUUID()
   resources.projects.push({
     id,
-    name: draft.kind === 'cloud' ? draft.name : baseName(draft.path) || 'Workspace',
+    name: draft.kind === 'cloud'
+      ? draft.name
+      : baseName(draft.path) || 'Workspace',
     deviceId: draft.kind === 'cloud' ? 'cloud' : draft.deviceId,
     host: draft.kind === 'cloud' ? 'Cloud' : device!.name,
     hostKind: draft.kind,
-    path: draft.kind === 'cloud' ? `${CLOUD_HOME}/${draft.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : draft.path,
+    path: draft.kind === 'cloud'
+      ? `${CLOUD_HOME}/${draft.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+      : draft.path,
     branch: null,
   })
-  if (resources.targetMode === 'switch') select(id)
+  if (resources.targetMode === 'switch')
+    select(id)
   else close()
 }
 </script>

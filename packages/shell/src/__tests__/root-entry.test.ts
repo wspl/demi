@@ -5,7 +5,10 @@ import { createLogicalHostCwd, type Host } from '../index'
 
 const shellRootEntry = resolve(import.meta.dir, '../index.ts')
 const forbiddenRuntimePatterns = [
-  ['node builtin import', /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]node:/],
+  [
+    'node builtin import',
+    /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]node:/
+  ],
   ['node builtin require', /\brequire\(\s*['"]node:/],
   ['Buffer global', /\bBuffer\b/],
   ['process env/cwd', /\bprocess\.(?:env|cwd)\b/],
@@ -19,9 +22,12 @@ test('root entry exposes the Host contract and the logical cwd', async () => {
   expect(cwd.path).toBe('/tmp')
 })
 
-test('root entry local static closure does not import Node-only runtime source', async () => {
-  expect(await findNodeRuntimeViolations(shellRootEntry)).toEqual([])
-})
+test(
+  'root entry local static closure does not import Node-only runtime source',
+  async () => {
+    expect(await findNodeRuntimeViolations(shellRootEntry)).toEqual([])
+  }
+)
 
 async function findNodeRuntimeViolations(entry: string): Promise<string[]> {
   const seen = new Set<string>()
@@ -30,12 +36,14 @@ async function findNodeRuntimeViolations(entry: string): Promise<string[]> {
 
   while (pending.length > 0) {
     const file = pending.pop()
-    if (!file || seen.has(file)) continue
+    if (!file || seen.has(file))
+      continue
     seen.add(file)
 
     const source = await readFile(file, 'utf8')
     for (const [label, pattern] of forbiddenRuntimePatterns) {
-      if (pattern.test(source)) violations.push(`${formatPath(file)} contains ${label}`)
+      if (pattern.test(source))
+        violations.push(`${formatPath(file)} contains ${label}`)
     }
 
     for (const specifier of findLocalModuleSpecifiers(source)) {
@@ -52,13 +60,17 @@ function findLocalModuleSpecifiers(source: string): string[] {
   let match = moduleSpecifierPattern.exec(source)
   while (match) {
     const specifier = match[1]
-    if (specifier?.startsWith('.')) specifiers.add(specifier)
+    if (specifier?.startsWith('.'))
+      specifiers.add(specifier)
     match = moduleSpecifierPattern.exec(source)
   }
   return [...specifiers]
 }
 
-async function resolveLocalModule(fromDir: string, specifier: string): Promise<string> {
+async function resolveLocalModule(
+  fromDir: string,
+  specifier: string
+): Promise<string> {
   const base = resolve(fromDir, specifier)
   const candidates = [
     base,
@@ -70,7 +82,8 @@ async function resolveLocalModule(fromDir: string, specifier: string): Promise<s
   ].filter(Boolean)
 
   for (const candidate of candidates) {
-    if (await isFile(candidate)) return candidate
+    if (await isFile(candidate))
+      return candidate
   }
 
   throw new Error(`Unable to resolve ${specifier} from ${formatPath(fromDir)}`)
@@ -85,5 +98,7 @@ async function isFile(path: string): Promise<boolean> {
 }
 
 function formatPath(path: string): string {
-  return path.startsWith(process.cwd()) ? path.slice(process.cwd().length + 1) : path
+  return path.startsWith(process.cwd())
+    ? path.slice(process.cwd().length + 1)
+    : path
 }

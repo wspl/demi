@@ -43,13 +43,19 @@ const emit = defineEmits<{
       <slot name="leading" />
     </div>
     <div class="min-w-0 flex-1 select-none" :class="muted ? 'opacity-60' : ''">
-      <div class="flex min-w-0 flex-nowrap items-center gap-x-2 leading-5" :class="inset ? 'text-[12px] text-fg-body' : 'text-chrome text-fg'">
+      <div
+        class="flex min-w-0 flex-nowrap items-center gap-x-2 leading-5"
+        :class="inset ? 'text-[12px] text-fg-body' : 'text-chrome text-fg'"
+      >
         <span class="min-w-0 truncate">{{ label }}</span>
         <div v-if="$slots.tags" class="flex h-5 shrink-0 items-center gap-1">
           <slot name="tags" />
         </div>
       </div>
-      <div v-if="description || $slots.description" class="mt-0.5 min-w-0 text-[12px] leading-4 text-fg-subtle">
+      <div
+        v-if="description || $slots.description"
+        class="mt-0.5 min-w-0 text-[12px] leading-4 text-fg-subtle"
+      >
         <slot name="description">{{ description }}</slot>
       </div>
       <div v-if="$slots.detail" class="mt-1.5 min-w-0">

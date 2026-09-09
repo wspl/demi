@@ -33,18 +33,32 @@ const emit = defineEmits<{
 const slots = useSlots()
 // Sizing classes belong to the frame; everything else (placeholder rules, maxlength) to the input.
 const attrs = useAttrs()
-const frameAttrs = computed(() => ({ class: attrs['class'], style: attrs['style'] }))
-const inputAttrs = computed(() => Object.fromEntries(Object.entries(attrs).filter(([key]) => key !== 'class' && key !== 'style')))
+const frameAttrs = computed(() => ({
+  class: attrs['class'],
+  style: attrs['style']
+}))
+const inputAttrs = computed(
+  () => Object.fromEntries(
+    Object.entries(attrs).filter(([
+      key
+    ]) => key !== 'class' && key !== 'style')
+  )
+)
 const inputRef = ref<HTMLInputElement>()
 const isFocused = ref(false)
 
 onMounted(() => {
-  if (props.focused) inputRef.value?.focus()
+  if (props.focused)
+    inputRef.value?.focus()
 })
 
 defineExpose({
-  focus() { inputRef.value?.focus() },
-  select() { inputRef.value?.select() },
+  focus() {
+    inputRef.value?.focus()
+  },
+  select() {
+    inputRef.value?.select()
+  },
   el: inputRef,
 })
 </script>
@@ -61,7 +75,11 @@ defineExpose({
     :data-bare="bare ? true : undefined"
     @click="inputRef?.focus()"
   >
-    <div v-if="slots['prefix']" class="flex shrink-0 items-center text-fg-subtle" :class="bare ? '' : 'pl-2'">
+    <div
+      v-if="slots['prefix']"
+      class="flex shrink-0 items-center text-fg-subtle"
+      :class="bare ? '' : 'pl-2'"
+    >
       <slot name="prefix" />
     </div>
     <input
@@ -77,7 +95,13 @@ defineExpose({
       @blur="isFocused = false"
     />
     <div v-if="secret" class="flex shrink-0 items-center pr-1">
-      <IconButton :icon="revealed ? EyeOff : Eye" variant="ghost" size="xs" :aria-label="revealed ? 'Hide' : 'Show'" @click.stop="revealed = !revealed" />
+      <IconButton
+        :icon="revealed ? EyeOff : Eye"
+        variant="ghost"
+        size="xs"
+        :aria-label="revealed ? 'Hide' : 'Show'"
+        @click.stop="revealed = !revealed"
+      />
     </div>
     <div v-if="slots['suffix']" class="flex shrink-0 items-center pr-2">
       <slot name="suffix" />

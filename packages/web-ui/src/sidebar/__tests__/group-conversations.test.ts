@@ -45,7 +45,10 @@ test('conversation activity and pinning never reorder projects, including empty 
 })
 
 test('conversation order is stable across activity and pinned rows retain their manual order', () => {
-  const items: SidebarConversation[] = ['first', 'second', 'third', 'fourth'].map((id, index) => ({
+  const items: SidebarConversation[] = ['first', 'second', 'third', 'fourth'].map((
+    id,
+    index
+  ) => ({
     id,
     title: id,
     projectId: null,

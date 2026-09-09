@@ -17,12 +17,38 @@ const model: ModelInfo = {
 
 test('the Fast tier is the one the provider flagged, whatever it is called', () => {
   expect(fastServiceTier(model)?.id).toBe('priority')
-  expect(fastServiceTier({ ...model, serviceTiers: [{ id: 'turbo', label: 'Fastest available', fast: true }] })?.id).toBe('turbo')
+  expect(fastServiceTier(
+      {
+        ...model,
+        serviceTiers: [
+          {
+            id: 'turbo',
+            label: 'Fastest available',
+            fast: true
+          }
+        ]
+      }
+    )?.id).toBe(
+    'turbo'
+  )
 })
 
 test('a model without a Fast tier has no Fast Mode', () => {
   expect(fastServiceTier({ ...model, serviceTiers: null })).toBeNull()
-  expect(fastServiceTier({ ...model, serviceTiers: [{ id: 'flex', label: 'Flex', fast: false }] })).toBeNull()
+  expect(
+    fastServiceTier(
+      {
+        ...model,
+        serviceTiers: [
+          {
+            id: 'flex',
+            label: 'Flex',
+            fast: false
+          }
+        ]
+      }
+    )
+  ).toBeNull()
   expect(isFastMode({ ...model, serviceTiers: null }, 'priority')).toBe(false)
 })
 

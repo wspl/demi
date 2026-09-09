@@ -12,7 +12,9 @@ export class SerialQueue {
 
   run<T>(operation: () => Promise<T>): Promise<T> {
     this.pending += 1
-    const next = this.tail.then(operation).finally(() => { this.pending -= 1 })
+    const next = this.tail.then(operation).finally(() => {
+      this.pending -= 1
+    })
     this.tail = next.catch(noop)
     return next
   }
@@ -29,7 +31,10 @@ export interface Deferred<T> {
   reject(reason?: unknown): void
 }
 
-/** Creates a promise whose `resolve`/`reject` are exposed for external settlement. */
+/**
+ * Creates a promise whose `resolve`/`reject` are exposed for external
+ * settlement.
+ */
 export function deferred<T = void>(): Deferred<T> {
   let resolve!: Deferred<T>['resolve']
   let reject!: Deferred<T>['reject']
@@ -47,7 +52,8 @@ export function deferred<T = void>(): Deferred<T> {
  */
 export function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    if (signal?.aborted) return resolve()
+    if (signal?.aborted)
+      return resolve()
     const timer = setTimeout(() => {
       signal?.removeEventListener('abort', onAbort)
       resolve()
@@ -67,7 +73,10 @@ export function delay(ms: number, signal?: AbortSignal): Promise<void> {
 export async function waitFor(
   predicate: () => boolean,
   describe?: () => string,
-  options: { timeoutMs?: number; intervalMs?: number } = {},
+  options: {
+    timeoutMs?: number;
+    intervalMs?: number
+  } = {},
 ): Promise<void> {
   const timeoutMs = options.timeoutMs ?? 1_000
   const intervalMs = options.intervalMs ?? 1
@@ -75,14 +84,23 @@ export async function waitFor(
   while (!predicate()) {
     if (Date.now() - startedAt > timeoutMs) {
       const detail = describe?.().trim()
-      throw new Error(`Timed out waiting for condition${detail ? `: ${detail}` : ''}`)
+      throw new Error(
+        `Timed out waiting for condition${detail ? `: ${detail}` : ''}`
+      )
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
 }
 
-/** Rejects with `Error(message)` if `promise` does not settle within `ms` milliseconds. */
-export function withTimeout<T>(promise: Promise<T>, ms: number, message = `Timed out after ${ms}ms`): Promise<T> {
+/**
+ * Rejects with `Error(message)` if `promise` does not settle within `ms`
+ * milliseconds.
+ */
+export function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message = `Timed out after ${ms}ms`
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), ms)
     promise.then(

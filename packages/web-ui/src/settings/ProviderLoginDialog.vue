@@ -19,19 +19,36 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
  */
 export type ProviderLoginPhase =
   | { kind: 'starting' }
-  | { kind: 'device'; url: string; code: string; expiresIn: string }
-  | { kind: 'code-input'; url: string }
+  | {
+    kind: 'device';
+    url: string;
+    code: string;
+    expiresIn: string
+  }
+  | {
+    kind: 'code-input';
+    url: string
+  }
   | {
       kind: 'token'
       /** The command that prints the token, run in the user's own terminal. */
       command: string
       /** Where to get the CLI when it is missing. */
-      install: { label: string; url: string }
+      install: {
+        label: string;
+        url: string
+      }
       /** What a token starts with, so a paste can be checked before it is sent. */
       prefix: string
     }
-  | { kind: 'done'; account: string }
-  | { kind: 'failed'; message: string }
+  | {
+    kind: 'done';
+    account: string
+  }
+  | {
+    kind: 'failed';
+    message: string
+  }
 
 defineProps<{
   isOpen: boolean
@@ -55,7 +72,12 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 </script>
 
 <template>
-  <Dialog :is-open="isOpen" :overlay-store="overlayStore" :label="`Sign in to ${vendorName}`" @close="emit('close')">
+  <Dialog
+    :is-open="isOpen"
+    :overlay-store="overlayStore"
+    :label="`Sign in to ${vendorName}`"
+    @close="emit('close')"
+  >
     <div class="flex flex-col gap-5 p-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Sign in to {{ vendorName }}</h3>
@@ -69,15 +91,27 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
         </p>
       </header>
 
-      <div v-if="phase.kind === 'starting'" class="flex items-center gap-2 py-4 text-chrome text-fg-muted">
+      <div
+        v-if="phase.kind === 'starting'"
+        class="flex items-center gap-2 py-4 text-chrome text-fg-muted"
+      >
         <IndeterminateSpinner :size="ICON_PX.in24" />
         Requesting a sign-in code
       </div>
 
       <div v-else-if="phase.kind === 'device'" class="flex flex-col gap-4">
-        <div class="flex items-center justify-between rounded-xl border border-line bg-surface px-4 py-3">
-          <span class="select-all font-mono text-[22px] tracking-[0.25em] text-fg-emphasis">{{ phase.code }}</span>
-          <IconButton :icon="copied ? Check : Copy" variant="ghost" :aria-label="copied ? 'Copied' : 'Copy code'" @click="copy(phase.code)" />
+        <div
+          class="flex items-center justify-between rounded-xl border border-line bg-surface px-4 py-3"
+        >
+          <span
+            class="select-all font-mono text-[22px] tracking-[0.25em] text-fg-emphasis"
+          >{{ phase.code }}</span>
+          <IconButton
+            :icon="copied ? Check : Copy"
+            variant="ghost"
+            :aria-label="copied ? 'Copied' : 'Copy code'"
+            @click="copy(phase.code)"
+          />
         </div>
         <div class="flex flex-wrap items-center gap-3">
           <Button variant="primary" @click="emit('open', phase.url)">
@@ -97,8 +131,16 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
           <ExternalLink :size="ICON_PX.in24" />
         </Button>
         <div class="flex items-center gap-2">
-          <TextInput v-model="pasted" placeholder="Paste the code here" class="flex-1" />
-          <Button variant="primary" :disabled="!pasted.trim()" @click="emit('submitCode', pasted.trim())">Continue</Button>
+          <TextInput
+            v-model="pasted"
+            placeholder="Paste the code here"
+            class="flex-1"
+          />
+          <Button
+            variant="primary"
+            :disabled="!pasted.trim()"
+            @click="emit('submitCode', pasted.trim())"
+          >Continue</Button>
         </div>
       </div>
 
@@ -126,26 +168,49 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
           <div class="flex min-w-0 flex-1 flex-col gap-1.5">
             <span class="text-chrome text-fg">Paste the token it prints.</span>
             <div class="flex items-center gap-2">
-              <TextInput v-model="token" secret :placeholder="`${phase.prefix}…`" class="flex-1" @keydown.enter="token.trim().startsWith(phase.prefix) && emit('submitToken', token.trim())" />
-              <Button variant="primary" :disabled="!token.trim().startsWith(phase.prefix)" @click="emit('submitToken', token.trim())">Continue</Button>
+              <TextInput
+                v-model="token"
+                secret
+                :placeholder="`${phase.prefix}…`"
+                class="flex-1"
+                @keydown.enter="token.trim().startsWith(phase.prefix) && emit('submitToken', token.trim())"
+              />
+              <Button
+                variant="primary"
+                :disabled="!token.trim().startsWith(phase.prefix)"
+                @click="emit('submitToken', token.trim())"
+              >Continue</Button>
             </div>
-            <span v-if="token.trim() && !token.trim().startsWith(phase.prefix)" class="text-[12px] text-on-danger">A token starts with {{ phase.prefix }}.</span>
+            <span
+              v-if="token.trim() && !token.trim().startsWith(phase.prefix)"
+              class="text-[12px] text-on-danger"
+            >A token starts with {{ phase.prefix }}.</span>
           </div>
         </li>
       </ol>
 
-      <div v-else-if="phase.kind === 'done'" class="flex items-center gap-2 py-2 text-chrome text-fg">
+      <div
+        v-else-if="phase.kind === 'done'"
+        class="flex items-center gap-2 py-2 text-chrome text-fg"
+      >
         <Check :size="ICON_PX.in28" class="text-on-success" />
         {{ phase.account }}
       </div>
 
-      <div v-else class="flex items-start gap-2 rounded-xl bg-tint-danger px-3 py-2 text-[12px] leading-5 text-on-danger">
+      <div
+        v-else
+        class="flex items-start gap-2 rounded-xl bg-tint-danger px-3 py-2 text-[12px] leading-5 text-on-danger"
+      >
         <TriangleAlert :size="ICON_PX.in24" class="mt-0.5 shrink-0" />
         {{ phase.message }}
       </div>
 
       <div class="flex justify-end gap-2">
-        <Button v-if="phase.kind === 'done'" variant="primary" @click="emit('close')">Done</Button>
+        <Button
+          v-if="phase.kind === 'done'"
+          variant="primary"
+          @click="emit('close')"
+        >Done</Button>
         <template v-else>
           <Button @click="emit('close')">Cancel</Button>
           <Button v-if="phase.kind === 'failed'" @click="emit('retry')">Try again</Button>

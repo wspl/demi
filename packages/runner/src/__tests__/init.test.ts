@@ -1,7 +1,19 @@
 import { expect, test } from 'bun:test'
 import { guestBootConfig, parseKernelCmdline } from '../init/cmdline'
-import { BlockVolume, DEFAULT_GROWTH_POLICY, growthWanted, parseDf, reserveBytes } from '../init/volume'
-import { GUEST_LAYOUT, initPlan, resolvConf, runInit, type InitStep } from '../init/plan'
+import {
+  BlockVolume,
+  DEFAULT_GROWTH_POLICY,
+  growthWanted,
+  parseDf,
+  reserveBytes
+} from '../init/volume'
+import {
+  GUEST_LAYOUT,
+  initPlan,
+  resolvConf,
+  runInit,
+  type InitStep
+} from '../init/plan'
 
 // PID 1 without a kernel: the command line, the plan of spawns the boot
 // is, the volume sync and growth decision, each over
@@ -17,90 +29,160 @@ test('the kernel command line: words, key=value pairs, quoted values', () => {
   expect(params.get('x')).toBe('')
 })
 
-test('the guest configuration: backend, token, network; backend or token missing is fatal', () => {
-  const config = guestBootConfig(CMDLINE)
-  expect(config.backendUrl).toBe('https://demi.example.com')
-  expect(config.deviceToken).toBe('tok-123')
-  expect(config.network).toEqual({ address: '172.16.5.2/30', gateway: '172.16.5.1', dns: ['1.1.1.1', '8.8.8.8'] })
-  expect(config.firstBoot).toBe(false)
-  expect(guestBootConfig('demi.backend=http://b demi.token=t').network).toBeNull()
-  expect(guestBootConfig('demi.backend=http://b demi.token=t demi.firstboot=1').firstBoot).toBe(true)
-  expect(() => guestBootConfig('demi.token=t')).toThrow('demi.backend')
-  expect(() => guestBootConfig('demi.backend=http://b')).toThrow('demi.token')
-  expect(resolvConf(config.network!)).toBe('nameserver 1.1.1.1\nnameserver 8.8.8.8\n')
-})
-
-test('the plan: kernel filesystems, the upper pivoted over /, the home, the network — in that order', () => {
-  const plan = initPlan(GUEST_LAYOUT, guestBootConfig(CMDLINE).network)
-  const lines = plan.map((step) => `${step.command} ${step.args.join(' ')}`)
-  const at = (needle: string) => lines.findIndex((line) => line.includes(needle))
-  expect(lines[0]).toBe('mount -t proc proc /proc')
-  expect(lines).toContain('mount -t ext4 /dev/vdc /run/upper')
-  expect(at('-t overlay')).toBeGreaterThan(at('-t ext4 /dev/vdc /run/upper'))
-  expect(at('pivot_root /run/newroot /run/newroot/oldroot')).toBeGreaterThan(at('--move /proc /run/newroot/proc'))
-  // /run holds the new root: it cannot move into it; a fresh one follows the pivot.
-  expect(lines.some((line) => line.includes('--move /run'))).toBe(false)
-  expect(lines[at('pivot_root') + 1]).toBe('mount -t tmpfs run /run')
-  expect(at('-t ext4 /dev/vdb /home')).toBeGreaterThan(at('pivot_root'))
-  expect(at('resize2fs /dev/vdb')).toBe(at('-t ext4 /dev/vdb /home') + 1)
-  expect(at('ip addr add 172.16.5.2/30 dev eth0')).toBeGreaterThan(at('-t ext4'))
-  expect(lines[lines.length - 1]).toBe('ip route add default via 172.16.5.1 dev eth0')
-  expect(lines).toContain('hostname demi')
-  expect(plan.filter((step) => step.tolerated).map((step) => step.args.join(' '))).toEqual(['/dev/vdb', 'demi'])
-})
-
-test('runInit stops at the first fatal failure and skips a tolerated one', async () => {
-  const ran: string[] = []
-  const logged: string[] = []
-  const runner = (failing: string) => async (command: string, args: string[]) => {
-    ran.push(`${command} ${args.join(' ')}`)
-    return args.join(' ') === failing ? { code: 32, stderr: 'mount: unknown filesystem\n' } : { code: 0, stderr: '' }
+test(
+  'the guest configuration: backend, token, network; backend or token missing is fatal',
+  () => {
+    const config = guestBootConfig(CMDLINE)
+    expect(config.backendUrl).toBe('https://demi.example.com')
+    expect(config.deviceToken).toBe('tok-123')
+    expect(config.network).toEqual({
+      address: '172.16.5.2/30',
+      gateway: '172.16.5.1',
+      dns: ['1.1.1.1', '8.8.8.8']
+    })
+    expect(config.firstBoot).toBe(false)
+    expect(
+      guestBootConfig('demi.backend=http://b demi.token=t').network
+    ).toBeNull()
+    expect(
+      guestBootConfig('demi.backend=http://b demi.token=t demi.firstboot=1')
+        .firstBoot
+    ).toBe(true)
+    expect(() => guestBootConfig('demi.token=t')).toThrow('demi.backend')
+    expect(() => guestBootConfig('demi.backend=http://b')).toThrow('demi.token')
+    expect(resolvConf(config.network!))
+      .toBe('nameserver 1.1.1.1\nnameserver 8.8.8.8\n')
   }
-  const plan: InitStep[] = [
-    { command: 'mount', args: ['a'] },
-    { command: 'mount', args: ['b'], tolerated: true },
-    { command: 'mount', args: ['c'] },
-  ]
-  await runInit(plan, runner('b'), (line) => logged.push(line))
-  expect(ran).toEqual(['mount a', 'mount b', 'mount c'])
-  expect(logged).toEqual(['init: mount b exited 32: mount: unknown filesystem'])
-  ran.length = 0
-  await expect(runInit(plan, runner('c'), () => {})).rejects.toThrow('init: mount c exited 32')
-  expect(ran).toEqual(['mount a', 'mount b', 'mount c'])
-})
+)
 
-test('a writable volume syncs its mount and grows when capacity is low', async () => {
-  const ran: string[] = []
-  const io = {
-    run: async (command: string, args: string[]) => {
+test(
+  'the plan: kernel filesystems, the upper pivoted over /, the home, the network — in that order',
+  () => {
+    const plan = initPlan(GUEST_LAYOUT, guestBootConfig(CMDLINE).network)
+    const lines = plan.map((step) => `${step.command} ${step.args.join(' ')}`)
+    const at = (needle: string) => lines.findIndex((line) => line.includes(needle))
+    expect(lines[0]).toBe('mount -t proc proc /proc')
+    expect(lines).toContain('mount -t ext4 /dev/vdc /run/upper')
+    expect(at('-t overlay')).toBeGreaterThan(at('-t ext4 /dev/vdc /run/upper'))
+    expect(at('pivot_root /run/newroot /run/newroot/oldroot'))
+      .toBeGreaterThan(at('--move /proc /run/newroot/proc'))
+    // /run holds the new root: it cannot move into it; a fresh one follows the pivot.
+    expect(lines.some((line) => line.includes('--move /run'))).toBe(false)
+    expect(lines[at('pivot_root') + 1]).toBe('mount -t tmpfs run /run')
+    expect(at('-t ext4 /dev/vdb /home')).toBeGreaterThan(at('pivot_root'))
+    expect(at('resize2fs /dev/vdb')).toBe(at('-t ext4 /dev/vdb /home') + 1)
+    expect(at('ip addr add 172.16.5.2/30 dev eth0'))
+      .toBeGreaterThan(at('-t ext4'))
+    expect(lines[lines.length - 1])
+      .toBe('ip route add default via 172.16.5.1 dev eth0')
+    expect(lines).toContain('hostname demi')
+    expect(
+      plan.filter((step) => step.tolerated).map((step) => step.args.join(' '))
+    ).toEqual(
+      [
+        '/dev/vdb',
+        'demi'
+      ]
+    )
+  }
+)
+
+test(
+  'runInit stops at the first fatal failure and skips a tolerated one',
+  async () => {
+    const ran: string[] = []
+    const logged: string[] = []
+    const runner = (failing: string) => async (command: string, args: string[]) => {
       ran.push(`${command} ${args.join(' ')}`)
-      return { code: 0, stdout: new TextEncoder().encode(command === 'df' ? `Filesystem 1-blocks Used Available Capacity Mounted on\n/dev/vdb ${1024 ** 3} 0 ${available} 0% /home\n` : '') }
-    },
+      return args.join(' ') === failing ? {
+        code: 32,
+        stderr: 'mount: unknown filesystem\n'
+      } : {
+        code: 0,
+        stderr: ''
+      }
+    }
+    const plan: InitStep[] = [
+      { command: 'mount', args: ['a'] },
+      { command: 'mount', args: ['b'], tolerated: true },
+      { command: 'mount', args: ['c'] },
+    ]
+    await runInit(plan, runner('b'), (line) => logged.push(line))
+    expect(ran).toEqual(['mount a', 'mount b', 'mount c'])
+    expect(logged)
+      .toEqual(['init: mount b exited 32: mount: unknown filesystem'])
+    ran.length = 0
+    await expect(runInit(plan, runner('c'), () => {}))
+      .rejects.toThrow('init: mount c exited 32')
+    expect(ran).toEqual(['mount a', 'mount b', 'mount c'])
   }
-  let available = 900 * 1024 ** 2
-  const home = new BlockVolume(io, '/dev/vdb', '/home')
-  await home.sync()
-  expect(ran).toEqual(['sync -f /home'])
-  await home.sync()
+)
 
-  expect(await home.wanted()).toBeNull()
-  available = 100 * 1024 ** 2
-  expect(await home.wanted()).toBe(2 * 1024 ** 3)
-  await home.grown(2 * 1024 ** 3)
-  expect(ran[ran.length - 1]).toBe('resize2fs /dev/vdb')
-})
+test(
+  'a writable volume syncs its mount and grows when capacity is low',
+  async () => {
+    const ran: string[] = []
+    const io = {
+      run: async (command: string, args: string[]) => {
+        ran.push(`${command} ${args.join(' ')}`)
+        return {
+          code: 0,
+          stdout: new TextEncoder().encode(command === 'df'
+            ? `Filesystem 1-blocks Used Available Capacity Mounted on\n/dev/vdb ${1024 ** 3} 0 ${available} 0% /home\n`
+            : '')
+        }
+      },
+    }
+    let available = 900 * 1024 ** 2
+    const home = new BlockVolume(io, '/dev/vdb', '/home')
+    await home.sync()
+    expect(ran).toEqual(['sync -f /home'])
+    await home.sync()
+
+    expect(await home.wanted()).toBeNull()
+    available = 100 * 1024 ** 2
+    expect(await home.wanted()).toBe(2 * 1024 ** 3)
+    await home.grown(2 * 1024 ** 3)
+    expect(ran[ran.length - 1]).toBe('resize2fs /dev/vdb')
+  }
+)
 
 test('df parsing and the growth reserve', () => {
-  expect(parseDf('Filesystem 1-blocks Used Available Capacity Mounted on\n/dev/vdb 1000 400 600 40% /home\n')).toEqual({ totalBytes: 1000, availableBytes: 600 })
+  expect(
+    parseDf(
+      'Filesystem 1-blocks Used Available Capacity Mounted on\n/dev/vdb 1000 400 600 40% /home\n'
+    )
+  ).toEqual(
+    {
+      totalBytes: 1000,
+      availableBytes: 600
+    }
+  )
   expect(parseDf('garbage')).toBeNull()
   // A tenth of a large image is more than the fixed reserve; the fixed reserve rules a small one.
   const large = 100 * 1024 ** 3
-  expect(growthWanted({ totalBytes: large, availableBytes: 11 * 1024 ** 3 })).toBeNull()
-  expect(growthWanted({ totalBytes: large, availableBytes: 9 * 1024 ** 3 })).toBe(2 * large)
-  expect(growthWanted({ totalBytes: 1024 ** 3, availableBytes: DEFAULT_GROWTH_POLICY.reserveBytes })).toBeNull()
-  expect(growthWanted({ totalBytes: 1024 ** 3, availableBytes: DEFAULT_GROWTH_POLICY.reserveBytes - 1 })).toBe(2 * 1024 ** 3)
+  expect(
+    growthWanted({ totalBytes: large, availableBytes: 11 * 1024 ** 3 })
+  ).toBeNull()
+  expect(
+    growthWanted({ totalBytes: large, availableBytes: 9 * 1024 ** 3 })
+  ).toBe(2 * large)
+  expect(growthWanted({
+    totalBytes: 1024 ** 3,
+    availableBytes: DEFAULT_GROWTH_POLICY.reserveBytes
+  })).toBeNull()
+  expect(growthWanted({
+    totalBytes: 1024 ** 3,
+    availableBytes: DEFAULT_GROWTH_POLICY.reserveBytes - 1
+  })).toBe(2 * 1024 ** 3)
   // A small filesystem keeps a quarter, not 256 MB: an empty 64 MB home does not grow at once.
   expect(reserveBytes(64 * 1024 ** 2)).toBe(16 * 1024 ** 2)
-  expect(growthWanted({ totalBytes: 64 * 1024 ** 2, availableBytes: 55 * 1024 ** 2 })).toBeNull()
-  expect(growthWanted({ totalBytes: 64 * 1024 ** 2, availableBytes: 5 * 1024 ** 2 })).toBe(128 * 1024 ** 2)
+  expect(growthWanted({
+    totalBytes: 64 * 1024 ** 2,
+    availableBytes: 55 * 1024 ** 2
+  })).toBeNull()
+  expect(growthWanted({
+    totalBytes: 64 * 1024 ** 2,
+    availableBytes: 5 * 1024 ** 2
+  })).toBe(128 * 1024 ** 2)
 })
