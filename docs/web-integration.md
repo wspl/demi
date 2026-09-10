@@ -45,13 +45,17 @@ a later model failure exposes Retry without duplicating the accepted user messag
 The visible Retry/Resume recovery action calls `resume`, preserving completed
 tool effects rather than regenerating the latest turn.
 
-`web-ui/agent/MessageEditDialog.vue` edits the complete submitted content,
-including multiple text parts and retained attachments. `message-editing.ts`
-owns the editing, sending and uncertain-confirmation phases. The product stores
-that draft separately from the composer in per-user IndexedDB and hydrates media
-references through authenticated blob requests before submission. Closing the
-dialog retains the draft; Cancel discards an unsubmitted edit. A reload restores
-an interrupted submission as uncertain and Retry reuses its operation ID.
+`web-ui/agent/SessionComposer.vue` switches the existing composer into message
+editing. It displays every original text part and attachment while
+`MessageEditRegion.vue` makes the target message and its suffix translucent and
+inert to mouse and keyboard interaction. The × beside the send button or Escape exits editing
+and restores the unrelated composer draft. Enter saves and resends; Shift+Enter
+inserts a newline and IME composition never submits. `message-editing.ts` owns the
+editing, sending and uncertain-confirmation phases. The product stores the edit
+separately in per-user IndexedDB and hydrates media references through
+authenticated blob requests before submission. Saving locks the edit; uncertain
+confirmation keeps it immutable until Retry resolves the original operation ID.
+A reload restores an interrupted submission as uncertain.
 `AgentClient.editAndSend` waits for the correlated acceptance frame. The backend
 commits the retained prefix and replacement before publishing it, then starts
 inference with an independent provider runtime. See
