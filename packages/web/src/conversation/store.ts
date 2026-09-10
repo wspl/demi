@@ -514,7 +514,7 @@ export const useConversations = defineStore('conversations', () => {
     }
     const controller = new AbortController()
     activeController = controller
-    conversation.load = conversation.blocks.length ? 'reconnecting' : 'loading'
+    conversation.load = 'loading'
     try {
       await restoreDraft(conversation, controller.signal)
       if (conversation.persistence !== 'synced') {
@@ -537,7 +537,6 @@ export const useConversations = defineStore('conversations', () => {
         ...agent,
         endedAt: agent.endedAt ?? undefined,
       }))
-      conversation.load = 'ready'
       updateLiveStatus(conversation)
       const pick = composerModel(
         resources.providerInfos,
@@ -546,6 +545,7 @@ export const useConversations = defineStore('conversations', () => {
         conversation.model.modelId,
       )
       if (conversation.archived || pick.kind !== 'ready') {
+        conversation.load = 'ready'
         return
       }
       const runtime = new ConversationRuntime({
