@@ -13,6 +13,7 @@ import {
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import type {
   CommandIO,
+  CommandStorage,
   Host,
   HostFileSystem,
   HostIdentity,
@@ -113,6 +114,7 @@ export interface RpcExecution {
   conversationId: string
   host: Host
   env: Readonly<Record<string, string>>
+  commandStorage?: CommandStorage
 }
 
 export type RpcRelayHandler = (
@@ -599,7 +601,7 @@ export class RunnerRegistry {
         throw new Error('rpc identity does not match the dispatched job')
       }
       const conversationId = this.conversationOfHost.get(host)!
-      return { conversationId, host, env }
+      return { conversationId, host, env, commandStorage: host.jobCommandStorage(call.jobId) }
     }
     throw new Error('rpc requires a live job dispatched to this device')
   }

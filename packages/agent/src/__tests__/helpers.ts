@@ -1,3 +1,4 @@
+import { CommandStateHistory, emptyCommandState } from '../store/command-state'
 import { expect } from 'bun:test'
 import type { Block, ModelSelection, UserContentBlock } from '@demicodes/core'
 import type {
@@ -66,6 +67,7 @@ export function createSession(
       cwd: '/workspace',
       runtime,
       transcript,
+      commandState: commandStateFor(transcript?.blocks ?? []),
     },
     {
       idFactory: () => `id-${++id}`,
@@ -92,6 +94,7 @@ export function makeTranscript(): TranscriptLog {
  * and materializes a full checkpoint per save into `snapshots`, so tests can
  * assert either the row deltas (`saves`) or the resulting state.
  */
+
 export class MemorySessionStore<State> implements AgentSessionStore<State> {
   readonly saves: Array<AgentSessionPersistUpdate<State>> = []
   readonly snapshots: Array<AgentSessionCheckpoint<State>> = []
@@ -116,6 +119,7 @@ export class MemorySessionStore<State> implements AgentSessionStore<State> {
     }
     this.snapshots.push({
       transcript: { blocks },
+      commandState: structuredClone(update.commandState ?? this.snapshots.at(-1)?.commandState ?? emptyCommandState()),
       state: structuredClone(update.state),
       phase: update.phase,
       queue: structuredClone(update.queue),
@@ -231,4 +235,19 @@ type TurnScript = TurnOutput | ((request: InferenceRequest) => TurnOutput)
 function isAsyncIterable(value: unknown): value is AsyncIterable<ProviderEvent> {
   return value !== null && typeof value === 'object'
     && Symbol.asyncIterator in value
+}
+
+
+/** Explicit V0 cutoffs for synthetic histories that never ran commands. */
+export function commandStateFor(blocks: readonly Block[]) {
+  const history = new CommandStateHistory()
+  for (const block of blocks) {
+    history.capture(block.id, 'after_block')
+    if (block.type === 'user') {
+      history.capture(block.id, 'before_user')
+    } else if (block.type === 'text' && block.forkable) {
+      history.capture(block.id, 'after_assistant')
+    }
+  }
+  return history.snapshot()
 }

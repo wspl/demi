@@ -358,7 +358,9 @@ export type Block =
       id: string;
       createdAt: string;
       model: ModelSelection;
-      text: string
+      text: string;
+      /** The agent recorded a completed, replay-safe Fork boundary. */
+      forkable?: true
     }
   | {
       type: 'tool_call'

@@ -175,6 +175,7 @@ CREATE TABLE nodes (
   failure       TEXT,
   delivered     INTEGER NOT NULL DEFAULT 0,
   state_json    TEXT NOT NULL,
+  command_revision INTEGER NOT NULL DEFAULT 0 CHECK (command_revision >= 0),
   output_revision INTEGER NOT NULL DEFAULT 0,
   block_count   INTEGER NOT NULL
 );
@@ -185,6 +186,22 @@ CREATE TABLE blocks (
   idx        INTEGER NOT NULL,
   block_json TEXT NOT NULL,
   PRIMARY KEY (node_id, idx)
+);
+
+CREATE TABLE command_snapshots (
+  node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL CHECK (revision >= 0),
+  values_json TEXT NOT NULL,
+  PRIMARY KEY (node_id, revision)
+);
+
+CREATE TABLE session_boundaries (
+  node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  block_id TEXT NOT NULL,
+  edge TEXT NOT NULL CHECK (edge IN ('before_user', 'after_assistant', 'after_block')),
+  command_revision INTEGER NOT NULL,
+  PRIMARY KEY (node_id, block_id, edge),
+  FOREIGN KEY (node_id, command_revision) REFERENCES command_snapshots(node_id, revision)
 );
 
 CREATE TABLE host_store (

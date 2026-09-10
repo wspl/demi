@@ -226,7 +226,7 @@ async function runOnHost(
   conversationId: string,
   target: ReachableHost,
   script: string,
-  ctx: Pick<CommandRunContext, 'io' | 'stdin' | 'env' | 'stdinStream' | 'signal'>,
+  ctx: Pick<CommandRunContext, 'io' | 'stdin' | 'env' | 'stdinStream' | 'signal' | 'storage'>,
 ): Promise<{ exitCode: number }> {
   const device = await deps.control.getDevice(target.deviceId)
   const release = device?.kind === 'managed' &&
@@ -254,6 +254,7 @@ async function runOnHost(
       script,
       cwd: target.path,
       env,
+      commandStorage: ctx.storage,
       ...(stdin ? { stdin: stdin.ref() } : {}),
       stdout: stdout.ref()
     })

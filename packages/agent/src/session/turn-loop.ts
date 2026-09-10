@@ -96,6 +96,8 @@ export interface ProviderTurnLoopHost<State> {
    * caller acts on it.
    */
   persistNow(): Promise<void>
+  completeAssistantText(blockId: string): Promise<void>
+  restoreCommandState(cut: number): Promise<void>
   emit(event: SessionEvent): void
   materializeSteersArrivedSince(continuationCount: number): Promise<boolean>
   materializePendingSteers(): Promise<boolean>
@@ -254,8 +256,7 @@ export class ProviderTurnLoop<State> {
             policy,
             errorEvent.code
           )) {
-            if (this.host.transcript.truncateFrom(attemptStart))
-              await this.host.commitTranscript()
+            await this.host.restoreCommandState(attemptStart)
             return {
               type: 'retry',
               attempt,
@@ -283,6 +284,11 @@ export class ProviderTurnLoop<State> {
         if (event.type === 'response' && this.isUsageNearLimit(event.usage)) {
           shouldAutoRecover = true
         }
+      }
+      const tail = this.host.transcript.blocks.at(-1)
+      if (tail?.type === 'text') {
+        await this.host.completeAssistantText(tail.id)
+        await this.host.commitTranscript()
       }
     } finally {
       if (this.host.getActiveProviderRun() === run)
@@ -461,6 +467,12 @@ export class ProviderTurnLoop<State> {
   }
 
   private async applyProviderEvent(event: ProviderEvent): Promise<void> {
+    const previous = this.host.transcript.blocks.at(-1)
+    if (previous?.type === 'text' && event.type !== 'text_delta'
+      && event.type !== 'thinking_signature' && event.type !== 'error'
+      && event.type !== 'abort') {
+      await this.host.completeAssistantText(previous.id)
+    }
     const block = this.host.transcript.applyProviderEvent(
       this.host.model,
       event
