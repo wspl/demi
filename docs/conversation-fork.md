@@ -19,6 +19,8 @@ Proposed defaults, awaiting product confirmation:
 - Open the destination after creation. It starts idle with an empty composer and
   does not call a model until the user sends a message.
 - Inherit the source's current model configuration and workspace/device selection.
+- Restore command state, including todos, at the selected message's boundary
+  according to [Command Storage History](command-storage-history.md).
 - Keep the source's unsent composer draft in the source.
 - Leave the destination unpinned and unarchived, with a new creation time.
 - Each explicit Fork appends the suffix literally, including when the source
@@ -52,7 +54,8 @@ command for this product action.
 
 The proposed server API has two responsibilities: prepare an owned fork seed
 from a source and initialize a destination root from that seed. The seed contains
-the retained transcript, restored harness state and selected model configuration;
+the retained transcript, restored harness state, command-state snapshots and
+boundary references, and selected model configuration;
 it contains no source runtime or persistence handle. Final API names are an
 implementation detail.
 
@@ -72,6 +75,11 @@ calls in the prefix. An unavailable or unfinished target produces an explicit
 error; the server must not silently substitute another message or repair an
 invalid prefix. Handling response metadata adjoining the selected text belongs
 to this selector and must be covered by replay tests.
+
+The command-state version is the one bound to the selected assistant message's
+completion, not the source's current version. Retained history carries the
+versions needed for further Fork or editing in the destination. The framework
+restores this storage independently of the harness's state restoration hook.
 
 The destination starts with `phase: idle`, an empty queue and a new root identity.
 It has no inherited wakeup, pending steer, edit receipt, child lifecycle or running
@@ -119,19 +127,19 @@ These choices require product confirmation before implementation:
    so sharing its source directory requires an explicit target representation;
    merely copying the Cloud selection produces a different directory. An
    independent filesystem snapshot or Git worktree is a separate behavior.
-2. **Command storage.** Coding todos live in per-node `CommandStorage`, not in
-   `CodingState` or versioned transcript snapshots. They cannot be reconstructed
-   at an arbitrary historical message from the current storage value. Recommended
-   initial scope is fresh command storage; copying current todos would be a
-   separate, explicitly current-state copy.
-3. **Subagent history.** Recommended initial scope retains child results already
+2. **Subagent history.** Recommended initial scope retains child results already
    present in the root transcript, without copying the child tree. Child IDs in
    copied historical output do not identify resumable agents in the destination.
+
+Versioned command storage is a prerequisite of this Fork design. Its snapshot,
+message-boundary and atomic restore contracts are defined in
+[Command Storage History](command-storage-history.md).
 
 ## Implementation checks
 
 - Exact retained history and model replay for an early, middle and latest text
-  cutoff, with tool results, media, compaction and harness state snapshots.
+  cutoff, with tool results, media, compaction, harness state snapshots and
+  command-state versions.
 - Fork from a completed message while the source streams, runs tools or receives
   a child completion; the source keeps running and subsequent changes do not
   enter the fork.
