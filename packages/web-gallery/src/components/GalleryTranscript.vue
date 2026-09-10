@@ -15,6 +15,7 @@ const props = defineProps<{
   activity?: ActivitySlotState | null
   editable?: boolean
   editTargetId?: string
+  forkable?: boolean
 }>()
 const mutedIds = computed(() => messageEditSuffixIds(props.blocks, props.editTargetId))
 const editableUserId = computed(() => lastEditableUserMessageId(props.blocks))
@@ -25,6 +26,7 @@ const emit = defineEmits<{
   deleteQueued: [id: string]
   sendQueued: [id: string]
   editUser: [blockId: string]
+  fork: [blockId: string]
 }>()
 
 function isThinkingStreaming(blocks: readonly MessageListBlock[], index: number): boolean {
@@ -61,6 +63,8 @@ function thinkingEndedAt(blocks: readonly MessageListBlock[], index: number): st
       :is-text-streaming="isTextStreaming(blocks, index)"
       :thinking-ended-at="thinkingEndedAt(blocks, index)"
       :editable="editable && block.id === editableUserId"
+      :forkable="forkable && !editTargetId"
+      @fork="emit('fork', $event)"
       @delete-pending-steer="emit('deletePendingSteer', $event)"
       @interrupt-pending-steer="emit('interruptPendingSteer', $event)"
       @delete-queued="emit('deleteQueued', $event)"
