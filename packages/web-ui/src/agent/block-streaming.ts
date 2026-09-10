@@ -26,5 +26,7 @@ export function isTextBlockStreaming(
   phase: SessionPhase,
   index: number
 ): boolean {
-  return isTailBlockOfType(blocks, phase, index, 'text')
+  const block = blocks[index]
+  return block?.type === 'text' && !block.forkable
+    && isTailBlockOfType(blocks, phase, index, 'text')
 }

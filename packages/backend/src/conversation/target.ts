@@ -97,7 +97,8 @@ export class ConversationTargets {
       await managedHosts.ensureRunning(device)
     }
     const path = target.kind === 'cloud'
-      ? cloudSessionDirectory(id, registry.deviceIdentity(device.id)?.homeDir)
+      ? (conversation.target.kind === 'cloud' ? conversation.target.path : undefined)
+        ?? cloudSessionDirectory(id, registry.deviceIdentity(device.id)?.homeDir)
       : target.path
     const host = registry.hostFor(
       { deviceId: device.id, path },

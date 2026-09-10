@@ -51,7 +51,7 @@ export const workspaceSchema = z.object({
   createdAt: z.string(),
 })
 export const targetSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('cloud') }),
+  z.object({ kind: z.literal('cloud'), path: z.string().startsWith('/').optional() }),
   z.object({
     kind: z.literal('device'),
     deviceId: z.string().min(1),

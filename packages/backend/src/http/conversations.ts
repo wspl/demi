@@ -14,6 +14,7 @@ import { type ControlService } from '../storage/control'
 import type { RunnerRegistry } from '../runner/registry'
 import { resolveExecutionTarget } from '../conversation/execution-target'
 import type { ConversationStores } from '../storage/conversation-store'
+import { ForkRefused, type ConversationForks } from '../conversation/fork'
 
 const attachBodySchema = z.object({ deviceId: z.string().min(1) })
 const renameHostBodySchema = z.object({ name: z.string().trim().min(1).max(64) })
@@ -22,6 +23,7 @@ const renameHostBodySchema = z.object({ name: z.string().trim().min(1).max(64) }
 export function conversationRoutes(options: {
   admitFrame: (id: string) => (() => void) | null
   updates: ConversationUpdates
+  forks: ConversationForks
   agentServer: AgentServer
   control: ControlService
   conversationStores: ConversationStores
@@ -81,7 +83,7 @@ export function conversationRoutes(options: {
     }
     const userId = c.get('user').id
     const existing = await control.getConversation(parsed.data.id)
-    if (existing && existing.userId !== userId) {
+    if ((existing && existing.userId !== userId) || await control.getConversationFork(parsed.data.id)) {
       return c.json(
         { code: 'id_unavailable', message: 'Conversation id is unavailable' },
         409,
@@ -91,6 +93,27 @@ export function conversationRoutes(options: {
       { conversation: await control.createConversation(userId, parsed.data) },
       existing ? 200 : 201,
     )
+  })
+
+  // Fork copies a snapshot and does not enter source mutation or activity admission.
+  app.post('/:id/fork', async (c) => {
+    const parsed = z.strictObject({ id: z.uuid(), blockId: z.string().min(1) })
+      .safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) {
+      return c.json({ code: 'invalid_request', message: 'Expected a destination UUID and assistant blockId' }, 400)
+    }
+    try {
+      const result = await options.forks.create(
+        c.get('user').id, c.req.param('id'), parsed.data.id, parsed.data.blockId,
+      )
+      return c.json({ conversation: conversationSummary(result.conversation, conversationStores, options.agentServer), model: result.model },
+        result.created ? 201 : 200)
+    } catch (error) {
+      if (error instanceof ForkRefused) {
+        return c.json({ code: error.code, message: error.message }, error.status)
+      }
+      throw error
+    }
   })
 
   app.post('/batch', async (c) => {

@@ -161,9 +161,14 @@ users                   id, email(unique, case-insensitive), nickname, password_
 web_sessions            token_hash(sha256 of the cookie token), user_id, expires_at
 conversations           id, user_id, title, archived, target_json,
                         context_version, last_switch_json(NULL), cloud_reset_id(NULL), provider_id, model_id, created_at, updated_at
-                        ← target_json: validated union cloud | device(deviceId, path) | workspace(workspaceId)
+                        ← target_json: validated union cloud(path?) | device(deviceId, path) | workspace(workspaceId)
                         ← cloud resolves the user's unique managed device on demand
+                        ← an explicit cloud path keeps a Fork in the source directory
                         ← each node persists its own observed context revision
+conversation_forks      id, user_id, source_id, block_id, metadata_json
+                        ← reserves one destination UUID per creation attempt
+                        ← validated metadata: title, target, full model selection, creation time, attached hosts
+                        ← published when the destination root has committed and its conversations row exists
 conversation_hosts      conversation_id, device_id, name, cwd, attached_at
                         ← the attached hosts; UNIQUE (conversation_id, name); cwd = where the last shell there ended
 workspaces              id, user_id, device_id, path, name, created_at

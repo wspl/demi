@@ -8,7 +8,7 @@ import {
 } from '@demicodes/agent'
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
-import { delay } from '@demicodes/utils'
+import { delay, waitFor } from '@demicodes/utils'
 import { CLOUD_HOME } from '../../conversation/execution-target'
 import type { TurnScript } from './model'
 export type { TurnScript } from './model'
@@ -62,6 +62,14 @@ export class Driver {
     if (target !== 'cloud')
       await driver.switchTo(target)
     await driver.attach()
+    return driver
+  }
+
+  static async attachExisting(world: World, id: string, target: Target): Promise<Driver> {
+    const driver = new Driver(world, id, target)
+    await driver.attach()
+    world.drivers.push(driver)
+    await waitFor(() => driver.agent.transcriptVersion() !== null)
     return driver
   }
 

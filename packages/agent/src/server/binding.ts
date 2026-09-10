@@ -1,4 +1,5 @@
 import { errorCode, noop } from '@demicodes/utils'
+import { createRootRecord } from '../node/root-record'
 import { providerRuntime, type ProviderSelection } from '@demicodes/provider'
 import type { AgentSession } from '../session/session'
 import { cloneBlocks } from '../transcript/patch'
@@ -7,7 +8,6 @@ import { clientFrameSchema } from '../protocol/schemas'
 import type { AgentServerTransport } from '../protocol/transport'
 import type {
   AgentHarness,
-  AgentNodeRecord,
   AgentTreeStore,
   ModelSwitchApply
 } from '../types'
@@ -343,20 +343,7 @@ export class AgentTransportBindingImpl
       })) ?? null,
       emit: (serverFrame) => live?.sink(serverFrame),
     }
-    const record: AgentNodeRecord = {
-      id: agentSessionId,
-      parentId: null,
-      description: '',
-      profileName: null,
-      metadata: null,
-      spawnedAt: Date.now(),
-      canSpawnSubagents: true,
-      closedPhase: null,
-      closedAt: null,
-      result: null,
-      failure: null,
-      delivered: false,
-    }
+    const record = createRootRecord(agentSessionId)
     const { node, restored } = await assembleNode(this.deps, tree, {
       record,
       cwd: frame.cwd,

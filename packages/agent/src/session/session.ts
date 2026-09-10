@@ -49,6 +49,7 @@ import {
   type EditRequest,
 } from '../protocol/schemas'
 import { editRequestDigest, prepareTranscriptEdit } from './editing'
+import { prepareForkCheckpoint } from './fork'
 import type {
   AgentHarnessRuntime,
   AgentMetadata,
@@ -57,6 +58,7 @@ import type {
   AgentSessionParams,
   AgentSessionRestoreParams,
   AgentSessionStore,
+  AgentSessionCheckpoint,
   AgentTool,
   AgentToolInvokeResult,
   AbortResult,
@@ -818,6 +820,22 @@ export class AgentSession<State> {
 
   commandState(): CommandStateSnapshot {
     return this.commandHistory.snapshot()
+  }
+
+  /** Capture synchronously; reconstruction only sees owned, detached data. */
+  prepareFork(blockId: string): Promise<AgentSessionCheckpoint<State>> {
+    return prepareForkCheckpoint({
+      sourceId: this.agentSessionId,
+      blockId,
+      restoreState: this.runtime.restoreState,
+      checkpoint: {
+        transcript: this.transcriptLog.toJSON(),
+        commandState: this.commandHistory.snapshot(),
+        model: structuredClone(this.pendingModelSwitch?.model ?? this.model),
+        cwd: this.cwd,
+        harnessName: this.runtime.harnessName,
+      },
+    })
   }
 
   private async writeCommandVersion(version: CommandVersion, signal: AbortSignal): Promise<void> {

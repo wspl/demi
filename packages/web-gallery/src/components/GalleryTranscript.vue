@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import MessageEditRegion from '@demicodes/web-ui/agent/MessageEditRegion.vue'
 import { lastEditableUserMessageId, messageEditSuffixIds } from '@demicodes/web-ui/agent/message-editing'
 import type { MessageListBlock } from '@demicodes/web-ui/agent/pending-steers'
+import { useMessageForks, type MessageForkHandler } from '@demicodes/web-ui/agent/message-fork'
 import ActivitySlot from './ActivitySlot.vue'
 import type { ActivitySlotState } from '../turn-flow'
 
@@ -15,8 +16,9 @@ const props = defineProps<{
   activity?: ActivitySlotState | null
   editable?: boolean
   editTargetId?: string
-  forkable?: boolean
+  fork?: MessageForkHandler
 }>()
+const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => 'gallery')
 const mutedIds = computed(() => messageEditSuffixIds(props.blocks, props.editTargetId))
 const editableUserId = computed(() => lastEditableUserMessageId(props.blocks))
 
@@ -26,7 +28,6 @@ const emit = defineEmits<{
   deleteQueued: [id: string]
   sendQueued: [id: string]
   editUser: [blockId: string]
-  fork: [blockId: string]
 }>()
 
 function isThinkingStreaming(blocks: readonly MessageListBlock[], index: number): boolean {
@@ -63,8 +64,8 @@ function thinkingEndedAt(blocks: readonly MessageListBlock[], index: number): st
       :is-text-streaming="isTextStreaming(blocks, index)"
       :thinking-ended-at="thinkingEndedAt(blocks, index)"
       :editable="editable && block.id === editableUserId"
-      :forkable="forkable && !editTargetId"
-      @fork="emit('fork', $event)"
+      :fork="fork ? () => forkMessage(block.id) : undefined"
+      :fork-state="forkStates.get(block.id)"
       @delete-pending-steer="emit('deletePendingSteer', $event)"
       @interrupt-pending-steer="emit('interruptPendingSteer', $event)"
       @delete-queued="emit('deleteQueued', $event)"

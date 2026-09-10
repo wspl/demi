@@ -8,6 +8,7 @@ import { productStateSchema, type BackendConversation } from '../api/contracts'
 const realFetch = globalThis.fetch
 let records: BackendConversation[]
 let rejectCreate: boolean
+let rejectFork: boolean
 let requests: {
   path: string
   body: unknown
@@ -60,6 +61,7 @@ beforeEach(async () => {
   setActivePinia(pinia)
   records = [record('first'), record('second')]
   rejectCreate = false
+  rejectFork = false
   requests = []
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
@@ -73,6 +75,25 @@ beforeEach(async () => {
     }
     if (path.startsWith('/api/models')) {
       return Response.json({ providers: [] })
+    }
+    if (path === '/api/conversations/first/fork') {
+      if (rejectFork) {
+        return Response.json({ code: 'unavailable', message: 'Fork unavailable' }, { status: 503 })
+      }
+      const created = records.find((item) => item.id === body.id) ?? {
+        ...record(body.id), title: 'first (Fork)', providerId: 'stub', modelId: 'model',
+        target: { kind: 'cloud' as const, path: '/home/demi/sessions/first' },
+      }
+      if (!records.includes(created)) records.unshift(created)
+      return Response.json({
+        conversation: created,
+        model: {
+          providerId: 'stub', serviceTierId: 'priority',
+          thinking: { type: 'effort', effort: 'high', summary: null },
+          model: { id: 'model', name: 'Model', contextWindow: 1000,
+            outputLimit: null, inputLimit: null, acceptedExtensions: [], thinking: [] },
+        },
+      }, { status: 201 })
     }
     if (path === '/api/conversations') {
       if (rejectCreate) {
@@ -278,4 +299,34 @@ test('read acknowledgements use the observed revision and wait for history', asy
       value: original,
     })
   }
+})
+
+test('Fork preserves the source draft and opens an independent empty composer with inherited model settings', async () => {
+  const store = useConversations()
+  const source = store.items.find((item) => item.id === 'first')!
+  source.draft = 'Keep this unsent message'
+  source.phase = 'running'
+  const request = { id: crypto.randomUUID(), blockId: 'completed-answer' }
+  expect(await store.fork(source.id, request)).toBe(request.id)
+  const branch = store.items.find((item) => item.id === request.id)!
+  expect(branch.title).toBe('first (Fork)')
+  expect(branch.draft).toBe('')
+  expect(branch.files).toEqual([])
+  expect(branch.model).toEqual({ providerId: 'stub', modelId: 'model', thinkingEffort: 'high', serviceTierId: 'priority' })
+  expect(branch.target).toEqual({ kind: 'cloud', path: '/home/demi/sessions/first' })
+  expect(source.draft).toBe('Keep this unsent message')
+  expect(source.phase).toBe('running')
+})
+
+test('failed Fork creates no local conversation; retry forwards the same destination ID', async () => {
+  const store = useConversations()
+  const request = { id: crypto.randomUUID(), blockId: 'completed-answer' }
+  rejectFork = true
+  await expect(store.fork('first', request)).rejects.toThrow('Fork unavailable')
+  expect(store.items.some((item) => item.id === request.id)).toBe(false)
+  rejectFork = false
+  await store.fork('first', request)
+  expect(requests.filter((item) => item.path.endsWith('/fork')).map((item) => item.body))
+    .toEqual([request, request])
+  expect(store.items.filter((item) => item.id === request.id)).toHaveLength(1)
 })

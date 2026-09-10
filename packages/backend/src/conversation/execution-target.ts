@@ -41,7 +41,7 @@ export async function resolveExecutionTarget(
   return {
     kind: 'cloud',
     deviceId,
-    path: cloudSessionDirectory(
+    path: target.path ?? cloudSessionDirectory(
       conversation.id,
       deviceId ? registry.deviceIdentity(deviceId)?.homeDir : undefined
     )

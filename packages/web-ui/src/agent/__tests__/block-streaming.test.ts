@@ -50,3 +50,10 @@ test('assistant text is live only as the running tail', () => {
   expect(isTextBlockStreaming([text(), thinking()], 'running', 0)).toBe(false)
   expect(isTextBlockStreaming([thinking(), text()], 'running', 1)).toBe(true)
 })
+
+test('a recorded completed text exposes its footer while the source remains running', () => {
+  const block = text()
+  if (block.type !== 'text') throw new Error('Expected text fixture')
+  block.forkable = true
+  expect(isTextBlockStreaming([block], 'running', 0)).toBe(false)
+})

@@ -1,3 +1,4 @@
+import { modelSelectionSchema } from '@demicodes/agent'
 import {
   preferencesSchema,
   patchPreferences,
@@ -238,6 +239,12 @@ export interface ControlService {
     options?: { id?: string; title?: string }
   ): Promise<ConversationRecord>
   getConversation(id: string): Promise<ConversationRecord | null>
+  /** Includes reserved Fork destinations, for internal blob ownership only. */
+  conversationBlobOwner(id: string): Promise<string | null>
+  reserveConversationFork(operation: ConversationForkOperation): Promise<ConversationForkOperation | null>
+  getConversationFork(id: string): Promise<ConversationForkOperation | null>
+  pendingConversationForks(): Promise<ConversationForkOperation[]>
+  publishConversationFork(id: string): Promise<ConversationRecord>
   listConversations(
     userId: string,
     options?: { archived?: boolean }
@@ -374,7 +381,7 @@ export interface UsageRow {
  * schema.
  */
 export const conversationTargetSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('cloud') }).strict(),
+  z.object({ kind: z.literal('cloud'), path: z.string().startsWith('/').optional() }).strict(),
   z.object({
     kind: z.literal('device'),
     deviceId: z.string().min(1),
@@ -386,6 +393,44 @@ export const conversationTargetSchema = z.discriminatedUnion('kind', [
   }).strict(),
 ])
 export type ConversationTargetPointer = z.infer<typeof conversationTargetSchema>
+
+const forkMetadataSchema = z.strictObject({
+  title: z.string().min(1),
+  target: conversationTargetSchema,
+  model: modelSelectionSchema,
+  createdAt: z.string().datetime(),
+  attachedHosts: z.array(z.strictObject({
+    deviceId: z.string().min(1),
+    name: z.string().min(1),
+    cwd: z.string().nullable(),
+  })),
+})
+const conversationForkSchema = forkMetadataSchema.extend({
+  id: z.uuid(),
+  userId: z.string().min(1),
+  sourceId: z.string().min(1),
+  blockId: z.string().min(1),
+})
+export type ConversationForkOperation = z.infer<typeof conversationForkSchema>
+
+interface ConversationForkRow {
+  id: string
+  user_id: string
+  source_id: string
+  block_id: string
+  metadata_json: string
+}
+
+function forkFromRow(row: ConversationForkRow): ConversationForkOperation {
+  return conversationForkSchema.parse({
+    ...forkMetadataSchema.parse(JSON.parse(row.metadata_json)),
+    id: row.id,
+    userId: row.user_id,
+    sourceId: row.source_id,
+    blockId: row.block_id,
+  })
+}
+
 export const executionTargetSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('cloud'),
@@ -1371,6 +1416,9 @@ export class LocalControlService implements ControlService {
       createdAt: now,
       updatedAt: now,
     }
+    if (this.db.get('SELECT id FROM conversation_forks WHERE id = ?', [record.id])) {
+      throw new Error('Conversation id is reserved for Fork')
+    }
     this.db.run(
       'INSERT INTO conversations (id, user_id, title, archived, target_json, provider_id, model_id, created_at, updated_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?)) ON CONFLICT(id) DO NOTHING',
       [
@@ -1396,6 +1444,73 @@ export class LocalControlService implements ControlService {
   async getConversation(id: string): Promise<ConversationRecord | null> {
     const row = this.db.get<ConversationRow>(`${SELECT} WHERE id = ?`, [id])
     return row ? fromRow(row) : null
+  }
+
+  async conversationBlobOwner(id: string): Promise<string | null> {
+    return this.db.get<{ user_id: string }>(
+      'SELECT user_id FROM conversations WHERE id = ? UNION ALL SELECT user_id FROM conversation_forks WHERE id = ? LIMIT 1',
+      [id, id],
+    )?.user_id ?? null
+  }
+
+  async getConversationFork(id: string): Promise<ConversationForkOperation | null> {
+    const row = this.db.get<ConversationForkRow>('SELECT * FROM conversation_forks WHERE id = ?', [id])
+    return row ? forkFromRow(row) : null
+  }
+
+  async reserveConversationFork(input: ConversationForkOperation): Promise<ConversationForkOperation | null> {
+    const operation = conversationForkSchema.parse(input)
+    return this.db.transaction(() => {
+      const existing = this.db.get<ConversationForkRow>('SELECT * FROM conversation_forks WHERE id = ?', [operation.id])
+      if (existing) {
+        return existing.user_id === operation.userId && existing.source_id === operation.sourceId
+          && existing.block_id === operation.blockId ? forkFromRow(existing) : null
+      }
+      if (this.db.get('SELECT id FROM conversations WHERE id = ?', [operation.id])) {
+        return null
+      }
+      const { id, userId, sourceId, blockId, ...metadata } = operation
+      this.db.run(
+        'INSERT INTO conversation_forks (id, user_id, source_id, block_id, metadata_json) VALUES (?, ?, ?, ?, ?)',
+        [id, userId, sourceId, blockId, JSON.stringify(metadata)],
+      )
+      return operation
+    })
+  }
+
+  async pendingConversationForks(): Promise<ConversationForkOperation[]> {
+    return this.db.all<ConversationForkRow>(
+      'SELECT f.* FROM conversation_forks f LEFT JOIN conversations c ON c.id = f.id WHERE c.id IS NULL',
+    ).map(forkFromRow)
+  }
+
+  async publishConversationFork(id: string): Promise<ConversationRecord> {
+    return this.db.transaction(() => {
+      const row = this.db.get<ConversationForkRow>('SELECT * FROM conversation_forks WHERE id = ?', [id])
+      if (!row) {
+        throw new Error('No reserved Fork operation')
+      }
+      const operation = forkFromRow(row)
+      const existing = this.db.get<ConversationRow>(`${SELECT} WHERE id = ?`, [id])
+      if (existing) {
+        if (existing.user_id !== operation.userId) {
+          throw new Error('Fork destination ownership changed')
+        }
+        return fromRow(existing)
+      }
+      this.db.run(
+        'INSERT INTO conversations (id, user_id, title, target_json, provider_id, model_id, created_at, updated_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?))',
+        [id, operation.userId, operation.title, JSON.stringify(operation.target),
+          operation.model.providerId, operation.model.model.id, operation.createdAt, operation.createdAt, operation.userId],
+      )
+      for (const host of operation.attachedHosts) {
+        this.db.run(
+          'INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at) VALUES (?, ?, ?, ?, ?)',
+          [id, host.deviceId, host.name, host.cwd, operation.createdAt],
+        )
+      }
+      return fromRow(this.db.get<ConversationRow>(`${SELECT} WHERE id = ?`, [id])!)
+    })
   }
 
   async listConversations(

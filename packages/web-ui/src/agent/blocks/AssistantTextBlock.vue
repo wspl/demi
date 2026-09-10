@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import AssistantMessageFooter from './AssistantMessageFooter.vue'
+import type { MessageForkState } from '../message-fork'
 
 withDefaults(defineProps<{
   content: string
   createdAt: string
-  forkable?: boolean
+  fork?: () => Promise<void>
+  forkState?: MessageForkState
   isStreaming?: boolean
 }>(), {
   isStreaming: false,
 })
-
-const emit = defineEmits<{ fork: [] }>()
 </script>
 
 <template>
@@ -25,8 +25,8 @@ const emit = defineEmits<{ fork: [] }>()
       v-if="!isStreaming"
       :content="content"
       :created-at="createdAt"
-      :forkable="forkable"
-      @fork="emit('fork')"
+      :fork="fork"
+      :fork-state="forkState"
     />
   </div>
 </template>
