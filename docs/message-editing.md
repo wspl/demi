@@ -59,6 +59,10 @@ remain external state; transcript editing does not undo them.
 
 `web-ui` owns the editor and submission interaction; `web` supplies product state
 and handlers, and `web-gallery` supplies examples of the same components.
+The UI offers editing only on the last explicit user submission. Assistant
+output, hidden inputs, completion messages and steers do not change that target.
+This is a browser presentation rule; the agent API retains its general
+targeted-edit contract.
 `SessionComposer` displays the original content and attachments in the existing
 composer. The target message and subsequent transcript blocks remain visible at
 reduced opacity and cannot receive pointer or keyboard interaction. The × to the

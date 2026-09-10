@@ -3,6 +3,7 @@ import { EditRejectedError, isEditableUserMessage } from '@demicodes/agent/clien
 import type { EditRequest, TranscriptVersion } from '@demicodes/agent/client'
 import type { Block, UserContentBlock } from '@demicodes/core'
 import type { BlobReferenceSource } from './media-source'
+import type { MessageListBlock } from './pending-steers'
 
 export { EditRejectedError } from '@demicodes/agent/client'
 
@@ -46,6 +47,11 @@ export function beginMessageEdit(block: Block, version: TranscriptVersion): Mess
 
 export function editHasContent(state: MessageEditState): boolean {
   return state.request.content.some((part) => part.type !== 'text' || part.text.trim())
+}
+
+/** The browser exposes editing only for the latest explicit user submission. */
+export function lastEditableUserMessageId(blocks: readonly MessageListBlock[]): string | null {
+  return blocks.findLast((block) => block.type === 'user' && isEditableUserMessage(block))?.id ?? null
 }
 
 /** The accepted suffix stays visible but inactive until the edit is resolved. */
