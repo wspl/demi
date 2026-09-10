@@ -16,7 +16,7 @@ import { sessionPaneStatus, sessionShowsReconnectTail, type SessionLoad } from '
 import { COMPOSER_CLEARANCE_PX } from './composer-clearance'
 import { t } from '../infra/i18n'
 import MessageEditRegion from './MessageEditRegion.vue'
-import { messageEditSuffixIds } from './message-editing'
+import { lastEditableUserMessageId, messageEditSuffixIds } from './message-editing'
 
 const props = defineProps<{
   conversationId: string
@@ -50,6 +50,7 @@ const emit = defineEmits<{
 }>()
 
 const visibleTranscriptBlocks = computed(() => getVisibleBlocks(props.blocks))
+const editableUserId = computed(() => lastEditableUserMessageId(props.blocks))
 const renderBlocks = computed<MessageListBlock[]>(() => [
   ...visibleTranscriptBlocks.value,
   ...pendingSteersToRenderBlocks(props.pendingSteers),
@@ -190,7 +191,7 @@ defineExpose({
                 :is-thinking-streaming="isStreamingThinkingAt(item.index)"
                 :is-text-streaming="isStreamingTextAt(item.index)"
                 :thinking-ended-at="thinkingEndedAt(item.index)"
-                :editable="!props.readOnly && phase === 'idle' && !queue.length && !pendingSteers.length"
+                :editable="renderBlocks[item.index]!.id === editableUserId && !props.readOnly && phase === 'idle' && !queue.length && !pendingSteers.length"
                 @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
                 @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
                 @delete-queued="(id) => emit('deleteQueued', id)"

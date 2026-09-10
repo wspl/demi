@@ -46,7 +46,8 @@ The visible Retry/Resume recovery action calls `resume`, preserving completed
 tool effects rather than regenerating the latest turn.
 
 `web-ui/agent/SessionComposer.vue` switches the existing composer into message
-editing. It displays every original text part and attachment while
+editing. Only the last explicit user message exposes an edit action. It displays
+every original text part and attachment while
 `MessageEditRegion.vue` makes the target message and its suffix translucent and
 inert to mouse and keyboard interaction. The × beside the send button or Escape exits editing
 and restores the unrelated composer draft. Enter saves and resends; Shift+Enter

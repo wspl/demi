@@ -27,7 +27,7 @@ import { runningSubagents } from '@demicodes/web-ui/agent/subagents'
 import { useSessionPanels } from '@demicodes/web-ui/agent/useSessionPanels'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
-import { beginMessageEdit, submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
+import { beginMessageEdit, lastEditableUserMessageId, submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
 import type { Block, ThinkingConfig, UserContentBlock } from '@demicodes/core'
 import type { PendingSteerRenderBlock } from '@demicodes/web-ui/agent/pending-steers'
@@ -337,7 +337,8 @@ function sendNow(id: string): void {
 
 function editUser(id: string): void {
   const block = sessionBlocks.value.find((part) => part.id === id)
-  if (!block || block.type !== 'user' || messageEdit.value) {
+  if (!block || block.type !== 'user' || messageEdit.value
+    || id !== lastEditableUserMessageId(sessionBlocks.value)) {
     return
   }
   messageEdit.value = beginMessageEdit(block, { epoch: 'gallery-session', revision: editRevision.value })

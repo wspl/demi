@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { Archive, Play, RotateCcw } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/agent/client'
-import { beginMessageEdit, type MessageEditState } from './message-editing'
+import { beginMessageEdit, lastEditableUserMessageId, type MessageEditState } from './message-editing'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
@@ -70,7 +70,8 @@ const canEdit = computed(() => !!props.editVersion && !props.messageEdit
 
 function editUser(id: string): void {
   const block = props.conversation.blocks.find((item) => item.id === id)
-  if (!block || !props.editVersion || !canEdit.value) {
+  if (!block || !props.editVersion || !canEdit.value
+    || id !== lastEditableUserMessageId(props.conversation.blocks)) {
     return
   }
   emit('update:messageEdit', beginMessageEdit(block, props.editVersion))

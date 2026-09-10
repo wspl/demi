@@ -7,11 +7,30 @@ import {
   changeMessageEditContent,
   EditRejectedError,
   messageEditSuffixIds,
+  lastEditableUserMessageId,
   restoreMessageEdit,
   submitMessageEdit,
   type MessageEditState,
   type MessageEditRequest,
 } from '../message-editing'
+
+test('the UI selects only the last explicit user, ignoring assistant output and internal inputs', () => {
+  const user = (id: string): Block => ({
+    type: 'user', id, turnId: id, content: [{ type: 'text', text: id }],
+  } as Block)
+  const blocks: Block[] = [user('A'), user('B'), user('C')]
+  expect(lastEditableUserMessageId(blocks)).toBe('C')
+  blocks.push(
+    { ...user('hidden'), hidden: true } as Block,
+    { ...user('completion'), turnId: 'subagent:child' } as Block,
+    { type: 'steer', id: 'steer', content: [] } as unknown as Block,
+    { type: 'text', id: 'reply', text: 'answer C' } as Block,
+  )
+  expect(lastEditableUserMessageId(blocks)).toBe('C')
+  expect(lastEditableUserMessageId(blocks.slice(3))).toBeNull()
+  expect(lastEditableUserMessageId([])).toBeNull()
+  expect(lastEditableUserMessageId([user('A'), user('replacement')])).toBe('replacement')
+})
 
 test('only the target and its suffix are muted; an accepted rewrite removes the old cut', () => {
   const blocks = ['A', 'answer-A', 'B', 'answer-B', 'C'].map((id) => ({ id }))
