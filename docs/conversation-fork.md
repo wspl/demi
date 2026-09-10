@@ -2,6 +2,9 @@
 
 Status: design under discussion; implementation has not started.
 
+The [upstream implementation comparison](fork-implementation-comparison.md)
+records source evidence and recommendations separately from this proposal.
+
 ## Product behavior
 
 Confirmed requirements:
