@@ -10,6 +10,7 @@ import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
 import ModelMenu from '@demicodes/web-ui/agent/ModelMenu.vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
+import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import PendingSubmission from '@demicodes/web-ui/agent/PendingSubmission.vue'
 import { RestoreSweep } from '@demicodes/web-ui/agent/session-restore'
 import {
@@ -1050,7 +1051,7 @@ function abortAgents() {
       </GallerySection>
       <GallerySection
         title="Session load"
-        note="History arriving, a dropped socket, and a failed restore. A dropped socket uses the Requesting tail row labeled Connecting. An unconfirmed send keeps its user message and retries with the same ID. New conversation opens a local draft immediately."
+        note="Opening a conversation uses the centered loading pane through history and the initial connection, even with cached messages. A dropped connection in an open session uses the Connecting tail row. An unconfirmed send keeps its user message and retries with the same ID. New conversation opens a local draft immediately."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="unconfirmed send · retry the same message" wide>
@@ -1072,6 +1073,23 @@ function abortAgents() {
           >
             <div class="gallery-frame h-[16rem] bg-surface">
               <SessionStatus kind="loading" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="opening · cached history"
+            wide
+          >
+            <div class="gallery-frame h-[16rem] bg-surface">
+              <AgentMessageList
+                conversation-id="cached-opening"
+                :blocks="sessionBase"
+                :pending-steers="[]"
+                :queue="[]"
+                phase="idle"
+                load="loading"
+                :bottom-offset="0"
+                :persisted-scroll-state="undefined"
+              />
             </div>
           </GallerySpecimen>
           <GallerySpecimen
