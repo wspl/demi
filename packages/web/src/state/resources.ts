@@ -108,19 +108,21 @@ export const useResources = defineStore('resources', () => {
       ),
     ),
   )
-  const providerInfos = computed(() =>
-    (product.snapshot?.providers ?? []).map((provider) => ({
+  function providerInfosFor(conversationId: string | null) {
+    const catalog = product.catalogFor(conversationId)
+    return (product.snapshot?.providers ?? []).map((provider) => ({
       id: provider.id,
       label: provider.label,
       isAvailable:
         !local.value.hiddenProviders.includes(provider.id) &&
-        product.catalog.find((entry) => entry.providerId === provider.id)
+        catalog.find((entry) => entry.providerId === provider.id)
           ?.availability.available === true,
-    })),
-  )
-  const models = computed(() =>
-    Object.fromEntries(
-      product.catalog.map((provider) => [
+    }))
+  }
+
+  function modelsFor(conversationId: string | null) {
+    return Object.fromEntries(
+      product.catalogFor(conversationId).map((provider) => [
         provider.providerId,
         provider.models
           .filter(
@@ -129,8 +131,11 @@ export const useResources = defineStore('resources', () => {
           )
           .map(modelInfo),
       ]),
-    ),
-  )
+    )
+  }
+
+  const providerInfos = computed(() => providerInfosFor(product.activeConversationId))
+  const models = computed(() => modelsFor(product.activeConversationId))
   const vendors = computed(() =>
     (product.vendors?.vendors ?? []).map((vendor) => ({
       id: vendor.id,
@@ -226,6 +231,8 @@ export const useResources = defineStore('resources', () => {
     vendors,
     providerInfos,
     models,
+    providerInfosFor,
+    modelsFor,
     local,
     selectedProviderId,
     providerDetailOpen,

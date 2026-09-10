@@ -33,12 +33,10 @@ export const useProduct = defineStore('product', () => {
       : 'loading'
   })
   const activeConversationId = ref<string | null>(null)
-  const catalog = computed(
-    () =>
-      catalogs.value[activeConversationId.value ?? ''] ??
-      catalogs.value[''] ??
-      [],
-  )
+  function catalogFor(conversationId: string | null) {
+    return catalogs.value[conversationId ?? ''] ?? catalogs.value[''] ?? []
+  }
+  const catalog = computed(() => catalogFor(activeConversationId.value))
   const reads = new SerialQueue()
   const modelRequests = new Map<string, symbol>()
   let vendorRequest: Promise<void> | null = null
@@ -243,6 +241,7 @@ export const useProduct = defineStore('product', () => {
     error,
     catalogs,
     catalog,
+    catalogFor,
     vendors,
     vendorLoad,
     catalogLoad,
