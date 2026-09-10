@@ -160,9 +160,10 @@ cross-fork child-control cases.
 
 ## Recommendations for Demi
 
-These recommendations inform the proposed [Fork design](conversation-fork.md)
-and [Command Storage History](command-storage-history.md). Product decisions
-under discussion remain unconfirmed.
+These recommendations inform the [Fork design](conversation-fork.md) and
+[Command Storage History](command-storage-history.md). General-purpose command
+versioning and subagent non-inheritance are confirmed product decisions. Other
+proposed details remain under discussion.
 
 1. Keep history selection in the agent framework and product creation in the
    backend. Both projects support this division; providers do not need a new
@@ -177,21 +178,13 @@ under discussion remain unconfirmed.
 4. Make child execution ownership mandatory and explicit. Source children keep
    running for the source; copied IDs never authorize controlling them from a
    destination. Enforce this at command dispatch, not only in the interface.
-5. Treat full frozen child history as a separate product capability. A simpler
-   initial Fork can preserve only the child references/results already present
-   in the root transcript and label them as historical, with no active controls
-   or promise to show the child's complete history at that point. If viewing
-   that exact child history is required, the proposed immutable tree snapshots
-   remain necessary. Copying the child's current history when Fork is clicked
-   cannot satisfy that requirement.
+5. Follow Codex's subagent non-inheritance behavior: retain references and results
+   already in the root transcript, and create no child records in the
+   destination. No historical child snapshot, viewing API, special interface or
+   additional Fork-specific model context is part of Demi's design.
 6. Start with independently owned copied history in Demi's existing database
    layout. Codex's bounded references are a possible future optimization after
    lineage retention and deletion semantics are designed.
-
-The largest unresolved scope decision is exact child-history viewing. It should
-not become a prerequisite merely because Fork must isolate live execution.
-Todo restoration and child execution isolation can be specified independently
-of that viewing capability.
 
 [oc-http]: https://github.com/anomalyco/opencode/blob/b7ca4f91d9222dddb8487e689d3274a732999fd9/packages/opencode/src/server/routes/instance/httpapi/handlers/session.ts#L206
 [oc-fork]: https://github.com/anomalyco/opencode/blob/b7ca4f91d9222dddb8487e689d3274a732999fd9/packages/opencode/src/session/session.ts#L691
