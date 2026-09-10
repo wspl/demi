@@ -104,6 +104,35 @@ export class TranscriptLog implements CoreTranscript {
     })
   }
 
+  /** A Fork retains the selected text; response metadata after it is excluded. */
+  throughAssistantMessage(blockId: string): TranscriptLog {
+    const index = this.blocks.findIndex((block) => block.id === blockId)
+    const target = this.blocks[index]
+    if (!target || target.type !== 'text' || !target.forkable) {
+      throw new Error('The Fork target must be a completed assistant message')
+    }
+    const prefix = new TranscriptLog(structuredClone(this.blocks.slice(0, index + 1)))
+    if (prefix.pendingToolCalls().length > 0) {
+      throw new Error('The Fork boundary contains unfinished tool calls')
+    }
+    return prefix
+  }
+
+  /** True only when the text can be retained without unfinished tool calls. */
+  markAssistantForkable(blockId: string): boolean {
+    const index = this.blocks.findIndex((block) => block.id === blockId)
+    const block = this.blocks[index]
+    if (!block || block.type !== 'text' || block.forkable
+      || this.blocks.slice(0, index).some((item) =>
+        item.type === 'tool_call' && item.status === 'executing',
+      )) {
+      return false
+    }
+    block.forkable = true
+    this.recordBlockReplace(index)
+    return true
+  }
+
   /** Publishes a prepared history while preserving this log's revision sequence. */
   replaceAll(blocks: Block[]): void {
     const next = structuredClone(blocks)
@@ -653,7 +682,7 @@ export class TranscriptLog implements CoreTranscript {
 
   private appendText(model: ModelSelection, text: string): Block {
     const previous = this.blocks[this.blocks.length - 1]
-    if (previous?.type === 'text') {
+    if (previous?.type === 'text' && !previous.forkable) {
       previous.text += text
       this.record({
         op: 'append_text',

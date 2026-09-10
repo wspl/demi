@@ -177,7 +177,7 @@ export const pendingSteersFrameSchema = z.object({
   pendingSteers: z.array(pendingSteerSchema),
 })
 
-const portableJsonValueSchema: z.ZodType<PortableJsonValue> = z.lazy(() =>
+export const portableJsonValueSchema: z.ZodType<PortableJsonValue> = z.lazy(() =>
   z.union([
     z.null(),
     z.boolean(),

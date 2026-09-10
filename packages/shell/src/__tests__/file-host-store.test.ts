@@ -2,7 +2,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { AgentSessionCommandStorage, fileHostStore } from '../index'
+import { fileHostStore } from '../index'
 import { LocalHost } from '@demicodes/runner/testing'
 
 const storeAt = (root: string) => fileHostStore(
@@ -31,37 +31,6 @@ test('fileHostStore reads, writes, lists, and deletes JSON files', async () => {
   expect(await store.readJson('nested/todos.json')).toBeNull()
   expect(await store.list('')).toEqual([])
 })
-
-test(
-  'fileHostStore works with agent-session-scoped command storage',
-  async () => {
-    const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
-    const store = storeAt(root)
-    const first = new AgentSessionCommandStorage(store, 'session-a')
-    const second = new AgentSessionCommandStorage(store, 'session-b')
-
-    await first.writeJson('todos.json', [{ text: 'a' }])
-    await second.writeJson('todos.json', [{ text: 'b' }])
-
-    expect(await first.readJson<Array<{ text: string }>>('todos.json')).toEqual(
-      [{
-        text: 'a'
-      }]
-    )
-    expect(
-      await second.readJson<Array<{ text: string }>>('todos.json')
-    ).toEqual(
-      [{
-        text: 'b'
-      }]
-    )
-    expect(await first.list('')).toEqual(['todos.json'])
-    expect(await store.list('')).toEqual([
-      'agent-sessions/session-a/todos.json',
-      'agent-sessions/session-b/todos.json'
-    ])
-  }
-)
 
 test(
   'fileHostStore round-trips Uint8Array values inside stored JSON',

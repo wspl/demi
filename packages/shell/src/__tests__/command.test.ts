@@ -1,3 +1,4 @@
+import { memoryCommandStorage as memoryStorage } from '@demicodes/shell/testing'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 import { bytesStream, deferred, encodeUtf8 } from '@demicodes/utils'
@@ -699,21 +700,6 @@ class MemoryIO implements CommandIO {
   }
 }
 
-function memoryStorage(): CommandStorage {
-  const values = new Map<string, unknown>()
-  return {
-    readJson: async (key) => (values.has(key)
-      ? (values.get(key) as never)
-      : null),
-    writeJson: async (key, value) => {
-      values.set(key, value)
-    },
-    delete: async (key) => {
-      values.delete(key)
-    },
-    list: async (prefix) => [...values.keys()].filter((key) => key.startsWith(prefix)),
-  }
-}
 
 function filerSpecWithListOutput(output: string): Command {
   return {

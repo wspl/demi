@@ -1,3 +1,4 @@
+import type { CommandStorage } from './command'
 // Test helpers for packages exercising the Host contract. Shipped as the
 // `@demicodes/shell/testing` entrypoint, never imported by runtime code:
 // the in-memory store and the conformance suite, runtime-neutral so the
@@ -510,4 +511,36 @@ function stringify(value: unknown): string {
     value,
     (_key, item: unknown) => (typeof item === 'bigint' ? `${item}n` : item)
   ) ?? 'undefined'
+}
+
+
+/** Detached command state for tests without an agent session. */
+export function memoryCommandStorage(): CommandStorage {
+  const values = new Map<string, unknown>()
+  const bind = (signal?: AbortSignal): CommandStorage => ({
+    withSignal: (next) => bind(signal ? AbortSignal.any([signal, next]) : next),
+    readJson: async <T>(key: string) => {
+      signal?.throwIfAborted()
+      return structuredClone(values.get(key) as T ?? null)
+    },
+    writeJson: async (key, value) => {
+      signal?.throwIfAborted()
+      values.set(key, structuredClone(value))
+    },
+    updateJson: async <T>(key: string, update: (current: T | null) => T) => {
+      signal?.throwIfAborted()
+      const next = structuredClone(update(structuredClone(values.get(key) as T ?? null)))
+      values.set(key, next)
+      return structuredClone(next)
+    },
+    delete: async (key) => {
+      signal?.throwIfAborted()
+      values.delete(key)
+    },
+    list: async (prefix) => {
+      signal?.throwIfAborted()
+      return [...values.keys()].filter((key) => key.startsWith(prefix))
+    },
+  })
+  return bind()
 }

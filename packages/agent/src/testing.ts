@@ -1,5 +1,7 @@
+import { stringifyPortableJson } from '@demicodes/utils'
 import type { Block, QueuedMessage } from '@demicodes/core'
 import { completedChildrenCarriedBy } from './store/tree-store'
+import { commandStateSchema, emptyCommandState, type CommandStateSnapshot } from './store/command-state'
 import type {
   AgentMetadata,
   AgentNodeClose,
@@ -12,7 +14,8 @@ import type {
 
 interface StoredNode<State> {
   record: AgentNodeRecord
-  state: Omit<AgentSessionCheckpoint<State>, 'transcript'>
+  state: Omit<AgentSessionCheckpoint<State>, 'transcript' | 'commandState'>
+  commandState: CommandStateSnapshot
   blocks: Map<number, Block>
   blockCount: number
 }
@@ -51,6 +54,7 @@ export class MemoryAgentStore<State = unknown>
     const stored: StoredNode<State> = {
       record: structuredClone(record),
       state: snapshotOf(checkpoint),
+      commandState: commandStateSchema.parse(checkpoint.commandState ?? emptyCommandState()),
       blocks: new Map(),
       blockCount: 0
     }
@@ -60,7 +64,8 @@ export class MemoryAgentStore<State = unknown>
 
   sessionStore(id: string): AgentSessionStore<State> {
     return {
-      save: (update) => {
+      save: (update, options) => {
+        options?.signal?.throwIfAborted()
         this.applySave(id, this.require(id), update)
       },
       load: async () => this.load(id),
@@ -114,6 +119,16 @@ export class MemoryAgentStore<State = unknown>
     stored: StoredNode<State>,
     update: AgentSessionPersistUpdate<State>
   ): void {
+    const commandState = update.commandState ? commandStateSchema.parse(update.commandState) : stored.commandState
+    if (update.commandState) {
+      const previous = new Map(stored.commandState.versions.map((version) => [version.revision, version]))
+      for (const version of commandState.versions) {
+        const existing = previous.get(version.revision)
+        if (existing && stringifyPortableJson(existing.values) !== stringifyPortableJson(version.values)) {
+          throw new Error(`Command-state version ${version.revision} is immutable`)
+        }
+      }
+    }
     this.saves.push({ id, update: structuredClone(update) })
     for (const { index, block } of update.changedBlocks) stored.blocks.set(
       index,
@@ -125,6 +140,7 @@ export class MemoryAgentStore<State = unknown>
     }
     stored.blockCount = update.blockCount
     stored.state = snapshotOf(update)
+    stored.commandState = structuredClone(commandState)
     for (const childId of completedChildrenCarriedBy(update)) {
       const child = this.nodes.get(childId)
       if (child && child.record.parentId === id)
@@ -145,7 +161,7 @@ export class MemoryAgentStore<State = unknown>
         )
       blocks.push(structuredClone(block))
     }
-    return { ...structuredClone(stored.state), transcript: { blocks } }
+    return { ...structuredClone(stored.state), commandState: structuredClone(stored.commandState), transcript: { blocks } }
   }
 
   private require(id: string): StoredNode<State> {
@@ -158,7 +174,7 @@ export class MemoryAgentStore<State = unknown>
 
 function snapshotOf<State>(
   update: AgentSessionPersistUpdate<State>
-): Omit<AgentSessionCheckpoint<State>, 'transcript'> {
+): Omit<AgentSessionCheckpoint<State>, 'transcript' | 'commandState'> {
   return {
     state: structuredClone(update.state),
     phase: update.phase,
