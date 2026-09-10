@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
+import { deferred } from '@demicodes/utils'
+import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { useConversations } from './store'
@@ -266,6 +268,77 @@ test('snapshot refresh preserves live transcript and unsent draft', async () => 
   expect(current.draft).toBe('Still editing')
   expect(current.blocks[0]?.id).toBe('block')
   expect(current.phase).toBe('running')
+})
+
+test('opening cached history uses pane loading until the initial connection finishes', async () => {
+  const store = useConversations()
+  const current = store.items[0]!
+  current.blocks = [{
+    type: 'extension_state_snapshot', id: 'cached', extensionName: 'example',
+    state: {}, createdAt: '2026-09-09T00:00:00.000Z',
+  }]
+  current.load = 'ready'
+  current.draft = 'Keep the draft'
+  useProduct().snapshot!.providers.push({
+    id: 'stub', kind: 'api_key', providerType: 'stub', label: 'Stub',
+    wireApi: null, vendorId: null, baseUrl: null, models: null,
+    keyConfigured: true, details: null,
+  })
+  const historyRequested = deferred<void>()
+  const history = deferred<Response>()
+  const connecting = deferred<void>()
+  const connection = deferred<void>()
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockImplementation(() => {
+    connecting.resolve()
+    return connection.promise
+  })
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) {
+      return Response.json({ providers: [{
+        providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '', stale: false,
+        warnings: [], auth: { status: 'ready' }, runtime: { status: 'ready' },
+        requiresProcessCapableHost: false,
+        availability: { available: true, reason: null, message: null },
+        models: [{
+          id: 'stub', displayName: 'Stub', contextWindow: 1000, outputLimit: null,
+          supportsAttachments: false, supportedThinkingEfforts: [], defaultThinkingEffort: null,
+          selection: {
+            providerId: 'stub', thinking: null,
+            model: { id: 'stub', name: 'Stub', contextWindow: 1000, outputLimit: null,
+              inputLimit: null, thinking: [], acceptedExtensions: [] },
+          },
+        }],
+      }] })
+    }
+    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path.endsWith('/transcript')) {
+      historyRequested.resolve()
+      return history.promise
+    }
+    return originalFetch(input, init)
+  }) as typeof fetch
+  const opening = store.activate(current.id)
+  try {
+    expect(current).toMatchObject({ load: 'loading' })
+    await historyRequested.promise
+    expect(current).toMatchObject({ load: 'loading' })
+    history.resolve(Response.json({ blocks: current.blocks, subagents: [] }))
+    await connecting.promise
+    expect(current).toMatchObject({ load: 'loading' })
+    expect(current.draft).toBe('Keep the draft')
+    connection.reject(new Error('Connection failed'))
+    await opening
+    expect(current).toMatchObject({ load: 'failed' })
+    expect(current.lastError).toBe('Connection failed')
+  } finally {
+    history.resolve(Response.json({ blocks: [], subagents: [] }))
+    connection.resolve()
+    await opening
+    connect.mockRestore()
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('batch partial failure applies only the successful server records', async () => {

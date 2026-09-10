@@ -119,7 +119,12 @@ labels and controls are not selectable; message content, paths and editable
 fields remain selectable. Selected sidebar conversations retain normal weight.
 
 The session pane has one load phase (`ready | loading | reconnecting | failed`).
-Loading history never reads as an empty conversation. A dropped socket keeps a
+Opening or switching to a persisted conversation uses the centered `SessionStatus`
+loading pane, including when messages are cached. `web/conversation/store.ts`
+keeps that phase through history loading and the initial agent connection handshake.
+Archived conversations and conversations without an available model finish loading
+after their history arrives. Loading history never reads as an empty conversation.
+A dropped socket in an already open session keeps a
 cached transcript and shows Connecting as the same tail row as Requesting
 (`LoadingBlock`); without a cache it is that row alone, not a centered pane or
 a bar. A failed restore offers Retry, which sweeps loading then ready. An
