@@ -66,7 +66,9 @@ export function conversationScopedTransport(
   options: ConversationTransportOptions,
 ): AgentServerTransport {
   const { blobs } = options
-  const cwd = options.cwd ?? cloudSessionDirectory(conversation.id)
+  const cwd = options.cwd
+    ?? (conversation.target.kind === 'cloud' ? conversation.target.path : undefined)
+    ?? cloudSessionDirectory(conversation.id)
   // Frame rewrites can await storage (attachment resolution inbound, blob
   // puts outbound); one chain per direction keeps delivery in arrival order.
   const deliveries = new SerialQueue()

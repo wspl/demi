@@ -1,13 +1,13 @@
 # Conversation Fork
 
-Status: design under discussion; implementation has not started.
+Status: final implementation contract.
 
 The [upstream implementation comparison](fork-implementation-comparison.md)
-records source evidence and recommendations separately from this proposal.
+records source evidence and recommendations separately from this design.
 
 ## Product behavior
 
-Confirmed requirements:
+Fork behavior:
 
 - Fork creates a separate persistent conversation.
 - Its title is the source title followed by ` (Fork)`.
@@ -15,11 +15,11 @@ Confirmed requirements:
 - A completed assistant text message is the branch point. Streaming text becomes
   eligible after it finishes.
 - Command storage retains a general-purpose version history, including todo
-  state. Detailed storage contracts remain under discussion.
+  state, under the command-storage history contract.
 - Fork retains subagent references and results already in the root transcript.
   The destination starts with no inherited subagents.
 
-Proposed defaults, awaiting product confirmation:
+Creation defaults:
 
 - Retain history through the selected assistant text, including that text. Later
   messages belong only to the source.
@@ -59,12 +59,11 @@ command for this product action.
 
 ## Framework snapshot
 
-The proposed server API has two responsibilities: prepare an owned fork seed
+The server API has two responsibilities: prepare an owned fork seed
 from a source and initialize a destination root from that seed. The seed contains
 the retained transcript, restored harness state, command-state snapshots and
 boundary references, and selected model configuration;
-it contains no source runtime or persistence handle. Final API names are an
-implementation detail.
+it contains no source runtime or persistence handle. `AgentServer.prepareFork` captures the seed; `initializeFork` persists its new root.
 
 For a live source, capture and deep-copy the selected prefix synchronously before
 awaiting preparation or persistence. For a cold source, read one committed
@@ -80,8 +79,8 @@ It does not replay tools to reconstruct history or copy later state backward.
 The selector must establish a valid replay boundary, including completed tool
 calls in the prefix. An unavailable or unfinished target produces an explicit
 error; the server must not silently substitute another message or repair an
-invalid prefix. Handling response metadata adjoining the selected text belongs
-to this selector and must be covered by replay tests.
+invalid prefix. The prefix ends at the selected text; response usage metadata after it is excluded.
+Provider replay uses the retained user, assistant and tool content normally.
 
 The command-state version is the one bound to the selected assistant message's
 completion, not the source's current version. Retained history carries the
@@ -100,11 +99,18 @@ Those defaults are not the definition of a persistent fork at an earlier message
 
 ## Backend creation and retries
 
-The proposed endpoint is `POST /api/conversations/:sourceId/fork`, with a strict
+The endpoint is `POST /api/conversations/:sourceId/fork`, with a strict
 body containing a client-generated destination UUID and the selected text block
 ID. The server obtains transcript content itself; the browser never uploads a
 replacement history. The server verifies source ownership and destination UUID
 ownership before preparing data.
+
+The response contains the ordinary conversation summary and the complete inherited
+model selection. `web/conversation/store.ts` initializes the destination composer
+with that model's thinking and service-tier settings, then `ChatPage.vue` opens
+the destination if the user is still viewing the source. `web-ui/agent/message-fork.ts`
+keeps the pending state and retry UUID per message above virtualized rows; failures
+appear beside that message's Fork action.
 
 The UUID identifies one creation attempt. Repeating that attempt returns the same
 destination. Reusing the UUID with a different source or cutoff is a conflict.
@@ -116,8 +122,13 @@ Control metadata and conversation history use different SQLite files. The
 coordinator therefore needs a durable creation operation and a publication
 boundary: ordinary listing/opening exposes the destination only after its root
 checkpoint is committed. Recovery completes publication of a committed root;
-failures do not publish an empty or partial conversation. The concrete storage
-record and transaction sequence must be finalized before implementation.
+failures do not publish an empty or partial conversation. `conversation_forks` in the control database reserves the destination UUID, owner,
+source, cutoff and creation metadata. After the destination root commits, a control
+transaction inserts the public conversation and its attached-host metadata.
+Publication is determined by the public conversation row. Startup recovery publishes
+reserved operations whose destination root exists; uncommitted operations remain
+hidden until the same request is retried. Ordinary conversation creation cannot use
+a UUID reserved for Fork.
 
 Attachments retain their original content and timestamps. The backend can reuse
 immutable blobs in the same user's blob namespace while keeping transcript rows
@@ -126,13 +137,15 @@ conversation data.
 
 ## Execution environment and auxiliary state
 
-The working directory requires product confirmation before implementation.
-Recommended behavior is to keep the same effective device and directory,
-sharing files. Workspace targets already express that behavior. A bare Cloud
-target derives its directory from the conversation ID, so sharing its source
-directory requires an explicit target representation; merely copying the Cloud
-selection produces a different directory. An independent filesystem snapshot
-or Git worktree is a separate behavior.
+The destination keeps the source's effective device and directory, sharing files.
+Workspace and device targets retain their selection. A Cloud target stores the
+source's resolved directory in its optional `path` field; an ordinary Cloud target
+without that field uses its own conversation directory. Host resolution respects
+the explicit path after wakeup and restart.
+
+Attached-host names and directories are copied as configuration. Processes,
+shell handles and jobs are not copied. The destination's first ordinary execution
+uses its own node identity and command storage on the shared filesystem.
 
 Versioned command storage is a prerequisite of this Fork design. Its snapshot,
 message-boundary and atomic restore contracts are defined in

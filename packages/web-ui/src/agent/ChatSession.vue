@@ -15,6 +15,7 @@ import { useSessionPanels } from './useSessionPanels'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import SessionNoticeBar from '@demicodes/web-ui/agent/SessionNoticeBar.vue'
 import type { PendingSubmissionState } from './types'
+import type { MessageForkHandler } from './message-fork'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -48,7 +49,7 @@ const props = defineProps<{
   pendingSubmission?: PendingSubmissionState | null
   editVersion?: TranscriptVersion | null
   messageEdit?: MessageEditState | null
-  forkable?: boolean
+  fork?: MessageForkHandler
 }>()
 const emit = defineEmits<{
   archive: []
@@ -62,7 +63,6 @@ const emit = defineEmits<{
   interruptPendingSteer: [id: string]
   'update:messageEdit': [state: MessageEditState | null]
   saveScroll: [id: string, state: PersistedScrollState | null]
-  fork: [blockId: string]
 }>()
 const surface = ref<{ dockHeight: number }>()
 const canEdit = computed(() => !!props.editVersion && !props.messageEdit
@@ -138,8 +138,7 @@ watch(() => props.conversation.id, close)
             :load="conversation.load"
             :pending-submission="pendingSubmission"
             :read-only="!canEdit"
-            :forkable="forkable && !conversation.archived && !pendingSubmission"
-            @fork="emit('fork', $event)"
+            :fork="fork"
             :edit-target-id="messageEdit?.request.targetBlockId"
             @retry-submission="emit('retrySubmission')"
             :bottom-offset="surface?.dockHeight ?? 0"
