@@ -27,6 +27,7 @@ import { runningSubagents } from '@demicodes/web-ui/agent/subagents'
 import { useSessionPanels } from '@demicodes/web-ui/agent/useSessionPanels'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
+import GalleryAssistantMessages from '../components/GalleryAssistantMessages.vue'
 import { beginMessageEdit, lastEditableUserMessageId, submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
 import type { Block, ThinkingConfig, UserContentBlock } from '@demicodes/core'
@@ -737,6 +738,14 @@ function abortAgents() {
     </template>
 
     <template v-if="view === 'blocks'">
+      <GallerySection
+        title="Assistant message"
+        note="Copy, fork, and a live relative timestamp. Fork emits a preview event."
+      >
+        <GallerySpecimen variant="message footer" wide>
+          <GalleryAssistantMessages />
+        </GallerySpecimen>
+      </GallerySection>
       <GallerySection
         title="UserBlock"
         note="User, attachments, overflow, pending steer, queued, and stuck."

@@ -28,6 +28,7 @@ const props = defineProps<{
   persistedScrollState: PersistedScrollState | undefined
   /** Hide editing actions on user bubbles. */
   readOnly?: boolean
+  forkable?: boolean
   editTargetId?: string
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
@@ -47,6 +48,7 @@ const emit = defineEmits<{
   editUser: [blockId: string]
   retryLoad: []
   retrySubmission: []
+  fork: [blockId: string]
 }>()
 
 const visibleTranscriptBlocks = computed(() => getVisibleBlocks(props.blocks))
@@ -191,6 +193,8 @@ defineExpose({
                 :is-thinking-streaming="isStreamingThinkingAt(item.index)"
                 :is-text-streaming="isStreamingTextAt(item.index)"
                 :thinking-ended-at="thinkingEndedAt(item.index)"
+                :forkable="forkable && !editTargetId && phase === 'idle'"
+                @fork="emit('fork', $event)"
                 :editable="renderBlocks[item.index]!.id === editableUserId && !props.readOnly && phase === 'idle' && !queue.length && !pendingSteers.length"
                 @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
                 @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"

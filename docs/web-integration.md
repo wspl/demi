@@ -62,6 +62,15 @@ commits the retained prefix and replacement before publishing it, then starts
 inference with an independent provider runtime. See
 [message editing](message-editing.md) for conflict, recovery and durability rules.
 
+`web-ui/agent/blocks/AssistantTextBlock.vue` shows a footer after text streaming
+ends. `AssistantMessageFooter.vue` copies the reply's Markdown text and displays
+its `createdAt` as a relative time. `ui/RelativeTime.vue` uses a shared one-second
+clock that stops when its last consumer unmounts; hovering shows the absolute
+local time. The fork button emits the text block ID through `AgentMessageList`
+and `ChatSession` when the host enables `forkable`. The product has no fork
+handler yet, so its button is disabled. Gallery's assistant specimen enables
+the button and shows a preview receipt without creating a conversation.
+
 `web-ui/agent/ChatSession.vue` owns the title, transcript, dock and inspection
 panels. `useSessionPanels` selects one child agent or terminal at a time. Child
 phases and timestamps come from agent lifecycle frames and persisted tree nodes.

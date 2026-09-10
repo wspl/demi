@@ -48,6 +48,7 @@ const props = defineProps<{
   pendingSubmission?: PendingSubmissionState | null
   editVersion?: TranscriptVersion | null
   messageEdit?: MessageEditState | null
+  forkable?: boolean
 }>()
 const emit = defineEmits<{
   archive: []
@@ -61,6 +62,7 @@ const emit = defineEmits<{
   interruptPendingSteer: [id: string]
   'update:messageEdit': [state: MessageEditState | null]
   saveScroll: [id: string, state: PersistedScrollState | null]
+  fork: [blockId: string]
 }>()
 const surface = ref<{ dockHeight: number }>()
 const canEdit = computed(() => !!props.editVersion && !props.messageEdit
@@ -136,6 +138,8 @@ watch(() => props.conversation.id, close)
             :load="conversation.load"
             :pending-submission="pendingSubmission"
             :read-only="!canEdit"
+            :forkable="forkable && !conversation.archived && !pendingSubmission"
+            @fork="emit('fork', $event)"
             :edit-target-id="messageEdit?.request.targetBlockId"
             @retry-submission="emit('retrySubmission')"
             :bottom-offset="surface?.dockHeight ?? 0"
