@@ -122,9 +122,11 @@ Control metadata and conversation history use different SQLite files. The
 coordinator therefore needs a durable creation operation and a publication
 boundary: ordinary listing/opening exposes the destination only after its root
 checkpoint is committed. Recovery completes publication of a committed root;
-failures do not publish an empty or partial conversation. `conversation_forks` in the control database reserves the destination UUID, owner,
-source, cutoff and creation metadata. After the destination root commits, a control
-transaction inserts the public conversation and its attached-host metadata.
+failures do not publish an empty or partial conversation.
+`conversation_fork_operations` records creation attempts in the control database,
+reserving the destination UUID, owner, source, cutoff and creation metadata.
+After the destination root commits, a control transaction inserts the public
+conversation and its attached-host metadata.
 Publication is determined by the public conversation row. Startup recovery publishes
 reserved operations whose destination root exists; uncommitted operations remain
 hidden until the same request is retried. Ordinary conversation creation cannot use
