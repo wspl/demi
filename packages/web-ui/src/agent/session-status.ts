@@ -3,7 +3,7 @@ import { t } from '../infra/i18n'
 /** Sidebar conversation list, or a session that is not reconnecting. */
 export type ListLoad = 'ready' | 'loading' | 'failed'
 
-/** One session: history is here, still arriving, the socket dropped, or restore failed. */
+/** Loading includes navigation and its initial handshake; reconnecting is a dropped open connection. */
 export type SessionLoad = ListLoad | 'reconnecting'
 
 /** What the session pane shows instead of the transcript. */
@@ -11,7 +11,7 @@ export type SessionStatusKind = 'loading' | 'failed' | 'empty' | 'missing'
 
 /**
  * The pane that replaces the transcript. `loading` always wins so a restore
- * never reads as an empty conversation. Reconnecting keeps the transcript
+ * never reads as an empty conversation, even with cached blocks. Reconnecting keeps the transcript
  * (or an empty list) and uses the same tail row as Requesting.
  */
 export function sessionPaneStatus(
