@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { Block } from '@demicodes/core'
 import {
   modelSelectionSchema,
+  editResultSchema,
   type ServerFrame,
   type ClientFrame,
 } from '@demicodes/web-ui/transport/protocol'
@@ -25,7 +26,7 @@ const binarySource = z.object({
   data: z.instanceof(Uint8Array),
   mediaType: z.string(),
 })
-const userContent = z.discriminatedUnion('type', [
+export const displayedUserContentSchema = z.discriminatedUnion('type', [
   text,
   z.object({
     type: z.literal('reference'),
@@ -93,8 +94,9 @@ const persistedBlockSchema = z.discriminatedUnion('type', [
     ...meta,
     type: z.literal('user'),
     turnId: z.string(),
-    content: z.array(userContent),
+    content: z.array(displayedUserContentSchema),
     preamble: z.string().nullable(),
+    resolvedContent: z.array(displayedUserContentSchema).optional(),
     hidden: z.boolean().optional(),
   }),
   z.object({
@@ -106,7 +108,7 @@ const persistedBlockSchema = z.discriminatedUnion('type', [
     ...meta,
     type: z.literal('steer'),
     turnId: z.string(),
-    content: z.array(userContent),
+    content: z.array(displayedUserContentSchema),
     hidden: z.boolean().optional(),
   }),
   z.object({
@@ -278,6 +280,7 @@ export const shellStatusSchema = z.discriminatedUnion('status', [
 ])
 const serverFrameSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('opened') }),
+  editResultSchema,
   z.object({ type: z.literal('closed') }),
   z.object({
     type: z.literal('rejected'),
@@ -287,6 +290,7 @@ const serverFrameSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('transcript_reset'),
     blocks: z.array(blockSchema),
+    epoch: z.string().min(1),
     revision: z.number().int().nonnegative(),
   }),
   z.object({
@@ -304,7 +308,7 @@ const serverFrameSchema = z.discriminatedUnion('type', [
       z.object({
         id: z.string(),
         text: z.string(),
-        content: z.array(userContent),
+        content: z.array(displayedUserContentSchema),
       }),
     ),
   }),
@@ -315,7 +319,7 @@ const serverFrameSchema = z.discriminatedUnion('type', [
         id: z.string(),
         turnId: z.string(),
         model: modelSelectionSchema,
-        content: z.array(userContent),
+        content: z.array(displayedUserContentSchema),
       }),
     ),
   }),

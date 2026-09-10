@@ -93,6 +93,7 @@ test(
     const clientSnapshotFrame = nextFrame<ServerFrame>(client)
     server.send({
       type: 'transcript_reset',
+      epoch: 'test-epoch',
       revision: 1,
       blocks: [
         {

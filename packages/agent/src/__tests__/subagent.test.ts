@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { runnerShellFactory, probeCommand } from '@demicodes/backend/testing'
 
-import { waitFor } from '@demicodes/utils'
+import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import { LocalHost } from '@demicodes/runner/testing'
 import {
@@ -1193,20 +1193,27 @@ test(
   'closing the parent detaches live children; a reopened parent restores and finishes them',
   async () => {
     // Phase 1: spawn a child, let it get stuck mid-tool, then tear the connection down.
+    const childStarted = deferred<void>()
+    const firstTurn: TurnScript = (request) => {
+      const isChild = request.items.some((item) => item.type === 'user_message'
+        && item.content.some((part) => part.type === 'text' && part.text === 'undying task'))
+      if (isChild) {
+        childStarted.resolve()
+        return [events.toolCall('c1', 'shell_exec', { script: 'probe hold 5000', timeoutMs: 10_000 })]
+      }
+      if (request.items.some((item) => item.type === 'tool_result')) {
+        return (async function* () {
+          await childStarted.promise
+          yield events.text('spawned, going idle')
+          yield events.response()
+        })()
+      }
+      return [spawnCall('t1', "demi agent spawn 'undying task' --description bg", 50)]
+    }
     const first = await openHarness({
-      turns: [
-        [spawnCall(
-          't1',
-          "demi agent spawn 'undying task' --description bg",
-          50
-        )],
-        [events.toolCall(
-          'c1',
-          'shell_exec',
-          { script: 'probe hold 5000', timeoutMs: 10_000 }
-        )],
-        [events.text('spawned, going idle'), events.response()],
-      ],
+      // Starting a native runner can outlast the shell preview timeout. Route
+      // by the request's role so parent continuation cannot consume child work.
+      turns: [firstTurn, firstTurn, firstTurn],
     })
     await first.client.send(
       [{ type: 'text', text: 'go' }],

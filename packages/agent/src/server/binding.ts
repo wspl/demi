@@ -122,6 +122,30 @@ export class AgentTransportBindingImpl
           ))
           return
         }
+        case 'edit_and_send': {
+          const session = this.sessionFor('edit_and_send')
+          if (!session) {
+            return
+          }
+          void session.editAndSend(frame.request, {
+            metadata: frame.metadata,
+          }).then((receipt) => {
+            this.send({
+              type: 'edit_result',
+              operationId: receipt.operationId,
+              status: 'accepted',
+              turnId: receipt.turnId,
+            })
+          }, (error: unknown) => {
+            this.send({
+              type: 'edit_result',
+              operationId: frame.request.operationId,
+              status: 'rejected',
+              reason: error instanceof Error ? error.message : String(error),
+            })
+          })
+          return
+        }
         case 'dequeue_message': {
           const session = this.sessionFor('dequeue_message')
           if (!session)
@@ -388,14 +412,20 @@ export class AgentTransportBindingImpl
   /** Aligns an adopted live session with the model/provider this open named. */
   private async alignProvider(
     live: LiveSession,
-    selection: ProviderSelection
+    selection: ProviderSelection,
+    apply?: ModelSwitchApply,
   ): Promise<void> {
     if (selection.providerId === live.providerId) {
-      live.session.updateModel(null, selection.model)
+      live.session.updateModel(null, selection.model, apply)
       return
     }
     const runtime = await this.createRuntime(selection, live.agentSessionId)
-    live.session.updateModel(runtime, selection.model)
+    try {
+      live.session.updateModel(runtime, selection.model, apply)
+    } catch (error) {
+      await runtime.dispose?.()
+      throw error
+    }
     live.providerId = selection.providerId
   }
 
@@ -404,6 +434,7 @@ export class AgentTransportBindingImpl
     this.send({
       type: 'transcript_reset',
       blocks: cloneBlocks(transcript.blocks),
+      epoch: transcript.version().epoch,
       revision: transcript.revision
     })
   }
@@ -421,15 +452,7 @@ export class AgentTransportBindingImpl
       })
       return
     }
-    if (provider.providerId === live.providerId) {
-      // Same provider id: keep the instance and only swap the model (the provider itself
-      // restarts whatever it needs to when the model id changes on the next request).
-      live.session.updateModel(null, provider.model, apply)
-      return
-    }
-    const next = await this.createRuntime(provider, live.agentSessionId)
-    live.session.updateModel(next, provider.model, apply)
-    live.providerId = provider.providerId
+    await this.alignProvider(live, provider, apply)
   }
 
   private async createRuntime(
