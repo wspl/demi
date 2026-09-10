@@ -42,8 +42,11 @@ The backend representation uses the existing per-conversation SQLite database:
 
 - `command_snapshots(node_id, revision, values_json)` stores immutable versions.
 - The node record's `command_revision` selects its current version.
-- `command_boundaries(node_id, block_id, edge, command_revision)` records a
-  version at `before_user` and `after_assistant` boundaries.
+- `session_boundaries(node_id, block_id, edge, command_revision, ...)` records a
+  version at `before_user` and `after_assistant` boundaries. The same boundary
+  record holds immutable subagent-history references when required by
+  [Conversation Fork](conversation-fork.md#subagent-snapshots); there is one
+  definition of the cutoff across these forms of state.
 
 Version identity is scoped to the node. V0 is the explicit empty initial version.
 Revisions are allocated uniquely within a node, including after a rewind. The
