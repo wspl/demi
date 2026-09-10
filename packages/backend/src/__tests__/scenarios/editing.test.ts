@@ -15,7 +15,7 @@ beforeAll(async () => {
 })
 afterAll(async () => { await world.close() })
 
-test('authenticated edit removes the suffix, preserves external effects, and reconciles across takeover and restart', async () => {
+test('authenticated edit restores todos, preserves files, and reconciles across takeover and restart', async () => {
   const driver = await world.conversation('cloud')
   await driver.turn({ text: 'A-kept', model: [model.say('answer-A-kept')] })
   const effects = await driver.turn({ text: 'B-removed', model: [
@@ -85,6 +85,7 @@ test('authenticated edit removes the suffix, preserves external effects, and rec
     model.shell('inspect-effects', 'cat sentinel.txt && demi todo list'),
     model.say('checked'),
   ] }).then((turn) => {
-    expect(turn.received.at(-1)).toContain('permanent todo')
+    expect(turn.received.at(-1)).toContain('permanentNo todos.')
+    expect(turn.received.at(-1)).not.toContain('permanent todo')
   })
 }, 60_000)

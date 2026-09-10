@@ -1,7 +1,6 @@
 # Command Storage History
 
-Status: the general-purpose versioned storage capability is confirmed.
-Implementation details remain proposed; implementation has not started.
+Status: final implementation contract.
 
 ## Contract
 
@@ -44,7 +43,8 @@ The backend representation uses the existing per-conversation SQLite database:
 - `command_snapshots(node_id, revision, values_json)` stores immutable versions.
 - The node record's `command_revision` selects its current version.
 - `session_boundaries(node_id, block_id, edge, command_revision)` records a
-  command-state version at `before_user` and `after_assistant` boundaries.
+  command-state version at `before_user`, `after_assistant` and internal
+  `after_block` boundaries used for retry and resume.
 
 Version identity is scoped to the node. V0 is the explicit empty initial version.
 Revisions are allocated uniquely within a node, including after a rewind. The
@@ -104,6 +104,10 @@ updateJson<T>(
 ): Promise<T>
 ```
 
+`withSignal(signal)` derives a handle with the same original history binding
+and an additional invocation cancellation signal. RPC dispatch uses it for each
+call so disconnect or command cancellation reaches an in-flight storage commit.
+
 The callback is synchronous and performs no external IO. Todo add/update/done
 uses this operation so two concurrent commands cannot both read the same list
 and overwrite each other's changes. The framework validates and clones the
@@ -124,8 +128,11 @@ point, an output-pipe failure or cancellation does not undo the committed state;
 normal command reads observe it. Fork sees either the complete old state or the
 complete new state at its selected boundary, never a partially written map.
 
-An admitted invocation carries a node-lifetime/history-generation token supplied
-by the agent, not by the shell's environment variables. A transcript rewrite or
+An admitted job carries a node-lifetime/history-generation token supplied
+by the agent, not by the shell's environment variables. `RemoteHost` keeps
+the storage handle in its local job record; the runner receives no storage token.
+Nested `host shell` jobs carry the original handle. The store checks the handle's
+abort signal after asynchronous media writes and immediately before its transaction. A transcript rewrite or
 node disposal invalidates older invocations. A late callback from an old job
 cannot commit into restored history. Pending operations reject on disposal;
 the coordinator releases its queue on success, failure and cancellation. Fork

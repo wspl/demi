@@ -12,7 +12,7 @@ import {
   type EditRequest,
   type SessionEvent,
 } from '../index'
-import { MemorySessionStore, makeTranscript, model, text } from './helpers'
+import { MemorySessionStore, commandStateFor, makeTranscript, model, text } from './helpers'
 import { ChildSupervisor, type ChildSupervisorOptions } from '../subagent/supervisor'
 import type { AgentNodeRecord } from '../types'
 
@@ -89,6 +89,7 @@ async function fixture(options: {
   await store.save({
     changedBlocks: transcript.blocks.map((block, index) => ({ index, block })),
     blockCount: transcript.blocks.length,
+    commandState: commandStateFor(transcript.blocks),
     state: { count: 99 },
     phase: 'idle',
     queue: [],

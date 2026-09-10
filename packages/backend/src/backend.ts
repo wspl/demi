@@ -16,7 +16,6 @@ import {
 } from '@demicodes/command-loader'
 import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
 import {
-  AgentSessionCommandStorage,
   type Command,
   type CommandIO,
   type CommandRegistry
@@ -190,11 +189,10 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         throw new Error(
           `no authorized session ${call.agentSessionId} behind this job`
         )
+      if (!execution.commandStorage)
+        throw new Error('rpc job has no agent command storage')
       const transport = inProcessRpc(shell.commands.list(), {
-        storage: new AgentSessionCommandStorage(
-          execution.host.store,
-          call.agentSessionId
-        ),
+        storage: execution.commandStorage.withSignal(io.signal),
         host: execution.host,
       })
       const result = await transport({
@@ -367,7 +365,11 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     })
     if (!(ctx.host instanceof RemoteHost))
       throw new Error('The backend requires a runner Host')
-    return new RemoteShellEnvironment({ ...ctx.shell, host: ctx.host })
+    return new RemoteShellEnvironment({
+      ...ctx.shell,
+      host: ctx.host,
+      commandStorage: ctx.commandStorage,
+    })
   }
 
   const agentServer = new AgentServer({
