@@ -14,6 +14,8 @@ Confirmed requirements:
 - Source activity does not block Fork. A running source continues running.
 - A completed assistant text message is the branch point. Streaming text becomes
   eligible after it finishes.
+- Command storage retains a general-purpose version history, including todo
+  state. Detailed storage contracts remain under discussion.
 
 Proposed defaults, awaiting product confirmation:
 
