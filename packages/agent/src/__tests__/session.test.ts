@@ -776,7 +776,8 @@ test(
 
     expect(session.transcript().blocks[0]).toMatchObject({
       type: 'user',
-      content: [{ type: 'text', text: 'expanded ref' }],
+      content: [{ type: 'reference', reference: 'file.txt' }],
+      resolvedContent: [{ type: 'text', text: 'expanded ref' }],
     })
   }
 )

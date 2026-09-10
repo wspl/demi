@@ -166,6 +166,7 @@ function snapshotOf<State>(
     cwd: update.cwd,
     model: structuredClone(update.model),
     harnessName: update.harnessName,
+    ...(update.edits ? { edits: structuredClone(update.edits) } : {}),
   }
 }
 

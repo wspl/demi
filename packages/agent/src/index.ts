@@ -1,4 +1,5 @@
 export * from './transcript/transcript'
+export * from './transcript/user-message'
 export * from './types'
 export * from './session/retry-policy'
 export * from './session/recovery'

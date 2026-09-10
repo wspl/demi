@@ -1670,6 +1670,80 @@ function createAgentClientHarness(options: {
   return { client, server, store }
 }
 
+for (const lost of ['replacement-patch', 'acceptance'] as const) {
+  test(`a lost ${lost} is recovered through snapshots and the original operation receipt`, async () => {
+    let generations = 0
+    const { server, store } = createAgentClientHarness({
+      harness: { ...createTextHarness(), restoreState: () => ({}) },
+      providerTurns: [
+        [events.text('old-answer'), events.response()],
+        () => {
+          generations += 1
+          return [events.text('edited-answer'), events.response()]
+        },
+      ],
+    })
+    const pair = createInProcessTransportPair()
+    let dropped = false
+    const sawDrop = deferred<void>()
+    let resyncs = 0
+    server.attachTransport({
+      close: () => pair.server.close(),
+      onFrame(handler) {
+        return pair.server.onFrame((frame) => {
+          if (frame.type === 'sync_transcript') resyncs += 1
+          return handler(frame)
+        })
+      },
+      send(frame) {
+        const shouldDrop = lost === 'replacement-patch'
+          ? frame.type === 'transcript_patch' && frame.patches.some((patch) => patch.op === 'replace')
+          : frame.type === 'edit_result' && frame.status === 'accepted'
+        if (!dropped && shouldDrop) {
+          dropped = true
+          sawDrop.resolve()
+          return
+        }
+        pair.server.send(frame)
+      },
+    })
+    const client = new AgentClient(pair.client)
+    const id = crypto.randomUUID()
+    let reconnected: AgentClient | null = null
+    try {
+      await client.open(providerConfig([]), '/workspace', id)
+      await client.send([{ type: 'text', text: 'old-user' }])
+      const request = {
+        operationId: crypto.randomUUID(), targetBlockId: client.transcript().blocks[0]!.id,
+        version: client.transcriptVersion()!, content: [{ type: 'text' as const, text: 'edited-user' }],
+      }
+      const submitted = client.editAndSend(request).catch((error: unknown) => error)
+      await sawDrop.promise
+      if (lost === 'acceptance') {
+        client.disconnect()
+        expect(await submitted).toBeInstanceOf(Error)
+        reconnected = server.client()
+        await reconnected.open(providerConfig([]), '/workspace', id)
+        await reconnected.editAndSend(request)
+      } else {
+        await submitted
+        await waitFor(() => resyncs === 1)
+      }
+      await waitFor(() => !server.treeActive(id))
+      const active = reconnected ?? client
+      await waitFor(() => active.transcript().blocks.some((block) => block.type === 'text' && block.text === 'edited-answer'))
+      await active.editAndSend(request)
+      expect(generations).toBe(1)
+      expect(active.transcript().blocks).toEqual((await store.sessionStore(id).load())!.transcript.blocks)
+      expect(active.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+    } finally {
+      client.disconnect()
+      reconnected?.disconnect()
+      await server.close()
+    }
+  })
+}
+
 class DelayedProvider implements AgentProvider {
   calls = 0
 

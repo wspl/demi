@@ -1,6 +1,8 @@
 # Message editing and resend
 
-Status: Proposed design and implementation acceptance criteria.
+Status: Implemented. This document defines the current behavior and regression
+contract. Checkpoint verification is recorded in
+[Message editing validation](message-editing-validation.md).
 
 ## Behavior and ownership
 
@@ -21,6 +23,18 @@ checkpoint, publishes the accepted history, and starts inference with an
 independent provider runtime. The replacement uses a new turn ID, the selected
 model, and freshly prepared preamble and references. Retained blocks preserve
 their IDs, timestamps, content and media bytes.
+
+User blocks keep the submitted `content`. When reference resolution changes that
+content, `resolvedContent` keeps the materialized input for inference and replay.
+The editor reads `content`; submitting an edit resolves its references again.
+Media externalization and hydration cover both fields. Equal submitted and
+resolved content uses only `content`.
+
+Harnesses opt into editing through `restoreState`, which reconstructs a detached
+plain state record from the retained transcript. Commit preserves the live root
+record's identity so command closures observe the replacement fields. Consumers
+read nested state through that root after a rewrite. Preparation hooks may append
+new blocks but cannot modify the retained prefix.
 
 `AgentServer` coordinates admission with the session's child supervisor. Editing
 requires no active action, queued message, pending steer, scheduled wakeup, live
@@ -98,8 +112,8 @@ expected result would conceal replay defects.
 
 ## Transcript and compaction cases
 
-Extend `agent/src/__tests__/transcript.test.ts`, `patch.test.ts` and
-`compaction.test.ts` under `packages/`.
+Focused cases live in `packages/agent/src/__tests__/editing.test.ts`, alongside
+the existing transcript, patch and compaction regression suites.
 
 | Case | Required observation |
 | --- | --- |
@@ -112,14 +126,15 @@ Extend `agent/src/__tests__/transcript.test.ts`, `patch.test.ts` and
 | Cut removes a compaction marker or latest usage response | Context estimation does not use an invalid usage anchor. A preflight summary request contains only retained content and the replacement where applicable. |
 | Patch application and reload | Applying emitted patches to the initial client copy produces the accepted transcript exactly; save/load produces the same blocks. |
 
-Add a bounded, fixed-seed set of valid multi-turn histories and edit positions.
-Compare the result against a small fixture-level prefix/replacement oracle. Keep
-semantic assertions on inference items separate from patch-array assertions.
+The fixed-seed cases generate bounded valid histories and edit positions. Their
+fixture-level prefix/replacement oracle is separate from semantic assertions on
+inference items and patch-array assertions.
 
 ## Session, provider and admission cases
 
-Extend `agent/src/__tests__/session.test.ts`, `subagent.test.ts` and
-`provider-claude-code/src/__tests__/provider.test.ts` under `packages/`.
+Session and admission cases live in `agent/src/__tests__/editing.test.ts` and
+`subagent.test.ts`; transport isolation cases live in
+`provider-claude-code/src/__tests__/provider.test.ts`, under `packages/`.
 
 | Case | Required observation |
 | --- | --- |
@@ -139,9 +154,9 @@ Extend `agent/src/__tests__/session.test.ts`, `subagent.test.ts` and
 
 ## Durability and failure boundaries
 
-Extend `backend/src/__tests__/storage.test.ts` and add focused editing scenarios
-beside `backend/src/__tests__/scenarios/restart.test.ts` under `packages/`.
-Use the local scripted-model backend, authenticated client and real SQLite store.
+`packages/backend/src/__tests__/editing-storage.test.ts` exercises the real
+SQLite store and process crash boundaries. `scenarios/editing.test.ts` in that
+test directory exercises an authenticated scripted-model backend and restart.
 
 | Fault or pause | Required observation |
 | --- | --- |
@@ -154,14 +169,17 @@ Use the local scripted-model backend, authenticated client and real SQLite store
 | Process exits after commit and before publication or provider start | Reload recovers the replacement and an actionable unfinished turn. Retrying submission confirms acceptance; inference recovery is a separate action. |
 | Process exits after generated output has been checkpointed | Reload retains that output and uses ordinary incomplete-turn recovery where needed. |
 
-Crash tests terminate a local scripted-backend fixture without running session
-disposal or a final checkpoint, then reopen the same database in a fresh runtime.
-A graceful restart is a separate case and cannot prove crash behavior.
+Crash tests terminate a separate scripted `AgentSession` process using the
+backend's real SQLite and blob stores, without session disposal or a final
+checkpoint. The parent test reopens that database in a fresh runtime. These
+storage-boundary crash tests and the full authenticated backend's graceful
+restart test cover different failure boundaries.
 
 ## Protocol and UI cases
 
-Extend `agent/src/__tests__/server.test.ts`, `client-submit.test.ts`,
-`transcript-pipeline.test.ts` and the shared UI's agent tests under `packages/`.
+Protocol coverage lives in `agent/src/__tests__/server.test.ts`,
+`client-submit.test.ts`, `transcript-pipeline.test.ts`, the backend's scoped
+transport tests, and the shared UI's agent tests under `packages/`.
 
 - Reject malformed content, invalid targets, unauthorized session access and stale
   snapshot tokens without provider calls or transcript changes.
@@ -179,8 +197,9 @@ Extend `agent/src/__tests__/server.test.ts`, `client-submit.test.ts`,
 - After acceptance, generation failure shows turn recovery rather than offering
   to submit the accepted edit as another new message.
 - Gallery examples cover editing, saving, conflict and failure using the shared
-  `web-ui` behavior. Browser acceptance covers keyboard submission, IME input,
+  `web-ui` behavior. Browser acceptance covers keyboard submission, Chinese input,
   multiline text, attachments, cancel, reconnect and the replaced transcript.
+  The shared keyboard predicate is tested with active IME composition events.
   The product acceptance fixture supplies a scripted backend and checks captured
   requests as well as the visible page.
 
@@ -201,4 +220,4 @@ removed block, reuse the consumed provider runtime, publish before save, or
 accept a stale snapshot. Each defect must fail its corresponding assertion.
 Remove these defects before the implementation checkpoint and rerun the affected
 tests. Record actual commands and results with the implementation checkpoint;
-this document defines acceptance, not a claim that the tests have passed.
+the validation record keeps those results separate from this regression contract.

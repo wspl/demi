@@ -5,7 +5,8 @@ import {
   type ServerFrame,
   type ProviderSelection,
 } from '@demicodes/agent/client'
-import { deferred, delay } from '@demicodes/utils'
+import { deferred, delay, waitFor } from '@demicodes/utils'
+import { computed } from 'vue'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
 
 const provider: ProviderSelection = {
@@ -67,6 +68,57 @@ function clientHarness() {
   }
 }
 
+test('the current edit version reacts to connection, snapshots, patches and disconnect', async () => {
+  const h = clientHarness()
+  const runtime = new ConversationRuntime({ state: state(), prepareModel: async () => provider, connect: async () => h.client })
+  const version = computed(() => runtime.transcriptVersion())
+  expect(version.value).toBeNull()
+  await runtime.connect()
+  h.receive({ type: 'transcript_reset', epoch: 'epoch', revision: 1, blocks: [] })
+  expect(version.value).toEqual({ epoch: 'epoch', revision: 1 })
+  h.receive({ type: 'transcript_patch', revision: 2, patches: [{ op: 'replace', path: ['blocks'], value: [] }] })
+  expect(version.value).toEqual({ epoch: 'epoch', revision: 2 })
+  runtime.dispose()
+  expect(version.value).toBeNull()
+})
+
+for (const failure of ['none', 'before-confirmation', 'before-reconciliation'] as const) {
+  test(`edit confirmation preserves generation recovery: ${failure}`, async () => {
+    const h = clientHarness()
+    const current = state()
+    const runtime = new ConversationRuntime({ state: current, prepareModel: async () => provider, connect: async () => h.client })
+    await runtime.connect()
+    const target = {
+      type: 'user' as const, id: 'target', turnId: 'old-turn',
+      createdAt: new Date().toISOString(), model: provider.model,
+      content: [{ type: 'text' as const, text: 'old' }], preamble: null,
+    }
+    h.receive({ type: 'transcript_reset', epoch: 'epoch', revision: 1,
+      blocks: failure === 'before-reconciliation' ? [] : [target] })
+    current.lastError = failure === 'before-reconciliation' ? 'generation failed' : 'old turn failed'
+    const pending = runtime.editAndSend({
+      operationId: 'edit', targetBlockId: 'target', version: { epoch: 'epoch', revision: 1 },
+      content: [{ type: 'text', text: 'new' }],
+    })
+    try {
+      await waitFor(() => h.sent.some((frame) => frame.type === 'edit_and_send'))
+      if (failure === 'before-confirmation') {
+        h.receive({ type: 'error', code: 'generation_failed', message: 'generation failed' })
+      }
+      h.receive({ type: 'edit_result', operationId: 'edit', status: 'accepted', turnId: 'replacement' })
+      await pending
+      if (failure === 'none') {
+        expect(current.lastError).toBeNull()
+      } else {
+        expect(current.lastError).toBe('generation failed')
+      }
+    } finally {
+      runtime.dispose()
+      await pending.catch(() => {})
+    }
+  })
+}
+
 test('disposing a view during model preparation prevents a late connection', async () => {
   const prepared = deferred<ProviderSelection>()
   let connects = 0
@@ -113,6 +165,7 @@ test('retry reconciles an already accepted message before submitting again', asy
     await runtime.connect()
     h.receive({
       type: 'transcript_reset',
+      epoch: 'runtime-test',
       revision: 1,
       blocks: [{
         type: 'user',

@@ -122,6 +122,7 @@ export class MemorySessionStore<State> implements AgentSessionStore<State> {
       cwd: update.cwd,
       model: structuredClone(update.model),
       harnessName: update.harnessName,
+      ...(update.edits ? { edits: structuredClone(update.edits) } : {}),
     })
   }
 

@@ -56,12 +56,12 @@ export class ScriptedModel {
     return left
   }
 
-  /** One runtime serves every session: the queue is chosen per request. */
+  /** Independent runtimes share only the script queue and observations. */
   runtime(): AgentProvider {
     const model = this
     const runtime: AgentProvider = {
       async *run(request) {
-        model.requests.push(request)
+        model.requests.push({ ...request, items: structuredClone(request.items) })
         const queue = model.queues.get(request.sessionId)
         const turn = queue?.length ? queue.shift() : model.children.shift()
         if (turn === undefined)
@@ -73,7 +73,7 @@ export class ScriptedModel {
           yield event
         model.answered += 1
       },
-      clone: () => runtime,
+      clone: () => model.runtime(),
     }
     return runtime
   }

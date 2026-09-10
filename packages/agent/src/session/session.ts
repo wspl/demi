@@ -3,12 +3,14 @@ import {
   abortable,
   asError,
   createId,
+  deferred,
   errorCode,
   isAbortError,
   noop,
   throwIfAborted,
   truncate
 } from '@demicodes/utils'
+import type { Deferred } from '@demicodes/utils'
 import type {
   ModelSelection,
   PendingSteer,
@@ -32,6 +34,13 @@ import { ProviderStreamError } from './provider-stream-error'
 import { ProviderTurnLoop, type ProviderTurnLoopHost } from './turn-loop'
 import { resolveRetryPolicy, type TurnRetryPolicy } from './retry-policy'
 import { findResumePoint } from './recovery'
+import {
+  editReceiptSchema,
+  editRequestSchema,
+  type EditReceipt,
+  type EditRequest,
+} from '../protocol/schemas'
+import { editRequestDigest, prepareTranscriptEdit } from './editing'
 import type {
   AgentHarnessRuntime,
   AgentMetadata,
@@ -55,6 +64,7 @@ const DEFAULT_PREFLIGHT_THRESHOLD_RATIO = 0.8
 const DEFAULT_PERSIST_INTERVAL_MS = 1_000
 
 type PendingAction =
+  | PendingEditAction
   | {
       type: 'send'
       id: string
@@ -86,6 +96,17 @@ type PendingAction =
     }
 
 type PendingSendAction = Extract<PendingAction, { type: 'send' }>
+
+interface PendingEditAction {
+  type: 'edit'
+  request: EditRequest
+  digest: string
+  acceptance: Deferred<EditReceipt>
+  stage: 'preparing' | 'committing' | 'accepted'
+  metadata: AgentMetadata | null
+  resolve: () => void
+  reject: (error: unknown) => void
+}
 
 export type ActiveTurnPhase = 'provider_streaming'
   | 'tool_executing'
@@ -128,6 +149,8 @@ export class AgentSession<State> {
   private currentPhase: SessionPhase = 'idle'
   private workerRunning = false
   private externalMutationReserved = false
+  private editing: PendingEditAction | null = null
+  private readonly editReceipts: EditReceipt[] = []
   private currentAbortController: AbortController | null = null
   private activeTurnId: string | null = null
   private activeTurnPhase: ActiveTurnPhase | null = null
@@ -179,6 +202,13 @@ export class AgentSession<State> {
       },
       options,
     )
+    const receipts = editReceiptSchema.array().refine(
+      (items) => new Set(items.map((item) => item.operationId)).size === items.length,
+      'Duplicate accepted edit operation IDs',
+    ).optional().parse(checkpoint.edits)
+    for (const receipt of receipts ?? []) {
+      session.editReceipts.push(receipt)
+    }
     // A checkpoint can only hold an `executing` tool call if the process died
     // mid-execution (a graceful abort completes pending calls before exit), so
     // the result is gone for good. Complete each one with an error result:
@@ -372,6 +402,54 @@ export class AgentSession<State> {
     })
   }
 
+  /** Resolves at durable admission; generation continues in the action worker. */
+  async editAndSend(
+    input: EditRequest,
+    options: { metadata?: AgentMetadata } = {},
+  ): Promise<EditReceipt> {
+    const request = structuredClone(editRequestSchema.parse(input))
+    const digest = await editRequestDigest(request)
+    const accepted = this.editReceipts.find(
+      (receipt) => receipt.operationId === request.operationId,
+    )
+    if (accepted) {
+      if (accepted.digest !== digest) {
+        throw new Error('The edit operation ID was used for a different request')
+      }
+      return { ...accepted }
+    }
+    if (this.editing?.request.operationId === request.operationId) {
+      if (this.editing.digest !== digest) {
+        throw new Error('The edit operation ID was used for a different request')
+      }
+      return this.editing.acceptance.promise
+    }
+    if (!this.isSettled() || this.externalMutationReserved
+      || this.yields.hasPending || this.pendingSteers().length > 0) {
+      throw new Error('Message editing requires a settled session with no pending work')
+    }
+    const version = this.transcriptLog.version()
+    if (request.version.epoch !== version.epoch
+      || request.version.revision !== version.revision) {
+      throw new Error('The conversation changed; reopen the message to edit it')
+    }
+    const action: PendingEditAction = {
+      type: 'edit',
+      request,
+      digest,
+      acceptance: deferred<EditReceipt>(),
+      stage: 'preparing',
+      metadata: cloneMetadata(options.metadata),
+      resolve: noop,
+      reject: noop,
+    }
+    this.editing = action
+    // The worker reports generation failures through session events; callers
+    // await only acceptance, whose rejection is also handled by the worker.
+    void this.enqueue(action).catch(noop)
+    return action.acceptance.promise
+  }
+
   /**
    * Creates an isolated session from a point-in-time copy.
    *
@@ -449,7 +527,7 @@ export class AgentSession<State> {
     content: UserContentBlock[],
     options: { id?: string } = {}
   ): Promise<void> {
-    if (this.externalMutationReserved) {
+    if (this.externalMutationReserved || this.isPreparingEdit()) {
       throw new Error(
         'AgentSession: cannot steer while external mutation is reserved'
       )
@@ -546,6 +624,9 @@ export class AgentSession<State> {
     model: ModelSelection,
     apply: ModelSwitchApply = 'next_turn'
   ): void {
+    if (this.externalMutationReserved || this.isPreparingEdit()) {
+      throw new Error('Cannot change the model while a transcript edit is being prepared')
+    }
     this.pendingModelSwitch = { provider, model, apply }
   }
 
@@ -554,7 +635,9 @@ export class AgentSession<State> {
       && !this.currentAbortController.signal.aborted) {
       const target = this.activeAbortTarget()
       this.currentAbortController.abort()
-      await this.recordAbort()
+      if (!this.isPreparingEdit()) {
+        await this.recordAbort()
+      }
       return { aborted: true, target, canAbortAgain: this.canAbortAgain() }
     }
 
@@ -581,6 +664,9 @@ export class AgentSession<State> {
     durationMs: number,
     metadata: AgentMetadata | null = this.activeMetadata
   ): AgentToolInvokeResult {
+    if (this.externalMutationReserved || this.isPreparingEdit()) {
+      throw new Error('Cannot schedule a wakeup while a transcript edit is being prepared')
+    }
     const wakeupId = this.yields.schedule(durationMs, metadata)
     return {
       output: [
@@ -628,6 +714,12 @@ export class AgentSession<State> {
     await this.abort()
     this.clearPendingActions()
     this.yields.clear()
+    // A candidate save may already be committing. Settle its durable outcome
+    // before releasing providers; ordinary detached turns keep their existing
+    // interrupted-checkpoint semantics for child restoration.
+    if (this.editing) {
+      await this.waitUntilDone()
+    }
     await this.flushPersist().catch(noop)
     const pending = this.pendingModelSwitch?.provider ?? null
     this.pendingModelSwitch = null
@@ -960,7 +1052,8 @@ export class AgentSession<State> {
   }
 
   private enqueue(action: PendingAction): Promise<void> {
-    if (this.externalMutationReserved) {
+    if (this.externalMutationReserved
+      || (action.type !== 'edit' && this.isPreparingEdit())) {
       return Promise.reject(
         new Error(
           'AgentSession: cannot enqueue action while external mutation is reserved'
@@ -1024,18 +1117,26 @@ export class AgentSession<State> {
             outcome = { kind: 'done' }
           } catch (error) {
             if (isAbortError(error)) {
-              await this.recordAbort()
+              if (!this.isPreparingEdit()) {
+                await this.recordAbort()
+              }
               outcome = { kind: 'aborted' }
             } else {
-              try {
-                await this.materializePendingSteersForCurrentTurn()
-              } catch (materializeError) {
-                this.emit({ type: 'error', error: asError(materializeError) })
-              }
               const normalized = asError(error)
-              // Announced before the phase turns idle: observers settle the action on the phase.
-              this.emit({ type: 'error', error: normalized })
+              if (action.type !== 'edit' || action.stage === 'accepted') {
+                try {
+                  await this.materializePendingSteersForCurrentTurn()
+                } catch (materializeError) {
+                  this.emit({ type: 'error', error: asError(materializeError) })
+                }
+                // Generation errors belong to the turn. Rejected edits report
+                // through their receipt and must not offer turn recovery.
+                this.emit({ type: 'error', error: normalized })
+              }
               outcome = { kind: 'failed', error: normalized }
+            }
+            if (action.type === 'edit' && action.stage !== 'accepted') {
+              action.acceptance.reject(error)
             }
           } finally {
             this.discardPendingSteersForCurrentTurn()
@@ -1049,6 +1150,9 @@ export class AgentSession<State> {
             this.abortRecorded = false
             this.setPhase('idle')
             this.yields.arm()
+            if (action.type === 'edit') {
+              this.editing = null
+            }
           }
           // The boundary flush, after the phase is idle: the checkpoint says the
           // action ended before its caller learns so, and a checkpoint that says
@@ -1082,6 +1186,10 @@ export class AgentSession<State> {
 
   private async executeAction(action: PendingAction): Promise<void> {
     switch (action.type) {
+      case 'edit':
+        this.setPhase('running')
+        await this.executeEdit(action)
+        return
       case 'send':
         this.setPhase('running')
         await this.executeSend(action.content, action.hidden ?? false)
@@ -1103,6 +1211,97 @@ export class AgentSession<State> {
         await this.materializePendingSteersForCurrentTurn()
         return
     }
+  }
+
+  private isPreparingEdit(): boolean {
+    return this.editing !== null && this.editing.stage !== 'accepted'
+  }
+
+  private async executeEdit(action: PendingEditAction): Promise<void> {
+    const signal = this.currentSignal()
+    const reservation = await this.runtime.reserveEdit?.()
+    let candidateProvider: AgentProvider | null = null
+    try {
+      throwIfAborted(signal)
+      // Earlier throttled checkpoints must settle before the candidate save.
+      await this.flushPersist()
+      const candidate = this.transcriptLog.beforeUserMessage(action.request.targetBlockId)
+      const selection = this.pendingModelSwitch
+      const model = structuredClone(selection?.model ?? this.model)
+      const receipt: EditReceipt = {
+        operationId: action.request.operationId,
+        digest: action.digest,
+        turnId: this.currentTurnId(),
+      }
+      const prepared = await abortable(prepareTranscriptEdit({
+        runtime: this.runtime,
+        transcript: candidate,
+        liveState: this.agentState,
+        request: action.request,
+        turnId: receipt.turnId,
+        model,
+        agentSessionId: this.agentSessionId,
+        cwd: this.cwd,
+        metadata: this.activeMetadata,
+        signal,
+      }), signal)
+      const sourceProvider = selection?.provider ?? this.provider
+      candidateProvider = sourceProvider.clone()
+      if (candidateProvider === sourceProvider) {
+        candidateProvider = null
+        throw new Error('Provider.clone() must return an independent runtime')
+      }
+      throwIfAborted(signal)
+      action.stage = 'committing'
+      await this.store?.save({
+        changedBlocks: candidate.blocks.map((block, index) => ({
+          index,
+          block: structuredClone(block),
+        })),
+        blockCount: candidate.blocks.length,
+        state: structuredClone(prepared.state),
+        phase: 'running',
+        queue: [],
+        cwd: this.cwd,
+        model,
+        harnessName: this.runtime.harnessName,
+        edits: [...this.editReceipts, receipt],
+      })
+
+      // No awaits between durable acceptance and adoption. A cancellation
+      // during the store commit cannot turn a committed edit into a rejection.
+      const discarded = new Set([this.provider, selection?.provider])
+      prepared.applyState()
+      this.transcriptLog.replaceAll(candidate.blocks)
+      this.editReceipts.push(receipt)
+      this.provider = candidateProvider
+      candidateProvider = null
+      this.model = model
+      this.pendingModelSwitch = null
+      action.stage = 'accepted'
+      const change = this.transcriptLog.takePatches()!
+      this.dirtyBlockFloor = Number.POSITIVE_INFINITY
+      this.dirtyBlockIndices.clear()
+      this.persistDirty = true
+      this.emit({ type: 'transcript_changed', ...change })
+      action.acceptance.resolve({ ...receipt })
+      const releases = await Promise.allSettled(
+        [...discarded].map((provider) => Promise.resolve().then(() => provider?.dispose?.())),
+      )
+      const failure = releases.find((result) => result.status === 'rejected')
+      if (failure?.status === 'rejected') {
+        throw failure.reason
+      }
+    } finally {
+      try {
+        await candidateProvider?.dispose?.()
+      } finally {
+        reservation?.release()
+      }
+    }
+    throwIfAborted(signal)
+    await this.compaction.preflight()
+    await this.turnLoop.run()
   }
 
   /**
@@ -1164,6 +1363,7 @@ export class AgentSession<State> {
     content: UserContentBlock[],
     hidden = false
   ): Promise<void> {
+    const submittedContent = structuredClone(content)
     await this.runtime.lifecycle?.({
       type: 'before_round_start',
       agentSessionId: this.agentSessionId,
@@ -1182,9 +1382,10 @@ export class AgentSession<State> {
     this.transcriptLog.pushUserTurn(
       this.currentTurnId(),
       this.model,
-      resolvedContent,
+      submittedContent,
       preamble,
-      hidden
+      hidden,
+      structuredClone(resolvedContent),
     )
     await this.commitTranscript()
 
@@ -1551,6 +1752,7 @@ export class AgentSession<State> {
         cwd: this.cwd,
         model: structuredClone(this.model),
         harnessName: this.runtime.harnessName,
+        ...(this.editReceipts.length ? { edits: structuredClone(this.editReceipts) } : {}),
       })
     } catch (error) {
       // The rows are still unwritten: merge the marks back so the next tick

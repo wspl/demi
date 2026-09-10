@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import { AgentClient } from '../client/client'
 import type { ClientFrame, ServerFrame } from '../protocol/frames'
+import { EditRejectedError } from '../client/client'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -67,6 +68,7 @@ test('submit confirms its own transcript entry before the model finishes', async
   expect(accepted).toBe(false)
   h.receive({
     type: 'transcript_reset',
+    epoch: 'test-epoch',
     revision: 1,
     blocks: [
       {
@@ -153,3 +155,48 @@ test('submitting on an already detached client fails immediately', async () => {
   ).rejects.toThrow('closed')
   expect(h.sent).toHaveLength(0)
 })
+
+test('edit waits for its own receipt even after the matching replacement appears', async () => {
+  const h = harness()
+  let accepted = false
+  const request = {
+    operationId: 'operation', targetBlockId: 'old-user',
+    version: { epoch: 'epoch', revision: 1 }, content: [{ type: 'text' as const, text: 'edited' }],
+  }
+  const pending = h.client.editAndSend(request).then(() => { accepted = true })
+  try {
+    expect(h.sent[0]).toMatchObject({ type: 'edit_and_send', request })
+    h.receive({ type: 'transcript_reset', epoch: 'epoch', revision: 2, blocks: [{
+      type: 'user', id: 'new-user', turnId: 'new-turn', createdAt: '2026-09-11T00:00:00Z',
+      model, content: request.content, preamble: null,
+    }] })
+    h.receive({ type: 'edit_result', operationId: 'other-operation', status: 'accepted', turnId: 'other-turn' })
+    await Promise.resolve()
+    expect(accepted).toBe(false)
+    h.receive({ type: 'edit_result', operationId: 'operation', status: 'accepted', turnId: 'new-turn' })
+    await pending
+    expect(accepted).toBe(true)
+  } finally {
+    h.client.disconnect()
+  }
+})
+
+for (const result of ['rejected', 'disconnected'] as const) {
+  test(`edit ${result} distinguishes a safe correction from an uncertain outcome`, async () => {
+    const h = harness()
+    const request = {
+      operationId: 'operation', targetBlockId: 'old-user',
+      version: { epoch: 'epoch', revision: 1 }, content: [{ type: 'text' as const, text: 'edited' }],
+    }
+    const pending = h.client.editAndSend(request).catch((error: unknown) => error)
+    if (result === 'rejected') {
+      h.receive({ type: 'edit_result', operationId: 'operation', status: 'rejected', reason: 'stale' })
+    } else {
+      h.client.disconnect()
+    }
+    const error = await pending
+    expect(error).toBeInstanceOf(Error)
+    expect(error instanceof EditRejectedError).toBe(result === 'rejected')
+    h.client.disconnect()
+  })
+}

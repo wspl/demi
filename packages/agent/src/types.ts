@@ -15,6 +15,15 @@ import type { PortableJsonValue } from '@demicodes/utils'
 import type { TranscriptPatch } from './protocol/frames'
 import type { TurnRetryPolicy } from './session/retry-policy'
 import type { TranscriptLog } from './transcript/transcript'
+import type { EditReceipt } from './protocol/schemas'
+
+/** Pure reconstruction over a detached retained transcript. */
+export interface AgentStateRewriteContext {
+  agentSessionId: string
+  cwd: string
+  transcript: TranscriptLog
+  metadata: AgentMetadata | null
+}
 
 /**
  * Caller-defined data carried with one agent action. Demi transports it without
@@ -107,6 +116,8 @@ export interface SubagentProfile<State = unknown> {
 export interface AgentHarness<State = unknown> {
   name: string
   initialState(): State
+  /** Opts into editing. Returns a plain record; never mutates live state. */
+  restoreState?(ctx: AgentStateRewriteContext): Promise<State> | State
   /**
    * Return the same Host object for calls that target the same execution
    * environment.
@@ -231,6 +242,9 @@ export interface AgentHarnessRuntime<State> {
   enterAction?(signal: AbortSignal): Promise<() => void>
   harnessName: string
   initialState(): State
+  restoreState?(ctx: AgentStateRewriteContext): Promise<State> | State
+  /** Reserves the node's child lifecycle while a transcript edit is prepared. */
+  reserveEdit?(): Promise<ExternalMutationReservation>
   systemPrompt(ctx: AgentPromptContext<State>): Promise<string> | string
   preamble?(
     ctx: AgentPromptContext<State>
@@ -278,14 +292,8 @@ export interface AgentSessionCloneParams<State = unknown> {
   options?: AgentSessionOptions<State>
 }
 
-export interface AgentSessionCheckpoint<State> {
+export interface AgentSessionCheckpoint<State> extends AgentSessionStateSnapshot<State> {
   transcript: CoreTranscript
-  state: State
-  phase: SessionPhase
-  queue: QueuedMessage[]
-  cwd: string
-  model: ModelSelection
-  harnessName: string
 }
 
 /** Everything a session persists except the transcript blocks. */
@@ -296,6 +304,8 @@ export interface AgentSessionStateSnapshot<State> {
   cwd: string
   model: ModelSelection
   harnessName: string
+  /** Accepted edits survive removal of their replacement turns. Omitted when empty. */
+  edits?: EditReceipt[]
 }
 
 /**
