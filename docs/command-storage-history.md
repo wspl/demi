@@ -1,6 +1,7 @@
 # Command Storage History
 
-Status: proposed design; implementation has not started.
+Status: the general-purpose versioned storage capability is confirmed.
+Implementation details remain proposed; implementation has not started.
 
 ## Contract
 

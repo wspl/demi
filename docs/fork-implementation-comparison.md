@@ -136,6 +136,13 @@ each source child. The forked parent transcript can still contain earlier spawn
 calls and delivered results, but there is no recursive historical child snapshot
 in this creation path.
 
+Resuming a root is a different path: [resume_thread_with_history][cx-resume] restores V2
+agent metadata by querying open spawn descendants of that resumed root's own
+ID. It does not use the root's Fork ancestry to adopt source children. Thus
+reopening a fork does not recover the source's children as its own agents.
+Their original sessions remain associated with the source; only content already
+present in the retained parent history is inherited by the fork.
+
 Control behavior must distinguish the two multi-agent tool versions present in
 this revision:
 
@@ -205,3 +212,4 @@ of that viewing capability.
 [cx-message]: https://github.com/openai/codex/blob/818f1cca8ccf8899f0f4d59336baebaccf358eed/codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs#L53
 [cx-interrupt]: https://github.com/openai/codex/blob/818f1cca8ccf8899f0f4d59336baebaccf358eed/codex-rs/core/src/tools/handlers/multi_agents_v2/interrupt_agent.rs#L35
 [cx-v1]: https://github.com/openai/codex/blob/818f1cca8ccf8899f0f4d59336baebaccf358eed/codex-rs/core/src/tools/handlers/multi_agents/send_input.rs#L33
+[cx-resume]: https://github.com/openai/codex/blob/818f1cca8ccf8899f0f4d59336baebaccf358eed/codex-rs/core/src/thread_manager.rs#L1144
