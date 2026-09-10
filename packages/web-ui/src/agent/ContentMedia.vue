@@ -7,14 +7,7 @@ import type {
   VideoSource,
 } from '@demicodes/core'
 import AttachmentTile from './AttachmentTile.vue'
-
-/** Backend transcripts replace binary data with an authenticated blob reference. */
-export interface BlobReferenceSource {
-  type: 'ref'
-  ref: string
-  mediaType: string
-  fileName?: string
-}
+import type { BlobReferenceSource } from './media-source'
 
 const props = defineProps<{
   kind: 'image' | 'video' | 'document'

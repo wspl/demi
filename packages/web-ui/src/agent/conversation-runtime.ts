@@ -1,7 +1,10 @@
+import { shallowRef, triggerRef } from 'vue'
 import type {
   AgentClient,
   ClientSessionEvent,
   ProviderSelection,
+  EditRequest,
+  TranscriptVersion,
 } from '@demicodes/agent/client'
 import type { UserContentBlock } from '@demicodes/core'
 import type { ConversationState } from './types'
@@ -31,7 +34,7 @@ export interface ConversationRuntimeOptions {
 /** Owns one reconnectable client. Disposing a view leaves its server task alive. */
 export class ConversationRuntime {
   private readonly options: ConversationRuntimeOptions
-  private client: AgentClient | null = null
+  private readonly client = shallowRef<AgentClient | null>(null)
   private opening: Promise<AgentClient> | null = null
   private controller: AbortController | null = null
   private unsubscribe: (() => void) | null = null
@@ -43,7 +46,7 @@ export class ConversationRuntime {
   }
 
   get connected(): boolean {
-    return this.client !== null
+    return this.client.value !== null
   }
 
   async send(content: UserContentBlock[]): Promise<void> {
@@ -58,6 +61,33 @@ export class ConversationRuntime {
       return
     }
     await client.submit(content, messageId)
+  }
+
+  transcriptVersion(): TranscriptVersion | null {
+    return this.client.value?.transcriptVersion() ?? null
+  }
+
+  async editAndSend(request: EditRequest): Promise<void> {
+    const client = await this.ensureOpen()
+    const replacesVisibleTarget = client.transcript().blocks.some(
+      (block) => block.id === request.targetBlockId,
+    )
+    let receivedError = false
+    const unsubscribe = client.subscribe((event) => {
+      if (event.type === 'error') {
+        receivedError = true
+      }
+    })
+    try {
+      await client.editAndSend(request)
+      // Reconciliation can confirm an earlier edit after its generation failed.
+      // That receipt must not erase the current turn's recovery action.
+      if (replacesVisibleTarget && !receivedError) {
+        this.options.state.lastError = null
+      }
+    } finally {
+      unsubscribe()
+    }
   }
 
   async dequeueMessage(id: string): Promise<void> {
@@ -94,7 +124,7 @@ export class ConversationRuntime {
   }
 
   async setModel(): Promise<void> {
-    const client = this.client
+    const client = this.client.value
     const controller = this.controller
     if (!client || !controller) {
       return
@@ -154,8 +184,8 @@ export class ConversationRuntime {
     const controller = this.controller
     this.controller = null
     controller?.abort()
-    this.client?.disconnect()
-    this.client = null
+    this.client.value?.disconnect()
+    this.client.value = null
     this.opening = null
   }
 
@@ -163,8 +193,8 @@ export class ConversationRuntime {
     if (this.disposed) {
       return Promise.reject(new Error('Conversation view was disposed'))
     }
-    if (this.client) {
-      return Promise.resolve(this.client)
+    if (this.client.value) {
+      return Promise.resolve(this.client.value)
     }
     if (!this.opening) {
       const controller = new AbortController()
@@ -189,11 +219,12 @@ export class ConversationRuntime {
       unsubscribe = client.subscribe((event) => {
         if (this.controller === controller) {
           this.applyEvent(event)
+          triggerRef(this.client)
         }
       })
       await client.open(provider, this.options.state.cwd, this.options.state.id)
       controller.signal.throwIfAborted()
-      this.client = client
+      this.client.value = client
       this.unsubscribe = unsubscribe
       this.options.state.load = 'ready'
       return client
@@ -201,7 +232,7 @@ export class ConversationRuntime {
       unsubscribe?.()
       client?.disconnect()
       if (this.controller === controller) {
-        this.client = null
+        this.client.value = null
         this.opening = null
         this.options.state.load = 'failed'
         this.options.state.lastError =

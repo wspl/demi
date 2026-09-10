@@ -15,6 +15,7 @@ import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { BackendConversation } from '../api/contracts'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import type { SavedDraft, SavedFile } from '../conversation/drafts'
+import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 
 export type ProductAttachment =
   | (ComposerFileAttachment & Pick<SavedFile, 'file' | 'upload'>)
@@ -39,6 +40,7 @@ export interface Conversation extends SidebarConversation {
   files: ProductAttachment[]
   submission: 'idle' | 'sending'
   pendingSend: SavedDraft['pendingSend']
+  messageEdit: MessageEditState | null
   scroll: PersistedScrollState | null
   attachedHosts: {
     deviceId: string

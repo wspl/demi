@@ -61,7 +61,12 @@ export async function externalizeBlockMedia(
           item,
           blobs
         ))
-      )
+      ),
+      ...(block.type === 'user' && block.resolvedContent ? {
+        resolvedContent: await Promise.all(block.resolvedContent.map((item) =>
+          externalizeUserContent(item, blobs),
+        )),
+      } : {}),
     }
   }
   if (block.type === 'tool_call') {
@@ -100,7 +105,12 @@ export async function rehydrateBlockMedia(
           item,
           blobs
         ))
-      )
+      ),
+      ...(block.type === 'user' && block.resolvedContent ? {
+        resolvedContent: await Promise.all(block.resolvedContent.map((item) =>
+          rehydrateUserContent(item, blobs),
+        )),
+      } : {}),
     }
   }
   if (block.type === 'tool_call') {

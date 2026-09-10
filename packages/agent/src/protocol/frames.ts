@@ -8,7 +8,11 @@ import type {
 } from '@demicodes/core'
 import type { AbortResult, AgentMetadata } from '../types'
 import type { ShellCommandStatus } from '@demicodes/shell'
-import type { clientFrameSchema, pendingSteersFrameSchema } from './schemas'
+import type {
+  clientFrameSchema,
+  editResultSchema,
+  pendingSteersFrameSchema,
+} from './schemas'
 
 /** One child agent session as seen on the parent connection. */
 export interface SubagentJob {
@@ -34,6 +38,7 @@ export type ClientFrame = z.infer<typeof clientFrameSchema>
 
 export type ServerFrame =
   | { type: 'opened' }
+  | z.infer<typeof editResultSchema>
   | {
       type: 'rejected';
       command: string;
@@ -42,6 +47,7 @@ export type ServerFrame =
   | {
       type: 'transcript_reset';
       blocks: Block[];
+      epoch: string;
       revision: number
     }
   | {
@@ -158,6 +164,7 @@ export type TranscriptPatch =
 export type ShellCommandStatusLike = ShellCommandStatus
 
 export type ClientSessionEvent =
+  | z.infer<typeof editResultSchema>
   | {
       type: 'transcript_reset';
       blocks: Block[]

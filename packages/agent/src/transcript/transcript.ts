@@ -1,6 +1,7 @@
 import {
   createId,
   safeJsonStringify,
+  stringifyPortableJson,
   sliceHead,
   sliceTail,
   toWellFormedText
@@ -14,6 +15,8 @@ import type {
 } from '@demicodes/core'
 import type { InferenceItem, ProviderEvent } from '@demicodes/provider'
 import type { TranscriptPatch } from '../protocol/frames'
+import type { TranscriptVersion } from '../protocol/schemas'
+import { isEditableUserMessage } from './user-message'
 
 const DEFAULT_MODEL_TEXT_HEAD_CHARS = 8_000
 const DEFAULT_MODEL_TEXT_TAIL_CHARS = 8_000
@@ -57,6 +60,7 @@ export class TranscriptLog implements CoreTranscript {
   // time because live blocks keep mutating (streaming text appends).
   private journal: TranscriptPatch[] = []
   private revisionCounter = 0
+  private readonly epoch = createId()
   private readonly replayHeadChars: number
   private readonly replayTailChars: number
 
@@ -77,6 +81,37 @@ export class TranscriptLog implements CoreTranscript {
   /** Monotonic revision, advanced once per drained patch batch. */
   get revision(): number {
     return this.revisionCounter
+  }
+
+  version(): TranscriptVersion {
+    return { epoch: this.epoch, revision: this.revisionCounter }
+  }
+
+  /** A detached prefix for preparing an edit without changing accepted history. */
+  beforeUserMessage(blockId: string): TranscriptLog {
+    const index = this.blocks.findIndex((block) => block.id === blockId)
+    const target = this.blocks[index]
+    if (!target || !isEditableUserMessage(target)) {
+      throw new Error('The edit target must be a user message')
+    }
+    return new TranscriptLog(structuredClone(this.blocks.slice(0, index)), {
+      idFactory: this.idFactory,
+      now: this.now,
+      replayTextBounds: {
+        headChars: this.replayHeadChars,
+        tailChars: this.replayTailChars,
+      },
+    })
+  }
+
+  /** Publishes a prepared history while preserving this log's revision sequence. */
+  replaceAll(blocks: Block[]): void {
+    const next = structuredClone(blocks)
+    this.blocks.length = 0
+    for (const block of next) {
+      this.blocks.push(block)
+    }
+    this.recordReplaceAll()
   }
 
   /**
@@ -133,6 +168,7 @@ export class TranscriptLog implements CoreTranscript {
     content: UserContentBlock[],
     preamble: string | null = null,
     hidden = false,
+    resolvedContent: UserContentBlock[] = content,
   ): Block {
     const block: Block = {
       type: 'user',
@@ -142,6 +178,9 @@ export class TranscriptLog implements CoreTranscript {
       model,
       content,
       preamble,
+      ...(stringifyPortableJson(content) !== stringifyPortableJson(resolvedContent)
+        ? { resolvedContent }
+        : {}),
       ...(hidden ? { hidden: true } : {}),
     }
     return this.appendBlock(block)
@@ -438,12 +477,12 @@ export class TranscriptLog implements CoreTranscript {
             content:
               block.preamble === null
                 ? boundUserContent(
-                  block.content,
+                  block.resolvedContent ?? block.content,
                   this.replayHeadChars,
                   this.replayTailChars
                 )
                 : boundUserContent(
-                    [{ type: 'text', text: block.preamble }, ...block.content],
+                    [{ type: 'text', text: block.preamble }, ...(block.resolvedContent ?? block.content)],
                     this.replayHeadChars,
                     this.replayTailChars,
                   ),
@@ -583,6 +622,18 @@ export class TranscriptLog implements CoreTranscript {
     blockIndex: number;
     tokens: number
   } | null {
+    const boundaryIndex = this.findLastCompactionIndex()
+    if (boundaryIndex !== null) {
+      const boundary = this.blocks[boundaryIndex]
+      // A summary can be inserted before retained responses. Without its tail
+      // marker, their usage may describe the context before that summary existed.
+      const markerIndex = this.blocks.findIndex((block) =>
+        block.type === 'compaction_marker' && block.boundaryId === boundary.id,
+      )
+      if (markerIndex === -1) {
+        return null
+      }
+    }
     for (let i = this.blocks.length - 1; i >= 0; i -= 1) {
       const block = this.blocks[i]
       if (block.type === 'compaction_boundary'
@@ -697,6 +748,10 @@ export function estimateTranscriptBlockTokens(block: Block): number {
 function estimateBlockMediaTokens(block: Block): number {
   switch (block.type) {
     case 'user':
+      return (block.resolvedContent ?? block.content).reduce(
+        (total, content) => total + userContentMediaTokens(content),
+        0,
+      )
     case 'steer':
       return block.content.reduce(
         (total, content) => total + userContentMediaTokens(content),
@@ -738,7 +793,7 @@ function toolResultMediaTokens(content: ToolResultContentBlock): number {
 function estimateBlockText(block: Block): string {
   switch (block.type) {
     case 'user':
-      return block.content.map(stringifyUserContent).join('\n')
+      return (block.resolvedContent ?? block.content).map(stringifyUserContent).join('\n')
     case 'resume':
       return 'Continue from where you left off.'
     case 'steer':

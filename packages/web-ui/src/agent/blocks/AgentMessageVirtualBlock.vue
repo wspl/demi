@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useAttrs } from 'vue'
-import type { UserContentBlock } from '@demicodes/core'
+import { isEditableUserMessage } from '@demicodes/agent/client'
 import type { MessageListBlock } from '../pending-steers'
 import UserBlock from './UserBlock.vue'
 import ThinkingBlock from './ThinkingBlock.vue'
@@ -28,7 +28,7 @@ const emit = defineEmits<{
   interruptPendingSteer: [id: string]
   deleteQueued: [id: string]
   sendQueued: [id: string]
-  editUser: [content: UserContentBlock[]]
+  editUser: [blockId: string]
   retrySubmission: []
 }>()
 
@@ -45,16 +45,15 @@ const attrs = useAttrs()
     v-else-if="block.type === 'user'"
     v-bind="attrs"
     :content="block.content"
-    :editable="editable"
-    @edit="emit('editUser', block.content)"
+    :editable="editable && isEditableUserMessage(block)"
+    @edit="emit('editUser', block.id)"
   />
   <UserBlock
     v-else-if="block.type === 'steer'"
     v-bind="attrs"
     :content="block.content"
     variant="steer"
-    :editable="editable"
-    @edit="emit('editUser', block.content)"
+    :editable="false"
   />
   <UserBlock
     v-else-if="block.type === 'pending_steer'"

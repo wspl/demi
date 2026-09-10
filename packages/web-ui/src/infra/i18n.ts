@@ -53,7 +53,7 @@ const messages: Record<string, string> = {
   'agent.steer.discard': 'Discard this steer',
   'agent.steer.interrupt': 'Interrupt the current turn and send this',
   'agent.user.copy': 'Copy message',
-  'agent.user.edit': 'Edit in the composer',
+  'agent.user.edit': 'Edit message',
   'agent.dock.resume': 'Resume',
   'agent.input.unsupportedFiles': 'Unsupported attachment type',
   'agent.input.attachmentMessage': 'Message attachment',

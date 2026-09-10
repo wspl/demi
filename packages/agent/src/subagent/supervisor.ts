@@ -1,4 +1,5 @@
 import {
+  ActivityGate,
   createId,
   decodeUtf8,
   errorMessage,
@@ -19,6 +20,7 @@ import type {
   AgentMetadata,
   AgentNodeClosePhase,
   AgentNodeRecord,
+  ExternalMutationReservation,
   SubagentProfile,
 } from '../types'
 import type {
@@ -169,6 +171,7 @@ export class ChildSupervisor<State = unknown> {
   private readonly jobs = new Map<string, ChildJob<State>>()
   private parentSession: AgentSession<State> | null = null
   private isDisposed = false
+  private readonly lifecycle = new ActivityGate()
 
   constructor(options: ChildSupervisorOptions<State>) {
     if (
@@ -193,6 +196,37 @@ export class ChildSupervisor<State = unknown> {
     return this.jobs.size > 0
   }
 
+  /** Refuses edits while a child can still deliver work to the parent. */
+  async reserveEdit(): Promise<ExternalMutationReservation> {
+    const release = this.lifecycle.tryReserve()
+    if (!release) {
+      throw new Error('Cannot edit while a child lifecycle operation is in progress')
+    }
+    try {
+      const children = await this.options.tree.store.children(this.options.ownerId)
+      if (this.isDisposed || this.jobs.size > 0
+        || children.some((child) => child.closedPhase === null || !child.delivered)) {
+        throw new Error('Cannot edit while children or completion notifications are pending')
+      }
+      return { release }
+    } catch (error) {
+      release()
+      throw error
+    }
+  }
+
+  private async withLifecycleAccess<T>(operation: () => Promise<T>): Promise<T> {
+    const release = this.lifecycle.tryEnter()
+    if (!release) {
+      throw new Error('Cannot change children while a transcript edit is being prepared')
+    }
+    try {
+      return await operation()
+    } finally {
+      release()
+    }
+  }
+
   /**
    * The `agent` node shared by every session, with lifecycle authority scoped
    * to its own children.
@@ -201,8 +235,9 @@ export class ChildSupervisor<State = unknown> {
     return subagentCommandNode<ChildJob<State>>({
       canSpawn: this.options.canSpawn,
       profileNames: () => this.configuredProfileNames(),
-      spawn: (input) => this.spawn(input),
-      resumeArchived: (id, message) => this.resumeArchived(id, message),
+      spawn: (input) => this.withLifecycleAccess(() => this.spawn(input)),
+      resumeArchived: (id, message) =>
+        this.withLifecycleAccess(() => this.resumeArchived(id, message)),
       attend: (job, ctx) => this.attendChild(job, ctx),
       getRunning: (id) => this.jobs.get(id) ?? null,
       send: (id, message) => this.deliverSend(id, message),
@@ -305,6 +340,10 @@ export class ChildSupervisor<State = unknown> {
    * delivered now. Recursive: each restored child restores its own subtree.
    */
   async restore(): Promise<void> {
+    await this.withLifecycleAccess(() => this.restoreChildren())
+  }
+
+  private async restoreChildren(): Promise<void> {
     if (!this.parentSession || this.isDisposed) {
       return
     }
@@ -844,6 +883,13 @@ export class ChildSupervisor<State = unknown> {
   }
 
   private async closeJob(
+    job: ChildJob<State>,
+    phase: AgentNodeClosePhase,
+  ): Promise<void> {
+    await this.withLifecycleAccess(() => this.closeAdmittedJob(job, phase))
+  }
+
+  private async closeAdmittedJob(
     job: ChildJob<State>,
     phase: AgentNodeClosePhase,
   ): Promise<void> {

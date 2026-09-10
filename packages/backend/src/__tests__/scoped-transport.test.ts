@@ -137,6 +137,29 @@ test(
   }
 )
 
+test('malformed edits never reach the session and an archived refusal is correlated', async () => {
+  const f = await fixture()
+  const request = {
+    operationId: 'edit-B',
+    targetBlockId: 'user-B',
+    version: { epoch: 'session-epoch', revision: 4 },
+    content: [{ type: 'text' as const, text: 'B-edited' }],
+  }
+  f.client.send({ type: 'edit_and_send', request: { ...request, content: [null] } } as never)
+  await waitFor(() => f.replies.length === 1)
+  expect(f.replies[0]).toMatchObject({ type: 'error', code: 'invalid_frame' })
+  await f.control.setConversationArchived(f.conversation.id, true)
+  f.client.send({ type: 'edit_and_send', request })
+  await waitFor(() => f.replies.length === 2)
+  expect(f.replies[1]).toEqual({
+    type: 'edit_result',
+    operationId: 'edit-B',
+    status: 'rejected',
+    reason: 'Restore the conversation before writing to it',
+  })
+  expect(f.received).toEqual([])
+})
+
 test(
   'a failed storage rewrite does not poison subsequent deliveries',
   async () => {
@@ -213,6 +236,7 @@ test(
     })
     f.scoped.send({
       type: 'transcript_reset',
+      epoch: 'test-epoch',
       revision: 1,
       blocks: [{
           type: 'user',

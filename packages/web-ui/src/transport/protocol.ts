@@ -76,6 +76,9 @@ export type ControlResponse =
 export {
   modelSelectionSchema,
   thinkingConfigSchema,
+  editRequestSchema,
+  editResultSchema,
+  transcriptVersionSchema,
 } from '@demicodes/agent/client'
 export type { ProviderSelection, ClientFrame, ServerFrame, ClientSessionEvent } from '@demicodes/agent/client'
 

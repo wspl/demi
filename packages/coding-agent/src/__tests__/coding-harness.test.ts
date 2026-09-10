@@ -254,6 +254,10 @@ test(
       type: 'user',
       content: [
         { type: 'text', text: 'inspect this file' },
+        { type: 'reference', reference: 'note.txt' },
+      ],
+      resolvedContent: [
+        { type: 'text', text: 'inspect this file' },
         {
           type: 'text',
           text: '<file path="note.txt">\nhello from session file\n\n</file>'

@@ -1,5 +1,14 @@
 import { z } from 'zod'
 import { conversationRecordSchema, hostsSchema } from '../api/contracts'
+import { editRequestSchema } from '@demicodes/web-ui/transport/protocol'
+import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
+import { displayedUserContentSchema } from '../api/transcript'
+
+const messageEditSchema: z.ZodType<MessageEditState> = z.object({
+  phase: z.enum(['editing', 'sending', 'uncertain']),
+  request: editRequestSchema.extend({ content: z.array(displayedUserContentSchema) }),
+  error: z.string().nullable(),
+})
 
 const modelSchema = z.object({
   providerId: z.string(),
@@ -36,6 +45,7 @@ const remoteSchema = z.object({
   deviceId: z.string(),
 })
 export const draftSchema = z.object({
+  messageEdit: messageEditSchema.nullable().optional(),
   pendingSend: z
     .object({
       id: z.string().uuid(),

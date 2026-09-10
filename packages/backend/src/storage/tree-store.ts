@@ -72,6 +72,7 @@ export function sqliteAgentTreeStore(
     cwd: update.cwd,
     model: update.model,
     harnessName: update.harnessName,
+    ...(update.edits ? { edits: update.edits } : {}),
   })
   // The journal write: the changed rows, the rows past the end gone, the state row, the completions this state carries.
   const writeCheckpoint = (
@@ -99,9 +100,10 @@ export function sqliteAgentTreeStore(
       'extension_state_snapshot'
     ].includes(block.type))
     db.run(
-      'UPDATE nodes SET state_json = ?, block_count = ?, output_revision = output_revision + ? WHERE id = ?',
+      'UPDATE nodes SET state_json = ?, block_count = ?, output_revision = output_revision + CASE WHEN block_count > ? OR ? THEN 1 ELSE 0 END WHERE id = ?',
       [
         stringifyPortableJson(stateOf(update)),
+        update.blockCount,
         update.blockCount,
         outputChanged ? 1 : 0,
         id

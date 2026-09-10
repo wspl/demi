@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { CommandRegistry } from '@demicodes/shell'
 import { waitFor } from '@demicodes/utils'
-import type { ModelSelection } from '@demicodes/core'
+import type { ModelSelection, UserContentBlock } from '@demicodes/core'
 import {
   AgentSession,
   createStandardAgentTools,
@@ -1704,6 +1704,63 @@ test(
 
 function fakeFactory(transport: FakeClaudeTransport): ClaudeTransportFactory {
   return { start: async () => transport }
+}
+
+for (const change of ['last-message', 'attachment-bytes'] as const) {
+  test(`edit ${change} starts a fresh Claude transport with no stale continuation`, async () => {
+    const answer = (text: string) => [
+      { type: 'assistant', message: { content: [{ type: 'text', text }] } },
+      { type: 'result', usage: { input_tokens: 1, output_tokens: 1 } },
+    ]
+    const consumed = new FakeClaudeTransport([...answer('answer-A'), ...answer('answer-B')])
+    const replacement = new FakeClaudeTransport(answer('answer-edited'))
+    const provider = new ClaudeCodeProvider({ transportFactory: sequenceFactory([consumed, replacement]) })
+    const session = new AgentSession({
+      provider, model, cwd: '/tmp',
+      runtime: {
+        harnessName: 'edit-test', initialState: () => ({}), restoreState: () => ({}),
+        systemPrompt: () => 'system', tools: () => [],
+      },
+    }, { compaction: { preflightThresholdRatio: Number.POSITIVE_INFINITY } })
+    const content = (edited: boolean): UserContentBlock[] => change === 'last-message'
+      ? [{ type: 'text', text: edited ? 'B-edited' : 'B-original' }]
+      : [
+        { type: 'text', text: 'identical-text' },
+        { type: 'image', source: {
+          type: 'binary', mediaType: 'image/png',
+          data: new TextEncoder().encode(edited ? 'new-image-bytes' : 'old-image-bytes'),
+        } },
+      ]
+    try {
+      await session.send([{ type: 'text', text: 'A-first' }])
+      await session.send(content(false))
+      const original = session.transcript().blocks.slice().reverse().find((block) => block.type === 'user')!
+      const writes = structuredClone(consumed.writes)
+      await session.editAndSend({
+        operationId: crypto.randomUUID(), targetBlockId: original.id,
+        version: session.transcript().version(), content: content(true),
+      })
+      await session.waitUntilDone()
+      expect(consumed.writes).toEqual(writes)
+      expect(consumed.killed).toBe(true)
+      expect(consumed.waitCalls).toBe(1)
+      expect(replacement.killed).toBe(false)
+      const payload = JSON.stringify(replacement.writes)
+      expect(payload).toContain('A-first')
+      expect(payload).toContain('answer-A')
+      expect(payload).not.toContain('answer-B')
+      if (change === 'last-message') {
+        expect(payload).toContain('B-edited')
+        expect(payload).not.toContain('B-original')
+      } else {
+        expect(payload).toContain(Buffer.from('new-image-bytes').toString('base64'))
+        expect(payload).not.toContain(Buffer.from('old-image-bytes').toString('base64'))
+      }
+    } finally {
+      await session.dispose()
+    }
+    expect(replacement.killed).toBe(true)
+  })
 }
 
 function sequenceFactory(

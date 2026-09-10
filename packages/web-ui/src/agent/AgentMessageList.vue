@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useScroll } from '@vueuse/core'
-import type { Block, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
+import type { Block, QueuedMessage, SessionPhase } from '@demicodes/core'
 import { useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { getVisibleBlocks } from './visible-blocks'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'
@@ -24,7 +24,7 @@ const props = defineProps<{
   phase: SessionPhase
   bottomOffset: number
   persistedScrollState: PersistedScrollState | undefined
-  /** Hide composer-bound actions on user bubbles. */
+  /** Hide editing actions on user bubbles. */
   readOnly?: boolean
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
@@ -41,7 +41,7 @@ const emit = defineEmits<{
   interruptPendingSteer: [id: string]
   deleteQueued: [id: string]
   sendQueued: [id: string]
-  editUser: [content: UserContentBlock[]]
+  editUser: [blockId: string]
   retryLoad: []
   retrySubmission: []
 }>()
@@ -185,12 +185,12 @@ defineExpose({
               :is-thinking-streaming="isStreamingThinkingAt(item.index)"
               :is-text-streaming="isStreamingTextAt(item.index)"
               :thinking-ended-at="thinkingEndedAt(item.index)"
-              :editable="!props.readOnly"
+              :editable="!props.readOnly && phase === 'idle' && !queue.length && !pendingSteers.length"
               @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
               @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
               @delete-queued="(id) => emit('deleteQueued', id)"
               @send-queued="(id) => emit('sendQueued', id)"
-              @edit-user="(content) => emit('editUser', content)"
+              @edit-user="(id) => emit('editUser', id)"
               @retry-submission="emit('retrySubmission')"
             />
           </div>

@@ -2,7 +2,6 @@
 import { computed, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
-import type { UserContentBlock } from '@demicodes/core'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import { conversationPageKind } from '@demicodes/web-ui/agent/session-status'
@@ -62,22 +61,6 @@ function saveScroll(id: string, state: PersistedScrollState | null): void {
   }
 }
 
-function editUser(content: UserContentBlock[]) {
-  if (!conversation.value) {
-    return
-  }
-  const text = content.find(
-    (
-      part,
-    ): part is Extract<
-      UserContentBlock,
-      {
-        type: 'text'
-      }
-    > => part.type === 'text',
-  )?.text
-  conversation.value.draft = text ?? ''
-}
 </script>
 
 <template>
@@ -109,7 +92,10 @@ function editUser(content: UserContentBlock[]) {
     @send-queued="store.sendQueued(conversation, $event)"
     @remove-pending-steer="store.removePendingSteer(conversation, $event)"
     @interrupt-pending-steer="store.interruptWithSteer(conversation, $event)"
-    @edit-user="editUser"
+    :edit-version="store.editVersion(conversation)"
+    :message-edit="conversation.messageEdit"
+    @update:message-edit="conversation.messageEdit = $event"
+    @submit-edit="store.submitEdit(conversation)"
     @save-scroll="saveScroll"
   >
     <template #workspace

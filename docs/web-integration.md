@@ -45,6 +45,18 @@ a later model failure exposes Retry without duplicating the accepted user messag
 The visible Retry/Resume recovery action calls `resume`, preserving completed
 tool effects rather than regenerating the latest turn.
 
+`web-ui/agent/MessageEditDialog.vue` edits the complete submitted content,
+including multiple text parts and retained attachments. `message-editing.ts`
+owns the editing, sending and uncertain-confirmation phases. The product stores
+that draft separately from the composer in per-user IndexedDB and hydrates media
+references through authenticated blob requests before submission. Closing the
+dialog retains the draft; Cancel discards an unsubmitted edit. A reload restores
+an interrupted submission as uncertain and Retry reuses its operation ID.
+`AgentClient.editAndSend` waits for the correlated acceptance frame. The backend
+commits the retained prefix and replacement before publishing it, then starts
+inference with an independent provider runtime. See
+[message editing](message-editing.md) for conflict, recovery and durability rules.
+
 `web-ui/agent/ChatSession.vue` owns the title, transcript, dock and inspection
 panels. `useSessionPanels` selects one child agent or terminal at a time. Child
 phases and timestamps come from agent lifecycle frames and persisted tree nodes.
@@ -59,7 +71,7 @@ agent protocol.
 | Transcript, queue and pending steers | Backend agent session; reconnect restores the current session snapshot. Pending-steer recovery after process restart is outside this change. |
 | Pins, ordering, read revisions and archive state | Backend conversation/sidebar APIs. A batch keeps successful changes and reports only failures. |
 | Appearance and keyboard shortcuts | Backend per-field preference API. Local pending changes are overlaid until the write and refresh finish. |
-| Local conversation metadata, draft text, unconfirmed sends, file bytes, scroll state and last model | Per-user IndexedDB records in `conversation/drafts.ts`. Binary previews are recreated, and unfinished uploads restart. Empty unsent drafts are not stored. |
+| Local conversation metadata, draft text, message edits, unconfirmed sends, file bytes, scroll state and last model | Per-user IndexedDB records in `conversation/drafts.ts`. Binary previews are recreated, and unfinished uploads restart. Empty unsent drafts are not stored. |
 | Project folds, recent projects, hidden providers/models | Per-user browser storage in `state/local.ts`. Hiding affects selection menus, not a running task. |
 
 New conversations select the first available model. An explicit previous choice

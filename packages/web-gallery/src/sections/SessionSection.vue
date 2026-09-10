@@ -26,6 +26,10 @@ import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { runningSubagents } from '@demicodes/web-ui/agent/subagents'
 import { useSessionPanels } from '@demicodes/web-ui/agent/useSessionPanels'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
+import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
+import MessageEditDialog from '@demicodes/web-ui/agent/MessageEditDialog.vue'
+import { beginMessageEdit, submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
+import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
 import type { Block, ThinkingConfig, UserContentBlock } from '@demicodes/core'
 import type { PendingSteerRenderBlock } from '@demicodes/web-ui/agent/pending-steers'
@@ -68,6 +72,10 @@ const { view } = useGalleryView()
 const submissionError = ref<string | null>('Connection closed before confirmation')
 
 const hiddenIds = ref(new Set<string>())
+const sessionBase = ref(transcriptDemoBlocks())
+const messageEdit = ref<MessageEditState | null>(null)
+const editorOpen = ref(false)
+const editRevision = ref(0)
 const extras = ref<Block[]>([])
 // Pending steers sit after every transcript block, like AgentMessageList orders them.
 const pendingSteers = ref<PendingSteerRenderBlock[]>([pendingSteerDemo])
@@ -146,7 +154,7 @@ const {
 } = turnFlow
 
 const sessionBlocks = computed(() => [
-  ...transcriptDemoBlocks().filter((block) => !hiddenIds.value.has(block.id)),
+  ...sessionBase.value.filter((block) => !hiddenIds.value.has(block.id)),
   ...extras.value.filter((block) => !hiddenIds.value.has(block.id)),
   ...sessionFlowBlocks.value,
   ...pendingSteers.value,
@@ -330,18 +338,52 @@ function sendNow(id: string): void {
   fullPane.value?.scrollToEnd()
 }
 
-function editUser(content: UserContentBlock[]): void {
-  const text = content.find(
-    (
-      part,
-    ): part is Extract<
-      UserContentBlock,
-      {
-        type: 'text'
+function editUser(id: string): void {
+  const block = sessionBlocks.value.find((part) => part.id === id)
+  if (!block || block.type !== 'user' || messageEdit.value) {
+    return
+  }
+  messageEdit.value = beginMessageEdit(block, { epoch: 'gallery-session', revision: editRevision.value })
+  editorOpen.value = true
+}
+
+async function submitEdit(): Promise<void> {
+  await submitMessageEdit({
+    get: () => messageEdit.value,
+    set: (state) => { messageEdit.value = state },
+    send: async (request) => {
+      const blocks = [...sessionBase.value, ...extras.value, ...sessionFlowBlocks.value]
+        .filter((block) => !hiddenIds.value.has(block.id)) as Block[]
+      const index = blocks.findIndex((block) => block.id === request.targetBlockId)
+      if (index < 0) {
+        throw new Error('Message not found')
       }
-    > => part.type === 'text',
-  )?.text
-  fullComposer.value?.setDraft(text ?? '')
+      sessionBase.value = [
+        ...blocks.slice(0, index),
+        {
+          type: 'user', id: request.operationId, turnId: request.operationId,
+          createdAt: new Date().toISOString(), model: demoModel,
+          content: request.content as UserContentBlock[], preamble: null,
+        },
+        {
+          type: 'text', id: `reply-${request.operationId}`,
+          createdAt: new Date().toISOString(), model: demoModel,
+          text: 'Continuing from the edited message.',
+        },
+      ]
+      extras.value = []
+      sessionFlowBlocks.value = []
+      editRevision.value += 1
+    },
+  })
+  if (!messageEdit.value) {
+    editorOpen.value = false
+  }
+}
+
+function cancelEdit(): void {
+  messageEdit.value = null
+  editorOpen.value = false
 }
 
 function compact(): void {
@@ -999,6 +1041,9 @@ function abortAgents() {
     </template>
 
     <template v-if="view === 'states'">
+      <GallerySection title="Edit and resend" note="Shared editor, durable confirmation and recovery states.">
+        <GalleryMessageEditing />
+      </GallerySection>
       <GallerySection
         title="Product session"
         note="The shared product page, with local fixture state and handlers."
@@ -1127,6 +1172,7 @@ function abortAgents() {
           :streaming-text-id="sessionTextId"
           :ended-at-by-id="sessionEndedAt"
           :activity="sessionSlot"
+          :editable="!sessionRunning && !queue.length && !pendingSteers.length && !messageEdit"
           @delete-pending-steer="deletePendingSteer"
           @interrupt-pending-steer="interruptPendingSteer"
           @delete-queued="removeQueued"
@@ -1139,6 +1185,7 @@ function abortAgents() {
             @scroll-to-bottom="scrollToEnd"
           >
             <template #chips>
+              <SessionDockChip v-if="messageEdit" @click="editorOpen = true">Review edited message</SessionDockChip>
               <SessionDockChip @click="playSession('resume')">
                 <Play :size="ICON_PX.in28" />
                 Resume
@@ -1180,5 +1227,15 @@ function abortAgents() {
         </template>
       </GallerySessionPane>
     </template>
+    <MessageEditDialog
+      v-if="messageEdit"
+      :is-open="editorOpen"
+      :overlay-store="appOverlayStore"
+      :state="messageEdit"
+      @close="editorOpen = false"
+      @cancel="cancelEdit"
+      @update="messageEdit = $event"
+      @submit="submitEdit"
+    />
   </div>
 </template>

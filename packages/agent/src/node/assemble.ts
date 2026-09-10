@@ -180,6 +180,8 @@ export async function assembleNode<State>(
     enterAction: (signal) => deps.activity(tree.hostSessionId).enter(signal),
     harnessName: agent.name,
     initialState: () => agent.initialState(),
+    ...(agent.restoreState ? { restoreState: agent.restoreState.bind(agent) } : {}),
+    reserveEdit: () => supervisor.reserveEdit(),
     systemPrompt: (ctx) => params.prompt.systemPrompt({ ...ctx, commandsPrompt }),
     preamble: async (ctx) => {
       const inherited = (await params.prompt.preamble?.(ctx)) ?? null

@@ -26,7 +26,7 @@ const props = defineProps<{
   interruptible?: boolean
   /** Keep the hover actions visible (a catalog specimen, not a hover). */
   actionsPinned?: boolean
-  /** Sent messages can copy back into the composer. Off for a read-only transcript. */
+  /** Allows editing an explicitly submitted user message. */
   editable?: boolean
 }>()
 
@@ -34,7 +34,7 @@ const emit = defineEmits<{
   delete: []
   sendNow: []
   interrupt: []
-  /** Load this message back into the composer. */
+  /** Open this message's editor. */
   edit: []
 }>()
 
@@ -47,12 +47,9 @@ interface BubbleAction {
   emit: () => void
 }
 
-const userText = computed(() => {
-  const firstText = props.content.find(
-    (b): b is Extract<UserContentBlock, { type: 'text' }> => b.type === 'text',
-  )
-  return firstText?.text ?? ''
-})
+const userText = computed(() => props.content.flatMap(
+  (part) => part.type === 'text' ? [part.text] : [],
+).join('\n\n'))
 
 // Sent messages get copy and edit; pending ones get the queue and steer controls instead.
 const actions = computed<BubbleAction[]>(() => {
@@ -64,7 +61,7 @@ const actions = computed<BubbleAction[]>(() => {
       icon: copied.value ? Check : Copy,
       emit: () => void copy(userText.value),
     })
-    if (props.editable !== false) {
+    if (props.editable) {
       list.push({
         key: 'edit',
         hint: t('agent.user.edit'),

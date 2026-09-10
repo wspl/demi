@@ -11,6 +11,10 @@ export function completionMessageId(childId: string): string {
   return `${COMPLETION_PREFIX}${childId}`
 }
 
+export function isCompletionMessageId(messageId: string): boolean {
+  return messageId.startsWith(COMPLETION_PREFIX)
+}
+
 /**
  * The children whose completion message a checkpoint carries — still queued,
  * or as the user turn it opened (`docs/subagent.md` § Persistence).
@@ -35,7 +39,7 @@ export function completedChildrenCarriedBy(
 }
 
 function childOf(messageId: string): string | null {
-  return messageId.startsWith(COMPLETION_PREFIX)
+  return isCompletionMessageId(messageId)
     ? messageId.slice(COMPLETION_PREFIX.length)
     : null
 }

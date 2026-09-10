@@ -1,9 +1,11 @@
-import { computed, ref, toRaw, watch } from 'vue'
+import { computed, ref, shallowRef, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
 import { SerialQueue } from '@demicodes/utils'
 import { type ThinkingConfig, type UserContentBlock } from '@demicodes/core'
 import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
+import { restoreMessageEdit, submitMessageEdit } from '@demicodes/web-ui/agent/message-editing'
+import { loadEditContent } from '../api/message-editing'
 import { composerModel } from '@demicodes/web-ui/agent/model-selection'
 import { hasAcceptedSubmission } from '@demicodes/web-ui/agent/submission'
 import {
@@ -56,10 +58,10 @@ export const useConversations = defineStore('conversations', () => {
   const { uploadFile, addFiles, retryFile, removeFile } = uploads
   let lifetime = new AbortController()
   let activeController: AbortController | null = null
-  let activeRuntime: {
+  const activeRuntime = shallowRef<{
     id: string
     runtime: ConversationRuntime
-  } | null = null
+  } | null>(null)
   let storageErrorReported = false
 
   function report(error: unknown): void {
@@ -149,6 +151,7 @@ export const useConversations = defineStore('conversations', () => {
       files: [],
       submission: 'idle',
       pendingSend: null,
+      messageEdit: null,
       scroll: null,
       attachedHosts: [],
       subagents: [],
@@ -182,8 +185,8 @@ export const useConversations = defineStore('conversations', () => {
         const archiveChanged = current.archived !== record.archived
         Object.assign(current, metadata(record))
         if (
-          activeRuntime?.id !== current.id ||
-          !activeRuntime.runtime.connected
+          activeRuntime.value?.id !== current.id ||
+          !activeRuntime.value.runtime.connected
         ) {
           current.status = summaryStatus(record.status)
         }
@@ -228,6 +231,9 @@ export const useConversations = defineStore('conversations', () => {
 
   function persisted(conversation: Conversation): SavedDraft {
     return {
+      messageEdit: conversation.messageEdit
+        ? structuredClone(toRaw(conversation.messageEdit))
+        : null,
       pendingSend: conversation.pendingSend
         ? structuredClone(toRaw(conversation.pendingSend))
         : null,
@@ -388,6 +394,7 @@ export const useConversations = defineStore('conversations', () => {
       if (draft) {
         conversation.draft = draft.text
         conversation.pendingSend = draft.pendingSend
+        conversation.messageEdit = restoreMessageEdit(draft.messageEdit ?? null)
         if (conversation.pendingSend && !conversation.pendingSend.error) {
           conversation.pendingSend.error =
             'Sending was interrupted. Retry to confirm delivery.'
@@ -477,8 +484,8 @@ export const useConversations = defineStore('conversations', () => {
   function releaseActive(): void {
     activeController?.abort()
     activeController = null
-    activeRuntime?.runtime.dispose()
-    activeRuntime = null
+    activeRuntime.value?.runtime.dispose()
+    activeRuntime.value = null
   }
 
   async function activate(id: string | null): Promise<void> {
@@ -561,7 +568,7 @@ export const useConversations = defineStore('conversations', () => {
           }
         },
       })
-      activeRuntime = {
+      activeRuntime.value = {
         id: conversation.id,
         runtime,
       }
@@ -581,15 +588,15 @@ export const useConversations = defineStore('conversations', () => {
     if (conversation.archived) {
       throw new Error('Restore this conversation before sending.')
     }
-    if (activeRuntime?.id !== conversation.id) {
+    if (activeRuntime.value?.id !== conversation.id) {
       await activate(conversation.id)
     }
-    if (activeRuntime?.id !== conversation.id) {
+    if (activeRuntime.value?.id !== conversation.id) {
       throw new Error(
         conversation.lastError ?? 'No available model for this conversation.',
       )
     }
-    return activeRuntime.runtime
+    return activeRuntime.value.runtime
   }
 
   async function loadHosts(
@@ -1029,8 +1036,8 @@ export const useConversations = defineStore('conversations', () => {
           thinkingEffort: null,
           serviceTierId: null,
         }
-        if (activeRuntime?.id === conversation.id) {
-          await activeRuntime.runtime.setModel()
+        if (activeRuntime.value?.id === conversation.id) {
+          await activeRuntime.value.runtime.setModel()
         } else {
           await activate(conversation.id)
         }
@@ -1050,15 +1057,15 @@ export const useConversations = defineStore('conversations', () => {
         : thinking?.type === 'disabled'
           ? 'disabled'
           : null
-    if (activeRuntime?.id === conversation.id) {
-      void activeRuntime.runtime.setModel().catch(report)
+    if (activeRuntime.value?.id === conversation.id) {
+      void activeRuntime.value.runtime.setModel().catch(report)
     }
   }
 
   function setTier(conversation: Conversation, tier: string | null): void {
     conversation.model.serviceTierId = tier
-    if (activeRuntime?.id === conversation.id) {
-      void activeRuntime.runtime.setModel().catch(report)
+    if (activeRuntime.value?.id === conversation.id) {
+      void activeRuntime.value.runtime.setModel().catch(report)
     }
   }
 
@@ -1245,6 +1252,20 @@ export const useConversations = defineStore('conversations', () => {
     setThinking,
     setTier,
     send,
+    editVersion: (conversation: Conversation) => activeRuntime.value?.id === conversation.id
+      ? activeRuntime.value.runtime.transcriptVersion()
+      : null,
+    submitEdit: (conversation: Conversation) => submitMessageEdit({
+      get: () => conversation.messageEdit,
+      set: (state) => { conversation.messageEdit = state },
+      send: async (request) => {
+        const signal = lifetime.signal
+        const runtime = await runtimeFor(conversation)
+        const content = await loadEditContent(request.content, signal)
+        signal.throwIfAborted()
+        await runtime.editAndSend({ ...request, content })
+      },
+    }),
     addFiles,
     removeFile,
     retryFile,
