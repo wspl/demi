@@ -15,6 +15,8 @@ import SessionStatus from './SessionStatus.vue'
 import { sessionPaneStatus, sessionShowsReconnectTail, type SessionLoad } from './session-status'
 import { COMPOSER_CLEARANCE_PX } from './composer-clearance'
 import { t } from '../infra/i18n'
+import MessageEditRegion from './MessageEditRegion.vue'
+import { messageEditSuffixIds } from './message-editing'
 
 const props = defineProps<{
   conversationId: string
@@ -26,6 +28,7 @@ const props = defineProps<{
   persistedScrollState: PersistedScrollState | undefined
   /** Hide editing actions on user bubbles. */
   readOnly?: boolean
+  editTargetId?: string
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
   loadError?: string | null
@@ -61,6 +64,7 @@ const renderBlocks = computed<MessageListBlock[]>(() => [
 const paneStatus = computed(() =>
   props.pendingSubmission ? null : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.length > 0),
 )
+const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.editTargetId))
 const reconnecting = computed(() => sessionShowsReconnectTail(props.load ?? 'ready'))
 const shouldShowLoading = computed(() =>
   reconnecting.value || shouldShowTailLoading(
@@ -179,20 +183,22 @@ defineExpose({
             class="absolute inset-x-0 top-0"
             :style="{ transform: `translateY(${item.start}px)` }"
           >
-            <AgentMessageVirtualBlock
-              :block="renderBlocks[item.index]!"
-              :conversation-id="props.conversationId"
-              :is-thinking-streaming="isStreamingThinkingAt(item.index)"
-              :is-text-streaming="isStreamingTextAt(item.index)"
-              :thinking-ended-at="thinkingEndedAt(item.index)"
-              :editable="!props.readOnly && phase === 'idle' && !queue.length && !pendingSteers.length"
-              @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
-              @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
-              @delete-queued="(id) => emit('deleteQueued', id)"
-              @send-queued="(id) => emit('sendQueued', id)"
-              @edit-user="(id) => emit('editUser', id)"
-              @retry-submission="emit('retrySubmission')"
-            />
+            <MessageEditRegion :muted="mutedIds.has(renderBlocks[item.index]!.id)">
+              <AgentMessageVirtualBlock
+                :block="renderBlocks[item.index]!"
+                :conversation-id="props.conversationId"
+                :is-thinking-streaming="isStreamingThinkingAt(item.index)"
+                :is-text-streaming="isStreamingTextAt(item.index)"
+                :thinking-ended-at="thinkingEndedAt(item.index)"
+                :editable="!props.readOnly && phase === 'idle' && !queue.length && !pendingSteers.length"
+                @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
+                @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
+                @delete-queued="(id) => emit('deleteQueued', id)"
+                @send-queued="(id) => emit('sendQueued', id)"
+                @edit-user="(id) => emit('editUser', id)"
+                @retry-submission="emit('retrySubmission')"
+              />
+            </MessageEditRegion>
           </div>
         </div>
         <LoadingBlock v-if="shouldShowLoading" :label="tailLabel" />

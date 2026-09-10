@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import type { ThinkingConfig, TokenUsage } from '@demicodes/core'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
+import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import {
@@ -41,6 +42,7 @@ const props = withDefaults(
     models?: Record<string, ModelInfo[]>
     canConfigure?: boolean
     archived?: boolean
+    messageEdit?: MessageEditState | null
   }>(),
   {
     conversationId: 'demo',
@@ -58,6 +60,8 @@ const emit = defineEmits<{
   compact: []
   configure: []
   restore: []
+  'update:messageEdit': [state: MessageEditState | null]
+  submitEdit: []
 }>()
 const draft = ref(props.draft)
 const attached = ref(props.attachments.map((item) => composerAttachment(item)))
@@ -154,6 +158,8 @@ defineExpose({
   <SessionComposer
     v-bind="props"
     v-model:draft="draft"
+    @update:message-edit="emit('update:messageEdit', $event)"
+    @submit-edit="emit('submitEdit')"
     :attachments="attached"
     :providers="props.providers ?? demoProviders"
     :models="props.models ?? demoModels"

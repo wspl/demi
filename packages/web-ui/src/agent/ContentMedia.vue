@@ -18,7 +18,10 @@ const props = defineProps<{
     | BlobReferenceSource
     | Base64ImageSource
   name: string
+  asAttachment?: boolean
+  removable?: boolean
 }>()
+const emit = defineEmits<{ remove: [] }>()
 const src = ref('')
 watch(
   () => props.source,
@@ -46,8 +49,15 @@ watch(
 </script>
 
 <template>
+  <AttachmentTile
+    v-if="asAttachment"
+    :name="name"
+    :src="kind === 'image' ? src : undefined"
+    :removable="removable"
+    @remove="emit('remove')"
+  />
   <video
-    v-if="kind === 'video'"
+    v-else-if="kind === 'video'"
     :src="src"
     :aria-label="name"
     controls

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessageVirtualBlock.vue'
+import { computed } from 'vue'
+import MessageEditRegion from '@demicodes/web-ui/agent/MessageEditRegion.vue'
+import { messageEditSuffixIds } from '@demicodes/web-ui/agent/message-editing'
 import type { MessageListBlock } from '@demicodes/web-ui/agent/pending-steers'
 import ActivitySlot from './ActivitySlot.vue'
 import type { ActivitySlotState } from '../turn-flow'
@@ -11,7 +14,9 @@ const props = defineProps<{
   endedAtById?: Readonly<Record<string, string>>
   activity?: ActivitySlotState | null
   editable?: boolean
+  editTargetId?: string
 }>()
+const mutedIds = computed(() => messageEditSuffixIds(props.blocks, props.editTargetId))
 
 const emit = defineEmits<{
   deletePendingSteer: [id: string]
@@ -43,21 +48,25 @@ function thinkingEndedAt(blocks: readonly MessageListBlock[], index: number): st
 </script>
 
 <template>
-  <AgentMessageVirtualBlock
+  <MessageEditRegion
     v-for="(block, index) in blocks"
     :key="block.id"
-    :block="block"
-    conversation-id="demo"
-    :is-thinking-streaming="isThinkingStreaming(blocks, index)"
-    :is-text-streaming="isTextStreaming(blocks, index)"
-    :thinking-ended-at="thinkingEndedAt(blocks, index)"
-    :editable="editable"
-    @delete-pending-steer="emit('deletePendingSteer', $event)"
-    @interrupt-pending-steer="emit('interruptPendingSteer', $event)"
-    @delete-queued="emit('deleteQueued', $event)"
-    @send-queued="emit('sendQueued', $event)"
-    @edit-user="emit('editUser', $event)"
-  />
+    :muted="mutedIds.has(block.id)"
+  >
+    <AgentMessageVirtualBlock
+      :block="block"
+      conversation-id="demo"
+      :is-thinking-streaming="isThinkingStreaming(blocks, index)"
+      :is-text-streaming="isTextStreaming(blocks, index)"
+      :thinking-ended-at="thinkingEndedAt(blocks, index)"
+      :editable="editable"
+      @delete-pending-steer="emit('deletePendingSteer', $event)"
+      @interrupt-pending-steer="emit('interruptPendingSteer', $event)"
+      @delete-queued="emit('deleteQueued', $event)"
+      @send-queued="emit('sendQueued', $event)"
+      @edit-user="emit('editUser', $event)"
+    />
+  </MessageEditRegion>
   <ActivitySlot
     v-if="activity"
     :kind="activity.kind"

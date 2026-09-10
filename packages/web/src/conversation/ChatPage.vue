@@ -95,7 +95,6 @@ function saveScroll(id: string, state: PersistedScrollState | null): void {
     :edit-version="store.editVersion(conversation)"
     :message-edit="conversation.messageEdit"
     @update:message-edit="conversation.messageEdit = $event"
-    @submit-edit="store.submitEdit(conversation)"
     @save-scroll="saveScroll"
   >
     <template #workspace

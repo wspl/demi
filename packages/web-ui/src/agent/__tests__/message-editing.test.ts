@@ -6,21 +6,19 @@ import {
   beginMessageEdit,
   changeMessageEditContent,
   EditRejectedError,
-  isMessageEditSubmitKey,
+  messageEditSuffixIds,
   restoreMessageEdit,
   submitMessageEdit,
   type MessageEditState,
   type MessageEditRequest,
 } from '../message-editing'
 
-test('edit keyboard submission permits multiline input and never submits an IME composition', () => {
-  const enter = { key: 'Enter', metaKey: false, ctrlKey: false, isComposing: false }
-  expect(isMessageEditSubmitKey(enter)).toBe(false)
-  expect(isMessageEditSubmitKey({ ...enter, metaKey: true })).toBe(true)
-  expect(isMessageEditSubmitKey({ ...enter, ctrlKey: true })).toBe(true)
-  expect(isMessageEditSubmitKey({ ...enter, metaKey: true, isComposing: true })).toBe(false)
-  expect(isMessageEditSubmitKey({ ...enter, ctrlKey: true, isComposing: true })).toBe(false)
-  expect(isMessageEditSubmitKey({ ...enter, key: 'a', metaKey: true })).toBe(false)
+test('only the target and its suffix are muted; an accepted rewrite removes the old cut', () => {
+  const blocks = ['A', 'answer-A', 'B', 'answer-B', 'C'].map((id) => ({ id }))
+  expect([...messageEditSuffixIds(blocks, 'B')]).toEqual(['B', 'answer-B', 'C'])
+  expect([...messageEditSuffixIds(blocks, 'A')]).toEqual(blocks.map((block) => block.id))
+  expect([...messageEditSuffixIds(blocks, undefined)]).toEqual([])
+  expect([...messageEditSuffixIds([{ id: 'A' }, { id: 'B-edited' }], 'B')]).toEqual([])
 })
 
 function draft(): MessageEditState {

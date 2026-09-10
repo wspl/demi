@@ -142,6 +142,8 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :model-load="product.catalogLoad"
       @retry-models="product.revalidate"
       v-model:draft="conversation.draft"
+      v-model:message-edit="conversation.messageEdit"
+      @submit-edit="store.submitEdit(conversation)"
       placeholder="Ask Demi…"
       :conversation-id="conversation.id"
       :running="conversation.phase === 'running'"

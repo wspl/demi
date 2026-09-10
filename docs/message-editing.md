@@ -59,10 +59,19 @@ remain external state; transcript editing does not undo them.
 
 `web-ui` owns the editor and submission interaction; `web` supplies product state
 and handlers, and `web-gallery` supplies examples of the same components.
+`SessionComposer` displays the original content and attachments in the existing
+composer. The target message and subsequent transcript blocks remain visible at
+reduced opacity and cannot receive pointer or keyboard interaction. The × to the
+left of the send button or Escape exits an unsubmitted edit and restores the unrelated
+composer draft. Each text part remains independently editable, preserving its
+position relative to attachments in the submitted content. Enter submits;
+Shift+Enter inserts a newline and active IME composition does not submit.
 Entering or canceling editing does not modify the transcript. Save and resend
 submits one operation. The draft and attachments remain recoverable until the
 client confirms acceptance. An uncertain result is reconciled by operation ID
-before resubmission.
+before resubmission. Sending and uncertain phases lock content and exit controls;
+explicit rejection restores editing. Successful acceptance restores the composer
+draft. Local attachment reads are aborted on exit or unmount.
 
 ## Acceptance invariants
 

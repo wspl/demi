@@ -251,7 +251,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
   Input surfaces, the assembled ChatSession page, the message editor and its
-  draft/submission lifecycle (`agent/message-editing.ts` and `MessageEditDialog.vue`), sidebar layout, workspace and
+  draft/submission lifecycle (`agent/message-editing.ts`, `SessionComposer.vue`, and the inert `MessageEditRegion.vue`), sidebar layout, workspace and
   remote-file selection flows, shared UI primitives, markdown/theme, the conversation/tab store, shared sidebar presentation and list interaction, the sign-in page (`auth/EmailLoginPage`: email and password on the left, a wide empty intro on the right, over a host-reported phase), the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), the reusable device pairing dialog and lifecycle (`devices/`, driven by a host-provided claim adapter), and a
   transport-agnostic control-client interface. Consumes an injected `AgentClient`.
 - Public boundary: source-path exports (`./*`) consumed by web hosts; third parties embed it

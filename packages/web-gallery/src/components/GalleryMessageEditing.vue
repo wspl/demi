@@ -3,6 +3,7 @@ import { onBeforeUnmount, reactive, ref, shallowRef } from 'vue'
 import { deferred, type Deferred } from '@demicodes/utils'
 import ChatSession, { type ChatSessionState } from '@demicodes/web-ui/agent/ChatSession.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
+import GalleryComposer from './GalleryComposer.vue'
 import {
   EditRejectedError,
   submitMessageEdit,
@@ -60,7 +61,7 @@ async function submit(): Promise<void> {
         }
       }
       if (outcome.value === 'reject') {
-        throw new EditRejectedError('The conversation changed. Close the editor and reopen the message.')
+        throw new EditRejectedError('The conversation changed. Exit editing and reopen the message.')
       }
       const index = session.blocks.findIndex((block) => block.id === request.targetBlockId)
       if (index < 0 || request.version.revision !== revision.value) {
@@ -108,9 +109,17 @@ onBeforeUnmount(() => completion.value?.reject(new Error('Example closed')))
         :edit-version="{ epoch: 'gallery-editing', revision }"
         :message-edit="messageEdit"
         @update:message-edit="messageEdit = $event"
-        @submit-edit="submit"
         @save-scroll="(_id, state) => session.scroll = state"
-      />
+      >
+        <template #composer>
+          <GalleryComposer
+            placeholder="Ask Demi…"
+            draft="An unrelated composer draft"
+            v-model:message-edit="messageEdit"
+            @submit-edit="submit"
+          />
+        </template>
+      </ChatSession>
     </div>
   </div>
 </template>

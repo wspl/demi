@@ -48,10 +48,13 @@ export function editHasContent(state: MessageEditState): boolean {
   return state.request.content.some((part) => part.type !== 'text' || part.text.trim())
 }
 
-export function isMessageEditSubmitKey(
-  event: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'isComposing'>,
-): boolean {
-  return event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.isComposing
+/** The accepted suffix stays visible but inactive until the edit is resolved. */
+export function messageEditSuffixIds(
+  blocks: readonly { id: string }[],
+  targetBlockId: string | undefined,
+): Set<string> {
+  const index = blocks.findIndex((block) => block.id === targetBlockId)
+  return new Set(index < 0 ? [] : blocks.slice(index).map((block) => block.id))
 }
 
 /** Keep each draft detached; Vue proxies must not enter persisted request data. */
