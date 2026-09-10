@@ -3,18 +3,13 @@ import { useEditor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import type { InputModel } from './input-model'
+import { shouldSubmitFromEditorKeydown } from './composer-keyboard'
 
 interface UseAgentInputEditorParams {
   initialValue?: InputModel | undefined
   handleSubmit: () => Promise<void> | void
   handleCancel: () => void
   handlePasteAttachments?: (clipboardData: DataTransfer, text: string) => boolean
-}
-
-export function shouldSubmitFromEditorKeydown(
-  event: Pick<KeyboardEvent, 'isComposing' | 'key' | 'shiftKey'>
-): boolean {
-  return !event.isComposing && event.key === 'Enter' && !event.shiftKey
 }
 
 export function editorHasContent(editor: { isEmpty: boolean } | null | undefined): boolean {

@@ -27,9 +27,7 @@ import { runningSubagents } from '@demicodes/web-ui/agent/subagents'
 import { useSessionPanels } from '@demicodes/web-ui/agent/useSessionPanels'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
-import MessageEditDialog from '@demicodes/web-ui/agent/MessageEditDialog.vue'
 import { beginMessageEdit, submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
-import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
 import type { Block, ThinkingConfig, UserContentBlock } from '@demicodes/core'
 import type { PendingSteerRenderBlock } from '@demicodes/web-ui/agent/pending-steers'
@@ -74,7 +72,6 @@ const submissionError = ref<string | null>('Connection closed before confirmatio
 const hiddenIds = ref(new Set<string>())
 const sessionBase = ref(transcriptDemoBlocks())
 const messageEdit = ref<MessageEditState | null>(null)
-const editorOpen = ref(false)
 const editRevision = ref(0)
 const extras = ref<Block[]>([])
 // Pending steers sit after every transcript block, like AgentMessageList orders them.
@@ -344,7 +341,6 @@ function editUser(id: string): void {
     return
   }
   messageEdit.value = beginMessageEdit(block, { epoch: 'gallery-session', revision: editRevision.value })
-  editorOpen.value = true
 }
 
 async function submitEdit(): Promise<void> {
@@ -376,14 +372,6 @@ async function submitEdit(): Promise<void> {
       editRevision.value += 1
     },
   })
-  if (!messageEdit.value) {
-    editorOpen.value = false
-  }
-}
-
-function cancelEdit(): void {
-  messageEdit.value = null
-  editorOpen.value = false
 }
 
 function compact(): void {
@@ -1173,6 +1161,7 @@ function abortAgents() {
           :ended-at-by-id="sessionEndedAt"
           :activity="sessionSlot"
           :editable="!sessionRunning && !queue.length && !pendingSteers.length && !messageEdit"
+          :edit-target-id="messageEdit?.request.targetBlockId"
           @delete-pending-steer="deletePendingSteer"
           @interrupt-pending-steer="interruptPendingSteer"
           @delete-queued="removeQueued"
@@ -1185,7 +1174,6 @@ function abortAgents() {
             @scroll-to-bottom="scrollToEnd"
           >
             <template #chips>
-              <SessionDockChip v-if="messageEdit" @click="editorOpen = true">Review edited message</SessionDockChip>
               <SessionDockChip @click="playSession('resume')">
                 <Play :size="ICON_PX.in28" />
                 Resume
@@ -1203,6 +1191,8 @@ function abortAgents() {
             </template>
             <GalleryComposer
               ref="fullComposer"
+              v-model:message-edit="messageEdit"
+              @submit-edit="submitEdit"
               placeholder="Ask Demi about the failing login test…"
               conversation-id="demo"
               :running="sessionRunning"
@@ -1227,15 +1217,5 @@ function abortAgents() {
         </template>
       </GallerySessionPane>
     </template>
-    <MessageEditDialog
-      v-if="messageEdit"
-      :is-open="editorOpen"
-      :overlay-store="appOverlayStore"
-      :state="messageEdit"
-      @close="editorOpen = false"
-      @cancel="cancelEdit"
-      @update="messageEdit = $event"
-      @submit="submitEdit"
-    />
   </div>
 </template>
