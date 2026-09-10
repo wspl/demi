@@ -270,7 +270,7 @@ test('snapshot refresh preserves live transcript and unsent draft', async () => 
   expect(current.phase).toBe('running')
 })
 
-test('opening cached history uses pane loading until the initial connection finishes', async () => {
+test('uncached history waits for its own model connection after navigation', async () => {
   const store = useConversations()
   const current = store.items[0]!
   current.blocks = [{
@@ -324,6 +324,8 @@ test('opening cached history uses pane loading until the initial connection fini
     expect(current).toMatchObject({ load: 'loading' })
     await historyRequested.promise
     expect(current).toMatchObject({ load: 'loading' })
+    useProduct().catalogs.second = []
+    useProduct().activeConversationId = 'second'
     history.resolve(Response.json({ blocks: current.blocks, subagents: [] }))
     await connecting.promise
     expect(current).toMatchObject({ load: 'loading' })
@@ -402,4 +404,107 @@ test('failed Fork creates no local conversation; retry forwards the same destina
   expect(requests.filter((item) => item.path.endsWith('/fork')).map((item) => item.body))
     .toEqual([request, request])
   expect(store.items.filter((item) => item.id === request.id)).toHaveLength(1)
+})
+
+function serveHistory(gate?: ReturnType<typeof deferred<void>>) {
+  const requested = deferred<void>()
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.endsWith('/hosts') || path.endsWith('/transcript')) {
+      requests.push({ path, body: null })
+      if (path.endsWith('/hosts')) {
+        return Response.json({ hosts: [] })
+      }
+      requested.resolve()
+      await gate?.promise
+      return Response.json({ blocks: [], subagents: [] })
+    }
+    return originalFetch(input, init)
+  }) as typeof fetch
+  return requested.promise
+}
+
+test('switching between opened sessions performs no reads or load reset', async () => {
+  serveHistory()
+  const store = useConversations()
+  await store.activate('first')
+  const first = store.items.find((item) => item.id === 'first')!
+  first.draft = 'Keep this input'
+  await store.activate('second')
+  const count = requests.length
+  const returning = store.activate('first')
+  expect(first.load).toBe('ready')
+  expect(useProduct().activeConversationId).toBe('first')
+  await returning
+  await store.activate('second')
+  await store.activate('first')
+  expect(requests).toHaveLength(count)
+  expect(first.draft).toBe('Keep this input')
+})
+
+test('leaving and returning during history loading shares the pending request', async () => {
+  const gate = deferred<void>()
+  serveHistory(gate)
+  const store = useConversations()
+  const first = store.activate('first')
+  await store.activate(null)
+  const returning = store.activate('first')
+  gate.resolve()
+  await Promise.all([first, returning])
+  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(1)
+  expect(store.items[0]!.load).toBe('ready')
+})
+
+test('inactive context changes invalidate only that session; retry explicitly reloads', async () => {
+  serveHistory()
+  const store = useConversations()
+  await store.activate('first')
+  await store.activate('second')
+  records[0]!.contextVersion += 1
+  await useProduct().refresh()
+  await nextTick()
+  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(2)
+  await store.activate('first')
+  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(3)
+  await store.activate('second')
+  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(3)
+  await store.reloadSession('second')
+  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(4)
+})
+
+test('archive changes and removal invalidate cached history', async () => {
+  serveHistory()
+  const store = useConversations()
+  await store.activate('first')
+  await store.activate(null)
+  records[0]!.archived = true
+  await useProduct().refresh()
+  await nextTick()
+  await store.activate('first')
+  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(2)
+  await store.activate(null)
+  const removed = records.shift()!
+  await useProduct().refresh()
+  await nextTick()
+  records.unshift(removed)
+  await useProduct().refresh()
+  await nextTick()
+  await store.activate('first')
+  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(3)
+})
+
+test('logout cancels pending history and prevents late state restoration', async () => {
+  const gate = deferred<void>()
+  const requested = serveHistory(gate)
+  const store = useConversations()
+  const current = store.items[0]!
+  const opening = store.activate('first')
+  await requested
+  store.stopAll()
+  gate.resolve()
+  await opening
+  expect(store.items).toEqual([])
+  expect(current.load).toBe('loading')
+  expect(store.notice).toBe('')
 })

@@ -1,8 +1,9 @@
-import { computed, ref, shallowRef, toRaw, watch } from 'vue'
+import { computed, ref, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
 import { SerialQueue } from '@demicodes/utils'
 import { type ThinkingConfig, type UserContentBlock } from '@demicodes/core'
+import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
 import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
 import { restoreMessageEdit, submitMessageEdit } from '@demicodes/web-ui/agent/message-editing'
 import { loadEditContent } from '../api/message-editing'
@@ -60,11 +61,7 @@ export const useConversations = defineStore('conversations', () => {
   const uploads = createConversationUploads(saveDrafts, report)
   const { uploadFile, addFiles, retryFile, removeFile } = uploads
   let lifetime = new AbortController()
-  let activeController: AbortController | null = null
-  const activeRuntime = shallowRef<{
-    id: string
-    runtime: ConversationRuntime
-  } | null>(null)
+  const cache = new ConversationCache()
   let storageErrorReported = false
 
   function report(error: unknown): void {
@@ -187,10 +184,8 @@ export const useConversations = defineStore('conversations', () => {
         const contextChanged = current.contextVersion !== record.contextVersion
         const archiveChanged = current.archived !== record.archived
         Object.assign(current, metadata(record))
-        if (
-          activeRuntime.value?.id !== current.id ||
-          !activeRuntime.value.runtime.connected
-        ) {
+        const cached = cache.get(current.id)
+        if (!cached?.runtime?.connected) {
           current.status = summaryStatus(record.status)
         }
         if (contextChanged) {
@@ -203,16 +198,15 @@ export const useConversations = defineStore('conversations', () => {
         }
         if (
           revisionChanged &&
-          activeController &&
-          product.activeConversationId === current.id
+          cached &&
+          !contextChanged &&
+          !archiveChanged
         ) {
-          void loadHosts(current, activeController.signal).catch(report)
+          void loadHosts(current, cached.controller.signal).catch(report)
         }
-        if (
-          (contextChanged || archiveChanged) &&
-          product.activeConversationId === current.id
-        ) {
-          void activate(current.id)
+        if (contextChanged || archiveChanged) {
+          cache.delete(current.id)
+          current.load = 'loading'
         }
         return current
       })
@@ -226,8 +220,10 @@ export const useConversations = defineStore('conversations', () => {
         next.splice(index, 0, item)
       }
       items.value = next
-      if (product.activeConversationId && !activeController) {
-        void activate(product.activeConversationId)
+      cache.retain(new Set(next.map((item) => item.id)))
+      const active = next.find((item) => item.id === product.activeConversationId)
+      if (active && active.load !== 'failed' && !cache.get(active.id)) {
+        void activate(active.id)
       }
     },
   )
@@ -431,23 +427,19 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  function selectedCatalog(conversation: Conversation) {
-    return product.catalogs[conversation.id] ?? product.catalogs[''] ?? []
-  }
-
   async function prepareModel(
     conversation: Conversation,
   ): Promise<ProviderSelection> {
     const pick = composerModel(
-      resources.providerInfos,
-      resources.models,
+      resources.providerInfosFor(conversation.id),
+      resources.modelsFor(conversation.id),
       conversation.model.providerId,
       conversation.model.modelId,
     )
     if (pick.kind !== 'ready' || !pick.providerId || !pick.modelId) {
       throw new Error('Choose an available provider and model before sending.')
     }
-    const model = selectedCatalog(conversation)
+    const model = product.catalogFor(conversation.id)
       .find((provider) => provider.providerId === pick.providerId)
       ?.models.find((model) => model.id === pick.modelId)
     if (!model) {
@@ -484,13 +476,6 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  function releaseActive(): void {
-    activeController?.abort()
-    activeController = null
-    activeRuntime.value?.runtime.dispose()
-    activeRuntime.value = null
-  }
-
   async function activate(id: string | null): Promise<void> {
     const previous = items.value.find(
       (item) => item.id === product.activeConversationId,
@@ -505,16 +490,36 @@ export const useConversations = defineStore('conversations', () => {
       saveDrafts()
       items.value = items.value.filter((item) => item !== previous)
       restored.delete(previous.id)
+      cache.delete(previous.id)
     }
-    releaseActive()
     product.activeConversationId = id
     const conversation = items.value.find((item) => item.id === id)
     if (!conversation) {
       return
     }
-    const controller = new AbortController()
-    activeController = controller
-    conversation.load = 'loading'
+    if (!cache.get(conversation.id)) {
+      conversation.load = conversation.persistence === 'synced' ? 'loading' : 'ready'
+    }
+    try {
+      await cache.open(conversation.id, (entry) => loadConversation(conversation, entry))
+      // A different view may have taken over a cached attachment. Navigation
+      // is a user action that can reopen it without refetching REST history.
+      await cache.get(conversation.id)?.runtime?.connect()
+    } catch (error) {
+      report(error)
+    }
+  }
+
+  async function reloadSession(id: string): Promise<void> {
+    cache.delete(id)
+    await activate(id)
+  }
+
+  async function loadConversation(
+    conversation: Conversation,
+    entry: CachedConversation,
+  ): Promise<void> {
+    const { controller } = entry
     try {
       await restoreDraft(conversation, controller.signal)
       if (conversation.persistence !== 'synced') {
@@ -539,8 +544,8 @@ export const useConversations = defineStore('conversations', () => {
       }))
       updateLiveStatus(conversation)
       const pick = composerModel(
-        resources.providerInfos,
-        resources.models,
+        resources.providerInfosFor(conversation.id),
+        resources.modelsFor(conversation.id),
         conversation.model.providerId,
         conversation.model.modelId,
       )
@@ -571,10 +576,7 @@ export const useConversations = defineStore('conversations', () => {
           }
         },
       })
-      activeRuntime.value = {
-        id: conversation.id,
-        runtime,
-      }
+      entry.runtime = runtime
       await runtime.connect()
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -582,6 +584,7 @@ export const useConversations = defineStore('conversations', () => {
         conversation.lastError =
           error instanceof Error ? error.message : String(error)
       }
+      throw error
     }
   }
 
@@ -591,15 +594,21 @@ export const useConversations = defineStore('conversations', () => {
     if (conversation.archived) {
       throw new Error('Restore this conversation before sending.')
     }
-    if (activeRuntime.value?.id !== conversation.id) {
-      await activate(conversation.id)
+    const cached = cache.get(conversation.id)
+    if (cached) {
+      await cached.opening
+      if (!cached.runtime) {
+        cache.delete(conversation.id)
+      }
     }
-    if (activeRuntime.value?.id !== conversation.id) {
+    await activate(conversation.id)
+    const runtime = cache.get(conversation.id)?.runtime
+    if (!runtime) {
       throw new Error(
         conversation.lastError ?? 'No available model for this conversation.',
       )
     }
-    return activeRuntime.value.runtime
+    return runtime
   }
 
   async function loadHosts(
@@ -852,6 +861,7 @@ export const useConversations = defineStore('conversations', () => {
     await product.refresh()
     signal.throwIfAborted()
     conversation.persistence = 'synced'
+    cache.delete(conversation.id)
     const stored = product.snapshot?.conversations.find(
       (item) => item.id === conversation.id,
     )
@@ -1059,10 +1069,11 @@ export const useConversations = defineStore('conversations', () => {
           thinkingEffort: null,
           serviceTierId: null,
         }
-        if (activeRuntime.value?.id === conversation.id) {
-          await activeRuntime.value.runtime.setModel()
+        const runtime = cache.get(conversation.id)?.runtime
+        if (runtime) {
+          await runtime.setModel()
         } else {
-          await activate(conversation.id)
+          await reloadSession(conversation.id)
         }
       })
     } catch (error) {
@@ -1080,16 +1091,12 @@ export const useConversations = defineStore('conversations', () => {
         : thinking?.type === 'disabled'
           ? 'disabled'
           : null
-    if (activeRuntime.value?.id === conversation.id) {
-      void activeRuntime.value.runtime.setModel().catch(report)
-    }
+    void cache.get(conversation.id)?.runtime?.setModel().catch(report)
   }
 
   function setTier(conversation: Conversation, tier: string | null): void {
     conversation.model.serviceTierId = tier
-    if (activeRuntime.value?.id === conversation.id) {
-      void activeRuntime.value.runtime.setModel().catch(report)
-    }
+    void cache.get(conversation.id)?.runtime?.setModel().catch(report)
   }
 
   async function send(conversation: Conversation): Promise<void> {
@@ -1218,7 +1225,7 @@ export const useConversations = defineStore('conversations', () => {
 
   function stopAll(): void {
     pendingChanges.value = []
-    releaseActive()
+    cache.clear()
     lifetime.abort()
     lifetime = new AbortController()
     uploads.dispose(items.value)
@@ -1239,7 +1246,7 @@ export const useConversations = defineStore('conversations', () => {
     rename,
     markRead,
     reloadList: () => product.refresh().catch(report),
-    reloadSession: (id: string) => activate(id),
+    reloadSession,
     pin: (ids: string[], pinned: boolean) => batch(ids, { pinned }),
     archive: (ids: string[], archived = true) => batch(ids, { archived }),
     move: (ids: string[], projectId: string | null) =>
@@ -1276,9 +1283,8 @@ export const useConversations = defineStore('conversations', () => {
     setThinking,
     setTier,
     send,
-    editVersion: (conversation: Conversation) => activeRuntime.value?.id === conversation.id
-      ? activeRuntime.value.runtime.transcriptVersion()
-      : null,
+    editVersion: (conversation: Conversation) =>
+      cache.get(conversation.id)?.runtime?.transcriptVersion() ?? null,
     submitEdit: (conversation: Conversation) => submitMessageEdit({
       get: () => conversation.messageEdit,
       set: (state) => { conversation.messageEdit = state },
