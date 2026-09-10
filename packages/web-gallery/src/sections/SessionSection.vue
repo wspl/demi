@@ -740,7 +740,7 @@ function abortAgents() {
     <template v-if="view === 'blocks'">
       <GallerySection
         title="Assistant message"
-        note="Copy, fork, and a live relative timestamp. Fork emits a preview event."
+        note="Fork completed messages while the source runs. Preview success, pending creation, and a retry after failure."
       >
         <GallerySpecimen variant="message footer" wide>
           <GalleryAssistantMessages />

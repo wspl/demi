@@ -32,6 +32,7 @@ import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { transpileCommandModule } from './conversation/command-manifest'
 import { ProductState } from './sync/product-state'
 import { ConversationUpdates } from './conversation/updates'
+import { ConversationForks } from './conversation/fork'
 import { ConversationTargets } from './conversation/target'
 import { CLOUD_HOME } from './conversation/execution-target'
 import { createCloudWorkspace } from './managed/cloud-workspace'
@@ -384,6 +385,11 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const { upgradeWebSocket, websocket } = createBunWebSocket()
   const runnerReleaseDir = options.runnerReleaseDir ??
     process.env.DEMI_RUNNER_RELEASE_DIR
+  const conversationForks = new ConversationForks({
+    control, stores: conversationStores, server: agentServer, registry: runnerRegistry,
+  })
+  await conversationForks.recover()
+
   const app = createApp({
     webDirectory: options.webDirectory,
     ...(runnerReleaseDir ? { runnerInstallation: {
@@ -402,6 +408,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       managed: managedHosts,
       mode: options.mode
     }),
+    conversationForks,
     conversationUpdates: new ConversationUpdates({
       control,
       vault,

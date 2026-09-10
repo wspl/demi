@@ -31,11 +31,11 @@ export class UserBlobStores {
     let store = this.conversations.get(conversationId)
     if (!store) {
       let ownerStore: Promise<BlobStore> | undefined
-      const resolve = () => ownerStore ??= this.control.getConversation(conversationId).then(
-        (conversation) => {
-          if (!conversation)
+      const resolve = () => ownerStore ??= this.control.conversationBlobOwner(conversationId).then(
+        (userId) => {
+          if (!userId)
             throw new Error(`No conversation ${conversationId} owns these blobs`)
-          return this.forUser(conversation.userId)
+          return this.forUser(userId)
         }
       )
       store = {

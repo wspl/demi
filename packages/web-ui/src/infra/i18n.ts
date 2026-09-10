@@ -55,7 +55,7 @@ const messages: Record<string, string> = {
   'agent.user.copy': 'Copy message',
   'agent.user.edit': 'Edit message',
   'agent.assistant.fork': 'Fork from here',
-  'agent.assistant.forkUnavailable': 'Fork is not available yet',
+  'agent.assistant.forkUnavailable': 'Fork is available after this message completes',
   'agent.assistant.copyFailed': 'Could not copy. Try again.',
   'agent.dock.resume': 'Resume',
   'agent.input.unsupportedFiles': 'Unsupported attachment type',

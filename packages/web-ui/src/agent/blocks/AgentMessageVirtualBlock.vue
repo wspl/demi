@@ -11,6 +11,7 @@ import AbortedBlock from './AbortedBlock.vue'
 import CompactionBlock from './CompactionBlock.vue'
 import QueueDivider from './QueueDivider.vue'
 import PendingSubmission from '../PendingSubmission.vue'
+import type { MessageForkState } from '../message-fork'
 
 defineOptions({ inheritAttrs: false })
 
@@ -21,7 +22,8 @@ const props = defineProps<{
   isTextStreaming?: boolean
   thinkingEndedAt?: string | null
   editable?: boolean
-  forkable?: boolean
+  fork?: () => Promise<void>
+  forkState?: MessageForkState
 }>()
 
 const emit = defineEmits<{
@@ -31,7 +33,6 @@ const emit = defineEmits<{
   sendQueued: [id: string]
   editUser: [blockId: string]
   retrySubmission: []
-  fork: [blockId: string]
 }>()
 
 const attrs = useAttrs()
@@ -97,8 +98,8 @@ const attrs = useAttrs()
       :content="block.text"
       :is-streaming="isTextStreaming"
       :created-at="block.createdAt"
-      :forkable="forkable"
-      @fork="emit('fork', block.id)"
+      :fork="block.forkable ? fork : undefined"
+      :fork-state="forkState"
     />
     <div
       v-else-if="block.type === 'tool_call'"
