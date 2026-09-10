@@ -2,9 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { Archive, Play, RotateCcw } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/agent/client'
-import MessageEditDialog from './MessageEditDialog.vue'
 import { beginMessageEdit, type MessageEditState } from './message-editing'
-import { appOverlayStore } from '../overlay/appOverlay'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
@@ -62,12 +60,11 @@ const emit = defineEmits<{
   removePendingSteer: [id: string]
   interruptPendingSteer: [id: string]
   'update:messageEdit': [state: MessageEditState | null]
-  submitEdit: []
   saveScroll: [id: string, state: PersistedScrollState | null]
 }>()
 const surface = ref<{ dockHeight: number }>()
-const editorOpen = ref(false)
 const canEdit = computed(() => !!props.editVersion && !props.messageEdit
+  && !props.pendingSubmission
   && !props.conversation.archived
   && !props.conversation.subagents.some((agent) => agent.phase === 'running'))
 
@@ -77,20 +74,7 @@ function editUser(id: string): void {
     return
   }
   emit('update:messageEdit', beginMessageEdit(block, props.editVersion))
-  editorOpen.value = true
 }
-
-function cancelEdit(): void {
-  emit('update:messageEdit', null)
-  editorOpen.value = false
-}
-
-watch(() => props.conversation.id, () => { editorOpen.value = false })
-watch(() => props.messageEdit, (state) => {
-  if (!state) {
-    editorOpen.value = false
-  }
-})
 const list = ref<{
   isAtBottom: boolean
   scrollToBottom: () => void
@@ -151,6 +135,7 @@ watch(() => props.conversation.id, close)
             :load="conversation.load"
             :pending-submission="pendingSubmission"
             :read-only="!canEdit"
+            :edit-target-id="messageEdit?.request.targetBlockId"
             @retry-submission="emit('retrySubmission')"
             :bottom-offset="surface?.dockHeight ?? 0"
             :persisted-scroll-state="conversation.scroll ?? undefined"
@@ -169,16 +154,13 @@ watch(() => props.conversation.id, close)
             @scroll-to-bottom="list?.scrollToBottom()"
           >
             <template #chips>
-              <SessionDockChip v-if="messageEdit" @click="editorOpen = true">
-                {{ messageEdit.phase === 'sending' ? 'Saving edited message…' : 'Review edited message' }}
-              </SessionDockChip>
               <SessionNoticeBar
                 v-if="conversation.lastError"
                 :label="conversation.lastError"
               />
               <SessionDockChip
                 v-if="
-                  !conversation.archived &&
+                  !messageEdit && !conversation.archived &&
                   hasProvider &&
                   (conversation.status === 'error' ||
                     conversation.status === 'aborted')
@@ -226,14 +208,4 @@ watch(() => props.conversation.id, close)
       </SessionSurface>
     </div>
   </section>
-  <MessageEditDialog
-    v-if="messageEdit"
-    :is-open="editorOpen"
-    :overlay-store="appOverlayStore"
-    :state="messageEdit"
-    @close="editorOpen = false"
-    @cancel="cancelEdit"
-    @update="emit('update:messageEdit', $event)"
-    @submit="emit('submitEdit')"
-  />
 </template>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { ThinkingConfig, TokenUsage } from '@demicodes/core'
-import { ArrowUp, File as FileIcon, HardDrive, Plus, Square } from '@lucide/vue'
+import { ArrowUp, File as FileIcon, HardDrive, Plus, RotateCcw, Square, X } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { t } from '../infra/i18n'
@@ -11,7 +11,13 @@ import {
   attachmentCaption,
   attachmentSendBlockReason,
   type ComposerAttachment,
+  decodeRemoteReference,
 } from './message-input/attachments'
+import { useMessageEditComposer } from './message-input/useMessageEditComposer'
+import { shouldSubmitFromEditorKeydown } from './message-input/composer-keyboard'
+import { editHasContent, type MessageEditState } from './message-editing'
+import ContentMedia from './ContentMedia.vue'
+import InlineError from '../ui/InlineError.vue'
 import ComposerShell from './ComposerShell.vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import ModelSelector from './ModelSelector.vue'
@@ -35,6 +41,7 @@ const props = withDefaults(
     canCompact?: boolean
     accept?: string
     attachments?: ComposerAttachment[]
+    messageEdit?: MessageEditState | null
     /** The conversation has a host with files: the menu offers a remote file beside local ones. */
     remoteFiles?: boolean
     focused?: boolean
@@ -75,11 +82,21 @@ const emit = defineEmits<{
   changeServiceTier: [id: string | null]
   configure: []
   restore: []
+  'update:messageEdit': [state: MessageEditState | null]
+  submitEdit: []
 }>()
+const root = ref<HTMLElement>()
+const edit = useMessageEditComposer({
+  state: () => props.messageEdit,
+  update: (state) => emit('update:messageEdit', state),
+  root,
+  acceptedExtensions: () => selected.value?.acceptedExtensions ?? null,
+})
 const focused = ref(false)
 const fileInput = ref<HTMLInputElement>()
 const hasDraft = computed(
-  () => props.hasContent || !!draft.value.trim() || !!props.attachments.length,
+  () => props.messageEdit ? editHasContent(props.messageEdit)
+    : props.hasContent || !!draft.value.trim() || !!props.attachments.length,
 )
 const modelState = computed(() =>
   composerModel(
@@ -93,7 +110,9 @@ const sendDisabled = computed(
   () =>
     props.disabled ||
     modelState.value.kind !== 'ready' ||
-    !attachmentsReady(props.attachments),
+    (props.messageEdit
+      ? props.messageEdit.phase === 'sending' || !!edit.reading.value
+      : !attachmentsReady(props.attachments)),
 )
 const sendBlockReason = computed(() => {
   if (modelState.value.kind === 'unavailable') {
@@ -102,21 +121,31 @@ const sendBlockReason = computed(() => {
   if (props.disabled) {
     return undefined
   }
-  return attachmentSendBlockReason(props.attachments)
+  return props.messageEdit ? undefined : attachmentSendBlockReason(props.attachments)
 })
 const expanded = computed(
   () =>
-    props.multiline || draft.value.includes('\n') || !!props.attachments.length,
+    props.messageEdit
+      ? edit.textParts.value.length > 1 || edit.textParts.value.some(({ part }) => part.type === 'text' && part.text.includes('\n')) || !!edit.attachments.value.length
+      : props.multiline || draft.value.includes('\n') || !!props.attachments.length,
 )
 const selected = computed(() =>
   props.models[props.selectedProviderId ?? '']?.find(
     (model) => model.id === props.selectedModelId,
   ),
 )
+const submitLabel = computed(() => props.messageEdit
+  ? props.messageEdit.phase === 'uncertain' ? 'Retry edit' : 'Save and resend'
+  : props.running ? 'Queue message' : 'Send message',
+)
 
 function submit() {
   if (!sendDisabled.value && hasDraft.value) {
-    emit('submit')
+    if (props.messageEdit) {
+      emit('submitEdit')
+    } else {
+      emit('submit')
+    }
   }
 }
 
@@ -127,16 +156,29 @@ function pickFiles(close: () => void) {
 
 function fileChange(event: Event) {
   const input = event.target as HTMLInputElement
-  emit('addFiles', [...(input.files ?? [])])
+  addFiles([...(input.files ?? [])])
   input.value = ''
 }
 
 function keydown(event: KeyboardEvent) {
-  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
+  if (event.key === 'Escape' && props.messageEdit && !event.isComposing) {
+    event.preventDefault()
+    edit.cancel()
+    return
+  }
+  if (!shouldSubmitFromEditorKeydown(event)) {
     return
   }
   event.preventDefault()
   submit()
+}
+
+function addFiles(files: File[]): void {
+  if (props.messageEdit) {
+    void edit.addFiles(files)
+  } else {
+    emit('addFiles', files)
+  }
 }
 </script>
 
@@ -160,7 +202,7 @@ function keydown(event: KeyboardEvent) {
       "
       @action="emit('configure')"
     />
-    <div v-else key="composer" class="w-full">
+    <div v-else key="composer" ref="root" class="w-full">
       <input
         ref="fileInput"
         type="file"
@@ -173,28 +215,66 @@ function keydown(event: KeyboardEvent) {
         :focused="focused || props.focused"
         :expanded="expanded"
         :dropping="dropping"
-        @drop-files="emit('addFiles', $event)"
+        @drop-files="addFiles"
       >
-        <template v-if="attachments.length" #chips>
-          <Tooltip
-            v-for="item in attachments"
-            :key="item.id"
-            :content="attachmentCaption(item)"
-          >
-            <AttachmentTile
-              :name="item.name"
-              :src="item.kind === 'file' ? item.src : undefined"
-              :destination="item.kind === 'file' ? item.destination : undefined"
-              :phase="item.kind === 'file' ? item.phase : undefined"
-              :progress="item.kind === 'file' ? item.progress : undefined"
-              removable
-              @remove="emit('removeAttachment', item.id)"
-              @retry="emit('retryAttachment', item.id)"
-            />
-          </Tooltip>
+        <template v-if="messageEdit ? edit.attachments.value.length : attachments.length" #chips>
+          <template v-if="messageEdit">
+            <template v-for="{ part, index } in edit.attachments.value" :key="index">
+              <AttachmentTile
+                v-if="part.type === 'reference'"
+                :name="decodeRemoteReference(part.reference).name"
+                :removable="edit.editable.value"
+                @remove="edit.removeAttachment(index)"
+              />
+              <ContentMedia
+                v-else-if="part.type !== 'text'"
+                :kind="part.type"
+                :source="part.source"
+                :name="'fileName' in part.source ? part.source.fileName ?? part.type : part.type"
+                as-attachment
+                :removable="edit.editable.value"
+                @remove="edit.removeAttachment(index)"
+              />
+            </template>
+          </template>
+          <template v-else>
+            <Tooltip
+              v-for="item in attachments"
+              :key="item.id"
+              :content="attachmentCaption(item)"
+            >
+              <AttachmentTile
+                :name="item.name"
+                :src="item.kind === 'file' ? item.src : undefined"
+                :destination="item.kind === 'file' ? item.destination : undefined"
+                :phase="item.kind === 'file' ? item.phase : undefined"
+                :progress="item.kind === 'file' ? item.progress : undefined"
+                removable
+                @remove="emit('removeAttachment', item.id)"
+                @retry="emit('retryAttachment', item.id)"
+              />
+            </Tooltip>
+          </template>
         </template>
         <template #editor>
-          <slot name="editor">
+          <div v-if="messageEdit" class="message-edit-texts flex w-full flex-col gap-2">
+            <template v-for="{ part, index } in edit.textParts.value" :key="index">
+              <textarea
+                v-if="part.type === 'text'"
+                :value="part.text"
+                :disabled="!edit.editable.value"
+                :aria-label="edit.textParts.value.length === 1 ? 'Message' : `Message text ${index + 1}`"
+                :placeholder="placeholder"
+                rows="1"
+                class="w-full resize-none bg-transparent text-conversation text-fg outline-none placeholder:text-fg-subtle"
+                @input="edit.changeText(index, ($event.target as HTMLTextAreaElement).value)"
+                @focus="focused = true"
+                @blur="focused = false"
+                @keydown="keydown"
+              />
+            </template>
+          </div>
+          <slot v-else name="editor">
             <textarea
               v-model="draft"
               rows="1"
@@ -209,6 +289,7 @@ function keydown(event: KeyboardEvent) {
         </template>
         <template #attach>
           <Dropdown
+            v-if="!messageEdit || edit.editable.value"
             :overlay-store="appOverlayStore"
             :placement="attachOpen ? 'bottom-start' : 'top-start'"
             v-bind="attachOpen ? { open: true } : {}"
@@ -238,7 +319,7 @@ function keydown(event: KeyboardEvent) {
                   @select="pickFiles(close)"
                 />
                 <MenuItem
-                  v-if="remoteFiles"
+                  v-if="remoteFiles && !messageEdit"
                   :icon="HardDrive"
                   :label="t('agent.input.attachRemoteFile')"
                   @select="emit('attachRemote')"
@@ -248,21 +329,23 @@ function keydown(event: KeyboardEvent) {
           </Dropdown>
         </template>
         <template #model>
-          <ModelSelector
-            :load="modelLoad"
-            @retry="emit('retryModels')"
-            :providers="providers"
-            :models="models"
-            :selected-provider-id="selectedProviderId"
-            :selected-model-id="selectedModelId"
-            :thinking-config="thinkingConfig"
-            :service-tier-id="serviceTierId"
-            @select-model="
-              (provider, model) => emit('selectModel', provider, model)
-            "
-            @change-thinking="emit('changeThinking', $event)"
-            @change-service-tier="emit('changeServiceTier', $event)"
-          />
+          <div :inert="!!messageEdit && !edit.editable.value">
+            <ModelSelector
+              :load="modelLoad"
+              @retry="emit('retryModels')"
+              :providers="providers"
+              :models="models"
+              :selected-provider-id="selectedProviderId"
+              :selected-model-id="selectedModelId"
+              :thinking-config="thinkingConfig"
+              :service-tier-id="serviceTierId"
+              @select-model="
+                (provider, model) => emit('selectModel', provider, model)
+              "
+              @change-thinking="emit('changeThinking', $event)"
+              @change-service-tier="emit('changeServiceTier', $event)"
+            />
+          </div>
         </template>
         <template #actions>
           <ContextUsageIndicator
@@ -271,21 +354,34 @@ function keydown(event: KeyboardEvent) {
             :context-window="selected?.contextWindow"
             :input-limit="selected?.inputLimit"
             :is-compacting="compacting"
-            :is-clickable="!running && canCompact !== false"
+            :is-clickable="!messageEdit && !running && canCompact !== false"
             @compact="emit('compact')"
           />
+          <Tooltip v-if="messageEdit" content="Exit editing">
+            <IconButton
+              :icon="X"
+              variant="ghost"
+              circle
+              aria-label="Exit editing"
+              :disabled="!edit.editable.value"
+              :tabindex="edit.editable.value ? 0 : -1"
+              @click="edit.cancel"
+              @keydown.enter.space.prevent="edit.cancel"
+            />
+          </Tooltip>
           <Tooltip
             v-if="hasDraft"
-            :content="running ? 'Queue next turn' : 'Send message'"
+            :content="submitLabel"
             :disabled="sendDisabled"
           >
             <IconButton
-              :icon="ArrowUp"
+              :icon="messageEdit?.phase === 'uncertain' ? RotateCcw : ArrowUp"
               variant="accent"
               circle
               :disabled="sendDisabled"
+              :loading="messageEdit?.phase === 'sending' || !!edit.reading.value"
               :disabled-reason="sendBlockReason"
-              :aria-label="running ? 'Queue message' : 'Send message'"
+              :aria-label="submitLabel"
               @click="submit"
             />
           </Tooltip>
@@ -308,11 +404,22 @@ function keydown(event: KeyboardEvent) {
           />
         </template>
       </ComposerShell>
+      <InlineError v-if="messageEdit?.error || edit.attachmentError.value"
+        class="mt-2" :message="messageEdit?.error ?? edit.attachmentError.value ?? ''" />
     </div>
   </Transition>
 </template>
 
 <style scoped>
+:deep(.composer-editor:has(.message-edit-texts)) {
+  overflow-y: auto;
+}
+
+.message-edit-texts textarea {
+  min-height: var(--composer-line);
+  max-height: none;
+}
+
 .composer-archive-enter-active,
 .composer-archive-leave-active {
   transition:

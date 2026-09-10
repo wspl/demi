@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import { editorHasContent, shouldSubmitFromEditorKeydown } from '../message-input/useAgentInputEditor'
+import { editorHasContent } from '../message-input/useAgentInputEditor'
+import { shouldSubmitFromEditorKeydown } from '../message-input/composer-keyboard'
 
 test('editor keydown submits only bare Enter', () => {
   expect(shouldSubmitFromEditorKeydown(
