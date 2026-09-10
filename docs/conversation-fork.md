@@ -16,6 +16,8 @@ Confirmed requirements:
   eligible after it finishes.
 - Command storage retains a general-purpose version history, including todo
   state. Detailed storage contracts remain under discussion.
+- Fork retains subagent references and results already in the root transcript.
+  The destination starts with no inherited subagents.
 
 Proposed defaults, awaiting product confirmation:
 
@@ -26,8 +28,6 @@ Proposed defaults, awaiting product confirmation:
 - Inherit the source's current model configuration and workspace/device selection.
 - Restore command state, including todos, at the selected message's boundary
   according to [Command Storage History](command-storage-history.md).
-- Preserve read-only subagent history at the selected boundary without inheriting
-  child execution, following the subagent snapshot policy below.
 - Keep the source's unsent composer draft in the source.
 - Leave the destination unpinned and unarchived, with a new creation time.
 - Each explicit Fork appends the suffix literally, including when the source
@@ -138,88 +138,27 @@ Versioned command storage is a prerequisite of this Fork design. Its snapshot,
 message-boundary and atomic restore contracts are defined in
 [Command Storage History](command-storage-history.md).
 
-## Subagent snapshots
+## Subagents
 
-Proposed policy, awaiting product confirmation: preserve historical child data
-while keeping every running child owned exclusively by its source tree.
+The destination is a new root with its own empty child registry. The retained
+root transcript includes earlier subagent tool calls, IDs and results exactly as
+recorded. Fork copies no child session records, child transcripts, child command
+state, running jobs or pending completion deliveries.
 
 For example, the source starts child S, finishes assistant message A1, and then
-S continues working. Fork after A1 has the following behavior:
+S continues working. Fork after A1 retains the root's record of starting S.
+S continues in the source and delivers its eventual result there. The destination
+has no S in its agent tree and receives no later result from S. If S's result was
+already in the root transcript before A1, that result is retained normally.
 
-- S continues in the source. Its commands, files and completion delivery follow
-  the source's existing execution policy.
-- The destination has a read-only record of S at the A1 boundary. It displays
-  `Running at fork boundary · execution not inherited`.
-- S is not counted as an active child in the destination. Its history does not
-  stream, no spinner remains active, and there is no pending completion to wait
-  for in that conversation.
-- S's later messages and result reach only the source, even if S finishes before
-  the user eventually clicks Fork on A1.
-- Fork does not abort S or automatically start another execution of S.
+The existing root-scoped `AgentDirectory` and `ChildSupervisor` operate on the
+destination's own children. Fork does not register source children, redirect
+commands to the source, or restore source children when the destination reopens.
+Newly spawned children belong to the destination in the ordinary way.
 
-The snapshot rules apply recursively to descendants:
-
-| State at the selected boundary | Destination history | Destination execution |
-|---|---|---|
-| Child not yet created | No child record | None |
-| Child running, waiting or yielding | Frozen partial history and the recorded state at the boundary | None |
-| Child closed, result already in retained root history | Frozen child history; retain the existing root result once | None |
-| Child closed, completion not yet in retained root history | Frozen child history; do not synthesize a new root completion | None |
-| Child resumed after the boundary | Preserve its earlier recorded state and history | None |
-
-The records use a distinct historical snapshot contract. They are not inserted
-as owned `AgentNodeRecord` children, are not returned by the live tree's
-`AgentTreeStore.children()`, and are not registered with `ChildSupervisor` or
-`AgentDirectory`. They have no delivery queue or resumable lifecycle. Copying
-owned child rows is not an implementation of this policy: ordinary supervisor
-restore would resume open children or deliver pending closed-child results.
-
-A snapshot records source identity, parent relationship, description/profile,
-phase at the boundary, frozen transcript and command-state reference. A source
-ID is provenance, not authority to send, steer, abort or resume that agent from
-the destination. A snapshot's phase can say the source was running; it must not
-be represented as a newly aborted or completed destination child. Tool output
-already in history retains its original IDs and text.
-
-The first inference in the destination receives durable framework context that
-historical children and shell handles are not attached to this conversation.
-This context does not alter the copied transcript prefix or cause inference on
-creation. An attempt to control a historical child must not be redirected to
-the source. New work uses a newly created child with a new ID and an explicit
-task brief; automatic restart or continuation of a historical child is outside
-this policy.
-
-### Capturing the historical tree
-
-The selected boundary must identify immutable child data. The backend cannot
-read the child's current transcript at Fork-click time and call it historical.
-At each eligible assistant completion, the framework captures a consistent
-read-only tree snapshot alongside the root's command-state boundary. Node
-membership, lifecycle state, partial transcript content and command-state
-references come from the same ordered capture. Live jobs are not stopped.
-The shared `session_boundaries` record binds both command-state and subagent
-snapshot references to that one cutoff; they are not captured independently and
-matched afterward by timestamp.
-
-The boundary stores references to immutable node snapshots. Unchanged node
-snapshots can be reused by later boundaries; mutable child rows or transcript
-revision numbers without preserved version content are insufficient. Nested
-children created after the boundary are absent. Child completion or resume
-racing with capture has one defined ordering, including whether the completion
-has reached the retained root history.
-
-Fork materializes these historical records under the destination's ownership.
-They remain readable independently of the source conversation's lifetime. A
-further Fork preserves inherited historical records along with snapshots of
-children owned by that intermediate conversation at its selected boundary.
-
-`web-ui` presents snapshots as history with read-only controls, separately from
-owned live agents. The backend exposes the frozen data using a validated history
-contract; the product and Gallery supply records to the same presentation.
-
-Shared files remain a separate consideration. When both conversations use one
-directory, S can continue changing those files in the source; an independent
-conversation history does not freeze the filesystem.
+There is no child snapshot storage, historical-child API, special historical
+child interface, or additional Fork-specific model context. Root transcript
+copying and ordinary child ownership define the behavior.
 
 ## Implementation checks
 
@@ -231,11 +170,10 @@ conversation history does not freeze the filesystem.
   enter the fork.
 - A source edit racing with capture has one coherent ordering.
 - A destination cannot resume source jobs, children, queues or wakeups.
-- A child started before the cutoff and closed afterward stays frozen at the
-  cutoff in the destination; only the source receives its eventual completion.
-- Completed-but-undelivered children do not wake the destination after restore.
-- Nested child creation and child resume do not leak later history into a fork.
-- Historical children stay read-only after destination restart and a second Fork.
+- A source child continues running and delivers its result only to the source;
+  the destination retains only child references/results already in its prefix.
+- The destination has no inherited child records or pending child completions,
+  including after restart or another Fork.
 - Ownership, malformed requests, missing targets and conflicting UUID reuse.
 - Persistence failure, restart between root commit and publication, and lost HTTP
   confirmation followed by retry.

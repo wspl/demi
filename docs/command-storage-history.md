@@ -43,11 +43,8 @@ The backend representation uses the existing per-conversation SQLite database:
 
 - `command_snapshots(node_id, revision, values_json)` stores immutable versions.
 - The node record's `command_revision` selects its current version.
-- `session_boundaries(node_id, block_id, edge, command_revision, ...)` records a
-  version at `before_user` and `after_assistant` boundaries. The same boundary
-  record holds immutable subagent-history references when required by
-  [Conversation Fork](conversation-fork.md#subagent-snapshots); there is one
-  definition of the cutoff across these forms of state.
+- `session_boundaries(node_id, block_id, edge, command_revision)` records a
+  command-state version at `before_user` and `after_assistant` boundaries.
 
 Version identity is scoped to the node. V0 is the explicit empty initial version.
 Revisions are allocated uniquely within a node, including after a rewind. The
@@ -151,9 +148,11 @@ structured state and restoration hook, while the framework restores command
 storage generically. A todo command does not need access to the whole transcript
 or to mutable harness internals.
 
-Root and child nodes have independent versions. Restoring a root's command state
-does not resume or copy a child. Fork still makes separate decisions about child
-history and the filesystem; command-state versioning does not imply either.
+Root and child nodes have independent versions. Fork copies only the root's
+retained command-state versions. Child histories, command-state versions and
+execution remain with the source tree, as defined in
+[Conversation Fork](conversation-fork.md#subagents). Filesystem state is outside
+this storage contract.
 
 ## Fork and editing
 
