@@ -1,8 +1,7 @@
 # Message editing and resend
 
 Status: Implemented. This document defines the current behavior and regression
-contract. Checkpoint verification is recorded in
-[Message editing validation](message-editing-validation.md).
+contract.
 
 ## Behavior and ownership
 
@@ -219,5 +218,5 @@ Check the strength of the suite with temporary targeted defects: retain one
 removed block, reuse the consumed provider runtime, publish before save, or
 accept a stale snapshot. Each defect must fail its corresponding assertion.
 Remove these defects before the implementation checkpoint and rerun the affected
-tests. Record actual commands and results with the implementation checkpoint;
-the validation record keeps those results separate from this regression contract.
+tests. Report commands and results in the task response, without adding a
+validation record to the repository.
