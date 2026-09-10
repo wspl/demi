@@ -124,6 +124,46 @@ export const userContentBlockSchema: z.ZodType<UserContentBlock> = z.discriminat
   ]
 )
 
+export const transcriptVersionSchema = z.object({
+  epoch: z.string().min(1),
+  revision: z.number().int().nonnegative(),
+})
+
+export const editRequestSchema = z.object({
+  operationId: z.string().min(1),
+  targetBlockId: z.string().min(1),
+  version: transcriptVersionSchema,
+  content: z.array(userContentBlockSchema).min(1).refine(
+    (content) => content.some((part) => part.type !== 'text' || part.text.trim()),
+    'A message must contain text or an attachment',
+  ),
+})
+
+export const editReceiptSchema = z.object({
+  operationId: z.string().min(1),
+  digest: z.string().regex(/^[a-f0-9]{64}$/),
+  turnId: z.string().min(1),
+})
+
+export const editResultSchema = z.discriminatedUnion('status', [
+  z.object({
+    type: z.literal('edit_result'),
+    operationId: z.string().min(1),
+    status: z.literal('accepted'),
+    turnId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal('edit_result'),
+    operationId: z.string().min(1),
+    status: z.literal('rejected'),
+    reason: z.string(),
+  }),
+])
+
+export type TranscriptVersion = z.infer<typeof transcriptVersionSchema>
+export type EditRequest = z.infer<typeof editRequestSchema>
+export type EditReceipt = z.infer<typeof editReceiptSchema>
+
 // Accepted user steers returned by AgentServer; validated when AgentClient receives them.
 const pendingSteerSchema: z.ZodType<PendingSteer> = z.object({
   id: z.string(),
@@ -184,6 +224,11 @@ export const clientFrameSchema = z.discriminatedUnion('type', [
     sessionId: z.string()
   }),
   sendFrameSchema,
+  z.object({
+    type: z.literal('edit_and_send'),
+    request: editRequestSchema,
+    metadata: metadataSchema.optional(),
+  }),
   z.object({ type: z.literal('dequeue_message'), messageId: z.string() }),
   z.object({ type: z.literal('send_queued_message'), messageId: z.string() }),
   z.object({

@@ -314,6 +314,8 @@ export type Block =
       model: ModelSelection
       content: UserContentBlock[]
       preamble: string | null
+      /** Materialized reference input, present only when different from content. */
+      resolvedContent?: UserContentBlock[]
       // When true, this user turn is an internal input (e.g. a yield wakeup): replayed to the
       // model like any user_message, but never rendered to the user. Absent/false for real input.
       hidden?: boolean

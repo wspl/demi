@@ -157,6 +157,7 @@ test(
 
     pair.server.send({
       type: 'transcript_reset',
+      epoch: 'test-epoch',
       revision: 1,
       blocks: [blockAt('a', 'one')]
     })
@@ -179,6 +180,7 @@ test(
     // The server answers the resync with an authoritative snapshot.
     pair.server.send({
       type: 'transcript_reset',
+      epoch: 'test-epoch',
       revision: 3,
       blocks: [blockAt('a', 'one'), blockAt('b', 'two'), blockAt('c', 'three')],
     })

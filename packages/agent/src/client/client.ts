@@ -4,7 +4,13 @@ import type {
   SessionPhase,
   UserContentBlock,
 } from '@demicodes/core'
-import { pendingSteersFrameSchema } from '../protocol/schemas'
+import {
+  editRequestSchema,
+  editResultSchema,
+  pendingSteersFrameSchema,
+  type EditRequest,
+  type TranscriptVersion,
+} from '../protocol/schemas'
 import { applyTranscriptPatches } from '../transcript/patch'
 import type { ProviderSelection } from '@demicodes/provider'
 import type {
@@ -20,6 +26,14 @@ export type AgentClientListener = (event: ClientSessionEvent) => void
 
 export interface AgentActionOptions {
   metadata?: AgentMetadata
+}
+
+/** A correlated refusal establishes that this edit was not accepted. */
+export class EditRejectedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'EditRejectedError'
+  }
 }
 
 type ActionCommand = 'send' | 'retry' | 'resume' | 'compact'
@@ -52,6 +66,7 @@ export class AgentClient {
   private blocks: Block[] = []
   private pending: PendingSteer[] = []
   private revision: number | null = null
+  private epoch: string | null = null
   private awaitingResync = false
   private disconnected = false
   private phase: SessionPhase | null = null
@@ -145,6 +160,41 @@ export class AgentClient {
         messageId,
         content,
       })
+    })
+  }
+
+  /** Resolves on the correlated durable receipt, independently of generation. */
+  editAndSend(input: EditRequest, options: AgentActionOptions = {}): Promise<void> {
+    if (this.disconnected) {
+      return Promise.reject(new Error('Agent connection closed'))
+    }
+    const request = structuredClone(editRequestSchema.parse(input))
+    return new Promise((resolve, reject) => {
+      const finish = (error?: Error) => {
+        clearTimeout(timeout)
+        unsubscribe()
+        if (error) {
+          reject(error)
+        } else {
+          resolve()
+        }
+      }
+      const unsubscribe = this.subscribe((event) => {
+        if (event.type === 'edit_result' && event.operationId === request.operationId) {
+          finish(event.status === 'rejected' ? new EditRejectedError(event.reason) : undefined)
+        } else if (event.type === 'rejected' && event.command === 'edit_and_send') {
+          finish(new EditRejectedError(event.reason))
+        } else if (event.type === 'error' && event.code === 'invalid_frame') {
+          finish(new Error(event.message))
+        } else if (event.type === 'closed' || event.type === 'disconnected') {
+          finish(new Error('Agent connection closed before edit confirmation'))
+        }
+      })
+      const timeout = setTimeout(
+        () => finish(new Error('Edit confirmation timed out; retry to check acceptance')),
+        30_000,
+      )
+      this.sendFrame({ type: 'edit_and_send', request, metadata: options.metadata })
     })
   }
 
@@ -333,6 +383,14 @@ export class AgentClient {
     return { blocks: [...this.blocks] }
   }
 
+  transcriptVersion(): TranscriptVersion | null {
+    if (this.disconnected || this.awaitingResync
+      || this.epoch === null || this.revision === null) {
+      return null
+    }
+    return { epoch: this.epoch, revision: this.revision }
+  }
+
   /**
    * Detached accepted user steers, excluding any already present in the
    * transcript.
@@ -361,6 +419,7 @@ export class AgentClient {
     switch (frame.type) {
       case 'transcript_reset':
         this.blocks = [...frame.blocks]
+        this.epoch = frame.epoch
         this.revision = frame.revision
         this.awaitingResync = false
         this.removeMaterializedSteers()
@@ -369,6 +428,15 @@ export class AgentClient {
           blocks: this.blocks,
         })
         return
+      case 'edit_result': {
+        const parsed = editResultSchema.safeParse(frame)
+        if (!parsed.success) {
+          this.disconnect(new Error('Invalid edit result frame'))
+          return
+        }
+        this.emit(parsed.data)
+        return
+      }
       case 'transcript_patch':
         if (this.awaitingResync) {
           return
@@ -393,6 +461,7 @@ export class AgentClient {
         this.pending = []
         this.blocks = []
         this.revision = null
+        this.epoch = null
         this.awaitingResync = false
         this.phase = null
         this.queuedMessageIds.clear()

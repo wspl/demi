@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessageVirtualBlock.vue'
 import type { MessageListBlock } from '@demicodes/web-ui/agent/pending-steers'
-import type { UserContentBlock } from '@demicodes/core'
 import ActivitySlot from './ActivitySlot.vue'
 import type { ActivitySlotState } from '../turn-flow'
 
@@ -11,6 +10,7 @@ const props = defineProps<{
   streamingTextId?: string | null
   endedAtById?: Readonly<Record<string, string>>
   activity?: ActivitySlotState | null
+  editable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -18,7 +18,7 @@ const emit = defineEmits<{
   interruptPendingSteer: [id: string]
   deleteQueued: [id: string]
   sendQueued: [id: string]
-  editUser: [content: UserContentBlock[]]
+  editUser: [blockId: string]
 }>()
 
 function isThinkingStreaming(blocks: readonly MessageListBlock[], index: number): boolean {
@@ -51,6 +51,7 @@ function thinkingEndedAt(blocks: readonly MessageListBlock[], index: number): st
     :is-thinking-streaming="isThinkingStreaming(blocks, index)"
     :is-text-streaming="isTextStreaming(blocks, index)"
     :thinking-ended-at="thinkingEndedAt(blocks, index)"
+    :editable="editable"
     @delete-pending-steer="emit('deletePendingSteer', $event)"
     @interrupt-pending-steer="emit('interruptPendingSteer', $event)"
     @delete-queued="emit('deleteQueued', $event)"

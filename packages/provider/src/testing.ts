@@ -48,7 +48,7 @@ export class StubProvider implements AgentProvider {
       )
     }
     const events = typeof turn === 'function' ? turn(request) : turn
-    for (const event of events) {
+    for await (const event of events) {
       yield event
     }
   }
@@ -60,7 +60,7 @@ export class StubProvider implements AgentProvider {
 }
 
 type TurnScript = ProviderEvent[]
-  | ((request: InferenceRequest) => ProviderEvent[])
+  | ((request: InferenceRequest) => Iterable<ProviderEvent> | AsyncIterable<ProviderEvent>)
 
 export function createProviderRun(
   output: Iterable<ProviderEvent> | AsyncIterable<ProviderEvent>,

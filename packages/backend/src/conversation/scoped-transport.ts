@@ -137,10 +137,29 @@ export function conversationScopedTransport(
           } finally {
             release()
           }
-        }).catch((error: unknown) => reportError(
-          error instanceof FrameRefused ? error.code : 'frame_delivery_failed',
-          errorMessage(error)
-        ))
+        }).catch((error: unknown) => {
+          const parsed = conversationClientFrameSchema.safeParse(frame)
+          if (parsed.success && parsed.data.type === 'edit_and_send') {
+            if (!closed) {
+              try {
+                inner.send({
+                  type: 'edit_result',
+                  operationId: parsed.data.request.operationId,
+                  status: 'rejected',
+                  reason: errorMessage(error),
+                })
+              } catch {
+                closed = true
+                inner.close()
+              }
+            }
+            return
+          }
+          reportError(
+            error instanceof FrameRefused ? error.code : 'frame_delivery_failed',
+            errorMessage(error),
+          )
+        })
       })
       return () => {
         subscribed = false

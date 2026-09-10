@@ -64,6 +64,7 @@ export function createCodingAgentHarness(
   return {
     name: 'coding',
     initialState: () => ({}),
+    restoreState: () => ({}),
     host: resolveHost,
     commands: buildCommands,
     ...(options.context ? { context: options.context } : {}),

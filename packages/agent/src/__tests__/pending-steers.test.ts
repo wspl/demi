@@ -71,7 +71,7 @@ test(
       type: 'steer',
       createdAt: '2026-09-08T00:00:00Z'
     }
-    receive({ type: 'transcript_reset', blocks: [history], revision: 1 })
+    receive({ type: 'transcript_reset', epoch: 'test-epoch', blocks: [history], revision: 1 })
     receive({
       type: 'pending_steers',
       pendingSteers: [pending('first'), pending('second')]

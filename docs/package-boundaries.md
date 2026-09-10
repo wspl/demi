@@ -73,8 +73,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Session-tree options: `subagents.maxLiveSubagents` limits each session's live direct children (default 8); `notifyParentOnIdle` controls only the root's automatic wakeups. Every descendant shares the root's agent directory and inherits its tool options.
 - Shell previews: `tools.shellPreviewBudgetTokens(contextWindow)` selects the token budget against each request's current model, across the entire session tree. The default is 10,000 tokens below an 800,000-token context window and 100,000 at or above it.
 - Layout (directories mirror the package's modules; root keeps entrypoints, `types.ts`, and single-file modules like `tools.ts`):
-  - `session/` — the AgentSession state machine and its collaborators (turn loop, steer queue, yield scheduler, recovery, retry policy, compaction).
-  - `transcript/` — the TranscriptLog mutation journal and patch application.
+  - `session/` — the AgentSession state machine and its collaborators (turn loop, steer queue, yield scheduler, recovery, retry policy, compaction, and transactional message editing with durable operation receipts; see `docs/message-editing.md`).
+  - `transcript/` — the TranscriptLog mutation journal, snapshot versions, editable-user selection, retained-prefix preparation, suffix replacement, and patch application.
   - `store/` — the persistence contract's helpers (the completion-message id and which completions a checkpoint carries) and the media blob contract (externalize/rehydrate); realizations live with the products (`@demicodes/backend`) and in `testing.ts`.
   - `node/` — the session-tree node: the one assembly that builds a root or a subagent (session from the store or fresh, supervisor, command tree, tools), the node's per-Host shell environments with handle ownership checks, and the lifecycle policy applied on restore.
   - `protocol/` — frame types, the inbound-frame zod schemas (`ClientFrame`'s single source of truth), and the transports (`stdio-transport.ts` backs the `./stdio` entry).
@@ -250,7 +250,8 @@ Test code may depend upward for integration coverage. Production code must not.
   source exports compiled by the consumer's bundler, which must handle Vue SFC + TypeScript).
 - Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
-  Input surfaces, the assembled ChatSession page, sidebar layout, workspace and
+  Input surfaces, the assembled ChatSession page, the message editor and its
+  draft/submission lifecycle (`agent/message-editing.ts` and `MessageEditDialog.vue`), sidebar layout, workspace and
   remote-file selection flows, shared UI primitives, markdown/theme, the conversation/tab store, shared sidebar presentation and list interaction, the sign-in page (`auth/EmailLoginPage`: email and password on the left, a wide empty intro on the right, over a host-reported phase), the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), the reusable device pairing dialog and lifecycle (`devices/`, driven by a host-provided claim adapter), and a
   transport-agnostic control-client interface. Consumes an injected `AgentClient`.
 - Public boundary: source-path exports (`./*`) consumed by web hosts; third parties embed it
