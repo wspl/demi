@@ -9,6 +9,7 @@ import ConversationComposer from './ConversationComposer.vue'
 import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
 import { useConversations } from './store'
 import { useResources } from '../state/resources'
+import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 
 const store = useConversations()
 const resources = useResources()
@@ -61,6 +62,16 @@ function saveScroll(id: string, state: PersistedScrollState | null): void {
   }
 }
 
+async function fork(request: MessageForkRequest): Promise<void> {
+  const sourceId = conversation.value?.id
+  if (!sourceId) {
+    throw new Error('The source conversation is unavailable')
+  }
+  const id = await store.fork(sourceId, request)
+  if (route.params.id === sourceId) {
+    await router.push(`/chat/${id}`)
+  }
+}
 </script>
 
 <template>
@@ -68,6 +79,7 @@ function saveScroll(id: string, state: PersistedScrollState | null): void {
     v-if="pageKind === 'session' && conversation"
     :conversation="conversation"
     :has-provider="hasProvider"
+    :fork="fork"
     :pending-submission="
       conversation.pendingSend
         ? {

@@ -13,7 +13,9 @@ import {
   createInProcessTransportPair,
   type AgentServerTransport
 } from '../protocol/transport'
-import type { AgentHarness, AgentTreeStore } from '../types'
+import type { AgentHarness, AgentSessionCheckpoint, AgentTreeStore } from '../types'
+import { ForkPreparationError, prepareForkCheckpoint } from '../session/fork'
+import { createRootRecord } from '../node/root-record'
 import type { TurnRetryPolicy } from '../session/retry-policy'
 import type { ShellPreviewBudget } from '../tools'
 import type { NodeDeps } from '../node/assemble'
@@ -208,6 +210,42 @@ export class AgentServer {
    */
   sessionPhase(agentSessionId: string): SessionPhase | null {
     return this.sessionOwnership.get(agentSessionId)?.session.phase() ?? null
+  }
+
+  /** Copy a live root immediately, or one committed cold checkpoint. */
+  async prepareFork(sourceId: string, blockId: string): Promise<AgentSessionCheckpoint<unknown>> {
+    const live = this.sessionOwnership.get(sourceId)
+    if (live) {
+      return live.session.prepareFork(blockId)
+    }
+    const store = this.store(sourceId)
+    const node = await store.node(sourceId)
+    if (!node || node.parentId !== null) {
+      throw new ForkPreparationError('The Fork source must be a root session')
+    }
+    const checkpoint = await store.sessionStore(sourceId).load()
+    if (!checkpoint || checkpoint.harnessName !== this.agent.name) {
+      throw new ForkPreparationError('No matching Fork source checkpoint')
+    }
+    return prepareForkCheckpoint({
+      sourceId, blockId, checkpoint,
+      restoreState: this.agent.restoreState?.bind(this.agent),
+    })
+  }
+
+  /** Persist a fresh root; ordinary open assembles its runtime later. */
+  async initializeFork(destinationId: string, checkpoint: AgentSessionCheckpoint<unknown>): Promise<void> {
+    if (checkpoint.phase !== 'idle' || checkpoint.queue.length > 0 || checkpoint.edits?.length) {
+      throw new Error('A Fork must start idle without queued actions or edit receipts')
+    }
+    if (checkpoint.harnessName !== this.agent.name) {
+      throw new Error('The Fork harness does not match this server')
+    }
+    await this.store(destinationId).createNode(createRootRecord(destinationId), {
+      ...checkpoint,
+      changedBlocks: checkpoint.transcript.blocks.map((block, index) => ({ index, block })),
+      blockCount: checkpoint.transcript.blocks.length,
+    })
   }
 }
 

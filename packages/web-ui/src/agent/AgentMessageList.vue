@@ -17,6 +17,7 @@ import { COMPOSER_CLEARANCE_PX } from './composer-clearance'
 import { t } from '../infra/i18n'
 import MessageEditRegion from './MessageEditRegion.vue'
 import { lastEditableUserMessageId, messageEditSuffixIds } from './message-editing'
+import { useMessageForks, type MessageForkHandler } from './message-fork'
 
 const props = defineProps<{
   conversationId: string
@@ -28,7 +29,7 @@ const props = defineProps<{
   persistedScrollState: PersistedScrollState | undefined
   /** Hide editing actions on user bubbles. */
   readOnly?: boolean
-  forkable?: boolean
+  fork?: MessageForkHandler
   editTargetId?: string
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
@@ -48,8 +49,9 @@ const emit = defineEmits<{
   editUser: [blockId: string]
   retryLoad: []
   retrySubmission: []
-  fork: [blockId: string]
 }>()
+
+const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => props.conversationId)
 
 const visibleTranscriptBlocks = computed(() => getVisibleBlocks(props.blocks))
 const editableUserId = computed(() => lastEditableUserMessageId(props.blocks))
@@ -193,8 +195,8 @@ defineExpose({
                 :is-thinking-streaming="isStreamingThinkingAt(item.index)"
                 :is-text-streaming="isStreamingTextAt(item.index)"
                 :thinking-ended-at="thinkingEndedAt(item.index)"
-                :forkable="forkable && !editTargetId && phase === 'idle'"
-                @fork="emit('fork', $event)"
+                :fork="fork ? () => forkMessage(renderBlocks[item.index]!.id) : undefined"
+                :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
                 :editable="renderBlocks[item.index]!.id === editableUserId && !props.readOnly && phase === 'idle' && !queue.length && !pendingSteers.length"
                 @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
                 @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"

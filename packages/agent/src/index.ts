@@ -5,6 +5,7 @@ export * from './session/retry-policy'
 export * from './session/recovery'
 export * from './session/provider-stream-error'
 export * from './session/session'
+export { ForkPreparationError } from './session/fork'
 export * from './store/tree-store'
 export {
   commandStateSchema,

@@ -36,6 +36,7 @@ import type { ProviderOperations } from '../vault/provider-operations'
 import { providerRoutes } from './providers'
 import type { VendorCatalog } from '../llm/vendors'
 import type { ConversationUpdates } from '../conversation/updates'
+import type { ConversationForks } from '../conversation/fork'
 import { conversationRoutes } from './conversations'
 import { deviceRoutes } from './devices'
 import { modelRoutes } from './models'
@@ -55,6 +56,7 @@ export function createApp(options: {
   runnerInstallation?: RunnerInstallationOptions
   productState: ProductState
   conversationUpdates: ConversationUpdates
+  conversationForks: ConversationForks
   admitFrame: (id: string) => (() => void) | null
   control: ControlService
   conversationStores: ConversationStores
@@ -193,6 +195,7 @@ export function createApp(options: {
     conversationRoutes({
       admitFrame: options.admitFrame,
       updates: options.conversationUpdates,
+      forks: options.conversationForks,
       agentServer: options.agentServer,
       control: options.control,
       conversationStores: options.conversationStores,

@@ -94,6 +94,14 @@ CREATE TABLE conversations (
 );
 CREATE INDEX idx_conversations_user ON conversations(user_id, archived, updated_at);
 
+CREATE TABLE conversation_forks (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  source_id TEXT NOT NULL,
+  block_id TEXT NOT NULL,
+  metadata_json TEXT NOT NULL
+);
+
 CREATE TABLE managed_operations (
   device_id TEXT NOT NULL REFERENCES devices(id),
   operation_id TEXT NOT NULL,

@@ -6,7 +6,10 @@ import { type ThinkingConfig, type UserContentBlock } from '@demicodes/core'
 import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
 import { restoreMessageEdit, submitMessageEdit } from '@demicodes/web-ui/agent/message-editing'
 import { loadEditContent } from '../api/message-editing'
+import { forkConversation } from '../api/message-fork'
+import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import { composerModel } from '@demicodes/web-ui/agent/model-selection'
+import { thinkingConfigToEffort } from '@demicodes/web-ui/agent/reasoning'
 import { hasAcceptedSubmission } from '@demicodes/web-ui/agent/submission'
 import {
   attachmentsReady,
@@ -772,6 +775,26 @@ export const useConversations = defineStore('conversations', () => {
     return conversation.id
   }
 
+  async function fork(sourceId: string, request: MessageForkRequest): Promise<string> {
+    const signal = lifetime.signal
+    const { conversation: record, model } = await forkConversation(sourceId, request, signal)
+    await product.refresh()
+    signal.throwIfAborted()
+    let conversation = items.value.find((item) => item.id === record.id)
+    if (!conversation) {
+      conversation = newConversation(record)
+      items.value.unshift(conversation)
+    }
+    conversation.model = {
+      providerId: model.providerId,
+      modelId: model.model.id,
+      thinkingEffort: model.thinking?.type === 'disabled'
+        ? 'disabled' : model.thinking ? thinkingConfigToEffort(model.thinking) : null,
+      serviceTierId: model.serviceTierId ?? null,
+    }
+    return record.id
+  }
+
   async function persistConversation(
     conversation: Conversation,
   ): Promise<void> {
@@ -1211,6 +1234,7 @@ export const useConversations = defineStore('conversations', () => {
     listStatus,
     activate,
     create,
+    fork,
     reorder,
     rename,
     markRead,
