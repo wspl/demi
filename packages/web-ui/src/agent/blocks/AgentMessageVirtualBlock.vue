@@ -21,6 +21,7 @@ const props = defineProps<{
   isTextStreaming?: boolean
   thinkingEndedAt?: string | null
   editable?: boolean
+  forkable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -30,6 +31,7 @@ const emit = defineEmits<{
   sendQueued: [id: string]
   editUser: [blockId: string]
   retrySubmission: []
+  fork: [blockId: string]
 }>()
 
 const attrs = useAttrs()
@@ -94,6 +96,9 @@ const attrs = useAttrs()
       v-else-if="block.type === 'text'"
       :content="block.text"
       :is-streaming="isTextStreaming"
+      :created-at="block.createdAt"
+      :forkable="forkable"
+      @fork="emit('fork', block.id)"
     />
     <div
       v-else-if="block.type === 'tool_call'"
