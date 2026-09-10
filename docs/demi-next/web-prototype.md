@@ -119,9 +119,25 @@ labels and controls are not selectable; message content, paths and editable
 fields remain selectable. Selected sidebar conversations retain normal weight.
 
 The session pane has one load phase (`ready | loading | reconnecting | failed`).
-Opening or switching to a persisted conversation uses the centered `SessionStatus`
-loading pane, including when messages are cached. `web/conversation/store.ts`
-keeps that phase through history loading and the initial agent connection handshake.
+The first opening of a persisted conversation uses the centered `SessionStatus`
+loading pane through history loading and the initial agent handshake.
+`web-ui/agent/conversation-cache.ts` retains each opened session, its pending load,
+and its runtime until invalidation or account cleanup. `web/conversation/store.ts`
+supplies the REST loaders, transport, and conversation state. Switching back reuses
+that session immediately: it does not reset the load phase, fetch models, Hosts or
+history again, or reconnect a healthy socket. Inactive cached sessions keep receiving
+agent events. Concurrent opens share the same pending load. This cache lasts for
+one signed-in page lifetime; a browser reload starts with an empty cache.
+Context or archive changes invalidate the affected entry; the active entry reloads
+immediately and an inactive entry reloads on its next opening. Removed conversations,
+discarded empty drafts, failed initialization, explicit Retry, and logout release
+cached requests and runtimes. Runtime cleanup closes only the view attachment;
+server tasks keep running. Account snapshot polling still refreshes metadata and
+Host lists when their conversation revision changes. Background reconnects select
+models from their own conversation catalog, independent of the visible conversation.
+If another view took over an attachment, selecting that cached conversation reopens
+its socket and reconciles the transcript through the agent protocol. It keeps the
+visible cache during that handshake and does not repeat the REST history request.
 Archived conversations and conversations without an available model finish loading
 after their history arrives. Loading history never reads as an empty conversation.
 A dropped socket in an already open session keeps a

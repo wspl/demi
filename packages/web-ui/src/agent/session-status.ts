@@ -3,7 +3,7 @@ import { t } from '../infra/i18n'
 /** Sidebar conversation list, or a session that is not reconnecting. */
 export type ListLoad = 'ready' | 'loading' | 'failed'
 
-/** Loading includes navigation and its initial handshake; reconnecting is a dropped open connection. */
+/** Loading covers an uncached opening and its handshake; cached navigation preserves the phase. */
 export type SessionLoad = ListLoad | 'reconnecting'
 
 /** What the session pane shows instead of the transcript. */

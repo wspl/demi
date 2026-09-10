@@ -26,6 +26,7 @@ import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { runningSubagents } from '@demicodes/web-ui/agent/subagents'
 import { useSessionPanels } from '@demicodes/web-ui/agent/useSessionPanels'
+import GalleryCachedSessions from '../components/GalleryCachedSessions.vue'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
 import GalleryAssistantMessages from '../components/GalleryAssistantMessages.vue'
@@ -1051,7 +1052,7 @@ function abortAgents() {
       </GallerySection>
       <GallerySection
         title="Session load"
-        note="Opening a conversation uses the centered loading pane through history and the initial connection, even with cached messages. A dropped connection in an open session uses the Connecting tail row. An unconfirmed send keeps its user message and retries with the same ID. New conversation opens a local draft immediately."
+        note="First opening uses the centered loading pane through history and the initial connection. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session uses the Connecting tail row. An unconfirmed send keeps its user message and retries with the same ID. New conversation opens a local draft immediately."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="unconfirmed send · retry the same message" wide>
@@ -1075,22 +1076,8 @@ function abortAgents() {
               <SessionStatus kind="loading" />
             </div>
           </GallerySpecimen>
-          <GallerySpecimen
-            variant="opening · cached history"
-            wide
-          >
-            <div class="gallery-frame h-[16rem] bg-surface">
-              <AgentMessageList
-                conversation-id="cached-opening"
-                :blocks="sessionBase"
-                :pending-steers="[]"
-                :queue="[]"
-                phase="idle"
-                load="loading"
-                :bottom-offset="0"
-                :persisted-scroll-state="undefined"
-              />
-            </div>
+          <GallerySpecimen variant="switching · cached sessions" wide>
+            <GalleryCachedSessions />
           </GallerySpecimen>
           <GallerySpecimen
             variant="reconnecting"
