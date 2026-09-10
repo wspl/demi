@@ -103,6 +103,23 @@ test('todo command state is isolated by agent session id', async () => {
   expect(second.stdout.delta).toBe('[ ] T1 Second session\n')
 })
 
+test('concurrent todo adds keep distinct IDs and both tasks', async () => {
+  let nextShell = 0
+  const env = await createTodoEnvironment(() => `concurrent-${++nextShell}`)
+  try {
+    const results = await Promise.all(['first', 'second'].map((value) => env.exec({
+      agentSessionId: 'todo-agent', ephemeral: true,
+      script: `demi todo add ${value} --json`,
+    })))
+    expect(results.map((result) => JSON.parse(result.stdout.delta).todo.id).sort()).toEqual(['T1', 'T2'])
+    const listed = await env.exec({ agentSessionId: 'todo-agent', script: 'demi todo list --json' })
+    expect(JSON.parse(listed.stdout.delta).todos.map((todo: { text: string }) => todo.text).sort())
+      .toEqual(['first', 'second'])
+  } finally {
+    await env.disposeAllShells()
+  }
+})
+
 test(
   'todo command keeps agent-session storage across shell recreation',
   async () => {

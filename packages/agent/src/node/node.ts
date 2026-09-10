@@ -207,6 +207,7 @@ export class SessionNode<State = unknown> {
         agentSessionId: this.id,
         host,
         commands: this.commandRegistry,
+        commandStorage: (signal) => this.session.commandStorage(signal),
         shell: this.shellOptions
       }),
     )

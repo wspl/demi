@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { AgentSession, TranscriptLog } from '@demicodes/agent'
-import { model, text } from '../../../../agent/src/__tests__/helpers'
+import { model, text, commandStateFor } from '../../../../agent/src/__tests__/helpers'
 import type { AgentProvider } from '@demicodes/provider'
 import { openSqliteDatabase, type SqlDatabase } from '../../storage/database'
 import { CONVERSATION_MIGRATIONS, migrate } from '../../storage/migrations'
@@ -30,6 +30,7 @@ export async function editStorageFixture(root: string, wrap: (db: SqlDatabase) =
     spawnedAt: 1, canSpawnSubagents: true, closedPhase: null, closedAt: null,
     result: null, failure: null, delivered: false,
   }, {
+    commandState: commandStateFor(transcript.blocks),
     changedBlocks: transcript.blocks.map((block, index) => ({ index, block })),
     blockCount: transcript.blocks.length, state: { value: 'old-state' }, phase: 'idle',
     queue: [], cwd: root, model, harnessName: 'crash-test',

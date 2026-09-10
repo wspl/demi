@@ -22,7 +22,7 @@ follows the write-frequency line:
   completion delivery) with each node's state row, and each node's
   transcript as **one row per block** (the journal — streaming persists by
   appending block rows, never by rewriting a checkpoint JSON) — that
-  conversation's `host_store` scope. High
+  conversation's command snapshots, message cutoffs and `host_store` scope. High
   write rate, but each file has exactly one writer and the files never
   contend. The process keeps an LRU of open
   handles (64): a cold history read holds one only until other
@@ -192,11 +192,13 @@ conversation id):
 ```
 nodes            id, parent_id(NULL for the root), description, profile_name(NULL), metadata_json(NULL),
                  spawned_at, can_spawn, closed_phase(NULL while live), closed_at, result, delivered,
-                 state_json, block_count
+                 state_json, block_count, command_revision
                  ← state_json: the checkpoint fields other than the transcript (phase, queue, cwd, model, harness)
                  ← delivered: the parent has taken the completion (its checkpoint carries the wakeup,
                    the spawn command returned it, or the product took the closed frame)
 blocks           node_id, idx, block_json  ← one row per transcript block, append-only during streaming
+command_snapshots node_id, revision, values_json ← immutable complete command-state maps
+session_boundaries node_id, block_id, edge, command_revision ← history cutoffs
 host_store       scope, key, value_json  ← this conversation's scope
 ```
 
@@ -248,10 +250,10 @@ query time.
 - Conversation state is behind the agent's `AgentTreeStore` contract: the
   backend's realization over the conversation database, one per
   conversation, handed to `AgentServer` by root session id. It knows no
-  Host. The `HostStore` (four methods) remains the contract for what root
-  commands keep per node: the backend's DB-backed `HostStore` over the same
-  database's `host_store` table is composed into every Host it hands the
-  harness, with atomic `writeJson` and indexed `list`.
+  Host. Command state uses the node's immutable `command_snapshots` and
+  `session_boundaries` under that contract. The node supplies a history-bound
+  `CommandStorage` handle to every dispatched shell job. The backend also
+  supplies a DB-backed `HostStore` as an independent Host storage facet.
 - Device files are accessed through `Host.fs`, implemented by `RemoteHost`
   over the runner protocol. Backend-local storage uses its own filesystem adapter.
 - The blob store is put/get by content hash within a user namespace, with

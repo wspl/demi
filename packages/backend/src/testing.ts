@@ -8,11 +8,12 @@ import { buildManifest, inProcessRpc } from '@demicodes/command-loader'
 import { RemoteShellEnvironment } from '@demicodes/host-remote'
 import { startTxikiRunner } from '@demicodes/runner/testing'
 import {
-  AgentSessionCommandStorage,
+  type CommandStorage,
   type CommandRegistry,
   type Host,
   type ShellEnvironmentOptions
 } from '@demicodes/shell'
+import { memoryCommandStorage } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
 import { transpileCommandModule } from './conversation/command-manifest'
 import { runnerSocketRoutes } from './http/runner-socket'
@@ -36,9 +37,11 @@ interface RunnerFixture {
 export async function runnerShell(options: ShellEnvironmentOptions & {
   host: Host;
   commands: CommandRegistry;
-  agentSessionId?: string
+  agentSessionId?: string;
+  commandStorage?: (signal?: AbortSignal) => CommandStorage
 }) {
-  const { host, commands, agentSessionId = 'test-session', ...shell } = options
+  const { host, commands, agentSessionId = 'test-session', commandStorage, ...shell } = options
+  const storage = memoryCommandStorage()
   let pending = fixtures.get(host)
   if (!pending) {
     pending = createFixture(host, commands)
@@ -58,7 +61,8 @@ export async function runnerShell(options: ShellEnvironmentOptions & {
       DEMI_SESSION_ID: agentSessionId,
       ...shell.initialEnv
     },
-    host: remote
+    host: remote,
+    commandStorage: commandStorage ?? (() => storage)
   })
   const exec = environment.exec.bind(environment)
   const sessions = new Set([agentSessionId])
@@ -115,14 +119,13 @@ async function createFixture(
     pingIntervalMs: 0,
     manifest: async () => manifest,
     rpc: async (call, io, execution) => {
+      if (!execution.commandStorage)
+        throw new Error('rpc job has no command storage')
       const result = await inProcessRpc(
         commands.get(call.agentSessionId)!.list(),
         {
           host: execution.host,
-          storage: new AgentSessionCommandStorage(
-            host.store,
-            call.agentSessionId
-          )
+          storage: execution.commandStorage.withSignal(io.signal)
         }
       )({
         root: call.root,
@@ -178,13 +181,15 @@ export function runnerShellFactory(ctx: {
   agentSessionId: string;
   host: Host;
   commands: CommandRegistry;
-  shell: ShellEnvironmentOptions
+  shell: ShellEnvironmentOptions;
+  commandStorage(signal?: AbortSignal): CommandStorage
 }) {
   return runnerShell({
     ...ctx.shell,
     host: ctx.host,
     commands: ctx.commands,
-    agentSessionId: ctx.agentSessionId
+    agentSessionId: ctx.agentSessionId,
+    commandStorage: ctx.commandStorage
   })
 }
 

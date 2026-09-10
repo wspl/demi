@@ -10,11 +10,6 @@
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
     },
-    "./storage": {
-      "development": "./src/storage.ts",
-      "types": "./dist/storage.d.mts",
-      "import": "./dist/storage.mjs"
-    },
     "./testing": {
       "development": "./src/testing.ts",
       "types": "./dist/testing.d.mts",

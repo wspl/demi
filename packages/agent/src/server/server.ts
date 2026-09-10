@@ -1,5 +1,6 @@
 import type {
   CommandRegistry,
+  CommandStorage,
   Host,
   ShellEnvironment,
   ShellEnvironmentOptions
@@ -37,6 +38,7 @@ export interface ShellEnvironmentContext {
   agentSessionId: string
   host: Host
   commands: CommandRegistry
+  commandStorage(signal?: AbortSignal): CommandStorage
   shell: ShellEnvironmentOptions
 }
 

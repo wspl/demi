@@ -8,6 +8,7 @@ import {
   finalStdoutBoundary,
   normalizeTimeoutMs,
   settleExited,
+  type CommandStorage,
   type ShellAbortInput,
   type ShellCommandRecord,
   type ShellCommandStatus,
@@ -28,6 +29,7 @@ import type { RemoteHost, RemoteJob, RemoteJobExit } from './remote-host'
 
 export interface RemoteShellEnvironmentOptions extends ShellEnvironmentOptions {
   host: RemoteHost
+  commandStorage?: (signal?: AbortSignal) => CommandStorage
 }
 
 interface RemoteShell {
@@ -77,7 +79,10 @@ export class RemoteShellEnvironment implements ShellEnvironment {
   private readonly commandsById = new Map<string, ShellCommandRecord>()
   private readonly runningById = new Map<string, RunningJob>()
 
+  private readonly commandStorage: RemoteShellEnvironmentOptions['commandStorage']
+
   constructor(options: RemoteShellEnvironmentOptions) {
+    this.commandStorage = options.commandStorage
     this.host = options.host
     this.shellIdFactory = options.shellIdFactory
       ?? (() => globalThis.crypto.randomUUID())
@@ -206,7 +211,8 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     const job = this.host.startJob({
       script,
       cwd: shell.cwd,
-      env: { ...shell.env, PWD: shell.cwd }
+      env: { ...shell.env, PWD: shell.cwd },
+      commandStorage: this.commandStorage?.(callerSignal)
     })
     const record = createCommandRecord({
       id,
@@ -232,14 +238,16 @@ export class RemoteShellEnvironment implements ShellEnvironment {
         record.lastOutputAt = Date.now()
       }
     }
-    if (callerSignal) {
-      const onAbort = () => void job.kill('SIGTERM')
-      if (callerSignal.aborted) onAbort()
-      else callerSignal.addEventListener('abort', onAbort, { once: true })
+    const onAbort = () => void job.kill('SIGTERM')
+    if (callerSignal?.aborted) {
+      onAbort()
+    } else {
+      callerSignal?.addEventListener('abort', onAbort, { once: true })
     }
     running.settled = Promise.all([ingest(), job.wait()])
       .then(([, exit]) => this.finish(shell, running, exit, head))
       .finally(() => {
+        callerSignal?.removeEventListener('abort', onAbort)
         this.runningById.delete(id)
         if (shell.foreground === running)
           shell.foreground = undefined

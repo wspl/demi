@@ -54,8 +54,10 @@ a later edit. A replayed request cannot restore a superseded transcript suffix.
 Harness state derived from conversation history is reconstructed from the
 retained prefix, or from initial state when no applicable snapshot remains.
 A harness that cannot provide that reconstruction rejects editing before commit.
-Files, command storage, completed child records and already executed tool effects
-remain external state; transcript editing does not undo them.
+The framework restores command storage to the version recorded before the target
+user message, in the same commit as the rewritten transcript. See
+[Command Storage History](command-storage-history.md). Files, completed child
+records and already executed external tool effects remain outside this restore.
 
 `web-ui` owns the editor and submission interaction; `web` supplies product state
 and handlers, and `web-gallery` supplies examples of the same components.

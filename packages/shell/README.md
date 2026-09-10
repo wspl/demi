@@ -10,6 +10,6 @@ same agent can target local, container, remote, or in-memory backends.
 - `Host` contract (see the package registry in [docs/package-boundaries.md](../../docs/package-boundaries.md)).
 - Built on a forked `just-bash` workspace package.
 
-Subpaths: `@demicodes/shell/storage`, `@demicodes/shell/testing`.
+Subpath: `@demicodes/shell/testing`.
 
 Part of [Demi](../../README.md). Apache-2.0.

@@ -16,6 +16,7 @@ import type { TranscriptPatch } from './protocol/frames'
 import type { TurnRetryPolicy } from './session/retry-policy'
 import type { TranscriptLog } from './transcript/transcript'
 import type { EditReceipt } from './protocol/schemas'
+import type { CommandStateSnapshot } from './store/command-state'
 
 /** Pure reconstruction over a detached retained transcript. */
 export interface AgentStateRewriteContext {
@@ -268,6 +269,7 @@ export interface AgentSessionParams<State> {
   runtime: AgentHarnessRuntime<State>
   transcript?: CoreTranscript | TranscriptLog
   state?: State
+  commandState?: CommandStateSnapshot
 }
 
 /**
@@ -294,6 +296,7 @@ export interface AgentSessionCloneParams<State = unknown> {
 
 export interface AgentSessionCheckpoint<State> extends AgentSessionStateSnapshot<State> {
   transcript: CoreTranscript
+  commandState: CommandStateSnapshot
 }
 
 /** Everything a session persists except the transcript blocks. */
@@ -316,6 +319,8 @@ export interface AgentSessionStateSnapshot<State> {
  * state snapshot rides along on every tick — it is small.
  */
 export interface AgentSessionPersistUpdate<State> extends AgentSessionStateSnapshot<State> {
+  /** Omitted when unchanged; a new node starts with the explicit empty version. */
+  commandState?: CommandStateSnapshot
   changedBlocks: Array<{
     index: number;
     block: Block
@@ -329,7 +334,11 @@ export interface AgentSessionPersistUpdate<State> extends AgentSessionStateSnaps
  * reassemble the checkpoint on load. A save is one commit.
  */
 export interface AgentSessionStore<State = unknown> {
-  save(update: AgentSessionPersistUpdate<State>): Promise<void> | void
+  /** Check cancellation immediately before the atomic commit, after any async IO. */
+  save(
+    update: AgentSessionPersistUpdate<State>,
+    options?: { signal?: AbortSignal },
+  ): Promise<void> | void
   /** Load the persisted session, or null if none exists. */
   load(): Promise<AgentSessionCheckpoint<State> | null>
 }

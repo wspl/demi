@@ -2,6 +2,7 @@ import { parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
 import type { Block, QueuedMessage } from '@demicodes/core'
 import {
   completedChildrenCarriedBy,
+  emptyCommandState,
   externalizeBlockMedia,
   rehydrateBlockMedia,
   type AgentMetadata,
@@ -15,12 +16,13 @@ import {
   type BlobStore,
 } from '@demicodes/agent'
 import type { SqlDatabase } from './database'
+import { readCommandState, writeCommandState } from './command-state'
 
 /**
  * The checkpoint fields other than the transcript, as `nodes.state_json` holds
  * them.
  */
-type NodeState = Omit<AgentSessionCheckpoint<unknown>, 'transcript'>
+type NodeState = Omit<AgentSessionCheckpoint<unknown>, 'transcript' | 'commandState'>
 
 interface NodeRow {
   id: string
@@ -83,6 +85,9 @@ export function sqliteAgentTreeStore(
       json: string
     }>
   ): void => {
+    if (update.commandState) {
+      writeCommandState(db, id, update.commandState)
+    }
     for (const { index, json } of rows) {
       db.run(
         'INSERT INTO blocks (node_id, idx, block_json) VALUES (?, ?, ?) ON CONFLICT (node_id, idx) DO UPDATE SET block_json = excluded.block_json',
@@ -162,24 +167,29 @@ export function sqliteAgentTreeStore(
             0,
           ],
         )
-        writeCheckpoint(node.id, checkpoint, rows)
+        writeCheckpoint(node.id, {
+          ...checkpoint,
+          commandState: checkpoint.commandState ?? emptyCommandState(),
+        }, rows)
       })
     },
 
     sessionStore(id): AgentSessionStore<unknown> {
       return {
-        save: async (update) => {
+        save: async (update, options) => {
           const rows = await externalize(update)
+          options?.signal?.throwIfAborted()
           db.transaction(() => writeCheckpoint(id, update, rows))
         },
         load: async () => {
           const loaded = readNode(db, id)
           if (!loaded)
             return null
+          const commandState = readCommandState(db, id)
           const blocks = await Promise.all(
             loaded.blocks.map((block) => rehydrateBlockMedia(block, blobs))
           )
-          return { ...loaded.state, transcript: { blocks } }
+          return { ...loaded.state, commandState, transcript: { blocks } }
         },
       }
     },

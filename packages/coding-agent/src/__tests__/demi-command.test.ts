@@ -463,8 +463,10 @@ async function createDemiEnvironment(): Promise<{
 }
 
 const noopStorage: CommandStorage = {
+  withSignal: () => noopStorage,
   readJson: async () => null,
   writeJson: async () => {},
+  updateJson: async (_key, update) => update(null),
   delete: async () => {},
   list: async () => [],
 }

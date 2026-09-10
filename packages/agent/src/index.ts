@@ -6,6 +6,15 @@ export * from './session/recovery'
 export * from './session/provider-stream-error'
 export * from './session/session'
 export * from './store/tree-store'
+export {
+  commandStateSchema,
+  commandVersionSchema,
+  sessionBoundarySchema,
+  emptyCommandState,
+  type CommandStateSnapshot,
+  type CommandVersion,
+  type SessionBoundary,
+} from './store/command-state'
 export * from './store/media'
 export * from './client/client'
 export * from './protocol/frames'

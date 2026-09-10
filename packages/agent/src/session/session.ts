@@ -11,6 +11,14 @@ import {
   truncate
 } from '@demicodes/utils'
 import type { Deferred } from '@demicodes/utils'
+import type { CommandStorage } from '@demicodes/shell'
+import {
+  CommandStateHistory,
+  commandStateSchema,
+  commandStorageKeySchema,
+  type CommandStateSnapshot,
+  type CommandVersion,
+} from '../store/command-state'
 import type {
   ModelSelection,
   PendingSteer,
@@ -167,6 +175,8 @@ export class AgentSession<State> {
   private persistTimer: ReturnType<typeof setTimeout> | null = null
   private persistDirty = false
   private persistChain: Promise<void> = Promise.resolve()
+  private commandHistory: CommandStateHistory
+  private commandGeneration = new AbortController()
   // Journal write tracking: which transcript rows the next save must write.
   // `dirtyBlockFloor` marks "this index and everything after" (appends,
   // mid-inserts, removals — anything that shifts positions); the set holds
@@ -199,6 +209,7 @@ export class AgentSession<State> {
         runtime: params.runtime,
         transcript: checkpoint.transcript,
         state: checkpoint.state,
+        commandState: commandStateSchema.parse(checkpoint.commandState),
       },
       options,
     )
@@ -250,6 +261,8 @@ export class AgentSession<State> {
       void this.deliverYieldWakeup(wakeupId, metadata)
     })
     this.store = options.store
+    this.commandHistory = new CommandStateHistory(params.commandState)
+    this.commandHistory.markDirty()
     this.persistIntervalMs = options.persistIntervalMs
       ?? DEFAULT_PERSIST_INTERVAL_MS
     this.retryPolicy = resolveRetryPolicy(options.retry)
@@ -366,6 +379,8 @@ export class AgentSession<State> {
       runWithCompactingPhase: (fn) => self.runWithCompactingPhase(fn),
       commitTranscript: () => self.commitTranscript(),
       persistNow: () => self.flushPersist(),
+      completeAssistantText: (blockId) => self.completeAssistantText(blockId),
+      restoreCommandState: (cut) => self.restoreCommandState(cut),
       emit: (event) => self.emit(event),
       materializeSteersArrivedSince: (count) => self.materializePendingSteersArrivedSince(count),
       materializePendingSteers: () => self.materializePendingSteersForCurrentTurn(),
@@ -470,6 +485,10 @@ export class AgentSession<State> {
         state: overrides.state !== undefined
           ? overrides.state
           : structuredClone(this.agentState),
+        commandState: this.commandHistory.select(
+          overrides.transcript?.blocks ?? this.transcriptLog.blocks,
+          this.commandHistory.revision,
+        ),
       },
       {
         retry: this.retryPolicy,
@@ -711,6 +730,7 @@ export class AgentSession<State> {
    * closes.
    */
   async dispose(): Promise<void> {
+    this.commandGeneration.abort()
     await this.abort()
     this.clearPendingActions()
     this.yields.clear()
@@ -734,6 +754,126 @@ export class AgentSession<State> {
 
   state(): State {
     return this.agentState
+  }
+
+  /** A job keeps this handle across RPC invocations; rewrites invalidate it. */
+  commandStorage(signal?: AbortSignal): CommandStorage {
+    const lifetime = signal
+      ? AbortSignal.any([signal, this.commandGeneration.signal])
+      : this.commandGeneration.signal
+    const bind = (lifetime: AbortSignal): CommandStorage => {
+      const check = () => {
+        throwIfAborted(lifetime)
+        if (this.isPreparingEdit()) {
+          throw new Error('Command storage is reserved for a transcript edit')
+        }
+      }
+      const updateJson = <T>(key: string, update: (current: T | null) => T): Promise<T> => {
+        commandStorageKeySchema.parse(key)
+        return this.serializePersistence(async () => {
+          check()
+          const values = this.commandHistory.values()
+          const value = update(Object.hasOwn(values, key) ? values[key] as T : null)
+          const version = this.commandHistory.prepare({ ...values, [key]: value })
+          if (version) {
+            await this.writeCommandVersion(version, lifetime)
+          }
+          return structuredClone(version ? version.values[key] : values[key]) as T
+        })
+      }
+      return {
+        withSignal: (signal) => bind(AbortSignal.any([lifetime, signal])),
+        readJson: async <T>(key: string) => {
+          check()
+          commandStorageKeySchema.parse(key)
+          const values = this.commandHistory.values()
+          return Object.hasOwn(values, key) ? values[key] as T : null
+        },
+        writeJson: async <T>(key: string, value: T) => {
+          const detached = structuredClone(value)
+          await updateJson(key, () => detached)
+        },
+        updateJson,
+        delete: (key) => this.serializePersistence(async () => {
+          check()
+          commandStorageKeySchema.parse(key)
+          const values = this.commandHistory.values()
+          delete values[key]
+          const version = this.commandHistory.prepare(values)
+          if (version) {
+            await this.writeCommandVersion(version, lifetime)
+          }
+        }),
+        list: async (prefix) => {
+          check()
+          if (prefix) {
+            commandStorageKeySchema.parse(prefix)
+          }
+          return Object.keys(this.commandHistory.values()).filter((key) => key.startsWith(prefix)).sort()
+        },
+      }
+    }
+    return bind(lifetime)
+  }
+
+  commandState(): CommandStateSnapshot {
+    return this.commandHistory.snapshot()
+  }
+
+  private async writeCommandVersion(version: CommandVersion, signal: AbortSignal): Promise<void> {
+    throwIfAborted(signal)
+    this.persistDirty = true
+    await this.writeCheckpointIfDirty(version, signal)
+    this.commandHistory.accept(version)
+  }
+
+  private completeAssistantText(blockId: string): Promise<void> {
+    return this.serializePersistence(async () => {
+      if (this.transcriptLog.markAssistantForkable(blockId)) {
+        this.commandHistory.capture(blockId, 'after_assistant')
+      }
+    })
+  }
+
+  private invalidateCommandHistory(): void {
+    if (this.commandGeneration.signal.aborted) {
+      return
+    }
+    this.commandGeneration.abort()
+    this.commandGeneration = new AbortController()
+  }
+
+  private async restoreCommandState(cut: number): Promise<void> {
+    await this.serializePersistence(async () => {
+      const blocks = this.transcriptLog.blocks.slice(0, cut)
+      const last = blocks.at(-1)
+      const revision = last ? this.commandHistory.boundary(last.id, 'after_block') : 0
+      await this.commitRewrittenTranscript(new TranscriptLog(structuredClone(blocks)), revision)
+    })
+  }
+
+  /** Called within the persistence queue, with adoption following durable save. */
+  private async commitRewrittenTranscript(candidate: TranscriptLog, revision: number): Promise<void> {
+    const commandState = this.commandHistory.select(candidate.blocks, revision)
+    await this.store?.save({
+      changedBlocks: candidate.blocks.map((block, index) => ({ index, block: structuredClone(block) })),
+      blockCount: candidate.blocks.length,
+      state: structuredClone(this.agentState),
+      phase: this.currentPhase,
+      queue: structuredClone(this.queuedMessages()),
+      cwd: this.cwd,
+      model: structuredClone(this.model),
+      harnessName: this.runtime.harnessName,
+      commandState,
+      ...(this.editReceipts.length ? { edits: structuredClone(this.editReceipts) } : {}),
+    })
+    this.commandHistory = new CommandStateHistory(commandState)
+    this.invalidateCommandHistory()
+    this.transcriptLog.replaceAll(candidate.blocks)
+    this.dirtyBlockFloor = Number.POSITIVE_INFINITY
+    this.dirtyBlockIndices.clear()
+    const change = this.transcriptLog.takePatches()!
+    this.emit({ type: 'transcript_changed', ...change })
   }
 
   id(): string {
@@ -1226,6 +1366,7 @@ export class AgentSession<State> {
       // Earlier throttled checkpoints must settle before the candidate save.
       await this.flushPersist()
       const candidate = this.transcriptLog.beforeUserMessage(action.request.targetBlockId)
+      const commandRevision = this.commandHistory.boundary(action.request.targetBlockId, 'before_user')
       const selection = this.pendingModelSwitch
       const model = structuredClone(selection?.model ?? this.model)
       const receipt: EditReceipt = {
@@ -1252,39 +1393,52 @@ export class AgentSession<State> {
         throw new Error('Provider.clone() must return an independent runtime')
       }
       throwIfAborted(signal)
-      action.stage = 'committing'
-      await this.store?.save({
-        changedBlocks: candidate.blocks.map((block, index) => ({
-          index,
-          block: structuredClone(block),
-        })),
-        blockCount: candidate.blocks.length,
-        state: structuredClone(prepared.state),
-        phase: 'running',
-        queue: [],
-        cwd: this.cwd,
-        model,
-        harnessName: this.runtime.harnessName,
-        edits: [...this.editReceipts, receipt],
-      })
-
-      // No awaits between durable acceptance and adoption. A cancellation
-      // during the store commit cannot turn a committed edit into a rejection.
+      const acceptedProvider = candidateProvider
+      const candidateCommands = new CommandStateHistory(
+        this.commandHistory.select(candidate.blocks, commandRevision),
+      )
+      const replacement = candidate.blocks.at(-1)!
+      candidateCommands.capture(replacement.id, 'before_user', commandRevision)
+      candidateCommands.capture(replacement.id, 'after_block', commandRevision)
       const discarded = new Set([this.provider, selection?.provider])
-      prepared.applyState()
-      this.transcriptLog.replaceAll(candidate.blocks)
-      this.editReceipts.push(receipt)
-      this.provider = candidateProvider
-      candidateProvider = null
-      this.model = model
-      this.pendingModelSwitch = null
-      action.stage = 'accepted'
-      const change = this.transcriptLog.takePatches()!
-      this.dirtyBlockFloor = Number.POSITIVE_INFINITY
-      this.dirtyBlockIndices.clear()
-      this.persistDirty = true
-      this.emit({ type: 'transcript_changed', ...change })
-      action.acceptance.resolve({ ...receipt })
+      await this.serializePersistence(async () => {
+        throwIfAborted(signal)
+        action.stage = 'committing'
+        await this.store?.save({
+          changedBlocks: candidate.blocks.map((block, index) => ({
+            index,
+            block: structuredClone(block),
+          })),
+          blockCount: candidate.blocks.length,
+          state: structuredClone(prepared.state),
+          phase: 'running',
+          queue: [],
+          cwd: this.cwd,
+          model,
+          harnessName: this.runtime.harnessName,
+          edits: [...this.editReceipts, receipt],
+          commandState: candidateCommands.snapshot(),
+        })
+
+        // No awaits between durable acceptance and adoption. A cancellation
+        // during the store commit cannot turn a committed edit into a rejection.
+        this.commandHistory = candidateCommands
+        this.invalidateCommandHistory()
+        prepared.applyState()
+        this.transcriptLog.replaceAll(candidate.blocks)
+        this.editReceipts.push(receipt)
+        this.provider = acceptedProvider
+        candidateProvider = null
+        this.model = model
+        this.pendingModelSwitch = null
+        action.stage = 'accepted'
+        const change = this.transcriptLog.takePatches()!
+        this.dirtyBlockFloor = Number.POSITIVE_INFINITY
+        this.dirtyBlockIndices.clear()
+        this.persistDirty = true
+        this.emit({ type: 'transcript_changed', ...change })
+        action.acceptance.resolve({ ...receipt })
+      })
       const releases = await Promise.allSettled(
         [...discarded].map((provider) => Promise.resolve().then(() => provider?.dispose?.())),
       )
@@ -1363,6 +1517,7 @@ export class AgentSession<State> {
     content: UserContentBlock[],
     hidden = false
   ): Promise<void> {
+    const commandRevision = this.commandHistory.revision
     const submittedContent = structuredClone(content)
     await this.runtime.lifecycle?.({
       type: 'before_round_start',
@@ -1379,7 +1534,7 @@ export class AgentSession<State> {
     const preamble = hidden
       ? null
       : ((await this.runtime.preamble?.(this.promptContext())) ?? null)
-    this.transcriptLog.pushUserTurn(
+    const user = this.transcriptLog.pushUserTurn(
       this.currentTurnId(),
       this.model,
       submittedContent,
@@ -1387,6 +1542,7 @@ export class AgentSession<State> {
       hidden,
       structuredClone(resolvedContent),
     )
+    this.commandHistory.capture(user.id, 'before_user', commandRevision)
     await this.commitTranscript()
 
     await this.compaction.preflight()
@@ -1420,9 +1576,16 @@ export class AgentSession<State> {
   }
 
   private async executeRetry(): Promise<void> {
-    const userBlock = this.transcriptLog.rewindToLastUserTurn()
-    if (!userBlock)
-      throw new Error('AgentSession: cannot retry without a user turn')
+    const userBlock = await this.serializePersistence(async () => {
+      const candidate = new TranscriptLog(this.transcriptLog.toJSON().blocks)
+      const user = candidate.rewindToLastUserTurn()
+      if (!user) {
+        throw new Error('AgentSession: cannot retry without a user turn')
+      }
+      const revision = this.commandHistory.boundary(user.id, 'before_user')
+      await this.commitRewrittenTranscript(candidate, revision)
+      return user
+    })
     this.activeTurnId = userBlock.turnId
     await this.runtime.lifecycle?.({
       type: 'after_transcript_rewrite',
@@ -1459,7 +1622,7 @@ export class AgentSession<State> {
     // Truncating afterwards would use a cut computed against the pre-compaction block
     // layout — and chop the fresh marker off, resurrecting the stale pre-compaction usage
     // anchor so the following preflight compacts the same history a second time.
-    this.transcriptLog.truncateFrom(cut)
+    await this.restoreCommandState(cut)
     this.transcriptLog.markLatestAbortResumed()
     await this.applyPendingModelSwitch()
     this.transcriptLog.pushResumeTurn(this.currentTurnId(), this.model)
@@ -1661,16 +1824,35 @@ export class AgentSession<State> {
    * checkpoint write. Boundaries (action end, abort, dispose) flush the write.
    */
   private async commitTranscript(): Promise<void> {
+    this.drainTranscript()
+    this.schedulePersist()
+  }
+
+  private drainTranscript(): void {
     const drained = this.transcriptLog.takePatches()
     if (drained) {
       this.markDirtyBlocks(drained.patches)
+      if (drained.patches.some((patch) => patch.op === 'remove' || patch.op === 'replace')) {
+        this.commandHistory.retainBoundaries(this.transcriptLog.blocks)
+      }
+      for (const patch of drained.patches) {
+        if (patch.op === 'remove' || patch.op === 'replace') {
+          continue
+        }
+        const block = this.transcriptLog.blocks[patch.path[1]]
+        if (block) {
+          if (block.type === 'user' && !this.commandHistory.hasBoundary(block.id, 'before_user')) {
+            this.commandHistory.capture(block.id, 'before_user')
+          }
+          this.commandHistory.capture(block.id, 'after_block')
+        }
+      }
       this.emit({
         type: 'transcript_changed',
         patches: drained.patches,
         revision: drained.revision
       })
     }
-    this.schedulePersist()
   }
 
   /**
@@ -1717,15 +1899,21 @@ export class AgentSession<State> {
   // write of the same checkpoint, and the last completed write must carry the
   // newest snapshot. Each caller still observes its own write's failure.
   private persistCheckpoint(): Promise<void> {
-    const run = this.persistChain.then(() => this.writeCheckpointIfDirty())
+    return this.serializePersistence(() => this.writeCheckpointIfDirty())
+  }
+
+  private serializePersistence<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.persistChain.then(operation)
     this.persistChain = run.then(noop, noop)
     return run
   }
 
-  private async writeCheckpointIfDirty(): Promise<void> {
+  private async writeCheckpointIfDirty(pendingCommand?: CommandVersion, signal?: AbortSignal): Promise<void> {
+    this.drainTranscript()
     if (!this.store || !this.persistDirty)
       return
     this.persistDirty = false
+    const commandState = this.commandHistory.takeUpdate(pendingCommand)
     const blocks = this.transcriptLog.blocks
     const floor = this.dirtyBlockFloor
     const pointIndices = this.dirtyBlockIndices
@@ -1752,12 +1940,16 @@ export class AgentSession<State> {
         cwd: this.cwd,
         model: structuredClone(this.model),
         harnessName: this.runtime.harnessName,
+        ...(commandState ? { commandState } : {}),
         ...(this.editReceipts.length ? { edits: structuredClone(this.editReceipts) } : {}),
-      })
+      }, { signal })
     } catch (error) {
       // The rows are still unwritten: merge the marks back so the next tick
       // retries them instead of silently dropping the delta.
       this.persistDirty = true
+      if (commandState) {
+        this.commandHistory.markDirty()
+      }
       this.dirtyBlockFloor = Math.min(this.dirtyBlockFloor, floor)
       for (const index of pointIndices) this.dirtyBlockIndices.add(index)
       throw error

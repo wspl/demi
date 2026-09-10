@@ -137,8 +137,12 @@ export interface CommandIO {
 }
 
 export interface CommandStorage {
+  /** Preserve the original history binding while restricting an invocation's lifetime. */
+  withSignal(signal: AbortSignal): CommandStorage
   readJson<T>(key: string): Promise<T | null>
   writeJson<T>(key: string, value: T): Promise<void>
+  /** Atomically replace a key from a detached value; the callback performs no IO. */
+  updateJson<T>(key: string, update: (current: T | null) => T): Promise<T>
   delete(key: string): Promise<void>
   list(prefix: string): Promise<string[]>
 }
@@ -570,7 +574,7 @@ function unavailableStorage(displayPath: string): CommandStorage {
       `"${displayPath}" reads command storage, and this embedder runs rpc commands without one`
     )
   }
-  return { readJson: refuse, writeJson: refuse, delete: refuse, list: refuse }
+  return { withSignal: refuse, readJson: refuse, writeJson: refuse, updateJson: refuse, delete: refuse, list: refuse }
 }
 
 function setParsedValue(

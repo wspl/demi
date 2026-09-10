@@ -1,4 +1,5 @@
 import type {
+  CommandStorage,
   Host,
   HostCwd,
   HostFileStat,
@@ -156,6 +157,11 @@ export class RemoteHost implements Host {
     return this.activeJobs.size
   }
 
+  /** The agent-supplied storage binding recorded locally before dispatch. */
+  jobCommandStorage(jobId: string): CommandStorage | undefined {
+    return this.activeJobs.get(jobId)?.commandStorage
+  }
+
   /**
    * The immutable environment of a live job, recorded before dispatch; absent
    * after exit/disconnect.
@@ -174,14 +180,16 @@ export class RemoteHost implements Host {
     cwd: string;
     env: Record<string, string>;
     stdin?: PipeRef;
-    stdout?: PipeRef
+    stdout?: PipeRef;
+    commandStorage?: CommandStorage
   }): RemoteJob {
     const release = this.options.admit?.()
     const jobId = createId()
     const job = new RemoteJobState(
       jobId,
       (message) => this.dispatch(message),
-      Object.freeze({ ...params.env })
+      Object.freeze({ ...params.env }),
+      params.commandStorage
     )
     void job.handle().wait().finally(() => release?.())
     if (!this.send) {
@@ -460,6 +468,7 @@ class RemoteJobState {
     private readonly jobId: string,
     private readonly send: (message: BackendToRunnerMessage) => void,
     readonly env: Readonly<Record<string, string>>,
+    readonly commandStorage?: CommandStorage,
   ) {}
 
   pushChunk(chunk: HostProcessOutputChunk): void {

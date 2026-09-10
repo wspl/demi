@@ -1,3 +1,4 @@
+import { memoryCommandStorage as memoryStorage } from '@demicodes/shell/testing'
 import {
   runtimeModule,
   type Command,
@@ -85,18 +86,10 @@ export function testRoots(): Command[] {
   ]
 }
 
-export function memoryStorage(): CommandStorage {
-  const data = new Map<string, unknown>()
-  return {
-    readJson: async <T>(key: string) => (data.get(key) as T | undefined)
-      ?? null,
-    writeJson: async (key, value) => void data.set(key, value),
-    delete: async (key) => void data.delete(key),
-    list: async (prefix) => [...data.keys()].filter((key) => key.startsWith(prefix)),
-  }
-}
 
 export function transpile(source: string): string {
   return new Bun.Transpiler({ loader: 'ts', target: 'browser' })
     .transformSync(source)
 }
+
+export { memoryStorage }

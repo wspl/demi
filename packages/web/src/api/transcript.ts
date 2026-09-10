@@ -126,6 +126,7 @@ const persistedBlockSchema = z.discriminatedUnion('type', [
     ...meta,
     type: z.literal('text'),
     text: z.string(),
+    forkable: z.literal(true).optional(),
   }),
   z.object({
     ...meta,

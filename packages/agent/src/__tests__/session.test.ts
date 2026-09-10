@@ -25,7 +25,7 @@ import {
   type AgentToolInvokeResult,
   type SessionEvent,
 } from '../index'
-import { MemorySessionStore } from './helpers'
+import { MemorySessionStore, commandStateFor } from './helpers'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -73,6 +73,7 @@ function createSession(
       cwd: '/workspace',
       runtime,
       transcript,
+      commandState: commandStateFor(transcript?.blocks ?? []),
     },
     {
       idFactory: () => `id-${++id}`,
