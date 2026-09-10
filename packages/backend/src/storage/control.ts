@@ -1416,7 +1416,7 @@ export class LocalControlService implements ControlService {
       createdAt: now,
       updatedAt: now,
     }
-    if (this.db.get('SELECT id FROM conversation_forks WHERE id = ?', [record.id])) {
+    if (this.db.get('SELECT id FROM conversation_fork_operations WHERE id = ?', [record.id])) {
       throw new Error('Conversation id is reserved for Fork')
     }
     this.db.run(
@@ -1448,20 +1448,20 @@ export class LocalControlService implements ControlService {
 
   async conversationBlobOwner(id: string): Promise<string | null> {
     return this.db.get<{ user_id: string }>(
-      'SELECT user_id FROM conversations WHERE id = ? UNION ALL SELECT user_id FROM conversation_forks WHERE id = ? LIMIT 1',
+      'SELECT user_id FROM conversations WHERE id = ? UNION ALL SELECT user_id FROM conversation_fork_operations WHERE id = ? LIMIT 1',
       [id, id],
     )?.user_id ?? null
   }
 
   async getConversationFork(id: string): Promise<ConversationForkOperation | null> {
-    const row = this.db.get<ConversationForkRow>('SELECT * FROM conversation_forks WHERE id = ?', [id])
+    const row = this.db.get<ConversationForkRow>('SELECT * FROM conversation_fork_operations WHERE id = ?', [id])
     return row ? forkFromRow(row) : null
   }
 
   async reserveConversationFork(input: ConversationForkOperation): Promise<ConversationForkOperation | null> {
     const operation = conversationForkSchema.parse(input)
     return this.db.transaction(() => {
-      const existing = this.db.get<ConversationForkRow>('SELECT * FROM conversation_forks WHERE id = ?', [operation.id])
+      const existing = this.db.get<ConversationForkRow>('SELECT * FROM conversation_fork_operations WHERE id = ?', [operation.id])
       if (existing) {
         return existing.user_id === operation.userId && existing.source_id === operation.sourceId
           && existing.block_id === operation.blockId ? forkFromRow(existing) : null
@@ -1471,7 +1471,7 @@ export class LocalControlService implements ControlService {
       }
       const { id, userId, sourceId, blockId, ...metadata } = operation
       this.db.run(
-        'INSERT INTO conversation_forks (id, user_id, source_id, block_id, metadata_json) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO conversation_fork_operations (id, user_id, source_id, block_id, metadata_json) VALUES (?, ?, ?, ?, ?)',
         [id, userId, sourceId, blockId, JSON.stringify(metadata)],
       )
       return operation
@@ -1480,13 +1480,13 @@ export class LocalControlService implements ControlService {
 
   async pendingConversationForks(): Promise<ConversationForkOperation[]> {
     return this.db.all<ConversationForkRow>(
-      'SELECT f.* FROM conversation_forks f LEFT JOIN conversations c ON c.id = f.id WHERE c.id IS NULL',
+      'SELECT f.* FROM conversation_fork_operations f LEFT JOIN conversations c ON c.id = f.id WHERE c.id IS NULL',
     ).map(forkFromRow)
   }
 
   async publishConversationFork(id: string): Promise<ConversationRecord> {
     return this.db.transaction(() => {
-      const row = this.db.get<ConversationForkRow>('SELECT * FROM conversation_forks WHERE id = ?', [id])
+      const row = this.db.get<ConversationForkRow>('SELECT * FROM conversation_fork_operations WHERE id = ?', [id])
       if (!row) {
         throw new Error('No reserved Fork operation')
       }

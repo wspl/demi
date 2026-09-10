@@ -165,8 +165,9 @@ conversations           id, user_id, title, archived, target_json,
                         ← cloud resolves the user's unique managed device on demand
                         ← an explicit cloud path keeps a Fork in the source directory
                         ← each node persists its own observed context revision
-conversation_forks      id, user_id, source_id, block_id, metadata_json
-                        ← reserves one destination UUID per creation attempt
+conversation_fork_operations
+                        id, user_id, source_id, block_id, metadata_json
+                        ← records creation attempts and reserves their destination UUIDs
                         ← validated metadata: title, target, full model selection, creation time, attached hosts
                         ← published when the destination root has committed and its conversations row exists
 conversation_hosts      conversation_id, device_id, name, cwd, attached_at
