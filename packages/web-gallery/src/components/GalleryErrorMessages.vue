@@ -2,6 +2,7 @@
 import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessageVirtualBlock.vue'
 import PendingSubmission from '@demicodes/web-ui/agent/PendingSubmission.vue'
 import type { PendingSubmissionState } from '@demicodes/web-ui/agent/types'
+import { composerAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { Block } from '@demicodes/core'
 import { demoModel, errorTool } from '../fixtures/blocks'
 import GalleryComposer from './GalleryComposer.vue'
@@ -79,7 +80,10 @@ const toolFailure = errorTool as Block
 const pending: PendingSubmissionState = {
   id: 'failed-submission',
   text: 'Please keep this exact message and the attached plan.',
-  fileNames: ['plan.pdf', 'reference.png'],
+  attachments: [
+    composerAttachment({ name: 'plan.pdf', phase: 'ready' }),
+    composerAttachment({ name: 'reference.png', phase: 'ready' }),
+  ],
   error: 'The server did not confirm the message. Retry checks whether it was accepted before sending it again.',
   sending: false,
 }
