@@ -22,7 +22,6 @@ export const useResources = defineStore('resources', () => {
   const settingsTab = ref('general')
   const settingsOpen = ref(false)
   const targetOpen = ref(false)
-  const targetMode = ref<'switch' | 'create'>('switch')
   const pairingOpen = ref(false)
   const sidebarOpen = ref(false)
 
@@ -239,7 +238,6 @@ export const useResources = defineStore('resources', () => {
     settingsTab,
     settingsOpen,
     targetOpen,
-    targetMode,
     pairingOpen,
     sidebarOpen,
     recentProjectIds,

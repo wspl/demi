@@ -132,9 +132,6 @@ const hosts = createGalleryFileHosts()
             <WorkspaceDialog
               is-open
               :overlay-store="appOverlayStore"
-              mode="create"
-              :projects="[]"
-              :current-project-id="null"
               :devices="[
                 { id: 'preview-device', name: 'Preview laptop', online: true },
               ]"
