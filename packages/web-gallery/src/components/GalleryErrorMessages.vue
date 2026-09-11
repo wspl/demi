@@ -5,7 +5,6 @@ import type { PendingSubmissionState } from '@demicodes/web-ui/agent/types'
 import { composerAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { Block } from '@demicodes/core'
 import { demoModel, errorTool } from '../fixtures/blocks'
-import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 
@@ -15,9 +14,9 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * the padding and rhythm are the product's. Retry sits on the record that
  * ended the conversation, and nowhere else.
  *
- * Nothing under the composer: a fork that failed, an edit the server refused
- * and a file that could not be read are toasts; a failed upload is its tile's
- * Retry.
+ * Nothing in or under the composer: a fork that failed, an edit the server
+ * refused, a file that could not be read and an upload that failed are toasts,
+ * and the failed file leaves the composer.
  */
 function errorRecord(
   id: string,
@@ -130,23 +129,6 @@ const pending: PendingSubmissionState = {
         <div class="rounded-lg bg-surface">
           <PendingSubmission v-bind="pending" />
         </div>
-      </GallerySpecimen>
-    </GallerySection>
-    <GallerySection
-      title="Composer · no failure text"
-      note="A failed upload is its tile's Retry; the tile hides its preview so the control stands alone. Anything else that fails around the composer is a toast."
-    >
-      <GallerySpecimen wide variant="Uploads failed · Retry on each tile">
-        <GalleryComposer
-          placeholder="Message with failed attachments…"
-          conversation-id="failed-uploads"
-          draft="The files must stay here while I retry."
-          :attachments="[
-            { name: 'reference.png', phase: 'failed', error: 'Connection lost during upload.' },
-            { name: 'plan.pdf', phase: 'failed', error: 'The workspace is unavailable.' },
-            { name: 'notes.md', phase: 'ready' },
-          ]"
-        />
       </GallerySpecimen>
     </GallerySection>
   </div>
