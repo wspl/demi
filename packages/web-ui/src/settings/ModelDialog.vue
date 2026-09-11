@@ -4,6 +4,7 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
+import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
@@ -291,9 +292,7 @@ const canSave = computed(() => {
           </div>
         </div>
       </ScrollArea>
-      <p v-if="error" role="alert" class="px-5 pt-3 text-chrome text-on-danger">
-        {{ error }}
-      </p>
+      <InlineError v-if="error" class="px-5 pt-3" :message="error" />
       <div v-if="editable" class="flex justify-end gap-2 p-5 pt-4">
         <Button @click="emit('close')">Cancel</Button>
         <Button

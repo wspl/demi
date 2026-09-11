@@ -7,6 +7,13 @@ export type GalleryViewOption = {
 }
 
 export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
+  '/errors': [
+    { value: 'primitives', label: 'Primitives' },
+    { value: 'conversation', label: 'Conversation' },
+    { value: 'messages', label: 'Messages & uploads' },
+    { value: 'forms', label: 'Forms & settings' },
+    { value: 'files', label: 'Files' },
+  ],
   '/overview': [
     {
       value: 'overview',

@@ -227,6 +227,8 @@ export class ConversationRuntime {
       this.client.value = client
       this.unsubscribe = unsubscribe
       this.options.state.load = 'ready'
+      // A reopened session is healthy; the failure that preceded it is over.
+      this.options.state.lastError = null
       return client
     } catch (error) {
       unsubscribe?.()

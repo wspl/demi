@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import {
   conversationPageKind,
+  sessionFailureNotice,
   sessionPaneStatus,
   sessionShowsReconnectTail,
   sessionStatusCopy,
@@ -17,6 +18,25 @@ test('reconnecting keeps the transcript and is not a pane or an empty conversati
   expect(sessionPaneStatus('reconnecting', false)).toBeNull()
   expect(sessionShowsReconnectTail('reconnecting')).toBe(true)
   expect(sessionShowsReconnectTail('ready')).toBe(false)
+})
+
+test('a failed reconnect keeps the transcript and names the failure in the dock', () => {
+  expect(sessionPaneStatus('failed', true)).toBeNull()
+  expect(sessionFailureNotice('failed', 'Socket closed', true, false)).toEqual({
+    label: 'Socket closed',
+    retry: true,
+  })
+})
+
+test('the dock notice never repeats a pane or an error record', () => {
+  expect(sessionFailureNotice('failed', 'Socket closed', false, false)).toBeNull()
+  expect(sessionFailureNotice('loading', 'Socket closed', true, false)).toBeNull()
+  expect(sessionFailureNotice('ready', 'Overloaded', true, true)).toBeNull()
+  expect(sessionFailureNotice('ready', 'Request refused', true, false)).toEqual({
+    label: 'Request refused',
+    retry: false,
+  })
+  expect(sessionFailureNotice('ready', null, true, false)).toBeNull()
 })
 
 test('a failed restore is not a missing conversation', () => {

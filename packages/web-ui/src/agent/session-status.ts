@@ -12,7 +12,9 @@ export type SessionStatusKind = 'loading' | 'failed' | 'empty' | 'missing'
 /**
  * The pane that replaces the transcript. `loading` always wins so a restore
  * never reads as an empty conversation, even with cached blocks. Reconnecting keeps the transcript
- * (or an empty list) and uses the same tail row as Requesting.
+ * (or an empty list) and uses the same tail row as Requesting. A failure with
+ * history in memory also keeps the transcript: the dock's notice names the
+ * failure and offers Retry, and nothing the reader already had disappears.
  */
 export function sessionPaneStatus(
   load: SessionLoad,
@@ -22,12 +24,35 @@ export function sessionPaneStatus(
     return 'loading'
   }
   if (load === 'failed') {
-    return 'failed'
+    return hasTranscript ? null : 'failed'
   }
   if (load === 'reconnecting') {
     return null
   }
   return hasTranscript ? null : 'empty'
+}
+
+/**
+ * What the dock's notice bar says for a session-level failure, or null when
+ * another surface already says it: the status pane (no transcript to keep) or
+ * the error record at the tail of the transcript (the dock chip offers Retry).
+ */
+export function sessionFailureNotice(
+  load: SessionLoad,
+  lastError: string | null,
+  hasTranscript: boolean,
+  tailIsErrorRecord: boolean,
+): { label: string; retry: boolean } | null {
+  if (!lastError) {
+    return null
+  }
+  if (load === 'failed') {
+    return hasTranscript ? { label: lastError, retry: true } : null
+  }
+  if (load === 'loading' || tailIsErrorRecord) {
+    return null
+  }
+  return { label: lastError, retry: false }
 }
 
 export function sessionShowsReconnectTail(load: SessionLoad): boolean {

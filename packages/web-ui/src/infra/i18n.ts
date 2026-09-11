@@ -71,6 +71,7 @@ const messages: Record<string, string> = {
   'agent.conversationList.empty': 'No conversations',
   'agent.session.loading': 'Loading conversation',
   'agent.session.failed': "Couldn't load this conversation.",
+  'agent.session.loadingList': 'Loading conversations',
   'agent.session.listFailed': "Couldn't load conversations.",
   'agent.session.retry': 'Retry',
   'agent.session.empty': 'No messages yet. Start a conversation.',

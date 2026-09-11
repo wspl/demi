@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { accountInitial } from '../auth/account-display'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
+import InlineError from '../ui/InlineError.vue'
 import Tag from '../ui/Tag.vue'
 import CommitTextInput from '../ui/CommitTextInput.vue'
 import ChangeEmailDialog, {
@@ -85,23 +86,17 @@ const initial = computed(() => accountInitial(name.value, props.email))
           class="w-56 max-w-full"
         />
         <span
-          v-if="nameSave && nameSave !== 'idle'"
+          v-if="nameSave === 'saving' || nameSave === 'saved'"
           class="text-[12px] text-fg-subtle"
           role="status"
-          >{{
-            nameSave === 'saving'
-              ? 'Saving…'
-              : nameSave === 'saved'
-                ? 'Saved'
-                : 'Not saved'
-          }}</span
+          >{{ nameSave === 'saving' ? 'Saving…' : 'Saved' }}</span
         >
-        <Button
-          v-if="nameSave === 'failed'"
-          size="sm"
-          @click="emit('retryName')"
-          >Retry</Button
-        >
+        <InlineError
+          v-else-if="nameSave === 'failed'"
+          message="Could not save the display name."
+          action="Retry"
+          @action="emit('retryName')"
+        />
       </SettingsRow>
       <SettingsRow label="Email">
         <template v-if="emailVerified" #tags

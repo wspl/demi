@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useClipboard } from '@vueuse/core'
-import { Check, Copy, ExternalLink, TriangleAlert } from '@lucide/vue'
+import { Check, Copy, ExternalLink } from '@lucide/vue'
 import CopyCode from '../ui/CopyCode.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -9,6 +9,7 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
+import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
@@ -202,13 +203,7 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
         {{ phase.account }}
       </div>
 
-      <div
-        v-else
-        class="flex items-start gap-2 rounded-xl bg-tint-danger px-3 py-2 text-[12px] leading-5 text-on-danger"
-      >
-        <TriangleAlert :size="ICON_PX.in24" class="mt-0.5 shrink-0" />
-        {{ phase.message }}
-      </div>
+      <InlineError v-else :message="phase.message" />
 
       <div class="flex justify-end gap-2">
         <Button

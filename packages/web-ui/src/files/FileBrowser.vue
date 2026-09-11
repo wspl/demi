@@ -23,6 +23,7 @@ import { appOverlayStore } from '../overlay/appOverlay'
 import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
+import InlineError from '../ui/InlineError.vue'
 import Menu from '../ui/Menu.vue'
 import MenuGroup from '../ui/MenuGroup.vue'
 import MenuItem from '../ui/MenuItem.vue'
@@ -563,11 +564,7 @@ defineExpose({
           class="flex min-w-0 flex-1 items-center gap-2 text-chrome"
           role="status"
         >
-          <template v-if="error">
-            <span class="truncate text-on-danger" :title="error">{{
-              error
-            }}</span>
-          </template>
+          <InlineError v-if="error" class="min-w-0 flex-1" :message="error" />
           <template v-else>
             <span class="shrink-0 text-fg-subtle">{{ status.lead }}</span>
             <span

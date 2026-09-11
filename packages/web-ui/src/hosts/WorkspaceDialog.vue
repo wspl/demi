@@ -116,16 +116,25 @@ const canCreate = computed(
 watch(
   () => props.isOpen,
   (open) => {
-    if (!open || props.pending || props.message) {
+    if (!open) {
+      return
+    }
+    const defaultDeviceId =
+      props.devices.find((entry) => entry.online)?.id ??
+      props.devices[0]?.id ??
+      ''
+    // The page the caller asked for, even when it opens on a failed create.
+    showCreate.value = props.mode === 'create'
+    if (!deviceId.value) {
+      deviceId.value = defaultDeviceId
+    }
+    // A request in flight or its failure keeps the form's input.
+    if (props.pending || props.message) {
       return
     }
     kind.value = 'device'
     name.value = ''
-    deviceId.value =
-      props.devices.find((entry) => entry.online)?.id ??
-      props.devices[0]?.id ??
-      ''
-    showCreate.value = props.mode === 'create'
+    deviceId.value = defaultDeviceId
     browsing.value = false
   },
   { immediate: true },
