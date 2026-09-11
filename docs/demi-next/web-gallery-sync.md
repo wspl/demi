@@ -79,3 +79,8 @@ The Session States page also embeds `GalleryConnectedSession`: the same
 `ChatSession`, `SidebarLayout` and `WorkspaceDirectoryMenu` used by the product,
 with fixture handlers and a failed-upload retry example. Both composers use
 `RemoteFilePicker`; media links and video use `ContentMedia` with shared cleanup.
+
+The Session States “Scroll control without task chips” example uses `ChatSession`
+and `SessionDock` with no task chips. Scrolling away from and back to the bottom
+fades the absolute-positioned arrow without changing dock height, composer position,
+or transcript bottom padding. Product and gallery use the same positioning.

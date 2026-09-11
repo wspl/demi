@@ -1051,6 +1051,12 @@ function abortAgents() {
         <GalleryConnectedSession />
       </GallerySection>
       <GallerySection
+        title="Scroll control without task chips"
+        note="Scroll up, then return to the bottom. The floating arrow fades without changing composer height or transcript padding."
+      >
+        <GalleryConnectedSession :show-activity="false" />
+      </GallerySection>
+      <GallerySection
         title="Session load"
         note="First opening uses the centered loading pane through history and the initial connection. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session uses the Connecting tail row. An unconfirmed send keeps its user message and retries with the same ID. New conversation opens a local draft immediately."
       >
