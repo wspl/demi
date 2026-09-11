@@ -82,5 +82,6 @@ with fixture handlers and a failed-upload retry example. Both composers use
 
 The Session States “Scroll control without task chips” example uses `ChatSession`
 and `SessionDock` with no task chips. Scrolling away from and back to the bottom
-fades the absolute-positioned arrow without changing dock height, composer position,
-or transcript bottom padding. Product and gallery use the same positioning.
+fades the left-aligned arrow inside a permanent 28px slot. The control row and its
+8px gap remain part of dock height and transcript bottom padding, preserving the
+composer position and scroll range. Product and gallery use the same layout.

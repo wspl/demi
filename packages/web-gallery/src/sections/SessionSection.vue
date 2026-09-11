@@ -1052,7 +1052,7 @@ function abortAgents() {
       </GallerySection>
       <GallerySection
         title="Scroll control without task chips"
-        note="Scroll up, then return to the bottom. The floating arrow fades without changing composer height or transcript padding."
+        note="Scroll up, then return to the bottom. The left-aligned arrow fades inside a permanent control row. Transcript padding includes that row even when the arrow is hidden."
       >
         <GalleryConnectedSession :show-activity="false" />
       </GallerySection>
