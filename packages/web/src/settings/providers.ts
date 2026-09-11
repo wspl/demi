@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { useSession } from '../auth/session'
 import { z } from 'zod'
 import { SerialQueue } from '@demicodes/utils'
-import { showToast } from '@demicodes/web-ui/infra/toast'
+import { reportError } from '@demicodes/web-ui/infra/errors'
 import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
 import {
   defaultApiVendors,
@@ -31,7 +31,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   const drafts = ref<ProductProvider[]>([])
   const modelEditor = ref<SettingsModelEditor | null>(null)
   const edits = ref<Record<string, Partial<SettingsProviderEntry>>>({})
-  const saveErrors = ref<Record<string, string>>({})
   const manualDrafts = ref<Record<string, SettingsProviderModel[]>>({})
   const operations = ref<Record<string, SettingsProviderOperation>>({})
   const testing = computed(
@@ -95,11 +94,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       return
     }
     if (!lifetime.signal.aborted) {
-      showToast({
-        title: 'Provider operation failed',
-        message: error instanceof Error ? error.message : String(error),
-        tone: 'danger',
-      })
+      reportError('Provider operation failed', error, { userVisible: true })
     }
   }
 
@@ -133,10 +128,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     const current = lifetime
     void run(id, operation, action).catch((error) => {
       if (!current.signal.aborted) {
-        if (operation.kind === 'saving') {
-          saveErrors.value[id] =
-            error instanceof Error ? error.message : String(error)
-        }
         report(error)
       }
     })
@@ -324,7 +315,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
     changes = { ...edits.value[provider.id], ...changes }
     edits.value[provider.id] = changes
-    delete saveErrors.value[provider.id]
     const draft = drafts.value.find((entry) => entry.id === provider.id)
     if (draft) {
       Object.assign(draft, changes)
@@ -413,7 +403,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       await patch(provider, { models: models.map(modelConfig) })
       delete manualDrafts.value[provider.id]
       delete edits.value[provider.id]
-      delete saveErrors.value[provider.id]
     })
   }
 
@@ -742,7 +731,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       closeLogin()
       drafts.value = []
       edits.value = {}
-      saveErrors.value = {}
       modelEditor.value = null
       manualDrafts.value = {}
       testResults.value = {}
@@ -757,9 +745,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   return {
     modelEditor,
-    saveErrors,
-    retrySave: (provider: SettingsProviderEntry) =>
-      change(provider, edits.value[provider.id] ?? {}),
     operations,
     providers,
     testing,

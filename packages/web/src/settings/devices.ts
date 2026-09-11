@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { useSession } from '../auth/session'
 import { computed, onScopeDispose, ref, watch } from 'vue'
-import { showToast } from '@demicodes/web-ui/infra/toast'
+import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useProduct } from '../state/product'
 import { apiRequest, jsonBody } from '../api/client'
 
@@ -44,11 +44,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       await product.revalidate()
     } catch (error) {
       if (!current.signal.aborted) {
-        showToast({
-          title: 'Could not revoke device',
-          message: error instanceof Error ? error.message : String(error),
-          tone: 'danger',
-        })
+        reportError('Could not revoke device', error, { userVisible: true })
       }
     } finally {
       if (current === lifetime) {

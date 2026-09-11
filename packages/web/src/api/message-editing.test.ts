@@ -41,7 +41,7 @@ test('failed media hydration preserves the editable blob references', async () =
 test('the persisted edit contract keeps operation identity, bytes and the separate composer draft', () => {
   const value: SavedDraft = {
     messageEdit: {
-      phase: 'sending', error: null,
+      phase: 'sending',
       request: {
         operationId: 'operation', targetBlockId: 'user', version: { epoch: 'epoch', revision: 2 },
         content: [{ type: 'document', source: { data: new Uint8Array([9]), fileName: 'a.pdf', mediaType: 'application/pdf' } }],

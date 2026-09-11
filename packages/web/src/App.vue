@@ -3,7 +3,7 @@ import { computed, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import AsyncRegion from '@demicodes/web-ui/ui/AsyncRegion.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
-import { showToast } from '@demicodes/web-ui/infra/toast'
+import { reportError } from '@demicodes/web-ui/infra/errors'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SidebarReorder } from '@demicodes/web-ui/sidebar/types'
@@ -16,14 +16,11 @@ import SettingsDialog from './settings/SettingsDialog.vue'
 import TargetDialog from './targets/TargetDialog.vue'
 import { useConversations } from './conversation/store'
 import { useResources } from './state/resources'
-import { useProduct } from './state/product'
-import SessionNoticeBar from '@demicodes/web-ui/agent/SessionNoticeBar.vue'
 import { useSession } from './auth/session'
 import { claimDevice, deviceInstallation } from './devices/pairing'
 const session = useSession()
 const conversations = useConversations()
 const resources = useResources()
-const product = useProduct()
 const router = useRouter()
 const route = useRoute()
 const folded = computed({
@@ -76,8 +73,7 @@ function reorder(request: SidebarReorder) {
     void resources
       .reorderProject(request.id, request.beforeId)
       .catch((error) => {
-        conversations.notice =
-          error instanceof Error ? error.message : String(error)
+        reportError('Could not reorder projects', error, { userVisible: true })
       })
   } else {
     conversations.reorder(request.id, request.beforeId)
@@ -101,8 +97,7 @@ async function removeProject(id: string) {
   try {
     await resources.removeProject(id)
   } catch (error) {
-    conversations.notice =
-      error instanceof Error ? error.message : String(error)
+    reportError('Could not remove the project', error, { userVisible: true })
   }
 }
 async function signOut(): Promise<void> {
@@ -111,11 +106,7 @@ async function signOut(): Promise<void> {
     // A new document releases account-scoped stores, sockets and draft data.
     window.location.replace('/login')
   } catch (error) {
-    showToast({
-      title: 'Could not sign out',
-      message: error instanceof Error ? error.message : String(error),
-      tone: 'danger',
-    })
+    reportError('Could not sign out', error, { userVisible: true })
   }
 }
 /** The bindings from the keyboard settings, by the action each one names. */
@@ -134,20 +125,6 @@ useAppShortcuts(
   actions,
 )
 
-watch(
-  () => conversations.notice,
-  (message) => {
-    if (!message) {
-      return
-    }
-    // The store reports failed operations without replacing server state.
-    showToast({
-      title: message,
-      tone: 'danger',
-    })
-    conversations.notice = ''
-  },
-)
 </script>
 
 <template>
@@ -185,7 +162,6 @@ watch(
         @sign-out="signOut"
       />
     </template>
-    <SessionNoticeBar v-if="product.error" :label="product.error" />
     <RouterView />
     <template #dialogs>
       <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->

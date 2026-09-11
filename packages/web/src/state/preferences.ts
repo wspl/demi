@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
 import { SerialQueue } from '@demicodes/utils'
-import { showToast } from '@demicodes/web-ui/infra/toast'
+import { reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import { preferencesSchema, type PreferencesPatch } from '../api/contracts'
 import { useProduct } from './product'
@@ -101,11 +101,7 @@ export const usePreferences = defineStore('preferences', () => {
         await product.refresh()
       } catch (error) {
         if (!current.signal.aborted) {
-          showToast({
-            title: 'Could not update settings',
-            message: error instanceof Error ? error.message : String(error),
-            tone: 'danger',
-          })
+          reportError('Could not update settings', error, { userVisible: true })
         }
       } finally {
         if (!current.signal.aborted) {
