@@ -7,7 +7,16 @@ import type {
   TranscriptVersion,
 } from '@demicodes/agent/client'
 import type { UserContentBlock } from '@demicodes/core'
+import { ProviderStreamError } from '@demicodes/agent/client'
 import type { ConversationState } from './types'
+
+/**
+ * A rejected action whose failure the transcript already records as an error
+ * block: the record tells it, so the caller shows nothing else.
+ */
+export function isRecordedTurnFailure(error: unknown): boolean {
+  return error instanceof ProviderStreamError
+}
 import { createPendingSteerMessage } from './pending-steers'
 import { hasAcceptedSubmission } from './submission'
 

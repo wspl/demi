@@ -92,7 +92,7 @@ const pending: PendingSubmissionState = {
   <div class="space-y-8">
     <GallerySection
       title="Turn failures · the record in the transcript"
-      note="One sentence from the normalized code, the upstream message, the facts a support thread asks for, Copy. The record that ended the conversation carries Retry; the older ones are history."
+      note="One sentence from the normalized code, the upstream message, the facts a support thread asks for, Copy. The record that ended the conversation carries Retry; the older ones are history. While a retry runs the record is hidden and the tail row shows the turn."
     >
       <GallerySpecimen
         v-for="{ block, tail } in records"
