@@ -534,9 +534,8 @@ export class AgentClient {
       case 'error':
         this.emit(frame)
         {
-          const error = frame.code
-            ? new ProviderStreamError(frame.message, frame.code, frame.diagnostics)
-            : new Error(frame.message)
+          // A turn that failed is a transcript record; the waiter learns it by type.
+          const error = new ProviderStreamError(frame.message, frame.code ?? null, frame.diagnostics)
           this.rejectErroredAction(error)
           this.rejectAllSteerWaiters(error)
           this.rejectAllAbortWaiters(error)
