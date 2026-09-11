@@ -361,29 +361,20 @@ defineExpose({
       <Dropdown
         v-if="hosts.length"
         :overlay-store="appOverlayStore"
-        class="w-40 shrink-0 [&>div]:w-full"
+        variant="field"
+        fill
+        trigger-label="Device"
+        class="w-40 shrink-0"
       >
-        <template #trigger="{ isOpen }">
-          <span
-            role="button"
-            aria-label="Device"
-            class="flex h-7 w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
-            :class="isOpen ? 'bg-active' : 'bg-hover hover:bg-active'"
-          >
-            <component
-              :is="currentHost ? hostIcon(currentHost) : hostIcon({ id: '' })"
-              :size="ICON_PX.in28"
-              class="shrink-0 text-fg-muted"
-            />
-            <span class="min-w-0 flex-1 truncate">{{
-              currentHost?.label ?? 'Device'
-            }}</span>
-            <ChevronDown
-              :size="ICON_PX.in24"
-              class="shrink-0 text-fg-subtle transition-transform duration-200 ease-out"
-              :class="isOpen ? 'rotate-180' : ''"
-            />
-          </span>
+        <template #trigger>
+          <component
+            :is="currentHost ? hostIcon(currentHost) : hostIcon({ id: '' })"
+            :size="ICON_PX.in28"
+            class="shrink-0 text-fg-muted"
+          />
+          <span class="min-w-0 flex-1 truncate">{{
+            currentHost?.label ?? 'Device'
+          }}</span>
         </template>
         <template #content="{ triggerWidth }">
           <Menu :style="{ minWidth: `${triggerWidth}px` }">
