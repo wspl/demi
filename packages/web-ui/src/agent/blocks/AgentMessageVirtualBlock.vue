@@ -24,6 +24,8 @@ const props = defineProps<{
   editable?: boolean
   fork?: () => Promise<void>
   forkState?: MessageForkState
+  /** Retry on the error record that ended the conversation. */
+  retry?: () => void
 }>()
 
 const emit = defineEmits<{
@@ -119,6 +121,7 @@ const attrs = useAttrs()
         :message="block.message"
         :code="block.code"
         :diagnostics="block.diagnostics"
+        :retry="retry"
       />
     </div>
     <div

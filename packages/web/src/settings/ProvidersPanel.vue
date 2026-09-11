@@ -43,8 +43,6 @@ onUnmounted(closeLogin)
 <template>
   <SettingsProvidersPage
     v-model:model-editor="settings.modelEditor"
-    :save-errors="settings.saveErrors"
-    @retry-save="settings.retrySave"
     v-model:selected-id="resources.selectedProviderId"
     v-model:detail-open="resources.providerDetailOpen"
     :providers="providers"

@@ -8,8 +8,9 @@ import IndeterminateSpinner from './IndeterminateSpinner.vue'
  *
  * Every region uses this one layout, so a failure reads the same in the
  * session pane, a settings list, the sidebar and a dialog body: one sentence,
- * an optional detail line, and at most one action. A failed region announces
- * itself (`role="alert"`); loading and empty regions stay polite.
+ * an optional detail line, and at most one action. Retry returns the region to
+ * its loading state; there is no third state between the two. A failed region
+ * announces itself (`role="alert"`); loading and empty regions stay polite.
  */
 withDefaults(
   defineProps<{
@@ -22,13 +23,11 @@ withDefaults(
     detail?: string | null
     /** The single action's label; omitted regions offer nothing. */
     action?: string
-    actionPending?: boolean
   }>(),
   {
     busy: false,
     failed: false,
     detail: null,
-    actionPending: false,
   },
 )
 defineEmits<{ action: [] }>()
@@ -49,13 +48,8 @@ defineEmits<{ action: [] }>()
     >
       {{ detail }}
     </p>
-    <Button
-      v-if="action"
-      size="sm"
-      class="mt-1"
-      :loading="actionPending"
-      @click="$emit('action')"
-      >{{ action }}</Button
-    >
+    <Button v-if="action" size="sm" class="mt-1" @click="$emit('action')">{{
+      action
+    }}</Button>
   </div>
 </template>

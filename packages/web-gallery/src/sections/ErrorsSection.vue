@@ -15,34 +15,28 @@ const { view } = useGalleryView()
  */
 const rules = [
   {
+    where: 'Anything in the conversation: a failed turn, an undelivered message, a lost connection, a refused edit',
+    component: 'ErrorNotice',
+    form: 'A tinted bar in the transcript flow: sentence, upstream message, facts, Copy, and Retry where the failure is the tail.',
+    examples: 'Provider errors, send, fork, edit, uploads, reconnect failed, refused request',
+  },
+  {
     where: 'The content of a region cannot be shown',
     component: 'RegionStatus',
-    form: 'Replaces the region: one sentence, the reason, Retry.',
-    examples: 'Session restore, conversation list, settings lists, directory read, model catalog',
+    form: 'Replaces the region: one sentence, the reason, Retry. Retry returns to loading.',
+    examples: 'Session restore, conversation list, settings lists, directory read',
   },
   {
-    where: 'An action failed and its input is still on screen',
+    where: 'A form rejected its own input',
     component: 'InlineError',
-    form: 'Directly under the control, in its width: message, one action, optional dismiss.',
-    examples: 'Sign in, dialogs, saves, send, fork, edit, uploads, folder creation',
+    form: 'A line of text under the fields, in their width. The form\'s submit is the retry.',
+    examples: 'Sign in, codes, passwords, project creation, folder creation',
   },
   {
-    where: 'A condition of the whole session, while it lasts',
-    component: 'SessionNoticeBar',
-    form: 'A bar in the dock: neutral for a chosen state, danger for a failure; one action.',
-    examples: 'Reconnect failed with history, refused request, archived, no models',
-  },
-  {
-    where: 'The turn itself failed',
-    component: 'ErrorBlock · tool block',
-    form: 'A transcript record with diagnostics and Copy; the dock chip offers Retry.',
-    examples: 'Provider errors, tool failures',
-  },
-  {
-    where: 'The control is already gone',
+    where: 'The request itself failed, not the input',
     component: 'Toast',
-    form: 'Title, and a message only when it adds a fact. Never for success.',
-    examples: 'Sign out, revoke device, background save, rejected drop',
+    form: 'Through reportError: title, and a message only when it adds a fact. Never inline, never for success.',
+    examples: 'Save failed, sign out, revoke device, background refresh',
   },
 ]
 </script>

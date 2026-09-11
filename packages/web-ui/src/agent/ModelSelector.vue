@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ThinkingConfig } from '@demicodes/core'
-import { TriangleAlert, Zap } from '@lucide/vue'
+import { CircleX, TriangleAlert, Zap } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { t } from '../infra/i18n'
@@ -62,8 +62,12 @@ const reasoningLabel = computed(() => {
     role="status"
     ><IndeterminateSpinner :size="14" /> Loading models…</span
   >
-  <Button v-else-if="load === 'failed'" size="sm" @click="emit('retry')"
-    >Retry models</Button
+  <span
+    v-else-if="load === 'failed'"
+    class="inline-flex h-7 items-center gap-1.5 pl-2 text-chrome text-on-danger"
+    role="alert"
+    ><CircleX :size="14" /> Couldn't load models.
+    <Button size="sm" @click="emit('retry')">Retry</Button></span
   >
   <Dropdown
     v-else-if="state.kind === 'ready' || state.kind === 'unavailable'"
