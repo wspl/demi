@@ -513,8 +513,9 @@ export const useConversations = defineStore('conversations', () => {
       // A different view may have taken over a cached attachment. Navigation
       // is a user action that can reopen it without refetching REST history.
       await cache.get(conversation.id)?.runtime?.connect()
-    } catch (error) {
-      report('Could not open the conversation', error)
+    } catch {
+      // The failure is the conversation's load state: the pane or the
+      // transcript's tail notice tells it, with Retry.
     }
   }
 
