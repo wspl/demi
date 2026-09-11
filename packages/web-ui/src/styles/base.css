@@ -243,15 +243,28 @@ svg.lucide {
   stroke-width: var(--icon-stroke-width);
 }
 
-.btn {
+.btn,
+.btn-solid {
   background: var(--btn-bg);
   box-shadow: var(--shadow-btn);
 }
 
 .btn:hover,
-.btn[data-pressed="true"] {
+.btn[data-pressed="true"],
+.btn-solid:hover,
+.btn-solid[data-pressed="true"] {
   background: var(--btn-bg-hover);
   box-shadow: var(--shadow-btn-hover);
+}
+
+/* Controls over scrolling content need an opaque surface in every theme. */
+.btn-solid {
+  background: var(--surface-raised);
+}
+
+.btn-solid:hover,
+.btn-solid[data-pressed="true"] {
+  background: var(--surface-float);
 }
 
 .btn-primary {

@@ -25,7 +25,7 @@ const props = withDefaults(
     icon: Component
     iconSize?: number
     size?: 'xs' | 'sm' | 'md' | 'lg'
-    variant?: 'default' | 'ghost' | 'danger' | 'accent'
+    variant?: 'default' | 'solid' | 'ghost' | 'danger' | 'accent'
     circle?: boolean
     disabled?: boolean
     loading?: boolean
@@ -114,7 +114,9 @@ const glyphPx = computed(() => {
                   : 'text-fg-muted hover:bg-hover hover:text-fg-body'
               : variant === 'danger'
                 ? 'btn text-on-danger'
-                : 'btn text-fg-body',
+                : variant === 'solid'
+                  ? 'btn-solid text-fg-body'
+                  : 'btn text-fg-body',
       ]"
     >
       <IndeterminateSpinner v-if="loading" :size="glyphPx" />

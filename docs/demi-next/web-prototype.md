@@ -120,7 +120,9 @@ fields remain selectable. Selected sidebar conversations retain normal weight.
 
 `web-ui/agent/SessionDock.vue` keeps a permanent control row above the composer.
 The Scroll to bottom button occupies a fixed 28px slot after the task chips in
-that left-aligned row. Its opacity transition and removal leave the slot mounted.
+that left-aligned row. It uses the shared `IconButton` solid variant so scrolling
+content cannot show through its background. Its opacity transition and removal
+leave the slot mounted.
 The row's 28px height and 8px bottom gap are included in `SessionSurface`'s measured
 dock height and therefore in `AgentMessageList`'s bottom padding, even when the
 button is hidden. Button visibility changes neither the scroll range nor the
