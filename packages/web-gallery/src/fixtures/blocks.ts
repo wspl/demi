@@ -157,6 +157,51 @@ export const errorTool = toolCall({
   output: [{ type: 'text', text: 'exit 1\npermission denied: /tmp/locked\n' }],
 })
 
+/** One request and one answer: enough history for a failure to keep on screen. */
+export function shortTranscriptBlocks(): Block[] {
+  return [
+    {
+      type: 'user',
+      id: 'short-user',
+      turnId: 'short-turn',
+      createdAt: iso(120_000),
+      model: demoModel,
+      content: [
+        {
+          type: 'text',
+          text: 'Build a small minesweeper game with a timer and difficulty settings.',
+        },
+      ],
+      preamble: null,
+    },
+    {
+      type: 'text',
+      id: 'short-answer',
+      createdAt: iso(60_000),
+      model: demoModel,
+      text: 'The game is ready.\n\nChoose a difficulty, reveal cells and mark suspected mines. The first click is always safe, and the timer starts with the first move.',
+    },
+  ]
+}
+
+/** The provider error that ends a turn, as the transcript records it. */
+export function generationErrorBlock(): Block {
+  return {
+    type: 'error',
+    id: 'generation-error',
+    createdAt: iso(30_000),
+    model: demoModel,
+    message: 'Anthropic API request failed with HTTP 529: Overloaded. The provider could not accept the request.',
+    code: 'overloaded',
+    diagnostics: {
+      source: 'http',
+      httpStatus: 529,
+      providerCode: 'overloaded_error',
+      clientRequestId: 'req_01J8Y3Q6ZKX5',
+    },
+  }
+}
+
 /** A steer typed while the turn runs. Renders after every transcript block, never among them. */
 export const pendingSteerDemo: PendingSteerRenderBlock = {
   type: 'pending_steer',
