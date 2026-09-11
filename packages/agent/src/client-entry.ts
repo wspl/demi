@@ -2,6 +2,7 @@
 // AgentSession, or @demicodes/shell into a frontend bundle.
 
 export { AgentClient, EditRejectedError, type AgentClientListener } from './client/client'
+export { ProviderStreamError } from './session/provider-stream-error'
 export type { AgentActionOptions } from './client/client'
 export type { AgentMetadata } from './types'
 export {
