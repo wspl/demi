@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { Search } from '@lucide/vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import CopyCode from '@demicodes/web-ui/ui/CopyCode.vue'
 import GalleryLoadingStates from '../components/GalleryLoadingStates.vue'
@@ -45,6 +46,7 @@ const surfaces = [
         <Segmented v-model="selected" :options="segmentOptions" size="sm" />
         <Segmented v-model="selected" :options="segmentOptions" />
         <Segmented v-model="selected" :options="segmentOptions" disabled />
+        <IconButton :icon="Search" variant="solid" circle aria-label="Solid icon button" />
       </div>
     </div>
     <div class="flex flex-wrap items-start gap-6">
