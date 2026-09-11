@@ -118,13 +118,15 @@ Navigation uses the sidebar and URL only, with no conversation tabs. Interface
 labels and controls are not selectable; message content, paths and editable
 fields remain selectable. Selected sidebar conversations retain normal weight.
 
-`web-ui/agent/SessionDock.vue` positions the Scroll to bottom button outside
-normal layout, above the dock's right edge. Its appearance and fade change neither
-the measured dock height nor the transcript's bottom padding. Task controls and
-the composer contribute to dock height; composer growth keeps a reader who is
-already at the bottom anchored there. Scroll position must never change the
-height used to calculate that same scroll position. The Session States gallery
-includes a session without task chips to exercise arrow-only scrolling.
+`web-ui/agent/SessionDock.vue` keeps a permanent control row above the composer.
+The Scroll to bottom button occupies a fixed 28px slot after the task chips in
+that left-aligned row. Its opacity transition and removal leave the slot mounted.
+The row's 28px height and 8px bottom gap are included in `SessionSurface`'s measured
+dock height and therefore in `AgentMessageList`'s bottom padding, even when the
+button is hidden. Button visibility changes neither the scroll range nor the
+composer position. Composer or task-control growth keeps a reader who is already
+at the bottom anchored there. The Session States gallery includes a session
+without task chips to exercise the permanent row and arrow-only scrolling.
 
 The session pane has one load phase (`ready | loading | reconnecting | failed`).
 The first opening of a persisted conversation uses the centered `SessionStatus`
