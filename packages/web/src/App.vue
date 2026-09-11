@@ -90,7 +90,6 @@ async function create(projectId: string | null) {
   }
 }
 function addProject() {
-  resources.targetMode = 'create'
   resources.targetOpen = true
 }
 async function removeProject(id: string) {
@@ -166,7 +165,7 @@ useAppShortcuts(
     <template #dialogs>
       <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->
       <SettingsDialog @sign-out="signOut" />
-      <TargetDialog :conversation-id="activeId" />
+      <TargetDialog />
       <DevicePairingDialog
         :is-open="pairing.isOpen.value"
         stack

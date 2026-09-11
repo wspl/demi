@@ -13,6 +13,7 @@ import GalleryDialogFrame from '../components/GalleryDialogFrame.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { createGalleryFileHosts, laptopTree } from '../fixtures/files'
+import { useGalleryView } from '../gallery-views'
 import { baseName } from '@demicodes/web-ui/files/paths'
 
 const anatomy: [string, string][] = [
@@ -46,7 +47,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'New project',
-    'The working-environment dialog: Device or Cloud as two cards, Device first; a device asks which one, with Add device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Switching between projects is the same dialog on its list.'
+    'The working-environment dialog: Device or Cloud as two cards, Device first; a device asks which one, with Add device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Switching between projects is the sidebar\'s Move to and the header\'s workspace control, not a dialog.'
   ],
   [
     'New folder',
@@ -65,6 +66,7 @@ const iconSamples: [string, boolean][] = [
 ]
 
 const hosts = createGalleryFileHosts()
+const { view } = useGalleryView()
 
 // New project: the working-environment dialog over the same hosts; a created project joins the list.
 const workspaceDevices = ref(hosts.map(({ id, label, online }) => ({ id, name: label, online })))
@@ -92,7 +94,6 @@ const workspaceProjects = ref<WorkspaceProject[]>([
     path: '/srv/assetsfactory'
   },
 ])
-const workspaceCurrent = ref<string | null>('demi')
 const workspaceMessage = ref('')
 const workspaceKey = ref(0)
 const cloudSource = createMemoryFileSource(
@@ -137,7 +138,6 @@ function createWorkspace(draft: WorkspaceDraft) {
       path: draft.kind === 'cloud' ? `/home/demi/${name}` : draft.path
     }
   )
-  workspaceCurrent.value = workspaceProjects.value.at(-1)!.id
   workspaceKey.value += 1
 }
 const hostOptions = hosts.map(({ id, label, online, icon }) => ({ id, label, online, icon }))
@@ -245,147 +245,150 @@ function selectHost(target: 'folder' | 'file', id: string) {
 
 <template>
   <div class="flex flex-col gap-10">
-    <GallerySection
-      title="Files"
-      note="One browser for choosing a folder on a device and for opening a file there. Fixture trees; nothing reads a disk."
-    >
-      <dl
-        class="grid max-w-3xl grid-cols-[7rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px] leading-5"
+    <template v-if="view === 'browser'">
+      <GallerySection
+        title="Files"
+        note="One browser for choosing a folder on a device and for opening a file there. Fixture trees; nothing reads a disk."
       >
-        <template v-for="[term, detail] in anatomy" :key="term">
-          <dt class="select-none text-fg-subtle">{{ term }}</dt>
-          <dd class="text-fg-muted">{{ detail }}</dd>
-        </template>
-      </dl>
-    </GallerySection>
-
-    <GallerySection
-      title="Icons"
-      note="The Material Icon Theme, resolved by name; the manifest and each glyph load on first use."
-    >
-      <div class="flex flex-wrap gap-x-6 gap-y-2">
-        <span
-          v-for="[name, isDirectory] in iconSamples"
-          :key="name"
-          class="flex select-none items-center gap-2 text-chrome text-fg-body"
+        <dl
+          class="grid max-w-3xl grid-cols-[7rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px] leading-5"
         >
-          <FileIcon :name="name" :is-directory="isDirectory" />{{ name }}
-        </span>
-      </div>
-    </GallerySection>
+          <template v-for="[term, detail] in anatomy" :key="term">
+            <dt class="select-none text-fg-subtle">{{ term }}</dt>
+            <dd class="text-fg-muted">{{ detail }}</dd>
+          </template>
+        </dl>
+      </GallerySection>
 
-    <GallerySection
-      title="Select folder"
-      note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline one is listed but cannot be chosen."
-    >
-      <GalleryDialogFrame>
-        <FileBrowserDialog
-          :key="folderKey"
-          :is-open="true"
-          :overlay-store="appOverlayStore"
-          mode="directory"
-          title="Select folder"
-          :source="folderHost.source"
-          :initial-path="folderHostId === 'mac' ? '/Users/zan/Projects' : undefined"
-          :places="folderHost.places"
-          :hosts="hostOptions"
-          :host-id="folderHostId"
-          @select="folderChosen = $event"
-          @update:host-id="selectHost('folder', $event)"
-        />
-      </GalleryDialogFrame>
-      <p class="select-none text-[12px] text-fg-subtle">
-        Chosen: <span class="select-text text-fg-muted">{{ folderChosen ?? '—' }}</span>
-      </p>
-    </GallerySection>
-
-    <GallerySection
-      title="Open file"
-      note="The composer's remote attachment: opens inside the conversation's workspace. Folders are entered, a file is the answer."
-    >
-      <GalleryDialogFrame>
-        <FileBrowserDialog
-          :key="fileKey"
-          :is-open="true"
-          :overlay-store="appOverlayStore"
-          mode="file"
-          title="Open file"
-          :source="fileHost.source"
-          :initial-path="fileHostId === 'mac' ? '/Users/zan/Projects/demi' : undefined"
-          :places="fileHost.places"
-          :hosts="hostOptions"
-          :host-id="fileHostId"
-          @select="fileChosen = $event"
-          @update:host-id="selectHost('file', $event)"
-        />
-      </GalleryDialogFrame>
-      <p class="select-none text-[12px] text-fg-subtle">
-        Chosen: <span class="select-text text-fg-muted">{{ fileChosen ?? '—' }}</span>
-      </p>
-    </GallerySection>
-
-    <GallerySection
-      title="New project"
-      note="The working-environment dialog on its form: Device or Cloud. A device asks which one (Add device after the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form."
-    >
-      <GalleryDialogFrame class="max-w-md">
-        <WorkspaceDialog
-          :key="workspaceKey"
-          :is-open="true"
-          :overlay-store="appOverlayStore"
-          mode="create"
-          :projects="workspaceProjects"
-          :current-project-id="workspaceCurrent"
-          :devices="workspaceDevices"
-          cloud
-          :message="workspaceMessage"
-          :source-for="sourceFor"
-          :places-for="placesFor"
-          @create="createWorkspace"
-          @connect-device="connectWorkspaceDevice"
-        />
-      </GalleryDialogFrame>
-      <p class="select-none text-[12px] text-fg-subtle">
-        Projects: <span class="select-text text-fg-muted">{{ workspaceProjects.map((project) => project.name).join(', ') }}</span>
-      </p>
-    </GallerySection>
-
-    <GallerySection
-      title="States"
-      note="The browser alone, without the dialog and without a sidebar, in each state a folder can be in."
-    >
-      <div class="mb-3 flex flex-wrap items-center gap-3">
-        <Segmented v-model="state" :options="stateOptions" />
-        <Segmented v-model="stateMode" :options="modeOptions" />
-      </div>
-      <GallerySpecimen wide>
-        <div
-          class="gallery-frame flex h-96 w-full max-w-3xl flex-col overflow-hidden"
-        >
-          <FileBrowser
-            :key="`${state}-${stateMode}`"
-            :mode="stateMode"
-            :source="stateSources[state].source"
-            :initial-path="stateSources[state].path"
-          />
+      <GallerySection
+        title="Icons"
+        note="The Material Icon Theme, resolved by name; the manifest and each glyph load on first use."
+      >
+        <div class="flex flex-wrap gap-x-6 gap-y-2">
+          <span
+            v-for="[name, isDirectory] in iconSamples"
+            :key="name"
+            class="flex select-none items-center gap-2 text-chrome text-fg-body"
+          >
+            <FileIcon :name="name" :is-directory="isDirectory" />{{ name }}
+          </span>
         </div>
-      </GallerySpecimen>
-    </GallerySection>
+      </GallerySection>
+    </template>
 
-    <GallerySection
-      title="Narrow"
-      note="At a phone width the path takes its own row under the toolbar, the places become a menu at the toolbar's right, Forward and the date column go, and the address bar folds."
-    >
-      <GalleryDialogFrame class="max-w-[22rem]">
-        <FileBrowserDialog
-          :is-open="true"
-          :overlay-store="appOverlayStore"
-          mode="directory"
-          :source="hosts[0]!.source"
-          initial-path="/Users/zan/Projects/a project with a very long directory name that will not fit in the address bar/src"
-          :places="hosts[0]!.places"
-        />
-      </GalleryDialogFrame>
-    </GallerySection>
+    <template v-if="view === 'dialogs'">
+      <GallerySection
+        title="Select folder"
+        note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline one is listed but cannot be chosen."
+      >
+        <GalleryDialogFrame>
+          <FileBrowserDialog
+            :key="folderKey"
+            :is-open="true"
+            :overlay-store="appOverlayStore"
+            mode="directory"
+            title="Select folder"
+            :source="folderHost.source"
+            :initial-path="folderHostId === 'mac' ? '/Users/zan/Projects' : undefined"
+            :places="folderHost.places"
+            :hosts="hostOptions"
+            :host-id="folderHostId"
+            @select="folderChosen = $event"
+            @update:host-id="selectHost('folder', $event)"
+          />
+        </GalleryDialogFrame>
+        <p class="select-none text-[12px] text-fg-subtle">
+        Chosen: <span class="select-text text-fg-muted">{{ folderChosen ?? '—' }}</span>
+        </p>
+      </GallerySection>
+
+      <GallerySection
+        title="Open file"
+        note="The composer's remote attachment: opens inside the conversation's workspace. Folders are entered, a file is the answer."
+      >
+        <GalleryDialogFrame>
+          <FileBrowserDialog
+            :key="fileKey"
+            :is-open="true"
+            :overlay-store="appOverlayStore"
+            mode="file"
+            title="Open file"
+            :source="fileHost.source"
+            :initial-path="fileHostId === 'mac' ? '/Users/zan/Projects/demi' : undefined"
+            :places="fileHost.places"
+            :hosts="hostOptions"
+            :host-id="fileHostId"
+            @select="fileChosen = $event"
+            @update:host-id="selectHost('file', $event)"
+          />
+        </GalleryDialogFrame>
+        <p class="select-none text-[12px] text-fg-subtle">
+        Chosen: <span class="select-text text-fg-muted">{{ fileChosen ?? '—' }}</span>
+        </p>
+      </GallerySection>
+
+      <GallerySection
+        title="New project"
+        note="The working-environment dialog on its form: Device or Cloud. A device asks which one (Add device after the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form."
+      >
+        <GalleryDialogFrame class="max-w-md">
+          <WorkspaceDialog
+            :key="workspaceKey"
+            :is-open="true"
+            :overlay-store="appOverlayStore"
+            :devices="workspaceDevices"
+            cloud
+            :message="workspaceMessage"
+            :source-for="sourceFor"
+            :places-for="placesFor"
+            @create="createWorkspace"
+            @connect-device="connectWorkspaceDevice"
+          />
+        </GalleryDialogFrame>
+        <p class="select-none text-[12px] text-fg-subtle">
+        Projects: <span class="select-text text-fg-muted">{{ workspaceProjects.map((project) => project.name).join(', ') }}</span>
+        </p>
+      </GallerySection>
+    </template>
+
+    <template v-if="view === 'browser'">
+      <GallerySection
+        title="States"
+        note="The browser alone, without the dialog and without a sidebar, in each state a folder can be in."
+      >
+        <div class="mb-3 flex flex-wrap items-center gap-3">
+          <Segmented v-model="state" :options="stateOptions" />
+          <Segmented v-model="stateMode" :options="modeOptions" />
+        </div>
+        <GallerySpecimen wide>
+          <div
+            class="gallery-frame flex h-96 w-full max-w-3xl flex-col overflow-hidden"
+          >
+            <FileBrowser
+              :key="`${state}-${stateMode}`"
+              :mode="stateMode"
+              :source="stateSources[state].source"
+              :initial-path="stateSources[state].path"
+            />
+          </div>
+        </GallerySpecimen>
+      </GallerySection>
+
+      <GallerySection
+        title="Narrow"
+        note="At a phone width the path takes its own row under the toolbar, the places become a menu at the toolbar's right, Forward and the date column go, and the address bar folds."
+      >
+        <GalleryDialogFrame class="max-w-[22rem]">
+          <FileBrowserDialog
+            :is-open="true"
+            :overlay-store="appOverlayStore"
+            mode="directory"
+            :source="hosts[0]!.source"
+            initial-path="/Users/zan/Projects/a project with a very long directory name that will not fit in the address bar/src"
+            :places="hosts[0]!.places"
+          />
+        </GalleryDialogFrame>
+      </GallerySection>
+    </template>
   </div>
 </template>

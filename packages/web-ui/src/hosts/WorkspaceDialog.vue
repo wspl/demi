@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ChevronDown, Cloud, FolderOpen, Monitor, Plus, X } from '@lucide/vue'
+import { Cloud, FolderOpen, Monitor, Plus, X } from '@lucide/vue'
 import { CLOUD_HOST_ID, hostIcon } from './icons'
 import { ICON_PX } from '../ui/icon-metrics'
 import { baseName } from '../files/paths'
 import type { OverlayStore } from '../overlay/overlayStore'
 import AsyncRegion from '../ui/AsyncRegion.vue'
-import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Button from '../ui/Button.vue'
 import ChoiceCards from '../ui/ChoiceCards.vue'
 import Dialog from '../ui/Dialog.vue'
@@ -21,25 +20,20 @@ import type { FileBrowserPlaceGroup, FileBrowserSource } from '../files/types'
 import type {
   WorkspaceDevice,
   WorkspaceDraft,
-  WorkspaceProject,
 } from './workspace'
 
 /**
- * A conversation's working environment: pick one of the projects, or make a new one.
- * The form branches on where it lives: on the Cloud the workspace is managed and only
- * needs a name; on a device it is a directory there, and takes the directory's name.
- * The folder browser is a page of the same dialog, opened by Browse…. Every opening
+ * A new project for a conversation to work in. The form branches on where it
+ * lives: on the Cloud the workspace is managed and only needs a name; on a
+ * device it is a directory there, and takes the directory's name. The folder
+ * browser is a page of the same dialog, opened by Browse…. Every opening
  * starts from a clean form on Device, on the first device that is online.
+ * Switching between existing projects is the sidebar's Move to and the
+ * conversation header's workspace control, not this dialog.
  */
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
-  /** Open on the project list, or straight on the new-project form. */
-  mode: 'switch' | 'create'
-  projects: WorkspaceProject[]
-  currentProjectId: string | null
-  /** No switching while a turn runs. */
-  locked?: boolean
   pending?: boolean
   load?: 'loading' | 'ready' | 'failed'
   devices: WorkspaceDevice[]
@@ -55,7 +49,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   retry: []
   close: []
-  select: [projectId: string | null]
   create: [draft: WorkspaceDraft]
   /** The Add device button beside the device menu: the host starts pairing. */
   connectDevice: []
@@ -86,7 +79,6 @@ const kind = ref<Kind>('device')
 const name = ref('')
 const path = ref('')
 const deviceId = ref('')
-const showCreate = ref(false)
 const browsing = ref(false)
 
 const device = computed(
@@ -123,8 +115,6 @@ watch(
       props.devices.find((entry) => entry.online)?.id ??
       props.devices[0]?.id ??
       ''
-    // The page the caller asked for, even when it opens on a failed create.
-    showCreate.value = props.mode === 'create'
     if (!deviceId.value) {
       deviceId.value = defaultDeviceId
     }
@@ -182,7 +172,7 @@ function selectDevice(id: string, close: () => void): void {
     :is-open="isOpen"
     :overlay-store="overlayStore"
     :size="browsing ? 'lg' : 'md'"
-    label="Working environment"
+    label="New project"
     hide-close
     @close="emit('close')"
   >
@@ -216,9 +206,7 @@ function selectDevice(id: string, close: () => void): void {
       <header
         class="flex select-none items-center justify-between border-b border-line px-4 py-3"
       >
-        <h2 class="text-[15px] font-medium text-fg-emphasis">
-          {{ showCreate ? 'New project' : 'Working environment' }}
-        </h2>
+        <h2 class="text-[15px] font-medium text-fg-emphasis">New project</h2>
         <IconButton
           :icon="X"
           variant="ghost"
@@ -228,45 +216,11 @@ function selectDevice(id: string, close: () => void): void {
       </header>
       <AsyncRegion
         :state="load"
-        label="Loading working environments…"
+        label="Loading devices…"
         @retry="emit('retry')"
       >
         <div class="flex flex-col gap-4 p-4">
-          <template v-if="!showCreate">
-            <span
-              v-if="pending"
-              class="flex items-center gap-1.5 text-chrome text-fg-subtle"
-              role="status"
-              ><IndeterminateSpinner :size="14" /> Switching project…</span
-            >
-            <Menu class="w-full" iconless>
-              <MenuItem
-                label="No project"
-                choice
-                :is-selected="!currentProjectId"
-                :disabled="locked"
-                @select="emit('select', null)"
-              />
-              <MenuItem
-                v-for="project in projects"
-                :key="project.id"
-                :label="project.name"
-                :value="project.host"
-                :title="project.path"
-                choice
-                :is-selected="currentProjectId === project.id"
-                :disabled="locked"
-                @select="emit('select', project.id)"
-              />
-            </Menu>
-            <div>
-              <Button :disabled="locked" @click="showCreate = true">
-                <Plus :size="14" />
-                New project
-              </Button>
-            </div>
-          </template>
-          <form v-else class="flex flex-col gap-4" @submit.prevent="create">
+          <form class="flex flex-col gap-4" @submit.prevent="create">
             <ChoiceCards v-if="cloud" v-model="kind" :options="kindOptions" />
             <label
               v-if="kind === 'cloud'"
@@ -289,31 +243,20 @@ function selectDevice(id: string, close: () => void): void {
                   <Dropdown
                     :overlay-store="overlayStore"
                     :disabled="pending"
-                    class="min-w-0 flex-1 [&>div]:w-full"
+                    variant="field"
+                    fill
+                    trigger-label="Device"
+                    class="min-w-0 flex-1"
                   >
-                    <template #trigger="{ isOpen }">
-                      <span
-                        role="button"
-                        aria-label="Device"
-                        class="flex h-7 w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
-                        :class="
-                          isOpen ? 'bg-active' : 'bg-hover hover:bg-active'
-                        "
-                      >
-                        <component
-                          :is="hostIcon({ id: deviceId })"
-                          :size="ICON_PX.in28"
-                          class="shrink-0 text-fg-muted"
-                        />
-                        <span class="min-w-0 flex-1 truncate">{{
-                          deviceLabel
-                        }}</span>
-                        <ChevronDown
-                          :size="ICON_PX.in24"
-                          class="shrink-0 text-fg-subtle transition-transform duration-200 ease-out"
-                          :class="isOpen ? 'rotate-180' : ''"
-                        />
-                      </span>
+                    <template #trigger>
+                      <component
+                        :is="hostIcon({ id: deviceId })"
+                        :size="ICON_PX.in28"
+                        class="shrink-0 text-fg-muted"
+                      />
+                      <span class="min-w-0 flex-1 truncate">{{
+                        deviceLabel
+                      }}</span>
                     </template>
                     <template #content="{ close, triggerWidth }">
                       <Menu :style="{ minWidth: `${triggerWidth}px` }">

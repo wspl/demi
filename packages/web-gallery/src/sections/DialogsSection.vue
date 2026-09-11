@@ -11,7 +11,7 @@ import type { SettingsModelDraft } from '@demicodes/web-ui/settings/types'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
-import type { WorkspaceDevice, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
+import type { WorkspaceDevice } from '@demicodes/web-ui/hosts/workspace'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
 import CloudResetDialog from '@demicodes/web-ui/cloud/CloudResetDialog.vue'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
@@ -91,11 +91,6 @@ const pairingPhases: { variant: string; phase: PairingPhase }[] = [
   { variant: 'connected', phase: { kind: 'done', device: { id: 'demo-device', name: 'zan-mbp' } } },
 ]
 const hosts = createGalleryFileHosts()
-const projects: WorkspaceProject[] = [
-  { id: 'demi', name: 'demi', host: 'zan-mbp', path: '/Users/zan/Projects/demi' },
-  { id: 'assets', name: 'assetsfactory', host: 'build-01', path: '/srv/assetsfactory' },
-  { id: 'notes', name: 'notes', host: 'Cloud', path: '/home/demi/notes' },
-]
 const devices: WorkspaceDevice[] = [
   { id: hosts[0]!.id, name: hosts[0]!.label, online: true },
   { id: 'build-01', name: 'build-01', online: false },
@@ -231,31 +226,26 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'workspace'">
-      <GallerySection title="Working environment" note="The project list to switch between, and the form for a new project on a device or the Cloud.">
+      <GallerySection title="New project" note="A project on a device or the Cloud. Switching between existing projects is the sidebar's Move to and the header's workspace control, not a dialog.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
-          <GallerySpecimen wide variant="switch project">
+          <GallerySpecimen wide variant="device or Cloud">
             <GalleryDialogFrame>
-              <WorkspaceDialog is-open :overlay-store="appOverlayStore" mode="switch" :projects="projects" current-project-id="demi" :devices="devices" cloud :source-for="sourceFor" :places-for="placesFor" />
+              <WorkspaceDialog is-open :overlay-store="appOverlayStore" :devices="devices" cloud :source-for="sourceFor" :places-for="placesFor" />
             </GalleryDialogFrame>
           </GallerySpecimen>
-          <GallerySpecimen wide variant="switch project · locked while a turn runs">
+          <GallerySpecimen wide variant="devices only">
             <GalleryDialogFrame>
-              <WorkspaceDialog is-open :overlay-store="appOverlayStore" mode="switch" :projects="projects" current-project-id="demi" :devices="devices" cloud locked :source-for="sourceFor" :places-for="placesFor" />
+              <WorkspaceDialog is-open :overlay-store="appOverlayStore" :devices="devices" :source-for="sourceFor" :places-for="placesFor" />
             </GalleryDialogFrame>
           </GallerySpecimen>
-          <GallerySpecimen wide variant="new project · device or Cloud">
+          <GallerySpecimen wide variant="creating">
             <GalleryDialogFrame>
-              <WorkspaceDialog is-open :overlay-store="appOverlayStore" mode="create" :projects="projects" current-project-id="demi" :devices="devices" cloud :source-for="sourceFor" :places-for="placesFor" />
+              <WorkspaceDialog is-open :overlay-store="appOverlayStore" :devices="devices" cloud pending :source-for="sourceFor" :places-for="placesFor" />
             </GalleryDialogFrame>
           </GallerySpecimen>
-          <GallerySpecimen wide variant="new project · devices only">
+          <GallerySpecimen wide variant="devices loading">
             <GalleryDialogFrame>
-              <WorkspaceDialog is-open :overlay-store="appOverlayStore" mode="create" :projects="projects" current-project-id="demi" :devices="devices" :source-for="sourceFor" :places-for="placesFor" />
-            </GalleryDialogFrame>
-          </GallerySpecimen>
-          <GallerySpecimen wide variant="project list loading">
-            <GalleryDialogFrame>
-              <WorkspaceDialog is-open :overlay-store="appOverlayStore" mode="switch" :projects="[]" :current-project-id="null" :devices="devices" load="loading" :source-for="sourceFor" :places-for="placesFor" />
+              <WorkspaceDialog is-open :overlay-store="appOverlayStore" :devices="[]" load="loading" :source-for="sourceFor" :places-for="placesFor" />
             </GalleryDialogFrame>
           </GallerySpecimen>
         </div>
