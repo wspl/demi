@@ -13,6 +13,7 @@ import { galleryTerminals } from '../fixtures/terminals'
 import { createGalleryFileHosts } from '../fixtures/files'
 import GalleryComposer from './GalleryComposer.vue'
 
+const props = withDefaults(defineProps<{ showActivity?: boolean }>(), { showActivity: true })
 const session = reactive<ChatSessionState>({
   id: 'shared-product-session',
   title: 'Shared session',
@@ -25,8 +26,8 @@ const session = reactive<ChatSessionState>({
   archived: false,
   status: 'idle',
   scroll: null,
-  subagents: gallerySubagents(),
-  terminals: galleryTerminals(),
+  subagents: props.showActivity ? gallerySubagents() : [],
+  terminals: props.showActivity ? galleryTerminals() : [],
 })
 const hosts = createGalleryFileHosts()
 const folder = ref({
