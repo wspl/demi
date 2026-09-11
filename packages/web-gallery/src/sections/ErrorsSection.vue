@@ -36,7 +36,7 @@ const rules = [
     where: 'The request itself failed, not the input',
     component: 'Toast',
     form: 'Through reportError: title, and a message only when it adds a fact. Never inline, never for success.',
-    examples: 'Save failed, fork failed, edit refused, unreadable attachment, sign out, revoke device',
+    examples: 'Save failed, fork failed, edit refused, upload failed, sign out, revoke device',
   },
 ]
 </script>
