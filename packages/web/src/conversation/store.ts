@@ -6,6 +6,7 @@ import { type ThinkingConfig, type UserContentBlock } from '@demicodes/core'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
 import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
 import { restoreMessageEdit, submitMessageEdit } from '@demicodes/web-ui/agent/message-editing'
+import { reportError } from '@demicodes/web-ui/infra/errors'
 import { loadEditContent } from '../api/message-editing'
 import { forkConversation } from '../api/message-fork'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
@@ -53,32 +54,34 @@ export const useConversations = defineStore('conversations', () => {
   const resources = useResources()
   const session = useSession()
   const items = ref<Conversation[]>([])
-  const notice = ref('')
   const pendingChanges = ref<string[]>([])
   const listStatus = computed(() => product.load)
   const writes = new SerialQueue()
   const restored = new Set<string>()
-  const uploads = createConversationUploads(saveDrafts, report)
+  const uploads = createConversationUploads(saveDrafts, (error) =>
+    report('Could not upload the attachment', error),
+  )
   const { uploadFile, addFiles, removeFile } = uploads
   let lifetime = new AbortController()
   const cache = new ConversationCache()
   let storageErrorReported = false
 
-  function report(error: unknown): void {
+  // A failed operation is a toast; server state is never replaced by a message.
+  function report(title: string, error: unknown): void {
     if (error instanceof DOMException && error.name === 'AbortError') {
       return
     }
     if (!lifetime.signal.aborted) {
-      notice.value = error instanceof Error ? error.message : String(error)
+      reportError(title, error, { userVisible: true })
     }
   }
 
   function storageError(error: unknown): void {
     if (!storageErrorReported) {
       storageErrorReported = true
-      notice.value = `Drafts remain in this page but could not be saved: ${
-        error instanceof Error ? error.message : String(error)
-      }`
+      reportError('Drafts remain in this page but could not be saved', error, {
+        userVisible: true,
+      })
     }
   }
 
@@ -192,7 +195,7 @@ export const useConversations = defineStore('conversations', () => {
           for (const file of current.files) {
             if (isComposerFile(file) && file.destination === 'workspace') {
               file.upload = null
-              void uploadFile(current, file).catch(report)
+              void uploadFile(current, file).catch((error) => report('Could not upload the attachment', error))
             }
           }
         }
@@ -202,7 +205,7 @@ export const useConversations = defineStore('conversations', () => {
           !contextChanged &&
           !archiveChanged
         ) {
-          void loadHosts(current, cached.controller.signal).catch(report)
+          void loadHosts(current, cached.controller.signal).catch((error) => report('Could not load the conversation hosts', error))
         }
         if (contextChanged || archiveChanged) {
           cache.delete(current.id)
@@ -422,7 +425,7 @@ export const useConversations = defineStore('conversations', () => {
           (file.upload.kind === 'workspace' &&
             file.upload.contextVersion !== conversation.contextVersion))
       ) {
-        void uploadFile(conversation, file).catch(report)
+        void uploadFile(conversation, file).catch((error) => report('Could not upload the attachment', error))
       }
     }
   }
@@ -506,7 +509,7 @@ export const useConversations = defineStore('conversations', () => {
       // is a user action that can reopen it without refetching REST history.
       await cache.get(conversation.id)?.runtime?.connect()
     } catch (error) {
-      report(error)
+      report('Could not open the conversation', error)
     }
   }
 
@@ -572,7 +575,7 @@ export const useConversations = defineStore('conversations', () => {
           applyConversationEvent(conversation, next)
           reconcileSubmission(conversation)
           if (next.type === 'phase' && next.phase === 'idle') {
-            void product.refresh().catch(report)
+            void product.refresh().catch((error) => report('Could not refresh', error))
           }
         },
       })
@@ -638,9 +641,11 @@ export const useConversations = defineStore('conversations', () => {
     signal.throwIfAborted()
     const failed = result.results.filter((field) => field.status === 'failed')
     if (failed.length) {
-      notice.value = failed
-        .map((field) => `${field.field}: ${field.message ?? field.code}`)
-        .join('\n')
+      reportError(
+        'Some fields were not updated',
+        failed.map((field) => `${field.field}: ${field.message ?? field.code}`).join('\n'),
+        { userVisible: true, expected: true },
+      )
     }
     await product.revalidate()
     return failed.length === 0
@@ -734,14 +739,17 @@ export const useConversations = defineStore('conversations', () => {
           )
           if (failures.length) {
             success = false
-            notice.value = failures.join('\n')
+            reportError('Some conversations were not updated', failures.join('\n'), {
+              userVisible: true,
+              expected: true,
+            })
           }
         }
         await product.revalidate()
         return success
       })
     } catch (error) {
-      report(error)
+      report('Could not update conversations', error)
       return false
     }
   }
@@ -883,7 +891,7 @@ export const useConversations = defineStore('conversations', () => {
         signal.throwIfAborted()
         return patch(id, { title })
       })
-      .catch(report)
+      .catch((error) => report('Could not fork the conversation', error))
   }
 
   async function reorder(id: string, beforeId: string | null): Promise<void> {
@@ -913,7 +921,7 @@ export const useConversations = defineStore('conversations', () => {
       })
       await product.revalidate()
     } catch (error) {
-      report(error)
+      report('Could not reorder conversations', error)
     }
   }
 
@@ -937,7 +945,7 @@ export const useConversations = defineStore('conversations', () => {
       conversation.readRevision = Math.max(conversation.readRevision, revision)
       conversation.unread = conversation.revision > conversation.readRevision
     } catch (error) {
-      report(error)
+      report('Could not update read status', error)
     }
   }
 
@@ -972,7 +980,7 @@ export const useConversations = defineStore('conversations', () => {
       )
       await loadHosts(conversation)
     } catch (error) {
-      report(error)
+      report('Could not attach the device', error)
     }
   }
 
@@ -999,7 +1007,7 @@ export const useConversations = defineStore('conversations', () => {
       )
       await loadHosts(conversation)
     } catch (error) {
-      report(error)
+      report('Could not detach the device', error)
     }
   }
 
@@ -1031,7 +1039,7 @@ export const useConversations = defineStore('conversations', () => {
       )
       await loadHosts(conversation)
     } catch (error) {
-      report(error)
+      report('Could not rename the project', error)
     }
   }
 
@@ -1077,7 +1085,7 @@ export const useConversations = defineStore('conversations', () => {
         }
       })
     } catch (error) {
-      report(error)
+      report('Could not change the model', error)
     }
   }
 
@@ -1091,12 +1099,12 @@ export const useConversations = defineStore('conversations', () => {
         : thinking?.type === 'disabled'
           ? 'disabled'
           : null
-    void cache.get(conversation.id)?.runtime?.setModel().catch(report)
+    void cache.get(conversation.id)?.runtime?.setModel().catch((error) => report('Could not change the model', error))
   }
 
   function setTier(conversation: Conversation, tier: string | null): void {
     conversation.model.serviceTierId = tier
-    void cache.get(conversation.id)?.runtime?.setModel().catch(report)
+    void cache.get(conversation.id)?.runtime?.setModel().catch((error) => report('Could not change the model', error))
   }
 
   async function send(conversation: Conversation): Promise<void> {
@@ -1217,7 +1225,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation: Conversation,
     operation: (runtime: ConversationRuntime) => Promise<void>,
   ): void {
-    void runtimeFor(conversation).then(operation).catch(report)
+    void runtimeFor(conversation).then(operation).catch((error) => report('The conversation did not respond', error))
   }
 
   function stopAll(): void {
@@ -1228,13 +1236,11 @@ export const useConversations = defineStore('conversations', () => {
     uploads.dispose(items.value)
     items.value = []
     restored.clear()
-    notice.value = ''
     storageErrorReported = false
   }
 
   return {
     items,
-    notice,
     listStatus,
     activate,
     create,
@@ -1242,7 +1248,7 @@ export const useConversations = defineStore('conversations', () => {
     reorder,
     rename,
     markRead,
-    reloadList: () => product.refresh().catch(report),
+    reloadList: () => product.refresh().catch((error) => report('Could not refresh', error)),
     reloadSession,
     pin: (ids: string[], pinned: boolean) => batch(ids, { pinned }),
     archive: (ids: string[], archived = true) => batch(ids, { archived }),

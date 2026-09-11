@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { moveBefore } from '@demicodes/utils'
 import type { SidebarConversation, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
+import { RestoreSweep } from '@demicodes/web-ui/agent/session-restore'
+import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
+import Button from '@demicodes/web-ui/ui/Button.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
@@ -19,7 +22,7 @@ let nextId = 1
 const anatomy: [string, string][] = [
   [
     'Top',
-    'The app name, then the entries: New, Skills, Archived. Skills and Archived open their settings sections. The Conversations heading carries the same New as the entry.'
+    'The app name, then the entries: New, Skills, Archived. Skills is disabled with an In development tooltip. Archived opens its settings section. The Conversations heading carries the same New as the entry.'
   ],
   [
     'Conversations',
@@ -43,7 +46,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Bottom',
-    'The account (avatar, name, plan) with settings and sign-out behind it, and Settings itself.'
+    'The account (avatar and name) with settings and sign-out behind it. The name stands alone; the menu can still show the email.'
   ],
   ['Search', 'Not designed yet.'],
 ]
@@ -117,9 +120,7 @@ function patchMany(
   const set = new Set(ids)
   conversations.value = conversations.value.map(
     (conversation) =>
-      (set.has(conversation.id)
-      ? change(conversation)
-      : conversation)
+      (set.has(conversation.id) ? change(conversation) : conversation)
   )
 }
 
@@ -146,6 +147,43 @@ const activeTitle = computed(
     conversations.value.find((conversation) => conversation.id === activeId.value)?.title ??
     'No conversation selected'
 )
+
+const listRestore = new RestoreSweep()
+const recoveredStatus = ref<ListLoad>('failed')
+const recoveredConversations = ref<SidebarConversation[]>([])
+const recoveredActive = ref<string | null>(null)
+
+function recoveredRows(): SidebarConversation[] {
+  return demoConversations().filter(
+    (conversation) => conversation.projectId === 'p-demi'
+  ).slice(
+    0,
+    5
+  )
+}
+
+function retrySidebar(): void {
+  listRestore.start((phase) => {
+    recoveredStatus.value = phase
+    if (phase === 'loading') {
+      recoveredConversations.value = []
+      recoveredActive.value = null
+      return
+    }
+    const rows = recoveredRows()
+    recoveredConversations.value = rows
+    recoveredActive.value = rows[0]?.id ?? null
+  })
+}
+
+function breakSidebar(): void {
+  listRestore.stop()
+  recoveredStatus.value = 'failed'
+  recoveredConversations.value = []
+  recoveredActive.value = null
+}
+
+onBeforeUnmount(() => listRestore.stop())
 </script>
 
 <template>
@@ -199,8 +237,46 @@ const activeTitle = computed(
       </GallerySpecimen>
     </GallerySection>
 
-    <GallerySection title="States" note="A first run with no conversations.">
+    <GallerySection
+      title="States"
+      note="Loading the list is a spinner, not a first run. Retry on failed sweeps the spinner, then the rows — not a first-run empty. Break returns to failed. Empty is only after the list is ready."
+    >
       <div class="specimen-row specimen-row-wide items-start">
+        <GallerySpecimen variant="loading">
+          <div class="gallery-frame flex h-[28rem] overflow-hidden">
+            <AppSidebar
+              :account="demoAccount"
+              :projects="fixedProjects.slice(0, 1)"
+              :conversations="[]"
+              :active-id="null"
+              list-status="loading"
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="failed · live">
+          <!-- The stage lays children out in a row; the control and the frame stack in their own column. -->
+          <div class="flex flex-col gap-2">
+          <div>
+            <Button
+              variant="ghost"
+              size="sm"
+              :disabled="recoveredStatus === 'failed'"
+              @click="breakSidebar"
+            >Break</Button>
+          </div>
+          <div class="gallery-frame flex h-[28rem] overflow-hidden">
+            <AppSidebar
+              :account="demoAccount"
+              :projects="fixedProjects.slice(0, 1)"
+              :conversations="recoveredConversations"
+              :active-id="recoveredActive"
+              :list-status="recoveredStatus"
+              @retry-list="retrySidebar"
+              @select="(id) => (recoveredActive = id)"
+            />
+          </div>
+          </div>
+        </GallerySpecimen>
         <GallerySpecimen variant="first run">
           <div class="gallery-frame flex h-[28rem] overflow-hidden">
             <AppSidebar

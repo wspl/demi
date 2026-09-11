@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { deferred } from '@demicodes/utils'
 import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
+import { toasts } from '@demicodes/web-ui/infra/toast'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { useConversations } from './store'
@@ -348,7 +349,7 @@ test('batch partial failure applies only the successful server records', async (
   expect(await store.archive(['first', 'second'])).toBe(false)
   expect(store.items.find((item) => item.id === 'first')?.archived).toBe(true)
   expect(store.items.find((item) => item.id === 'second')?.archived).toBe(false)
-  expect(store.notice).toContain('second: Turn is running')
+  expect(toasts.some((toast) => toast.message?.includes('second: Turn is running'))).toBe(true)
 })
 
 test('read acknowledgements use the observed revision and wait for history', async () => {
@@ -506,5 +507,4 @@ test('logout cancels pending history and prevents late state restoration', async
   await opening
   expect(store.items).toEqual([])
   expect(current.load).toBe('loading')
-  expect(store.notice).toBe('')
 })

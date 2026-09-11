@@ -134,7 +134,7 @@ test('provider writes become busy before dispatch and reject duplicate clicks', 
   expect(settings.operations.configured).toBeUndefined()
 })
 
-test('failed configuration retains input and the same draft can be retried', async () => {
+test('a failed save is a toast; the input stays and the next change resends it', async () => {
   const settings = useProviderSettings()
   write = async () => {
     throw new Error('offline')
@@ -144,7 +144,11 @@ test('failed configuration retains input and the same draft can be retried', asy
     { name: 'Retained name' },
   )
   await idle()
-  expect(settings.saveErrors.configured).toBe('offline')
+  expect(toasts.at(-1)).toMatchObject({
+    title: 'Provider operation failed',
+    message: 'offline',
+    tone: 'danger',
+  })
   expect(
     settings.providers.find((entry) => entry.id === 'configured')?.name,
   ).toBe('Retained name')
@@ -152,12 +156,12 @@ test('failed configuration retains input and the same draft can be retried', asy
     state.providers[0]!.label = String(body.label)
     return Response.json({})
   }
-  settings.retrySave(
+  settings.change(
     settings.providers.find((entry) => entry.id === 'configured')!,
+    { name: 'Retained name' },
   )
   await idle()
   expect(writes).toBe(2)
-  expect(settings.saveErrors.configured).toBeUndefined()
   expect(
     settings.providers.find((entry) => entry.id === 'configured')?.name,
   ).toBe('Retained name')
