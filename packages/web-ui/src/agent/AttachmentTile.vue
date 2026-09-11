@@ -42,7 +42,7 @@ const percentLabel = computed(() => Math.round(percent.value * 100))
 
 <template>
   <span
-    class="relative block size-12"
+    class="group/tile relative block size-12"
     :data-phase="phase"
     :aria-label="name"
     :aria-busy="phase === 'uploading' ? true : undefined"
@@ -117,7 +117,7 @@ const percentLabel = computed(() => Math.round(percent.value * 100))
     <button
       v-if="removable"
       type="button"
-      class="absolute top-px right-px flex size-3 items-center justify-center rounded-full bg-surface-raised text-fg-muted ring-1 ring-line hover:text-fg-body"
+      class="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-surface-raised text-fg-muted opacity-0 ring-1 ring-line transition-opacity duration-150 ease-out group-hover/tile:opacity-100 hover:text-fg-body focus-visible:opacity-100"
       :aria-label="t('common.close')"
       @click.stop="emit('remove')"
     >

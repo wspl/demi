@@ -1,5 +1,6 @@
 import type { Block, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
 import type { SessionLoad } from './session-status'
+import type { ComposerAttachment } from './message-input/attachments'
 
 export interface ModelIntent {
   providerId: string
@@ -19,10 +20,11 @@ export interface PendingSteerMessage {
   baselineSteerBlockIds: string[]
 }
 
+/** A message sent but not yet confirmed: the composer's own text and attachments, shown as the message they will become. */
 export interface PendingSubmissionState {
   id: string
   text: string
-  fileNames: string[]
+  attachments: ComposerAttachment[]
   error: string | null
   sending: boolean
 }
