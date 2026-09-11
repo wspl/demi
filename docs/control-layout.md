@@ -72,3 +72,13 @@ disabled state on all four surfaces; selecting an option moves the shared thumb.
 `web-ui/agent/ModelSelector.vue` aligns its dropdown to the trigger's right edge,
 so the main dropdown extends to the left. The Gallery Session page uses the same
 model selector.
+
+## Controls above scrolling content
+
+`IconButton` uses `variant="solid"` when content can scroll behind the control.
+Its fill is the opaque `surface-raised` token; hover and pressed use the opaque
+`surface-float` token. It retains the shared button outline and shadow. Default
+buttons use the theme's regular button fill, which can be translucent in dark mode;
+that fill is not suitable for controls over scrolling content. The session's
+Scroll to bottom button uses the solid variant. Gallery `/control-layout` shows
+it on all four surfaces, and Session States exercises it over a transcript.
