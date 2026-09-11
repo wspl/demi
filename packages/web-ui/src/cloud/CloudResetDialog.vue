@@ -1,24 +1,29 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { CircleCheck } from '@lucide/vue'
 import type { CloudState } from './types'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
+import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import InlineError from '../ui/InlineError.vue'
+import { ICON_PX } from '../ui/icon-metrics'
 import { resetPhaseLabels } from './reset-phases'
 
 /**
  * The Cloud reset, confirmed and then followed step by step: what it stops,
- * what it keeps, the phase it is in, and how it ended. A failed reset stays in
- * the dialog with Retry reset, because the dialog is where the reset was asked for.
+ * what it keeps, and one status line that is a spinner while a step runs, a
+ * check when the Cloud is back, or the failure with Retry reset. A failed
+ * reset stays in the dialog, because the dialog is where it was asked for.
  */
-defineProps<{
+const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
   /** The reset's current step once submitted; null before it starts. */
   phase: CloudState['phase']
   /** The reset was requested from this dialog. */
   submitted: boolean
-  /** Why the reset request itself failed, if it did. */
+  /** Why the reset failed, if it did. */
   error: string | null
   /** A reset is in flight: no second request. */
   busy: boolean
@@ -27,6 +32,12 @@ const emit = defineEmits<{
   close: []
   reset: []
 }>()
+
+const failed = computed(() => props.submitted && (props.error !== null || props.phase === 'failed'))
+const running = computed(
+  () => props.submitted && !failed.value && props.phase !== null && props.phase !== 'ready',
+)
+const ready = computed(() => props.submitted && !failed.value && props.phase === 'ready')
 </script>
 
 <template>
@@ -46,18 +57,28 @@ const emit = defineEmits<{
         project, remain.
       </p>
       <p
-        v-if="submitted && phase"
+        v-if="running && phase"
         role="status"
         aria-live="polite"
-        class="text-[13px] text-fg-body"
+        class="flex items-center gap-2 text-chrome text-fg-muted"
       >
+        <IndeterminateSpinner :size="ICON_PX.in24" />
         {{ resetPhaseLabels[phase] }}
       </p>
-      <InlineError v-if="submitted && error" :message="error" />
+      <p
+        v-else-if="ready"
+        role="status"
+        aria-live="polite"
+        class="flex items-center gap-2 text-chrome text-on-success"
+      >
+        <CircleCheck :size="ICON_PX.in24" aria-hidden="true" />
+        {{ resetPhaseLabels.ready }}
+      </p>
+      <InlineError v-else-if="failed" :message="error ?? resetPhaseLabels.failed" />
       <div class="flex justify-end gap-2">
         <Button @click="emit('close')">{{ submitted ? 'Close' : 'Cancel' }}</Button>
         <Button
-          v-if="!submitted || error || phase === 'failed'"
+          v-if="!submitted || failed"
           variant="danger"
           :disabled="busy"
           @click="emit('reset')"

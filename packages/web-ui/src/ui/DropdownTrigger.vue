@@ -3,7 +3,12 @@ import { ChevronDown } from '@lucide/vue'
 import Button from './Button.vue'
 import { ICON_PX } from './icon-metrics'
 
-export type DropdownVariant = 'default' | 'ghost'
+/**
+ * `default` is a button; `ghost` a quiet inline chip; `field` a form control
+ * that fills its row and shows a value (an icon and a name) the way an input
+ * shows text.
+ */
+export type DropdownVariant = 'default' | 'ghost' | 'field'
 export type DropdownSize = 'sm' | 'md'
 
 withDefaults(defineProps<{
@@ -33,6 +38,25 @@ withDefaults(defineProps<{
       :class="isOpen ? 'rotate-180' : ''"
     />
   </Button>
+  <span
+    v-else-if="variant === 'field'"
+    role="button"
+    :aria-label="ariaLabel"
+    class="flex w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
+    :class="[
+      size === 'sm' ? 'h-6' : 'h-7',
+      disabled
+        ? 'pointer-events-none cursor-not-allowed bg-hover opacity-40'
+        : isOpen ? 'bg-active' : 'bg-hover hover:bg-active',
+    ]"
+  >
+    <slot />
+    <ChevronDown
+      :size="ICON_PX.in24"
+      class="shrink-0 text-fg-subtle transition-transform duration-200 ease-out"
+      :class="isOpen ? 'rotate-180' : ''"
+    />
+  </span>
   <span
     v-else
     role="button"

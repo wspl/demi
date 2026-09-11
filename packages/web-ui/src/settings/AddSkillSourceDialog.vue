@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
+import ExternalLink from '@demicodes/web-ui/ui/ExternalLink.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsSkillDraft } from './types'
@@ -68,12 +69,7 @@ function submit() {
       </div>
 
       <div class="flex items-center justify-between gap-3">
-        <a
-          href="https://skills.sh"
-          target="_blank"
-          rel="noreferrer"
-          class="select-none text-[12px] text-fg-subtle underline-offset-2 hover:text-fg-muted hover:underline"
-        >Browse skills.sh</a>
+        <ExternalLink href="https://skills.sh">Browse skills.sh</ExternalLink>
         <div class="flex justify-end gap-2">
           <Button @click="emit('close')">Cancel</Button>
           <Button
