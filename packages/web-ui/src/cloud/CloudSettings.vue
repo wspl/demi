@@ -66,11 +66,7 @@ function reset() {
   <SettingsGroup title="Cloud">
     <SettingsRow
       label="Your Cloud environment"
-      :description="
-        cloud.error
-          ? `${label} · ${cloud.error}`
-          : `${label} · All your Cloud projects share this machine.`
-      "
+      :description="`${label} · All your Cloud projects share this machine.`"
     >
       <Button
         size="sm"

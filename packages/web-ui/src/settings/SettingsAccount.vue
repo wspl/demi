@@ -3,7 +3,6 @@ import { computed } from 'vue'
 import { accountInitial } from '../auth/account-display'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
-import InlineError from '../ui/InlineError.vue'
 import Tag from '../ui/Tag.vue'
 import CommitTextInput from '../ui/CommitTextInput.vue'
 import ChangeEmailDialog, {
@@ -26,7 +25,7 @@ import SettingsRow from './SettingsRow.vue'
  */
 const props = defineProps<{
   overlayStore: OverlayStore
-  nameSave?: 'idle' | 'saving' | 'saved' | 'failed'
+  nameSave?: 'idle' | 'saving' | 'saved'
   email: string
   emailVerified?: boolean
   /** When the password last changed, formatted by the host. */
@@ -84,14 +83,13 @@ const initial = computed(() => accountInitial(name.value, props.email))
           maxlength="50"
           class="w-56 max-w-full"
         />
-        <!-- One word beside the field. A failed save is a system error the product also toasts. -->
+        <!-- One word beside the field. A save that failed is the product's toast; the field keeps the draft. -->
         <span
           v-if="nameSave === 'saving' || nameSave === 'saved'"
           class="text-[12px] text-fg-subtle"
           role="status"
           >{{ nameSave === 'saving' ? 'Saving…' : 'Saved' }}</span
         >
-        <InlineError v-else-if="nameSave === 'failed'" message="Not saved" />
       </SettingsRow>
       <SettingsRow label="Email">
         <template v-if="emailVerified" #tags

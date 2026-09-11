@@ -68,7 +68,7 @@ function report(title: string, error: unknown): void {
   })
 }
 
-const nameSave = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
+const nameSave = ref<'idle' | 'saving' | 'saved'>('idle')
 const nameDraft = ref<string | null>(null)
 
 async function rename(nickname: string): Promise<void> {
@@ -96,7 +96,8 @@ async function rename(nickname: string): Promise<void> {
     nameSave.value = 'saved'
     await product.revalidate()
   } catch (error) {
-    nameSave.value = 'failed'
+    // The field keeps the draft; the toast says why it was not saved.
+    nameSave.value = 'idle'
     report('Could not change your name', error)
   }
 }
