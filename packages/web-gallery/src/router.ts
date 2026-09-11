@@ -4,8 +4,10 @@ import SignInSection from './sections/SignInSection.vue'
 import SurfacesSection from './sections/SurfacesSection.vue'
 import PrimitivesSection from './sections/PrimitivesSection.vue'
 import ControlLayoutSection from './sections/ControlLayoutSection.vue'
+import ErrorsSection from './sections/ErrorsSection.vue'
 import MotionSection from './sections/MotionSection.vue'
 import OverlaysSection from './sections/OverlaysSection.vue'
+import DialogsSection from './sections/DialogsSection.vue'
 import FilesSection from './sections/FilesSection.vue'
 import SessionSection from './sections/SessionSection.vue'
 import SidebarSection from './sections/SidebarSection.vue'
@@ -25,8 +27,10 @@ export const NAV: {
   { path: '/surfaces', label: 'Surfaces' },
   { path: '/primitives', label: 'Primitives' },
   { path: '/control-layout', label: 'Control layout' },
+  { path: '/errors', label: 'Errors' },
   { path: '/motion', label: 'Motion' },
   { path: '/overlays', label: 'Overlays' },
+  { path: '/dialogs', label: 'Dialogs' },
   { path: '/files', label: 'Files' },
   { path: '/session', label: 'Session' },
   { path: '/sidebar', label: 'Sidebar' },
@@ -57,12 +61,14 @@ export const router = createRouter({
       meta: { layout: 'catalog' }
     },
     { path: '/control-layout', component: ControlLayoutSection, meta: { layout: 'catalog' } },
+    { path: '/errors', component: ErrorsSection, meta: { layout: 'catalog' } },
     { path: '/motion', component: MotionSection, meta: { layout: 'catalog' } },
     {
       path: '/overlays',
       component: OverlaysSection,
       meta: { layout: 'catalog' }
     },
+    { path: '/dialogs', component: DialogsSection, meta: { layout: 'catalog' } },
     { path: '/files', component: FilesSection, meta: { layout: 'catalog' } },
     { path: '/session', component: SessionSection, meta: { layout: 'session' } },
     { path: '/sidebar', component: SidebarSection, meta: { layout: 'catalog' } },

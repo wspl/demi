@@ -3,10 +3,10 @@ import { computed, ref } from 'vue'
 import type { CloudState } from './types'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
-import Dialog from '../ui/Dialog.vue'
-import InlineError from '../ui/InlineError.vue'
 import SettingsGroup from '../settings/SettingsGroup.vue'
 import SettingsRow from '../settings/SettingsRow.vue'
+import CloudResetDialog from './CloudResetDialog.vue'
+import { resetPhaseLabels } from './reset-phases'
 
 const props = defineProps<{
   cloud: CloudState
@@ -27,17 +27,9 @@ const busy = computed(
       props.cloud.phase !== 'ready' &&
       props.cloud.phase !== 'failed'),
 )
-const phaseLabels = {
-  stopping: 'Stopping Cloud tasks…',
-  saving: 'Saving home files…',
-  rebuilding: 'Rebuilding the system…',
-  booting: 'Starting Cloud…',
-  ready: 'Cloud is ready.',
-  failed: 'Reset failed.',
-}
 const label = computed(() =>
   props.cloud.state === 'resetting' && props.cloud.phase
-    ? phaseLabels[props.cloud.phase]
+    ? resetPhaseLabels[props.cloud.phase]
     : {
         unallocated: 'Starts when you need it',
         off: 'Sleeping',
@@ -79,44 +71,15 @@ function reset() {
       label="Storage limits"
       :description="`System: ${Math.round(cloud.systemBytes / 1024 ** 3)} GiB · Home: ${Math.round(cloud.homeBytes / 1024 ** 3)} GiB`"
     />
-    <Dialog
+    <CloudResetDialog
       :is-open="open"
       :overlay-store="overlayStore"
-      label="Reset Cloud environment"
+      :phase="cloud.phase"
+      :submitted="submitted"
+      :error="resetError || cloud.error || null"
+      :busy="busy"
       @close="open = false"
-    >
-      <div class="flex flex-col gap-4 p-5">
-        <h3 class="pr-8 text-[15px] font-medium text-fg-emphasis">
-          Reset Cloud environment
-        </h3>
-        <p class="text-[13px] leading-5 text-fg-muted">
-          This stops all your Cloud tasks and replaces installed system packages and
-          system settings. Files in your home directory, including every Cloud
-          project, remain.
-        </p>
-        <p
-          v-if="submitted && cloud.phase"
-          role="status"
-          aria-live="polite"
-          class="text-[13px] text-fg-body"
-        >
-          {{ phaseLabels[cloud.phase] }}
-        </p>
-        <InlineError
-          v-if="submitted && (resetError || cloud.error)"
-          :message="resetError || cloud.error || ''"
-        />
-        <div class="flex justify-end gap-2">
-          <Button @click="open = false">{{ submitted ? 'Close' : 'Cancel' }}</Button>
-          <Button
-            v-if="!submitted || resetError || cloud.phase === 'failed'"
-            variant="danger"
-            :disabled="busy"
-            @click="reset"
-            >{{ submitted ? 'Retry reset' : 'Reset environment' }}</Button
-          >
-        </div>
-      </div>
-    </Dialog>
+      @reset="reset"
+    />
   </SettingsGroup>
 </template>
