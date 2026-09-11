@@ -28,15 +28,20 @@ const {
   submitToken,
 } = settings
 
+// The vendor catalog's failure is the page's region state, with its own Retry.
+function loadVendors(): void {
+  void product.loadVendors().catch(() => {})
+}
+
 function retry(): void {
   void product.revalidate()
-  void product.loadVendors().catch(report)
+  loadVendors()
 }
 
 function openUrl(url: string): void {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
-onMounted(() => void product.loadVendors().catch(report))
+onMounted(loadVendors)
 onUnmounted(closeLogin)
 </script>
 
@@ -50,7 +55,7 @@ onUnmounted(closeLogin)
     :vendor-load="product.vendorLoad"
     :model-load="product.catalogLoad"
     @retry="retry"
-    @retry-vendors="product.loadVendors().catch(report)"
+    @retry-vendors="loadVendors"
     :vendors="resources.vendors"
     :overlay-store="appOverlayStore"
     :operations="settings.operations"
