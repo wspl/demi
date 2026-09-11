@@ -3,7 +3,6 @@ import { computed } from 'vue'
 import { accountInitial } from '../auth/account-display'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
-import InlineError from '../ui/InlineError.vue'
 import Tag from '../ui/Tag.vue'
 import CommitTextInput from '../ui/CommitTextInput.vue'
 import ChangeEmailDialog, {
@@ -46,7 +45,6 @@ const emailOpen = defineModel<boolean>('emailOpen', { default: false })
 const passwordOpen = defineModel<boolean>('passwordOpen', { default: false })
 
 const emit = defineEmits<{
-  retryName: []
   /** The row's Change: the host resets the phase before the dialog shows. */
   changeEmail: []
   changePassword: []
@@ -85,18 +83,20 @@ const initial = computed(() => accountInitial(name.value, props.email))
           maxlength="50"
           class="w-56 max-w-full"
         />
+        <!-- One word beside the field. A failed save is a system error the product also toasts. -->
         <span
-          v-if="nameSave === 'saving' || nameSave === 'saved'"
-          class="text-[12px] text-fg-subtle"
+          v-if="nameSave && nameSave !== 'idle'"
+          class="text-[12px]"
+          :class="nameSave === 'failed' ? 'text-on-danger' : 'text-fg-subtle'"
           role="status"
-          >{{ nameSave === 'saving' ? 'Saving…' : 'Saved' }}</span
+          >{{
+            nameSave === 'saving'
+              ? 'Saving…'
+              : nameSave === 'saved'
+                ? 'Saved'
+                : 'Not saved'
+          }}</span
         >
-        <InlineError
-          v-else-if="nameSave === 'failed'"
-          message="Could not save the display name."
-          action="Retry"
-          @action="emit('retryName')"
-        />
       </SettingsRow>
       <SettingsRow label="Email">
         <template v-if="emailVerified" #tags
