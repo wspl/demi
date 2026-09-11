@@ -30,6 +30,7 @@ const emit = defineEmits<{
           <IconButton
             v-if="showScrollToBottom"
             :icon="ChevronDown"
+            variant="solid"
             circle
             aria-label="Scroll to bottom"
             @click="emit('scrollToBottom')"
