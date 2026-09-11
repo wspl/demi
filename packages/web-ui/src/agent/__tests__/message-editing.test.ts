@@ -119,7 +119,7 @@ test('explicit rejection restores editing with the draft and attachments intact'
     set: (next) => { state = next },
     send: async () => { throw new EditRejectedError('save failed') },
   })
-  expect(state).toEqual({ phase: 'editing', request, error: 'save failed' })
+  expect(state).toEqual({ phase: 'editing', request })
 })
 
 test('a late result cannot clear a different editor or conversation draft', async () => {

@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue } from '@demicodes/utils'
+import { reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, readResponse } from '../api/client'
 import {
   modelCatalogSchema,
@@ -15,7 +16,8 @@ import {
 export const useProduct = defineStore('product', () => {
   const snapshot = ref<ProductState | null>(null)
   const load = ref<'loading' | 'ready' | 'failed'>('loading')
-  const error = ref<string | null>(null)
+  // A poll that fails while a snapshot is on screen is one toast per outage, not one per tick.
+  let refreshFailed = false
   const catalogs = ref<Record<string, CatalogProvider[]>>({})
   const vendors = ref<VendorCatalog | null>(null)
   const modelErrors = ref<Record<string, string>>({})
@@ -74,7 +76,7 @@ export const useProduct = defineStore('product', () => {
           etag = response.headers.get('ETag')
         }
         load.value = 'ready'
-        error.value = null
+        refreshFailed = false
       })
     } catch (cause) {
       if (
@@ -97,9 +99,7 @@ export const useProduct = defineStore('product', () => {
       if (!current || current.signal.aborted || controller !== current) {
         return
       }
-      error.value = `Could not refresh: ${
-        cause instanceof Error ? cause.message : String(cause)
-      }`
+      reportError('Could not refresh', cause, { userVisible: true })
     }
   }
 
@@ -198,9 +198,11 @@ export const useProduct = defineStore('product', () => {
       if (current.signal.aborted) {
         return
       }
-      error.value = cause instanceof Error ? cause.message : String(cause)
       if (!snapshot.value) {
         load.value = 'failed'
+      } else if (!refreshFailed) {
+        refreshFailed = true
+        reportError('Could not refresh', cause, { userVisible: true })
       }
     } finally {
       if (controller === current && !current.signal.aborted) {
@@ -232,13 +234,12 @@ export const useProduct = defineStore('product', () => {
     modelErrors.value = {}
     activeConversationId.value = null
     load.value = 'loading'
-    error.value = null
+    refreshFailed = false
   }
 
   return {
     snapshot,
     load,
-    error,
     catalogs,
     catalog,
     catalogFor,

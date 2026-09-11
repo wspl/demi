@@ -2,6 +2,7 @@ import { toRaw } from 'vue'
 import { EditRejectedError, isEditableUserMessage } from '@demicodes/agent/client'
 import type { EditRequest, TranscriptVersion } from '@demicodes/agent/client'
 import type { Block, UserContentBlock } from '@demicodes/core'
+import { reportError } from '../infra/errors'
 import type { BlobReferenceSource } from './media-source'
 import type { MessageListBlock } from './pending-steers'
 
@@ -19,10 +20,14 @@ export interface MessageEditRequest extends Omit<EditRequest, 'content'> {
   content: MessageEditContent[]
 }
 
+/**
+ * An edit in progress. `uncertain` means the server's answer was lost: Retry
+ * checks the outcome before resending. A failure is told by a toast at the
+ * moment it happens; the state itself carries no message.
+ */
 export interface MessageEditState {
   phase: 'editing' | 'sending' | 'uncertain'
   request: MessageEditRequest
-  error: string | null
 }
 
 export function beginMessageEdit(block: Block, version: TranscriptVersion): MessageEditState {
@@ -41,7 +46,6 @@ export function beginMessageEdit(block: Block, version: TranscriptVersion): Mess
       version: { ...version },
       content,
     },
-    error: null,
   }
 }
 
@@ -87,26 +91,26 @@ export async function submitMessageEdit(host: {
     return
   }
   const request = structuredClone(toRaw(draft.request))
-  host.set({ phase: 'sending', request, error: null })
+  host.set({ phase: 'sending', request })
   try {
     await host.send(request)
     if (host.get()?.request.operationId === request.operationId) {
       host.set(null)
     }
   } catch (error) {
+    const rejected = error instanceof EditRejectedError
     if (host.get()?.request.operationId === request.operationId) {
-      host.set({
-        phase: error instanceof EditRejectedError ? 'editing' : 'uncertain',
-        request,
-        error: error instanceof Error ? error.message : String(error),
-      })
+      host.set({ phase: rejected ? 'editing' : 'uncertain', request })
     }
+    reportError(
+      rejected ? 'The edit was not accepted' : 'Could not confirm the edit',
+      error,
+      { userVisible: true, expected: rejected },
+    )
   }
 }
 
 /** A page reload loses the in-flight response, not the submitted request. */
 export function restoreMessageEdit(state: MessageEditState | null): MessageEditState | null {
-  return state?.phase === 'sending'
-    ? { ...state, phase: 'uncertain', error: 'Confirmation was interrupted. Retry to check whether the edit was accepted.' }
-    : state
+  return state?.phase === 'sending' ? { ...state, phase: 'uncertain' } : state
 }
