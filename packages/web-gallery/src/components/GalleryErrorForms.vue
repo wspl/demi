@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { ref } from 'vue'
 import EmailLoginPage from '@demicodes/web-ui/auth/EmailLoginPage.vue'
 import ChangeEmailDialog, {
   type ChangeEmailPhase,
@@ -11,7 +11,6 @@ import ProviderLoginDialog, {
   type ProviderLoginPhase,
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
-import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
@@ -20,16 +19,18 @@ import type { CloudState } from '@demicodes/web-ui/cloud/types'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { createGalleryFileHosts } from '../fixtures/files'
-import { mockProviders, mockVendors } from '../fixtures/settings'
 import { demoDeviceInstallation } from '../fixtures/device-installation'
 import GalleryDialogFrame from './GalleryDialogFrame.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 
 /**
- * Every form and dialog failure, pinned on its failed phase. The dialogs are
- * shown in flow and stay open; Cancel and Close do nothing here because the
- * point is the failed state itself, not the flow around it.
+ * Every form failure, pinned on its failed phase. A form shows only what the
+ * reader can correct here; a request that failed for another reason is a
+ * toast, so the settings pages carry no inline "could not save".
+ *
+ * The dialogs are shown in flow and stay open; Cancel and Close do nothing
+ * here because the point is the failed state, not the flow around it.
  */
 const login = { error: 'The email or password is incorrect.', reason: 'expired' as const }
 const email: ChangeEmailPhase = {
@@ -57,30 +58,22 @@ const pairing: PairingPhase = {
   kind: 'code',
   error: 'This code is unavailable. Keep the runner open and paste its latest code.',
 }
-const providers = reactive(mockProviders())
-const selectedProvider = ref(providers.find((item) => item.kind === 'api_key')!.id)
-const saveErrors = {
-  [selectedProvider.value]: 'Could not save the endpoint. Your changes are retained.',
-}
 const name = ref('Unsaved display name')
 const cloud: CloudState = {
   state: 'running',
   phase: 'failed',
-  error: 'Cloud could not restart. Your home files remain saved.',
+  error: 'The last reset failed; your home files remain saved.',
   systemBytes: 10 * 1024 ** 3,
   homeBytes: 20 * 1024 ** 3,
 }
 const hosts = createGalleryFileHosts()
-async function saveModel(): Promise<void> {
-  throw new Error('The model could not be saved. Your input is retained.')
-}
 </script>
 
 <template>
   <div class="space-y-8">
     <GallerySection
       title="Sign in"
-      note="A rejected sign-in keeps both fields and puts InlineError under them."
+      note="A rejected sign-in keeps both fields and puts the line under them."
     >
       <div class="h-[28rem] overflow-auto rounded-xl border border-line bg-surface">
         <EmailLoginPage
@@ -92,7 +85,7 @@ async function saveModel(): Promise<void> {
     </GallerySection>
     <GallerySection
       title="Dialogs"
-      note="A rejected submission keeps the dialog open with its input. InlineError sits above the buttons, in the form's width."
+      note="A rejected submission keeps the dialog open with its input. The line sits above the buttons, in the form's width."
     >
       <div class="grid items-start gap-6 lg:grid-cols-2">
         <GallerySpecimen wide variant="Email change · rejected address">
@@ -161,7 +154,7 @@ async function saveModel(): Promise<void> {
             />
           </GalleryDialogFrame>
         </GallerySpecimen>
-        <GallerySpecimen wide variant="Model save · retained input">
+        <GallerySpecimen wide variant="Model save · rejected values">
           <GalleryDialogFrame>
             <ModelDialog
               is-open
@@ -176,7 +169,7 @@ async function saveModel(): Promise<void> {
                 extensions: ['.png'],
                 fastTier: null,
               }"
-              error="Could not save this model. The endpoint returned HTTP 503."
+              error="The provider rejected this model id. Check the id against the provider's catalog."
             />
           </GalleryDialogFrame>
         </GallerySpecimen>
@@ -184,37 +177,29 @@ async function saveModel(): Promise<void> {
     </GallerySection>
     <GallerySection
       title="Settings pages"
-      note="A save that failed keeps the edited value and puts InlineError with Retry in the row."
+      note="A save that failed keeps the edited value and says so in one word beside it; the product toasts the reason. A persistent condition is part of the row's description."
     >
-      <GallerySpecimen wide variant="Provider configuration · Retry save">
-        <div class="max-h-[36rem] overflow-auto rounded-xl border border-line bg-surface">
-          <SettingsProvidersPage
-            v-model:selected-id="selectedProvider"
-            :providers="providers"
-            :vendors="mockVendors"
-            :overlay-store="appOverlayStore"
-            :save-errors="saveErrors"
-            :save-model="saveModel"
-          />
-        </div>
-      </GallerySpecimen>
       <div class="grid items-start gap-6 xl:grid-cols-2">
-        <GallerySpecimen wide variant="Display name · save failed">
-          <SettingsAccount
-            v-model:name="name"
-            name-save="failed"
-            email="preview@example.test"
-            :email-phase="{ kind: 'form', currentEmail: 'preview@example.test' }"
-            :password-phase="{ kind: 'form' }"
-            :overlay-store="appOverlayStore"
-          />
+        <GallerySpecimen wide variant="Display name · not saved">
+          <div class="@container rounded-xl border border-line bg-surface px-8 py-8">
+            <SettingsAccount
+              v-model:name="name"
+              name-save="failed"
+              email="preview@example.test"
+              :email-phase="{ kind: 'form', currentEmail: 'preview@example.test' }"
+              :password-phase="{ kind: 'form' }"
+              :overlay-store="appOverlayStore"
+            />
+          </div>
         </GallerySpecimen>
-        <GallerySpecimen wide variant="Cloud reset · failed with files retained">
-          <CloudSettings
-            :cloud="cloud"
-            :reset-error="cloud.error"
-            :overlay-store="appOverlayStore"
-          />
+        <GallerySpecimen wide variant="Cloud · last reset failed">
+          <div class="@container rounded-xl border border-line bg-surface px-8 py-8">
+            <CloudSettings
+              :cloud="cloud"
+              :reset-error="cloud.error"
+              :overlay-store="appOverlayStore"
+            />
+          </div>
         </GallerySpecimen>
       </div>
     </GallerySection>

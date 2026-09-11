@@ -32,17 +32,24 @@ export function sessionPaneStatus(
   return hasTranscript ? null : 'empty'
 }
 
+/** A session-level failure told at the tail of the transcript. */
+export interface SessionFailureNotice {
+  label: string
+  /** Retry reopens the session; a refused request has nothing to reopen. */
+  retry: boolean
+}
+
 /**
- * What the dock's notice bar says for a session-level failure, or null when
- * another surface already says it: the status pane (no transcript to keep) or
- * the error record at the tail of the transcript (the dock chip offers Retry).
+ * What the transcript's tail notice says for a session-level failure, or null
+ * when another surface already says it: the status pane (no transcript to
+ * keep) or the error record at the tail (it carries its own Retry).
  */
 export function sessionFailureNotice(
   load: SessionLoad,
   lastError: string | null,
   hasTranscript: boolean,
   tailIsErrorRecord: boolean,
-): { label: string; retry: boolean } | null {
+): SessionFailureNotice | null {
   if (!lastError) {
     return null
   }

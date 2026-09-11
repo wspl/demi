@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Archive, Play, RotateCcw } from '@lucide/vue'
+import { Archive, Play } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/agent/client'
 import { beginMessageEdit, lastEditableUserMessageId, type MessageEditState } from './message-editing'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
@@ -13,7 +13,6 @@ import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { useSessionPanels } from './useSessionPanels'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
-import SessionNoticeBar from '@demicodes/web-ui/agent/SessionNoticeBar.vue'
 import type { PendingSubmissionState } from './types'
 import type { MessageForkHandler } from './message-fork'
 
@@ -68,9 +67,18 @@ const emit = defineEmits<{
   saveScroll: [id: string, state: PersistedScrollState | null]
 }>()
 const surface = ref<{ dockHeight: number }>()
-// The dock names a session-level failure once: never beside the status pane
-// that already replaced the transcript, never under an error record whose
-// dock chip already offers Retry.
+// Recovery (Retry on the tail error record, Resume after an abort) needs a
+// provider and a conversation that is neither archived nor being edited.
+const canRecover = computed(
+  () =>
+    props.hasProvider &&
+    !props.messageEdit &&
+    !props.conversation.archived &&
+    props.conversation.load !== 'failed',
+)
+// A session-level failure is told once, in the transcript flow: never beside
+// the status pane that already replaced the transcript, never under an error
+// record that already carries Retry.
 const failureNotice = computed(() => {
   const visible = getVisibleBlocks(props.conversation.blocks)
   return sessionFailureNotice(
@@ -152,6 +160,8 @@ watch(() => props.conversation.id, close)
             :phase="conversation.phase"
             :load="conversation.load"
             :load-error="conversation.lastError"
+            :failure="failureNotice"
+            :retry="canRecover ? () => emit('retry') : undefined"
             :pending-submission="pendingSubmission"
             :read-only="!canEdit"
             :fork="fork"
@@ -173,30 +183,14 @@ watch(() => props.conversation.id, close)
             :show-scroll-to-bottom="!!list && !list.isAtBottom"
             @scroll-to-bottom="list?.scrollToBottom()"
           >
-            <template v-if="failureNotice" #notice>
-              <SessionNoticeBar
-                tone="danger"
-                :label="failureNotice.label"
-                :action="failureNotice.retry ? t('agent.session.retry') : undefined"
-                @action="emit('retryLoad')"
-              />
-            </template>
             <template #chips>
+              <!-- An error record carries its own Retry in the transcript; only an abort resumes from here. -->
               <SessionDockChip
-                v-if="
-                  !messageEdit && !conversation.archived &&
-                  hasProvider &&
-                  conversation.load !== 'failed' &&
-                  (conversation.status === 'error' ||
-                    conversation.status === 'aborted')
-                "
+                v-if="canRecover && conversation.status === 'aborted'"
                 @click="emit('retry')"
               >
-                <component
-                  :is="conversation.status === 'error' ? RotateCcw : Play"
-                  :size="ICON_PX.in28"
-                />
-                {{ conversation.status === 'error' ? 'Retry' : 'Resume' }}
+                <Play :size="ICON_PX.in28" />
+                {{ t('agent.dock.resume') }}
               </SessionDockChip>
               <TerminalChip
                 :terminals="conversation.terminals"

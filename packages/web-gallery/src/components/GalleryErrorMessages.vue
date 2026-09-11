@@ -1,104 +1,116 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import ErrorBlock from '@demicodes/web-ui/agent/blocks/ErrorBlock.vue'
 import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessageVirtualBlock.vue'
-import AssistantMessageFooter from '@demicodes/web-ui/agent/blocks/AssistantMessageFooter.vue'
 import PendingSubmission from '@demicodes/web-ui/agent/PendingSubmission.vue'
 import type { MessageForkState } from '@demicodes/web-ui/agent/message-fork'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import type { PendingSubmissionState } from '@demicodes/web-ui/agent/types'
 import type { Block } from '@demicodes/core'
-import { errorTool } from '../fixtures/blocks'
+import { demoModel, errorTool } from '../fixtures/blocks'
 import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 
 /**
- * Failures that live next to a message, pinned.
- * - A turn that failed is a transcript record: ErrorBlock for the provider,
- *   the tool block itself for a tool.
- * - An action on a message that failed (send, fork, edit, upload) keeps the
- *   message and puts InlineError directly under it, with Retry where a retry exists.
+ * Failures that live in the conversation, pinned. Every one is an ErrorNotice
+ * in the transcript flow, rendered through the product's own block renderer so
+ * the padding and rhythm are the product's. Retry sits on the record that
+ * ended the conversation, and nowhere else.
  */
-const failures = [
+function errorRecord(
+  id: string,
+  code: string,
+  httpStatus: number,
+  message: string,
+): Block {
+  return {
+    type: 'error',
+    id,
+    createdAt: '2026-09-11T12:00:00Z',
+    model: demoModel,
+    message,
+    code,
+    diagnostics: { source: 'http', httpStatus, clientRequestId: 'req_01J8Y3Q6ZKX4' },
+  }
+}
+const records: { block: Block; tail: boolean }[] = [
   {
-    code: 'rate_limit',
-    httpStatus: 429,
-    message: 'Too many requests. Try again after 30 seconds.',
+    block: errorRecord(
+      'rate_limit',
+      'rate_limit',
+      429,
+      'Anthropic API request failed with HTTP 429: This request would exceed the rate limit of 50 requests per minute for your organization. Retry after 12 seconds.',
+    ),
+    tail: true,
   },
   {
-    code: 'overloaded',
-    httpStatus: 503,
-    message: 'The model provider is temporarily overloaded.',
+    block: errorRecord('overloaded', 'overloaded', 529, 'Overloaded. The provider could not accept the request.'),
+    tail: false,
   },
   {
-    code: 'auth_expired',
-    httpStatus: 401,
-    message: 'Your provider session has expired. Sign in again.',
+    block: errorRecord('auth_expired', 'auth_expired', 401, 'The access token has expired. Sign in to the provider again.'),
+    tail: false,
   },
   {
-    code: 'auth_missing',
-    httpStatus: 401,
-    message: 'No credentials are configured for this model provider.',
+    block: errorRecord('auth_missing', 'auth_missing', 401, 'No credentials are configured for this provider.'),
+    tail: false,
   },
   {
-    code: 'context_length_exceeded',
-    httpStatus: 400,
-    message: 'This conversation exceeds the model context limit.',
+    block: errorRecord(
+      'context_length_exceeded',
+      'context_length_exceeded',
+      400,
+      'prompt is too long: 214,331 tokens > 200,000 maximum.',
+    ),
+    tail: false,
   },
   {
-    code: 'generation_failed',
-    httpStatus: 502,
-    message:
-      'The upstream response ended before generation completed. Request preview-7842 returned HTTP 502.\nThe draft and preceding conversation remain available.',
+    block: errorRecord(
+      'generation_failed',
+      'generation_failed',
+      502,
+      'The upstream response ended before generation completed.',
+    ),
+    tail: false,
   },
 ]
-// The first record starts open so the detail row and Copy are visible without a click.
-const openCode = ref<string | null>('rate_limit')
 const toolFailure = errorTool as Block
+const forkPoint: Block = {
+  type: 'text',
+  id: 'fork-point',
+  createdAt: '2026-09-11T12:00:00Z',
+  model: demoModel,
+  text: 'The game is ready. This answer is the fork point.',
+}
+const fork: MessageForkState = {
+  phase: 'failed',
+  request: { id: 'failed-fork', blockId: 'fork-point' },
+  error: 'The server did not create the conversation. Your source conversation is unchanged.',
+}
 const pending: PendingSubmissionState = {
   id: 'failed-submission',
   text: 'Please keep this exact message and the attached plan.',
   fileNames: ['plan.pdf'],
-  error:
-    'Could not confirm delivery. Try again to check whether this message was accepted.',
+  error: 'The server did not confirm the message. Retry checks whether it was accepted before sending it again.',
   sending: false,
-}
-const fork: MessageForkState = {
-  phase: 'failed',
-  request: { id: 'failed-fork', blockId: 'answer' },
-  error:
-    'Could not create the conversation. Your source conversation is unchanged.',
 }
 const editing: MessageEditState = {
   phase: 'editing',
-  error: 'The conversation changed. Review this edit and try again.',
+  error: 'The conversation changed after this message. Review the edit against the new transcript.',
   request: {
     operationId: 'failed-edit',
     targetBlockId: 'editable-message',
     version: { epoch: 'preview', revision: 2 },
-    content: [
-      {
-        type: 'text',
-        text: 'Keep the edited message after the request fails.',
-      },
-    ],
+    content: [{ type: 'text', text: 'Keep the edited message after the request fails.' }],
   },
 }
 const uncertain: MessageEditState = {
   phase: 'uncertain',
-  error:
-    'Could not confirm whether the edit was accepted. Retry to check its result.',
+  error: 'The server did not answer in time. Retry checks the result before resending.',
   request: {
     operationId: 'uncertain-edit',
     targetBlockId: 'uncertain-message',
     version: { epoch: 'preview', revision: 3 },
-    content: [
-      {
-        type: 'text',
-        text: 'This submitted edit is waiting for confirmation.',
-      },
-    ],
+    content: [{ type: 'text', text: 'This submitted edit is waiting for confirmation.' }],
   },
 }
 </script>
@@ -106,31 +118,25 @@ const uncertain: MessageEditState = {
 <template>
   <div class="space-y-8">
     <GallerySection
-      title="Turn failures · transcript records"
-      note="A failed turn is a record in the transcript: one line in the chrome from the normalized code, the upstream message and the diagnostics in the body, Copy for a support thread."
+      title="Turn failures · the record in the transcript"
+      note="One sentence from the normalized code, the upstream message, the facts a support thread asks for, Copy. The record that ended the conversation carries Retry; the older ones are history."
     >
-      <div class="grid gap-4 lg:grid-cols-2">
-        <GallerySpecimen
-          v-for="failure in failures"
-          :key="failure.code"
-          wide
-          :variant="failure.code"
-        >
-          <div class="rounded-lg bg-surface p-3">
-            <ErrorBlock
-              :open="openCode === failure.code"
-              :code="failure.code"
-              :message="failure.message"
-              :diagnostics="{
-                source: 'http',
-                httpStatus: failure.httpStatus,
-                clientRequestId: 'preview-7842',
-              }"
-              @update:open="(open) => (openCode = open ? failure.code : null)"
-            />
-          </div>
-        </GallerySpecimen>
-      </div>
+      <GallerySpecimen
+        v-for="{ block, tail } in records"
+        :key="block.id"
+        wide
+        :variant="`${block.type === 'error' ? block.code : ''}${tail ? ' · tail, with Retry' : ''}`"
+      >
+        <div class="rounded-lg bg-surface py-3">
+          <AgentMessageVirtualBlock
+            :block="block"
+            conversation-id="error-messages"
+            :is-thinking-streaming="false"
+            :thinking-ended-at="null"
+            :retry="tail ? () => {} : undefined"
+          />
+        </div>
+      </GallerySpecimen>
       <GallerySpecimen wide variant="Tool failed · the tool block is the record">
         <div class="rounded-lg bg-surface py-3">
           <AgentMessageVirtualBlock
@@ -143,65 +149,51 @@ const uncertain: MessageEditState = {
       </GallerySpecimen>
     </GallerySection>
     <GallerySection
-      title="Message actions · InlineError under the message"
-      note="Send, fork, edit and upload keep the message on screen and put the failure directly under it. Retry sits in the same line when a retry exists."
+      title="Message actions · the notice follows the message"
+      note="Send and fork keep the message on screen and put the failure after it, in flow, with Retry. Edits keep the draft in the composer and put the failure under the composer."
     >
-      <div class="grid gap-6 xl:grid-cols-2">
-        <GallerySpecimen wide variant="Send failed · exact message retained">
-          <div class="rounded-lg bg-surface">
-            <PendingSubmission v-bind="pending" />
-          </div>
-        </GallerySpecimen>
-        <GallerySpecimen wide variant="Fork failed · under the message footer">
-          <div class="rounded-lg bg-surface p-4">
-            <p class="text-conversation text-fg-body">
-              The game is ready. This answer is the fork point.
-            </p>
-            <AssistantMessageFooter
-              content="The game is ready."
-              created-at="2026-09-11T12:00:00Z"
-              :fork="async () => {}"
-              :fork-state="fork"
-            />
-          </div>
-        </GallerySpecimen>
-        <GallerySpecimen wide variant="Edit rejected · draft remains editable">
-          <GalleryComposer
-            :message-edit="editing"
-            placeholder="Edit message…"
-            conversation-id="failed-edit"
+      <GallerySpecimen wide variant="Send failed · exact message retained">
+        <div class="rounded-lg bg-surface">
+          <PendingSubmission v-bind="pending" />
+        </div>
+      </GallerySpecimen>
+      <GallerySpecimen wide variant="Fork failed · after the message footer">
+        <div class="rounded-lg bg-surface py-3">
+          <AgentMessageVirtualBlock
+            :block="forkPoint"
+            conversation-id="error-messages"
+            :is-thinking-streaming="false"
+            :thinking-ended-at="null"
+            :fork="async () => {}"
+            :fork-state="fork"
           />
-        </GallerySpecimen>
-        <GallerySpecimen wide variant="Edit acceptance unknown · Retry edit">
-          <GalleryComposer
-            :message-edit="uncertain"
-            placeholder="Edit message…"
-            conversation-id="uncertain-edit"
-          />
-        </GallerySpecimen>
-        <GallerySpecimen
-          wide
-          variant="Uploads failed · Retry on each tile, reasons under the input"
-        >
-          <GalleryComposer
-            placeholder="Message with failed attachments…"
-            conversation-id="failed-uploads"
-            draft="The files must stay here while I retry."
-            :attachments="[
-              {
-                name: 'reference.png',
-                phase: 'failed',
-                error: 'Connection lost during upload.',
-              },
-              {
-                name: 'plan.pdf',
-                phase: 'failed',
-                error: 'The workspace is unavailable.',
-              },
-            ]"
-          />
-        </GallerySpecimen>
-      </div>
+        </div>
+      </GallerySpecimen>
+      <GallerySpecimen wide variant="Edit rejected · draft remains editable">
+        <GalleryComposer
+          :message-edit="editing"
+          placeholder="Edit message…"
+          conversation-id="failed-edit"
+        />
+      </GallerySpecimen>
+      <GallerySpecimen wide variant="Edit unconfirmed · Retry edit">
+        <GalleryComposer
+          :message-edit="uncertain"
+          placeholder="Edit message…"
+          conversation-id="uncertain-edit"
+        />
+      </GallerySpecimen>
+      <GallerySpecimen wide variant="Uploads failed · Retry on each tile">
+        <GalleryComposer
+          placeholder="Message with failed attachments…"
+          conversation-id="failed-uploads"
+          draft="The files must stay here while I retry."
+          :attachments="[
+            { name: 'reference.png', phase: 'failed', error: 'Connection lost during upload.' },
+            { name: 'plan.pdf', phase: 'failed', error: 'The workspace is unavailable.' },
+          ]"
+        />
+      </GallerySpecimen>
     </GallerySection>
   </div>
 </template>

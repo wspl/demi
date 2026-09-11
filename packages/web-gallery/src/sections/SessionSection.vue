@@ -237,7 +237,6 @@ const functionalCollapsed = ref(false)
 const functionalExpanded = ref(true)
 const functionalTool = ref(false)
 const functionalShellExpanded = ref(true)
-const functionalError = ref(true)
 const functionalThinkingStartedAt = new Date().toISOString()
 const functionalThinkingEndedAt = new Date(
   Date.parse(functionalThinkingStartedAt) + 8_000,
@@ -912,7 +911,6 @@ function abortAgents() {
               wide
             >
               <ErrorBlock
-                v-model:open="functionalError"
                 message="Provider aborted after 3 retries."
                 code="rate_limit"
                 :diagnostics="{ source: 'http', httpStatus: 429 }"

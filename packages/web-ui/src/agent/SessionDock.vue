@@ -2,11 +2,6 @@
 import { ChevronDown } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 
-/**
- * The block at the bottom of the session: an optional session notice, the
- * control row (recovery and panel chips, the scroll-to-bottom button) and the
- * composer. The notice has its own row so the chip row keeps its rhythm.
- */
 withDefaults(defineProps<{
   showScrollToBottom?: boolean
 }>(), {
@@ -20,9 +15,6 @@ const emit = defineEmits<{
 
 <template>
   <div class="relative">
-    <div v-if="$slots.notice" class="pb-2">
-      <slot name="notice" />
-    </div>
     <!-- Keep the control row in the measured dock, even at the scroll bottom. -->
     <div class="flex justify-start gap-1.5 pb-2">
       <slot name="chips" />

@@ -394,7 +394,6 @@ function resetShortcuts(): void {
       :email-phase="emailPhase"
       :password-phase="passwordPhase"
       @update:name="rename"
-      @retry-name="rename(nameDraft ?? resources.username)"
       @change-email="openChangeEmail"
       @change-password="openChangePassword"
       @submit-email="submitEmail"

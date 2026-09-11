@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import InlineError from '../ui/InlineError.vue'
+import ErrorNotice from '../ui/ErrorNotice.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import UserBlock from './blocks/UserBlock.vue'
 import type { PendingSubmissionState } from './types'
 
 /**
  * The message the user sent before the server confirmed it. While sending it
- * shows progress; when delivery fails the exact text and files stay on screen
- * with the failure under them, so nothing has to be typed again.
+ * shows progress under the bubble; when delivery fails the exact text and files
+ * stay on screen and the failure follows them in the transcript, with Retry.
  */
 defineProps<PendingSubmissionState>()
 const emit = defineEmits<{ retry: [] }>()
@@ -19,19 +19,22 @@ const emit = defineEmits<{ retry: [] }>()
       :content="text ? [{ type: 'text', text }] : []"
       :editable="false"
     />
-    <p v-if="fileNames.length" class="mt-1 px-[var(--agent-pad-x,2rem)] text-right text-chrome text-fg-muted">
+    <p
+      v-if="fileNames.length"
+      class="mt-1 px-[var(--agent-pad-x,2rem)] text-right text-chrome text-fg-muted"
+    >
       {{ fileNames.join(', ') }}
     </p>
-    <div class="mt-2 flex justify-end px-[var(--agent-pad-x,2rem)]">
-      <span
-        v-if="sending"
-        class="flex items-center gap-2 text-chrome text-fg-muted"
-        ><IndeterminateSpinner /> Sending…</span
-      >
-      <InlineError
-        v-else-if="error"
-        class="max-w-[80%]"
-        :message="error"
+    <p
+      v-if="sending"
+      class="mt-2 flex items-center justify-end gap-2 px-[var(--agent-pad-x,2rem)] text-chrome text-fg-muted"
+    >
+      <IndeterminateSpinner /> Sending…
+    </p>
+    <div v-else-if="error" class="mt-2 px-[var(--agent-pad-x,2rem)]">
+      <ErrorNotice
+        label="This message was not delivered."
+        :detail="error"
         action="Retry"
         @action="emit('retry')"
       />

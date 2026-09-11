@@ -18,7 +18,7 @@ import { useMessageEditComposer } from './message-input/useMessageEditComposer'
 import { shouldSubmitFromEditorKeydown } from './message-input/composer-keyboard'
 import { editHasContent, type MessageEditState } from './message-editing'
 import ContentMedia from './ContentMedia.vue'
-import InlineError from '../ui/InlineError.vue'
+import ErrorNotice from '../ui/ErrorNotice.vue'
 import ComposerShell from './ComposerShell.vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import ModelSelector from './ModelSelector.vue'
@@ -409,15 +409,23 @@ function addFiles(files: File[]): void {
           />
         </template>
       </ComposerShell>
-      <InlineError
-        v-if="messageEdit?.error || edit.attachmentError.value"
+      <ErrorNotice
+        v-if="messageEdit?.error"
         class="mt-2"
-        :message="messageEdit?.error ?? edit.attachmentError.value ?? ''"
+        :label="messageEdit.phase === 'uncertain' ? 'The edit was not confirmed.' : 'The edit was not accepted.'"
+        :detail="messageEdit.error"
       />
-      <InlineError
+      <ErrorNotice
+        v-else-if="edit.attachmentError.value"
+        class="mt-2"
+        label="Could not attach the file."
+        :detail="edit.attachmentError.value"
+      />
+      <ErrorNotice
         v-else-if="uploadFailure"
         class="mt-2"
-        :message="uploadFailure"
+        label="Some attachments did not upload. Retry each one on its tile."
+        :detail="uploadFailure"
       />
     </div>
   </Transition>

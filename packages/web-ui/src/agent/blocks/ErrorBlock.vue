@@ -1,57 +1,39 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useClipboard } from '@vueuse/core'
-import { Check, CircleX, Copy } from '@lucide/vue'
 import type { ProviderErrorDiagnostics } from '@demicodes/core'
 import { t } from '@demicodes/web-ui/infra/i18n'
-import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
-import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
-import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import ErrorNotice from '@demicodes/web-ui/ui/ErrorNotice.vue'
 import { errorFacts, errorReportText, errorSummary } from '../error-detail'
-import FunctionalBlock from './FunctionalBlock.vue'
 
+/**
+ * The transcript record of a turn that failed: one sentence from the
+ * normalized code, the upstream message, the diagnostics and Copy. The record
+ * at the tail of an idle conversation carries Retry, so recovery starts where
+ * the failure is read.
+ */
 const props = defineProps<{
   /** The upstream error as the provider reported it. */
   message: string
   code?: string | null
   diagnostics?: ProviderErrorDiagnostics
+  /** Offered only on the record that ended the conversation. */
+  retry?: () => void
 }>()
 
-const isOpen = defineModel<boolean>('open', { default: false })
 const summary = computed(() => errorSummary(props.code))
 const facts = computed(() => errorFacts(props.code, props.diagnostics))
-const reportText = computed(() => errorReportText(props.message, props.code, props.diagnostics))
-const { copy, copied } = useClipboard({ copiedDuring: 1500 })
+const reportText = computed(() =>
+  errorReportText(props.message, props.code, props.diagnostics),
+)
 </script>
 
 <template>
-  <FunctionalBlock
-    v-model:open="isOpen"
-    expandable
-    tone="danger"
-  >
-    <template #icon>
-      <CircleX :size="ICON_PX.in28" />
-    </template>
-    <span class="min-w-0 truncate">{{ summary }}</span>
-    <template #body>
-      <div class="flex items-start gap-2 px-3 py-1.5">
-        <div class="min-w-0 flex-1 select-text text-xs leading-5">
-          <p class="whitespace-pre-wrap break-words text-on-danger">{{ message }}</p>
-          <p
-            v-if="facts.length > 0"
-            class="mt-1 truncate font-mono text-fg-subtle"
-          >{{ facts.join(' · ') }}</p>
-        </div>
-        <Tooltip :content="copied ? t('common.copied') : t('common.copy')">
-          <IconButton
-            :icon="copied ? Check : Copy"
-            size="sm"
-            variant="ghost"
-            @click.stop="copy(reportText)"
-          />
-        </Tooltip>
-      </div>
-    </template>
-  </FunctionalBlock>
+  <ErrorNotice
+    :label="summary"
+    :detail="message"
+    :facts="facts"
+    :copy-text="reportText"
+    :action="retry ? t('agent.session.retry') : undefined"
+    @action="retry?.()"
+  />
 </template>

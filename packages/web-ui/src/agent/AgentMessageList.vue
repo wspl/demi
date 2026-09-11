@@ -12,7 +12,13 @@ import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import AgentMessageVirtualBlock from './blocks/AgentMessageVirtualBlock.vue'
 import LoadingBlock from './blocks/LoadingBlock.vue'
 import SessionStatus from './SessionStatus.vue'
-import { sessionPaneStatus, sessionShowsReconnectTail, type SessionLoad } from './session-status'
+import ErrorNotice from '../ui/ErrorNotice.vue'
+import {
+  sessionPaneStatus,
+  sessionShowsReconnectTail,
+  type SessionFailureNotice,
+  type SessionLoad,
+} from './session-status'
 import { COMPOSER_CLEARANCE_PX } from './composer-clearance'
 import { t } from '../infra/i18n'
 import MessageEditRegion from './MessageEditRegion.vue'
@@ -34,6 +40,10 @@ const props = defineProps<{
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
   loadError?: string | null
+  /** A session-level failure told at the tail of the transcript, in flow. */
+  failure?: SessionFailureNotice | null
+  /** Offered on the error record that ended an idle conversation. */
+  retry?: () => void
   pendingSubmission?: PendingSubmissionState | null
 }>()
 
@@ -70,6 +80,12 @@ const paneStatus = computed(() =>
   props.pendingSubmission ? null : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.length > 0),
 )
 const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.editTargetId))
+// Only the record that ended the conversation is a place to retry from; older
+// errors are history.
+const retryTargetId = computed(() => {
+  const tail = visibleTranscriptBlocks.value.at(-1)
+  return props.phase === 'idle' && tail?.type === 'error' ? tail.id : null
+})
 const reconnecting = computed(() => sessionShowsReconnectTail(props.load ?? 'ready'))
 const shouldShowLoading = computed(() =>
   reconnecting.value || shouldShowTailLoading(
@@ -198,6 +214,7 @@ defineExpose({
                 :thinking-ended-at="thinkingEndedAt(item.index)"
                 :fork="fork ? () => forkMessage(renderBlocks[item.index]!.id) : undefined"
                 :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
+                :retry="renderBlocks[item.index]!.id === retryTargetId ? retry : undefined"
                 :editable="renderBlocks[item.index]!.id === editableUserId && !props.readOnly && phase === 'idle' && !queue.length && !pendingSteers.length"
                 @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
                 @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
@@ -210,6 +227,13 @@ defineExpose({
           </div>
         </div>
         <LoadingBlock v-if="shouldShowLoading" :label="tailLabel" />
+        <div v-if="failure" class="px-[var(--agent-pad-x,2rem)] py-1.5">
+          <ErrorNotice
+            :label="failure.label"
+            :action="failure.retry ? t('agent.session.retry') : undefined"
+            @action="emit('retryLoad')"
+          />
+        </div>
       </div>
     </div>
   </div>

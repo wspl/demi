@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { Check, Copy, GitFork, LoaderCircle } from '@lucide/vue'
 import type { MessageForkState } from '../message-fork'
-import InlineError from '../../ui/InlineError.vue'
+import ErrorNotice from '../../ui/ErrorNotice.vue'
 import Tooltip from '../../ui/Tooltip.vue'
 import RelativeTime from '../../ui/RelativeTime.vue'
 import { t } from '../../infra/i18n'
@@ -57,10 +57,11 @@ async function copyMessage(): Promise<void> {
     <span v-if="copyError" role="status" class="ml-1 text-[11px]">
       {{ t('agent.assistant.copyFailed') }}
     </span>
-    <InlineError
+    <ErrorNotice
       v-if="forkState?.phase === 'failed'"
-      class="mt-1 basis-full"
-      :message="forkState.error"
+      class="mt-2 basis-full"
+      label="Could not fork from this message."
+      :detail="forkState.error"
       :action="t('agent.session.retry')"
       @action="fork?.()"
     />
