@@ -8,8 +8,7 @@ import Tooltip from './Tooltip.vue'
 
 /**
  * A failure told in the flow of the conversation: a turn that failed, a
- * message that was not delivered, a session that lost its connection, an
- * action on a message that did not go through.
+ * message that was not delivered, a session that lost its connection.
  *
  * One tinted bar, full width where it sits: a sentence, the upstream message
  * under it, the diagnostic facts on one line, and at most one action beside a
@@ -41,29 +40,30 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 <template>
   <div
     role="alert"
-    class="flex w-full items-start gap-2.5 rounded-lg bg-tint-danger px-3 py-2 text-on-danger"
+    class="flex w-full items-center gap-3 rounded-lg bg-tint-danger px-3.5 py-2.5 text-on-danger"
   >
-    <span class="flex h-5 shrink-0 items-center" aria-hidden="true">
+    <!-- The icon marks the first line; the controls sit centred on the whole bar. -->
+    <span class="flex h-5 shrink-0 items-center self-start" aria-hidden="true">
       <CircleX :size="14" />
     </span>
     <div class="min-w-0 flex-1 select-text">
       <p class="text-chrome leading-5">{{ label }}</p>
       <p
         v-if="detail"
-        class="whitespace-pre-line break-words text-[12px] leading-4"
+        class="mt-0.5 whitespace-pre-line break-words text-[12px] leading-[18px] text-on-danger-muted"
       >
         {{ detail }}
       </p>
       <p
         v-if="facts.length > 0"
-        class="mt-1 truncate font-mono text-[11px] leading-4 text-on-danger-muted"
+        class="mt-1.5 truncate font-mono text-[11px] leading-4 text-on-danger-muted"
       >
         {{ facts.join(' · ') }}
       </p>
     </div>
     <div
       v-if="copyText || action"
-      class="-my-0.5 flex shrink-0 items-center gap-1"
+      class="flex shrink-0 items-center gap-1"
     >
       <Tooltip
         v-if="copyText"

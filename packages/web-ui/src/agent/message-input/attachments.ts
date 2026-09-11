@@ -189,14 +189,6 @@ export function attachmentCaption(item: ComposerAttachment): string {
   return `${destination} · ${item.name}`
 }
 
-/** The failed uploads, one line each, for the error under the composer; null when none failed. */
-export function attachmentFailureText(items: readonly ComposerAttachment[]): string | null {
-  const lines = items
-    .filter((item) => item.kind === 'file' && item.phase === 'failed')
-    .map((item) => `${item.name}: ${item.kind === 'file' && item.error ? item.error : 'Upload failed'}`)
-  return lines.length > 0 ? lines.join('\n') : null
-}
-
 export function encodeRemoteReference(host: string, path: string): string {
   const url = new URL('file:///')
   url.pathname = path.startsWith('/') ? path : `/${path}`

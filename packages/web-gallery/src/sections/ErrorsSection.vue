@@ -15,10 +15,10 @@ const { view } = useGalleryView()
  */
 const rules = [
   {
-    where: 'Anything in the conversation: a failed turn, an undelivered message, a lost connection, a refused edit',
+    where: 'In the conversation: a failed turn, an undelivered message, a lost connection',
     component: 'ErrorNotice',
-    form: 'A tinted bar in the transcript flow: sentence, upstream message, facts, Copy, and Retry where the failure is the tail.',
-    examples: 'Provider errors, send, fork, edit, uploads, reconnect failed, refused request',
+    form: 'A tinted bar in the transcript flow: sentence, upstream message, facts, Copy, and Retry where the failure is the tail. Never under the composer.',
+    examples: 'Provider errors, undelivered message, reconnect failed, refused request',
   },
   {
     where: 'The content of a region cannot be shown',
@@ -36,7 +36,7 @@ const rules = [
     where: 'The request itself failed, not the input',
     component: 'Toast',
     form: 'Through reportError: title, and a message only when it adds a fact. Never inline, never for success.',
-    examples: 'Save failed, sign out, revoke device, background refresh',
+    examples: 'Save failed, fork failed, edit refused, unreadable attachment, sign out, revoke device',
   },
 ]
 </script>

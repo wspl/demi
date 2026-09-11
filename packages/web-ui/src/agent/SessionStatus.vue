@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { MessageSquareDashed, MessageSquareOff } from '@lucide/vue'
 import { t } from '../infra/i18n'
 import RegionStatus from '../ui/RegionStatus.vue'
 import { sessionStatusCopy, type SessionStatusKind } from './session-status'
@@ -45,6 +46,7 @@ function act(): void {
     class="h-full min-h-0 flex-1"
     :busy="kind === 'loading'"
     :failed="kind === 'failed'"
+    :icon="kind === 'empty' ? MessageSquareDashed : kind === 'missing' ? MessageSquareOff : undefined"
     :label="copy.label"
     :detail="kind === 'failed' ? detail : null"
     :action="actionLabel"

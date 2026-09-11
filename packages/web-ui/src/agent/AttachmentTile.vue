@@ -47,8 +47,13 @@ const percentLabel = computed(() => Math.round(percent.value * 100))
     :aria-label="name"
     :aria-busy="phase === 'uploading' ? true : undefined"
   >
+    <!-- A failed tile shows only its Retry: the preview would show through the control. -->
+    <span
+      v-if="phase === 'failed'"
+      class="block size-12 rounded-lg bg-surface ring-1 ring-line"
+    />
     <img
-      v-if="src"
+      v-else-if="src"
       :src="src"
       :alt="name"
       class="size-12 rounded-lg object-cover ring-1 ring-line"
@@ -103,7 +108,7 @@ const percentLabel = computed(() => Math.round(percent.value * 100))
     <button
       v-if="phase === 'failed'"
       type="button"
-      class="absolute inset-0 m-auto flex size-7 items-center justify-center rounded-full bg-surface-raised text-on-danger ring-1 ring-line"
+      class="absolute inset-0 m-auto flex size-7 items-center justify-center rounded-full text-on-danger"
       :aria-label="`Retry upload ${name}`"
       @click.stop="emit('retry')"
     >

@@ -88,7 +88,7 @@ const readOnlySource: FileBrowserSource = {
         wide
         :variant="failure.label"
       >
-        <div class="h-[22rem] overflow-hidden rounded-xl border border-line">
+        <div class="flex h-[22rem] flex-col overflow-hidden rounded-xl border border-line">
           <FileBrowser :source="failingSource(failure)" mode="file" />
         </div>
       </GallerySpecimen>
@@ -97,7 +97,7 @@ const readOnlySource: FileBrowserSource = {
       title="Folder creation failure · the form's own line"
       note="Choose New folder and confirm a name. The source always rejects it, so the list stays and the line takes the status bar."
     >
-      <div class="h-[22rem] overflow-hidden rounded-xl border border-line">
+      <div class="flex h-[22rem] flex-col overflow-hidden rounded-xl border border-line">
         <FileBrowser :source="readOnlySource" mode="directory" />
       </div>
     </GallerySection>
