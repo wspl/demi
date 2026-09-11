@@ -6,7 +6,7 @@ import type { MessageEditState } from '../message-editing'
 
 function fixture() {
   const state = ref<MessageEditState | null>({
-    phase: 'editing', error: null,
+    phase: 'editing',
     request: {
       operationId: 'edit', targetBlockId: 'B', version: { epoch: 'epoch', revision: 1 },
       content: [

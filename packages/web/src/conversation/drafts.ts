@@ -7,7 +7,6 @@ import { displayedUserContentSchema } from '../api/transcript'
 const messageEditSchema: z.ZodType<MessageEditState> = z.object({
   phase: z.enum(['editing', 'sending', 'uncertain']),
   request: editRequestSchema.extend({ content: z.array(displayedUserContentSchema) }),
-  error: z.string().nullable(),
 })
 
 const modelSchema = z.object({

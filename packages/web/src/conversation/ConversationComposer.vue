@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import { reportError } from '@demicodes/web-ui/infra/errors'
 
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 
@@ -126,7 +127,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
     props.conversation.files,
   )
   if (error) {
-    store.notice = error
+    reportError("Couldn't attach", error, { userVisible: true, expected: true })
     return
   }
   props.conversation.files.push({

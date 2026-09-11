@@ -11,7 +11,7 @@ import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDia
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { showToast } from '@demicodes/web-ui/infra/toast'
+import { reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import { identitySchema } from '../api/contracts'
 import { useSession } from '../auth/session'
@@ -61,11 +61,7 @@ function report(title: string, error: unknown): void {
   if (lifetime.signal.aborted) {
     return
   }
-  showToast({
-    title,
-    message: error instanceof Error ? error.message : String(error),
-    tone: 'danger',
-  })
+  reportError(title, error, { userVisible: true })
 }
 
 const nameSave = ref<'idle' | 'saving' | 'saved'>('idle')
