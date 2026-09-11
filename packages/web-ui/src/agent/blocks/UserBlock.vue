@@ -10,14 +10,18 @@ import { t } from '@demicodes/web-ui/infra/i18n'
 import AttachmentTile from '../AttachmentTile.vue'
 import ContentMedia from '../ContentMedia.vue'
 import {
+  attachmentCaption,
   contentBlockCaption,
   decodeRemoteReference,
+  type ComposerAttachment,
 } from '../message-input/attachments'
 
 type ImageBlock = Extract<UserContentBlock, { type: 'image' }>
 
 const props = defineProps<{
   content: UserContentBlock[]
+  /** Files still on their way to the transcript (an unconfirmed message), shown among the media. */
+  attachments?: readonly ComposerAttachment[]
   forceStuck?: boolean
   variant?: 'user' | 'steer'
   pending?: boolean
@@ -201,10 +205,21 @@ useResizeObserver(contentRef, () => {
           imageBlocks.length > 0 ||
           videoBlocks.length > 0 ||
           documentBlocks.length > 0 ||
-          referenceBlocks.length > 0
+          referenceBlocks.length > 0 ||
+          (attachments && attachments.length > 0)
         "
         class="mb-2 flex flex-wrap gap-1.5"
       >
+        <Tooltip
+          v-for="item in attachments ?? []"
+          :key="item.id"
+          :content="attachmentCaption(item)"
+        >
+          <AttachmentTile
+            :name="item.name"
+            :src="item.kind === 'file' ? item.src : undefined"
+          />
+        </Tooltip>
         <Tooltip
           v-for="(block, i) in imageBlocks"
           :key="`img-${i}`"

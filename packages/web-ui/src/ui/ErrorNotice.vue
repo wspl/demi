@@ -61,9 +61,11 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
         {{ facts.join(' · ') }}
       </p>
     </div>
+    <!-- Two lines: the controls sit centred. Three (with facts): they hold the first line. -->
     <div
       v-if="copyText || action"
       class="flex shrink-0 items-center gap-1"
+      :class="facts.length > 0 ? '-mt-0.5 self-start' : ''"
     >
       <Tooltip
         v-if="copyText"
