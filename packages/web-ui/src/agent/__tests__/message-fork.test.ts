@@ -20,7 +20,8 @@ test('pending ignores double clicks, failure retries the same UUID and success p
     expect(forks.states.value.get('answer')?.phase).toBe('pending')
     release.resolve()
     await first
-    expect(forks.states.value.get('answer')).toMatchObject({ phase: 'failed', error: 'Lost confirmation' })
+    // A failed fork is a toast; nothing stays in the message's state.
+    expect(forks.states.value.size).toBe(0)
     fail = false
     await forks.run('answer')
     expect(requests[1]).toEqual(requests[0])
