@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { SerialQueue } from '@demicodes/utils'
 import { type ThinkingConfig, type UserContentBlock } from '@demicodes/core'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
-import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
+import { ConversationRuntime, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
 import { restoreMessageEdit, submitMessageEdit } from '@demicodes/web-ui/agent/message-editing'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { loadEditContent } from '../api/message-editing'
@@ -74,6 +74,11 @@ export const useConversations = defineStore('conversations', () => {
     if (!lifetime.signal.aborted) {
       reportError(title, error, { userVisible: true })
     }
+  }
+
+  // The product store tells a refresh failure itself, once per outage.
+  function refreshSnapshot(): Promise<void> {
+    return product.refresh().catch(() => {})
   }
 
   function storageError(error: unknown): void {
@@ -575,7 +580,7 @@ export const useConversations = defineStore('conversations', () => {
           applyConversationEvent(conversation, next)
           reconcileSubmission(conversation)
           if (next.type === 'phase' && next.phase === 'idle') {
-            void product.refresh().catch((error) => report('Could not refresh', error))
+            void refreshSnapshot()
           }
         },
       })
@@ -891,7 +896,7 @@ export const useConversations = defineStore('conversations', () => {
         signal.throwIfAborted()
         return patch(id, { title })
       })
-      .catch((error) => report('Could not fork the conversation', error))
+      .catch((error) => report('Could not rename the conversation', error))
   }
 
   async function reorder(id: string, beforeId: string | null): Promise<void> {
@@ -1225,7 +1230,14 @@ export const useConversations = defineStore('conversations', () => {
     conversation: Conversation,
     operation: (runtime: ConversationRuntime) => Promise<void>,
   ): void {
-    void runtimeFor(conversation).then(operation).catch((error) => report('The conversation did not respond', error))
+    void runtimeFor(conversation)
+      .then(operation)
+      .catch((error) => {
+        // A turn that ran and failed is already a record in the transcript.
+        if (!isRecordedTurnFailure(error)) {
+          report('The conversation did not accept the request', error)
+        }
+      })
   }
 
   function stopAll(): void {
@@ -1248,7 +1260,7 @@ export const useConversations = defineStore('conversations', () => {
     reorder,
     rename,
     markRead,
-    reloadList: () => product.refresh().catch((error) => report('Could not refresh', error)),
+    reloadList: refreshSnapshot,
     reloadSession,
     pin: (ids: string[], pinned: boolean) => batch(ids, { pinned }),
     archive: (ids: string[], archived = true) => batch(ids, { archived }),

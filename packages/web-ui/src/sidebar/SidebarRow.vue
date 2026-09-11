@@ -42,6 +42,21 @@ const emit = defineEmits<{
 
 const renameInputRef = ref<HTMLInputElement>()
 const renameValue = ref(props.conversation.title)
+// Enter submits and the input then loses focus; the blur must not submit again.
+let renameSettled = false
+
+function submitRename(): void {
+  if (renameSettled) {
+    return
+  }
+  renameSettled = true
+  emit('renameSubmit', renameValue.value)
+}
+
+function cancelRename(): void {
+  renameSettled = true
+  emit('renameCancel')
+}
 
 watch(
   () => props.renaming,
@@ -49,6 +64,7 @@ watch(
     if (!renaming) {
       return
     }
+    renameSettled = false
     renameValue.value = props.conversation.title
     nextTick(() => {
       renameInputRef.value?.focus()
@@ -136,10 +152,10 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
       ref="renameInputRef"
       v-model="renameValue"
       class="min-w-0 flex-1 bg-transparent font-normal outline-none"
-      @keydown.enter.stop="emit('renameSubmit', renameValue)"
-      @keydown.escape.stop="emit('renameCancel')"
+      @keydown.enter.stop="submitRename"
+      @keydown.escape.stop="cancelRename"
       @keydown.stop
-      @blur="emit('renameSubmit', renameValue)"
+      @blur="submitRename"
       @click.stop
     />
     <!-- The title has the row until hover; then it yields the end to the actions and, if cut, plays.

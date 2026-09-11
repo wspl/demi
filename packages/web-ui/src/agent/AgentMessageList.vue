@@ -63,7 +63,14 @@ const emit = defineEmits<{
 
 const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => props.conversationId)
 
-const visibleTranscriptBlocks = computed(() => getVisibleBlocks(props.blocks))
+const visibleTranscriptBlocks = computed(() => {
+  const visible = getVisibleBlocks(props.blocks)
+  // A retry hides the record it retries: the tail row shows the turn running instead.
+  if (props.phase !== 'idle' && visible.at(-1)?.type === 'error') {
+    visible.pop()
+  }
+  return visible
+})
 const editableUserId = computed(() => lastEditableUserMessageId(props.blocks))
 const renderBlocks = computed<MessageListBlock[]>(() => [
   ...visibleTranscriptBlocks.value,

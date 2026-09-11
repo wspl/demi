@@ -79,27 +79,25 @@ export const useProduct = defineStore('product', () => {
         refreshFailed = false
       })
     } catch (cause) {
-      if (
-        controller === current &&
-        !current.signal.aborted &&
-        !snapshot.value
-      ) {
-        load.value = 'failed'
+      if (controller === current && !current.signal.aborted) {
+        if (!snapshot.value) {
+          load.value = 'failed'
+        } else if (!refreshFailed) {
+          refreshFailed = true
+          reportError('Could not refresh', cause, { userVisible: true })
+        }
       }
       throw cause
     }
   }
 
   async function revalidate(): Promise<void> {
-    const current = controller
     try {
       await refresh()
       await loadModels()
-    } catch (cause) {
-      if (!current || current.signal.aborted || controller !== current) {
-        return
-      }
-      reportError('Could not refresh', cause, { userVisible: true })
+    } catch {
+      // refresh tells its own failure once per outage; a model catalog
+      // failure is the composer's state.
     }
   }
 
@@ -194,16 +192,8 @@ export const useProduct = defineStore('product', () => {
     try {
       await refresh()
       await loadModels()
-    } catch (cause) {
-      if (current.signal.aborted) {
-        return
-      }
-      if (!snapshot.value) {
-        load.value = 'failed'
-      } else if (!refreshFailed) {
-        refreshFailed = true
-        reportError('Could not refresh', cause, { userVisible: true })
-      }
+    } catch {
+      // refresh and loadModels record their own failures.
     } finally {
       if (controller === current && !current.signal.aborted) {
         clearTimer()
