@@ -8,8 +8,7 @@ import Popover from '@demicodes/web-ui/ui/Popover.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { IN_DEVELOPMENT } from '@demicodes/web-ui/ui/disabled'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import Button from '@demicodes/web-ui/ui/Button.vue'
-import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
+import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import { t } from '@demicodes/web-ui/infra/i18n'
 import type {
   ListLoad,
@@ -367,20 +366,15 @@ function selectProjectConversations(project: SidebarProject): void {
       @click.capture="drag.click"
 
     >
-      <div
-        v-if="listStatus === 'loading'"
-        class="flex h-full min-h-40 items-center justify-center text-fg-subtle"
-      >
-        <IndeterminateSpinner :size="16" />
-      </div>
-      <div
-        v-else-if="listStatus === 'failed'"
-        class="flex h-full min-h-40 flex-col items-center justify-center gap-2 px-3 text-center"
-        role="alert"
-      >
-        <span class="text-chrome text-fg-muted">{{ t('agent.session.listFailed') }}</span>
-        <Button size="sm" @click="emit('retryList')">{{ t('agent.session.retry') }}</Button>
-      </div>
+      <RegionStatus
+        v-if="listStatus === 'loading' || listStatus === 'failed'"
+        class="h-full min-h-40"
+        :busy="listStatus === 'loading'"
+        :failed="listStatus === 'failed'"
+        :label="listStatus === 'loading' ? t('agent.session.loadingList') : t('agent.session.listFailed')"
+        :action="listStatus === 'failed' ? t('agent.session.retry') : undefined"
+        @action="emit('retryList')"
+      />
       <!-- Rows sit a hairline apart, the way menu items and the entries above do. -->
       <TransitionGroup
         v-else

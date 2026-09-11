@@ -19,6 +19,9 @@ import type { MessageForkHandler } from './message-fork'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { t } from '../infra/i18n'
+import { sessionFailureNotice } from './session-status'
+import { getVisibleBlocks } from './visible-blocks'
 import type { ConversationState } from './types'
 import type { ConversationStatus } from './conversation-status'
 import type { SubagentRecord } from './subagents'
@@ -65,6 +68,18 @@ const emit = defineEmits<{
   saveScroll: [id: string, state: PersistedScrollState | null]
 }>()
 const surface = ref<{ dockHeight: number }>()
+// The dock names a session-level failure once: never beside the status pane
+// that already replaced the transcript, never under an error record whose
+// dock chip already offers Retry.
+const failureNotice = computed(() => {
+  const visible = getVisibleBlocks(props.conversation.blocks)
+  return sessionFailureNotice(
+    props.conversation.load,
+    props.conversation.lastError,
+    visible.length > 0,
+    visible.at(-1)?.type === 'error',
+  )
+})
 const canEdit = computed(() => !!props.editVersion && !props.messageEdit
   && !props.pendingSubmission
   && !props.conversation.archived
@@ -136,6 +151,7 @@ watch(() => props.conversation.id, close)
             :pending-steers="conversation.pendingSteers"
             :phase="conversation.phase"
             :load="conversation.load"
+            :load-error="conversation.lastError"
             :pending-submission="pendingSubmission"
             :read-only="!canEdit"
             :fork="fork"
@@ -157,15 +173,20 @@ watch(() => props.conversation.id, close)
             :show-scroll-to-bottom="!!list && !list.isAtBottom"
             @scroll-to-bottom="list?.scrollToBottom()"
           >
-            <template #chips>
+            <template v-if="failureNotice" #notice>
               <SessionNoticeBar
-                v-if="conversation.lastError"
-                :label="conversation.lastError"
+                tone="danger"
+                :label="failureNotice.label"
+                :action="failureNotice.retry ? t('agent.session.retry') : undefined"
+                @action="emit('retryLoad')"
               />
+            </template>
+            <template #chips>
               <SessionDockChip
                 v-if="
                   !messageEdit && !conversation.archived &&
                   hasProvider &&
+                  conversation.load !== 'failed' &&
                   (conversation.status === 'error' ||
                     conversation.status === 'aborted')
                 "
