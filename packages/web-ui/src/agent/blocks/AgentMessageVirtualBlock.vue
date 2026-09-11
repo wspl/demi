@@ -115,7 +115,7 @@ const attrs = useAttrs()
     </div>
     <div
       v-else-if="block.type === 'error'"
-      class="px-[var(--agent-pad-x,2rem)]"
+      class="px-[var(--agent-pad-x,2rem)] py-1.5"
     >
       <ErrorBlock
         :message="block.message"

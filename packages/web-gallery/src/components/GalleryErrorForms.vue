@@ -11,11 +11,8 @@ import ProviderLoginDialog, {
   type ProviderLoginPhase,
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
-import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
-import CloudSettings from '@demicodes/web-ui/cloud/CloudSettings.vue'
-import type { CloudState } from '@demicodes/web-ui/cloud/types'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { createGalleryFileHosts } from '../fixtures/files'
@@ -26,8 +23,8 @@ import GallerySpecimen from './GallerySpecimen.vue'
 
 /**
  * Every form failure, pinned on its failed phase. A form shows only what the
- * reader can correct here; a request that failed for another reason is a
- * toast, so the settings pages carry no inline "could not save".
+ * reader can correct here; a request that failed for another reason (a save,
+ * a reset) is a toast, so the settings pages carry nothing inline.
  *
  * The dialogs are shown in flow and stay open; Cancel and Close do nothing
  * here because the point is the failed state, not the flow around it.
@@ -57,14 +54,6 @@ const providerLogin: ProviderLoginPhase = {
 const pairing: PairingPhase = {
   kind: 'code',
   error: 'This code is unavailable. Keep the runner open and paste its latest code.',
-}
-const name = ref('Unsaved display name')
-const cloud: CloudState = {
-  state: 'running',
-  phase: 'failed',
-  error: 'The last reset failed; your home files remain saved.',
-  systemBytes: 10 * 1024 ** 3,
-  homeBytes: 20 * 1024 ** 3,
 }
 const hosts = createGalleryFileHosts()
 </script>
@@ -172,34 +161,6 @@ const hosts = createGalleryFileHosts()
               error="The provider rejected this model id. Check the id against the provider's catalog."
             />
           </GalleryDialogFrame>
-        </GallerySpecimen>
-      </div>
-    </GallerySection>
-    <GallerySection
-      title="Settings pages"
-      note="A save that failed keeps the edited value and says so in one word beside it; the product toasts the reason. A persistent condition is part of the row's description."
-    >
-      <div class="grid items-start gap-6 xl:grid-cols-2">
-        <GallerySpecimen wide variant="Display name · not saved">
-          <div class="@container rounded-xl border border-line bg-surface px-8 py-8">
-            <SettingsAccount
-              v-model:name="name"
-              name-save="failed"
-              email="preview@example.test"
-              :email-phase="{ kind: 'form', currentEmail: 'preview@example.test' }"
-              :password-phase="{ kind: 'form' }"
-              :overlay-store="appOverlayStore"
-            />
-          </div>
-        </GallerySpecimen>
-        <GallerySpecimen wide variant="Cloud · last reset failed">
-          <div class="@container rounded-xl border border-line bg-surface px-8 py-8">
-            <CloudSettings
-              :cloud="cloud"
-              :reset-error="cloud.error"
-              :overlay-store="appOverlayStore"
-            />
-          </div>
         </GallerySpecimen>
       </div>
     </GallerySection>
