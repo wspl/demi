@@ -15,10 +15,10 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * ChatSession over a fixed state, so what the reader sees here is what the
  * product shows for that state; nothing here toggles.
  *
- * The rule the specimens demonstrate: a failure is named once.
+ * The rule the specimens demonstrate: a failure is named once, in flow.
  * - No history to keep: the status pane replaces the transcript (Retry lives there).
- * - History in memory: the transcript stays; the dock notice names the failure (Retry lives there).
- * - The failure is a transcript record: only the dock chip offers Retry; no bar repeats it.
+ * - History in memory: the transcript stays; an ErrorNotice at its tail names the failure (Retry lives there).
+ * - The failure is a transcript record: the record itself carries Retry; the dock adds nothing.
  */
 interface SessionCase {
   variant: string
@@ -54,7 +54,7 @@ const SOCKET_ERROR = 'Agent socket failed to connect: ECONNREFUSED 127.0.0.1:189
 const cases: SessionCase[] = [
   {
     variant: 'Initial load failed · nothing to keep',
-    note: 'The status pane replaces the transcript and carries the reason and Retry. The dock shows no bar and no composer.',
+    note: 'The status pane replaces the transcript and carries the reason and Retry. Nothing else says it; there is no composer.',
     session: state('initial', { load: 'failed', lastError: SOCKET_ERROR }),
     composer: 'none',
   },
@@ -69,7 +69,7 @@ const cases: SessionCase[] = [
   },
   {
     variant: 'Reconnect failed · history in memory',
-    note: 'The transcript stays readable. The dock notice names the failure with Retry; the composer waits until the session is back.',
+    note: 'The transcript stays readable. The notice at its tail names the failure with Retry; the composer waits until the session is back.',
     session: state('reconnect-failed', {
       load: 'failed',
       lastError: SOCKET_ERROR,
@@ -79,7 +79,7 @@ const cases: SessionCase[] = [
   },
   {
     variant: 'Generation failed · error record',
-    note: 'The record at the tail carries the message, the diagnostics and Copy. The dock offers Retry as a chip; no bar repeats the message.',
+    note: 'The record at the tail carries the message, the diagnostics, Copy and Retry. The dock adds nothing.',
     session: state('generation', {
       status: 'error',
       lastError: 'Anthropic API request failed with HTTP 529: Overloaded.',
@@ -89,7 +89,7 @@ const cases: SessionCase[] = [
   },
   {
     variant: 'Request refused · no record',
-    note: 'The server refused a request without writing a record. The dock notice says so; Retry stays a chip because it resumes the turn.',
+    note: 'The server refused a request without writing a record. A notice at the tail says so; there is nothing to retry.',
     session: state('refused', {
       status: 'error',
       lastError: 'The request was refused: another view holds this conversation.',
@@ -119,7 +119,7 @@ const cases: SessionCase[] = [
   <div class="space-y-8">
     <GallerySection
       title="Session failures"
-      note="The product's ChatSession over fixed states. A failure is named exactly once: in the status pane when there is nothing to keep, in the dock notice when history stays on screen, or in the transcript record when the turn itself failed."
+      note="The product's ChatSession over fixed states. A failure is named exactly once, in flow: in the status pane when there is nothing to keep, at the transcript's tail when history stays on screen, or in the transcript record when the turn itself failed."
     >
       <div class="grid gap-6 xl:grid-cols-2">
         <GallerySpecimen

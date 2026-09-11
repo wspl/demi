@@ -21,7 +21,6 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
-import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import Meter from '@demicodes/web-ui/ui/Meter.vue'
@@ -70,7 +69,6 @@ const props = defineProps<{
   modelLoad?: 'loading' | 'ready' | 'failed'
   overlayStore: OverlayStore
   /** The provider whose connection test is running. */
-  saveErrors?: Record<string, string>
   operations?: Record<string, SettingsProviderOperation>
   testing?: string | null
   /** The provider whose model list is being fetched. */
@@ -78,7 +76,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  retrySave: [provider: SettingsProviderEntry]
   retry: []
   retryVendors: []
   change: [
@@ -625,23 +622,6 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
               </template>
             </SettingsGroup>
 
-            <InlineError
-              v-if="
-                modelEditor?.providerId === selected.id &&
-                modelEditor.status.kind === 'failed' &&
-                !modelEditor.open
-              "
-              :message="modelEditor.status.message"
-              action="Review model"
-              @action="modelEditor.open = true"
-            />
-            <InlineError
-              v-if="saveErrors?.[selected.id]"
-              :message="saveErrors[selected.id]!"
-              action="Retry save"
-              :action-pending="operations?.[selected.id]?.kind === 'saving'"
-              @action="emit('retrySave', selected)"
-            />
             <!-- Models. A subscription's list is whatever the vendor serves, so its only control is a
                refresh; a vendor key chooses between the catalog and a manual list; a bare endpoint
                only has the manual list. -->

@@ -9,10 +9,10 @@ import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 
 /**
- * The file browser's failures, pinned. A directory that cannot be read is a
- * region failure: the list is replaced by the RegionStatus-style pane with an
- * icon per kind. A folder that cannot be created is an action failure: the
- * list stays, InlineError takes the status bar.
+ * The file browser's failures, pinned, each at the browser's full width. A
+ * directory that cannot be read is a region failure: the list is replaced by
+ * a pane with an icon per kind. A folder that cannot be created is the form's
+ * own failure: the list stays and the line takes the status bar.
  */
 const failures: {
   kind: FileBrowserFailure['kind']
@@ -82,22 +82,20 @@ const readOnlySource: FileBrowserSource = {
       title="Directory read failures · region"
       note="The list is replaced by a pane with an icon per kind, the sentence for that kind and the source's own message under it."
     >
-      <div class="grid gap-6 lg:grid-cols-2">
-        <GallerySpecimen
-          v-for="failure in failures"
-          :key="failure.kind"
-          wide
-          :variant="failure.label"
-        >
-          <div class="h-[22rem] overflow-hidden rounded-xl border border-line">
-            <FileBrowser :source="failingSource(failure)" mode="file" />
-          </div>
-        </GallerySpecimen>
-      </div>
+      <GallerySpecimen
+        v-for="failure in failures"
+        :key="failure.kind"
+        wide
+        :variant="failure.label"
+      >
+        <div class="h-[22rem] overflow-hidden rounded-xl border border-line">
+          <FileBrowser :source="failingSource(failure)" mode="file" />
+        </div>
+      </GallerySpecimen>
     </GallerySection>
     <GallerySection
-      title="Folder creation failure · action"
-      note="Choose New folder and confirm a name. The source always rejects it, so the list stays and InlineError takes the status bar."
+      title="Folder creation failure · the form's own line"
+      note="Choose New folder and confirm a name. The source always rejects it, so the list stays and the line takes the status bar."
     >
       <div class="h-[22rem] overflow-hidden rounded-xl border border-line">
         <FileBrowser :source="readOnlySource" mode="directory" />

@@ -66,7 +66,11 @@ function reset() {
   <SettingsGroup title="Cloud">
     <SettingsRow
       label="Your Cloud environment"
-      :description="`${label} · All your Cloud projects share this machine.`"
+      :description="
+        cloud.error
+          ? `${label} · ${cloud.error}`
+          : `${label} · All your Cloud projects share this machine.`
+      "
     >
       <Button
         size="sm"
@@ -79,7 +83,6 @@ function reset() {
       label="Storage limits"
       :description="`System: ${Math.round(cloud.systemBytes / 1024 ** 3)} GiB · Home: ${Math.round(cloud.homeBytes / 1024 ** 3)} GiB`"
     />
-    <InlineError v-if="cloud.error" class="px-4 pb-3" :message="cloud.error" />
     <Dialog
       :is-open="open"
       :overlay-store="overlayStore"
