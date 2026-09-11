@@ -9,6 +9,7 @@ import AttachmentTile from './AttachmentTile.vue'
 import {
   attachmentsReady,
   attachmentCaption,
+  attachmentFailureText,
   attachmentSendBlockReason,
   type ComposerAttachment,
   decodeRemoteReference,
@@ -123,6 +124,10 @@ const sendBlockReason = computed(() => {
   }
   return props.messageEdit ? undefined : attachmentSendBlockReason(props.attachments)
 })
+// Each failed tile keeps its Retry; the reasons read together under the input.
+const uploadFailure = computed(() =>
+  props.messageEdit ? null : attachmentFailureText(props.attachments),
+)
 const expanded = computed(
   () =>
     props.messageEdit
@@ -404,8 +409,16 @@ function addFiles(files: File[]): void {
           />
         </template>
       </ComposerShell>
-      <InlineError v-if="messageEdit?.error || edit.attachmentError.value"
-        class="mt-2" :message="messageEdit?.error ?? edit.attachmentError.value ?? ''" />
+      <InlineError
+        v-if="messageEdit?.error || edit.attachmentError.value"
+        class="mt-2"
+        :message="messageEdit?.error ?? edit.attachmentError.value ?? ''"
+      />
+      <InlineError
+        v-else-if="uploadFailure"
+        class="mt-2"
+        :message="uploadFailure"
+      />
     </div>
   </Transition>
 </template>

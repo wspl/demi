@@ -79,12 +79,7 @@ function reset() {
       label="Storage limits"
       :description="`System: ${Math.round(cloud.systemBytes / 1024 ** 3)} GiB · Home: ${Math.round(cloud.homeBytes / 1024 ** 3)} GiB`"
     />
-    <p
-      v-if="cloud.error"
-      class="px-4 pb-3 text-[13px] text-fg-muted"
-    >
-      {{ cloud.error }}
-    </p>
+    <InlineError v-if="cloud.error" class="px-4 pb-3" :message="cloud.error" />
     <Dialog
       :is-open="open"
       :overlay-store="overlayStore"
