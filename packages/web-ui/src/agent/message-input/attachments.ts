@@ -4,7 +4,8 @@ import { delay } from '@demicodes/utils'
 import { t } from '../../infra/i18n'
 
 export type AttachmentDestination = 'message' | 'workspace'
-export type AttachmentPhase = 'staged' | 'uploading' | 'ready' | 'failed'
+/** An upload that fails leaves the composer with a toast; there is no failed phase to show. */
+export type AttachmentPhase = 'staged' | 'uploading' | 'ready'
 
 /** A local file: one phase, and whether it goes to the model or the working directory. */
 export interface ComposerFileAttachment {
@@ -14,7 +15,6 @@ export interface ComposerFileAttachment {
   src?: string
   destination: AttachmentDestination
   phase: AttachmentPhase
-  error?: string
   /** 0–1 while `phase` is `uploading`. */
   progress?: number
 }
@@ -133,7 +133,6 @@ export function composerAttachment(
     src: input.src,
     destination: input.destination ?? 'workspace',
     phase: input.phase ?? 'ready',
-    error: input.error,
     progress: input.progress,
   }
 }
@@ -175,9 +174,6 @@ export function attachmentCaption(item: ComposerAttachment): string {
   }
   if (item.kind === 'reference') {
     return `${item.host} · ${item.path}`
-  }
-  if (item.phase === 'failed') {
-    return `${item.error ?? 'Upload failed'} · ${item.name}`
   }
   if (item.phase === 'uploading') {
     return `${t('agent.input.attachmentUploading')} ${Math.round(attachmentProgress(item) * 100)}% · ${item.name}`

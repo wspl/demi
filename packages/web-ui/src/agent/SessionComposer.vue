@@ -76,7 +76,6 @@ const emit = defineEmits<{
   /** Open the host's file browser; the caller attaches what it returns. */
   attachRemote: []
   removeAttachment: [id: string]
-  retryAttachment: [id: string]
   selectModel: [providerId: string, modelId: string]
   changeThinking: [config: ThinkingConfig]
   changeServiceTier: [id: string | null]
@@ -259,7 +258,6 @@ function addFiles(files: File[]): void {
                 :progress="item.kind === 'file' ? item.progress : undefined"
                 removable
                 @remove="emit('removeAttachment', item.id)"
-                @retry="emit('retryAttachment', item.id)"
               />
             </Tooltip>
           </template>

@@ -113,10 +113,6 @@ function submit() {
   }
 }
 
-function retryAttachment(id: string): void {
-  uploads.startPrototype(id, (update) => applyUpdate(id, update), remove)
-}
-
 function addFiles(files: File[]) {
   for (const file of files) {
     if (attachmentFileError(file, composerFileNames(attached.value))) {
@@ -177,7 +173,6 @@ defineExpose({
     @add-files="addFiles"
     @attach-remote="remotePicker?.open()"
     @remove-attachment="remove"
-    @retry-attachment="retryAttachment"
     @select-model="selectModel"
     @change-thinking="thinking = $event"
     @change-service-tier="tier = $event"
