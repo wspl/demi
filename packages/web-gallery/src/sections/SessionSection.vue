@@ -35,7 +35,7 @@ import { firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
 import type { Block, ThinkingConfig, UserContentBlock } from '@demicodes/core'
 import type { PendingSteerRenderBlock } from '@demicodes/web-ui/agent/pending-steers'
 import { queuedMessagesToRenderBlocks } from '@demicodes/web-ui/agent/queued-messages'
-import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
+import { composerAttachment, encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import ActivitySlot from '../components/ActivitySlot.vue'
@@ -1064,7 +1064,7 @@ function abortAgents() {
               <PendingSubmission
                 id="pending-example"
                 text="Review the attached notes."
-                :file-names="['notes.txt']"
+                :attachments="[composerAttachment({ name: 'notes.txt', phase: 'ready' })]"
                 :sending="submissionError === null"
                 :error="submissionError"
                 @retry="submissionError = null"
