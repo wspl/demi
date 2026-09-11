@@ -84,9 +84,7 @@ function abortAgents(): void {
             conversation-id="shared-product-session"
             :archived="session.archived"
             @restore="session.archived = false"
-            :attachments="[
-              { name: 'retry-example.png', phase: 'failed', error: 'Upload failed' },
-            ]"
+            :attachments="[{ name: 'ready-example.png', phase: 'ready' }]"
         /></template>
       </ChatSession>
     </SidebarLayout>

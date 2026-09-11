@@ -172,7 +172,6 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @add-files="addFiles"
       @attach-remote="remotePicker?.open()"
       @remove-attachment="removeFile"
-      @retry-attachment="store.retryFile(conversation, $event)"
       @select-model="selectModel"
       @change-thinking="store.setThinking(conversation, $event)"
       @change-service-tier="store.setTier(conversation, $event)"

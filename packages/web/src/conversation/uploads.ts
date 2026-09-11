@@ -21,7 +21,6 @@ export function createConversationUploads(
   ): Promise<void> {
     if (conversation.persistence !== 'synced' && item.destination === 'workspace') {
       item.phase = 'staged'
-      item.error = undefined
       item.progress = undefined
       onChange()
       return
@@ -30,7 +29,6 @@ export function createConversationUploads(
     uploads.get(item.id)?.abort()
     uploads.set(item.id, controller)
     item.phase = 'uploading'
-    item.error = undefined
     item.progress = 0
     const contextVersion = conversation.contextVersion
     try {
@@ -76,10 +74,9 @@ export function createConversationUploads(
       item.progress = undefined
       onChange()
     } catch (error) {
+      // A failed upload leaves the composer; the caller toasts the reason.
       if (!controller.signal.aborted) {
-        item.phase = 'failed'
-        item.progress = undefined
-        item.error = error instanceof Error ? error.message : String(error)
+        removeFile(conversation, item.id)
         throw error
       }
     } finally {
@@ -115,13 +112,6 @@ export function createConversationUploads(
     }
   }
 
-  function retryFile(conversation: Conversation, id: string): void {
-    const item = conversation.files.find((file) => file.id === id)
-    if (item && isComposerFile(item) && item.phase === 'failed') {
-      void uploadFile(conversation, item).catch(onError)
-    }
-  }
-
   function removeFile(conversation: Conversation, id: string): void {
     uploads.get(id)?.abort()
     uploads.delete(id)
@@ -149,7 +139,6 @@ export function createConversationUploads(
   return {
     uploadFile,
     addFiles,
-    retryFile,
     removeFile,
     dispose,
   }

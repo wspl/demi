@@ -59,7 +59,7 @@ export const useConversations = defineStore('conversations', () => {
   const writes = new SerialQueue()
   const restored = new Set<string>()
   const uploads = createConversationUploads(saveDrafts, report)
-  const { uploadFile, addFiles, retryFile, removeFile } = uploads
+  const { uploadFile, addFiles, removeFile } = uploads
   let lifetime = new AbortController()
   const cache = new ConversationCache()
   let storageErrorReported = false
@@ -1134,10 +1134,7 @@ export const useConversations = defineStore('conversations', () => {
     try {
       await persistConversation(conversation)
       for (const file of files) {
-        if (
-          isComposerFile(file) &&
-          (file.phase === 'staged' || file.phase === 'failed')
-        ) {
+        if (isComposerFile(file) && file.phase === 'staged') {
           await uploadFile(conversation, file)
         }
       }
@@ -1298,7 +1295,6 @@ export const useConversations = defineStore('conversations', () => {
     }),
     addFiles,
     removeFile,
-    retryFile,
     saveDrafts,
     initialize,
     stopAll,

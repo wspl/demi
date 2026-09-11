@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RotateCcw, X } from '@lucide/vue'
+import { X } from '@lucide/vue'
 import { t } from '../infra/i18n'
 import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from '../files/FileIcon.vue'
@@ -21,7 +21,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   remove: []
-  retry: []
 }>()
 
 const SIZE = 22
@@ -47,13 +46,8 @@ const percentLabel = computed(() => Math.round(percent.value * 100))
     :aria-label="name"
     :aria-busy="phase === 'uploading' ? true : undefined"
   >
-    <!-- A failed tile shows only its Retry: the preview would show through the control. -->
-    <span
-      v-if="phase === 'failed'"
-      class="block size-12 rounded-lg bg-surface ring-1 ring-line"
-    />
     <img
-      v-else-if="src"
+      v-if="src"
       :src="src"
       :alt="name"
       class="size-12 rounded-lg object-cover ring-1 ring-line"
@@ -105,15 +99,6 @@ const percentLabel = computed(() => Math.round(percent.value * 100))
         class="text-fg-muted transition-[stroke-dashoffset] duration-75 ease-linear"
       />
     </svg>
-    <button
-      v-if="phase === 'failed'"
-      type="button"
-      class="absolute inset-0 m-auto flex size-7 items-center justify-center rounded-full text-on-danger"
-      :aria-label="`Retry upload ${name}`"
-      @click.stop="emit('retry')"
-    >
-      <RotateCcw :size="16" />
-    </button>
     <button
       v-if="removable"
       type="button"
