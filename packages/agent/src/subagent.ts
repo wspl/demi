@@ -9,7 +9,8 @@ import {
   type Host,
   type HostStore,
 } from '@demicodes/shell'
-import type { Block, UserContentBlock } from '@demicodes/core'
+import type { AgentProvider, ProviderSelection } from '@demicodes/provider'
+import type { Block, ModelSelection, UserContentBlock } from '@demicodes/core'
 import { AgentSession } from './session'
 import type { ServerFrame, SubagentJob, TranscriptPatch } from './frames'
 import type {
@@ -222,6 +223,7 @@ export interface ChildSupervisorOptions<State> {
   shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   prepareShell: PrepareShell | null
   sessionOptions: AgentServerSessionOptions
+  createRuntime(selection: ProviderSelection): Promise<AgentProvider>
   /** When false, a child closing never wakes an idle parent; the host app orchestrates the wakeup from the `subagent closed` frame. */
   notifyParentOnIdle: boolean
   /** Backing store for child checkpoints and job metadata. */
@@ -570,9 +572,8 @@ export class ChildSupervisor<State = unknown> {
       if (this.jobs.has(id)) continue
       try {
         await this.restoreJob(id)
-      } catch {
-        // A half-written or profile-orphaned child cannot be rebuilt; drop its remains.
-        await this.deletePersistedJob(id)
+      } catch (error) {
+        this.options.emit({ type: 'error', message: `Failed to restore subagent "${id}": ${errorMessage(error)}` })
       }
     }
   }
@@ -584,7 +585,8 @@ export class ChildSupervisor<State = unknown> {
     if (meta?.closedPhase) return
     const checkpoint = await this.childSessionStore(id).loadCheckpoint()
     if (!meta || !checkpoint) throw new Error('incomplete persisted subagent')
-    const job = this.reassembleJob(id, meta, checkpoint)
+    const provider = await this.createChildProvider(checkpoint.model)
+    const job = this.reassembleJob(id, meta, checkpoint, provider)
     // A live persisted job is by definition unfinished (closeJob archives it),
     // so always resume: findResumePoint decides how far to unwind, exactly like
     // an interrupted parent session. A child that had already produced its final
@@ -595,7 +597,12 @@ export class ChildSupervisor<State = unknown> {
   }
 
   /** Shared by restore and resume: rebuild a persisted child's job and session from its checkpoint. */
-  private reassembleJob(id: string, meta: PersistedSubagentJob, checkpoint: AgentSessionCheckpoint<State>): ChildJob<State> {
+  private reassembleJob(
+    id: string,
+    meta: PersistedSubagentJob,
+    checkpoint: AgentSessionCheckpoint<State>,
+    provider: AgentProvider,
+  ): ChildJob<State> {
     const parent = this.parentSession
     if (!parent) throw new Error('subagent supervisor has no owner session')
     const profile = this.resolveProfile(meta.profileName ?? undefined)
@@ -609,7 +616,7 @@ export class ChildSupervisor<State = unknown> {
       canSpawnSubagents: meta.canSpawnSubagents !== false,
     })
     const session = AgentSession.fromCheckpoint<State>(
-      { provider: parent.cloneProviderRuntime(), runtime, checkpoint },
+      { provider, runtime, checkpoint },
       { agentSessionId: id, store: this.childSessionStore(id), ...this.options.sessionOptions },
     )
     this.attachSession(job, session)
@@ -644,8 +651,9 @@ export class ChildSupervisor<State = unknown> {
       spawnedAt: Date.now(),
       ...(meta.canSpawnSubagents === false ? { canSpawnSubagents: false } : {}),
     }
+    const provider = await this.createChildProvider(checkpoint.model)
     await this.options.store.writeJson(this.childStoreKey(id, 'job.json'), liveMeta)
-    const job = this.reassembleJob(id, liveMeta, checkpoint)
+    const job = this.reassembleJob(id, liveMeta, checkpoint, provider)
     this.trackTurn(job, job.session.send([{ type: 'text', text: message }], liveMeta.metadata ? { metadata: liveMeta.metadata } : {}))
     void this.settleJob(job)
     return job
@@ -691,8 +699,10 @@ export class ChildSupervisor<State = unknown> {
       throw new Error(`at most ${this.options.maxLiveSubagents} running subagents per session; abort one or wait for a result`)
     }
     const profile = this.resolveProfile(input.profileName)
-    const id = createId()
+    const model = structuredClone(profile.model ?? parent.modelSelection)
     const metadata = parent.actionMetadata()
+    const provider = await this.createChildProvider(model)
+    const id = createId()
     const profileName = input.profileName ?? null
     const spawnedAt = Date.now()
     const canSpawnSubagents = !input.isSpawnForbidden && profile.canSpawnSubagents !== false
@@ -715,8 +725,8 @@ export class ChildSupervisor<State = unknown> {
     })
     const session = new AgentSession<State>(
       {
-        provider: parent.cloneProviderRuntime(),
-        model: profile.model ?? structuredClone(parent.modelSelection),
+        provider,
+        model,
         cwd: this.options.cwd,
         runtime,
         state: this.options.agent.initialState(),
@@ -727,6 +737,19 @@ export class ChildSupervisor<State = unknown> {
     this.trackTurn(job, session.send([{ type: 'text', text: input.prompt }], metadata ? { metadata } : {}))
     void this.settleJob(job)
     return job
+  }
+
+  private async createChildProvider(model: ModelSelection): Promise<AgentProvider> {
+    const parent = this.parentSession
+    if (!parent || this.isDisposed) throw new Error('owner session is closing')
+    const provider = model.providerId === parent.modelSelection.providerId
+      ? parent.cloneProviderRuntime()
+      : await this.options.createRuntime({ providerId: model.providerId, model })
+    if (this.isDisposed) {
+      await provider.dispose?.()
+      throw new Error('owner session is closing')
+    }
+    return provider
   }
 
   /**
@@ -855,11 +878,6 @@ export class ChildSupervisor<State = unknown> {
       saveCheckpoint: (checkpoint) => this.options.store.writeJson(this.childStoreKey(childId, 'checkpoint.json'), checkpoint),
       loadCheckpoint: () => this.options.store.readJson(this.childStoreKey(childId, 'checkpoint.json')),
     }
-  }
-
-  private async deletePersistedJob(id: string): Promise<void> {
-    await this.options.store.delete(this.childStoreKey(id, 'checkpoint.json')).catch(noop)
-    await this.options.store.delete(this.childStoreKey(id, 'job.json')).catch(noop)
   }
 
   /** Shared spawn/resume foreground behaviour: announce the id, wire abort and stdin steers, wait for close, report the outcome. */

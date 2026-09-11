@@ -481,6 +481,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       shellOptions: this.shellOptions,
       prepareShell: this.prepareShell,
       sessionOptions: this.sessionOptions,
+      createRuntime: (selection) => this.createRuntime(selection),
       notifyParentOnIdle: this.notifyParentOnIdle,
       store: provisionalHost.store,
       storePrefix: `agent-sessions/${agentSessionId}`,

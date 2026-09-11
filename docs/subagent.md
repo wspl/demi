@@ -308,7 +308,7 @@ interface SubagentProfile {
   readonly?: boolean
   /** When false, children of this profile cannot spawn subagents (communication and reads remain). */
   canSpawnSubagents?: boolean
-  /** Same provider runtime as the parent (`provider.clone()`), optional model override. */
+  /** Optional model override from any provider registered on AgentServer. */
   model?: ModelSelection
 }
 
@@ -329,10 +329,14 @@ restriction (`--no-subagents` / `canSpawnSubagents: false`), which removes
 spawn, `abort`, and `resume` — communication and reads always remain. The
 restriction persists across restore and resume with the child.
 
-The assembler owns provider instances. A profile may pin a `ModelSelection` at
-init. The running command cannot pick a provider. Profiles apply to a
-session's own children; a subagent spawning grandchildren resolves names
-against the same harness profile list.
+The assembler owns provider instances. A profile may pin a `ModelSelection` from
+any provider registered on `AgentServer`. A child using its parent's provider
+gets an independent `provider.clone()`; a different `model.providerId` creates
+an independent runtime through that registered provider's factory. An unavailable
+provider fails explicitly, without falling back to the parent's runtime.
+Profiles apply to a session's own children; grandchildren resolve names against
+the same harness profile list and inherit their immediate parent's model when
+no model override is selected.
 
 ## Child identity
 
@@ -404,6 +408,10 @@ agent-sessions/<root>/subagents/<a>/subagents/<b>/
 Reopening a session restores and resumes its live children, which restore
 theirs — a tree restore. An interrupted child turn resumes from its resume
 point; a child that was already quiescent closes through the normal path.
+Restore and archived resume select the runtime from the child's checkpoint
+model, even when the parent or profile configuration changes. Provider creation
+failure leaves the archive intact; restore errors are reported on the connection
+and retain the persisted child for a later reopen.
 
 A closed child moves to the **archive**: its transcript checkpoint stays on
 store, marked with the closed phase. Archived children are listed by
@@ -422,7 +430,7 @@ result at exit).
 session owns a supervisor for its direct children; the connection owns the
 agent directory:
 
-- `provider.clone()`, empty transcript, checkpoint under the parent's session
+- independent model-matched provider runtime, empty transcript, checkpoint under the parent's session
   directory (not listed by `listConversations`)
 - inherit spawner cwd and the current action's `metadata` (Host routing)
 - at most `maxLiveSubagents` running children per session — an `AgentServer`
@@ -563,7 +571,9 @@ blocks are for nested UI (cards, inspect), not a second user-facing reply.
   spawn restriction (`--no-subagents` and profile `canSpawnSubagents: false`)
   with communication intact,
   `resume` on the preserved transcript, list tree rendering
-  with self marker, parent close detaches (not aborts) live children
+  with self marker, parent close detaches (not aborts) live children,
+  cross-provider spawn and nested inheritance, checkpoint provider routing on
+  restore and archived resume, and provider failure without fallback or data loss
 - `packages/shell/src/__tests__/foreground-command.test.ts` — registered command abort
   signal, live stdout, `shell_write` as stdin stream, byte-clean pipes around
   a virtual foreground job
