@@ -2,10 +2,10 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { waitFor } from '@demicodes/utils'
+import { waitFor, type PortableJsonValue } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import { LocalHost } from '@demicodes/host-local'
-import { defineProvider, type InferenceRequest, type ProviderSelection } from '@demicodes/provider'
+import { defineProvider, type InferenceRequest, type Provider, type ProviderSelection } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {
   AgentServer,
@@ -38,6 +38,7 @@ const selection: ProviderSelection = { providerId: 'stub', model }
 
 async function openHarness(options: {
   turns: TurnScript[]
+  providers?: Provider[]
   agents?: SubagentProfile<Record<string, never>>[]
   notifyParentOnIdle?: boolean
   maxLiveSubagents?: number
@@ -65,7 +66,10 @@ async function openHarness(options: {
   }
   const server = new AgentServer({
     agent: harness,
-    providers: [defineProvider({ id: 'stub', displayName: 'stub', createRuntime: () => new StubProvider(options.turns) })],
+    providers: [
+      defineProvider({ id: 'stub', displayName: 'stub', createRuntime: () => new StubProvider(options.turns) }),
+      ...(options.providers ?? []),
+    ],
     shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
     ...(options.notifyParentOnIdle === undefined && options.maxLiveSubagents === undefined
       ? {}
@@ -1086,4 +1090,161 @@ test('the ceiling is configurable per server via subagents.maxLiveSubagents', as
 
   expect(limitText).toContain('at most 1 running subagents')
   await client.close()
+})
+
+
+test('a cross-provider profile routes child and inherited grandchild requests to independent target runtimes', async () => {
+  const targetModel: ModelSelection = { ...model, providerId: 'other', thinking: { type: 'effort', effort: 'max', summary: null } }
+  const created: ProviderSelection[] = []
+  const requests: InferenceRequest[] = []
+  let parentResult = ''
+  const capture: TurnScript = (request) => {
+    requests.push(request)
+    return [events.text('target result'), events.response()]
+  }
+  const { client, seen } = await openHarness({
+    agents: [{ name: 'remote', description: 'Other provider', model: targetModel }],
+    providers: [defineProvider({
+      id: 'other', displayName: 'Other',
+      createRuntime: async (selection) => {
+        created.push(selection)
+        return new StubProvider([
+          (request) => {
+            requests.push(request)
+            return [spawnCall('nested', "demi agent 'nested task'", 5_000)]
+          },
+          capture,
+          capture,
+        ])
+      },
+    })],
+    turns: [
+      [spawnCall('spawn', "demi agent 'child task' --profile remote", 5_000)],
+      (request) => {
+        parentResult = itemsText(request)
+        return [events.text('parent done'), events.response()]
+      },
+    ],
+  })
+  try {
+    await client.send([{ type: 'text', text: 'go' }])
+    await waitFor(() => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'))
+    expect(created).toEqual([{ providerId: 'other', model: targetModel }])
+    expect(requests.map((request) => request.thinking)).toEqual(Array(3).fill(targetModel.thinking))
+    expect(requests.map((request) => request.modelId)).toEqual(Array(3).fill(targetModel.model.id))
+    expect(new Set(requests.map((request) => request.sessionId)).size).toBe(2)
+    expect(parentResult).toContain('target result')
+    expect(seen.filter((event) => event.type === 'subagent' && event.event === 'closed')).toHaveLength(2)
+  } finally {
+    await client.close()
+  }
+})
+
+
+test.each(['live', 'archived'] as const)('a %s child restores its checkpoint provider even after its profile model changes', async (kind) => {
+  const targetModel: ModelSelection = { ...model, providerId: 'other', model: { ...model.model, id: 'target-model' } }
+  const profile = { name: 'remote', description: 'Other provider', model: targetModel }
+  const first = await openHarness({
+    notifyParentOnIdle: false,
+    agents: [profile],
+    providers: [defineProvider({ id: 'other', displayName: 'Other', createRuntime: () => new StubProvider([
+      kind === 'live'
+        ? [spawnCall('hold', 'sleep 5', 10_000)]
+        : [events.text('saved result'), events.response()],
+    ]) })],
+    turns: [
+      [spawnCall('spawn', "demi agent 'saved task' --profile remote", kind === 'live' ? 50 : 5_000)],
+      [events.text('parent idle'), events.response()],
+    ],
+  })
+  await first.client.send([{ type: 'text', text: 'go' }])
+  await waitFor(() => first.client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent idle'))
+  const start = first.seen.find((event) => event.type === 'subagent' && event.event === 'started')
+  if (start?.type !== 'subagent') throw new Error('missing child')
+  const childId = start.job.subagentId
+  await first.client.close()
+
+  const store = new LocalHost(first.root).store
+  const jobKey = `agent-sessions/${first.sessionId}/subagents/${childId}/job.json`
+  const checkpointKey = `agent-sessions/${first.sessionId}/subagents/${childId}/checkpoint.json`
+  const savedJob = await store.readJson<PortableJsonValue>(jobKey)
+  const savedCheckpoint = await store.readJson<PortableJsonValue>(checkpointKey)
+  const failed = await openHarness({
+    root: first.root, sessionId: first.sessionId,
+    notifyParentOnIdle: false,
+    agents: [profile],
+    providers: [defineProvider({ id: 'other', displayName: 'Other', createRuntime: async () => {
+      throw new Error('Target provider unavailable')
+    } })],
+    turns: [
+      [spawnCall('resume', `demi agent resume ${childId} 'continue'`, 5_000)],
+      [events.text('failure observed'), events.response()],
+    ],
+  })
+  try {
+    if (kind === 'archived') {
+      await failed.client.send([{ type: 'text', text: 'resume' }])
+      await waitFor(() => failed.client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'failure observed'))
+    } else {
+      await waitFor(() => failed.seen.some((event) => event.type === 'error' && event.message.includes('Target provider unavailable')))
+    }
+    expect(failed.seen.filter((event) => event.type === 'subagent')).toHaveLength(0)
+    expect(await store.readJson<PortableJsonValue>(jobKey)).toEqual(savedJob)
+    expect(await store.readJson<PortableJsonValue>(checkpointKey)).toEqual(savedCheckpoint)
+  } finally {
+    await failed.client.close()
+  }
+
+  const created: ProviderSelection[] = []
+  const requests: InferenceRequest[] = []
+  const second = await openHarness({
+    root: first.root, sessionId: first.sessionId,
+    notifyParentOnIdle: false,
+    agents: [{ ...profile, model }],
+    providers: [defineProvider({ id: 'other', displayName: 'Other', createRuntime: async (selection) => {
+      created.push(selection)
+      return new StubProvider([(request) => {
+        requests.push(request)
+        return [events.text('recovered result'), events.response()]
+      }])
+    } })],
+    turns: [
+      [spawnCall('resume', `demi agent resume ${childId} 'continue'`, 5_000)],
+      [events.text('parent done'), events.response()],
+    ],
+  })
+  try {
+    if (kind === 'archived') await second.client.send([{ type: 'text', text: 'resume' }])
+    await waitFor(() => second.seen.some((event) => event.type === 'subagent' && event.event === 'closed'))
+    expect(created).toEqual([{ providerId: 'other', model: targetModel }])
+    expect(requests).toHaveLength(1)
+    expect(requests[0]!.modelId).toBe('target-model')
+    expect(requests[0]!.sessionId).toBe(childId)
+    expect(itemsText(requests[0]!)).toContain('saved task')
+    if (kind === 'archived') expect(itemsText(requests[0]!)).toContain('saved result')
+    const closed = second.seen.find((event) => event.type === 'subagent' && event.event === 'closed')
+    expect(closed?.type === 'subagent' ? closed.job.phase : null).toBe('completed')
+  } finally {
+    await second.client.close()
+  }
+})
+
+test('an unavailable profile provider fails spawn without falling back or persisting an orphan', async () => {
+  let output = ''
+  const { client, seen, root, sessionId } = await openHarness({
+    agents: [{ name: 'remote', description: 'Unavailable provider', model: { ...model, providerId: 'missing' } }],
+    turns: [
+      [spawnCall('spawn', "demi agent 'task' --profile remote", 5_000)],
+      (request) => { output = itemsText(request); return [events.text('parent done'), events.response()] },
+    ],
+  })
+  try {
+    await client.send([{ type: 'text', text: 'go' }])
+    await waitFor(() => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'))
+    expect(output).toContain('is not available')
+    expect(seen.filter((event) => event.type === 'subagent')).toHaveLength(0)
+    expect(await new LocalHost(root).store.list(`agent-sessions/${sessionId}/subagents/`)).toEqual([])
+  } finally {
+    await client.close()
+  }
 })

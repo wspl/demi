@@ -85,6 +85,7 @@ export interface SubagentProfile<State = unknown> {
   readonly?: boolean
   /** When false, the child cannot spawn subagents of its own (communication and reads remain). */
   canSpawnSubagents?: boolean
+  /** Selects a model from any provider registered on AgentServer; omitted inherits the parent. */
   model?: ModelSelection
 }
 
@@ -95,8 +96,8 @@ export interface AgentHarness<State = unknown> {
   host(ctx: AgentHarnessContext<State> | AgentHostContext<State>): Host | Promise<Host>
   commands?(ctx: AgentHarnessContext<State>): Promise<Command[]> | Command[]
   /**
-   * Named subagent profiles for `demi agent`. Omitted: one implicit profile
-   * named `default` that fully inherits the parent's setup.
+   * Named subagent profiles for `demi agent`. Omitting --profile always
+   * inherits the parent, independently of this list.
    */
   agents?(ctx: AgentHarnessContext<State>): Promise<SubagentProfile<State>[]> | SubagentProfile<State>[]
   systemPrompt(ctx: AgentSystemPromptContext<State>): Promise<string> | string

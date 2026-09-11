@@ -249,6 +249,7 @@ test('the injected demi agent command help teaches self-contained spawn prompts'
     shellOptions: {},
     prepareShell: null,
     sessionOptions: {},
+    createRuntime: async () => { throw new Error('No providers configured for help inspection') },
     notifyParentOnIdle: true,
     store: new LocalHost(process.cwd()).store,
     storePrefix: 'agent-sessions/help-probe',
