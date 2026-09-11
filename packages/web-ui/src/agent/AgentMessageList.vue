@@ -139,7 +139,8 @@ onBeforeUnmount(() => {
 
 const { isScrolling } = useScroll(scrollContainer, { idle: 1500 })
 
-// A taller dock (a Retry chip, a growing draft) covers the tail; a reader at the bottom stays there.
+// Composer or task-control growth covers the tail; a reader at the bottom stays there.
+// The floating scroll button does not contribute to bottomOffset.
 watch(
   () => props.bottomOffset,
   () => {
