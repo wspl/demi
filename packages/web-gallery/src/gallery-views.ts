@@ -113,18 +113,14 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
       value: 'settings',
       label: 'Settings',
     },
-    {
-      value: 'account',
-      label: 'Account',
-    },
-    {
-      value: 'device',
-      label: 'Device',
-    },
-    {
-      value: 'signin',
-      label: 'Sign in',
-    },
+  ],
+  '/dialogs': [
+    { value: 'account', label: 'Account' },
+    { value: 'providers', label: 'Providers' },
+    { value: 'devices', label: 'Devices' },
+    { value: 'workspace', label: 'Workspace' },
+    { value: 'cloud', label: 'Cloud' },
+    { value: 'catalog', label: 'MCP & skills' },
   ],
   '/markdown': [
     {
