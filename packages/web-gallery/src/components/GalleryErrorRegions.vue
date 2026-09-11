@@ -27,7 +27,10 @@ const toasts = [
   { origin: 'settings/devices · revoke', title: 'Could not revoke device', message: 'HTTP 409: the device is still paired.' },
   { origin: 'state/preferences · save', title: 'Could not update settings', message: 'Failed to fetch' },
   { origin: 'conversation store · notice', title: 'This conversation is still running.' },
+  { origin: 'message fork · failed', title: 'Could not fork from this message', message: 'The server did not create the conversation.' },
+  { origin: 'message edit · refused', title: 'The edit was not accepted', message: 'The conversation changed after this message.' },
   { origin: 'composer · rejected drop', title: 'Unsupported attachment type', message: 'archive.tar.gz, notes.rtf' },
+  { origin: 'composer · edit attachment unreadable', title: "Couldn't attach", message: 'reference.png' },
 ]
 </script>
 
@@ -62,12 +65,6 @@ const toasts = [
       </GallerySpecimen>
       <GallerySpecimen wide variant="Request refused · nothing to retry">
         <ErrorNotice label="The request was refused: another view holds this conversation." />
-      </GallerySpecimen>
-      <GallerySpecimen wide variant="Several reasons · one per line">
-        <ErrorNotice
-          label="Some attachments did not upload. Retry each one on its tile."
-          :detail="'reference.png: Connection lost during upload.\nplan.pdf: The workspace is unavailable.'"
-        />
       </GallerySpecimen>
     </GallerySection>
     <GallerySection
@@ -173,7 +170,7 @@ const toasts = [
     </GallerySection>
     <GallerySection
       title="Toast · the request itself failed"
-      note="A save that did not reach the server, a revoke that was refused, a background refresh: the reader cannot fix these on the page, so the page shows nothing inline. Success is silent. Each toast is shown as the product raises it."
+      note="A save that did not reach the server, a fork or edit the server refused, a revoke, a background refresh: the reader cannot fix these on the page, so the page shows nothing inline. Success is silent. Each toast is shown as the product raises it."
     >
       <div class="grid items-start gap-6 lg:grid-cols-2">
         <GallerySpecimen
