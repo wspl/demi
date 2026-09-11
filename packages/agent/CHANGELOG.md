@@ -1,5 +1,15 @@
 # @demicodes/agent
 
+## 0.25.1
+
+### Patch Changes
+
+- 10ca19f: Route subagent profiles through their selected provider, including nested children and checkpoint restoration. Preserve persisted children when provider initialization fails.
+  - @demicodes/core@0.25.1
+  - @demicodes/provider@0.25.1
+  - @demicodes/shell@0.25.1
+  - @demicodes/utils@0.25.1
+
 ## 0.25.0
 
 ### Minor Changes
