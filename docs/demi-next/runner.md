@@ -39,8 +39,8 @@ configuration beyond what the connection needs.
    conversation names. Any existing directory is a valid workspace. Binary
    resolution is a device fact: a raw spawn naming no `PATH`/`HOME` resolves
    against the device's own, and a job runs in the device's environment.
-3. **Running commands.** A tool call becomes one job: real `bash -c` on this
-   machine with the conversation's cwd and env, the conversation and shell
+3. **Running commands.** A tool call becomes one job: a real login shell,
+   `bash -lc`, on this machine with the conversation's cwd and env, the conversation and shell
    ids in the environment, the bounded output view streamed to the backend,
    the full output teed to an output file here.
 4. **Dispatching root commands.** An owner-only local socket receives raw
@@ -183,7 +183,7 @@ Jobs — the agent's commands:
 
 | Direction | Message | Purpose |
 |---|---|---|
-| b → r | `job_start { jobId, script, cwd, env, stdin?, stdout? }` | run `bash -c script`; `env` carries the conversation and shell ids; `stdin` / `stdout` are pipes the job's fd 0 / fd 1 are attached to when another process's ends are on the far side (§ Pipes) |
+| b → r | `job_start { jobId, script, cwd, env, stdin?, stdout? }` | run `bash -lc script`; `env` carries the conversation and shell ids; `stdin` / `stdout` are pipes the job's fd 0 / fd 1 are attached to when another process's ends are on the far side (§ Pipes) |
 | r → b | `job_output { jobId, stream, bytes }` | live output while the job runs, up to the view budget per stream, then silence |
 | r → b | `job_running_hint { jobId, invocationId, hint }` | a registered leaf's model-facing guidance while that invocation is active; `hint: null` clears that invocation |
 | r → b | `job_exit { jobId, exitCode, signal?, cwd, output: { stdoutPath, stderrPath, stdoutBytes, stderrBytes, stdoutTail, stderrTail } }` | exit, the working directory the script ended in, where the full output lives on this machine, and the last bytes of each stream |
@@ -208,9 +208,13 @@ from which the request union, the reply union and the TS types derive.
 
 ## Jobs and the tee
 
-The job table is the runner's. A job is one `bash -c` process with the
-shell's cwd and env; a background job (`… &`) is the same with its handle
-kept after the tool call returns. The runner owns process groups, reaps
+The job table is the runner's. A job is one `bash -lc` process with the
+shell's cwd and env: a login shell, so `/etc/profile` and `~/.profile` are
+read and whatever an installer added to `PATH` in one command is there for
+the next, as in a person's terminal. The script's prelude then puts the
+root-command directory (`DEMI_JOB_PATH_PREFIX`) first in `PATH`, so `demi`
+and the root commands win over anything a profile put ahead of them. A background job (`… &`) is the same
+with its handle kept after the tool call returns. The runner owns process groups, reaps
 children, and reports the count of running jobs in every `pong`.
 
 **What carries from one job to the next** is the working directory and
@@ -356,7 +360,7 @@ A's model:   tar c . | demi host shell --host B "tar x -C /work"        (B's job
   rpc_call { stdin: true } ────►  P_in  minted  A → B
                                   P_out minted  B → A
   rpc_pipes ◄────────────────────  { stdin: P_in, stdout: P_out }
-                                  job_start { script, stdin: P_in, stdout: P_out } ────►  spawn bash -c script
+                                  job_start { script, stdin: P_in, stdout: P_out } ────►  spawn bash -lc script
   PUT P_in ══════════════════════► piped, held in flight only ═════════════════════════► GET P_in → fd 0
   GET P_out ◄═════════════════════ piped, held in flight only ◄═════════════════════════ PUT P_out ← fd 1
                                                                                           (teed to output/<job>/stdout.txt as well)
