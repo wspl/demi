@@ -759,7 +759,7 @@ function abortTerminal(id: string) {
     <template v-if="view === 'blocks'">
       <GallerySection
         title="Assistant message"
-        note="Fork completed messages while the source runs. Preview success, pending creation, and a retry after failure."
+        note="Intermediate updates have no copy, fork or timestamp toolbar. Final replies keep their toolbar, including while a later user request runs. Preview fork success, pending creation, and a retry after failure."
       >
         <GallerySpecimen variant="message footer" wide>
           <GalleryAssistantMessages />
