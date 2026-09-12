@@ -147,7 +147,7 @@ async function createFixture(
   const app = new Hono()
   app.route('/api/runner', runnerSocketRoutes({ registry, upgradeWebSocket }))
   app.route('/api/pipes', pipeRoutes({ control, broker: pipes }))
-  const server = Bun.serve({ port: 0, fetch: app.fetch, websocket })
+  const server = Bun.serve({ port: 0, idleTimeout: 0, fetch: app.fetch, websocket })
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-test-runner-'))
   let runner: Awaited<ReturnType<typeof startTxikiRunner>> | undefined
   const close = async () => {
