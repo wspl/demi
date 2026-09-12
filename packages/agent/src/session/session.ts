@@ -767,28 +767,29 @@ export class AgentSession<State> {
           throw new Error('Command storage is reserved for a transcript edit')
         }
       }
-      const updateJson = <T>(key: string, update: (current: T | null) => T): Promise<T> => {
+      const updateJson = <T>(key: string, update: (current: unknown) => T): Promise<T> => {
         commandStorageKeySchema.parse(key)
         return this.serializePersistence(async () => {
           check()
           const values = this.commandHistory.values()
-          const value = update(Object.hasOwn(values, key) ? values[key] as T : null)
+          const current = Object.hasOwn(values, key) ? values[key] : undefined
+          const value = structuredClone(update(current))
           const version = this.commandHistory.prepare({ ...values, [key]: value })
           if (version) {
             await this.writeCommandVersion(version, lifetime)
           }
-          return structuredClone(version ? version.values[key] : values[key]) as T
+          return value
         })
       }
       return {
         withSignal: (signal) => bind(AbortSignal.any([lifetime, signal])),
-        readJson: async <T>(key: string) => {
+        readJson: async (key: string) => {
           check()
           commandStorageKeySchema.parse(key)
           const values = this.commandHistory.values()
-          return Object.hasOwn(values, key) ? values[key] as T : null
+          return Object.hasOwn(values, key) ? values[key] : undefined
         },
-        writeJson: async <T>(key: string, value: T) => {
+        writeJson: async (key: string, value: unknown) => {
           const detached = structuredClone(value)
           await updateJson(key, () => detached)
         },

@@ -389,3 +389,18 @@ are unsupported in edits: both the browser encoder and server decoder reject
 them explicitly. Existing ordinary references remain ordinary references and are
 resolved by the harness during edit preparation. This keeps retries byte-stable;
 an edit retry does not create another host attachment path.
+
+### Command-owned persisted values
+
+`shell/command.ts` exposes decoded `unknown` through `CommandStorage.readJson`
+and the input of `updateJson`. An absent key yields `undefined`; a stored `null`
+remains `null`. The command validates its own shape before reading or mutating
+it. `coding-agent/todo-command.ts` accepts absence as an empty initial list and
+rejects malformed lists, including `null`, before any replacement is committed.
+
+`agent/session` detaches the update result before awaiting storage, validates
+portable values through `CommandStateHistory`, and returns the callback's typed
+result after committing. A rejected value leaves the revision and stored value
+unchanged. `backend/storage/command-state.ts` validates version and boundary
+relationships on restoration; control-plane JSON fields retain their named
+preference, target, fork and managed-operation schemas.

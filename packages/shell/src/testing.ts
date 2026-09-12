@@ -516,17 +516,17 @@ export function memoryCommandStorage(): CommandStorage {
   const values = new Map<string, unknown>()
   const bind = (signal?: AbortSignal): CommandStorage => ({
     withSignal: (next) => bind(signal ? AbortSignal.any([signal, next]) : next),
-    readJson: async <T>(key: string) => {
+    readJson: async (key: string) => {
       signal?.throwIfAborted()
-      return structuredClone(values.get(key) as T ?? null)
+      return structuredClone(values.get(key))
     },
     writeJson: async (key, value) => {
       signal?.throwIfAborted()
       values.set(key, structuredClone(value))
     },
-    updateJson: async <T>(key: string, update: (current: T | null) => T) => {
+    updateJson: async <T>(key: string, update: (current: unknown) => T) => {
       signal?.throwIfAborted()
-      const next = structuredClone(update(structuredClone(values.get(key) as T ?? null)))
+      const next = structuredClone(update(structuredClone(values.get(key))))
       values.set(key, next)
       return structuredClone(next)
     },

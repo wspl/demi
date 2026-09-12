@@ -69,8 +69,10 @@ export function testRoots(): Command[] {
               stdinField: 'text',
               output: { json: z.object({ count: z.number() }) },
               run: async ({ parsed, io, storage }) => {
-                const notes = ((await storage.readJson<string[]>('notes'))
-                  ?? []).concat(String(parsed.values.text))
+                const current = await storage.readJson('notes')
+                const notes = z.array(z.string()).parse(
+                  current === undefined ? [] : current,
+                ).concat(String(parsed.values.text))
                 await storage.writeJson('notes', notes)
                 await io.stdout(parsed.json ? JSON.stringify({
                   count: notes.length

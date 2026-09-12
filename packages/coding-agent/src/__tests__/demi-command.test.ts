@@ -491,9 +491,9 @@ async function createDemiEnvironment(): Promise<{
 
 const noopStorage: CommandStorage = {
   withSignal: () => noopStorage,
-  readJson: async () => null,
+  readJson: async () => undefined,
   writeJson: async () => {},
-  updateJson: async (_key, update) => update(null),
+  updateJson: async (_key, update) => update(undefined),
   delete: async () => {},
   list: async () => [],
 }
@@ -550,7 +550,7 @@ class FailingWriteHost implements Host {
 }
 
 class MemoryHostStore implements HostStore {
-  async readJson<T>(): Promise<T | null> {
+  async readJson(): Promise<unknown> {
     return null
   }
   async writeJson<T>(): Promise<void> {}

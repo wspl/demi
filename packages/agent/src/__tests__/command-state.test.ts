@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
+import { z } from 'zod'
 import { deferred } from '@demicodes/utils'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import type { AgentProvider } from '@demicodes/provider'
@@ -38,9 +39,11 @@ function fixture(options: {
 test('atomic concurrent mutations preserve all values, return detached data and skip unchanged maps', async () => {
   const { session, storage, store } = fixture()
   await Promise.all(Array.from({ length: 20 }, (_, index) =>
-    storage.updateJson<number[]>('items', (current) => [...current ?? [], index]),
+    storage.updateJson('items', (current) => [
+      ...z.array(z.number()).parse(current === undefined ? [] : current), index,
+    ]),
   ))
-  const items = (await storage.readJson<number[]>('items'))!
+  const items = z.array(z.number()).parse(await storage.readJson('items'))
   expect(items).toEqual(Array.from({ length: 20 }, (_, index) => index))
   items.push(99)
   expect(await storage.readJson('items')).toHaveLength(20)
@@ -77,7 +80,7 @@ test('assistant cutoffs select committed state and editing restores the target u
   await session.waitUntilDone()
   await expect(storage.writeJson('todos.json', ['stale job'])).rejects.toThrow()
   await expect(storage.withSignal(new AbortController().signal).writeJson('todos.json', ['stale RPC'])).rejects.toThrow()
-  expect(await session.commandStorage().readJson<string[]>('todos.json')).toEqual(['done'])
+  expect(await session.commandStorage().readJson('todos.json')).toEqual(['done'])
   await session.commandStorage().writeJson('todos.json', ['new history'])
   expect(session.commandState().revision).toBe(4)
   expect((await store.load())!.commandState).toEqual(session.commandState())
@@ -95,8 +98,8 @@ test('rejected edit preserves current command state and existing invocation hand
     operationId: 'rejected', targetBlockId: target.id,
     version: session.transcript().version(), content: text('replacement'),
   })).rejects.toThrow('restore failed')
-  await storage.updateJson<number>('value', (value) => value! + 1)
-  expect(await storage.readJson<number>('value')).toBe(2)
+  await storage.updateJson('value', (value) => z.number().parse(value) + 1)
+  expect(await storage.readJson('value')).toBe(2)
 })
 
 test('assistant completion is ordered after an already admitted state commit', async () => {
@@ -168,7 +171,7 @@ test('a failed or cancelled commit leaves the old head and releases subsequent m
   await storage.writeJson('value', 1)
   fail = true
   await expect(storage.writeJson('value', 2)).rejects.toThrow('disk failed')
-  expect(await storage.readJson<number>('value')).toBe(1)
+  expect(await storage.readJson('value')).toBe(1)
   fail = false
   pause = true
   const controller = new AbortController()
@@ -181,7 +184,7 @@ test('a failed or cancelled commit leaves the old head and releases subsequent m
   pause = false
   await storage.writeJson('value', 4)
   expect(session.commandState().revision).toBe(2)
-  expect(await storage.readJson<number>('value')).toBe(4)
+  expect(await storage.readJson('value')).toBe(4)
 })
 
 test('disposal invalidates pending and future operations from a job', async () => {
@@ -189,7 +192,7 @@ test('disposal invalidates pending and future operations from a job', async () =
   await storage.writeJson('value', 1)
   await session.dispose()
   await expect(storage.writeJson('value', 2)).rejects.toThrow()
-  await expect(session.commandStorage().readJson<number>('value')).rejects.toThrow()
+  await expect(session.commandStorage().readJson('value')).rejects.toThrow()
   expect(session.commandState().revision).toBe(1)
 })
 
@@ -205,4 +208,20 @@ test('storage validates values and references without repairing missing history'
     ...session.commandState(),
     boundaries: [{ blockId: 'missing', edge: 'after_assistant', commandRevision: 100 }],
   })).toThrow()
+})
+
+test('command reads distinguish an absent key from stored null without trusting a caller type', async () => {
+  const { storage, session } = fixture()
+  expect(await storage.readJson('todos')).toBeUndefined()
+  expect(await storage.readJson('toString')).toBeUndefined()
+  await storage.writeJson('todos', null)
+  expect(await storage.readJson('todos')).toBeNull()
+  const revision = session.commandState().revision
+  await expect(storage.updateJson('todos', (current) =>
+    z.array(z.string()).parse(current),
+  )).rejects.toThrow()
+  expect(await storage.readJson('todos')).toBeNull()
+  expect(session.commandState().revision).toBe(revision)
+  await storage.delete('todos')
+  expect(await storage.readJson('todos')).toBeUndefined()
 })

@@ -95,12 +95,15 @@ referenced by retained history.
 ## Mutation API and concurrency
 
 The shell-level `CommandStorage` contract keeps `readJson`, `writeJson`, `delete`
-and `list`, and gains an atomic single-key update:
+and `list`, plus an atomic single-key update. Reads and mutation callbacks
+receive decoded `unknown`; `undefined` means an absent key, while a stored
+`null` remains a value. The command owns its value schema and validates before
+using the current value. A typed callback result determines the update result:
 
 ```ts
 updateJson<T>(
   key: string,
-  update: (current: T | null) => T,
+  update: (current: unknown) => T,
 ): Promise<T>
 ```
 

@@ -56,7 +56,7 @@ export function createTodoCommand(): CommandGroup {
         kind: 'rpc',
         run: async ({ parsed, io, storage }) => {
           const todos = await storage.updateJson<TodoItem[]>(TODO_STORAGE_KEY, (current) => {
-            const items = TodoListSchema.parse(current ?? [])
+            const items = TodoListSchema.parse(current === undefined ? [] : current)
             return [...items, {
               id: nextTodoId(items),
               text: String(parsed.values.text),
@@ -119,7 +119,8 @@ export function createTodoCommand(): CommandGroup {
 }
 
 async function readTodos(storage: CommandStorage): Promise<TodoItem[]> {
-  return TodoListSchema.parse((await storage.readJson(TODO_STORAGE_KEY)) ?? [])
+  const value = await storage.readJson(TODO_STORAGE_KEY)
+  return TodoListSchema.parse(value === undefined ? [] : value)
 }
 
 async function updateTodo(
@@ -128,7 +129,7 @@ async function updateTodo(
   patch: Partial<Pick<TodoItem, 'text' | 'status'>>,
 ): Promise<TodoItem> {
   const todos = await storage.updateJson<TodoItem[]>(TODO_STORAGE_KEY, (current) => {
-    const items = TodoListSchema.parse(current ?? [])
+    const items = TodoListSchema.parse(current === undefined ? [] : current)
     if (!items.some((todo) => todo.id === id)) {
       throw new Error(`Todo not found: ${id}`)
     }
