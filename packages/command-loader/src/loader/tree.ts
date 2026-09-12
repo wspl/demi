@@ -1,6 +1,7 @@
 import { withoutUndefined } from '@demicodes/utils'
 import {
   runtimeModule,
+  validateCommandTree,
   type Command,
   type CommandInputSpec,
   type CommandLeaf
@@ -25,14 +26,16 @@ export function treeFromManifest(
   manifest: Manifest,
   rpc: RpcTransport | undefined
 ): Command[] {
-  return Object.entries(manifest.roots).map(
-    ([root, { tree }]) => commandFromNode(
+  return Object.entries(manifest.roots).map(([root, { tree }]) => {
+    const command = commandFromNode(
       root,
       tree,
       manifest.modules,
       rpc
     )
-  )
+    validateCommandTree(command, root)
+    return command
+  })
 }
 
 function commandFromNode(

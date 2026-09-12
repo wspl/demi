@@ -138,7 +138,10 @@ function shellCommand(deps: HostCommandDeps, conversationId: string): Command {
     summary:
     'Run a shell string in another host\'s bash: `demi host shell --host <name|id> <script>`. The script starts where the last shell on that host ended (its home before one ran) with this command\'s stdin and stdout, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci "tar c -C /work ." | tar x`, `tar c . | demi host shell --host ci "tar x -C /work"`). stderr and the exit code pass through.',
     failureOutput: 'writes the reason to stderr and exits non-zero (127 when the host cannot run bash)',
-    input: { host: z.string(), script: z.string() },
+    input: {
+      host: z.string().describe('Host name or device id from demi host list'),
+      script: z.string().describe('One quoted shell script argument; stdin is streamed to the remote program, not read as script text'),
+    },
     positionals: ['script'],
     kind: 'rpc',
     run: async (ctx) => {
@@ -175,7 +178,7 @@ function currentCommand(
 ): Command {
   return {
     name: 'current',
-    summary: 'The main host: where the `bash` tool runs.',
+    summary: 'The main host: where shell_exec runs.',
     kind: 'rpc',
     run: async ({ io }) => {
       const conversation = await deps.control.getConversation(conversationId)

@@ -154,7 +154,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'Summarize the config file layout' --description sum",
+          "demi agent spawn <<< 'Summarize the config file layout' --description sum",
           5_000
         )],
         (request) => {
@@ -223,7 +223,7 @@ test(
   async () => {
     const { client, seen } = await openHarness({
       turns: [
-        [spawnCall('t1', "demi agent spawn 'silent task'", 5_000)],
+        [spawnCall('t1', "demi agent spawn <<< 'silent task'", 5_000)],
         [events.response()],
         [events.text('parent done'), events.response()],
       ],
@@ -258,7 +258,7 @@ test(
     let continuationText = ''
     const { client, seen } = await openHarness({
       turns: [
-        [spawnCall('t1', "demi agent spawn ''", 5_000)],
+        [spawnCall('t1', "demi agent spawn <<< ''", 5_000)],
         (request) => {
           continuationText = itemsText(request)
           return [events.text('parent done'), events.response()]
@@ -286,14 +286,14 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'outer task' --description outer",
+          "demi agent spawn <<< 'outer task' --description outer",
           10_000
         )],
         [events.toolCall(
           'c1',
           'shell_exec',
           {
-            script: "demi agent spawn 'inner task' --description inner",
+            script: "demi agent spawn <<< 'inner task' --description inner",
             timeoutMs: 10_000
           }
         )],
@@ -358,14 +358,14 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'outer task' --description outer",
+          "demi agent spawn <<< 'outer task' --description outer",
           10_000
         )],
         [events.toolCall(
           'c1',
           'shell_exec',
           {
-            script: "demi agent spawn 'inner task' --description inner",
+            script: "demi agent spawn <<< 'inner task' --description inner",
             timeoutMs: 50
           }
         )],
@@ -418,14 +418,14 @@ test('aborting a child tears its whole subtree down', async () => {
     turns: [
       [spawnCall(
         't1',
-        "demi agent spawn 'outer task' --description outer",
+        "demi agent spawn <<< 'outer task' --description outer",
         50
       )],
       [events.toolCall(
         'c1',
         'shell_exec',
         {
-          script: "demi agent spawn 'inner task' --description inner",
+          script: "demi agent spawn <<< 'inner task' --description inner",
           timeoutMs: 10_000
         }
       )],
@@ -470,7 +470,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'slow task' --description slow",
+          "demi agent spawn <<< 'slow task' --description slow",
           50
         )],
         [events.toolCall(
@@ -484,7 +484,7 @@ test(
             't2',
             'shell_exec',
             {
-              script: `demi agent steer ${id} 'course correction'`,
+              script: `demi agent steer ${id} <<< 'course correction'`,
               timeoutMs: 5_000
             }
           )]
@@ -521,7 +521,7 @@ test(
     let secondTurnRequest: InferenceRequest | null = null
     const { client, seen, sessionId } = await openHarness({
       turns: [
-        [spawnCall('t1', "demi agent spawn 'bg task' --description bg", 50)],
+        [spawnCall('t1', "demi agent spawn <<< 'bg task' --description bg", 50)],
         [events.toolCall(
           'c1',
           'shell_exec',
@@ -533,7 +533,7 @@ test(
             't2',
             'shell_exec',
             {
-              script: `demi agent send ${id} 'extra instruction'`,
+              script: `demi agent send ${id} <<< 'extra instruction'`,
               timeoutMs: 5_000
             }
           )]
@@ -589,7 +589,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'report home' --description rep",
+          "demi agent spawn <<< 'report home' --description rep",
           50
         )],
         [events.toolCall(
@@ -601,7 +601,7 @@ test(
         [events.toolCall(
           'c2',
           'shell_exec',
-          { script: "demi agent steer parent 'ping'", timeoutMs: 5_000 }
+          { script: "demi agent steer parent <<< 'ping'", timeoutMs: 5_000 }
         )],
         (request) => {
           steerFailureText = itemsText(request)
@@ -609,7 +609,7 @@ test(
             'c3',
             'shell_exec',
             {
-              script: "demi agent send parent 'ping via mail'",
+              script: "demi agent send parent <<< 'ping via mail'",
               timeoutMs: 5_000
             }
           )]
@@ -645,7 +645,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'hold the fort' --description holder",
+          "demi agent spawn <<< 'hold the fort' --description holder",
           50
         )],
         [events.toolCall(
@@ -657,7 +657,7 @@ test(
           const holderId = subagentIdFrom(request)
           return [spawnCall(
             't2',
-            `demi agent spawn 'message agent ${holderId} then finish' --description messenger`,
+            `demi agent spawn <<< 'message agent ${holderId} then finish' --description messenger`,
             10_000
           )]
         },
@@ -674,7 +674,7 @@ test(
               'b2',
               'shell_exec',
               {
-                script: `demi agent send ${targetId} 'hello sibling'`,
+                script: `demi agent send ${targetId} <<< 'hello sibling'`,
                 timeoutMs: 5_000
               }
             ),
@@ -722,7 +722,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'quick task' --description q",
+          "demi agent spawn <<< 'quick task' --description q",
           5_000
         )],
         [events.text('done already'), events.response()],
@@ -731,7 +731,7 @@ test(
           return [events.toolCall(
             't2',
             'shell_exec',
-            { script: `demi agent send ${id} 'too late'`, timeoutMs: 5_000 }
+            { script: `demi agent send ${id} <<< 'too late'`, timeoutMs: 5_000 }
           )]
         },
         (request) => {
@@ -774,13 +774,13 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'restricted task' --no-subagents --description r",
+          "demi agent spawn <<< 'restricted task' --no-subagents --description r",
           10_000
         )],
         [events.toolCall(
           'n1',
           'shell_exec',
-          { script: "demi agent spawn 'nested task'", timeoutMs: 5_000 }
+          { script: "demi agent spawn <<< 'nested task'", timeoutMs: 5_000 }
         )],
         (request) => {
           nestedFailText = itemsText(request)
@@ -828,13 +828,13 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'leaf task' --profile worker",
+          "demi agent spawn <<< 'leaf task' --profile worker",
           10_000
         )],
         [events.toolCall(
           'n1',
           'shell_exec',
-          { script: "demi agent spawn 'nested task'", timeoutMs: 5_000 }
+          { script: "demi agent spawn <<< 'nested task'", timeoutMs: 5_000 }
         )],
         (request) => {
           nestedFailText = itemsText(request)
@@ -867,7 +867,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'long background task' --description bg",
+          "demi agent spawn <<< 'long background task' --description bg",
           50
         )],
         [events.toolCall(
@@ -907,7 +907,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'long background task' --description bg",
+          "demi agent spawn <<< 'long background task' --description bg",
           50
         )],
         [events.toolCall(
@@ -945,7 +945,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'long background task' --description bg",
+          "demi agent spawn <<< 'long background task' --description bg",
           50
         )],
         [events.toolCall(
@@ -986,7 +986,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'stuck task' --description stuck",
+          "demi agent spawn <<< 'stuck task' --description stuck",
           50
         )],
         [events.toolCall(
@@ -1029,7 +1029,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'stuck task' --description stuck",
+          "demi agent spawn <<< 'stuck task' --description stuck",
           50
         )],
         [events.toolCall(
@@ -1077,7 +1077,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'inspect me' --description insp",
+          "demi agent spawn <<< 'inspect me' --description insp",
           50
         )],
         [events.toolCall(
@@ -1155,7 +1155,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'map the repo' --profile explore",
+          "demi agent spawn <<< 'map the repo' --profile explore",
           5_000
         )],
         (request) => {
@@ -1165,7 +1165,7 @@ test(
         [events.toolCall(
           't2',
           'shell_exec',
-          { script: "demi agent spawn 'x' --profile nope", timeoutMs: 5_000 }
+          { script: "demi agent spawn <<< 'x' --profile nope", timeoutMs: 5_000 }
         )],
         (request) => {
           failureText = itemsText(request)
@@ -1208,7 +1208,7 @@ test(
           yield events.response()
         })()
       }
-      return [spawnCall('t1', "demi agent spawn 'undying task' --description bg", 50)]
+      return [spawnCall('t1', "demi agent spawn <<< 'undying task' --description bg", 50)]
     }
     const first = await openHarness({
       // Starting a native runner can outlast the shell preview timeout. Route
@@ -1301,7 +1301,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'first task' --description arc",
+          "demi agent spawn <<< 'first task' --description arc",
           5_000
         )],
         [events.text('first result'), events.response()],
@@ -1313,7 +1313,7 @@ test(
           listText = itemsText(request)
           return [spawnCall(
             't3',
-            `demi agent resume ${childId} 'continue the task'`,
+            `demi agent resume ${childId} <<< 'continue the task'`,
             5_000
           )]
         },
@@ -1364,7 +1364,7 @@ test(
   async () => {
     const first = await openHarness({
       turns: [
-        [spawnCall('t1', "demi agent spawn 'finish fast'", 5_000)],
+        [spawnCall('t1', "demi agent spawn <<< 'finish fast'", 5_000)],
         [events.text('done already'), events.response()],
         [events.text('parent idle'), events.response()],
       ],
@@ -1421,7 +1421,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'finish fast' --profile old",
+          "demi agent spawn <<< 'finish fast' --profile old",
           5_000
         )],
         [events.text('done already'), events.response()],
@@ -1450,7 +1450,7 @@ test(
       store: first.store,
       agents: [{ name: 'new', description: 'replacement profile' }],
       turns: [
-        [spawnCall('t2', `demi agent resume ${childId} 'again'`, 5_000)],
+        [spawnCall('t2', `demi agent resume ${childId} <<< 'again'`, 5_000)],
         (request) => {
           resumeText = itemsText(request)
           return [spawnCall('t3', 'demi agent list', 5_000)]
@@ -1487,14 +1487,14 @@ test(
     const { client } = await openHarness({
       agents: [{ name: 'worker', description: 'declared profile' }],
       turns: [
-        [spawnCall('t1', "demi agent spawn 'inherit me'", 5_000)],
+        [spawnCall('t1', "demi agent spawn <<< 'inherit me'", 5_000)],
         [events.text('child done'), events.response()],
         [spawnCall('t2', 'demi agent list', 5_000)],
         (request) => {
           listText = itemsText(request)
           return [spawnCall(
             't3',
-            "demi agent spawn 'nope' --profile default",
+            "demi agent spawn <<< 'nope' --profile default",
             5_000
           )]
         },
@@ -1533,7 +1533,7 @@ test(
     const spawns = Array.from({ length: MAX_LIVE_SUBAGENTS }, (_, index) =>
       spawnCall(
         `t${index + 1}`,
-        `demi agent spawn 'held task ${index + 1}'`,
+        `demi agent spawn <<< 'held task ${index + 1}'`,
         30
       ),
     )
@@ -1550,7 +1550,7 @@ test(
         [events.toolCall(
           't9',
           'shell_exec',
-          { script: "demi agent spawn 'one too many'", timeoutMs: 5_000 }
+          { script: "demi agent spawn <<< 'one too many'", timeoutMs: 5_000 }
         )],
         (request) => {
           limitText = itemsText(request)
@@ -1582,8 +1582,8 @@ test(
       notifyParentOnIdle: false,
       turns: [
         [
-          spawnCall('t1', "demi agent spawn 'first'", 30),
-          spawnCall('t2', "demi agent spawn 'second'", 5_000),
+          spawnCall('t1', "demi agent spawn <<< 'first'", 30),
+          spawnCall('t2', "demi agent spawn <<< 'second'", 5_000),
         ],
         [events.toolCall(
           'c1',
@@ -1634,10 +1634,10 @@ test(
       turns: [
         [spawnCall(
           'root-spawn',
-          "demi agent spawn 'outer task' --profile worker",
+          "demi agent spawn <<< 'outer task' --profile worker",
           5_000
         )],
-        [spawnCall('child-spawn', "demi agent spawn 'inner task'", 5_000)],
+        [spawnCall('child-spawn', "demi agent spawn <<< 'inner task'", 5_000)],
         (request) => {
           grandchildRequest = request
           return [spawnCall('grandchild-list', 'demi agent list', 5_000)]
@@ -1669,7 +1669,7 @@ test(
       turns: [
         [spawnCall(
           'first-spawn',
-          "demi agent spawn 'restricted task' --no-subagents",
+          "demi agent spawn <<< 'restricted task' --no-subagents",
           5_000
         )],
         [events.text('first result'), events.response()],
@@ -1689,10 +1689,10 @@ test(
       turns: [
         [spawnCall(
           'resume',
-          `demi agent resume ${childId} 'try delegating'`,
+          `demi agent resume ${childId} <<< 'try delegating'`,
           5_000
         )],
-        [spawnCall('nested-spawn', "demi agent spawn 'forbidden task'", 5_000)],
+        [spawnCall('nested-spawn', "demi agent spawn <<< 'forbidden task'", 5_000)],
         (request) => {
           nestedFailure = itemsText(request)
           return [events.text('still restricted'), events.response()]
@@ -1715,12 +1715,12 @@ test(
       turns: [
         [spawnCall(
           'outer-spawn',
-          "demi agent spawn 'outer task' --description outer",
+          "demi agent spawn <<< 'outer task' --description outer",
           50
         )],
         [spawnCall(
           'inner-spawn',
-          "demi agent spawn 'inner task' --description inner",
+          "demi agent spawn <<< 'inner task' --description inner",
           10_000
         )],
         [spawnCall('inner-hold', 'probe hold 5000', 10_000)],
@@ -1803,7 +1803,7 @@ test(
       turns: [
         [spawnCall(
           't1',
-          "demi agent spawn 'do the thing' --description brief",
+          "demi agent spawn <<< 'do the thing' --description brief",
           50
         )],
         [events.toolCall(
@@ -1874,8 +1874,8 @@ test(
     const first = await openHarness({
       turns: [
         [
-          spawnCall('t1', "demi agent spawn 'first' --description one", 50),
-          spawnCall('t2', "demi agent spawn 'second' --description two", 50)
+          spawnCall('t1', "demi agent spawn <<< 'first' --description one", 50),
+          spawnCall('t2', "demi agent spawn <<< 'second' --description two", 50)
         ],
         [events.text('one done'), events.response()],
         [events.text('two done'), events.response()],
@@ -1980,7 +1980,7 @@ test(
           : 'execution snapshot'
       },
       turns: [
-        [spawnCall('spawn', "demi agent spawn 'wait' --profile custom", 30)],
+        [spawnCall('spawn', "demi agent spawn <<< 'wait' --profile custom", 30)],
         [events.toolCall(
           'hold',
           'shell_exec',

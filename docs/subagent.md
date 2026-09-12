@@ -74,16 +74,16 @@ registered `demi`, the subcommands attach to that tree; otherwise
 `AgentServer` registers a `demi` root that only contains them.
 
 ```text
-demi agent spawn [--profile <name>] [--description <title>] [--no-subagents] [prompt]
+demi agent spawn [--profile <name>] [--description <title>] [--no-subagents] < task-brief.txt
 demi agent abort <id>
-demi agent resume <id> [message]
-demi agent send <id|parent> [message]
-demi agent steer <id|parent> [message]
+demi agent resume <id> < message.txt
+demi agent send <id|parent> < message.txt
+demi agent steer <id|parent> < message.txt
 demi agent show <id>
 demi agent list
 ```
 
-`demi agent spawn` with a prompt (or stdin) starts a child and waits until that
+`demi agent spawn` with a task brief on stdin starts a child and waits until that
 child session ends. Stdout is the child's last assistant text. Stderr's first
 line is `subagentId: <id>`.
 
@@ -107,8 +107,9 @@ relay). `demi agent … &` is not a
 spawn path: a backgrounded job's stdin is not the tool call's, so nothing
 steers the child. The short subcommands below are fine either way.
 
-Prompt and `send` / `steer` / `resume` messages use an optional positional, or
-stdin/heredoc when the positional is omitted. An empty message fails.
+Prompt and `send` / `steer` / `resume` messages are read only from stdin:
+a quoted heredoc, pipe, or input redirection. They have no positional or
+named-option form. An empty message fails.
 `--profile` names a profile configured at harness assembly. `--no-subagents`
 forbids the child from spawning children of its own. There is no `--model`
 flag: model and provider runtime come from the profile or from the parent.
@@ -121,9 +122,9 @@ flag: model and provider runtime come from the profile or from the parent.
 ### Command help
 
 How to write the child's task brief lives only on the spawn `prompt` parameter
-(`positional`, `stdinField`). That text is the child's first user message.
-Help stays declarative: no invocation examples. Demi does not reject a short
-prompt.
+(`stdinField`). That text is the child's first user message.
+Help renders a quoted heredoc usage template from the declaration. Demi does
+not reject a short prompt.
 
 The field description uses the same four-beat as
 `COMPACTION_SUMMARY_INSTRUCTION` (job, stance, inventory, output). Compaction
@@ -205,7 +206,8 @@ completion so they can integrate the result and finish their own work.
 Ask-and-answer needs no live channel: a child that needs a decision ends its
 turn with the question as its last assistant text — the session closes, the
 question returns as the result, and the parent answers with
-`demi agent resume <id> <answer>` on top of the preserved transcript.
+`demi agent resume <id>`, supplying the answer on stdin. The child continues
+from its preserved transcript.
 
 A parent blocked in a spawn wait does not see incoming sends or steers until
 that wait returns. The dead window is bounded: every exec observation window
@@ -362,7 +364,7 @@ summarize the parent transcript into the child.
 |---|---|---|
 | `systemPrompt` | profile, else parent harness | Worker identity, shell rules, `commandsPrompt`. A custom `profile.systemPrompt` replaces the parent prompt; `commandsPrompt` is still supplied through `AgentSystemPromptContext`. |
 | preamble | `AgentServer`, every child | This session is a subagent; its id and its parent's id; ending the turn with an empty inbox returns the last assistant text as the result; `demi agent send` / `steer` reach the parent (`parent`) and any agent in `demi agent list`; spawn delegates further; do not address the product user as the root session. |
-| first user message | parent model | The spawn prompt (positional or stdin). Demi does not inspect or pad it. |
+| first user message | parent model | The spawn prompt from stdin. Demi does not inspect or pad it. |
 
 The inherit profile carries the parent `systemPrompt` so the child already
 knows shell session rules and registered commands. A named profile
@@ -456,7 +458,7 @@ A closed child is **archived**: its rows stay, marked with the closed phase.
 Archived children are listed by `demi agent list` and skipped by restore.
 Nothing prunes the archive: an archived child lives exactly as long as its
 root and is deleted only with it — a revivable id stays revivable.
-`demi agent resume <id> <message>` — the archived child's parent only —
+`demi agent resume <id>` with the message on stdin — the archived child's parent only —
 revives one in one commit: the node row is live again with this round's
 metadata and a fresh spawn time, and the message is queued in the
 checkpoint; the session rebuilds from the preserved transcript and the
