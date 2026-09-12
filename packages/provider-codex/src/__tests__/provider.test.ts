@@ -24,7 +24,7 @@ import {
   createCodexProvider,
   responsesUrlForAuth
 } from '../provider'
-import type { CodexResponseStreamEvent } from '../responses'
+import type { ResponsesStreamEvent } from '@demicodes/provider'
 import {
   AutoCodexResponsesTransport,
   CodexHttpError,
@@ -367,7 +367,7 @@ test(
         delta: 'sse'
       }]]),
     )
-    const beforeEvents: CodexResponseStreamEvent[] = []
+    const beforeEvents: ResponsesStreamEvent[] = []
     for await (const event of beforeStart.stream(makeTransportRequest())) beforeEvents.push(event)
     expect(beforeEvents).toEqual([{
       type: 'response.output_text.delta',
@@ -384,7 +384,7 @@ test(
         delta: 'sse'
       }]]),
     )
-    const afterEvents: CodexResponseStreamEvent[] = []
+    const afterEvents: ResponsesStreamEvent[] = []
     await expect((async () => {
       for await (const event of afterStart.stream(makeTransportRequest())) afterEvents.push(event)
     })()).rejects.toThrow('after start')
@@ -419,7 +419,7 @@ test(
     const transport = new WebSocketCodexResponsesTransport({
       WebSocket: CapturingWebSocket,
     })
-    const events: CodexResponseStreamEvent[] = []
+    const events: ResponsesStreamEvent[] = []
 
     for await (const event of transport.stream({
       ...makeTransportRequest(),
@@ -449,7 +449,7 @@ test(
     const transport = new WebSocketCodexResponsesTransport({
       WebSocket: NonClosingCompletedWebSocket,
     })
-    const events: CodexResponseStreamEvent[] = []
+    const events: ResponsesStreamEvent[] = []
 
     for await (const event of transport.stream({
       ...makeTransportRequest(),
@@ -673,12 +673,12 @@ class FakeCodexTransport implements CodexResponsesTransport {
   private index = 0
 
   constructor(
-    private readonly scripts: Array<CodexResponseStreamEvent[] | Error>
+    private readonly scripts: Array<ResponsesStreamEvent[] | Error>
   ) {}
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<CodexResponseStreamEvent> {
+  ): AsyncIterable<ResponsesStreamEvent> {
     this.requests.push(request)
     while (this.index < this.scripts.length) {
       const script = this.scripts[this.index]
@@ -697,13 +697,13 @@ class GateCodexTransport implements CodexResponsesTransport {
   private readonly gates: Array<Deferred<void>>
   private readonly started = new Map<number, Deferred<void>>()
 
-  constructor(private readonly scripts: CodexResponseStreamEvent[][]) {
+  constructor(private readonly scripts: ResponsesStreamEvent[][]) {
     this.gates = scripts.map(() => deferred<void>())
   }
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<CodexResponseStreamEvent> {
+  ): AsyncIterable<ResponsesStreamEvent> {
     const index = this.requests.length
     this.requests.push(request)
     this.started.get(index)?.resolve(undefined)
@@ -729,11 +729,11 @@ class GateCodexTransport implements CodexResponsesTransport {
 
 class YieldThenThrowTransport implements CodexResponsesTransport {
   constructor(
-    private readonly events: CodexResponseStreamEvent[],
+    private readonly events: ResponsesStreamEvent[],
     private readonly error: Error,
   ) {}
 
-  async *stream(): AsyncIterable<CodexResponseStreamEvent> {
+  async *stream(): AsyncIterable<ResponsesStreamEvent> {
     for (const event of this.events) yield event
     throw this.error
   }

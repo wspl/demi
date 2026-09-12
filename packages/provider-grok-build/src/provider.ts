@@ -1,4 +1,4 @@
-import { readServerSentEvents } from '@demicodes/provider'
+import { readServerSentEvents, mapChatCompletionStream } from '@demicodes/provider'
 import { grokBuildConfigSchema, type GrokBuildProviderConfig } from './config-schema'
 import { isAbortError, normalizeBaseUrl } from '@demicodes/utils'
 import {
@@ -21,7 +21,6 @@ import {
 } from './auth'
 import {
   buildGrokChatCompletionsBody,
-  mapGrokChatCompletionStream,
 } from './chat'
 import {
   createGrokBuildCredentials,
@@ -139,9 +138,9 @@ export class GrokBuildProvider implements AgentProvider {
           return
         }
 
-        yield* mapGrokChatCompletionStream(
+        yield* mapChatCompletionStream(
           readServerSentEvents(response.body, request.cancel),
-          request.cancel
+          { source: 'Grok Build', signal: request.cancel }
         )
         return
       } catch (error) {

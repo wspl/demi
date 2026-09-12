@@ -1,13 +1,13 @@
 import { parseProviderJson, readServerSentEvents } from '@demicodes/provider'
-import { codexResponseEventSchema, type CodexResponseStreamEvent } from './response-schemas'
+import { responsesEventSchema, type ResponsesStreamEvent } from '@demicodes/provider'
 
 export async function* parseSseResponseStream(
   body: ReadableStream<Uint8Array>,
   signal?: AbortSignal,
-): AsyncIterable<CodexResponseStreamEvent> {
+): AsyncIterable<ResponsesStreamEvent> {
   for await (const { data } of readServerSentEvents(body, signal)) {
     if (data === '[DONE]')
       return
-    yield parseProviderJson(codexResponseEventSchema, data, 'Codex SSE event')
+    yield parseProviderJson(responsesEventSchema, data, 'Codex SSE event')
   }
 }

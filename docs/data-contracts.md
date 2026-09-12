@@ -97,11 +97,14 @@ the signal's abort reason. Completion, cancellation, parsing failure and early
 consumer return share cancellation, listener removal and reader-lock release.
 Concrete adapters own JSON schemas, terminal markers and provider error rules.
 
-## Codex Responses ingress
+## Shared Responses ingress
 
-`provider-codex/response-schemas.ts` owns the consumed Responses event union.
-`sse.ts` and `transport.ts` validate each decoded event before `responses.ts` maps
-it. WebSocket envelopes and `response.done` are explicit transport mappings into
+`provider/responses-wire.ts` owns the consumed Responses event union and usage
+projection shared by the Codex and OpenAI API adapters. `provider/responses.ts`
+projects their identical content events and tracks delta/full-item deduplication. Codex's `sse.ts` and
+`transport.ts` validate events before its diagnostic-aware `responses.ts` mapper.
+The OpenAI API mapper validates each SSE payload through the same schema.
+Codex WebSocket envelopes and `response.done` are explicit transport mappings into
 that union. Invalid JSON, wrong field types and unsupported event tags fail with
 `invalid_provider_response`; this error does not trigger an SSE retry. Unrelated
 fields are allowed on supported events. Known progress events and hosted tool
@@ -120,8 +123,41 @@ counts, represented by zero in `TokenUsage`; present counts are nonnegative inte
 and cached input cannot exceed total input. Missing error details produce a generic
 failure message; wrong detail types fail validation. Reasoning replay validates
 Codex-tagged signatures and omits opaque signatures from other providers.
-SSE readers cancel and release their lock on completion, parsing failure or early
-consumer return. WebSocket listeners and timers are removed when consumption ends.
+The OpenAI Responses mapper returns after a completed, failed, incomplete or error
+event; `[DONE]` or EOF without one is an invalid response. SSE readers cancel and
+release their lock on completion, parsing failure or early consumer return.
+WebSocket listeners and timers are removed when consumption ends.
+
+## Shared Chat Completions ingress
+
+`provider/chat-completions-wire.ts` defines the consumed Chat Completions chunk
+schema used by OpenAI-compatible and Grok Build endpoints. Its companion
+`chat-completions.ts` maps validated chunks. Endpoint selection, authentication,
+request building and provider-specific diagnostics remain in concrete adapters.
+Responses and Chat Completions are separate wire contracts.
+
+A chunk carries a choices array or an error object. Text and reasoning may be
+absent or null; present values are strings. A nonterminal choice requires a delta
+object. For compatible endpoints that omit choice indexes, array position is the
+explicit choice identity; supplied indexes are nonnegative integers and cannot
+collide. Tool deltas always require their integer index. Missing tool metadata is
+allowed during streaming, while supplied ID/name values must be nonempty strings
+and supplied argument fragments must be strings.
+
+The mapper accumulates tools independently per choice and tool index. Tool ID and
+name cannot change mid-stream. At tool completion, ID, name and argument text must
+all exist, and duplicate call IDs fail. Argument fragments join before JSON
+parsing; malformed model-authored JSON remains a string for tool input validation.
+No replacement tool ID or missing argument object is synthesized. A tool_calls
+finish emits completed tools; `[DONE]` flushes remaining complete calls and reports
+success. EOF without `[DONE]`, malformed chunks and incomplete calls are errors.
+Length, content filtering and unsupported finish reasons report errors before tool
+execution. No data can be appended to an already finished choice.
+
+Usage is optional or null; unavailable counters project to zero. Present counters
+are nonnegative integers, and cached prompt tokens cannot exceed total prompt
+tokens. Cached prompt tokens are subtracted from uncached input. Valid extension
+fields and compatible reasoning_content deltas remain supported.
 
 ## Anthropic Messages ingress
 

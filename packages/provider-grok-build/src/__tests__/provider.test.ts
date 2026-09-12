@@ -1,3 +1,4 @@
+import { mapChatCompletionStream } from '@demicodes/provider'
 import { readServerSentEvents, type ServerSentEvent } from '@demicodes/provider'
 import { expect, test } from 'bun:test'
 import { zeroUsage } from '@demicodes/core'
@@ -10,7 +11,6 @@ import {
 import { StaticGrokAuthStore, type GrokResolvedAuth } from '../auth'
 import {
   buildGrokChatCompletionsBody,
-  mapGrokChatCompletionStream,
 } from '../chat'
 import { modelListFromGrokModelsPayload } from '../models'
 import { createGrokBuildProvider } from '../provider'
@@ -252,7 +252,7 @@ test('chat body degrades video blocks to text instead of image_url', () => {
 
 test('chat stream maps reasoning_content and tool calls', async () => {
   const events = await collect(
-    mapGrokChatCompletionStream(
+    mapChatCompletionStream(
       (async function* (): AsyncIterable<ServerSentEvent> {
         yield {
           event: null,
@@ -330,7 +330,7 @@ test(
     ])
 
     const mapped = await collect(
-      mapGrokChatCompletionStream(
+      mapChatCompletionStream(
         (async function* (): AsyncIterable<ServerSentEvent> {
           for (const event of events) yield event
         })(),

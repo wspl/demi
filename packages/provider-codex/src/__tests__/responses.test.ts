@@ -1,10 +1,10 @@
+import { responsesUsage } from '@demicodes/provider'
 import { expect, test } from 'bun:test'
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import {
   buildCodexResponsesRequestBody,
   mapCodexResponseEvents,
   splitCodexToolUseId,
-  usageFromResponse
 } from '../responses'
 
 test(
@@ -380,7 +380,7 @@ test('usage helpers handle provider wire format', () => {
     callId: 'call_1',
     itemId: 'fc_1'
   })
-  expect(usageFromResponse({
+  expect(responsesUsage({
     usage: {
       input_tokens: 10,
       output_tokens: 2,

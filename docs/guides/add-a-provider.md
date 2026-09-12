@@ -150,8 +150,9 @@ receiveEvent('{"type":"progress"}') // Explicitly ignored.
 ```
 
 For the complete transport/schema/mapper path, see Codex's `sse.ts`,
-`response-schemas.ts`, `responses.ts`, and `response-contracts.test.ts` under
-`packages/provider-codex/src`. Follow [Data Contracts](../data-contracts.md) for
+`response-schemas.ts` (WebSocket envelope), `responses.ts`, and
+`response-contracts.test.ts` under `packages/provider-codex/src`, together with
+its shared wire contract in `packages/provider/src/responses-wire.ts`. Follow [Data Contracts](../data-contracts.md) for
 missing/null policies, persistent data, and tests with synthetic inputs.
 
 ## Optional: quota

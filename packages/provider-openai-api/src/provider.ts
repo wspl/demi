@@ -1,13 +1,23 @@
+import {
+  responsesEventSchema,
+  createResponsesContentState,
+  mapResponsesContentEvent,
+  type ResponsesContentState,
+  mapChatCompletionStream,
+  responsesUsage,
+  responsesReasoningItemSchema,
+  parseProviderJson,
+  parseProviderData,
+  ProviderDataError,
+  type ResponsesStreamEvent,
+  type ResponsesFailed,
+} from '@demicodes/provider'
 import { readServerSentEvents, type ServerSentEvent } from '@demicodes/provider'
 import { attachmentTag } from '@demicodes/core'
 import {
   isAbortError,
   isRecord,
   normalizeBaseUrl,
-  numberOrZero,
-  parseJsonObject,
-  parseJsonOrString,
-  stringOrNull
 } from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
@@ -17,12 +27,10 @@ import {
   authStatusFromKey,
   defineProvider,
   modelListFromConfiguredModels,
-  httpErrorCode,
   clampPromptCacheKey,
   httpRequestFailedEvent,
   normalizeErrorCode,
   providerErrorFromUnknown,
-  redactSecretText,
   toolResultContentToText,
   type AgentProvider,
   type InferenceItem,
@@ -149,9 +157,9 @@ export class OpenAIChatCompletionsProvider implements AgentProvider {
         yield await httpRequestFailedEvent(response, apiKey, 'OpenAI')
         return
       }
-      yield* mapOpenAIChatCompletionStream(
+      yield* mapChatCompletionStream(
         readServerSentEvents(response.body, request.cancel),
-        request.cancel
+        { source: 'OpenAI Chat Completions', signal: request.cancel }
       )
     } catch (error) {
       if (request.cancel.aborted || isAbortError(error)) {
@@ -384,91 +392,6 @@ export interface OpenAIResponseTool {
   parameters: Record<string, unknown>
 }
 
-export interface OpenAIResponseStreamEvent {
-  type?: string
-  response?: OpenAIResponseCompleted | OpenAIResponseFailed
-  item?: OpenAIResponseOutputItem
-  delta?: string
-  arguments?: string
-  item_id?: string
-  call_id?: string
-  code?: string
-  message?: string
-  [key: string]: unknown
-}
-
-export type OpenAIResponseOutputItem =
-  | OpenAIResponseReasoningItem
-  | OpenAIResponseMessageItem
-  | OpenAIResponseFunctionCallItem
-  | Record<string, unknown>
-
-export interface OpenAIResponseReasoningItem {
-  type: 'reasoning'
-  id?: string
-  summary?: Array<{
-    type?: string;
-    text: string
-  }>
-  content?: Array<{
-    type?: string;
-    text: string
-  }>
-  encrypted_content?: string
-}
-
-export interface OpenAIResponseMessageItem {
-  type: 'message'
-  id?: string
-  role?: string
-  content?: Array<{
-    type: 'output_text';
-    text: string
-  } | {
-    type: 'refusal';
-    refusal: string
-  }>
-  status?: string
-}
-
-export interface OpenAIResponseFunctionCallItem {
-  type: 'function_call'
-  id?: string
-  call_id?: string
-  name?: string
-  arguments?: string
-}
-
-export interface OpenAIResponseCompleted {
-  id?: string
-  status?: string
-  usage?: {
-    input_tokens?: number
-    output_tokens?: number
-    total_tokens?: number
-    input_tokens_details?: { cached_tokens?: number }
-  }
-  [key: string]: unknown
-}
-
-export interface OpenAIResponseFailed {
-  error?: {
-    code?: string;
-    type?: string;
-    message?: string
-  }
-  incomplete_details?: { reason?: string }
-  [key: string]: unknown
-}
-
-interface OpenAIResponseStreamState {
-  currentReasoning: OpenAIResponseReasoningItem | null
-  currentFunctionCall: OpenAIResponseFunctionCallItem | null
-  functionArguments: Map<string, string>
-  reasoningDeltaSeen: boolean
-  textDeltaSeen: boolean
-}
-
 export function buildOpenAIResponsesBody(
   request: InferenceRequest,
   options: OpenAIApiRequestOptions | undefined,
@@ -513,145 +436,51 @@ export async function* mapOpenAIResponseStream(
   events: AsyncIterable<ServerSentEvent>,
   signal?: AbortSignal,
 ): AsyncIterable<ProviderEvent> {
-  const state = newOpenAIResponseStreamState()
-  let completed = false
-
-  for await (const event of events) {
+  const state = createResponsesContentState()
+  for await (const frame of events) {
     if (signal?.aborted) {
       yield { type: 'abort' }
       return
     }
-    const data = event.data
-    if (data === '[DONE]')
-      continue
-    const parsed = parseJsonObject(data)
-    if (!parsed)
-      continue
-    const streamEvent = parsed as OpenAIResponseStreamEvent
-    if (streamEvent.type === 'response.completed')
-      completed = true
-    yield* mapOpenAIResponseEvent(streamEvent, state)
+    if (frame.data === '[DONE]')
+      break
+    const event = parseProviderJson(responsesEventSchema, frame.data, 'OpenAI Responses event')
+    yield* mapOpenAIResponseEvent(event, state)
+    if (event.type === 'response.completed' || event.type === 'response.failed'
+      || event.type === 'response.incomplete' || event.type === 'error')
+      return
   }
-
-  if (!completed)
-    yield { type: 'response', usage: zeroUsage() }
+  signal?.throwIfAborted()
+  throw new ProviderDataError('OpenAI Responses stream', 'stream ended before a terminal response')
 }
 
 export function* mapOpenAIResponseEvent(
-  event: OpenAIResponseStreamEvent,
-  state: OpenAIResponseStreamState = newOpenAIResponseStreamState(),
+  event: ResponsesStreamEvent,
+  state: ResponsesContentState = createResponsesContentState(),
 ): Iterable<ProviderEvent> {
+  yield* mapResponsesContentEvent(event, state)
   switch (event.type) {
-    case 'response.output_item.added': {
-      const item = event.item
-      if (isOpenAIResponseReasoningItem(item)) {
-        state.currentReasoning = item
-        yield { type: 'thinking_start' }
-      } else if (isOpenAIResponseFunctionCallItem(item)) {
-        state.currentFunctionCall = item
-        if (item.id)
-          state.functionArguments.set(item.id, item.arguments ?? '')
-      }
-      return
-    }
-    case 'response.reasoning_summary_text.delta':
-    case 'response.reasoning_text.delta':
-      if (typeof event.delta === 'string') {
-        state.reasoningDeltaSeen = true
-        yield { type: 'thinking_delta', text: event.delta }
-      }
-      return
-    case 'response.output_text.delta':
-      if (typeof event.delta === 'string') {
-        state.textDeltaSeen = true
-        yield { type: 'text_delta', text: event.delta }
-      }
-      return
-    case 'response.function_call_arguments.delta': {
-      const key = event.item_id ?? state.currentFunctionCall?.id
-      if (key && typeof event.delta === 'string') {
-        state.functionArguments.set(
-          key,
-          `${state.functionArguments.get(key) ?? ''}${event.delta}`
-        )
-      }
-      return
-    }
-    case 'response.function_call_arguments.done': {
-      const key = event.item_id ?? state.currentFunctionCall?.id
-      if (key && typeof event.arguments === 'string')
-        state.functionArguments.set(
-        key,
-        event.arguments
-      )
-      return
-    }
-    case 'response.output_item.done': {
-      const item = event.item
-      if (isOpenAIResponseReasoningItem(item)) {
-        if (!state.reasoningDeltaSeen) {
-          const text = openAIResponseReasoningText(item)
-          if (text)
-            yield { type: 'thinking_delta', text }
-        }
-        yield { type: 'thinking_signature', signature: JSON.stringify(item) }
-        if (state.currentReasoning === item)
-          state.currentReasoning = null
-        state.reasoningDeltaSeen = false
-      } else if (isOpenAIResponseMessageItem(item)) {
-        // Only emit the full message text on done when no streaming delta arrived
-        // (non-streaming fallback); otherwise the deltas already carried the whole
-        // text and emitting again would duplicate it. Mirrors the reasoning path.
-        if (!state.textDeltaSeen) {
-          const text = openAIResponseMessageText(item)
-          if (text)
-            yield { type: 'text_delta', text }
-        }
-        state.textDeltaSeen = false
-      } else if (isOpenAIResponseFunctionCallItem(item)) {
-        const itemId = item.id ?? event.item_id
-        const callId = item.call_id ?? event.call_id
-        if (itemId && callId && item.name) {
-          const rawArgs = state.functionArguments.get(itemId) ?? item.arguments
-            ?? '{}'
-          yield {
-            type: 'tool_call_requested',
-            toolUseId: `${callId}|${itemId}`,
-            toolName: item.name,
-            input: parseJsonOrString(rawArgs),
-          }
-        }
-        if (itemId)
-          state.functionArguments.delete(itemId)
-        if (state.currentFunctionCall === item)
-          state.currentFunctionCall = null
-      }
-      return
-    }
     case 'response.completed':
-      yield { type: 'response', usage: openAIResponsesUsage(event.response) }
+      yield { type: 'response', usage: responsesUsage(event.response) }
       return
     case 'response.failed':
       yield openAIResponseErrorEvent(event.response)
       return
     case 'response.incomplete': {
-      const reason = openAIIncompleteReason(event.response)
+      const reason = event.response.incomplete_details?.reason ?? 'unknown'
       yield {
         type: 'error',
         message: `Incomplete OpenAI response returned, reason: ${reason}`,
-        code: reason === 'max_output_tokens'
-          ? 'context_length_exceeded'
-          : 'incomplete',
+        code: reason === 'max_output_tokens' ? 'context_length_exceeded' : 'incomplete',
       }
       return
     }
-    case 'error':
-      yield {
-        type: 'error',
-        message: event.message ?? 'OpenAI API stream error',
-        code: event.code ?? null
-      }
+    case 'error': {
+      const message = event.message ?? event.error?.message ?? 'OpenAI API stream error'
+      const code = event.code ?? event.error?.code ?? event.error?.type ?? null
+      yield { type: 'error', message, code: normalizeErrorCode(code, message) }
       return
+    }
   }
 }
 
@@ -761,80 +590,6 @@ export function buildOpenAIChatCompletionsBody(
   if (options?.extraBody)
     Object.assign(body, options.extraBody)
   return body
-}
-
-export async function* mapOpenAIChatCompletionStream(
-  events: AsyncIterable<ServerSentEvent>,
-  signal?: AbortSignal,
-): AsyncIterable<ProviderEvent> {
-  const toolCalls = new Map<number, MutableOpenAIToolCall>()
-  let thinkingStarted = false
-  let usage = zeroUsage()
-
-  for await (const event of events) {
-    if (signal?.aborted) {
-      yield { type: 'abort' }
-      return
-    }
-    const data = event.data
-    if (data === '[DONE]') {
-      yield* flushOpenAIToolCalls(toolCalls)
-      yield { type: 'response', usage }
-      return
-    }
-    const chunk = parseJsonObject(data)
-    if (!chunk)
-      continue
-    const error = isRecord(chunk.error) ? chunk.error : null
-    if (error) {
-      yield {
-        type: 'error',
-        message: stringOrNull(error.message) ?? 'OpenAI API stream error',
-        code: normalizeErrorCode(
-          stringOrNull(error.code) ?? stringOrNull(error.type),
-          stringOrNull(error.message) ?? ''
-        ),
-      }
-      return
-    }
-    if (isRecord(chunk.usage))
-      usage = openAIUsage(chunk.usage)
-    const choices = Array.isArray(chunk.choices) ? chunk.choices : []
-    for (const choice of choices) {
-      if (!isRecord(choice))
-        continue
-      const delta = isRecord(choice.delta) ? choice.delta : null
-      if (delta) {
-        const reasoning = stringOrNull(delta.reasoning_content)
-        if (reasoning) {
-          if (!thinkingStarted) {
-            thinkingStarted = true
-            yield { type: 'thinking_start' }
-          }
-          yield { type: 'thinking_delta', text: reasoning }
-        }
-        const content = stringOrNull(delta.content)
-        if (content)
-          yield { type: 'text_delta', text: content }
-        if (Array.isArray(delta.tool_calls))
-          collectOpenAIToolCalls(
-            delta.tool_calls,
-            toolCalls
-          )
-      }
-      if (choice.finish_reason === 'tool_calls')
-        yield* flushOpenAIToolCalls(toolCalls)
-    }
-  }
-
-  yield* flushOpenAIToolCalls(toolCalls)
-  yield { type: 'response', usage }
-}
-
-interface MutableOpenAIToolCall {
-  id: string
-  name: string
-  arguments: string
 }
 
 function inferenceItemsToOpenAIMessages(
@@ -1014,45 +769,6 @@ function toolToOpenAITool(tool: ToolDefinition): OpenAIChatTool {
   }
 }
 
-function collectOpenAIToolCalls(
-  values: unknown[],
-  toolCalls: Map<number, MutableOpenAIToolCall>
-): void {
-  for (const value of values) {
-    if (!isRecord(value))
-      continue
-    const index = typeof value.index === 'number' ? value.index : toolCalls.size
-    const existing = toolCalls.get(index) ?? { id: '', name: '', arguments: '' }
-    const fn = isRecord(value.function) ? value.function : null
-    const id = stringOrNull(value.id)
-    if (id)
-      existing.id = id
-    const name = stringOrNull(fn?.name)
-    if (name)
-      existing.name = name
-    const delta = stringOrNull(fn?.arguments)
-    if (delta)
-      existing.arguments += delta
-    toolCalls.set(index, existing)
-  }
-}
-
-function* flushOpenAIToolCalls(
-  toolCalls: Map<number, MutableOpenAIToolCall>
-): Iterable<ProviderEvent> {
-  for (const [index, call] of [...toolCalls.entries()].sort(([a], [b]) => a - b)) {
-    if (!call.name)
-      continue
-    yield {
-      type: 'tool_call_requested',
-      toolUseId: call.id || `tool_call_${index}`,
-      toolName: call.name,
-      input: parseJsonOrString(call.arguments || '{}'),
-    }
-  }
-  toolCalls.clear()
-}
-
 function inferenceItemToOpenAIResponseInput(
   item: InferenceItem,
   index: number,
@@ -1222,113 +938,33 @@ function parseOpenAIReasoningSignature(
 ): OpenAIResponseInputItem | null {
   if (!signature)
     return null
+  let raw: unknown
   try {
-    const parsed = JSON.parse(signature)
-    if (!isOpenAIResponseReasoningItem(parsed))
-      return null
-    // Upstream reasoning items carry status and other replay-irrelevant fields that strict gateways reject.
-    const { id, summary, content, encrypted_content } = parsed as {
-      id?: string;
-      summary?: Array<{
-        type?: string;
-        text: string
-      }>;
-      content?: Array<{
-        type?: string;
-        text: string
-      }>;
-      encrypted_content?: string
-    }
-    return {
-      type: 'reasoning',
-      ...(id ? { id } : {}),
-      ...(summary ? { summary } : {}),
-      ...(content ? { content } : {}),
-      ...(encrypted_content ? { encrypted_content } : {}),
-    }
+    raw = JSON.parse(signature)
   } catch {
+    // Other providers use opaque signatures, which Responses cannot replay.
     return null
   }
-}
-
-function openAIResponsesUsage(response: unknown) {
-  const usage = isRecord(response) && isRecord(response.usage)
-    ? response.usage
-    : {}
-  const inputTokens = numberOrZero(usage.input_tokens)
-  const inputDetails = isRecord(usage.input_tokens_details)
-    ? usage.input_tokens_details
-    : null
-  const cachedTokens = inputDetails
-    ? numberOrZero(inputDetails.cached_tokens)
-    : 0
-  return {
-    inputTokens: Math.max(0, inputTokens - cachedTokens),
-    outputTokens: numberOrZero(usage.output_tokens),
-    cacheReadTokens: cachedTokens,
-    cacheWriteTokens: 0,
-  }
-}
-
-function openAIResponseErrorEvent(response: unknown): ProviderEvent {
-  const error = isRecord(response) && isRecord(response.error)
-    ? response.error
-    : null
-  const message = stringOrNull(error?.message) ?? 'OpenAI response failed'
-  const rawCode = stringOrNull(error?.code) ?? stringOrNull(error?.type)
-  return { type: 'error', message, code: normalizeErrorCode(rawCode, message) }
-}
-
-function openAIIncompleteReason(response: unknown): string {
-  if (isRecord(response) && isRecord(response.incomplete_details)
-    && typeof response.incomplete_details.reason === 'string') {
-    return response.incomplete_details.reason
-  }
-  return 'unknown'
-}
-
-function openAIResponseMessageText(item: OpenAIResponseMessageItem): string {
-  return (
-    item.content
-      ?.map((part) => (part.type === 'output_text'
-        ? part.text
-        : part.type === 'refusal' ? part.refusal : ''))
-      .join('') ?? ''
+  if (!isRecord(raw) || raw.type !== 'reasoning')
+    return null
+  const { id, summary, content, encrypted_content } = parseProviderData(
+    responsesReasoningItemSchema, raw, 'OpenAI reasoning signature',
   )
-}
-
-function openAIResponseReasoningText(item: OpenAIResponseReasoningItem): string {
-  const summary = item.summary?.map((part) => part.text).join('\n\n') ?? ''
-  const content = item.content?.map((part) => part.text).join('\n\n') ?? ''
-  return summary || content
-}
-
-function newOpenAIResponseStreamState(): OpenAIResponseStreamState {
+  // Strict gateways reject replay-irrelevant status and extension fields.
   return {
-    currentReasoning: null,
-    currentFunctionCall: null,
-    functionArguments: new Map(),
-    reasoningDeltaSeen: false,
-    textDeltaSeen: false,
+    type: 'reasoning',
+    ...(id ? { id } : {}),
+    ...(summary ? { summary } : {}),
+    ...(content ? { content } : {}),
+    ...(encrypted_content ? { encrypted_content } : {}),
   }
 }
 
-function isOpenAIResponseReasoningItem(
-  item: unknown
-): item is OpenAIResponseReasoningItem {
-  return isRecord(item) && item.type === 'reasoning'
-}
-
-function isOpenAIResponseMessageItem(
-  item: unknown
-): item is OpenAIResponseMessageItem {
-  return isRecord(item) && item.type === 'message'
-}
-
-function isOpenAIResponseFunctionCallItem(
-  item: unknown
-): item is OpenAIResponseFunctionCallItem {
-  return isRecord(item) && item.type === 'function_call'
+function openAIResponseErrorEvent(response: ResponsesFailed): ProviderEvent {
+  const error = response.error
+  const message = error?.message ?? 'OpenAI response failed'
+  const rawCode = error?.code ?? error?.type ?? null
+  return { type: 'error', message, code: normalizeErrorCode(rawCode, message) }
 }
 
 function openAIChatCompletionsUrl(baseUrl: string): string {
@@ -1356,22 +992,5 @@ function thinkingToReasoningEffort(
 
 function stringifyToolArguments(input: unknown): string {
   return typeof input === 'string' ? input : JSON.stringify(input ?? {})
-}
-
-function openAIUsage(usage: Record<string, unknown>) {
-  const inputTokens = numberOrZero(usage.prompt_tokens)
-  const outputTokens = numberOrZero(usage.completion_tokens)
-  const promptDetails = isRecord(usage.prompt_tokens_details)
-    ? usage.prompt_tokens_details
-    : null
-  const cachedTokens = promptDetails
-    ? numberOrZero(promptDetails.cached_tokens)
-    : 0
-  return {
-    inputTokens: Math.max(0, inputTokens - cachedTokens),
-    outputTokens,
-    cacheReadTokens: cachedTokens,
-    cacheWriteTokens: 0,
-  }
 }
 

@@ -5,9 +5,6 @@ type StreamState = NonNullable<Parameters<typeof mapOpenAIResponseEvent>[1]>
 
 function collectText(events: unknown[]): string {
   const state: StreamState = {
-    currentReasoning: null,
-    currentFunctionCall: null,
-    functionArguments: new Map(),
     reasoningDeltaSeen: false,
     textDeltaSeen: false,
   }

@@ -1,7 +1,8 @@
 import { isRecord, parseJsonObject } from '@demicodes/utils'
 import { ProviderDataError } from '@demicodes/provider'
 import { parseSseResponseStream } from './sse'
-import { parseCodexWebSocketEvent, type CodexResponseStreamEvent } from './response-schemas'
+import { parseCodexWebSocketEvent } from './response-schemas'
+import type { ResponsesStreamEvent } from '@demicodes/provider'
 import type { CodexTransportMode } from './types'
 
 export interface CodexTransportRequest {
@@ -26,7 +27,7 @@ export interface CodexTransportRequest {
 export interface CodexResponsesTransport {
   stream(
     request: CodexTransportRequest
-  ): AsyncIterable<CodexResponseStreamEvent>
+  ): AsyncIterable<ResponsesStreamEvent>
 }
 
 export interface FetchCodexResponsesTransportOptions {
@@ -42,7 +43,7 @@ export class FetchCodexResponsesTransport implements CodexResponsesTransport {
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<CodexResponseStreamEvent> {
+  ): AsyncIterable<ResponsesStreamEvent> {
     const headerTimeout = createAbortTimeout(
       request.headerTimeoutMs,
       'Codex SSE response headers timed out'
@@ -101,7 +102,7 @@ export class WebSocketCodexResponsesTransport
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<CodexResponseStreamEvent> {
+  ): AsyncIterable<ResponsesStreamEvent> {
     const socket = await connectWebSocket(
       this.WebSocketCtor,
       request.websocketUrl,
@@ -109,7 +110,7 @@ export class WebSocketCodexResponsesTransport
       request.signal,
       request.websocketConnectTimeoutMs,
     )
-    const queue: Array<CodexResponseStreamEvent | Error | null> = []
+    const queue: Array<ResponsesStreamEvent | Error | null> = []
     const waiters: Array<() => void> = []
     let idleTimer: ReturnType<typeof setTimeout> | null = null
     let finished = false
@@ -117,7 +118,7 @@ export class WebSocketCodexResponsesTransport
     const wake = (): void => {
       for (const waiter of waiters.splice(0)) waiter()
     }
-    const push = (value: CodexResponseStreamEvent | Error | null): void => {
+    const push = (value: ResponsesStreamEvent | Error | null): void => {
       queue.push(value)
       wake()
     }
@@ -208,7 +209,7 @@ export class AutoCodexResponsesTransport implements CodexResponsesTransport {
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<CodexResponseStreamEvent> {
+  ): AsyncIterable<ResponsesStreamEvent> {
     let started = false
     try {
       for await (const event of this.websocket.stream(request)) {
@@ -395,7 +396,7 @@ function connectWebSocket(
   })
 }
 
-function parseWebSocketMessage(data: unknown): CodexResponseStreamEvent {
+function parseWebSocketMessage(data: unknown): ResponsesStreamEvent {
   if (typeof data === 'string')
     return parseCodexWebSocketEvent(data)
   if (data instanceof ArrayBuffer)
@@ -405,7 +406,7 @@ function parseWebSocketMessage(data: unknown): CodexResponseStreamEvent {
   throw new ProviderDataError('Codex WebSocket', 'unsupported message data')
 }
 
-function isTerminalResponseEvent(event: CodexResponseStreamEvent): boolean {
+function isTerminalResponseEvent(event: ResponsesStreamEvent): boolean {
   return event.type === 'response.completed' || event.type === 'response.failed'
     || event.type === 'response.incomplete'
     || event.type === 'error'

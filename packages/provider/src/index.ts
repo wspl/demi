@@ -66,3 +66,21 @@ export { quotaAmountSchema, quotaEpochSecondsSchema, quotaResetSchema } from './
 export { configuredModelSchema, modelListFromConfiguredModels, STATIC_CATALOG_SOURCE_DATE, type ConfiguredModelOptions, type ConfiguredCatalogOptions } from './configured-models'
 
 export { readServerSentEvents, type ServerSentEvent } from './sse'
+
+export {
+  responsesEventSchema,
+  responsesUsage,
+  responsesReasoningItemSchema,
+  type ResponsesStreamEvent,
+  type ResponsesOutputItem,
+  type ResponsesReasoningItem,
+  type ResponsesMessageItem,
+  type ResponsesFunctionCallItem,
+  type ResponsesCompleted,
+  type ResponsesFailed,
+} from './responses-wire'
+
+export { mapChatCompletionStream, type ChatCompletionStreamOptions } from './chat-completions'
+export { chatCompletionChunkSchema } from './chat-completions-wire'
+
+export { createResponsesContentState, mapResponsesContentEvent, type ResponsesContentState } from './responses'

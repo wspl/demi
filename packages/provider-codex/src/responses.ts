@@ -1,21 +1,17 @@
 import { attachmentTag } from '@demicodes/core'
 import {
-  codexReasoningItemSchema,
-  type CodexResponseStreamEvent,
-  type CodexReasoningItem,
-  type CodexMessageItem,
-  type CodexResponseCompleted,
-  type CodexResponseFailed,
-} from './response-schemas'
-import { parseProviderData } from '@demicodes/provider'
+  responsesReasoningItemSchema,
+  type ResponsesStreamEvent,
+  type ResponsesReasoningItem,
+  type ResponsesFailed,
+} from '@demicodes/provider'
+import { parseProviderData, responsesUsage, createResponsesContentState, mapResponsesContentEvent, type ResponsesContentState } from '@demicodes/provider'
 import {
   isRecord,
-  parseJsonOrString,
   shortHash,
 } from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import type {
-  TokenUsage,
   ToolResultContentBlock,
   UserContentBlock
 } from '@demicodes/core'
@@ -115,21 +111,6 @@ export interface CodexResponseTool {
   strict: null
 }
 
-export type {
-  CodexResponseStreamEvent,
-  CodexResponseOutputItem,
-  CodexReasoningItem,
-  CodexMessageItem,
-  CodexFunctionCallItem,
-  CodexResponseCompleted,
-  CodexResponseFailed,
-} from './response-schemas'
-
-interface StreamState {
-  reasoningDeltaSeen: boolean
-  textDeltaSeen: boolean
-}
-
 export function buildCodexResponsesRequestBody(
   request: InferenceRequest
 ): CodexResponsesRequestBody {
@@ -158,9 +139,9 @@ export function buildCodexResponsesRequestBody(
 }
 
 export async function* mapCodexResponseEvents(
-  events: AsyncIterable<CodexResponseStreamEvent>
+  events: AsyncIterable<ResponsesStreamEvent>
 ): AsyncIterable<ProviderEvent> {
-  const state = newStreamState()
+  const state = createResponsesContentState()
 
   for await (const event of events) {
     yield* mapCodexResponseEvent(event, state)
@@ -168,60 +149,13 @@ export async function* mapCodexResponseEvents(
 }
 
 export function* mapCodexResponseEvent(
-  event: CodexResponseStreamEvent,
-  state: StreamState = newStreamState()
+  event: ResponsesStreamEvent,
+  state: ResponsesContentState = createResponsesContentState()
 ): Iterable<ProviderEvent> {
+  yield* mapResponsesContentEvent(event, state)
   switch (event.type) {
-    case 'response.output_item.added':
-      if (event.item.type === 'reasoning') {
-        yield { type: 'thinking_start' }
-      }
-      return
-    case 'response.reasoning_summary_text.delta':
-    case 'response.reasoning_text.delta':
-      state.reasoningDeltaSeen = true
-      yield { type: 'thinking_delta', text: event.delta }
-      return
-    case 'response.output_text.delta':
-      state.textDeltaSeen = true
-      yield { type: 'text_delta', text: event.delta }
-      return
-    case 'response.function_call_arguments.delta':
-    case 'response.function_call_arguments.done':
-      // The completed output item carries the authoritative full arguments.
-      return
-    case 'response.output_item.done': {
-      const item = event.item
-      if (item.type === 'reasoning') {
-        if (!state.reasoningDeltaSeen) {
-          const text = reasoningText(item)
-          if (text)
-            yield { type: 'thinking_delta', text }
-        }
-        yield { type: 'thinking_signature', signature: JSON.stringify(item) }
-        state.reasoningDeltaSeen = false
-      } else if (item.type === 'message') {
-        // Only emit the full message text on done when no streaming delta arrived
-        // (non-streaming fallback); otherwise the deltas already carried the whole
-        // text and emitting again would duplicate it. Mirrors the reasoning path.
-        if (!state.textDeltaSeen) {
-          const text = messageText(item)
-          if (text)
-            yield { type: 'text_delta', text }
-        }
-        state.textDeltaSeen = false
-      } else if (item.type === 'function_call') {
-        yield {
-          type: 'tool_call_requested',
-          toolUseId: `${item.call_id}|${item.id}`,
-          toolName: item.name,
-          input: parseJsonOrString(item.arguments),
-        }
-      }
-      return
-    }
     case 'response.completed':
-      yield { type: 'response', usage: usageFromResponse(event.response) }
+      yield { type: 'response', usage: responsesUsage(event.response) }
       return
     case 'response.failed':
       yield errorEventFromFailedResponse(event.response)
@@ -268,18 +202,6 @@ export function splitCodexToolUseId(
 } {
   const [callId, itemId] = toolUseId.split('|', 2)
   return { callId, itemId }
-}
-
-export function usageFromResponse(response: CodexResponseCompleted): TokenUsage {
-  const usage = response.usage
-  const inputTokens = usage?.input_tokens ?? 0
-  const cachedTokens = usage?.input_tokens_details?.cached_tokens ?? 0
-  return {
-    inputTokens: inputTokens - cachedTokens,
-    outputTokens: usage?.output_tokens ?? 0,
-    cacheReadTokens: cachedTokens,
-    cacheWriteTokens: 0,
-  }
 }
 
 function inferenceItemToResponsesInput(
@@ -424,7 +346,7 @@ function thinkingToReasoning(
 
 function parseReasoningSignature(
   signature: string | null
-): CodexReasoningItem | null {
+): ResponsesReasoningItem | null {
   if (!signature) {
     return null
   }
@@ -438,7 +360,7 @@ function parseReasoningSignature(
   if (!isRecord(raw) || raw.type !== 'reasoning') {
     return null
   }
-  return parseProviderData(codexReasoningItemSchema, raw, 'Codex reasoning signature')
+  return parseProviderData(responsesReasoningItemSchema, raw, 'Codex reasoning signature')
 }
 
 function stringifyArguments(input: unknown): string {
@@ -446,23 +368,7 @@ function stringifyArguments(input: unknown): string {
 }
 
 
-function messageText(item: CodexMessageItem): string {
-  return (
-    item.content
-      .map((part) => (part.type === 'output_text'
-        ? part.text
-        : part.refusal))
-      .join('')
-  )
-}
-
-function reasoningText(item: CodexReasoningItem): string {
-  const summary = item.summary?.map((part) => part.text).join('\n\n') ?? ''
-  const content = item.content?.map((part) => part.text).join('\n\n') ?? ''
-  return summary || content
-}
-
-function errorEventFromFailedResponse(response: CodexResponseFailed): ProviderEvent {
+function errorEventFromFailedResponse(response: ResponsesFailed): ProviderEvent {
   const error = response.error
   const message = error?.message ?? 'Codex response failed'
   const rawCode = error?.code ?? error?.type ?? null
@@ -482,7 +388,7 @@ function errorEventFromFailedResponse(response: CodexResponseFailed): ProviderEv
 }
 
 function providerRequestIdFrom(
-  value: CodexResponseFailed['error'],
+  value: ResponsesFailed['error'],
   message: string
 ): string | null {
   const explicit = value?.request_id
@@ -492,13 +398,6 @@ function providerRequestIdFrom(
   return message.match(/request ID ([A-Za-z0-9-]+)/i)?.[1] ?? null
 }
 
-function incompleteReason(response: CodexResponseFailed): string {
+function incompleteReason(response: ResponsesFailed): string {
   return response.incomplete_details?.reason ?? 'unknown'
-}
-
-function newStreamState(): StreamState {
-  return {
-    reasoningDeltaSeen: false,
-    textDeltaSeen: false,
-  }
 }

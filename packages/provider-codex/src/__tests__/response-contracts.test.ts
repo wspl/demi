@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { ProviderDataError, parseProviderData, providerErrorFromUnknown } from '@demicodes/provider'
-import { codexResponseEventSchema, parseCodexWebSocketEvent, type CodexResponseStreamEvent } from '../response-schemas'
+import { responsesEventSchema, type ResponsesStreamEvent } from '@demicodes/provider'
+import { parseCodexWebSocketEvent } from '../response-schemas'
 import { mapCodexResponseEvent } from '../responses'
 import { parseSseResponseStream } from '../sse'
 
@@ -10,7 +11,7 @@ const valid = [
   { type: 'response.output_item.done', item: { type: 'function_call', id: 'item', call_id: 'call', name: 'tool', arguments: '{}' } },
   { type: 'response.completed', response: { usage: { input_tokens: 3, output_tokens: 1 } } },
   { type: 'response.created' },
-] satisfies CodexResponseStreamEvent[]
+] satisfies ResponsesStreamEvent[]
 const invalid = [
   null, [], {}, { type: 42 }, { type: 'response.unknown_terminal' },
   { type: 'response.output_text.delta', delta: {} },
@@ -60,7 +61,7 @@ test('malformed JSON errors do not expose payload values or misclassify usage er
 
 test('tool calls use the completed item and preserve independent call identities', () => {
   for (const id of ['a', 'b']) {
-    const parsed = parseProviderData(codexResponseEventSchema, {
+    const parsed = parseProviderData(responsesEventSchema, {
       type: 'response.output_item.done',
       item: { type: 'function_call', id, call_id: `call-${id}`, name: 'tool', arguments: '{"x":1}' },
     }, 'fixture')
@@ -93,9 +94,9 @@ test('SSE consumption cancels the body and releases its reader on errors and ear
   }
 })
 
-async function parseSseJson(text: string): Promise<CodexResponseStreamEvent[]> {
+async function parseSseJson(text: string): Promise<ResponsesStreamEvent[]> {
   const body = new Response(`data: ${text}\n\n`).body!
-  const events: CodexResponseStreamEvent[] = []
+  const events: ResponsesStreamEvent[] = []
   for await (const event of parseSseResponseStream(body)) {
     events.push(event)
   }

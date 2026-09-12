@@ -1,3 +1,4 @@
+import { mapChatCompletionStream } from '@demicodes/provider'
 import type { ServerSentEvent } from '@demicodes/provider'
 import { expect, test } from 'bun:test'
 import {
@@ -10,7 +11,6 @@ import {
   buildOpenAIChatCompletionsBody,
   buildOpenAIResponsesBody,
   createOpenAIApiProvider,
-  mapOpenAIChatCompletionStream,
   mapOpenAIResponseStream,
 } from '../provider'
 
@@ -412,7 +412,8 @@ test(
           type: 'function_call',
           id: 'fc-1',
           call_id: 'call-1',
-          name: 'read_file'
+          name: 'read_file',
+          arguments: '{"path":"a.ts"}'
         }
       },
       {
@@ -811,7 +812,7 @@ test(
 test(
   'OpenAI Chat Completions stream maps split text, tool call arguments, and usage',
   async () => {
-    const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
+    const events = await collect(mapChatCompletionStream(eventsFromData([
       {
         choices: [
           {
@@ -873,7 +874,7 @@ test(
 test(
   'OpenAI Chat Completions stream maps compatible reasoning content',
   async () => {
-    const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
+    const events = await collect(mapChatCompletionStream(eventsFromData([
       {
         choices: [{
           delta: { role: 'assistant', content: null, reasoning_content: '' }
@@ -898,7 +899,7 @@ test(
 test(
   'OpenAI Chat Completions stream preserves malformed tool arguments as a string',
   async () => {
-    const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
+    const events = await collect(mapChatCompletionStream(eventsFromData([
       {
         choices: [{
           delta: {
@@ -939,7 +940,10 @@ function captureFetch(requests: CapturedRequest[]) {
       headers: new Headers(init?.headers),
       body: init?.body ? JSON.parse(String(init.body)) : null,
     })
-    return new Response('data: [DONE]\n\n', { status: 200 })
+    const data = String(input).endsWith('/responses')
+      ? 'data: {"type":"response.completed","response":{}}\n\n'
+      : 'data: [DONE]\n\n'
+    return new Response(data, { status: 200 })
   }
 }
 
