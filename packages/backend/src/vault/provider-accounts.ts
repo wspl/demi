@@ -104,7 +104,7 @@ export class ProviderAccounts {
       )
     try {
       const account = await credentials.add({ accessToken: token })
-      this.assembly.invalidate(entry.id)
+      await this.assembly.invalidate(entry.id)
       return { account }
     } catch {
       throw new AccountRefused(
@@ -117,7 +117,7 @@ export class ProviderAccounts {
   async activate(entry: ProviderEntry, id: string) {
     const credentials = await this.existingAccount(entry, id)
     const active = await credentials.setActive(id)
-    this.assembly.invalidate(entry.id)
+    await this.assembly.invalidate(entry.id)
     return { active }
   }
 
@@ -135,7 +135,7 @@ export class ProviderAccounts {
         'Switch accounts before removing the active account, or remove the provider'
       )
     await credentials.remove(id)
-    this.assembly.invalidate(entry.id)
+    await this.assembly.invalidate(entry.id)
   }
 
   private async credentials(

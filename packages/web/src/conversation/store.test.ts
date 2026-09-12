@@ -287,7 +287,7 @@ test('snapshot refresh preserves live transcript and unsent draft', async () => 
   expect(current.phase).toBe('running')
 })
 
-test('uncached history waits for its own model connection after navigation', async () => {
+test('history remains readable during its own connection after navigation', async () => {
   const store = useConversations()
   const current = store.items[0]!
   current.blocks = [{
@@ -336,16 +336,16 @@ test('uncached history waits for its own model connection after navigation', asy
     }
     return originalFetch(input, init)
   }) as typeof fetch
+  await useProduct().loadModels(true)
   const opening = store.activate(current.id)
   try {
     expect(current).toMatchObject({ load: 'loading' })
     await historyRequested.promise
     expect(current).toMatchObject({ load: 'loading' })
-    useProduct().catalogs.second = []
     useProduct().activeConversationId = 'second'
     history.resolve(Response.json({ blocks: current.blocks, subagents: [] }))
     await connecting.promise
-    expect(current).toMatchObject({ load: 'loading' })
+    expect(current).toMatchObject({ load: 'ready' })
     expect(current.draft).toBe('Keep the draft')
     connection.reject(new Error('Connection failed'))
     await opening
@@ -523,4 +523,39 @@ test('logout cancels pending history and prevents late state restoration', async
   await opening
   expect(store.items).toEqual([])
   expect(current.load).toBe('loading')
+})
+
+
+test('slow or failed model discovery does not hold history behind the loading pane', async () => {
+  const store = useConversations()
+  const current = store.items[0]!
+  const modelResponse = deferred<Response>()
+  const originalFetch = globalThis.fetch
+  const block = {
+    type: 'user', id: 'visible-history', turnId: 'history-turn', preamble: null,
+    model: {
+      providerId: 'fixture', thinking: null,
+      model: { id: 'fixture', name: 'Fixture', contextWindow: 1000,
+        outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
+    },
+    createdAt: '2026-09-13T00:00:00.000Z', content: [{ type: 'text', text: 'Read this while models load' }],
+  }
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) return modelResponse.promise
+    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path.endsWith('/transcript')) return Response.json({ blocks: [block], subagents: [] })
+    return originalFetch(input, init)
+  }) as typeof fetch
+  const models = useProduct().loadModels(true).catch(error => error)
+  const opening = store.activate(current.id)
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(current.lastError).toBeNull()
+  expect(current.load).toBe('ready')
+  expect(current.blocks[0]?.id).toBe('visible-history')
+  modelResponse.reject(new Error('Catalog offline'))
+  expect(await models).toBeInstanceOf(Error)
+  await opening
+  expect(current.load).toBe('ready')
+  expect(current.blocks[0]?.id).toBe('visible-history')
 })

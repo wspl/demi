@@ -1,3 +1,4 @@
+import { ModelCatalogCache } from '../llm/model-catalog-cache'
 import { expect, test } from 'bun:test'
 import {
   defineProvider,
@@ -80,7 +81,7 @@ test(
           },
         }),
       },
-    }, '/unused-vault', new VendorCatalog())
+    }, '/unused-vault', new VendorCatalog(), new ModelCatalogCache(control))
     const resolve = createSessionProviderResolver({
       assembly,
       control,
@@ -159,7 +160,7 @@ test(
           providerType: 'stateful',
           apiKey: 'new'
         } })
-      assembly.invalidate(entry.id)
+      await assembly.invalidate(entry.id)
       expect(await read(clone)).toBe('new:1')
       expect(disposed).toEqual([1, 2])
       expect(created).toBe(3)
@@ -235,7 +236,7 @@ test(
           createRuntime: () => new StubProvider([[events.response()]]),
         }),
       },
-    }, '/unused-vault', new VendorCatalog())
+    }, '/unused-vault', new VendorCatalog(), new ModelCatalogCache(control))
     try {
       pauseNextRead = true
       const oldLookup = assembly.providerFor(entry.id)
@@ -248,7 +249,7 @@ test(
           apiKey: 'new'
         }
       })
-      assembly.invalidate(entry.id)
+      await assembly.invalidate(entry.id)
       expect((await assembly.providerFor(entry.id))?.provider.displayName)
         .toBe('Edited:new')
       release.resolve()

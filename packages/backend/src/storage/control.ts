@@ -1,3 +1,4 @@
+import { modelCatalogRecordSchema, type ModelCatalogRecord } from './model-catalog'
 import { modelSelectionSchema } from '@demicodes/agent'
 import {
   preferencesSchema,
@@ -144,6 +145,9 @@ export interface ControlService {
       config?: string
     }
   ): Promise<ProviderRecord | null>
+  getModelCatalog(providerId: string): Promise<ModelCatalogRecord | null>
+  putModelCatalog(providerId: string, record: ModelCatalogRecord): Promise<void>
+  deleteModelCatalog(providerId: string): Promise<void>
   deleteProvider(id: string): Promise<void>
   appendUsage(row: Omit<UsageRow, 'id' | 'createdAt'>): Promise<void>
   listUsage(userId: string): Promise<UsageRow[]>
@@ -1019,6 +1023,25 @@ export class LocalControlService implements ControlService {
         [patch.config, id]
       )
     return this.getProvider(id)
+  }
+
+  async getModelCatalog(providerId: string): Promise<ModelCatalogRecord | null> {
+    const row = this.db.get<{ record_json: string }>(
+      'SELECT record_json FROM model_catalogs WHERE provider_id = ?', [providerId],
+    )
+    return row ? modelCatalogRecordSchema.parse(JSON.parse(row.record_json)) : null
+  }
+
+  async putModelCatalog(providerId: string, record: ModelCatalogRecord): Promise<void> {
+    const parsed = modelCatalogRecordSchema.parse(record)
+    this.db.run(
+      'INSERT INTO model_catalogs (provider_id, record_json) VALUES (?, ?) ON CONFLICT(provider_id) DO UPDATE SET record_json = excluded.record_json',
+      [providerId, JSON.stringify(parsed)],
+    )
+  }
+
+  async deleteModelCatalog(providerId: string): Promise<void> {
+    this.db.run('DELETE FROM model_catalogs WHERE provider_id = ?', [providerId])
   }
 
   async deleteProvider(id: string): Promise<void> {

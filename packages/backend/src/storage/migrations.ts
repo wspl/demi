@@ -158,6 +158,16 @@ CREATE TABLE attachments (
 );
 `,
   },
+  {
+    id: 2,
+    name: 'model_catalogs',
+    sql: `
+CREATE TABLE model_catalogs (
+  provider_id TEXT PRIMARY KEY REFERENCES providers(id) ON DELETE CASCADE,
+  record_json TEXT NOT NULL
+);
+`,
+  },
 ]
 
 /**

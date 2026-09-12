@@ -275,7 +275,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     signal.throwIfAborted()
     provider.apiKey = ''
     resources.hideProvider(saved.provider.id, provider.enabled)
-    await product.revalidate()
+    await product.revalidate(true)
     signal.throwIfAborted()
     select(saved.provider.id)
     drafts.value = drafts.value.filter((draft) => draft.id !== provider.id)
@@ -293,7 +293,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     })
     signal.throwIfAborted()
     delete testResults.value[provider.id]
-    await product.revalidate()
+    await product.revalidate(true)
     signal.throwIfAborted()
   }
 
@@ -376,7 +376,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         signal,
       })
       signal.throwIfAborted()
-      await product.revalidate()
+      await product.revalidate(true)
     })
   }
 
@@ -471,7 +471,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   function refresh(provider: SettingsProviderEntry): void {
     perform(provider.id, { kind: 'refreshing' }, async (signal) => {
-      await product.loadModels(undefined, true)
+      await product.loadModels(true)
       signal.throwIfAborted()
       const capability = product.snapshot?.providers.find(
         (entry) => entry.id === provider.id,
@@ -510,7 +510,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           },
         )
         signal.throwIfAborted()
-        await product.revalidate()
+        await product.revalidate(true)
       },
     )
   }
@@ -577,7 +577,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }
       if (result.status === 'completed') {
         loginId = null
-        await product.revalidate()
+        await product.revalidate(true)
         controller.signal.throwIfAborted()
         const provider = resources.providers.find(
           (entry) => entry.id === result.providerId,
@@ -707,7 +707,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           ),
         },
       )
-      await product.revalidate()
+      await product.revalidate(true)
       controller.signal.throwIfAborted()
       current.phase = {
         kind: 'done',

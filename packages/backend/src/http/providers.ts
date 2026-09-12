@@ -430,7 +430,7 @@ export function providerRoutes(options: {
         code: 'provider_not_found',
         message: 'No such provider'
       }, 404)
-    assembly.invalidate(provider.id)
+    await assembly.invalidate(provider.id)
     return c.json({ provider: publicProvider(updated) })
   })
 

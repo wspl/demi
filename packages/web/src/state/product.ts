@@ -15,29 +15,24 @@ import {
 export const useProduct = defineStore('product', () => {
   const snapshot = ref<ProductState | null>(null)
   const load = ref<'loading' | 'ready' | 'failed'>('loading')
-  const catalogs = ref<Record<string, CatalogProvider[]>>({})
+  const modelSnapshot = ref<{ key: string; providers: CatalogProvider[]; checkedAt: number } | null>(null)
   const vendors = ref<VendorCatalog | null>(null)
-  const modelErrors = ref<Record<string, string>>({})
+  const modelError = ref<{ key: string; retryAt: number } | null>(null)
   const vendorError = ref<string | null>(null)
   const vendorLoad = computed(() =>
     vendors.value !== null ? 'ready' : vendorError.value ? 'failed' : 'loading',
   )
-  const catalogLoad = computed(() => {
-    const key = activeConversationId.value ?? ''
-    if (catalogs.value[key] || catalogs.value['']) {
-      return 'ready'
-    }
-    return modelErrors.value[key] || modelErrors.value['']
-      ? 'failed'
-      : 'loading'
-  })
+  const catalogLoad = computed(() => modelSnapshot.value?.key === catalogKey.value
+    ? 'ready' : modelError.value?.key === catalogKey.value ? 'failed' : 'loading')
   const activeConversationId = ref<string | null>(null)
-  function catalogFor(conversationId: string | null) {
-    return catalogs.value[conversationId ?? ''] ?? catalogs.value[''] ?? []
-  }
-  const catalog = computed(() => catalogFor(activeConversationId.value))
+  const catalogKey = computed(() => JSON.stringify((snapshot.value?.providers ?? []).map(provider => {
+    const { details, error: _error, ...config } = provider
+    return { ...config, account: details?.active?.credentialId ?? null }
+  })))
+  const catalog = computed(() => modelSnapshot.value?.key === catalogKey.value
+    ? modelSnapshot.value.providers : [])
   const reads = new SerialQueue()
-  const modelRequests = new Map<string, symbol>()
+  let modelRequest: { key: string; promise: Promise<void>; controller: AbortController } | null = null
   let vendorRequest: Promise<void> | null = null
   let controller: AbortController | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -85,61 +80,65 @@ export const useProduct = defineStore('product', () => {
     }
   }
 
-  async function revalidate(): Promise<void> {
+  async function revalidate(refreshModels = false): Promise<void> {
+    if (refreshModels)
+      clearModels()
     try {
       await refresh()
-      await loadModels()
+      await loadModels(refreshModels)
     } catch {
       // A failed refresh keeps the snapshot; a model catalog failure is the
       // composer's state.
     }
   }
 
-  async function loadModels(
-    conversationId: string | null = activeConversationId.value,
-    force = false,
-  ): Promise<void> {
+  function clearModels(): void {
+    modelRequest?.controller.abort()
+    modelRequest = null
+    modelSnapshot.value = null
+    modelError.value = null
+  }
+
+  async function loadModels(force = false): Promise<void> {
     const current = controller
-    if (!current) {
+    if (!current)
       return
-    }
-    if (
-      conversationId &&
-      !snapshot.value?.conversations.some((item) => item.id === conversationId)
-    ) {
-      conversationId = null
-    }
-    const key = conversationId ?? ''
-    const requestId = Symbol()
-    modelRequests.set(key, requestId)
-    delete modelErrors.value[key]
-    const query = new URLSearchParams()
-    if (conversationId) {
-      query.set('conversationId', conversationId)
-    }
-    if (force) {
-      query.set('refresh', 'true')
-    }
+    const key = catalogKey.value
+    if (modelRequest?.key === key)
+      return modelRequest.promise
+    if (!force && modelSnapshot.value?.key === key && Date.now() - modelSnapshot.value.checkedAt < 60_000)
+      return
+    if (!force && modelError.value?.key === key && Date.now() < modelError.value.retryAt)
+      return
+    modelRequest?.controller.abort()
+    const requestController = new AbortController()
+    const signal = AbortSignal.any([current.signal, requestController.signal])
+    modelError.value = null
+    const request = (async () => {
+      try {
+        const response = await apiRequest(force ? '/models?refresh=true' : '/models', {
+          signal,
+        })
+        const next = await readResponse(response, modelCatalogSchema)
+        signal.throwIfAborted()
+        if (key === catalogKey.value)
+          modelSnapshot.value = { key, providers: next.providers, checkedAt: Date.now() }
+      } catch (cause) {
+        if (!signal.aborted && key === catalogKey.value) {
+          modelError.value = {
+            key,
+            retryAt: Date.now() + 60_000,
+          }
+        }
+        throw cause
+      }
+    })()
+    modelRequest = { key, promise: request, controller: requestController }
     try {
-      const response = await apiRequest(`/models?${query}`, {
-        signal: current.signal,
-      })
-      const next = await readResponse(response, modelCatalogSchema)
-      current.signal.throwIfAborted()
-      if (modelRequests.get(key) === requestId) {
-        catalogs.value[key] = next.providers
-        delete modelErrors.value[key]
-      }
-    } catch (cause) {
-      if (!current.signal.aborted && modelRequests.get(key) === requestId) {
-        modelErrors.value[key] =
-          cause instanceof Error ? cause.message : String(cause)
-      }
-      throw cause
+      await request
     } finally {
-      if (modelRequests.get(key) === requestId) {
-        modelRequests.delete(key)
-      }
+      if (modelRequest?.promise === request)
+        modelRequest = null
     }
   }
 
@@ -185,9 +184,11 @@ export const useProduct = defineStore('product', () => {
     }
     try {
       await refresh()
-      await loadModels()
+      // Model discovery must not hold initial app or conversation restoration.
+      // loadModels records its own failure and keeps the last usable snapshot.
+      void loadModels().catch(() => {})
     } catch {
-      // refresh and loadModels record their own failures.
+      // refresh records its own failure.
     } finally {
       if (controller === current && !current.signal.aborted) {
         clearTimer()
@@ -210,12 +211,10 @@ export const useProduct = defineStore('product', () => {
     clearTimer()
     etag = null
     snapshot.value = null
-    catalogs.value = {}
-    modelRequests.clear()
+    clearModels()
     vendors.value = null
     vendorRequest = null
     vendorError.value = null
-    modelErrors.value = {}
     activeConversationId.value = null
     load.value = 'loading'
   }
@@ -223,9 +222,7 @@ export const useProduct = defineStore('product', () => {
   return {
     snapshot,
     load,
-    catalogs,
     catalog,
-    catalogFor,
     vendors,
     vendorLoad,
     catalogLoad,

@@ -408,3 +408,10 @@ keeps Cloud folder browsing disabled, while workspace uploads and execution use
 the existing backend capability. Device browsing remains available. Backend
 persistence/reset scenarios are recorded in `progress.md`; browser verification
 uses a disposable backend and simulated provisioner.
+
+
+Model choices use one account-wide catalog in `web/state/product.ts`, shared
+by all conversations with a one-minute TTL and one pending request. History
+restoration does not await model discovery. Device and workspace state supplies
+the selected conversation's execution availability without refetching model
+metadata. See `../model-catalog-cache.md` for backend TTL and durable caching.

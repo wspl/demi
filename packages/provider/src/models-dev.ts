@@ -132,7 +132,7 @@ export async function fetchModelsDev(
     )
 
   try {
-    const response = await fetchImpl(url, { headers })
+    const response = await fetchImpl(url, { headers, signal: options.signal })
     if (response.status === 304 && cached) {
       cache = { ...cached, fetchedAtMs: nowDate.getTime() }
       return {
@@ -158,6 +158,7 @@ export async function fetchModelsDev(
     }
     return { catalog, fetchedAt, stale: false, warnings: [] }
   } catch (error) {
+    options.signal?.throwIfAborted()
     if (!cached)
       throw error
     return {

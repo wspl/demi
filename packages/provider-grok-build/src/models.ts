@@ -11,6 +11,7 @@ import { FileGrokAuthStore } from './auth'
 import { DEFAULT_GROK_BUILD_BASE_URL, buildGrokBuildHeaders } from './headers'
 
 export interface GrokBuildModelCatalogOptions {
+  signal?: AbortSignal
   providerId?: string
   grokHome?: string
   baseUrl?: string
@@ -71,6 +72,7 @@ export async function listGrokBuildModels(
     const auth = await authStore.resolveAuth()
     const response = await fetchImpl(modelsUrl(baseUrl), {
       method: 'GET',
+      signal: options.signal,
       headers: buildGrokBuildHeaders(auth, undefined, {
         clientVersion: options.clientVersion,
         grokHome: options.grokHome,
@@ -86,6 +88,7 @@ export async function listGrokBuildModels(
     const payload = (await response.json()) as unknown
     return modelListFromGrokModelsPayload(payload, providerId)
   } catch {
+    options.signal?.throwIfAborted()
     return grokBuildFallbackModels(providerId)
   }
 }

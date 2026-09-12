@@ -38,6 +38,7 @@ export async function listClaudeCodeModels(
     fetch: options.fetch,
     url: options.modelsDevUrl,
     now: options.now,
+    signal: options.signal,
     refresh: options.refresh
   })
   return modelsDevAnthropicCatalogToModelList(snapshot.catalog, {

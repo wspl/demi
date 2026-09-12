@@ -431,14 +431,14 @@ export const useConversations = defineStore('conversations', () => {
   ): Promise<ProviderSelection> {
     const pick = composerModel(
       resources.providerInfosFor(conversation.id),
-      resources.modelsFor(conversation.id),
+      resources.modelsFor(),
       conversation.model.providerId,
       conversation.model.modelId,
     )
     if (pick.kind !== 'ready' || !pick.providerId || !pick.modelId) {
       throw new Error('Choose an available provider and model before sending.')
     }
-    const model = product.catalogFor(conversation.id)
+    const model = product.catalog
       .find((provider) => provider.providerId === pick.providerId)
       ?.models.find((model) => model.id === pick.modelId)
     if (!model) {
@@ -526,7 +526,9 @@ export const useConversations = defineStore('conversations', () => {
         conversation.load = 'ready'
         return
       }
-      await product.loadModels(conversation.id)
+      // Share global model discovery, but render history before it completes.
+      // Model load errors belong to the composer, not transcript restoration.
+      const modelsLoaded = product.loadModels().catch(() => {})
       controller.signal.throwIfAborted()
       await loadHosts(conversation, controller.signal)
       const response = await apiRequest(
@@ -543,14 +545,16 @@ export const useConversations = defineStore('conversations', () => {
         endedAt: agent.endedAt ?? undefined,
       }))
       updateLiveStatus(conversation)
+      conversation.load = 'ready'
+      await modelsLoaded
+      controller.signal.throwIfAborted()
       const pick = composerModel(
         resources.providerInfosFor(conversation.id),
-        resources.modelsFor(conversation.id),
+        resources.modelsFor(),
         conversation.model.providerId,
         conversation.model.modelId,
       )
       if (conversation.archived || pick.kind !== 'ready') {
-        conversation.load = 'ready'
         return
       }
       const runtime = new ConversationRuntime({

@@ -214,8 +214,9 @@ export function createGrokBuildProvider(
         ? 'Uses Grok CLI OAuth + demi credential pool via cli-chat-proxy'
         : 'Uses Grok CLI OAuth session (~/.grok/auth.json) via cli-chat-proxy',
     }),
-    listModels: () =>
+    listModels: (listOptions) =>
       listGrokBuildModels({
+        signal: listOptions?.signal,
         providerId: id,
         grokHome: options.grokHome,
         baseUrl,
