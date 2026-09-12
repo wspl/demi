@@ -150,7 +150,9 @@ Runtime acceptance of that design is pending; its acceptance section is the
 implementation checklist.
 
 `demi agent send <id|parent>` admits a structured internal message. The session
-steers a busy recipient at a safe boundary and wakes a naturally idle recipient.
+uses its existing internal-steer path for a busy recipient and its hidden-wakeup
+path for a naturally idle recipient. Both materialize an `agent_message` block:
+this is a transcript type, not a separate delivery mechanism or scheduler.
 There is no separate agent-to-agent steering verb and no human message queued
 for a receipt. The sender returns after durable admission, never after the
 recipient answers. Archived targets reject sends; only their parent can reopen
@@ -163,15 +165,15 @@ The supervisor closes a quiescent child with its last assistant text, bounded
 to 32 KiB, or its abort/error outcome. It saves the result before delivering a
 completion message to the parent. A naturally idle parent wakes; a busy
 parent receives the receipt as internal steering at a safe boundary. The creation
-command carries no
-completion result. A child with pending yields or descendants stays live.
+command carries no completion result. A child with pending yields or descendants
+stays live.
 
 Each execution round has a distinct completion message id containing the child
 id and its persisted `spawnedAt`. Resume chooses a timestamp strictly newer than
 the previous round. Parent checkpoints mark only the matching round delivered;
 an older completion cannot acknowledge a newer round. Restore retries an
 undelivered completion using the same message id, and session admission deduplicates
-it against the internal inbox and transcript.
+it against existing pending internal inputs and `agent_message` blocks.
 
 `AgentServerOptions.subagents.notifyParentOnIdle: false` delegates root-level
 completion handling to the product's `closed` frame subscriber. Descendant
@@ -323,7 +325,7 @@ summarize the parent transcript into the child.
 | Layer | Owner | Content |
 |---|---|---|
 | `systemPrompt` | profile, else parent harness | Worker identity, shell rules, `commandsPrompt`. A custom `profile.systemPrompt` replaces the parent prompt; `commandsPrompt` is still supplied through `AgentSystemPromptContext`. |
-| preamble | `AgentServer`, every child | This session is a subagent; its id and its parent's id; ending the turn with an empty inbox returns the last assistant text as the result; `demi agent send` reaches the parent (`parent`) and any agent in `demi agent list`; spawn delegates further; do not address the product user as the root session. |
+| preamble | `AgentServer`, every child | This session is a subagent; its id and its parent's id; ending the turn with no pending input returns the last assistant text as the result; `demi agent send` reaches the parent (`parent`) and any agent in `demi agent list`; spawn delegates further; do not address the product user as the root session. |
 | first user message | parent model | The spawn prompt from stdin. Demi does not inspect or pad it. |
 
 The inherit profile carries the parent `systemPrompt` so the child already
@@ -391,14 +393,13 @@ Three commits are atomic, whatever the store:
 
 A close follows the node's final checkpoint, which its session flushes on
 dispose. A process ending between the two leaves a live node that is
-quiescent — idle, empty inbox, no live children — and the next restore
+quiescent — idle, no pending input, no live children — and the next restore
 closes it with the same result, so the two orders cannot be told apart.
 
 A closed round remains undelivered until the parent's checkpoint carries its
-completion receipt in its durable internal inbox or as an `agent_message` block.
-The save marks that exact child
-round delivered in the same commit. Restore delivers every still-undelivered
-completion. Products explicitly owning root-level completion handling mark the
+completion receipt as persisted pending internal input or an `agent_message`
+block. The save marks that exact child round delivered in the same commit.
+Restore delivers every still-undelivered completion. Products explicitly owning root-level completion handling mark the
 matching round delivered after the `closed` event.
 
 **Restore.** Reopening a root node restores its live children, each of
