@@ -1,3 +1,4 @@
+import { attachmentTag } from '@demicodes/core'
 import {
   isAbortError,
   isRecord,
@@ -261,6 +262,15 @@ export type AnthropicContentBlock =
         media_type: string;
         data: string
       }
+    }
+  | {
+      type: 'document';
+      source: {
+        type: 'base64';
+        media_type: string;
+        data: string
+      };
+      title?: string
     }
   | {
       type: 'tool_use';
@@ -543,10 +553,18 @@ function userContentToAnthropic(
         type: 'text',
         text: block.reference
       }]
+    if (block.type === 'attachment')
+      return [{ type: 'text', text: attachmentTag(block) }]
+    // A document is a PDF the model reads natively; the file is also on the host by path.
     if (block.type === 'document')
       return [{
-        type: 'text',
-        text: `[document:${block.source.fileName} ${block.source.mediaType}]`
+        type: 'document',
+        source: {
+          type: 'base64',
+          media_type: block.source.mediaType,
+          data: Buffer.from(block.source.data).toString('base64'),
+        },
+        title: block.source.fileName,
       }]
     // Anthropic's API has no video content type (catalog marks video unsupported); degrade defensively.
     if (block.type === 'video')

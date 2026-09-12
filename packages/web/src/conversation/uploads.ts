@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { sniffModelMediaType } from '@demicodes/core'
 import {
   attachmentFileError,
+  attachTextSnippet,
   composerAttachmentFromFile,
   composerFileNames,
   isComposerFile,
@@ -19,57 +19,26 @@ export function createConversationUploads(
     conversation: Conversation,
     item: Extract<ProductAttachment, { kind: 'file' }>,
   ): Promise<void> {
-    if (conversation.persistence !== 'synced' && item.destination === 'workspace') {
-      item.phase = 'staged'
-      item.progress = undefined
-      onChange()
-      return
-    }
     const controller = new AbortController()
     uploads.get(item.id)?.abort()
     uploads.set(item.id, controller)
     item.phase = 'uploading'
     item.progress = 0
-    const contextVersion = conversation.contextVersion
     try {
-      const bytes = new Uint8Array(await item.file.slice(0, 32).arrayBuffer())
-      const media = sniffModelMediaType(bytes)
-      const pdf = new TextDecoder().decode(bytes.slice(0, 5)) === '%PDF-'
-      if (item.destination === 'message' && !media && !pdf) {
-        throw new Error(`${item.name} is not a supported image, video or PDF.`)
-      }
-      const path =
-        item.destination === 'message'
-          ? '/attachments'
-          : `/conversations/${encodeURIComponent(conversation.id)}/workspace-files?name=${encodeURIComponent(item.name)}`
       const result = await uploadBytes(
-        path,
+        '/attachments',
         item.file,
         controller.signal,
         (fraction) => {
           item.progress = fraction
         },
-        media?.mediaType ??
-          (pdf ? 'application/pdf' : item.file.type || 'application/octet-stream'),
+        item.file.type || 'application/octet-stream',
       )
       controller.signal.throwIfAborted()
-      if (item.destination === 'message') {
-        const attachment = z
-          .object({ attachment: z.object({ id: z.string() }) })
-          .parse(result).attachment
-        item.upload = {
-          kind: 'message',
-          id: attachment.id,
-          media: media?.kind ?? 'document',
-        }
-      } else {
-        item.upload = {
-          kind: 'workspace',
-          path: z.object({ path: z.string() }).parse(result).path,
-          contextVersion,
-        }
-      }
-      controller.signal.throwIfAborted()
+      const attachment = z
+        .object({ attachment: z.object({ id: z.string() }) })
+        .parse(result).attachment
+      item.upload = { id: attachment.id }
       item.phase = 'ready'
       item.progress = undefined
       onChange()
@@ -86,11 +55,7 @@ export function createConversationUploads(
     }
   }
 
-  function addFiles(
-    conversation: Conversation,
-    files: File[],
-    acceptedExtensions: readonly string[] | null,
-  ): void {
+  function addFiles(conversation: Conversation, files: File[]): void {
     for (const file of files) {
       const error = attachmentFileError(file, composerFileNames(conversation.files))
       if (error) {
@@ -98,7 +63,7 @@ export function createConversationUploads(
         continue
       }
       const item: Extract<ProductAttachment, { kind: 'file' }> = {
-        ...composerAttachmentFromFile(file, acceptedExtensions),
+        ...composerAttachmentFromFile(file),
         file,
         upload: null,
       }
@@ -107,6 +72,7 @@ export function createConversationUploads(
         (attachment) => attachment.id === item.id,
       )!
       if (isComposerFile(reactiveItem)) {
+        void attachTextSnippet(reactiveItem, file)
         void uploadFile(conversation, reactiveItem).catch(onError)
       }
     }

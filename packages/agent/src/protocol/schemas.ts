@@ -121,6 +121,15 @@ export const userContentBlockSchema: z.ZodType<UserContentBlock> = z.discriminat
     z.object({ type: z.literal('video'), source: videoSourceSchema }),
     z.object({ type: z.literal('document'), source: documentSourceSchema }),
     z.object({ type: z.literal('reference'), reference: z.string() }),
+    z.object({
+      type: z.literal('attachment'),
+      name: z.string().min(1),
+      path: z.string().min(1),
+      mediaType: z.string(),
+      sizeBytes: z.number().int().nonnegative(),
+      sha256: z.string().min(1),
+      snippet: z.string().optional(),
+    }),
   ]
 )
 
@@ -246,6 +255,8 @@ export const clientFrameSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('abort') }),
   z.object({ type: z.literal('abort_subagents') }),
+  // One live child, with its subtree; it settles through its own `subagent closed` frame.
+  z.object({ type: z.literal('abort_subagent'), subagentId: z.string() }),
   z.object({ type: z.literal('retry'), metadata: metadataSchema.optional() }),
   z.object({ type: z.literal('resume'), metadata: metadataSchema.optional() }),
   z.object({ type: z.literal('compact'), metadata: metadataSchema.optional() }),
@@ -253,6 +264,12 @@ export const clientFrameSchema = z.discriminatedUnion('type', [
     type: z.literal('shell_write'),
     commandId: z.string(),
     stdin: z.string(),
+    metadata: metadataSchema.optional(),
+  }),
+  // Stops one running command; its final status arrives as a `shell_output` frame.
+  z.object({
+    type: z.literal('shell_abort'),
+    commandId: z.string(),
     metadata: metadataSchema.optional(),
   }),
   // Requests a fresh transcript_reset; sent by the client when it detects a

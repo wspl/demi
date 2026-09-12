@@ -59,6 +59,8 @@ const emit = defineEmits<{
   retryLoad: []
   retrySubmission: []
   abortSubagents: []
+  abortSubagent: [id: string]
+  abortTerminal: [id: string]
   removeQueued: [id: string]
   sendQueued: [id: string]
   removePendingSteer: [id: string]
@@ -128,13 +130,13 @@ watch(() => props.conversation.id, close)
           {{ conversation.title }}
         </h1>
         <Tooltip
-          content="Archive conversation"
+          content="Archive"
           class="shrink-0"
         >
           <IconButton
             :icon="Archive"
             variant="ghost"
-            aria-label="Archive conversation"
+            aria-label="Archive"
             :disabled="conversation.phase !== 'idle' || conversation.archived"
             @click="emit('archive')"
           />
@@ -218,10 +220,12 @@ watch(() => props.conversation.id, close)
             v-model:active-id="activeSubagentId"
             :agents="conversation.subagents"
             @abort="emit('abortSubagents')"
+            @abort-agent="(id) => emit('abortSubagent', id)"
           />
           <TerminalPanel
             v-model:active-id="activeTerminalId"
             :terminals="conversation.terminals"
+            @abort="(id) => emit('abortTerminal', id)"
           />
         </template>
       </SessionSurface>

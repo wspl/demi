@@ -7,6 +7,7 @@ import { useSession } from '../auth/session'
 import { useProduct } from './product'
 import { usePreferences } from './preferences'
 import { modelInfo, providerView, wireApi } from './catalog'
+import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { emptyLocalState, readLocalState, writeLocalState } from './local'
 import type { Device, Project } from './types'
 
@@ -144,6 +145,12 @@ export const useResources = defineStore('resources', () => {
       logo: '',
     })),
   )
+  const sidebarWidth = computed({
+    get: () => local.value.sidebarWidth ?? SIDEBAR_WIDTH.default,
+    set: (width: number) => {
+      local.value.sidebarWidth = width
+    },
+  })
   const recentProjectIds = computed(() => local.value.recentProjects)
 
   function rememberProject(id: string): void {
@@ -240,6 +247,7 @@ export const useResources = defineStore('resources', () => {
     targetOpen,
     pairingOpen,
     sidebarOpen,
+    sidebarWidth,
     recentProjectIds,
     rememberProject,
     hideProvider,

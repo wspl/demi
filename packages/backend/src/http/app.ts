@@ -186,6 +186,7 @@ export function createApp(options: {
       agentServer: options.agentServer,
       upgradeWebSocket: options.upgradeWebSocket,
       blobsFor: (id) => options.blobs.forUser(id),
+      withHost: options.withHost,
       vault: options.vault,
       mode: options.mode,
     }),

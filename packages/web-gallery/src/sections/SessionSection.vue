@@ -90,11 +90,9 @@ const queue = ref([
     text: 'Keep the light-mode screenshot in the same PR.',
   },
 ])
-const fullPane = ref<{ scrollToEnd: () => void }>()
 const fullComposer = ref<{ setDraft: (text: string) => void }>()
-const turnPane = ref<{ scrollToEnd: () => void }>()
 const agents = reactive(gallerySubagents())
-const terminals = galleryTerminals()
+const terminals = reactive(galleryTerminals())
 const finishedOnly = agents.filter((agent) => agent.phase !== 'running')
 const { activeSubagentId, activeTerminalId, toggleAgents, toggleTerminals } =
   useSessionPanels(
@@ -179,6 +177,16 @@ function onSelectFastModel(providerId: string, modelId: string): void {
   fastProvider.value = providerId
   fastModel.value = modelId
 }
+const pastedSnippet = `2026-09-12T10:41:02Z INFO  auth  session cookie renamed sid -> session
+2026-09-12T10:41:02Z WARN  auth  legacy cookie still read by login test
+2026-09-12T10:41:03Z ERROR test  expect(received).toBe(expected)
+  Expected: "session"
+  Received: "sid"
+2026-09-12T10:41:03Z INFO  test  1 fail 2 pass 1 skip`
+const markdownSnippet = `# Release notes · 0.9
+- Session cookie renamed to \`session\`
+- Login page keeps both fields on a rejected sign-in
+- Terminal tabs close with the running command`
 const attachmentBubble = [
   {
     type: 'image' as const,
@@ -188,12 +196,37 @@ const attachmentBubble = [
     },
   },
   {
+    type: 'attachment' as const,
+    name: 'login-fail.png',
+    path: '/home/demi/.demi/attachments/demo/login-fail.png',
+    mediaType: 'image/png',
+    sizeBytes: 48211,
+    sha256: 'demo-png',
+  },
+  {
     type: 'document' as const,
     source: {
       data: new Uint8Array(),
       mediaType: 'application/pdf',
       fileName: 'login-failure.pdf',
     },
+  },
+  {
+    type: 'attachment' as const,
+    name: 'login-failure.pdf',
+    path: '/home/demi/.demi/attachments/demo/login-failure.pdf',
+    mediaType: 'application/pdf',
+    sizeBytes: 120334,
+    sha256: 'demo-pdf',
+  },
+  {
+    type: 'attachment' as const,
+    name: 'ci.log',
+    path: '/home/demi/.demi/attachments/demo/ci.log',
+    mediaType: 'text/plain',
+    sizeBytes: 2048,
+    sha256: 'demo-log',
+    snippet: pastedSnippet,
   },
   {
     type: 'reference' as const,
@@ -307,7 +340,6 @@ function queueDraft(text: string): void {
     id: `q${nextQueue++}`,
     text,
   })
-  fullPane.value?.scrollToEnd()
 }
 
 function removeQueued(id: string): void {
@@ -334,7 +366,6 @@ function sendNow(id: string): void {
       ],
     },
   ]
-  fullPane.value?.scrollToEnd()
 }
 
 function editUser(id: string): void {
@@ -384,13 +415,6 @@ function compact(): void {
   }, 1200)
 }
 
-watch([sessionFlowBlocks, sessionSlot, queue], () => {
-  fullPane.value?.scrollToEnd()
-})
-
-watch([turnBlocks, turnSlot], () => {
-  turnPane.value?.scrollToEnd()
-})
 
 const sessionRestore = new RestoreSweep()
 const composerArchived = ref(true)
@@ -418,12 +442,23 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => sessionRestore.stop())
+function abortAgent(id: string) {
+  const agent = agents.find((entry) => entry.id === id)
+  if (agent && agent.phase === 'running') {
+    agent.phase = 'aborted'
+    agent.endedAt = new Date().toISOString()
+  }
+}
 function abortAgents() {
   for (const agent of agents) {
-    if (agent.phase === 'running') {
-      agent.phase = 'aborted'
-      agent.endedAt = new Date().toISOString()
-    }
+    abortAgent(agent.id)
+  }
+}
+function abortTerminal(id: string) {
+  const terminal = terminals.find((entry) => entry.id === id)
+  if (terminal && terminal.phase === 'running') {
+    terminal.phase = 'exited'
+    terminal.endedAt = new Date().toISOString()
   }
 }
 </script>
@@ -489,14 +524,12 @@ function abortAgents() {
                 {
                   id: 'pdf',
                   name: 'login-failure.pdf',
-                  destination: 'workspace',
                   phase: 'ready',
                 },
                 {
                   id: 'png',
                   name: 'login-fail.png',
                   src: demoImageUrl,
-                  destination: 'message',
                   phase: 'ready',
                 },
                 {
@@ -519,14 +552,12 @@ function abortAgents() {
                   id: 'up',
                   name: 'login-fail.png',
                   src: demoImageUrl,
-                  destination: 'message',
                   phase: 'uploading',
                   progress: 0.42,
                 },
                 {
                   id: 'pdf-up',
                   name: 'spec.pdf',
-                  destination: 'workspace',
                   phase: 'uploading',
                   progress: 0.68,
                 },
@@ -534,7 +565,7 @@ function abortAgents() {
             />
           </GallerySpecimen>
           <GallerySpecimen
-            variant="drop"
+            variant="drop · anywhere on the composer"
             wide
           >
             <GalleryComposer
@@ -542,11 +573,21 @@ function abortAgents() {
               dropping
             />
           </GallerySpecimen>
-          <GallerySpecimen variant="local draft · files upload on first send" wide>
+          <GallerySpecimen
+            variant="paste · a long text becomes pasted-text.txt"
+            wide
+          >
             <GalleryComposer
-              placeholder="Ask Demi…"
-              draft="Review this file."
-              :attachments="[{ id: 'staged-file', name: 'notes.txt', destination: 'workspace', phase: 'staged' }]"
+              placeholder="Paste 2000+ characters or 40+ lines here…"
+              draft="Summarize this log."
+              :attachments="[
+                {
+                  name: 'pasted-text.txt',
+                  phase: 'ready',
+                  snippet: pastedSnippet,
+                },
+                { name: 'release-notes.md', phase: 'ready', snippet: markdownSnippet },
+              ]"
             />
           </GallerySpecimen>
           <GallerySpecimen
@@ -953,10 +994,7 @@ function abortAgents() {
     </template>
 
     <template v-if="view === 'turns'">
-      <GallerySessionPane
-        ref="turnPane"
-        label="Turn"
-      >
+      <GallerySessionPane label="Turn" :blocks="turnBlocks">
         <GalleryTranscript
           :blocks="turnBlocks"
           :streaming-thinking-id="turnStreamingId"
@@ -1020,6 +1058,7 @@ function abortAgents() {
             v-model:active-id="exhibitAgentId"
             :agents="agents"
             @abort="abortAgents"
+            @abort-agent="abortAgent"
             :dismiss-outside="false"
           />
         </div>
@@ -1032,6 +1071,7 @@ function abortAgents() {
           <TerminalPanel
             v-model:active-id="exhibitTerminalId"
             :terminals="terminals"
+            @abort="abortTerminal"
             :dismiss-outside="false"
           />
         </div>
@@ -1145,6 +1185,14 @@ function abortAgents() {
             </div>
           </GallerySpecimen>
           <GallerySpecimen
+            variant="none · no conversation open"
+            wide
+          >
+            <div class="gallery-frame h-[16rem] bg-surface">
+              <SessionStatus kind="none" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen
             variant="missing · live"
             wide
           >
@@ -1169,10 +1217,7 @@ function abortAgents() {
     </template>
 
     <template v-if="view === 'session'">
-      <GallerySessionPane
-        ref="fullPane"
-        fill
-      >
+      <GallerySessionPane fill :blocks="sessionBlocks">
         <GalleryTranscript
           :blocks="sessionBlocks"
           :streaming-thinking-id="sessionStreamingId ?? 'thinking-streaming'"
@@ -1228,10 +1273,12 @@ function abortAgents() {
             v-model:active-id="activeSubagentId"
             :agents="agents"
             @abort="abortAgents"
+            @abort-agent="abortAgent"
           />
           <TerminalPanel
             v-model:active-id="activeTerminalId"
             :terminals="terminals"
+            @abort="abortTerminal"
           />
         </template>
       </GallerySessionPane>

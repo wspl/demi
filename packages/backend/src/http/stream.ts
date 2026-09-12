@@ -17,6 +17,8 @@ import type { ControlService } from '../storage/control'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
 import type { ProviderVault } from '../vault/providers'
 import { visibleProvider } from '../vault/scope'
+import { writeAttachmentToHost } from '../conversation/attachment-refs'
+import type { Host } from '@demicodes/shell'
 
 /**
  * `WS /api/conversations/:id/stream` — the live frame-protocol socket.
@@ -32,6 +34,11 @@ export function streamRoutes(options: {
   agentServer: AgentServer
   upgradeWebSocket: UpgradeWebSocket
   blobsFor: (userId: string) => BlobStore
+  withHost: <T>(
+    conversationId: string,
+    operation: (host: Host) => Promise<T>,
+    signal?: AbortSignal,
+  ) => Promise<T>
   vault: ProviderVault
   mode: InstanceMode
 }): Hono<AuthEnv> {
@@ -78,6 +85,10 @@ export function streamRoutes(options: {
               ),
               cwd: target.path,
               blobs: blobsFor(conversation.userId),
+              writeAttachment: (fileName, data) => options.withHost(
+                conversation.id,
+                (host) => writeAttachmentToHost(host, conversation.id, fileName, data)
+              ),
               providerAllowed: async (providerId) => (await visibleProvider(
                 vault,
                 mode,

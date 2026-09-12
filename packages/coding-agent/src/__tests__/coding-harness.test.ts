@@ -1,6 +1,3 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import {
@@ -11,17 +8,10 @@ import {
   type AgentHarness,
   type AgentHarnessRuntime,
 } from '@demicodes/agent'
-import type { InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {
   CommandRegistry,
   type Command,
-  type Host,
-  type HostDirent,
-  type HostFileSystem,
-  type HostProcess,
-  type HostStore,
-  createLogicalHostCwd,
   type ShellEnvironment
 } from '@demicodes/shell'
 import { runnerShell, runnerShellFactory } from '@demicodes/backend/testing'
@@ -137,166 +127,6 @@ test(
   }
 )
 
-test('coding agent resolves file references through Host.fs', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-coding-refs-'))
-  await writeFile(join(root, 'note.txt'), 'hello from file\n', 'utf8')
-  const spacedPath = join(root, 'space note.txt')
-  await writeFile(spacedPath, 'hello from encoded file URL\n', 'utf8')
-  const harness = createCodingAgentHarness({ host: new LocalHost(root) })
-  if (!harness.resolveReferences)
-    throw new Error('expected resolveReferences')
-
-  const resolved = await harness.resolveReferences(
-    {
-      agentSessionId: 'coding-ref-agent',
-      state: harness.initialState(),
-      cwd: root,
-      transcript: {} as never,
-      signal: new AbortController().signal,
-      metadata: null,
-    },
-    [
-      { type: 'text', text: 'read this' },
-      { type: 'reference', reference: 'note.txt' }
-    ],
-  )
-
-  expect(resolved).toEqual([
-    { type: 'text', text: 'read this' },
-    { type: 'text', text: '<file path="note.txt">\nhello from file\n\n</file>' },
-  ])
-
-  const resolvedUrl = await harness.resolveReferences(
-    {
-      agentSessionId: 'coding-ref-agent',
-      state: harness.initialState(),
-      cwd: root,
-      transcript: {} as never,
-      signal: new AbortController().signal,
-      metadata: null,
-    },
-    [{
-      type: 'reference',
-      reference: `file://${spacedPath.replaceAll(' ', '%20')}`
-    }],
-  )
-
-  expect(resolvedUrl).toEqual([
-    {
-      type: 'text',
-      text: `<file path="${spacedPath}">\nhello from encoded file URL\n\n</file>`
-    },
-  ])
-})
-
-test('coding agent file references read through Host.fs', async () => {
-  const host = new RecordingHost('/workspace', 'hello from fake host\n')
-  const harness = createCodingAgentHarness({ host })
-  if (!harness.resolveReferences)
-    throw new Error('expected resolveReferences')
-
-  const resolved = await harness.resolveReferences(
-    {
-      agentSessionId: 'coding-ref-agent',
-      state: harness.initialState(),
-      cwd: '/workspace',
-      transcript: {} as never,
-      signal: new AbortController().signal,
-      metadata: null,
-    },
-    [{ type: 'reference', reference: 'note.txt' }],
-  )
-
-  expect(resolved).toEqual([{
-    type: 'text',
-    text: '<file path="note.txt">\nhello from fake host\n\n</file>'
-  }])
-  expect(host.fs.calls).toEqual([['readFile', 'note.txt', '/workspace']])
-  expect(host.processSpawnCalls).toBe(0)
-})
-
-test(
-  'coding agent resolves file references before AgentSession sends the provider request',
-  async () => {
-    const root = await mkdtemp(join(tmpdir(), 'demi-coding-session-refs-'))
-    await writeFile(join(root, 'note.txt'), 'hello from session file\n', 'utf8')
-    const harness = createCodingAgentHarness({ host: new LocalHost(root) })
-    const { runtime } = await createRuntimeFromHarness(harness, root)
-    const provider = new StubProvider([
-      (request: InferenceRequest) => {
-        expect(request.items).toEqual([
-          {
-            type: 'user_message',
-            content: [
-              { type: 'text', text: 'inspect this file' },
-              {
-                type: 'text',
-                text: '<file path="note.txt">\nhello from session file\n\n</file>'
-              },
-            ],
-          },
-        ])
-        expect(JSON.stringify(request.items)).not.toContain('"reference"')
-        return [events.text('read file'), events.response()]
-      },
-    ])
-    const session = new AgentSession(
-      { provider, model, cwd: root, runtime },
-      { agentSessionId: 'coding-ref-session' }
-    )
-
-    await session.send([
-      { type: 'text', text: 'inspect this file' },
-      { type: 'reference', reference: 'note.txt' }
-    ])
-
-    expect(session.transcript().blocks[0]).toMatchObject({
-      type: 'user',
-      content: [
-        { type: 'text', text: 'inspect this file' },
-        { type: 'reference', reference: 'note.txt' },
-      ],
-      resolvedContent: [
-        { type: 'text', text: 'inspect this file' },
-        {
-          type: 'text',
-          text: '<file path="note.txt">\nhello from session file\n\n</file>'
-        },
-      ],
-    })
-  }
-)
-
-test(
-  'coding agent resolves file references outside default cwd when Host.fs allows them',
-  async () => {
-    const root = await mkdtemp(join(tmpdir(), 'demi-coding-ref-root-'))
-    const outside = await mkdtemp(join(tmpdir(), 'demi-coding-ref-outside-'))
-    const outsidePath = join(outside, 'secret.txt')
-    await writeFile(outsidePath, 'outside\n', 'utf8')
-    const harness = createCodingAgentHarness({ host: new LocalHost(root) })
-    if (!harness.resolveReferences)
-      throw new Error('expected resolveReferences')
-
-    const resolved = await harness.resolveReferences(
-      {
-        agentSessionId: 'coding-ref-agent',
-        state: harness.initialState(),
-        cwd: root,
-        transcript: {} as never,
-        signal: new AbortController().signal,
-        metadata: null,
-      },
-      [{ type: 'reference', reference: outsidePath }],
-    )
-
-    expect(resolved).toEqual([{
-      type: 'text',
-      text: `<file path="${outsidePath}">\noutside\n\n</file>`
-    }])
-  }
-)
-
 test(
   'coding agent harness ships only the explore subagent profile; omitting --profile inherits',
   async () => {
@@ -402,10 +232,6 @@ async function createRuntimeFromHarness(
       commandsPrompt: registry.renderHelp()
     }),
     preamble: (ctx) => harness.preamble?.(ctx) ?? null,
-    resolveReferences: (ctx, content) => harness.resolveReferences?.(
-      ctx,
-      content
-    ) ?? content,
     lifecycle: (event) => harness.lifecycle?.(event),
     tools: () =>
       createStandardAgentTools({
@@ -426,108 +252,4 @@ function renderCommandsPrompt(commands: readonly Command[]): string {
   const registry = new CommandRegistry()
   for (const command of commands) registry.register(command)
   return registry.renderHelp()
-}
-
-class RecordingHost implements Host {
-  readonly defaultCwd: string
-  readonly commandArtifactsDir: string
-  readonly identity = { uid: 1000, gid: 1000, hostname: 'test', homeDir: '/' }
-  readonly fs: RecordingFileSystem
-  readonly store: HostStore = new MemoryHostStore()
-  processSpawnCalls = 0
-  readonly process: HostProcess = {
-    spawn: async (): Promise<never> => {
-      this.processSpawnCalls += 1
-      throw new Error('Host.process.spawn must not be used for file references')
-    },
-    openCwd: async (path) => createLogicalHostCwd(path),
-  }
-
-  constructor(
-    defaultCwd: string,
-    stdoutText: string,
-  ) {
-    this.defaultCwd = defaultCwd
-    this.commandArtifactsDir = `${defaultCwd}/.command-artifacts`
-    this.fs = new RecordingFileSystem(stdoutText)
-  }
-}
-
-class MemoryHostStore implements HostStore {
-  async readJson<T>(): Promise<T | null> {
-    return null
-  }
-  async writeJson<T>(): Promise<void> {}
-  async delete(): Promise<void> {}
-  async list(): Promise<string[]> {
-    return []
-  }
-}
-
-class RecordingFileSystem implements HostFileSystem {
-  readonly calls: unknown[][] = []
-
-  constructor(private readonly text: string) {}
-
-  async readFile(path: string, options?: { cwd?: string }): Promise<Uint8Array> {
-    this.calls.push(['readFile', path, options?.cwd])
-    return new TextEncoder().encode(this.text)
-  }
-
-  async writeFile(): Promise<void> {
-    throw new Error('not implemented')
-  }
-  async appendFile(): Promise<void> {
-    throw new Error('not implemented')
-  }
-  async exists(): Promise<boolean> {
-    throw new Error('not implemented')
-  }
-  async stat(): Promise<never> {
-    throw new Error('not implemented')
-  }
-  async lstat(): Promise<never> {
-    throw new Error('not implemented')
-  }
-  async readdir(path: string, options: {
-    cwd?: string;
-    withFileTypes: true
-  }): Promise<HostDirent[]>
-  async readdir(path: string, options?: {
-    cwd?: string;
-    withFileTypes?: false
-  }): Promise<string[]>
-  async readdir(): Promise<string[] | HostDirent[]> {
-    throw new Error('not implemented')
-  }
-  async mkdir(): Promise<void> {
-    throw new Error('not implemented')
-  }
-  async rm(): Promise<void> {
-    throw new Error('not implemented')
-  }
-  async cp(): Promise<void> {
-    throw new Error('not implemented')
-  }
-  async mv(): Promise<void> {
-    throw new Error('not implemented')
-  }
-  async chmod(): Promise<void> {
-    throw new Error('not implemented')
-  }
-  async symlink(): Promise<void> {
-    throw new Error('not implemented')
-  }
-  async link(): Promise<void> {
-    throw new Error('not implemented')
-  }
-  async readlink(): Promise<string> {
-    throw new Error('not implemented')
-  }
-  async realpath(): Promise<string> {
-    throw new Error('not implemented')
-  }
-  async utimes(): Promise<void> {
-    throw new Error('not implemented')
-  }
 }

@@ -46,6 +46,12 @@ test('a failed restore is not a missing conversation', () => {
   expect(conversationPageKind('ready', false)).toBe('missing')
 })
 
+test('only a pane with nothing under it offers to start a conversation', () => {
+  expect(sessionStatusCopy('empty').action).toBeUndefined()
+  expect(sessionStatusCopy('none').action).toBe('create')
+  expect(sessionStatusCopy('missing').action).toBe('create')
+})
+
 test('an unknown id waits for the list', () => {
   expect(conversationPageKind('loading', false)).toBe('loading')
   expect(conversationPageKind('ready', true)).toBe('session')

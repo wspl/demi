@@ -5,6 +5,8 @@ const localStateSchema = z.object({
   hiddenModels: z.record(z.string(), z.array(z.string())),
   recentProjects: z.array(z.string()),
   foldedProjects: z.array(z.string()),
+  /** The sidebar's width in px; absent until the reader resizes it. */
+  sidebarWidth: z.number().int().optional(),
 })
 export type LocalState = z.infer<typeof localStateSchema>
 

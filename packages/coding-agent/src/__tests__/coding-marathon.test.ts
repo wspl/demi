@@ -622,10 +622,6 @@ async function createRuntimeFromHarness(
       commandsPrompt: registry.renderHelp()
     }),
     preamble: (ctx) => harness.preamble?.(ctx) ?? null,
-    resolveReferences: (ctx, content) => harness.resolveReferences?.(
-      ctx,
-      content
-    ) ?? content,
     lifecycle: (event) => harness.lifecycle?.(event),
     tools: () =>
       createStandardAgentTools({

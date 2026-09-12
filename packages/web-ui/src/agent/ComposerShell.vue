@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { Paperclip } from '@lucide/vue'
+import { t } from '../infra/i18n'
+import { ICON_PX } from '../ui/icon-metrics'
 import { dataTransferFiles, transferHasFiles } from './message-input/attachments'
+
+/**
+ * The composer's frame. Files dragged over it can be dropped anywhere on it:
+ * the frame lights its focus line and a dashed overlay names the action, so
+ * the target is the whole composer and not one control. Drag depth is counted
+ * because every child fires its own enter and leave.
+ */
 
 const props = defineProps<{
   focused?: boolean
@@ -49,9 +59,9 @@ function onDrop(event: DragEvent): void {
 
 <template>
   <div
-    class="input-float composer-shell bg-surface-raised outline outline-1 transition-[outline-color] duration-200"
+    class="input-float composer-shell relative bg-surface-raised outline outline-1 transition-[outline-color] duration-200"
     :class="[
-      focused || showDrop ? 'outline-line-focus' : 'outline-line',
+      showDrop ? 'outline-transparent' : focused ? 'outline-line-focus' : 'outline-line',
       expanded ? 'composer-shell-expanded' : 'composer-shell-capsule',
     ]"
     :data-dropping="showDrop ? '' : undefined"
@@ -78,5 +88,35 @@ function onDrop(event: DragEvent): void {
     <div class="composer-actions flex items-center gap-1">
       <slot name="actions" />
     </div>
+    <!-- The drop state draws its own dashed line: an SVG stroke with a set dash, since a
+         CSS dashed outline's segments are too short to read as a line. -->
+    <template v-if="showDrop">
+      <div
+        class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-[var(--composer-shell-radius)] bg-surface-raised/90 text-chrome text-fg-body"
+        aria-hidden="true"
+      >
+        <Paperclip :size="ICON_PX.in28" />
+        {{ t('agent.input.dropToAttach') }}
+      </div>
+      <svg class="pointer-events-none absolute inset-0 z-20 h-full w-full text-line-focus" aria-hidden="true">
+        <rect
+          class="composer-drop-line"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-dasharray="8 6"
+        />
+      </svg>
+    </template>
   </div>
 </template>
+
+<style scoped>
+.composer-drop-line {
+  x: 0.75px;
+  y: 0.75px;
+  width: calc(100% - 1.5px);
+  height: calc(100% - 1.5px);
+  rx: var(--composer-shell-radius);
+}
+</style>

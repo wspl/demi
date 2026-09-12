@@ -16,8 +16,6 @@ import {
   type ComposerAttachment,
 } from '../message-input/attachments'
 
-type ImageBlock = Extract<UserContentBlock, { type: 'image' }>
-
 const props = defineProps<{
   content: UserContentBlock[]
   /** Files still on their way to the transcript (an unconfirmed message), shown among the media. */
@@ -101,34 +99,54 @@ const actions = computed<BubbleAction[]>(() => {
   return list
 })
 
-const imageBlocks = computed(() =>
-  props.content.filter((b): b is ImageBlock => b.type === 'image'),
-)
+type MediaBlock = Extract<UserContentBlock, { type: 'image' | 'video' | 'document' }>
+type AttachmentBlock = Extract<UserContentBlock, { type: 'attachment' }>
 
-const videoBlocks = computed(() =>
-  props.content.filter((block) => block.type === 'video'),
-)
+/**
+ * One tile per file the message carried. A file the model reads natively has
+ * its media block right before its attachment block; that media is the tile
+ * (the picture itself). Every other attachment is a plain tile with its name
+ * and, for text, its opening lines. A media block with no attachment after it
+ * (a message that carried no record) is shown as it is.
+ */
+const fileTiles = computed(() => {
+  const tiles: { key: string; file: AttachmentBlock | null; media: MediaBlock | null }[] = []
+  props.content.forEach((block, index) => {
+    if (block.type === 'attachment') {
+      const previous = props.content[index - 1]
+      const media = previous && isMediaBlock(previous) ? previous : null
+      tiles.push({ key: block.path, file: block, media })
+      return
+    }
+    if (isMediaBlock(block) && props.content[index + 1]?.type !== 'attachment') {
+      tiles.push({ key: `media-${index}`, file: null, media: block })
+    }
+  })
+  return tiles
+})
 
-const documentBlocks = computed(() =>
-  props.content.filter(
-    (b): b is Extract<UserContentBlock, { type: 'document' }> =>
-      b.type === 'document',
-  ),
-)
+function isMediaBlock(block: UserContentBlock): block is MediaBlock {
+  return block.type === 'image' || block.type === 'video' || block.type === 'document'
+}
 
+// A reference is a file elsewhere (another host); it has no attachment block and shows as a plain tile.
 const referenceBlocks = computed(() =>
   props.content.filter(
-    (b): b is Extract<UserContentBlock, { type: 'reference' }> =>
-      b.type === 'reference',
+    (b): b is Extract<UserContentBlock, { type: 'reference' }> => b.type === 'reference',
   ),
 )
 
-function imageName(source: ImageBlock['source'], index: number): string {
-  if (source.type !== 'url') {
-    return `image-${index}`
+function mediaName(block: MediaBlock, index: number): string {
+  if (block.type === 'document') {
+    return block.source.fileName
   }
-  const leaf = source.url.split('/').pop()
-  return leaf ? decodeURIComponent(leaf) : `image-${index}`
+  if (block.source.type === 'url') {
+    const leaf = block.source.url.split('/').pop()
+    if (leaf) {
+      return decodeURIComponent(leaf)
+    }
+  }
+  return `${block.type}-${index}`
 }
 
 const renderedMarkdown = computed(() => md.renderUser(userText.value))
@@ -202,9 +220,7 @@ useResizeObserver(contentRef, () => {
       </div>
       <div
         v-if="
-          imageBlocks.length > 0 ||
-          videoBlocks.length > 0 ||
-          documentBlocks.length > 0 ||
+          fileTiles.length > 0 ||
           referenceBlocks.length > 0 ||
           (attachments && attachments.length > 0)
         "
@@ -220,35 +236,21 @@ useResizeObserver(contentRef, () => {
             :src="item.kind === 'file' ? item.src : undefined"
           />
         </Tooltip>
-        <Tooltip
-          v-for="(block, i) in imageBlocks"
-          :key="`img-${i}`"
-          :content="contentBlockCaption(block)"
-        >
-          <ContentMedia
-            kind="image"
-            :name="imageName(block.source, i)"
-            :source="block.source"
-          />
-        </Tooltip>
-        <ContentMedia
-          v-for="(block, i) in videoBlocks"
-          :key="`video-${i}`"
-          kind="video"
-          :name="`Video ${i + 1}`"
-          :source="block.source"
-        />
-        <Tooltip
-          v-for="(block, i) in documentBlocks"
-          :key="`doc-${i}`"
-          :content="contentBlockCaption(block)"
-        >
-          <ContentMedia
-            kind="document"
-            :name="block.source.fileName"
-            :source="block.source"
-          />
-        </Tooltip>
+        <template v-for="(tile, i) in fileTiles" :key="tile.key">
+          <Tooltip
+            v-if="tile.media"
+            :content="tile.file ? `${tile.file.name} · ${tile.file.path}` : contentBlockCaption(tile.media)"
+          >
+            <ContentMedia
+              :kind="tile.media.type"
+              :name="tile.file?.name ?? mediaName(tile.media, i)"
+              :source="tile.media.source"
+            />
+          </Tooltip>
+          <Tooltip v-else-if="tile.file" :content="`${tile.file.name} · ${tile.file.path}`">
+            <AttachmentTile :name="tile.file.name" :snippet="tile.file.snippet" />
+          </Tooltip>
+        </template>
         <Tooltip
           v-for="(block, i) in referenceBlocks"
           :key="`ref-${i}`"

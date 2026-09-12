@@ -9,6 +9,7 @@ import {
   applyAttachmentUpdate,
   AttachmentUploadQueue,
   attachmentFileError,
+  attachTextSnippet,
   composerAttachment,
   composerAttachmentFromFile,
   composerFileNames,
@@ -74,11 +75,6 @@ const thinking = ref<ThinkingConfig>({
   effort: 'medium',
   summary: null,
 })
-const acceptedExtensions = computed(
-  () =>
-    demoModels[providerId.value]?.find((model) => model.id === modelId.value)
-      ?.acceptedExtensions ?? null,
-)
 
 function applyUpdate(id: string, update: AttachmentUploadUpdate) {
   const item = attached.value.find((file) => file.id === id)
@@ -118,8 +114,9 @@ function addFiles(files: File[]) {
     if (attachmentFileError(file, composerFileNames(attached.value))) {
       continue
     }
-    const item = composerAttachmentFromFile(file, acceptedExtensions.value)
+    const item = composerAttachmentFromFile(file)
     attached.value.push(item)
+    void attachTextSnippet(attached.value.find((held) => held.id === item.id) as typeof item, file)
     uploads.startPrototype(item.id, (update) => applyUpdate(item.id, update), remove)
   }
 }

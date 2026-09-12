@@ -40,7 +40,7 @@ const initials = computed(() =>
         role="button"
         aria-label="Account"
         class="flex h-9 cursor-default select-none items-center gap-2 rounded-md transition-colors duration-200 ease-out"
-        :class="['w-full px-1.5', isOpen ? 'bg-hover' : 'hover:bg-hover']"
+        :class="['w-full pl-2 pr-1.5', isOpen ? 'bg-hover' : 'hover:bg-hover']"
       >
         <span
           class="flex size-6 shrink-0 items-center justify-center rounded-full bg-tint-accent text-[11px] font-medium text-on-accent"

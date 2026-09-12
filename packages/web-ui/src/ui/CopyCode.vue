@@ -9,7 +9,7 @@ const props = withDefaults(
     code: string;
     copyLabel?: string
   }>(),
-  { copyLabel: 'Copy command' }
+  { copyLabel: 'Copy' }
 )
 const { copy, copied } = useClipboard()
 const copiedCode = ref('')

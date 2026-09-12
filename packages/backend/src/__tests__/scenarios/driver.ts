@@ -9,6 +9,11 @@ import {
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
 import { delay, waitFor } from '@demicodes/utils'
+import type { z } from 'zod'
+import {
+  ATTACHMENTS_DIR,
+  type uploadRefBlockSchema
+} from '../../conversation/attachment-refs'
 import { CLOUD_HOME } from '../../conversation/execution-target'
 import type { TurnScript } from './model'
 export type { TurnScript } from './model'
@@ -137,12 +142,12 @@ export class Driver {
   async turn(script: {
     model: TurnScript[];
     text?: string;
-    content?: UserContentBlock[]
+    content?: Array<UserContentBlock | UploadBlock>
   }): Promise<Turn> {
     this.script(...script.model)
     const begin = this.begin()
     await this.client.send(
-      script.content ?? [{ type: 'text', text: script.text ?? 'go' }]
+      (script.content ?? [{ type: 'text', text: script.text ?? 'go' }]) as UserContentBlock[]
     )
     return this.observe(begin)
   }
@@ -245,12 +250,13 @@ export class Driver {
   }
 
   /**
-   * Drops a file into the conversation's working tree over the workspace-files
-   * route.
+   * Uploads bytes as an attachment and returns the block a `turn` sends to
+   * carry it; the file lands at `attachmentPath(name)` on the host when the
+   * message goes out (`product.md` § Attachments).
    */
-  async upload(name: string, bytes: Uint8Array): Promise<void> {
+  async upload(name: string, bytes: Uint8Array): Promise<UploadBlock> {
     const response = await this.world.backend.session.fetch(
-      `/api/conversations/${this.id}/workspace-files?name=${encodeURIComponent(name)}`,
+      '/api/attachments',
       {
         method: 'POST',
         body: bytes,
@@ -261,8 +267,18 @@ export class Driver {
       throw new Error(
         `upload ${name}: HTTP ${response.status} ${await response.text()}`
       )
+    const { attachment } = (await response.json()) as { attachment: { id: string } }
+    return { type: 'upload', ref: attachment.id, fileName: name }
+  }
+
+  /** Where a sent attachment sits on the host, for a shell to read. */
+  attachmentPath(name: string): string {
+    return `~/${ATTACHMENTS_DIR}/${this.id}/${name}`
   }
 }
+
+/** The wire form of an upload inside a send frame (`attachment-refs.ts`). */
+export type UploadBlock = z.infer<typeof uploadRefBlockSchema>
 
 export interface TurnBegin {
   events: number
