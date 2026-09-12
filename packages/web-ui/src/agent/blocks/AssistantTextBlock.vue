@@ -9,6 +9,7 @@ withDefaults(defineProps<{
   fork?: () => Promise<void>
   forkState?: MessageForkState
   isStreaming?: boolean
+  showFooter?: boolean
 }>(), {
   isStreaming: false,
 })
@@ -22,7 +23,7 @@ withDefaults(defineProps<{
       class="text-conversation text-fg-body"
     />
     <AssistantMessageFooter
-      v-if="!isStreaming"
+      v-if="showFooter && !isStreaming"
       :content="content"
       :created-at="createdAt"
       :fork="fork"

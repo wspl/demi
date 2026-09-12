@@ -39,7 +39,7 @@ test('async history stays still, live blocks enter once, and changing conversati
     await nextTick()
     expect(entrance.isEntering('live')).toBe(true)
     const finish = timers.mock.calls.at(-1)![0] as () => void
-    clearTimeout(timers.mock.results.at(-1)!.value)
+    clearTimeout(timers.mock.results.at(-1)!.value as ReturnType<typeof setTimeout>)
     finish()
     blocks.value = [block('history')]
     await nextTick()

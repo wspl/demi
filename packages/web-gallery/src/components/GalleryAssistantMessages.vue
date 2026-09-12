@@ -15,6 +15,10 @@ const source = reactive<ChatSessionState>({
   blocks: [
     { type: 'user', id: 'user-1', turnId: 'turn-1', model: demoModel, createdAt,
       content: [{ type: 'text', text: 'Outline the next step.' }], preamble: null },
+    { type: 'text', id: 'progress-1', model: demoModel, createdAt, forkable: true,
+      text: 'The child is preparing the outline. This intermediate update has no toolbar.' },
+    { type: 'thinking', id: 'thinking-1', model: demoModel, createdAt,
+      text: 'Review the outline before returning the final reply.', signature: null },
     { type: 'text', id: 'answer-1', model: demoModel, createdAt, forkable: true,
       text: 'The outline is ready. You can **Fork from this message** while the next answer is still being written.' },
     { type: 'user', id: 'user-2', turnId: 'turn-2', model: demoModel, createdAt,

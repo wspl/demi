@@ -22,6 +22,7 @@ const props = defineProps<{
   conversationId: string
   isThinkingStreaming: boolean
   isTextStreaming?: boolean
+  showAssistantFooter?: boolean
   thinkingEndedAt?: string | null
   editable?: boolean
   fork?: () => Promise<void>
@@ -115,6 +116,7 @@ const entersAsChrome = computed(() =>
       v-else-if="block.type === 'text'"
       :content="block.text"
       :is-streaming="isTextStreaming"
+      :show-footer="showAssistantFooter"
       :created-at="block.createdAt"
       :fork="block.forkable ? fork : undefined"
       :fork-state="forkState"
