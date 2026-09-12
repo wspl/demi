@@ -33,7 +33,7 @@ tree is fan-out (`maxLiveSubagents` live children per session) and the real
 turns each spawn costs. A spawner can still forbid one specific child from
 delegating further — `--no-subagents` at spawn, or `canSpawnSubagents: false`
 on the profile — an explicit per-child restriction, never depth-derived: the
-child loses spawn, `abort`, and `resume`, and keeps `send` / `steer` /
+child loses spawn, `abort`, and `resume`, and keeps `send` /
 `list` / `show`.
 
 ## Topology and the agent directory
@@ -43,7 +43,7 @@ of every live session in the tree, keyed by session id. Each entry carries the
 parent session id, description, profile, and phase. Spawn registers, close
 unregisters.
 
-The directory is the sole basis for cross-tree addressing. `send`, `steer`,
+The directory is the sole basis for cross-tree addressing. `send`,
 and `show` resolve their target id against it — any live agent in the tree is
 addressable, regardless of the sender's position. There are no routing rules
 along the tree.
@@ -53,7 +53,7 @@ Authority is split by verb, not by depth:
 - **Lifecycle** (`spawn`, `abort`, `resume`) — only on your own direct
   children. Whoever spawns an agent owns its life; nobody else kills or
   revives it.
-- **Communication** (`send`, `steer`) and **reads** (`show`, `list`) — any
+- **Communication** (`send`) and **reads** (`show`, `list`) — any
   live agent in the tree.
 
 ## Model-facing surface
@@ -78,7 +78,6 @@ demi agent spawn [--request-id <id>] [--profile <name>] [--description <title>] 
 demi agent abort <id>
 demi agent resume <id> [--request-id <id>] < message.txt
 demi agent send <id|parent> < message.txt
-demi agent steer <id|parent> < message.txt
 demi agent show <id>
 demi agent list
 ```
@@ -90,10 +89,10 @@ supervisor owns the child after creation, independently of the invoking shell
 job, its stdout pipe, and its cancellation signal. `resume` has the same
 acceptance-only response after durably queuing the next round's message.
 
-Use `agent send` / `steer` to communicate and `agent abort` to stop a child.
+Use `agent send` to communicate and `agent abort` to stop a child.
 Spawn's `shell_status` only describes the completed creation command. A parent
 can start several children sequentially and continue its work; ending its turn
-allows queued completion messages to open the next turn. No polling or timed
+allows completion receipts to wake the parent when its results are available. No polling or timed
 yields are required.
 
 Both start commands accept `--request-id <id>`. A caller that may retry an
@@ -110,13 +109,13 @@ older message. Resume requires the previous completion to be saved in the
 parent's checkpoint before replacing the archived round. Command-state history
 retains these reservations with the parent.
 
-Prompt and `send` / `steer` / `resume` messages are read only from stdin:
+Prompt and `send` / `resume` messages are read only from stdin:
 a quoted heredoc, pipe, or input redirection. They have no positional or
 named-option form. An empty message fails. `--profile` names a harness profile;
 `--no-subagents` forbids the child from delegating. There is no `--model` flag:
 model and provider runtime come from the profile or parent.
 
-`abort` / `send` / `steer` / `show` / `list` define JSON objects
+`abort` / `send` / `show` / `list` define JSON objects
 `{ id, aborted }`, `{ id, accepted }`, `{ id, accepted }`, `{ agent }`, and
 `{ tree }` respectively.
 
@@ -146,52 +145,25 @@ a harness profile; the live describe text lists configured names.
 
 ## Communication
 
-Two message verbs with distinct delivery moments. Both are fire-and-forget:
-they queue and return, never wait on the target — which is also why the mesh
-cannot deadlock. Both deliver an ordinary **user** message into the target
-transcript, prefixed `[agent <id> — <description>]` so concurrent
-correspondents are distinguishable. `parent` is an alias resolving to the
-sender's spawning session.
+[Agent messages](agent-messages.md) defines the intended delivery and UI contract.
+Runtime acceptance of that design is pending; its acceptance section is the
+implementation checklist.
 
-### `demi agent steer <id|parent>` — chime in
-
-Injects the message into the target's **currently running turn**: the target
-sees it at the next sampling/tool boundary (or live, on a provider steer
-stream) and continues its current work with the new information. Nothing is
-cancelled and the turn does not restart — steering is talking to someone while
-they work, not stopping them. Use it to course-correct, add a constraint, or
-redirect effort mid-flight.
-
-The target must be inside a turn. Steering an idle root session fails — there
-is no turn to join, and silently downgrading to a mailbox drop would falsify
-the "seen now" intent. The error says to use `send`.
-
-### `demi agent send <id|parent>` — leave a message
-
-Queues the message into the target's **inbox**; it is seen as a fresh user
-turn at the target's next turn boundary, never mid-turn. Use it for progress
-reports, handing over results, and non-urgent questions.
-
-- Root session: idle → the message wakes it as a new turn; busy → it waits in
-  the inbox until the current turn ends.
-- Subagent: a non-empty inbox **defers closing**. Session end requires
-  quiescence (idle, no pending yields) *and* an empty inbox; when a turn ends
-  with mail waiting, the supervisor opens a new user turn with the queued
-  messages instead of closing the session. A message therefore extends the
-  child's life by one turn — without anyone sending, child lifecycle is
-  unchanged. This also closes the delivery race: a send that lands while the
-  target is finishing either makes it into the inbox (and is answered) or
-  fails loudly because the target is already archived. Nothing is dropped
-  silently.
-- Archived target → error, pointing at that agent's parent as the only party
-  who can `demi agent resume` it.
+`demi agent send <id|parent>` admits a structured internal message. The session
+steers a busy recipient at a safe boundary and wakes a naturally idle recipient.
+There is no separate agent-to-agent steering verb and no human message queued
+for a receipt. The sender returns after durable admission, never after the
+recipient answers. Archived targets reject sends; only their parent can reopen
+them with `resume`. Accepted internal input participates in child quiescence,
+so a child cannot close while it still owns unread messages.
 
 ### Result
 
 The supervisor closes a quiescent child with its last assistant text, bounded
 to 32 KiB, or its abort/error outcome. It saves the result before delivering a
-completion message to the parent. An idle parent wakes immediately; a busy
-parent queues the message for its next turn. The creation command carries no
+completion message to the parent. A naturally idle parent wakes; a busy
+parent receives the receipt as internal steering at a safe boundary. The creation
+command carries no
 completion result. A child with pending yields or descendants stays live.
 
 Each execution round has a distinct completion message id containing the child
@@ -199,7 +171,7 @@ id and its persisted `spawnedAt`. Resume chooses a timestamp strictly newer than
 the previous round. Parent checkpoints mark only the matching round delivered;
 an older completion cannot acknowledge a newer round. Restore retries an
 undelivered completion using the same message id, and session admission deduplicates
-it against the pending queue and transcript.
+it against the internal inbox and transcript.
 
 `AgentServerOptions.subagents.notifyParentOnIdle: false` delegates root-level
 completion handling to the product's `closed` frame subscriber. Descendant
@@ -280,7 +252,7 @@ It does not return tool output bodies, file contents, thinking, or older
 turns. A missing or archived id fails. `--json` is `{ agent }` with those
 fields as millisecond offsets from now.
 
-`show` is for deciding the next action, such as send, steer, or abort. It is
+`show` is for deciding the next action, such as send or abort. It is
 not a completion channel or a polling loop. The supervisor delivers completion
 messages independently of shell commands.
 
@@ -351,7 +323,7 @@ summarize the parent transcript into the child.
 | Layer | Owner | Content |
 |---|---|---|
 | `systemPrompt` | profile, else parent harness | Worker identity, shell rules, `commandsPrompt`. A custom `profile.systemPrompt` replaces the parent prompt; `commandsPrompt` is still supplied through `AgentSystemPromptContext`. |
-| preamble | `AgentServer`, every child | This session is a subagent; its id and its parent's id; ending the turn with an empty inbox returns the last assistant text as the result; `demi agent send` / `steer` reach the parent (`parent`) and any agent in `demi agent list`; spawn delegates further; do not address the product user as the root session. |
+| preamble | `AgentServer`, every child | This session is a subagent; its id and its parent's id; ending the turn with an empty inbox returns the last assistant text as the result; `demi agent send` reaches the parent (`parent`) and any agent in `demi agent list`; spawn delegates further; do not address the product user as the root session. |
 | first user message | parent model | The spawn prompt from stdin. Demi does not inspect or pad it. |
 
 The inherit profile carries the parent `systemPrompt` so the child already
@@ -423,7 +395,8 @@ quiescent — idle, empty inbox, no live children — and the next restore
 closes it with the same result, so the two orders cannot be told apart.
 
 A closed round remains undelivered until the parent's checkpoint carries its
-completion message, queued or as a user turn. The save marks that exact child
+completion receipt in its durable internal inbox or as an `agent_message` block.
+The save marks that exact child
 round delivered in the same commit. Restore delivers every still-undelivered
 completion. Products explicitly owning root-level completion handling mark the
 matching round delivered after the `closed` event.
@@ -515,8 +488,8 @@ protocol. Child `Block` values are the same types as the parent (`tool_call`,
 `text`, `error`, …). They never appear in another session's inference
 `transcript_*`.
 
-A delivered `send` or `steer` is an ordinary `transcript_patch` (user or
-steer block) on the **target's** stream — the root's own `transcript_*`, or
+An incorporated agent message is a `transcript_patch` (`agent_message` block)
+on the **target's** stream — the root's own `transcript_*`, or
 `subagent_transcript_patch` for a subagent target. Not a fourth subagent
 event.
 
@@ -544,15 +517,19 @@ subagent_transcript_patch        subagentId=ag_1  + tool_call executing
 subagent_transcript_patch        subagentId=ag_1  tool_call completed
 subagent_transcript_patch        subagentId=ag_1  + text
 
-transcript_patch                 parent user turn     (child `send parent`)
-subagent_transcript_patch        subagentId=ag_1  + user steer (parent `steer ag_1`)
+transcript_patch                 parent agent_message (child `send parent`)
+subagent_transcript_patch        subagentId=ag_1  + agent_message (parent `send ag_1`)
 
 subagent_transcript_patch        subagentId=ag_1  + text (final)
 subagent closed                  phase=completed  result=...
-transcript_patch                 parent completion user message, queued or opening its next turn
+transcript_patch                 parent agent_message completion receipt; steer or internal wakeup
 ```
 
 ## Product rendering
+
+Agent-originated inputs render as the shared, expandable Bot-icon receipt block
+defined in [Agent messages](agent-messages.md#product-and-gallery-presentation).
+They never use human message bubbles or human queue controls.
 
 Products already render root `tool_call` blocks. Nested tool use is the same
 blocks on `subagent_transcript_*`, keyed by `subagentId` under the matching
@@ -579,7 +556,7 @@ Only the node assembly instantiates `AgentSession`.
 - Runtime `--model` / provider picker
 - `clone()` as spawn
 - Depth caps or per-depth command stripping
-- Resident actor children: the inbox defers closing by one turn per message,
+- Resident actor children: accepted internal messages defer closing until consumed,
   it does not turn subagents into daemons that idle waiting for mail
 - Synchronous messaging (`send --wait`, request/response): fire-and-forget
   only; ask-and-answer is close + `resume`
@@ -590,7 +567,10 @@ Only the node assembly instantiates `AgentSession`.
 - Tailing a child transcript into spawn stdout or another session's inference
   transcript
 
-## Coverage
+## Existing test coverage
+
+The following describes the current suite. Delivery and presentation acceptance
+for the intended internal-message contract is listed in [Agent messages](agent-messages.md#acceptance).
 
 - `packages/agent/src/__tests__/subagent.test.ts` — spawn isolation with the child
   preamble on an empty transcript, nested spawn (grandchild) with recursive
