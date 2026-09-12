@@ -6,6 +6,13 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod package;
+mod package_generated;
+pub use package::{canonical_digest, target_artifact};
+pub use package_generated::{
+    PackageDescriptor, PackageDescriptorTargetsValue as PackageArtifact, TARGETS,
+};
+
 pub const VERSION: u32 = 1;
 pub const MAX_METADATA_BYTES: usize = 256 * 1024;
 pub const MAX_RECORD_BYTES: usize = 64 * 1024;

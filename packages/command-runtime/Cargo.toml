@@ -1,0 +1,21 @@
+[package]
+name = "demi-command-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+demi-command-protocol = { path = "../command-protocol" }
+demi-command-service = { path = "../command-service" }
+bytes.workspace = true
+futures-util.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+thiserror.workspace = true
+sha2 = "0.10"
+tempfile = "3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+
+[dev-dependencies]
+serde_json.workspace = true

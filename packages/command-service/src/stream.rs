@@ -23,6 +23,8 @@ pub enum ServiceError {
     CancellationDeadline,
     #[error("HTTP/2 service handshake timed out")]
     HandshakeTimeout,
+    #[error("service rejected HTTP request with status {0}")]
+    Rejected(u16),
 }
 
 pub struct Input {
