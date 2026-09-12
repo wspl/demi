@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { demoDeviceInstallation } from '../fixtures/device-installation'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import type { ThemeChoice } from '@demicodes/web-ui/theme/appTheme'
-import type { ProductAccent, ProductTone } from '@demicodes/web-ui/theme/productAppearance'
+import {
+  applyTranscriptTextSize,
+  type ProductAccent,
+  type ProductTone,
+} from '@demicodes/web-ui/theme/productAppearance'
 import { galleryState } from '../gallery-state'
 import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
@@ -36,7 +40,20 @@ const cloud = ref<CloudState>(
     homeBytes: 32 * 1024 ** 3
   }
 )
+// The request is pending until the server accepts it; every second request is refused, so the failed state has a page.
+const reset = ref<{ status: 'idle' | 'pending' } | { status: 'failed'; message: string }>({ status: 'idle' })
+let resetRequests = 0
 async function resetCloud() {
+  if (reset.value.status === 'pending')
+    return
+  reset.value = { status: 'pending' }
+  resetRequests += 1
+  await new Promise(resolve => setTimeout(resolve, 600))
+  if (resetRequests % 2 === 0) {
+    reset.value = { status: 'failed', message: 'HTTP 503: the cloud host is not accepting operations right now.' }
+    return
+  }
+  reset.value = { status: 'idle' }
   cloud.value.state = 'resetting'
   for (const phase of ['stopping', 'saving', 'rebuilding', 'booting', 'ready'] as const) {
     cloud.value.phase = phase
@@ -46,6 +63,9 @@ async function resetCloud() {
 }
 
 const s = computed(() => props.state)
+
+// Text size resizes the transcript here as it does in the product.
+watch(() => s.value.general.fontSize, applyTranscriptTextSize, { immediate: true })
 
 /** Light and dark switch the gallery itself, so the preview and the page follow; System keeps the current mode. */
 function setThemeChoice(choice: ThemeChoice) {
@@ -319,6 +339,8 @@ function resetShortcuts() {
   <SettingsDevices
     v-else-if="tab === 'devices'"
     :cloud="cloud"
+    :reset-pending="reset.status === 'pending'"
+    :reset-error="reset.status === 'failed' ? reset.message : null"
     @reset-cloud="resetCloud"
     :devices="s.devices"
     :overlay-store="appOverlayStore"

@@ -4,7 +4,7 @@ import ErrorNotice from '@demicodes/web-ui/ui/ErrorNotice.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import SessionNoticeBar from '@demicodes/web-ui/agent/SessionNoticeBar.vue'
-import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
+import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 
@@ -77,9 +77,10 @@ import GallerySpecimen from './GallerySpecimen.vue'
           />
         </GallerySpecimen>
         <GallerySpecimen wide variant="Model catalog failed · beside the chip">
-          <div class="rounded-xl border border-line bg-surface p-2">
-            <ModelSelector load="failed" :providers="[]" :models="{}" />
-          </div>
+          <GalleryComposer
+            placeholder="Ask Demi…"
+            model-load="failed"
+          />
         </GallerySpecimen>
       </div>
     </GallerySection>
