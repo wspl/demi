@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -84,11 +85,9 @@ test(
       when: new Date('2026-08-31T00:00:00Z'),
       count: 42n,
     })
-    const value = await store.readJson<{
-      bytes: Uint8Array;
-      when: Date;
-      count: bigint
-    }>('agent-sessions/s1/state.json')
+    const value = z.object({ bytes: z.instanceof(Uint8Array), when: z.date(), count: z.bigint() }).parse(
+      await store.readJson('agent-sessions/s1/state.json'),
+    )
     expect(value?.bytes).toBeInstanceOf(Uint8Array)
     expect([...(value?.bytes ?? [])]).toEqual([1, 2, 3])
     expect(value?.when).toBeInstanceOf(Date)
@@ -96,7 +95,7 @@ test(
 
     // Overwrite is a single upsert.
     await store.writeJson('agent-sessions/s1/state.json', { v: 2 })
-    expect(await store.readJson<{ v: number }>('agent-sessions/s1/state.json'))
+    expect(await store.readJson('agent-sessions/s1/state.json'))
       .toEqual({ v: 2 })
 
     await store.writeJson('agent-sessions/s2/state.json', { v: 1 })
@@ -475,9 +474,9 @@ test('host_store scopes are isolated per conversation database', async () => {
   )
   await stores.hostStore('conv-a').writeJson('k', { from: 'a' })
   await stores.hostStore('conv-b').writeJson('k', { from: 'b' })
-  expect(await stores.hostStore('conv-a').readJson<{ from: string }>('k'))
+  expect(await stores.hostStore('conv-a').readJson('k'))
     .toEqual({ from: 'a' })
-  expect(await stores.hostStore('conv-b').readJson<{ from: string }>('k'))
+  expect(await stores.hostStore('conv-b').readJson('k'))
     .toEqual({ from: 'b' })
   expect(await stores.hostStore('conv-c').readJson('k')).toBeNull()
   expect(() => stores.db('../escape')).toThrow()
@@ -501,9 +500,9 @@ test(
     expect(stores.transcriptBlocks('conv-c')).toEqual([])
     expect(stores.openHandles).toBe(2)
     // conv-a's handle was the oldest and is closed; the store handed out earlier still reads and writes.
-    expect(await a.readJson<string>('k')).toBe('a')
+    expect(await a.readJson('k')).toBe('a')
     await a.writeJson('k', 'a2')
-    expect(await stores.hostStore('conv-a').readJson<string>('k')).toBe('a2')
+    expect(await stores.hostStore('conv-a').readJson('k')).toBe('a2')
     expect(stores.openHandles).toBe(2)
     stores.close()
     expect(stores.openHandles).toBe(0)
@@ -530,4 +529,24 @@ test('expired web sessions are swept when a session opens', async () => {
     .toBe(1)
   expect((await sessions.resolve(live.token))?.user.id).toBe(user!.id)
   db.close()
+})
+
+test('DbHostStore reports corrupt JSON and codec markers without treating rows as absent', async () => {
+  const db = openSqliteDatabase(':memory:')
+  migrate(db, CONVERSATION_MIGRATIONS)
+  const store = new DbHostStore(db, 'host')
+  try {
+    expect(await store.readJson('missing')).toBeNull()
+    for (const payload of ['{', '{"__demiDate":true,"iso":"invalid"}']) {
+      db.run('INSERT OR REPLACE INTO host_store (scope, key, value_json) VALUES (?, ?, ?)',
+        ['host', 'bad', payload])
+      await expect(store.readJson('bad')).rejects.toThrow()
+    }
+    await store.writeJson('existing', { count: 1 })
+    await expect(store.writeJson('existing', { count: Infinity })).rejects.toThrow()
+    expect(await store.readJson('existing')).toEqual({ count: 1 })
+  } finally {
+    db.close()
+  }
+  await expect(store.readJson('missing')).rejects.toThrow()
 })

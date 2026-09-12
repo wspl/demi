@@ -127,7 +127,8 @@ export interface HostCwd {
  * since stored values such as agent session snapshots carry binary content.
  */
 export interface HostStore {
-  readJson<T>(key: string): Promise<T | null>
+  /** Decode only; callers validate the owned domain schema. Missing keys return null. */
+  readJson(key: string): Promise<unknown | null>
   writeJson<T>(key: string, value: T): Promise<void>
   delete(key: string): Promise<void>
   list(prefix: string): Promise<string[]>

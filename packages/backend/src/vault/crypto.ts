@@ -1,7 +1,8 @@
+import { base64ToBytes, bytesToBase64 } from '@demicodes/utils'
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 
 /**
- * Credential encryption at rest: AES-256-GCM over portable JSON, packed as
+ * Credential encryption at rest: AES-256-GCM over plain JSON, packed as
  * `v1:<iv>:<tag>:<ciphertext>` (base64 fields). Decryption failures throw —
  * a corrupt credential row is a loud error, never silently normalized.
  */
@@ -15,20 +16,29 @@ export function encryptJson(secret: Uint8Array, value: unknown): string {
   return `v1:${iv.toString('base64')}:${cipher.getAuthTag().toString('base64')}:${ciphertext.toString('base64')}`
 }
 
-export function decryptJson<T>(secret: Uint8Array, packed: string): T {
-  const [version, iv, tag, ciphertext] = packed.split(':')
-  if (version !== 'v1' || !iv || !tag || !ciphertext) {
+export function decryptJson(secret: Uint8Array, packed: string): unknown {
+  const fields = packed.split(':')
+  const [version, iv, tag, ciphertext] = fields
+  if (fields.length !== 4 || version !== 'v1' || !iv || !tag || !ciphertext) {
     throw new Error('Corrupt encrypted credential: unrecognized format')
   }
-  const decipher = createDecipheriv(
-    'aes-256-gcm',
-    secret,
-    Buffer.from(iv, 'base64')
-  )
-  decipher.setAuthTag(Buffer.from(tag, 'base64'))
+  const ivBytes = decodeField(iv)
+  const tagBytes = decodeField(tag)
+  const ciphertextBytes = decodeField(ciphertext)
+  if (ivBytes.length !== 12 || tagBytes.length !== 16)
+    throw new Error('Corrupt encrypted credential: invalid IV or tag length')
+  const decipher = createDecipheriv('aes-256-gcm', secret, ivBytes)
+  decipher.setAuthTag(tagBytes)
   const plain = Buffer.concat([
-    decipher.update(Buffer.from(ciphertext, 'base64')),
+    decipher.update(ciphertextBytes),
     decipher.final()
   ])
-  return JSON.parse(plain.toString('utf8')) as T
+  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(plain))
+}
+
+function decodeField(value: string): Uint8Array {
+  const bytes = base64ToBytes(value)
+  if (bytesToBase64(bytes) !== value)
+    throw new Error('Corrupt encrypted credential: invalid base64 field')
+  return bytes
 }

@@ -277,3 +277,24 @@ their schema; unknown keys, null fields and runtime dependencies are rejected.
 `core` owns image, video and all-file extension constants and derives their types
 from those sets. Agent wire schemas enumerate the same all-file set; provider
 model selection uses the image set plus PDF as its default attachment capability.
+
+## Portable JSON and generic storage
+
+`utils/json.ts` owns the portable encoding of `Uint8Array`, `bigint` and `Date`.
+Its three marker keys are reserved. A marked object contains exactly the marker
+set to `true` and its string payload. Binary payloads use canonical padded base64;
+bigints use canonical decimal integers; dates use the exact UTC ISO representation
+produced by `Date.toISOString()`. Invalid markers, extra marker fields, invalid dates
+and nonfinite numbers fail decoding. Writers reject reserved marker keys in user
+objects and nonfinite numbers. Unmarked ordinary JSON remains ordinary data.
+
+`shell/host.ts` defines `HostStore.readJson` as an unknown-value read. File and DB
+implementations decode portable JSON and return `null` for absent keys. JSON or
+marker corruption and IO failures propagate. The caller owns domain validation;
+HostStore cannot infer a domain contract from a key or a TypeScript generic.
+
+`backend/vault/crypto.ts` decrypts plain JSON into `unknown`. The envelope contains
+exactly the version, a 12-byte IV, a 16-byte GCM authentication tag and ciphertext,
+with canonical base64 fields. Format, authentication, UTF-8 and JSON failures
+propagate. `backend/vault/providers.ts` validates the decrypted provider config
+using its config schema before returning it. Encryption is not domain validation.

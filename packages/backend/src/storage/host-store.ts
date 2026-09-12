@@ -14,12 +14,12 @@ export class DbHostStore implements HostStore {
     private readonly scope: string,
   ) {}
 
-  async readJson<T>(key: string): Promise<T | null> {
+  async readJson(key: string): Promise<unknown | null> {
     const row = this.db.get<{ value_json: string }>(
       'SELECT value_json FROM host_store WHERE scope = ? AND key = ?',
       [this.scope, key],
     )
-    return row ? parsePortableJson<T>(row.value_json) : null
+    return row ? parsePortableJson(row.value_json) : null
   }
 
   async writeJson<T>(key: string, value: T): Promise<void> {

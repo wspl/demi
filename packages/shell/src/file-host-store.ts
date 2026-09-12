@@ -1,5 +1,5 @@
 import {
-  decodeUtf8,
+  decodeUtf8Strict,
   dirnamePath,
   encodeUtf8,
   isFileNotFoundError,
@@ -21,9 +21,12 @@ export function fileHostStore(fs: HostFileSystem, root: string): HostStore {
     return key === '' || key === '.' ? root : normalizePath(`${root}/${key}`)
   }
   return {
-    async readJson<T>(key: string): Promise<T | null> {
+    async readJson(key: string): Promise<unknown | null> {
       try {
-        return parsePortableJson<T>(decodeUtf8(await fs.readFile(pathFor(key))))
+        const text = decodeUtf8Strict(await fs.readFile(pathFor(key)))
+        if (text === null)
+          throw new Error('Invalid HostStore UTF-8 data')
+        return parsePortableJson(text)
       } catch (error) {
         if (isFileNotFoundError(error))
           return null

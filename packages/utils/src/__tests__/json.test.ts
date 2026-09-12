@@ -97,6 +97,49 @@ describe('portable JSON codec', () => {
     })
   })
 
+  it('rejects malformed reserved markers without exposing payload data', () => {
+    const invalid = [
+      { __demiUint8Array: false, base64: 'AQ==' },
+      { __demiUint8Array: true },
+      { __demiUint8Array: true, base64: 123 },
+      { __demiUint8Array: true, base64: 'AQ==', extra: 'secret' },
+      { __demiUint8Array: true, base64: 'AQ==AAAA' },
+      { __demiUint8Array: true, base64: 'AR==' },
+      { __demiUint8Array: true, base64: 'AQI=' + '\n' },
+      { __demiBigInt: true, value: '01' },
+      { __demiBigInt: true, value: '-0' },
+      { __demiBigInt: true, value: ' 1' },
+      { __demiBigInt: true, value: 'secret' },
+      { __demiDate: true, iso: 'secret' },
+      { __demiDate: true, iso: '2026-02-30T00:00:00.000Z' },
+      { __demiDate: true, iso: '2026-01-01' },
+      { __demiDate: true, iso: '2026-01-01T00:00:00.000Z', extra: 1 },
+      { __demiDate: true, __demiBigInt: true, value: '1' },
+    ]
+    for (const value of invalid) {
+      expect(() => parsePortableJson(JSON.stringify({ nested: value })))
+        .toThrow()
+      try {
+        parsePortableJson(JSON.stringify(value))
+      } catch (error) {
+        expect(String(error)).not.toContain('secret')
+      }
+    }
+  })
+
+  it('reserves marker keys at write time and rejects nonfinite JSON numbers', () => {
+    expect(() => stringifyPortableJson({ __demiBigInt: true, value: '42' }))
+      .toThrow('reserved')
+    for (const number of [NaN, Infinity, -Infinity]) {
+      expect(() => stringifyPortableJson({ number })).toThrow('finite')
+    }
+    expect(() => parsePortableJson('{"number":1e400}')).toThrow('finite')
+    for (const value of [0n, -1n, 123456789012345678901234567890n]) {
+      const decoded: unknown = parsePortableJson(stringifyPortableJson(value))
+      expect(decoded === value).toBe(true)
+    }
+  })
+
   it('supports pretty-printing via the space parameter', () => {
     expect(stringifyPortableJson({ a: 1 }, 2)).toBe('{\n  "a": 1\n}')
   })

@@ -9,16 +9,15 @@ import {
   collectBytes,
   decodeUtf8,
   encodeUtf8,
-  errorCode
+  errorCode,
+  isRecord
 } from '@demicodes/utils'
 
 /** In-memory `HostStore` for tests (values held by reference, no cloning). */
 export function memoryHostStore(): HostStore {
   const map = new Map<string, unknown>()
   return {
-    readJson: async <T>(key: string) => (map.has(key)
-      ? (map.get(key) as T)
-      : null),
+    readJson: async (key: string) => map.has(key) ? map.get(key) : null,
     writeJson: async (key, value) => {
       map.set(key, value)
     },
@@ -451,13 +450,11 @@ export function hostConformanceCases(
           { big: 10n, bytes: new Uint8Array([1, 2]) }
         )
         await store.writeJson('conformance/b', [1, 2, 3])
-        const a = await store.readJson<{
-          big: bigint;
-          bytes: Uint8Array
-        }>('conformance/a')
-        equal(typeof a?.big, 'bigint', 'bigint survives')
-        ok(a?.bytes instanceof Uint8Array, 'Uint8Array survives')
-        equal(Array.from(a?.bytes ?? []), [1, 2], 'bytes content')
+        const a = await store.readJson('conformance/a')
+        if (!isRecord(a) || !(a.bytes instanceof Uint8Array))
+          throw new Error('Invalid HostStore round-trip result')
+        equal(typeof a.big, 'bigint', 'bigint survives')
+        equal(Array.from(a.bytes), [1, 2], 'bytes content')
         equal(
           await store.readJson('conformance/b'),
           [1, 2, 3],

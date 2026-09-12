@@ -41,7 +41,7 @@ test(
     const packed = encryptJson(secret, value)
     expect(packed.startsWith('v1:')).toBe(true)
     expect(packed).not.toContain('sk-test-123')
-    expect(decryptJson<typeof value>(secret, packed)).toEqual(value)
+    expect(decryptJson(secret, packed)).toEqual(value)
     // Fresh IV every call.
     expect(encryptJson(secret, value)).not.toBe(packed)
 
@@ -58,6 +58,22 @@ test(
     ).toThrow()
   }
 )
+
+test('crypto rejects malformed envelopes before accepting authenticated JSON', () => {
+  const secret = crypto.getRandomValues(new Uint8Array(32))
+  const packed = encryptJson(secret, { apiKey: 'synthetic-secret' })
+  const [version, iv, tag, ciphertext] = packed.split(':')
+  for (const malformed of [
+    packed + ':extra',
+    `v2:${iv}:${tag}:${ciphertext}`,
+    `${version}:${iv}!:${tag}:${ciphertext}`,
+    `${version}:${iv}:${tag}: ${ciphertext}`,
+    `${version}:AQ==:${tag}:${ciphertext}`,
+    `${version}:${iv}:AQ==:${ciphertext}`,
+  ]) {
+    expect(() => decryptJson(secret, malformed)).toThrow()
+  }
+})
 
 test(
   'ProviderVault: rows carry ciphertext only; CRUD round-trips typed configs',

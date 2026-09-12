@@ -83,6 +83,12 @@ export function stringifyPortableJson(value: unknown, space?: number): string {
       const original = isRecord(this) || Array.isArray(this)
         ? (this as Record<string, unknown>)[key]
         : undefined
+      if (isRecord(original) && [BINARY_MARKER, BIGINT_MARKER, DATE_MARKER]
+        .some((marker) => marker in original)) {
+        throw new Error('Portable JSON marker keys are reserved')
+      }
+      if (typeof nested === 'number' && !Number.isFinite(nested))
+        throw new Error('Portable JSON numbers must be finite')
       if (original instanceof Date) {
         return {
           [DATE_MARKER]: true,
@@ -115,30 +121,44 @@ export function stringifyPortableJson(value: unknown, space?: number): string {
  */
 export function parsePortableJson<T>(text: string): T {
   return JSON.parse(text, (_key, nested) => {
-    if (isEncodedUint8Array(nested)) {
-      return base64ToBytes(nested.base64)
+    if (typeof nested === 'number' && !Number.isFinite(nested))
+      throw new Error('Portable JSON numbers must be finite')
+    if (!isRecord(nested))
+      return nested
+    if (BINARY_MARKER in nested) {
+      const encoded = markerPayload(nested, BINARY_MARKER, 'base64')
+      const bytes = base64ToBytes(encoded)
+      if (bytesToBase64(bytes) !== encoded)
+        throw new Error('Invalid portable JSON binary marker')
+      return bytes
     }
-    if (isEncodedBigInt(nested)) {
-      return BigInt(nested.value)
+    if (BIGINT_MARKER in nested) {
+      const encoded = markerPayload(nested, BIGINT_MARKER, 'value')
+      if (!/^(?:0|-?[1-9][0-9]*)$/.test(encoded))
+        throw new Error('Invalid portable JSON bigint marker')
+      return BigInt(encoded)
     }
-    if (isEncodedDate(nested)) {
-      return new Date(nested.iso)
+    if (DATE_MARKER in nested) {
+      const encoded = markerPayload(nested, DATE_MARKER, 'iso')
+      const date = new Date(encoded)
+      if (!Number.isFinite(date.getTime()) || date.toISOString() !== encoded)
+        throw new Error('Invalid portable JSON date marker')
+      return date
     }
     return nested
   }) as T
 }
 
-function isEncodedUint8Array(value: unknown): value is { base64: string } {
-  return isRecord(value) && value[BINARY_MARKER] === true
-    && typeof value.base64 === 'string'
-}
-
-function isEncodedBigInt(value: unknown): value is { value: string } {
-  return isRecord(value) && value[BIGINT_MARKER] === true
-    && typeof value.value === 'string'
-}
-
-function isEncodedDate(value: unknown): value is { iso: string } {
-  return isRecord(value) && value[DATE_MARKER] === true
-    && typeof value.iso === 'string'
+/** Marker keys are reserved; malformed marked objects cannot become user data. */
+function markerPayload(
+  value: Record<string, unknown>,
+  marker: string,
+  field: string,
+): string {
+  const payload = value[field]
+  if (value[marker] !== true || typeof payload !== 'string'
+    || Object.keys(value).length !== 2) {
+    throw new Error('Invalid portable JSON marker')
+  }
+  return payload
 }
