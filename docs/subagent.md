@@ -4,7 +4,7 @@
 |---|---|
 | Date | 2026-09-01 |
 | Status | Design |
-| Scope | `@demicodes/agent` child sessions, `@demicodes/shell` long-running registered commands, `demi agent` CLI, `AgentClient` subagent events |
+| Scope | `@demicodes/agent` child sessions, `@demicodes/shell` registered commands, `demi agent` CLI, `AgentClient` subagent events |
 
 A subagent is an isolated child `AgentSession` that any session starts as a
 registered command. Sessions form a tree of arbitrary depth rooted at the
@@ -24,8 +24,8 @@ Parent context is expensive. Parallel exploration and focused work need a
 fresh session, the same Host, and a result that returns to the parent without
 dumping the child's tool history into the parent's inference transcript.
 
-The shell already has start / observe / write / abort / yield. Subagents reuse
-that control surface instead of adding `agent_exec` tools.
+The shell runs the `demi agent` commands. Creation, communication, and abort
+are short command calls; the supervisor runs each child independently.
 
 Depth is not capped. A child delegating a slice of its own task spawns exactly
 like the root does; there is no per-depth command stripping. What bounds the
@@ -74,47 +74,48 @@ registered `demi`, the subcommands attach to that tree; otherwise
 `AgentServer` registers a `demi` root that only contains them.
 
 ```text
-demi agent spawn [--profile <name>] [--description <title>] [--no-subagents] < task-brief.txt
+demi agent spawn [--request-id <id>] [--profile <name>] [--description <title>] [--no-subagents] < task-brief.txt
 demi agent abort <id>
-demi agent resume <id> < message.txt
+demi agent resume <id> [--request-id <id>] < message.txt
 demi agent send <id|parent> < message.txt
 demi agent steer <id|parent> < message.txt
 demi agent show <id>
 demi agent list
 ```
 
-`demi agent spawn` with a task brief on stdin starts a child and waits until that
-child session ends. Stdout is the child's last assistant text. Stderr's first
-line is `subagentId: <id>`.
+`demi agent spawn` reads a task brief from stdin, creates a persisted child,
+and returns immediately. Stdout is `subagentId: <id>`; `--json` returns
+`{ "subagentId": "<id>" }`. Success confirms creation, not completion. The
+supervisor owns the child after creation, independently of the invoking shell
+job, its stdout pipe, and its cancellation signal. `resume` has the same
+acceptance-only response after durably queuing the next round's message.
 
-While that command is the shell foreground job:
+Use `agent send` / `steer` to communicate and `agent abort` to stop a child.
+Spawn's `shell_status` only describes the completed creation command. A parent
+can start several children sequentially and continue its work; ending its turn
+allows queued completion messages to open the next turn. No polling or timed
+yields are required.
 
-- `shell_write` steers the child (each chunk is one chime-in)
-- `shell_abort` aborts the child (and its subtree)
-- `shell_status` is process liveness (`running` / `exited`). Stdout stays
-  empty until the command exits.
-
-Parallel children are multiple `demi agent` invocations in separate
-`shell_exec` calls; a busy shell session gets a fresh one automatically.
-`timeoutMs` on spawn is only an observation window, capped at
-`MAX_TIMEOUT_MS` per call like every exec wait: the call returns a running
-status at the cap and the parent turn continues; the child keeps running.
-A short window is the idiomatic way to fan out.
-
-Spawn is an `rpc` command: on a machine the command-mode process relays it
-to the backend and stays attached for its stdin (`runner.md` § The local
-relay). `demi agent … &` is not a
-spawn path: a backgrounded job's stdin is not the tool call's, so nothing
-steers the child. The short subcommands below are fine either way.
+Both start commands accept `--request-id <id>`. A caller that may retry an
+uncertain response supplies this id on the first attempt and reuses it with
+identical arguments. The owning node's command state stores an immutable
+reservation at `agent.start.<id>`: normalized arguments, child id, and round
+start time. The reservation is committed before the child is created or
+reopened. A retry finishes an uncommitted start or returns the existing child
+without starting another round. Different arguments for the same request fail.
+Requests without an explicit id each create a new reservation. Starts are
+serialized within the owning supervisor, including concurrent command calls.
+A resume reservation superseded by a later round fails instead of replaying an
+older message. Resume requires the previous completion to be saved in the
+parent's checkpoint before replacing the archived round. Command-state history
+retains these reservations with the parent.
 
 Prompt and `send` / `steer` / `resume` messages are read only from stdin:
 a quoted heredoc, pipe, or input redirection. They have no positional or
-named-option form. An empty message fails.
-`--profile` names a profile configured at harness assembly. `--no-subagents`
-forbids the child from spawning children of its own. There is no `--model`
-flag: model and provider runtime come from the profile or from the parent.
+named-option form. An empty message fails. `--profile` names a harness profile;
+`--no-subagents` forbids the child from delegating. There is no `--model` flag:
+model and provider runtime come from the profile or parent.
 
-`--json` on spawn and `resume` writes `{ "subagentId", "text" }` at exit.
 `abort` / `send` / `steer` / `show` / `list` define JSON objects
 `{ id, aborted }`, `{ id, accepted }`, `{ id, accepted }`, `{ agent }`, and
 `{ tree }` respectively.
@@ -187,33 +188,27 @@ reports, handing over results, and non-urgent questions.
 
 ### Result
 
-There is no result command. The child's natural session end (quiescent, empty
-inbox) is the result: `demi agent spawn` exits 0 and stdout is the child's last
-assistant text, truncated at 32 KiB. Empty last text is a valid 0 exit. A
-child `yield` keeps the spawn command running; the child is not finished.
+The supervisor closes a quiescent child with its last assistant text, bounded
+to 32 KiB, or its abort/error outcome. It saves the result before delivering a
+completion message to the parent. An idle parent wakes immediately; a busy
+parent queues the message for its next turn. The creation command carries no
+completion result. A child with pending yields or descendants stays live.
 
-If the parent is still blocked in that `demi agent spawn` invocation, the tool
-result is the return path. If the parent is idle, Demi also delivers a user
-send so the parent is woken; the body carries `subagentId`, description, and
-the same result text. The store records which path took the completion, so a
-process ending between the child's close and the parent's next checkpoint
-loses nothing (§ Persistence).
+Each execution round has a distinct completion message id containing the child
+id and its persisted `spawnedAt`. Resume chooses a timestamp strictly newer than
+the previous round. Parent checkpoints mark only the matching round delivered;
+an older completion cannot acknowledge a newer round. Restore retries an
+undelivered completion using the same message id, and session admission deduplicates
+it against the pending queue and transcript.
 
-`AgentServerOptions.subagents.notifyParentOnIdle: false` leaves root-session
-wakeups to the product. Parents inside the tree always wake on child
-completion so they can integrate the result and finish their own work.
+`AgentServerOptions.subagents.notifyParentOnIdle: false` delegates root-level
+completion handling to the product's `closed` frame subscriber. Descendant
+parents always receive completion messages. Demi's backend uses automatic
+parent notifications.
 
-Ask-and-answer needs no live channel: a child that needs a decision ends its
-turn with the question as its last assistant text — the session closes, the
-question returns as the result, and the parent answers with
-`demi agent resume <id>`, supplying the answer on stdin. The child continues
-from its preserved transcript.
-
-A parent blocked in a spawn wait does not see incoming sends or steers until
-that wait returns. The dead window is bounded: every exec observation window
-caps at `MAX_TIMEOUT_MS`, so the wait returns a running status by then and
-the parent can take messages again. Background fan-out (short `timeoutMs`,
-then end the turn) has no dead window at all.
+A child that needs a decision ends with its question as the result; its parent
+uses `demi agent resume <id>` with the answer on stdin to start the next round
+on the preserved transcript.
 
 ## Observe
 
@@ -226,11 +221,10 @@ the child reaches a boundary, so a hung tool or provider stream never
 answers. Observation is a supervisor read. It does not inject into the target
 transcript and does not wait on it.
 
-Three pulls, none of them a wait:
+Two snapshot reads:
 
 | | Answers | Does not answer |
 |---|---|---|
-| `shell_status` on the spawn job | process liveness (`running` / `exited`) | session content |
 | `demi agent list` | the whole live tree, plus archived children | one agent's recent work |
 | `demi agent show <id>` | bounded snapshot of one live agent | full transcript, tool outputs, thinking |
 
@@ -275,7 +269,7 @@ It returns only:
 - at most the last 8 `tool_call` titles and their status, no results; each
   with its own duration and how long ago it ended (the in-flight one: how
   long it has been running)
-- last assistant text, same 32 KiB bound as spawn stdout / `job.result`, and
+- last assistant text, same 32 KiB bound as completion messages / `job.result`, and
   how long ago it was produced
 
 A target whose last event was 8s ago is working. A `tool_executing` state
@@ -286,18 +280,9 @@ It does not return tool output bodies, file contents, thinking, or older
 turns. A missing or archived id fails. `--json` is `{ agent }` with those
 fields as millisecond offsets from now.
 
-`show` is for deciding the next verb (send, steer, abort, yield, or ignore) —
-look before you talk. It is not a completion channel and not a loop. Waiting
-is still blocking spawn, `shell_status` with `timeoutMs`, or `yield`.
-Completion and abort still arrive as the spawn tool result, or as a user send
-when the parent is idle.
-
-The shell result's generic running hint ("check again with shell_status, or
-call yield") is exactly the polling loop this table exists to prevent, so the
-spawn and `resume` commands set `Command.runningHint` — a per-command override
-of that line, surfaced on running `ShellCommandStatus` while the command is
-the foreground job — telling the parent to steer, abort, or end the turn and
-be woken, never to poll.
+`show` is for deciding the next action, such as send, steer, or abort. It is
+not a completion channel or a polling loop. The supervisor delivers completion
+messages independently of shell commands.
 
 `list` / `show` field descriptions state they are snapshots, that `show`
 omits tool outputs, and that they are not for polling.
@@ -391,13 +376,14 @@ That is compaction and recall, not spawn.
 
 ## Abort
 
-Abort is recursive. `demi agent abort <id>`, `shell_abort` on that job, and
-parent `abort` / `dispose` stop the named node and every descendant, deepest
-first. Siblings are untouched. Each closed node emits `subagent closed`.
+`demi agent abort <id>` and explicit parent-tree abort stop the named node and
+its descendants. Siblings are untouched. A finished creation command's signal
+has no authority over its child. Dispose checkpoints and detaches a subtree for
+restore; it does not archive it as aborted.
 
-Abort is a non-zero spawn exit plus `phase: 'aborted'`. Provider or runtime
-failure is `phase: 'error'`, non-zero exit, and the reason on stderr. If the
-parent is idle, a user send reports abort or error the same way.
+Each closed child emits a lifecycle event and a completion message carrying
+`aborted`, `error` with a reason, or `completed` with its result. A successful
+creation command retains exit code zero even if the child later fails.
 
 ## Persistence
 
@@ -433,18 +419,11 @@ dispose. A process ending between the two leaves a live node that is
 quiescent — idle, empty inbox, no live children — and the next restore
 closes it with the same result, so the two orders cannot be told apart.
 
-**Completion delivery.** A closed child's result reaches its parent on one
-of three paths, and the store records that it has: the parent was busy with
-the spawn command still awaiting the child in this process, and that
-command's exit carries the result; the product took it from the `closed`
-frame (`notifyParentOnIdle: false`, root level only); otherwise the parent
-receives a user message whose id names the child — now if idle, at its next
-turn boundary if busy — and the parent's save that carries that message,
-queued or as its user turn, marks the completion delivered in the same
-commit. A restore delivers every completion still marked undelivered as that
-message, and closes a quiescent live child the same way. A completion is
-therefore never lost between the child's close and the parent's next
-checkpoint, and never delivered twice.
+A closed round remains undelivered until the parent's checkpoint carries its
+completion message, queued or as a user turn. The save marks that exact child
+round delivered in the same commit. Restore delivers every still-undelivered
+completion. Products explicitly owning root-level completion handling mark the
+matching round delivered after the `closed` event.
 
 **Restore.** Reopening a root node restores its live children, each of
 which restores its own — a tree restore, one rule per node: a turn the
@@ -462,9 +441,7 @@ root and is deleted only with it — a revivable id stays revivable.
 revives one in one commit: the node row is live again with this round's
 metadata and a fresh spawn time, and the message is queued in the
 checkpoint; the session rebuilds from the preserved transcript and the
-message opens its next turn on top of it. From there the command behaves
-exactly like spawn (foreground job, steers via `shell_write`, result at
-exit).
+message opens its next turn on top of it. The command then returns the child id; the new round delivers its completion separately.
 
 ## Runtime
 
@@ -495,16 +472,12 @@ leaves both to its client. The policy is a node option, not a depth.
 - dispose detaches the subtree without closing it (checkpoints flush; the
   next open restores); abort closes it
 
-### Registered commands as foreground jobs
+### Creation command ownership
 
-`demi agent spawn` is a long-running RPC command. Registered commands use
-the same control surface as host processes:
-
-- `CommandRunContext.signal` is the job abort signal
-- `CommandIO` writes into the live stdout/stderr accumulator
-- stdin after start is a stream; each `shell_write` chunk is one child steer
-- `timeoutMs` / `shell_status` / `shell_write` / `shell_abort` apply as they
-  do to a host process
+`spawn` and `resume` are short RPC commands. The shell owns only the creation
+request and its response. The supervisor owns the persisted child and its
+completion delivery. File and process work performed by the child still uses
+its normal runner-backed shell environments.
 
 ## Protocol
 
@@ -548,13 +521,13 @@ On reconnect, Demi sends the root `transcript_reset`, then for each
 still-live agent in the tree `subagent started` and
 `subagent_transcript_reset`.
 
-### Bounded view
+### UI
 
-The spawning session's `shell_exec` `tool_call.view` may carry a bounded
-`{ kind: 'subagent', subagentId, description, phase, activity }` for collapsed
-UI. Live tool history is the `subagent_transcript_*` stream, not an unbounded
-`view`. View updates are `replace_block` patches on that `tool_call` (`view`
-is not replayed to the model).
+The shared `web-ui/AgentsChip` counts live children only and is hidden when none
+are running. Completed, aborted, and failed records remain available as history
+but do not contribute to the dock count. The product and gallery use the same
+component. A creation command exits independently and contributes no ongoing
+Running terminal count for its child's lifetime.
 
 ## Sequence
 
@@ -562,6 +535,7 @@ is not replayed to the model).
 transcript_patch                 parent tool_call shell_exec executing
 subagent started                 job.subagentId=ag_1  phase=running
 subagent_transcript_reset        subagentId=ag_1  blocks=[]
+transcript_patch                 parent creation tool_call completed, stdout=subagentId
 
 subagent_transcript_patch        subagentId=ag_1  + tool_call executing
 subagent_transcript_patch        subagentId=ag_1  tool_call completed
@@ -572,7 +546,7 @@ subagent_transcript_patch        subagentId=ag_1  + user steer (parent `steer ag
 
 subagent_transcript_patch        subagentId=ag_1  + text (final)
 subagent closed                  phase=completed  result=...
-transcript_patch                 parent tool_call completed, stdout=result
+transcript_patch                 parent completion user message, queued or opening its next turn
 ```
 
 ## Product rendering
@@ -609,8 +583,7 @@ Only the node assembly instantiates `AgentSession`.
 - Cross-root addressing: the directory scopes one root session
 - Cross-agent lifecycle authority (steering is talking; killing and reviving
   stay with the parent)
-- `demi agent wait` / `result` (blocking spawn, `shell_status` / `yield`, and
-  natural session end already cover these)
+- `demi agent wait` / `result`: completion messages deliver the outcome
 - Tailing a child transcript into spawn stdout or another session's inference
   transcript
 
@@ -623,7 +596,7 @@ Only the node assembly instantiates `AgentSession`.
   `steer` mid-turn injection and idle-root rejection, cross-branch `send` /
   `show` between siblings, lifecycle-authority rejection (`abort` / `resume`
   on a non-child), idle parent wakeup on completion, empty prompt fails,
-  empty last text exits 0, `subagent*` protocol frames from nested depths,
+  empty last text completes with an empty result, `subagent*` protocol frames from nested depths,
   inherited vs replaced `systemPrompt` with unknown-profile rejection,
   spawn restriction (`--no-subagents` and profile `canSpawnSubagents: false`)
   with communication intact across archive/reopen/resume, descendant prompt/model

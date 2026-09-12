@@ -433,7 +433,7 @@ export interface AgentTreeStore<State = unknown> {
    * The completion reached its parent by a path the parent's checkpoint cannot
    * show.
    */
-  markDelivered(id: string): Promise<void>
+  markDelivered(id: string, spawnedAt: number): Promise<void>
   /** The node and every descendant with all their rows. */
   deleteNode(id: string): Promise<void>
 }

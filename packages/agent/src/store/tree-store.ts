@@ -4,11 +4,11 @@ const COMPLETION_PREFIX = 'subagent:'
 
 /**
  * The id of the user message that wakes a parent with a child's completion:
- * one per child, so a checkpoint names the completions it carries and a
+ * one per execution round, so a checkpoint names the completions it carries and a
  * store can mark them delivered in the same commit as the save.
  */
-export function completionMessageId(childId: string): string {
-  return `${COMPLETION_PREFIX}${childId}`
+export function completionMessageId(childId: string, spawnedAt: number): string {
+  return `${COMPLETION_PREFIX}${childId}:${spawnedAt}`
 }
 
 export function isCompletionMessageId(messageId: string): boolean {
@@ -21,25 +21,32 @@ export function isCompletionMessageId(messageId: string): boolean {
  */
 export function completedChildrenCarriedBy(
   update: Pick<AgentSessionPersistUpdate<unknown>, 'queue' | 'changedBlocks'>
-): string[] {
-  const ids = new Set<string>()
+): Array<{ id: string; spawnedAt: number }> {
+  const rounds = new Map<string, { id: string; spawnedAt: number }>()
   for (const message of update.queue) {
-    const id = childOf(message.id)
-    if (id)
-      ids.add(id)
+    const round = childRoundOf(message.id)
+    if (round)
+      rounds.set(message.id, round)
   }
   for (const { block } of update.changedBlocks) {
     if (block.type !== 'user')
       continue
-    const id = childOf(block.turnId)
-    if (id)
-      ids.add(id)
+    const round = childRoundOf(block.turnId)
+    if (round)
+      rounds.set(block.turnId, round)
   }
-  return [...ids]
+  return [...rounds.values()]
 }
 
-function childOf(messageId: string): string | null {
-  return isCompletionMessageId(messageId)
-    ? messageId.slice(COMPLETION_PREFIX.length)
-    : null
+function childRoundOf(messageId: string): { id: string; spawnedAt: number } | null {
+  if (!isCompletionMessageId(messageId)) {
+    return null
+  }
+  const separator = messageId.lastIndexOf(':')
+  const id = messageId.slice(COMPLETION_PREFIX.length, separator)
+  const time = messageId.slice(separator + 1)
+  if (!id || !/^\d+$/.test(time) || !Number.isSafeInteger(Number(time))) {
+    throw new Error('Invalid subagent completion message id')
+  }
+  return { id, spawnedAt: Number(time) }
 }
