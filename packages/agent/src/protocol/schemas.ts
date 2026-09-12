@@ -78,7 +78,7 @@ export const modelSelectionSchema: z.ZodType<ModelSelection> = z.object({
   serviceTierId: z.string().nullable().optional(),
 })
 
-const providerSelectionSchema: z.ZodType<ProviderSelection> = z.object({
+export const providerSelectionSchema: z.ZodType<ProviderSelection> = z.object({
   providerId: z.string(),
   model: modelSelectionSchema,
 })

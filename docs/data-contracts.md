@@ -404,3 +404,47 @@ result after committing. A rejected value leaves the revision and stored value
 unchanged. `backend/storage/command-state.ts` validates version and boundary
 relationships on restoration; control-plane JSON fields retain their named
 preference, target, fork and managed-operation schemas.
+
+### Browser presentation and optional host control
+
+`web-ui/agent/block-helpers.ts` parses tool input only for display. Standard tool
+rows may display partial object JSON; other tools require a complete object.
+Arrays, primitives and malformed input yield an empty display object. This
+reader never authorizes execution. Titles trim non-blank strings; tool source
+text retains whitespace. Finite-number extraction uses `utils/numberOrNull`.
+
+`web-ui/transport/protocol.ts` owns the optional host control adapter's provider,
+model and workspace response schemas. `connectControlClient` validates the
+response envelope and each pending method's result. Malformed data closes the
+connection and rejects all pending calls. Remote errors reject their matching
+call; late or duplicate responses are ignored. Opening and requests have bounded
+waits. Close, abort, error and timeout release their listeners and timers. The
+embedding host owns and closes the returned control connection.
+
+`AgentWorkspace` remains a supported optional UI host adapter, independent of
+the backend product's REST stores. Its local conversation list stores one
+ordered array and an active id. Restoration validates the complete record and
+its unique-id/reference relationships before creating runtimes. Invalid records
+fail initialization and remain stored; no partial list is recovered or written
+over it. Absent storage starts a new workspace. Model intent permits empty ids
+for an unselected composer; an actual prepare-session call names a selection.
+
+### Browser storage failure policies
+
+| Record | Owner | Invalid or unavailable data |
+| --- | --- | --- |
+| Authored drafts, pending sends and edits | `web/conversation/drafts.ts` and `store.ts` | Invalid content blocks restoration and remains stored. Failed reads never mark a draft writable. Unavailable storage permits an in-memory session with a visible warning. |
+| Scroll positions and virtualized height snapshots | `web-ui/composables/scroll-state.ts` | Reject the entire visual snapshot. A malformed scroll field does not discard the draft containing it. |
+| Product local display preferences | `web/state/local.ts` | Reject the entire preference record and use defaults. |
+| Gallery style selection | `web-gallery/gallery-state.ts` | Validate every stored axis, then apply the selected preset or valid custom axes. Reject the entire invalid record and use the default appearance. |
+| Theme choice | `web-ui/theme/appTheme.ts` | Only `light` and `dark` are stored choices. Invalid or inaccessible storage falls back to the system; write failure keeps the current appearance in memory. |
+| Runner config and active manifest | `runner/state.ts` and `manifest-cache.ts` | Only a missing file is absent. Decode, schema and IO failures propagate. |
+| Machine image pointer | `machines/machine-image-store.ts` | Only a missing pointer is absent; invalid manifests fail without replacing a generation. |
+| Provider catalog cache | `provider/models-dev.ts` and provider catalog modules | Validate before caching; return independent snapshots and explicit stale status after refresh failure. |
+
+Token-count parsing belongs to `web-ui/ui/token-count.ts`: it removes visual
+separators, converts K/M units, rounds to whole tokens and rejects unsafe results.
+Display precision preserves individual tokens across unit changes. This is UI
+conversion, distinct from extracting a finite number from an unknown record.
+File-browser paths retain POSIX semantics; Markdown file detection continues to
+recognize Windows paths and file URLs. These are separate formatting contracts.

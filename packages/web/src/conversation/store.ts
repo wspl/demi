@@ -45,6 +45,7 @@ import { transcriptTerminals } from './terminals'
 import {
   deleteDraft,
   readDraft,
+  DraftDataError,
   readLocalDrafts,
   writeDraft,
   type SavedDraft,
@@ -85,7 +86,10 @@ export const useConversations = defineStore('conversations', () => {
   function storageError(error: unknown): void {
     if (!storageErrorReported) {
       storageErrorReported = true
-      reportError('Drafts remain in this page but could not be saved', error, {
+      const title = error instanceof DraftDataError
+        ? 'Could not restore the saved draft'
+        : 'Drafts remain in this page but could not be saved'
+      reportError(title, error, {
         userVisible: true,
       })
     }
@@ -414,6 +418,11 @@ export const useConversations = defineStore('conversations', () => {
     } catch (error) {
       signal.throwIfAborted()
       storageError(error)
+      if (error instanceof DraftDataError) {
+        throw error
+      }
+      // An unavailable store permits an in-memory session but cannot authorize overwrites.
+      return
     }
     restored.add(conversation.id)
     for (const file of conversation.files) {

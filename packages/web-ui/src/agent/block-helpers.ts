@@ -51,29 +51,22 @@ export function shellTerminalOutputChunks(block: ToolCallBlock): ShellTerminalOu
  * other tool waits for the complete document.
  */
 export function parseToolCallInput(block: ToolCallBlock): Record<string, unknown> {
-  if (!block.input)
-    return {}
-  try {
-    const result = shouldParsePartialToolInput(block.toolName)
-      ? parse(block.input, Allow.ALL)
-      : JSON.parse(block.input)
-    return typeof result === 'object' && result !== null
-      ? result as Record<string, unknown>
-      : {}
-  } catch {
-    return {}
-  }
+  return readToolInput(block.input, shouldParsePartialToolInput(block.toolName))
 }
 
 export function parseToolInput(raw: string): Record<string, unknown> {
-  if (!raw)
+  return readToolInput(raw, false)
+}
+
+function readToolInput(raw: string, partial: boolean): Record<string, unknown> {
+  if (!raw) {
     return {}
+  }
   try {
-    const parsed = JSON.parse(raw)
-    return typeof parsed === 'object' && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : {}
+    const value: unknown = partial ? parse(raw, Allow.ALL) : JSON.parse(raw)
+    return isRecord(value) ? value : {}
   } catch {
+    // Presentation can lack input while JSON is incomplete; execution validates separately.
     return {}
   }
 }

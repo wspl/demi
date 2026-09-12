@@ -5,6 +5,8 @@ import { toasts } from '@demicodes/web-ui/infra/toast'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { useConversations } from './store'
+import * as draftStorage from './drafts'
+import { useSession } from '../auth/session'
 import { useProduct } from '../state/product'
 import { productStateSchema, type BackendConversation } from '@demicodes/product-contracts'
 
@@ -523,4 +525,26 @@ test('logout cancels pending history and prevents late state restoration', async
   await opening
   expect(store.items).toEqual([])
   expect(current.load).toBe('loading')
+})
+
+test('a corrupt draft blocks restoration and cannot be overwritten by an empty UI draft', async () => {
+  useSession().current = { status: 'signedIn', user: snapshot().user }
+  const read = spyOn(draftStorage, 'readDraft').mockRejectedValue(new draftStorage.DraftDataError())
+  const write = spyOn(draftStorage, 'writeDraft').mockResolvedValue()
+  const remove = spyOn(draftStorage, 'deleteDraft').mockResolvedValue()
+  try {
+    const store = useConversations()
+    await store.activate('first')
+    const current = store.items.find((item) => item.id === 'first')!
+    expect(current.load).toBe('failed')
+    expect(current.lastError).toContain('kept for recovery')
+    current.draft = 'Still in memory'
+    await nextTick()
+    expect(write).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
+  } finally {
+    read.mockRestore()
+    write.mockRestore()
+    remove.mockRestore()
+  }
 })

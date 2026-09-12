@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import TextInput from './TextInput.vue'
+import { displayTokenCount, parseTokenCount, type TokenUnit } from './token-count'
 
 /**
  * A token count typed in thousands or millions. The unit sits inside the field and
@@ -16,45 +17,27 @@ const emit = defineEmits<{
   'update:modelValue': [value: number | null]
 }>()
 
-type Unit = 'K' | 'M'
-const SCALE: Record<Unit, number> = { K: 1_000, M: 1_000_000 }
-
-const unit = ref<Unit>(
+const unit = ref<TokenUnit>(
   props.modelValue !== null && props.modelValue >= 1_000_000 ? 'M' : 'K'
 )
-const text = ref(display(props.modelValue, unit.value))
-
-function display(tokens: number | null, u: Unit): string {
-  if (tokens === null)
-    return ''
-  const n = tokens / SCALE[u]
-  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(3)))
-}
+const text = ref(displayTokenCount(props.modelValue, unit.value))
 
 // A value set from outside re-renders in the current unit; local typing does not echo.
 watch(() => props.modelValue, (tokens) => {
-  if (numberOrNull(text.value, unit.value) !== tokens)
-    text.value = display(tokens, unit.value)
+  if (parseTokenCount(text.value, unit.value) !== tokens)
+    text.value = displayTokenCount(tokens, unit.value)
 })
-
-function numberOrNull(value: string, u: Unit): number | null {
-  const trimmed = value.replace(/[,\s]/g, '')
-  if (!trimmed)
-    return null
-  const n = Number(trimmed)
-  return Number.isFinite(n) && n >= 0 ? Math.round(n * SCALE[u]) : null
-}
 
 function onInput(value: string) {
   text.value = value
-  emit('update:modelValue', numberOrNull(value, unit.value))
+  emit('update:modelValue', parseTokenCount(value, unit.value))
 }
 
 function toggleUnit() {
-  const next: Unit = unit.value === 'K' ? 'M' : 'K'
-  const tokens = numberOrNull(text.value, unit.value)
+  const next: TokenUnit = unit.value === 'K' ? 'M' : 'K'
+  const tokens = parseTokenCount(text.value, unit.value)
   unit.value = next
-  text.value = display(tokens, next)
+  text.value = displayTokenCount(tokens, next)
 }
 
 const otherUnit = computed(() => (unit.value === 'K' ? 'M' : 'K'))

@@ -1,4 +1,4 @@
-import { truncate } from '@demicodes/utils'
+import { nonEmptyString, numberOrNull, truncate } from '@demicodes/utils'
 
 export const STANDARD_TOOL_NAMES = [
   'shell_exec',
@@ -50,7 +50,7 @@ export function standardToolTitle(
       return commandId ? `Stop ${commandId}` : 'Stop command'
     }
     case 'yield': {
-      const duration = optionalFiniteNumber(input.durationMs)
+      const duration = numberOrNull(input.durationMs)
       return duration === null
         ? 'Wait for wakeup'
         : `Wait ${Math.floor(duration)}ms`
@@ -62,12 +62,7 @@ export function trimToolSummary(text: string, maxLength = 120): string {
   return truncate(text.replace(/\s+/g, ' ').trim(), maxLength, '...')
 }
 
+/** Titles trim non-blank strings; source content keeps its original whitespace. */
 function optionalNonEmptyString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0
-    ? value.trim()
-    : null
-}
-
-function optionalFiniteNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
+  return nonEmptyString(value)?.trim() ?? null
 }

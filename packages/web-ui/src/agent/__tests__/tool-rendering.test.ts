@@ -47,3 +47,11 @@ test('standard tool helpers distinguish Demi tools from unknown generic tools', 
   expect(toolRenderKind('unknown_tool')).toBe('generic')
   expect(trimToolSummary(' a\n  b ')).toBe('a b')
 })
+
+test('display titles trim text but do not coerce numbers', () => {
+  expect(standardToolTitle('shell_exec', { description: '  ', script: '  echo ok  ' })).toBe('echo ok')
+  for (const durationMs of ['250', Infinity, NaN, null]) {
+    expect(standardToolTitle('yield', { durationMs })).toBe('Wait for wakeup')
+  }
+  expect(standardToolTitle('yield', { durationMs: 250.9 })).toBe('Wait 250ms')
+})

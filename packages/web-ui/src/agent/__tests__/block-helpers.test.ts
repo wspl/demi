@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import type { DisplayedBlock as Block } from '@demicodes/agent/client'
-import { shellTerminalOutputChunks } from '../block-helpers'
+import { parseToolCallInput, parseToolInput, shellTerminalOutputChunks } from '../block-helpers'
 
 test('shell terminal output renders the view chunks', () => {
   const block = tool({
@@ -77,3 +77,16 @@ const model: ModelSelection = {
   thinking: null,
   serviceTierId: null,
 }
+
+test('tool display parsers refuse arrays and primitives while retaining partial standard input', () => {
+  for (const input of ['[]', '[{"script":"wrong"}]', 'null', '"script"', '1']) {
+    expect(parseToolInput(input)).toEqual({})
+    expect(parseToolCallInput({ ...tool({}), input })).toEqual({})
+  }
+  const input = '{"script":"echo hello", "description":"Run'
+  expect(parseToolCallInput({ ...tool({}), input })).toMatchObject({
+    script: 'echo hello', description: 'Run',
+  })
+  expect(parseToolCallInput({ ...tool({}), toolName: 'custom', input })).toEqual({})
+  expect(parseToolInput('{"text":"  kept  "}')).toEqual({ text: '  kept  ' })
+})

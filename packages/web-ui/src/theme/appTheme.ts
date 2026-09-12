@@ -1,4 +1,4 @@
-import { computed, type ComputedRef } from 'vue'
+import { computed, ref, type ComputedRef } from 'vue'
 import { createThemeStore, type ThemeStoreState } from './themeStore'
 
 export type ThemeMode = ThemeStoreState['mode']
@@ -16,15 +16,22 @@ function systemPrefersLight(): boolean {
 }
 
 function storedMode(): ThemeMode | null {
-  if (typeof localStorage === 'undefined')
+  try {
+    const value = localStorage.getItem(STORAGE_KEY)
+    return value === 'light' || value === 'dark' ? value : null
+  } catch {
+    // Theme restoration is optional when storage access is blocked.
     return null
-  const value = localStorage.getItem(STORAGE_KEY)
-  return value === 'light' || value === 'dark' ? value : null
+  }
 }
+
+const choice = ref<ThemeChoice>(storedMode() ?? 'system')
 
 /** Initial mode: an explicit saved choice, else the OS preference, else dark. */
 function initialMode(): ThemeMode {
-  return storedMode() ?? (systemPrefersLight() ? 'light' : 'dark')
+  return choice.value === 'system'
+    ? (systemPrefersLight() ? 'light' : 'dark')
+    : choice.value
 }
 
 export const appThemeStore = createThemeStore({ mode: initialMode() })
@@ -35,9 +42,13 @@ export function useTheme(): { theme: ComputedRef<ThemeMode> } {
 
 /** Set the theme and remember the choice (so it survives reloads and stops following the OS). */
 export function setTheme(mode: ThemeMode): void {
+  choice.value = mode
   appThemeStore.setMode(mode)
-  if (typeof localStorage !== 'undefined')
+  try {
     localStorage.setItem(STORAGE_KEY, mode)
+  } catch {
+    // Keep the selected theme in memory when storage is unavailable.
+  }
 }
 
 /** Flip between light and dark, remembering the choice. */
@@ -55,7 +66,7 @@ export function applyThemeToDocument(): () => void {
     ? window.matchMedia('(prefers-color-scheme: light)')
     : null
   const change = (event: MediaQueryListEvent) => {
-    if (!storedMode())
+    if (choice.value === 'system')
       appThemeStore.setMode(event.matches ? 'light' : 'dark')
   }
   media?.addEventListener('change', change)
@@ -67,16 +78,20 @@ export function applyThemeToDocument(): () => void {
 
 /** The saved choice, or `system` while the theme follows the OS. */
 export function themeChoice(): ThemeChoice {
-  return storedMode() ?? 'system'
+  return choice.value
 }
 
 /** A mode is remembered; `system` forgets the choice and follows the OS from now on. */
-export function setThemeChoice(choice: ThemeChoice): void {
-  if (choice !== 'system') {
-    setTheme(choice)
+export function setThemeChoice(next: ThemeChoice): void {
+  if (next !== 'system') {
+    setTheme(next)
     return
   }
-  if (typeof localStorage !== 'undefined')
+  choice.value = 'system'
+  try {
     localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // The current page can still follow the system theme.
+  }
   appThemeStore.setMode(systemPrefersLight() ? 'light' : 'dark')
 }

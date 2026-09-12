@@ -1,6 +1,7 @@
 import { z } from 'zod'
+import { persistedScrollStateSchema } from '@demicodes/web-ui/composables/scroll-state'
 import { conversationRecordSchema, hostsSchema } from '@demicodes/product-contracts'
-import { editRequestSchema } from '@demicodes/web-ui/transport/protocol'
+import { editRequestSchema, modelIntentSchema } from '@demicodes/web-ui/transport/protocol'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { displayedUserContentSchema } from '@demicodes/web-ui/transport/protocol'
 
@@ -9,12 +10,6 @@ const messageEditSchema: z.ZodType<MessageEditState> = z.object({
   request: editRequestSchema.extend({ content: z.array(displayedUserContentSchema) }),
 })
 
-const modelSchema = z.object({
-  providerId: z.string(),
-  modelId: z.string(),
-  thinkingEffort: z.string().nullable(),
-  serviceTierId: z.string().nullable(),
-})
 /** The attachment id the backend returned for the upload. */
 const uploadSchema = z.object({ id: z.string() })
 const fileSchema = z.object({
@@ -58,22 +53,28 @@ export const draftSchema = z.object({
     })
     .nullable(),
   text: z.string(),
-  model: modelSchema,
+  model: modelIntentSchema,
   files: z.array(z.union([fileSchema, remoteSchema])),
-  scroll: z
-    .object({
-      anchor: z.object({
-        blockId: z.string(),
-        anchorIndex: z.number(),
-        offsetPx: z.number(),
-        scrollTop: z.number(),
-      }),
-      heightCache: z.map(z.string(), z.number()),
-    })
-    .nullable(),
+  // A visual snapshot may be dropped without losing the draft's authored content.
+  scroll: persistedScrollStateSchema.nullable().catch(null),
 })
 export type SavedDraft = z.infer<typeof draftSchema>
 export type SavedFile = z.infer<typeof fileSchema>
+
+export class DraftDataError extends Error {
+  constructor() {
+    super('The saved draft is invalid and has been kept for recovery.')
+    this.name = 'DraftDataError'
+  }
+}
+
+function parseSavedDraft(value: unknown): SavedDraft {
+  const result = draftSchema.safeParse(value)
+  if (!result.success) {
+    throw new DraftDataError()
+  }
+  return result.data
+}
 
 let database: IDBDatabase | null = null
 let opening: Promise<IDBDatabase> | null = null
@@ -143,7 +144,7 @@ export async function readDraft(
   const value = await draftStorage('readonly', (store) =>
     store.get([userId, conversationId]),
   )
-  return value === undefined ? null : draftSchema.parse(value)
+  return value === undefined ? null : parseSavedDraft(value)
 }
 
 export async function writeDraft(
@@ -161,7 +162,7 @@ export async function readLocalDrafts(userId: string): Promise<SavedDraft[]> {
     store.getAll(IDBKeyRange.bound([userId], [userId, []])),
   )
   return values
-    .map((value) => draftSchema.parse(value))
+    .map(parseSavedDraft)
     .filter((draft) => draft.local !== null)
 }
 

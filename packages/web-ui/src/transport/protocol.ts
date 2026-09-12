@@ -1,3 +1,5 @@
+import { z } from 'zod'
+import { providerSelectionSchema } from '@demicodes/agent/client'
 import type {
   ProviderSelection,
   DisplayedBlock,
@@ -13,47 +15,59 @@ export type ClientSessionEvent = AgentSessionEvent<DisplayedBlock>
 // Control-plane protocol. Decoupled from @demicodes/provider so the component library stays
 // portable: hosts map their own catalogs onto these DTOs.
 
-export interface ProviderInfo {
-  id: string
-  label: string
-  isAvailable: boolean
-}
+export const providerInfoSchema = z.object({
+  id: z.string().min(1),
+  label: z.string(),
+  isAvailable: z.boolean(),
+})
+export type ProviderInfo = z.infer<typeof providerInfoSchema>
 
-export interface ModelReasoning {
-  efforts: string[]
-  defaultEffort: string | null
-  /** Whether thinking can be turned off entirely. When false, the UI offers only effort levels and
-   *  no "No reasoning" option (e.g. Claude Code, which can level thinking but never disable it). */
-  canDisable: boolean
-}
+export const modelReasoningSchema = z.object({
+  efforts: z.array(z.string()),
+  defaultEffort: z.string().nullable(),
+  canDisable: z.boolean(),
+})
+export type ModelReasoning = z.infer<typeof modelReasoningSchema>
 
-export interface ModelServiceTier {
-  id: string
-  label: string
-  /** The provider's Fast Mode tier; the Fast switch writes this id. */
-  fast: boolean
-}
+export const modelServiceTierSchema = z.object({
+  id: z.string().min(1),
+  label: z.string(),
+  fast: z.boolean(),
+})
+export type ModelServiceTier = z.infer<typeof modelServiceTierSchema>
 
-export interface ModelInfo {
-  id: string
-  name: string
-  contextWindow: number | null
-  inputLimit: number | null
-  acceptedExtensions: string[] | null
-  reasoning: ModelReasoning | null
-  /** Provider-advertised speed tiers. Fast Mode is the tier flagged `fast`; models without one have no Fast switch. */
-  serviceTiers: ModelServiceTier[] | null
-}
+export const modelInfoSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  contextWindow: z.number().int().positive().nullable(),
+  inputLimit: z.number().int().positive().nullable(),
+  acceptedExtensions: z.array(z.string()).nullable(),
+  reasoning: modelReasoningSchema.nullable(),
+  serviceTiers: z.array(modelServiceTierSchema).nullable(),
+})
+export type ModelInfo = z.infer<typeof modelInfoSchema>
 
-export interface PrepareSessionParams {
-  providerId: string
-  modelId: string
-  thinkingEffort?: string | null
-  serviceTierId?: string | null
-}
+export const prepareSessionParamsSchema = z.object({
+  providerId: z.string().min(1),
+  modelId: z.string().min(1),
+  thinkingEffort: z.string().nullable().optional(),
+  serviceTierId: z.string().nullable().optional(),
+})
+export type PrepareSessionParams = z.infer<typeof prepareSessionParamsSchema>
+// Empty ids mean the composer has not selected a provider or model yet.
+export const modelIntentSchema = prepareSessionParamsSchema.required().extend({
+  providerId: z.string(),
+  modelId: z.string(),
+})
 
-export interface WorkspaceInfo {
-  cwd: string
+export const workspaceInfoSchema = z.object({ cwd: z.string().min(1) })
+export type WorkspaceInfo = z.infer<typeof workspaceInfoSchema>
+
+export const controlResults = {
+  listProviders: z.array(providerInfoSchema),
+  listModels: z.array(modelInfoSchema),
+  prepareSession: providerSelectionSchema,
+  defaultWorkspace: workspaceInfoSchema,
 }
 
 export interface ControlApi {
@@ -71,17 +85,11 @@ export interface ControlRequest {
   params: unknown
 }
 
-export type ControlResponse =
-  | {
-    id: number;
-    ok: true;
-    result: unknown
-  }
-  | {
-    id: number;
-    ok: false;
-    error: string
-  }
+export const controlResponseSchema = z.discriminatedUnion('ok', [
+  z.object({ id: z.number().int().positive(), ok: z.literal(true), result: z.unknown() }),
+  z.object({ id: z.number().int().positive(), ok: z.literal(false), error: z.string() }),
+])
+export type ControlResponse = z.infer<typeof controlResponseSchema>
 
 export {
   displayedBlockSchema,

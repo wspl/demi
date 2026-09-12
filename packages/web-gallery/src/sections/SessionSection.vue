@@ -4,6 +4,7 @@ import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import ErrorBlock from '@demicodes/web-ui/agent/blocks/ErrorBlock.vue'
 import ToolShellBlock from '@demicodes/web-ui/agent/blocks/ToolShellBlock.vue'
+import ToolCallBlock from '@demicodes/web-ui/agent/blocks/ToolCallBlock.vue'
 import { parseToolInput } from '@demicodes/web-ui/agent/block-helpers'
 import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activity-slot'
@@ -47,6 +48,8 @@ import {
   demoModel,
   runningShellTool,
   shellTool,
+  partialInputTool,
+  invalidInputTool,
   thinkingText,
   longUserText,
   steerPrompt,
@@ -873,6 +876,12 @@ function abortTerminal(id: string) {
                 :is-streaming="true"
                 :created-at="functionalThinkingStartedAt"
               />
+            </GallerySpecimen>
+            <GallerySpecimen variant="shell · partial object input" wide>
+              <ToolCallBlock :block="partialInputTool" conversation-id="gallery-partial" is-streaming />
+            </GallerySpecimen>
+            <GallerySpecimen variant="shell · rejected array input" wide>
+              <ToolCallBlock :block="invalidInputTool" conversation-id="gallery-invalid" :is-streaming="false" />
             </GallerySpecimen>
             <GallerySpecimen
               variant="shell · collapsed"

@@ -1,4 +1,5 @@
 import { reactive, watch } from 'vue'
+import { z } from 'zod'
 import {
   DEFAULT_ACCENT,
   PRODUCT_ACCENTS,
@@ -7,14 +8,16 @@ import {
 } from '@demicodes/web-ui/theme/productAppearance'
 import { appThemeStore, setTheme } from '@demicodes/web-ui/theme/appTheme'
 
-type ThemeMode = 'light' | 'dark'
-
 export type ParadigmId = 'demi' | 'neutral' | 'hairline' | 'carved' | 'overlay'
-export type ToneId = 'zinc' | 'cool' | 'warm' | 'ink'
+const toneSchema = z.enum(['zinc', 'cool', 'warm', 'ink'])
+export type ToneId = z.infer<typeof toneSchema>
 export type AccentId = ProductAccent
-export type DensityId = 'compact' | 'regular' | 'comfortable'
-export type RadiusId = 'tight' | 'medium' | 'soft'
-export type ShadowId = 'hairline' | 'soft' | 'carved'
+const densitySchema = z.enum(['compact', 'regular', 'comfortable'])
+export type DensityId = z.infer<typeof densitySchema>
+const radiusSchema = z.enum(['tight', 'medium', 'soft'])
+export type RadiusId = z.infer<typeof radiusSchema>
+const shadowSchema = z.enum(['hairline', 'soft', 'carved'])
+export type ShadowId = z.infer<typeof shadowSchema>
 
 export const ACCENTS = PRODUCT_ACCENTS
 
@@ -75,15 +78,16 @@ export const PARADIGMS: readonly Paradigm[] = [
 
 const STORAGE_KEY = 'demi-gallery-style'
 
-export interface GalleryState {
-  paradigm: ParadigmId | 'custom'
-  mode: ThemeMode
-  tone: ToneId
-  accent: AccentId
-  density: DensityId
-  radius: RadiusId
-  shadow: ShadowId
-}
+export const galleryStateSchema = z.strictObject({
+  paradigm: z.union([z.literal('custom'), z.enum(PARADIGMS.map((item) => item.id))]),
+  mode: z.enum(['light', 'dark']),
+  tone: toneSchema,
+  accent: z.enum(ACCENTS.map((item) => item.id)),
+  density: densitySchema,
+  radius: radiusSchema,
+  shadow: shadowSchema,
+})
+export type GalleryState = z.infer<typeof galleryStateSchema>
 
 function paradigmById(id: ParadigmId): Paradigm {
   const found = PARADIGMS.find((item) => item.id === id)
@@ -101,29 +105,12 @@ function matchesParadigm(state: GalleryState, paradigm: Paradigm): boolean {
   )
 }
 
-interface StoredGalleryState {
-  paradigm?: string
-  mode?: string
-  tone?: ToneId
-  accent?: string
-  density?: DensityId
-  radius?: RadiusId
-  shadow?: ShadowId
-}
-
-function resolveAccent(id: unknown): AccentId {
-  if (typeof id === 'string' && ACCENTS.some((item) => item.id === id))
-    return id as AccentId
-  return DEFAULT_ACCENT
-}
-
-function readStored(): StoredGalleryState {
-  if (typeof localStorage === 'undefined')
-    return {}
+function readStored(): Partial<GalleryState> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) as StoredGalleryState : {}
+    return raw === null ? {} : galleryStateSchema.parse(JSON.parse(raw))
   } catch {
+    // Gallery appearance is disposable; reject the entire invalid snapshot.
     return {}
   }
 }
@@ -137,7 +124,7 @@ export const galleryState = reactive<GalleryState>({
   paradigm: custom ? 'custom' : base.id,
   mode: stored.mode === 'light' || stored.mode === 'dark' ? stored.mode : 'dark',
   tone: custom ? stored.tone ?? base.tone : base.tone,
-  accent: resolveAccent(stored.accent),
+  accent: stored.accent ?? DEFAULT_ACCENT,
   density: custom ? stored.density ?? base.density : base.density,
   radius: custom ? stored.radius ?? base.radius : base.radius,
   shadow: custom ? stored.shadow ?? base.shadow : base.shadow,
@@ -170,15 +157,19 @@ function writeAttributes(): void {
 
 export function persistGalleryState(): void {
   writeAttributes()
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    paradigm: galleryState.paradigm,
-    mode: galleryState.mode,
-    tone: galleryState.tone,
-    accent: galleryState.accent,
-    density: galleryState.density,
-    radius: galleryState.radius,
-    shadow: galleryState.shadow,
-  }))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      paradigm: galleryState.paradigm,
+      mode: galleryState.mode,
+      tone: galleryState.tone,
+      accent: galleryState.accent,
+      density: galleryState.density,
+      radius: galleryState.radius,
+      shadow: galleryState.shadow,
+    }))
+  } catch {
+    // The selected appearance still applies when browser storage is unavailable.
+  }
 }
 
 watch(

@@ -28,6 +28,7 @@ export {
   createClientFrameSchema,
   userContentBlockSchema,
   modelSelectionSchema,
+  providerSelectionSchema,
   thinkingConfigSchema,
   editRequestSchema,
   editResultSchema,

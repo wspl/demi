@@ -8,12 +8,9 @@ import type { TerminalRecord } from './terminals'
 import type { ComposerAttachment } from './message-input/attachments'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
 
-export interface ModelIntent {
-  providerId: string
-  modelId: string
-  thinkingEffort: string | null
-  serviceTierId: string | null
-}
+export type ModelIntent = import('zod').infer<
+  typeof import('../transport/protocol').modelIntentSchema
+>
 
 export interface ConversationDraft {
   inputModel: unknown | null

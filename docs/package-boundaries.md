@@ -301,6 +301,12 @@ Test code may depend upward for integration coverage. Production code must not.
   See `docs/web-integration.md` for state ownership and operation contracts.
 - Must not: import `web-gallery`, Node, Host implementations or concrete providers.
 
+The optional `web-ui/agent/AgentWorkspace` host adapter owns client tabs and
+runtime lifetimes; `transport/protocol.ts` owns its control response DTOs and
+`control-client.ts` validates the WebSocket adapter. The embedding host closes
+its control connection. Product REST state remains in `web`; it reuses the
+library's model intent, tool display and scroll-state contracts.
+
 ### `@demicodes/web-gallery`
 
 - Status: implemented.

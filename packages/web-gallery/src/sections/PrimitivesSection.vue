@@ -42,6 +42,7 @@ const shortcut = ref('⌘K')
 const swatch = ref('blue')
 const tokens = ref<number | null>(200_000)
 const noTokens = ref<number | null>(null)
+const preciseTokens = ref<number | null>(1001)
 const enabled = ref(true)
 const enabledOff = ref(false)
 const enabledSmOn = ref(true)
@@ -523,6 +524,12 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
           </GallerySpecimen>
           <GallerySpecimen variant="filled">
             <TokenInput v-model="tokens" class="w-32" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="unit round trip · 1001 tokens">
+            <div class="flex items-center gap-2">
+              <TokenInput v-model="preciseTokens" class="w-32" />
+              <span class="text-[12px] text-fg-subtle">{{ preciseTokens }} tokens</span>
+            </div>
           </GallerySpecimen>
           <GallerySpecimen variant="readout">
             <div class="flex items-center gap-2">

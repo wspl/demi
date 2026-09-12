@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { parseToolInput } from '@demicodes/web-ui/agent/block-helpers'
 import type { DisplayedBlock as Block } from '@demicodes/web-ui/transport/protocol'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 
@@ -39,7 +40,7 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
     if (block.toolName === 'shell_exec') {
       const input = z
         .object({ script: z.string() })
-        .safeParse(parseInput(block.input))
+        .safeParse(parseToolInput(block.input))
       if (input.success) {
         name = input.data.script
       }
@@ -60,13 +61,4 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
     })
   }
   return [...commands.values()]
-}
-
-function parseInput(input: string): unknown {
-  try {
-    return JSON.parse(input)
-  } catch {
-    // A streaming tool call can still have incomplete JSON.
-    return null
-  }
 }

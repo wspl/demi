@@ -1,5 +1,6 @@
 import { computed, nextTick, ref, type Ref, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
+import type { ScrollAnchor, PersistedScrollState } from './scroll-state'
 import { BOTTOM_THRESHOLD_PX, distanceFromBottom } from './scroll-bottom'
 
 type ScrollIntent = 'up' | 'down' | null
@@ -32,17 +33,7 @@ const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   extension_state_snapshot: 0,
 }
 
-export interface ScrollAnchor {
-  blockId: string
-  anchorIndex: number
-  offsetPx: number
-  scrollTop: number
-}
-
-export interface PersistedScrollState {
-  anchor: ScrollAnchor
-  heightCache: Map<string, number>
-}
+export type { ScrollAnchor, PersistedScrollState } from './scroll-state'
 
 export function useBlockVirtualizer(
   scrollContainer: Ref<HTMLDivElement | undefined>,

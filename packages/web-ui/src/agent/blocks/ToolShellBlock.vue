@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { asString } from '@demicodes/utils'
 import { SquareTerminal } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AnsiText from './AnsiText.vue'
@@ -14,7 +15,7 @@ const props = defineProps<{
   isStreaming: boolean
 }>()
 
-const command = computed(() => (props.input['script'] as string) ?? '')
+const command = computed(() => asString(props.input['script']) ?? '')
 const title = computed(() => standardToolTitle('shell_exec', props.input))
 const errorText = computed(() => getToolErrorText(props.block))
 const terminalOutputText = computed(

@@ -13,6 +13,7 @@ import { ConversationRuntime } from './conversation-runtime'
 import { agentSocketUrl, connectAgentClient } from '../transport/agent-socket'
 import type { ConversationState, ModelIntent } from './types'
 import type { SessionLoad } from './session-status'
+import { readWorkspace, type PersistedWorkspace } from './workspace-storage'
 
 export interface AgentWorkspaceParams {
   baseUrl: string
@@ -21,16 +22,6 @@ export interface AgentWorkspaceParams {
   idFactory?: () => string
 }
 
-interface PersistedWorkspace {
-  order: string[]
-  activeId: string | null
-  conversations: {
-    id: string
-    title: string
-    createdAt: string
-    model: ModelIntent
-  }[]
-}
 
 function workspaceStorage(): Storage | null {
   try {
@@ -42,17 +33,14 @@ function workspaceStorage(): Storage | null {
 
 /**
  * Client-side workspace store. Owns the open conversations (tabs), their
- * reactive state, and the AgentClient runtimes. Replaces agent-gui's
- * server-synced `rpc.agent`/`rpc.project` state.
+ * reactive state, and AgentClient runtimes for an embedding host's ControlApi.
  */
 export class AgentWorkspace {
-  readonly sessions = reactive<Record<string, ConversationState>>({})
+  readonly sessions = reactive<Record<string, ConversationState>>(Object.create(null))
   readonly order = ref<string[]>([])
   readonly activeId = ref<string | null>(null)
   readonly providers = ref<ProviderInfo[]>([])
-  readonly models = reactive<Record<string, ModelInfo[]>>({})
-  // All persisted conversations for this cwd, from the server (the history list,
-  // independent of which tabs are open or of localStorage).
+  readonly models = reactive<Record<string, ModelInfo[]>>(Object.create(null))
 
   readonly tabs: ComputedRef<ConversationState[]> = computed(() =>
     this.order.value
@@ -68,7 +56,6 @@ export class AgentWorkspace {
   private readonly control: ControlApi
   private readonly cwd: string
   private readonly idFactory: () => string
-  private defaultModel: ModelIntent | null = null
   private titleCounter = 0
 
   private readonly storageKey: string
@@ -101,7 +88,7 @@ export class AgentWorkspace {
         id: summary.id,
         title: summary.title || this.nextTitle(),
         createdAt: new Date().toISOString(),
-        model: this.defaultModel ?? this.fallbackModel(),
+        model: this.resolveDefaultModel() ?? this.fallbackModel(),
       })
       this.persist()
     }
@@ -115,26 +102,25 @@ export class AgentWorkspace {
       void this.runtimes
         .get(id)
         ?.connect()
-        .catch(() => {})
+        .catch(() => {
+          // ConversationRuntime records connection failures in its visible state.
+        })
     }
   }
 
   async loadCatalog(): Promise<void> {
     const providers = await this.control.listProviders()
+    const models = await Promise.all(providers.map(async (provider) => [
+      provider.id,
+      provider.isAvailable ? await this.control.listModels({ providerId: provider.id }) : [],
+    ] as const))
     this.providers.value = providers
-    for (const provider of providers) {
-      if (!provider.isAvailable) {
-        continue
-      }
-      try {
-        this.models[provider.id] = await this.control.listModels({
-          providerId: provider.id,
-        })
-      } catch {
-        this.models[provider.id] = []
-      }
+    for (const id of Object.keys(this.models)) {
+      delete this.models[id]
     }
-    this.defaultModel = this.resolveDefaultModel()
+    for (const [id, entries] of models) {
+      this.models[id] = entries
+    }
   }
 
   createConversation(
@@ -148,7 +134,7 @@ export class AgentWorkspace {
         id: this.idFactory(),
         title: options.title ?? this.nextTitle(),
         createdAt: new Date().toISOString(),
-        model: this.defaultModel ?? this.fallbackModel(),
+        model: this.resolveDefaultModel() ?? this.fallbackModel(),
       },
       options.afterId,
       'ready',
@@ -242,7 +228,12 @@ export class AgentWorkspace {
   }
 
   reorderTabs(ids: string[]): void {
-    this.order.value = ids
+    if (ids.length !== this.order.value.length ||
+        new Set(ids).size !== ids.length ||
+        ids.some((id) => !this.order.value.includes(id))) {
+      throw new Error('Tab order must contain every open conversation exactly once')
+    }
+    this.order.value = [...ids]
     this.persist()
   }
 
@@ -362,7 +353,6 @@ export class AgentWorkspace {
         model: state.model,
       }))
     const payload: PersistedWorkspace = {
-      order: this.order.value,
       activeId: this.activeId.value,
       conversations,
     }
@@ -379,36 +369,16 @@ export class AgentWorkspace {
     if (!storage) {
       return false
     }
-    let payload: PersistedWorkspace | null = null
-    try {
-      const raw = storage.getItem(this.storageKey)
-      payload = raw ? (JSON.parse(raw) as PersistedWorkspace) : null
-    } catch {
-      payload = null
-    }
-    const conversations = payload?.conversations ?? []
-    if (conversations.length === 0) {
+    const payload = readWorkspace(storage, this.storageKey)
+    if (!payload || payload.conversations.length === 0) {
       return false
     }
-    const byId = new Map(
-      conversations.map((conversation) => [conversation.id, conversation]),
-    )
-    const order = (payload?.order ?? []).filter((id) => byId.has(id))
-    for (const id of order) {
-      const meta = byId.get(id)!
-      this.materializeConversation({
-        id: meta.id,
-        title: meta.title,
-        createdAt: meta.createdAt,
-        model: meta.model,
-      })
+    for (const meta of payload.conversations) {
+      this.materializeConversation(meta)
     }
-    this.titleCounter = order.length
-    this.activeId.value =
-      payload?.activeId && byId.has(payload.activeId)
-        ? payload.activeId
-        : (order[0] ?? null)
-    return order.length > 0
+    this.titleCounter = payload.conversations.length
+    this.activeId.value = payload.activeId
+    return true
   }
 
   private resolveDefaultModel(): ModelIntent | null {

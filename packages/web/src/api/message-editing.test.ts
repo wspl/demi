@@ -2,6 +2,9 @@ import { afterEach, expect, test } from 'bun:test'
 import { loadEditContent } from './message-editing'
 import { draftSchema, type SavedDraft } from '../conversation/drafts'
 
+const firstRef = 'a'.repeat(64)
+const secondRef = 'b'.repeat(64)
+const imageRef = 'c'.repeat(64)
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 
@@ -9,14 +12,14 @@ test('editing hydrates each authenticated attachment by content reference, prese
   const requests: Array<{ url: string; credentials?: RequestCredentials }> = []
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     requests.push({ url: String(input), credentials: init?.credentials })
-    return new Response(new Uint8Array(String(input).endsWith('first') ? [1, 2] : [3, 4]))
+    return new Response(new Uint8Array(String(input).endsWith(firstRef) ? [1, 2] : [3, 4]))
   }) as unknown as typeof fetch
   const source = { type: 'ref' as const, fileName: 'same.pdf', mediaType: 'application/pdf' }
   const input = [
     { type: 'text' as const, text: 'first text' },
-    { type: 'document' as const, source: { ...source, ref: 'first' } },
+    { type: 'document' as const, source: { ...source, ref: firstRef } },
     { type: 'text' as const, text: 'last text' },
-    { type: 'document' as const, source: { ...source, ref: 'second' } },
+    { type: 'document' as const, source: { ...source, ref: secondRef } },
   ]
   expect(await loadEditContent(input, new AbortController().signal)).toEqual([
     { type: 'text', text: 'first text' },
@@ -25,17 +28,17 @@ test('editing hydrates each authenticated attachment by content reference, prese
     { type: 'document', source: { fileName: 'same.pdf', mediaType: 'application/pdf', data: new Uint8Array([3, 4]) } },
   ])
   expect(requests).toEqual([
-    { url: '/api/blobs/first', credentials: 'same-origin' },
-    { url: '/api/blobs/second', credentials: 'same-origin' },
+    { url: `/api/blobs/${firstRef}`, credentials: 'same-origin' },
+    { url: `/api/blobs/${secondRef}`, credentials: 'same-origin' },
   ])
-  expect(input[1]!.source).toEqual({ ...source, ref: 'first' })
+  expect(input[1]!.source).toEqual({ ...source, ref: firstRef })
 })
 
 test('failed media hydration preserves the editable blob references', async () => {
   globalThis.fetch = (async () => Response.json({ code: 'unavailable', message: 'try again' }, { status: 503 })) as unknown as typeof fetch
-  const input = [{ type: 'image' as const, source: { type: 'ref' as const, ref: 'image', mediaType: 'image/png' } }]
+  const input = [{ type: 'image' as const, source: { type: 'ref' as const, ref: imageRef, mediaType: 'image/png' } }]
   await expect(loadEditContent(input, new AbortController().signal)).rejects.toThrow('try again')
-  expect(input[0]!.source.ref).toBe('image')
+  expect(input[0]!.source.ref).toBe(imageRef)
 })
 
 test('the persisted edit contract keeps operation identity, bytes and the separate composer draft', () => {
@@ -53,4 +56,16 @@ test('the persisted edit contract keeps operation identity, bytes and the separa
   }
   expect(draftSchema.parse(structuredClone(value))).toEqual(value)
   expect(() => draftSchema.parse({ ...value, messageEdit: { ...value.messageEdit, request: {} } })).toThrow()
+})
+
+test('invalid stored media references fail before issuing any hydration request', async () => {
+  let requests = 0
+  globalThis.fetch = (async () => {
+    requests += 1
+    return new Response()
+  }) as unknown as typeof fetch
+  await expect(loadEditContent([
+    { type: 'image', source: { type: 'ref', ref: 'invalid', mediaType: 'image/png' } },
+  ], new AbortController().signal)).rejects.toThrow()
+  expect(requests).toBe(0)
 })

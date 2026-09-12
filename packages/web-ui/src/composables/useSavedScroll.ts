@@ -1,10 +1,6 @@
 import { nextTick, onBeforeUnmount, watch, type Ref } from 'vue'
 
-interface ScrollPosition {
-  top: number
-  anchor: string | null
-  offset: number
-}
+import { scrollPositionSchema, type ScrollPosition } from './scroll-state'
 
 /** Restore a scroll viewport by location key, optionally anchored to stable content. */
 export function useSavedScroll(
@@ -107,7 +103,8 @@ export function useSavedScroll(
 function readPosition(key: string): ScrollPosition | null {
   try {
     const value: unknown = JSON.parse(sessionStorage.getItem(key) ?? 'null')
-    return isScrollPosition(value) ? value : null
+    const parsed = scrollPositionSchema.safeParse(value)
+    return parsed.success ? parsed.data : null
   } catch {
     // Storage may be unavailable, or contain an invalid snapshot; start at the top.
     return null
@@ -120,17 +117,4 @@ function writePosition(key: string, position: ScrollPosition): void {
   } catch {
     // Scrolling must still work when storage is unavailable.
   }
-}
-
-function isScrollPosition(value: unknown): value is ScrollPosition {
-  if (typeof value !== 'object' || value === null)
-    return false
-
-  const position = value as Record<string, unknown>
-  return typeof position.top === 'number'
-    && Number.isFinite(position.top)
-    && position.top >= 0
-    && typeof position.offset === 'number'
-    && Number.isFinite(position.offset)
-    && (position.anchor === null || typeof position.anchor === 'string')
 }

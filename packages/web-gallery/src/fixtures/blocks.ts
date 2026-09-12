@@ -69,6 +69,16 @@ function toolCall(
   }
 }
 
+export const partialInputTool = toolCall({
+  id: 'partial-input-tool', toolName: 'shell_exec', status: 'executing',
+  input: '{"script":"echo partial", "description":"Preview partial',
+})
+export const invalidInputTool = toolCall({
+  id: 'invalid-input-tool', toolName: 'shell_exec', status: 'error',
+  input: '[{"script":"not an input object"}]',
+  output: [{ type: 'text', text: 'Tool input must be an object.' }],
+})
+
 export const userPrompt: UserContentBlock[] = [
   {
     type: 'text',
