@@ -964,7 +964,7 @@ function abortTerminal(id: string) {
 
       <GallerySection
         title="ActivitySlot"
-        note="Requesting counts the visible wait in seconds; incoming blocks roll into the same row."
+        note="Requesting shows elapsed time after one second; incoming blocks roll into the same row."
       >
         <div class="specimen-stack">
           <GallerySpecimen
@@ -1101,7 +1101,7 @@ function abortTerminal(id: string) {
     <template v-if="view === 'windows'">
       <GallerySection
         title="Agents"
-        note="Half-session inspect. Tabs are running children; Completed on the right is a searchable finished list."
+        note="Half-session inspect. Tabs are running children; Stop all uses the same quiet button style as Completed, the searchable finished list."
       >
         <div class="relative h-[24rem] min-h-0">
           <SubagentPanel

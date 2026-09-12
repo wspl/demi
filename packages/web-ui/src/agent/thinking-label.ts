@@ -1,8 +1,6 @@
 import { t } from '@demicodes/web-ui/infra/i18n'
 
 export function formatThinkingDuration(ms: number): string {
-  if (ms < 1000)
-    return '<1s'
   const s = Math.round(ms / 1000)
   if (s < 60)
     return `${s}s`
@@ -18,10 +16,16 @@ export function formatThinkingDuration(ms: number): string {
 export function thinkingFaceLabel(streaming: boolean, elapsedMs: number | null): string {
   if (elapsedMs === null)
     return t('agent.block.thinking')
-  if (elapsedMs < 1000)
+  if (elapsedMs <= 1000)
     return t(streaming ? 'agent.block.thinking' : 'agent.block.thoughtBriefly')
   const prefix = t(streaming
     ? 'agent.block.thinkingFor'
     : 'agent.block.thoughtFor')
   return `${prefix} ${formatThinkingDuration(elapsedMs)}`
+}
+
+export function requestingFaceLabel(elapsedMs: number): string {
+  if (elapsedMs <= 1000)
+    return t('agent.block.requesting')
+  return `${t('agent.block.requestingFor')} ${formatThinkingDuration(elapsedMs)}`
 }
