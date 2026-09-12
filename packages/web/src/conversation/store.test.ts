@@ -7,6 +7,7 @@ import { nextTick } from 'vue'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { productStateSchema, type BackendConversation } from '../api/contracts'
+import { applyConversationEvent, updateLiveStatus } from './activity'
 
 const realFetch = globalThis.fetch
 
@@ -188,6 +189,60 @@ afterEach(() => {
   useProduct().stop()
   disposePinia(pinia)
   globalThis.fetch = realFetch
+})
+
+test('sidebar stays active until the last running child closes after its parent finishes', () => {
+  const conversation = useConversations().items[0]!
+  const job = {
+    subagentId: 'child-one',
+    parentSessionId: conversation.id,
+    description: 'First child',
+    profile: null,
+    phase: 'running' as const,
+    startedAt: '2026-09-13T00:00:00.000Z',
+    endedAt: null,
+    metadata: null,
+  }
+  conversation.phase = 'idle'
+  applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
+  expect(conversation.status).toBe('active')
+  const other = { ...job, subagentId: 'child-two' }
+  applyConversationEvent(conversation, { type: 'subagent', event: 'started', job: other })
+  applyConversationEvent(conversation, {
+    type: 'subagent',
+    event: 'closed',
+    job: { ...job, phase: 'completed', endedAt: '2026-09-13T00:01:00.000Z' },
+  })
+  expect(conversation.status).toBe('active')
+  conversation.lastError = 'The parent failed while its second child was working'
+  updateLiveStatus(conversation)
+  expect(conversation.status).toBe('active')
+  applyConversationEvent(conversation, {
+    type: 'subagent',
+    event: 'closed',
+    job: { ...other, phase: 'aborted', endedAt: '2026-09-13T00:02:00.000Z' },
+  })
+  expect(conversation.status).toBe('error')
+  conversation.phase = 'running'
+  updateLiveStatus(conversation)
+  expect(conversation.status).toBe('active')
+})
+
+test('restored running children keep an idle parent active in the sidebar', () => {
+  const conversation = useConversations().items[0]!
+  conversation.phase = 'idle'
+  conversation.subagents = [{
+    id: 'restored-child',
+    name: 'Restored child',
+    phase: 'running',
+    startedAt: '2026-09-13T00:00:00.000Z',
+    blocks: [],
+  }]
+  updateLiveStatus(conversation)
+  expect(conversation.status).toBe('active')
+  conversation.subagents[0]!.phase = 'completed'
+  updateLiveStatus(conversation)
+  expect(conversation.status).toBe('idle')
 })
 
 test('new conversation is local and does not depend on the server', async () => {
