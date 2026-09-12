@@ -60,7 +60,15 @@ function startRoll(mode: RollMode, snapshot: HTMLElement): void {
   outgoing.value = snapshot
   rolling.value = false
   void nextTick(() => {
-    outgoingRef.value?.replaceChildren(snapshot)
+    const outgoingEl = outgoingRef.value
+    if (!outgoingEl) {
+      return
+    }
+    outgoingEl.replaceChildren(snapshot)
+    // Lay the track out with both faces and no motion first. A face roll mounts a
+    // fresh track, and a class added in the same frame as the mount paints only the
+    // end state; the forced layout gives the transition a start state to leave from.
+    void outgoingEl.offsetHeight
     rolling.value = true
     rollTimer = setTimeout(() => {
       rollTimer = undefined
