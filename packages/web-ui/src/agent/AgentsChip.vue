@@ -19,14 +19,14 @@ const running = computed(() => runningSubagents(props.agents))
 
 <template>
   <SessionDockChip
-    v-if="agents.length"
+    v-if="running.length"
     data-session-overlay-toggle
-    :dot="running.length > 0 ? 'accent' : undefined"
+    dot="accent"
     :aria-expanded="open === true"
     aria-haspopup="dialog"
     @click="emit('open')"
   >
     <Bot :size="ICON_PX.in28" />
-    {{ agentsChipLabel(agents.length) }}
+    {{ agentsChipLabel(running.length) }}
   </SessionDockChip>
 </template>

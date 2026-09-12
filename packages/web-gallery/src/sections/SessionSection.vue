@@ -745,7 +745,7 @@ function abortTerminal(id: string) {
           <GallerySpecimen variant="agents">
             <AgentsChip :agents="agents" />
           </GallerySpecimen>
-          <GallerySpecimen variant="agents · none running">
+          <GallerySpecimen variant="agents · none running · hidden">
             <AgentsChip :agents="finishedOnly" />
           </GallerySpecimen>
         </div>

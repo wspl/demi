@@ -436,7 +436,7 @@ for (const kind of ['hidden', 'completion', 'assistant', 'missing', 'steer'] as 
     if (kind === 'hidden') {
       transcript.pushUserTurn('hidden', model, text('wakeup'), null, true)
     } else if (kind === 'completion') {
-      transcript.pushUserTurn(completionMessageId('child'), model, text('child finished'))
+      transcript.pushUserTurn(completionMessageId('child', 0), model, text('child finished'))
     } else if (kind === 'steer') {
       transcript.pushSteer('turn-C', model, text('steer'))
     }
