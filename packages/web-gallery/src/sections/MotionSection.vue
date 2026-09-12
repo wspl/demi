@@ -9,6 +9,10 @@ import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessageVirtualBlock.vue'
+import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
+import type { Block } from '@demicodes/core'
+import { demoModel, shellTool } from '../fixtures/blocks'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 
@@ -18,6 +22,18 @@ const faceFaces = [
   { key: 'thinking', label: 'Thinking', icon: 'brain' },
 ] as const
 const foldOpen = ref(false)
+// Each replay remounts the rows, so they arrive again.
+const entranceKey = ref(0)
+const entranceThinkingStartedAt = new Date(Date.now() - 8_000).toISOString()
+const entranceThinkingEndedAt = new Date().toISOString()
+const entranceThinking: Block = {
+  type: 'thinking',
+  id: 'entrance-thinking',
+  createdAt: entranceThinkingStartedAt,
+  model: demoModel,
+  text: 'The helper is fine. Update the assertion and leave cookie.ts alone.',
+  signature: null,
+}
 const labelIndex = ref(0)
 const faceIndex = ref(0)
 const labelFace = ref<(typeof labelFaces)[number]>('Resuming')
@@ -134,6 +150,38 @@ const exploratoryMarks: {
             >Roll face</Button>
           </div>
         </GallerySpecimen>
+      </div>
+    </GallerySection>
+
+    <GallerySection
+      title="Entrance"
+      note="A chrome row that joins a live transcript slides in from the left as it fades in; the activity slot arrives the same way. History and a row remounted by scrolling stay still."
+    >
+      <div class="mb-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          @click="entranceKey += 1"
+        >Replay</Button>
+      </div>
+      <div
+        :key="entranceKey"
+        class="gallery-frame gallery-block-frame-y bg-surface"
+      >
+        <ActivitySlot kind="requesting" />
+        <AgentMessageVirtualBlock
+          :block="entranceThinking"
+          conversation-id="motion"
+          :is-thinking-streaming="false"
+          :thinking-ended-at="entranceThinkingEndedAt"
+          entering
+        />
+        <AgentMessageVirtualBlock
+          :block="shellTool"
+          conversation-id="motion"
+          :is-thinking-streaming="false"
+          entering
+        />
       </div>
     </GallerySection>
 
