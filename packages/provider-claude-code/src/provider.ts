@@ -1,3 +1,4 @@
+import { readClaudeMessage, type ClaudeOutputMessage } from './output-schemas'
 import { abortable, isRecord } from '@demicodes/utils'
 import { randomUUID } from 'node:crypto'
 import type { ToolResultContentBlock } from '@demicodes/core'
@@ -98,7 +99,7 @@ interface ActiveClaudeRun {
   pendingSdkToolCalls: ToolCallEvent[]
   collectingSdkToolCalls: Map<string, ToolCallEvent>
   pendingToolUseIds: string[]
-  bufferedMessages: unknown[]
+  bufferedMessages: ClaudeOutputMessage[]
   sdkMcpEnabled: boolean
   hasStreamed: boolean
   /**
@@ -223,14 +224,11 @@ export class ClaudeCodeProvider implements AgentProvider {
 
         const raw = next.value
         this.observeQuotaFromMessage(raw, observeQuota)
-        const ignoreAssistantContent = active.hasStreamed && isMessageType(
-          raw,
-          'assistant'
-        )
+        const ignoreAssistantContent = active.hasStreamed && raw.type === 'assistant'
         const mapped = mapClaudeStdoutMessage(raw, {
           ignoreAssistantContent,
         })
-        if (isMessageType(raw, 'stream_event'))
+        if (raw.type === 'stream_event')
           active.hasStreamed = true
         if (mapped.controlRequest) {
           const handled = await this.handleControlRequest(
@@ -499,18 +497,9 @@ export class ClaudeCodeProvider implements AgentProvider {
     }
 
     if (request.method === 'tools/call') {
-      if (!controlRequestToToolCall(request)) {
-        await this.writeControlError(
-          active,
-          request,
-          'Invalid tools/call request'
-        )
-        return 'handled'
-      }
       if (request.protocol === 'sdk-mcp') {
         request.toolUseId ??= `mcp-control-${randomUUID()}`
-        const normalized = { ...request, toolUseId: request.toolUseId }
-        active.pendingSdkControlRequests.set(normalized.toolUseId, normalized)
+        active.pendingSdkControlRequests.set(request.toolUseId, request)
         return active.hasStreamed ? 'handled' : 'sdk-tool-call'
       }
       active.pendingControlRequest = {
@@ -563,7 +552,7 @@ export class ClaudeCodeProvider implements AgentProvider {
       if (responded)
         continue
 
-      const next = await abortable(active.iterator.next(), request.cancel)
+      const next = await abortable(readClaudeMessage(active.iterator), request.cancel)
       if (next.done) {
         throw new Error(
           `Claude Code exited before requesting SDK MCP tool result for ${[...remaining].join(', ')}`,
@@ -664,22 +653,26 @@ export class ClaudeCodeProvider implements AgentProvider {
     })
 
     while (true) {
-      const next = await active.iterator.next()
+      const next = await readClaudeMessage(active.iterator)
       if (next.done)
         throw new Error(
           'Claude Code exited before SDK MCP initialization completed'
         )
-      if (isControlResponseFor(next.value, requestId))
+      if (next.value.type === 'control_response' && next.value.response.request_id === requestId) {
+        if (next.value.response.subtype === 'error') {
+          throw new Error(`Claude Code initialization failed: ${next.value.response.error}`)
+        }
         return
+      }
       active.bufferedMessages.push(next.value)
     }
   }
 
-  private nextMessage(active: ActiveClaudeRun): Promise<IteratorResult<unknown>> {
+  private nextMessage(active: ActiveClaudeRun): Promise<IteratorResult<ClaudeOutputMessage>> {
     const value = active.bufferedMessages.shift()
     if (value !== undefined)
       return Promise.resolve({ done: false, value })
-    return active.iterator.next()
+    return readClaudeMessage(active.iterator)
   }
 
   private async writeControlResponse(
@@ -826,14 +819,6 @@ function isToolCallRequested(
   return event.type === 'tool_call_requested'
 }
 
-function isControlResponseFor(value: unknown, requestId: string): boolean {
-  if (!isRecord(value) || value.type !== 'control_response'
-    || !isRecord(value.response)) return false
-  return value.response.request_id === requestId
-    && value.response.subtype === 'success'
-}
-
-
 function toolResultContentToMcp(
   output: ToolResultContentBlock[]
 ): Array<Record<string, unknown>> {
@@ -856,17 +841,8 @@ function toolResultContentToMcp(
   })
 }
 
-function isMessageType(value: unknown, type: string): boolean {
-  return isRecord(value) && value.type === type
-}
-
-function isStreamMessageStop(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    value.type === 'stream_event' &&
-    isRecord(value.event) &&
-    value.event.type === 'message_stop'
-  )
+function isStreamMessageStop(value: ClaudeOutputMessage): boolean {
+  return value.type === 'stream_event' && value.event.type === 'message_stop'
 }
 
 function thinkingSignature(request: InferenceRequest): string {

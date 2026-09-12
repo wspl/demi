@@ -14,6 +14,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  ProviderDataError,
   providerRuntime,
   type InferenceRequest,
   type ProviderSelection
@@ -956,30 +957,14 @@ test(
       transportFactory: fakeFactory(transport)
     })
 
-    const events = []
-    for await (const event of provider.run(makeRequest([{
-      type: 'user_message',
-      content: [{ type: 'text', text: 'hi' }]
-    }]))) {
-      events.push(event)
-    }
-
-    expect(findSdkMcpResponse(transport.writes, 'call-sdk').error).toEqual({
-      code: -32601,
-      message: 'Invalid tools/call request',
-    })
-    expect(events).toEqual([
-      { type: 'text_delta', text: 'continued after malformed sdk call' },
-      {
-        type: 'response',
-        usage: {
-          inputTokens: 3,
-          outputTokens: 1,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0
-        }
-      },
-    ])
+    const iterator = provider.run(makeRequest([{
+      type: 'user_message', content: [{ type: 'text', text: 'hi' }],
+    }]))[Symbol.asyncIterator]()
+    await expect(iterator.next()).rejects.toBeInstanceOf(ProviderDataError)
+    expect(transport.killed).toBe(true)
+    expect(transport.waitCalls).toBe(1)
+    expect(transport.writes.some((write) => isRecord(write)
+      && write.type === 'control_response')).toBe(false)
   }
 )
 
@@ -1152,21 +1137,12 @@ test(
       transportFactory: fakeFactory(transport)
     })
 
-    const events = []
-    for await (const event of provider.run(makeRequestWithoutTools([{
-      type: 'user_message',
-      content: [{ type: 'text', text: 'hi' }]
-    }]))) {
-      events.push(event)
-      if (event.type === 'error')
-        break
-    }
-
-    expect(events).toEqual([{
-      type: 'error',
-      message: 'Invalid tool_use block from Claude Code',
-      code: null
-    }])
+    const iterator = provider.run(makeRequest([{
+      type: 'user_message', content: [{ type: 'text', text: 'hi' }],
+    }]))[Symbol.asyncIterator]()
+    await expect(iterator.next()).rejects.toBeInstanceOf(ProviderDataError)
+    expect(transport.killed).toBe(true)
+    expect(transport.waitCalls).toBe(1)
     expect(transport.writes.some((write) => isRecord(write)
       && write.type === 'control_response')).toBe(false)
   }
@@ -1279,29 +1255,14 @@ test(
       transportFactory: fakeFactory(transport)
     })
 
-    const events = []
-    for await (const event of provider.run(makeRequest([{
-      type: 'user_message',
-      content: [{ type: 'text', text: 'hi' }]
-    }]))) {
-      events.push(event)
-    }
-
-    expect(findControlResponse(transport.writes, 'call-1').response).toEqual({
-      error: { message: 'Invalid tools/call request' },
-    })
-    expect(events).toEqual([
-      { type: 'text_delta', text: 'continued' },
-      {
-        type: 'response',
-        usage: {
-          inputTokens: 1,
-          outputTokens: 1,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0
-        }
-      },
-    ])
+    const iterator = provider.run(makeRequest([{
+      type: 'user_message', content: [{ type: 'text', text: 'hi' }],
+    }]))[Symbol.asyncIterator]()
+    await expect(iterator.next()).rejects.toBeInstanceOf(ProviderDataError)
+    expect(transport.killed).toBe(true)
+    expect(transport.waitCalls).toBe(1)
+    expect(transport.writes.some((write) => isRecord(write)
+      && write.type === 'control_response')).toBe(false)
   }
 )
 
@@ -1762,6 +1723,28 @@ for (const change of ['last-message', 'attachment-bytes'] as const) {
     expect(replacement.killed).toBe(true)
   })
 }
+
+test('Claude initialization errors fail immediately and reap the transport', async () => {
+  class RejectedInitializeTransport extends FakeClaudeTransport {
+    override async writeJson(value: unknown): Promise<void> {
+      await super.writeJson(value)
+      if (isSdkInitializeRequest(value)) {
+        this.prepend({
+          type: 'control_response',
+          response: { subtype: 'error', request_id: value.request_id, error: 'initialization denied' },
+        })
+      }
+    }
+  }
+  const transport = new RejectedInitializeTransport([])
+  const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
+  const iterator = provider.run(makeRequest([{
+    type: 'user_message', content: [{ type: 'text', text: 'hi' }],
+  }]))[Symbol.asyncIterator]()
+  await expect(iterator.next()).rejects.toThrow('Claude Code initialization failed: initialization denied')
+  expect(transport.killed).toBe(true)
+  expect(transport.waitCalls).toBe(1)
+})
 
 function sequenceFactory(
   transports: FakeClaudeTransport[]

@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { statSync } from 'node:fs'
 import process from 'node:process'
 import { encodeUtf8, utf8Lines } from '@demicodes/utils'
-import type { InferenceRequest } from '@demicodes/provider'
+import { ProviderDataError, type InferenceRequest } from '@demicodes/provider'
 import { buildClaudeArgs, buildClaudeEnv } from './cli'
 import type {
   ClaudeSpawn,
@@ -205,7 +205,12 @@ class SpawnHandleClaudeTransport implements ClaudeTransport {
     for await (const line of utf8Lines(this.handle.stdout)) {
       if (line.trim() === '')
         continue
-      const parsed = JSON.parse(line)
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(line)
+      } catch {
+        throw new ProviderDataError('Claude Code stdout', 'invalid JSON')
+      }
       this.wireLog.record('out', parsed)
       yield parsed
     }

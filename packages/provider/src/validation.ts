@@ -17,10 +17,19 @@ export function parseProviderData<T extends z.core.$ZodType>(
 ): z.core.output<T> {
   const result = z.safeParse(schema, value)
   if (!result.success) {
-    const fields = result.error.issues.map((issue) => issue.path.join('.') || 'payload')
+    const fields = [...new Set(issueFields(result.error.issues))]
     throw new ProviderDataError(source, `invalid fields: ${fields.join(', ')}`)
   }
   return result.data
+}
+
+function issueFields(issues: readonly z.core.$ZodIssue[]): string[] {
+  return issues.flatMap((issue) => {
+    if (issue.code === 'invalid_union') {
+      return issue.errors.flatMap(issueFields)
+    }
+    return [issue.path.join('.') || 'payload']
+  })
 }
 
 /** JSON syntax is decoded before the receiving schema validates structure. */

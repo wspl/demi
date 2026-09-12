@@ -5,6 +5,8 @@ import {
   requestToInputMessages
 } from '../jsonl'
 import { mapClaudeStdoutMessage } from '../output'
+import { parseClaudeOutputMessage } from '../output-schemas'
+import { ProviderDataError } from '@demicodes/provider'
 
 test(
   'requestToInputMessages converts inference items to stream-json input messages',
@@ -491,7 +493,7 @@ test(
       terminal: true,
     })
 
-    // Empty or malformed iterations fall back to the top-level usage.
+    // An empty iterations array uses the top-level usage.
     expect(
       mapClaudeStdoutMessage({
         type: 'result',
@@ -531,9 +533,9 @@ test(
         type: 'assistant',
         message: {
           content: [
-            { type: 'text' },
-            { type: 'thinking' },
-            { type: 'redacted_thinking' }
+            { type: 'text', text: '' },
+            { type: 'thinking', thinking: '' },
+            { type: 'redacted_thinking', data: '' }
           ]
         },
       }).events,
@@ -548,7 +550,7 @@ test(
         type: 'stream_event',
         event: {
           type: 'content_block_delta',
-          delta: { type: 'thinking_delta' }
+          delta: { type: 'thinking_delta', thinking: '' }
         },
       }).events,
     ).toEqual([{ type: 'thinking_delta', text: '' }])
@@ -649,34 +651,13 @@ test(
   }
 )
 
-test(
-  'mapClaudeStdoutMessage rejects malformed assistant tool_use blocks',
-  () => {
-    expect(
-      mapClaudeStdoutMessage({
-        type: 'assistant',
-        message: {
-          content: [
-            { type: 'tool_use', id: 'tool-1', input: { script: 'pwd' } },
-            {
-              type: 'tool_use',
-              name: 'mcp__main__shell_exec',
-              input: { script: 'pwd' }
-            },
-          ],
-        },
-      }).events,
-    ).toEqual([
-      {
-        type: 'error',
-        message: 'Invalid tool_use block from Claude Code',
-        code: null
-      },
-      {
-        type: 'error',
-        message: 'Invalid tool_use block from Claude Code',
-        code: null
-      },
-    ])
+test('Claude ingress rejects malformed assistant tool_use blocks', () => {
+  for (const block of [
+    { type: 'tool_use', id: 'tool-1', input: {} },
+    { type: 'tool_use', name: 'mcp__main__shell_exec', input: {} },
+  ]) {
+    expect(() => parseClaudeOutputMessage({
+      type: 'assistant', message: { content: [block] },
+    })).toThrow(ProviderDataError)
   }
-)
+})

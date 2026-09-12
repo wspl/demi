@@ -63,7 +63,8 @@ End every successful turn with a single `response` event carrying token usage.
 ## A minimal provider
 
 ```ts
-import { defineProvider, zeroUsage, type AgentProvider, type InferenceRequest, type ProviderRun } from '@demicodes/provider'
+import { zeroUsage } from '@demicodes/core'
+import { defineProvider, type AgentProvider, type InferenceRequest, type ProviderRun } from '@demicodes/provider'
 
 export function createEchoProvider() {
   return defineProvider({
@@ -117,7 +118,8 @@ This runnable example illustrates a provider-owned wire protocol:
 
 ```ts
 import { z } from 'zod'
-import { parseProviderJson, zeroUsage, type ProviderEvent } from '@demicodes/provider'
+import { zeroUsage } from '@demicodes/core'
+import { parseProviderJson, type ProviderEvent } from '@demicodes/provider'
 
 const eventSchema = z.discriminatedUnion('type', [
   z.looseObject({ type: z.literal('text'), text: z.string() }),

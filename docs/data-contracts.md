@@ -107,6 +107,36 @@ Codex-tagged signatures and omits opaque signatures from other providers.
 SSE readers cancel and release their lock on completion, parsing failure or early
 consumer return. WebSocket listeners and timers are removed when consumption ends.
 
+## Claude Code ingress
+
+`provider-claude-code/transport.ts` decodes JSONL into unknown values. Its syntax
+errors omit line contents. `output-schemas.ts` validates each received message
+through `readClaudeMessage`, including SDK initialization and continuation reads
+from injected transports. `output.ts` only maps validated messages.
+
+Assistant content and streamed text, thinking, signatures and redacted data require
+their string fields; empty strings are valid. Tool blocks require string IDs and
+names. Missing tool input is invalid, and explicit null input remains null for the
+agent's tool schema to reject. MCP requests require a string or integer request ID;
+notifications can omit it and receive no response. SDK envelopes require the outer
+request ID and the `main` server. Missing MCP tool names are protocol failures.
+An initialization error response fails immediately. These failures terminate and
+reap the active CLI process before propagating `ProviderDataError` or the explicit
+initialization error.
+
+The content and delta fields follow the official
+[streaming protocol](https://platform.claude.com/docs/en/build-with-claude/streaming).
+Demi consumes complete assistant tool blocks and uses `message_stop` to close a
+tool batch; validated `input_json_delta` events do not execute tools. Only the
+non-content event tags enumerated in `output-schemas.ts` are ignored. Extra fields
+on supported messages are permitted; unsupported tags fail with a protocol error.
+
+Usage is optional, but null or a wrong type is invalid. Counts are nonnegative
+integers. The final `iterations` entry supplies response usage; absent or empty
+iterations use top-level counts. Missing counts map to zero. The tested legacy
+injected transport also supports camel-case counts. Errors in an iteration do not
+fall back to the turn total. Error messages and result errors must be strings.
+
 ## Verification
 
 Before introducing a helper, compare its actual semantics with the installed

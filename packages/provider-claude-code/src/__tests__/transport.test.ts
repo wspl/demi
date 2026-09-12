@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import process from 'node:process'
 import { decodeUtf8, encodeUtf8 } from '@demicodes/utils'
-import type { InferenceRequest } from '@demicodes/provider'
+import { ProviderDataError, type InferenceRequest } from '@demicodes/provider'
 import type { HostProcess } from '@demicodes/shell'
 import type {
   ClaudeSpawn,
@@ -174,4 +174,16 @@ test('local default spawn runs and reaps a real child process', async () => {
   const exit = await transport.wait()
   expect(typeof exit.exitCode).toBe('number')
   expect(exit.exitCode).not.toBe(0)
+})
+
+test('JSONL syntax errors identify the boundary without exposing the line', async () => {
+  const fake = makeFakeSpawn(['SYNTHETIC_SECRET_INVALID_JSON\n'])
+  const transport = await new ClaudeCliTransportFactory({ spawn: fake.spawn }).start(makeRequest())
+  try {
+    await expect(transport.messages()[Symbol.asyncIterator]().next())
+      .rejects.toThrow(new ProviderDataError('Claude Code stdout', 'invalid JSON'))
+  } finally {
+    await transport.kill()
+    await transport.wait()
+  }
 })
