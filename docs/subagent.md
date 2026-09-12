@@ -6,7 +6,7 @@
 | Status | Design |
 | Scope | `@demicodes/agent` child sessions, `@demicodes/shell` registered commands, `demi agent` CLI, `AgentClient` subagent events |
 
-A subagent is an isolated child `AgentSession` that any session starts as a
+A subagent is a child `AgentSession` that any session starts as a
 registered command. Sessions form a tree of arbitrary depth rooted at the
 product-facing root session: every node of the tree — the root included — is
 the same kind of session, built by the same assembly, stored under the same
