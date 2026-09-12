@@ -314,13 +314,13 @@ Rules:
 Each of the three packages owns:
 
 1. **Pool store** — list / read meta / read secret / write / setActive pointer.
-2. **Active AuthStore** (or equivalent resolver) — `resolveAuth()` loads **only** the active entry’s material; refresh writes back into **that entry’s** secret file (and updates `meta.updatedAt`).
+2. **Active AuthStore** (or equivalent resolver) — `resolveAuth()` loads **only** the active entry’s material; refresh writes back into **that entry’s** secret file. Pool metadata timestamps record writes through `FileCredentialPool.writeEntry`; auth-file refresh does not rewrite metadata.
 3. **`ProviderCredentials` adapter** wired on `create*Provider`.
 4. **Import default** (optional helper, not automatic on every boot unless pool empty — see bootstrap).
 
 Bootstrap (final-state default):
 
-1. If pool has entries → use `active` (or first entry if `active` invalid, and repair `active`).
+1. If the pool has entries, use `active`. A missing pointer selects the first entry by ID; an invalid pointer raises `CredentialPoolError` and does not change the selection.
 2. If pool empty → **read-through** vendor default (today’s path). Do **not** silently invent pool entries unless the product calls `importDefault` / `importFromPath` / explicit add.
 3. Product that wants multi-cred: import A, import B, `setActive`.
 
@@ -340,6 +340,39 @@ Optional public helpers per package (root or documented internal used by product
 | Multi-entry native | N/A — vendor file is single session; pool holds N snapshots |
 
 `createCodexProvider` always constructs one provider id `codex` (override still allowed). Credentials surface is attached when a pool is enabled (default **on** with demi home, or always on with lazy empty pool).
+
+`provider-codex/auth-schemas.ts` owns file, token refresh, device grant and consumed
+claim schemas. `auth.ts` parses files before resolving their mode; `credentials.ts`
+uses the same parser and pure `resolveCodexAuth` before writing an imported entry.
+An incomplete credential cannot be imported as a generic `codex` entry. Missing
+files report `auth_missing`; malformed files report `auth_invalid`; other import
+IO failures retain their filesystem error. Unknown fields in valid vendor auth
+files are preserved. `add` accepts exactly one of `authJsonText`, `authFile`,
+`auth`, or `authJson`.
+
+Absent or null optional API keys, token records, account IDs and refresh dates
+represent missing material. Present token strings cannot be blank or contain
+whitespace. Present refresh dates must be ISO datetimes. Token records validate
+the fields they contain; mode resolution separately requires the credentials and
+account ID needed by that mode. Unsupported Bedrock mode reports `auth_unsupported`.
+JWT payloads supply metadata only; decoding does not verify a signature. Opaque
+access tokens have no claims. JWT-shaped tokens must have a JSON object payload,
+string account/email fields, boolean FedRAMP flags and a representable nonnegative
+integer expiry when those fields exist.
+
+Refresh responses require a new access token and validate optional ID/refresh
+tokens. Claims are resolved before the atomic auth-file replacement, so a bad
+refresh preserves the previous file. Locks and temporary files are released on
+both success and failure; cleanup IO errors are reported.
+
+Device login validates each response before polling or exchanging tokens. It
+accepts `user_code` and the existing `usercode` variant, rejecting disagreement
+when both appear. Poll intervals are integer seconds from 0 to 900, supplied as a
+number or decimal digit string; an absent interval defaults to 5 seconds. Null,
+blank strings, wrong types and out-of-range values fail validation. The 15-minute
+poll window limits interval waits, and cancellation clears the pending timer.
+Successful exchange requires ID, access and refresh tokens plus a resolvable
+ChatGPT account ID. Protocol errors exclude response bodies.
 
 ### 6.3 Grok Build
 

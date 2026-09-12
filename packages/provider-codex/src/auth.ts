@@ -2,9 +2,6 @@ import {
   delay,
   errorCode,
   errorMessage,
-  isRecord,
-  nonEmptyString,
-  stringOrNull
 } from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import {
@@ -19,35 +16,17 @@ import {
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
+  parseProviderData,
+  parseProviderJson,
   redactCredentialText,
   type ProviderAuthState
 } from '@demicodes/provider'
 
-export type CodexAuthMode =
-  | 'apiKey'
-  | 'chatgpt'
-  | 'chatgptAuthTokens'
-  | 'agentIdentity'
-  | 'personalAccessToken'
-  | 'bedrockApiKey'
-
-export interface CodexTokenData {
-  id_token?: string | Record<string, unknown>
-  access_token?: string
-  refresh_token?: string
-  account_id?: string | null
-}
-
-export interface CodexAuthDotJson {
-  auth_mode?: CodexAuthMode
-  OPENAI_API_KEY?: string | null
-  tokens?: CodexTokenData | null
-  last_refresh?: string | null
-  agent_identity?: unknown
-  personal_access_token?: string | null
-  bedrock_api_key?: unknown
-  [key: string]: unknown
-}
+import {
+  codexAuthFileSchema, codexJwtClaimsSchema, codexRefreshResponseSchema,
+  type CodexAuthDotJson, type CodexAuthMode, type CodexTokenData,
+} from './auth-schemas'
+export type { CodexAuthDotJson, CodexAuthMode, CodexTokenData, RefreshTokenResponse } from './auth-schemas'
 
 export type CodexResolvedAuth =
   | {
@@ -72,6 +51,7 @@ export type CodexResolvedAuth =
       mode: 'personalAccessToken'
       accessToken: string
       accountId: string | null
+      email: string | null
       authFile: string
     }
   | {
@@ -104,16 +84,11 @@ export interface FileCodexAuthStoreOptions {
   lockTimeoutMs?: number
 }
 
-export interface RefreshTokenResponse {
-  id_token?: string
-  access_token?: string
-  refresh_token?: string
-}
-
+/** The store validates the raw refresh result, including injected implementations. */
 export type CodexTokenRefresh = (
   refreshToken: string,
   signal?: AbortSignal
-) => Promise<RefreshTokenResponse>
+) => Promise<unknown>
 
 /**
  * Codex error text may embed the env-provided API key by name; redact it
@@ -197,127 +172,54 @@ export class FileCodexAuthStore implements CodexAuthStore {
     options: { forceRefresh?: boolean } = {}
   ): Promise<CodexResolvedAuth> {
     const auth = await this.readAuthFile()
-    const mode = resolvedAuthMode(auth)
-
-    if (mode === 'bedrockApiKey') {
-      throw new CodexAuthError(
-        'auth_unsupported',
-        'Codex provider does not support Bedrock auth'
-      )
+    const resolved = resolveCodexAuth(auth, this.authFile)
+    if (resolved.kind !== 'chatgpt') {
+      return resolved
     }
-    if (mode === 'apiKey') {
-      const key = nonEmptyString(auth.OPENAI_API_KEY)
-      if (!key)
-        throw new CodexAuthError(
-          'auth_missing',
-          `No OPENAI_API_KEY found in ${this.authFile}`
-        )
-      return { kind: 'apiKey', mode, apiKey: key, authFile: this.authFile }
+    const lastRefresh = auth.last_refresh ? new Date(auth.last_refresh) : null
+    const shouldRefresh = options.forceRefresh === true
+      || expiresWithin(resolved.expiresAt, this.now(), REFRESH_EXPIRY_SKEW_MS)
+      || olderThan(lastRefresh, this.now(), REFRESH_STALENESS_MS)
+    if (shouldRefresh && resolved.refreshToken) {
+      return this.refreshAndResolve()
     }
-    if (mode === 'personalAccessToken') {
-      const token = nonEmptyString(auth.personal_access_token)
-      if (!token)
-        throw new CodexAuthError(
-          'auth_missing',
-          `No personal access token found in ${this.authFile}`
-        )
-      const claims = parseChatGptClaims(token)
-      return {
-        kind: 'personalAccessToken',
-        mode,
-        accessToken: token,
-        accountId: claims.accountId,
-        authFile: this.authFile,
-      }
-    }
-    if (mode === 'agentIdentity') {
-      return resolveAgentIdentity(auth, this.authFile)
-    }
-
-    const tokens = auth.tokens
-    if (!tokens || typeof tokens !== 'object') {
-      throw new CodexAuthError(
-        'auth_missing',
-        `No ChatGPT tokens found in ${this.authFile}`
-      )
-    }
-    const accessToken = nonEmptyString(tokens.access_token)
-    if (!accessToken)
-      throw new CodexAuthError(
-        'auth_missing',
-        `No ChatGPT access token found in ${this.authFile}`
-      )
-
-    const refreshToken = nonEmptyString(tokens.refresh_token) ?? null
-    const claims = parseChatGptClaims(accessToken)
-    const idClaims = parseIdTokenClaims(tokens.id_token)
-    const accountId = nonEmptyString(tokens.account_id) ?? claims.accountId
-      ?? idClaims.accountId
-    if (!accountId)
-      throw new CodexAuthError(
-        'auth_missing',
-        `No ChatGPT account id found in ${this.authFile}`
-      )
-
-    const expiresAt = parseJwtExpiration(accessToken)
-    const lastRefresh = parseDate(auth.last_refresh)
-    const shouldRefresh =
-      options.forceRefresh === true ||
-      expiresWithin(expiresAt, this.now(), REFRESH_EXPIRY_SKEW_MS) ||
-      olderThan(lastRefresh, this.now(), REFRESH_STALENESS_MS)
-
-    if (shouldRefresh && refreshToken) {
-      return this.refreshAndResolve(auth, refreshToken)
-    }
-
-    return {
-      kind: 'chatgpt',
-      mode,
-      accessToken,
-      refreshToken,
-      accountId,
-      email: idClaims.email ?? claims.email,
-      isFedrampAccount: idClaims.isFedrampAccount || claims.isFedrampAccount,
-      expiresAt,
-      authFile: this.authFile,
-    }
+    return resolved
   }
 
-  private async refreshAndResolve(
-    auth: CodexAuthDotJson,
-    refreshToken: string
-  ): Promise<CodexResolvedAuth> {
+  private async refreshAndResolve(): Promise<CodexResolvedAuth> {
     return this.withAuthFileLock(async () => {
       const latest = await this.readAuthFile()
-      const latestTokens = latest.tokens
-      const latestRefreshToken =
-        latestTokens && typeof latestTokens === 'object'
-          ? nonEmptyString(latestTokens.refresh_token) ?? refreshToken
-          : refreshToken
-      const response = await this.refreshImpl(latestRefreshToken)
+      const resolved = resolveCodexAuth(latest, this.authFile)
+      if (resolved.kind !== 'chatgpt' || !resolved.refreshToken) {
+        return resolved
+      }
+      const response = parseProviderData(
+        codexRefreshResponseSchema,
+        await this.refreshImpl(resolved.refreshToken),
+        'Codex token refresh',
+      )
       const nextTokens: CodexTokenData = {
-        ...(latestTokens && typeof latestTokens
-          === 'object' ? latestTokens : {}),
-        ...(response.id_token ? { id_token: response.id_token } : {}),
-        ...(response.access_token ? { access_token: response.access_token } : {}),
-        ...(response.refresh_token
-          ? { refresh_token: response.refresh_token }
-          : {}),
+        ...latest.tokens,
+        access_token: response.access_token,
+        ...(response.id_token !== undefined ? { id_token: response.id_token } : {}),
+        ...(response.refresh_token !== undefined ? { refresh_token: response.refresh_token } : {}),
       }
       const nextAuth: CodexAuthDotJson = {
         ...latest,
-        auth_mode: latest.auth_mode ?? auth.auth_mode ?? 'chatgpt',
+        auth_mode: resolved.mode,
         tokens: nextTokens,
         last_refresh: this.now().toISOString(),
       }
+      // Resolve claims before committing so a bad refresh cannot replace working credentials.
+      const nextResolved = resolveCodexAuth(nextAuth, this.authFile)
       await writeAuthJsonAtomic(this.authFile, nextAuth)
-      return resolveChatGptAuthFromFile(nextAuth, this.authFile)
+      return nextResolved
     })
   }
 
   private async readAuthFile(): Promise<CodexAuthDotJson> {
     try {
-      return JSON.parse(await readFile(this.authFile, 'utf8')) as CodexAuthDotJson
+      return parseCodexAuthJson(await readFile(this.authFile, 'utf8'))
     } catch (error) {
       if (errorCode(error) === 'ENOENT') {
         throw new CodexAuthError(
@@ -355,8 +257,11 @@ export class FileCodexAuthStore implements CodexAuthStore {
     try {
       return await fn()
     } finally {
-      await handle.close().catch(() => undefined)
-      await rm(lockFile, { force: true }).catch(() => undefined)
+      try {
+        await handle.close()
+      } finally {
+        await rm(lockFile, { force: true })
+      }
     }
   }
 }
@@ -411,59 +316,52 @@ export function resolvedAuthMode(auth: CodexAuthDotJson): CodexAuthMode {
   return 'chatgpt'
 }
 
-export function parseJwtExpiration(jwt: string): Date | null {
-  const payload = decodeJwtPayload(jwt)
-  const exp = payload?.exp
-  return typeof exp === 'number' ? new Date(exp * 1000) : null
-}
-
-export function parseChatGptClaims(
-  jwt: string
-): {
-  accountId: string | null
-  email: string | null
-  isFedrampAccount: boolean
-} {
-  const payload = decodeJwtPayload(jwt)
-  const auth = isRecord(payload?.['https://api.openai.com/auth'])
-    ? payload['https://api.openai.com/auth']
-    : null
-  const profile = isRecord(payload?.['https://api.openai.com/profile'])
-    ? payload['https://api.openai.com/profile']
-    : null
-  return {
-    accountId: stringOrNull(auth?.chatgpt_account_id),
-    email: stringOrNull(payload?.email) ?? stringOrNull(profile?.email),
-    isFedrampAccount: auth?.chatgpt_account_is_fedramp === true,
+export function parseCodexAuthJson(text: string): CodexAuthDotJson {
+  try {
+    return parseProviderJson(codexAuthFileSchema, text, 'Codex auth material')
+  } catch (error) {
+    throw new CodexAuthError('auth_invalid', errorMessage(error))
   }
 }
 
-export function parseIdTokenClaims(
-  idToken: unknown
-): {
+export function parseJwtExpiration(jwt: string): Date | null {
+  const exp = readJwtClaims(jwt)?.exp
+  return exp === undefined ? null : new Date(exp * 1000)
+}
+
+export function parseChatGptClaims(jwt: string): {
   accountId: string | null
   email: string | null
   isFedrampAccount: boolean
 } {
-  if (typeof idToken === 'string')
-    return parseChatGptClaims(idToken)
-  if (!isRecord(idToken))
-    return {
-      accountId: null,
-      email: null,
-      isFedrampAccount: false
-    }
+  const payload = readJwtClaims(jwt)
+  const auth = payload?.['https://api.openai.com/auth']
   return {
-    accountId: stringOrNull(idToken.chatgpt_account_id),
-    email: stringOrNull(idToken.email),
-    isFedrampAccount: idToken.chatgpt_account_is_fedramp === true,
+    accountId: auth?.chatgpt_account_id ?? null,
+    email: payload?.email ?? payload?.['https://api.openai.com/profile']?.email ?? null,
+    isFedrampAccount: auth?.chatgpt_account_is_fedramp ?? false,
+  }
+}
+
+export function parseIdTokenClaims(idToken: CodexTokenData['id_token']): {
+  accountId: string | null
+  email: string | null
+  isFedrampAccount: boolean
+} {
+  if (typeof idToken === 'string') {
+    return parseChatGptClaims(idToken)
+  }
+  return {
+    accountId: idToken?.chatgpt_account_id ?? null,
+    email: idToken?.email ?? null,
+    isFedrampAccount: idToken?.chatgpt_account_is_fedramp ?? false,
   }
 }
 
 export async function refreshCodexToken(
   refreshToken: string,
   signal?: AbortSignal
-): Promise<RefreshTokenResponse> {
+): Promise<unknown> {
   const response = await fetch(TOKEN_REFRESH_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -480,76 +378,69 @@ export async function refreshCodexToken(
       `Codex token refresh failed with HTTP ${response.status}`
     )
   }
-  return (await response.json()) as RefreshTokenResponse
-}
-
-
-function resolveChatGptAuthFromFile(
-  auth: CodexAuthDotJson,
-  authFile: string
-): CodexResolvedAuth {
-  const tokens = auth.tokens
-  if (!tokens || typeof tokens !== 'object')
-    throw new CodexAuthError(
-      'auth_missing',
-      `No ChatGPT tokens found in ${authFile}`
-    )
-  const accessToken = nonEmptyString(tokens.access_token)
-  if (!accessToken)
-    throw new CodexAuthError(
-      'auth_missing',
-      `No ChatGPT access token found in ${authFile}`
-    )
-  const claims = parseChatGptClaims(accessToken)
-  const idClaims = parseIdTokenClaims(tokens.id_token)
-  const accountId = nonEmptyString(tokens.account_id) ?? claims.accountId
-    ?? idClaims.accountId
-  if (!accountId)
-    throw new CodexAuthError(
-      'auth_missing',
-      `No ChatGPT account id found in ${authFile}`
-    )
-  return {
-    kind: 'chatgpt',
-    mode: resolvedAuthMode(auth) === 'chatgptAuthTokens'
-      ? 'chatgptAuthTokens'
-      : 'chatgpt',
-    accessToken,
-    refreshToken: nonEmptyString(tokens.refresh_token) ?? null,
-    accountId,
-    email: idClaims.email ?? claims.email,
-    isFedrampAccount: idClaims.isFedrampAccount || claims.isFedrampAccount,
-    expiresAt: parseJwtExpiration(accessToken),
-    authFile,
+  try {
+    return await response.json()
+  } catch {
+    throw new CodexAuthError('auth_refresh_failed', 'Codex token refresh returned invalid JSON')
   }
 }
 
-function resolveAgentIdentity(
-  auth: CodexAuthDotJson,
-  authFile: string
-): CodexResolvedAuth {
-  const value = auth.agent_identity
-  if (!isRecord(value)) {
-    throw new CodexAuthError(
-      'auth_unsupported',
-      'Codex agent identity auth requires an auth record'
-    )
-  }
-  const authorization = nonEmptyString(value.authorization)
-  const accountId = nonEmptyString(value.account_id)
-  if (!authorization || !accountId) {
-    throw new CodexAuthError(
-      'auth_unsupported',
-      'Codex agent identity auth requires an authorization header generated by official Codex',
-    )
-  }
-  return {
-    kind: 'agentIdentity',
-    mode: 'agentIdentity',
-    authorization,
-    accountId,
-    isFedrampAccount: value.chatgpt_account_is_fedramp === true,
-    authFile,
+
+/** Resolves validated auth material without refreshing, IO, or persistent side effects. */
+export function resolveCodexAuth(auth: CodexAuthDotJson, authFile: string): CodexResolvedAuth {
+  const mode = resolvedAuthMode(auth)
+  switch (mode) {
+    case 'bedrockApiKey':
+      throw new CodexAuthError('auth_unsupported', 'Codex provider does not support Bedrock auth')
+    case 'apiKey':
+      if (!auth.OPENAI_API_KEY) {
+        throw new CodexAuthError('auth_missing', `No OPENAI_API_KEY found in ${authFile}`)
+      }
+      return { kind: 'apiKey', mode, apiKey: auth.OPENAI_API_KEY, authFile }
+    case 'personalAccessToken': {
+      if (!auth.personal_access_token) {
+        throw new CodexAuthError('auth_missing', `No personal access token found in ${authFile}`)
+      }
+      const claims = parseChatGptClaims(auth.personal_access_token)
+      return {
+        kind: 'personalAccessToken', mode, accessToken: auth.personal_access_token,
+        accountId: claims.accountId, email: claims.email, authFile,
+      }
+    }
+    case 'agentIdentity': {
+      const identity = auth.agent_identity
+      if (!identity) {
+        throw new CodexAuthError('auth_missing', `No agent identity found in ${authFile}`)
+      }
+      return {
+        kind: 'agentIdentity', mode, authorization: identity.authorization,
+        accountId: identity.account_id,
+        isFedrampAccount: identity.chatgpt_account_is_fedramp ?? false,
+        authFile,
+      }
+    }
+    case 'chatgpt':
+    case 'chatgptAuthTokens': {
+      const tokens = auth.tokens
+      if (!tokens?.access_token) {
+        throw new CodexAuthError('auth_missing', `No ChatGPT access token found in ${authFile}`)
+      }
+      const claims = readJwtClaims(tokens.access_token)
+      const idClaims = parseIdTokenClaims(tokens.id_token)
+      const authClaims = claims?.['https://api.openai.com/auth']
+      const accountId = tokens.account_id ?? authClaims?.chatgpt_account_id ?? idClaims.accountId
+      if (!accountId) {
+        throw new CodexAuthError('auth_missing', `No ChatGPT account id found in ${authFile}`)
+      }
+      return {
+        kind: 'chatgpt', mode, accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token ?? null, accountId,
+        email: idClaims.email ?? claims?.email ?? claims?.['https://api.openai.com/profile']?.email ?? null,
+        isFedrampAccount: idClaims.isFedrampAccount || (authClaims?.chatgpt_account_is_fedramp ?? false),
+        expiresAt: claims?.exp === undefined ? null : new Date(claims.exp * 1000),
+        authFile,
+      }
+    }
   }
 }
 
@@ -559,23 +450,30 @@ async function writeAuthJsonAtomic(
 ): Promise<void> {
   await mkdir(dirname(authFile), { recursive: true })
   const temp = `${authFile}.${process.pid}.${Date.now()}.tmp`
-  await writeFile(temp, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 })
-  await chmod(temp, 0o600)
-  await rename(temp, authFile)
+  try {
+    await writeFile(temp, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 })
+    await chmod(temp, 0o600)
+    await rename(temp, authFile)
+  } finally {
+    await rm(temp, { force: true })
+  }
 }
 
-function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
+/** Decodes claims for metadata only; this does not verify the JWT signature. */
+function readJwtClaims(jwt: string) {
   const parts = jwt.split('.')
-  if (parts.length !== 3 || !parts[1])
-    return null
-  try {
-    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
-    return JSON.parse(Buffer.from(padded, 'base64')
-      .toString('utf8')) as Record<string, unknown>
-  } catch {
+  if (parts.length !== 3) {
+    // Opaque access tokens have no claims to consume.
     return null
   }
+  if (!parts[1] || !/^[A-Za-z0-9_-]+$/.test(parts[1])) {
+    throw new CodexAuthError('auth_invalid', 'Codex JWT contains an invalid payload encoding')
+  }
+  return parseProviderJson(
+    codexJwtClaimsSchema,
+    Buffer.from(parts[1], 'base64url').toString('utf8'),
+    'Codex JWT claims',
+  )
 }
 
 function expiresWithin(
@@ -589,11 +487,3 @@ function expiresWithin(
 function olderThan(value: Date | null, now: Date, ageMs: number): boolean {
   return value !== null && now.getTime() - value.getTime() >= ageMs
 }
-
-function parseDate(value: unknown): Date | null {
-  if (typeof value !== 'string' || !value)
-    return null
-  const ms = Date.parse(value)
-  return Number.isFinite(ms) ? new Date(ms) : null
-}
-

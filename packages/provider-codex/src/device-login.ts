@@ -2,7 +2,14 @@
 // request a user code, let the user confirm at {issuer}/codex/device from any browser on any
 // device, poll until the server issues an authorization code with server-generated PKCE, then
 // run the standard authorization_code exchange. No vendor CLI and no host-side browser involved.
-import { delay, isRecord, nonEmptyString } from '@demicodes/utils'
+import { delay } from '@demicodes/utils'
+import { parseProviderJson } from '@demicodes/provider'
+import {
+  CODEX_DEVICE_LOGIN_MAX_WAIT_MS,
+  codexDeviceAuthorizationSchema,
+  codexDeviceCodeSchema,
+  codexExchangedTokensSchema,
+} from './auth-schemas'
 import {
   CodexAuthError,
   codexOauthClientId,
@@ -12,8 +19,6 @@ import {
 } from './auth'
 
 const DEVICE_LOGIN_ISSUER = 'https://auth.openai.com'
-const DEVICE_LOGIN_MAX_WAIT_MS = 15 * 60 * 1000
-const DEVICE_LOGIN_FALLBACK_INTERVAL_S = 5
 
 export interface CodexDeviceLoginPending {
   verificationUrl: string
@@ -58,19 +63,6 @@ async function postJson(
   })
 }
 
-async function jsonBody(
-  response: Response,
-  what: string
-): Promise<Record<string, unknown>> {
-  const body: unknown = await response.json().catch(() => null)
-  if (!isRecord(body))
-    throw new CodexAuthError(
-      'auth_login_failed',
-      `${what} response is not a JSON object`
-    )
-  return body
-}
-
 async function requestUserCode(
   fetchImpl: typeof fetch,
   issuer: string,
@@ -95,25 +87,12 @@ async function requestUserCode(
       `Device code request failed with HTTP ${response.status}`
     )
   }
-  const body = await jsonBody(response, 'Device code')
-  const deviceAuthId = nonEmptyString(body.device_auth_id)
-  const userCode = nonEmptyString(body.user_code)
-    ?? nonEmptyString(body.usercode)
-  if (!deviceAuthId || !userCode) {
-    throw new CodexAuthError(
-      'auth_login_failed',
-      'Device code response is missing device_auth_id or user_code'
-    )
-  }
-  const interval = Number(typeof body.interval === 'string'
-    ? body.interval.trim()
-    : body.interval)
+  const body = parseProviderJson(codexDeviceCodeSchema, await response.text(), 'Codex device code')
   return {
-    deviceAuthId,
-    userCode,
-    intervalSeconds: Number.isFinite(interval) && interval >= 0
-      ? interval
-      : DEVICE_LOGIN_FALLBACK_INTERVAL_S,
+    deviceAuthId: body.device_auth_id,
+    // The schema requires one code and rejects conflicting aliases.
+    userCode: body.user_code ?? body.usercode!,
+    intervalSeconds: body.interval,
   }
 }
 
@@ -126,6 +105,9 @@ async function pollForAuthorization(
 ): Promise<DeviceAuthorization> {
   for (;;) {
     signal?.throwIfAborted()
+    if (Date.now() - startedAt >= CODEX_DEVICE_LOGIN_MAX_WAIT_MS) {
+      throw new CodexAuthError('auth_login_failed', 'Device-code login timed out after 15 minutes')
+    }
     const response = await postJson(
       fetchImpl,
       `${issuer}/api/accounts/deviceauth/token`,
@@ -133,16 +115,10 @@ async function pollForAuthorization(
       signal,
     )
     if (response.ok) {
-      const body = await jsonBody(response, 'Device authorization')
-      const authorizationCode = nonEmptyString(body.authorization_code)
-      const codeVerifier = nonEmptyString(body.code_verifier)
-      if (!authorizationCode || !codeVerifier) {
-        throw new CodexAuthError(
-          'auth_login_failed',
-          'Device authorization response is missing authorization_code or code_verifier'
-        )
-      }
-      return { authorizationCode, codeVerifier }
+      const body = parseProviderJson(
+        codexDeviceAuthorizationSchema, await response.text(), 'Codex device authorization',
+      )
+      return { authorizationCode: body.authorization_code, codeVerifier: body.code_verifier }
     }
     // 403/404 mean "user has not confirmed yet"; anything else is terminal.
     if (response.status !== 403 && response.status !== 404) {
@@ -151,13 +127,8 @@ async function pollForAuthorization(
         `Device authorization failed with HTTP ${response.status}`
       )
     }
-    if (Date.now() - startedAt >= DEVICE_LOGIN_MAX_WAIT_MS) {
-      throw new CodexAuthError(
-        'auth_login_failed',
-        'Device-code login timed out after 15 minutes'
-      )
-    }
-    await delay(userCode.intervalSeconds * 1000)
+    const remainingMs = Math.max(0, CODEX_DEVICE_LOGIN_MAX_WAIT_MS - (Date.now() - startedAt))
+    await delay(Math.min(userCode.intervalSeconds * 1000, remainingMs), signal)
   }
 }
 
@@ -187,17 +158,8 @@ async function exchangeAuthorizationCode(
       `Device-code token exchange failed with HTTP ${response.status}`
     )
   }
-  const body = await jsonBody(response, 'Token exchange')
-  const idToken = nonEmptyString(body.id_token)
-  const accessToken = nonEmptyString(body.access_token)
-  const refreshToken = nonEmptyString(body.refresh_token)
-  if (!idToken || !accessToken || !refreshToken) {
-    throw new CodexAuthError(
-      'auth_login_failed',
-      'Token exchange response is missing id_token, access_token, or refresh_token'
-    )
-  }
-  return { idToken, accessToken, refreshToken }
+  const body = parseProviderJson(codexExchangedTokensSchema, await response.text(), 'Codex token exchange')
+  return { idToken: body.id_token, accessToken: body.access_token, refreshToken: body.refresh_token }
 }
 
 /** Runs the full device-code flow and returns vendor-shaped auth material. */
@@ -218,7 +180,7 @@ export async function runCodexDeviceLogin(
   options.onPending?.({
     verificationUrl: `${issuer}/codex/device`,
     userCode: userCode.userCode,
-    expiresAt: new Date(startedAt + DEVICE_LOGIN_MAX_WAIT_MS).toISOString(),
+    expiresAt: new Date(startedAt + CODEX_DEVICE_LOGIN_MAX_WAIT_MS).toISOString(),
   })
 
   const authorization = await pollForAuthorization(
@@ -238,6 +200,9 @@ export async function runCodexDeviceLogin(
 
   const accountId = parseChatGptClaims(tokens.accessToken).accountId
     ?? parseIdTokenClaims(tokens.idToken).accountId
+  if (!accountId) {
+    throw new CodexAuthError('auth_login_failed', 'Device login tokens have no ChatGPT account ID')
+  }
   return {
     auth_mode: 'chatgpt',
     OPENAI_API_KEY: null,

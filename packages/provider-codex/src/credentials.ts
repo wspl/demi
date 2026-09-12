@@ -1,23 +1,25 @@
-import type {
-  ProviderCredentialActive,
-  ProviderCredentialAddInput,
-  ProviderCredentialInfo,
-  ProviderCredentialLoginOptions,
-  ProviderCredentialLoginResult,
-  ProviderCredentials,
-  ProviderCredentialsCapability,
-  ProviderQuota,
+import {
+  parseProviderData,
+  type ProviderCredentialActive,
+  type ProviderCredentialAddInput,
+  type ProviderCredentialInfo,
+  type ProviderCredentialLoginOptions,
+  type ProviderCredentialLoginResult,
+  type ProviderCredentials,
+  type ProviderCredentialsCapability,
+  type ProviderQuota,
 } from '@demicodes/provider'
-import { errorMessage, isRecord, nonEmptyString } from '@demicodes/utils'
+import { errorCode, errorMessage } from '@demicodes/utils'
+import { z } from 'zod'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   CodexAuthError,
   FileCodexAuthStore,
   defaultCodexHome,
-  parseChatGptClaims,
-  parseIdTokenClaims,
-  type CodexAuthDotJson,
+  parseCodexAuthJson,
+  resolveCodexAuth,
+  type CodexResolvedAuth,
   type CodexAuthStore,
   type FileCodexAuthStoreOptions,
 } from './auth'
@@ -124,22 +126,9 @@ export function createCodexCredentials(
     authText: string,
     source: string
   ): Promise<ProviderCredentialInfo> => {
-    let auth: CodexAuthDotJson
-    try {
-      auth = JSON.parse(authText) as CodexAuthDotJson
-    } catch {
-      throw new CodexAuthError(
-        'auth_invalid',
-        'Codex auth material is not valid JSON'
-      )
-    }
-    if (!isRecord(auth))
-      throw new CodexAuthError(
-        'auth_invalid',
-        'Codex auth material is not an object'
-      )
-
-    const { label, identityKey, detail } = labelFromCodexAuth(auth)
+    const auth = parseCodexAuthJson(authText)
+    const resolved = resolveCodexAuth(auth, source)
+    const { label, identityKey, detail } = labelFromCodexAuth(resolved)
     const existing = identityKey
       ? await pool.findByIdentityKey(identityKey)
       : null
@@ -202,7 +191,10 @@ export function createCodexCredentials(
       let text: string
       try {
         text = await readFile(authFile, 'utf8')
-      } catch {
+      } catch (error) {
+        if (errorCode(error) !== 'ENOENT') {
+          throw error
+        }
         throw new CodexAuthError(
           'auth_missing',
           `No Codex auth at ${authFile}. Run codex login or beginLogin first.`
@@ -211,23 +203,16 @@ export function createCodexCredentials(
       return importFromAuthJson(text, `vendor:${authFile}`)
     },
     add: async (input: ProviderCredentialAddInput) => {
-      if (typeof input.authJsonText === 'string') {
-        return importFromAuthJson(input.authJsonText, 'add:authJsonText')
+      const value = parseProviderData(codexCredentialAddSchema, input, 'Codex credential input')
+      if ('authJsonText' in value) {
+        return importFromAuthJson(value.authJsonText, 'add:authJsonText')
       }
-      if (typeof input.authFile === 'string') {
-        const text = await readFile(input.authFile, 'utf8')
-        return importFromAuthJson(text, `add:authFile:${input.authFile}`)
+      if ('authFile' in value) {
+        const text = await readFile(value.authFile, 'utf8')
+        return importFromAuthJson(text, `add:authFile:${value.authFile}`)
       }
-      if (isRecord(input.auth) || isRecord(input.authJson)) {
-        const obj = (input.auth ?? input.authJson) as CodexAuthDotJson
-        return importFromAuthJson(
-          `${JSON.stringify(obj, null, 2)}\n`,
-          'add:auth'
-        )
-      }
-      throw new Error(
-        'Codex credentials.add expects authJsonText, authFile, or auth/authJson object'
-      )
+      const auth = 'auth' in value ? value.auth : value.authJson
+      return importFromAuthJson(JSON.stringify(auth), 'add:auth')
     },
     remove: async (credentialId: string) => {
       await pool.remove(credentialId)
@@ -247,40 +232,32 @@ export function openCodexCredentialPool(
   })
 }
 
-function labelFromCodexAuth(
-  auth: CodexAuthDotJson
-): {
-  label: string;
-  identityKey: string | null;
-  detail: string | null
+const codexCredentialAddSchema = z.union([
+  z.strictObject({ authJsonText: z.string().min(1) }),
+  z.strictObject({ authFile: z.string().min(1).regex(/\S/) }),
+  z.strictObject({ auth: z.unknown() }),
+  z.strictObject({ authJson: z.unknown() }),
+])
+
+function labelFromCodexAuth(auth: CodexResolvedAuth): {
+  label: string
+  identityKey: string | null
+  detail: string
 } {
-  if (nonEmptyString(auth.OPENAI_API_KEY)) {
-    return { label: 'OPENAI_API_KEY', identityKey: 'apiKey', detail: 'apiKey' }
-  }
-  const pat = nonEmptyString(auth.personal_access_token)
-  if (pat) {
-    const claims = parseChatGptClaims(pat)
-    const label = claims.email ?? claims.accountId ?? 'personal access token'
-    return {
-      label,
-      identityKey: claims.accountId ?? label,
-      detail: 'personalAccessToken'
+  switch (auth.kind) {
+    case 'apiKey':
+      return { label: 'OPENAI_API_KEY', identityKey: 'apiKey', detail: 'apiKey' }
+    case 'personalAccessToken': {
+      const label = auth.email ?? auth.accountId ?? 'personal access token'
+      return {
+        label,
+        identityKey: auth.accountId ?? label,
+        detail: 'personalAccessToken',
+      }
     }
+    case 'agentIdentity':
+      return { label: auth.accountId, identityKey: auth.accountId, detail: 'agentIdentity' }
+    case 'chatgpt':
+      return { label: auth.email ?? auth.accountId, identityKey: auth.accountId, detail: 'chatgpt' }
   }
-  const tokens = auth.tokens
-  if (tokens && typeof tokens === 'object') {
-    const access = nonEmptyString(tokens.access_token)
-    const idClaims = parseIdTokenClaims(tokens.id_token)
-    const accessClaims = access ? parseChatGptClaims(access) : {
-      accountId: null,
-      email: null,
-      isFedrampAccount: false
-    }
-    const accountId = nonEmptyString(tokens.account_id) ?? idClaims.accountId
-      ?? accessClaims.accountId
-    const email = idClaims.email ?? accessClaims.email
-    const label = email ?? accountId ?? 'chatgpt'
-    return { label, identityKey: accountId ?? email, detail: 'chatgpt' }
-  }
-  return { label: 'codex', identityKey: null, detail: null }
 }
