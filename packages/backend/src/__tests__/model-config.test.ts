@@ -23,7 +23,7 @@ const json = (body: unknown, method = 'POST') => ({
 })
 
 test(
-  'manual model parameters reach inference and refresh preserves overrides with failure metadata',
+  'manual model parameters reach inference and refresh never fetches an external catalog',
   async () => {
     const requests: InferenceRequest[] = []
     const refreshed: boolean[] = []
@@ -79,10 +79,10 @@ test(
           stale: boolean;
           warnings: string[]
         }> }
-      expect(refreshed).toEqual([true])
+      expect(refreshed).toEqual([])
       expect(catalog.providers[0]).toMatchObject({
-        stale: true,
-        warnings: ['Catalog unavailable'],
+        stale: false,
+        warnings: [],
         models: [expect.objectContaining({
             contextWindow: 64000,
             outputLimit: 4000,

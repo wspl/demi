@@ -159,7 +159,7 @@ export class SubscriptionLoginFlows {
         })
         unpublishedDir = null
       }
-      this.assembly.invalidate(providerId)
+      await this.assembly.invalidate(providerId)
       flow.state = { status: 'completed', providerId }
     } catch (error) {
       flow.state = { status: 'failed', message: errorMessage(error) }

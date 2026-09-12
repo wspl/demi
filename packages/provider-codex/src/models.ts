@@ -73,10 +73,12 @@ export async function listCodexModels(
       baseUrl: options.baseUrl,
       headers: options.headers,
       userAgent: options.userAgent,
+      signal: options.signal,
     })
     codexCatalogCache.set(cacheKey, { fetchedAtMs: nowDate.getTime(), list })
     return cloneModelList(list)
   } catch (error) {
+    options.signal?.throwIfAborted()
     if (isUnauthorized(error)) {
       const refreshed = await authStore.resolveAuth({ forceRefresh: true })
       assertCodexBackendModelCatalogAuth(refreshed)
@@ -88,6 +90,7 @@ export async function listCodexModels(
         baseUrl: options.baseUrl,
         headers: options.headers,
         userAgent: options.userAgent,
+        signal: options.signal,
       })
       codexCatalogCache.set(codexModelCatalogCacheKey(
         refreshed,
@@ -177,11 +180,13 @@ async function requestCodexModels(options: {
   baseUrl?: string
   headers?: Record<string, string>
   userAgent?: string
+  signal?: AbortSignal
 }): Promise<ProviderModelList> {
   const response = await options.fetch(codexModelsUrl(
     options.baseUrl ?? DEFAULT_CHATGPT_CODEX_BASE_URL,
     options.clientVersion
   ), {
+    signal: options.signal,
     headers: buildCodexModelCatalogHeaders(
       options.auth,
       options.headers,

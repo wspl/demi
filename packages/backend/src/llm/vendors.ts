@@ -85,9 +85,10 @@ export class VendorCatalog {
   async models(
     vendorId: string,
     providerId: string,
-    refresh = false
+    refresh = false,
+    signal?: AbortSignal,
   ): Promise<ProviderModelList | null> {
-    const snapshot = await fetchModelsDev({ ...this.options, refresh })
+    const snapshot = await fetchModelsDev({ ...this.options, refresh, signal })
     if (!snapshot.catalog[vendorId] || !vendorOf(snapshot.catalog[vendorId]))
       return null
     return modelListFromModelsDev(snapshot, vendorId, providerId)
