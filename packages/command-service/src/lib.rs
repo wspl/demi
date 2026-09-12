@@ -2,8 +2,10 @@
 
 pub use demi_command_protocol as protocol;
 
+mod client;
 mod server;
 mod stream;
 
+pub use client::{Client, CommandInput, CommandOutput};
 pub use server::{Handler, InvocationContext, Output, serve};
 pub use stream::{Input, ServiceError};

@@ -1,0 +1,17 @@
+{
+  "name": "@demicodes/command-protocol",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {"build": "tsdown"},
+  "dependencies": {"zod": "^4.0.0"},
+  "publishConfig": {"access": "public"}
+}

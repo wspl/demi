@@ -227,12 +227,15 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` and native client as `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
 
-### `packages/command-protocol` (Rust crate)
+### `@demicodes/command-protocol` / `packages/command-protocol` (TypeScript and Rust)
 
 - Owns: native command-service metadata, strict wire values, protocol constants
   and bounded incremental response framing. See
   [Native runner and command services](demi-next/native-runtime.md).
-- Depends on: serde, serde_json, bytes and thiserror; no runtime or transport IO.
+- Owns the native package descriptor schema in TypeScript and generates its Rust
+  values and validation schema. Package identities use canonical JSON and SHA-256.
+- Depends on: serde, serde_json, bytes, thiserror, jsonschema, sha2 and
+  serde_json_canonicalizer; no runtime or transport IO.
 - Must not: implement command algorithms, spawn services or hold backend state.
 
 ### `packages/command-service` (Rust crate)
@@ -244,6 +247,32 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: service entry point, handler contract and invocation IO.
 - Must not: define builtin commands, resolve artifacts, hold credentials or
   modify process-global cwd or environment on behalf of an invocation.
+
+### `packages/command-runtime` (Rust crate)
+
+- Owns: artifact acquisition through an injected resolver, bounded direct HTTPS
+  downloads or local file copies, SHA-256 verification, atomic executable cache
+  publication, shared download cancellation, resident process startup, capability
+  verification, bounded diagnostic tails, shutdown deadlines and child reaping.
+- Depends on: command-protocol, command-service, Tokio, tokio-util, reqwest,
+  futures-util, sha2, tempfile and thiserror.
+- Public boundary: artifact cache and resolver, resident service with its command
+  client. The registration owner shuts down the cache and retains service objects
+  for the lifetime of their environments and invocations.
+- Must not: select backend storage vendors, construct command trees or implement
+  command operations.
+
+### `packages/demi-package` (Rust executable and library)
+
+- Owns: the `demi-commands` resident service and native Demi command operations.
+  File operations receive invocation cwd, arguments and cancellation through the
+  command-service handler contract. Mutations serialize planning and application;
+  each replacement publishes atomically, and multi-file patches roll back earlier
+  changes if a later write fails.
+- Depends on: command-service, Tokio, tokio-util, bytes, serde, serde_json,
+  tempfile and regex. Test-only dependencies include command-runtime.
+- Must not: host a runner connection, define the agent's command tree, or store
+  conversation state.
 
 ### `packages/command-client` (native executable)
 
@@ -339,6 +368,7 @@ provider-openai-api -> core, provider, utils
 provider-anthropic-api -> core, provider, utils
 provider-grok-build -> core, provider, utils
 provider-google -> core, provider, utils
+command-protocol -> none
 command-loader -> shell, utils
 runner-protocol -> shell, utils
 machines -> utils
