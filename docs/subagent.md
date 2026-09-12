@@ -310,6 +310,9 @@ interface AgentHarness<State> {
 }
 ```
 
+The coding harness declares no named profiles. Coding tasks spawn children without
+`--profile`, inheriting the parent coding instructions and ability to edit files.
+
 Omitting `--profile` always selects the unnamed inherit profile: the parent
 harness, model, Host, and commands. It exists whether or not `agents()` is
 declared and cannot be configured or replaced; `default` is a reserved word,
@@ -565,7 +568,7 @@ blocks are for nested UI (cards, inspect), not a second user-facing reply.
 | `@demicodes/shell` | Foreground registered commands (signal, live IO, stdin stream) |
 | `@demicodes/agent` | The node assembly, supervisors, agent directory, `demi agent` injection, protocol frames, the `AgentTreeStore` contract |
 | `@demicodes/backend` | The `AgentTreeStore` over `conversations/<id>.sqlite` |
-| `@demicodes/coding-agent` | Optional named profile (`explore`) |
+| `@demicodes/coding-agent` | Coding harness with no named profiles; children inherit by default |
 | harness / product | Extra profiles, Host wrapping, UI over `AgentClient` |
 
 Only the node assembly instantiates `AgentSession`.
@@ -615,5 +618,5 @@ Only the node assembly instantiates `AgentSession`.
 - `packages/backend/src/__tests__/host-shell.test.ts` — registered command abort
   signal, live stdout, `shell_write` as stdin stream, byte-clean pipes around
   a virtual foreground job
-- `packages/coding-agent/src/__tests__/coding-harness.test.ts` — unnamed inherit / `explore`
-  profiles and the injected `demi agent` prompt-field help
+- `packages/coding-agent/src/__tests__/coding-harness.test.ts` — no named
+  profiles, default inheritance, and the injected `demi agent` prompt-field help

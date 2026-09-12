@@ -18,6 +18,7 @@ const messages: Record<string, string> = {
   'agent.block.thinkingFor': 'Thinking for',
   'agent.block.thoughtFor': 'Thought for',
   'agent.block.requesting': 'Requesting',
+  'agent.block.requestingFor': 'Requesting for',
   'agent.block.connecting': 'Connecting',
   'agent.block.resuming': 'Resuming',
   'agent.block.retrying': 'Retrying',

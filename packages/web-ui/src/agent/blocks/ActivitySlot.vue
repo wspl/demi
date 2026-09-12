@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, type Component } from 'vue'
+import { computed, ref, watch, type Component } from 'vue'
 import { Brain, History, SquareTerminal } from '@lucide/vue'
 import ActivityMark from '@demicodes/web-ui/ui/ActivityMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { t } from '@demicodes/web-ui/infra/i18n'
 import type { ActivityKind, HandoffBlock } from '../activity-slot'
 import { parseToolCallInput } from '../block-helpers'
-import { thinkingFaceLabel } from '../thinking-label'
+import { useElapsedTime } from '../../composables/useElapsedTime'
+import { formatThinkingDuration, thinkingFaceLabel } from '../thinking-label'
 import { standardToolTitle, toolRenderKind } from '../tool-rendering'
 import FunctionalBlock from './FunctionalBlock.vue'
 
@@ -20,6 +21,18 @@ const props = defineProps<{
   kind: ActivityKind
   incoming?: HandoffBlock | null
 }>()
+
+const isRequesting = computed(() => props.kind === 'requesting' && !props.incoming)
+const requestingSince = ref(Date.now())
+watch(isRequesting, (requesting) => {
+  if (requesting) {
+    requestingSince.value = Date.now()
+  }
+})
+const requestingElapsed = useElapsedTime(
+  () => requestingSince.value,
+  () => isRequesting.value,
+)
 
 interface Face {
   /** `wait` is the ActivityMark; null is a row without an icon cell. */
@@ -36,7 +49,7 @@ const waitLabel = computed(() => {
     case 'retrying':
       return t('agent.block.retrying')
     case 'requesting':
-      return t('agent.block.requesting')
+      return `${t('agent.block.requestingFor')} ${formatThinkingDuration(requestingElapsed.value ?? 0)}`
   }
 })
 
