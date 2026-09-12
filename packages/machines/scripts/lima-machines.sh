@@ -67,22 +67,29 @@ backend_address=$(limactl shell "$instance" -- getent hosts host.lima.internal |
   exit 1
 }
 # Idempotent; rerun on every start because taps do not survive a reboot.
+guest_user=$(limactl shell "$instance" -- id -un)
 limactl shell "$instance" -- sudo -n bash "$here/scripts/install-managed-hosts.sh" \
-  --user "$(id -un)" --mode direct \
+  --user "$guest_user" --mode direct \
   --backend-address "$backend_address" --backend-port "$backend_port" \
   --slots "$slots"
-# The kvm group the install script grants takes effect at the next login,
-# and Lima multiplexes its shells over one ssh session; an ACL applies now.
-limactl shell "$instance" -- sudo -n setfacl -m "u:$(id -un):rw" /dev/kvm
-
 uid=$(limactl shell "$instance" -- id -u)
 echo "backend: DEMI_MACHINES_SOCKET=$HOME/.lima/$instance/sock/demi-machines.sock DEMI_BACKEND_PUBLIC_URL=http://$backend_address:$backend_port"
-exec limactl shell "$instance" -- env \
+# Lima reuses an SSH session with stale supplementary groups. sudo refreshes
+# them from the guest's user database while keeping the manager unprivileged.
+# Device ACLs are not durable: udev/logind can replace them.
+exec limactl shell "$instance" -- sudo -n -H -u "$guest_user" env \
   "DEMI_MACHINES_SOCKET=/run/user/$uid/demi-machines.sock" \
   DEMI_MACHINES_DATA=/var/lib/demi-machines \
   DEMI_MANAGED_FIRECRACKER=/usr/local/bin/firecracker \
   "DEMI_MANAGED_KERNEL=$kernel" \
   "DEMI_MANAGED_ROOTFS=$rootfs" \
   "DEMI_MANAGED_SLOTS=$slots" \
-  bash -c 'exec "$HOME/.bun/bin/bun" run --conditions development "$0"' \
+  bash -c '
+    set -euo pipefail
+    if ! (exec 3<>/dev/kvm); then
+      echo "demi-machines: cannot open /dev/kvm as $(id -un); check the guest kvm group and device permissions" >&2
+      exit 1
+    fi
+    exec "$HOME/.bun/bin/bun" run --conditions development "$0"
+  ' \
   "$root/packages/machines/src/main.ts"
