@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# The shared read-only rootfs (managed-hosts.md § Images): Ubuntu 24.04 by
-# debootstrap, the system toolchain from packages.txt, the guest user `demi`
-# (uid 1000) with passwordless sudo, the
-# runner as /demi-runner and the native client as /usr/bin/demi, packed with
-# `mke2fs -d`.
+# The shared read-only rootfs (managed-hosts.md § The shipped base): Ubuntu
+# 26.04 by debootstrap, the toolchain from packages.txt, uv as one binary,
+# the guest user `demi` (uid 1000) with passwordless sudo, the runner as
+# /demi-runner and the native client as /usr/bin/demi, packed with
+# `mke2fs -d`. Versions pinned here: UV_VERSION.
 # Runs as root on Linux. Usage: sudo rootfs/build.sh <aarch64|x86_64>
 set -euo pipefail
 arch="${1:?arch}"
@@ -28,13 +28,18 @@ case "$arch" in
     ;;
 esac
 work="${ROOTFS_WORK:-$here/out/rootfs-$arch}"
-suite="${UBUNTU_SUITE:-noble}"
+suite="${UBUNTU_SUITE:-resolute}"
+uv_version="${UV_VERSION:-0.12.13}"
 mirror="${UBUNTU_MIRROR:-http://ports.ubuntu.com/ubuntu-ports}"
 [ "$deb_arch" = amd64 ] && mirror="${UBUNTU_MIRROR:-http://archive.ubuntu.com/ubuntu}"
 size="${ROOTFS_SIZE:-6G}"
 
 rm -rf "$work"
 mkdir -p "$work"
+# debootstrap's Ubuntu suites are one script under different names; a host
+# older than the suite lacks the name.
+scripts=/usr/share/debootstrap/scripts
+[ -e "$scripts/$suite" ] || ln -s gutsy "$scripts/$suite"
 debootstrap --arch="$deb_arch" --variant=minbase --include=apt-utils \
   "$suite" "$work" "$mirror"
 cat > "$work/etc/apt/sources.list" <<SOURCES
@@ -66,6 +71,19 @@ chmod 0440 "$work/etc/sudoers.d/demi"
 echo demi > "$work/etc/hostname"
 # e2fsprogs uses the mount table to select online resizing. PID 1 owns mounts.
 ln -sf /proc/self/mounts "$work/etc/mtab"
+
+# uv: one binary from its release, checked against the published digest.
+uv_dir="$out/uv-$uv_version"
+if [ ! -x "$uv_dir/uv" ]; then
+  mkdir -p "$uv_dir"
+  uv_asset="uv-$arch-unknown-linux-gnu.tar.gz"
+  uv_url="https://github.com/astral-sh/uv/releases/download/$uv_version/$uv_asset"
+  curl -fsSL "$uv_url" -o "$uv_dir/$uv_asset"
+  curl -fsSL "$uv_url.sha256" -o "$uv_dir/$uv_asset.sha256"
+  (cd "$uv_dir" && sha256sum -c "$uv_asset.sha256")
+  tar -xzf "$uv_dir/$uv_asset" -C "$uv_dir" --strip-components=1
+fi
+install -m 0755 "$uv_dir/uv" "$uv_dir/uvx" "$work/usr/local/bin/"
 
 # The runner owns init; jobs invoke the separate native command client.
 install -m 0755 "$runner" "$work/demi-runner"

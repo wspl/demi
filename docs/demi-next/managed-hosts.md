@@ -33,8 +33,9 @@ runs differs:
 
 - Linux: the manager runs in place beside the backend, on the host that has
   `/dev/kvm`.
-- macOS: the manager runs inside a Lima instance with nested virtualization
-  (`packages/machines/lima/demi-machines.yaml`), where a `/dev/kvm` exists.
+- macOS: the manager runs inside a Lima instance (Ubuntu 26.04, nested
+  virtualization; `packages/machines/lima/demi-machines.yaml`), where a
+  `/dev/kvm` exists.
   Lima forwards the manager's socket to a path on the Mac, and guests reach the
   backend on the Mac at the address the instance knows as `host.lima.internal`
   (192.168.5.2 by default; guests dial it by address, since their resolver is
@@ -183,7 +184,7 @@ packages/machines/scripts/lima-machines.sh --backend-port 3271
 ```
 
 The script creates the `demi-machines` instance from the template on first
-use (Ubuntu 24.04, Firecracker, e2fsprogs, nftables and Bun provisioned; the
+use (Ubuntu 26.04, Firecracker, e2fsprogs, nftables and Bun provisioned; the
 home directory mounted read-only so the checkout is visible at the same path),
 prepares the tap pool with the Mac as the backend address (printed as the
 `DEMI_BACKEND_PUBLIC_URL` to use), and runs the manager in the foreground on
@@ -219,7 +220,61 @@ Runner sockets, active job state, manifest cache and command output use
 System-level installs, including `sudo apt install`, survive shutdown and wake.
 User-level tools and configuration in home also persist. `/tmp` and processes
 do not. Growth and quotas apply independently to system and home volumes;
-initial nominal size is not a user's storage quota.
+initial nominal size is not a user's storage quota. The initial capacities
+(`DEMI_MANAGED_SYSTEM_MIB`, `DEMI_MANAGED_HOME_MIB`) default to 1 GiB each.
+
+Suspected problem, measured: publishing a generation copies both images in
+full (ext4 has no reflink, and the copy does not preserve holes), so every
+generation costs the sum of the two nominal capacities on the host, and the
+working files cost it again while a VM runs. A 1 GiB home holds one minimal
+Rust toolchain and little else. Larger defaults need a hole-preserving copy,
+or a rename in place of the copy when the VM is stopped (hibernate), before
+they are affordable.
+
+### The shipped base
+
+The base is Ubuntu 26.04 LTS from `debootstrap --variant=minbase`
+(`packages/guest-image/rootfs/`): the package system and its dependencies,
+no service manager, no snap, no cloud-init. The runner is PID 1. The guest
+user is `demi` (uid 1000, bash, passwordless sudo); its home is the home
+disk's, not the base's.
+
+What the base preinstalls follows one rule: only things whose state does not
+live in the user's home. Those are Ubuntu packages and single-binary tools.
+Anything a person installs into `~` with a version manager is not shipped;
+the model installs it the official way when a task needs it, and it lands
+where every guide says it does.
+
+| Category | Preinstalled (Ubuntu 26.04 packages unless noted) |
+|---|---|
+| Base | sudo, ca-certificates, gnupg, locales, tzdata, file |
+| Network | curl, wget, openssh-client, iproute2, iputils-ping, dnsutils |
+| Build | build-essential (gcc 15), clang, cmake, ninja-build, pkg-config, autoconf, automake, libtool |
+| Source control | git, git-lfs, gh |
+| Search and text | ripgrep, fd-find, fzf, bat, jq, yq, tree, less (`fd` and `bat` by their usual names, linked over Ubuntu's `fdfind` and `batcat`) |
+| Archives | zip, unzip, xz-utils, zstd |
+| Processes | procps, psmisc, htop, tmux, e2fsprogs, util-linux-extra (`pivot_root`, which the guest init needs and 26.04 no longer keeps in util-linux) |
+| Data | sqlite3 |
+| Scripts | shellcheck |
+| Editors | vim, nano |
+| Node | nodejs and npm from Ubuntu (22 LTS): `node` works out of the box; an nvm installed later shadows it |
+| Python | Ubuntu's python3 (3.14) for system scripts; `uv` as one binary under `/usr/local/bin` for projects, whose interpreters and tools land under `~` on first use |
+
+Not shipped, on purpose: nvm, rustup, Bun, Go, a JDK, Docker. The first
+three keep everything under `~`; Go and a JDK are large and rarely wanted
+by every user; Docker inside a microVM is its own design. `sudo apt install`
+covers the JDK and Go from Ubuntu when a task wants them.
+
+### First use of the home
+
+The home disk starts empty. On the first boot the guest init copies
+`/etc/skel` into `/home/demi` and gives the guest user ownership, the way
+`useradd -m` would. The skeleton is Ubuntu's, with one difference in
+`.bashrc`: its interactive-only part (history, prompt, aliases) is what the
+guard skips, while the lines installers append at the end (nvm, Bun, pnpm,
+`~/.cargo/env`) run in every shell. Together with the login shell jobs run in
+(`runner.md` § Jobs and the tee), a tool installed in one command is on
+`PATH` in the next, as it is in a person's terminal.
 
 ## Persistence
 
