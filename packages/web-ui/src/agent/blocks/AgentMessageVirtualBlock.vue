@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { useAttrs } from 'vue'
+import { computed, useAttrs } from 'vue'
 import { isEditableUserMessage } from '@demicodes/agent/client'
+import { CHROME_ENTER_MS } from '@demicodes/web-ui/ui/chrome-enter'
 import type { MessageListBlock } from '../pending-steers'
 import UserBlock from './UserBlock.vue'
 import ThinkingBlock from './ThinkingBlock.vue'
@@ -26,6 +27,8 @@ const props = defineProps<{
   forkState?: MessageForkState
   /** Retry on the error record that ended the conversation. */
   retry?: () => void
+  /** The block just arrived in a live transcript: a chrome row slides in from the left as it fades in. */
+  entering?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -38,6 +41,11 @@ const emit = defineEmits<{
 }>()
 
 const attrs = useAttrs()
+/** Rows built on FunctionalBlock: the 28px chrome face. Text streams in on its own. */
+const entersAsChrome = computed(() =>
+  props.entering
+  && (props.block.type === 'thinking' || props.block.type === 'tool_call' || props.block.type === 'abort'),
+)
 </script>
 
 <template>
@@ -87,7 +95,12 @@ const attrs = useAttrs()
     v-bind="attrs"
     :count="block.count"
   />
-  <div v-else v-bind="attrs">
+  <div
+    v-else
+    v-bind="attrs"
+    :class="entersAsChrome ? 'chrome-enter' : ''"
+    :style="entersAsChrome ? { '--chrome-enter-ms': `${CHROME_ENTER_MS}ms` } : undefined"
+  >
     <ThinkingBlock
       v-if="block.type === 'thinking'"
       :thinking="block.text"

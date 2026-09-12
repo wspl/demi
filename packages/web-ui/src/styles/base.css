@@ -628,8 +628,25 @@ svg.lucide {
   }
 }
 
+/* A chrome row that just arrived: it settles from the left as it fades in. The duration is the component's CHROME_ENTER_MS. */
+.chrome-enter {
+  animation: chrome-enter var(--chrome-enter-ms) ease-out both;
+}
+
+@keyframes chrome-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .stream-ink {
+  .stream-ink,
+  .chrome-enter {
     animation: none;
   }
 }
