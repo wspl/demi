@@ -73,8 +73,6 @@ export interface JobTableOptions {
    * host. The backend's entries win where both name a key.
    */
   deviceEnv: Record<string, string>
-  /** Directories every job finds first in `PATH`: the root-command symlinks. */
-  pathPrefix?: string[]
   /**
    * Entries set in every job's env regardless of what the backend named: where
    * the runner lives (`DEMI_HOME`).
@@ -106,6 +104,11 @@ export const JOB_STDIN_FD_VAR = 'DEMI_JOB_STDIN_FD'
  * The owning job, carried only on the local relay for lifetime cancellation.
  */
 export const JOB_ID_VAR = 'DEMI_JOB_ID'
+/**
+ * The directory of root-command symlinks, which the script prelude puts
+ * first in `PATH` once the login shell's profiles have had their say.
+ */
+export const JOB_PATH_PREFIX_VAR = 'DEMI_JOB_PATH_PREFIX'
 /**
  * That descriptor: fixed, high, and clear of the ones scripts and tools reach
  * for (bash 3.2 has no `{var}<&0`).
@@ -178,15 +181,15 @@ export class JobTable {
     let handle: JobSpawnHandle
     try {
       await this.options.fs.mkdir(dir)
+      // A login shell: the profile is read, so what one command installed the
+      // next one finds on PATH (`runner.md` § Jobs and the tee).
       handle = await this.options.spawn({
         command: 'bash',
-        args: ['-c', wrapScript(message.script)],
+        args: ['-lc', wrapScript(message.script)],
         cwd: message.cwd,
         env: {
-          ...withPathPrefix(
-            { ...this.options.deviceEnv, ...message.env },
-            this.options.pathPrefix ?? []
-          ),
+          ...this.options.deviceEnv,
+          ...message.env,
           ...this.options.fixedEnv,
           ...await this.options.executionEnv?.(message),
           [JOB_CWD_FILE_VAR]: cwdFile,
@@ -332,32 +335,20 @@ export class JobTable {
 }
 
 /**
- * The script with a prelude: an `EXIT` trap so bash writes the directory it
- * ends in — after an explicit `exit` too — for the backend to carry into
- * the next job (a script bash refuses to parse never runs it, and the
- * backend keeps the directory it had); and the job's stdin duplicated onto
- * a high descriptor every child inherits, so a native client can
- * tell the job's live stdin from a redirection (`txiki.md`, `fdNode`).
+ * The script with a prelude: the root-command directory first in `PATH`,
+ * ahead of whatever the login shell's profiles put there (`runner.md` § Jobs
+ * and the tee); an `EXIT` trap so bash writes the directory it ends in —
+ * after an explicit `exit` too — for the backend to carry into the next job
+ * (a script bash refuses to parse never runs it, and the backend keeps the
+ * directory it had); and the job's stdin duplicated onto a high descriptor
+ * every child inherits, so a native client can tell the job's live stdin
+ * from a redirection (`txiki.md`, `fdNode`).
  */
 export function wrapScript(script: string): string {
   return [
+    `[ -z "\${${JOB_PATH_PREFIX_VAR}-}" ] || export PATH="$${JOB_PATH_PREFIX_VAR}:$PATH"`,
     `trap 'printf %s "$PWD" > "$${JOB_CWD_FILE_VAR}"' EXIT`,
     `exec ${JOB_STDIN_FD}<&0`,
     script,
   ].join('\n')
-}
-
-/**
- * The root-command symlinks first in `PATH`, whatever `PATH` the device or the
- * backend named (`runner.md` § Jobs and the tee).
- */
-function withPathPrefix(
-  env: Record<string, string>,
-  prefix: string[]
-): Record<string, string> {
-  if (prefix.length === 0)
-    return env
-  const rest = (env.PATH ?? '').split(':').filter((entry) => entry !== ''
-    && !prefix.includes(entry))
-  return { ...env, PATH: [...prefix, ...rest].join(':') }
 }

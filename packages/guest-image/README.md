@@ -6,7 +6,7 @@ The two release artifacts a backend with managed hosts needs
 
 ```
 vmlinux       the guest kernel: Linux 6.1, Firecracker's microvm config plus ours (kernel/)
-rootfs.ext4   the shared read-only root: Ubuntu 24.04, the toolchain, the guest user, the runner and native client (rootfs/)
+rootfs.ext4   the shared read-only root: Ubuntu 26.04, the toolchain, uv, the guest user, the runner and native client (rootfs/)
 ```
 
 ```
