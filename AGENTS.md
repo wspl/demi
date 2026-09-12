@@ -7,6 +7,9 @@
 - Whenever you create a timer, listener, stream, or worker, check where it is stopped or released on success, failure, and cancellation. Share cleanup code when those paths need the same cleanup. If you ignore an error, make clear why it is safe to ignore.
 - Implement the intended final design. Do not add compatibility layers or legacy-data migration, cleanup, or normalization paths.
 - Validate external data at system boundaries using explicit schemas. Derive types from contracts; do not silently repair corrupt internal data.
+- Before changing a data boundary, identify its contract owner, parsing location, and error behavior using [Data Contracts](docs/data-contracts.md). Existing code and historical plans do not establish exceptions.
+- Keep runtime validation, derived types, and external schema declarations on one contract. Keep argv conversion at the CLI boundary; typed RPC inputs do not inherit it. Verify invalid inputs and serialized round trips as well as successful inputs.
+- Before adding a basic helper, compare existing shared functions and the installed library's actual semantics. Retained adapters must have a specific responsibility; renaming equivalent helpers does not remove duplication.
 - Prefer protocols, APIs, and file interfaces over external CLI processes.
 - Preserve unrelated work and keep changes within the task's scope.
 - Run checks appropriate to the change. Never run tests that call real models.

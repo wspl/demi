@@ -1,5 +1,9 @@
 # Agent Package Restructure & Boundary Schemas
 
+> Historical implementation record. Its scope exclusions and validation tiers are
+> not current rules. Use [Data Contracts](data-contracts.md) for boundary behavior
+> and [Package Boundaries](package-boundaries.md) for the current module layout.
+
 | | |
 |---|---|
 | Date | 2026-09-01 |

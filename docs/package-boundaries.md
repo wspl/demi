@@ -8,6 +8,9 @@ is the required final package set, not a claim that all workspace manifests have
 already been brought into agreement. Implementation checkpoints must reconcile
 source, manifests and boundary checks with this contract.
 
+Data ingress, schema ownership, decoding and validation follow
+[Data Contracts](data-contracts.md).
+
 ## Dependency Direction
 
 Package direction is a core architecture invariant. Lower-level packages must not know higher-level products, adapters, UI shells, concrete providers, or local machine implementations.
