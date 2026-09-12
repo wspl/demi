@@ -257,7 +257,7 @@ API providers accept `models` as a complete manual list. Each entry supplies
 `thinkingEfforts`, nullable `acceptedExtensions` (without dots) and nullable
 `fastTier`. IDs must be unique and output limits cannot exceed context length.
 `models: null` on PATCH explicitly returns to the live catalog; refreshing never
-clears saved models. Subscription catalogs are currently provider-owned.
+clears saved models. Provider adapters supply subscription catalogs; the backend caches their validated model metadata in memory and SQLite with a 15-minute TTL (`../model-catalog-cache.md`).
 
 The LLM assembly supplies these parameters to API provider factories and maps
 manual metadata onto agent model selections at open/model-switch. The session
@@ -265,8 +265,10 @@ provider resolves the current configured output limit again at every inference
 boundary, including after a settings edit. Browser thinking and tier choices
 remain explicit; changing a catalog does not resend a failed message.
 
-`GET /api/models?refresh=true` forwards a forced refresh to the vendor/provider
-catalog. Each provider returns `sourceFetchedAt`, `stale` and `warnings`; one
+`GET /api/models` is an account-wide catalog, independent of conversation id.
+Fresh entries use the shared cache; expired entries return immediately while
+one background request refreshes them. `GET /api/models?refresh=true` waits for
+a shared forced refresh. Each provider returns `sourceFetchedAt`, `stale` and `warnings`; one
 catalog failure does not erase other providers or saved models. Static or never
 fetched catalog timestamps use the framework's epoch sentinel.
 

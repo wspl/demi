@@ -1,3 +1,4 @@
+import { ModelCatalogCache } from './llm/model-catalog-cache'
 import { join } from 'node:path'
 import {
   AgentServer,
@@ -234,7 +235,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const assembly = new ProviderAssembly(vault, {
     ...builtinProviderTypes(),
     ...options.providerTypes
-  }, vaultRoot, vendors)
+  }, vaultRoot, vendors, new ModelCatalogCache(control))
   const providerOperations = new ProviderOperations()
   const logins = new SubscriptionLoginFlows(
     vault,
@@ -463,6 +464,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       await runnerRegistry.close()
       server.stop(true)
       conversationStores.close()
+      await assembly.close()
       controlDb.close()
     },
   }

@@ -130,9 +130,6 @@ export function createApp(options: {
     settingsRoutes({ mode: options.mode, control: options.control })
   )
   app.route('/api/models', modelRoutes({
-    control: options.control,
-    registry: options.runnerRegistry,
-    cloudConfigured: options.managedHosts !== null,
     assembly: options.assembly,
     mode: options.mode
   }))

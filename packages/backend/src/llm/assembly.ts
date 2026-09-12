@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import { ModelCatalogCache } from './model-catalog-cache'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
@@ -180,6 +182,7 @@ export class ProviderAssembly {
     /** Per-entry credential-pool root: `<vaultRoot>/<providerId>/`. */
     private readonly vaultRoot: string,
     private readonly vendors: VendorCatalog,
+    private readonly catalogs: ModelCatalogCache,
   ) {}
 
   /** The registered families of one credential kind. */
@@ -218,7 +221,7 @@ export class ProviderAssembly {
 
   /** Removes a deleted provider's credential-pool directory. */
   async deleteProviderState(providerId: string): Promise<void> {
-    this.invalidate(providerId)
+    await this.invalidate(providerId)
     await rm(this.vaultDir(providerId), { recursive: true, force: true })
   }
 
@@ -270,8 +273,13 @@ export class ProviderAssembly {
     })
   }
 
-  invalidate(providerId: string): void {
+  async invalidate(providerId: string): Promise<void> {
     this.cache.delete(providerId)
+    await this.catalogs.invalidate(providerId)
+  }
+
+  async close(): Promise<void> {
+    await this.catalogs.close()
   }
 
   /**
@@ -354,9 +362,8 @@ export class ProviderAssembly {
   }
 
   /**
-   * The aggregated model catalog, grouped by entry. Lists come live: the
-   * manual metadata of a custom endpoint, the models.dev vendor an entry
-   * names, or the runtime's own catalog.
+   * The aggregated catalog, grouped by entry: configured model metadata or
+   * cached vendor/provider metadata, combined with current provider health.
    */
   async catalog(
     ownerUserId: string | null,
@@ -421,28 +428,36 @@ export class ProviderAssembly {
     provider: Provider | null,
     refresh = false
   ) {
-    const models = entry.config.kind === 'api_key'
-      ? entry.config.models
-      : undefined
-    try {
-      const list = entry.config.kind === 'api_key' && entry.config.vendorId
-        ? await this.vendors.models(entry.config.vendorId, entry.id, refresh)
-        : provider?.listModels
-          ? withProviderId(await provider.listModels({ refresh }), entry.id)
-          : null
+    if (entry.config.kind === 'api_key' && entry.config.models) {
       return {
-        models: models
-          ? models.map(model => configuredCatalogModel(entry.id, model))
-          : list?.models ??
-            [],
-        sourceFetchedAt: list?.sourceFetchedAt ?? '1970-01-01T00:00:00.000Z',
-        stale: list?.stale ?? false,
-        warnings: list?.warnings ?? [],
+        models: entry.config.models.map(model => configuredCatalogModel(entry.id, model)),
+        sourceFetchedAt: '1970-01-01T00:00:00.000Z',
+        stale: false,
+        warnings: [],
       }
+    }
+    try {
+      const account = await provider?.credentials?.getActive()
+      const key = createHash('sha256').update(JSON.stringify({
+        config: entry.config,
+        account: account?.credentialId ?? null,
+      })).digest('hex')
+      return await this.catalogs.get(entry.id, key, async signal => {
+        const raw = entry.config.kind === 'api_key' && entry.config.vendorId
+          ? await this.vendors.models(entry.config.vendorId, entry.id, true, signal)
+          : await provider?.listModels?.({ refresh: true, signal })
+        signal.throwIfAborted()
+        const list = raw ? withProviderId(raw, entry.id) : null
+        return {
+          models: list?.models ?? [],
+          sourceFetchedAt: list?.sourceFetchedAt ?? '1970-01-01T00:00:00.000Z',
+          stale: list?.stale ?? false,
+          warnings: list?.warnings ?? [],
+        }
+      }, refresh)
     } catch (error) {
       return {
-        models: models?.map(model => configuredCatalogModel(entry.id, model)) ??
-          [],
+        models: [],
         sourceFetchedAt: '1970-01-01T00:00:00.000Z',
         stale: true,
         warnings: [errorMessage(error)],

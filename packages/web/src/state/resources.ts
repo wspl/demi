@@ -1,3 +1,4 @@
+import { providerCanRun } from '@demicodes/web-ui/agent/model-availability'
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
@@ -109,20 +110,33 @@ export const useResources = defineStore('resources', () => {
     ),
   )
   function providerInfosFor(conversationId: string | null) {
-    const catalog = product.catalogFor(conversationId)
-    return (product.snapshot?.providers ?? []).map((provider) => ({
-      id: provider.id,
-      label: provider.label,
-      isAvailable:
-        !local.value.hiddenProviders.includes(provider.id) &&
-        catalog.find((entry) => entry.providerId === provider.id)
-          ?.availability.available === true,
-    }))
+    const catalog = product.catalog
+    const snapshot = product.snapshot
+    const target = snapshot?.conversations.find(item => item.id === conversationId)?.target
+    const deviceId = target?.kind === 'workspace'
+      ? snapshot?.workspaces.find(item => item.id === target.workspaceId)?.deviceId
+      : target?.kind === 'device' ? target.deviceId : null
+    const device = snapshot?.devices.find(item => item.id === deviceId)
+    const execution = !target || target.kind === 'cloud' || device?.kind === 'managed'
+      ? snapshot?.cloud !== null && snapshot?.cloud !== undefined
+      : device?.online === true
+    return (snapshot?.providers ?? []).map(provider => {
+      const entry = catalog.find(item => item.providerId === provider.id)
+      return {
+        id: provider.id,
+        label: provider.label,
+        isAvailable: !local.value.hiddenProviders.includes(provider.id) && providerCanRun(
+          entry?.availability.available === true,
+          entry?.requiresProcessCapableHost ?? false,
+          execution,
+        ),
+      }
+    })
   }
 
-  function modelsFor(conversationId: string | null) {
+  function modelsFor() {
     return Object.fromEntries(
-      product.catalogFor(conversationId).map((provider) => [
+      product.catalog.map((provider) => [
         provider.providerId,
         provider.models
           .filter(
@@ -135,7 +149,7 @@ export const useResources = defineStore('resources', () => {
   }
 
   const providerInfos = computed(() => providerInfosFor(product.activeConversationId))
-  const models = computed(() => modelsFor(product.activeConversationId))
+  const models = computed(() => modelsFor())
   const vendors = computed(() =>
     (product.vendors?.vendors ?? []).map((vendor) => ({
       id: vendor.id,
