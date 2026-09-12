@@ -6,6 +6,24 @@ This document defines agent-to-agent delivery, automatic completion receipts,
 and their transcript presentation. `subagent.md` owns the rest of the child
 lifecycle. Human input and human steering keep their existing contracts.
 
+## Delivery behavior and transcript type
+
+Steering is the delivery behavior: inject input into an active turn through the
+existing provider steer or safe-continuation path. An `agent_message` block is
+the transcript representation: record input from another agent with its source
+and event details. These are independent dimensions.
+
+`AgentSession` reuses its internal steering and hidden-wakeup paths for agent
+messages. It extends their input records with the structured agent source and
+materializes them as `agent_message` blocks. Human steering continues to
+materialize as `steer` blocks. No parallel inbox, scheduler, or provider delivery
+loop is introduced for agent messages.
+
+For example, a child finishing while its parent executes a tool supplies an
+internal steer. After the tool completes, the existing continuation path
+incorporates that receipt and appends one `agent_message` block. The parent
+continues the same turn; the UI renders a Bot receipt row from that block.
+
 ## Message identity
 
 An agent message is structured input from another agent, not a human message
@@ -45,16 +63,23 @@ blockers, not a duplicate of the final completion result.
 
 ## Delivery and scheduling
 
-`AgentSession` owns a durable internal inbox, separate from the human message
-queue and human pending steers. One admission path handles both explicit agent
-messages and completion receipts.
+`AgentSession` admits explicit agent messages and completion receipts through
+one internal-input entry point. While running, it uses the existing steering
+path, including pending steers and their materialization at safe boundaries.
+While idle, it uses the existing hidden-wakeup action path. The input record
+carries the agent-message variant through either path; internal inputs are
+excluded from the human queue and pending-steer UI snapshots.
+
+The existing pending-input checkpoint contract must preserve accepted internal
+inputs and their source fields. Extending that contract supplies durability;
+it does not introduce a separately managed agent inbox.
 
 | Recipient state | Delivery |
 |---|---|
 | Running with a supported live provider steer | Deliver through that provider's steer capability. |
 | Sampling or executing tools without live steering | Consume messages at the next safe continuation boundary, before requesting more model output. |
 | Compacting | Preserve messages outside the compacted prefix and consume them before post-compaction inference. |
-| Finalizing | Preserve accepted messages; recheck the inbox before committing idle or closing the child. |
+| Finalizing | Preserve accepted messages; recheck pending internal input before committing idle or closing the child. |
 | Naturally idle | Consume the available batch and open one internal continuation, without a human user bubble. |
 | User-aborted | Retain unread messages without automatically resuming the aborted work; explicit user continuation can consume them. |
 | Archived | Reject explicit sends; a completion receipt remains durable at its owning supervisor until delivery is possible. |
@@ -63,13 +88,16 @@ Messages do not cancel an executing tool or restart the current turn. A safe
 boundary can be later than the arrival time; the UI must not claim that the
 model has read a receipt merely because the runtime accepted it.
 
-At a boundary the session consumes all available messages in admission order
-before the next inference request. Distinct messages retain distinct ids and
-content; batching schedules one continuation rather than one turn per message.
-Messages arriving after that boundary belong to the following opportunity.
+At a boundary the existing steer materialization consumes pending messages in
+admission order before the next inference request. Distinct messages retain
+distinct ids and content. Pending internal wakeups use the existing action
+worker and incorporate available agent inputs together, rather than creating
+one human send turn per message. Messages arriving after that boundary belong
+to the following opportunity.
+
 The session serializes admission with finalization so a finishing/idle race
-cannot silently lose a message. An inbox with accepted messages prevents a
-live child from being closed before those messages are handled.
+cannot silently lose a message. Accepted pending internal input participates in
+the existing quiescence check and prevents premature child closure.
 
 The receiving agent treats receipts as context for its active task. It does
 not owe a separate user-facing acknowledgement for every message. If nothing
@@ -78,17 +106,19 @@ delivery; it does not poll or schedule short timed wakeups.
 
 ## Durable ownership and replay
 
-The inbox and the transcript have distinct jobs: the inbox holds accepted,
-unconsumed messages; the transcript records messages incorporated into context.
-A message moves from the inbox into an `agent_message` block in one target
-checkpoint. There is no second mutable "delivered" flag on that block.
+Existing pending steers and hidden-wakeup actions hold accepted inputs until
+the session incorporates them into context. The corresponding target checkpoint
+materializes an `agent_message` block and consumes the pending input atomically.
+The source fields survive both live provider steering and subsequent-request
+steering. There is no second mutable "delivered" flag on the block and no
+additional message-store lifecycle.
 
 A completion is acknowledged by its source round only when the target has
-durably accepted responsibility, in the same transaction as saving the inbox
-entry or its materialized transcript block. Restore retries unacknowledged
-rounds with their original ids. Admission deduplicates against the inbox and
-materialized message ids. Replaying a committed message neither creates a
-second receipt nor schedules a second wakeup.
+durably accepted responsibility, in the same transaction as saving the pending
+internal input or its materialized transcript block. Restore retries
+unacknowledged rounds with their original ids. Admission deduplicates against
+pending input ids and materialized `agent_message` ids. Replaying a committed
+message neither creates a second receipt nor schedules a second wakeup.
 
 `AgentTreeStore` owns this contract; backend storage implements the transaction.
 A resolved provider steer alone is not a durable acknowledgement. Provider
@@ -149,3 +179,6 @@ Use scripted providers and isolated storage/runner fixtures, never real models.
    long content, repeated descriptions with distinct sender ids, and reconnect.
 8. Genuine human sends and steers retain their behavior, metadata, queue controls,
    and cancellation semantics.
+9. Agent inputs traverse the existing internal-steer and hidden-wakeup paths,
+   producing `agent_message` blocks; human steers produce `steer` blocks. There
+   is no agent-specific scheduler or duplicate receipt record.
