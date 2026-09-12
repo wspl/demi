@@ -4,7 +4,8 @@ import { World } from './world'
 import { model, type Target } from './driver'
 
 // S8 — an image attached to a user message: the model receives the bytes
-// inline, the transcript stores a reference, the blob route serves it, and
+// inline and the attachment record naming the file on the host, the
+// transcript stores the image by reference, the blob route serves it, and
 // the cold transcript carries the same reference (the teardown equality).
 
 let world: World
@@ -48,38 +49,41 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
           sha256: string
         } }
 
-      let seen: Extract<UserContentBlock, { type: 'image' }> | undefined
+      let seen: UserContentBlock[] = []
       const turn = await driver.turn({
         content: [
           { type: 'text', text: 'describe this' },
-          {
-            type: 'image',
-            source: { type: 'ref', ref: attachment.id }
-          } as never
+          { type: 'upload', ref: attachment.id, fileName: 'tiny.png' }
         ],
         model: [
           (request) => {
             const message = request.items.find(
               (item) => item.type === 'user_message'
             )
-            seen = message?.type === 'user_message' ? message.content.find(
-              (block): block is Extract<UserContentBlock, { type: 'image' }> => block.type === 'image'
-            ) : undefined
+            seen = message?.type === 'user_message' ? message.content : []
             return model.say('a tiny png')
           },
         ],
       })
-      expect(seen?.source.type).toBe('binary')
-      if (seen?.source.type !== 'binary')
+      expect(seen.map((block) => block.type)).toEqual(['text', 'image', 'attachment'])
+      const image = seen.find(
+        (block): block is Extract<UserContentBlock, { type: 'image' }> => block.type === 'image'
+      )
+      if (image?.source.type !== 'binary')
         throw new Error('expected inline bytes at the model')
-      expect(seen.source.data).toEqual(PNG_BYTES)
-      expect(seen.source.mediaType).toBe('image/png')
+      expect(image.source.data).toEqual(PNG_BYTES)
+      expect(image.source.mediaType).toBe('image/png')
+      const record = seen.find(
+        (block): block is Extract<UserContentBlock, { type: 'attachment' }> => block.type === 'attachment'
+      )
+      expect(record?.name).toBe('tiny.png')
+      expect(record?.sha256).toBe(attachment.sha256)
 
       const user = turn.blocks.find((block) => block.type === 'user')
-      const image = user?.type === 'user'
+      const stored = user?.type === 'user'
         ? user.content.find((block) => block.type === 'image')
         : undefined
-      expect(image && 'source' in image ? image.source : null).toEqual({
+      expect(stored && 'source' in stored ? stored.source : null).toEqual({
         type: 'ref',
         ref: attachment.sha256,
         mediaType: 'image/png'

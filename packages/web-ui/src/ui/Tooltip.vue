@@ -16,6 +16,19 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayFamilyKey } from '../overlay/overlayFamily'
 import { useOverlay } from '../composables/useOverlay'
 
+/**
+ * Tooltip copy, one style everywhere:
+ * - An action: the verb alone, sentence case, no article, no period. The
+ *   object is left out when the control sits on the thing it acts on (a row's
+ *   Archive, a message's Copy, a model's Edit), and named only when the control
+ *   is away from it or would be ambiguous (Add project, New folder, Stop all
+ *   agents). A toggle names the action it will take, not the state (Unpin,
+ *   Hide hidden files).
+ * - The control's aria-label is the same text; when the tooltip follows state
+ *   (Copied), the label follows with it.
+ * - A reason (why a control is disabled or unavailable) is a full sentence and
+ *   may be long: "Fork is available after this message completes."
+ */
 defineOptions({
   inheritAttrs: false,
 })

@@ -1,20 +1,33 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
 import { COMPOSER_CLEARANCE_PX } from '@demicodes/web-ui/agent/composer-clearance'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import { isNearBottom } from '@demicodes/web-ui/composables/scroll-bottom'
+import type { MessageListBlock } from './pending-steers'
+import { useFollowSentMessages } from './useFollowSentMessages'
 
-withDefaults(
+/**
+ * A plain transcript scroller for a rendered list of blocks: the gallery's
+ * stand-in for the virtualized `AgentMessageList`, following the same rules.
+ * Growth is followed while the reader is at the bottom; a message they sent
+ * (in `blocks`) is followed from anywhere.
+ */
+const props = withDefaults(
   defineProps<{
     label?: string
     fill?: boolean
+    /** The rendered blocks, so a send by the reader can be told from other growth. */
+    blocks?: readonly MessageListBlock[]
   }>(),
   {
     fill: false,
+    blocks: () => [],
   },
 )
 
 const scrollRef = ref<HTMLDivElement>()
+const contentRef = ref<HTMLDivElement>()
 const surfaceRef = ref<{ dockHeight: number }>()
 const isAtBottom = ref(true)
 
@@ -42,6 +55,15 @@ watch(
     nextTick(updateAtBottom)
   },
 )
+
+// Streamed text, a new block, an activity row: a reader at the bottom stays there.
+useResizeObserver(contentRef, () => {
+  if (isAtBottom.value) {
+    scrollToEnd()
+  }
+})
+
+useFollowSentMessages(() => props.blocks, scrollToEnd)
 
 defineExpose({
   scrollToEnd,
@@ -71,7 +93,9 @@ defineExpose({
           }"
           @scroll="updateAtBottom"
         >
-          <slot />
+          <div ref="contentRef">
+            <slot />
+          </div>
         </div>
         <template #dock>
           <slot

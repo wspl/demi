@@ -34,6 +34,7 @@ async function fixture(
   const scoped = conversationScopedTransport(pair.server, conversation, {
     control: wrap(control),
     blobs,
+    writeAttachment: async (fileName) => `/work/.demi/attachments/${fileName}`,
     providerAllowed: async (providerId) => providerId !== 'someone-elses',
   })
   const received: ClientFrame[] = []
@@ -200,27 +201,38 @@ test(
 test(
   'attachment references are validated and resolved for sends and steers',
   async () => {
-    const bytes = new Uint8Array([1, 2, 3])
+    // A real PNG signature: the resolver inlines what the model reads natively.
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])
     const blobs: BlobStore = { put: async () => 'blob', get: async () => bytes }
     const f = await fixture(blobs)
     const attachment = await f.control.createAttachment({
       userId: f.user.id,
       sha256: 'blob',
       mediaType: 'image/png',
-      sizeBytes: 3
+      sizeBytes: bytes.length
     })
     const content = [{
-        type: 'image',
-        source: { type: 'ref', ref: attachment.id }
+        type: 'upload',
+        ref: attachment.id,
+        fileName: 'shot.png'
       }]
     f.client.send({ type: 'send', messageId: 'one', content } as never)
     f.client.send({ type: 'steer', steerId: 'two', content } as never)
     await waitFor(() => f.received.length === 2)
     for (const frame of f.received)
-      expect(frame).toMatchObject({ content: [{
-            type: 'image',
-            source: { type: 'binary', data: bytes }
-          }] })
+      expect(frame).toMatchObject({
+        content: [
+          { type: 'image', source: { type: 'binary', data: bytes } },
+          {
+            type: 'attachment',
+            name: 'shot.png',
+            path: '/work/.demi/attachments/shot.png',
+            mediaType: 'image/png',
+            sizeBytes: bytes.length,
+            sha256: 'blob',
+          },
+        ],
+      })
     expect(f.replies).toEqual([])
   }
 )

@@ -22,7 +22,6 @@ function fixture() {
     state: () => state.value,
     update: (value) => { state.value = value },
     root: ref<HTMLElement>(),
-    acceptedExtensions: () => ['pdf'],
   }))!
   return { state, editor, close: () => scope.stop() }
 }

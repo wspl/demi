@@ -136,13 +136,11 @@ test(
     const fileHash = new Bun.CryptoHasher('sha256').update(privateFile)
       .digest('hex')
     await must(
-      await alice.fetch(
-        `/api/conversations/${conversation.id}/workspace-files?name=private.txt`,
-        {
-          method: 'POST',
-          body: privateFile,
-        }
-      ),
+      await alice.fetch('/api/attachments', {
+        method: 'POST',
+        body: privateFile,
+        headers: { 'content-type': 'text/plain' }
+      }),
       201
     )
     expect(
@@ -174,11 +172,6 @@ test(
         { name: 'taken' }
       ],
       ['DELETE', `/api/conversations/${conversation.id}/hosts/${device.id}`],
-      [
-        'POST',
-        `/api/conversations/${conversation.id}/workspace-files?name=x.txt`,
-        'bytes'
-      ],
       [
         'PATCH',
         `/api/conversations/${bobs.id}`,
@@ -249,8 +242,11 @@ test(
       )
     )
       .toEqual(PNG_BYTES)
+    // Her own upload of the private file is hers to read; Bob's 404 for the
+    // same hash is in the matrix above.
     const ownFile = await alice.fetch(`/api/blobs/${fileHash}`)
-    expect(ownFile.status).toBe(404) // Machine files are not stored as transcript blobs.
+    expect(ownFile.status).toBe(200)
+    expect(new Uint8Array(await ownFile.arrayBuffer())).toEqual(privateFile)
     // Identical content is available to Bob only after he stores his own copy.
     const { attachment: bobsAttachment } = await must<{ attachment: { sha256: string } }>(
       await bob.fetch('/api/attachments', {

@@ -33,6 +33,15 @@ export const displayedUserContentSchema = z.discriminatedUnion('type', [
     reference: z.string(),
   }),
   z.object({
+    type: z.literal('attachment'),
+    name: z.string(),
+    path: z.string(),
+    mediaType: z.string(),
+    sizeBytes: z.number(),
+    sha256: z.string(),
+    snippet: z.string().optional(),
+  }),
+  z.object({
     type: z.literal('image'),
     source: z.union([refSource, urlSource, binarySource]),
   }),
@@ -417,12 +426,9 @@ const outgoingReferenceSchema = z.discriminatedUnion('type', [
     path: z.string(),
   }),
   z.object({
-    type: z.enum(['image', 'video', 'document']),
-    source: z.object({
-      type: z.literal('ref'),
-      ref: z.string(),
-      fileName: z.string().optional(),
-    }),
+    type: z.literal('upload'),
+    ref: z.string(),
+    fileName: z.string(),
   }),
 ])
 export type OutgoingReference = z.infer<typeof outgoingReferenceSchema>

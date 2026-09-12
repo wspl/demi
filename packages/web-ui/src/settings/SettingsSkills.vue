@@ -158,23 +158,23 @@ const empty = computed(() => props.sources.length === 0)
                 @update:model-value="(on) => setAll(source, on)"
               />
             </template>
-            <Tooltip content="Update from git">
+            <Tooltip content="Update">
               <IconButton
                 size="sm"
                 :icon="RefreshCw"
                 spin-on-click
                 :spinning="source.state === 'updating'"
                 :disabled="source.state === 'updating'"
-                aria-label="Update from git"
+                aria-label="Update"
                 @click="emit('update', source)"
               />
             </Tooltip>
-            <Tooltip content="Remove source">
+            <Tooltip content="Remove">
               <IconButton
                 size="sm"
                 :icon="Trash2"
                 variant="danger"
-                aria-label="Remove source"
+                aria-label="Remove"
                 @click="emit('remove', source)"
               />
             </Tooltip>

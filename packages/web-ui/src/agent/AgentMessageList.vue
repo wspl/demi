@@ -24,6 +24,7 @@ import { t } from '../infra/i18n'
 import MessageEditRegion from './MessageEditRegion.vue'
 import { lastEditableUserMessageId, messageEditSuffixIds } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
+import { useFollowSentMessages } from './useFollowSentMessages'
 
 const props = defineProps<{
   conversationId: string
@@ -161,6 +162,8 @@ onBeforeUnmount(() => {
 })
 
 const { isScrolling } = useScroll(scrollContainer, { idle: 1500 })
+
+useFollowSentMessages(() => renderBlocks.value, scrollToBottom)
 
 // Composer or task-control growth covers the tail; a reader at the bottom stays there.
 // bottomOffset includes the permanent control row, even when its scroll button is hidden.

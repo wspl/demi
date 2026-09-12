@@ -119,16 +119,8 @@ const {
 })
 
 async function addFiles(files: File[]): Promise<void> {
-  const { accepted, rejected } = partitionAcceptedFiles(files, acceptedExtensions.value)
-  if (rejected.length > 0) {
-    showToast({
-      title: t('agent.input.unsupportedFiles'),
-      message: rejected.map((file) => file.name).join(', '),
-      tone: 'danger',
-    })
-  }
-  for (const file of accepted) {
-    const item = composerAttachmentFromFile(file, acceptedExtensions.value)
+  for (const file of files) {
+    const item = composerAttachmentFromFile(file)
     const held: HeldAttachment = { item, file }
     attachments.value = [...attachments.value, held]
     readAttachment(held)
@@ -156,7 +148,7 @@ function handlePasteAttachments(clipboardData: DataTransfer, _text: string): boo
   if (files.length === 0)
     return false
   void addFiles(files)
-  return partitionAcceptedFiles(files, acceptedExtensions.value).accepted.length > 0
+  return true
 }
 
 const { editor, isFocused, hasContent } = useAgentInputEditor({

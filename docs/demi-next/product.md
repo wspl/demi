@@ -76,22 +76,53 @@ API; cold history rides the same rendering path.
 
 ## Attachments
 
-- **Message attachments** (model-visible media; the picker filters by the
-  selected model's `acceptedExtensions`): uploaded via **HTTP POST →
-  attachment id**; bytes go to the blob store, metadata to the
-  `attachments` table; the `send` frame carries a reference block; the
-  conversation module resolves references into inline bytes before handing
-  the message to the AgentSession. In the other direction the transcript
-  carries `source.ref` and the page fetches `GET /api/blobs/:sha256`
-  (`backend.md`). Never inline bulk bytes into the frame socket: WS messages
-  serialize, so a multi-MB message would block steer/abort/ping. Size cap
-  hardcoded. Arbitrary-file message attachments are a later item.
-- **Workspace files** (files the agent should work on; anything non-media
-  dropped into the chat routes here): written into the execution target's
-  working directory via the backend (browser → HTTP upload → Host RPC
-  write), the path inserted into the input as a text reference. A Cloud drop
-  obtains or wakes the user's machine before writing; it never creates a
-  working-files tree in the conversation database.
+Text the reader gives the model arrives in exactly one of two forms, never
+both:
+
+- **Typed text** is the user message itself. A paste under the paste
+  threshold stays in the composer as text and is sent as the message's
+  `text` block, with nothing wrapped around it. The threshold is one
+  constant (`PASTE_AS_FILE_MIN_CHARS`, with a line count for many short
+  lines); it is the only knob.
+- **A file** is on the host and the message only refers to it. A paste at
+  or over the threshold becomes `pasted-text.txt`; a dropped, chosen or
+  pasted file is a file. On send, the backend writes the uploaded bytes to
+  the conversation's host through the Host RPC write, under the host user's
+  home at `~/.demi/attachments/<conversation id>/` with the file's own name
+  (a name already there gets a numeric suffix). Nothing of Demi's lands in a
+  working directory: the workspace is the reader's, and a path a transcript
+  names must stay readable later, which the system temp directory does not
+  promise. The message then carries one `attachment` content block per file,
+  the single record of it: name, host path, media type, size, blob hash and,
+  for a text file, its opening lines. Every provider adapter renders that
+  block as one self-closing tag,
+  `<attachment name="…" type="…" size="…" path="…"/>`, so the model knows a
+  file came with the message and where to read it; the file's content never
+  rides in the message. The user message carries a
+  `reference` block naming that path and nothing of the file's content: the
+  model opens, greps, converts or runs the file with its tools. A draft
+  without a host keeps the file staged and writes it when the host binds on
+  the first send; a Cloud target obtains or wakes the machine first.
+
+Media the model reads natively is the one addition to a file: an image or
+video, and a PDF on a provider with native document input (Anthropic API,
+OpenAI Responses, Codex, Google, Claude Code), also rides in the message as
+its media block beside the path reference, because tools cannot show the
+model a picture. The selected model's `acceptedExtensions` names those
+types; every other file is path only. A provider adapter never degrades a
+supported media type to a placeholder.
+
+The page draws one tile per `attachment` block, the same tile the composer
+showed; a native media file's media block sits right before its attachment
+block and is that tile. Uploads go once: **HTTP POST → attachment id**, bytes into the blob store, metadata
+into the `attachments` table (`backend.md`). The `send` frame carries the
+attachment id in an `upload` block; the conversation module resolves it
+into the host write, the `attachment` block and, for native media, the
+inline block before handing the message to the AgentSession. In the other
+direction the transcript carries `source.ref` and the page fetches
+`GET /api/blobs/:sha256`. Never inline bulk bytes into the frame socket: WS
+messages serialize, so a multi-MB message would block steer/abort/ping.
+Size cap hardcoded (25 MB).
 
 ## Provider management
 

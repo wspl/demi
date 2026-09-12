@@ -332,6 +332,8 @@ export class World {
       throw new Error(
         `${method} ${path}: HTTP ${response.status} ${await response.text()}`
       )
+    if (response.status === 204)
+      return undefined as T
     return (await response.json()) as T
   }
 

@@ -164,6 +164,8 @@ const tabStyle = computed(() => {
         :class="isActive ? 'bg-surface' : 'bg-surface-base group-hover:bg-surface'"
       />
       <span
+        role="button"
+        aria-label="Close"
         class="pointer-events-auto relative z-10 flex size-5 shrink-0 items-center justify-center rounded text-fg-faint transition-colors hover:bg-hover hover:text-fg-body"
         @pointerdown.stop
         @click.stop="emit('close')"

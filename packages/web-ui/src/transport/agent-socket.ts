@@ -12,6 +12,17 @@ export function agentSocketUrl(baseUrl: string, cwd: string): string {
   return url.toString()
 }
 
+/**
+ * The connection itself could not be made or was lost before it opened: a
+ * transport failure, not the session's. The runtime retries these on its own.
+ */
+export class AgentSocketError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AgentSocketError'
+  }
+}
+
 export interface AgentSocketOptions {
   signal?: AbortSignal
   /** Product wire extensions are translated before serialization. */
@@ -44,11 +55,11 @@ export function connectAgentClient(
       if (client) {
         client.disconnect()
       } else {
-        reject(new Error('Agent socket closed before opening'))
+        reject(new AgentSocketError('Agent socket closed before opening'))
       }
     }
     const failed = () => {
-      const error = new Error('Agent socket failed to connect')
+      const error = new AgentSocketError('Agent socket failed to connect')
       if (client) {
         client.disconnect(error)
       } else {

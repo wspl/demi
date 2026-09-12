@@ -9,6 +9,8 @@ import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
+import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
+import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { demoAccount, demoConversations, demoProjects } from '../sidebar/sidebar-data'
 
 const projects = ref(demoProjects())
@@ -16,6 +18,7 @@ const conversations = ref(demoConversations())
 const opened = ref<string | null>(null)
 const activeId = ref<string | null>('c-login')
 const collapsedProjects = ref<string[]>(['p-dotfiles'])
+const sidebarWidth = ref<number>(SIDEBAR_WIDTH.default)
 const emptyList = ref<SidebarConversation[]>([])
 let nextId = 1
 
@@ -206,10 +209,12 @@ onBeforeUnmount(() => listRestore.stop())
 
     <GallerySection
       title="Expanded"
-      note="Default width. The sidebar sits on the base surface; the session next to it is raised."
+      note="The product frame: the sidebar on the base surface, the raised session beside it, and the divider between them. Drag the divider, use the arrows on it, or double-click it to return to the default."
     >
       <GallerySpecimen variant="expanded · live" wide>
         <div class="gallery-frame flex h-[40rem] w-full overflow-hidden">
+          <SidebarLayout v-model:width="sidebarWidth" class="w-full">
+          <template #sidebar>
           <AppSidebar
             v-model:collapsed-projects="collapsedProjects"
             :account="demoAccount"
@@ -228,11 +233,14 @@ onBeforeUnmount(() => listRestore.stop())
             @remove="dropMany"
             @open-settings="(section) => (opened = section ?? 'account')"
           />
+          </template>
           <div
-            class="flex min-w-0 flex-1 items-center justify-center bg-surface text-[13px] text-fg-faint"
+            class="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 bg-surface text-[13px] text-fg-faint"
           >
-            {{ activeTitle }}<span v-if="opened"> · settings → {{ opened }}</span>
+            <span>{{ activeTitle }}<span v-if="opened"> · settings → {{ opened }}</span></span>
+            <span class="font-mono text-[11px]">sidebar {{ sidebarWidth }}px · {{ SIDEBAR_WIDTH.min }}–{{ SIDEBAR_WIDTH.max }}</span>
           </div>
+          </SidebarLayout>
         </div>
       </GallerySpecimen>
     </GallerySection>

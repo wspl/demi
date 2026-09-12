@@ -15,23 +15,12 @@ const modelSchema = z.object({
   thinkingEffort: z.string().nullable(),
   serviceTierId: z.string().nullable(),
 })
-const uploadSchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('message'),
-    id: z.string(),
-    media: z.enum(['image', 'video', 'document']),
-  }),
-  z.object({
-    kind: z.literal('workspace'),
-    path: z.string(),
-    contextVersion: z.number(),
-  }),
-])
+/** The attachment id the backend returned for the upload. */
+const uploadSchema = z.object({ id: z.string() })
 const fileSchema = z.object({
   kind: z.literal('file'),
   id: z.string(),
   name: z.string(),
-  destination: z.enum(['message', 'workspace']),
   file: z.instanceof(File),
   upload: uploadSchema.nullable(),
 })
