@@ -6,25 +6,13 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import { FirecrackerProvisioner } from './firecracker/provisioner'
-import { firecrackerConfigFromEnv, MANAGED_ENV } from './firecracker/config'
+import { machinesStartupFromEnv } from './startup'
 import { serveMachines } from './server'
 
-export const MACHINES_ENV = {
-  socket: 'DEMI_MACHINES_SOCKET',
-  data: 'DEMI_MACHINES_DATA',
-} as const
-
 async function main(): Promise<void> {
-  const socketPath = process.env[MACHINES_ENV.socket]
-  if (!socketPath) {
-    throw new Error(`${MACHINES_ENV.socket} is required: the Unix socket the backend dials`)
-  }
-  const dataDir = process.env[MACHINES_ENV.data] ??
-    join(homedir(), '.demi', 'machines')
-  const config = firecrackerConfigFromEnv(process.env, dataDir)
-  if (!config) {
-    throw new Error(`${MANAGED_ENV.firecracker} is required: the Firecracker binary`)
-  }
+  const { socketPath, dataDir, config } = machinesStartupFromEnv(
+    process.env, join(homedir(), '.demi', 'machines'),
+  )
   const provisioner = new FirecrackerProvisioner(config)
   // A manager that restarted may find VMs from its last life; they are
   // stopped and their disks saved before any backend is served.

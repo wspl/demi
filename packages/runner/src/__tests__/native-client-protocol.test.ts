@@ -167,3 +167,32 @@ test(
     }
   }
 )
+
+test('native client rejects unknown responses, malformed exit and duplicate handshake', async () => {
+  for (const [frame, diagnostic] of [
+    [localFrame(255), 'unexpected response'],
+    [localFrame(LOCAL.frames.exit, new Uint8Array([1])), 'invalid exit status'],
+    [localFrame(LOCAL.frames.ready), 'duplicate ready'],
+  ] as const) {
+    const fixture = await peer(data => { data.write(frame) })
+    try {
+      expect(await fixture.child.exited).toBe(1)
+      expect(await new Response(fixture.child.stderr).text()).toContain(diagnostic)
+    } finally {
+      await fixture.close()
+    }
+  }
+})
+
+test('native client rejects a connection ending within a frame body', async () => {
+  const fixture = await peer(data => {
+    const frame = localFrame(LOCAL.frames.stdout, new Uint8Array([1, 2, 3]))
+    data.end(frame.slice(0, -1))
+  })
+  try {
+    expect(await fixture.child.exited).toBe(1)
+    expect(await new Response(fixture.child.stderr).text()).toContain('before exit')
+  } finally {
+    await fixture.close()
+  }
+})

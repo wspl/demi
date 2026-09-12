@@ -7,9 +7,9 @@ import { errorMessage, noop } from '@demicodes/utils'
 import type {
   IORequest,
   IOReplyValue,
-  RunnerMessage,
-  WorkerMessage
+  RunnerMessage
 } from './worker-messages'
+import { workerMessageSchema } from './worker-messages'
 
 declare const DEMI_COMMAND_WORKER_SOURCE: string
 
@@ -59,6 +59,8 @@ function executeInWorker(
       finished = true
 
       context.signal.removeEventListener('abort', abort)
+      worker.onmessage = null
+      worker.onerror = null
       worker.terminate()
       // Closing stdin must not delay cancellation or replace the command's result.
       void input.return?.().catch(noop)
@@ -78,8 +80,13 @@ function executeInWorker(
     }
 
     function send(message: RunnerMessage): void {
-      if (!finished)
+      if (finished)
+        return
+      try {
         worker.postMessage(message)
+      } catch (error) {
+        finish({ type: 'error', error })
+      }
     }
 
     function replyToRequest(request: IORequest): void {
@@ -103,21 +110,21 @@ function executeInWorker(
       finish({ type: 'error', error: new Error('command worker failed') })
     }
 
-    worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
-      const message = event.data
+    worker.onmessage = (event: MessageEvent<unknown>) => {
+      const parsed = workerMessageSchema.safeParse(event.data)
+      if (!parsed.success) {
+        const fields = parsed.error.issues.map(issue => issue.path.join('.')).join(', ')
+        finish({
+          type: 'error',
+          error: new Error(`invalid command worker message: ${fields || 'envelope'}`),
+        })
+        return
+      }
+      const message = parsed.data
       switch (message.type) {
-        case 'exit': {
-          const { exitCode } = message
-          if (!Number.isInteger(exitCode) || exitCode < 0 || exitCode > 255) {
-            finish({
-              type: 'error',
-              error: new Error('invalid command exit code')
-            })
-          } else {
-            finish({ type: 'exit', exitCode })
-          }
+        case 'exit':
+          finish({ type: 'exit', exitCode: message.exitCode })
           return
-        }
         case 'error':
           finish({ type: 'error', error: new Error(message.message) })
           return
@@ -148,10 +155,6 @@ async function performIO(
     }
     case 'output': {
       const { stream, bytes } = request
-      if (!(bytes instanceof Uint8Array)
-        || (stream !== 'stdout' && stream !== 'stderr')) {
-        throw new Error('invalid command worker request')
-      }
       await context[stream](bytes)
       return null
     }

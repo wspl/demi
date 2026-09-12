@@ -1,42 +1,71 @@
 // The Firecracker provisioner's configuration (`managed-hosts.md` §
 // Provisioning), from `DEMI_MANAGED_*` in production. None set ⇒ no
-// managed hosts.
+// managed hosts. Other managed settings require the binary to be set.
 import { join } from 'node:path'
 
-export type LaunchMode =
-/** The backend spawns `firecracker` itself, unprivileged. */
-| { mode: 'direct' }
-/** The privileged helper runs the jailer; one uid per slot from `uidBase`. */
-| {
-  mode: 'jailer';
-  jailer: string;
-  helper: string;
-  chrootBase: string;
-  uidBase: number;
-  gidBase: number
-}
+import { z } from 'zod'
 
-export interface FirecrackerConfig {
-  firecracker: string
-  launch: LaunchMode
-  kernel: string
-  rootfs: string
-  vcpus: number
-  memMib: number
-  /** Initial writable-volume sizes; existing volumes keep their capacity. */
-  systemMib: number
-  homeMib: number
-  subnet: string
-  slots: number
-  tapPrefix: string
-  dns: string[]
-  /**
-   * Working files per VM: the API socket, the console log, both working disks.
-   */
-  runDir: string
-  /** Immutable paired disk generations and pinned base images. */
-  imagesDir: string
-}
+const pathSchema = z.string().regex(/\S/, 'must not be blank')
+const positiveIntegerSchema = z.int().positive()
+const launchModeSchema = z.discriminatedUnion('mode', [
+  z.strictObject({ mode: z.literal('direct') }),
+  z.strictObject({
+    mode: z.literal('jailer'),
+    jailer: pathSchema,
+    helper: pathSchema,
+    chrootBase: pathSchema,
+    uidBase: positiveIntegerSchema.max(4294967294),
+    gidBase: positiveIntegerSchema.max(4294967294),
+  }),
+])
+const subnetSchema = z.cidrv4().refine((value) => {
+  const [address, prefix] = value.split('/')
+  const bits = Number(prefix)
+  const base = address!
+    .split('.')
+    .reduce((sum, part) => sum * 256 + Number(part), 0)
+  return bits <= 30 && base % 2 ** (32 - bits) === 0
+}, 'must be an aligned IPv4 network containing /30 slots')
+
+export const firecrackerConfigSchema = z
+  .strictObject({
+    firecracker: pathSchema,
+    launch: launchModeSchema,
+    kernel: pathSchema,
+    rootfs: pathSchema,
+    vcpus: positiveIntegerSchema.max(255),
+    memMib: positiveIntegerSchema,
+    systemMib: positiveIntegerSchema,
+    homeMib: positiveIntegerSchema,
+    subnet: subnetSchema,
+    slots: positiveIntegerSchema,
+    tapPrefix: pathSchema,
+    dns: z.array(z.ipv4()).min(1),
+    runDir: pathSchema,
+    imagesDir: pathSchema,
+  })
+  .superRefine((value, context) => {
+    const bits = Number(value.subnet.split('/')[1])
+    if (value.slots > 2 ** (30 - bits)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['slots'],
+        message: 'exceeds subnet capacity',
+      })
+    }
+    if (
+      value.launch.mode === 'jailer' &&
+      value.launch.uidBase + value.slots - 1 > 4294967294
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['launch', 'uidBase'],
+        message: 'slot identities exceed uid range',
+      })
+    }
+  })
+export type LaunchMode = z.infer<typeof launchModeSchema>
+export type FirecrackerConfig = z.infer<typeof firecrackerConfigSchema>
 
 export const MANAGED_ENV = {
   launch: 'DEMI_MANAGED_LAUNCH',
@@ -80,66 +109,83 @@ export function firecrackerConfigFromEnv(
   env: Record<string, string | undefined>,
   dataDir: string,
 ): FirecrackerConfig | null {
-  const firecracker = env[MANAGED_ENV.firecracker]
-  if (!firecracker) {
+  const read = <T>(name: keyof typeof MANAGED_ENV, schema: z.ZodType<T>): T => {
+    const result = schema.safeParse(env[MANAGED_ENV[name]])
+    if (!result.success) {
+      throw new Error(
+        `${MANAGED_ENV[name]}: ${result.error.issues.map((issue) => issue.message).join('; ')}`,
+      )
+    }
+    return result.data
+  }
+  if (env[MANAGED_ENV.firecracker] === undefined) {
+    if (Object.values(MANAGED_ENV).some((name) => env[name] !== undefined)) {
+      throw new Error(
+        `${MANAGED_ENV.firecracker} is required with managed configuration`,
+      )
+    }
     return null
   }
-  const required = (name: keyof typeof MANAGED_ENV): string => {
-    const value = env[MANAGED_ENV[name]]
-    if (!value) {
-      throw new Error(
-        `${MANAGED_ENV[name]} is required when ${MANAGED_ENV.firecracker} is set`
-      )
-    }
-    return value
-  }
-  const integer = (name: keyof typeof MANAGED_ENV, fallback: number): number => {
-    const value = env[MANAGED_ENV[name]]
-    if (value === undefined) {
-      return fallback
-    }
-    const parsed = Number(value)
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-      throw new Error(
-        `${MANAGED_ENV[name]} must be a positive integer, got ${value}`
-      )
-    }
-    return parsed
-  }
-  const mode = env[MANAGED_ENV.launch] ?? 'direct'
+  const integer = (name: keyof typeof MANAGED_ENV, fallback: number): number =>
+    read(
+      name,
+      z
+        .string()
+        .regex(/^[0-9]+$/)
+        .transform(Number)
+        .pipe(positiveIntegerSchema)
+        .optional(),
+    ) ?? fallback
+  const mode =
+    read(
+      'launch',
+      z
+        .enum(['direct', 'jailer'], {
+          error: 'must be direct or jailer',
+        })
+        .optional(),
+    ) ?? 'direct'
   let launch: LaunchMode
-  if (mode === 'direct') {
-    launch = { mode: 'direct' }
-  } else if (mode === 'jailer') {
+  if (mode === 'jailer') {
     const uidBase = integer('uidBase', DEFAULTS.uidBase)
     launch = {
-      mode: 'jailer',
-      jailer: required('jailer'),
-      helper: required('helper'),
-      chrootBase: env[MANAGED_ENV.chrootBase] ?? DEFAULTS.chrootBase,
+      mode,
+      jailer: read('jailer', pathSchema),
+      helper: read('helper', pathSchema),
+      chrootBase:
+        read('chrootBase', pathSchema.optional()) ?? DEFAULTS.chrootBase,
       uidBase,
       gidBase: uidBase,
     }
   } else {
-    throw new Error(
-      `${MANAGED_ENV.launch} must be direct or jailer, got ${mode}`
-    )
+    for (const name of ['jailer', 'helper', 'chrootBase', 'uidBase'] as const) {
+      if (env[MANAGED_ENV[name]] !== undefined) {
+        throw new Error(`${MANAGED_ENV[name]} requires jailer launch mode`)
+      }
+    }
+    launch = { mode }
   }
-  return {
-    firecracker,
+  return firecrackerConfigSchema.parse({
+    firecracker: read('firecracker', pathSchema),
     launch,
-    kernel: required('kernel'),
-    rootfs: required('rootfs'),
+    kernel: read('kernel', pathSchema),
+    rootfs: read('rootfs', pathSchema),
     vcpus: integer('vcpus', DEFAULTS.vcpus),
     memMib: integer('memMib', DEFAULTS.memMib),
     systemMib: integer('systemMib', DEFAULTS.systemMib),
     homeMib: integer('homeMib', DEFAULTS.homeMib),
-    subnet: env[MANAGED_ENV.subnet] ?? DEFAULTS.subnet,
+    subnet: read('subnet', subnetSchema.optional()) ?? DEFAULTS.subnet,
     slots: integer('slots', DEFAULTS.slots),
     tapPrefix: DEFAULTS.tapPrefix,
-    dns: (env[MANAGED_ENV.dns] ?? DEFAULTS.dns.join(',')).split(',')
-      .filter(entry => entry.length > 0),
+    dns: read(
+      'dns',
+      z
+        .string()
+        .transform((value) => value.split(','))
+        .pipe(z.array(z.ipv4()).min(1))
+        .optional(),
+    ) ?? [...DEFAULTS.dns],
     runDir: join(dataDir, 'firecracker'),
     imagesDir: join(dataDir, 'machines'),
-  }
+  })
 }

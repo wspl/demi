@@ -28,27 +28,17 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { packageManifestSchema, registryVersionsSchema, workspaceManifestSchema, type PackageManifest } from './release-contracts'
 
 const ROOT = resolve(import.meta.dir, '..')
 const REGISTRY = 'https://registry.npmjs.org'
 const dryRun = process.argv.includes('--dry-run')
 
-interface PackageManifest {
-  name: string
-  version: string
-  private?: boolean
-  exports?: unknown
-  dependencies?: Record<string, string>
-  devDependencies?: Record<string, string>
-  peerDependencies?: Record<string, string>
-  optionalDependencies?: Record<string, string>
-}
-
 function readManifest(path: string): PackageManifest {
-  return JSON.parse(readFileSync(path, 'utf8')) as PackageManifest
+  return packageManifestSchema.parse(JSON.parse(readFileSync(path, 'utf8')))
 }
 
-const rootManifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { workspaces: string[] }
+const rootManifest = workspaceManifestSchema.parse(JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')))
 const packages = rootManifest.workspaces
   .map((dir) => ({
     dir: join(ROOT, dir),
@@ -67,8 +57,8 @@ async function publishedVersions(name: string): Promise<Set<string>> {
     return new Set()
   if (!response.ok)
     throw new Error(`Registry lookup for ${name} failed: ${response.status}`)
-  const body = (await response.json()) as { versions?: Record<string, unknown> }
-  return new Set(Object.keys(body.versions ?? {}))
+  const body = registryVersionsSchema.parse(await response.json())
+  return new Set(Object.keys(body.versions))
 }
 
 /**
@@ -79,7 +69,9 @@ async function publishedVersions(name: string): Promise<Set<string>> {
  * condition by default) to files that do not exist in the published package.
  */
 function stripDevelopmentConditions(node: unknown): unknown {
-  if (typeof node !== 'object' || node === null || Array.isArray(node))
+  if (Array.isArray(node))
+    return node.map(stripDevelopmentConditions)
+  if (typeof node !== 'object' || node === null)
     return node
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(node)) {
@@ -190,9 +182,11 @@ for (const { dir, manifest } of packages) {
   // on-disk manifest is restored right after packing.
   const manifestPath = join(dir, 'package.json')
   const originalManifestText = readFileSync(manifestPath, 'utf8')
-  const publishManifest = JSON.parse(originalManifestText) as PackageManifest
+  const publishManifest = packageManifestSchema.parse(JSON.parse(originalManifestText))
   if (publishManifest.exports !== undefined)
-    publishManifest.exports = stripDevelopmentConditions(publishManifest.exports)
+    publishManifest.exports = packageManifestSchema.shape.exports.parse(
+      stripDevelopmentConditions(publishManifest.exports)
+    )
 
   const dest = await mkdtemp(join(tmpdir(), 'demi-release-'))
   writeFileSync(manifestPath, `${JSON.stringify(publishManifest, null, 2)}\n`)
@@ -205,9 +199,9 @@ for (const { dir, manifest } of packages) {
     dest,
     (await readdir(dest)).find((f) => f.endsWith('.tgz'))!
   )
-  const packed = JSON.parse(
+  const packed = packageManifestSchema.parse(JSON.parse(
     await $`tar -xOf ${tarball} package/package.json`.text()
-  ) as PackageManifest
+  ))
   const entries = (await $`tar -tf ${tarball}`.text())
     .split('\n')
     .filter(Boolean)

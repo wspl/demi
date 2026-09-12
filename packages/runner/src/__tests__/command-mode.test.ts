@@ -254,7 +254,7 @@ test(
         timeoutMs: 10_000
       })
       expect(invalid.status === 'exited' && invalid.exitCode).toBe(1)
-      expect(invalid.stderr.delta).toContain('invalid command exit code')
+      expect(invalid.stderr.delta).toContain('invalid command worker message: exitCode')
     } finally {
       await f.close()
     }

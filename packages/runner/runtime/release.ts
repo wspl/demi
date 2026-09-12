@@ -12,19 +12,21 @@ import { packRuntime } from './build'
 import { bundleRuntime } from './bundle'
 import { RUNNER_PROTOCOL_VERSION } from '../../runner-protocol/src/messages'
 import local from '../../runner-protocol/src/local-contract.json'
-import { runnerReleaseSchema } from '../../runner-protocol/src/release'
+import { releaseTarget, runnerReleaseSchema } from '../../runner-protocol/src/release'
+import { z } from 'zod'
 
 const targets = {
   'macos-arm64': 'arm64-macos',
   'macos-x64': 'x86_64-macos',
   'linux-arm64': 'aarch64-linux-musl',
   'linux-x64': 'x86_64-linux-musl',
-} as const
+} satisfies Record<z.infer<typeof releaseTarget>, string>
 const [directory, ...requested] = process.argv.slice(2)
 if (!directory || !requested.length)
   throw new Error(
     `Usage: release.ts directory ${Object.keys(targets).join('|')} ...`
   )
+const selectedTargets = z.array(releaseTarget).min(1).parse(requested)
 const output = resolve(directory)
 const stage = join(output, `.build-${process.pid}`)
 mkdirSync(stage, { recursive: true })
@@ -37,10 +39,8 @@ const entries: Record<string, {
 function fileHash(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
-for (const name of requested) {
-  if (!(name in targets))
-    throw new Error(`unsupported release target: ${name}`)
-  const target = targets[name as keyof typeof targets]
+for (const name of selectedTargets) {
+  const target = targets[name]
   const dir = join(stage, name)
   mkdirSync(dir, { recursive: true })
   packRuntime(bundle, join(dir, 'demi-runner'), target)

@@ -15,6 +15,7 @@ import { dirnamePath, errorMessage } from '@demicodes/utils'
 import { GUEST_USER, bootGuest } from './init/boot'
 import { RunnerMode } from './runner-mode'
 import { RunnerState } from './state'
+import { runnerBackendUrlSchema, runnerStartupFromEnv } from './startup'
 
 async function main(): Promise<number> {
   // The kernel started this binary as init: a managed guest (`managed-hosts.md` § Lifecycle).
@@ -87,12 +88,15 @@ async function runnerMain(args: readonly string[]): Promise<number> {
       return usage()
     }
   }
-  if (!backendUrl && !env.DEMI_HOME) {
+  const startup = runnerStartupFromEnv(env)
+  if (backendUrl !== null)
+    backendUrl = runnerBackendUrlSchema.parse(backendUrl)
+  if (!backendUrl && !startup.stateDir) {
     await stderr('No backend URL: pass --backend <url>.\n')
     return 2
   }
   const hash = backendUrl ? await backendInstanceId(backendUrl) : ''
-  const dir = env.DEMI_HOME ?? `${identity.homeDir}/.demi/instances/${hash}`
+  const dir = startup.stateDir ?? `${identity.homeDir}/.demi/instances/${hash}`
   if (action !== 'run')
     return manageRunner(dir, action)
   const host = createRunnerHost()
@@ -110,13 +114,11 @@ async function runnerMain(args: readonly string[]): Promise<number> {
     backendUrl,
     stateDir: dir,
     clientExecutable: `${dirnamePath(executable)}/demi`,
-    ...(env.DEMI_RUNNER_NAME ? { name: env.DEMI_RUNNER_NAME } : {}),
+    name: startup.name,
     // Jobs run in the environment the runner was started with: the device user's own.
     deviceEnv: { PATH: '/usr/bin:/bin', HOME: identity.homeDir, ...env },
-    ...(env.DEMI_RUNNER_MANAGED ? { managed: true } : {}),
-    reconnect: env.DEMI_RUNNER_RECONNECT_MS ? {
-      initialDelayMs: Number(env.DEMI_RUNNER_RECONNECT_MS)
-    } : undefined,
+    managed: startup.managed,
+    reconnect: startup.reconnect,
   })
   return (await runner.run()) === 'rejected' ? 1 : 0
 }

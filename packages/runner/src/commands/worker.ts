@@ -12,13 +12,13 @@ import type {
   IOReplyValue,
   OutputRequest,
   RunCommand,
-  RunnerMessage,
   WorkerMessage,
 } from './worker-messages'
+import { runnerMessageSchema } from './worker-messages'
 
 // txiki exposes these globals in workers; the runner's main-thread types do not.
 const scope = globalThis as unknown as {
-  onmessage: ((event: MessageEvent<RunnerMessage>) => void) | null
+  onmessage: ((event: MessageEvent<unknown>) => void) | null
   postMessage(message: WorkerMessage): void
 }
 
@@ -32,7 +32,12 @@ function requestIO(
   const id = ++nextRequestId
   const reply = deferred<IOReplyValue>()
   pendingRequests.set(id, reply)
-  scope.postMessage({ ...request, id })
+  try {
+    scope.postMessage({ ...request, id })
+  } catch (error) {
+    pendingRequests.delete(id)
+    reply.reject(error)
+  }
   return reply.promise
 }
 
@@ -72,7 +77,7 @@ async function runCommand(message: RunCommand): Promise<void> {
 }
 
 scope.onmessage = event => {
-  const message = event.data
+  const message = runnerMessageSchema.parse(event.data)
   if (message.type === 'reply') {
     const pending = pendingRequests.get(message.id)
     pendingRequests.delete(message.id)

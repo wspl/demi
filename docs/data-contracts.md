@@ -448,3 +448,63 @@ Display precision preserves individual tokens across unit changes. This is UI
 conversion, distinct from extracting a finite number from an unknown record.
 File-browser paths retain POSIX semantics; Markdown file detection continues to
 recognize Windows paths and file URLs. These are separate formatting contracts.
+
+## Process startup and local execution
+
+`backend/startup.ts`, `machines/startup.ts` and `runner/startup.ts` validate
+process environment values before constructing services. Unrelated environment
+keys are ignored. Present path/name values must not be blank. Backend URLs use
+HTTP(S); the backend instance mode reuses the product contract. A machine socket
+requires the guest-facing backend URL. Backend ports are decimal integers from
+1 through 65535. Defaults apply only to absent variables.
+
+Runner `DEMI_RUNNER_MANAGED` accepts `0` or `1`; absence means false. Reconnect
+milliseconds are decimal integers from 1 through 2147483647. CLI backend URLs
+use the same URL schema as persisted runner configuration. Library-only runtime
+dependencies such as hosts, volume implementations and callbacks remain typed
+injection points, separate from environment parsing.
+
+`machines/firecracker/config.ts` owns the inferred Firecracker configuration and
+its environment projection. Counts and capacities are positive safe integers;
+vCPU count is limited to 255. DNS is a nonempty comma-separated list of IPv4
+addresses without empty entries. The subnet must be an aligned IPv4 network of
+/30 slots, and the requested slot count must fit. Jailer fields require jailer
+mode; uid allocation must fit the unsigned uid range. Partial managed settings
+without a Firecracker binary fail. Parsing these values does not execute a VM.
+
+`runner/state.ts` treats only ENOENT as a missing token. Token files contain one
+non-whitespace token plus optional surrounding file whitespace. Empty or
+malformed content and IO failures propagate without deleting or replacing the
+file. Writers validate before writing and retain mode 0600.
+
+`runner-protocol/local.ts` owns local IPC frame lengths, tags and handshake
+schemas; `local-contract.json` also generates the native C constants. Receivers
+reject unknown tags, oversized frames, truncated input and malformed handshake
+fields. The native client separately enforces handshake ordering, output limits
+and exit status. These byte and connection-state checks are not command schemas.
+
+`runner/commands/worker-messages.ts` owns structured-clone message schemas for
+both worker directions. `execute.ts` validates worker IO/result messages before
+performing IO; `worker.ts` validates run/reply envelopes. Arguments remain an
+opaque named-value record until command-owned validation. Invalid messages or
+send failures terminate execution through the same cleanup as exit and abort:
+remove listeners, terminate the worker and release stdin. Completed or failed IO
+replies remove their pending request entries.
+
+## Release metadata
+
+`scripts/release-contracts.ts` validates consumed workspace, package and registry
+metadata. Package fields not consumed by validation are preserved for publication.
+Dependency values are strings; exports use the recursive package.json shape.
+Tarball membership and workspace-version consistency remain explicit semantic
+checks in `scripts/release.ts`. A malformed registry success response fails;
+only HTTP 404 means no published versions.
+
+`runner/runtime/release.ts` validates requested targets with the existing
+`runner-protocol/release` enum before building. Generated manifests use the same
+release schema as readers. No publication or registry call is needed to test the
+metadata schemas. Library capabilities are checked against the installed lockfile
+and local behavior tests, rather than inferred from a major-version label.
+The workspace declares Zod `^4.5.4` and locks 4.5.4. Command-schema round-trip
+tests exercise `toJSONSchema` and `fromJSONSchema` on that installed version;
+this is the supported minimum, not a claim about when each API first appeared.

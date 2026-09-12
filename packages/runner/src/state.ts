@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { runnerBackendUrlSchema } from './startup'
 // Machine-local runner state (`runner.md` § Process shape and local state):
 //
 //   <stateDir>/runner.json    backend URL, device id
@@ -6,9 +7,11 @@ import { z } from 'zod'
 import type { HostFileSystem } from '@demicodes/shell'
 import { decodeUtf8, encodeUtf8, isFileNotFoundError } from '@demicodes/utils'
 
+const runnerTokenSchema = z.string().regex(/^\S+$/, 'Invalid runner token')
+
 const runnerConfigSchema = z.object({
-  backendUrl: z.string().url(),
-  deviceId: z.string().optional(),
+  backendUrl: runnerBackendUrlSchema,
+  deviceId: z.string().min(1).optional(),
 }).strict()
 export const activeRunnerSchema = z.object({
   endpoint: z.string().min(1),
@@ -58,7 +61,7 @@ export class RunnerState {
   async writeConfig(config: RunnerConfig): Promise<void> {
     await this.fs.writeFile(
       this.configPath,
-      encodeUtf8(`${JSON.stringify(config, null, 2)}\n`),
+      encodeUtf8(`${JSON.stringify(runnerConfigSchema.parse(config), null, 2)}\n`),
       { createParents: true }
     )
   }
@@ -66,7 +69,7 @@ export class RunnerState {
   async readToken(): Promise<string | null> {
     try {
       const token = decodeUtf8(await this.fs.readFile(this.tokenPath)).trim()
-      return token.length > 0 ? token : null
+      return runnerTokenSchema.parse(token)
     } catch (error) {
       if (isFileNotFoundError(error))
         return null
@@ -77,7 +80,7 @@ export class RunnerState {
   async writeToken(token: string): Promise<void> {
     await this.fs.writeFile(
       this.tokenPath,
-      encodeUtf8(`${token}\n`),
+      encodeUtf8(`${runnerTokenSchema.parse(token)}\n`),
       { createParents: true }
     )
     await this.fs.chmod(this.tokenPath, 0o600)
