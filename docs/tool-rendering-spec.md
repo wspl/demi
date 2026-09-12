@@ -51,6 +51,22 @@ Real-time events are governed by `ClientSessionEvent`:
 So the Web UI, the REPL, and future shells share the protocol and event structures, but
 not a single abstract UI-model package.
 
+## Waiting and thinking duration
+
+`web-ui` owns the activity and thinking rows used by the product and gallery.
+`ActivitySlot` displays `Requesting for <1s`, then updates the elapsed duration
+once per second while the browser observes that waiting row. Each new waiting
+interval or conversation starts its own clock. This is the visible wait duration;
+it is not a server request metric and starts afresh on reload.
+
+`ThinkingBlock` measures from its persisted creation timestamp to the next block's
+creation timestamp, or the current time while streaming. Durations below one
+second read `Thought for <1s` (or `Thinking for <1s` while streaming). These are
+observed transcript timings, not measurements of the model's internal reasoning.
+Both rows use `useElapsedTime`, which releases its timer when the interval ends
+or its Vue scope is disposed. The duration changes in place without replaying
+the row's entrance animation.
+
 ## 3. The `description` convention
 
 Every standard tool's input schema must allow an optional `description?: string`.

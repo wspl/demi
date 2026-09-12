@@ -128,7 +128,7 @@ test(
 )
 
 test(
-  'coding agent harness ships only the explore subagent profile; omitting --profile inherits',
+  'coding agent harness ships no named profiles; omitting --profile inherits',
   async () => {
     const harness = createCodingAgentHarness({
       host: new LocalHost(process.cwd())
@@ -137,20 +137,7 @@ test(
     const profiles = (await harness.agents?.({ state, cwd: process.cwd() }))
       ?? []
 
-    expect(profiles.map((profile) => profile.name)).toEqual(['explore'])
-
-    const explore = profiles[0]!
-    const explorePrompt = await explore.systemPrompt!({
-      agentSessionId: 'explore-child',
-      state,
-      cwd: process.cwd(),
-      transcript: {} as never,
-      commandsPrompt: 'COMMANDS-MARKER',
-      metadata: null,
-    })
-    expect(explorePrompt).toContain('You are an exploration agent')
-    expect(explorePrompt).toContain('Do not edit, create, or execute anything')
-    expect(explorePrompt).toContain('COMMANDS-MARKER')
+    expect(profiles).toEqual([])
   }
 )
 
@@ -194,7 +181,7 @@ test(
     expect(help).toContain(
       'State the exact shape of the last assistant text it should return.'
     )
-    expect(help).toContain('Available: explore')
+    expect(help).toContain('Available: none')
   }
 )
 

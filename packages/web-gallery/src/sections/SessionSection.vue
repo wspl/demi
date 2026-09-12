@@ -889,6 +889,17 @@ function abortTerminal(id: string) {
               />
             </GallerySpecimen>
             <GallerySpecimen
+              variant="under one second"
+              wide
+            >
+              <ThinkingBlock
+                thinking=""
+                :is-streaming="false"
+                :created-at="functionalThinkingStartedAt"
+                :ended-at="functionalThinkingStartedAt"
+              />
+            </GallerySpecimen>
+            <GallerySpecimen
               variant="loading"
               wide
             >
@@ -936,7 +947,7 @@ function abortTerminal(id: string) {
 
       <GallerySection
         title="ActivitySlot"
-        note="The transcript's tail row while it waits: why, and then the block rolling into it with the face its own row will have."
+        note="Requesting counts the visible wait in seconds; incoming blocks roll into the same row."
       >
         <div class="specimen-stack">
           <GallerySpecimen

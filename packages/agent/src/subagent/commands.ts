@@ -51,7 +51,7 @@ export function subagentCommandNode(
       name: 'spawn',
       kind: 'rpc',
       summary:
-        'Start an isolated child agent session and return its id immediately after creation. The child runs independently of this command. Completion arrives as a message to the parent, waking it when idle. Use agent send or steer to communicate and agent abort to stop it; do not poll. Children can spawn children of their own.',
+        'Start an isolated child agent session and return its id immediately after creation. The child runs independently of this command. Completion arrives as a message to the parent, waking it when idle. When you have no independent work left, end your turn and let the completion message wake you. Do not poll agent list/show or schedule timed yield calls to wait for children. Use agent send or steer to communicate and agent abort to stop it. Children can spawn children of their own.',
       successOutput:
         'stdout is "subagentId: <id>"; creation succeeded, not necessarily execution',
       failureOutput: 'non-zero exit with the creation failure reason on stderr',
