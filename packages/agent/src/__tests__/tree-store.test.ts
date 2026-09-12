@@ -157,19 +157,19 @@ test(
 
     const save: AgentSessionPersistUpdate<unknown> = {
       ...checkpoint([{
-        id: completionMessageId('a'),
+        id: completionMessageId('a', 1),
         text: 'a done',
         content: text('a done')
       }]),
-      changedBlocks: [{ index: 0, block: userBlock(completionMessageId('b')) }],
+      changedBlocks: [{ index: 0, block: userBlock(completionMessageId('b', 1)) }],
       blockCount: 1,
     }
-    expect(completedChildrenCarriedBy(save).sort()).toEqual(['a', 'b'])
+    expect(completedChildrenCarriedBy(save)).toEqual([{ id: 'a', spawnedAt: 1 }, { id: 'b', spawnedAt: 1 }])
     await store.sessionStore('root').save(save)
     expect((await store.node('a'))?.delivered).toBe(true)
     expect((await store.node('b'))?.delivered).toBe(true)
     expect((await store.node('c'))?.delivered).toBe(false)
-    await store.markDelivered('c')
+    await store.markDelivered('c', 1)
     expect((await store.node('c'))?.delivered).toBe(true)
   }
 )
@@ -214,3 +214,27 @@ test(
     expect(await store.node('root')).not.toBeNull()
   }
 )
+
+test('a prior completion cannot mark a resumed round delivered', async () => {
+  const store = new MemoryAgentStore()
+  await store.createNode(record('root', null), checkpoint())
+  await store.createNode(record('child', 'root'), checkpoint())
+  await store.closeNode('child', {
+    phase: 'completed', closedAt: 2, result: 'first', failure: null,
+  })
+  await store.reopenNode('child', { metadata: null, spawnedAt: 3 }, {
+    id: 'resume', text: 'again', content: text('again'),
+  })
+  await store.closeNode('child', {
+    phase: 'completed', closedAt: 4, result: 'second', failure: null,
+  })
+  await store.sessionStore('root').save(checkpoint([{
+    id: completionMessageId('child', 1), text: 'first', content: text('first'),
+  }]))
+  await store.markDelivered('child', 1)
+  expect((await store.node('child'))?.delivered).toBe(false)
+  await store.sessionStore('root').save(checkpoint([{
+    id: completionMessageId('child', 3), text: 'second', content: text('second'),
+  }]))
+  expect((await store.node('child'))?.delivered).toBe(true)
+})

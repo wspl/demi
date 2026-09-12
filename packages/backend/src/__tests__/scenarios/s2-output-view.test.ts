@@ -124,14 +124,11 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
 
     test('a command outliving its observation window', async () => {
       const driver = await world.conversation(target)
-      // A subagent whose model takes longer than the window: `demi agent spawn`
-      // is the long-running command both targets share.
-      world.model.scriptChild(model.slowSay('child done', 3_000))
       const turn = await driver.turn({
         model: [
           model.shell(
             't1',
-            "demi agent spawn <<< 'take a while' --description slow",
+            'sleep 3',
             300
           ),
           (request) => {
@@ -150,11 +147,7 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
         ],
       })
       expect(turn.received[0]).toContain('status: running')
-      expect(turn.received[0])
-        .toContain('next: the child agent is still working')
-      expect(turn.received[0])
-        .toContain('Do not poll with shell_status or timed yields')
-      expect(turn.received[0]).not.toContain('next: command is still running')
+      expect(turn.received[0]).toContain('next: command is still running')
       expect(turn.received[1]).toContain('status: aborted')
       expect(turn.received[1])
         .toContain('next: command was intentionally stopped.')

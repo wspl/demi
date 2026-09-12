@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { waitFor } from '@demicodes/utils'
 import type { Block } from '@demicodes/core'
 import { FakeProvisioner } from './fake-provisioner'
 import { World } from './world'
@@ -60,9 +61,11 @@ describe.each<Target>(['cloud', 'runner:alpha'])('S5 subagents on %s', (target) 
           "demi agent spawn <<< 'Read notes.md and report its content' --profile explore --description reader",
           10_000,
         ),
+        model.say('reader dispatched'),
         model.say('explored'),
       ],
     })
+    await waitFor(() => driver.lastText() === 'explored')
     expect(brief).toContain('Read notes.md and report its content')
     expect(brief).not.toContain('written')
     const childRequests = world.model.requests.filter(
@@ -72,7 +75,7 @@ describe.each<Target>(['cloud', 'runner:alpha'])('S5 subagents on %s', (target) 
     expect(childSaw).toContain('the answer is 42')
     expect(childSaw).toContain('Created blocked.md')
     expect(explored.received[0]).toContain('subagentId:')
-    expect(explored.received[0]).toContain('the file says 42; I wrote too')
+    expect(explored.received[0]).not.toContain('the file says 42; I wrote too')
     expect(await driver.readFile('blocked.md')).toBe('nope\n')
 
     // The default child writes where the parent then reads.
@@ -87,12 +90,15 @@ describe.each<Target>(['cloud', 'runner:alpha'])('S5 subagents on %s', (target) 
           "demi agent spawn <<< 'Create reply.md' --description writer",
           10_000,
         ),
+        model.say('writer dispatched'),
         model.shell('t4', 'cat reply.md'),
         model.say('delegated'),
       ],
     })
-    expect(delegated.received[0]).toContain('wrote reply.md')
-    expect(delegated.received[1]).toContain('from the child')
+    await waitFor(() => driver.lastText() === 'delegated')
+    expect(delegated.received[0]).toContain('subagentId:')
+    expect(delegated.received[0]).not.toContain('wrote reply.md')
+    expect(await driver.readFile('reply.md')).toBe('from the child\n')
 
     // The parent's stream carried the subagent lifecycle for both children.
     const lifecycle = driver.events
@@ -145,9 +151,11 @@ test('a cross-host command preserves the child node storage scope', async () => 
     model: [
       model.shell('scope-spawn', "demi agent spawn <<< 'add a todo on alpha'"),
       model.shell('scope-root-list', 'demi todo list'),
-      model.say('done'),
+      model.say('parent idle'),
+      model.say('child complete'),
     ],
   })
+  await waitFor(() => driver.lastText() === 'child complete')
   expect(parent.received.at(-1)).toContain('root-only')
   expect(parent.received.at(-1)).not.toContain('child-only')
   const child = world.model.requests
@@ -162,3 +170,27 @@ test('a cross-host command preserves the child node storage scope', async () => 
     .at(-1)
   expect(itemsText(child!.items)).toContain('child-only')
 })
+
+test('a silent child runs past the HTTP idle timeout after spawn has exited', async () => {
+  const driver = await world.conversation('runner:alpha')
+  world.model.scriptChild(
+    model.shell('child-pwd', 'pwd'),
+    model.slowSay('long child completed', 14_000),
+  )
+  const startedAt = Date.now()
+  const turn = await driver.turn({ model: [
+    model.shell('spawn-long', "demi agent spawn --request-id long-child <<< 'quiet long task'", 2_000),
+    model.say('creation accepted'),
+    model.say('long result received'),
+  ] })
+  expect(Date.now() - startedAt).toBeLessThan(5_000)
+  expect(turn.received[0]).toContain('status: exited')
+  expect(turn.received[0]).toContain('exitCode: 0')
+  expect(turn.received[0]).not.toContain('long child completed')
+  expect(driver.events.some(event => event.type === 'subagent' && event.event === 'closed')).toBe(false)
+  await waitFor(() => driver.lastText() === 'long result received', undefined, { timeoutMs: 20_000 })
+  const closed = driver.events.filter(event => event.type === 'subagent' && event.event === 'closed')
+  expect(closed).toHaveLength(1)
+  expect(closed[0]?.type === 'subagent' && closed[0].job.phase).toBe('completed')
+  expect(itemsText(world.model.requests.filter(request => request.sessionId === driver.id).at(-1)!.items)).toContain('long child completed')
+}, 30_000)

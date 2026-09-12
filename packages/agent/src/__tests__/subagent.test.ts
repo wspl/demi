@@ -1,7 +1,7 @@
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, test } from 'bun:test'
+import { afterEach, expect, test } from 'bun:test'
 import { runnerShellFactory, probeCommand } from '@demicodes/backend/testing'
 
 import { deferred, waitFor } from '@demicodes/utils'
@@ -26,6 +26,18 @@ import {
 import { ChildSupervisor } from '../subagent/supervisor'
 import { MemoryAgentStore } from '../testing'
 
+const openedClients: AgentClient[] = []
+afterEach(async () => {
+  for (const client of openedClients.splice(0)) {
+    await client.close()
+  }
+})
+
+async function waitClosed(seen: ClientSessionEvent[], count = 1): Promise<void> {
+  await waitFor(() => seen.filter(event => event.type === 'subagent'
+    && event.event === 'closed').length === count)
+}
+
 type TurnScript = ConstructorParameters<typeof StubProvider>[0][number]
 
 const model: ModelSelection = {
@@ -45,7 +57,9 @@ const model: ModelSelection = {
 const selection: ProviderSelection = { providerId: 'stub', model }
 
 async function openHarness(options: {
-  turns: TurnScript[]
+  turns?: TurnScript[]
+  /** Independent request sequences for the root and children identified by their brief. */
+  scripts?: Record<string, TurnScript[]>
   agents?: SubagentProfile<Record<string, never>>[]
   notifyParentOnIdle?: boolean
   maxLiveSubagents?: number
@@ -64,6 +78,7 @@ async function openHarness(options: {
   sessionId: string;
   store: MemoryAgentStore
 }> {
+  const sessionId = options.sessionId ?? globalThis.crypto.randomUUID()
   const root = options.root ?? (await mkdtemp(join(tmpdir(), 'demi-subagent-')))
   const store = options.store ?? new MemoryAgentStore()
   const hosts = new Map<string, LocalHost>()
@@ -93,7 +108,31 @@ async function openHarness(options: {
     providers: [defineProvider({
       id: 'stub',
       displayName: 'stub',
-      createRuntime: () => new StubProvider(options.turns)
+      createRuntime: () => {
+        if (!options.scripts) {
+          return new StubProvider(options.turns ?? [])
+        }
+        const providers = new Map(Object.entries(options.scripts).map(
+          ([name, turns]) => [name, new StubProvider(turns)]
+        ))
+        const runtime = {
+          run(request: InferenceRequest) {
+            const name = request.sessionId === sessionId
+              ? 'root'
+              : Object.keys(options.scripts!).find(
+                (key) => key !== 'root' && request.items.some(item => item.type === 'user_message'
+                  && item.content.some(part => part.type === 'text' && part.text.startsWith(key)))
+              )
+            const provider = name ? providers.get(name) : undefined
+            if (!provider) {
+              throw new Error(`No script for session ${request.sessionId}`)
+            }
+            return provider.run(request)
+          },
+          clone: () => ({ ...runtime }),
+        }
+        return runtime
+      }
     })],
     shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
     ...(options.shellPreviewBudgetTokens ? {
@@ -114,9 +153,15 @@ async function openHarness(options: {
         }),
   })
   const client = server.client()
+  openedClients.push(client)
   const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-  const sessionId = options.sessionId ?? globalThis.crypto.randomUUID()
+  client.subscribe((event) => {
+    seen.push(event)
+    if (event.type === 'closed') {
+      const index = openedClients.indexOf(client)
+      if (index !== -1) openedClients.splice(index, 1)
+    }
+  })
   await client.open(selection, root, sessionId)
   return { server, client, seen, root, sessionId, store }
 }
@@ -146,26 +191,33 @@ function subagentIdFrom(request: InferenceRequest): string {
 }
 
 test(
-  'spawn runs an isolated child whose last assistant text becomes the tool result',
+  'spawn returns creation while an isolated child delivers its result separately',
   async () => {
     let childRequest: InferenceRequest | null = null
     let continuationText = ''
     const { client, seen } = await openHarness({
-      turns: [
-        [spawnCall(
-          't1',
-          "demi agent spawn <<< 'Summarize the config file layout' --description sum",
-          5_000
-        )],
-        (request) => {
-          childRequest = request
-          return [events.text('child result text'), events.response()]
-        },
-        (request) => {
-          continuationText = itemsText(request)
-          return [events.text('parent done'), events.response()]
-        },
-      ],
+      scripts: {
+        root: [
+          [
+            spawnCall(
+              't1',
+              "demi agent spawn <<< 'Summarize the config file layout' --description sum",
+              5_000,
+            ),
+          ],
+          (request) => {
+            continuationText = itemsText(request)
+            return [events.text('parent done'), events.response()]
+          },
+          [events.text('parent done'), events.response()],
+        ],
+        'Summarize the config': [
+          (request) => {
+            childRequest = request
+            return [events.text('child result text'), events.response()]
+          },
+        ],
+      },
     })
 
     await client.send([{ type: 'text', text: 'go' }])
@@ -184,9 +236,10 @@ test(
     expect(itemsText(childRequest!)).toContain('You are a subagent')
     expect(childRequest!.systemPrompt).toContain('parent-system-marker')
 
-    // The spawn tool result carries the id line and the child's last assistant text.
+    // Creation returns only the child id; the lifecycle event carries its result.
     expect(continuationText).toContain('subagentId:')
-    expect(continuationText).toContain('child result text')
+    expect(continuationText).toContain('exitCode: 0')
+    expect(continuationText).not.toContain('child result text')
 
     // Protocol frames: started and closed, plus a child transcript stream.
     const lifecycle = seen.filter((event) => event.type === 'subagent')
@@ -222,11 +275,14 @@ test(
   'an empty child last assistant text completes with empty output',
   async () => {
     const { client, seen } = await openHarness({
-      turns: [
-        [spawnCall('t1', "demi agent spawn <<< 'silent task'", 5_000)],
-        [events.response()],
-        [events.text('parent done'), events.response()],
-      ],
+      scripts: {
+        root: [
+          [spawnCall('t1', "demi agent spawn <<< 'silent task'", 5_000)],
+          [events.text('parent done'), events.response()],
+          [events.text('parent done'), events.response()],
+        ],
+        'silent task': [[events.response()]],
+      },
     })
 
     await client.send([{ type: 'text', text: 'go' }])
@@ -283,27 +339,35 @@ test(
   async () => {
     let grandchildRequest: InferenceRequest | null = null
     const { client, seen, sessionId } = await openHarness({
-      turns: [
-        [spawnCall(
-          't1',
-          "demi agent spawn <<< 'outer task' --description outer",
-          10_000
-        )],
-        [events.toolCall(
-          'c1',
-          'shell_exec',
-          {
-            script: "demi agent spawn <<< 'inner task' --description inner",
-            timeoutMs: 10_000
-          }
-        )],
-        (request) => {
-          grandchildRequest = request
-          return [events.text('inner result'), events.response()]
-        },
-        [events.text('outer result'), events.response()],
-        [events.text('parent done'), events.response()],
-      ],
+      scripts: {
+        root: [
+          [
+            spawnCall(
+              't1',
+              "demi agent spawn <<< 'outer task' --description outer",
+              10_000,
+            ),
+          ],
+          [events.text('dispatched'), events.response()],
+          [events.text('parent done'), events.response()],
+        ],
+        'outer task': [
+          [
+            events.toolCall('c1', 'shell_exec', {
+              script: "demi agent spawn <<< 'inner task' --description inner",
+              timeoutMs: 10_000,
+            }),
+          ],
+          [events.text('dispatched'), events.response()],
+          [events.text('outer result'), events.response()],
+        ],
+        'inner task': [
+          (request) => {
+            grandchildRequest = request
+            return [events.text('inner result'), events.response()]
+          },
+        ],
+      },
     })
 
     await client.send([{ type: 'text', text: 'go' }])
@@ -355,36 +419,43 @@ test(
     let parentContinuationText = ''
     const { client, seen } = await openHarness({
       notifyParentOnIdle: false,
-      turns: [
-        [spawnCall(
-          't1',
-          "demi agent spawn <<< 'outer task' --description outer",
-          10_000
-        )],
-        [events.toolCall(
-          'c1',
-          'shell_exec',
-          {
-            script: "demi agent spawn <<< 'inner task' --description inner",
-            timeoutMs: 50
-          }
-        )],
-        [events.toolCall(
-          'g1',
-          'shell_exec',
-          { script: 'probe hold 300', timeoutMs: 10_000 }
-        )],
-        [events.text('inner dispatched'), events.response()],
-        [events.text('inner result'), events.response()],
-        (request) => {
-          childWakeRequest = request
-          return [events.text('outer integrated'), events.response()]
-        },
-        (request) => {
-          parentContinuationText = itemsText(request)
-          return [events.text('parent done'), events.response()]
-        },
-      ],
+      scripts: {
+        root: [
+          [
+            spawnCall(
+              't1',
+              "demi agent spawn <<< 'outer task' --description outer",
+              10_000,
+            ),
+          ],
+          (request) => {
+            parentContinuationText = itemsText(request)
+            return [events.text('parent done'), events.response()]
+          },
+        ],
+        'outer task': [
+          [
+            events.toolCall('c1', 'shell_exec', {
+              script: "demi agent spawn <<< 'inner task' --description inner",
+              timeoutMs: 50,
+            }),
+          ],
+          [events.text('inner dispatched'), events.response()],
+          (request) => {
+            childWakeRequest = request
+            return [events.text('outer integrated'), events.response()]
+          },
+        ],
+        'inner task': [
+          [
+            events.toolCall('g1', 'shell_exec', {
+              script: 'probe hold 300',
+              timeoutMs: 10_000,
+            }),
+          ],
+          [events.text('inner result'), events.response()],
+        ],
+      },
     })
 
     await client.send([{ type: 'text', text: 'go' }])
@@ -395,12 +466,15 @@ test(
       { timeoutMs: 5_000 },
     )
 
+    await waitClosed(seen, 2)
+
     // The grandchild's completion woke the idle mid-tree child, which integrated
-    // the result before closing; the root got it as the spawn tool result.
+    // the result before closing; the root receives only the creation id.
     expect(childWakeRequest).not.toBeNull()
     expect(itemsText(childWakeRequest!)).toContain('completed')
     expect(itemsText(childWakeRequest!)).toContain('inner result')
-    expect(parentContinuationText).toContain('outer integrated')
+    expect(parentContinuationText).toContain('subagentId:')
+    expect(parentContinuationText).not.toContain('outer integrated')
     const closed = seen.filter((event) => event.type === 'subagent'
       && event.event === 'closed')
     expect(closed.map((event) => (event.type === 'subagent'
@@ -414,36 +488,50 @@ test(
 )
 
 test('aborting a child tears its whole subtree down', async () => {
+  const innerStarted = deferred<void>()
   const { client, seen } = await openHarness({
-    turns: [
-      [spawnCall(
+    notifyParentOnIdle: false,
+scripts: {
+  root: [
+    [
+      spawnCall(
         't1',
         "demi agent spawn <<< 'outer task' --description outer",
-        50
-      )],
-      [events.toolCall(
-        'c1',
-        'shell_exec',
-        {
-          script: "demi agent spawn <<< 'inner task' --description inner",
-          timeoutMs: 10_000
-        }
-      )],
-      [events.toolCall(
-        'g1',
-        'shell_exec',
-        { script: 'probe hold 5000', timeoutMs: 10_000 }
-      )],
-      (request) => {
-        const id = subagentIdFrom(request)
-        return [events.toolCall(
-          't2',
-          'shell_exec',
-          { script: `demi agent abort ${id}`, timeoutMs: 5_000 }
-        )]
-      },
-      [events.text('parent done'), events.response()],
+        50,
+      ),
     ],
+    (request) =>
+      (async function* () {
+        await innerStarted.promise
+        const id = subagentIdFrom(request)
+        yield events.toolCall('t2', 'shell_exec', {
+          script: `demi agent abort ${id}`,
+          timeoutMs: 5_000,
+        })
+      })(),
+    [events.text('parent done'), events.response()],
+  ],
+  'outer task': [
+    [
+      events.toolCall('c1', 'shell_exec', {
+        script: "demi agent spawn <<< 'inner task' --description inner",
+        timeoutMs: 10_000,
+      }),
+    ],
+    [events.text('dispatched'), events.response()],
+  ],
+  'inner task': [
+    (request) => {
+      innerStarted.resolve()
+      return [
+        events.toolCall('g1', 'shell_exec', {
+          script: 'probe hold 5000',
+          timeoutMs: 10_000,
+        }),
+      ]
+    },
+  ],
+},
   })
 
   await client.send([{ type: 'text', text: 'go' }])
@@ -642,56 +730,64 @@ test(
     let showText = ''
     let siblingMessageRequest: InferenceRequest | null = null
     const { client } = await openHarness({
-      turns: [
-        [spawnCall(
-          't1',
-          "demi agent spawn <<< 'hold the fort' --description holder",
-          50
-        )],
-        [events.toolCall(
-          'a1',
-          'shell_exec',
-          { script: 'probe hold 500', timeoutMs: 10_000 }
-        )],
-        (request) => {
-          const holderId = subagentIdFrom(request)
-          return [spawnCall(
-            't2',
-            `demi agent spawn <<< 'message agent ${holderId} then finish' --description messenger`,
-            10_000
-          )]
-        },
-        (request) => {
-          const targetId = itemsText(request)
-            .match(/message agent ([A-Za-z0-9_-]+)/)![1]!
-          return [
-            events.toolCall(
-              'b1',
-              'shell_exec',
-              { script: `demi agent show ${targetId}`, timeoutMs: 5_000 }
+      scripts: {
+        root: [
+          [
+            spawnCall(
+              't1',
+              "demi agent spawn <<< 'hold the fort' --description holder",
+              50,
             ),
-            events.toolCall(
-              'b2',
-              'shell_exec',
-              {
+          ],
+          (request) => {
+            const holderId = subagentIdFrom(request)
+            return [
+              spawnCall(
+                't2',
+                `demi agent spawn <<< 'message agent ${holderId} then finish' --description messenger`,
+                10_000,
+              ),
+            ]
+          },
+          [events.text('parent idle'), events.response()],
+          [events.text('dispatched'), events.response()],
+          [events.text('parent done'), events.response()],
+        ],
+        'hold the fort': [
+          [
+            events.toolCall('a1', 'shell_exec', {
+              script: 'probe hold 500',
+              timeoutMs: 10_000,
+            }),
+          ],
+          [events.text('holder first'), events.response()],
+          (request) => {
+            siblingMessageRequest = request
+            return [events.text('holder second'), events.response()]
+          },
+        ],
+        'message agent': [
+          (request) => {
+            const targetId = itemsText(request).match(
+              /message agent ([A-Za-z0-9_-]+)/,
+            )![1]!
+            return [
+              events.toolCall('b1', 'shell_exec', {
+                script: `demi agent show ${targetId}`,
+                timeoutMs: 5_000,
+              }),
+              events.toolCall('b2', 'shell_exec', {
                 script: `demi agent send ${targetId} <<< 'hello sibling'`,
-                timeoutMs: 5_000
-              }
-            ),
-          ]
-        },
-        (request) => {
-          showText = itemsText(request)
-          return [events.text('messenger done'), events.response()]
-        },
-        [events.text('parent idle'), events.response()],
-        [events.text('holder first'), events.response()],
-        (request) => {
-          siblingMessageRequest = request
-          return [events.text('holder second'), events.response()]
-        },
-        [events.text('parent done'), events.response()],
-      ],
+                timeoutMs: 5_000,
+              }),
+            ]
+          },
+          (request) => {
+            showText = itemsText(request)
+            return [events.text('messenger done'), events.response()]
+          },
+        ],
+      },
     })
 
     await client.send([{ type: 'text', text: 'go' }])
@@ -771,31 +867,40 @@ test(
     let nestedFailText = ''
     let listText = ''
     const { client, seen } = await openHarness({
-      turns: [
-        [spawnCall(
-          't1',
-          "demi agent spawn <<< 'restricted task' --no-subagents --description r",
-          10_000
-        )],
-        [events.toolCall(
-          'n1',
-          'shell_exec',
-          { script: "demi agent spawn <<< 'nested task'", timeoutMs: 5_000 }
-        )],
-        (request) => {
-          nestedFailText = itemsText(request)
-          return [events.toolCall(
-            'n2',
-            'shell_exec',
-            { script: 'demi agent list', timeoutMs: 5_000 }
-          )]
-        },
-        (request) => {
-          listText = itemsText(request)
-          return [events.text('restricted done'), events.response()]
-        },
-        [events.text('parent done'), events.response()],
-      ],
+      scripts: {
+        root: [
+          [
+            spawnCall(
+              't1',
+              "demi agent spawn <<< 'restricted task' --no-subagents --description r",
+              10_000,
+            ),
+          ],
+          [events.text('dispatched'), events.response()],
+          [events.text('parent done'), events.response()],
+        ],
+        'restricted task': [
+          [
+            events.toolCall('n1', 'shell_exec', {
+              script: "demi agent spawn <<< 'nested task'",
+              timeoutMs: 5_000,
+            }),
+          ],
+          (request) => {
+            nestedFailText = itemsText(request)
+            return [
+              events.toolCall('n2', 'shell_exec', {
+                script: 'demi agent list',
+                timeoutMs: 5_000,
+              }),
+            ]
+          },
+          (request) => {
+            listText = itemsText(request)
+            return [events.text('restricted done'), events.response()]
+          },
+        ],
+      },
     })
 
     await client.send([{ type: 'text', text: 'go' }])
@@ -825,23 +930,31 @@ test(
         description: 'No delegation.',
         canSpawnSubagents: false
       }],
-      turns: [
-        [spawnCall(
-          't1',
-          "demi agent spawn <<< 'leaf task' --profile worker",
-          10_000
-        )],
-        [events.toolCall(
-          'n1',
-          'shell_exec',
-          { script: "demi agent spawn <<< 'nested task'", timeoutMs: 5_000 }
-        )],
-        (request) => {
-          nestedFailText = itemsText(request)
-          return [events.text('leaf done'), events.response()]
-        },
-        [events.text('parent done'), events.response()],
-      ],
+      scripts: {
+        root: [
+          [
+            spawnCall(
+              't1',
+              "demi agent spawn <<< 'leaf task' --profile worker",
+              10_000,
+            ),
+          ],
+          [events.text('dispatched'), events.response()],
+          [events.text('parent done'), events.response()],
+        ],
+        'leaf task': [
+          [
+            events.toolCall('n1', 'shell_exec', {
+              script: "demi agent spawn <<< 'nested task'",
+              timeoutMs: 5_000,
+            }),
+          ],
+          (request) => {
+            nestedFailText = itemsText(request)
+            return [events.text('leaf done'), events.response()]
+          },
+        ],
+      },
     })
 
     await client.send([{ type: 'text', text: 'go' }])
@@ -1022,7 +1135,7 @@ test(
 )
 
 test(
-  'demi agent abort tears the child down and fails the pending spawn command',
+  'demi agent abort tears the child down after its spawn command succeeded',
   async () => {
     let abortResultText = ''
     const { client, seen } = await openHarness({
@@ -1298,34 +1411,44 @@ test(
     let revivedRequest: InferenceRequest | null = null
     let resumeToolText = ''
     const { client, seen } = await openHarness({
-      turns: [
-        [spawnCall(
-          't1',
-          "demi agent spawn <<< 'first task' --description arc",
-          5_000
-        )],
-        [events.text('first result'), events.response()],
-        (request) => {
-          childId = subagentIdFrom(request)
-          return [spawnCall('t2', 'demi agent list', 5_000)]
-        },
-        (request) => {
-          listText = itemsText(request)
-          return [spawnCall(
-            't3',
-            `demi agent resume ${childId} <<< 'continue the task'`,
-            5_000
-          )]
-        },
-        (request) => {
-          revivedRequest = request
-          return [events.text('second result'), events.response()]
-        },
-        (request) => {
-          resumeToolText = itemsText(request)
-          return [events.text('parent done'), events.response()]
-        },
-      ],
+      scripts: {
+        root: [
+          [
+            spawnCall(
+              't1',
+              "demi agent spawn <<< 'first task' --description arc",
+              5_000,
+            ),
+          ],
+          [events.text('dispatched'), events.response()],
+          (request) => {
+            childId = subagentIdFrom(request)
+            return [spawnCall('t2', 'demi agent list', 5_000)]
+          },
+          (request) => {
+            listText = itemsText(request)
+            return [
+              spawnCall(
+                't3',
+                `demi agent resume ${childId} <<< 'continue the task'`,
+                5_000,
+              ),
+            ]
+          },
+          (request) => {
+            resumeToolText = itemsText(request)
+            return [events.text('parent done'), events.response()]
+          },
+          [events.text('parent done'), events.response()],
+        ],
+        'first task': [
+          [events.text('first result'), events.response()],
+          (request) => {
+            revivedRequest = request
+            return [events.text('second result'), events.response()]
+          },
+        ],
+      },
     })
 
     await client.send([{ type: 'text', text: 'go' }])
@@ -1347,8 +1470,9 @@ test(
     expect(itemsText(revivedRequest!)).toContain('first result')
     expect(itemsText(revivedRequest!)).toContain('continue the task')
 
-    // The resume command reports the new result, and the lifecycle ran twice.
-    expect(resumeToolText).toContain('second result')
+    // Resume returns the id; the lifecycle carries the second result.
+    expect(resumeToolText).toContain('subagentId:')
+    expect(resumeToolText).not.toContain('second result')
     const lifecycle = seen.filter((event) => event.type === 'subagent').map(
       (event) => (event.type === 'subagent'
         ? event.event
@@ -1363,11 +1487,14 @@ test(
   'a parent restore skips archived children; the archive stays revivable',
   async () => {
     const first = await openHarness({
-      turns: [
-        [spawnCall('t1', "demi agent spawn <<< 'finish fast'", 5_000)],
-        [events.text('done already'), events.response()],
-        [events.text('parent idle'), events.response()],
-      ],
+      notifyParentOnIdle: false,
+scripts: {
+  root: [
+    [spawnCall('t1', "demi agent spawn <<< 'finish fast'", 5_000)],
+    [events.text('parent idle'), events.response()],
+  ],
+  'finish fast': [[events.text('done already'), events.response()]],
+},
     })
     await first.client.send([{ type: 'text', text: 'go' }])
     await waitFor(
@@ -1380,6 +1507,7 @@ test(
     )
     expect(first.seen.some((event) => event.type === 'subagent'
       && event.event === 'closed')).toBe(true)
+    await waitClosed(first.seen, 1)
     await first.client.close()
 
     let listText = ''
@@ -1418,18 +1546,23 @@ test(
     let childId = ''
     const first = await openHarness({
       agents: [{ name: 'old', description: 'old profile' }],
-      turns: [
-        [spawnCall(
-          't1',
-          "demi agent spawn <<< 'finish fast' --profile old",
-          5_000
-        )],
-        [events.text('done already'), events.response()],
-        (request) => {
-          childId = subagentIdFrom(request)
-          return [events.text('parent idle'), events.response()]
-        },
-      ],
+      notifyParentOnIdle: false,
+scripts: {
+  root: [
+    [
+      spawnCall(
+        't1',
+        "demi agent spawn <<< 'finish fast' --profile old",
+        5_000,
+      ),
+    ],
+    (request) => {
+      childId = subagentIdFrom(request)
+      return [events.text('parent idle'), events.response()]
+    },
+  ],
+  'finish fast': [[events.text('done already'), events.response()]],
+},
     })
     await first.client.send([{ type: 'text', text: 'go' }])
     await waitFor(
@@ -1440,6 +1573,7 @@ test(
       undefined,
       { timeoutMs: 5_000 },
     )
+    await waitClosed(first.seen, 1)
     await first.client.close()
 
     let resumeText = ''
@@ -1631,23 +1765,34 @@ test(
         contextWindows.push(contextWindow)
         return 25
       },
-      turns: [
-        [spawnCall(
-          'root-spawn',
-          "demi agent spawn <<< 'outer task' --profile worker",
-          5_000
-        )],
-        [spawnCall('child-spawn', "demi agent spawn <<< 'inner task'", 5_000)],
-        (request) => {
-          grandchildRequest = request
-          return [spawnCall('grandchild-list', 'demi agent list', 5_000)]
-        },
-        [events.text('inner result'), events.response()],
-        [events.text('outer result'), events.response()],
-        [events.text('parent done'), events.response()],
-      ],
+      scripts: {
+        root: [
+          [
+            spawnCall(
+              'root-spawn',
+              "demi agent spawn <<< 'outer task' --profile worker",
+              5_000,
+            ),
+          ],
+          [events.text('dispatched'), events.response()],
+          [events.text('parent done'), events.response()],
+        ],
+        'outer task': [
+          [spawnCall('child-spawn', "demi agent spawn <<< 'inner task'", 5_000)],
+          [events.text('dispatched'), events.response()],
+          [events.text('outer result'), events.response()],
+        ],
+        'inner task': [
+          (request) => {
+            grandchildRequest = request
+            return [spawnCall('grandchild-list', 'demi agent list', 5_000)]
+          },
+          [events.text('inner result'), events.response()],
+        ],
+      },
     })
     await client.send([{ type: 'text', text: 'go' }])
+    await waitClosed(seen, 2)
     expect(grandchildRequest).not.toBeNull()
     expect(grandchildRequest!.systemPrompt).toContain('worker-system-marker')
     expect(grandchildRequest!.systemPrompt)
@@ -1656,7 +1801,7 @@ test(
     expect(grandchildRequest!.modelId).toBe('worker-model')
     expect(seen.filter((event) => event.type === 'subagent'
       && event.event === 'started')).toHaveLength(2)
-    expect(contextWindows).toEqual([200_000, 200_000, 100_000])
+    expect([...contextWindows].sort()).toEqual([100_000, 200_000, 200_000])
     await client.close()
   }
 )
@@ -1666,41 +1811,61 @@ test(
   async () => {
     let childId = ''
     const first = await openHarness({
-      turns: [
-        [spawnCall(
-          'first-spawn',
-          "demi agent spawn <<< 'restricted task' --no-subagents",
-          5_000
-        )],
-        [events.text('first result'), events.response()],
-        (request) => {
-          childId = subagentIdFrom(request)
-          return [events.text('parent idle'), events.response()]
-        },
-      ],
+      notifyParentOnIdle: false,
+scripts: {
+  root: [
+    [
+      spawnCall(
+        'first-spawn',
+        "demi agent spawn <<< 'restricted task' --no-subagents",
+        5_000,
+      ),
+    ],
+    (request) => {
+      childId = subagentIdFrom(request)
+      return [events.text('parent idle'), events.response()]
+    },
+  ],
+  'restricted task': [[events.text('first result'), events.response()]],
+},
     })
     await first.client.send([{ type: 'text', text: 'go' }])
+    await waitClosed(first.seen, 1)
     await first.client.close()
     let nestedFailure = ''
     const second = await openHarness({
       root: first.root,
       sessionId: first.sessionId,
       store: first.store,
-      turns: [
-        [spawnCall(
-          'resume',
-          `demi agent resume ${childId} <<< 'try delegating'`,
-          5_000
-        )],
-        [spawnCall('nested-spawn', "demi agent spawn <<< 'forbidden task'", 5_000)],
-        (request) => {
-          nestedFailure = itemsText(request)
-          return [events.text('still restricted'), events.response()]
-        },
-        [events.text('parent done'), events.response()],
-      ],
+      scripts: {
+        root: [
+          [
+            spawnCall(
+              'resume',
+              `demi agent resume ${childId} <<< 'try delegating'`,
+              5_000,
+            ),
+          ],
+          [events.text('dispatched'), events.response()],
+          [events.text('parent done'), events.response()],
+        ],
+        'restricted task': [
+          [
+            spawnCall(
+              'nested-spawn',
+              "demi agent spawn <<< 'forbidden task'",
+              5_000,
+            ),
+          ],
+          (request) => {
+            nestedFailure = itemsText(request)
+            return [events.text('still restricted'), events.response()]
+          },
+        ],
+      },
     })
     await second.client.send([{ type: 'text', text: 'continue' }])
+    await waitClosed(second.seen)
     expect(nestedFailure).toContain('Unknown subcommand')
     expect(second.seen.filter((event) => event.type === 'subagent'
       && event.event === 'started')).toHaveLength(1)
@@ -1712,22 +1877,35 @@ test(
   'a reopened parent restores nested child checkpoints before the outer child can settle',
   async () => {
     const first = await openHarness({
-      turns: [
-        [spawnCall(
-          'outer-spawn',
-          "demi agent spawn <<< 'outer task' --description outer",
-          50
-        )],
-        [spawnCall(
-          'inner-spawn',
-          "demi agent spawn <<< 'inner task' --description inner",
-          10_000
-        )],
-        [spawnCall('inner-hold', 'probe hold 5000', 10_000)],
-        [events.text('parent idle'), events.response()],
-      ],
+      scripts: {
+        root: [
+          [
+            spawnCall(
+              'outer-spawn',
+              "demi agent spawn <<< 'outer task' --description outer",
+              50,
+            ),
+          ],
+          [events.text('parent idle'), events.response()],
+        ],
+        'outer task': [
+          [
+            spawnCall(
+              'inner-spawn',
+              "demi agent spawn <<< 'inner task' --description inner",
+              10_000,
+            ),
+          ],
+          [events.text('dispatched'), events.response()],
+        ],
+        'inner task': [[spawnCall('inner-hold', 'probe hold 5000', 10_000)]],
+      },
     })
     await first.client.send([{ type: 'text', text: 'go' }])
+    await waitFor(() => first.seen.filter(event => event.type === 'subagent'
+      && event.event === 'started').length === 2)
+    await waitFor(() => first.seen.some(event => event.type === 'subagent_transcript_patch'
+      && JSON.stringify(event.patches).includes('probe hold 5000')))
     await first.client.close()
     expect(first.seen.filter((event) => event.type === 'subagent'
       && event.event === 'started')).toHaveLength(2)
@@ -1872,15 +2050,18 @@ test(
   'a close whose wakeup was never committed is delivered once at restore; a quiescent live child closes there',
   async () => {
     const first = await openHarness({
-      turns: [
-        [
-          spawnCall('t1', "demi agent spawn <<< 'first' --description one", 50),
-          spawnCall('t2', "demi agent spawn <<< 'second' --description two", 50)
-        ],
-        [events.text('one done'), events.response()],
-        [events.text('two done'), events.response()],
-        [events.text('parent idle'), events.response()],
-      ],
+      notifyParentOnIdle: false,
+scripts: {
+  root: [
+    [
+      spawnCall('t1', "demi agent spawn <<< 'first' --description one", 50),
+      spawnCall('t2', "demi agent spawn <<< 'second' --description two", 50),
+    ],
+    [events.text('parent idle'), events.response()],
+  ],
+  first: [[events.text('one done'), events.response()]],
+  second: [[events.text('two done'), events.response()]],
+},
     })
     await first.client.send([{ type: 'text', text: 'go' }])
     await waitFor(
@@ -1891,6 +2072,7 @@ test(
       undefined,
       { timeoutMs: 5_000 },
     )
+    await waitClosed(first.seen, 2)
     await first.client.close()
     const one = childNodeOf(first.store, first.sessionId, 'one')
     const two = childNodeOf(first.store, first.sessionId, 'two')
@@ -2007,3 +2189,166 @@ test(
     await client.close()
   }
 )
+
+test('spawn succeeds while the child runs; cancelling the invoking shell does not abort the child', async () => {
+  let spawnResult = ''
+  let closedBeforeParentContinued = true
+  const { client, seen } = await openHarness({
+    scripts: {
+      root: [
+        [
+          spawnCall(
+            'spawn',
+            "demi agent spawn --request-id independent <<< 'independent task' && echo creation-succeeded; probe hold 5000",
+            200,
+          ),
+        ],
+        (request) => {
+          spawnResult = itemsText(request)
+          closedBeforeParentContinued = seen.some(
+            (event) => event.type === 'subagent' && event.event === 'closed',
+          )
+          const commandId = spawnResult.match(/commandId: ([A-Za-z0-9_-]+)/)?.[1]
+          if (!commandId) throw new Error(`No shell job id: ${spawnResult}`)
+          return [events.toolCall('abort-shell', 'shell_abort', { commandId })]
+        },
+        [events.text('parent idle'), events.response()],
+        [events.text('received completion'), events.response()],
+      ],
+      'independent task': [
+        [
+          events.toolCall('hold', 'shell_exec', {
+            script: 'probe hold 400',
+            timeoutMs: 5000,
+          }),
+        ],
+        [events.text('child survived'), events.response()],
+      ],
+    },
+  })
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitClosed(seen)
+  expect(closedBeforeParentContinued).toBe(false)
+  expect(spawnResult).toContain('creation-succeeded')
+  expect(spawnResult).not.toContain('child survived')
+  const closed = seen.find(event => event.type === 'subagent' && event.event === 'closed')
+  expect(closed?.type === 'subagent' && closed.job.phase).toBe('completed')
+  await client.close()
+})
+
+test('start request ids survive reopening and deduplicate spawn and each resumed round', async () => {
+  let childId = ''
+  const first = await openHarness({
+    notifyParentOnIdle: false,
+    scripts: {
+      root: [
+        [
+          spawnCall(
+            'spawn',
+            "demi agent spawn --request-id create-once <<< 'receipt task'",
+            5000,
+          ),
+        ],
+        (request) => {
+          childId = subagentIdFrom(request)
+          return [events.text('parent idle'), events.response()]
+        },
+      ],
+      'receipt task': [[events.text('first result'), events.response()]],
+    },
+  })
+  await first.client.send([{ type: 'text', text: 'go' }])
+  await waitClosed(first.seen)
+  await first.client.close()
+  const results: string[] = []
+  const capture: TurnScript = request => {
+    results.push(itemsText(request))
+    return [events.text('accepted'), events.response()]
+  }
+  const second = await openHarness({
+    root: first.root,
+    sessionId: first.sessionId,
+    store: first.store,
+    scripts: {
+      root: [
+        [
+          spawnCall(
+            'retry-spawn',
+            "demi agent spawn --request-id create-once <<< 'receipt task'",
+            5000,
+          ),
+        ],
+        (request) => {
+          expect(subagentIdFrom(request)).toBe(childId)
+          return [
+            spawnCall(
+              'resume',
+              `demi agent resume ${childId} --request-id round-two <<< 'second task'`,
+              5000,
+            ),
+          ]
+        },
+        (request) => {
+          expect(subagentIdFrom(request)).toBe(childId)
+          return [
+            spawnCall(
+              'retry-resume',
+              `demi agent resume ${childId} --request-id round-two <<< 'second task'`,
+              5000,
+            ),
+          ]
+        },
+        capture,
+        (request) => {
+          expect(itemsText(request)).toContain('second result')
+          return [
+            spawnCall(
+              'third',
+              `demi agent resume ${childId} --request-id round-three <<< 'third task'`,
+              5000,
+            ),
+          ]
+        },
+        capture,
+        (request) => {
+          expect(itemsText(request)).toContain('third result')
+          return [
+            spawnCall(
+              'conflict',
+              "demi agent spawn --request-id create-once <<< 'different brief'",
+              5000,
+            ),
+          ]
+        },
+        (request) => {
+          expect(itemsText(request)).toContain('different agent arguments')
+          return [events.text('all rounds received'), events.response()]
+        },
+      ],
+      'receipt task': [
+        [
+          events.toolCall('hold-two', 'shell_exec', {
+            script: 'probe hold 250',
+            timeoutMs: 5000,
+          }),
+        ],
+        [events.text('second result'), events.response()],
+        [
+          events.toolCall('hold-three', 'shell_exec', {
+            script: 'probe hold 250',
+            timeoutMs: 5000,
+          }),
+        ],
+        [events.text('third result'), events.response()],
+      ],
+    },
+  })
+  await second.client.send([{ type: 'text', text: 'retry and continue' }])
+  await waitFor(() => second.client.transcript().blocks.some(block => block.type === 'text' && block.text === 'all rounds received'))
+  expect(second.seen.filter(event => event.type === 'subagent' && event.event === 'started')).toHaveLength(2)
+  expect(results).toHaveLength(2)
+  const completions = second.client.transcript().blocks.filter(block => block.type === 'user' && block.turnId.startsWith('subagent:'))
+  expect(completions).toHaveLength(2)
+  expect(new Set(completions.map(block => block.type === 'user' ? block.turnId : '')).size).toBe(2)
+  await second.client.close()
+})

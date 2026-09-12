@@ -107,6 +107,7 @@ test('a source child continues only in the source tree and its existing referenc
     const before = await world.api<{ blocks: Block[]; subagents: unknown[] }>(`/api/conversations/${created.id}/transcript`)
     expect(before.blocks.some((block) => block.type === 'tool_call')).toBe(true)
     expect(before.subagents).toEqual([])
+    source.script(model.say('source received its child result'))
     releaseChild.resolve()
     await waitFor(() => source.events.some((event) => event.type === 'subagent' && event.event === 'closed'))
     const after = await world.api<{ blocks: Block[]; subagents: unknown[] }>(`/api/conversations/${created.id}/transcript`)

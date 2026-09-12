@@ -73,12 +73,11 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
   (target) => {
     test('a command polled to its end with shell_status', async () => {
       const driver = await world.conversation(target)
-      world.model.scriptChild(model.slowSay('child done', 1_200))
       const turn = await driver.turn({
         model: [
           model.shell(
             't1',
-            "demi agent spawn <<< 'take a while' --description slow",
+            'sleep 1.2; echo command-done',
             200
           ),
           pollThenSay(driver.id, 'finished')
@@ -91,10 +90,10 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
       const last = turn.received.at(-1)!
       expect(last).toContain('status: exited')
       expect(last).toContain('exitCode: 0')
-      // Each view carries the streams' deltas since the previous one: the child's
+      // Each view carries the streams' deltas since the previous one: the command's
       // result arrives in whichever poll follows the command's write, the exit in
       // the same view or the next.
-      expect(turn.received.join('\n')).toContain('child done')
+      expect(turn.received.join('\n')).toContain('command-done')
       expect(driver.lastText()).toBe('finished')
     }, 30_000)
 
@@ -123,13 +122,12 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
       'a second command stopped with shell_abort while another already ended',
       async () => {
         const driver = await world.conversation(target)
-        world.model.scriptChild(model.slowSay('never read', 5_000))
         const turn = await driver.turn({
           model: [
             model.shell('t1', 'echo first'),
             model.shell(
               't2',
-              "demi agent spawn <<< 'hang around' --description hang",
+              'sleep 5',
               200
             ),
             (request) => model.tool(

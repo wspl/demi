@@ -114,10 +114,10 @@ export function sqliteAgentTreeStore(
         id
       ]
     )
-    for (const childId of completedChildrenCarriedBy(update)) {
+    for (const round of completedChildrenCarriedBy(update)) {
       db.run(
-        'UPDATE nodes SET delivered = 1 WHERE id = ? AND parent_id = ?',
-        [childId, id]
+        'UPDATE nodes SET delivered = 1 WHERE id = ? AND parent_id = ? AND spawned_at = ?',
+        [round.id, id, round.spawnedAt]
       )
     }
   }
@@ -230,8 +230,8 @@ export function sqliteAgentTreeStore(
       })
     },
 
-    async markDelivered(id) {
-      db.run('UPDATE nodes SET delivered = 1 WHERE id = ?', [id])
+    async markDelivered(id, spawnedAt) {
+      db.run('UPDATE nodes SET delivered = 1 WHERE id = ? AND spawned_at = ?', [id, spawnedAt])
     },
 
     async deleteNode(id) {

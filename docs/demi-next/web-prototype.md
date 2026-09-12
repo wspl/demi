@@ -43,7 +43,8 @@ and `AgentMessageInput`; each caller supplies its own state and editor behavior.
 The application supplies state and handlers to `ChatSession`, `SidebarLayout`,
 `WorkspaceDirectoryMenu`, and the shared dialog, menu and form controls. Their
 interaction and layout belong to `web-ui`.
-The session dock's Agents chip opens `SubagentPanel` the same way Running opens
+The session dock's Agents chip counts running children only and is hidden when
+that count is zero. Finished children never contribute to its count. The chip opens `SubagentPanel` the same way Running opens
 the terminal window: a second click on the chip closes it. The window sits over
 the lower half of the session, above the dock chips: a tab bar with a robot mark
 and status, a History control of completed children, a fold control, the

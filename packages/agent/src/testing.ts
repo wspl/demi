@@ -105,8 +105,11 @@ export class MemoryAgentStore<State = unknown>
     stored.state = { ...stored.state, queue: [structuredClone(message)] }
   }
 
-  async markDelivered(id: string): Promise<void> {
-    this.require(id).record.delivered = true
+  async markDelivered(id: string, spawnedAt: number): Promise<void> {
+    const record = this.require(id).record
+    if (record.spawnedAt === spawnedAt) {
+      record.delivered = true
+    }
   }
 
   async deleteNode(id: string): Promise<void> {
@@ -141,9 +144,9 @@ export class MemoryAgentStore<State = unknown>
     stored.blockCount = update.blockCount
     stored.state = snapshotOf(update)
     stored.commandState = structuredClone(commandState)
-    for (const childId of completedChildrenCarriedBy(update)) {
-      const child = this.nodes.get(childId)
-      if (child && child.record.parentId === id)
+    for (const round of completedChildrenCarriedBy(update)) {
+      const child = this.nodes.get(round.id)
+      if (child && child.record.parentId === id && child.record.spawnedAt === round.spawnedAt)
         child.record.delivered = true
     }
   }
