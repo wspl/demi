@@ -320,6 +320,8 @@ test(
         event: 'message_delta',
         data: { type: 'message_delta', usage: { output_tokens: 5 } }
       },
+      { event: 'content_block_stop', data: { type: 'content_block_stop', index: 0 } },
+      { event: 'content_block_stop', data: { type: 'content_block_stop', index: 1 } },
       { event: 'message_stop', data: { type: 'message_stop' } },
     ])))
 

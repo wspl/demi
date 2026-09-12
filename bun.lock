@@ -130,6 +130,7 @@
         "@demicodes/core": "workspace:^",
         "@demicodes/provider": "workspace:^",
         "@demicodes/utils": "workspace:^",
+        "zod": "^4.0.0",
       },
     },
     "packages/provider-claude-code": {

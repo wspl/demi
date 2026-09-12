@@ -123,6 +123,29 @@ Codex-tagged signatures and omits opaque signatures from other providers.
 SSE readers cancel and release their lock on completion, parsing failure or early
 consumer return. WebSocket listeners and timers are removed when consumption ends.
 
+## Anthropic Messages ingress
+
+`provider-anthropic-api/response-schemas.ts` validates complete SSE payloads before
+`mapAnthropicMessageStream` consumes them. The payload type is required; a supplied
+SSE event name must match a known payload type. Blocks require a nonnegative integer
+index. Tool blocks require their provider ID, name and object input. Known text,
+thinking, signature and JSON deltas require strings. Known fields reject wrong
+types; unrelated fields remain available to protocol extensions. Unknown tagged
+events, content blocks and deltas are explicitly ignored, following Anthropic's
+[streaming extension policy](https://platform.claude.com/docs/en/build-with-claude/streaming).
+
+The mapper tracks active content blocks by index. Duplicate starts, orphan deltas
+or stops, mismatched delta kinds and a message stop with open blocks are errors.
+Only a stopped tool block emits a tool request. JSON argument fragments accumulate
+until that stop; malformed model-authored argument JSON remains a string for the
+tool input validator to reject. Missing wire identity is never synthesized.
+Only `message_stop` reports success; EOF before that event is an invalid response.
+
+Usage counters are cumulative nonnegative integers. Missing counters preserve the
+last observation, including when the entire optional usage object is absent.
+An explicit zero replaces the earlier value; null and wrong types are errors.
+Anthropic input, cache read and cache creation counts are separate categories.
+
 ## Claude Code ingress
 
 `provider-claude-code/transport.ts` decodes JSONL into unknown values. Its syntax

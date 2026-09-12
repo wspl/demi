@@ -1,14 +1,10 @@
-import { readServerSentEvents, type ServerSentEvent } from '@demicodes/provider'
+import { readServerSentEvents, ProviderDataError, type ServerSentEvent } from '@demicodes/provider'
+import { parseAnthropicEvent, type AnthropicUsage, type AnthropicContentBlock } from './response-schemas'
 import { attachmentTag } from '@demicodes/core'
 import {
   isAbortError,
-  isRecord,
   normalizeBaseUrl,
-  numberOrNull,
-  numberOrZero,
-  parseJsonObject,
   parseJsonOrString,
-  stringOrNull
 } from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
@@ -22,11 +18,9 @@ import {
   authStatusFromKey,
   defineProvider,
   modelListFromConfiguredModels,
-  httpErrorCode,
   httpRequestFailedEvent,
   normalizeErrorCode,
   providerErrorFromUnknown,
-  redactSecretText,
   type AgentProvider,
   type InferenceItem,
   type InferenceRequest,
@@ -366,125 +360,114 @@ export async function* mapAnthropicMessageStream(
   events: AsyncIterable<ServerSentEvent>,
   signal?: AbortSignal,
 ): AsyncIterable<ProviderEvent> {
-  const toolBlocks = new Map<number, AnthropicToolBlock>()
+  const blocks = new Map<number, AnthropicBlockState>()
   let usage = zeroUsage()
 
-  for await (const event of events) {
+  for await (const frame of events) {
     if (signal?.aborted) {
       yield { type: 'abort' }
       return
     }
-    const data = event.data
-    const value = parseJsonObject(data)
-    if (!value)
-      continue
-    const type = stringOrNull(value.type) ?? event.event
-
-    if (type === 'error') {
-      const error = isRecord(value.error) ? value.error : value
-      const message = stringOrNull(error.message)
-        ?? 'Anthropic API stream error'
-      yield {
-        type: 'error',
-        message,
-        code: normalizeErrorCode(stringOrNull(error.type), message)
-      }
-      return
-    }
-
-    if (type === 'message_start') {
-      const message = isRecord(value.message) ? value.message : null
-      const messageUsage = message && isRecord(message.usage)
-        ? message.usage
-        : null
-      if (messageUsage)
-        usage = mergeAnthropicUsage(usage, messageUsage)
-      continue
-    }
-
-    if (type === 'content_block_start') {
-      const index = numberOrNull(value.index) ?? 0
-      const block = isRecord(value.content_block) ? value.content_block : null
-      if (block?.type === 'tool_use') {
-        toolBlocks.set(index, {
-          id: stringOrNull(block.id) ?? `tool_use_${index}`,
-          name: stringOrNull(block.name) ?? '',
-          initialInput: block.input,
-          inputJson: '',
-        })
-      } else if (block?.type === 'thinking') {
-        yield { type: 'thinking_start' }
-      } else if (block?.type === 'text') {
-        const text = stringOrNull(block.text)
-        if (text)
-          yield { type: 'text_delta', text }
-      }
-      continue
-    }
-
-    if (type === 'content_block_delta') {
-      const index = numberOrNull(value.index) ?? 0
-      const delta = isRecord(value.delta) ? value.delta : null
-      if (!delta)
-        continue
-      if (delta.type === 'text_delta') {
-        const text = stringOrNull(delta.text)
-        if (text)
-          yield { type: 'text_delta', text }
-      } else if (delta.type === 'thinking_delta') {
-        const text = stringOrNull(delta.thinking)
-        if (text)
-          yield { type: 'thinking_delta', text }
-      } else if (delta.type === 'signature_delta') {
-        const signature = stringOrNull(delta.signature)
-        if (signature)
-          yield { type: 'thinking_signature', signature }
-      } else if (delta.type === 'input_json_delta') {
-        const block = toolBlocks.get(index)
-        if (block)
-          block.inputJson += stringOrNull(delta.partial_json) ?? ''
-      }
-      continue
-    }
-
-    if (type === 'content_block_stop') {
-      const index = numberOrNull(value.index) ?? 0
-      const block = toolBlocks.get(index)
-      if (block && block.name) {
+    const event = parseAnthropicEvent(frame)
+    switch (event.type) {
+      case 'error':
         yield {
-          type: 'tool_call_requested',
-          toolUseId: block.id,
-          toolName: block.name,
-          input: block.inputJson
-            ? parseJsonOrString(block.inputJson)
-            : block.initialInput ?? {},
+          type: 'error',
+          message: event.error.message,
+          code: normalizeErrorCode(event.error.type, event.error.message),
         }
+        return
+      case 'message_start':
+        if (event.message.usage)
+          usage = mergeAnthropicUsage(usage, event.message.usage)
+        break
+      case 'content_block_start': {
+        if (blocks.has(event.index))
+          throw new ProviderDataError('Anthropic stream', 'duplicate active block index')
+        const block = event.content_block
+        if (block.type === 'tool_use') {
+          blocks.set(event.index, {
+            type: 'tool_use',
+            id: block.id,
+            name: block.name,
+            initialInput: block.input,
+            inputJson: '',
+          })
+        } else {
+          blocks.set(event.index, { type: block.type })
+          if (block.type === 'thinking') {
+            yield { type: 'thinking_start' }
+            if (block.thinking)
+              yield { type: 'thinking_delta', text: block.thinking }
+            if (block.signature)
+              yield { type: 'thinking_signature', signature: block.signature }
+          } else if (block.type === 'text' && block.text) {
+            yield { type: 'text_delta', text: block.text }
+          } else if (block.type === 'redacted_thinking') {
+            yield { type: 'redacted_thinking', data: block.data }
+          }
+        }
+        break
       }
-      toolBlocks.delete(index)
-      continue
-    }
-
-    if (type === 'message_delta') {
-      const deltaUsage = isRecord(value.usage) ? value.usage : null
-      if (deltaUsage)
-        usage = mergeAnthropicUsage(usage, deltaUsage)
-      continue
-    }
-
-    if (type === 'message_stop') {
-      yield { type: 'response', usage }
-      return
+      case 'content_block_delta': {
+        const block = blocks.get(event.index)
+        if (!block)
+          throw new ProviderDataError('Anthropic stream', 'delta references an inactive block')
+        const delta = event.delta
+        if (delta.type === 'ignored' || block.type === 'ignored')
+          break
+        if (delta.type === 'input_json_delta' && block.type === 'tool_use') {
+          block.inputJson += delta.partial_json
+        } else if (delta.type === 'text_delta' && block.type === 'text') {
+          yield { type: 'text_delta', text: delta.text }
+        } else if (delta.type === 'thinking_delta' && block.type === 'thinking') {
+          yield { type: 'thinking_delta', text: delta.thinking }
+        } else if (delta.type === 'signature_delta' && block.type === 'thinking') {
+          yield { type: 'thinking_signature', signature: delta.signature }
+        } else {
+          throw new ProviderDataError('Anthropic stream', 'delta type does not match its block')
+        }
+        break
+      }
+      case 'content_block_stop': {
+        const block = blocks.get(event.index)
+        if (!block)
+          throw new ProviderDataError('Anthropic stream', 'stop references an inactive block')
+        blocks.delete(event.index)
+        if (block.type === 'tool_use') {
+          yield {
+            type: 'tool_call_requested',
+            toolUseId: block.id,
+            toolName: block.name,
+            input: block.inputJson ? parseJsonOrString(block.inputJson) : block.initialInput,
+          }
+        }
+        break
+      }
+      case 'message_delta':
+        if (event.usage)
+          usage = mergeAnthropicUsage(usage, event.usage)
+        break
+      case 'message_stop':
+        if (blocks.size > 0)
+          throw new ProviderDataError('Anthropic stream', 'message stopped with unfinished blocks')
+        yield { type: 'response', usage }
+        return
+      case 'ping':
+      case 'ignored':
+        break
     }
   }
-
-  yield { type: 'response', usage }
+  signal?.throwIfAborted()
+  throw new ProviderDataError('Anthropic stream', 'stream ended before message_stop')
 }
 
-interface AnthropicToolBlock {
-  id: string
-  name: string
-  initialInput: unknown
+type AnthropicToolBlock = Extract<AnthropicContentBlock, { type: 'tool_use' }>
+type AnthropicBlockState = Pick<AnthropicToolBlock, 'type' | 'id' | 'name'> & {
+  initialInput: AnthropicToolBlock['input']
   inputJson: string
+} | {
+  type: Exclude<AnthropicContentBlock['type'], 'tool_use'>
 }
 
 function inferenceItemsToAnthropicMessages(
@@ -623,17 +606,12 @@ function anthropicMessagesUrl(baseUrl: string): string {
 
 function mergeAnthropicUsage(
   current: TokenUsage,
-  usage: Record<string, unknown>
+  usage: AnthropicUsage,
 ): TokenUsage {
-  const inputTokens = numberOrZero(usage.input_tokens)
-  const outputTokens = numberOrZero(usage.output_tokens)
-  const cacheReadTokens = numberOrZero(usage.cache_read_input_tokens)
-  const cacheWriteTokens = numberOrZero(usage.cache_creation_input_tokens)
   return {
-    inputTokens: inputTokens || current.inputTokens,
-    outputTokens: outputTokens || current.outputTokens,
-    cacheReadTokens: cacheReadTokens || current.cacheReadTokens,
-    cacheWriteTokens: cacheWriteTokens || current.cacheWriteTokens,
+    inputTokens: usage.input_tokens ?? current.inputTokens,
+    outputTokens: usage.output_tokens ?? current.outputTokens,
+    cacheReadTokens: usage.cache_read_input_tokens ?? current.cacheReadTokens,
+    cacheWriteTokens: usage.cache_creation_input_tokens ?? current.cacheWriteTokens,
   }
 }
-
