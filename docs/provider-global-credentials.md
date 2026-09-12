@@ -27,6 +27,30 @@ lookup selects the first remaining entry by ID, or uses vendor defaults when the
 pool is empty. This is the existing library behavior; product UI policy for
 removing the current account remains separate.
 
+## Pool read contract
+
+`provider/src/credentials-pool.ts` owns the persisted metadata schema and derives
+`CredentialEntryMeta` from it. IDs are non-empty directory-safe alphanumeric,
+underscore or hyphen strings. Labels and present optional text fields contain a
+non-whitespace character. `updatedAt` is an ISO datetime with an explicit offset.
+Readers preserve valid values; they do not trim metadata, invent IDs, fill missing
+timestamps, or replace malformed optional fields with null.
+
+Only `ENOENT` yields an absent metadata/pointer result or an empty missing pool.
+Malformed JSON, invalid fields, mismatched metadata IDs and invalid active pointers
+raise `CredentialPoolError` with code `credential_invalid`, without including raw
+file bodies. Other filesystem errors propagate. Listing fails on any incomplete or
+invalid entry, including an entry removed concurrently during the listing; callers
+may retry the complete operation. A missing pointer permits the documented first
+entry selection. An existing pointer to missing metadata is invalid and does not
+select a different account.
+
+The active pointer format is one valid ID, optionally followed by a newline.
+Removing an active entry clears the pointer. Clearing and setting the pointer must
+report filesystem failures. A missing secret is `credential_not_found`; an unreadable
+secret retains its IO error. Provider-specific secret schemas remain the concrete
+provider's responsibility.
+
 ## 1. Problem
 
 Three subscription providers reuse vendor CLI / desktop login material:

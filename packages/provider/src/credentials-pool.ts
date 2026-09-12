@@ -2,7 +2,8 @@
  * Demi multi-credential pool on disk:
  * <stateDir>/credentials/<providerKey>/{active,entries/<id>/{meta.json,secret}}
  */
-import { errorCode, isRecord, nonEmptyString } from '@demicodes/utils'
+import { errorCode, nonEmptyString } from '@demicodes/utils'
+import { z } from 'zod'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   chmod,
@@ -18,17 +19,18 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { ProviderCredentialInfo } from './types'
 
-export interface CredentialEntryMeta {
-  id: string
-  label: string
-  detail?: string | null
-  updatedAt: string
-  source?: string | null
-  /**
-   * Stable account key for upsert on re-import (email, accountId, entryKey, …).
-   */
-  identityKey?: string | null
-}
+const credentialIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
+const metadataTextSchema = z.string().regex(/\S/)
+const credentialEntryMetaSchema = z.strictObject({
+  id: credentialIdSchema,
+  label: metadataTextSchema,
+  detail: metadataTextSchema.nullable().optional(),
+  updatedAt: z.iso.datetime({ offset: true }),
+  source: metadataTextSchema.nullable().optional(),
+  identityKey: metadataTextSchema.nullable().optional(),
+})
+
+export type CredentialEntryMeta = z.infer<typeof credentialEntryMetaSchema>
 
 export interface FileCredentialPoolOptions {
   /** Demi state root ($DEMI_HOME / ~/.demi). */
@@ -80,6 +82,9 @@ export class FileCredentialPool {
   }
 
   entryDir(id: string): string {
+    if (!credentialIdSchema.safeParse(id).success) {
+      throw new CredentialPoolError('credential_invalid', 'Invalid credential ID')
+    }
     return join(this.entriesDir(), id)
   }
 
@@ -109,51 +114,85 @@ export class FileCredentialPool {
     let names: string[]
     try {
       names = await readdir(this.entriesDir())
-    } catch {
-      return []
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') {
+        return []
+      }
+      throw error
     }
     const out: CredentialEntryMeta[] = []
     for (const name of names) {
       const meta = await this.readMeta(name)
-      if (meta)
-        out.push(meta)
+      if (!meta) {
+        throw new CredentialPoolError(
+          'credential_invalid',
+          `Credential "${name}" has no metadata`
+        )
+      }
+      out.push(meta)
     }
     out.sort((a, b) => a.id.localeCompare(b.id))
     return out
   }
 
   async readMeta(id: string): Promise<CredentialEntryMeta | null> {
+    let text: string
     try {
-      const raw = JSON.parse(await readFile(this.metaPath(id), 'utf8')) as unknown
-      if (!isRecord(raw))
+      text = await readFile(this.metaPath(id), 'utf8')
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') {
         return null
-      const entryId = nonEmptyString(raw.id) ?? id
-      const label = nonEmptyString(raw.label)
-      if (!label)
-        return null
-      return {
-        id: entryId,
-        label,
-        detail: nonEmptyString(raw.detail) ?? null,
-        updatedAt: nonEmptyString(raw.updatedAt) ?? new Date(0).toISOString(),
-        source: nonEmptyString(raw.source) ?? null,
-        identityKey: nonEmptyString(raw.identityKey) ?? null,
       }
-    } catch {
-      return null
+      throw error
     }
+    let raw: unknown
+    try {
+      raw = JSON.parse(text)
+    } catch {
+      throw new CredentialPoolError('credential_invalid', `Credential "${id}" has invalid metadata JSON`)
+    }
+    const result = credentialEntryMetaSchema.safeParse(raw)
+    if (!result.success) {
+      const fields = result.error.issues.map((issue) => issue.path.join('.') || 'metadata')
+      throw new CredentialPoolError(
+        'credential_invalid',
+        `Credential "${id}" has invalid metadata fields: ${fields.join(', ')}`
+      )
+    }
+    if (result.data.id !== id) {
+      throw new CredentialPoolError('credential_invalid', `Credential "${id}" metadata ID does not match its directory`)
+    }
+    return result.data
+  }
+
+  private async readActivePointer(): Promise<string | null> {
+    let text: string
+    try {
+      text = await readFile(this.activePath(), 'utf8')
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') {
+        return null
+      }
+      throw error
+    }
+    // The pointer is one ID, optionally followed by the writer's newline.
+    const parsed = credentialIdSchema.safeParse(text.endsWith('\n') ? text.slice(0, -1) : text)
+    if (!parsed.success) {
+      throw new CredentialPoolError('credential_invalid', 'Invalid active credential pointer')
+    }
+    return parsed.data
   }
 
   async getActiveId(): Promise<string | null> {
-    try {
-      const id = (await readFile(this.activePath(), 'utf8')).trim()
-      if (!id)
-        return null
-      const meta = await this.readMeta(id)
-      return meta ? id : null
-    } catch {
+    const id = await this.readActivePointer()
+    if (id === null) {
       return null
     }
+    const meta = await this.readMeta(id)
+    if (!meta) {
+      throw new CredentialPoolError('credential_invalid', 'Active credential metadata is missing')
+    }
+    return meta.id
   }
 
   async setActiveId(id: string): Promise<void> {
@@ -165,7 +204,10 @@ export class FileCredentialPool {
       )
     try {
       await readFile(this.secretPath(id), 'utf8')
-    } catch {
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT') {
+        throw error
+      }
       throw new CredentialPoolError(
         'credential_not_found',
         `Credential "${id}" has no secret material`
@@ -179,7 +221,7 @@ export class FileCredentialPool {
   }
 
   async clearActive(): Promise<void> {
-    await rm(this.activePath(), { force: true }).catch(() => undefined)
+    await rm(this.activePath(), { force: true })
   }
 
   async writeEntry(
@@ -210,7 +252,7 @@ export class FileCredentialPool {
 
   async remove(id: string): Promise<void> {
     await this.withWriteLock(async () => {
-      const active = await this.getActiveId()
+      const active = await this.readActivePointer()
       await rm(this.entryDir(id), { recursive: true, force: true })
       if (active === id)
         await this.clearActive()
@@ -269,7 +311,7 @@ export class FileCredentialPool {
   }
 
   /**
-   * If active missing but entries exist, pick first and repair active pointer.
+   * If the pointer is absent, select the first entry; invalid pointers fail.
    */
   async ensureActivePointer(): Promise<string | null> {
     const active = await this.getActiveId()
