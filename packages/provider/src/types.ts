@@ -353,6 +353,8 @@ export type ProviderRuntimeState =
     }
 
 export interface ProviderModelListOptions {
+  /** Cancels a catalog read without affecting inference. */
+  signal?: AbortSignal
   /**
    * Check the remote catalog even if a cached copy is still within its
    * freshness period.

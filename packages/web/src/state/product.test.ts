@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { productStateSchema } from '../api/contracts'
 import { useProduct } from './product'
@@ -75,10 +75,11 @@ test('failed initial reads can retry and cached model data survives refresh fail
   }
   await product.start()
   expect(product.load).toBe('ready')
+  await product.loadModels().catch(() => {})
   expect(product.catalogLoad).toBe('failed')
   const deferred = Promise.withResolvers<Response>()
   modelResponse = () => deferred.promise
-  const retry = product.loadModels()
+  const retry = product.loadModels(true)
   expect(product.catalogLoad).toBe('loading')
   deferred.resolve(Response.json({ providers: [] }))
   await retry
@@ -86,7 +87,7 @@ test('failed initial reads can retry and cached model data survives refresh fail
   modelResponse = async () => {
     throw new Error('offline')
   }
-  await expect(product.loadModels()).rejects.toThrow('offline')
+  await expect(product.loadModels(true)).rejects.toThrow('offline')
   expect(product.catalogLoad).toBe('ready')
   vendorResponse = async () => {
     throw new Error('offline')
@@ -137,4 +138,80 @@ test('retrying a failed initial state read shows loading until the result arrive
   deferred.resolve(Response.json(state))
   await retry
   expect(product.load).toBe('ready')
+})
+
+
+test('all conversations and polling reuse one catalog until TTL; concurrent refreshes share one request', async () => {
+  const clock = spyOn(Date, 'now').mockReturnValue(1000)
+  const product = useProduct()
+  let calls = 0
+  modelResponse = async () => {
+    calls++
+    return Response.json({ providers: [] })
+  }
+  try {
+    await product.start()
+    await product.loadModels()
+    expect(calls).toBe(1)
+    for (const id of ['first', 'second', 'new-conversation']) {
+      product.activeConversationId = id
+      await product.revalidate()
+    }
+    expect(calls).toBe(1)
+    clock.mockReturnValue(61_000)
+    const pending = Promise.withResolvers<Response>()
+    modelResponse = () => {
+    calls++
+    return pending.promise
+  }
+    const first = product.loadModels()
+    const second = product.loadModels()
+    expect(calls).toBe(2)
+    expect(product.catalogLoad).toBe('ready')
+    pending.resolve(Response.json({ providers: [] }))
+    await Promise.all([first, second])
+    await product.loadModels()
+    expect(calls).toBe(2)
+  } finally {
+    clock.mockRestore()
+  }
+})
+
+test('initial state and navigation do not await model discovery; logout isolates late catalog results', async () => {
+  const product = useProduct()
+  const pending = Promise.withResolvers<Response>()
+  modelResponse = () => pending.promise
+  await product.start()
+  expect(product.load).toBe('ready')
+  expect(product.catalogLoad).toBe('loading')
+  const old = product.loadModels().catch(error => error)
+  product.stop()
+  modelResponse = async () => Response.json({ providers: [] })
+  await product.start()
+  await product.loadModels()
+  pending.resolve(Response.json({ providers: [] }))
+  expect(await old).toBeInstanceOf(Error)
+  expect(product.catalogLoad).toBe('ready')
+})
+
+
+test('provider mutations invalidate a pending global read even when its public configuration is unchanged', async () => {
+  const product = useProduct()
+  const pending = Promise.withResolvers<Response>()
+  let calls = 0
+  modelResponse = () => {
+    calls++
+    return pending.promise
+  }
+  await product.start()
+  const old = product.loadModels().catch(error => error)
+  modelResponse = async () => {
+    calls++
+    return Response.json({ providers: [] })
+  }
+  await product.revalidate(true)
+  expect(calls).toBe(2)
+  pending.resolve(Response.json({ providers: [] }))
+  expect(await old).toBeInstanceOf(Error)
+  expect(product.catalogLoad).toBe('ready')
 })

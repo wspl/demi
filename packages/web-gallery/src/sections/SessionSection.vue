@@ -70,6 +70,7 @@ import GalleryTabBar from '../components/GalleryTabBar.vue'
 import { useGalleryView } from '../gallery-views'
 
 const { view } = useGalleryView()
+const historyModelBlocks = transcriptDemoBlocks()
 const submissionError = ref<string | null>('Connection closed before confirmation')
 
 const messageEdit = ref<MessageEditState | null>(null)
@@ -1146,7 +1147,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Session load"
-        note="First opening uses the centered loading pane through history and the initial connection. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session uses the Connecting tail row. An unconfirmed send keeps its user message and retries with the same ID. New conversation opens a local draft immediately."
+        note="First opening uses the loading pane until history arrives. History stays readable while models load or the connection opens. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session uses the Connecting tail row. An unconfirmed send keeps its user message and retries with the same ID. New conversation opens a local draft immediately."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="unconfirmed send · retry the same message" wide>
@@ -1168,6 +1169,29 @@ function abortTerminal(id: string) {
           >
             <div class="gallery-frame h-[16rem] bg-surface">
               <SessionStatus kind="loading" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="history ready · models loading" wide>
+            <div class="gallery-frame flex h-[24rem] flex-col overflow-hidden bg-surface">
+              <div class="min-h-0 flex-1">
+                <AgentMessageList
+                  conversation-id="history-without-models"
+                  :blocks="historyModelBlocks"
+                  :pending-steers="[]"
+                  :queue="[]"
+                  phase="idle"
+                  load="ready"
+                  :bottom-offset="0"
+                  :persisted-scroll-state="undefined"
+                  read-only
+                />
+              </div>
+              <GalleryComposer
+                placeholder="Ask Demi…"
+                :providers="[]"
+                :models="{}"
+                model-load="loading"
+              />
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="switching · cached sessions" wide>
