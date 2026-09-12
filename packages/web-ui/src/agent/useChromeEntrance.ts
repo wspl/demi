@@ -1,11 +1,12 @@
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { onScopeDispose, ref, watch } from 'vue'
 import { CHROME_ENTER_MS } from '../ui/chrome-enter'
 import type { MessageListBlock } from './pending-steers'
+import type { SessionLoad } from './session-status'
 
 /**
  * Which transcript blocks are arriving right now. Blocks present when the
- * list opens are history and do not move; a block that joins the transcript
- * afterwards enters once, then is settled, so a virtual row remounted by
+ * list opens or finishes loading are history and do not move. A block that
+ * joins afterwards enters once, then is settled, so a virtual row remounted by
  * scrolling stays still. A block handed off through the activity slot is
  * settled before it becomes a row: the slot already carried it into place.
  * A new conversation in the same list starts over from its own history.
@@ -14,6 +15,7 @@ export function useChromeEntrance(
   blocks: () => readonly MessageListBlock[],
   heldId: () => string | null,
   scope: () => string,
+  load: () => SessionLoad,
 ): { isEntering: (id: string) => boolean } {
   let settled = new Set(blocks().map((block) => block.id))
   const entering = ref(new Set<string>())
@@ -49,21 +51,29 @@ export function useChromeEntrance(
     }
   }, { flush: 'sync' })
 
-  watch(scope, () => {
-    clearTimers()
-    settled = new Set(blocks().map((block) => block.id))
-    entering.value = new Set()
-  })
-
-  watch(blocks, (current) => {
-    for (const block of current) {
-      if (!settled.has(block.id)) {
-        enter(block.id)
+  watch(
+    () => [scope(), load(), blocks().map((block) => block.id)] as const,
+    ([currentScope, currentLoad, current], [previousScope, previousLoad]) => {
+      if (
+        currentScope !== previousScope
+        || currentLoad === 'loading'
+        || previousLoad === 'loading'
+        || currentLoad === 'failed'
+      ) {
+        clearTimers()
+        settled = new Set(current)
+        entering.value = new Set()
+        return
       }
-    }
-  })
+      for (const id of current) {
+        if (!settled.has(id)) {
+          enter(id)
+        }
+      }
+    },
+  )
 
-  onBeforeUnmount(clearTimers)
+  onScopeDispose(clearTimers)
 
   return {
     isEntering: (id) => entering.value.has(id),

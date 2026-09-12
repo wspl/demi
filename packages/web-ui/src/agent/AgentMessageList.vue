@@ -115,6 +115,7 @@ const { isEntering } = useChromeEntrance(
   () => visibleTranscriptBlocks.value,
   () => heldId.value,
   () => props.conversationId,
+  () => props.load ?? 'ready',
 )
 
 const paneStatus = computed(() =>
