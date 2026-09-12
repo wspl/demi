@@ -30,6 +30,9 @@ const props = withDefaults(
     conversationId?: string
     running?: boolean
     compacting?: boolean
+    disabled?: boolean
+    /** The model catalog: `failed` tells it beside the model chip with Retry, as the product does. */
+    modelLoad?: 'loading' | 'ready' | 'failed'
     draft?: string
     attachments?: ComposerAttachmentInput[]
     focused?: boolean
@@ -61,6 +64,7 @@ const emit = defineEmits<{
   compact: []
   configure: []
   restore: []
+  retryModels: []
   'update:messageEdit': [state: MessageEditState | null]
   submitEdit: []
 }>()
@@ -167,6 +171,7 @@ defineExpose({
     @submit="submit"
     @configure="emit('configure')"
     @restore="emit('restore')"
+    @retry-models="emit('retryModels')"
     @add-files="addFiles"
     @attach-remote="remotePicker?.open()"
     @remove-attachment="remove"
