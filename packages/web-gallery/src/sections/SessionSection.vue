@@ -31,6 +31,7 @@ import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { runningSubagents } from '@demicodes/web-ui/agent/subagents'
 import GalleryCachedSessions from '../components/GalleryCachedSessions.vue'
+import GalleryTranscriptEntrance from '../components/GalleryTranscriptEntrance.vue'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
 import GalleryAssistantMessages from '../components/GalleryAssistantMessages.vue'
@@ -1130,6 +1131,9 @@ function abortTerminal(id: string) {
     </template>
 
     <template v-if="view === 'states'">
+      <GallerySection title="Transcript entrance" note="Restored history appears without motion. Only blocks appended after restoration enter; switching or scrolling back to existing blocks does not replay their entrance.">
+        <GalleryTranscriptEntrance />
+      </GallerySection>
       <GallerySection title="Edit and resend" note="Shared editor, durable confirmation and recovery states.">
         <GalleryMessageEditing />
       </GallerySection>
