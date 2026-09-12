@@ -150,8 +150,8 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/provider-google`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
-- Owns: Google Gemini `generateContent` API request mapping (native wire, not OpenAI-compatible), SSE event mapping including thought summaries / thought signatures / thinking token counts, tool-returned media as inline parts (including video), official Gemini API defaults, endpoint/env/api-key resolution, model metadata mapping, and provider-specific tests.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`, `zod`.
+- Owns: Google Gemini `generateContent` API request mapping (native wire, not OpenAI-compatible), generateContent response schemas (`response-schemas.ts`) and SSE event mapping including thought summaries / thought signatures / thinking token counts, tool-returned media as inline parts (including video), official Gemini API defaults, endpoint/env/api-key resolution, model metadata mapping, and provider-specific tests.
 - Public boundary: `createGoogleProvider`, default model catalog function, and public option/model types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://generativelanguage.googleapis.com/v1beta`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `GOOGLE`.
 - Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.

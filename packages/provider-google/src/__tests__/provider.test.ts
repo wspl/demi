@@ -149,6 +149,13 @@ test('tool schemas are reduced to the keywords Gemini accepts', () => {
               type: 'array',
               items: { type: 'string', pattern: '^[a-z]+$' }
             },
+            value: {
+              anyOf: [
+                { type: 'string', minLength: 1 },
+                { type: 'object', properties: { flag: { type: 'boolean' } }, additionalProperties: false },
+              ],
+              allOf: [{ description: 'not a supported keyword' }],
+            },
           },
         },
       }],
@@ -162,6 +169,12 @@ test('tool schemas are reduced to the keywords Gemini accepts', () => {
     properties: {
       script: { type: 'string', description: 'the script' },
       tags: { type: 'array', items: { type: 'string' } },
+      value: {
+        anyOf: [
+          { type: 'string' },
+          { type: 'object', properties: { flag: { type: 'boolean' } } },
+        ],
+      },
     },
   })
 })
@@ -363,7 +376,7 @@ test(
               },
             ],
           },
-          { candidates: [{ content: { parts: [{ text: 'done' }] } }] },
+          { candidates: [{ content: { parts: [{ text: 'done' }] }, finishReason: 'STOP' }] },
           {
             usageMetadata: {
               promptTokenCount: 10,
@@ -391,7 +404,7 @@ test(
       {
         type: 'response',
         usage: {
-          inputTokens: 10,
+          inputTokens: 7,
           outputTokens: 24,
           cacheReadTokens: 3,
           cacheWriteTokens: 0
@@ -433,7 +446,7 @@ function captureFetch(requests: CapturedRequest[]) {
       body: typeof init?.body === 'string' ? init.body : '',
     })
     return new Response(
-      '',
+      'data: {"candidates":[{"finishReason":"STOP"}]}\n\n',
       { status: 200, headers: { 'content-type': 'text/event-stream' } }
     )
   }

@@ -1,4 +1,5 @@
-import { readServerSentEvents, type ServerSentEvent } from '@demicodes/provider'
+import { readServerSentEvents, parseProviderJson, ProviderDataError, type ServerSentEvent } from '@demicodes/provider'
+import { googleResponseSchema, type GoogleUsage } from './response-schemas'
 import { attachmentTag } from '@demicodes/core'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
@@ -6,9 +7,6 @@ import {
   isAbortError,
   isRecord,
   normalizeBaseUrl,
-  numberOrZero,
-  parseJsonObject,
-  stringOrNull
 } from '@demicodes/utils'
 import { zeroUsage } from '@demicodes/core'
 import type {
@@ -616,6 +614,7 @@ export async function* mapGoogleContentStream(
 ): AsyncIterable<ProviderEvent> {
   let usage = zeroUsage()
   let thinkingOpen = false
+  const candidates = new Map<number, 'running' | 'finished'>()
 
   for await (const event of events) {
     if (signal?.aborted) {
@@ -623,41 +622,43 @@ export async function* mapGoogleContentStream(
       return
     }
     const data = event.data
-    const value = parseJsonObject(data)
-    if (!value)
-      continue
-
-    if (isRecord(value.error)) {
-      const message = stringOrNull(value.error.message)
-        ?? 'Google API stream error'
+    const value = parseProviderJson(googleResponseSchema, data, 'Google SSE response')
+    if (value.error) {
+      const message = value.error.message
       yield {
         type: 'error',
         message,
-        code: normalizeErrorCode(stringOrNull(value.error.status), message)
+        code: normalizeErrorCode(value.error.status, message)
       }
       return
     }
 
-    if (isRecord(value.usageMetadata))
+    if (value.usageMetadata)
       usage = googleUsage(value.usageMetadata)
+    const blockReason = value.promptFeedback?.blockReason
+    if (blockReason && blockReason !== 'BLOCK_REASON_UNSPECIFIED') {
+      yield { type: 'error', message: `Google prompt blocked: ${blockReason}`, code: 'prompt_blocked' }
+      return
+    }
 
-    const candidates = Array.isArray(value.candidates) ? value.candidates : []
-    for (const candidate of candidates) {
-      if (!isRecord(candidate))
-        continue
-      const content = isRecord(candidate.content) ? candidate.content : null
-      const parts = content && Array.isArray(content.parts)
-        ? content.parts
-        : []
-      for (const part of parts) {
-        if (!isRecord(part))
-          continue
-
-        const functionCall = isRecord(part.functionCall)
-          ? part.functionCall
-          : null
+    for (const [position, candidate] of (value.candidates ?? []).entries()) {
+      const index = candidate.index ?? position
+      const finish = candidate.finishReason
+      if (finish && finish !== 'STOP' && finish !== 'FINISH_REASON_UNSPECIFIED') {
+        yield {
+          type: 'error', message: `Google generation stopped: ${finish}`,
+          code: finish === 'MAX_TOKENS' ? 'context_length_exceeded' : 'incomplete',
+        }
+        return
+      }
+      const previous = candidates.get(index)
+      if (previous === 'finished' && (candidate.content?.parts?.length ?? 0) > 0)
+        throw new ProviderDataError('Google stream', 'content arrived after candidate completion')
+      candidates.set(index, finish === 'STOP' ? 'finished' : previous ?? 'running')
+      for (const part of candidate.content?.parts ?? []) {
+        const functionCall = part.functionCall
         if (functionCall) {
-          const signature = stringOrNull(part.thoughtSignature)
+          const signature = part.thoughtSignature
           if (signature) {
             // Park the signature on a thinking item so it survives into the
             // transcript directly in front of this call (see
@@ -676,16 +677,15 @@ export async function* mapGoogleContentStream(
           }
           yield {
             type: 'tool_call_requested',
-            toolUseId: stringOrNull(functionCall.id)
-              ?? `${stringOrNull(functionCall.name) ?? 'tool'}_${nextFallbackToolId()}`,
-            toolName: stringOrNull(functionCall.name) ?? '',
+            toolUseId: functionCall.id ?? `${functionCall.name}_${nextFallbackToolId()}`,
+            toolName: functionCall.name,
             input: functionCall.args ?? {},
           }
           thinkingOpen = false
           continue
         }
 
-        const text = stringOrNull(part.text)
+        const text = part.text
         if (part.thought === true) {
           if (!thinkingOpen) {
             yield { type: 'thinking_start' }
@@ -693,10 +693,12 @@ export async function* mapGoogleContentStream(
           }
           if (text)
             yield { type: 'thinking_delta', text }
+          if (part.thoughtSignature)
+            yield { type: 'thinking_signature', signature: `${SIGNATURE_TAG}${part.thoughtSignature}` }
           continue
         }
 
-        const signature = stringOrNull(part.thoughtSignature)
+        const signature = part.thoughtSignature
         if (signature && thinkingOpen)
           yield {
             type: 'thinking_signature',
@@ -710,6 +712,9 @@ export async function* mapGoogleContentStream(
     }
   }
 
+  signal?.throwIfAborted()
+  if (candidates.size === 0 || [...candidates.values()].some((status) => status !== 'finished'))
+    throw new ProviderDataError('Google stream', 'stream ended before candidate completion')
   yield { type: 'response', usage }
 }
 
@@ -728,11 +733,13 @@ function nextFallbackToolId(): string {
  * alongside `candidatesTokenCount`); both are output tokens, so the agent's
  * context estimate has to count them together.
  */
-function googleUsage(usageMetadata: Record<string, unknown>): TokenUsage {
+function googleUsage(usageMetadata: GoogleUsage): TokenUsage {
+  const cached = usageMetadata.cachedContentTokenCount ?? 0
+  const prompt = usageMetadata.promptTokenCount ?? cached
   return {
-    inputTokens: numberOrZero(usageMetadata.promptTokenCount),
-    outputTokens: numberOrZero(usageMetadata.candidatesTokenCount) + numberOrZero(usageMetadata.thoughtsTokenCount),
-    cacheReadTokens: numberOrZero(usageMetadata.cachedContentTokenCount),
+    inputTokens: prompt - cached,
+    outputTokens: (usageMetadata.candidatesTokenCount ?? 0) + (usageMetadata.thoughtsTokenCount ?? 0),
+    cacheReadTokens: cached,
     cacheWriteTokens: 0,
   }
 }

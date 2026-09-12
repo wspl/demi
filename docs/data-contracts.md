@@ -146,6 +146,34 @@ last observation, including when the entire optional usage object is absent.
 An explicit zero replaces the earlier value; null and wrong types are errors.
 Anthropic input, cache read and cache creation counts are separate categories.
 
+## Google generateContent ingress
+
+`provider-google/response-schemas.ts` owns the consumed response fields. Candidate,
+content and parts containers must have their declared object/array shape. Missing
+optional candidates or parts mean no content in that chunk. Text, thought flags
+and signatures validate their types before presentation. Extension fields and
+unconsumed part variants remain outside the mapper's responsibilities.
+
+Function calls require a valid function name and object arguments when supplied.
+Google permits omitted arguments and IDs: these become `{}` and a unique local
+call ID respectively. A supplied ID must be a nonempty string. Text and function
+call data cannot occupy the same part. Signed call replay and inline input media
+retain their existing provider-specific mapping.
+
+The mapper tracks completion per candidate. Prompt blocking or a non-STOP finish
+reason produces an error; EOF with an unfinished candidate or without any candidate
+does not produce success. Usage counters are nonnegative integers. Prompt tokens
+include cached tokens, so the mapper subtracts cache read tokens from input tokens;
+visible and thinking output tokens are added. Missing measurements are unavailable
+and project to zero. If only cache usage is supplied, uncached input remains zero.
+These definitions follow Google's
+[response contract](https://ai.google.dev/api/generate-content#v1beta.GenerateContentResponse).
+
+`toGoogleSchema` is an outbound projection into Gemini's supported tool-schema
+keywords. It recursively projects properties, items and anyOf branches and omits
+unsupported constraints. Tool execution still validates the original tool schema;
+this projection is not a validator of tool inputs or provider responses.
+
 ## Claude Code ingress
 
 `provider-claude-code/transport.ts` decodes JSONL into unknown values. Its syntax
