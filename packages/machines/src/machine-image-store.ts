@@ -14,7 +14,7 @@ import { createId, errorCode } from '@demicodes/utils'
 import {
   imageStateSchema,
   type MachineImageState
-} from '../managed/provisioner'
+} from './provisioner'
 
 export function safeImageId(id: string): string {
   return z.string().regex(/^[A-Za-z0-9_-]+$/).parse(id)

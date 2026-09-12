@@ -24,7 +24,7 @@ import {
   safeImageId,
   syncFile,
   type MachineImageStore,
-} from '../../storage/machine-image-store'
+} from '../machine-image-store'
 import {
   imageStateSchema,
   type BootArgs,
@@ -159,7 +159,14 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
     return this.store.read(id)
   }
 
+  /**
+   * Every machine off with its disks saved: the guests this process runs are
+   * hibernated, then VMs left by an earlier process are stopped and their
+   * working disks saved. The backend calls this on every start, the manager
+   * on its own start.
+   */
   async reconcile(): Promise<void> {
+    await this.hibernateAll()
     await mkdir(this.workDir, { recursive: true })
     for (const entry of await readdir(
       this.config.runDir,
@@ -461,6 +468,10 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
   }
 
   async close(): Promise<void> {
+    await this.hibernateAll()
+  }
+
+  private async hibernateAll(): Promise<void> {
     for (const guest of this.guests.values()) {
       await this.hibernate(guest.id)
         .catch(error => this.log(errorMessage(error)))

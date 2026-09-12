@@ -10,22 +10,22 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { bootArgs } from '../managed/firecracker/boot-args'
+import { bootArgs } from '../firecracker/boot-args'
 import {
   DEFAULTS,
   MANAGED_ENV,
   firecrackerConfigFromEnv
-} from '../managed/firecracker/config'
+} from '../firecracker/config'
 import {
   FirecrackerProvisioner,
   type ImageTools,
   type ProcessControl
-} from '../managed/firecracker/provisioner'
-import { SlotPool, slotOf } from '../managed/firecracker/slots'
+} from '../firecracker/provisioner'
+import { SlotPool, slotOf } from '../firecracker/slots'
 import {
   DirMachineImageStore,
   atomicJson
-} from '../storage/machine-image-store'
+} from '../machine-image-store'
 
 // The Firecracker provisioner's pure parts: slots out of the managed
 // subnet, the guest's kernel command line, the configuration from the

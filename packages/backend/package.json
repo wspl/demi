@@ -23,8 +23,7 @@
     }
   },
   "files": [
-    "dist",
-    "scripts"
+    "dist"
   ],
   "scripts": {
     "build": "tsdown"
@@ -35,6 +34,7 @@
     "@demicodes/command-loader": "workspace:^",
     "@demicodes/core": "workspace:^",
     "@demicodes/host-remote": "workspace:^",
+    "@demicodes/machines": "workspace:^",
     "@demicodes/provider": "workspace:^",
     "@demicodes/provider-anthropic-api": "workspace:^",
     "@demicodes/provider-claude-code": "workspace:^",
