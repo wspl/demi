@@ -16,6 +16,7 @@ const AUTO_SCROLL_REENGAGE_THRESHOLD = 1
 const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   user: 40,
   steer: 40,
+  agent_message: 28,
   pending_steer: 40,
   queue_divider: 36,
   queued_message: 40,

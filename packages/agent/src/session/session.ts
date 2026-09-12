@@ -20,6 +20,7 @@ import {
   type CommandVersion,
 } from '../store/command-state'
 import type {
+  AgentMessage,
   ModelSelection,
   PendingSteer,
   QueuedMessage,
@@ -36,6 +37,8 @@ import type {
 import { TranscriptLog, type TranscriptOptions } from '../transcript/transcript'
 import type { TranscriptPatch } from '../protocol/frames'
 import { YieldScheduler } from './yield-scheduler'
+import { agentMessageContent } from '../transcript/agent-message'
+import { agentMessageSchema, pendingInternalSteerSchema } from '../protocol/agent-message'
 import { PendingSteerQueue } from './steer-queue'
 import { CompactionController, type CompactionHost } from './compaction'
 import { ProviderStreamError } from './provider-stream-error'
@@ -215,6 +218,19 @@ export class AgentSession<State> {
       },
       options,
     )
+    const pendingInputs = pendingInternalSteerSchema.array().refine(
+      inputs => new Set(inputs.map(input => input.agentMessage.id)).size === inputs.length,
+      'Duplicate pending agent message ids',
+    ).optional().parse(checkpoint.pendingInternalSteers) ?? []
+    for (const steer of pendingInputs) {
+      if (session.transcriptLog.blocks.some(block => block.id === steer.agentMessage.id)) {
+        throw new Error('Pending agent message is already materialized')
+      }
+      if (steer.agentMessage.recipientId !== session.agentSessionId) {
+        throw new Error('Persisted agent message recipient does not match this session')
+      }
+      session.steerQueue.add(steer)
+    }
     const receipts = editReceiptSchema.array().refine(
       (items) => new Set(items.map((item) => item.operationId)).size === items.length,
       'Duplicate accepted edit operation IDs',
@@ -419,6 +435,42 @@ export class AgentSession<State> {
     })
   }
 
+  /** Accepts runtime-authenticated agent input without waiting for inference. */
+  async acceptAgentMessage(input: AgentMessage, metadata: AgentMetadata | null = null): Promise<void> {
+    const message = structuredClone(agentMessageSchema.parse(input))
+    if (message.recipientId !== this.agentSessionId) {
+      throw new Error('Agent message recipient does not match this session')
+    }
+    if (this.externalMutationReserved || this.isPreparingEdit()) {
+      throw new Error('Agent session is reserved for a transcript mutation')
+    }
+    const pending = this.steerQueue.internalSnapshot().find(steer => steer.agentMessage.id === message.id)
+    const block = this.transcriptLog.blocks.find(block => block.id === message.id)
+    const existing = pending?.agentMessage ?? (block?.type === 'agent_message' ? block.message : null)
+    if (existing) {
+      if (JSON.stringify(existing) !== JSON.stringify(message)) {
+        throw new Error('Agent message id already belongs to different content')
+      }
+      await this.flushPersist()
+      this.wakePendingAgentMessages(metadata)
+      return
+    }
+    if (this.steerQueue.has(message.id) || block) {
+      throw new Error('Agent message id conflicts with another input')
+    }
+    await this.steerInternal(agentMessageContent(message), message.id, message, metadata)
+    this.wakePendingAgentMessages(metadata)
+  }
+
+  /** Uses the ordinary hidden action worker for an idle batch. */
+  wakePendingAgentMessages(metadata: AgentMetadata | null = null): void {
+    if (!this.steerQueue.hasInternal || this.activeTurnId || this.pendingActions.length > 0)
+      return
+    if (this.transcriptLog.blocks.at(-1)?.type === 'abort')
+      return
+    this.enqueueHiddenSend([], metadata ?? this.steerQueue.internalSnapshot()[0]?.metadata ?? null)
+  }
+
   /** Resolves at durable admission; generation continues in the action worker. */
   async editAndSend(
     input: EditRequest,
@@ -442,7 +494,7 @@ export class AgentSession<State> {
       return this.editing.acceptance.promise
     }
     if (!this.isSettled() || this.externalMutationReserved
-      || this.yields.hasPending || this.pendingSteers().length > 0) {
+      || this.yields.hasPending || this.steerQueue.hasInternal || this.pendingSteers().length > 0) {
       throw new Error('Message editing requires a settled session with no pending work')
     }
     const version = this.transcriptLog.version()
@@ -609,6 +661,9 @@ export class AgentSession<State> {
   }
 
   cancelPendingSteer(id: string): boolean {
+    if (this.steerQueue.containsInternal(id)) {
+      return false
+    }
     if (this.steerQueue.removePending(id)) {
       this.emitPendingSteers()
       return true
@@ -723,6 +778,10 @@ export class AgentSession<State> {
    */
   isSettled(): boolean {
     return !this.workerRunning && this.pendingActions.length === 0
+  }
+
+  hasPendingAgentMessages(): boolean {
+    return this.steerQueue.hasInternal
   }
 
   /**
@@ -879,6 +938,7 @@ export class AgentSession<State> {
       state: structuredClone(this.agentState),
       phase: this.currentPhase,
       queue: structuredClone(this.queuedMessages()),
+      pendingInternalSteers: this.steerQueue.internalSnapshot(),
       cwd: this.cwd,
       model: structuredClone(this.model),
       harnessName: this.runtime.harnessName,
@@ -1030,7 +1090,7 @@ export class AgentSession<State> {
 
   reserveMutation(): ExternalMutationReservation {
     if (this.workerRunning || this.pendingActions.length > 0
-      || this.externalMutationReserved) {
+      || this.steerQueue.hasInternal || this.externalMutationReserved) {
       throw new Error(
         'AgentSession: cannot reserve mutation while session is busy'
       )
@@ -1108,7 +1168,7 @@ export class AgentSession<State> {
     // Active session: interject the hidden wakeup as a steer into the current turn (never queued).
     if (metadata === this.activeMetadata && this.canAcceptInternalSteer()) {
       try {
-        await this.steerInternal(content, wakeupId, true)
+        await this.steerInternal(content, wakeupId)
         return
       } catch (error) {
         this.emit({ type: 'error', error: asError(error) })
@@ -1131,31 +1191,60 @@ export class AgentSession<State> {
   private async steerInternal(
     content: UserContentBlock[],
     id: string,
-    hidden = false
+    agentMessage?: AgentMessage,
+    metadata: AgentMetadata | null = null,
   ): Promise<void> {
-    const delivery = this.steerDelivery()
-    const turnId = this.currentTurnId()
-    if (delivery.type === 'provider') {
-      await delivery.run.steer({
-        id,
-        sessionId: this.agentSessionId,
-        turnId,
-        content,
-      })
-      this.transcriptLog.pushSteer(turnId, this.model, content, id, hidden)
-      await this.commitTranscript()
-      return
+    // Yield input requires a current delivery point. Agent input also
+    // survives finalization and abort, until an eligible continuation runs.
+    if (!agentMessage) {
+      this.steerDelivery()
     }
-
-    this.steerQueue.add({
-      id,
+    const turnId = this.activeTurnId ?? id
+    this.steerQueue.add(agentMessage ? {
       turnId,
       model: this.model,
-      content,
-      hidden,
-    })
-    if (!hidden)
-      this.emitPendingSteers()
+      agentMessage,
+      metadata,
+    } : { id, turnId, model: this.model, content, hidden: true })
+    if (agentMessage) {
+      this.schedulePersist()
+      await this.flushPersist()
+    }
+    if (!this.steerQueue.has(id) || !this.canAcceptInternalSteer()) {
+      return
+    }
+    const delivery = this.steerDelivery()
+    if (delivery.type !== 'provider') {
+      return
+    }
+    const deliveryTurnId = this.currentTurnId()
+    this.steerQueue.removePending(id, true)
+    if (agentMessage) {
+      this.transcriptLog.pushAgentMessage(deliveryTurnId, this.model, agentMessage)
+    } else {
+      this.transcriptLog.pushSteer(deliveryTurnId, this.model, content, id, true)
+    }
+    // Invoke before yielding control: finalization cannot swap the captured run
+    // between choosing the delivery point and submitting to it.
+    let delivered: Promise<void>
+    try {
+      delivered = Promise.resolve(delivery.run.steer({
+        id,
+        sessionId: this.agentSessionId,
+        turnId: deliveryTurnId,
+        content,
+      }))
+    } catch (error) {
+      delivered = Promise.reject(error)
+    }
+    if (agentMessage) {
+      void delivered.catch((error: unknown) => this.emit({ type: 'error', error: asError(error) }))
+      await this.commitTranscript()
+      await this.flushPersist()
+    } else {
+      await delivered
+      await this.commitTranscript()
+    }
   }
 
   private enqueueHiddenSend(
@@ -1223,7 +1312,7 @@ export class AgentSession<State> {
       action.resolve = resolve
       action.reject = reject
 
-      if (action.type === 'send'
+      if (action.type === 'send' && !action.hidden
         && (this.workerRunning || this.pendingActions.length > 0)) {
         this.queued.push({
           id: action.id,
@@ -1261,6 +1350,7 @@ export class AgentSession<State> {
           : this.idFactory()
         this.activeMetadata = action.metadata
         this.abortRecorded = false
+        this.steerQueue.retargetInternal(this.activeTurnId)
 
         let leaveAction = noop
         try {
@@ -1312,6 +1402,9 @@ export class AgentSession<State> {
               this.editing = null
             }
           }
+          if (outcome.kind === 'done') {
+            this.wakePendingAgentMessages(action.metadata)
+          }
           // The boundary flush, after the phase is idle: the checkpoint says the
           // action ended before its caller learns so, and a checkpoint that says
           // otherwise is one the process died in (`docs/subagent.md` § Persistence).
@@ -1328,8 +1421,12 @@ export class AgentSession<State> {
               this.emit({ type: 'error', error: asError(flushError) })
             })
           }
-          if (outcome.kind === 'failed') action.reject(outcome.error)
-          else action.resolve()
+          if (outcome.kind === 'failed') {
+            this.emit({ type: 'action_failed', error: outcome.error })
+            action.reject(outcome.error)
+          } else {
+            action.resolve()
+          }
         } finally {
           leaveAction()
         }
@@ -1360,14 +1457,18 @@ export class AgentSession<State> {
         this.setPhase('running')
         await this.executeResume()
         return
-      case 'compact':
+      case 'compact': {
         this.setPhase('compacting')
         this.activeTurnPhase = 'compacting'
         await this.compaction.run()
-        // Steers accepted during a standalone compaction have no continuation to ride;
-        // append them to the transcript so the next turn's request carries them.
+        const hasAgentInput = this.steerQueue.hasInternal
         await this.materializePendingSteersForCurrentTurn()
+        if (hasAgentInput) {
+          this.setPhase('running')
+          await this.turnLoop.run()
+        }
         return
+      }
     }
   }
 
@@ -1535,6 +1636,13 @@ export class AgentSession<State> {
     content: UserContentBlock[],
     hidden = false
   ): Promise<void> {
+    if (hidden && content.length === 0) {
+      await this.applyPendingModelSwitch()
+      await this.materializePendingSteersForCurrentTurn()
+      await this.compaction.preflight()
+      await this.turnLoop.run()
+      return
+    }
     const commandRevision = this.commandHistory.revision
     const submittedContent = structuredClone(content)
     await this.runtime.lifecycle?.({
@@ -1596,15 +1704,16 @@ export class AgentSession<State> {
   private async executeRetry(): Promise<void> {
     const userBlock = await this.serializePersistence(async () => {
       const candidate = new TranscriptLog(this.transcriptLog.toJSON().blocks)
-      const user = candidate.rewindToLastUserTurn()
+      const user = candidate.rewindToLastInputTurn()
       if (!user) {
-        throw new Error('AgentSession: cannot retry without a user turn')
+        throw new Error('AgentSession: cannot retry without an input turn')
       }
-      const revision = this.commandHistory.boundary(user.id, 'before_user')
+      const revision = this.commandHistory.boundary(user.id, user.type === 'user' ? 'before_user' : 'after_block')
       await this.commitRewrittenTranscript(candidate, revision)
       return user
     })
     this.activeTurnId = userBlock.turnId
+    this.steerQueue.retargetInternal(this.activeTurnId)
     await this.runtime.lifecycle?.({
       type: 'after_transcript_rewrite',
       agentSessionId: this.agentSessionId,
@@ -1702,7 +1811,7 @@ export class AgentSession<State> {
     if (this.abortRecorded)
       return
     this.abortRecorded = true
-    await this.materializePendingSteersForCurrentTurn()
+    await this.materializePendingSteersForCurrentTurn(false)
     for (const toolCall of this.transcriptLog.pendingToolCalls()) {
       this.transcriptLog.completeToolCall(
         toolCall.toolUseId,
@@ -1714,13 +1823,17 @@ export class AgentSession<State> {
     await this.commitTranscript()
   }
 
-  private async materializePendingSteersForCurrentTurn(): Promise<boolean> {
+  private async materializePendingSteersForCurrentTurn(includeInternal = true): Promise<boolean> {
     if (!this.activeTurnId)
       return false
-    const steers = this.steerQueue.takeForTurn(this.activeTurnId)
+    const steers = this.steerQueue.takeForTurn(this.activeTurnId, includeInternal)
     if (steers.length === 0)
       return false
     for (const steer of steers) {
+      if (steer.agentMessage) {
+        this.transcriptLog.pushAgentMessage(steer.turnId, steer.model, steer.agentMessage)
+        continue
+      }
       this.transcriptLog.pushSteer(
         steer.turnId,
         steer.model,
@@ -1730,7 +1843,7 @@ export class AgentSession<State> {
       )
     }
     await this.commitTranscript()
-    if (steers.some((steer) => !steer.hidden))
+    if (steers.some((steer) => !steer.agentMessage && !steer.hidden))
       this.emitPendingSteers()
     return true
   }
@@ -1747,7 +1860,12 @@ export class AgentSession<State> {
     if (!this.activeTurnId)
       return
     const discarded = this.steerQueue.takeForTurn(this.activeTurnId)
-    if (discarded.some((steer) => !steer.hidden))
+    for (const steer of discarded) {
+      if (steer.agentMessage) {
+        this.steerQueue.add(steer)
+      }
+    }
+    if (discarded.some((steer) => !steer.agentMessage && !steer.hidden))
       this.emitPendingSteers()
   }
 
@@ -1955,6 +2073,7 @@ export class AgentSession<State> {
         state: structuredClone(this.agentState),
         phase: this.currentPhase,
         queue: structuredClone(this.queuedMessages()),
+        pendingInternalSteers: this.steerQueue.internalSnapshot(),
         cwd: this.cwd,
         model: structuredClone(this.model),
         harnessName: this.runtime.harnessName,

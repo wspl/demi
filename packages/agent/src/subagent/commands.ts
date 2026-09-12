@@ -29,8 +29,7 @@ export interface SubagentCommandOps {
   }, requestId: string, storage: CommandStorage): Promise<string>
   resumeArchived(id: string, message: string, requestId: string, storage: CommandStorage): Promise<string>
   getRunning(id: string): unknown | null
-  send(id: string, message: string): string
-  steer(id: string, message: string): Promise<string>
+  send(id: string, message: string): Promise<string>
   abortSubtree(id: string): Promise<void>
   tree(): Promise<AgentTreeNode[]>
   ownerId(): string
@@ -51,7 +50,7 @@ export function subagentCommandNode(
       name: 'spawn',
       kind: 'rpc',
       summary:
-        'Start an isolated child agent session and return its id immediately after creation. The child runs independently of this command. Completion arrives as a message to the parent, waking it when idle. When you have no independent work left, end your turn and let the completion message wake you. Do not poll agent list/show or schedule timed yield calls to wait for children. Use agent send or steer to communicate and agent abort to stop it. Children can spawn children of their own.',
+        'Start an isolated child agent session and return its id immediately after creation. The child runs independently of this command. Completion arrives as a message to the parent, waking it when idle. When you have no independent work left, end your turn and let the completion message wake you. Do not poll agent list/show or schedule timed yield calls to wait for children. Use agent send to communicate and agent abort to stop it. Children can spawn children of their own.',
       successOutput:
         'stdout is "subagentId: <id>"; creation succeeded, not necessarily execution',
       failureOutput: 'non-zero exit with the creation failure reason on stderr',
@@ -67,7 +66,7 @@ export function subagentCommandNode(
           .optional()
           .describe('Short UI title distinguishing concurrent children.'),
         'no-subagents': z.boolean().optional().describe(
-          'Forbid this child from spawning subagents of its own; it can still send, steer, list, and show.'
+          'Forbid this child from spawning subagents of its own; it can still send, list, and show.'
         ),
       },
       stdinField: 'prompt',
@@ -103,7 +102,7 @@ export function subagentCommandNode(
     {
       name: 'send',
       summary:
-        'Leave a message for any live agent in the tree (`demi agent list`), or `parent`. The target sees it as a new user turn at its next turn boundary, never mid-turn; a message to a finishing subagent extends its life by one turn. Fire-and-forget: queues and returns, never waits. An archived target fails — only its parent can revive it with resume.',
+        'Deliver information to any live agent in the tree, or parent. A busy recipient incorporates it through internal steering; an idle recipient wakes. Returns after durable acceptance, without waiting for an answer. Use for interim information, questions, or blockers; your final answer is delivered automatically. Archived recipients must be reopened by their parent with resume.',
       input: {
         id: z.string().describe(
           'Target agent id from the tree, or "parent" for the session that spawned this one'
@@ -122,46 +121,13 @@ export function subagentCommandNode(
           return { exitCode: 1 }
         }
         try {
-          const targetId = ops.send(String(parsed.values.id), message)
+          const targetId = await ops.send(String(parsed.values.id), message)
           await io.stdout(parsed.json
             ? `${JSON.stringify({ id: targetId, accepted: true })}\n`
             : `sent to ${targetId}\n`)
           return { exitCode: 0 }
         } catch (error) {
           await io.stderr(`demi agent send: ${errorMessage(error)}\n`)
-          return { exitCode: 1 }
-        }
-      },
-    },
-    {
-      name: 'steer',
-      summary:
-        "Chime into a running agent's current turn: the target sees the message at its next sampling/tool boundary and continues its current work with the new information. Nothing is cancelled and the turn does not restart. Fails when the target has no running turn — use send for that. Targets any live agent in the tree, or `parent`.",
-      input: {
-        id: z.string().describe(
-          'Target agent id from the tree, or "parent" for the session that spawned this one'
-        ),
-        message: z.string()
-          .describe('Message body.'),
-      },
-      positionals: ['id'],
-      stdinField: 'message',
-      output: { json: z.object({ id: z.string(), accepted: z.boolean() }) },
-      kind: 'rpc',
-      run: async ({ parsed, io }) => {
-        const message = (parsed.values.message as string).trim()
-        if (!message) {
-          await io.stderr('demi agent steer: message must not be empty\n')
-          return { exitCode: 1 }
-        }
-        try {
-          const targetId = await ops.steer(String(parsed.values.id), message)
-          await io.stdout(parsed.json
-            ? `${JSON.stringify({ id: targetId, accepted: true })}\n`
-            : `steered ${targetId}\n`)
-          return { exitCode: 0 }
-        } catch (error) {
-          await io.stderr(`demi agent steer: ${errorMessage(error)}\n`)
           return { exitCode: 1 }
         }
       },
@@ -191,7 +157,7 @@ export function subagentCommandNode(
     {
       name: 'resume',
       summary:
-        'Revive one of your own archived children with a new user message on its preserved transcript. Return its id immediately after accepting the message; completion is delivered separately to the parent. Use agent send or steer to communicate and agent abort to stop it. Archived ids are in agent list.',
+        'Revive one of your own archived children with a new user message on its preserved transcript. Return its id immediately after accepting the message; completion is delivered separately to the parent. Use agent send to communicate and agent abort to stop it. Archived ids are in agent list.',
       input: {
         id: z.string().describe('subagentId of an archived child'),
         'request-id': requestIdSchema,
@@ -273,8 +239,8 @@ export function subagentCommandNode(
   return {
     name: 'agent',
     summary: ops.canSpawn
-      ? 'Agent tree: spawn and manage your own children; send, steer, list and show any live agent.'
-      : 'Agent tree communication: this session may not spawn subagents; send, steer, list and show any live agent.',
+      ? 'Agent tree: spawn and manage your own children; send, list and show any live agent.'
+      : 'Agent tree communication: this session may not spawn subagents; send, list and show any live agent.',
     subcommands: subcommands.filter((command) => ops.canSpawn || ![
       'spawn',
       'abort',
@@ -302,7 +268,6 @@ export function subagentCommandShape(profileNames: string[]): CommandGroup {
     resumeArchived: notHere,
     getRunning: notHere,
     send: notHere,
-    steer: notHere,
     abortSubtree: notHere,
     tree: notHere,
     ownerId: notHere,

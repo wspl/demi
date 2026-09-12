@@ -88,6 +88,7 @@ interface SubagentClose {
 interface Completion {
   id: string
   spawnedAt: number
+  closedAt: number
   description: string
   metadata: AgentMetadata | null
   phase: AgentNodeClosePhase
@@ -146,6 +147,7 @@ export interface ChildSupervisorOptions<State> {
   tree: TreeContext<State>
   /** The owner node's id; its children are the store's rows under it. */
   ownerId: string
+  ownerRound: number
   cwd: string
   /**
    * The owner's harness commands, before the `demi agent` injection: what an
@@ -180,7 +182,7 @@ export interface ChildSupervisorOptions<State> {
  * The relationship module of one node (`docs/subagent.md`): its direct
  * children's lifecycle — spawn, resume, abort, the natural close and its
  * delivery — over the tree store, their frames, and the `demi agent`
- * command tree; communication and reads (`send` / `steer` / `show` /
+ * command tree; communication and reads (`send` / `show` /
  * `list`) resolve through the shared AgentDirectory and reach any live
  * agent in the tree. Every node — root or subagent — owns one.
  */
@@ -314,7 +316,6 @@ export class ChildSupervisor<State = unknown> {
         this.startRequest({ kind: 'resume', id, message }, requestId, storage),
       getRunning: (id) => this.jobs.get(id) ?? null,
       send: (id, message) => this.deliverSend(id, message),
-      steer: (id, message) => this.deliverSteer(id, message),
       abortSubtree: (id) => this.abortSubtree(id),
       tree: () => this.options.tree.directory.tree(),
       ownerId: () => this.ownerId(),
@@ -463,7 +464,7 @@ export class ChildSupervisor<State = unknown> {
       throw new Error('owner session is closing')
     }
     if (this.jobs.has(id)) {
-      throw new Error(`subagent "${id}" is still running; send or steer it instead`)
+      throw new Error(`subagent "${id}" is still running; send it a message instead`)
     }
     if (this.jobs.size >= this.options.deps.maxLiveSubagents) {
       throw new Error(
@@ -664,6 +665,11 @@ export class ChildSupervisor<State = unknown> {
       wake: null,
     }
     job.unsubscribe = node.session.subscribe((event) => {
+      if (event.type === 'action_failed') {
+        job.failure = errorMessage(event.error)
+        void this.closeJob(job, 'error').catch(error => this.reportLifecycleFailure(error))
+        return
+      }
       if (event.type === 'phase_changed') {
         job.wake?.()
         return
@@ -698,7 +704,7 @@ export class ChildSupervisor<State = unknown> {
   }
 
   /**
-   * Resolves a send/steer target against the directory. `parent` is the
+   * Resolves a message target against the directory. `parent` is the
    * session that spawned the caller; a caller cannot message itself.
    */
   private resolveTarget(rawId: string): {
@@ -745,60 +751,24 @@ export class ChildSupervisor<State = unknown> {
     }
   }
 
-  /**
-   * Mailbox delivery: an ordinary user send on the target session. The
-   * session's own action queue is the inbox — a busy target sees it as a new
-   * user turn after the current one; an idle root wakes; a finishing subagent
-   * is kept open for one more turn by its settle loop (the enqueue lands
-   * before the loop's synchronous close check, so nothing drops silently).
-   */
-  private deliverSend(rawId: string, message: string): string {
+  private async deliverSend(rawId: string, content: string): Promise<string> {
     const target = this.resolveTarget(rawId)
-    const content: UserContentBlock[] = [
-      {
-        type: 'text',
-        text: `${this.senderPrefix()} ${message}`,
+    const senderId = this.ownerId()
+    const entry = this.options.tree.directory.liveEntry(senderId)
+    await target.session.acceptAgentMessage({
+      id: createId(),
+      sender: {
+        id: senderId,
+        description: entry?.job.description ?? 'root session',
+        round: this.options.ownerRound,
       },
-    ]
-    const metadata = target.job ? target.job.metadata : this.senderMetadata()
-    if (target.job && target.owner) {
-      target.owner.trackTurn(
-        target.job,
-        target.session.send(content, metadata ? { metadata } : {}),
-      )
-      target.job.wake?.()
-    } else {
-      void target.session.send(content, metadata ? { metadata } : {}).catch(noop)
-    }
+      recipientId: target.id,
+      timestamp: new Date().toISOString(),
+      content,
+      event: { type: 'message' },
+    }, target.job?.metadata ?? this.senderMetadata())
+    target.job?.wake?.()
     return target.id
-  }
-
-  /**
-   * Chime-in delivery: injects into the target's running turn; no fallback when
-   * idle.
-   */
-  private async deliverSteer(rawId: string, message: string): Promise<string> {
-    const target = this.resolveTarget(rawId)
-    if (target.session.phase() === 'idle') {
-      throw new Error(
-        `agent "${target.id}" has no running turn to steer; use \`demi agent send\``,
-      )
-    }
-    const content: UserContentBlock[] = [
-      {
-        type: 'text',
-        text: `${this.senderPrefix()} ${message}`,
-      },
-    ]
-    await target.session.steer(content)
-    return target.id
-  }
-
-  private senderPrefix(): string {
-    const selfId = this.ownerId()
-    const entry = this.options.tree.directory.liveEntry(selfId)
-    const description = entry ? entry.job.description : 'root session'
-    return `[agent ${selfId}${description ? ` — ${description}` : ''}]`
   }
 
   /**
@@ -827,8 +797,7 @@ export class ChildSupervisor<State = unknown> {
 
   /**
    * The one place a child closes naturally — the close-when-done policy.
-   * Loops until the child is quiescent: no running or queued turn (the
-   * session action queue doubles as the mailbox), no pending yield wakeups,
+   * Loops until the child is quiescent: no running or queued action, no unread internal input, no pending yield wakeups,
    * and no live children of its own. The final check-and-close is
    * synchronous, so a send that lands before it is processed and one that
    * lands after it fails on `isClosing` — nothing drops silently.
@@ -837,6 +806,7 @@ export class ChildSupervisor<State = unknown> {
     while (!job.isClosing) {
       if (
         job.node.session.isSettled() &&
+        !job.node.session.hasPendingAgentMessages() &&
         !job.node.session.hasPendingYields() &&
         !job.node.supervisor.hasLiveJobs()
       ) {
@@ -921,6 +891,7 @@ export class ChildSupervisor<State = unknown> {
       {
         id: job.id,
         spawnedAt: job.spawnedAt,
+        closedAt,
         description: job.description,
         metadata: job.metadata,
         phase,
@@ -955,9 +926,13 @@ export class ChildSupervisor<State = unknown> {
       await this.options.tree.store.markDelivered(record.id, record.spawnedAt)
       return
     }
+    if (record.closedAt === null) {
+      throw new Error('A closed child must have a completion timestamp')
+    }
     this.sendCompletion(parent, {
       id: record.id,
       spawnedAt: record.spawnedAt,
+      closedAt: record.closedAt,
       description: record.description,
       metadata: record.metadata,
       phase: record.closedPhase,
@@ -967,31 +942,23 @@ export class ChildSupervisor<State = unknown> {
   }
 
   private sendCompletion(parent: AgentSession<State>, completion: Completion): void {
-    const label = `subagent ${completion.id}${completion.description ? ` — ${completion.description}` : ''}`
-    const body =
-      completion.phase === 'completed'
-        ? `[${label}] completed.\nResult:\n${completion.result || '(empty)'}`
-        : completion.phase === 'aborted'
-          ? `[${label}] aborted.`
-          : `[${label}] failed: ${completion.failure ?? 'unknown error'}`
-    // The wakeup round runs on behalf of the round that spawned the child, so it
-    // carries that round's metadata; its id names the child, so the owner's
-    // checkpoint that carries it marks the completion delivered. A failed parent
-    // turn is reported by the session; the persisted close remains retryable.
-    void parent
-      .send(
-        [
-          {
-            type: 'text',
-            text: body,
-          },
-        ],
-        {
-          id: completionMessageId(completion.id, completion.spawnedAt),
-          ...(completion.metadata ? { metadata: completion.metadata } : {}),
-        },
-      )
-      .catch(noop)
+    void parent.acceptAgentMessage({
+      id: completionMessageId(completion.id, completion.spawnedAt),
+      sender: {
+        id: completion.id,
+        description: completion.description,
+        round: completion.spawnedAt,
+      },
+      recipientId: this.ownerId(),
+      timestamp: new Date(completion.closedAt).toISOString(),
+      content: completion.phase === 'completed'
+        ? completion.result ?? ''
+        : completion.failure ?? '',
+      event: {
+        type: 'completion',
+        outcome: completion.phase === 'error' ? 'failed' : completion.phase,
+      },
+    }, completion.metadata).catch((error: unknown) => this.reportLifecycleFailure(error))
   }
 
   private reportLifecycleFailure(error: unknown): void {
@@ -1038,7 +1005,7 @@ export class ChildSupervisor<State = unknown> {
       canSpawn
         ? '`demi agent spawn` spawns your own children.'
         : 'This session may not spawn subagents.',
-      "`demi agent send <id|parent>` leaves a message any live agent sees at its next turn boundary; `demi agent steer <id|parent>` chimes into a running agent's current turn. Both read the message only from stdin (use a quoted heredoc). `demi agent list` renders the whole agent tree with your position.",
+      "`demi agent send <id|parent>` delivers useful interim information, questions, or blockers through internal steering or an idle wakeup. It reads the message only from stdin (use a quoted heredoc). Your final answer is delivered automatically; do not send a duplicate final result. `demi agent list` renders the whole agent tree with your position.",
       'You are not talking to the product user; do not address them.',
     ].join('\n')
   }

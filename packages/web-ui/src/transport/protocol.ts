@@ -74,6 +74,7 @@ export type ControlResponse =
   }
 
 export {
+  agentMessageSchema,
   modelSelectionSchema,
   thinkingConfigSchema,
   editRequestSchema,

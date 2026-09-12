@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import type { Block } from '@demicodes/core'
+import type { AgentMessage, Block } from '@demicodes/core'
 import {
   AgentSession,
   completedChildrenCarriedBy,
@@ -108,6 +108,32 @@ function userBlock(turnId: string): Block {
   }
 }
 
+function completion(child: string, round = 1): AgentMessage {
+  return {
+    id: completionMessageId(child, round),
+    sender: { id: child, description: child, round },
+    recipientId: 'root',
+    timestamp: '2026-09-12T00:00:00.000Z',
+    content: `${child} done`,
+    event: { type: 'completion', outcome: 'completed' },
+  }
+}
+
+function pendingCompletion(child: string, round = 1): AgentSessionPersistUpdate<unknown> {
+  return {
+    ...checkpoint(),
+    pendingInternalSteers: [{
+      turnId: 'turn', model, metadata: null,
+      agentMessage: completion(child, round),
+    }],
+  }
+}
+
+function receipt(child: string, round = 1): Block {
+  const message = completion(child, round)
+  return { type: 'agent_message', id: message.id, turnId: 'turn', createdAt: message.timestamp, model, message }
+}
+
 test(
   'create queues the first message with the node; the journal replaces it once the turn is saved',
   async () => {
@@ -134,7 +160,7 @@ test(
 )
 
 test(
-  'a parent save marks delivered the completions it carries, queued or as its turn; the rest stay undelivered',
+  'a parent save acknowledges pending and materialized completions atomically',
   async () => {
     const store = new MemoryAgentStore()
     await store.createNode(record('root', null), checkpoint())
@@ -156,12 +182,8 @@ test(
     ])
 
     const save: AgentSessionPersistUpdate<unknown> = {
-      ...checkpoint([{
-        id: completionMessageId('a', 1),
-        text: 'a done',
-        content: text('a done')
-      }]),
-      changedBlocks: [{ index: 0, block: userBlock(completionMessageId('b', 1)) }],
+      ...pendingCompletion('a'),
+      changedBlocks: [{ index: 0, block: receipt('b') }],
       blockCount: 1,
     }
     expect(completedChildrenCarriedBy(save)).toEqual([{ id: 'a', spawnedAt: 1 }, { id: 'b', spawnedAt: 1 }])
@@ -228,13 +250,9 @@ test('a prior completion cannot mark a resumed round delivered', async () => {
   await store.closeNode('child', {
     phase: 'completed', closedAt: 4, result: 'second', failure: null,
   })
-  await store.sessionStore('root').save(checkpoint([{
-    id: completionMessageId('child', 1), text: 'first', content: text('first'),
-  }]))
+  await store.sessionStore('root').save(pendingCompletion('child', 1))
   await store.markDelivered('child', 1)
   expect((await store.node('child'))?.delivered).toBe(false)
-  await store.sessionStore('root').save(checkpoint([{
-    id: completionMessageId('child', 3), text: 'second', content: text('second'),
-  }]))
+  await store.sessionStore('root').save(pendingCompletion('child', 3))
   expect((await store.node('child'))?.delivered).toBe(true)
 })
