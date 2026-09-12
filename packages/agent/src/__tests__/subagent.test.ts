@@ -191,7 +191,7 @@ function subagentIdFrom(request: InferenceRequest): string {
 }
 
 test(
-  'spawn returns creation while an isolated child delivers its result separately',
+  'spawn returns creation while a child delivers its result separately',
   async () => {
     let childRequest: InferenceRequest | null = null
     let continuationText = ''

@@ -1000,7 +1000,7 @@ export class ChildSupervisor<State = unknown> {
 
   private subagentPreamble(childId: string, canSpawn: boolean): string {
     return [
-      `You are a subagent: an isolated child agent session (id ${childId}) spawned by parent agent session ${this.ownerId()}. Your transcript starts empty; the task brief in the first user message is your entire context.`,
+      `You are a subagent: a child agent session (id ${childId}) spawned by parent agent session ${this.ownerId()}. Your transcript starts empty; the task brief in the first user message is your entire context.`,
       'When you end your turn with nothing pending — no queued messages, no scheduled wakeups, no running children of your own — the session ends and your last assistant text is returned to the parent as the result. Write it for the parent agent, in the shape the task brief asked for.',
       canSpawn
         ? '`demi agent spawn` spawns your own children.'
