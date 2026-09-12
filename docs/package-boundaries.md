@@ -227,6 +227,24 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` and native client as `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
 
+### `packages/command-protocol` (Rust crate)
+
+- Owns: native command-service metadata, strict wire values, protocol constants
+  and bounded incremental response framing. See
+  [Native runner and command services](demi-next/native-runtime.md).
+- Depends on: serde, serde_json, bytes and thiserror; no runtime or transport IO.
+- Must not: implement command algorithms, spawn services or hold backend state.
+
+### `packages/command-service` (Rust crate)
+
+- Owns: HTTP/2 command-service transport over injected duplex IO, bounded input
+  and output, invocation admission, handler cancellation and connection cleanup.
+- Depends on: `demi-command-protocol`, Tokio, tokio-util, h2, http, futures-util,
+  bytes, serde_json and thiserror. No product or runner dependency.
+- Public boundary: service entry point, handler contract and invocation IO.
+- Must not: define builtin commands, resolve artifacts, hold credentials or
+  modify process-global cwd or environment on behalf of an invocation.
+
 ### `packages/command-client` (native executable)
 
 - Status: implemented for macOS/Linux; see `docs/demi-next/command-client.md` for Windows acceptance gaps.
