@@ -3,7 +3,6 @@ import {
   conversationPageKind,
   sessionFailureNotice,
   sessionPaneStatus,
-  sessionShowsReconnectTail,
   sessionStatusCopy,
 } from '../session-status'
 
@@ -16,8 +15,6 @@ test('a restore in flight is never an empty conversation', () => {
 test('reconnecting keeps the transcript and is not a pane or an empty conversation', () => {
   expect(sessionPaneStatus('reconnecting', true)).toBeNull()
   expect(sessionPaneStatus('reconnecting', false)).toBeNull()
-  expect(sessionShowsReconnectTail('reconnecting')).toBe(true)
-  expect(sessionShowsReconnectTail('ready')).toBe(false)
 })
 
 test('a failed reconnect keeps the transcript and names the failure in the dock', () => {

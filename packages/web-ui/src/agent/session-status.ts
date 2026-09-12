@@ -67,10 +67,6 @@ export function sessionFailureNotice(
   return { label: lastError, retry: false }
 }
 
-export function sessionShowsReconnectTail(load: SessionLoad): boolean {
-  return load === 'reconnecting'
-}
-
 /** The chat route when the sidebar list is not ready, or the id is unknown. */
 export function conversationPageKind(
   list: ListLoad,

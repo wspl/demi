@@ -1,76 +1,95 @@
-import { nextTick, onBeforeUnmount, ref } from 'vue'
-import { t } from '@demicodes/web-ui/infra/i18n'
-import type { MessageListBlock } from '@demicodes/web-ui/agent/pending-steers'
+import { onBeforeUnmount, reactive } from 'vue'
+import type { Block } from '@demicodes/core'
+import { ACTIVITY_HANDOFF_MS } from '@demicodes/web-ui/agent/activity-slot'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
-import { CHROME_ROLL_MS } from '@demicodes/web-ui/ui/chrome-roll'
+import { conversationStatus } from '@demicodes/web-ui/agent/conversation-status'
+import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
+import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
+import type { ChatSessionState, ConversationState } from '@demicodes/web-ui/agent/types'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { demoModel } from './fixtures/blocks'
 
-export type ActivityKind = 'requesting' | 'connecting' | 'resuming' | 'retrying'
-
-export interface ActivitySlotState {
-  kind: ActivityKind
-  label: string
-  incoming?: MessageListBlock | null
-}
-
-/** `stream` is thinking then reply with no activity slot: the reveal alone. */
+/**
+ * `turn` is a full turn from a sent message; `resume` and `retry` recover an
+ * aborted or failed tail; `connect` opens over a dropped socket; `stream` is
+ * thinking then reply with nothing waited for. Every fixture only changes
+ * conversation state, the way the product's runtime does: the transcript's
+ * tail row, its faces and the handoff into a block are `web-ui`'s.
+ */
 export type TurnFlowKind = 'turn' | 'resume' | 'retry' | 'connect' | 'stream'
+
+/** The state `ChatSession` reads, over the full conversation state `conversationStatus` derives from. */
+export type TurnFlowState = ConversationState & ChatSessionState
 
 const THINK_1 = 'The cookie name changed from sid to session. The helper already writes the new header. The test is the one still looking for sid.'
 const THINK_2 = 'The helper is fine. Update the assertion in auth.test.ts and leave cookie.ts alone.'
 const REPLY = 'The cookie helper is fine. The test still expects `sid`.\n\nI updated the assertion in `auth.test.ts` and left `cookie.ts` alone.'
-const HANDOFF_MS = CHROME_ROLL_MS + 80
+const USER_TEXT = 'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename.'
+const RETRY_ERROR = 'Anthropic API request failed with HTTP 529: Overloaded. The upstream service is temporarily unavailable.'
+/** The simulated server's acknowledgement of a recovery or a reconnect. */
+const ACK_MS = 800
 const WAIT_MS = 80
+/** Time the model takes before its first output in a turn. */
+const FIRST_OUTPUT_MS = 1000
+const TOOL_RUN_MS = 1400
 const FEED_CHARS = 4
 const FEED_MS = 90
 
-export function useTurnFlow() {
-  const blocks = ref<MessageListBlock[]>([])
-  const slot = ref<ActivitySlotState | null>(null)
-  const endedAtById = ref<Record<string, string>>({})
-  const streamingThinkingId = ref<string | null>(null)
-  const streamingTextId = ref<string | null>(null)
-  const running = ref(false)
+export interface TurnFlowOptions {
+  id?: string
+  title?: string
+  blocks?: Block[]
+  subagents?: SubagentRecord[]
+  terminals?: TerminalRecord[]
+}
+
+export function useTurnFlow(options: TurnFlowOptions = {}) {
+  const state: TurnFlowState = reactive({
+    id: options.id ?? 'turn-flow',
+    cwd: '/',
+    title: options.title ?? 'Login test',
+    createdAt: new Date().toISOString(),
+    blocks: options.blocks ?? [],
+    phase: 'idle',
+    queue: [],
+    pendingSteers: [],
+    model: {
+      providerId: demoModel.providerId,
+      modelId: demoModel.model.id,
+      thinkingEffort: null,
+      serviceTierId: null,
+    },
+    draft: null,
+    isResultSeen: true,
+    hasContent: false,
+    lastError: null,
+    load: 'ready',
+    pendingAction: null,
+    archived: false,
+    get status() {
+      return conversationStatus(state)
+    },
+    scroll: null,
+    subagents: options.subagents ?? [],
+    terminals: options.terminals ?? [],
+  })
   const timers: number[] = []
   let token = 0
-  let thinkStartedAt = ''
-
-  function labelFor(kind: ActivityKind): string {
-    switch (kind) {
-      case 'connecting': return t('agent.block.connecting')
-      case 'resuming': return t('agent.block.resuming')
-      case 'retrying': return t('agent.block.retrying')
-      default: return t('agent.block.requesting')
-    }
-  }
-
-  function setSlot(kind: ActivityKind | null): void {
-    slot.value = kind ? { kind, label: labelFor(kind) } : null
-  }
-
-  function clearTimers(): void {
-    for (const id of timers) window.clearTimeout(id)
-    timers.length = 0
-  }
+  let sequence = 0
 
   function cancel(): void {
     token += 1
-    clearTimers()
-  }
-
-  function stop(): void {
-    cancel()
-    running.value = false
-    slot.value = null
-    streamingThinkingId.value = null
-    streamingTextId.value = null
+    for (const id of timers) {
+      window.clearTimeout(id)
+    }
+    timers.length = 0
   }
 
   function at(run: number, ms: number, fn: () => void): void {
     timers.push(window.setTimeout(() => {
-      if (run !== token)
+      if (run !== token) {
         return
+      }
       fn()
     }, ms))
   }
@@ -79,28 +98,43 @@ export function useTurnFlow() {
     return new Date().toISOString()
   }
 
-  function replace(id: string, next: MessageListBlock): void {
-    blocks.value = blocks.value.map((block) => (block.id === id ? next : block))
+  function nextId(kind: string): string {
+    sequence += 1
+    return `${kind}-${sequence}`
   }
 
-  function append(block: MessageListBlock): void {
-    if (blocks.value.some((existing) => existing.id === block.id))
-      return
-    blocks.value = [...blocks.value, block]
+  function replace(id: string, next: Block): void {
+    state.blocks = state.blocks.map((block) => (block.id === id ? next : block))
   }
 
-  function thinkingBlock(id: string, text: string): MessageListBlock {
+  function append(block: Block): void {
+    state.blocks = [...state.blocks, block]
+  }
+
+  function userBlock(text: string): Block {
+    return {
+      type: 'user',
+      id: nextId('user'),
+      turnId: nextId('turn'),
+      createdAt: now(),
+      model: demoModel,
+      content: [{ type: 'text', text }],
+      preamble: null,
+    }
+  }
+
+  function thinkingBlock(id: string, createdAt: string, text: string): Block {
     return {
       type: 'thinking',
       id,
-      createdAt: thinkStartedAt || now(),
+      createdAt,
       model: demoModel,
       text,
       signature: null,
     }
   }
 
-  function textBlock(id: string, createdAt: string, text: string): MessageListBlock {
+  function textBlock(id: string, createdAt: string, text: string): Block {
     return {
       type: 'text',
       id,
@@ -110,19 +144,19 @@ export function useTurnFlow() {
     }
   }
 
-  function tool(id: string, status: ToolCallBlock['status']): ToolCallBlock {
+  function tool(id: string, createdAt: string, status: ToolCallBlock['status']): ToolCallBlock {
     const output = status === 'completed'
       ? [
-        {
-          type: 'text' as const,
-          text: 'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")\n'
-        }
-      ]
+          {
+            type: 'text' as const,
+            text: 'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")\n',
+          },
+        ]
       : []
     return {
       type: 'tool_call',
       id,
-      createdAt: now(),
+      createdAt,
       model: demoModel,
       toolUseId: `${id}-use`,
       toolName: 'shell_exec',
@@ -152,18 +186,18 @@ export function useTurnFlow() {
         chunk = ''
       }
     }
-    if (chunk || prefixes.length === 0)
+    if (chunk || prefixes.length === 0) {
       prefixes.push(acc)
+    }
     return prefixes
   }
 
+  /** Streams `full` into `apply` from `startMs`; returns when the last prefix lands. */
   function streamTextInto(
     run: number,
     startMs: number,
     full: string,
-    apply: (
-    text: string
-  ) => void
+    apply: (text: string) => void,
   ): number {
     const prefixes = feedPrefixes(full)
     prefixes.forEach((text, index) => {
@@ -172,219 +206,185 @@ export function useTurnFlow() {
     return startMs + Math.max(0, prefixes.length - 1) * FEED_MS
   }
 
-  function patchThinking(id: string, text: string): void {
-    const next = thinkingBlock(id, text)
-    replace(id, next)
-    if (slot.value?.incoming?.id === id)
-      slot.value = { ...slot.value, incoming: next }
-  }
-
-  function reveal(run: number, ms: number, build: () => MessageListBlock): void {
-    at(run, ms, () => {
-      const incoming = build()
-      if (!slot.value) {
-        append(incoming)
-        if (incoming.type === 'thinking')
-          streamingThinkingId.value = incoming.id
-        return
-      }
-      slot.value = { ...slot.value, incoming }
-      if (incoming.type === 'thinking')
-        streamingThinkingId.value = incoming.id
-    })
-    at(run, ms + HANDOFF_MS, () => {
-      const incoming = slot.value?.incoming
-      if (incoming)
-        append(incoming)
-      slot.value = null
-    })
-  }
-
-  function endThinking(id: string): void {
-    endedAtById.value = { ...endedAtById.value, [id]: now() }
-    if (streamingThinkingId.value === id)
-      streamingThinkingId.value = null
-  }
-
-  function streamThinking(run: number, startMs: number, id: string, text: string): number {
-    return streamTextInto(run, startMs, text, (partial) => patchThinking(id, partial))
-  }
-
-  function streamReply(
-    run: number,
-    startMs: number,
-    id: string,
-    text: string,
-    onDone: () => void
-  ): void {
+  /** An empty thinking block arrives at `startMs`; its text streams after the handoff. Returns when the text is complete. */
+  function think(run: number, startMs: number, text: string): number {
+    const id = nextId('think')
     let createdAt = ''
     at(run, startMs, () => {
       createdAt = now()
-      streamingTextId.value = id
+      append(thinkingBlock(id, createdAt, ''))
+    })
+    return streamTextInto(run, startMs + ACTIVITY_HANDOFF_MS, text, (partial) => {
+      replace(id, thinkingBlock(id, createdAt, partial))
+    })
+  }
+
+  /** The reply streams from `startMs`; the turn ends after it. */
+  function reply(run: number, startMs: number, text: string): void {
+    const id = nextId('text')
+    let createdAt = ''
+    at(run, startMs, () => {
+      createdAt = now()
       append(textBlock(id, createdAt, ''))
     })
     const end = streamTextInto(run, startMs + FEED_MS, text, (partial) => {
-      replace(id, textBlock(id, createdAt || now(), partial))
+      replace(id, textBlock(id, createdAt, partial))
     })
     at(run, end + 160, () => {
-      streamingTextId.value = null
-      onDone()
+      state.phase = 'idle'
     })
   }
 
-  function playThinkingThenReply(
-    run: number,
-    startMs: number,
-    thinkId: string,
-    text: string,
-    replyText = REPLY,
-  ): void {
-    at(run, startMs, () => {
-      thinkStartedAt = now()
-    })
-    reveal(run, startMs, () => thinkingBlock(thinkId, ''))
-    const thinkEnd = streamThinking(run, startMs + HANDOFF_MS, thinkId, text)
-    at(run, thinkEnd + 200, () => {
-      endThinking(thinkId)
-    })
-    streamReply(run, thinkEnd + 240, `${run}-text`, replyText, () => {
-      running.value = false
-    })
+  function thinkThenReply(run: number, startMs: number, text: string): void {
+    const thought = think(run, startMs, text)
+    reply(run, thought + 240, REPLY)
   }
 
-  function play(kind: TurnFlowKind = 'turn', userText?: string): void {
+  /** A whole turn on the current transcript: request, think, run a tool, think, reply. */
+  function runTurn(run: number): void {
+    state.phase = 'running'
+    const thought1 = think(run, FIRST_OUTPUT_MS, THINK_1)
+    const toolId = nextId('tool')
+    let toolStartedAt = ''
+    at(run, thought1 + 200, () => {
+      toolStartedAt = now()
+      append(tool(toolId, toolStartedAt, 'executing'))
+    })
+    const toolDone = thought1 + 200 + TOOL_RUN_MS
+    at(run, toolDone, () => {
+      replace(toolId, tool(toolId, toolStartedAt, 'completed'))
+    })
+    thinkThenReply(run, toolDone + WAIT_MS, THINK_2)
+  }
+
+  /** The server acknowledges a recovery: the recovered record settles, the turn runs. */
+  function acknowledgeRecovery(): void {
+    const tail = state.blocks.at(-1)
+    if (tail?.type === 'abort') {
+      replace(tail.id, { ...tail, isResumed: true })
+    } else if (tail?.type === 'error') {
+      state.blocks = state.blocks.slice(0, -1)
+    }
+    state.pendingAction = null
+    state.phase = 'running'
+  }
+
+  /** Send a message on the current transcript. */
+  function turn(text: string): void {
     cancel()
     const run = token
-    running.value = true
-    endedAtById.value = {}
-    streamingThinkingId.value = null
-    streamingTextId.value = null
-    thinkStartedAt = ''
-    slot.value = null
+    append(userBlock(text.trim() || USER_TEXT))
+    runTurn(run)
+  }
+
+  /** Resume or retry from the current tail, the way Resume and Retry do in the product. */
+  function resume(): void {
+    cancel()
+    const run = token
+    state.lastError = null
+    state.pendingAction = 'resume'
+    at(run, ACK_MS, acknowledgeRecovery)
+    thinkThenReply(run, ACK_MS + WAIT_MS, THINK_2)
+  }
+
+  /** Abort a running turn: the transcript ends with an abort record to resume from. */
+  function stop(): void {
+    if (state.phase !== 'running') {
+      return
+    }
+    cancel()
+    state.phase = 'idle'
+    append({
+      type: 'abort',
+      id: nextId('abort'),
+      createdAt: now(),
+      model: demoModel,
+      isResumed: false,
+    })
+  }
+
+  /** Reset to a fixture and play it. */
+  function play(kind: TurnFlowKind = 'turn'): void {
+    cancel()
+    const run = token
+    state.lastError = null
+    state.pendingAction = null
+    state.load = 'ready'
+    state.phase = 'idle'
 
     if (kind === 'stream') {
-      blocks.value = []
-      playThinkingThenReply(run, 0, `${run}-think`, THINK_1)
+      // Thinking is the tail from the first running frame, so nothing is waited for.
+      const id = nextId('think')
+      const createdAt = now()
+      state.blocks = [thinkingBlock(id, createdAt, '')]
+      state.phase = 'running'
+      const thought = streamTextInto(run, FEED_MS, THINK_1, (partial) => {
+        replace(id, thinkingBlock(id, createdAt, partial))
+      })
+      reply(run, thought + 240, REPLY)
       return
     }
 
     if (kind === 'connect') {
-      blocks.value = []
-      void nextTick(() => {
-        if (run !== token)
-          return
-        setSlot('connecting')
+      // The socket dropped while a turn was running: Connecting wins until it is back.
+      state.blocks = [userBlock(USER_TEXT)]
+      state.phase = 'running'
+      state.load = 'reconnecting'
+      at(run, ACK_MS, () => {
+        state.load = 'ready'
       })
-      at(run, 800, () => setSlot('requesting'))
-      playThinkingThenReply(run, 800 + WAIT_MS, `${run}-think`, THINK_2)
+      thinkThenReply(run, ACK_MS + WAIT_MS, THINK_2)
       return
     }
 
     if (kind === 'resume') {
-      blocks.value = []
-      void nextTick(() => {
-        if (run !== token)
-          return
-        setSlot('resuming')
-      })
-      at(run, 800, () => setSlot('requesting'))
-      playThinkingThenReply(run, 800 + WAIT_MS, `${run}-think`, THINK_2)
+      state.blocks = [
+        userBlock(USER_TEXT),
+        {
+          type: 'abort',
+          id: nextId('abort'),
+          createdAt: now(),
+          model: demoModel,
+          isResumed: false,
+        },
+      ]
+      resume()
       return
     }
 
     if (kind === 'retry') {
-      blocks.value = [{
-        type: 'error',
-        id: `${run}-error`,
-        createdAt: now(),
-        model: demoModel,
-        message: 'Anthropic API request failed with HTTP 529: Overloaded. The upstream service is temporarily unavailable.',
-        code: 'overloaded',
-        diagnostics: {
-          source: 'http',
-          httpStatus: 529,
-          providerCode: 'overloaded_error'
+      state.blocks = [
+        userBlock(USER_TEXT),
+        {
+          type: 'error',
+          id: nextId('error'),
+          createdAt: now(),
+          model: demoModel,
+          message: RETRY_ERROR,
+          code: 'overloaded',
+          diagnostics: {
+            source: 'http',
+            httpStatus: 529,
+            providerCode: 'overloaded_error',
+          },
         },
-      }]
-      void nextTick(() => {
-        if (run !== token)
-          return
-        setSlot('retrying')
-      })
-      at(run, 900, () => setSlot('requesting'))
-      playThinkingThenReply(run, 900 + WAIT_MS, `${run}-think`, THINK_2)
+      ]
+      state.lastError = RETRY_ERROR
+      resume()
       return
     }
 
-    blocks.value = [{
-      type: 'user',
-      id: `${run}-user`,
-      turnId: `turn-${run}`,
-      createdAt: now(),
-      model: demoModel,
-      content: [
-        {
-          type: 'text',
-          text: userText?.trim() ||
-            'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename.'
-        }
-      ],
-      preamble: null,
-    }]
-    void nextTick(() => {
-      if (run !== token)
-        return
-      setSlot('requesting')
-    })
-
-    const think1 = `${run}-think-1`
-    const toolId = `${run}-tool`
-    const think2 = `${run}-think-2`
-
-    at(run, 1000, () => {
-      thinkStartedAt = now()
-    })
-    reveal(run, 1000, () => thinkingBlock(think1, ''))
-    const think1End = streamThinking(run, 1000 + HANDOFF_MS, think1, THINK_1)
-    at(run, think1End + 200, () => {
-      endThinking(think1)
-      setSlot('requesting')
-    })
-    reveal(run, think1End + 200 + WAIT_MS, () => tool(toolId, 'executing'))
-
-    const afterToolArrive = think1End + 200 + WAIT_MS + HANDOFF_MS
-    at(run, afterToolArrive + 1400, () => {
-      replace(toolId, tool(toolId, 'completed'))
-      setSlot('requesting')
-    })
-    at(run, afterToolArrive + 1400 + WAIT_MS, () => {
-      thinkStartedAt = now()
-    })
-    reveal(run, afterToolArrive + 1400 + WAIT_MS, () => thinkingBlock(think2, ''))
-    const think2End = streamThinking(
-      run,
-      afterToolArrive + 1400 + WAIT_MS + HANDOFF_MS,
-      think2,
-      THINK_2
-    )
-    at(run, think2End + 200, () => {
-      endThinking(think2)
-    })
-    streamReply(run, think2End + 240, `${run}-text`, REPLY, () => {
-      running.value = false
-    })
+    state.blocks = []
+    turn(USER_TEXT)
   }
 
-  onBeforeUnmount(stop)
+  onBeforeUnmount(cancel)
 
   return {
-    blocks,
-    slot,
-    endedAtById,
-    streamingThinkingId,
-    streamingTextId,
-    running,
+    state,
     play,
-    stop
+    turn,
+    resume,
+    stop,
   }
 }
