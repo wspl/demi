@@ -1,3 +1,4 @@
+import { readServerSentEvents, type ServerSentEvent } from '@demicodes/provider'
 import { expect, test } from 'bun:test'
 import { zeroUsage } from '@demicodes/core'
 import {
@@ -10,8 +11,6 @@ import { StaticGrokAuthStore, type GrokResolvedAuth } from '../auth'
 import {
   buildGrokChatCompletionsBody,
   mapGrokChatCompletionStream,
-  readServerSentEvents,
-  type ServerSentEvent
 } from '../chat'
 import { modelListFromGrokModelsPayload } from '../models'
 import { createGrokBuildProvider } from '../provider'
@@ -386,7 +385,7 @@ test('model catalog maps Grok /v1/models payload', () => {
     contextWindow: 200_000,
   })
   expect(
-    catalog.models.every((model) => model.supportsAttachments === true)
+    catalog.models.every((model) => model.supportsAttachments === null)
   ).toBe(true)
 })
 

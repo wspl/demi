@@ -42,7 +42,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/utils`.
 - Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, required `AgentProvider.clone()` for independent per-session runtimes, unified subscription/rate-limit quota types (`ProviderQuota` / `ProviderQuotaSnapshot`; see `docs/provider-quota.md`), optional multi-credential types (`ProviderCredentials` / `ProviderCredentialInfo` — global active switch, not multi-instance providers; see `docs/provider-global-credentials.md`), the shared node-only credential pool IO behind the `@demicodes/provider/credentials-pool` subpath (the main entry stays platform-neutral), model catalog shape, configured model schema/types and projection (`configured-models.ts`), and the models.dev catalog client (`models-dev.ts`: the fetch with its cache and stale fallback, the zod schema of the parts read, the entry-to-catalog-model mapping) that concrete providers and the backend filter for their own lists.
-- Public boundary: provider contract, direct `Provider[]` composition types, quota helpers (`createProviderQuota`, `ensureQuota`) and shared quota amount/reset schemas, credential public types, schema parsing with payload-free diagnostics (`parseProviderData`, `parseProviderJson`, `parseProviderJwt`, `ProviderDataError`), provider test helpers only from `@demicodes/provider/testing`, and pool IO only from `@demicodes/provider/credentials-pool`. Concrete providers own their wire schemas; the shared parser owns JSON/JWT payload decoding and validation error classification. JWT payload decoding extracts metadata without verifying signatures.
+- Public boundary: provider contract, direct `Provider[]` composition types, quota helpers (`createProviderQuota`, `ensureQuota`) and shared quota amount/reset schemas, credential public types, schema parsing with payload-free diagnostics (`parseProviderData`, `parseProviderJson`, `parseProviderJwt`, `ProviderDataError`), shared SSE framing (`readServerSentEvents`, `ServerSentEvent`), provider test helpers only from `@demicodes/provider/testing`, and pool IO only from `@demicodes/provider/credentials-pool`. Concrete providers own their wire schemas; the shared parser owns JSON/JWT payload decoding and validation error classification. JWT payload decoding extracts metadata without verifying signatures.
 - Model catalog boundary: common catalog state exposes portable fields only: model ids, display metadata, capability metadata, service tiers, `sourceFetchedAt`, `stale`, and `warnings`.
 - Model catalog must not: expose provider-specific `source` labels such as `codex-backend`, `models.dev`, or `cache` in public types.
 - Must not: import concrete providers, the agent runtime, the shell packages, or Host implementations.
@@ -122,7 +122,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: `createOpenAIApiProvider`, default model catalog function, and public option/model types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.openai.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `OPENAI`. `wireApi` defaults to `responses`; compatible endpoints can pass `wireApi: 'chat-completions'`.
 - Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
-- Internal boundary: Responses body builders, Chat Completions body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
+- Internal boundary: Responses body builders, Chat Completions body builders, stream mappers, runtime classes, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
 ### `@demicodes/provider-anthropic-api`
@@ -133,7 +133,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: `createAnthropicApiProvider`, default model catalog function, and public option/model types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.anthropic.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `ANTHROPIC`. `baseUrl` must already include the API version prefix (typically `/v1`); the provider only appends `/messages` (or leaves the URL alone when it already ends with `/messages`). Claude Code / Kimi-style roots such as `https://api.kimi.com/coding/` are not drop-in values — pass `…/coding/v1` instead.
 - Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
-- Internal boundary: Messages body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
+- Internal boundary: Messages body builders, stream mappers, runtime classes, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
 ### `@demicodes/provider-grok-build`
@@ -144,7 +144,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: `createGrokBuildProvider`, `parseGrokBuildProviderConfig` for serializable configuration, auth status helper, model catalog function, quota helpers, and public option types from root. `config-schema.ts` owns the parsed configuration type and the matching creator option fields.
 - Endpoint boundary: explicit `baseUrl` wins, then `https://cli-chat-proxy.grok.com/v1`. Auth is the Grok CLI OAuth session or native device login against `https://auth.x.ai` (no API-key product path).
 - Secret boundary: session tokens, refresh tokens, raw auth file contents, and pool secret files stay inside the provider creator/auth store and must not cross AgentClient/Web browser-visible frames.
-- Internal boundary: auth stores, Chat Completions builders, SSE readers, stream mappers, runtime classes, credential pool IO, and test helpers stay behind implementation files.
+- Internal boundary: auth stores, Chat Completions builders, stream mappers, runtime classes, credential pool IO, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
 ### `@demicodes/provider-google`
@@ -155,7 +155,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: `createGoogleProvider`, default model catalog function, and public option/model types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://generativelanguage.googleapis.com/v1beta`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `GOOGLE`.
 - Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
-- Internal boundary: generateContent body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
+- Internal boundary: generateContent body builders, stream mappers, runtime classes, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
 ### `@demicodes/backend`

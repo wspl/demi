@@ -81,7 +81,7 @@ export class FetchCodexResponsesTransport implements CodexResponsesTransport {
     if (!response.body)
       throw new Error('Codex response did not include a body')
 
-    yield* parseSseResponseStream(response.body)
+    yield* parseSseResponseStream(response.body, request.signal)
   }
 }
 

@@ -1,3 +1,4 @@
+import { readServerSentEvents, type ServerSentEvent } from '@demicodes/provider'
 import { attachmentTag } from '@demicodes/core'
 import {
   isAbortError,
@@ -520,17 +521,16 @@ export async function* mapOpenAIResponseStream(
       yield { type: 'abort' }
       return
     }
-    for (const data of event.data) {
-      if (data === '[DONE]')
-        continue
-      const parsed = parseJsonObject(data)
-      if (!parsed)
-        continue
-      const streamEvent = parsed as OpenAIResponseStreamEvent
-      if (streamEvent.type === 'response.completed')
-        completed = true
-      yield* mapOpenAIResponseEvent(streamEvent, state)
-    }
+    const data = event.data
+    if (data === '[DONE]')
+      continue
+    const parsed = parseJsonObject(data)
+    if (!parsed)
+      continue
+    const streamEvent = parsed as OpenAIResponseStreamEvent
+    if (streamEvent.type === 'response.completed')
+      completed = true
+    yield* mapOpenAIResponseEvent(streamEvent, state)
   }
 
   if (!completed)
@@ -776,55 +776,54 @@ export async function* mapOpenAIChatCompletionStream(
       yield { type: 'abort' }
       return
     }
-    for (const data of event.data) {
-      if (data === '[DONE]') {
-        yield* flushOpenAIToolCalls(toolCalls)
-        yield { type: 'response', usage }
-        return
+    const data = event.data
+    if (data === '[DONE]') {
+      yield* flushOpenAIToolCalls(toolCalls)
+      yield { type: 'response', usage }
+      return
+    }
+    const chunk = parseJsonObject(data)
+    if (!chunk)
+      continue
+    const error = isRecord(chunk.error) ? chunk.error : null
+    if (error) {
+      yield {
+        type: 'error',
+        message: stringOrNull(error.message) ?? 'OpenAI API stream error',
+        code: normalizeErrorCode(
+          stringOrNull(error.code) ?? stringOrNull(error.type),
+          stringOrNull(error.message) ?? ''
+        ),
       }
-      const chunk = parseJsonObject(data)
-      if (!chunk)
+      return
+    }
+    if (isRecord(chunk.usage))
+      usage = openAIUsage(chunk.usage)
+    const choices = Array.isArray(chunk.choices) ? chunk.choices : []
+    for (const choice of choices) {
+      if (!isRecord(choice))
         continue
-      const error = isRecord(chunk.error) ? chunk.error : null
-      if (error) {
-        yield {
-          type: 'error',
-          message: stringOrNull(error.message) ?? 'OpenAI API stream error',
-          code: normalizeErrorCode(
-            stringOrNull(error.code) ?? stringOrNull(error.type),
-            stringOrNull(error.message) ?? ''
-          ),
-        }
-        return
-      }
-      if (isRecord(chunk.usage))
-        usage = openAIUsage(chunk.usage)
-      const choices = Array.isArray(chunk.choices) ? chunk.choices : []
-      for (const choice of choices) {
-        if (!isRecord(choice))
-          continue
-        const delta = isRecord(choice.delta) ? choice.delta : null
-        if (delta) {
-          const reasoning = stringOrNull(delta.reasoning_content)
-          if (reasoning) {
-            if (!thinkingStarted) {
-              thinkingStarted = true
-              yield { type: 'thinking_start' }
-            }
-            yield { type: 'thinking_delta', text: reasoning }
+      const delta = isRecord(choice.delta) ? choice.delta : null
+      if (delta) {
+        const reasoning = stringOrNull(delta.reasoning_content)
+        if (reasoning) {
+          if (!thinkingStarted) {
+            thinkingStarted = true
+            yield { type: 'thinking_start' }
           }
-          const content = stringOrNull(delta.content)
-          if (content)
-            yield { type: 'text_delta', text: content }
-          if (Array.isArray(delta.tool_calls))
-            collectOpenAIToolCalls(
-              delta.tool_calls,
-              toolCalls
-            )
+          yield { type: 'thinking_delta', text: reasoning }
         }
-        if (choice.finish_reason === 'tool_calls')
-          yield* flushOpenAIToolCalls(toolCalls)
+        const content = stringOrNull(delta.content)
+        if (content)
+          yield { type: 'text_delta', text: content }
+        if (Array.isArray(delta.tool_calls))
+          collectOpenAIToolCalls(
+            delta.tool_calls,
+            toolCalls
+          )
       }
+      if (choice.finish_reason === 'tool_calls')
+        yield* flushOpenAIToolCalls(toolCalls)
     }
   }
 
@@ -1330,68 +1329,6 @@ function isOpenAIResponseFunctionCallItem(
   item: unknown
 ): item is OpenAIResponseFunctionCallItem {
   return isRecord(item) && item.type === 'function_call'
-}
-
-export interface ServerSentEvent {
-  event: string | null
-  data: string[]
-}
-
-export async function* readServerSentEvents(
-  body: ReadableStream<Uint8Array> | null,
-  signal?: AbortSignal,
-): AsyncIterable<ServerSentEvent> {
-  if (!body)
-    return
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let eventName: string | null = null
-  let data: string[] = []
-
-  const flush = function* (): Iterable<ServerSentEvent> {
-    if (data.length === 0)
-      return
-    yield { event: eventName, data }
-    eventName = null
-    data = []
-  }
-
-  try {
-    while (true) {
-      if (signal?.aborted)
-        return
-      const { value, done } = await reader.read()
-      if (done)
-        break
-      buffer += decoder.decode(value, { stream: true })
-      let newline = buffer.indexOf('\n')
-      while (newline !== -1) {
-        const raw = buffer.slice(0, newline)
-        buffer = buffer.slice(newline + 1)
-        const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-        if (line === '') {
-          yield* flush()
-        } else if (line.startsWith('event:')) {
-          eventName = line.slice('event:'.length).trim()
-        } else if (line.startsWith('data:')) {
-          data.push(line.slice('data:'.length).trimStart())
-        }
-        newline = buffer.indexOf('\n')
-      }
-    }
-    buffer += decoder.decode()
-    if (buffer) {
-      const line = buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer
-      if (line.startsWith('data:')) data.push(line.slice('data:'.length)
-        .trimStart())
-      else if (line.startsWith('event:'))
-        eventName = line.slice('event:'.length).trim()
-    }
-    yield* flush()
-  } finally {
-    reader.releaseLock()
-  }
 }
 
 function openAIChatCompletionsUrl(baseUrl: string): string {

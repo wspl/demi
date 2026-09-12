@@ -1,3 +1,4 @@
+import type { ServerSentEvent } from '@demicodes/provider'
 import { expect, test } from 'bun:test'
 import {
   providerRuntime,
@@ -9,7 +10,6 @@ import {
   buildAnthropicMessagesBody,
   createAnthropicApiProvider,
   mapAnthropicMessageStream,
-  type ServerSentEvent,
 } from '../provider'
 
 test(
@@ -423,7 +423,7 @@ async function* eventsFromData(values: Array<{
 }>): AsyncIterable<ServerSentEvent> {
   for (const value of values) yield {
     event: value.event,
-    data: [JSON.stringify(value.data)]
+    data: JSON.stringify(value.data)
   }
 }
 

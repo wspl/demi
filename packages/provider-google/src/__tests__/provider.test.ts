@@ -1,3 +1,4 @@
+import type { ServerSentEvent } from '@demicodes/provider'
 import { Buffer } from 'node:buffer'
 import { expect, test } from 'bun:test'
 import {
@@ -11,7 +12,6 @@ import {
   createGoogleProvider,
   inferenceItemsToGoogleContents,
   mapGoogleContentStream,
-  type ServerSentEvent,
 } from '../provider'
 
 test(
@@ -489,7 +489,7 @@ async function* streamOf(
 ): AsyncIterable<ServerSentEvent> {
   for (const value of values) yield {
     event: null,
-    data: [JSON.stringify(value)]
+    data: JSON.stringify(value)
   }
 }
 

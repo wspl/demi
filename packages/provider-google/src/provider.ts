@@ -1,3 +1,4 @@
+import { readServerSentEvents, type ServerSentEvent } from '@demicodes/provider'
 import { attachmentTag } from '@demicodes/core'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
@@ -621,90 +622,89 @@ export async function* mapGoogleContentStream(
       yield { type: 'abort' }
       return
     }
-    for (const data of event.data) {
-      const value = parseJsonObject(data)
-      if (!value)
-        continue
+    const data = event.data
+    const value = parseJsonObject(data)
+    if (!value)
+      continue
 
-      if (isRecord(value.error)) {
-        const message = stringOrNull(value.error.message)
-          ?? 'Google API stream error'
-        yield {
-          type: 'error',
-          message,
-          code: normalizeErrorCode(stringOrNull(value.error.status), message)
-        }
-        return
+    if (isRecord(value.error)) {
+      const message = stringOrNull(value.error.message)
+        ?? 'Google API stream error'
+      yield {
+        type: 'error',
+        message,
+        code: normalizeErrorCode(stringOrNull(value.error.status), message)
       }
+      return
+    }
 
-      if (isRecord(value.usageMetadata))
-        usage = googleUsage(value.usageMetadata)
+    if (isRecord(value.usageMetadata))
+      usage = googleUsage(value.usageMetadata)
 
-      const candidates = Array.isArray(value.candidates) ? value.candidates : []
-      for (const candidate of candidates) {
-        if (!isRecord(candidate))
+    const candidates = Array.isArray(value.candidates) ? value.candidates : []
+    for (const candidate of candidates) {
+      if (!isRecord(candidate))
+        continue
+      const content = isRecord(candidate.content) ? candidate.content : null
+      const parts = content && Array.isArray(content.parts)
+        ? content.parts
+        : []
+      for (const part of parts) {
+        if (!isRecord(part))
           continue
-        const content = isRecord(candidate.content) ? candidate.content : null
-        const parts = content && Array.isArray(content.parts)
-          ? content.parts
-          : []
-        for (const part of parts) {
-          if (!isRecord(part))
-            continue
 
-          const functionCall = isRecord(part.functionCall)
-            ? part.functionCall
-            : null
-          if (functionCall) {
-            const signature = stringOrNull(part.thoughtSignature)
-            if (signature) {
-              // Park the signature on a thinking item so it survives into the
-              // transcript directly in front of this call (see
-              // inferenceItemsToGoogleContents). Tagged because a transcript is
-              // provider-agnostic while a signature is not: a conversation that
-              // started on another provider carries signatures in that
-              // provider's own format, and replaying one of those verbatim
-              // fails the request outright.
-              if (!thinkingOpen)
-                yield { type: 'thinking_start' }
-              thinkingOpen = true
-              yield {
-                type: 'thinking_signature',
-                signature: `${SIGNATURE_TAG}${signature}`
-              }
-            }
-            yield {
-              type: 'tool_call_requested',
-              toolUseId: stringOrNull(functionCall.id)
-                ?? `${stringOrNull(functionCall.name) ?? 'tool'}_${nextFallbackToolId()}`,
-              toolName: stringOrNull(functionCall.name) ?? '',
-              input: functionCall.args ?? {},
-            }
-            thinkingOpen = false
-            continue
-          }
-
-          const text = stringOrNull(part.text)
-          if (part.thought === true) {
-            if (!thinkingOpen) {
-              yield { type: 'thinking_start' }
-              thinkingOpen = true
-            }
-            if (text)
-              yield { type: 'thinking_delta', text }
-            continue
-          }
-
+        const functionCall = isRecord(part.functionCall)
+          ? part.functionCall
+          : null
+        if (functionCall) {
           const signature = stringOrNull(part.thoughtSignature)
-          if (signature && thinkingOpen)
+          if (signature) {
+            // Park the signature on a thinking item so it survives into the
+            // transcript directly in front of this call (see
+            // inferenceItemsToGoogleContents). Tagged because a transcript is
+            // provider-agnostic while a signature is not: a conversation that
+            // started on another provider carries signatures in that
+            // provider's own format, and replaying one of those verbatim
+            // fails the request outright.
+            if (!thinkingOpen)
+              yield { type: 'thinking_start' }
+            thinkingOpen = true
             yield {
               type: 'thinking_signature',
               signature: `${SIGNATURE_TAG}${signature}`
             }
-          if (text) {
-            thinkingOpen = false
-            yield { type: 'text_delta', text }
           }
+          yield {
+            type: 'tool_call_requested',
+            toolUseId: stringOrNull(functionCall.id)
+              ?? `${stringOrNull(functionCall.name) ?? 'tool'}_${nextFallbackToolId()}`,
+            toolName: stringOrNull(functionCall.name) ?? '',
+            input: functionCall.args ?? {},
+          }
+          thinkingOpen = false
+          continue
+        }
+
+        const text = stringOrNull(part.text)
+        if (part.thought === true) {
+          if (!thinkingOpen) {
+            yield { type: 'thinking_start' }
+            thinkingOpen = true
+          }
+          if (text)
+            yield { type: 'thinking_delta', text }
+          continue
+        }
+
+        const signature = stringOrNull(part.thoughtSignature)
+        if (signature && thinkingOpen)
+          yield {
+            type: 'thinking_signature',
+            signature: `${SIGNATURE_TAG}${signature}`
+          }
+        if (text) {
+          thinkingOpen = false
+          yield { type: 'text_delta', text }
         }
       }
     }
@@ -738,68 +738,6 @@ function googleUsage(usageMetadata: Record<string, unknown>): TokenUsage {
 }
 
 // ── transport ───────────────────────────────────────────────────────
-
-export interface ServerSentEvent {
-  event: string | null
-  data: string[]
-}
-
-export async function* readServerSentEvents(
-  body: ReadableStream<Uint8Array> | null,
-  signal?: AbortSignal,
-): AsyncIterable<ServerSentEvent> {
-  if (!body)
-    return
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let eventName: string | null = null
-  let data: string[] = []
-
-  const flush = function* (): Iterable<ServerSentEvent> {
-    if (data.length === 0)
-      return
-    yield { event: eventName, data }
-    eventName = null
-    data = []
-  }
-
-  try {
-    while (true) {
-      if (signal?.aborted)
-        return
-      const { value, done } = await reader.read()
-      if (done)
-        break
-      buffer += decoder.decode(value, { stream: true })
-      let newline = buffer.indexOf('\n')
-      while (newline !== -1) {
-        const raw = buffer.slice(0, newline)
-        buffer = buffer.slice(newline + 1)
-        const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-        if (line === '') {
-          yield* flush()
-        } else if (line.startsWith('event:')) {
-          eventName = line.slice('event:'.length).trim()
-        } else if (line.startsWith('data:')) {
-          data.push(line.slice('data:'.length).trimStart())
-        }
-        newline = buffer.indexOf('\n')
-      }
-    }
-    buffer += decoder.decode()
-    if (buffer) {
-      const line = buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer
-      if (line.startsWith('data:')) data.push(line.slice('data:'.length)
-        .trimStart())
-      else if (line.startsWith('event:'))
-        eventName = line.slice('event:'.length).trim()
-    }
-    yield* flush()
-  } finally {
-    reader.releaseLock()
-  }
-}
 
 function googleStreamUrl(baseUrl: string, modelId: string): string {
   const normalized = normalizeBaseUrl(baseUrl)

@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { ProviderDataError, parseProviderData, providerErrorFromUnknown } from '@demicodes/provider'
 import { codexResponseEventSchema, parseCodexWebSocketEvent, type CodexResponseStreamEvent } from '../response-schemas'
 import { mapCodexResponseEvent } from '../responses'
-import { parseSseChunk, parseSseResponseStream } from '../sse'
+import { parseSseResponseStream } from '../sse'
 
 const valid = [
   { type: 'response.output_text.delta', delta: 'hello', future_field: 42 },
@@ -28,26 +28,26 @@ const invalid = [
   { type: 'error', error: { code: {} } },
 ]
 
-test('SSE and WebSocket enforce one response contract', () => {
+test('SSE and WebSocket enforce one response contract', async () => {
   for (const event of valid) {
     const json = JSON.stringify(event)
-    expect(parseSseChunk(`data: ${json}`)).toEqual(event)
+    expect(await parseSseJson(json)).toEqual([event])
     expect(parseCodexWebSocketEvent(json)).toEqual(event)
     expect(parseCodexWebSocketEvent(JSON.stringify({ event }))).toEqual(event)
   }
   for (const event of invalid) {
     const json = JSON.stringify(event)
-    expect(() => parseSseChunk(`data: ${json}`)).toThrow(ProviderDataError)
+    await expect(parseSseJson(json)).rejects.toBeInstanceOf(ProviderDataError)
     expect(() => parseCodexWebSocketEvent(json)).toThrow(ProviderDataError)
   }
   expect(parseCodexWebSocketEvent('{"type":"response.done","response":{}}'))
     .toEqual({ type: 'response.completed', response: {} })
 })
 
-test('malformed JSON errors do not expose payload values or misclassify usage errors', () => {
-  for (const parse of [parseCodexWebSocketEvent, (text: string) => parseSseChunk(`data: ${text}`)]) {
+test('malformed JSON errors do not expose payload values or misclassify usage errors', async () => {
+  for (const parse of [parseCodexWebSocketEvent, parseSseJson]) {
     try {
-      parse('SYNTHETIC_SECRET_BAD_JSON')
+      await parse('SYNTHETIC_SECRET_BAD_JSON')
       throw new Error('expected validation failure')
     } catch (error) {
       expect(error).toBeInstanceOf(ProviderDataError)
@@ -92,3 +92,12 @@ test('SSE consumption cancels the body and releases its reader on errors and ear
     expect(body.locked).toBe(false)
   }
 })
+
+async function parseSseJson(text: string): Promise<CodexResponseStreamEvent[]> {
+  const body = new Response(`data: ${text}\n\n`).body!
+  const events: CodexResponseStreamEvent[] = []
+  for await (const event of parseSseResponseStream(body)) {
+    events.push(event)
+  }
+  return events
+}

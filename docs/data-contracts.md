@@ -81,6 +81,22 @@ behavior at registration/build with the command and field name; do not silently
 drop it during JSON Schema conversion. Help, original trees, reconstructed trees,
 runtime modules and RPC handlers must agree on the supported input semantics.
 
+## Shared provider SSE framing
+
+`provider/sse.ts` reads complete event frames for the OpenAI, Anthropic, Google,
+Grok Build and Codex adapters. It follows the
+[SSE framing rules](https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation):
+CR, LF and CRLF delimit lines, one leading ASCII space after the field colon is
+removed, and data lines join with a newline. A blank line resets the event name
+even without data. Comments and unused fields do not reach provider mappers.
+EOF discards an unfinished frame; it does not confirm provider completion.
+
+The reader rejects missing bodies and malformed UTF-8 with payload-free
+`invalid_provider_response` errors. Cancellation wakes a pending read and throws
+the signal's abort reason. Completion, cancellation, parsing failure and early
+consumer return share cancellation, listener removal and reader-lock release.
+Concrete adapters own JSON schemas, terminal markers and provider error rules.
+
 ## Codex Responses ingress
 
 `provider-codex/response-schemas.ts` owns the consumed Responses event union.

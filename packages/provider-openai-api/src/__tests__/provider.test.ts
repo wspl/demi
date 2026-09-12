@@ -1,3 +1,4 @@
+import type { ServerSentEvent } from '@demicodes/provider'
 import { expect, test } from 'bun:test'
 import {
   providerRuntime,
@@ -11,7 +12,6 @@ import {
   createOpenAIApiProvider,
   mapOpenAIChatCompletionStream,
   mapOpenAIResponseStream,
-  type ServerSentEvent,
 } from '../provider'
 
 test(
@@ -996,7 +996,7 @@ async function* eventsFromData(
   for (const value of values) {
     yield {
       event: null,
-      data: [typeof value === 'string' ? value : JSON.stringify(value)]
+      data: typeof value === 'string' ? value : JSON.stringify(value)
     }
   }
 }

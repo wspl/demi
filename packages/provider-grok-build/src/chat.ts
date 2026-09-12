@@ -1,3 +1,4 @@
+import type { ServerSentEvent } from '@demicodes/provider'
 import { attachmentTag } from '@demicodes/core'
 import {
   isRecord,
@@ -78,14 +79,6 @@ export interface GrokChatToolCall {
     name: string
     arguments: string
   }
-}
-
-export interface ServerSentEvent {
-  event: string | null
-  /**
-   * Event payload: multi-line `data:` fields joined with '\n' per the SSE spec.
-   */
-  data: string
 }
 
 export function buildGrokChatCompletionsBody(
@@ -174,63 +167,6 @@ export async function* mapGrokChatCompletionStream(
 
   yield* flushToolCalls(toolCalls)
   yield { type: 'response', usage }
-}
-
-export async function* readServerSentEvents(
-  body: ReadableStream<Uint8Array> | null,
-  signal?: AbortSignal,
-): AsyncIterable<ServerSentEvent> {
-  if (!body)
-    return
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let eventName: string | null = null
-  let dataLines: string[] = []
-
-  const flush = function* (): Iterable<ServerSentEvent> {
-    if (dataLines.length === 0)
-      return
-    yield { event: eventName, data: dataLines.join('\n') }
-    eventName = null
-    dataLines = []
-  }
-
-  try {
-    while (true) {
-      if (signal?.aborted)
-        return
-      const { value, done } = await reader.read()
-      if (done)
-        break
-      buffer += decoder.decode(value, { stream: true })
-      let newline = buffer.indexOf('\n')
-      while (newline !== -1) {
-        const raw = buffer.slice(0, newline)
-        buffer = buffer.slice(newline + 1)
-        const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-        if (line === '') {
-          yield* flush()
-        } else if (line.startsWith('event:')) {
-          eventName = line.slice('event:'.length).trim()
-        } else if (line.startsWith('data:')) {
-          dataLines.push(line.slice('data:'.length).trimStart())
-        }
-        newline = buffer.indexOf('\n')
-      }
-    }
-    buffer += decoder.decode()
-    if (buffer) {
-      const line = buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer
-      if (line.startsWith('data:')) dataLines.push(line.slice('data:'.length)
-        .trimStart())
-      else if (line.startsWith('event:'))
-        eventName = line.slice('event:'.length).trim()
-    }
-    yield* flush()
-  } finally {
-    reader.releaseLock()
-  }
 }
 
 interface MutableToolCall {

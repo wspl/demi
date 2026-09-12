@@ -1,3 +1,4 @@
+import { readServerSentEvents } from '@demicodes/provider'
 import { grokBuildConfigSchema, type GrokBuildProviderConfig } from './config-schema'
 import { isAbortError, normalizeBaseUrl } from '@demicodes/utils'
 import {
@@ -21,7 +22,6 @@ import {
 import {
   buildGrokChatCompletionsBody,
   mapGrokChatCompletionStream,
-  readServerSentEvents
 } from './chat'
 import {
   createGrokBuildCredentials,

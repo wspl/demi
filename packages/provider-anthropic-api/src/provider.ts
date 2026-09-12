@@ -1,3 +1,4 @@
+import { readServerSentEvents, type ServerSentEvent } from '@demicodes/provider'
 import { attachmentTag } from '@demicodes/core'
 import {
   isAbortError,
@@ -373,107 +374,106 @@ export async function* mapAnthropicMessageStream(
       yield { type: 'abort' }
       return
     }
-    for (const data of event.data) {
-      const value = parseJsonObject(data)
-      if (!value)
-        continue
-      const type = stringOrNull(value.type) ?? event.event
+    const data = event.data
+    const value = parseJsonObject(data)
+    if (!value)
+      continue
+    const type = stringOrNull(value.type) ?? event.event
 
-      if (type === 'error') {
-        const error = isRecord(value.error) ? value.error : value
-        const message = stringOrNull(error.message)
-          ?? 'Anthropic API stream error'
-        yield {
-          type: 'error',
-          message,
-          code: normalizeErrorCode(stringOrNull(error.type), message)
-        }
-        return
+    if (type === 'error') {
+      const error = isRecord(value.error) ? value.error : value
+      const message = stringOrNull(error.message)
+        ?? 'Anthropic API stream error'
+      yield {
+        type: 'error',
+        message,
+        code: normalizeErrorCode(stringOrNull(error.type), message)
       }
+      return
+    }
 
-      if (type === 'message_start') {
-        const message = isRecord(value.message) ? value.message : null
-        const messageUsage = message && isRecord(message.usage)
-          ? message.usage
-          : null
-        if (messageUsage)
-          usage = mergeAnthropicUsage(usage, messageUsage)
-        continue
+    if (type === 'message_start') {
+      const message = isRecord(value.message) ? value.message : null
+      const messageUsage = message && isRecord(message.usage)
+        ? message.usage
+        : null
+      if (messageUsage)
+        usage = mergeAnthropicUsage(usage, messageUsage)
+      continue
+    }
+
+    if (type === 'content_block_start') {
+      const index = numberOrNull(value.index) ?? 0
+      const block = isRecord(value.content_block) ? value.content_block : null
+      if (block?.type === 'tool_use') {
+        toolBlocks.set(index, {
+          id: stringOrNull(block.id) ?? `tool_use_${index}`,
+          name: stringOrNull(block.name) ?? '',
+          initialInput: block.input,
+          inputJson: '',
+        })
+      } else if (block?.type === 'thinking') {
+        yield { type: 'thinking_start' }
+      } else if (block?.type === 'text') {
+        const text = stringOrNull(block.text)
+        if (text)
+          yield { type: 'text_delta', text }
       }
+      continue
+    }
 
-      if (type === 'content_block_start') {
-        const index = numberOrNull(value.index) ?? 0
-        const block = isRecord(value.content_block) ? value.content_block : null
-        if (block?.type === 'tool_use') {
-          toolBlocks.set(index, {
-            id: stringOrNull(block.id) ?? `tool_use_${index}`,
-            name: stringOrNull(block.name) ?? '',
-            initialInput: block.input,
-            inputJson: '',
-          })
-        } else if (block?.type === 'thinking') {
-          yield { type: 'thinking_start' }
-        } else if (block?.type === 'text') {
-          const text = stringOrNull(block.text)
-          if (text)
-            yield { type: 'text_delta', text }
-        }
+    if (type === 'content_block_delta') {
+      const index = numberOrNull(value.index) ?? 0
+      const delta = isRecord(value.delta) ? value.delta : null
+      if (!delta)
         continue
-      }
-
-      if (type === 'content_block_delta') {
-        const index = numberOrNull(value.index) ?? 0
-        const delta = isRecord(value.delta) ? value.delta : null
-        if (!delta)
-          continue
-        if (delta.type === 'text_delta') {
-          const text = stringOrNull(delta.text)
-          if (text)
-            yield { type: 'text_delta', text }
-        } else if (delta.type === 'thinking_delta') {
-          const text = stringOrNull(delta.thinking)
-          if (text)
-            yield { type: 'thinking_delta', text }
-        } else if (delta.type === 'signature_delta') {
-          const signature = stringOrNull(delta.signature)
-          if (signature)
-            yield { type: 'thinking_signature', signature }
-        } else if (delta.type === 'input_json_delta') {
-          const block = toolBlocks.get(index)
-          if (block)
-            block.inputJson += stringOrNull(delta.partial_json) ?? ''
-        }
-        continue
-      }
-
-      if (type === 'content_block_stop') {
-        const index = numberOrNull(value.index) ?? 0
+      if (delta.type === 'text_delta') {
+        const text = stringOrNull(delta.text)
+        if (text)
+          yield { type: 'text_delta', text }
+      } else if (delta.type === 'thinking_delta') {
+        const text = stringOrNull(delta.thinking)
+        if (text)
+          yield { type: 'thinking_delta', text }
+      } else if (delta.type === 'signature_delta') {
+        const signature = stringOrNull(delta.signature)
+        if (signature)
+          yield { type: 'thinking_signature', signature }
+      } else if (delta.type === 'input_json_delta') {
         const block = toolBlocks.get(index)
-        if (block && block.name) {
-          yield {
-            type: 'tool_call_requested',
-            toolUseId: block.id,
-            toolName: block.name,
-            input: block.inputJson
-              ? parseJsonOrString(block.inputJson)
-              : block.initialInput ?? {},
-          }
+        if (block)
+          block.inputJson += stringOrNull(delta.partial_json) ?? ''
+      }
+      continue
+    }
+
+    if (type === 'content_block_stop') {
+      const index = numberOrNull(value.index) ?? 0
+      const block = toolBlocks.get(index)
+      if (block && block.name) {
+        yield {
+          type: 'tool_call_requested',
+          toolUseId: block.id,
+          toolName: block.name,
+          input: block.inputJson
+            ? parseJsonOrString(block.inputJson)
+            : block.initialInput ?? {},
         }
-        toolBlocks.delete(index)
-        continue
       }
+      toolBlocks.delete(index)
+      continue
+    }
 
-      if (type === 'message_delta') {
-        const deltaUsage = isRecord(value.usage) ? value.usage : null
-        if (deltaUsage)
-          usage = mergeAnthropicUsage(usage, deltaUsage)
-        continue
-      }
+    if (type === 'message_delta') {
+      const deltaUsage = isRecord(value.usage) ? value.usage : null
+      if (deltaUsage)
+        usage = mergeAnthropicUsage(usage, deltaUsage)
+      continue
+    }
 
-      if (type === 'message_stop') {
-        yield { type: 'response', usage }
-        return
-      }
+    if (type === 'message_stop') {
+      yield { type: 'response', usage }
+      return
     }
   }
 
@@ -611,68 +611,6 @@ function toolToAnthropicTool(tool: ToolDefinition): AnthropicTool {
     name: tool.name,
     description: tool.description,
     input_schema: tool.inputSchema,
-  }
-}
-
-export interface ServerSentEvent {
-  event: string | null
-  data: string[]
-}
-
-export async function* readServerSentEvents(
-  body: ReadableStream<Uint8Array> | null,
-  signal?: AbortSignal,
-): AsyncIterable<ServerSentEvent> {
-  if (!body)
-    return
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let eventName: string | null = null
-  let data: string[] = []
-
-  const flush = function* (): Iterable<ServerSentEvent> {
-    if (data.length === 0)
-      return
-    yield { event: eventName, data }
-    eventName = null
-    data = []
-  }
-
-  try {
-    while (true) {
-      if (signal?.aborted)
-        return
-      const { value, done } = await reader.read()
-      if (done)
-        break
-      buffer += decoder.decode(value, { stream: true })
-      let newline = buffer.indexOf('\n')
-      while (newline !== -1) {
-        const raw = buffer.slice(0, newline)
-        buffer = buffer.slice(newline + 1)
-        const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-        if (line === '') {
-          yield* flush()
-        } else if (line.startsWith('event:')) {
-          eventName = line.slice('event:'.length).trim()
-        } else if (line.startsWith('data:')) {
-          data.push(line.slice('data:'.length).trimStart())
-        }
-        newline = buffer.indexOf('\n')
-      }
-    }
-    buffer += decoder.decode()
-    if (buffer) {
-      const line = buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer
-      if (line.startsWith('data:')) data.push(line.slice('data:'.length)
-        .trimStart())
-      else if (line.startsWith('event:'))
-        eventName = line.slice('event:'.length).trim()
-    }
-    yield* flush()
-  } finally {
-    reader.releaseLock()
   }
 }
 

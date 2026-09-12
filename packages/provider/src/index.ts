@@ -64,3 +64,5 @@ export { ProviderDataError, parseProviderData, parseProviderJson, parseProviderJ
 export { quotaAmountSchema, quotaEpochSecondsSchema, quotaResetSchema } from './quota-schemas'
 
 export { configuredModelSchema, modelListFromConfiguredModels, STATIC_CATALOG_SOURCE_DATE, type ConfiguredModelOptions, type ConfiguredCatalogOptions } from './configured-models'
+
+export { readServerSentEvents, type ServerSentEvent } from './sse'

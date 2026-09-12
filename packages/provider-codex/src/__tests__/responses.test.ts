@@ -6,7 +6,6 @@ import {
   splitCodexToolUseId,
   usageFromResponse
 } from '../responses'
-import { parseSseChunk } from '../sse'
 
 test(
   'buildCodexResponsesRequestBody converts inference items, tools, thinking, and cache key',
@@ -376,15 +375,7 @@ test(
   }
 )
 
-test('SSE parser and usage helpers handle provider wire format', () => {
-  expect(
-    parseSseChunk('event: ignored\ndata: {"type":"response.created"}\n')
-  ).toEqual(
-    {
-      type: 'response.created'
-    }
-  )
-  expect(parseSseChunk('data: [DONE]\n')).toBeNull()
+test('usage helpers handle provider wire format', () => {
   expect(splitCodexToolUseId('call_1|fc_1')).toEqual({
     callId: 'call_1',
     itemId: 'fc_1'
