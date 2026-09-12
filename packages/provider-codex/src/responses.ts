@@ -1,3 +1,4 @@
+import { attachmentTag } from '@demicodes/core'
 import {
   isRecord,
   numberOrZero,
@@ -92,6 +93,11 @@ export type CodexUserContent =
       type: 'input_image';
       image_url: string;
       detail?: 'auto' | 'low' | 'high'
+    }
+  | {
+      type: 'input_file';
+      filename: string;
+      file_data: string
     }
 
 export interface CodexResponseTool {
@@ -447,10 +453,14 @@ function userContentToResponses(content: UserContentBlock[]): CodexUserContent[]
         type: 'input_text',
         text: block.reference
       }]
+    if (block.type === 'attachment')
+      return [{ type: 'input_text', text: attachmentTag(block) }]
     if (block.type === 'document') {
+      // A document is a PDF the model reads natively; the file is also on the host by path.
       return [{
-        type: 'input_text',
-        text: `[document:${block.source.fileName} ${block.source.mediaType}]`
+        type: 'input_file',
+        filename: block.source.fileName,
+        file_data: `data:${block.source.mediaType};base64,${Buffer.from(block.source.data).toString('base64')}`,
       }]
     }
     if (block.source.type === 'url')

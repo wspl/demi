@@ -15,10 +15,11 @@ const emit = defineEmits<{
 
 <template>
   <div class="relative">
-    <!-- Keep the control row in the measured dock, even at the scroll bottom. -->
-    <div class="flex justify-start gap-1.5 pb-2">
+    <!-- Keep the control row in the measured dock, even at the scroll bottom.
+         Chips read from the left; the scroll control keeps the right edge. -->
+    <div class="flex items-center gap-1.5 pb-2">
       <slot name="chips" />
-      <span class="inline-flex size-7 shrink-0">
+      <span class="ml-auto inline-flex size-7 shrink-0">
         <Transition
           appear
           :duration="200"

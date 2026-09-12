@@ -79,7 +79,10 @@ test(
     )
     try {
       const driver = await world.conversation('cloud')
-      await driver.upload('note', new TextEncoder().encode('retained'))
+      await driver.turn({ model: [
+          model.shell('write', 'printf retained > note'),
+          model.say('written')
+        ] })
       const operationId = crypto.randomUUID()
       const waitForPhase = async (phase: ManagedOperation['phase']) => {
         const deadline = Date.now() + 15_000

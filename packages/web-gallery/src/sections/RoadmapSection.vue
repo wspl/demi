@@ -24,7 +24,7 @@ const shipped = [
   ['Session tabs', 'Agent session tabs only.'],
   [
     'Session',
-    'Transcript and composer on one surface. File drop on the shell. Send does not call a real model.'
+    'Transcript and composer on one surface. File drop on the shell. Send does not call a real model. Subagent roster, live terminals, and half-pane inspect windows.'
   ],
   ['MarkdownPreview / CodePreview', 'Own routes. Full-pane previews.'],
   [

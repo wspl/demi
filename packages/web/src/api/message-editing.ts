@@ -10,7 +10,7 @@ export async function loadEditContent(
 ): Promise<UserContentBlock[]> {
   const content = displayedUserContentSchema.array().parse(input)
   return Promise.all(content.map(async (part): Promise<UserContentBlock> => {
-    if (part.type === 'text' || part.type === 'reference'
+    if (part.type === 'text' || part.type === 'reference' || part.type === 'attachment'
       || !('type' in part.source) || part.source.type !== 'ref') {
       return part as UserContentBlock
     }

@@ -6,15 +6,20 @@ import {
 } from '@demicodes/agent'
 import { z } from 'zod'
 import { remoteFileRefSchema } from './remote-file-refs'
-import { attachmentRefBlockSchema } from './attachment-refs'
+import { uploadRefBlockSchema } from './attachment-refs'
 
 /**
- * The conversation wire adds uploaded attachment references to content-bearing
- * frames.
+ * The conversation wire adds upload and remote-file references to
+ * content-bearing frames. An `attachment` block is the backend's own record
+ * of a resolved upload; a client never sends one.
  */
+const clientUserContentSchema = userContentBlockSchema.refine(
+  (block) => block.type !== 'attachment',
+  'An attachment block is written by the backend, not sent by a client',
+)
 const content = z.array(z.union([
-  userContentBlockSchema,
-  attachmentRefBlockSchema,
+  clientUserContentSchema,
+  uploadRefBlockSchema,
   remoteFileRefSchema
 ]))
 export const conversationClientFrameSchema = z.union([

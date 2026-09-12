@@ -9,6 +9,28 @@ import { useProduct } from '../state/product'
 import { productStateSchema, type BackendConversation } from '../api/contracts'
 
 const realFetch = globalThis.fetch
+
+/** The upload transport is XHR; this one answers every POST with a fresh attachment id. */
+class FakeXhr {
+  static nextId = 1
+  upload = { onprogress: null as ((event: { lengthComputable: boolean; loaded: number; total: number }) => void) | null }
+  status = 201
+  responseText = ''
+  timeout = 0
+  withCredentials = false
+  onload: (() => void) | null = null
+  onerror: (() => void) | null = null
+  ontimeout: (() => void) | null = null
+  onabort: (() => void) | null = null
+  open(): void {}
+  setRequestHeader(): void {}
+  abort(): void {}
+  send(): void {
+    this.responseText = JSON.stringify({ attachment: { id: `att-${FakeXhr.nextId++}` } })
+    queueMicrotask(() => this.onload?.())
+  }
+}
+globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest
 let records: BackendConversation[]
 let rejectCreate: boolean
 let rejectFork: boolean
@@ -214,23 +236,17 @@ test('first send failure preserves the conversation and retries its UUID and mes
   ])
 })
 
-test('workspace attachments stay local until first send creates the conversation', async () => {
+test('a draft keeps its files; the conversation itself is created on first send', async () => {
   const store = useConversations()
   store.create()
   const conversation = store.items[0]!
-  store.addFiles(conversation, [new File(['Local notes'], 'notes.txt', { type: 'text/plain' })], ['png', 'pdf'])
-  await nextTick()
-  expect(conversation.files[0]).toMatchObject({
-    kind: 'file',
-    destination: 'workspace',
-    phase: 'staged',
-    upload: null,
-  })
+  store.addFiles(conversation, [new File(['Local notes'], 'notes.txt', { type: 'text/plain' })])
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(conversation.files[0]).toMatchObject({ kind: 'file', name: 'notes.txt', phase: 'ready', upload: { id: 'att-1' } })
   expect(requests.some((request) => request.path === '/api/conversations')).toBe(false)
   rejectCreate = true
   await store.send(conversation)
   expect(conversation.pendingSend?.fileIds).toEqual([conversation.files[0]!.id])
-  expect(conversation.files[0]).toMatchObject({ phase: 'staged', upload: null })
 })
 
 test('leaving an empty draft discards it without removing a draft with input', async () => {

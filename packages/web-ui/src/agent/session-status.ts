@@ -6,8 +6,13 @@ export type ListLoad = 'ready' | 'loading' | 'failed'
 /** Loading covers an uncached opening and its handshake; cached navigation preserves the phase. */
 export type SessionLoad = ListLoad | 'reconnecting'
 
-/** What the session pane shows instead of the transcript. */
-export type SessionStatusKind = 'loading' | 'failed' | 'empty' | 'missing'
+/**
+ * What the session pane shows instead of the transcript. `empty` is an open
+ * conversation with no messages yet: the composer under it is the way in.
+ * `none` is the chat route with no conversation open at all, so the pane
+ * itself offers to start one.
+ */
+export type SessionStatusKind = 'loading' | 'failed' | 'empty' | 'missing' | 'none'
 
 /**
  * The pane that replaces the transcript. `loading` always wins so a restore
@@ -99,6 +104,12 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
   if (kind === 'missing') {
     return {
       label: t('agent.session.missing'),
+      action: 'create',
+    }
+  }
+  if (kind === 'none') {
+    return {
+      label: t('agent.session.none'),
       action: 'create',
     }
   }

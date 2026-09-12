@@ -17,6 +17,7 @@ import {
   attachmentsReady,
   composerAttachmentFromFile,
   isComposerFile,
+  attachTextSnippet,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { connectAgentClient } from '@demicodes/web-ui/transport/agent-socket'
 import { type ProviderSelection } from '@demicodes/web-ui/transport/protocol'
@@ -196,14 +197,6 @@ export const useConversations = defineStore('conversations', () => {
         if (!cached?.runtime?.connected) {
           current.status = summaryStatus(record.status)
         }
-        if (contextChanged) {
-          for (const file of current.files) {
-            if (isComposerFile(file) && file.destination === 'workspace') {
-              file.upload = null
-              void uploadFile(current, file).catch((error) => report('Could not upload the attachment', error))
-            }
-          }
-        }
         if (
           revisionChanged &&
           cached &&
@@ -270,7 +263,6 @@ export const useConversations = defineStore('conversations', () => {
               kind: 'file',
               id: file.id,
               name: file.name,
-              destination: file.destination,
               file: toRaw(file.file),
               upload: file.upload ? { ...file.upload } : null,
             }
@@ -412,7 +404,7 @@ export const useConversations = defineStore('conversations', () => {
           file.kind === 'reference'
             ? file
             : {
-                ...composerAttachmentFromFile(file.file, null),
+                ...composerAttachmentFromFile(file.file),
                 ...file,
                 phase: file.upload ? 'ready' : 'uploading',
               },
@@ -424,12 +416,10 @@ export const useConversations = defineStore('conversations', () => {
     }
     restored.add(conversation.id)
     for (const file of conversation.files) {
-      if (
-        isComposerFile(file) &&
-        (!file.upload ||
-          (file.upload.kind === 'workspace' &&
-            file.upload.contextVersion !== conversation.contextVersion))
-      ) {
+      if (isComposerFile(file)) {
+        void attachTextSnippet(file, file.file)
+      }
+      if (isComposerFile(file) && !file.upload) {
         void uploadFile(conversation, file).catch((error) => report('Could not upload the attachment', error))
       }
     }
@@ -1147,11 +1137,6 @@ export const useConversations = defineStore('conversations', () => {
     saveDrafts()
     try {
       await persistConversation(conversation)
-      for (const file of files) {
-        if (isComposerFile(file) && file.phase === 'staged') {
-          await uploadFile(conversation, file)
-        }
-      }
       const content: UserContentBlock[] = draft.trim()
         ? [
             {
@@ -1169,29 +1154,16 @@ export const useConversations = defineStore('conversations', () => {
               path: file.path,
             }),
           )
-        } else if (file.upload?.kind === 'message') {
+        } else if (file.upload) {
           content.push(
             contentReference({
-              type: file.upload.media,
-              source: {
-                type: 'ref',
-                ref: file.upload.id,
-                fileName: file.name,
-              },
+              type: 'upload',
+              ref: file.upload.id,
+              fileName: file.name,
             }),
           )
-        } else if (
-          file.upload?.kind === 'workspace' &&
-          file.upload.contextVersion === conversation.contextVersion
-        ) {
-          content.push({
-            type: 'reference',
-            reference: file.upload.path,
-          })
         } else {
-          throw new Error(
-            `${file.name} has not finished uploading to this environment.`,
-          )
+          throw new Error(`${file.name} has not finished uploading.`)
         }
       }
       await (await runtimeFor(conversation)).submit(content, pending.id)
@@ -1319,6 +1291,10 @@ export const useConversations = defineStore('conversations', () => {
     stopAll,
     abortSubagents: (conversation: Conversation) =>
       action(conversation, (runtime) => runtime.abortSubagents()),
+    abortSubagent: (conversation: Conversation, id: string) =>
+      action(conversation, (runtime) => runtime.abortSubagent(id)),
+    abortTerminal: (conversation: Conversation, id: string) =>
+      action(conversation, (runtime) => runtime.abortTerminal(id)),
     start: (conversation: Conversation) =>
       action(conversation, (runtime) => runtime.resume()),
     stop: (conversation: Conversation) =>

@@ -19,7 +19,12 @@ const props = withDefaults(
   },
 )
 
-const emit = defineEmits<{ abort: [] }>()
+const emit = defineEmits<{
+  /** Stop all: every live child. */
+  abort: []
+  /** The close on a running tab: that child and its subtree. */
+  abortAgent: [id: string]
+}>()
 const activeId = defineModel<string | null>('activeId', { required: true })
 
 const tabs = computed(() => subagentPanelTabs(props.agents, activeId.value))
@@ -34,6 +39,15 @@ function activate(id: string): void {
 
 function closePanel(): void {
   activeId.value = null
+}
+
+// Closing a running tab aborts the child; closing a finished one puts it away.
+function closeTab(agent: SubagentRecord): void {
+  if (agent.phase === 'running') {
+    emit('abortAgent', agent.id)
+    return
+  }
+  activeId.value = tabs.value.filter((tab) => tab.id !== agent.id).at(-1)?.id ?? null
 }
 </script>
 
@@ -51,8 +65,8 @@ function closePanel(): void {
         :is-active="agent.id === active?.id"
         :status="subagentStatus(agent.phase)"
         mark="bot"
-        :closable="false"
         @pointerdown="activate(agent.id)"
+        @close="closeTab(agent)"
       />
     </template>
     <template #trailing>

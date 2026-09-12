@@ -1,3 +1,4 @@
+import { attachmentTag } from '@demicodes/core'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 import {
@@ -451,6 +452,8 @@ function userContentToGoogle(content: UserContentBlock[]): GooglePart[] {
       return [{ text: block.text }]
     if (block.type === 'reference')
       return [{ text: block.reference }]
+    if (block.type === 'attachment')
+      return [{ text: attachmentTag(block) }]
     // Documents ride inline too (the API reads PDFs and text natively) rather
     // than collapsing to a "[document:…]" placeholder.
     if (block.type === 'document')

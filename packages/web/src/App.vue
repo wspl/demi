@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import AsyncRegion from '@demicodes/web-ui/ui/AsyncRegion.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
@@ -21,6 +21,9 @@ import { claimDevice, deviceInstallation } from './devices/pairing'
 const session = useSession()
 const conversations = useConversations()
 const resources = useResources()
+// The width follows the divider frame by frame; the preference takes it when a resize settles.
+const sidebarWidth = ref(resources.sidebarWidth)
+watch(() => resources.sidebarWidth, (width) => { sidebarWidth.value = width })
 const router = useRouter()
 const route = useRoute()
 const folded = computed({
@@ -136,6 +139,8 @@ useAppShortcuts(
   <SidebarLayout
     v-else-if="route.path !== '/login'"
     v-model:open="resources.sidebarOpen"
+    v-model:width="sidebarWidth"
+    @resize-end="resources.sidebarWidth = $event"
   >
     <template #sidebar>
       <AppSidebar

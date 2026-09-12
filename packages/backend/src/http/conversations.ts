@@ -413,71 +413,6 @@ export function conversationRoutes(options: {
   // Workspace file drop: bytes land in the execution target's working
   // directory over the ordinary Host fs — filesystem data, not conversation
   // data. The returned path is what the client inserts as a text reference.
-  app.post('/:id/workspace-files', async (c) => {
-    const conversation = await own(c)
-    if (!conversation) {
-      return c.json(
-        {
-          code: 'conversation_not_found',
-          message: 'No such conversation',
-        },
-        404,
-      )
-    }
-    const name = c.req.query('name')
-    if (!name || !isSafeRelativePath(name)) {
-      return c.json(
-        {
-          code: 'invalid_body',
-          message: 'Provide ?name= as a relative file path',
-        },
-        400,
-      )
-    }
-    const bytes = new Uint8Array(await c.req.arrayBuffer())
-    if (bytes.length === 0) {
-      return c.json(
-        {
-          code: 'invalid_body',
-          message: 'Empty upload',
-        },
-        400,
-      )
-    }
-    if (bytes.length > ATTACHMENT_MAX_BYTES) {
-      return c.json(
-        {
-          code: 'too_large',
-          message: `File exceeds the ${ATTACHMENT_MAX_BYTES}-byte limit`,
-        },
-        413,
-      )
-    }
-    // The selected Host owns the upload's working directory.
-    try {
-      const path = await withHost(
-        conversation.id,
-        async (host) => {
-          await host.fs.writeFile(name, bytes, {
-            cwd: host.defaultCwd,
-            createParents: true,
-          })
-          return `${host.defaultCwd.replace(/\/+$/, '')}/${name}`
-        },
-        c.req.raw.signal,
-      )
-      return c.json({ path }, 201)
-    } catch (error) {
-      return c.json(
-        {
-          code: 'write_failed',
-          message: errorMessage(error),
-        },
-        409,
-      )
-    }
-  })
-
   app.get('/:id/transcript', async (c) => {
     const conversation = await own(c)
     if (!conversation) {
@@ -496,14 +431,4 @@ export function conversationRoutes(options: {
   })
 
   return app
-}
-
-function isSafeRelativePath(name: string): boolean {
-  if (name.includes('\0') || name.startsWith('/')) {
-    return false
-  }
-  const segments = name.split('/')
-  return segments.every(
-    (segment) => segment !== '' && segment !== '.' && segment !== '..',
-  )
 }

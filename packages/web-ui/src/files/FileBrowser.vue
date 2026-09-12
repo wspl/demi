@@ -428,7 +428,7 @@ defineExpose({
           <IconButton
             :icon="ArrowUp"
             variant="ghost"
-            aria-label="Parent folder"
+            aria-label="Up"
             :disabled="path === '/'"
             @click="up"
           />

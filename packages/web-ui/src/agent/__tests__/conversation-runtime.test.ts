@@ -8,6 +8,7 @@ import {
 import { deferred, delay, waitFor } from '@demicodes/utils'
 import { computed } from 'vue'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
+import { AgentSocketError } from '../../transport/agent-socket'
 
 const provider: ProviderSelection = {
   providerId: 'stub',
@@ -201,4 +202,69 @@ test('server takeover does not start a reconnect fight between views', async () 
   expect(connects).toBe(1)
   expect(runtime.connected).toBe(false)
   runtime.dispose()
+})
+
+test('a connection that cannot be made is retried with backoff, never told as a failure', async () => {
+  const h = clientHarness()
+  const current = state()
+  let connects = 0
+  const runtime = new ConversationRuntime({
+    state: current,
+    prepareModel: async () => provider,
+    connect: async () => {
+      connects += 1
+      if (connects < 3) {
+        throw new AgentSocketError('Agent socket failed to connect')
+      }
+      return h.client
+    },
+    reconnect: { baseMs: 1, maxMs: 4 },
+  })
+  try {
+    const opening = runtime.connect()
+    await waitFor(() => connects === 2)
+    expect(current.load).toBe('reconnecting')
+    expect(current.lastError).toBeNull()
+    await opening
+    expect(connects).toBe(3)
+    expect(current.load).toBe('ready')
+    expect(current.lastError).toBeNull()
+  } finally {
+    runtime.dispose()
+  }
+})
+
+test('a session that refuses to open is a failure told once', async () => {
+  const current = state()
+  const runtime = new ConversationRuntime({
+    state: current,
+    prepareModel: async () => {
+      throw new Error('No provider is configured')
+    },
+    connect: async () => clientHarness().client,
+    reconnect: { baseMs: 1, maxMs: 4 },
+  })
+  await expect(runtime.connect()).rejects.toThrow('No provider is configured')
+  expect(current.load).toBe('failed')
+  expect(current.lastError).toBe('No provider is configured')
+  runtime.dispose()
+})
+
+test('disposing during the backoff wait ends the retries', async () => {
+  let connects = 0
+  const runtime = new ConversationRuntime({
+    state: state(),
+    prepareModel: async () => provider,
+    connect: async () => {
+      connects += 1
+      throw new AgentSocketError('Agent socket failed to connect')
+    },
+    reconnect: { baseMs: 50, maxMs: 50 },
+  })
+  const result = runtime.connect().catch((error) => error)
+  await waitFor(() => connects === 1)
+  runtime.dispose()
+  expect(await result).toBeInstanceOf(Error)
+  await delay(120)
+  expect(connects).toBe(1)
 })

@@ -1,11 +1,9 @@
 import { expect, test } from 'bun:test'
 import { delay } from '@demicodes/utils'
 import {
-  acceptAttribute,
   applyAttachmentUpdate,
   AttachmentUploadQueue,
   attachmentCaption,
-  attachmentDestination,
   attachmentFileError,
   attachmentProgress,
   attachmentsReady,
@@ -20,45 +18,11 @@ import {
   fileNameFromPath,
   remoteAttachmentError,
   dataTransferFiles,
-  fileMatchesAcceptedExtensions,
   filePreviewUrl,
   fileToUserContent,
-  partitionAcceptedFiles,
   transferHasFiles,
   type AttachmentUploadUpdate,
 } from '../message-input/attachments'
-
-test('empty or unknown accepted types do not admit files', () => {
-  expect(fileMatchesAcceptedExtensions(new File(['x'], 'note.txt'), [])).toBe(
-    false
-  )
-  expect(fileMatchesAcceptedExtensions(new File(['x'], 'shot.png'), null)).toBe(
-    false
-  )
-})
-
-test('accepted extensions match the file suffix and jpeg/jpg', () => {
-  expect(fileMatchesAcceptedExtensions(new File(['x'], 'shot.png'), ['png'])).toBe(
-    true
-  )
-  expect(fileMatchesAcceptedExtensions(new File(['x'], 'shot.jpeg'), ['jpg'])).toBe(
-    true
-  )
-  expect(fileMatchesAcceptedExtensions(new File(['x'], 'note.txt'), ['png'])).toBe(
-    false
-  )
-})
-
-test('a paste or drop splits into accepted and rejected files', () => {
-  const png = new File(['x'], 'shot.png')
-  const pdf = new File(['x'], 'spec.pdf')
-  expect(partitionAcceptedFiles([png, pdf], ['png'])).toEqual(
-    { accepted: [png], rejected: [pdf] }
-  )
-  expect(partitionAcceptedFiles([png, pdf], [])).toEqual(
-    { accepted: [], rejected: [png, pdf] }
-  )
-})
 
 test('image files get an object-url preview', () => {
   const png = filePreviewUrl(new File(['x'], 'shot.png', { type: 'image/png' }))
@@ -80,11 +44,6 @@ test('dataTransfer files are the drop / paste list', () => {
   )
   expect(transferHasFiles(null)).toBe(false)
   expect(dataTransferFiles(transfer)).toEqual([file])
-})
-
-test('accept attribute lists dotted extensions', () => {
-  expect(acceptAttribute([])).toBeUndefined()
-  expect(acceptAttribute(['png', 'pdf'])).toBe('.png,.pdf')
 })
 
 test('png magic bytes become an image block', async () => {
@@ -109,20 +68,10 @@ test('png magic bytes become an image block', async () => {
   })
 })
 
-test('destination follows the selected model; other files go to the workspace', () => {
-  const png = new File(['x'], 'shot.png')
-  const note = new File(['x'], 'notes.txt')
-  expect(attachmentDestination(png, ['png'])).toBe('message')
-  expect(attachmentDestination(note, ['png'])).toBe('workspace')
-  expect(attachmentDestination(png, null)).toBe('workspace')
-})
-
 test('a composer file starts uploading and becomes sendable only when every file is ready', () => {
   const file = composerAttachmentFromFile(
     new File(['x'], 'shot.png', { type: 'image/png' }),
-    ['png']
   )
-  expect(file.destination).toBe('message')
   expect(file.phase).toBe('uploading')
   expect(file.progress).toBe(0)
   expect(attachmentsReady([file])).toBe(false)
@@ -154,55 +103,13 @@ test('progress is a 0–1 unit only while uploading', () => {
   expect(item.progress).toBeUndefined()
 })
 
-test('caption is context · filename and never a path', () => {
-  expect(
-    attachmentCaption(
-      composerAttachment({
-        name: 'shot.png',
-        destination: 'message',
-        phase: 'ready'
-      })
-    )
-  ).toBe(
-    'Message attachment · shot.png',
-  )
-  expect(
-    attachmentCaption(
-      composerAttachment(
-        {
-          name: 'notes.md',
-          destination: 'workspace',
-          phase: 'ready'
-        }
-      )
-    )
-  ).toBe(
-    'Workspace file · notes.md',
-  )
-  expect(
-    attachmentCaption(
-      composerAttachment(
-        {
-          name: 'shot.png',
-          destination: 'message',
-          phase: 'uploading'
-        }
-      )
-    )
-  ).toBe(
+test('caption is the file name, or the upload progress, never a path', () => {
+  expect(attachmentCaption(composerAttachment({ name: 'shot.png', phase: 'ready' }))).toBe('shot.png')
+  expect(attachmentCaption(composerAttachment({ name: 'shot.png', phase: 'uploading' }))).toBe(
     'Uploading 0% · shot.png',
   )
   expect(
-    attachmentCaption(
-      composerAttachment(
-        {
-          name: 'spec.pdf',
-          destination: 'workspace',
-          phase: 'uploading',
-          progress: 0.42
-        }
-      ),
-    ),
+    attachmentCaption(composerAttachment({ name: 'spec.pdf', phase: 'uploading', progress: 0.42 })),
   ).toBe('Uploading 42% · spec.pdf')
 })
 
@@ -239,7 +146,7 @@ test('a remote file is a ready tile whose tooltip identifies its host and full p
       mediaType: 'application/pdf',
       fileName: 'login-failure.pdf'
     },
-  })).toBe('Message attachment · login-failure.pdf')
+  })).toBe('login-failure.pdf')
 })
 
 test('empty, oversized, and duplicate files are refused', () => {

@@ -41,7 +41,7 @@ const emit = defineEmits<{
       :aria-disabled="disabled || undefined"
       class="flex h-7 cursor-default select-none items-center gap-2 rounded-md text-chrome transition-colors duration-200 ease-out"
       :class="[
-        'px-2',
+        'pl-2.5 pr-2',
         disabled
           ? 'cursor-not-allowed text-fg-faint'
           : pressed

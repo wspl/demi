@@ -10,6 +10,10 @@ import {
   attachmentsReady,
   attachmentCaption,
   attachmentSendBlockReason,
+  composerFileNames,
+  dataTransferFiles,
+  pastedTextFile,
+  pastedTextIsLong,
   type ComposerAttachment,
   decodeRemoteReference,
 } from './message-input/attachments'
@@ -39,7 +43,6 @@ const props = withDefaults(
     hasContent?: boolean
     multiline?: boolean
     canCompact?: boolean
-    accept?: string
     attachments?: ComposerAttachment[]
     messageEdit?: MessageEditState | null
     /** The conversation has a host with files: the menu offers a remote file beside local ones. */
@@ -89,7 +92,6 @@ const edit = useMessageEditComposer({
   state: () => props.messageEdit,
   update: (state) => emit('update:messageEdit', state),
   root,
-  acceptedExtensions: () => selected.value?.acceptedExtensions ?? null,
 })
 const focused = ref(false)
 const fileInput = ref<HTMLInputElement>()
@@ -142,8 +144,8 @@ const selected = computed(() =>
   ),
 )
 const submitLabel = computed(() => props.messageEdit
-  ? props.messageEdit.phase === 'uncertain' ? 'Retry edit' : 'Save and resend'
-  : props.running ? 'Queue message' : 'Send message',
+  ? props.messageEdit.phase === 'uncertain' ? 'Retry' : 'Save and resend'
+  : props.running ? 'Queue' : 'Send',
 )
 
 function submit() {
@@ -165,6 +167,30 @@ function fileChange(event: Event) {
   const input = event.target as HTMLInputElement
   addFiles([...(input.files ?? [])])
   input.value = ''
+}
+
+// Files on the clipboard attach; a long text pastes as a file. A short text
+// stays the editor's own paste.
+function paste(event: ClipboardEvent) {
+  const transfer = event.clipboardData
+  if (!transfer) {
+    return
+  }
+  const files = dataTransferFiles(transfer)
+  if (files.length > 0) {
+    event.preventDefault()
+    addFiles(files)
+    return
+  }
+  const text = transfer.getData('text/plain')
+  if (!pastedTextIsLong(text)) {
+    return
+  }
+  event.preventDefault()
+  const names = props.messageEdit
+    ? edit.attachments.value.flatMap(({ part }) => (part.type === 'document' && part.source.fileName ? [part.source.fileName] : []))
+    : composerFileNames(props.attachments)
+  addFiles([pastedTextFile(text, names)])
 }
 
 function keydown(event: KeyboardEvent) {
@@ -215,7 +241,6 @@ function addFiles(files: File[]): void {
         type="file"
         class="hidden"
         multiple
-        :accept="accept"
         @change="fileChange"
       />
       <ComposerShell
@@ -230,6 +255,13 @@ function addFiles(files: File[]): void {
               <AttachmentTile
                 v-if="part.type === 'reference'"
                 :name="decodeRemoteReference(part.reference).name"
+                :removable="edit.editable.value"
+                @remove="edit.removeAttachment(index)"
+              />
+              <AttachmentTile
+                v-else-if="part.type === 'attachment'"
+                :name="part.name"
+                :snippet="part.snippet"
                 :removable="edit.editable.value"
                 @remove="edit.removeAttachment(index)"
               />
@@ -253,7 +285,7 @@ function addFiles(files: File[]): void {
               <AttachmentTile
                 :name="item.name"
                 :src="item.kind === 'file' ? item.src : undefined"
-                :destination="item.kind === 'file' ? item.destination : undefined"
+                :snippet="item.kind === 'file' ? item.snippet : undefined"
                 :phase="item.kind === 'file' ? item.phase : undefined"
                 :progress="item.kind === 'file' ? item.progress : undefined"
                 removable
@@ -277,6 +309,7 @@ function addFiles(files: File[]): void {
                 @focus="focused = true"
                 @blur="focused = false"
                 @keydown="keydown"
+                @paste="paste"
               />
             </template>
           </div>
@@ -290,6 +323,7 @@ function addFiles(files: File[]): void {
               @focus="focused = true"
               @blur="focused = false"
               @keydown="keydown"
+              @paste="paste"
             />
           </slot>
         </template>
@@ -307,7 +341,7 @@ function addFiles(files: File[]): void {
                   variant="ghost"
                   circle
                   :pressed="isOpen"
-                  aria-label="Add attachment"
+                  :aria-label="t('agent.input.attach')"
                 />
               </Tooltip>
             </template>
@@ -363,12 +397,12 @@ function addFiles(files: File[]): void {
             :is-clickable="!messageEdit && !running && canCompact !== false"
             @compact="emit('compact')"
           />
-          <Tooltip v-if="messageEdit" content="Exit editing">
+          <Tooltip v-if="messageEdit" content="Cancel edit">
             <IconButton
               :icon="X"
               variant="ghost"
               circle
-              aria-label="Exit editing"
+              aria-label="Cancel edit"
               :disabled="!edit.editable.value"
               :tabindex="edit.editable.value ? 0 : -1"
               @click="edit.cancel"
@@ -396,7 +430,7 @@ function addFiles(files: File[]): void {
               :icon="Square"
               variant="ghost"
               circle
-              aria-label="Stop response"
+              aria-label="Stop"
               @click="emit('stop')"
             />
           </Tooltip>
@@ -406,7 +440,7 @@ function addFiles(files: File[]): void {
             variant="ghost"
             circle
             disabled
-            aria-label="Send message"
+            aria-label="Send"
           />
         </template>
       </ComposerShell>

@@ -59,6 +59,19 @@ export type UserContentBlock =
       type: 'reference';
       reference: string
     }
+  | {
+      /** A file that came with the message: on the host at `path`, never inlined. */
+      type: 'attachment'
+      name: string
+      /** Absolute path on the conversation's host. */
+      path: string
+      mediaType: string
+      sizeBytes: number
+      /** The uploaded bytes, content-addressed in the blob store; the page fetches them from here. */
+      sha256: string
+      /** The opening of a text file, for the tile that shows it as a page. */
+      snippet?: string
+    }
 
 export interface Base64ImageSource {
   mediaType: string
@@ -113,6 +126,47 @@ export const VIDEO_FILE_EXTENSIONS: readonly VideoFileExtension[] = [
   'webm',
   'm4v'
 ]
+
+// ── message attachments ─────────────────────────────────────────────
+//
+// A file the reader put into a message is one `attachment` content block:
+// the single record of it. Providers render the block as a self-describing
+// tag (`attachmentTag`) that names the file and its path on the host, never
+// its content; the page draws the file's tile from the same block.
+
+/** The model-facing form of an attachment block: one self-closing tag, no content. */
+export function attachmentTag(
+  block: Extract<UserContentBlock, { type: 'attachment' }>
+): string {
+  const attributes = [
+    ['name', block.name],
+    ['type', block.mediaType],
+    ['size', String(block.sizeBytes)],
+    ['path', block.path],
+  ]
+  return `<attachment ${attributes.map(([key, value]) => `${key}="${escapeAttribute(value)}"`).join(' ')}/>`
+}
+
+function escapeAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+/** How much of a text file a tile shows. */
+export const ATTACHMENT_SNIPPET_MAX_CHARS = 160
+const TEXT_ATTACHMENT_EXTENSIONS = /\.(txt|md|markdown|log|csv|json|ya?ml|xml|ini|toml)$/i
+
+export function isTextAttachment(name: string, mediaType: string): boolean {
+  return mediaType.startsWith('text/') || TEXT_ATTACHMENT_EXTENSIONS.test(name)
+}
+
+/** The opening of a text file: leading blank space dropped, line ends normalized, cut to the tile's budget. */
+export function attachmentSnippet(text: string): string {
+  return text.replace(/\r\n?/g, '\n').trimStart().slice(0, ATTACHMENT_SNIPPET_MAX_CHARS)
+}
 
 export type ThinkingEffort = string
 

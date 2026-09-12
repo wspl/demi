@@ -1,19 +1,20 @@
 import { computed, nextTick, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import type { Ref } from 'vue'
+import { useAutofocus } from '../../ui/autofocus'
 import {
   changeMessageEditContent,
   type MessageEditState,
 } from '../message-editing'
-import { attachmentFileError, fileMatchesAcceptedExtensions, fileToUserContent } from './attachments'
+import { attachmentFileError, fileToUserContent } from './attachments'
 
 /** Binds the existing composer to a detached edit without touching its normal draft. */
 export function useMessageEditComposer(options: {
   state: () => MessageEditState | null | undefined
   update: (state: MessageEditState | null) => void
   root: Ref<HTMLElement | undefined>
-  acceptedExtensions: () => readonly string[] | null
 }) {
   const reading = shallowRef<AbortController | null>(null)
+  const autofocus = useAutofocus()
   const attachmentError = ref<string | null>(null)
   const parts = computed(() => options.state()?.request.content.map((part, index) => ({ part, index })) ?? [])
   const textParts = computed(() => parts.value.filter((item) => item.part.type === 'text'))
@@ -32,7 +33,7 @@ export function useMessageEditComposer(options: {
       return
     }
     await nextTick()
-    options.root.value?.querySelector('textarea')?.focus()
+    autofocus(options.root.value?.querySelector('textarea'))
   }, { immediate: true })
   onScopeDispose(stopReading)
 
@@ -77,12 +78,14 @@ export function useMessageEditComposer(options: {
         if (error) {
           throw new Error(error)
         }
-        if (!fileMatchesAcceptedExtensions(file, options.acceptedExtensions())) {
-          throw new Error(`${file.name}: this model does not accept this file type.`)
-        }
       }
       const added = await Promise.all(files.map((file) => fileToUserContent(file, { signal: controller.signal })))
       controller.signal.throwIfAborted()
+      // An edit resends content inline; a file the model cannot read natively belongs to a new message, where it reaches the host.
+      const unreadable = added.find((block) => block.type === 'document' && !isPdf(block.source.mediaType))
+      if (unreadable && unreadable.type === 'document') {
+        throw new Error(`${unreadable.source.fileName}: an edit can add images, videos and PDFs; attach other files to a new message.`)
+      }
       const current = options.state()
       if (current?.request.operationId === state.request.operationId) {
         options.update(changeMessageEditContent(current, (content) => {
@@ -102,4 +105,8 @@ export function useMessageEditComposer(options: {
   }
 
   return { textParts, attachments, editable, reading, attachmentError, changeText, removeAttachment, cancel, addFiles }
+}
+
+function isPdf(mediaType: string): boolean {
+  return mediaType.split(';')[0]?.trim() === 'application/pdf'
 }

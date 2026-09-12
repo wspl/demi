@@ -8,8 +8,15 @@ import { useSession } from './session'
 
 const session = useSession()
 const router = useRouter()
-const email = ref('')
-const password = ref('')
+// A development build fills in the local test account so a local backend is one click away.
+const devAccount = import.meta.env.DEV
+  ? {
+      email: import.meta.env.DEMI_DEV_EMAIL ?? '',
+      password: import.meta.env.DEMI_DEV_PASSWORD ?? '',
+    }
+  : null
+const email = ref(devAccount?.email ?? '')
+const password = ref(devAccount?.password ?? '')
 const initial = session.current
 const expired = useRoute().query.reason === 'expired'
 const phase = ref<EmailLoginPhase>(

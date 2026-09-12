@@ -1,3 +1,4 @@
+import { attachmentTag } from '@demicodes/core'
 import { Buffer } from 'node:buffer'
 import {
   toolResultContentToText,
@@ -267,6 +268,8 @@ function userContentToClaude(content: UserContentBlock[]): unknown[] {
       return { type: 'text', text: '[video]' }
     if (block.type === 'document')
       return documentSourceToClaude(block.source)
+    if (block.type === 'attachment')
+      return { type: 'text', text: attachmentTag(block) }
     return { type: 'text', text: block.reference }
   })
 }

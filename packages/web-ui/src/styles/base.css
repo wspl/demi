@@ -558,6 +558,18 @@ svg.lucide {
    every other colour property), so from that keyword, black at zero alpha, the thumb
    would fade in through dark greys and snap to white. */
 @layer base {
+  /* While a ResizeHandle drags, the whole document keeps its cursor and selects nothing. */
+  html.is-resizing-x,
+  html.is-resizing-x * {
+    cursor: col-resize !important;
+    user-select: none !important;
+  }
+  html.is-resizing-y,
+  html.is-resizing-y * {
+    cursor: row-resize !important;
+    user-select: none !important;
+  }
+
   * {
     scrollbar-width: thin;
     scrollbar-color: rgb(from var(--color-overlay) r g b / 0) transparent;

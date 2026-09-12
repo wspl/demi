@@ -11,7 +11,7 @@ export interface SizeFinding {
 }
 
 const CONTROL = '[role="button"], [role="radiogroup"], input, textarea, select'
-const FAMILIES = [20, 24, 28]
+const FAMILIES = [20, 24, 28, 36]
 
 export function auditControlSizes(root: ParentNode = document.body): SizeFinding[] {
   const findings: SizeFinding[] = []

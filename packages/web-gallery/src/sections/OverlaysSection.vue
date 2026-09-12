@@ -21,6 +21,9 @@ import type { HostMenuMainHost } from '@demicodes/web-ui/hosts/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
+import { useGalleryView } from '../gallery-views'
+
+const { view } = useGalleryView()
 
 const hostDevices = [
   { id: 'mac', name: 'zan-mbp', online: true },
@@ -109,625 +112,629 @@ function itemLabel(id: string, list: {
 
 <template>
   <div class="space-y-8">
-    <GallerySection
-      title="Tooltip"
-      note="Hover, placement, rich overlay, and suppressed."
-    >
-      <div class="specimen-row specimen-row-wide items-start">
-        <GallerySpecimen variant="hover">
-          <Tooltip content="Send the current turn">
-            <Button size="md">Hover me</Button>
-          </Tooltip>
-        </GallerySpecimen>
-        <GallerySpecimen variant="top">
-          <Tooltip content="Send the current turn">
-            <Button size="md">Top</Button>
-          </Tooltip>
-        </GallerySpecimen>
-        <GallerySpecimen variant="bottom">
-          <Tooltip content="Model and reasoning" placement="bottom">
-            <Button size="md">Below</Button>
-          </Tooltip>
-        </GallerySpecimen>
-        <GallerySpecimen variant="overlay">
-          <Tooltip placement="right">
-            <Button size="md">Rich</Button>
-            <template #overlay>
-              <div class="text-[12px] leading-4">
-                <div class="text-fg">34% used <span class="text-fg-subtle">(61.2K / 180K)</span></div>
-                <div class="mt-1 text-fg-subtle">Click to compact</div>
-              </div>
-            </template>
-          </Tooltip>
-        </GallerySpecimen>
-        <GallerySpecimen variant="disabled">
-          <Tooltip content="Never shows" disabled>
-            <Button size="md" disabled>Suppressed</Button>
-          </Tooltip>
-        </GallerySpecimen>
-      </div>
-    </GallerySection>
+    <template v-if="view === 'menus'">
+      <GallerySection
+        title="Tooltip"
+        note="Hover, placement, rich overlay, and suppressed. Copy: the verb alone for a control on the thing it acts on (Archive, Pin, Copy, Edit); the object only away from it (Add project, New folder); a reason is a full sentence."
+      >
+        <div class="specimen-row specimen-row-wide items-start">
+          <GallerySpecimen variant="hover">
+            <Tooltip content="Send the current turn">
+              <Button size="md">Hover me</Button>
+            </Tooltip>
+          </GallerySpecimen>
+          <GallerySpecimen variant="top">
+            <Tooltip content="Send the current turn">
+              <Button size="md">Top</Button>
+            </Tooltip>
+          </GallerySpecimen>
+          <GallerySpecimen variant="bottom">
+            <Tooltip content="Model and reasoning" placement="bottom">
+              <Button size="md">Below</Button>
+            </Tooltip>
+          </GallerySpecimen>
+          <GallerySpecimen variant="overlay">
+            <Tooltip placement="right">
+              <Button size="md">Rich</Button>
+              <template #overlay>
+                <div class="text-[12px] leading-4">
+                  <div class="text-fg">34% used <span class="text-fg-subtle">(61.2K / 180K)</span></div>
+                  <div class="mt-1 text-fg-subtle">Click to compact</div>
+                </div>
+              </template>
+            </Tooltip>
+          </GallerySpecimen>
+          <GallerySpecimen variant="disabled">
+            <Tooltip content="Never shows" disabled>
+              <Button size="md" disabled>Suppressed</Button>
+            </Tooltip>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
 
-    <GallerySection
-      title="Menu"
-      note="Actions, choices, submenus, tall, and filter."
-    >
-      <div class="specimen-row specimen-row-wide items-start">
-        <GallerySpecimen variant="actions">
-          <Menu>
-            <MenuItem
-              :icon="Pencil"
-              label="Rename"
-              shortcut="↵"
-            />
-            <MenuItem
-              :icon="Copy"
-              label="Duplicate"
-              shortcut="⌘D"
-            />
-            <MenuDivider />
-            <MenuItem
-              label="Delete"
-              :icon="Trash2"
-              is-danger
-            />
-            <MenuItem label="Disabled" disabled />
-            <MenuItem
-              label="Running"
-              disabled
-              disabled-reason="The session is still running"
-            />
-          </Menu>
-        </GallerySpecimen>
-        <GallerySpecimen variant="choices">
-          <Menu iconless>
-            <MenuGroup label="Paradigm">
+      <GallerySection
+        title="Menu"
+        note="Actions, choices, submenus, tall, and filter."
+      >
+        <div class="specimen-row specimen-row-wide items-start">
+          <GallerySpecimen variant="actions">
+            <Menu>
               <MenuItem
-                label="Neutral"
-                choice
-                :is-selected="paradigmSelected === 'neutral'"
-                @select="paradigmSelected = 'neutral'"
+                :icon="Pencil"
+                label="Rename"
+                shortcut="↵"
               />
               <MenuItem
+                :icon="Copy"
+                label="Duplicate"
+                shortcut="⌘D"
+              />
+              <MenuDivider />
+              <MenuItem
+                label="Delete"
+                :icon="Trash2"
+                is-danger
+              />
+              <MenuItem label="Disabled" disabled />
+              <MenuItem
+                label="Running"
+                disabled
+                disabled-reason="The session is still running"
+              />
+            </Menu>
+          </GallerySpecimen>
+          <GallerySpecimen variant="choices">
+            <Menu iconless>
+              <MenuGroup label="Paradigm">
+                <MenuItem
+                  label="Neutral"
+                  choice
+                  :is-selected="paradigmSelected === 'neutral'"
+                  @select="paradigmSelected = 'neutral'"
+                />
+                <MenuItem
+                  label="Hairline"
+                  choice
+                  :is-selected="paradigmSelected === 'hairline'"
+                  @select="paradigmSelected = 'hairline'"
+                />
+                <MenuItem
+                  label="Carved"
+                  choice
+                  :is-selected="paradigmSelected === 'carved'"
+                  @select="paradigmSelected = 'carved'"
+                />
+                <MenuItem
+                  label="Overlay"
+                  choice
+                  :is-selected="paradigmSelected === 'overlay'"
+                  @select="paradigmSelected = 'overlay'"
+                />
+              </MenuGroup>
+              <MenuGroup label="Density">
+                <MenuItem
+                  label="Compact"
+                  choice
+                  :is-selected="densitySelected === 'compact'"
+                  @select="densitySelected = 'compact'"
+                />
+                <MenuItem
+                  label="Regular"
+                  choice
+                  :is-selected="densitySelected === 'regular'"
+                  @select="densitySelected = 'regular'"
+                />
+              </MenuGroup>
+            </Menu>
+          </GallerySpecimen>
+          <GallerySpecimen variant="choice · icon · focus">
+            <Menu>
+              <MenuItem
+                :icon="Pencil"
                 label="Hairline"
                 choice
-                :is-selected="paradigmSelected === 'hairline'"
-                @select="paradigmSelected = 'hairline'"
+                :is-selected="choiceIconSelected === 'hairline'"
+                :is-focused="choiceIconFocused === 'hairline'"
+                @select="choiceIconSelected = 'hairline'; choiceIconFocused = 'hairline'"
               />
               <MenuItem
+                :icon="Pencil"
                 label="Carved"
                 choice
-                :is-selected="paradigmSelected === 'carved'"
-                @select="paradigmSelected = 'carved'"
+                :is-selected="choiceIconSelected === 'carved'"
+                :is-focused="choiceIconFocused === 'carved'"
+                @select="choiceIconSelected = 'carved'; choiceIconFocused = 'carved'"
               />
               <MenuItem
+                :icon="Pencil"
                 label="Overlay"
                 choice
-                :is-selected="paradigmSelected === 'overlay'"
-                @select="paradigmSelected = 'overlay'"
+                :is-selected="choiceIconSelected === 'overlay'"
+                :is-focused="choiceIconFocused === 'overlay'"
+                @select="choiceIconSelected = 'overlay'; choiceIconFocused = 'overlay'"
               />
-            </MenuGroup>
-            <MenuGroup label="Density">
-              <MenuItem
-                label="Compact"
-                choice
-                :is-selected="densitySelected === 'compact'"
-                @select="densitySelected = 'compact'"
-              />
-              <MenuItem
-                label="Regular"
-                choice
-                :is-selected="densitySelected === 'regular'"
-                @select="densitySelected = 'regular'"
-              />
-            </MenuGroup>
-          </Menu>
-        </GallerySpecimen>
-        <GallerySpecimen variant="choice · icon · focus">
-          <Menu>
-            <MenuItem
-              :icon="Pencil"
-              label="Hairline"
-              choice
-              :is-selected="choiceIconSelected === 'hairline'"
-              :is-focused="choiceIconFocused === 'hairline'"
-              @select="choiceIconSelected = 'hairline'; choiceIconFocused = 'hairline'"
-            />
-            <MenuItem
-              :icon="Pencil"
-              label="Carved"
-              choice
-              :is-selected="choiceIconSelected === 'carved'"
-              :is-focused="choiceIconFocused === 'carved'"
-              @select="choiceIconSelected = 'carved'; choiceIconFocused = 'carved'"
-            />
-            <MenuItem
-              :icon="Pencil"
-              label="Overlay"
-              choice
-              :is-selected="choiceIconSelected === 'overlay'"
-              :is-focused="choiceIconFocused === 'overlay'"
-              @select="choiceIconSelected = 'overlay'; choiceIconFocused = 'overlay'"
-            />
-          </Menu>
-        </GallerySpecimen>
-      </div>
-      <GalleryOverlayWell size="wide">
-        <GallerySpecimen variant="iconless · submenu">
-          <Menu iconless>
-            <MenuItem label="Fast Mode" @select="submenuFast = !submenuFast">
-              <template #suffix>
-                <Switch
-                  v-model="submenuFast"
-                  size="sm"
-                  @click.stop
-                />
-              </template>
-            </MenuItem>
-            <MenuItem
-              submenu-open
-              label="Reasoning"
-              :value="submenuReasoningLabels[submenuReasoning]"
-            >
-              <template #submenu>
-                <Menu iconless>
-                  <MenuItem
-                    v-for="(label, index) in submenuReasoningLabels"
-                    :key="label"
-                    :label="label" choice
-                    :is-selected="submenuReasoning === index"
-                    @select="submenuReasoning = index"
-                  />
-                </Menu>
-              </template>
-            </MenuItem>
-            <MenuItem
-              label="Model"
-              :value="itemLabel(submenuModel, submenuModels)"
-            >
-              <template #submenu>
-                <Menu iconless>
-                  <MenuItem
-                    label="Claude Sonnet"
-                    choice
-                    :is-selected="submenuModel === 'sonnet'"
-                    @select="submenuModel = 'sonnet'"
-                  />
-                  <MenuItem
-                    label="Claude Opus"
-                    choice
-                    :is-selected="submenuModel === 'opus'"
-                    @select="submenuModel = 'opus'"
-                  />
-                  <MenuItem
-                    label="GPT-5"
-                    choice
-                    :is-selected="submenuModel === 'gpt'"
-                    @select="submenuModel = 'gpt'"
-                  />
-                </Menu>
-              </template>
-            </MenuItem>
-          </Menu>
-        </GallerySpecimen>
-      </GalleryOverlayWell>
-      <GallerySpecimen variant="host menu · label/value and status">
-        <HostMenu
-          :main-host="mainHost"
-          :attached-hosts="attachedHosts"
-          :devices="hostDevices"
-          @switch-main="switchMainHost"
-          @attach="attachHost"
-          @detach="detachHost"
-          @connect="showToast({ title: 'Connect new device' })"
-        />
-      </GallerySpecimen>
-      <div class="specimen-row specimen-row-wide items-start">
-        <GallerySpecimen variant="label/value · columns">
-          <Menu iconless>
-            <MenuItem
-              label="Reasoning"
-              value="Medium"
-              has-submenu
-            />
-            <MenuItem
-              label="Model"
-              value="Claude Sonnet 4.5"
-              has-submenu
-            />
-            <MenuItem label="A much longer label" value="On" />
-            <MenuItem label="Provider" value="Anthropic" />
-          </Menu>
-        </GallerySpecimen>
-        <GallerySpecimen variant="shortcuts · columns">
-          <Menu iconless>
-            <MenuItem label="Rename" shortcut="↵" />
-            <MenuItem label="Duplicate conversation" shortcut="⌘D" />
-            <MenuItem label="Pin" shortcut="⌘⇧P" />
-            <MenuItem label="Archive" />
-          </Menu>
-        </GallerySpecimen>
-      </div>
-      <div class="specimen-row specimen-row-wide items-start">
-        <GallerySpecimen variant="tall">
-          <Menu iconless>
-            <MenuItem
-              v-for="label in tallActions"
-              :key="label"
-              :label="label"
-            />
-          </Menu>
-        </GallerySpecimen>
-        <GallerySpecimen variant="tall · filter">
-          <Menu
-            filterable
-            :autofocus="false"
-            filter-placeholder="Filter options"
-            :items="tallOptions"
-            :selected-id="filterMenuSelected"
-            @select="filterMenuSelected = $event"
-          />
-        </GallerySpecimen>
-        <GallerySpecimen variant="virtual">
-          <Menu
-            :items="tallOptions"
-            :selected-id="virtualMenuSelected"
-            :item-height="28"
-            :autofocus="false"
-            @select="virtualMenuSelected = $event"
-          />
-        </GallerySpecimen>
-        <GallerySpecimen variant="filter · empty">
-          <Menu
-            filterable
-            :autofocus="false"
-            filter-placeholder="Filter options"
-            empty-text="No items found"
-            :items="tallOptions"
-            initial-query="zzz"
-          />
-        </GallerySpecimen>
-        <GallerySpecimen variant="empty list">
-          <Menu
-            filterable
-            :autofocus="false"
-            filter-placeholder="Search conversations"
-            empty-text="No conversations"
-            :items="[]"
-          />
-        </GallerySpecimen>
-      </div>
-    </GallerySection>
-
-    <GallerySection title="DropdownTrigger" note="Open and close.">
-      <div class="specimen-row">
-        <GallerySpecimen variant="default · closed">
-          <DropdownTrigger
-            :is-open="triggerDefaultClosed"
-            @click="triggerDefaultClosed = !triggerDefaultClosed"
-          >Menu</DropdownTrigger>
-        </GallerySpecimen>
-        <GallerySpecimen variant="default · open">
-          <DropdownTrigger
-            :is-open="triggerDefaultOpen"
-            @click="triggerDefaultOpen = !triggerDefaultOpen"
-          >Menu</DropdownTrigger>
-        </GallerySpecimen>
-        <GallerySpecimen variant="ghost · closed">
-          <DropdownTrigger
-            variant="ghost"
-            :is-open="triggerGhostClosed"
-            @click="triggerGhostClosed = !triggerGhostClosed"
-          >claude-sonnet</DropdownTrigger>
-        </GallerySpecimen>
-        <GallerySpecimen variant="ghost · open">
-          <DropdownTrigger
-            variant="ghost"
-            :is-open="triggerGhostOpen"
-            @click="triggerGhostOpen = !triggerGhostOpen"
-          >claude-sonnet</DropdownTrigger>
-        </GallerySpecimen>
-        <GallerySpecimen variant="sm · closed">
-          <DropdownTrigger
-            size="sm"
-            :is-open="triggerSmClosed"
-            @click="triggerSmClosed = !triggerSmClosed"
-          >Menu</DropdownTrigger>
-        </GallerySpecimen>
-      </div>
-    </GallerySection>
-
-    <GallerySection title="Dropdown" note="Trigger plus slotted Menu.">
-      <div class="specimen-row specimen-row-wide items-start">
-        <GallerySpecimen variant="default · md · actions">
-          <Dropdown variant="default" :overlay-store="appOverlayStore">
-            <template #trigger>Menu</template>
-            <template #content="{ close }">
-              <Menu @click="close">
-                <MenuItem label="Rename" shortcut="↵" />
-                <MenuItem label="Duplicate" shortcut="⌘D" />
-                <MenuDivider />
-                <MenuItem
-                  label="Delete"
-                  :icon="Trash2"
-                  is-danger
-                />
-              </Menu>
-            </template>
-          </Dropdown>
-        </GallerySpecimen>
-        <GallerySpecimen variant="ghost · md · choice">
-          <Dropdown variant="ghost" :overlay-store="appOverlayStore">
-            <template #trigger>claude-sonnet</template>
-            <template #content="{ close }">
-              <Menu iconless>
-                <MenuItem
-                  v-for="item in items"
-                  :key="item.id"
-                  :label="item.label" choice
-                  :is-selected="item.id === dropdownChoiceSelected"
-                  @select="dropdownChoiceSelected = item.id; close()"
-                />
-              </Menu>
-            </template>
-          </Dropdown>
-        </GallerySpecimen>
-        <GallerySpecimen variant="ghost · sm">
-          <Dropdown
-            variant="ghost"
-            size="sm"
-            :overlay-store="appOverlayStore"
-          >
-            <template #trigger>{{ itemLabel(dropdownEffortSelected, effortItems) }}</template>
-            <template #content="{ close }">
-              <Menu iconless>
-                <MenuItem
-                  v-for="item in effortItems"
-                  :key="item.id"
-                  :label="item.label" choice
-                  :is-selected="item.id === dropdownEffortSelected"
-                  @select="dropdownEffortSelected = item.id; close()"
-                />
-              </Menu>
-            </template>
-          </Dropdown>
-        </GallerySpecimen>
-        <GallerySpecimen variant="default · sm">
-          <Dropdown
-            variant="default"
-            size="sm"
-            :overlay-store="appOverlayStore"
-          >
-            <template #trigger>Menu</template>
-            <template #content="{ close }">
-              <Menu iconless @click="close">
-                <MenuItem label="Rename" shortcut="↵" />
-                <MenuItem label="Duplicate" shortcut="⌘D" />
-              </Menu>
-            </template>
-          </Dropdown>
-        </GallerySpecimen>
-        <GallerySpecimen variant="custom trigger">
-          <Dropdown :overlay-store="appOverlayStore">
-            <template #trigger="{ isOpen }">
-              <IconButton
-                :icon="Plus"
-                variant="ghost"
-                circle
-                :pressed="isOpen"
-              />
-            </template>
-            <template #content="{ close }">
-              <Menu>
-                <MenuItem
-                  :icon="Plus"
-                  label="Attach files"
-                  @select="close()"
-                />
-              </Menu>
-            </template>
-          </Dropdown>
-        </GallerySpecimen>
-        <GallerySpecimen variant="filter">
-          <Dropdown variant="default" :overlay-store="appOverlayStore">
-            <template #trigger>{{ itemLabel(dropdownFilterSelected) }}</template>
-            <template #content="{ close }">
-              <Menu
-                filterable
-                filter-placeholder="Filter paradigms"
-                :items="items"
-                :selected-id="dropdownFilterSelected"
-                @select="dropdownFilterSelected = $event; close()"
-              />
-            </template>
-          </Dropdown>
-        </GallerySpecimen>
-      </div>
-      <GalleryOverlayWell>
-        <GallerySpecimen variant="pinned open">
-          <Dropdown
-            variant="ghost"
-            :overlay-store="appOverlayStore"
-            open
-          >
-            <template #trigger>{{ itemLabel(dropdownInlineSelected) }}</template>
-            <template #content>
-              <Menu iconless>
-                <MenuItem
-                  v-for="item in items"
-                  :key="item.id"
-                  :label="item.label" choice
-                  :is-selected="item.id === dropdownInlineSelected"
-                  @select="dropdownInlineSelected = item.id"
-                />
-              </Menu>
-            </template>
-          </Dropdown>
-        </GallerySpecimen>
-      </GalleryOverlayWell>
-    </GallerySection>
-
-    <GallerySection title="ContextMenu" note="Right-click Menu.">
-      <GallerySpecimen variant="right-click">
-        <ContextMenu :overlay-store="appOverlayStore">
-          <template #trigger>
-            <div
-              class="flex h-24 w-72 items-center justify-center rounded-lg bg-surface-raised text-[13px] text-fg-muted ring-1 ring-line"
-            >
-              Right-click this surface
-            </div>
-          </template>
-          <template #menu>
-            <MenuItem
-              :icon="Pencil"
-              label="Rename"
-              shortcut="↵"
-            />
-            <MenuItem label="New tab" />
-            <MenuDivider />
-            <MenuItem
-              :icon="Trash2"
-              label="Close"
-              is-danger
-            />
-          </template>
-        </ContextMenu>
-      </GallerySpecimen>
-    </GallerySection>
-
-    <GallerySection
-      title="Toast"
-      note="Danger, a rejected action whose title wraps, Copied, and live host."
-    >
-      <div class="specimen-row specimen-row-wide items-start">
-        <GallerySpecimen variant="danger">
-          <div class="w-80">
-            <Toast
-              v-if="pinDangerToast"
-              title="Failed to send message"
-              message="WebSocket is closed"
-              tone="danger"
-              @dismiss="pinDangerToast = false"
-            />
-            <Button
-              v-else
-              size="md"
-              @click="pinDangerToast = true"
-            >Show</Button>
-          </div>
-        </GallerySpecimen>
-        <GallerySpecimen variant="rejected">
-          <div class="w-80">
-            <Toast
-              v-if="pinRejectedToast"
-              title="Move the project’s conversations to another environment before removing it."
-              tone="danger"
-              @dismiss="pinRejectedToast = false"
-            />
-            <Button
-              v-else
-              size="md"
-              @click="pinRejectedToast = true"
-            >Show</Button>
-          </div>
-        </GallerySpecimen>
-        <GallerySpecimen variant="copied">
-          <div class="w-80">
-            <Toast
-              v-if="pinCopiedToast"
-              title="Copied"
-              @dismiss="pinCopiedToast = false"
-            />
-            <Button
-              v-else
-              size="md"
-              variant="ghost"
-              @click="pinCopiedToast = true"
-            >Show</Button>
-          </div>
-        </GallerySpecimen>
-        <GallerySpecimen variant="live">
-          <div class="flex flex-wrap gap-2">
-            <Button
-              size="md"
-              @click="showToast({ title: 'Failed to send message', message: 'WebSocket is closed', tone: 'danger' })"
-            >Fail send</Button>
-            <Button
-              size="md"
-              variant="ghost"
-              @click="showToast({ title: 'Copied' })"
-            >Copy id</Button>
-          </div>
-        </GallerySpecimen>
-      </div>
-    </GallerySection>
-
-    <GallerySection
-      title="Dialog"
-      note="Modal confirm. The pinned one starts open."
-    >
-      <div class="specimen-row specimen-row-wide items-start">
-        <GallerySpecimen variant="open">
-          <Button size="md" @click="dialogOpen = true">Open</Button>
-        </GallerySpecimen>
-      </div>
-      <GalleryOverlayWell size="lg">
-        <GallerySpecimen variant="pinned">
-          <Button
-            v-if="!inlineDialogOpen"
-            size="md"
-            @click="inlineDialogOpen = true"
-          >Open</Button>
-          <Dialog
-            :is-open="inlineDialogOpen"
-            :overlay-store="appOverlayStore"
-            @close="inlineDialogOpen = false"
-          >
-            <div class="space-y-3 p-4">
-              <h3 class="text-[15px] font-medium text-fg-emphasis">Keep this queued follow-up?</h3>
-              <p class="text-[13px] leading-5 text-fg-muted">
-              The expired-cookie case can wait. Keep the queued message for the next turn?
-              </p>
-              <div class="flex justify-end gap-2">
-                <Button
-                  size="md"
-                  variant="ghost"
-                  @click="inlineDialogOpen = false"
-                >Cancel</Button>
-                <Button
-                  size="md"
-                  variant="primary"
-                  @click="inlineDialogOpen = false"
-                >Keep</Button>
-              </div>
-            </div>
-          </Dialog>
-        </GallerySpecimen>
-      </GalleryOverlayWell>
-      <Dialog
-        :is-open="dialogOpen"
-        :overlay-store="appOverlayStore"
-        @close="dialogOpen = false"
-      >
-        <div class="space-y-3 p-4">
-          <h3 class="text-[15px] font-medium text-fg-emphasis">Keep this queued follow-up?</h3>
-          <p class="text-[13px] leading-5 text-fg-muted">
-            The expired-cookie case can wait. Keep the queued message for the next turn?
-          </p>
-          <div class="flex justify-end gap-2">
-            <Button
-              size="md"
-              variant="ghost"
-              @click="dialogOpen = false"
-            >Cancel</Button>
-            <Button
-              size="md"
-              variant="primary"
-              @click="dialogOpen = false"
-            >Keep</Button>
-          </div>
+            </Menu>
+          </GallerySpecimen>
         </div>
-      </Dialog>
-    </GallerySection>
+        <GalleryOverlayWell size="wide">
+          <GallerySpecimen variant="iconless · submenu">
+            <Menu iconless>
+              <MenuItem label="Fast Mode" @select="submenuFast = !submenuFast">
+                <template #suffix>
+                  <Switch
+                    v-model="submenuFast"
+                    size="sm"
+                    @click.stop
+                  />
+                </template>
+              </MenuItem>
+              <MenuItem
+                submenu-open
+                label="Reasoning"
+                :value="submenuReasoningLabels[submenuReasoning]"
+              >
+                <template #submenu>
+                  <Menu iconless>
+                    <MenuItem
+                      v-for="(label, index) in submenuReasoningLabels"
+                      :key="label"
+                      :label="label" choice
+                      :is-selected="submenuReasoning === index"
+                      @select="submenuReasoning = index"
+                    />
+                  </Menu>
+                </template>
+              </MenuItem>
+              <MenuItem
+                label="Model"
+                :value="itemLabel(submenuModel, submenuModels)"
+              >
+                <template #submenu>
+                  <Menu iconless>
+                    <MenuItem
+                      label="Claude Sonnet"
+                      choice
+                      :is-selected="submenuModel === 'sonnet'"
+                      @select="submenuModel = 'sonnet'"
+                    />
+                    <MenuItem
+                      label="Claude Opus"
+                      choice
+                      :is-selected="submenuModel === 'opus'"
+                      @select="submenuModel = 'opus'"
+                    />
+                    <MenuItem
+                      label="GPT-5"
+                      choice
+                      :is-selected="submenuModel === 'gpt'"
+                      @select="submenuModel = 'gpt'"
+                    />
+                  </Menu>
+                </template>
+              </MenuItem>
+            </Menu>
+          </GallerySpecimen>
+        </GalleryOverlayWell>
+        <GallerySpecimen variant="host menu · label/value and status">
+          <HostMenu
+            :main-host="mainHost"
+            :attached-hosts="attachedHosts"
+            :devices="hostDevices"
+            @switch-main="switchMainHost"
+            @attach="attachHost"
+            @detach="detachHost"
+            @connect="showToast({ title: 'Connect new device' })"
+          />
+        </GallerySpecimen>
+        <div class="specimen-row specimen-row-wide items-start">
+          <GallerySpecimen variant="label/value · columns">
+            <Menu iconless>
+              <MenuItem
+                label="Reasoning"
+                value="Medium"
+                has-submenu
+              />
+              <MenuItem
+                label="Model"
+                value="Claude Sonnet 4.5"
+                has-submenu
+              />
+              <MenuItem label="A much longer label" value="On" />
+              <MenuItem label="Provider" value="Anthropic" />
+            </Menu>
+          </GallerySpecimen>
+          <GallerySpecimen variant="shortcuts · columns">
+            <Menu iconless>
+              <MenuItem label="Rename" shortcut="↵" />
+              <MenuItem label="Duplicate conversation" shortcut="⌘D" />
+              <MenuItem label="Pin" shortcut="⌘⇧P" />
+              <MenuItem label="Archive" />
+            </Menu>
+          </GallerySpecimen>
+        </div>
+        <div class="specimen-row specimen-row-wide items-start">
+          <GallerySpecimen variant="tall">
+            <Menu iconless>
+              <MenuItem
+                v-for="label in tallActions"
+                :key="label"
+                :label="label"
+              />
+            </Menu>
+          </GallerySpecimen>
+          <GallerySpecimen variant="tall · filter">
+            <Menu
+              filterable
+              :autofocus="false"
+              filter-placeholder="Filter options"
+              :items="tallOptions"
+              :selected-id="filterMenuSelected"
+              @select="filterMenuSelected = $event"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="virtual">
+            <Menu
+              :items="tallOptions"
+              :selected-id="virtualMenuSelected"
+              :item-height="28"
+              :autofocus="false"
+              @select="virtualMenuSelected = $event"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="filter · empty">
+            <Menu
+              filterable
+              :autofocus="false"
+              filter-placeholder="Filter options"
+              empty-text="No items found"
+              :items="tallOptions"
+              initial-query="zzz"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="empty list">
+            <Menu
+              filterable
+              :autofocus="false"
+              filter-placeholder="Search conversations"
+              empty-text="No conversations"
+              :items="[]"
+            />
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection title="DropdownTrigger" note="Open and close.">
+        <div class="specimen-row">
+          <GallerySpecimen variant="default · closed">
+            <DropdownTrigger
+              :is-open="triggerDefaultClosed"
+              @click="triggerDefaultClosed = !triggerDefaultClosed"
+            >Menu</DropdownTrigger>
+          </GallerySpecimen>
+          <GallerySpecimen variant="default · open">
+            <DropdownTrigger
+              :is-open="triggerDefaultOpen"
+              @click="triggerDefaultOpen = !triggerDefaultOpen"
+            >Menu</DropdownTrigger>
+          </GallerySpecimen>
+          <GallerySpecimen variant="ghost · closed">
+            <DropdownTrigger
+              variant="ghost"
+              :is-open="triggerGhostClosed"
+              @click="triggerGhostClosed = !triggerGhostClosed"
+            >claude-sonnet</DropdownTrigger>
+          </GallerySpecimen>
+          <GallerySpecimen variant="ghost · open">
+            <DropdownTrigger
+              variant="ghost"
+              :is-open="triggerGhostOpen"
+              @click="triggerGhostOpen = !triggerGhostOpen"
+            >claude-sonnet</DropdownTrigger>
+          </GallerySpecimen>
+          <GallerySpecimen variant="sm · closed">
+            <DropdownTrigger
+              size="sm"
+              :is-open="triggerSmClosed"
+              @click="triggerSmClosed = !triggerSmClosed"
+            >Menu</DropdownTrigger>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection title="Dropdown" note="Trigger plus slotted Menu.">
+        <div class="specimen-row specimen-row-wide items-start">
+          <GallerySpecimen variant="default · md · actions">
+            <Dropdown variant="default" :overlay-store="appOverlayStore">
+              <template #trigger>Menu</template>
+              <template #content="{ close }">
+                <Menu @click="close">
+                  <MenuItem label="Rename" shortcut="↵" />
+                  <MenuItem label="Duplicate" shortcut="⌘D" />
+                  <MenuDivider />
+                  <MenuItem
+                    label="Delete"
+                    :icon="Trash2"
+                    is-danger
+                  />
+                </Menu>
+              </template>
+            </Dropdown>
+          </GallerySpecimen>
+          <GallerySpecimen variant="ghost · md · choice">
+            <Dropdown variant="ghost" :overlay-store="appOverlayStore">
+              <template #trigger>claude-sonnet</template>
+              <template #content="{ close }">
+                <Menu iconless>
+                  <MenuItem
+                    v-for="item in items"
+                    :key="item.id"
+                    :label="item.label" choice
+                    :is-selected="item.id === dropdownChoiceSelected"
+                    @select="dropdownChoiceSelected = item.id; close()"
+                  />
+                </Menu>
+              </template>
+            </Dropdown>
+          </GallerySpecimen>
+          <GallerySpecimen variant="ghost · sm">
+            <Dropdown
+              variant="ghost"
+              size="sm"
+              :overlay-store="appOverlayStore"
+            >
+              <template #trigger>{{ itemLabel(dropdownEffortSelected, effortItems) }}</template>
+              <template #content="{ close }">
+                <Menu iconless>
+                  <MenuItem
+                    v-for="item in effortItems"
+                    :key="item.id"
+                    :label="item.label" choice
+                    :is-selected="item.id === dropdownEffortSelected"
+                    @select="dropdownEffortSelected = item.id; close()"
+                  />
+                </Menu>
+              </template>
+            </Dropdown>
+          </GallerySpecimen>
+          <GallerySpecimen variant="default · sm">
+            <Dropdown
+              variant="default"
+              size="sm"
+              :overlay-store="appOverlayStore"
+            >
+              <template #trigger>Menu</template>
+              <template #content="{ close }">
+                <Menu iconless @click="close">
+                  <MenuItem label="Rename" shortcut="↵" />
+                  <MenuItem label="Duplicate" shortcut="⌘D" />
+                </Menu>
+              </template>
+            </Dropdown>
+          </GallerySpecimen>
+          <GallerySpecimen variant="custom trigger">
+            <Dropdown :overlay-store="appOverlayStore">
+              <template #trigger="{ isOpen }">
+                <IconButton
+                  :icon="Plus"
+                  variant="ghost"
+                  circle
+                  :pressed="isOpen"
+                />
+              </template>
+              <template #content="{ close }">
+                <Menu>
+                  <MenuItem
+                    :icon="Plus"
+                    label="Attach files"
+                    @select="close()"
+                  />
+                </Menu>
+              </template>
+            </Dropdown>
+          </GallerySpecimen>
+          <GallerySpecimen variant="filter">
+            <Dropdown variant="default" :overlay-store="appOverlayStore">
+              <template #trigger>{{ itemLabel(dropdownFilterSelected) }}</template>
+              <template #content="{ close }">
+                <Menu
+                  filterable
+                  filter-placeholder="Filter paradigms"
+                  :items="items"
+                  :selected-id="dropdownFilterSelected"
+                  @select="dropdownFilterSelected = $event; close()"
+                />
+              </template>
+            </Dropdown>
+          </GallerySpecimen>
+        </div>
+        <GalleryOverlayWell>
+          <GallerySpecimen variant="pinned open">
+            <Dropdown
+              variant="ghost"
+              :overlay-store="appOverlayStore"
+              open
+            >
+              <template #trigger>{{ itemLabel(dropdownInlineSelected) }}</template>
+              <template #content>
+                <Menu iconless>
+                  <MenuItem
+                    v-for="item in items"
+                    :key="item.id"
+                    :label="item.label" choice
+                    :is-selected="item.id === dropdownInlineSelected"
+                    @select="dropdownInlineSelected = item.id"
+                  />
+                </Menu>
+              </template>
+            </Dropdown>
+          </GallerySpecimen>
+        </GalleryOverlayWell>
+      </GallerySection>
+
+      <GallerySection title="ContextMenu" note="Right-click Menu.">
+        <GallerySpecimen variant="right-click">
+          <ContextMenu :overlay-store="appOverlayStore">
+            <template #trigger>
+              <div
+                class="flex h-24 w-72 items-center justify-center rounded-lg bg-surface-raised text-[13px] text-fg-muted ring-1 ring-line"
+              >
+              Right-click this surface
+              </div>
+            </template>
+            <template #menu>
+              <MenuItem
+                :icon="Pencil"
+                label="Rename"
+                shortcut="↵"
+              />
+              <MenuItem label="New tab" />
+              <MenuDivider />
+              <MenuItem
+                :icon="Trash2"
+                label="Close"
+                is-danger
+              />
+            </template>
+          </ContextMenu>
+        </GallerySpecimen>
+      </GallerySection>
+    </template>
+
+    <template v-if="view === 'dialogs'">
+      <GallerySection
+        title="Toast"
+        note="Danger, a rejected action whose title wraps, Copied, and live host."
+      >
+        <div class="specimen-row specimen-row-wide items-start">
+          <GallerySpecimen variant="danger">
+            <div class="w-80">
+              <Toast
+                v-if="pinDangerToast"
+                title="Failed to send message"
+                message="WebSocket is closed"
+                tone="danger"
+                @dismiss="pinDangerToast = false"
+              />
+              <Button
+                v-else
+                size="md"
+                @click="pinDangerToast = true"
+              >Show</Button>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="rejected">
+            <div class="w-80">
+              <Toast
+                v-if="pinRejectedToast"
+                title="Move the project’s conversations to another environment before removing it."
+                tone="danger"
+                @dismiss="pinRejectedToast = false"
+              />
+              <Button
+                v-else
+                size="md"
+                @click="pinRejectedToast = true"
+              >Show</Button>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="copied">
+            <div class="w-80">
+              <Toast
+                v-if="pinCopiedToast"
+                title="Copied"
+                @dismiss="pinCopiedToast = false"
+              />
+              <Button
+                v-else
+                size="md"
+                variant="ghost"
+                @click="pinCopiedToast = true"
+              >Show</Button>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="live">
+            <div class="flex flex-wrap gap-2">
+              <Button
+                size="md"
+                @click="showToast({ title: 'Failed to send message', message: 'WebSocket is closed', tone: 'danger' })"
+              >Fail send</Button>
+              <Button
+                size="md"
+                variant="ghost"
+                @click="showToast({ title: 'Copied' })"
+              >Copy id</Button>
+            </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Dialog"
+        note="Modal confirm. The pinned one starts open."
+      >
+        <div class="specimen-row specimen-row-wide items-start">
+          <GallerySpecimen variant="open">
+            <Button size="md" @click="dialogOpen = true">Open</Button>
+          </GallerySpecimen>
+        </div>
+        <GalleryOverlayWell size="lg">
+          <GallerySpecimen variant="pinned">
+            <Button
+              v-if="!inlineDialogOpen"
+              size="md"
+              @click="inlineDialogOpen = true"
+            >Open</Button>
+            <Dialog
+              :is-open="inlineDialogOpen"
+              :overlay-store="appOverlayStore"
+              @close="inlineDialogOpen = false"
+            >
+              <div class="space-y-3 p-4">
+                <h3 class="text-[15px] font-medium text-fg-emphasis">Keep this queued follow-up?</h3>
+                <p class="text-[13px] leading-5 text-fg-muted">
+              The expired-cookie case can wait. Keep the queued message for the next turn?
+                </p>
+                <div class="flex justify-end gap-2">
+                  <Button
+                    size="md"
+                    variant="ghost"
+                    @click="inlineDialogOpen = false"
+                  >Cancel</Button>
+                  <Button
+                    size="md"
+                    variant="primary"
+                    @click="inlineDialogOpen = false"
+                  >Keep</Button>
+                </div>
+              </div>
+            </Dialog>
+          </GallerySpecimen>
+        </GalleryOverlayWell>
+        <Dialog
+          :is-open="dialogOpen"
+          :overlay-store="appOverlayStore"
+          @close="dialogOpen = false"
+        >
+          <div class="space-y-3 p-4">
+            <h3 class="text-[15px] font-medium text-fg-emphasis">Keep this queued follow-up?</h3>
+            <p class="text-[13px] leading-5 text-fg-muted">
+            The expired-cookie case can wait. Keep the queued message for the next turn?
+            </p>
+            <div class="flex justify-end gap-2">
+              <Button
+                size="md"
+                variant="ghost"
+                @click="dialogOpen = false"
+              >Cancel</Button>
+              <Button
+                size="md"
+                variant="primary"
+                @click="dialogOpen = false"
+              >Keep</Button>
+            </div>
+          </div>
+        </Dialog>
+      </GallerySection>
+    </template>
   </div>
 </template>

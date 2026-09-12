@@ -4,6 +4,7 @@ import { Eye, EyeOff } from '@lucide/vue'
 import { disabledTooltip } from './disabled'
 import IconButton from './IconButton.vue'
 import Tooltip from './Tooltip.vue'
+import { useAutofocus } from './autofocus'
 
 defineOptions({ inheritAttrs: false })
 
@@ -51,6 +52,7 @@ const inputAttrs = computed(
 )
 const inputRef = ref<HTMLInputElement>()
 const isFocused = ref(false)
+const autofocus = useAutofocus()
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
 
 const frameHeightClass = computed(() => {
@@ -84,7 +86,7 @@ const inputPadClass = computed(() => [
 
 onMounted(() => {
   if (props.focused)
-    inputRef.value?.focus()
+    autofocus(inputRef.value)
 })
 
 defineExpose({

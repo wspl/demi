@@ -872,6 +872,8 @@ function stringifyUserContent(content: UserContentBlock): string {
       return `${content.source.fileName} ${content.source.mediaType}`
     case 'reference':
       return content.reference
+    case 'attachment':
+      return `${content.name} ${content.path}`
   }
 }
 

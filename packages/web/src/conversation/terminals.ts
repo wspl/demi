@@ -16,7 +16,13 @@ const shellViewSchema = z.object({
   ),
 })
 
-/** The latest stored shell view restores a command after page reload. */
+/**
+ * The commands a transcript remembers: name, start, output, and the end when
+ * a stored view saw one. A stored view is history, so none of these is
+ * running: liveness comes only from the session's `shell_output` events,
+ * which the server replays for the commands it still owns when the session
+ * opens. A reloaded page and a fork therefore show only what actually runs.
+ */
 export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] {
   const commands = new Map<string, TerminalRecord>()
   for (const block of blocks) {
@@ -41,7 +47,7 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
     commands.set(view.commandId, {
       id: view.commandId,
       name,
-      phase: view.status === 'running' ? 'running' : 'exited',
+      phase: 'exited',
       startedAt: previous?.startedAt ?? block.createdAt,
       ...(view.status !== 'running'
         ? {

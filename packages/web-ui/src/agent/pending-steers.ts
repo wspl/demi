@@ -86,6 +86,8 @@ function normalizeContentBlock(block: UserContentBlock): unknown {
       return { type: block.type, text: block.text }
     case 'reference':
       return { type: block.type, reference: block.reference }
+    case 'attachment':
+      return { ...block }
     case 'image':
     case 'video':
       return {
@@ -122,6 +124,8 @@ function cloneUserContent(content: readonly UserContentBlock[]): UserContentBloc
         return { type: 'text', text: block.text }
       case 'reference':
         return { type: 'reference', reference: block.reference }
+      case 'attachment':
+        return { ...block }
       case 'image':
         return {
           type: 'image',

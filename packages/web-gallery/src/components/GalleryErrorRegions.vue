@@ -40,7 +40,7 @@ import GallerySpecimen from './GallerySpecimen.vue'
             <RegionStatus
               failed
               label="Couldn't load this conversation."
-              detail="Agent socket failed to connect: ECONNREFUSED 127.0.0.1:18911"
+              detail="Could not load the transcript: HTTP 502 Bad Gateway"
               action="Retry"
             />
           </div>
@@ -52,7 +52,7 @@ import GallerySpecimen from './GallerySpecimen.vue'
         </GallerySpecimen>
         <GallerySpecimen wide variant="Empty">
           <div class="rounded-xl border border-line bg-surface">
-            <RegionStatus label="No messages yet. Start a conversation." />
+            <RegionStatus label="No messages yet." />
           </div>
         </GallerySpecimen>
       </div>

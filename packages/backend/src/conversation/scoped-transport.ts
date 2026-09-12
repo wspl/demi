@@ -10,7 +10,7 @@ import {
 import type { Block, ModelSelection } from '@demicodes/core'
 import { errorMessage, SerialQueue } from '@demicodes/utils'
 import type { ControlService, ConversationRecord } from '../storage/control'
-import { resolveAttachmentRefs } from './attachment-refs'
+import { resolveUploadRefs } from './attachment-refs'
 import {
   conversationClientFrameSchema,
   type ConversationClientFrame
@@ -48,6 +48,8 @@ export interface ConversationTransportOptions {
    */
   cwd?: string
   blobs?: BlobStore
+  /** Puts an attachment's bytes on the conversation's host; returns the absolute path. */
+  writeAttachment?: (fileName: string, data: Uint8Array) => Promise<string>
 }
 
 /**
@@ -243,9 +245,14 @@ async function rewriteFrame(
     let content: unknown[] = options.resolveRemoteFiles
       ? await options.resolveRemoteFiles(conversation, frame.content)
       : frame.content
-    if (blobs)
-      content = await resolveAttachmentRefs(
-        { control, blobs, userId: conversation.userId },
+    if (blobs && options.writeAttachment)
+      content = await resolveUploadRefs(
+        {
+          control,
+          blobs,
+          userId: conversation.userId,
+          writeToHost: options.writeAttachment
+        },
         content
       )
     const rewritten = clientFrameSchema.parse({ ...frame, content })

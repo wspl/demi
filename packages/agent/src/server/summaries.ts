@@ -4,6 +4,7 @@
 import { safeJsonStringify } from '@demicodes/utils'
 import { z } from 'zod'
 import type {
+  Block,
   ProviderErrorDiagnostics,
   ToolResultContentBlock
 } from '@demicodes/core'
@@ -45,6 +46,34 @@ const shellCommandStatusSchema = z.looseObject({
   runningMs: z.number(),
   idleMs: z.number(),
 })
+
+// The stored view of a shell tool call (`ShellToolView`): only the fields the
+// replay needs, so a view from another tool is simply not one.
+const storedShellViewSchema = z.looseObject({
+  kind: z.literal('shell'),
+  status: z.enum(['running', 'exited', 'aborted']),
+  commandId: z.string(),
+})
+
+/**
+ * The commands a transcript last saw running. The stored view is history:
+ * whether such a command is still alive is the environment's to say.
+ */
+export function storedRunningCommandIds(blocks: readonly Block[]): string[] {
+  const ids = new Set<string>()
+  for (const block of blocks) {
+    if (block.type !== 'tool_call')
+      continue
+    const view = storedShellViewSchema.safeParse(block.view)
+    if (!view.success)
+      continue
+    if (view.data.status === 'running')
+      ids.add(view.data.commandId)
+    else
+      ids.delete(view.data.commandId)
+  }
+  return [...ids]
+}
 
 export function progressToShellOutput(
   progress: unknown,

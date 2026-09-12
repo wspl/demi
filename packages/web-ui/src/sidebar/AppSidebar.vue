@@ -322,16 +322,22 @@ function selectProjectConversations(project: SidebarProject): void {
 
 <template>
   <aside
-    class="flex h-full shrink-0 select-none flex-col bg-surface-base text-fg w-64"
+    class="flex h-full w-[var(--sidebar-width,16rem)] shrink-0 select-none flex-col bg-surface-base text-fg"
   >
-    <div class="flex h-11 shrink-0 items-center px-2.5">
+    <div class="sidebar-column flex h-11 shrink-0 items-center pl-2.5">
       <span
         class="min-w-0 flex-1 truncate text-chrome font-medium text-fg-emphasis"
       >Demi</span>
     </div>
 
+    <!-- Every block of the sidebar is a `sidebar-column`: it reserves the scrollbar's width on
+         both edges, so a row's background ends the same distance from the left edge as from the
+         right, scrollbar or not, and the list scrolls without shifting anything. A row's content
+         starts 10px inside that, so the title, entries, headings, project headers and conversation
+         rows align at one line while a lit row has room around its status dot. Row actions sit 2px
+         inside the row's end, the same as their 2px above and below in the 28px row. -->
     <!-- The entries: one primary action, then the two settings sections a conversation reaches for. -->
-    <div class="flex shrink-0 flex-col gap-px px-2.5">
+    <div class="sidebar-column flex shrink-0 flex-col gap-px">
       <SidebarNavItem
         :icon="SquarePen"
         label="New"
@@ -355,7 +361,7 @@ function selectProjectConversations(project: SidebarProject): void {
     <!-- Plain conversations first, then the projects. One focusable list; rows are not tab stops. -->
     <div
       ref="listRef"
-      class="mt-4 min-h-0 flex-1 overflow-y-auto sidebar-scroll px-2.5 pb-2 outline-none"
+      class="sidebar-column mt-4 min-h-0 flex-1 pb-2 outline-none"
       :class="list.keyboardNav.value ? 'is-keyboard' : ''"
       tabindex="0"
       role="listbox"
@@ -407,7 +413,7 @@ function selectProjectConversations(project: SidebarProject): void {
         >
           <div
             v-if="entry.kind === 'heading'"
-            class="group/projects mb-1.5 flex h-6 items-center px-2 text-[11px] uppercase tracking-wide text-fg-subtle"
+            class="group/projects mb-1.5 flex h-6 items-center pl-2.5 pr-0.5 text-[11px] uppercase tracking-wide text-fg-subtle"
           >
             <span class="flex-1">{{ entry.id === 'projects-heading' ? 'Projects' : 'Conversations' }}</span>
             <Tooltip
@@ -419,6 +425,7 @@ function selectProjectConversations(project: SidebarProject): void {
                 :icon="FolderPlus"
                 size="xs"
                 variant="ghost"
+                aria-label="Add project"
                 class="opacity-0 transition-opacity group-hover/projects:opacity-100"
                 @click="emit('addProject')"
               />
@@ -432,6 +439,7 @@ function selectProjectConversations(project: SidebarProject): void {
                 :icon="SquarePen"
                 size="xs"
                 variant="ghost"
+                aria-label="New conversation"
                 class="opacity-0 transition-opacity group-hover/projects:opacity-100"
                 @click="emit('create', null)"
               />
@@ -451,7 +459,6 @@ function selectProjectConversations(project: SidebarProject): void {
             v-else
             :conversation="byId.get(entry.id)!"
             :pending="pendingIds?.includes(entry.id)"
-            :nested="byId.get(entry.id)!.projectId !== null"
             :hide-pin="hidePin"
             :open="entry.id === activeId"
             :selected="list.isSelected(entry.id)"
@@ -481,7 +488,7 @@ function selectProjectConversations(project: SidebarProject): void {
 
     <!-- The account, and settings. -->
     <div
-      class="flex shrink-0 items-center gap-1 border-t border-line px-2.5 py-2"
+      class="sidebar-column flex shrink-0 items-center gap-1 border-t border-line py-2"
     >
       <SidebarAccountRow
         :account="account"
@@ -576,8 +583,9 @@ function selectProjectConversations(project: SidebarProject): void {
 </template>
 
 <style scoped>
-.sidebar-scroll {
-  scrollbar-gutter: stable;
+.sidebar-column {
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
 }
 
 .sidebar-items-move,

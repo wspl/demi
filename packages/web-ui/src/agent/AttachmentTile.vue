@@ -6,15 +6,15 @@ import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from '../files/FileIcon.vue'
 import {
   attachmentProgress,
-  type AttachmentDestination,
   type AttachmentPhase,
 } from './message-input/attachments'
 
 const props = defineProps<{
   name: string
   src?: string
+  /** The opening of a text file; the tile shows it as a small page. */
+  snippet?: string
   removable?: boolean
-  destination?: AttachmentDestination
   phase?: AttachmentPhase
   progress?: number
 }>()
@@ -37,6 +37,7 @@ const percent = computed(() =>
 )
 const dashOffset = computed(() => circumference * (1 - percent.value))
 const percentLabel = computed(() => Math.round(percent.value * 100))
+const extension = computed(() => props.name.split('.').pop()?.toUpperCase() ?? '')
 </script>
 
 <template>
@@ -53,6 +54,21 @@ const percentLabel = computed(() => Math.round(percent.value * 100))
       class="size-12 rounded-lg object-cover ring-1 ring-line"
       :class="phase === 'uploading' && 'opacity-40'"
     />
+    <!-- A text file is a page: its first lines in type too small to read, and its kind in the corner. -->
+    <span
+      v-else-if="snippet"
+      class="relative block size-12 overflow-hidden rounded-lg bg-surface ring-1 ring-line"
+      :class="phase === 'uploading' && 'opacity-40'"
+    >
+      <span
+        class="block h-full select-none whitespace-pre-wrap break-all px-1.5 pt-1.5 font-mono text-[5px] leading-[7px] text-fg-subtle"
+        >{{ snippet }}</span
+      >
+      <span
+        class="absolute bottom-0 right-0 rounded-tl-md bg-surface-raised px-1 text-[7px] font-medium leading-[10px] tracking-wide text-fg-muted ring-1 ring-line"
+        >{{ extension }}</span
+      >
+    </span>
     <span
       v-else
       class="flex size-12 items-center justify-center rounded-lg bg-surface ring-1 ring-line"

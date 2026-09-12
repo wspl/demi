@@ -42,24 +42,27 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
     role="alert"
     class="flex w-full items-center gap-3 rounded-lg bg-tint-danger px-3.5 py-2.5 text-on-danger"
   >
-    <!-- The icon marks the first line; the controls sit centred on the whole bar. -->
-    <span class="flex h-5 shrink-0 items-center self-start" aria-hidden="true">
-      <CircleX :size="14" />
-    </span>
-    <div class="min-w-0 flex-1 select-text">
-      <p class="text-chrome leading-5">{{ label }}</p>
-      <p
-        v-if="detail"
-        class="mt-0.5 whitespace-pre-line break-words text-[12px] leading-[18px] text-on-danger-muted"
-      >
-        {{ detail }}
-      </p>
-      <p
-        v-if="facts.length > 0"
-        class="mt-1.5 truncate font-mono text-[11px] leading-4 text-on-danger-muted"
-      >
-        {{ facts.join(' · ') }}
-      </p>
+    <!-- The icon holds the first line of the text, whatever the bar's height; the
+         text with its icon sits centred against the controls. -->
+    <div class="flex min-w-0 flex-1 items-start gap-3">
+      <span class="flex h-5 shrink-0 items-center" aria-hidden="true">
+        <CircleX :size="14" />
+      </span>
+      <div class="min-w-0 flex-1 select-text">
+        <p class="text-chrome leading-5">{{ label }}</p>
+        <p
+          v-if="detail"
+          class="mt-0.5 whitespace-pre-line break-words text-[12px] leading-[18px] text-on-danger-muted"
+        >
+          {{ detail }}
+        </p>
+        <p
+          v-if="facts.length > 0"
+          class="mt-1.5 truncate font-mono text-[11px] leading-4 text-on-danger-muted"
+        >
+          {{ facts.join(' · ') }}
+        </p>
+      </div>
     </div>
     <!-- Two lines: the controls sit centred. Three (with facts): they hold the first line. -->
     <div

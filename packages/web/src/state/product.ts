@@ -1,7 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue } from '@demicodes/utils'
-import { reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, readResponse } from '../api/client'
 import {
   modelCatalogSchema,
@@ -16,8 +15,6 @@ import {
 export const useProduct = defineStore('product', () => {
   const snapshot = ref<ProductState | null>(null)
   const load = ref<'loading' | 'ready' | 'failed'>('loading')
-  // A poll that fails while a snapshot is on screen is one toast per outage, not one per tick.
-  let refreshFailed = false
   const catalogs = ref<Record<string, CatalogProvider[]>>({})
   const vendors = ref<VendorCatalog | null>(null)
   const modelErrors = ref<Record<string, string>>({})
@@ -76,16 +73,13 @@ export const useProduct = defineStore('product', () => {
           etag = response.headers.get('ETag')
         }
         load.value = 'ready'
-        refreshFailed = false
       })
     } catch (cause) {
-      if (controller === current && !current.signal.aborted) {
-        if (!snapshot.value) {
-          load.value = 'failed'
-        } else if (!refreshFailed) {
-          refreshFailed = true
-          reportError('Could not refresh', cause, { userVisible: true })
-        }
+      // A refresh that fails while a snapshot is on screen is not told: the
+      // snapshot stays, the next poll tries again, and a lost connection is
+      // the session's to reconnect. Only the first load has nothing to keep.
+      if (controller === current && !current.signal.aborted && !snapshot.value) {
+        load.value = 'failed'
       }
       throw cause
     }
@@ -96,8 +90,8 @@ export const useProduct = defineStore('product', () => {
       await refresh()
       await loadModels()
     } catch {
-      // refresh tells its own failure once per outage; a model catalog
-      // failure is the composer's state.
+      // A failed refresh keeps the snapshot; a model catalog failure is the
+      // composer's state.
     }
   }
 
@@ -224,7 +218,6 @@ export const useProduct = defineStore('product', () => {
     modelErrors.value = {}
     activeConversationId.value = null
     load.value = 'loading'
-    refreshFailed = false
   }
 
   return {

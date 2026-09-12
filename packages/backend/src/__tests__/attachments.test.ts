@@ -8,6 +8,7 @@ import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider, type InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { waitFor } from '@demicodes/utils'
+import { ATTACHMENTS_DIR, uploadRefBlockSchema } from '../conversation/attachment-refs'
 import { openBackend, type TestBackend } from './session'
 
 // M6 attachments: upload-then-reference for message media (bytes never ride
@@ -139,15 +140,20 @@ test(
     const { conversation } = (await created.json()) as { conversation: { id: string } }
     const client = await connectClient(backend, conversation.id, selection)
 
-    // The send frame carries only the reference; the provider sees inline bytes.
-    const refBlock = {
-      type: 'image',
-      source: { type: 'ref', ref: attachment.id }
+    // The send frame carries only the upload reference; the provider sees the
+    // inline bytes and, right after them, the attachment record naming the
+    // file on the host.
+    const uploadBlock = {
+      type: 'upload',
+      ref: attachment.id,
+      fileName: 'photo.png'
     } as never as UserContentBlock
-    await client.send([{ type: 'text', text: 'describe this' }, refBlock])
+    await client.send([{ type: 'text', text: 'describe this' }, uploadBlock])
     const userItem = requests[0]?.items.find(
       (item): item is Extract<(typeof requests)[0]['items'][number], { type: 'user_message' }> => item.type === 'user_message',
     )
+    expect(userItem?.content.map((block) => block.type))
+      .toEqual(['text', 'image', 'attachment'])
     const image = userItem?.content.find(
       (block): block is Extract<UserContentBlock, { type: 'image' }> => block.type === 'image'
     )
@@ -156,6 +162,12 @@ test(
       throw new Error('expected binary image source')
     expect(image.source.data).toEqual(PNG_BYTES)
     expect(image.source.mediaType).toBe('image/png')
+    const record = userItem?.content.find(
+      (block): block is Extract<UserContentBlock, { type: 'attachment' }> => block.type === 'attachment'
+    )
+    expect(record?.name).toBe('photo.png')
+    expect(record?.path).toEndWith(`/${ATTACHMENTS_DIR}/${conversation.id}/photo.png`)
+    expect(record?.sha256).toBe(attachment.sha256)
 
     // The browser sees media by reference, live and after a restore alike:
     // the transcript frames carry the blob's hash, and the bytes are one GET away.
@@ -214,8 +226,9 @@ test(
 
     // A missing reference degrades loudly to a visible placeholder, never a crash.
     const ghost = {
-      type: 'image',
-      source: { type: 'ref', ref: 'no-such-id' }
+      type: 'upload',
+      ref: 'no-such-id',
+      fileName: 'ghost.png'
     } as never as UserContentBlock
     await revived.send([ghost]).catch(() => {})
     const placeholder = revived
@@ -232,12 +245,13 @@ test(
   20_000
 )
 
-test('attachment upload limits and workspace file drop', async () => {
+test('attachment upload limits and the file on the host', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m6-drop-'))
+  let conversationId = ''
   const stubRuntime = () =>
   new StubProvider([
     [events.toolCall('t1', 'shell_exec', {
-        script: 'cat notes/readme.md',
+        script: `cat ~/${ATTACHMENTS_DIR}/${conversationId}/readme.md`,
         timeoutMs: 10_000
       })],
     [events.text('ok'), events.response()]
@@ -274,30 +288,23 @@ test('attachment upload limits and workspace file drop', async () => {
   const { provider } = (await providerResponse.json()) as { provider: { id: string } }
   const created = await api(backend, '/api/conversations', { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) })
   const { conversation } = (await created.json()) as { conversation: { id: string } }
+  conversationId = conversation.id
+  const uploaded = await api(backend, '/api/attachments', {
+    method: 'POST',
+    body: 'dropped content',
+    headers: { 'content-type': 'text/plain' },
+  })
+  const { attachment } = (await uploaded.json()) as { attachment: { id: string } }
 
-  // Path traversal is refused; a clean relative path lands in the virtual cwd.
-  const traversal = await api(
-    backend,
-    `/api/conversations/${conversation.id}/workspace-files?name=../escape.txt`,
-    {
-      method: 'POST',
-      body: 'nope',
-    }
-  )
-  expect(traversal.status).toBe(400)
-  const dropped = await api(
-    backend,
-    `/api/conversations/${conversation.id}/workspace-files?name=notes/readme.md`,
-    {
-      method: 'POST',
-      body: 'dropped content',
-    }
-  )
-  expect(dropped.status).toBe(201)
-  expect(((await dropped.json()) as { path: string }).path)
-    .toEndWith(`/sessions/${conversation.id}/notes/readme.md`)
-
-  // The agent's shell sees the dropped file on the execution target.
+  // A file name with a path separator never passes the upload block's schema,
+  // so the frame is refused before anything touches the host; a clean name
+  // lands under the attachments directory on the host, where the agent's
+  // shell reads it.
+  expect(uploadRefBlockSchema.safeParse({
+    type: 'upload',
+    ref: attachment.id,
+    fileName: '../escape.txt'
+  }).success).toBe(false)
   const client = await connectClient(
     backend,
     conversation.id,
@@ -308,7 +315,12 @@ test('attachment upload limits and workspace file drop', async () => {
     if (event.type === 'shell_output' && event.status.status === 'exited')
       outputs.push(event.status.stdout.delta)
   })
-  await client.send([{ type: 'text', text: 'read the drop' }])
+  const clean = {
+    type: 'upload',
+    ref: attachment.id,
+    fileName: 'readme.md'
+  } as never as UserContentBlock
+  await client.send([{ type: 'text', text: 'read the drop' }, clean])
   expect(outputs.at(-1)).toBe('dropped content')
 
   await client.close()

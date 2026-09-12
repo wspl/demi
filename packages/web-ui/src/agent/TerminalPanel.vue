@@ -15,6 +15,10 @@ const props = withDefaults(
   },
 )
 
+const emit = defineEmits<{
+  /** The close on a running tab: stop that command. */
+  abort: [id: string]
+}>()
 const activeId = defineModel<string | null>('activeId', { required: true })
 const tabs = computed(() => terminalPanelTabs(props.terminals, activeId.value))
 const active = computed(
@@ -29,6 +33,15 @@ function activate(id: string): void {
 
 function closePanel(): void {
   activeId.value = null
+}
+
+// Closing a running tab stops the command; closing an exited one puts it away.
+function closeTab(terminal: TerminalRecord): void {
+  if (terminal.phase === 'running') {
+    emit('abort', terminal.id)
+    return
+  }
+  activeId.value = tabs.value.filter((tab) => tab.id !== terminal.id).at(-1)?.id ?? null
 }
 </script>
 
@@ -46,8 +59,8 @@ function closePanel(): void {
         :is-active="terminal.id === active?.id"
         :status="terminalStatus(terminal.phase)"
         mark="terminal"
-        :closable="false"
         @pointerdown="activate(terminal.id)"
+        @close="closeTab(terminal)"
       />
     </template>
     <XtermView

@@ -1,24 +1,23 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useSavedScroll } from '@demicodes/web-ui/composables/useSavedScroll'
-import { RouterLink, RouterView, useRoute } from 'vue-router'
+import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
-import { applyParadigm, galleryState, PARADIGMS } from './gallery-state'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
+import GalleryAppearanceMenu from './components/GalleryAppearanceMenu.vue'
+import { useGalleryView } from './gallery-views'
 import { NAV } from './router'
-import AccentPicker from './components/AccentPicker.vue'
-import AxisPicker from './components/AxisPicker.vue'
 
 const route = useRoute()
 const viewport = ref<HTMLElement>()
 useSavedScroll(viewport, () => `demi-gallery-scroll:${route.fullPath}`)
-
-function setMode(mode: 'light' | 'dark') {
-  galleryState.mode = mode
-}
+const { views, view } = useGalleryView()
 
 const mainClass = computed(() => {
-  if (route.meta.layout === 'preview')
+  if (route.meta.layout === 'preview' ||
+    (route.path === '/session' && view.value === 'session')) {
     return 'flex min-h-0 flex-1 flex-col overflow-hidden'
+  }
   if (route.meta.layout === 'session')
     return 'min-h-0 flex-1 overflow-y-auto px-5 py-4'
   return 'min-h-0 flex-1 overflow-y-auto px-6 py-6'
@@ -51,65 +50,10 @@ const mainClass = computed(() => {
 
     <div class="flex min-w-0 flex-1 flex-col">
       <header
-        class="select-none shrink-0 border-b border-line bg-surface px-5 py-3"
+        class="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-5"
       >
-        <div class="flex flex-wrap items-start gap-6">
-          <div class="flex min-w-[220px] flex-1 flex-col gap-1.5">
-            <div class="gallery-label">Paradigm</div>
-            <div class="flex flex-wrap gap-1">
-              <button
-                v-for="item in PARADIGMS"
-                :key="item.id"
-                type="button"
-                class="rounded-md px-2 py-1 text-[12px] transition-colors duration-200 ease-out"
-                :class="galleryState.paradigm === item.id
-                  ? 'bg-active text-fg-emphasis'
-                  : 'text-fg-muted hover:bg-hover hover:text-fg'"
-                @click="applyParadigm(item.id)"
-              >
-                {{ item.name }}
-              </button>
-              <span
-                v-if="galleryState.paradigm === 'custom'"
-                class="rounded-md bg-hover px-2 py-1 text-[12px] text-fg-muted"
-              >Custom</span>
-            </div>
-          </div>
-          <AxisPicker
-            label="Mode"
-            :values="(['dark', 'light'] as const)"
-            :model-value="galleryState.mode"
-            @update:model-value="setMode"
-          />
-          <AxisPicker
-            label="Tone"
-            :values="(['zinc', 'cool', 'warm', 'ink'] as const)"
-            :model-value="galleryState.tone"
-            @update:model-value="galleryState.tone = $event"
-          />
-          <AccentPicker
-            :model-value="galleryState.accent"
-            @update:model-value="galleryState.accent = $event"
-          />
-          <AxisPicker
-            label="Density"
-            :values="(['compact', 'regular', 'comfortable'] as const)"
-            :model-value="galleryState.density"
-            @update:model-value="galleryState.density = $event"
-          />
-          <AxisPicker
-            label="Radius"
-            :values="(['tight', 'medium', 'soft'] as const)"
-            :model-value="galleryState.radius"
-            @update:model-value="galleryState.radius = $event"
-          />
-          <AxisPicker
-            label="Shadow"
-            :values="(['hairline', 'soft', 'carved'] as const)"
-            :model-value="galleryState.shadow"
-            @update:model-value="galleryState.shadow = $event"
-          />
-        </div>
+        <Segmented v-model="view" :options="views" />
+        <GalleryAppearanceMenu />
       </header>
 
       <main ref="viewport" :class="mainClass">

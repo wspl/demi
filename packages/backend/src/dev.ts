@@ -17,8 +17,8 @@ import { SESSION_COOKIE } from './http/cookies'
 const DEV_USER = { email: 'dev@example.test', password: 'dev-pass-1234' }
 
 function lastUserText(request: InferenceRequest): string {
-  const item = request.items.findLast((entry) => entry.type === 'user_message')
-  if (!item) {
+  const item = [...request.items].reverse().find((entry) => entry.type === 'user_message')
+  if (!item || item.type !== 'user_message') {
     return ''
   }
   return item.content

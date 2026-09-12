@@ -19,6 +19,8 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * - No history to keep: the status pane replaces the transcript (Retry lives there).
  * - History in memory: the transcript stays; an ErrorNotice at its tail names the failure (Retry lives there).
  * - The failure is a transcript record: the record itself carries Retry; the dock adds nothing.
+ * A lost connection is not a failure: the runtime reconnects on its own, and
+ * the Connecting tail row is all the reader sees.
  */
 interface SessionCase {
   variant: string
@@ -49,33 +51,23 @@ function state(
   })
 }
 
-const SOCKET_ERROR = 'Agent socket failed to connect: ECONNREFUSED 127.0.0.1:18911'
+const LOAD_ERROR = 'Could not load the transcript: HTTP 502 Bad Gateway'
 
 const cases: SessionCase[] = [
   {
     variant: 'Initial load failed · nothing to keep',
     note: 'The status pane replaces the transcript and carries the reason and Retry. Nothing else says it; there is no composer.',
-    session: state('initial', { load: 'failed', lastError: SOCKET_ERROR }),
+    session: state('initial', { load: 'failed', lastError: LOAD_ERROR }),
     composer: 'none',
   },
   {
-    variant: 'Reconnecting · history in memory',
-    note: 'The transcript and the draft stay. The Connecting tail row is the only signal; no bar, no pane.',
+    variant: 'Connection lost · reconnecting on its own',
+    note: 'Not a failure. The transcript, the draft and the composer stay; the Connecting tail row is the only signal while the runtime retries with backoff. Nothing to click.',
     session: state('reconnecting', {
       load: 'reconnecting',
       blocks: shortTranscriptBlocks(),
     }),
     composer: 'default',
-  },
-  {
-    variant: 'Reconnect failed · history in memory',
-    note: 'The transcript stays readable. The notice at its tail names the failure with Retry; the composer waits until the session is back.',
-    session: state('reconnect-failed', {
-      load: 'failed',
-      lastError: SOCKET_ERROR,
-      blocks: shortTranscriptBlocks(),
-    }),
-    composer: 'none',
   },
   {
     variant: 'Generation failed · error record',

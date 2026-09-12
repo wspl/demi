@@ -6,7 +6,6 @@ import {
   type Host
 } from '@demicodes/shell'
 import { createDemiCommand } from './demi-command'
-import { createFileReferenceResolver } from './reference-resolver'
 
 export type CodingState = Record<string, never>
 
@@ -26,7 +25,6 @@ export interface CodingAgentHarnessOptions {
    * A fixed Host, or a resolver routing each action to its execution target.
    */
   host: Host | CodingHostResolver
-  referenceHost?: Host
   /** Replaces the default command set; a builder closes over the session id. */
   commands?: Command[] | CodingCommandsBuilder
   /** Per-round context injection (`AgentHarness.preamble` signature). */
@@ -58,9 +56,6 @@ export function createCodingAgentHarness(
     typeof options.host === 'function'
       ? options.host
       : () => options.host as Host
-  const resolveReferences = createFileReferenceResolver<CodingState>(
-    options.referenceHost ?? ((ctx) => resolveHost(ctx)),
-  )
   return {
     name: 'coding',
     initialState: () => ({}),
@@ -112,7 +107,6 @@ export function createCodingAgentHarness(
         sections.push(`Registered commands:\n\n${ctx.commandsPrompt}`)
       return sections.join('\n\n')
     },
-    resolveReferences,
   }
 }
 

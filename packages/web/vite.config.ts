@@ -5,6 +5,11 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
+  // The repository's `.env` carries the local development account
+  // (`DEMI_DEV_EMAIL`, `DEMI_DEV_PASSWORD`); the sign-in page fills it in
+  // during development only.
+  envDir: resolve(import.meta.dirname, '../..'),
+  envPrefix: ['VITE_', 'DEMI_DEV_'],
   resolve: {
     alias: {
       '@': resolve(import.meta.dirname, 'src'),

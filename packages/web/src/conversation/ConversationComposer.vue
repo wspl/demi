@@ -36,11 +36,7 @@ const selectedModel = computed(() => modelState.value.selected?.model)
 const canSend = computed(() => modelState.value.kind === 'ready')
 
 function addFiles(files: File[]) {
-  store.addFiles(
-    props.conversation,
-    files,
-    selectedModel.value?.acceptedExtensions ?? null,
-  )
+  store.addFiles(props.conversation, files)
 }
 
 function removeFile(id: string) {

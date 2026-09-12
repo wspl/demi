@@ -28,7 +28,6 @@ const props = defineProps<{
   hidePin?: boolean
   /** Inside a project: the row starts at the header's icon column, so its dot sits under the
       folder icon and its title aligns with the project name. */
-  nested?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -136,8 +135,8 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
 
 <template>
   <div
-    class="group/row relative flex h-7 cursor-default select-none items-center gap-2 rounded-md pr-1 text-chrome transition-colors duration-200 ease-out"
-    :class="[rowClass, nested ? 'ml-2 pl-0' : 'pl-2']"
+    class="group/row relative flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2.5 pr-0.5 text-chrome transition-colors duration-200 ease-out"
+    :class="rowClass"
     :aria-selected="selected"
     @click="emit('click', $event)"
     @contextmenu.prevent="emit('contextmenu', $event)"
@@ -192,7 +191,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     <!-- While renaming the field has the whole row: no actions, no pin glyph over it. -->
     <span
       v-if="!renaming"
-      class="absolute inset-y-0 right-1 flex items-center gap-0.5 transition-opacity"
+      class="absolute inset-y-0 right-0.5 flex items-center gap-0.5 transition-opacity"
       :class="
         menuOpen || pending
           ? 'opacity-100'
@@ -201,12 +200,12 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     >
       <!-- Archive first, Pin at the end: the pin lands where the pinned glyph already sits, and the
            destructive action is not the one nearest the pointer's resting place. -->
-      <Tooltip content="Archive conversation" class="flex items-center">
+      <Tooltip content="Archive" class="flex items-center">
         <IconButton
           :icon="Archive"
           size="sm"
           variant="ghost"
-          aria-label="Archive conversation"
+          aria-label="Archive"
           :disabled="pending || conversation.status === 'active'"
           @click.stop="emit('archive')"
         />
@@ -223,18 +222,18 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
           variant="ghost"
           :aria-pressed="conversation.pinned"
           :disabled="pending"
-          :aria-label="
-            conversation.pinned ? 'Unpin conversation' : 'Pin conversation'
-          "
+          :aria-label="conversation.pinned ? 'Unpin' : 'Pin'"
           @click.stop="emit('togglePin')"
         />
       </Tooltip>
     </span>
-    <Pin
+    <!-- The pinned glyph sits in the same 24px box as the Pin action, so nothing moves on hover. -->
+    <span
       v-if="conversation.pinned && !menuOpen && !renaming"
-      :size="ICON_PX.in20"
-      class="pointer-events-none absolute right-[10px] text-fg-faint transition-opacity group-hover/row:opacity-0"
-    />
+      class="pointer-events-none absolute inset-y-0 right-0.5 flex w-6 items-center justify-center text-fg-faint transition-opacity group-hover/row:opacity-0"
+    >
+      <Pin :size="ICON_PX.in20" />
+    </span>
   </div>
 </template>
 
