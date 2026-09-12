@@ -187,8 +187,9 @@ features; update this inventory when those contracts are defined.
 dependencies are the agent, coding-agent, core, provider, the provider
 runtimes, shell (the Host and shell-environment contracts and the command
 types), host-remote (the remote Host and shell it injects into the
-agent),
-command-loader, runner-protocol and utils, plus `hono` on Bun. The module
+agent), machines (the managed-host provisioner contract and the machine
+manager's client), command-loader, runner-protocol and utils, plus `hono` on
+Bun. The module
 directories mirror the modules above (`docs/package-boundaries.md`).
 
 ## User Cloud control

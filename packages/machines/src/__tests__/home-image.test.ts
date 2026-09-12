@@ -7,7 +7,7 @@ import {
   makeHomeImage,
   missingImageTools,
   runTool
-} from '../managed/firecracker/image-tools'
+} from '../firecracker/image-tools'
 
 // Ext4 tools run only when installed; this test never boots a model.
 const tools = missingImageTools().length === 0 ? test : test.skip

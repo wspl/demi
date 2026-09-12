@@ -3,10 +3,7 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { createBackend } from './backend'
 import type { InstanceMode } from './auth/identity'
-import {
-  FirecrackerProvisioner,
-  firecrackerConfigFromEnv
-} from './managed/firecracker'
+import { RemoteProvisioner } from '@demicodes/machines'
 
 async function main(): Promise<void> {
   const dataDir = process.env.DEMI_BACKEND_DATA ??
@@ -17,10 +14,11 @@ async function main(): Promise<void> {
     throw new Error(
       'DEMI_INSTANCE_MODE must be "shared" or "isolated" (product.md § Instance mode)'
     )
-  // Managed hosts (`managed-hosts.md`) when `DEMI_MANAGED_FIRECRACKER` names the binary; guests dial `DEMI_BACKEND_PUBLIC_URL`.
-  const firecracker = firecrackerConfigFromEnv(process.env, dataDir)
+  // Managed hosts (`managed-hosts.md`) when `DEMI_MACHINES_SOCKET` names the
+  // machine manager's Unix socket; guests dial `DEMI_BACKEND_PUBLIC_URL`.
+  const machinesSocket = process.env.DEMI_MACHINES_SOCKET
   const publicUrl = process.env.DEMI_BACKEND_PUBLIC_URL
-  if (firecracker && !publicUrl)
+  if (machinesSocket && !publicUrl)
     throw new Error(
       'DEMI_BACKEND_PUBLIC_URL is required with managed hosts: the URL guests dial'
     )
@@ -30,17 +28,15 @@ async function main(): Promise<void> {
     port,
     mode: mode as InstanceMode,
     ...(publicUrl ? { publicUrl } : {}),
-    ...(firecracker
-      ? { managedHosts: { provisioner: new FirecrackerProvisioner(firecracker) } }
+    ...(machinesSocket
+      ? { managedHosts: { provisioner: new RemoteProvisioner({ socketPath: machinesSocket }) } }
       : {}),
   })
   console.log(
     `demi-backend listening on ${backend.url} (data: ${dataDir}, ${mode} mode)`
   )
-  if (firecracker)
-    console.log(
-      `managed hosts: firecracker ${firecracker.launch.mode} mode, ${firecracker.slots} slots on ${firecracker.subnet}`
-    )
+  if (machinesSocket)
+    console.log(`managed hosts: machine manager at ${machinesSocket}`)
   console.log(
     'Providers come from providers: add one via POST /api/providers (or the web UI).'
   )

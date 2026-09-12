@@ -1,0 +1,43 @@
+{
+  "name": "@demicodes/machines",
+  "description": "The Demi machine manager: the managed-host provisioner contract, the Firecracker implementation, and the Unix-socket service the backend talks to.",
+  "version": "0.20.0",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "bin": {
+    "demi-machines": "./dist/main.mjs"
+  },
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "scripts",
+    "lima"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@demicodes/utils": "workspace:^",
+    "zod": "^4.0.0"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/machines"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/machines#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}

@@ -18,45 +18,103 @@ budget. Isolation is between users. A workspace path is only a working directory
 
 ## Provisioning
 
-`backend/managed` owns user-level lifecycle and admission. Its
-`ManagedHostProvisioner` interface owns VM and disk operations: provision, wake,
-hibernate, checkpoint, volume growth, reset and close. It receives the user-owned
-device identity; it never owns a conversation or transcript.
+`backend/managed` owns user-level lifecycle and admission. Every VM and disk
+operation it needs is a method of the `ManagedHostProvisioner` contract in
+`@demicodes/machines`: reconcile, wake, hibernate, checkpoint, volume growth,
+reset and close, plus death events. The provisioner receives the user-owned
+device identity and the boot arguments; it never owns a conversation, a
+transcript or a user.
 
-Firecracker is driven through its Unix-socket API. The backend runs Firecracker
+The implementation runs as its own service, the machine manager
+(`demi-machines`, `packages/machines/src/main.ts`), and the backend holds a
+`RemoteProvisioner`: the same contract, every call carried to the manager over
+a Unix socket. The split is the same on every platform; only where the manager
+runs differs:
+
+- Linux: the manager runs in place beside the backend, on the host that has
+  `/dev/kvm`.
+- macOS: the manager runs inside a Lima instance with nested virtualization
+  (`packages/machines/lima/demi-machines.yaml`), where a `/dev/kvm` exists.
+  Lima forwards the manager's socket to a path on the Mac, and guests reach the
+  backend on the Mac at the address the instance knows as `host.lima.internal`
+  (192.168.5.2 by default; guests dial it by address, since their resolver is
+  a public one). `scripts/lima-machines.sh` creates or starts the instance,
+  prepares its tap pool and runs the manager on the current checkout.
+
+```text
+macOS                                  Lima instance (Linux, nested KVM)
+┌──────────────┐  Unix socket          ┌───────────────────────────────────┐
+│ demi-backend │ ───────────────────▶  │ demi-machines ──▶ firecracker ×N  │
+│  :3271       │  ~/.lima/…/sock/…     │   tap demi0…         │ guest      │
+└──────────────┘ ◀──────────────────── │   172.16.0.0/16 ◀────┘ runner     │
+                  http://192.168.5.2:3271 (DEMI_BACKEND_PUBLIC_URL)
+```
+
+The wire (`packages/machines/src/protocol.ts`) is declared with zod like the
+runner wire: one request line per call, `{ id, op, params }` with the op's
+parameters, answered by `{ type: 'ok', id, result }` or
+`{ type: 'error', id, message }`; the manager sends `{ type: 'death',
+deviceId }` on its own when a VM exits. Frames are newline-delimited JSON. The
+manager listens on `DEMI_MACHINES_SOCKET` only, with the socket file readable
+by its owner alone; it never listens on TCP and has no authentication. Whoever
+can open the socket file is the backend. The backend dials the same path
+through `DEMI_MACHINES_SOCKET`; unset, the backend has no managed hosts.
+
+The manager reconciles on its own start (VMs left by an earlier manager are
+stopped and their disks saved). The backend's `reconcile` on its start brings
+every machine to off with disks saved, so the lifecycle's view (everything off
+until woken) holds whichever process restarted. The backend's `close` does the
+same and disconnects; the manager keeps running.
+
+Firecracker is driven through its Unix-socket API. The manager runs Firecracker
 and image utilities as the infrastructure adapters that require processes.
 Two launch modes are supported:
 
 - `direct`: an unprivileged Firecracker process with KVM and its seccomp filter,
-  for self-hosting and trusted deployments.
-- `jailer`: `backend/scripts/firecracker-jailer.sh` prepares image paths and
-  filesystem permissions, launches jailer and monitors Firecracker's recorded
-  PID. Jailer creates the chroot, namespaces and cgroup and drops to the slot's
-  uid. The script accepts `vm start` and `vm kill` with validated arguments; it
-  does not implement isolation, communicate with the runner or carry business
-  logic. The backend communicates with Firecracker through its API socket.
+  for self-hosting, development and trusted deployments.
+- `jailer`: `packages/machines/scripts/firecracker-jailer.sh` prepares image
+  paths and filesystem permissions, launches jailer and monitors Firecracker's
+  recorded PID. Jailer creates the chroot, namespaces and cgroup and drops to
+  the slot's uid. The script accepts `vm start` and `vm kill` with validated
+  arguments; it does not implement isolation, communicate with the runner or
+  carry business logic. The manager communicates with Firecracker through its
+  API socket.
 
 The guest pipeline builds a minimal Linux kernel and a read-only developer
 rootfs containing bash, coreutils, compilers and the packed txiki.js runner.
-Deployment requires Linux with `/dev/kvm`; filesystem persistence does not
+The manager requires Linux with `/dev/kvm`; filesystem persistence does not
 require keeping a VM running. The install script prepares the tap pool,
 forwarding and nftables policy. The backend URL is reachable; other private and
 link-local destinations are blocked, public egress is allowed and inbound
 connections are not exposed. No host directories are mounted into a guest.
 
+### The manager's environment
+
+| Variable | Meaning |
+|---|---|
+| `DEMI_MACHINES_SOCKET` | the Unix socket the manager listens on and the backend dials (required on both) |
+| `DEMI_MACHINES_DATA` | the manager's state: working VM files and the image generations (default `~/.demi/machines`) |
+| `DEMI_MANAGED_FIRECRACKER`, `DEMI_MANAGED_KERNEL`, `DEMI_MANAGED_ROOTFS` | the Firecracker binary and the guest-image artifacts (required) |
+| `DEMI_MANAGED_LAUNCH` | `direct` (default) or `jailer`, with `DEMI_MANAGED_JAILER`, `DEMI_MANAGED_HELPER`, `DEMI_MANAGED_CHROOT_BASE`, `DEMI_MANAGED_UID_BASE` |
+| `DEMI_MANAGED_VCPUS`, `DEMI_MANAGED_MEM_MIB`, `DEMI_MANAGED_SYSTEM_MIB`, `DEMI_MANAGED_HOME_MIB`, `DEMI_MANAGED_SUBNET`, `DEMI_MANAGED_SLOTS`, `DEMI_MANAGED_DNS` | guest sizing and the tap pool |
+
+The backend needs `DEMI_MACHINES_SOCKET` and `DEMI_BACKEND_PUBLIC_URL`, the
+URL guests dial.
+
 ### Installing jailer mode
 
-Run these steps on the Linux backend host. The examples use the service account
-`demi-backend`, Firecracker and jailer installed as root-owned executables at
-`/opt/firecracker/firecracker` and `/opt/firecracker/jailer`, and the default
-chroot base `/srv/jailer`. Bash, coreutils, sudo, e2fsprogs and KVM are required;
-the networking setup also uses iproute2 and nftables. The writable disk images
-and chroot base must be on the same filesystem because the script hardlinks
-those images into each jail.
+Run these steps on the Linux host that runs the manager. The examples use the
+service account `demi-machines`, Firecracker and jailer installed as
+root-owned executables at `/opt/firecracker/firecracker` and
+`/opt/firecracker/jailer`, and the default chroot base `/srv/jailer`. Bash,
+coreutils, sudo, e2fsprogs and KVM are required; the networking setup also
+uses iproute2 and nftables. The writable disk images and chroot base must be
+on the same filesystem because the script hardlinks those images into each
+jail.
 
-The backend package includes `scripts/`; no helper compilation is required.
-From the backend package directory (`packages/backend` in a checkout), install
-the launcher under a root-owned directory:
+The machines package includes `scripts/`; no helper compilation is required.
+From the package directory (`packages/machines` in a checkout), install the
+launcher under a root-owned directory:
 
 ```sh
 sudo install -d -o root -g root -m 0755 /usr/local/libexec/demi
@@ -69,18 +127,20 @@ Use `sudo visudo -f /etc/sudoers.d/demi-firecracker` to add exactly these two
 allowed operations, replacing the account name if necessary:
 
 ```sudoers
-demi-backend ALL=(root) NOPASSWD: /usr/local/libexec/demi/firecracker-jailer.sh vm start *, /usr/local/libexec/demi/firecracker-jailer.sh vm kill *
+demi-machines ALL=(root) NOPASSWD: /usr/local/libexec/demi/firecracker-jailer.sh vm start *, /usr/local/libexec/demi/firecracker-jailer.sh vm kill *
 ```
 
-The backend invokes this installed path directly through `sudo -n`; sudoers
-must name the script, not `/bin/bash`. Keep the script and its parent directories
-unwritable by the backend account. This account is trusted to supply executable
-and image paths: the helper permission is an infrastructure privilege, not a
-security boundary against the backend itself.
+The manager invokes this installed path directly through `sudo -n`; sudoers
+must name the script, not `/bin/bash`. Keep the script and its parent
+directories unwritable by the manager's account. This account is trusted to
+supply executable and image paths: the helper permission is an infrastructure
+privilege, not a security boundary against the manager itself.
 
-Set the backend service environment:
+Set the manager service environment:
 
 ```sh
+DEMI_MACHINES_SOCKET=/run/demi/machines.sock
+DEMI_MACHINES_DATA=/var/lib/demi-machines
 DEMI_MANAGED_LAUNCH=jailer
 DEMI_MANAGED_FIRECRACKER=/opt/firecracker/firecracker
 DEMI_MANAGED_JAILER=/opt/firecracker/jailer
@@ -91,13 +151,13 @@ DEMI_MANAGED_KERNEL=/opt/demi-guest/vmlinux
 DEMI_MANAGED_ROOTFS=/opt/demi-guest/rootfs.ext4
 ```
 
-Point the last two variables at the deployed guest-image artifacts. The backend
-pins its own base-image copies before starting a VM. Use the same uid base,
-slot count and subnet when preparing networking; for example:
+Point the last two variables at the deployed guest-image artifacts. The
+manager pins its own base-image copies before starting a VM. Use the same uid
+base, slot count and subnet when preparing networking; for example:
 
 ```sh
 sudo bash scripts/install-managed-hosts.sh \
-  --user demi-backend \
+  --user demi-machines \
   --mode jailer \
   --uid-base 20000 \
   --slots 256 \
@@ -108,8 +168,35 @@ sudo bash scripts/install-managed-hosts.sh \
 
 Replace the backend address and port with the guest-reachable listener. This
 network script configures taps and firewall rules only; it does not install the
-launcher or edit sudoers. Repeat networking setup after reboot. Restart the
-backend service after applying its environment and account permissions.
+launcher or edit sudoers. Repeat networking setup after reboot. Give the
+backend service `DEMI_MACHINES_SOCKET=/run/demi/machines.sock` and the socket
+file's owner or group, then restart both services.
+
+### The manager on macOS
+
+Requirements: Lima 2.0 or later and macOS 15 on Apple silicon (nested
+virtualization). Build or fetch the guest-image artifacts into
+`packages/guest-image/out/aarch64/`, then, from the checkout:
+
+```sh
+packages/machines/scripts/lima-machines.sh --backend-port 3271
+```
+
+The script creates the `demi-machines` instance from the template on first
+use (Ubuntu 24.04, Firecracker, e2fsprogs, nftables and Bun provisioned; the
+home directory mounted read-only so the checkout is visible at the same path),
+prepares the tap pool with the Mac as the backend address (printed as the
+`DEMI_BACKEND_PUBLIC_URL` to use), and runs the manager in the foreground on
+`/run/user/<uid>/demi-machines.sock`, which Lima forwards to
+`~/.lima/demi-machines/sock/demi-machines.sock`. The manager's state lives on
+the instance disk under `/var/lib/demi-machines`. Start the backend on the Mac
+with:
+
+```sh
+DEMI_MACHINES_SOCKET=$HOME/.lima/demi-machines/sock/demi-machines.sock \
+DEMI_BACKEND_PUBLIC_URL=http://192.168.5.2:3271 \
+bun run --conditions development packages/backend/src/main.ts
+```
 
 ## Images
 

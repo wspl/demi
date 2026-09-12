@@ -1,0 +1,60 @@
+# The Lima instance that runs the Demi machine manager on macOS
+# (`docs/demi-next/managed-hosts.md` § Provisioning). Nested virtualization
+# gives the Linux guest a `/dev/kvm`, so the same Firecracker manager that
+# Linux runs in place runs here unchanged; the backend on the Mac reaches it
+# through the forwarded Unix socket and nothing else. `scripts/lima-machines.sh`
+# creates the instance from this file, prepares the tap pool and starts the
+# manager.
+minimumLimaVersion: "2.0.0"
+
+vmType: vz
+nestedVirtualization: true
+cpus: 4
+memory: 8GiB
+disk: 40GiB
+
+base: template:ubuntu-24.04
+
+# The checkout is read from the home mount; the manager's own state lives on
+# the instance disk (`/var/lib/demi-machines`), never on the mount.
+mounts:
+  - location: "~"
+
+portForwards:
+  - guestSocket: "/run/user/{{.UID}}/demi-machines.sock"
+    hostSocket: "{{.Dir}}/sock/demi-machines.sock"
+
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -euxo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -qq
+      apt-get install -y -qq e2fsprogs nftables iproute2 curl unzip
+      firecracker_version=v1.16.1
+      if ! [ -x /usr/local/bin/firecracker ]; then
+        arch=$(uname -m)
+        curl -fsSL "https://github.com/firecracker-microvm/firecracker/releases/download/${firecracker_version}/firecracker-${firecracker_version}-${arch}.tgz" \
+          | tar -xz -C /tmp
+        install -m 0755 "/tmp/release-${firecracker_version}-${arch}/firecracker-${firecracker_version}-${arch}" /usr/local/bin/firecracker
+        install -m 0755 "/tmp/release-${firecracker_version}-${arch}/jailer-${firecracker_version}-${arch}" /usr/local/bin/jailer
+      fi
+      install -d -o "{{.User}}" -g "{{.User}}" -m 0750 /var/lib/demi-machines
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -euxo pipefail
+      if ! [ -x "$HOME/.bun/bin/bun" ]; then
+        curl -fsSL https://bun.sh/install | bash
+      fi
+
+probes:
+  - description: "kvm is available to the user"
+    script: |
+      #!/bin/bash
+      set -eux
+      if ! timeout 30s bash -c "until [ -c /dev/kvm ]; do sleep 3; done"; then
+        echo >&2 "/dev/kvm did not appear: nested virtualization needs macOS 15 on Apple silicon"
+        exit 1
+      fi

@@ -38,7 +38,7 @@ import { CLOUD_HOME } from './conversation/execution-target'
 import { createCloudWorkspace } from './managed/cloud-workspace'
 import { createHostCommandGroup } from './runner/host-command'
 import { ManagedHosts, type ManagedHostsConfig } from './managed/lifecycle'
-import type { ManagedHostProvisioner } from './managed/provisioner'
+import type { ManagedHostProvisioner } from '@demicodes/machines'
 import { createApp } from './http/app'
 import {
   ProviderAssembly,
