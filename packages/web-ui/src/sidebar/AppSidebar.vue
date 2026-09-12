@@ -10,6 +10,7 @@ import { IN_DEVELOPMENT } from '@demicodes/web-ui/ui/disabled'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import { t } from '@demicodes/web-ui/infra/i18n'
+import { copyConversationId } from '../agent/copy-conversation-id'
 import type {
   ListLoad,
   SidebarAccount,
@@ -527,6 +528,10 @@ function selectProjectConversations(project: SidebarProject): void {
         @rename="(id) => {
           rowMenu.close()
           renamingId = id
+        }"
+        @copy-id="(id) => {
+          rowMenu.close()
+          void copyConversationId(id)
         }"
         @pin="(ids, pinned) => {
           rowMenu.close()

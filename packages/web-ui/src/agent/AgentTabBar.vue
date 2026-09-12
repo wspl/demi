@@ -3,7 +3,6 @@ import { computed, ref, watch } from 'vue'
 import { Plus } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import { showToast } from '@demicodes/web-ui/infra/toast'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
 import { t } from '@demicodes/web-ui/infra/i18n'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -13,6 +12,7 @@ import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import { useAgentWorkspace } from './workspace'
 import { conversationStatus } from './conversation-status'
+import { copyConversationId } from './copy-conversation-id'
 import type { ConversationState } from './types'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
@@ -136,11 +136,7 @@ function handleCopyConversationId() {
   const id = focusedTabId.value ?? props.activeTabId
   if (!id)
     return
-  void navigator.clipboard.writeText(id).then(
-    () => showToast({ title: t('common.copied') }),
-    (error) =>
-      reportError('Failed to copy conversation ID', error, { userVisible: true }),
-  )
+  void copyConversationId(id)
 }
 
 function handleNewTabToRight() {

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Archive, ArrowRight, FolderInput, Pencil, Pin, PinOff, Trash2 } from '@lucide/vue'
+import { Archive, ArrowRight, Copy, FolderInput, Pencil, Pin, PinOff, Trash2 } from '@lucide/vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import type { SidebarConversation, SidebarProject } from './types'
+import { t } from '../infra/i18n'
 
-/** The menu for whatever is selected: one row gets open and rename, any count gets pin, move, archive, delete. */
+/** One row gets open, rename and copy ID; any count gets pin, move, archive and delete. */
 const props = defineProps<{
   hidePin?: boolean
   hideDelete?: boolean
@@ -17,6 +18,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   open: [id: string]
   rename: [id: string]
+  copyId: [id: string]
   pin: [ids: string[], pinned: boolean]
   moveTo: [ids: string[], projectId: string | null]
   archive: [ids: string[]]
@@ -57,6 +59,11 @@ const many = computed(
         label="Rename"
         shortcut="F2"
         @select="emit('rename', single.id)"
+      />
+      <MenuItem
+        :icon="Copy"
+        :label="t('agent.tab.copyConversationId')"
+        @select="emit('copyId', single.id)"
       />
     </template>
     <MenuItem
