@@ -93,6 +93,38 @@ commands. An `rpc` command's stdin and stdout are pipes — HTTP streams
 brokered by the backend (`runner.md` § Pipes). File contents and pipeline
 bytes never ride the socket.
 
+## Input schema contract
+
+`packages/shell/src/command-schema.ts` owns schema inspection and CLI conversion.
+The declaring command owns its Zod input fields. `command.ts` validates typed
+values without conversion; `command-loader/loader/rpc.ts` uses that same entry.
+
+| Supported input | Constraints preserved by the manifest |
+| --- | --- |
+| String | Minimum and maximum length |
+| Number | Integer, inclusive/exclusive bounds, positive multiple |
+| Boolean | `true` or `false`; CLI string spelling is case-sensitive |
+| Homogeneous scalar enum or literal | Exact declared values |
+| One-dimensional scalar array | Element constraints and minimum/maximum length |
+| Optional or nullable supported field | Absence and explicit null retain distinct meanings |
+
+CLI array options may repeat; each token is converted using the element schema.
+An empty numeric token is invalid. RPC accepts typed arrays and nullable values;
+string numbers and booleans are invalid at that boundary. CLI has no implicit
+text spelling for null: the token `null` remains text for a string field.
+
+Default/prefault/catch, coercion schemas, preprocess/pipe/transform/overwrite,
+custom refinements, formatted strings, general input unions, nested arrays and
+object input fields are unsupported. Registration and manifest construction reject
+them with the command and field name. Express structured CLI payloads as strings
+and validate their decoded domain data in the responsible command module.
+
+The manifest carries JSON Schema for this subset. Input validation keywords are
+checked recursively at ingress; unsupported keywords are rejected, never ignored.
+Output schemas may additionally contain objects, arrays, unions and unconstrained
+values; they cannot contain JavaScript conversions or refinements. JSON Schema
+annotations are limited to the schema URI, title and description.
+
 ## Command kinds
 
 Each input field has exactly one source: a positional argument, a named

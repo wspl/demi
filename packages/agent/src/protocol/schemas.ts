@@ -3,7 +3,7 @@
 // validated at AgentServer transport ingress. Shared types owned by other
 // packages (core content blocks, provider selections) keep their hand-written
 // types as the source of truth; their validators carry a `z.ZodType<T>`
-// annotation so schema drift is a compile error, not a runtime surprise.
+// annotation for static assignability; negative fixtures verify runtime constraints.
 import { z } from 'zod'
 import type {
   DocumentSource,
@@ -16,16 +16,14 @@ import type {
   UserContentBlock,
   VideoSource,
 } from '@demicodes/core'
-import type { FileExtension } from '@demicodes/core'
+import { FILE_EXTENSIONS } from '@demicodes/core'
 import type { ProviderSelection } from '@demicodes/provider'
 import type { PortableJsonValue } from '@demicodes/utils'
 import type { AgentMetadata, ModelSwitchApply } from '../types'
 
 // ── shared-type validators ──────────────────────────────────────────
 
-// The extension list is a closed core-owned set; the wire validates
-// stringness and leaves membership to the catalog code that consumes it.
-const fileExtensionSchema = z.custom<FileExtension>((value) => typeof value === 'string')
+const fileExtensionSchema = z.enum(FILE_EXTENSIONS)
 
 const thinkingCapabilitySchema: z.ZodType<ThinkingCapability> = z.discriminatedUnion(
   'type',

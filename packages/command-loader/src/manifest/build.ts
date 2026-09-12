@@ -5,7 +5,7 @@ import {
   type CommandLeaf
 } from '@demicodes/shell'
 import { z } from 'zod'
-import type { Manifest, ManifestLeaf, ManifestNode } from './schema'
+import { parseManifest, type Manifest, type ManifestLeaf, type ManifestNode } from './schema'
 
 export interface BuildManifestOptions {
   /**
@@ -45,7 +45,7 @@ export async function buildManifest(
     manifestRoots[root.name] = { tree: await manifestNode(root, hashModule) }
   }
   const body = { roots: manifestRoots, modules }
-  return { hash: await sha256(JSON.stringify(body)), ...body }
+  return parseManifest({ hash: await sha256(JSON.stringify(body)), ...body })
 }
 
 async function manifestNode(

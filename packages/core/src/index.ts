@@ -116,16 +116,17 @@ export function zeroUsage(): TokenUsage {
   }
 }
 
-export type ImageFileExtension = 'png' | 'jpg' | 'jpeg' | 'gif' | 'webp'
-export type VideoFileExtension = 'mp4' | 'mov' | 'webm' | 'm4v'
-export type FileExtension = ImageFileExtension | VideoFileExtension | 'pdf'
+export const IMAGE_FILE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp'] as const
+export const VIDEO_FILE_EXTENSIONS = ['mp4', 'mov', 'webm', 'm4v'] as const
+export const FILE_EXTENSIONS = [
+  ...IMAGE_FILE_EXTENSIONS,
+  ...VIDEO_FILE_EXTENSIONS,
+  'pdf',
+] as const
 
-export const VIDEO_FILE_EXTENSIONS: readonly VideoFileExtension[] = [
-  'mp4',
-  'mov',
-  'webm',
-  'm4v'
-]
+export type ImageFileExtension = typeof IMAGE_FILE_EXTENSIONS[number]
+export type VideoFileExtension = typeof VIDEO_FILE_EXTENSIONS[number]
+export type FileExtension = typeof FILE_EXTENSIONS[number]
 
 // ── message attachments ─────────────────────────────────────────────
 //

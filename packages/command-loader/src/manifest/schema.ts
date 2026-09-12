@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { commandJsonSchema } from './json-schema'
 
 /**
  * The manifest (`docs/demi-next/commands.md` § The manifest): every root's
@@ -8,8 +9,6 @@ import { z } from 'zod'
  * with this schema on the way in.
  */
 
-const jsonSchema = z.record(z.string(), z.unknown())
-
 const manifestLeafSchema = z.object({
   name: z.string(),
   summary: z.string(),
@@ -18,11 +17,11 @@ const manifestLeafSchema = z.object({
   failureOutput: z.string().optional(),
   runningHint: z.string().optional(),
   /** JSON Schema of an object whose properties are the leaf's input fields. */
-  input: jsonSchema.optional(),
+  input: commandJsonSchema.optional(),
   positionals: z.array(z.string()).optional(),
   stdinField: z.string().optional(),
   restField: z.string().optional(),
-  output: z.object({ json: jsonSchema.optional() }).optional(),
+  output: z.object({ json: commandJsonSchema.optional() }).optional(),
   /** The module hash of a `runtime` leaf. */
   module: z.string().optional(),
 })

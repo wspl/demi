@@ -8,7 +8,15 @@ import {
   encodeUtf8,
   throwIfAborted
 } from '@demicodes/utils'
-import type { z } from 'zod'
+import { z } from 'zod'
+import {
+  commandChoices,
+  commandScalarKind,
+  commandValueSchema,
+  decodeCommandValue,
+  validateCommandFieldSchema,
+  validateCommandSerialization,
+} from './command-schema'
 import {
   loadCommandModule,
   type CommandModule,
@@ -355,7 +363,11 @@ function parseArgs(
   return {
     path: [...path],
     help: false,
-    values: validateCommandValues(input, values),
+    values: validateCommandValues(input, Object.fromEntries(
+      Object.entries(input).map(([field, schema]) => [
+        field, decodeCommandValue(schema, values[field]),
+      ])
+    )),
     json,
   }
 }
@@ -569,11 +581,15 @@ export function validateCommandTree(command: Command, path: string): void {
     )
   }
   const input = command.input ?? {}
-  for (const field of Object.keys(input)) {
+  for (const [field, schema] of Object.entries(input)) {
+    validateCommandFieldSchema(schema, `${path}.${field}`)
     if (!COMMAND_NAME_PATTERN.test(field))
       throw new Error(`CommandRegistry: "${path}" has invalid input name "${field}"`)
     if (fieldSource(command, field) === 'option' && ['help', 'json'].includes(field))
       throw new Error(`CommandRegistry: "${path}" option "${field}" is reserved`)
+  }
+  if (command.output?.json) {
+    validateCommandSerialization(command.output.json, `${path}.output`)
   }
   if (command.stdinField && !(command.stdinField in input)) {
     throw new Error(
@@ -588,7 +604,7 @@ export function validateCommandTree(command: Command, path: string): void {
   if (command.stdinField && command.stdinField === command.restField) {
     throw new Error(`CommandRegistry: "${path}" field "${command.stdinField}" has multiple input sources`)
   }
-  if (command.stdinField && zodTypeName(unwrapSchema(input[command.stdinField]!)) !== 'string') {
+  if (command.stdinField && commandScalarKind(input[command.stdinField]!) !== 'string') {
     throw new Error(`CommandRegistry: "${path}" stdinField must be a string`)
   }
   const seenPositionals = new Set<string>()
@@ -644,10 +660,14 @@ export function validateCommandValues(
   input: CommandInputSpec,
   values: Record<string, unknown>
 ): Record<string, unknown> {
+  for (const field of Object.keys(values)) {
+    if (!Object.hasOwn(input, field)) {
+      throw new Error(`Unknown command input field "${field}"`)
+    }
+  }
   const parsed: Record<string, unknown> = {}
   for (const [field, schema] of Object.entries(input)) {
-    const candidate = coerceValue(schema, values[field])
-    const result = schema.safeParse(candidate)
+    const result = schema.safeParse(values[field])
     if (!result.success) {
       const issue = result.error.issues[0]
       throw new Error(
@@ -657,23 +677,6 @@ export function validateCommandValues(
     parsed[field] = result.data
   }
   return parsed
-}
-
-function coerceValue(schema: z.ZodType, value: unknown): unknown {
-  if (value === undefined)
-    return value
-  if (isArraySchema(schema))
-    return Array.isArray(value) ? value : [value]
-  if (isNumberSchema(schema) && typeof value === 'string'
-    && value.trim() !== '')
-    return Number(value)
-  if (isBooleanSchema(schema) && typeof value === 'string') {
-    if (value === 'true')
-      return true
-    if (value === 'false')
-      return false
-  }
-  return value
 }
 
 type FieldSource = 'stdin' | 'positional' | 'rest' | 'option'
@@ -717,43 +720,22 @@ function fieldSyntax(
     return `-- <${field}>...`
   if (isBooleanSchema(schema))
     return `--${field} [true|false]`
-  const unwrapped = unwrapSchema(schema)
-  const label = zodTypeName(unwrapped) === 'enum'
-    ? (unwrapped as z.ZodEnum).options.join('|')
-    : field
+  const label = commandChoices(schema)?.join('|') ?? field
   return `--${field} <${label}>`
 }
 
 function fieldDescription(schema: z.ZodType): string {
   // A reconstructed optional schema carries its description on the inner type.
-  const text = schema.description ?? unwrapSchema(schema).description
+  const text = schema.description ?? z.globalRegistry.get(commandValueSchema(schema))?.description
   return text ? ` - ${text}` : ''
 }
 
 function isArraySchema(schema: z.ZodType): boolean {
-  return zodTypeName(unwrapSchema(schema)) === 'array'
+  return commandValueSchema(schema) instanceof z.ZodArray
 }
 
 function isBooleanSchema(schema: z.ZodType): boolean {
-  return zodTypeName(unwrapSchema(schema)) === 'boolean'
-}
-
-function isNumberSchema(schema: z.ZodType): boolean {
-  return zodTypeName(unwrapSchema(schema)) === 'number'
-}
-
-function zodTypeName(schema: z.ZodType): string | undefined {
-  return (schema as unknown as { def?: { type?: string } }).def?.type
-}
-
-function unwrapSchema(schema: z.ZodType): z.ZodType {
-  let current = schema
-  while (true) {
-    const inner = (current as unknown as { def?: { innerType?: z.ZodType } }).def?.innerType
-    if (!inner)
-      return current
-    current = inner
-  }
+  return commandValueSchema(schema) instanceof z.ZodBoolean
 }
 
 class CapturingIO implements CommandIO {
