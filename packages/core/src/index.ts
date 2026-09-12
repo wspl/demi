@@ -359,7 +359,27 @@ export interface ProviderErrorDiagnostics {
 
 // ── transcript block ────────────────────────────────────────────────
 
+export interface AgentMessage {
+  id: string
+  sender: { id: string; description: string; round: number }
+  recipientId: string
+  timestamp: string
+  content: string
+  event: { type: 'message' } | {
+    type: 'completion'
+    outcome: 'completed' | 'failed' | 'aborted'
+  }
+}
+
 export type Block =
+  | {
+      type: 'agent_message'
+      id: string
+      turnId: string
+      createdAt: string
+      model: ModelSelection
+      message: AgentMessage
+    }
   | {
       type: 'user'
       id: string

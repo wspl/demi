@@ -122,6 +122,7 @@ export class MemoryAgentStore<State = unknown>
     stored: StoredNode<State>,
     update: AgentSessionPersistUpdate<State>
   ): void {
+    const completedRounds = completedChildrenCarriedBy(update)
     const commandState = update.commandState ? commandStateSchema.parse(update.commandState) : stored.commandState
     if (update.commandState) {
       const previous = new Map(stored.commandState.versions.map((version) => [version.revision, version]))
@@ -144,7 +145,7 @@ export class MemoryAgentStore<State = unknown>
     stored.blockCount = update.blockCount
     stored.state = snapshotOf(update)
     stored.commandState = structuredClone(commandState)
-    for (const round of completedChildrenCarriedBy(update)) {
+    for (const round of completedRounds) {
       const child = this.nodes.get(round.id)
       if (child && child.record.parentId === id && child.record.spawnedAt === round.spawnedAt)
         child.record.delivered = true
@@ -182,6 +183,7 @@ function snapshotOf<State>(
     state: structuredClone(update.state),
     phase: update.phase,
     queue: structuredClone(update.queue),
+    pendingInternalSteers: structuredClone(update.pendingInternalSteers),
     cwd: update.cwd,
     model: structuredClone(update.model),
     harnessName: update.harnessName,

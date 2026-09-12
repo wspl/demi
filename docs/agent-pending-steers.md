@@ -19,7 +19,7 @@ steers still waiting to enter the transcript. The `PendingSteer` type in
 | `model` | The model selection recorded when the message was accepted. |
 | `content` | The resolved user content, including any attachments. |
 
-The list excludes internal wakeup messages. Returned objects and attachment
+The list excludes internal wakeups and structured agent messages. Returned objects and attachment
 bytes are copies; changing them does not change the session's queue.
 
 `AgentSession` publishes `pending_steers_changed` with the complete public list
@@ -60,9 +60,10 @@ frames follow it; subscribe to `pending_steers` to observe receipt of the list,
 including an empty list.
 
 This behavior applies to a client reconnecting to an existing in-memory session.
-Pending steers are not added to the persisted session checkpoint by this change.
-If the process running `AgentSession` exits, a newly loaded session does not recover
-messages that existed only in its pending queue.
+Human pending steers are not included in the persisted session checkpoint.
+A newly loaded session does not recover those human inputs. Agent-originated
+records in the same queue are persisted as `pendingInternalSteers`, under the
+[agent-message contract](agent-messages.md), and remain excluded from the human list.
 
 ## Product integration
 

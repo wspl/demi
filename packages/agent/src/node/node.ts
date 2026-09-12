@@ -128,6 +128,9 @@ export class SessionNode<State = unknown> {
       message.content,
       { id: message.id, ...options }
     ))
+    if (!continuation.interrupted) {
+      this.session.wakePendingAgentMessages(this.record.metadata)
+    }
   }
 
   hasShell(shellId: string): boolean {

@@ -7,6 +7,7 @@ import {
   toWellFormedText
 } from '@demicodes/utils'
 import type {
+  AgentMessage,
   Block,
   ModelSelection,
   ToolResultContentBlock,
@@ -16,6 +17,8 @@ import type {
 import type { InferenceItem, ProviderEvent } from '@demicodes/provider'
 import type { TranscriptPatch } from '../protocol/frames'
 import type { TranscriptVersion } from '../protocol/schemas'
+import { agentMessageContent } from './agent-message'
+import { agentMessageSchema } from '../protocol/agent-message'
 import { isEditableUserMessage } from './user-message'
 
 const DEFAULT_MODEL_TEXT_HEAD_CHARS = 8_000
@@ -65,6 +68,14 @@ export class TranscriptLog implements CoreTranscript {
   private readonly replayTailChars: number
 
   constructor(blocks: Block[] = [], options: TranscriptOptions = {}) {
+    for (const block of blocks) {
+      if (block.type === 'agent_message') {
+        agentMessageSchema.parse(block.message)
+        if (block.id !== block.message.id) {
+          throw new Error('Agent receipt block id does not match its message')
+        }
+      }
+    }
     this.blocks = [...blocks]
     this.idFactory = options.idFactory ?? createId
     this.now = options.now ?? (() => new Date().toISOString())
@@ -245,6 +256,17 @@ export class TranscriptLog implements CoreTranscript {
     return this.appendBlock(block)
   }
 
+  pushAgentMessage(turnId: string, model: ModelSelection, message: AgentMessage): Block {
+    return this.appendBlock({
+      type: 'agent_message',
+      id: message.id,
+      turnId,
+      createdAt: this.now(),
+      model,
+      message: structuredClone(message),
+    })
+  }
+
   pushAbort(model: ModelSelection, isResumed = false): Block {
     const block: Block = {
       type: 'abort',
@@ -269,25 +291,33 @@ export class TranscriptLog implements CoreTranscript {
   }
 
   /**
-   * Rewrites the transcript for a retry: drops everything after the last user
-   * turn except that turn's steers (which are replayed to the new attempt).
-   * Returns the user block, or null when there is no user turn to retry.
+   * Rewinds the last human or internal input turn for retry, retaining its
+   * steering and agent inputs for the next attempt.
+   * Returns the first input block, or null when there is no input turn to retry.
    */
-  rewindToLastUserTurn(): Extract<Block, { type: 'user' }> | null {
-    for (let i = this.blocks.length - 1; i >= 0; i -= 1) {
-      const block = this.blocks[i]
-      if (block.type !== 'user')
+  rewindToLastInputTurn(): Extract<Block, { type: 'user' | 'agent_message' }> | null {
+    const seenTurns = new Set<string>()
+    let start = -1
+    for (let index = 0; index < this.blocks.length; index += 1) {
+      const block = this.blocks[index]
+      if (!('turnId' in block)) {
         continue
-      const preservedSteers = this.blocks
-        .slice(i + 1)
-        .filter((candidate): candidate is Extract<Block, { type: 'steer' }> => {
-          return candidate.type === 'steer' && candidate.turnId === block.turnId
-        })
-      this.blocks.splice(i + 1, this.blocks.length - i - 1, ...preservedSteers)
-      this.recordReplaceAll()
-      return block
+      }
+      if (block.type === 'user' || (block.type === 'agent_message' && !seenTurns.has(block.turnId))) {
+        start = index
+      }
+      seenTurns.add(block.turnId)
     }
-    return null
+    const input = this.blocks[start]
+    if (!input || (input.type !== 'user' && input.type !== 'agent_message')) {
+      return null
+    }
+    const preservedInputs = this.blocks.slice(start + 1).filter((block) =>
+      block.type === 'agent_message' || (block.type === 'steer' && block.turnId === input.turnId)
+    )
+    this.blocks.splice(start + 1, this.blocks.length - start - 1, ...preservedInputs)
+    this.recordReplaceAll()
+    return input
   }
 
   /**
@@ -524,6 +554,13 @@ export class TranscriptLog implements CoreTranscript {
               type: 'text',
               text: 'Continue from where you left off.'
             }],
+          })
+          break
+        case 'agent_message':
+          items.push({
+            type: 'user_steer',
+            turnId: block.turnId,
+            content: agentMessageContent(block.message),
           })
           break
         case 'steer':
@@ -823,6 +860,8 @@ function estimateBlockText(block: Block): string {
   switch (block.type) {
     case 'user':
       return (block.resolvedContent ?? block.content).map(stringifyUserContent).join('\n')
+    case 'agent_message':
+      return JSON.stringify(block.message)
     case 'resume':
       return 'Continue from where you left off.'
     case 'steer':

@@ -1,4 +1,4 @@
-import type { Block, ModelSelection, TokenUsage, UserContentBlock } from '@demicodes/core'
+import type { AgentMessage, Block, ModelSelection, TokenUsage, UserContentBlock } from '@demicodes/core'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { PendingSteerRenderBlock } from '@demicodes/web-ui/agent/pending-steers'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
@@ -16,6 +16,26 @@ export const demoModel: ModelSelection = {
   },
   thinking: null,
 }
+
+export const agentReceiptMessages: AgentMessage[] = [
+  { type: 'message' as const },
+  { type: 'completion' as const, outcome: 'completed' as const },
+  { type: 'completion' as const, outcome: 'failed' as const },
+  { type: 'completion' as const, outcome: 'aborted' as const },
+].map((event, index) => ({
+  id: event.type === 'completion' ? `subagent:agent-ui-${index}:${1789224000000 + index}` : `receipt-${index}`,
+  sender: { id: `agent-ui-${index}`, description: 'UI implementation', round: 1789224000000 + index },
+  recipientId: 'gallery-parent',
+  timestamp: '2026-09-12T12:00:00.000Z',
+  content: index === 0
+    ? 'The shared receipt component is ready. I am checking **keyboard expansion** and reconnect behavior.'
+    : index === 1
+      ? ['Implemented the shared component and verified the product and gallery.', '', '## Validation', ...Array.from({ length: 12 }, (_, i) => `- Check ${i + 1}: source identity, content, and message order remain intact.`)].join('\n')
+      : index === 2
+        ? 'The fixture could not reach the test server. No files were changed.\n\n`ECONNREFUSED 127.0.0.1:3271`'
+        : 'The parent stopped this round before validation finished.',
+  event,
+}))
 
 export const demoUsage: TokenUsage = {
   inputTokens: 42_000,
@@ -241,6 +261,10 @@ export function transcriptDemoBlocks(): Block[] {
       signature: null,
     },
     shellTool as Block,
+    ...agentReceiptMessages.slice(0, 2).map((message): Block => ({
+      type: 'agent_message', id: message.id, turnId: 'turn-1',
+      createdAt: message.timestamp, model: demoModel, message,
+    })),
     {
       type: 'steer',
       id: 'steer-1',

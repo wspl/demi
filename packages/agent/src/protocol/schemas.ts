@@ -200,7 +200,7 @@ export const portableJsonValueSchema: z.ZodType<PortableJsonValue> = z.lazy(() =
   ]),
 )
 
-const metadataSchema: z.ZodType<AgentMetadata> = z.record(
+export const metadataSchema: z.ZodType<AgentMetadata> = z.record(
   z.string(),
   portableJsonValueSchema
 )

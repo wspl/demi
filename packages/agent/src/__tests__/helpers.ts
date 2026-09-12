@@ -123,6 +123,7 @@ export class MemorySessionStore<State> implements AgentSessionStore<State> {
       state: structuredClone(update.state),
       phase: update.phase,
       queue: structuredClone(update.queue),
+      pendingInternalSteers: structuredClone(update.pendingInternalSteers),
       cwd: update.cwd,
       model: structuredClone(update.model),
       harnessName: update.harnessName,
