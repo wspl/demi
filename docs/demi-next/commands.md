@@ -30,7 +30,8 @@ a root is an ordinary shell command run by the target's real bash. **Group
 nodes navigate; leaf nodes execute**: a `Command` with `subcommands` has no
 `run`; invoking a group bare prints its help, and the dispatcher returns
 help rather than "requires a subcommand" when argv is exhausted on a group.
-`demi agent spawn [--profile] [--description] [prompt]` is the spawn leaf;
+`demi agent spawn [--profile <name>] [--description <title>]` reads its task
+brief from stdin and is the spawn leaf;
 `agent` itself is a group. A user-defined root follows the same rule for
 its own groups.
 
@@ -52,13 +53,17 @@ Real bash on the target parses the tool call. `demi` is an ordinary program
 in `PATH`; everything else is whatever the machine has.
 
 ```
- tool call:  demi file edit src/a.ts <<'EOF' … EOF && npm test 2>&1 | tail -20
+ tool call:
+   demi file patch <<'EOF'
+   <unified diff>
+   EOF
+   npm test 2>&1 | tail -20
 
  backend                          runner on the target                 processes on the target
  ───────                          ────────────────────                 ───────────────────────
  job_start {script, cwd,   ────▶  spawn  bash -lc "<script>"     ────▶  bash
             env + conv/shell ids}   │  tee stdout/stderr → output         │
-                                    │  files under commandOutputDir        ├─ demi file edit src/a.ts        (native C client)
+                                    │  files under commandOutputDir        ├─ demi file patch                (native C client)
                                     │                                      │    read ${DEMI_HOME}/commands/<hash>/   manifest cache
                                     │                                      │    kind = runtime
                                     │                                      │    → run the module in-process, ctx.fs = real fs
@@ -89,6 +94,12 @@ brokered by the backend (`runner.md` § Pipes). File contents and pipeline
 bytes never ride the socket.
 
 ## Command kinds
+
+Each input field has exactly one source: a positional argument, a named
+option, a stdin body, or raw arguments after `--`. A `stdinField` is supplied
+only by heredoc, pipe, or input redirection; it has no named option or
+positional alias. [Command help](../command-help.md) defines the syntax,
+validation, and generated usage templates shared by every command.
 
 An executable leaf may declare `runningHint`, model-facing guidance shown
 while that invocation is active. The manifest preserves it, and the loader

@@ -78,7 +78,7 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
         model: [
           model.shell(
             't1',
-            "demi agent spawn 'take a while' --description slow",
+            "demi agent spawn <<< 'take a while' --description slow",
             200
           ),
           pollThenSay(driver.id, 'finished')
@@ -129,7 +129,7 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
             model.shell('t1', 'echo first'),
             model.shell(
               't2',
-              "demi agent spawn 'hang around' --description hang",
+              "demi agent spawn <<< 'hang around' --description hang",
               200
             ),
             (request) => model.tool(

@@ -131,7 +131,7 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
         model: [
           model.shell(
             't1',
-            "demi agent spawn 'take a while' --description slow",
+            "demi agent spawn <<< 'take a while' --description slow",
             300
           ),
           (request) => {

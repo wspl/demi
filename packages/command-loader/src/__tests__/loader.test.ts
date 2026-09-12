@@ -73,6 +73,23 @@ async function world(withRpc = true) {
 }
 
 describe('dispatch', () => {
+  test('manifest reconstruction preserves exclusive stdin inputs and diagnostics', async () => {
+    const w = await world()
+    try {
+      const rejected = await w.run('scout', ['note', 'add', '--text', 'inline'], 'body')
+      expect(rejected.exit).toBe(1)
+      expect(rejected.stderr).toContain('reads text only from stdin')
+      const help = await w.run('scout', ['note', 'add', '--help'])
+      expect(help.stdout).toContain("scout note add [--json] <<'EOF'")
+      expect(help.stdout).not.toContain('--text')
+      const accepted = await w.run('scout', ['note', 'add'], 'body')
+      expect(accepted.exit).toBe(0)
+      expect(accepted.stdout).toBe('1 notes\n')
+    } finally {
+      w.dispose()
+    }
+  })
+
   test(
     'a runtime module runs against the host filesystem with the caller cwd and args',
     async () => {
@@ -128,7 +145,7 @@ describe('dispatch', () => {
     async () => {
       const w = await world()
       try {
-        expect(await w.run('scout', ['note', 'add', 'first'])).toEqual({
+        expect(await w.run('scout', ['note', 'add'], 'first')).toEqual({
           exit: 0,
           stdout: '1 notes\n',
           stderr: ''
@@ -138,7 +155,7 @@ describe('dispatch', () => {
           stdout: '2 notes\n',
           stderr: ''
         })
-        expect(await w.run('scout', ['note', 'add', 'third', '--json']))
+        expect(await w.run('scout', ['note', 'add', '--json'], 'third'))
           .toEqual(
           {
             exit: 0,
@@ -180,7 +197,7 @@ describe('dispatch', () => {
     async () => {
       const w = await world(false)
       try {
-        const rpc = await w.run('scout', ['note', 'add', 'x'])
+        const rpc = await w.run('scout', ['note', 'add'], 'x')
         expect(rpc.exit).toBe(1)
         expect(rpc.stderr).toContain('no rpc transport')
         await w.host.fs.writeFile('a.txt', encodeUtf8('x'), { cwd: w.dir })
