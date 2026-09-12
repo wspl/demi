@@ -22,6 +22,7 @@ const running = computed(() => runningSubagents(props.agents))
     v-if="running.length"
     data-session-overlay-toggle
     dot="accent"
+    breathing
     :aria-expanded="open === true"
     aria-haspopup="dialog"
     @click="emit('open')"

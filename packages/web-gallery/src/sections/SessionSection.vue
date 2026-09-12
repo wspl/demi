@@ -727,7 +727,7 @@ function abortTerminal(id: string) {
 
       <GallerySection
         title="SessionDockChip"
-        note="28px capsule with status dots. Running and Agents open their windows; a second click closes them."
+        note="28px capsule with status dots. The active Agents dot breathes gently. Running and Agents open their windows; a second click closes them."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="resume">
