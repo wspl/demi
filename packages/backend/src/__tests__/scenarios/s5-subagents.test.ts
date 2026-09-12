@@ -57,7 +57,7 @@ describe.each<Target>(['cloud', 'runner:alpha'])('S5 subagents on %s', (target) 
       model: [
         model.shell(
           't2',
-          "demi agent spawn 'Read notes.md and report its content' --profile explore --description reader",
+          "demi agent spawn <<< 'Read notes.md and report its content' --profile explore --description reader",
           10_000,
         ),
         model.say('explored'),
@@ -84,7 +84,7 @@ describe.each<Target>(['cloud', 'runner:alpha'])('S5 subagents on %s', (target) 
       model: [
         model.shell(
           't3',
-          "demi agent spawn 'Create reply.md' --description writer",
+          "demi agent spawn <<< 'Create reply.md' --description writer",
           10_000,
         ),
         model.shell('t4', 'cat reply.md'),
@@ -143,7 +143,7 @@ test('a cross-host command preserves the child node storage scope', async () => 
   )
   const parent = await driver.turn({
     model: [
-      model.shell('scope-spawn', "demi agent spawn 'add a todo on alpha'"),
+      model.shell('scope-spawn', "demi agent spawn <<< 'add a todo on alpha'"),
       model.shell('scope-root-list', 'demi todo list'),
       model.say('done'),
     ],

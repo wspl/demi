@@ -98,7 +98,7 @@ test('a source child continues only in the source tree and its existing referenc
   })
   try {
     await source.turn({ model: [
-      model.shell('spawn', "demi agent spawn 'wait for release' --description worker", 20),
+      model.shell('spawn', "demi agent spawn <<< 'wait for release' --description worker", 20),
       model.say('child is still working'),
     ] })
     await childStarted.promise

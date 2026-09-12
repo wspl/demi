@@ -1062,7 +1062,7 @@ export class ChildSupervisor<State = unknown> {
       canSpawn
         ? '`demi agent spawn` spawns your own children.'
         : 'This session may not spawn subagents.',
-      "`demi agent send <id|parent> <message>` leaves a message any live agent sees at its next turn boundary; `demi agent steer <id> <message>` chimes into a running agent's current turn; `demi agent list` renders the whole agent tree with your position.",
+      "`demi agent send <id|parent>` leaves a message any live agent sees at its next turn boundary; `demi agent steer <id|parent>` chimes into a running agent's current turn. Both read the message only from stdin (use a quoted heredoc). `demi agent list` renders the whole agent tree with your position.",
       'You are not talking to the product user; do not address them.',
     ].join('\n')
   }

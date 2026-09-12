@@ -65,7 +65,7 @@ export function subagentCommandNode<Job>(
         'first stderr line is "subagentId: <id>" at start; stdout is the child\'s last assistant text (empty is valid), written only at exit',
       failureOutput: 'non-zero exit with the abort or failure reason on stderr',
       input: {
-        prompt: z.string().optional().describe(SPAWN_PROMPT_DESCRIPTION),
+        prompt: z.string().describe(SPAWN_PROMPT_DESCRIPTION),
         profile: z
           .string()
           .optional()
@@ -78,12 +78,11 @@ export function subagentCommandNode<Job>(
           'Forbid this child from spawning subagents of its own; it can still send, steer, list, and show.'
         ),
       },
-      positionals: ['prompt'],
       stdinField: 'prompt',
       output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
       runningHint: SPAWN_RUNNING_HINT,
       run: async ({ parsed, io, signal, stdinStream }) => {
-        const prompt = String(parsed.values.prompt ?? '').trim()
+        const prompt = (parsed.values.prompt as string).trim()
         if (!prompt) {
           await io.stderr('demi agent spawn: prompt must not be empty\n')
           return { exitCode: 1 }
@@ -118,15 +117,15 @@ export function subagentCommandNode<Job>(
         id: z.string().describe(
           'Target agent id from the tree, or "parent" for the session that spawned this one'
         ),
-        message: z.string().optional()
-          .describe('Message body; positional, or stdin/heredoc when omitted.'),
+        message: z.string()
+          .describe('Message body.'),
       },
-      positionals: ['id', 'message'],
+      positionals: ['id'],
       stdinField: 'message',
       output: { json: z.object({ id: z.string(), accepted: z.boolean() }) },
       kind: 'rpc',
       run: async ({ parsed, io }) => {
-        const message = String(parsed.values.message ?? '').trim()
+        const message = (parsed.values.message as string).trim()
         if (!message) {
           await io.stderr('demi agent send: message must not be empty\n')
           return { exitCode: 1 }
@@ -151,15 +150,15 @@ export function subagentCommandNode<Job>(
         id: z.string().describe(
           'Target agent id from the tree, or "parent" for the session that spawned this one'
         ),
-        message: z.string().optional()
-          .describe('Message body; positional, or stdin/heredoc when omitted.'),
+        message: z.string()
+          .describe('Message body.'),
       },
-      positionals: ['id', 'message'],
+      positionals: ['id'],
       stdinField: 'message',
       output: { json: z.object({ id: z.string(), accepted: z.boolean() }) },
       kind: 'rpc',
       run: async ({ parsed, io }) => {
-        const message = String(parsed.values.message ?? '').trim()
+        const message = (parsed.values.message as string).trim()
         if (!message) {
           await io.stderr('demi agent steer: message must not be empty\n')
           return { exitCode: 1 }
@@ -204,18 +203,18 @@ export function subagentCommandNode<Job>(
         'Revive one of your own archived (finished) children with a new user message on top of its preserved transcript. Behaves like the spawn command afterwards: stays running until the child ends again, stdout is its new last assistant text, shell_write steers, shell_abort aborts. Archived ids are in `demi agent list`.',
       input: {
         id: z.string().describe('subagentId of an archived child'),
-        message: z.string().optional().describe(
-          'The reviving user message; positional, or stdin/heredoc when omitted.'
+        message: z.string().describe(
+          'The reviving user message.'
         ),
       },
-      positionals: ['id', 'message'],
+      positionals: ['id'],
       stdinField: 'message',
       output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
       runningHint: SPAWN_RUNNING_HINT,
       kind: 'rpc',
       run: async ({ parsed, io, signal, stdinStream }) => {
         const id = String(parsed.values.id)
-        const message = String(parsed.values.message ?? '').trim()
+        const message = (parsed.values.message as string).trim()
         if (!message) {
           await io.stderr('demi agent resume: message must not be empty\n')
           return { exitCode: 1 }

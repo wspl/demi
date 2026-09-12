@@ -154,6 +154,58 @@ test('parseCommandInput maps positionals, flags, and stdin fields', () => {
   })
 })
 
+test('stdin bodies cannot be supplied as options, even alongside a heredoc', () => {
+  for (const args of [
+    ['--content'],
+    ['--content', 'inline'],
+    ['--content=inline'],
+  ]) {
+    expect(() => parseCommandInput(
+      filerSpec,
+      ['filer', 'create', 'note.txt', ...args],
+      'body from stdin',
+    )).toThrow('reads content only from stdin. Remove --content')
+  }
+  expect(() => parseCommandInput(
+    filerSpec, ['filer', 'create', 'note.txt', 'inline'], 'body',
+  )).toThrow('Unexpected positional argument')
+  expect(() => parseCommandInput(
+    filerSpec, ['filer', 'create', '--path', 'note.txt'], 'body',
+  )).toThrow('"path" is a positional argument')
+})
+
+test('option values cannot swallow another option; literal flags have explicit syntax', () => {
+  expect(() => parseCommandInput(filerSpec, [
+    'filer', 'edit', 'note.txt', '--old', '--new', 'replacement',
+  ])).toThrow('Missing value for "--old"')
+  expect(parseCommandInput(filerSpec, [
+    'filer', 'edit', 'note.txt', '--old=--help', '--new=',
+  ]).values).toMatchObject({ old: '--help', new: '' })
+  expect(parseCommandInput(filerSpec, [
+    'filer', 'create', '--', '--help',
+  ], 'body').values.path).toBe('--help')
+  expect(() => parseCommandInput(filerSpec, [
+    'filer', 'edit', 'note.txt', '--old', 'a', '--old', 'b', '--new', 'c',
+  ])).toThrow('Duplicate value for "old"')
+})
+
+test('raw arguments use only the -- boundary and are documented there', () => {
+  const command: Command = {
+    name: 'forward',
+    summary: 'Forward argv.',
+    kind: 'rpc',
+    input: { args: z.array(z.string()) },
+    restField: 'args',
+    run: () => ({ exitCode: 0 }),
+  }
+  expect(parseCommandInput(command, ['forward', '--', '--help', '--json']).values)
+    .toEqual({ args: ['--help', '--json'] })
+  expect(() => parseCommandInput(command, ['forward', '--args', 'value']))
+    .toThrow('"args" is passed after --')
+  expect(renderCommandHelp(command)).toContain('forward -- <args>...')
+  expect(renderCommandHelp(command)).not.toContain('--args')
+})
+
 test('parseCommandInput validates long options and coerces numbers', () => {
   const parsed = parseCommandInput(filerSpec, [
     'filer',
@@ -328,14 +380,65 @@ test('renderCommandHelp documents the tree', () => {
   expect(prompt).toContain(
     'Failure output: writes the error reason to stderr and exits non-zero'
   )
-  expect(prompt).toContain('<path> - Target file path')
-  expect(prompt).toContain('--old - Exact text to replace')
-  expect(prompt).toContain('stdin/heredoc: content')
+  expect(prompt).toContain('<path> (required) - Target file path')
+  expect(prompt).toContain('--old <old> (required) - Exact text to replace')
+  expect(prompt).toContain('Stdin body: content - File content')
+  expect(prompt).toContain("filer create <path> <<'EOF'\n  <content>\n  EOF")
+  expect(prompt).not.toContain('--content')
   expect(prompt).toContain(
     'Success output: raw text by default; machine-readable JSON when --json is passed'
   )
-  expect(prompt).toContain('--verbose - Include details')
-  expect(prompt).toContain('--tag - Filter by repeated tag')
+  expect(prompt).toContain('--verbose [true|false] (optional) - Include details')
+  expect(prompt).toContain('--tag <tag> (optional, repeatable) - Filter by repeated tag')
+})
+
+test('help displays enum choices and only advertises supported JSON output', () => {
+  const command: Command = {
+    name: 'update',
+    summary: 'Update status.',
+    kind: 'rpc',
+    input: { status: z.enum(['pending', 'in_progress', 'done']).optional() },
+    run: () => ({ exitCode: 0 }),
+  }
+  const help = renderCommandHelp(command)
+  expect(help).toContain('update [--status <pending|in_progress|done>]')
+  expect(help).not.toContain('--json')
+  expect(() => parseCommandInput(command, ['update', '--json']))
+    .toThrow('does not define JSON output')
+})
+
+test('registration rejects ambiguous input declarations', () => {
+  const base: Command = {
+    name: 'send',
+    summary: 'Send text.',
+    kind: 'rpc',
+    input: { id: z.string(), body: z.string() },
+    run: () => ({ exitCode: 0 }),
+  }
+  const registry = new CommandRegistry()
+  for (const declaration of [
+    { positionals: ['body'], stdinField: 'body' },
+    { positionals: ['id', 'id'] },
+    { restField: 'body', stdinField: 'body' },
+    { positionals: ['body'], restField: 'body' },
+  ]) {
+    expect(() => registry.register({ ...base, ...declaration }))
+      .toThrow('multiple input sources')
+  }
+  expect(() => registry.register({
+    ...base,
+    input: { body: z.number() },
+    stdinField: 'body',
+  })).toThrow('stdinField must be a string')
+  expect(() => registry.register({
+    ...base,
+    input: { id: z.string().optional(), body: z.string() },
+    positionals: ['id', 'body'],
+  })).toThrow('follows an optional positional')
+  for (const name of ['help', 'json']) {
+    expect(() => registry.register({ ...base, input: { [name]: z.string() } }))
+      .toThrow('reserved')
+  }
 })
 
 test('CommandRegistry registers commands and renders all prompts', () => {

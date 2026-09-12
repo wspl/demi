@@ -1,5 +1,6 @@
 import {
   isCommandGroup,
+  validateCommandTree,
   type Command,
   type CommandLeaf
 } from '@demicodes/shell'
@@ -40,6 +41,7 @@ export async function buildManifest(
   for (const root of roots) {
     if (manifestRoots[root.name])
       throw new Error(`buildManifest: duplicate root "${root.name}"`)
+    validateCommandTree(root, root.name)
     manifestRoots[root.name] = { tree: await manifestNode(root, hashModule) }
   }
   const body = { roots: manifestRoots, modules }

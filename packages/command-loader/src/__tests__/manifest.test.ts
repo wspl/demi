@@ -15,6 +15,27 @@ import {
 import { COPY_MODULE, testRoots, transpile } from './fixtures'
 
 describe('buildManifest', () => {
+  test('contradictory input sources fail both at build and after reconstruction', async () => {
+    const root: Command = {
+      name: 'note',
+      kind: 'rpc',
+      summary: 'Record text.',
+      input: { text: z.string() },
+      stdinField: 'text',
+      run: () => ({ exitCode: 0 }),
+    }
+    await expect(buildManifest([
+      { ...root, positionals: ['text'] },
+    ], { transpile })).rejects.toThrow('multiple input sources')
+    const manifest = await buildManifest([root], { transpile })
+    const tree = manifest.roots.note!.tree
+    if (isManifestGroup(tree))
+      throw new Error('expected leaf')
+    tree.positionals = ['text']
+    expect(() => treeFromManifest(manifest, undefined))
+      .toThrow('multiple input sources')
+  })
+
   test(
     'hashes are a function of content: two builds of the same trees agree',
     async () => {

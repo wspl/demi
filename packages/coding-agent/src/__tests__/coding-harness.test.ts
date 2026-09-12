@@ -183,6 +183,12 @@ test(
     expect(help).toContain('demi agent abort')
     expect(help).toContain('demi agent list')
     expect(help).toContain('demi agent show')
+    for (const field of ['content', 'patch', 'prompt', 'message']) {
+      expect(help).toContain(`Stdin body: ${field}`)
+      expect(help).not.toContain(`--${field}`)
+    }
+    expect(help).toContain("demi agent send <id> [--json] <<'EOF'")
+    expect(help).toContain('--status <pending|in_progress|done>')
     // The prompt field teaches that the child cannot see this conversation.
     expect(help).toContain('cannot see this conversation')
     expect(help).toContain(

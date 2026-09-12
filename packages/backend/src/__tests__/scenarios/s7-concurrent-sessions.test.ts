@@ -47,7 +47,7 @@ test('two sessions on one runner keep their cwd and state apart', async () => {
     a.turn({ model: [
         model.shell(
           'a2',
-          "demi agent spawn 'wait' --description w && echo \"a: $(pwd)\""
+          "demi agent spawn <<< 'wait' --description w && echo \"a: $(pwd)\""
         ),
         model.say('a again')
       ] }),
