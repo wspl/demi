@@ -10,10 +10,8 @@ import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import type { z } from 'zod'
-import {
-  ATTACHMENTS_DIR,
-  type uploadRefBlockSchema
-} from '../../conversation/attachment-refs'
+import { type uploadRefBlockSchema } from '@demicodes/product-contracts'
+import { ATTACHMENTS_DIR } from '../../conversation/attachment-refs'
 import { CLOUD_HOME } from '../../conversation/execution-target'
 import type { TurnScript } from './model'
 export type { TurnScript } from './model'

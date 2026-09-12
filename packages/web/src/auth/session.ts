@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import type { z } from 'zod'
-import { identitySchema } from '../api/contracts'
+import { identitySchema } from '@demicodes/product-contracts'
 import { apiRequest, ApiError, jsonBody } from '../api/client'
 
 type User = z.infer<typeof identitySchema>['user']

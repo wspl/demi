@@ -9,7 +9,7 @@ import {
   type CatalogProvider,
   type ProductState,
   type VendorCatalog,
-} from '../api/contracts'
+} from '@demicodes/product-contracts'
 
 /** One account snapshot; REST polling never replaces agent transcript state. */
 export const useProduct = defineStore('product', () => {

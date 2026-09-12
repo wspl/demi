@@ -1,0 +1,39 @@
+{
+  "name": "@demicodes/product-contracts",
+  "description": "Shared Demi product API schemas and browser-safe wire mappings.",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@demicodes/agent": "workspace:^",
+    "@demicodes/core": "workspace:^",
+    "zod": "^4.0.0"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/product-contracts"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/product-contracts#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}

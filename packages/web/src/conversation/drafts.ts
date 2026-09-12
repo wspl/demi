@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { conversationRecordSchema, hostsSchema } from '../api/contracts'
+import { conversationRecordSchema, hostsSchema } from '@demicodes/product-contracts'
 import { editRequestSchema } from '@demicodes/web-ui/transport/protocol'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
-import { displayedUserContentSchema } from '../api/transcript'
+import { displayedUserContentSchema } from '@demicodes/web-ui/transport/protocol'
 
 const messageEditSchema: z.ZodType<MessageEditState> = z.object({
   phase: z.enum(['editing', 'sending', 'uncertain']),

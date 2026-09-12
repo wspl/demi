@@ -1,10 +1,12 @@
-import { modelSelectionSchema } from '@demicodes/agent'
 import {
+  conversationTargetSchema,
   preferencesSchema,
-  patchPreferences,
+  type ConversationTargetPointer,
   type UserPreferences,
-  type PreferencesPatch
-} from '../settings/preferences'
+  type PreferencesPatch,
+} from '@demicodes/product-contracts'
+import { modelSelectionSchema } from '@demicodes/agent'
+import { patchPreferences } from '../settings/preferences'
 import { z } from 'zod'
 import { createId, moveBefore } from '@demicodes/utils'
 import type { Role, User } from '../auth/identity'
@@ -375,24 +377,6 @@ export interface UsageRow {
   cacheWriteTokens: number
   createdAt: string
 }
-
-/**
- * Persisted target selection; all external inputs and stored rows use this
- * schema.
- */
-export const conversationTargetSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('cloud'), path: z.string().startsWith('/').optional() }).strict(),
-  z.object({
-    kind: z.literal('device'),
-    deviceId: z.string().min(1),
-    path: z.string().min(1)
-  }).strict(),
-  z.object({
-    kind: z.literal('workspace'),
-    workspaceId: z.string().min(1)
-  }).strict(),
-])
-export type ConversationTargetPointer = z.infer<typeof conversationTargetSchema>
 
 const forkMetadataSchema = z.strictObject({
   title: z.string().min(1),

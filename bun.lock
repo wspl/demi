@@ -42,6 +42,7 @@
         "@demicodes/core": "workspace:^",
         "@demicodes/host-remote": "workspace:^",
         "@demicodes/machines": "workspace:^",
+        "@demicodes/product-contracts": "workspace:^",
         "@demicodes/provider": "workspace:^",
         "@demicodes/provider-anthropic-api": "workspace:^",
         "@demicodes/provider-claude-code": "workspace:^",
@@ -111,6 +112,15 @@
       },
       "dependencies": {
         "@demicodes/utils": "workspace:^",
+        "zod": "^4.0.0",
+      },
+    },
+    "packages/product-contracts": {
+      "name": "@demicodes/product-contracts",
+      "version": "0.1.0",
+      "dependencies": {
+        "@demicodes/agent": "workspace:^",
+        "@demicodes/core": "workspace:^",
         "zod": "^4.0.0",
       },
     },
@@ -241,6 +251,7 @@
       "version": "0.24.0",
       "dependencies": {
         "@demicodes/core": "workspace:^",
+        "@demicodes/product-contracts": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "@demicodes/web-ui": "workspace:^",
         "@lucide/vue": "^1.40.0",
@@ -286,6 +297,7 @@
       "dependencies": {
         "@demicodes/agent": "workspace:^",
         "@demicodes/core": "workspace:^",
+        "@demicodes/product-contracts": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "@floating-ui/vue": "^2.0.0",
         "@lucide/vue": "^1.40.0",
@@ -375,6 +387,8 @@
     "@demicodes/host-remote": ["@demicodes/host-remote@workspace:packages/host-remote"],
 
     "@demicodes/machines": ["@demicodes/machines@workspace:packages/machines"],
+
+    "@demicodes/product-contracts": ["@demicodes/product-contracts@workspace:packages/product-contracts"],
 
     "@demicodes/provider": ["@demicodes/provider@workspace:packages/provider"],
 

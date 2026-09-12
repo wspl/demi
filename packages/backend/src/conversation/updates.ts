@@ -2,10 +2,8 @@ import { z } from 'zod'
 import { errorMessage } from '@demicodes/utils'
 import type { AgentServer } from '@demicodes/agent'
 import type { InstanceMode } from '../auth/identity'
-import {
-  conversationTargetSchema,
-  type ControlService
-} from '../storage/control'
+import { conversationTargetSchema } from '@demicodes/product-contracts'
+import { type ControlService } from '../storage/control'
 import type { ProviderVault } from '../vault/providers'
 import { visibleProvider } from '../vault/scope'
 import type { ConversationTargets } from './target'

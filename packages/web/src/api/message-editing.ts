@@ -1,7 +1,7 @@
 import type { UserContentBlock } from '@demicodes/core'
 import type { MessageEditContent } from '@demicodes/web-ui/agent/message-editing'
 import { apiRequest } from './client'
-import { displayedUserContentSchema } from './transcript'
+import { displayedUserContentSchema } from '@demicodes/web-ui/transport/protocol'
 
 /** Restores authenticated transcript media to the agent's inline content contract. */
 export async function loadEditContent(

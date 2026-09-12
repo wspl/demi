@@ -16,7 +16,7 @@ import type { ControlService, ConversationRecord } from '../storage/control'
 import { resolveUploadRefs } from './attachment-refs'
 import {
   type ConversationClientFrame
-} from './client-frames'
+} from '@demicodes/product-contracts'
 
 /**
  * Scopes an incoming stream to its conversation: the session id and cwd are

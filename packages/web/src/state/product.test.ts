@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { productStateSchema } from '../api/contracts'
+import { productStateSchema } from '@demicodes/product-contracts'
 import { useProduct } from './product'
 
 const realFetch = globalThis.fetch

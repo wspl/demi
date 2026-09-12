@@ -8,7 +8,7 @@ import type {
   BackendProvider,
   CatalogModel,
   CatalogProvider,
-} from '../api/contracts'
+} from '@demicodes/product-contracts'
 import type { LocalState } from './local'
 
 export interface ProductProvider extends SettingsProviderEntry {

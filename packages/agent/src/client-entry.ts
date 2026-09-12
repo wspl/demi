@@ -25,6 +25,8 @@ export type {
 } from './protocol/frames'
 export type { ProviderSelection } from '@demicodes/provider'
 export {
+  createClientFrameSchema,
+  userContentBlockSchema,
   modelSelectionSchema,
   thinkingConfigSchema,
   editRequestSchema,

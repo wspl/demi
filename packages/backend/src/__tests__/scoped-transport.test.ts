@@ -1,9 +1,8 @@
 import { createMemoryWebSocketPair } from '@demicodes/agent/testing'
-import { conversationClientFrameSchema, type ConversationClientFrame } from '../conversation/client-frames'
+import { conversationClientFrameSchema, type ConversationClientFrame } from '@demicodes/product-contracts'
 import { afterEach, expect, test } from 'bun:test'
 import {
   createWebSocketTransport,
-  createInProcessTransportPair,
   displayedServerFrameSchema,
   type DisplayedBlock,
   type BlobStore,
@@ -22,6 +21,17 @@ afterEach(() => {
     close()
 })
 
+function wirePair() {
+  const [clientSocket, serverSocket] = createMemoryWebSocketPair()
+  const client = createWebSocketTransport<unknown, ServerFrame<DisplayedBlock>>(clientSocket, {
+    decode: displayedServerFrameSchema.parse,
+  })
+  const server = createWebSocketTransport<ServerFrame<DisplayedBlock>, ConversationClientFrame>(serverSocket, {
+    decode: conversationClientFrameSchema.parse,
+  })
+  return { client, server }
+}
+
 async function fixture(
   blobs?: BlobStore,
   wrap: (control: ControlService) => ControlService = (control) => control
@@ -35,13 +45,7 @@ async function fixture(
     role: 'user'
   })
   const conversation = await control.createConversation(user!.id)
-  const [clientSocket, serverSocket] = createMemoryWebSocketPair()
-  const client = createWebSocketTransport<unknown, ServerFrame<DisplayedBlock>>(clientSocket, {
-    decode: displayedServerFrameSchema.parse,
-  })
-  const server = createWebSocketTransport<ServerFrame<DisplayedBlock>, ConversationClientFrame>(serverSocket, {
-    decode: conversationClientFrameSchema.parse,
-  })
+  const { client, server } = wirePair()
   const scoped = conversationScopedTransport(server, conversation, {
     control: wrap(control),
     blobs,
@@ -307,7 +311,7 @@ test(
     const gate = new ActivityGate()
     const entered = deferred<void>()
     const finish = deferred<void>()
-    const pair = createInProcessTransportPair()
+    const pair = wirePair()
     const scoped = conversationScopedTransport(pair.server, f.conversation, {
       control: f.control,
       providerAllowed: async () => true,

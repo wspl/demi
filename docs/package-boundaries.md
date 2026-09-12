@@ -85,6 +85,14 @@ Test code may depend upward for integration coverage. Production code must not.
   - `subagent/` — the relationship module: the supervisor (spawn, resume, abort, messages, the close policy and completion delivery over the store), the root-session agent directory, tree formatting, and the declarative `demi agent` command tree behind the `SubagentCommandOps` seam.
   - `client/` — AgentClient.
 
+### `@demicodes/product-contracts`
+
+- Status: implemented.
+- Production deps: `@demicodes/agent`, `@demicodes/core`.
+- Owns: the product's shared authentication inputs, settings, configured-model metadata, conversation targets, REST response schemas, transcript response schema and conversation client-frame extensions. Types derive from these schemas. Product-reference encoding is an explicit mapping into the typed agent client's reference field.
+- Entries: the platform-neutral root exports schemas, inferred types and pure wire mappings. Agent protocol imports use the browser-safe `@demicodes/agent/client` entry.
+- Must not: import backend, UI packages, concrete providers, Node, or storage/network implementations. It does not authorize users, access files, apply settings, render forms or execute frames.
+
 ### `@demicodes/coding-agent`
 
 - Status: implemented.
@@ -161,7 +169,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/backend`
 
 - Status: target contract; acceptance tracked in `docs/demi-next/progress.md`.
-- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/machines`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
+- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/machines`, `@demicodes/product-contracts`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
 - Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, the per-conversation `AgentTreeStore` over node and block rows, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the transfer broker, browse endpoints), the managed-hosts module (one managed device per user over the `ManagedHostProvisioner` contract, reached through `@demicodes/machines`' `RemoteProvisioner` as the machine manager's client; lifecycle/hibernate/reset, the backend-contributed `demi host` subcommand group), the LLM module (per-provider provider assembly, live model catalog, metering wrap), the credential vault (instance secret, GCM-encrypted providers, subscription device-login flows over per-provider provider pools), and usage accounting (ledger + rate limit). The backend accepts explicitly submitted API keys and setup tokens at authenticated write boundaries, passes subscription material to provider-owned credential pools, and never returns secrets or proxies model traffic.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
 - May assemble: concrete providers, AgentServer, `RemoteHost`, `RemoteShellEnvironment` and the coding harness.
@@ -259,7 +267,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented; published to npm as a source-form package (no build step — `.vue`/`.ts`
   source exports compiled by the consumer's bundler, which must handle Vue SFC + TypeScript).
-- Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`.
+- Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`, `@demicodes/product-contracts`.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
   Input surfaces, the assembled ChatSession page, the message editor and its
   draft/submission lifecycle (`agent/message-editing.ts`, `SessionComposer.vue`, and the inert `MessageEditRegion.vue`), sidebar layout, workspace and
@@ -278,13 +286,13 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/web`
 
 - Status: backend-integrated web product.
-- Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`.
+- Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`, `@demicodes/product-contracts`.
 - Owns: the Vue SPA application frame, route navigation, product state and backend request handlers. Vue 3 + TypeScript + Vite, vue-router, Pinia and Tailwind 4.
 - Public boundary: `bun run web:dev` and `bun run web:build`; no published library API.
 - Layout: `main.ts` is the only composition root (app, router, account-scoped stores); `App.vue` is the application frame; `conversation/` owns chat state and
   containers; `targets/` owns environment selection; `settings/` owns settings
   containers; `auth/` owns cookie-session state and entry containers; `api/` owns
-  validated browser HTTP/agent wire contracts and upload requests; `state/` owns
+  HTTP/agent wire adapters using `product-contracts` and upload requests; `state/` owns
   server snapshots, preferences and per-user local state; `devices/` owns pairing
   and filesystem adapters. Reusable UI belongs to `web-ui`.
 - Integration boundary: authentication calls the backend over same-origin HTTP.
@@ -317,6 +325,7 @@ utils -> none
 provider -> core, utils
 shell -> utils
 agent -> core, provider, shell, utils
+product-contracts -> agent, core
 coding-agent -> agent, core, shell, utils
 provider-claude-code -> core, provider, utils
 provider-codex -> core, provider, utils
@@ -329,10 +338,10 @@ runner-protocol -> shell, utils
 machines -> utils
 host-remote -> runner-protocol, shell, utils
 runner -> command-loader, runner-protocol, shell, utils
-backend -> agent, coding-agent, command-loader, core, host-remote, machines, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
-web-ui -> agent, core, utils
+backend -> agent, coding-agent, command-loader, core, host-remote, machines, product-contracts, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
+web-ui -> agent, core, product-contracts, utils
 web-gallery -> web-ui, core, utils
-web -> web-ui, core, utils
+web -> web-ui, core, product-contracts, utils
 ```
 
 `web-ui`, `web-gallery` and `web` are browser/product packages built with Vite/Vue; their internal source

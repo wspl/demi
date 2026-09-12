@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { outranks, type AuthEnv } from '../auth/identity'
 import { hashPassword } from '../auth/passwords'
 import type { ControlService } from '../storage/control'
-import { passwordSchema, emailSchema } from './auth'
+import { passwordSchema, emailSchema } from '@demicodes/product-contracts'
 import { requireAdmin } from './authenticate'
 
 const createUserBodySchema = z.object({

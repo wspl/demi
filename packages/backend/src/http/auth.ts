@@ -1,3 +1,4 @@
+import { emailSchema, passwordSchema, nicknameSchema } from '@demicodes/product-contracts'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { AuthEnv } from '../auth/identity'
@@ -11,14 +12,8 @@ import {
   writeSessionCookie
 } from './cookies'
 
-export const emailSchema = z.string()
-  .trim()
-  .toLowerCase()
-  .pipe(z.email().max(254))
-export const passwordSchema = z.string().min(8).max(1024)
-
 const nicknameBodySchema = z.strictObject(
-  { nickname: z.string().trim().min(1).max(80) }
+  { nickname: nicknameSchema }
 )
 const loginBodySchema = z.strictObject({
   email: emailSchema,

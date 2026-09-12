@@ -47,7 +47,8 @@
     "partial-json": "^0.1.7",
     "pathe": "^2.0.3",
     "shiki": "^4.2.0",
-    "vue": "^3.5.38"
+    "vue": "^3.5.38",
+    "@demicodes/product-contracts": "workspace:^"
   },
   "devDependencies": {
     "@vue/tsconfig": "^0.9.1",

@@ -1,4 +1,5 @@
 import type { AgentServer } from '@demicodes/agent'
+import type { ProductState as ProductStateResponse } from '@demicodes/product-contracts'
 import type { User, InstanceMode } from '../auth/identity'
 import type { ControlService } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
@@ -28,7 +29,7 @@ export class ProductState {
     mode: InstanceMode;
   }) {}
 
-  async read(user: User) {
+  async read(user: User): Promise<ProductStateResponse> {
     const { control, stores, server, registry, vault, assembly, managed, mode } = this.deps
     const [active, archived, workspaces, devices, preferences, entries, cloud] = await Promise.all(
       [

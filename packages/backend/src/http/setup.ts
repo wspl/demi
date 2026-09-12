@@ -4,7 +4,7 @@ import { hashPassword } from '../auth/passwords'
 import type { WebSessions } from '../auth/sessions'
 import type { ControlService } from '../storage/control'
 import { writeSessionCookie } from './cookies'
-import { passwordSchema, emailSchema } from './auth'
+import { passwordSchema, emailSchema } from '@demicodes/product-contracts'
 
 const setupBodySchema = z.object(
   { email: emailSchema, password: passwordSchema }

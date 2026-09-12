@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { nicknameSchema, NICKNAME_MAX_LENGTH } from '@demicodes/product-contracts'
+import InlineError from '../ui/InlineError.vue'
 import { accountInitial } from '../auth/account-display'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
@@ -57,6 +59,17 @@ const emit = defineEmits<{
 }>()
 
 const initial = computed(() => accountInitial(name.value, props.email))
+const nameError = ref<string | null>(null)
+
+function commitName(value: string): void {
+  const parsed = nicknameSchema.safeParse(value)
+  if (!parsed.success) {
+    nameError.value = `Use 1–${NICKNAME_MAX_LENGTH} characters for your display name.`
+    return
+  }
+  nameError.value = null
+  name.value = parsed.data
+}
 </script>
 
 <template>
@@ -75,14 +88,16 @@ const initial = computed(() => accountInitial(name.value, props.email))
         label="Display name"
         description="Shown on your messages and in the sidebar."
       >
-        <CommitTextInput
-          :model-value="name"
-          :disabled="nameSave === 'saving'"
-          aria-label="Display name"
-          @commit="name = $event"
-          maxlength="50"
-          class="w-56 max-w-full"
-        />
+        <div class="w-56 max-w-full space-y-1">
+          <CommitTextInput
+            :model-value="name"
+            :disabled="nameSave === 'saving'"
+            aria-label="Display name"
+            :maxlength="NICKNAME_MAX_LENGTH"
+            @commit="commitName"
+          />
+          <InlineError v-if="nameError" :message="nameError" />
+        </div>
         <!-- One word beside the field. A save that failed is the product's toast; the field keeps the draft. -->
         <span
           v-if="nameSave === 'saving' || nameSave === 'saved'"

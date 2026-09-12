@@ -1,6 +1,6 @@
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+import { emailSchema } from '@demicodes/product-contracts'
 
-/** Whether a sign-in or account field is an email address. */
+/** Uses the product's normalized email constraint for account fields. */
 export function isEmail(value: string): boolean {
-  return EMAIL.test(value.trim())
+  return emailSchema.safeParse(value).success
 }

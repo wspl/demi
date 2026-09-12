@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
 import type { ControlService } from '../storage/control'
-import { preferencesPatchSchema } from '../settings/preferences'
+import { preferencesPatchSchema } from '@demicodes/product-contracts'
 
 /**
  * Instance mode stays read-only; preferences are isolated by the authenticated

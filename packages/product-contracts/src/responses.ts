@@ -1,37 +1,9 @@
 import { z } from 'zod'
-import { modelSelectionSchema } from '@demicodes/web-ui/transport/protocol'
-
-export const userSchema = z.object({
-  id: z.string().min(1),
-  email: z.email(),
-  nickname: z.string(),
-  role: z.enum(['master', 'admin', 'user']),
-  createdAt: z.iso.datetime({ offset: true }),
-})
-export const identitySchema = z.object({ user: userSchema })
-
-export const appearanceSchema = z.object({
-  theme: z.enum(['system', 'light', 'dark']).optional(),
-  tone: z.enum(['ink', 'warm']).optional(),
-  accent: z
-    .enum(['blue', 'purple', 'pink', 'red', 'orange', 'green', 'teal'])
-    .optional(),
-  fontSize: z.number().int().min(12).max(18).optional(),
-})
-export const preferencesSchema = z.object({
-  appearance: appearanceSchema,
-  shortcuts: z.object({
-    new: z.string().optional(),
-    sidebar: z.string().optional(),
-    settings: z.string().optional(),
-  }),
-})
-export type AppearancePatch = z.infer<typeof appearanceSchema>
-export type Preferences = z.infer<typeof preferencesSchema>
-export type PreferencesPatch = {
-  appearance?: AppearancePatch
-  shortcuts?: Partial<Record<'new' | 'sidebar' | 'settings', string | null>>
-}
+import { modelSelectionSchema } from '@demicodes/agent/client'
+import { userSchema, instanceModeSchema } from './auth'
+import { preferencesSchema } from './preferences'
+import { configuredModelSchema } from './models'
+import { targetSchema } from './conversations'
 
 export const deviceSchema = z.object({
   id: z.string().min(1),
@@ -50,18 +22,6 @@ export const workspaceSchema = z.object({
   name: z.string(),
   createdAt: z.string(),
 })
-export const targetSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('cloud'), path: z.string().startsWith('/').optional() }),
-  z.object({
-    kind: z.literal('device'),
-    deviceId: z.string().min(1),
-    path: z.string().min(1),
-  }),
-  z.object({
-    kind: z.literal('workspace'),
-    workspaceId: z.string().min(1),
-  }),
-])
 export const conversationRecordSchema = z.object({
   id: z.string().min(1),
   title: z.string(),
@@ -99,17 +59,31 @@ export const hostsSchema = z.object({
   ),
 })
 
-const healthSchema = z.object({
-  status: z.enum([
-    'unknown',
-    'ready',
-    'authenticated',
-    'unauthenticated',
-    'unavailable',
-    'error',
-  ]),
-  message: z.string().optional(),
+const optionalMessage = { message: z.string().optional() }
+const unknownHealthSchema = z.object({
+  status: z.literal('unknown'),
+  ...optionalMessage,
 })
+const errorHealthSchema = z.object({
+  status: z.literal('error'),
+  message: z.string(),
+})
+export const providerAuthSchema = z.discriminatedUnion('status', [
+  unknownHealthSchema,
+  z.object({
+    status: z.literal('authenticated'),
+    accountLabel: z.string().optional(),
+    ...optionalMessage,
+  }),
+  z.object({ status: z.literal('unauthenticated'), ...optionalMessage }),
+  errorHealthSchema,
+])
+export const providerRuntimeSchema = z.discriminatedUnion('status', [
+  unknownHealthSchema,
+  z.object({ status: z.literal('ready'), ...optionalMessage }),
+  z.object({ status: z.literal('unavailable'), message: z.string() }),
+  errorHealthSchema,
+])
 const credentialSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -117,9 +91,11 @@ const credentialSchema = z.object({
 })
 const activeCredentialSchema = z.object({
   credentialId: z.string().nullable(),
-  status: healthSchema,
+  status: providerAuthSchema,
 })
 export const quotaSchema = z.object({
+  providerId: z.string().optional(),
+  source: z.enum(['probe', 'observation', 'cache']).optional(),
   observedAt: z.string(),
   accountLabel: z.string().nullable(),
   plan: z
@@ -141,10 +117,22 @@ export const quotaSchema = z.object({
   ),
 })
 const providerDetailsSchema = z.object({
-  auth: healthSchema,
-  runtime: healthSchema,
+  auth: providerAuthSchema,
+  runtime: providerRuntimeSchema,
   accounts: z.array(credentialSchema),
   active: activeCredentialSchema.nullable(),
+  credentials: z
+    .discriminatedUnion('mode', [
+      z.object({ mode: z.literal('none') }),
+      z.object({
+        mode: z.literal('supported'),
+        canBeginLogin: z.boolean().optional(),
+        canImportDefault: z.boolean().optional(),
+        canAdd: z.boolean().optional(),
+        multi: z.boolean().optional(),
+      }),
+    ])
+    .optional(),
   quota: quotaSchema.nullable(),
   quotaCapability: z.object({
     mode: z.enum(['none', 'supported']),
@@ -152,15 +140,6 @@ const providerDetailsSchema = z.object({
     probeCost: z.enum(['free', 'minimal_request']).optional(),
   }),
   requiresProcessCapableHost: z.boolean(),
-})
-export const configuredModelSchema = z.object({
-  id: z.string(),
-  displayName: z.string(),
-  contextWindow: z.number().positive(),
-  outputLimit: z.number().positive().nullable(),
-  thinkingEfforts: z.array(z.string()),
-  acceptedExtensions: z.array(z.string()).nullable(),
-  fastTier: z.string().nullable(),
 })
 export const providerSchema = z.object({
   id: z.string(),
@@ -172,6 +151,7 @@ export const providerSchema = z.object({
   baseUrl: z.string().nullable(),
   models: z.array(configuredModelSchema).nullable(),
   keyConfigured: z.boolean(),
+  createdAt: z.iso.datetime({ offset: true }).optional(),
 })
 export const providerStateSchema = providerSchema.extend({
   details: providerDetailsSchema.nullable(),
@@ -204,8 +184,8 @@ export const catalogProviderSchema = z.object({
   sourceFetchedAt: z.string(),
   stale: z.boolean(),
   warnings: z.array(z.string()),
-  auth: healthSchema,
-  runtime: healthSchema,
+  auth: providerAuthSchema,
+  runtime: providerRuntimeSchema,
   requiresProcessCapableHost: z.boolean(),
   availability: z.object({
     available: z.boolean(),
@@ -272,7 +252,7 @@ export const cloudSchema = z.object({
 })
 export const productStateSchema = z.object({
   user: userSchema,
-  mode: z.enum(['shared', 'isolated']),
+  mode: instanceModeSchema,
   preferences: preferencesSchema,
   workspaces: z.array(workspaceSchema),
   devices: z.array(deviceSchema),
@@ -319,5 +299,8 @@ export type BackendConversation = z.infer<typeof conversationSummarySchema>
 export type BackendProvider = z.infer<typeof providerStateSchema>
 export type CatalogProvider = z.infer<typeof catalogProviderSchema>
 export type CatalogModel = z.infer<typeof catalogModelSchema>
-export type ConfiguredModel = z.infer<typeof configuredModelSchema>
 export type VendorCatalog = z.infer<typeof vendorCatalogSchema>
+export type PublicProvider = z.infer<typeof providerSchema>
+export type ProviderDetails = z.infer<typeof providerDetailsSchema>
+export type PublicQuota = z.infer<typeof quotaSchema>
+export type ModelCatalog = z.infer<typeof modelCatalogSchema>

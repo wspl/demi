@@ -5,7 +5,7 @@ import {
   type FileBrowserSource,
 } from '@demicodes/web-ui/files/types'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
-import { directorySchema } from '../api/contracts'
+import { directorySchema } from '@demicodes/product-contracts'
 import type { Device, Project } from '../state/types'
 
 function browserError(error: unknown): never {

@@ -2,11 +2,8 @@ import type { Host } from '@demicodes/shell'
 import { ActivityGate } from '@demicodes/utils'
 import type { ManagedHosts } from '../managed/lifecycle'
 import type { RunnerRegistry } from '../runner/registry'
-import type {
-  ControlService,
-  ConversationTargetPointer,
-  ExecutionTarget
-} from '../storage/control'
+import { type ConversationTargetPointer } from '@demicodes/product-contracts'
+import type { ControlService, ExecutionTarget } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 import {
   cloudSessionDirectory,

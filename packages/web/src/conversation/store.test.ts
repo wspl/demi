@@ -6,7 +6,7 @@ import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
-import { productStateSchema, type BackendConversation } from '../api/contracts'
+import { productStateSchema, type BackendConversation } from '@demicodes/product-contracts'
 
 const realFetch = globalThis.fetch
 
@@ -315,7 +315,7 @@ test('uncached history waits for its own model connection after navigation', asy
     if (path.startsWith('/api/models')) {
       return Response.json({ providers: [{
         providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '', stale: false,
-        warnings: [], auth: { status: 'ready' }, runtime: { status: 'ready' },
+        warnings: [], auth: { status: 'authenticated' }, runtime: { status: 'ready' },
         requiresProcessCapableHost: false,
         availability: { available: true, reason: null, message: null },
         models: [{

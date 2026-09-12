@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { remoteFileRefSchema } from '@demicodes/product-contracts'
 import { shellQuote } from '@demicodes/shell'
 import type {
   ControlService,
@@ -7,19 +7,6 @@ import type {
 } from '../storage/control'
 import type { RunnerRegistry } from '../runner/registry'
 import { resolveExecutionTarget } from './execution-target'
-
-export const remoteFileRefSchema = z.strictObject({
-  type: z.literal('remote_file'),
-  deviceId: z.string().min(1),
-  path: z
-    .string()
-    .min(1)
-    .max(4096)
-    .refine(
-      (path) => path.startsWith('/') && !path.includes('\0'),
-      'Expected an absolute path',
-    ),
-})
 
 /**
  * References retain device identity and read execution-time bytes through the

@@ -1,3 +1,4 @@
+import { uploadRefBlockSchema } from '@demicodes/product-contracts'
 import type { BlobStore } from '@demicodes/agent'
 import {
   attachmentSnippet,
@@ -6,7 +7,6 @@ import {
   type UserContentBlock
 } from '@demicodes/core'
 import type { Host } from '@demicodes/shell'
-import { z } from 'zod'
 import type { ControlService } from '../storage/control'
 
 /**
@@ -24,21 +24,6 @@ import type { ControlService } from '../storage/control'
  *   its media block, right before the attachment block, because tools cannot
  *   show the model a picture.
  */
-const safeFileName = z
-  .string()
-  .min(1)
-  .max(255)
-  .refine(
-    (name) => !/[/\\\0]/.test(name) && name !== '.' && name !== '..',
-    'Expected a file name without path separators',
-  )
-
-export const uploadRefBlockSchema = z.strictObject({
-  type: z.literal('upload'),
-  ref: z.string().min(1),
-  fileName: safeFileName,
-})
-
 /** Under the host user's home: Demi's files never touch a working directory. */
 export const ATTACHMENTS_DIR = '.demi/attachments'
 

@@ -47,6 +47,8 @@ const password: ChangePasswordPhase = {
 const emailDraft = ref({ email: 'existing@example.test', password: 'preview-only', code: '' })
 const verificationDraft = ref({ email: 'new@example.test', password: '', code: '123456' })
 const passwordDraft = ref({ current: 'wrong-password', next: 'new-preview-password', confirm: 'new-preview-password' })
+const invalidEmailDraft = ref({ email: 'a..b@example.test', password: 'preview-only', code: '' })
+const longPasswordDraft = ref({ current: 'preview-only', next: 'x'.repeat(1025), confirm: 'x'.repeat(1025) })
 const providerLogin: ProviderLoginPhase = {
   kind: 'failed',
   message: 'The provider sign-in request expired. Try signing in again.',
@@ -77,6 +79,40 @@ const hosts = createGalleryFileHosts()
       note="A rejected submission keeps the dialog open with its input. The line sits above the buttons, in the form's width."
     >
       <div class="grid items-start gap-6 lg:grid-cols-2">
+        <GallerySpecimen wide variant="Email change · malformed address">
+          <GalleryDialogFrame>
+            <ChangeEmailDialog
+              v-model:draft="invalidEmailDraft"
+              is-open
+              :overlay-store="appOverlayStore"
+              :phase="{ kind: 'form', currentEmail: 'preview@example.test' }"
+            />
+          </GalleryDialogFrame>
+        </GallerySpecimen>
+        <GallerySpecimen wide variant="Password change · exceeds length limit">
+          <GalleryDialogFrame>
+            <ChangePasswordDialog
+              v-model:draft="longPasswordDraft"
+              is-open
+              :overlay-store="appOverlayStore"
+              :phase="{ kind: 'form' }"
+            />
+          </GalleryDialogFrame>
+        </GallerySpecimen>
+        <GallerySpecimen wide variant="Model · output exceeds context">
+          <GalleryDialogFrame>
+            <ModelDialog
+              is-open
+              :overlay-store="appOverlayStore"
+              mode="create"
+              :model="{
+                id: 'custom-model', name: 'Custom model',
+                contextWindow: 100, outputLimit: 101,
+                efforts: [], extensions: null, fastTier: null,
+              }"
+            />
+          </GalleryDialogFrame>
+        </GallerySpecimen>
         <GallerySpecimen wide variant="Email change · rejected address">
           <GalleryDialogFrame>
             <ChangeEmailDialog

@@ -1,4 +1,5 @@
 import type { AgentServer } from '@demicodes/agent'
+import type { BackendConversation } from '@demicodes/product-contracts'
 import type { ConversationRecord } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 
@@ -10,12 +11,10 @@ export function conversationSummary(
   conversation: ConversationRecord,
   stores: ConversationStores,
   server: AgentServer
-) {
+): BackendConversation {
   const summary = stores.summary(conversation.id)
   const live = server.sessionPhase(conversation.id)
-  let status:
-    'running' | 'compacting' | 'interrupted' | 'error' |
-    'stopped' | 'completed' | 'idle' = 'idle'
+  let status: BackendConversation['status'] = 'idle'
   if (server.treeActive(conversation.id))
     status = live === 'compacting' ? 'compacting' : 'running'
   else if (!live && summary.phase !== 'idle')

@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { SerialQueue } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
-import { preferencesSchema, type PreferencesPatch } from '../api/contracts'
+import { preferencesSchema, type PreferencesPatch } from '@demicodes/product-contracts'
 import { useProduct } from './product'
 
 export const DEFAULT_KEYS = [

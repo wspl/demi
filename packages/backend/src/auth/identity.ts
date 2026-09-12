@@ -1,23 +1,5 @@
-/** `product.md` § Instance mode: who configures providers. Fixed at startup. */
-export type InstanceMode = 'shared' | 'isolated'
-
-/**
- * The three roles (`product.md` § User system): master is the instance's first
- * account; no organizations, no further roles.
- */
-export type Role = 'master' | 'admin' | 'user'
-
-/**
- * The authenticated caller as every route sees it: the user row without its
- * hash.
- */
-export interface User {
-  id: string
-  email: string
-  nickname: string
-  role: Role
-  createdAt: string
-}
+import type { User, Role } from '@demicodes/product-contracts'
+export type { User, Role, InstanceMode } from '@demicodes/product-contracts'
 
 /**
  * Hono's per-request variables under the session gate: `c.get('user')` is the

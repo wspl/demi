@@ -1,4 +1,5 @@
 import type { Provider, ProviderQuotaSnapshot } from '@demicodes/provider'
+import type { ProviderDetails, PublicQuota } from '@demicodes/product-contracts'
 
 /**
  * Public account/runtime facts, never raw vendor envelopes or stored credential
@@ -7,7 +8,7 @@ import type { Provider, ProviderQuotaSnapshot } from '@demicodes/provider'
 export async function providerDetails(
   provider: Provider,
   requireAccount = false
-) {
+): Promise<ProviderDetails> {
   const accounts = await provider.credentials?.list() ?? []
   const missingAccount = requireAccount && accounts.length === 0
   const [auth, runtime, active] = await Promise.all([
@@ -23,15 +24,14 @@ export async function providerDetails(
     runtime,
     accounts,
     active,
-    credentials: provider.credentials?.capability() ??
-      { mode: 'none' as const },
+    credentials: provider.credentials?.capability() ?? { mode: 'none' as const },
     quota: publicQuota(provider.quota?.latest() ?? null),
     quotaCapability: provider.quota?.capability() ?? { mode: 'none' as const },
     requiresProcessCapableHost: provider.requiresProcessCapableHost ?? false,
   }
 }
 
-export function publicQuota(snapshot: ProviderQuotaSnapshot | null) {
+export function publicQuota(snapshot: ProviderQuotaSnapshot | null): PublicQuota | null {
   if (!snapshot)
     return null
   return {

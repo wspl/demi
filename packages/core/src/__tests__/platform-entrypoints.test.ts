@@ -66,6 +66,7 @@ const platformNeutralEntries = [
   '@demicodes/runner-protocol',
   '@demicodes/command-loader',
   '@demicodes/host-remote',
+  '@demicodes/product-contracts',
 ] as const
 
 // Entries that are Node adapters by design; a neutral root must not reach them.

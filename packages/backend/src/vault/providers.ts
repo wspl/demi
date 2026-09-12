@@ -6,7 +6,7 @@ import type {
 import { decryptJson, encryptJson } from './crypto'
 
 import { z } from 'zod'
-import { configuredModelsSchema } from '../llm/model-config'
+import { configuredModelsSchema } from '@demicodes/product-contracts'
 
 const apiKeyConfigSchema = z.strictObject({
   kind: z.literal('api_key'),

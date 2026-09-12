@@ -11,8 +11,9 @@ Shared input sizing and the production CSS inspection matrix are documented in
 `web/main.ts` composes the router and account-scoped stores. `state/product.ts`
 reads conditional `GET /api/state` snapshots every three seconds and refreshes
 when the page becomes visible. It reconciles account, conversation, project,
-device and preference metadata. `api/contracts.ts` validates REST responses;
-`api/transcript.ts` validates persisted blocks and incoming agent frames.
+device and preference metadata. `@demicodes/product-contracts` owns the REST schemas and product wire mapping
+used by the backend and browser. Its transcript reader and frame decoder reuse
+the agent display schemas for persisted blocks and incoming agent frames.
 
 `conversation/store.ts` retains local drafts and loaded transcripts while
 reconciling server metadata. New conversation allocates a UUID locally and opens

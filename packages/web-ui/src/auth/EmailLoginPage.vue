@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { emailSchema } from '@demicodes/product-contracts'
 import Button from '../ui/Button.vue'
 import InlineError from '../ui/InlineError.vue'
 import TextInput from '../ui/TextInput.vue'
@@ -33,7 +34,7 @@ const canSubmit = computed(
 
 function submit() {
   if (!canSubmit.value) return
-  emit('submit', email.value.trim(), password.value)
+  emit('submit', emailSchema.parse(email.value), password.value)
 }
 </script>
 

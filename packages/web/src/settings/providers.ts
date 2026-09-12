@@ -1,3 +1,4 @@
+import { readConfiguredModelDraft } from '@demicodes/web-ui/settings/model-draft'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { useSession } from '../auth/session'
@@ -20,7 +21,7 @@ import {
   type SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
-import { providerSchema } from '../api/contracts'
+import { providerSchema } from '@demicodes/product-contracts'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { subscriptionName, type ProductProvider } from '../state/catalog'
@@ -212,20 +213,11 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }
 
   function modelConfig(model: SettingsModelDraft) {
-    if (model.contextWindow === null) {
-      throw new Error(`Enter a context window for ${model.name || model.id}.`)
+    const result = readConfiguredModelDraft(model)
+    if (!result.success) {
+      throw result.error
     }
-    return {
-      id: model.id,
-      displayName: model.name || model.id,
-      contextWindow: model.contextWindow,
-      outputLimit: model.outputLimit,
-      thinkingEfforts: model.efforts,
-      acceptedExtensions:
-        model.extensions?.map((extension) => extension.replace(/^\./, '')) ??
-        null,
-      fastTier: model.fastTier,
-    }
+    return result.data
   }
 
   function canPersistDraft(provider: ProductProvider): boolean {

@@ -1,6 +1,7 @@
 import type { ProviderEntry } from './providers'
+import type { PublicProvider } from '@demicodes/product-contracts'
 
-export function publicProvider(provider: ProviderEntry) {
+export function publicProvider(provider: ProviderEntry): PublicProvider {
   const { config } = provider
   const keyed = config.kind === 'api_key' ? config : null
   return {

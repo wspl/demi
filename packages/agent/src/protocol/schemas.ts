@@ -243,58 +243,62 @@ export const steerFrameSchema = z.object({
   content: z.array(userContentBlockSchema)
 })
 
-export const clientFrameSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('open'),
-    provider: providerSelectionSchema,
-    cwd: z.string(),
-    sessionId: z.string()
-  }),
-  sendFrameSchema,
-  z.object({
-    type: z.literal('edit_and_send'),
-    request: editRequestSchema,
-    metadata: metadataSchema.optional(),
-  }),
-  z.object({ type: z.literal('dequeue_message'), messageId: z.string() }),
-  z.object({ type: z.literal('send_queued_message'), messageId: z.string() }),
-  z.object({
-    type: z.literal('steer_queued_message'),
-    messageId: z.string(),
-    steerId: z.string()
-  }),
-  z.object({ type: z.literal('clear_message_queue') }),
-  steerFrameSchema,
-  z.object({ type: z.literal('cancel_pending_steer'), steerId: z.string() }),
-  z.object({
-    type: z.literal('set_provider'),
-    provider: providerSelectionSchema,
-    apply: modelSwitchApplySchema.optional()
-  }),
-  z.object({ type: z.literal('abort') }),
-  z.object({ type: z.literal('abort_subagents') }),
-  // One live child, with its subtree; it settles through its own `subagent closed` frame.
-  z.object({ type: z.literal('abort_subagent'), subagentId: z.string() }),
-  z.object({ type: z.literal('retry'), metadata: metadataSchema.optional() }),
-  z.object({ type: z.literal('resume'), metadata: metadataSchema.optional() }),
-  z.object({ type: z.literal('compact'), metadata: metadataSchema.optional() }),
-  z.object({
-    type: z.literal('shell_write'),
-    commandId: z.string(),
-    stdin: z.string(),
-    metadata: metadataSchema.optional(),
-  }),
-  // Stops one running command; its final status arrives as a `shell_output` frame.
-  z.object({
-    type: z.literal('shell_abort'),
-    commandId: z.string(),
-    metadata: metadataSchema.optional(),
-  }),
-  // Requests a fresh transcript_reset; sent by the client when it detects a
-  // revision gap in the patch stream (defensive resync, transports are ordered).
-  z.object({ type: z.literal('sync_transcript') }),
-  z.object({ type: z.literal('close') }),
-])
+export function createClientFrameSchema<C extends z.ZodType>(content: C) {
+  return z.discriminatedUnion('type', [
+    z.object({
+      type: z.literal('open'),
+      provider: providerSelectionSchema,
+      cwd: z.string(),
+      sessionId: z.string()
+    }),
+    sendFrameSchema.extend({ content: z.array(content) }),
+    z.object({
+      type: z.literal('edit_and_send'),
+      request: editRequestSchema,
+      metadata: metadataSchema.optional(),
+    }),
+    z.object({ type: z.literal('dequeue_message'), messageId: z.string() }),
+    z.object({ type: z.literal('send_queued_message'), messageId: z.string() }),
+    z.object({
+      type: z.literal('steer_queued_message'),
+      messageId: z.string(),
+      steerId: z.string()
+    }),
+    z.object({ type: z.literal('clear_message_queue') }),
+    steerFrameSchema.extend({ content: z.array(content) }),
+    z.object({ type: z.literal('cancel_pending_steer'), steerId: z.string() }),
+    z.object({
+      type: z.literal('set_provider'),
+      provider: providerSelectionSchema,
+      apply: modelSwitchApplySchema.optional()
+    }),
+    z.object({ type: z.literal('abort') }),
+    z.object({ type: z.literal('abort_subagents') }),
+    // One live child, with its subtree; it settles through its own `subagent closed` frame.
+    z.object({ type: z.literal('abort_subagent'), subagentId: z.string() }),
+    z.object({ type: z.literal('retry'), metadata: metadataSchema.optional() }),
+    z.object({ type: z.literal('resume'), metadata: metadataSchema.optional() }),
+    z.object({ type: z.literal('compact'), metadata: metadataSchema.optional() }),
+    z.object({
+      type: z.literal('shell_write'),
+      commandId: z.string(),
+      stdin: z.string(),
+      metadata: metadataSchema.optional(),
+    }),
+    // Stops one running command; its final status arrives as a `shell_output` frame.
+    z.object({
+      type: z.literal('shell_abort'),
+      commandId: z.string(),
+      metadata: metadataSchema.optional(),
+    }),
+    // Requests a fresh transcript_reset; sent by the client when it detects a
+    // revision gap in the patch stream (defensive resync, transports are ordered).
+    z.object({ type: z.literal('sync_transcript') }),
+    z.object({ type: z.literal('close') }),
+  ])
+}
+
+export const clientFrameSchema = createClientFrameSchema(userContentBlockSchema)
 
 export const sessionPhaseSchema = z.enum(['idle', 'running', 'compacting'])
 export const queuedMessageSchema = z.object({

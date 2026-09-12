@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { AuthEnv } from '../auth/identity'
 import type { EmailChanges } from '../auth/email-change'
 import type { ControlService } from '../storage/control'
-import { emailSchema, passwordSchema } from './auth'
+import { emailSchema, passwordSchema } from '@demicodes/product-contracts'
 
 const startSchema = z.strictObject(
   { email: emailSchema, password: passwordSchema }

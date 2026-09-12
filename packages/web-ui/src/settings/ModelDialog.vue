@@ -10,6 +10,7 @@ import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import TokenInput from '@demicodes/web-ui/ui/TokenInput.vue'
 import SettingsRow from './SettingsRow.vue'
+import { readConfiguredModelDraft } from './model-draft'
 import {
   EXTENSION_PRESETS,
   THINKING_EFFORTS,
@@ -97,19 +98,7 @@ function setPreset(extensions: string[], on: boolean) {
   draft.value.extensions = on ? [...rest, ...extensions] : rest
 }
 
-const canSave = computed(() => {
-  const model = draft.value
-  return (
-    model.id.trim().length > 0 &&
-    model.contextWindow !== null &&
-    Number.isInteger(model.contextWindow) &&
-    model.contextWindow > 0 &&
-    (model.outputLimit === null ||
-      (Number.isInteger(model.outputLimit) &&
-        model.outputLimit > 0 &&
-        model.outputLimit <= model.contextWindow))
-  )
-})
+const canSave = computed(() => readConfiguredModelDraft(draft.value).success)
 </script>
 
 <template>

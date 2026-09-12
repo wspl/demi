@@ -7,7 +7,7 @@ import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import { isEmail } from '../auth/email'
+import { emailSchema } from '@demicodes/product-contracts'
 import SettingsRow from './SettingsRow.vue'
 
 /**
@@ -91,17 +91,17 @@ const canSubmit = computed(() => {
   if (props.phase.kind !== 'form' || props.phase.busy) {
     return false
   }
-  const next = email.value.trim()
+  const next = emailSchema.safeParse(email.value)
   return (
-    isEmail(next) &&
-    next !== props.phase.currentEmail &&
+    next.success &&
+    next.data !== props.phase.currentEmail &&
     password.value.length > 0
   )
 })
 const sameAsCurrent = computed(
   () =>
     props.phase.kind === 'form' &&
-    email.value.trim() === props.phase.currentEmail,
+    emailSchema.safeParse(email.value).data === props.phase.currentEmail,
 )
 const canVerify = computed(
   () =>
@@ -112,7 +112,7 @@ const canVerify = computed(
 
 function submit() {
   if (canSubmit.value) {
-    emit('submit', email.value.trim(), password.value)
+    emit('submit', emailSchema.parse(email.value), password.value)
   }
 }
 

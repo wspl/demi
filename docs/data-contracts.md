@@ -363,3 +363,29 @@ to commands, host resolution or other hooks. The coding harness owns a strict
 empty-object schema. A checkpoint belonging to a different harness is an error;
 opening a connection does not delete it. `restoreState` is the separate editing
 and fork hook that computes state from retained history.
+
+## Product API contracts
+
+`product-contracts` owns the schemas shared by the backend and browser. Authentication
+normalizes email by trimming and lowercasing before the shared email constraint;
+stored users contain the resulting address. The UI uses the same acceptance test
+and supplies its own field messages. Preferences and manually configured models
+use the same schemas for request validation, persistence reads and browser reads.
+Null shortcut patches clear an override; missing fields leave it unchanged.
+
+REST response types derive from the shared response schemas. Backend projection
+functions declare these types and browser response readers parse them. Storage and
+provider domain types remain with their owners; sharing a response does not move
+authorization, persistence or provider behavior into the contract package.
+
+Conversation `send` and `steer` frames accept inline user input, upload references
+and remote-file references. They reject backend-authored attachment records. The
+backend resolves valid product references before delivering a typed agent frame.
+No generic frame-union branch bypasses these content constraints.
+
+Editing submits complete replacement content, including retained attachment
+records and rehydrated inline media. Product upload/device-reference envelopes
+are unsupported in edits: both the browser encoder and server decoder reject
+them explicitly. Existing ordinary references remain ordinary references and are
+resolved by the harness during edit preparation. This keeps retries byte-stable;
+an edit retry does not create another host attachment path.

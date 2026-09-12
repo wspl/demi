@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { CatalogProvider } from '@demicodes/product-contracts'
 import { modelSelectionFromCatalog } from '@demicodes/provider'
 import { Hono } from 'hono'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
@@ -48,7 +49,7 @@ export function modelRoutes(options: {
       providerOwner(options.mode, c.get('user').id),
       parsed.data === 'true'
     )
-    return c.json({ providers: providers.map(provider => ({
+    return c.json({ providers: providers.map((provider): CatalogProvider => ({
         ...provider,
         models: provider.models.map(model => ({
           ...model,

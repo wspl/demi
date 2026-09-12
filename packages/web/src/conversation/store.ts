@@ -28,13 +28,13 @@ import {
   conversationUpdateSchema,
   hostsSchema,
   type BackendConversation,
-} from '../api/contracts'
+} from '@demicodes/product-contracts'
 import {
   contentReference,
   decodeServerFrame,
   encodeClientFrame,
   transcriptSchema,
-} from '../api/transcript'
+} from '@demicodes/product-contracts'
 import { createConversationUploads } from './uploads'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'

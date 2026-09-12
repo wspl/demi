@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
-import { productStateSchema, type ProductState } from '../api/contracts'
+import { productStateSchema, type ProductState } from '@demicodes/product-contracts'
 import { useProduct } from '../state/product'
 import { useProviderSettings } from './providers'
 import { dismissToast, toasts } from '@demicodes/web-ui/infra/toast'

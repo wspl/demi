@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
+import { passwordSchema, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from '@demicodes/product-contracts'
 import { Check } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -32,8 +33,6 @@ const emit = defineEmits<{
   close: []
   submit: [current: string, next: string]
 }>()
-
-const MIN_LENGTH = 8
 
 export interface ChangePasswordDialogDraft {
   current: string
@@ -74,8 +73,9 @@ watch(
 )
 
 const tooShort = computed(
-  () => next.value.length > 0 && next.value.length < MIN_LENGTH,
+  () => next.value.length > 0 && next.value.length < PASSWORD_MIN_LENGTH,
 )
+const tooLong = computed(() => next.value.length > PASSWORD_MAX_LENGTH)
 const mismatch = computed(
   () => confirm.value.length > 0 && confirm.value !== next.value,
 )
@@ -87,7 +87,7 @@ const canSubmit = computed(
     props.phase.kind === 'form' &&
     !props.phase.busy &&
     current.value.length > 0 &&
-    next.value.length >= MIN_LENGTH &&
+    passwordSchema.safeParse(next.value).success &&
     confirm.value === next.value &&
     !unchanged.value,
 )
@@ -135,7 +135,7 @@ function submit() {
           </SettingsRow>
           <SettingsRow
             label="New password"
-            :description="`At least ${MIN_LENGTH} characters.`"
+            :description="`At least ${PASSWORD_MIN_LENGTH} characters.`"
           >
             <TextInput
               v-model="next"
@@ -157,8 +157,12 @@ function submit() {
         </div>
         <InlineError v-if="phase.error" :message="phase.error" />
         <InlineError
+          v-else-if="tooLong"
+          :message="`A password has at most ${PASSWORD_MAX_LENGTH} characters.`"
+        />
+        <InlineError
           v-else-if="tooShort"
-          :message="`A password has at least ${MIN_LENGTH} characters.`"
+          :message="`A password has at least ${PASSWORD_MIN_LENGTH} characters.`"
         />
         <InlineError
           v-else-if="unchanged"

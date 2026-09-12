@@ -8,7 +8,8 @@ import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider, type InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { waitFor } from '@demicodes/utils'
-import { ATTACHMENTS_DIR, uploadRefBlockSchema } from '../conversation/attachment-refs'
+import { uploadRefBlockSchema } from '@demicodes/product-contracts'
+import { ATTACHMENTS_DIR } from '../conversation/attachment-refs'
 import { openBackend, type TestBackend } from './session'
 
 // M6 attachments: upload-then-reference for message media (bytes never ride
