@@ -1,5 +1,5 @@
 import { readClaudeMessage, type ClaudeOutputMessage } from './output-schemas'
-import { abortable, isRecord } from '@demicodes/utils'
+import { abortable } from '@demicodes/utils'
 import { randomUUID } from 'node:crypto'
 import type { ToolResultContentBlock } from '@demicodes/core'
 import {
@@ -84,10 +84,6 @@ export interface ClaudeCodeRuntimeOptions {
    * `CLAUDE_CODE_OAUTH_TOKEN`).
    */
   env?: Record<string, string>
-}
-
-export interface ClaudeCodeProviderConfig {
-  claudePath?: string
 }
 
 interface ActiveClaudeRun {
@@ -783,25 +779,6 @@ export function createClaudeCodeProvider(
     },
     createRuntime: () => new ClaudeCodeProvider(runtimeOptions),
   })
-}
-
-export function parseClaudeCodeProviderConfig(
-  config: unknown
-): ClaudeCodeProviderConfig {
-  if (config === undefined || config === null)
-    return {}
-  if (!isRecord(config))
-    throw new Error('Claude Code provider config must be an object')
-
-  const parsed: ClaudeCodeProviderConfig = {}
-  if (config.claudePath !== undefined) {
-    if (typeof config.claudePath !== 'string')
-      throw new Error(
-        'Claude Code provider config field "claudePath" must be a string'
-      )
-    parsed.claudePath = config.claudePath
-  }
-  return parsed
 }
 
 function isToolCallRequested(

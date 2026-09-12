@@ -22,7 +22,6 @@ import {
 import {
   ClaudeCodeProvider,
   createClaudeCodeProvider,
-  parseClaudeCodeProviderConfig,
 } from '../provider'
 import type {
   ClaudeTransport,
@@ -77,21 +76,9 @@ function providerSelection(): ProviderSelection {
 }
 
 test(
-  'Claude Code public provider only accepts serializable config fields',
+  'Claude Code public provider does not expose internal transport injection',
   async () => {
     const injectedFactory = fakeFactory(new FakeClaudeTransport([]))
-    expect(
-      parseClaudeCodeProviderConfig({
-        claudePath: '/usr/local/bin/claude',
-        transportFactory: injectedFactory,
-      }),
-    ).toEqual({ claudePath: '/usr/local/bin/claude' })
-    expect(parseClaudeCodeProviderConfig(undefined)).toEqual({})
-    expect(parseClaudeCodeProviderConfig(null)).toEqual({})
-    expect(() => parseClaudeCodeProviderConfig(1)).toThrow('must be an object')
-    expect(() => parseClaudeCodeProviderConfig({ claudePath: 1 }))
-      .toThrow('claudePath')
-
     const provider = await providerRuntime(createClaudeCodeProvider({
       transportFactory: injectedFactory,
       claudePath: '/usr/local/bin/claude',

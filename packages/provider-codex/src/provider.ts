@@ -260,66 +260,6 @@ export function createCodexProvider(
   })
 }
 
-export function parseCodexProviderConfig(config: unknown): CodexProviderConfig {
-  if (config === undefined || config === null)
-    return {}
-  if (!isRecord(config))
-    throw new Error('Codex provider config must be an object')
-
-  const parsed: CodexProviderConfig = {}
-  if (config.codexHome !== undefined)
-    parsed.codexHome = expectString(
-      config.codexHome,
-      'codexHome'
-    )
-  if (config.baseUrl !== undefined)
-    parsed.baseUrl = expectString(
-      config.baseUrl,
-      'baseUrl'
-    )
-  if (config.transport !== undefined) {
-    if (config.transport !== 'auto' && config.transport !== 'sse'
-      && config.transport !== 'websocket') {
-      throw new Error(
-        'Codex provider config field "transport" must be auto, sse, or websocket'
-      )
-    }
-    parsed.transport = config.transport
-  }
-  if (config.headers !== undefined)
-    parsed.headers = expectStringRecord(
-      config.headers,
-      'headers'
-    )
-  if (config.userAgent !== undefined)
-    parsed.userAgent = expectString(
-      config.userAgent,
-      'userAgent'
-    )
-  if (config.headerTimeoutMs !== undefined)
-    parsed.headerTimeoutMs = expectNumber(
-    config.headerTimeoutMs,
-    'headerTimeoutMs'
-  )
-  if (config.websocketConnectTimeoutMs !== undefined) {
-    parsed.websocketConnectTimeoutMs = expectNumber(
-      config.websocketConnectTimeoutMs,
-      'websocketConnectTimeoutMs'
-    )
-  }
-  if (config.streamIdleTimeoutMs !== undefined)
-    parsed.streamIdleTimeoutMs = expectNumber(
-    config.streamIdleTimeoutMs,
-    'streamIdleTimeoutMs'
-  )
-  if (config.clientVersion !== undefined)
-    parsed.clientVersion = expectString(
-      config.clientVersion,
-      'clientVersion'
-    )
-  return parsed
-}
-
 export function buildCodexHeaders(
   auth: CodexResolvedAuth,
   request: Pick<InferenceRequest, 'sessionId' | 'requestId'>,
@@ -410,38 +350,6 @@ function providerErrorFromUnknown(error: unknown): ProviderEvent {
     code: error instanceof ProviderDataError ? error.code : normalizeErrorCode(null, message),
     diagnostics: { source: 'transport' },
   }
-}
-
-function expectString(value: unknown, field: string): string {
-  if (typeof value !== 'string')
-    throw new Error(`Codex provider config field "${field}" must be a string`)
-  return value
-}
-
-function expectNumber(value: unknown, field: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(
-      `Codex provider config field "${field}" must be a finite number`
-    )
-  }
-  return value
-}
-
-function expectStringRecord(
-  value: unknown,
-  field: string
-): Record<string, string> {
-  if (!isRecord(value))
-    throw new Error(`Codex provider config field "${field}" must be an object`)
-  const out: Record<string, string> = {}
-  for (const [key, nested] of Object.entries(value)) {
-    if (typeof nested !== 'string')
-      throw new Error(
-        `Codex provider config field "${field}.${key}" must be a string`
-      )
-    out[key] = nested
-  }
-  return out
 }
 
 function defaultUserAgent(): string {

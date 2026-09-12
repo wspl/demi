@@ -8,7 +8,7 @@ import type {
   ThinkingConfig,
   ThinkingSummary,
 } from '@demicodes/core'
-import { VIDEO_FILE_EXTENSIONS } from '@demicodes/core'
+import { IMAGE_FILE_EXTENSIONS, VIDEO_FILE_EXTENSIONS } from '@demicodes/core'
 import type { ProviderModel, ProviderModelList } from './types'
 
 /** Stamps `providerId` onto a model catalog and every model in it. */
@@ -27,11 +27,7 @@ export function withProviderId(
  * Attachment file types a model is offered when it reports attachment support.
  */
 export const DEFAULT_ATTACHMENT_EXTENSIONS: readonly FileExtension[] = [
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'webp',
+  ...IMAGE_FILE_EXTENSIONS,
   'pdf',
 ]
 

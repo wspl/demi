@@ -141,7 +141,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`, `zod`.
 - Owns: Grok Build CLI OAuth session reuse (`~/.grok/auth.json`), native RFC 8628 device login against auth.x.ai using the official frozen OAuth2 scopes, OIDC token refresh, cli-chat-proxy Chat Completions transport, model catalog mapping from `/v1/models`, billing/subscription quota probe (`/v1/billing?format=credits`, `/v1/user?include=subscription`), demi credential pool for global multi-credential switch, provider event mapping, and provider-specific tests.
-- Public boundary: `createGrokBuildProvider`, auth status helper, model catalog function, quota helpers, and public option types from root.
+- Public boundary: `createGrokBuildProvider`, `parseGrokBuildProviderConfig` for serializable configuration, auth status helper, model catalog function, quota helpers, and public option types from root. `config-schema.ts` owns the parsed configuration type and the matching creator option fields.
 - Endpoint boundary: explicit `baseUrl` wins, then `https://cli-chat-proxy.grok.com/v1`. Auth is the Grok CLI OAuth session or native device login against `https://auth.x.ai` (no API-key product path).
 - Secret boundary: session tokens, refresh tokens, raw auth file contents, and pool secret files stay inside the provider creator/auth store and must not cross AgentClient/Web browser-visible frames.
 - Internal boundary: auth stores, Chat Completions builders, SSE readers, stream mappers, runtime classes, credential pool IO, and test helpers stay behind implementation files.

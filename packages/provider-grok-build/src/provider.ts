@@ -1,6 +1,8 @@
-import { isAbortError, isRecord, normalizeBaseUrl } from '@demicodes/utils'
+import { grokBuildConfigSchema, type GrokBuildProviderConfig } from './config-schema'
+import { isAbortError, normalizeBaseUrl } from '@demicodes/utils'
 import {
   defineProvider,
+  parseProviderData,
   httpRequestFailedEvent,
   providerErrorFromUnknown,
   type AgentProvider,
@@ -35,14 +37,11 @@ export type GrokBuildFetch = (
   init?: RequestInit
 ) => Promise<Response>
 
-export interface GrokBuildProviderOptions {
+export interface GrokBuildProviderOptions extends GrokBuildProviderConfig {
   id?: string
   displayName?: string
-  grokHome?: string
-  baseUrl?: string
   clientVersion?: string
   authStore?: GrokAuthStore
-  headers?: Record<string, string>
   fetch?: GrokBuildFetch
   /** Demi state root for credential pool (`$DEMI_HOME` / `~/.demi`). */
   stateDir?: string
@@ -227,46 +226,8 @@ export function createGrokBuildProvider(
   })
 }
 
-export function parseGrokBuildProviderConfig(
-  config: unknown
-): Pick<GrokBuildProviderOptions, 'grokHome' | 'baseUrl' | 'headers'> {
-  if (config === undefined || config === null)
-    return {}
-  if (!isRecord(config))
-    throw new Error('Grok Build provider config must be an object')
-  const parsed: Pick<GrokBuildProviderOptions, 'grokHome'
-    | 'baseUrl'
-    | 'headers'> = {}
-  if (config.grokHome !== undefined) {
-    if (typeof config.grokHome !== 'string')
-      throw new Error(
-        'Grok Build provider config field "grokHome" must be a string'
-      )
-    parsed.grokHome = config.grokHome
-  }
-  if (config.baseUrl !== undefined) {
-    if (typeof config.baseUrl !== 'string')
-      throw new Error(
-        'Grok Build provider config field "baseUrl" must be a string'
-      )
-    parsed.baseUrl = config.baseUrl
-  }
-  if (config.headers !== undefined) {
-    if (!isRecord(config.headers))
-      throw new Error(
-        'Grok Build provider config field "headers" must be an object'
-      )
-    const headers: Record<string, string> = {}
-    for (const [key, value] of Object.entries(config.headers)) {
-      if (typeof value !== 'string')
-        throw new Error(
-          `Grok Build provider config headers.${key} must be a string`
-        )
-      headers[key] = value
-    }
-    parsed.headers = headers
-  }
-  return parsed
+export function parseGrokBuildProviderConfig(config: unknown): GrokBuildProviderConfig {
+  return parseProviderData(grokBuildConfigSchema, config ?? {}, 'Grok Build provider config')
 }
 
 function chatCompletionsUrl(baseUrl: string): string {

@@ -163,3 +163,14 @@ in [global provider credentials](provider-global-credentials.md#6-per-provider-b
 The shared provider validation module owns JSON and JWT payload decoding and
 value-free schema diagnostics; each provider owns the claims it consumes. JWT
 payload parsing is metadata extraction, not signature verification.
+
+Provider creators consume their typed library options, including explicit callback
+and auth-store dependencies. Codex and Claude do not expose a separate serialized
+config parser. The public Grok `parseGrokBuildProviderConfig` validates serialized
+`grokHome`, HTTP(S) `baseUrl` and string-valued `headers` through `config-schema.ts`.
+A null/undefined whole config means no configuration. Present fields must satisfy
+their schema; unknown keys, null fields and runtime dependencies are rejected.
+
+`core` owns image, video and all-file extension constants and derives their types
+from those sets. Agent wire schemas enumerate the same all-file set; provider
+model selection uses the image set plus PDF as its default attachment capability.

@@ -22,7 +22,6 @@ import {
   CodexProvider,
   buildCodexHeaders,
   createCodexProvider,
-  parseCodexProviderConfig,
   responsesUrlForAuth
 } from '../provider'
 import type { CodexResponseStreamEvent } from '../responses'
@@ -65,30 +64,9 @@ function providerSelection(): ProviderSelection {
 }
 
 test(
-  'Codex public provider only accepts serializable config fields',
+  'Codex public provider does not expose internal transport injection',
   async () => {
     const injectedTransport = new FakeCodexTransport([])
-    expect(
-      parseCodexProviderConfig({
-        codexHome: '/tmp/codex-home',
-        baseUrl: 'https://example.test/backend-api',
-        transport: 'sse',
-        headers: { 'x-test': 'ok' },
-        authStore: new StaticCodexAuthStore(chatgptAuth),
-        transportImpl: injectedTransport,
-      }),
-    ).toEqual({
-      codexHome: '/tmp/codex-home',
-      baseUrl: 'https://example.test/backend-api',
-      transport: 'sse',
-      headers: { 'x-test': 'ok' },
-    })
-    expect(() => parseCodexProviderConfig(1)).toThrow('must be an object')
-    expect(() => parseCodexProviderConfig({ transport: 'stdio' }))
-      .toThrow('transport')
-    expect(() => parseCodexProviderConfig({ headers: { ok: 1 } }))
-      .toThrow('headers.ok')
-
     const provider = await providerRuntime(createCodexProvider({
       authStore: new StaticCodexAuthStore(chatgptAuth),
       transportImpl: injectedTransport,
