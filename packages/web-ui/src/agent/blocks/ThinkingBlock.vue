@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { Brain } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import { thinkingFaceLabel } from '../thinking-label'
+import { useElapsedTime } from '../../composables/useElapsedTime'
 
 const props = defineProps<{
   thinking: string
@@ -17,40 +18,11 @@ const props = defineProps<{
 const hasContent = computed(() => props.thinking.trim().length > 0)
 const isOpen = defineModel<boolean>('open', { default: false })
 
-// Live timer while thinking; once done the elapsed is frozen to (next block's createdAt - this
-// block's createdAt), so the duration survives reload instead of growing from the original time.
-const nowMs = ref(Date.now())
-let timer: ReturnType<typeof setInterval> | undefined
-function stopTimer() {
-  if (timer) {
-    clearInterval(timer)
-    timer = undefined
-  }
-}
-watch(
+const elapsedMs = useElapsedTime(
+  () => Date.parse(props.createdAt),
   () => props.isStreaming,
-  (streaming) => {
-    stopTimer()
-    if (streaming) {
-      nowMs.value = Date.now()
-      timer = setInterval(() => {
-        nowMs.value = Date.now()
-      }, 1000)
-    }
-  },
-  { immediate: true },
+  () => props.endedAt ? Date.parse(props.endedAt) : null,
 )
-onUnmounted(stopTimer)
-
-const startMs = computed(() => Date.parse(props.createdAt))
-const elapsedMs = computed(() => {
-  const end = props.endedAt
-    ? Date.parse(props.endedAt)
-    : props.isStreaming ? nowMs.value : null
-  if (end === null || Number.isNaN(startMs.value))
-    return null
-  return Math.max(0, end - startMs.value)
-})
 const label = computed(() => thinkingFaceLabel(props.isStreaming, elapsedMs.value))
 const rollKey = computed(() => (props.isStreaming ? 'live' : 'done'))
 </script>

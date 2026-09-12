@@ -8,10 +8,8 @@ import { World } from './world'
 import { itemsText } from './model'
 import { model, type Target } from './driver'
 
-// S5 — subagents: `demi agent spawn` with the `explore` profile, then
-// `default`; the child runs commands on the same target; the parent reads
-// the result. Parent and child share the target; a profile is a prompt, not
-// a restriction; the parent's transcript carries the subagent frames.
+// S5 — inherited subagents share the parent target and can read and write.
+// The parent receives completion messages and subagent lifecycle frames.
 
 const fake = new FakeProvisioner()
 let world: World
@@ -32,7 +30,7 @@ afterAll(async () => {
 })
 
 describe.each<Target>(['cloud', 'runner:alpha'])('S5 subagents on %s', (target) => {
-  test("an explore child works on the parent's files like any child; a default child writes", async () => {
+  test("inherited children read and write the parent's files", async () => {
     const driver = await world.conversation(target)
     await driver.turn({
       model: [
@@ -44,7 +42,7 @@ describe.each<Target>(['cloud', 'runner:alpha'])('S5 subagents on %s', (target) 
       ],
     })
 
-    // The explore child: sees only its brief and works on the same target as its parent.
+    // The first child: sees only its brief and works on the same target as its parent.
     let brief = ''
     world.model.scriptChild(
       (request) => {
@@ -58,7 +56,7 @@ describe.each<Target>(['cloud', 'runner:alpha'])('S5 subagents on %s', (target) 
       model: [
         model.shell(
           't2',
-          "demi agent spawn <<< 'Read notes.md and report its content' --profile explore --description reader",
+          "demi agent spawn <<< 'Read notes.md and report its content' --description reader",
           10_000,
         ),
         model.say('reader dispatched'),
@@ -78,7 +76,7 @@ describe.each<Target>(['cloud', 'runner:alpha'])('S5 subagents on %s', (target) 
     expect(explored.received[0]).not.toContain('the file says 42; I wrote too')
     expect(await driver.readFile('blocked.md')).toBe('nope\n')
 
-    // The default child writes where the parent then reads.
+    // The second child writes where the parent then reads.
     world.model.scriptChild(
       model.shell('c3', "demi file create reply.md <<'EOF'\nfrom the child\nEOF"),
       model.say('wrote reply.md'),
