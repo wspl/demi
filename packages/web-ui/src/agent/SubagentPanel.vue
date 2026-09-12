@@ -76,6 +76,8 @@ function closeTab(agent: SubagentRecord): void {
       >
         <IconButton
           :icon="Square"
+          size="sm"
+          variant="ghost"
           aria-label="Stop all agents"
           @click="emit('abort')"
         />

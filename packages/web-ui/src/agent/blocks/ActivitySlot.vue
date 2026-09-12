@@ -7,7 +7,7 @@ import { t } from '@demicodes/web-ui/infra/i18n'
 import type { ActivityKind, HandoffBlock } from '../activity-slot'
 import { parseToolCallInput } from '../block-helpers'
 import { useElapsedTime } from '../../composables/useElapsedTime'
-import { formatThinkingDuration, thinkingFaceLabel } from '../thinking-label'
+import { requestingFaceLabel, thinkingFaceLabel } from '../thinking-label'
 import { standardToolTitle, toolRenderKind } from '../tool-rendering'
 import FunctionalBlock from './FunctionalBlock.vue'
 
@@ -49,7 +49,7 @@ const waitLabel = computed(() => {
     case 'retrying':
       return t('agent.block.retrying')
     case 'requesting':
-      return `${t('agent.block.requestingFor')} ${formatThinkingDuration(requestingElapsed.value ?? 0)}`
+      return requestingFaceLabel(requestingElapsed.value ?? 0)
   }
 })
 
