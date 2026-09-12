@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, useAttrs } from 'vue'
 import { isEditableUserMessage } from '@demicodes/agent/client'
-import { CHROME_ENTER_MS } from '@demicodes/web-ui/ui/chrome-enter'
+import { chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
 import type { MessageListBlock } from '../pending-steers'
 import UserBlock from './UserBlock.vue'
 import ThinkingBlock from './ThinkingBlock.vue'
@@ -97,9 +97,7 @@ const entersAsChrome = computed(() =>
   />
   <div
     v-else
-    v-bind="attrs"
-    :class="entersAsChrome ? 'chrome-enter' : ''"
-    :style="entersAsChrome ? { '--chrome-enter-ms': `${CHROME_ENTER_MS}ms` } : undefined"
+    v-bind="{ ...attrs, ...chromeEntrance(entersAsChrome) }"
   >
     <ThinkingBlock
       v-if="block.type === 'thinking'"
