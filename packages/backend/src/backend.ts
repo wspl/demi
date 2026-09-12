@@ -445,6 +445,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
 
   const server = Bun.serve({
     port: options.port ?? 0,
+    idleTimeout: 0,
     fetch: app.fetch,
     websocket,
   })

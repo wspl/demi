@@ -22,7 +22,7 @@ const control = {
 
 function serve(broker: PipeBroker) {
   const app = new Hono().route('/api/pipes', pipeRoutes({ control, broker }))
-  const server = Bun.serve({ port: 0, fetch: app.fetch })
+  const server = Bun.serve({ port: 0, idleTimeout: 0, fetch: app.fetch })
   return {
     url: `http://localhost:${server.port}`,
     stop: () => server.stop(true)
@@ -256,3 +256,188 @@ test(
     broker.close()
   }
 )
+
+test('a server-wide idle timeout setting permits quiet pipes and delayed ordinary requests', async () => {
+  const broker = new PipeBroker({ timeoutMs: 1_000 })
+  const app = new Hono().route('/api/pipes', pipeRoutes({ control, broker }))
+  app.get('/ordinary', async (c) => {
+    await delay(14_000)
+    return c.text('late')
+  })
+  const server = Bun.serve({ port: 0, idleTimeout: 0, fetch: app.fetch })
+  const url = `http://localhost:${server.port}`
+  try {
+    const ordinary = fetch(`${url}/ordinary`).then((response) => response.text())
+    const outbound = broker.open(undefined, { deviceId: 'b' })
+    const writer = outbound.writer()
+    const get = fetch(`${url}${outbound.url}`, { headers: bearer('b') })
+    await delay(4_500)
+    await writer.write(encodeUtf8('first'))
+    const response = await get
+    const text = response.text()
+    await delay(4_500)
+    await writer.write(encodeUtf8('last'))
+    writer.end()
+    expect(await text).toBe('firstlast')
+    await outbound.done
+    expect(await ordinary).toBe('late')
+
+    const inbound = broker.open({ deviceId: 'a' }, { deviceId: 'b' })
+    let source!: ReadableStreamDefaultController<Uint8Array>
+    const put = fetch(`${url}${inbound.url}`, {
+      method: 'PUT',
+      headers: bearer('a'),
+      body: new ReadableStream({ start(controller) {
+        source = controller
+        source.enqueue(encodeUtf8('first'))
+      } })
+    })
+    const download = await fetch(`${url}${inbound.url}`, { headers: bearer('b') })
+    const inboundText = download.text()
+    await delay(4_500)
+    source.enqueue(encodeUtf8('last'))
+    source.close()
+    expect(await inboundText).toBe('firstlast')
+    expect((await put).status).toBe(200)
+    await inbound.done
+  } finally {
+    broker.close()
+    server.stop(true)
+  }
+}, 25_000)
+
+test('an HTTP GET disconnect before headers fails the waiting pipe immediately', async () => {
+  const broker = new PipeBroker()
+  const { url, stop } = serve(broker)
+  const pipe = broker.open(undefined, { deviceId: 'b' })
+  pipe.writer()
+  const controller = new AbortController()
+  try {
+    const get = fetch(`${url}${pipe.url}`, {
+      headers: bearer('b'), signal: controller.signal
+    }).catch(() => null)
+    await delay(50)
+    controller.abort()
+    await expect(pipe.done).rejects.toThrow('sink HTTP request disconnected')
+    expect(await get).toBeNull()
+    expect((await broker.get(pipe.id, 'b')).status).toBe(404)
+  } finally {
+    broker.close()
+    stop()
+  }
+})
+
+test('an HTTP response cancelled midstream fails the pipe and releases its source reader', async () => {
+  const broker = new PipeBroker()
+  const pipe = broker.open({ deviceId: 'a' }, { deviceId: 'b' })
+  let cancelled = false
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encodeUtf8('first'))
+    },
+    cancel() {
+      cancelled = true
+    }
+  })
+  try {
+    const put = broker.put(pipe.id, 'a', source)
+    const get = await broker.get(pipe.id, 'b')
+    if (!('body' in get))
+      throw new Error('missing pipe body')
+    const reader = get.body.getReader()
+    expect((await reader.read()).value).toEqual(encodeUtf8('first'))
+    const pending = reader.read()
+    await reader.cancel()
+    expect((await pending).done).toBe(true)
+    await expect(pipe.done).rejects.toThrow('disconnected before EOF')
+    expect((await put).status).toBe(409)
+    expect(cancelled).toBe(true)
+    await delay(0)
+    expect(source.locked).toBe(false)
+    reader.releaseLock()
+  } finally {
+    broker.close()
+  }
+})
+
+test('source request abort interrupts a pending sink read; rejected requests cannot fail another device pipe', async () => {
+  const broker = new PipeBroker()
+  const pipe = broker.open({ deviceId: 'a' }, { deviceId: 'b' })
+  const sourceAbort = new AbortController()
+  const rejectedAbort = new AbortController()
+  const source = new ReadableStream<Uint8Array>()
+  try {
+    expect((await broker.get(pipe.id, 'a', rejectedAbort.signal)).status).toBe(404)
+    rejectedAbort.abort()
+    const put = broker.put(pipe.id, 'a', source, sourceAbort.signal)
+    const get = await broker.get(pipe.id, 'b')
+    if (!('body' in get))
+      throw new Error('missing pipe body')
+    const read = get.body.getReader().read()
+    sourceAbort.abort()
+    await expect(read).rejects.toThrow('source HTTP request disconnected')
+    await expect(pipe.done).rejects.toThrow('source HTTP request disconnected')
+    expect((await put).status).toBe(409)
+    await delay(0)
+    expect(source.locked).toBe(false)
+  } finally {
+    broker.close()
+  }
+})
+
+test('cancelling a quiet process source wakes its pending iterator and rejects blocked writers', async () => {
+  const broker = new PipeBroker()
+  const pipe = broker.open(undefined, { deviceId: 'b' })
+  const writer = pipe.writer()
+  try {
+    const write = writer.write(encodeUtf8('first'))
+    const get = await broker.get(pipe.id, 'b')
+    if (!('body' in get))
+      throw new Error('missing pipe body')
+    const reader = get.body.getReader()
+    await reader.read()
+    await write
+    const read = reader.read()
+    broker.fail(pipe.id, 'transfer lost')
+    await expect(read).rejects.toThrow('transfer lost')
+    await expect(pipe.done).rejects.toThrow('transfer lost')
+    await expect(writer.write(encodeUtf8('late'))).rejects.toThrow('not writable')
+    reader.releaseLock()
+  } finally {
+    broker.close()
+  }
+})
+
+test('device failure reports require ownership of an end and cannot replace a settled outcome', async () => {
+  const broker = new PipeBroker()
+  const pipe = broker.open({ deviceId: 'a' }, { deviceId: 'b' })
+  broker.failFromDevice(pipe.id, 'unrelated', 'unauthorized failure')
+  const get = broker.get(pipe.id, 'b')
+  broker.failFromDevice(pipe.id, 'a', 'upload refused')
+  await expect(pipe.done).rejects.toThrow('upload refused')
+  expect((await get).status).toBe(409)
+  broker.failFromDevice(pipe.id, 'b', 'later failure')
+  await expect(pipe.done).rejects.toThrow('upload refused')
+  broker.close()
+})
+
+test('failure releases a process reader even while its consumer is paused at a chunk', async () => {
+  const broker = new PipeBroker()
+  const pipe = broker.open({ deviceId: 'a' })
+  const source = new ReadableStream<Uint8Array>({ start(controller) {
+    controller.enqueue(encodeUtf8('first'))
+  } })
+  const put = broker.put(pipe.id, 'a', source)
+  const consumer = pipe.stream()[Symbol.asyncIterator]()
+  try {
+    await consumer.next()
+    broker.fail(pipe.id, 'source lost')
+    await expect(pipe.done).rejects.toThrow('source lost')
+    expect((await put).status).toBe(409)
+    await delay(0)
+    expect(source.locked).toBe(false)
+  } finally {
+    await consumer.return?.()
+    broker.close()
+  }
+})

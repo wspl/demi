@@ -331,6 +331,50 @@ the wire a pipe is `{ id, url }`; `url` is origin-relative
 (`/api/pipes/<id>`), resolved against the runner's backend URL and sent
 with `Authorization: Bearer <device token>`.
 
+### Pipe timeout and completion ownership
+
+`backend/backend.ts` configures `Bun.serve({ idleTimeout: 0 })` for all HTTP
+routes. HTTP socket idleness does not impose an operation deadline. A pipe may
+wait before its first byte or between chunks for as long as its operation needs;
+absence of bytes is not evidence that the operation or device has failed.
+
+The native HTTP client in `vendor/txiki.js/src/httpclient.c` retains connection
+setup deadlines, then clears libwebsockets' upload and response-wait deadlines
+after request headers have been prepared. The producer may pause before or
+between chunks, and the server may wait after receiving the upload. A one-shot
+callback on the next event-loop turn clears the deadlines installed by
+libwebsockets after the header and final-body callbacks; connection teardown
+cancels that callback. An explicitly configured `HttpClient` timeout and
+Fetch abort signals remain effective.
+
+`PipeBroker` owns the pipe lifetime. Its arrival deadline (120 seconds by
+default) limits waiting for an endpoint to connect. The deadline stops when both
+ends have arrived and starts again if an unfixed process end is handed to a
+device that must connect. It is not a data-idle deadline. Runner connection
+liveness remains the registry's ping/pong responsibility.
+
+Normal EOF completes a pipe. An in-process consumer that deliberately stops
+reading releases its source, like a local pipe reader closing. An HTTP request
+that disconnects before completion, a body read error, an authenticated device's
+failed `pipe_done`, a missing endpoint, or a device disconnect fails the pipe
+with its cause. Failure releases the arrival timer, request-abort listeners,
+pending readers and writers, and all waiters. A late close or report cannot
+change a settled pipe's outcome. A device may report failure only for a pipe
+of which it is an endpoint.
+
+`RunnerRegistry` observes each relayed RPC's pipes. A pipe failure interrupts the
+handler through its abort signal with the original failure reason, closes live
+stdin, and releases the call's other pipes. The RPC reports failure (exit 1).
+Only an explicit `rpc_cancel` represents command cancellation (exit 130).
+A caller job exiting before its RPC is complete or a runner disconnecting is a
+failure with that reason, not an inferred user cancellation. The first terminal
+reason wins if several of these events race.
+
+An RPC cannot report success while its stdout failed. Its normal exit follows
+stdout completion; every terminal path removes the registry entry and releases
+any remaining input pipe. Already accepted independent work, such as a child
+agent created by `agent spawn`, retains its own supervisor lifetime.
+
 The three shapes are one picture with different ends.
 
 An `rpc` command on a device — the handler runs in the backend:

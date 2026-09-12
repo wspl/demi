@@ -20,10 +20,12 @@ import type {
   HostStore
 } from '@demicodes/shell'
 import {
+  AbortError,
   ByteQueue,
   createId,
   deferred,
   errorMessage,
+  isAbortError,
   noop,
   toBytes,
   type Deferred
@@ -521,15 +523,19 @@ export class RunnerRegistry {
       return
     }
     if (message.type === 'rpc_cancel') {
-      this.cancelRpc(connection, message.callId)
+      this.stopRpc(connection, message.callId, new AbortError('command cancelled'))
       return
     }
     if (message.type === 'pipe_done') {
-      // The broker settles a pipe by its HTTP exchange; the runner's report is for the log.
-      if (!message.ok)
+      // HTTP EOF owns success; an endpoint can report a failed transfer early.
+      if (!message.ok) {
+        this.pipes?.failFromDevice(
+          message.pipeId, connection.deviceId, message.error ?? 'device transfer failed'
+        )
         this.log(
           `pipe ${message.pipeId} on device ${connection.deviceId}: ${message.error ?? 'failed'}`
         )
+      }
       return
     }
     if (message.type === 'sync_done') {
@@ -547,7 +553,9 @@ export class RunnerRegistry {
     if (message.type === 'job_exit') {
       for (const [callId, call] of connection.rpcCalls)
         if (call.jobId === message.jobId)
-          this.cancelRpc(connection, callId)
+          this.stopRpc(connection, callId, new Error(
+            `calling job ${message.jobId} exited before its RPC completed`
+          ))
     }
     // fs results, spawn and job streams: each per-target host claims its own ids.
     const deviceHosts = this.hosts.get(connection.deviceId)
@@ -636,6 +644,11 @@ export class RunnerRegistry {
       const stdin = call.stdin ? this.pipes.open({ deviceId }) : null
       const stdout = this.pipes.open(undefined, { deviceId })
       pipes.push(stdout, ...(stdin ? [stdin] : []))
+      for (const pipe of pipes) {
+        void pipe.done.catch((error: unknown) => this.stopRpc(
+          connection, call.callId, new Error(errorMessage(error))
+        ))
+      }
       connection.send({
         type: 'rpc_pipes',
         callId: call.callId,
@@ -656,19 +669,21 @@ export class RunnerRegistry {
       }
       try {
         exitCode = await this.rpc(call, io, execution)
+        controller.signal.throwIfAborted()
         writer.end()
       } catch (error) {
         writer.fail(error)
         throw error
       }
       // The process has read everything before it exits with the code.
-      await stdout.done.catch(noop)
-      stdin?.done.catch(noop)
+      await stdout.done
+      controller.signal.throwIfAborted()
     } catch (error) {
+      const cause = controller.signal.aborted ? controller.signal.reason : error
       await stderr(
-        new TextEncoder().encode(`${call.root}: ${errorMessage(error)}\n`)
+        new TextEncoder().encode(`${call.root}: ${errorMessage(cause)}\n`)
       )
-      exitCode = 1
+      exitCode = controller.signal.aborted && isAbortError(cause) ? 130 : 1
     } finally {
       connection.rpcCalls.delete(call.callId)
       live.close()
@@ -678,18 +693,18 @@ export class RunnerRegistry {
     connection.send({
       type: 'rpc_exit',
       callId: call.callId,
-      exitCode: controller.signal.aborted ? 130 : exitCode
+      exitCode
     })
   }
 
-  private cancelRpc(connection: RunnerConnection, callId: string): void {
+  private stopRpc(connection: RunnerConnection, callId: string, reason: Error): void {
     const call = connection.rpcCalls.get(callId)
-    if (!call)
+    if (!call || call.controller.signal.aborted)
       return
-    call.controller.abort()
+    call.controller.abort(reason)
     call.live.close()
     for (const pipe of call.pipes)
-      this.pipes?.fail(pipe.id, 'rpc call cancelled')
+      this.pipes?.fail(pipe.id, reason.message)
   }
 
   private async handleHello(
@@ -845,7 +860,9 @@ export class RunnerRegistry {
   private teardown(connection: RunnerConnection): void {
     this.clearPendingClaim(connection)
     for (const callId of connection.rpcCalls.keys())
-      this.cancelRpc(connection, callId)
+      this.stopRpc(connection, callId, new Error(
+        this.closed ? 'backend shutting down' : 'runner disconnected'
+      ))
     for (const done of connection.syncs.values())
       done.reject(new Error('Runner sync interrupted or timed out'))
     connection.syncs.clear()
