@@ -61,7 +61,7 @@ it is not a server request metric and starts afresh on reload.
 
 `ThinkingBlock` measures from its persisted creation timestamp to the next block's
 creation timestamp, or the current time while streaming. Durations below one
-second read `Thought for <1s` (or `Thinking for <1s` while streaming). These are
+second read `Thought briefly` (or `Thinking` while streaming). These are
 observed transcript timings, not measurements of the model's internal reasoning.
 Both rows use `useElapsedTime`, which releases its timer when the interval ends
 or its Vue scope is disposed. The duration changes in place without replaying
