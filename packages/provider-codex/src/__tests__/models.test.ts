@@ -372,3 +372,12 @@ class RecordingAuthStore {
     return auth
   }
 }
+
+test('Codex null tool metadata remains unknown rather than advertising tool support', () => {
+  const model = codexModelsFixture().models[0]!
+  const result = codexBackendModelsToModelList({ models: [{ ...model,
+    tool_mode: null, experimental_supported_tools: undefined,
+    apply_patch_tool_type: null, web_search_tool_type: null,
+  }] })
+  expect(result.models[0]?.supportsTools).toBeNull()
+})

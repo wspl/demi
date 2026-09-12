@@ -1,14 +1,9 @@
-import {
-  isRecord,
-  nonEmptyString,
-  normalizeBaseUrl,
-  numberOrNull,
-  stringOrNull
-} from '@demicodes/utils'
-import type { ProviderModel, ProviderModelList } from '@demicodes/provider'
-import type { GrokAuthStore } from './auth'
-import { FileGrokAuthStore } from './auth'
+import { normalizeBaseUrl } from '@demicodes/utils'
+import { parseProviderData, parseProviderJson, type ProviderModel, type ProviderModelList } from '@demicodes/provider'
+import type { GrokAuthStore, GrokResolvedAuth } from './auth'
+import { FileGrokAuthStore, GrokAuthError } from './auth'
 import { DEFAULT_GROK_BUILD_BASE_URL, buildGrokBuildHeaders } from './headers'
+import { grokModelsResponseSchema, type GrokModelsResponse } from './model-schemas'
 
 export interface GrokBuildModelCatalogOptions {
   providerId?: string
@@ -67,26 +62,42 @@ export async function listGrokBuildModels(
   const baseUrl = normalizeBaseUrl(options.baseUrl
     ?? DEFAULT_GROK_BUILD_BASE_URL)
 
+  let auth: GrokResolvedAuth
   try {
-    const auth = await authStore.resolveAuth()
-    const response = await fetchImpl(modelsUrl(baseUrl), {
-      method: 'GET',
-      headers: buildGrokBuildHeaders(auth, undefined, {
-        clientVersion: options.clientVersion,
-        grokHome: options.grokHome,
-      }),
-    })
-    if (!response.ok) {
-      const fallback = grokBuildFallbackModels(providerId)
-      return {
-        ...fallback,
-        warnings: [`Grok Build /v1/models returned HTTP ${response.status}; using fallback catalog`],
-      }
+    auth = await authStore.resolveAuth()
+  } catch (error) {
+    if (error instanceof GrokAuthError && error.code === 'auth_missing') {
+      return fallbackWithWarning(providerId, 'Grok credentials are missing')
     }
-    const payload = (await response.json()) as unknown
-    return modelListFromGrokModelsPayload(payload, providerId)
+    throw error
+  }
+  const headers = buildGrokBuildHeaders(auth, undefined, {
+    clientVersion: options.clientVersion,
+    grokHome: options.grokHome,
+  })
+  let response: Response
+  try {
+    response = await fetchImpl(modelsUrl(baseUrl), { method: 'GET', headers })
   } catch {
-    return grokBuildFallbackModels(providerId)
+    return fallbackWithWarning(providerId, 'Grok catalog network request failed')
+  }
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {
+      // An errored body is already closed.
+    })
+    if (response.status === 401 || response.status === 403) {
+      throw new GrokAuthError('auth_invalid', `Grok model catalog authorization failed (HTTP ${response.status})`)
+    }
+    return fallbackWithWarning(providerId, `Grok model catalog returned HTTP ${response.status}`)
+  }
+  const payload = parseProviderJson(grokModelsResponseSchema, await response.text(), 'Grok model catalog')
+  return mapGrokModels(payload, providerId)
+}
+
+function fallbackWithWarning(providerId: string, reason: string): ProviderModelList {
+  return {
+    ...grokBuildFallbackModels(providerId),
+    warnings: [`${reason}; using fallback Grok catalog`],
   }
 }
 
@@ -94,51 +105,33 @@ export function modelListFromGrokModelsPayload(
   payload: unknown,
   providerId: string
 ): ProviderModelList {
-  const sourceFetchedAt = new Date().toISOString()
-  const data = isRecord(payload) && Array.isArray(payload.data)
-    ? payload.data
-    : Array.isArray(payload) ? payload : []
-  const models: ProviderModel[] = []
+  return mapGrokModels(parseProviderData(grokModelsResponseSchema, payload, 'Grok model catalog'), providerId)
+}
 
-  for (const item of data) {
-    if (!isRecord(item))
-      continue
-    const id = nonEmptyString(item.id) ?? nonEmptyString(item.model)
-    if (!id)
-      continue
-    const reasoningEfforts = parseReasoningEfforts(item)
-    models.push({
+function mapGrokModels(payload: GrokModelsResponse, providerId: string): ProviderModelList {
+  const sourceFetchedAt = new Date().toISOString()
+  const models: ProviderModel[] = payload.data.map((item) => {
+    const efforts = item.reasoning_efforts?.map((effort) => effort.id) ?? null
+    return {
       providerId,
-      id,
-      displayName: stringOrNull(item.name) ?? id,
-      description: stringOrNull(item.description) ?? undefined,
-      contextWindow: positiveOrDefault(
-        numberOrNull(item.context_window),
-        200_000
-      ),
+      id: item.id,
+      displayName: item.name ?? item.id,
+      description: item.description,
+      contextWindow: item.context_window ?? null,
       outputLimit: null,
-      supportsTools: true,
-      // cli-chat-proxy omits modalities; Grok Build stock harness keeps native images.
-      supportsAttachments: true,
-      supportsReasoning: item.supports_reasoning_effort === true
-        || reasoningEfforts.length > 0
-        ? true
-        : null,
-      supportedThinkingEfforts: reasoningEfforts.length > 0
-        ? reasoningEfforts
-        : null,
-      defaultThinkingEffort: defaultReasoningEffort(item, reasoningEfforts),
+      supportsTools: null,
+      supportsAttachments: item.input_modalities?.includes('image') ?? null,
+      supportsReasoning: item.supports_reasoning_effort ?? (efforts?.length ? true : null),
+      supportedThinkingEfforts: efforts,
+      defaultThinkingEffort: item.reasoning_effort
+        ?? item.reasoning_efforts?.find((effort) => effort.default)?.id ?? null,
       canDisableThinking: null,
       serviceTiers: null,
       defaultServiceTierId: null,
       sourceFetchedAt,
       stale: false,
-    })
-  }
-
-  if (models.length === 0)
-    return grokBuildFallbackModels(providerId)
-
+    }
+  })
   return {
     providerId,
     models,
@@ -152,41 +145,4 @@ export function modelListFromGrokModelsPayload(
 function modelsUrl(baseUrl: string): string {
   const normalized = normalizeBaseUrl(baseUrl)
   return normalized.endsWith('/models') ? normalized : `${normalized}/models`
-}
-
-function parseReasoningEfforts(item: Record<string, unknown>): string[] {
-  if (!Array.isArray(item.reasoning_efforts))
-    return []
-  const ids: string[] = []
-  for (const entry of item.reasoning_efforts) {
-    if (!isRecord(entry))
-      continue
-    const id = nonEmptyString(entry.id) ?? nonEmptyString(entry.value)
-    if (id)
-      ids.push(id)
-  }
-  return ids
-}
-
-function defaultReasoningEffort(
-  item: Record<string, unknown>,
-  efforts: string[]
-): string | null {
-  if (Array.isArray(item.reasoning_efforts)) {
-    for (const entry of item.reasoning_efforts) {
-      if (isRecord(entry) && entry.default === true) {
-        return nonEmptyString(entry.id) ?? nonEmptyString(entry.value) ?? null
-      }
-    }
-  }
-  const advertised = nonEmptyString(item.reasoning_effort)
-  if (advertised)
-    return advertised
-  return efforts[0] ?? null
-}
-
-function positiveOrDefault(value: number | null, fallback: number): number {
-  return value !== null && Number.isFinite(value) && value > 0
-    ? Math.trunc(value)
-    : fallback
 }

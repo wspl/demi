@@ -4,7 +4,8 @@
 // the provider kit's model catalog shape. Consumers filter the catalog for
 // what they need — a vendor's model list, one vendor's entries above a
 // version — the client knows nothing about vendors.
-import { errorMessage, numberOrNull } from '@demicodes/utils'
+import { errorMessage } from '@demicodes/utils'
+import { parseProviderJson } from './validation'
 import { z } from 'zod'
 import type {
   ProviderModel,
@@ -13,34 +14,34 @@ import type {
 } from './types'
 
 const modelsDevReasoningOptionSchema = z.looseObject({
-  type: z.string(),
-  values: z.array(z.string().nullable()).optional(),
+  type: z.string().min(1),
+  values: z.array(z.string().min(1).nullable()).optional(),
 })
 
 export const modelsDevModelSchema = z.looseObject({
-  name: z.string().optional(),
+  name: z.string().min(1).optional(),
   description: z.string().optional(),
   attachment: z.boolean().optional(),
   reasoning: z.boolean().optional(),
   reasoning_options: z.array(modelsDevReasoningOptionSchema).optional(),
   tool_call: z.boolean().optional(),
   limit: z.looseObject({
-    context: z.number().optional(),
-    output: z.number().optional()
+    context: z.number().int().nonnegative().optional(),
+    output: z.number().int().nonnegative().optional()
   }).optional(),
   cost: z
     .looseObject({
-      input: z.number().optional(),
-      output: z.number().optional(),
-      cache_read: z.number().optional(),
-      cache_write: z.number().optional(),
+      input: z.number().nonnegative().optional(),
+      output: z.number().nonnegative().optional(),
+      cache_read: z.number().nonnegative().optional(),
+      cache_write: z.number().nonnegative().optional(),
     })
     .optional(),
 })
 
 export const modelsDevProviderSchema = z.looseObject({
-  id: z.string(),
-  name: z.string(),
+  id: z.string().min(1),
+  name: z.string().min(1),
   /**
    * The client package the data is written for — the catalog's only protocol
    * tag.
@@ -52,11 +53,11 @@ export const modelsDevProviderSchema = z.looseObject({
    */
   api: z.string().optional(),
   doc: z.string().optional(),
-  models: z.record(z.string(), modelsDevModelSchema),
+  models: z.record(z.string().min(1), modelsDevModelSchema),
 })
 
 export const modelsDevCatalogSchema = z.record(
-  z.string(),
+  z.string().min(1),
   modelsDevProviderSchema
 )
 
@@ -116,7 +117,7 @@ export async function fetchModelsDev(
   if (!options.refresh && cached
     && nowDate.getTime() - cached.fetchedAtMs < MODELS_DEV_CACHE_TTL_MS) {
     return {
-      catalog: cached.catalog,
+      catalog: structuredClone(cached.catalog),
       fetchedAt: cached.fetchedAt,
       stale: false,
       warnings: []
@@ -136,17 +137,19 @@ export async function fetchModelsDev(
     if (response.status === 304 && cached) {
       cache = { ...cached, fetchedAtMs: nowDate.getTime() }
       return {
-        catalog: cached.catalog,
+        catalog: structuredClone(cached.catalog),
         fetchedAt: cached.fetchedAt,
         stale: false,
         warnings: []
       }
     }
-    if (!response.ok)
-      throw new Error(
-        `models.dev catalog request failed with HTTP ${response.status}`
-      )
-    const catalog = modelsDevCatalogSchema.parse(await response.json())
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {
+        // An errored response body is already closed.
+      })
+      throw new Error(`models.dev catalog request failed with HTTP ${response.status}`)
+    }
+    const catalog = parseProviderJson(modelsDevCatalogSchema, await response.text(), 'models.dev catalog')
     const fetchedAt = nowDate.toISOString()
     cache = {
       url,
@@ -156,12 +159,12 @@ export async function fetchModelsDev(
       fetchedAt,
       catalog,
     }
-    return { catalog, fetchedAt, stale: false, warnings: [] }
+    return { catalog: structuredClone(catalog), fetchedAt, stale: false, warnings: [] }
   } catch (error) {
     if (!cached)
       throw error
     return {
-      catalog: cached.catalog,
+      catalog: structuredClone(cached.catalog),
       fetchedAt: cached.fetchedAt,
       stale: true,
       warnings: [`Using stale models.dev catalog: ${errorMessage(error)}`],
@@ -191,8 +194,8 @@ export function modelFromModelsDev(
     id,
     displayName: entry.name ?? id,
     description: entry.description,
-    contextWindow: numberOrNull(entry.limit?.context),
-    outputLimit: numberOrNull(entry.limit?.output),
+    contextWindow: entry.limit?.context ?? null,
+    outputLimit: entry.limit?.output ?? null,
     supportsTools: entry.tool_call ?? null,
     supportsAttachments: entry.attachment ?? null,
     supportsReasoning: entry.reasoning ?? null,
@@ -201,10 +204,10 @@ export function modelFromModelsDev(
     ...(entry.cost
       ? {
           cost: {
-            input: numberOrNull(entry.cost.input),
-            output: numberOrNull(entry.cost.output),
-            cacheRead: numberOrNull(entry.cost.cache_read),
-            cacheWrite: numberOrNull(entry.cost.cache_write),
+            input: entry.cost.input ?? null,
+            output: entry.cost.output ?? null,
+            cacheRead: entry.cost.cache_read ?? null,
+            cacheWrite: entry.cost.cache_write ?? null,
           },
         }
       : {}),
@@ -250,8 +253,7 @@ function reasoningEfforts(
   if (!effort?.values)
     return null
   const efforts = effort.values.filter(
-    (value): value is string => typeof value === 'string'
-      && value.length > 0
+    (value): value is string => value !== null
   )
-  return efforts.length > 0 ? efforts : []
+  return efforts
 }

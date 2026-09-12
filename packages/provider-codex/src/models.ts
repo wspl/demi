@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { errorMessage } from '@demicodes/utils'
+import { parseProviderData, ProviderDataError } from '@demicodes/provider'
 import type {
   ProviderModel,
   ProviderModelList,
@@ -145,7 +146,7 @@ export function codexBackendModelsToModelList(
     warnings?: string[]
   } = {},
 ): ProviderModelList {
-  const response = codexModelsResponseSchema.parse(value)
+  const response = parseProviderData(codexModelsResponseSchema, value, 'Codex model catalog')
   const sourceFetchedAt = options.sourceFetchedAt ?? new Date().toISOString()
   const models = response.models
     .filter((model) => model.visibility === 'list')
@@ -189,12 +190,24 @@ async function requestCodexModels(options: {
     ),
   })
   if (!response.ok) {
+    await response.body?.cancel().catch(() => {
+      // An errored response body is already closed.
+    })
     throw new CodexModelCatalogHttpError(
       response.status,
       `Codex models request failed with HTTP ${response.status}`
     )
   }
-  return codexBackendModelsToModelList(await response.json(), {
+  let value: unknown
+  try {
+    value = await response.json()
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new ProviderDataError('Codex model catalog', 'invalid JSON')
+    }
+    throw error
+  }
+  return codexBackendModelsToModelList(value, {
     sourceFetchedAt: options.now.toISOString(),
     stale: false,
   })
@@ -297,12 +310,12 @@ function codexModelCatalogCacheKey(
 const CODEX_FAST_SERVICE_TIER_ID = 'priority'
 
 function supportsCodexTools(raw: CodexBackendModel): boolean | null {
-  if (typeof raw.tool_mode === 'string' && raw.tool_mode.length > 0)
+  if (raw.tool_mode)
     return true
-  if (Array.isArray(raw.experimental_supported_tools))
+  if (raw.experimental_supported_tools)
     return raw.experimental_supported_tools.length > 0
-  if (raw.apply_patch_tool_type !== undefined
-    || raw.web_search_tool_type !== undefined) return true
+  if (raw.apply_patch_tool_type != null
+    || raw.web_search_tool_type != null) return true
   return null
 }
 

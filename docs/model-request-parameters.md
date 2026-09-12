@@ -94,7 +94,9 @@ catalog even when a cached result is still within its freshness period. Calling
 Codex and models.dev preserve their existing failure behavior: when a remote
 check fails and a usable cached list exists, the returned list is marked stale
 and carries a warning. Without a usable cached list they report failure. Grok
-Build retains its existing explicitly stale fallback list on catalog failure.
+Build returns its explicitly stale fallback list only when credentials are missing,
+the catalog request fails, or a non-auth HTTP failure prevents discovery. Its
+authentication errors and malformed successful responses are reported directly.
 The content's sourceFetchedAt value is preserved when revalidation confirms no
 change or when a cached list is returned after failure.
 
@@ -130,3 +132,35 @@ explicit selectable level.
 Upstream references: [models request](https://github.com/openai/codex/blob/3dc1e2a58406dc69db5812539adfee7d89fa9ef7/codex-rs/codex-api/src/endpoint/models.rs),
 [model metadata and presets](https://github.com/openai/codex/blob/3dc1e2a58406dc69db5812539adfee7d89fa9ef7/codex-rs/protocol/src/openai_models.rs),
 and [picker visibility](https://github.com/openai/codex/blob/3dc1e2a58406dc69db5812539adfee7d89fa9ef7/codex-rs/app-server/src/models.rs).
+
+
+## Catalog data contracts
+
+Codex uses its existing catalog schema at the response boundary. The shared
+models.dev client validates its catalog before caching; Claude's catalog filter
+receives that validated snapshot. Public conversion helpers taking `unknown`
+validate independently. Numeric model limits are integer token counts and costs
+are finite nonnegative numbers. Missing capabilities, limits and cost fields map
+to null. Mappers do not re-interpret wrong types or manufacture values from them.
+Callers receive independent models.dev snapshots, so mutation cannot corrupt the
+cached validated catalog. Malformed refresh responses can use the last good
+Codex/models.dev copy only with its stale marker and a value-free warning.
+
+Grok's `model-schemas.ts` validates the models response before mapping. The
+[models endpoint](https://docs.x.ai/developers/rest-api-reference/inference/models)
+uses an object with a `data` array of entries identified by `id`. Demi consumes
+`name`, `description`, `context_window`, `input_modalities` and the adapter's
+reasoning metadata: `supports_reasoning_effort`, `reasoning_efforts` entries with
+`id`/optional `default`, and `reasoning_effort`. Unknown extra fields are permitted.
+A valid empty `data` array remains an empty live catalog. Invalid entries fail the
+whole response instead of being skipped.
+
+Grok context windows, when present, are positive integer counts. Missing context
+size remains unknown. Native image support follows supplied input modalities;
+missing modalities and unadvertised tool support remain unknown. An explicit false
+reasoning capability remains false. Missing default effort stays null; order does
+not select one. Duplicate model/effort IDs and conflicting or unavailable declared
+defaults fail validation. Built-in fallback metadata is a separate static catalog,
+marked stale with a reason explaining why live discovery was unavailable. Its
+fixed epoch source date denotes static, unfetched content and is never substituted
+for a missing or malformed date in a live catalog.

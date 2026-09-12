@@ -1,5 +1,6 @@
 import {
   fetchModelsDev,
+  parseProviderData,
   modelFromModelsDev,
   modelsDevCatalogSchema,
   resetModelsDevCacheForTests,
@@ -40,7 +41,7 @@ export async function listClaudeCodeModels(
     now: options.now,
     refresh: options.refresh
   })
-  return modelsDevAnthropicCatalogToModelList(snapshot.catalog, {
+  return mapAnthropicCatalog(snapshot.catalog, {
     minimumModelVersion: options.minimumModelVersion
       ?? DEFAULT_MINIMUM_MODEL_VERSION,
     sourceFetchedAt: snapshot.fetchedAt,
@@ -49,14 +50,24 @@ export async function listClaudeCodeModels(
   })
 }
 
+interface ClaudeCatalogMappingOptions {
+  minimumModelVersion?: string | ClaudeVersion
+  sourceFetchedAt?: string
+  stale?: boolean
+  warnings?: string[]
+}
+
 export function modelsDevAnthropicCatalogToModelList(
   value: unknown,
-  options: {
-    minimumModelVersion?: string | ClaudeVersion
-    sourceFetchedAt?: string
-    stale?: boolean
-    warnings?: string[]
-  } = {},
+  options: ClaudeCatalogMappingOptions = {},
+): ProviderModelList {
+  const catalog = parseProviderData(modelsDevCatalogSchema, value, 'models.dev catalog')
+  return mapAnthropicCatalog(catalog, options)
+}
+
+function mapAnthropicCatalog(
+  catalog: ModelsDevCatalog,
+  options: ClaudeCatalogMappingOptions,
 ): ProviderModelList {
   const sourceFetchedAt = options.sourceFetchedAt ?? new Date().toISOString()
   const stale = options.stale === true
@@ -66,7 +77,6 @@ export function modelsDevAnthropicCatalogToModelList(
       : options.minimumModelVersion
         ?? parseMinimumModelVersion(DEFAULT_MINIMUM_MODEL_VERSION)
   const warnings = [...(options.warnings ?? [])]
-  const catalog: ModelsDevCatalog = modelsDevCatalogSchema.parse(value)
   const anthropic = catalog.anthropic
   if (!anthropic)
     throw new Error('models.dev response does not contain anthropic.models')
