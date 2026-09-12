@@ -1,9 +1,20 @@
 import type { ConversationState } from './types'
+import { isSubagentRunning, type SubagentRecord } from './subagents'
 
 export type ConversationStatus = 'idle' | 'active' | 'done' | 'error' | 'aborted'
 
-export function conversationStatus(state: ConversationState): ConversationStatus {
-  if (state.phase === 'running' || state.phase === 'compacting')
+/** A conversation remains active until its root and all children finish. */
+export function isConversationActive(
+  phase: ConversationState['phase'],
+  subagents: readonly Pick<SubagentRecord, 'phase'>[] = [],
+): boolean {
+  return phase !== 'idle' || subagents.some((agent) => isSubagentRunning(agent.phase))
+}
+
+export function conversationStatus(
+  state: ConversationState & { subagents?: readonly Pick<SubagentRecord, 'phase'>[] },
+): ConversationStatus {
+  if (isConversationActive(state.phase, state.subagents))
     return 'active'
   if (state.lastError)
     return 'error'
