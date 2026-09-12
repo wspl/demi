@@ -50,7 +50,7 @@ caller to remove it and use stdin.
 | `todo done` | id | JSON output | unused |
 | `todo list` | none | JSON output | unused |
 | `agent spawn` | none | profile, description, no-subagents, JSON output | task brief |
-| `agent send`, `steer`, `resume` | id | JSON output | message |
+| `agent send`, `resume` | id | JSON output | message |
 | `agent abort`, `show` | id | JSON output | unused |
 | `agent list` | none | JSON output | unused |
 | `host shell` | one quoted script | host | streamed to the remote program |

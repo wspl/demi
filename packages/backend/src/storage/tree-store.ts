@@ -71,6 +71,7 @@ export function sqliteAgentTreeStore(
     state: update.state,
     phase: update.phase,
     queue: update.queue,
+    pendingInternalSteers: update.pendingInternalSteers,
     cwd: update.cwd,
     model: update.model,
     harnessName: update.harnessName,

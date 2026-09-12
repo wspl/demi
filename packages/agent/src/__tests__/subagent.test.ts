@@ -239,7 +239,8 @@ test(
     // Creation returns only the child id; the lifecycle event carries its result.
     expect(continuationText).toContain('subagentId:')
     expect(continuationText).toContain('exitCode: 0')
-    expect(continuationText).not.toContain('child result text')
+    // A fast child may already supply its receipt at this continuation.
+    expect(client.transcript().blocks.filter(block => block.type === 'user')).toHaveLength(1)
 
     // Protocol frames: started and closed, plus a child transcript stream.
     const lifecycle = seen.filter((event) => event.type === 'subagent')
@@ -551,7 +552,7 @@ scripts: {
 })
 
 test(
-  'steer chimes into a running child turn; the parent steer materializes at the continuation',
+  'send steers a running child and preserves its source at the continuation',
   async () => {
     let childContinuation: InferenceRequest | null = null
     const { client } = await openHarness({
@@ -572,7 +573,7 @@ test(
             't2',
             'shell_exec',
             {
-              script: `demi agent steer ${id} <<< 'course correction'`,
+              script: `demi agent send ${id} <<< 'course correction'`,
               timeoutMs: 5_000
             }
           )]
@@ -598,13 +599,13 @@ test(
     expect(childContinuation).not.toBeNull()
     const steer = childContinuation!.items.find((item) => item.type === 'user_steer')
     expect(JSON.stringify(steer ?? '')).toContain('course correction')
-    expect(JSON.stringify(steer ?? '')).toContain('[agent ')
+    expect(JSON.stringify(steer ?? '')).toContain('Agent-originated context')
     await client.close()
   }
 )
 
 test(
-  'send is a mailbox: a queued message opens a new child turn instead of closing the session',
+  'send joins the busy child continuation without opening a human turn',
   async () => {
     let secondTurnRequest: InferenceRequest | null = null
     const { client, seen, sessionId } = await openHarness({
@@ -627,7 +628,6 @@ test(
           )]
         },
         [events.text('parent idle'), events.response()],
-        [events.text('first phase'), events.response()],
         (request) => {
           secondTurnRequest = request
           return [events.text('second phase'), events.response()]
@@ -644,11 +644,11 @@ test(
       { timeoutMs: 5_000 },
     )
 
-    // The mailbox message arrived as a fresh user turn after the first turn ended,
-    // prefixed with the sender identity (the root session).
+    // The message arrives at the next safe boundary in the existing turn.
     expect(secondTurnRequest).not.toBeNull()
     expect(itemsText(secondTurnRequest!)).toContain('extra instruction')
-    expect(itemsText(secondTurnRequest!)).toContain(`[agent ${sessionId}`)
+    expect(itemsText(secondTurnRequest!)).toContain(sessionId)
+    expect(secondTurnRequest!.items.filter(item => item.type === 'user_message')).toHaveLength(1)
     const closedFrame = seen.find((event) => event.type === 'subagent'
       && event.event === 'closed')
     expect(closedFrame?.type === 'subagent' ? closedFrame.job.result : '')
@@ -658,7 +658,7 @@ test(
 )
 
 test(
-  'steering an idle root fails; send parent wakes it as a user turn',
+  'the agent steer verb is unavailable; send parent wakes an idle root internally',
   async () => {
     let steerFailureText = ''
     let wakeRequest: InferenceRequest | null = null
@@ -716,10 +716,10 @@ test(
       { timeoutMs: 5_000 },
     )
 
-    expect(steerFailureText).toContain('no running turn to steer')
+    expect(steerFailureText).toContain('Unknown subcommand')
     expect(wakeRequest).not.toBeNull()
     expect(itemsText(wakeRequest!)).toContain('ping via mail')
-    expect(itemsText(wakeRequest!)).toContain('[agent ')
+    expect(itemsText(wakeRequest!)).toContain('Agent-originated context')
     await client.close()
   }
 )
@@ -760,7 +760,6 @@ test(
               timeoutMs: 10_000,
             }),
           ],
-          [events.text('holder first'), events.response()],
           (request) => {
             siblingMessageRequest = request
             return [events.text('holder second'), events.response()]
@@ -973,7 +972,7 @@ test(
 )
 
 test(
-  'a child finishing after the parent went idle wakes it with a user message',
+  'a child finishing after the parent went idle wakes it with an agent receipt',
   async () => {
     let wakeText = ''
     const { client } = await openHarness({
@@ -1420,11 +1419,11 @@ test(
               5_000,
             ),
           ],
-          [events.text('dispatched'), events.response()],
-          (request) => {
+          (request) => (async function* () {
+            await waitClosed(seen)
             childId = subagentIdFrom(request)
-            return [spawnCall('t2', 'demi agent list', 5_000)]
-          },
+            yield spawnCall('t2', 'demi agent list', 5_000)
+          })(),
           (request) => {
             listText = itemsText(request)
             return [
@@ -1472,7 +1471,7 @@ test(
 
     // Resume returns the id; the lifecycle carries the second result.
     expect(resumeToolText).toContain('subagentId:')
-    expect(resumeToolText).not.toContain('second result')
+    expect(client.transcript().blocks.filter(block => block.type === 'user')).toHaveLength(1)
     const lifecycle = seen.filter((event) => event.type === 'subagent').map(
       (event) => (event.type === 'subagent'
         ? event.event
@@ -2136,7 +2135,7 @@ scripts: {
     })
     await new Promise((resolve) => setTimeout(resolve, 200))
     expect(
-      third.client.transcript().blocks.filter((block) => block.type === 'user')
+      third.client.transcript().blocks.filter((block) => block.type === 'agent_message')
     ).toHaveLength(2)
     expect(third.seen.some((event) => event.type === 'error')).toBe(false)
     await third.client.close()
@@ -2347,8 +2346,38 @@ test('start request ids survive reopening and deduplicate spawn and each resumed
   await waitFor(() => second.client.transcript().blocks.some(block => block.type === 'text' && block.text === 'all rounds received'))
   expect(second.seen.filter(event => event.type === 'subagent' && event.event === 'started')).toHaveLength(2)
   expect(results).toHaveLength(2)
-  const completions = second.client.transcript().blocks.filter(block => block.type === 'user' && block.turnId.startsWith('subagent:'))
+  const completions = second.client.transcript().blocks.filter(block => block.type === 'agent_message' && block.message.event.type === 'completion')
   expect(completions).toHaveLength(2)
-  expect(new Set(completions.map(block => block.type === 'user' ? block.turnId : '')).size).toBe(2)
+  expect(new Set(completions.map(block => block.id)).size).toBe(2)
   await second.client.close()
+})
+
+test('a child whose internal continuation fails closes with a failed completion receipt', async () => {
+  const { client, seen } = await openHarness({
+    scripts: {
+      root: [
+        [spawnCall('start-outer', "demi agent spawn <<< 'outer waits' --description outer", 5000)],
+        [events.text('Parent waiting'), events.response()],
+        [events.text('Failure received'), events.response()],
+      ],
+      'outer waits': [
+        [spawnCall('start-inner', "demi agent spawn <<< 'inner slow' --description inner", 5000)],
+        [events.text('Waiting for inner result'), events.response()],
+        () => { throw new Error('Internal continuation failed') },
+      ],
+      'inner slow': [
+        [events.toolCall('inner-hold', 'shell_exec', { script: 'probe hold 200', timeoutMs: 5000 })],
+        [events.text('Inner complete'), events.response()],
+      ],
+    },
+  })
+  await client.send([{ type: 'text', text: 'Run nested work' }])
+  await waitFor(() => seen.some(event => event.type === 'subagent' && event.event === 'closed'
+    && event.job.description === 'outer' && event.job.phase === 'error'))
+  await waitFor(() => client.transcript().blocks.some(block => block.type === 'agent_message'
+    && block.message.sender.description === 'outer'))
+  expect(client.transcript().blocks.find(block => block.type === 'agent_message'
+    && block.message.sender.description === 'outer')).toMatchObject({
+    message: { event: { type: 'completion', outcome: 'failed' }, content: 'Internal continuation failed' },
+  })
 })

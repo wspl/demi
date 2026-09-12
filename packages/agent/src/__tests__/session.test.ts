@@ -1484,7 +1484,8 @@ test(
       { metadata: { identityOpenId: 'user-b' } }
     )
     await provider.waitForRun(1)
-    await waitFor(() => session?.queuedMessages().length === 1)
+    await waitFor(() => !session?.hasPendingYields())
+    expect(session.queuedMessages()).toEqual([])
 
     expect(provider.steers).toEqual([])
     provider.release(1)

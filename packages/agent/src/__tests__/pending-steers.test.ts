@@ -54,7 +54,7 @@ test(
     snapshot[0]!.content.length = 0
     snapshot[0]!.model.model.id = 'caller edit'
     expect(queue.snapshot()).toEqual([pending('user')])
-    expect(queue.takeForTurn('turn').map((steer) => steer.id)).toEqual([
+    expect(queue.takeForTurn('turn').map((steer) => steer.agentMessage ? steer.agentMessage.id : steer.id)).toEqual([
       'hidden',
       'user'
     ])

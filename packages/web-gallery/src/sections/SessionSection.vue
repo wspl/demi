@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
+import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
+import { agentReceiptMessages } from '../fixtures/blocks'
 import ErrorBlock from '@demicodes/web-ui/agent/blocks/ErrorBlock.vue'
 import ToolShellBlock from '@demicodes/web-ui/agent/blocks/ToolShellBlock.vue'
 import { parseToolInput } from '@demicodes/web-ui/agent/block-helpers'
@@ -855,6 +857,21 @@ function abortTerminal(id: string) {
               />
             </div>
           </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection title="AgentReceiptBlock" note="Agent updates and completion receipts. Expand to read the message; these rows have no human message controls.">
+        <div class="gallery-frame gallery-block-frame bg-surface">
+          <div class="specimen-stack [--agent-pad-x:0px]">
+            <GallerySpecimen
+              v-for="(message, index) in agentReceiptMessages"
+              :key="message.id"
+              :variant="message.event.type === 'message' ? 'update' : message.event.outcome"
+              wide
+            >
+              <AgentReceiptBlock :message="message" :open="index === 1" />
+            </GallerySpecimen>
+          </div>
         </div>
       </GallerySection>
 

@@ -160,13 +160,11 @@ export class ProviderTurnLoop<State> {
           continue
         }
       }
-      if (toolExecution.stopAfterToolResult)
-        return
       if (this.host.steerContinuationCount > steerContinuationBeforeStream) {
         await this.host.materializeSteersArrivedSince(steerContinuationBeforeStream)
         continue
       }
-      if (!toolExecution.executed)
+      if (toolExecution.stopAfterToolResult || !toolExecution.executed)
         return
     }
   }

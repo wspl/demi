@@ -17,6 +17,8 @@ export function specimenForBlock(block: MessageListBlock): {
   switch (block.type) {
     case 'user':
       return { name: 'UserBlock', variant: 'user' }
+    case 'agent_message':
+      return { name: 'AgentReceiptBlock', variant: block.message.event.type === 'message' ? 'update' : block.message.event.outcome }
     case 'steer':
       return { name: 'UserBlock', variant: 'steer' }
     case 'pending_steer':

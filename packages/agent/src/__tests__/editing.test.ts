@@ -436,7 +436,12 @@ for (const kind of ['hidden', 'completion', 'assistant', 'missing', 'steer'] as 
     if (kind === 'hidden') {
       transcript.pushUserTurn('hidden', model, text('wakeup'), null, true)
     } else if (kind === 'completion') {
-      transcript.pushUserTurn(completionMessageId('child', 0), model, text('child finished'))
+      transcript.pushAgentMessage('turn-C', model, {
+        id: completionMessageId('child', 0),
+        sender: { id: 'child', description: 'Child', round: 0 },
+        recipientId: 'root', timestamp: '2026-09-12T00:00:00.000Z',
+        content: 'child finished', event: { type: 'completion', outcome: 'completed' },
+      })
     } else if (kind === 'steer') {
       transcript.pushSteer('turn-C', model, text('steer'))
     }

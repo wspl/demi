@@ -416,21 +416,28 @@ test(
       delivered: false
     })
 
-    // The root's save carrying a's wakeup as a user turn marks a delivered; b waits.
+    const completion = (round: number) => ({
+      id: completionMessageId('a', round),
+      sender: { id: 'a', description: 'first', round },
+      recipientId: 'c',
+      timestamp: '2026-09-12T00:00:00.000Z',
+      content: 'a done',
+      event: { type: 'completion' as const, outcome: 'completed' as const },
+    })
+    // The receipt and its source round acknowledgement commit together.
     await tree.sessionStore('c').save({
       ...emptyCheckpoint(),
       changedBlocks: [{
-          index: 0,
-          block: {
-            type: 'user',
-            id: 'u1',
-            turnId: completionMessageId('a', 1),
-            createdAt: '2026-01-01T00:00:00.000Z',
-            model,
-            content: [{ type: 'text', text: 'x' }],
-            preamble: null
-          }
-        }],
+        index: 0,
+        block: {
+          type: 'agent_message',
+          id: completionMessageId('a', 1),
+          turnId: 'parent-turn',
+          createdAt: '2026-09-12T00:00:00.000Z',
+          model,
+          message: completion(1),
+        },
+      }],
       blockCount: 1,
     })
     expect((await tree.node('a'))?.delivered).toBe(true)
@@ -463,15 +470,16 @@ test(
     })
     await tree.sessionStore('c').save({
       ...emptyCheckpoint(),
-      queue: [{ id: completionMessageId('a', 1), text: 'old', content: [] }],
+      pendingInternalSteers: [{ turnId: 'turn', model, metadata: null, agentMessage: completion(1) }],
     })
     await tree.markDelivered('a', 1)
     expect((await tree.node('a'))?.delivered).toBe(false)
     await tree.sessionStore('c').save({
       ...emptyCheckpoint(),
-      queue: [{ id: completionMessageId('a', 9), text: 'new', content: [] }],
+      pendingInternalSteers: [{ turnId: 'turn', model, metadata: null, agentMessage: completion(9) }],
     })
     expect((await tree.node('a'))?.delivered).toBe(true)
+    expect((await tree.sessionStore('c').load())?.pendingInternalSteers?.[0]?.agentMessage).toEqual(completion(9))
 
     await tree.deleteNode('a')
     expect(await tree.node('a')).toBeNull()

@@ -38,6 +38,12 @@ const isExpandable = computed(() => props.expandable || hasBodySlot() || !!props
 const bodyScroll = ref<HTMLElement>()
 let closeTimer: ReturnType<typeof setTimeout> | undefined
 
+function toggleOpen(): void {
+  if (isExpandable.value) {
+    isOpen.value = !isOpen.value
+  }
+}
+
 function clearCloseTimer() {
   if (!closeTimer)
     return
@@ -92,7 +98,12 @@ onUpdated(() => {
       :class="tone === 'danger'
         ? isExpandable ? 'group text-on-danger hover:text-on-danger' : 'text-on-danger'
         : isExpandable ? 'group text-fg-muted hover:text-fg-body' : 'text-fg-muted'"
-      @click="isExpandable && (isOpen = !isOpen)"
+      :role="isExpandable ? 'button' : undefined"
+      :tabindex="isExpandable ? 0 : undefined"
+      :aria-expanded="isExpandable ? isOpen : undefined"
+      @click="toggleOpen"
+      @keydown.enter.self.prevent="toggleOpen"
+      @keydown.space.self.prevent="toggleOpen"
     >
       <ChromeRoll
         class="min-w-0"

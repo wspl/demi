@@ -1,6 +1,6 @@
 # Agent messages
 
-Status: intended design. Runtime and UI acceptance are pending.
+Status: implemented. Acceptance uses scripted providers, isolated stores, and the shared product/gallery UI.
 
 This document defines agent-to-agent delivery, automatic completion receipts,
 and their transcript presentation. `subagent.md` owns the rest of the child
@@ -32,7 +32,7 @@ identity from the invoking node; models cannot impersonate another sender by
 writing an identifier into the message body.
 
 Each message has a stable id, sender node id, sender description, sender round
-identifier, recipient node id, timestamp, content, and one event variant:
+identifier (`spawnedAt` from the persisted sender node), recipient node id, timestamp, content, and one event variant:
 
 - `message`: an explicit communication between live agents.
 - `completion`: a supervisor receipt with outcome `completed`, `failed`, or
@@ -70,9 +70,12 @@ While idle, it uses the existing hidden-wakeup action path. The input record
 carries the agent-message variant through either path; internal inputs are
 excluded from the human queue and pending-steer UI snapshots.
 
-The existing pending-input checkpoint contract must preserve accepted internal
-inputs and their source fields. Extending that contract supplies durability;
-it does not introduce a separately managed agent inbox.
+`pendingInternalSteers` in the target checkpoint serializes the agent-originated
+members of `PendingSteerQueue`: the target turn, model, source envelope, and action
+metadata. The message id and body live only in the envelope. Admission validates
+the envelope and flushes the checkpoint before returning. Materialization replaces
+these pending records with transcript blocks in the same target checkpoint.
+This extends the existing steering contract without a separately managed inbox.
 
 | Recipient state | Delivery |
 |---|---|
@@ -145,8 +148,9 @@ effects or resurrect the sending child.
 
 - A collapsed Bot-icon row names the sender and event: "UI implementation sent
   an update", "UI implementation completed", or "UI implementation failed".
-- Expand reveals source identity, round, timestamp, and the message or result.
-  Markdown is rendered through the existing safe content renderer.
+- Click, Enter, or Space expands the row to reveal only the message or result.
+  Sender ids, round identifiers, and timestamps stay in the structured data;
+  the expanded body does not show them. Markdown uses the existing safe renderer.
 - Receipt rows have no user bubble, human pending-steer controls, edit action,
   or message-level fork action. They are inspectable context, not user input.
 - The receipt appears once in the transcript where it is incorporated into
@@ -156,7 +160,7 @@ effects or resurrect the sending child.
   thinking, tool execution, and receipt rows retain their distinct meanings.
 
 No receipt content is discarded merely to reduce visual noise. Collapsed rows
-provide a quiet default while preserving source and details for inspection.
+provide a quiet default while preserving the complete message for inspection.
 
 ## Acceptance
 
@@ -182,3 +186,22 @@ Use scripted providers and isolated storage/runner fixtures, never real models.
 9. Agent inputs traverse the existing internal-steer and hidden-wakeup paths,
    producing `agent_message` blocks; human steers produce `steer` blocks. There
    is no agent-specific scheduler or duplicate receipt record.
+
+## Implementation and verification
+
+- `session/session.ts` owns admission, steering, hidden continuation actions,
+  abort retention, and checkpoint flushes. `session/steer-queue.ts` owns the
+  ordered pending records. Human pending-steer snapshots exclude agent input.
+- `protocol/agent-message.ts` validates admitted and restored envelopes;
+  `transcript/agent-message.ts` supplies the provider source wrapper.
+- `subagent/supervisor.ts` supplies sender identity and completion timestamps,
+  prevents closing with unread input, and observes terminal action failures.
+  `store/tree-store.ts` identifies the exact completion rounds carried by a save.
+- `__tests__/agent-messages.test.ts` covers durable busy batches, idle batching,
+  live steering, finalization, abort/restore, deduplication, retry, and compaction.
+  `subagent.test.ts` covers command delivery, nested failures, archive/reopen,
+  and completion retries; memory and SQLite store tests cover atomic acknowledgement.
+- `web-ui/agent/blocks/AgentReceiptBlock.vue` owns presentation. Gallery block
+  specimens cover updates and all completion outcomes, expanded long content,
+  and equal descriptions with distinct identities. The product renders the same
+  rows through `AgentMessageVirtualBlock` from persisted transcript data.

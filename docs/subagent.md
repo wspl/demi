@@ -116,7 +116,7 @@ named-option form. An empty message fails. `--profile` names a harness profile;
 model and provider runtime come from the profile or parent.
 
 `abort` / `send` / `show` / `list` define JSON objects
-`{ id, aborted }`, `{ id, accepted }`, `{ id, accepted }`, `{ agent }`, and
+`{ id, aborted }`, `{ id, accepted }`, `{ agent }`, and
 `{ tree }` respectively.
 
 ### Command help
@@ -145,9 +145,8 @@ a harness profile; the live describe text lists configured names.
 
 ## Communication
 
-[Agent messages](agent-messages.md) defines the intended delivery and UI contract.
-Runtime acceptance of that design is pending; its acceptance section is the
-implementation checklist.
+[Agent messages](agent-messages.md) defines the implemented delivery, persistence,
+and shared UI contract.
 
 `demi agent send <id|parent>` admits a structured internal message. The session
 uses its existing internal-steer path for a busy recipient and its hidden-wakeup
@@ -570,14 +569,13 @@ Only the node assembly instantiates `AgentSession`.
 
 ## Existing test coverage
 
-The following describes the current suite. Delivery and presentation acceptance
-for the intended internal-message contract is listed in [Agent messages](agent-messages.md#acceptance).
+The following describes the current suite. Internal-message acceptance is listed
+in [Agent messages](agent-messages.md#acceptance).
 
 - `packages/agent/src/__tests__/subagent.test.ts` — spawn isolation with the child
   preamble on an empty transcript, nested spawn (grandchild) with recursive
-  abort and restore, the per-session live-children ceiling, `send` inbox
-  semantics (busy queue, idle wakeup, close deferral, archived-target error),
-  `steer` mid-turn injection and idle-root rejection, cross-branch `send` /
+  abort and restore, the per-session live-children ceiling, `send` internal steering, idle wakeup, close deferral, archived-target errors,
+  rejection of the removed agent steering verb, cross-branch `send` /
   `show` between siblings, lifecycle-authority rejection (`abort` / `resume`
   on a non-child), idle parent wakeup on completion, empty prompt fails,
   empty last text completes with an empty result, `subagent*` protocol frames from nested depths,

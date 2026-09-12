@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { Block } from '@demicodes/core'
 import {
+  agentMessageSchema,
   modelSelectionSchema,
   editResultSchema,
   type ServerFrame,
@@ -99,6 +100,12 @@ export const usageSchema = z.object({
   cacheWriteTokens: z.number(),
 })
 const persistedBlockSchema = z.discriminatedUnion('type', [
+  z.object({
+    ...meta,
+    type: z.literal('agent_message'),
+    turnId: z.string().min(1),
+    message: agentMessageSchema,
+  }).refine(block => block.id === block.message.id, 'Receipt id must match its message'),
   z.object({
     ...meta,
     type: z.literal('user'),

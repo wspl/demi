@@ -34,3 +34,5 @@ export {
 } from './protocol/schemas'
 export { isEditableUserMessage } from './transcript/user-message'
 export { applyTranscriptPatches } from './transcript/patch'
+
+export { agentMessageSchema } from './protocol/agent-message'

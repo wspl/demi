@@ -100,7 +100,7 @@ test(
       transcript.takePatches()!.patches
     )
 
-    const userBlock = transcript.rewindToLastUserTurn()
+    const userBlock = transcript.rewindToLastInputTurn()
     expect(userBlock?.turnId).toBe('turn-1')
 
     const drained = transcript.takePatches()!

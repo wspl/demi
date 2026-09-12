@@ -1,3 +1,4 @@
+import type { PendingInternalSteer } from './session/steer-queue'
 import type {
   Block,
   ModelSelection,
@@ -304,6 +305,7 @@ export interface AgentSessionStateSnapshot<State> {
   state: State
   phase: SessionPhase
   queue: QueuedMessage[]
+  pendingInternalSteers?: PendingInternalSteer[]
   cwd: string
   model: ModelSelection
   harnessName: string
@@ -471,6 +473,11 @@ export interface AgentSessionOptions<State = unknown> {
 }
 
 export type SessionEvent =
+  | {
+      /** A terminal action-worker failure, including internal continuations. */
+      type: 'action_failed'
+      error: Error
+    }
   | {
       type: 'transcript_changed';
       patches: TranscriptPatch[];

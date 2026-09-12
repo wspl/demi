@@ -5,6 +5,7 @@ import { chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
 import type { MessageListBlock } from '../pending-steers'
 import UserBlock from './UserBlock.vue'
 import ThinkingBlock from './ThinkingBlock.vue'
+import AgentReceiptBlock from './AgentReceiptBlock.vue'
 import AssistantTextBlock from './AssistantTextBlock.vue'
 import ToolCallBlock from './ToolCallBlock.vue'
 import ErrorBlock from './ErrorBlock.vue'
@@ -44,7 +45,7 @@ const attrs = useAttrs()
 /** Rows built on FunctionalBlock: the 28px chrome face. Text streams in on its own. */
 const entersAsChrome = computed(() =>
   props.entering
-  && (props.block.type === 'thinking' || props.block.type === 'tool_call' || props.block.type === 'abort'),
+  && (props.block.type === 'agent_message' || props.block.type === 'thinking' || props.block.type === 'tool_call' || props.block.type === 'abort'),
 )
 </script>
 
@@ -99,8 +100,12 @@ const entersAsChrome = computed(() =>
     v-else
     v-bind="{ ...attrs, ...chromeEntrance(entersAsChrome) }"
   >
+    <AgentReceiptBlock
+      v-if="block.type === 'agent_message'"
+      :message="block.message"
+    />
     <ThinkingBlock
-      v-if="block.type === 'thinking'"
+      v-else-if="block.type === 'thinking'"
       :thinking="block.text"
       :is-streaming="isThinkingStreaming"
       :created-at="block.createdAt"
