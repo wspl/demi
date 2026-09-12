@@ -5,7 +5,7 @@ import { startTxikiRunner, type TxikiRunner } from '@demicodes/runner/testing'
 import type {
   BootArgs,
   ManagedHostProvisioner
-} from '../../managed/provisioner'
+} from '@demicodes/machines'
 
 interface Guest {
   owner: string

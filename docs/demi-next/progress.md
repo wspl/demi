@@ -9,7 +9,7 @@ and completed checks. Historical changes and earlier designs are in Git.
 |---|---|---|
 | One TypeScript runner on txiki.js for Cloud and connected devices | `runner`, `host-remote`, `command-loader` | real-runner command, filesystem, process, relay and shell-control suites |
 | One managed device per user; projects are directories | backend control schema and `managed/lifecycle.ts` | concurrent first use, shared project/device identity, target ownership and switching tests |
-| Persistent system and home, pinned base | `managed/firecracker`, `storage/machine-image-store.ts` | paired publication, orphan recovery, failed publication, bounded generation retention; real shutdown/wake |
+| Persistent system and home, pinned base | `@demicodes/machines` (`firecracker/`, `machine-image-store.ts`) | paired publication, orphan recovery, failed publication, bounded generation retention; real shutdown/wake |
 | External system reset retaining home | lifecycle, `http/cloud.ts`, per-conversation reset context | concurrent operation-ID reuse, failed reset/retry, preserved files and model announcement; real broken-bash reset |
 | Device-wide activity and capacity admission | lifecycle and registry-injected `RemoteHost` admission | file calls, spawns and jobs retain leases; cached Hosts refuse new work during transitions; idle/wake scenario |
 | Shared Cloud settings | `web-ui/cloud/CloudSettings.vue` | product/gallery usage, frontend typechecks and browser verification of confirmation, progress and completion |

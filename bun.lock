@@ -41,6 +41,7 @@
         "@demicodes/command-loader": "workspace:^",
         "@demicodes/core": "workspace:^",
         "@demicodes/host-remote": "workspace:^",
+        "@demicodes/machines": "workspace:^",
         "@demicodes/provider": "workspace:^",
         "@demicodes/provider-anthropic-api": "workspace:^",
         "@demicodes/provider-claude-code": "workspace:^",
@@ -100,6 +101,17 @@
       },
       "devDependencies": {
         "@demicodes/runner": "workspace:^",
+      },
+    },
+    "packages/machines": {
+      "name": "@demicodes/machines",
+      "version": "0.20.0",
+      "bin": {
+        "demi-machines": "./dist/main.mjs",
+      },
+      "dependencies": {
+        "@demicodes/utils": "workspace:^",
+        "zod": "^4.0.0",
       },
     },
     "packages/provider": {
@@ -357,6 +369,8 @@
     "@demicodes/core": ["@demicodes/core@workspace:packages/core"],
 
     "@demicodes/host-remote": ["@demicodes/host-remote@workspace:packages/host-remote"],
+
+    "@demicodes/machines": ["@demicodes/machines@workspace:packages/machines"],
 
     "@demicodes/provider": ["@demicodes/provider@workspace:packages/provider"],
 
