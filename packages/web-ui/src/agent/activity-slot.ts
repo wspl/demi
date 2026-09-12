@@ -27,6 +27,7 @@ export const ACTIVITY_HANDOFF_MS = CHROME_ROLL_MS + 80
 const WAITING_TAIL_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
   'user',
   'steer',
+  'agent_message',
   'pending_steer',
   'compaction_boundary',
   'abort',

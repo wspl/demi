@@ -138,6 +138,7 @@ export async function assembleNode<State>(
     deps,
     tree,
     ownerId: record.id,
+    ownerRound: record.spawnedAt,
     cwd: params.cwd,
     parentCommands: harnessCommands,
     prompt: params.prompt,

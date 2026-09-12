@@ -166,7 +166,7 @@ test(
     // Spawn is grafted under the harness's existing demi root, beside file editing.
     expect(help).toContain('demi file create')
     expect(help).toContain('demi agent')
-    expect(help).toContain('demi agent steer')
+    expect(help).not.toContain('demi agent steer')
     expect(help).toContain('demi agent abort')
     expect(help).toContain('demi agent list')
     expect(help).toContain('demi agent show')

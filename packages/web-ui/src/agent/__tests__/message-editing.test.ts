@@ -22,7 +22,7 @@ test('the UI selects only the last explicit user, ignoring assistant output and 
   expect(lastEditableUserMessageId(blocks)).toBe('C')
   blocks.push(
     { ...user('hidden'), hidden: true } as Block,
-    { ...user('completion'), turnId: 'subagent:child' } as Block,
+    { type: 'agent_message', id: 'completion', turnId: 'turn' } as Block,
     { type: 'steer', id: 'steer', content: [] } as unknown as Block,
     { type: 'text', id: 'reply', text: 'answer C' } as Block,
   )

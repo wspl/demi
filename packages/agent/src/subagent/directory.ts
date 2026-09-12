@@ -6,7 +6,7 @@ import type { AgentTreeNode } from './format'
 /**
  * Root-session-scoped flat registry of every live session in the tree: the root
  * plus every subagent at any depth. The sole basis for cross-tree addressing —
- * `send`, `steer`, `show`, and `list` resolve here, with no routing rules
+ * `send`, `show`, and `list` resolve here, with no routing rules
  * along the tree.
  */
 export class AgentDirectory<State = unknown> {

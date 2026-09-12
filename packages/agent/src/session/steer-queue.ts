@@ -1,7 +1,17 @@
-import type { PendingSteer } from '@demicodes/core'
+import type { AgentMessage, ModelSelection, PendingSteer } from '@demicodes/core'
+import type { AgentMetadata } from '../types'
 
-interface QueuedSteer extends PendingSteer {
-  hidden?: boolean
+export interface PendingInternalSteer {
+  turnId: string
+  model: ModelSelection
+  agentMessage: AgentMessage
+  metadata: AgentMetadata | null
+}
+
+type QueuedSteer = (PendingSteer & { hidden?: boolean; agentMessage?: never }) | PendingInternalSteer
+
+function steerId(steer: QueuedSteer): string {
+  return steer.agentMessage ? steer.agentMessage.id : steer.id
 }
 
 /**
@@ -16,9 +26,33 @@ export class PendingSteerQueue {
   private readonly canceledIds = new Set<string>()
   private continuation = 0
 
+  internalSnapshot(): PendingInternalSteer[] {
+    return structuredClone(this.pending.filter((steer): steer is PendingInternalSteer => Boolean(steer.agentMessage)))
+  }
+
+  has(id: string): boolean {
+    return this.pending.some((steer) => steerId(steer) === id)
+  }
+
+  containsInternal(id: string): boolean {
+    return this.pending.some((steer) => steer.agentMessage?.id === id)
+  }
+
+  get hasInternal(): boolean {
+    return this.pending.some((steer) => steer.agentMessage)
+  }
+
+  retargetInternal(turnId: string): void {
+    for (const steer of this.pending) {
+      if (steer.agentMessage) {
+        steer.turnId = turnId
+      }
+    }
+  }
+
   /** Detached user-facing data; internal wakeups never leave the session. */
   snapshot(): PendingSteer[] {
-    return structuredClone(this.pending.filter((steer) => !steer.hidden).map((
+    return structuredClone(this.pending.filter((steer): steer is PendingSteer => !steer.agentMessage && !steer.hidden).map((
       { id, turnId, model, content }
     ) => ({
       id, turnId, model, content,
@@ -40,8 +74,8 @@ export class PendingSteerQueue {
   }
 
   /** Removes a still-pending steer by id; returns whether one was removed. */
-  removePending(id: string): boolean {
-    const index = this.pending.findIndex((steer) => steer.id === id)
+  removePending(id: string, internal = false): boolean {
+    const index = this.pending.findIndex((steer) => steerId(steer) === id && (internal || !steer.agentMessage))
     if (index === -1)
       return false
     this.pending.splice(index, 1)
@@ -69,11 +103,11 @@ export class PendingSteerQueue {
   }
 
   /** Removes and returns every pending steer for `turnId`, preserving order. */
-  takeForTurn(turnId: string): QueuedSteer[] {
+  takeForTurn(turnId: string, includeInternal = true): QueuedSteer[] {
     const steers: QueuedSteer[] = []
     for (let index = 0; index < this.pending.length; ) {
       const steer = this.pending[index]
-      if (steer.turnId !== turnId) {
+      if (steer.turnId !== turnId || (!includeInternal && steer.agentMessage)) {
         index += 1
         continue
       }
