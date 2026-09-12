@@ -2,20 +2,20 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useScroll } from '@vueuse/core'
 import type { Block, QueuedMessage, SessionPhase } from '@demicodes/core'
-import { useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
+import { BLOCK_GAP, useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { getVisibleBlocks } from './visible-blocks'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'
 import { pendingSteersToRenderBlocks, type MessageListBlock } from './pending-steers'
 import { queuedMessagesToRenderBlocks } from './queued-messages'
-import { shouldShowTailLoading } from './tail-loading'
+import { activitySlotKind, type PendingAction } from './activity-slot'
+import { useActivityHandoff } from './useActivityHandoff'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import AgentMessageVirtualBlock from './blocks/AgentMessageVirtualBlock.vue'
-import LoadingBlock from './blocks/LoadingBlock.vue'
+import ActivitySlot from './blocks/ActivitySlot.vue'
 import SessionStatus from './SessionStatus.vue'
 import ErrorNotice from '../ui/ErrorNotice.vue'
 import {
   sessionPaneStatus,
-  sessionShowsReconnectTail,
   type SessionFailureNotice,
   type SessionLoad,
 } from './session-status'
@@ -40,6 +40,8 @@ const props = defineProps<{
   editTargetId?: string
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
+  /** A recovery the server has not acknowledged: the tail row says Resuming or Retrying. */
+  pendingAction?: PendingAction
   loadError?: string | null
   /** A session-level failure told at the tail of the transcript, in flow. */
   failure?: SessionFailureNotice | null
@@ -64,17 +66,18 @@ const emit = defineEmits<{
 
 const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => props.conversationId)
 
-const visibleTranscriptBlocks = computed(() => {
-  const visible = getVisibleBlocks(props.blocks)
-  // A retry hides the record it retries: the tail row shows the turn running instead.
-  if (props.phase !== 'idle' && visible.at(-1)?.type === 'error') {
-    visible.pop()
+const visibleBlocks = computed(() => getVisibleBlocks(props.blocks))
+// A recovery hides the record it recovers from: the tail row names the recovery, then the turn running.
+const transcriptBlocks = computed(() => {
+  const visible = visibleBlocks.value
+  const recovering = props.phase !== 'idle' || props.pendingAction === 'resume'
+  if (recovering && visible.at(-1)?.type === 'error') {
+    return visible.slice(0, -1)
   }
   return visible
 })
 const editableUserId = computed(() => lastEditableUserMessageId(props.blocks))
-const renderBlocks = computed<MessageListBlock[]>(() => [
-  ...visibleTranscriptBlocks.value,
+const tailBlocks = computed<MessageListBlock[]>(() => [
   ...pendingSteersToRenderBlocks(props.pendingSteers),
   ...queuedMessagesToRenderBlocks(props.queue),
   ...(props.pendingSubmission ? [{
@@ -82,6 +85,29 @@ const renderBlocks = computed<MessageListBlock[]>(() => [
     id: `pending-submission:${props.pendingSubmission.id}`,
     submission: props.pendingSubmission,
   }] : []),
+])
+const slotKind = computed(() => activitySlotKind({
+  load: props.load ?? 'ready',
+  phase: props.phase,
+  pendingAction: props.pendingAction ?? null,
+  transcriptBlocks: visibleBlocks.value,
+  renderBlocks: [...transcriptBlocks.value, ...tailBlocks.value],
+}))
+const { heldId, slot } = useActivityHandoff(
+  () => transcriptBlocks.value.at(-1),
+  () => slotKind.value,
+  () => props.conversationId,
+)
+// The block rolling into the tail row is not a list row yet.
+const visibleTranscriptBlocks = computed(() => {
+  const blocks = transcriptBlocks.value
+  return heldId.value !== null && blocks.at(-1)?.id === heldId.value
+    ? blocks.slice(0, -1)
+    : blocks
+})
+const renderBlocks = computed<MessageListBlock[]>(() => [
+  ...visibleTranscriptBlocks.value,
+  ...tailBlocks.value,
 ])
 
 const paneStatus = computed(() =>
@@ -91,20 +117,9 @@ const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.e
 // Only the record that ended the conversation is a place to retry from; older
 // errors are history.
 const retryTargetId = computed(() => {
-  const tail = visibleTranscriptBlocks.value.at(-1)
+  const tail = transcriptBlocks.value.at(-1)
   return props.phase === 'idle' && tail?.type === 'error' ? tail.id : null
 })
-const reconnecting = computed(() => sessionShowsReconnectTail(props.load ?? 'ready'))
-const shouldShowLoading = computed(() =>
-  reconnecting.value || shouldShowTailLoading(
-    props.phase,
-    visibleTranscriptBlocks.value,
-    renderBlocks.value
-  ),
-)
-const tailLabel = computed(() => (reconnecting.value
-  ? t('agent.block.connecting')
-  : undefined))
 
 // Every streamed delta re-renders the visible rows; the lookup must not rescan the transcript per row.
 const transcriptIndexById = computed(
@@ -236,7 +251,12 @@ defineExpose({
             </MessageEditRegion>
           </div>
         </div>
-        <LoadingBlock v-if="shouldShowLoading" :label="tailLabel" />
+        <ActivitySlot
+          v-if="slot"
+          :kind="slot.kind"
+          :incoming="slot.incoming"
+          :style="{ marginTop: renderBlocks.length ? `${BLOCK_GAP}px` : '0' }"
+        />
         <div v-if="failure" class="px-[var(--agent-pad-x,2rem)] py-1.5">
           <ErrorNotice
             :label="failure.label"

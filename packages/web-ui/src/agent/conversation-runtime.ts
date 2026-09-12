@@ -32,6 +32,7 @@ export type RuntimeState = Pick<
   | 'model'
   | 'lastError'
   | 'load'
+  | 'pendingAction'
 >
 
 export interface ConversationRuntimeOptions {
@@ -183,9 +184,24 @@ export class ConversationRuntime {
     await (await this.ensureOpen()).retry()
   }
 
+  /**
+   * The tail row says Resuming or Retrying from the click until the server's
+   * next `phase` event; a refused or lost request ends that wait as well.
+   */
   async resume(): Promise<void> {
-    this.options.state.lastError = null
-    await (await this.ensureOpen()).resume()
+    const state = this.options.state
+    state.lastError = null
+    state.pendingAction = 'resume'
+    try {
+      await (await this.ensureOpen()).resume()
+    } catch (error) {
+      this.settlePendingAction()
+      throw error
+    }
+  }
+
+  private settlePendingAction(): void {
+    this.options.state.pendingAction = null
   }
 
   async compact(): Promise<void> {
@@ -208,6 +224,7 @@ export class ConversationRuntime {
   }
 
   private releaseConnection(): void {
+    this.settlePendingAction()
     if (this.retryTimer !== null) {
       clearTimeout(this.retryTimer)
     }
@@ -331,6 +348,7 @@ export class ConversationRuntime {
         break
       case 'phase':
         state.phase = event.phase
+        this.settlePendingAction()
         break
       case 'queue':
         state.queue = event.queue
@@ -345,6 +363,7 @@ export class ConversationRuntime {
         break
       case 'rejected':
         state.lastError = event.reason
+        this.settlePendingAction()
         break
       case 'closed':
         // Another view can take over the server attachment. Reconnect only on

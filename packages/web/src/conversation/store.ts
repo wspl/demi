@@ -166,6 +166,7 @@ export const useConversations = defineStore('conversations', () => {
       subagents: [],
       terminals: [],
       load: 'loading',
+      pendingAction: null,
     }
   }
 

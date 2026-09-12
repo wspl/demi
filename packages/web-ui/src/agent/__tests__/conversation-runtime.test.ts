@@ -42,6 +42,7 @@ function state(): RuntimeState {
     },
     lastError: null,
     load: 'loading',
+    pendingAction: null,
   }
 }
 function clientHarness() {
@@ -267,4 +268,32 @@ test('disposing during the backoff wait ends the retries', async () => {
   expect(await result).toBeInstanceOf(Error)
   await delay(120)
   expect(connects).toBe(1)
+})
+
+test('a resume is pending from the request until the next phase event', async () => {
+  const h = clientHarness()
+  const s = state()
+  const runtime = new ConversationRuntime({ state: s, prepareModel: async () => provider, connect: async () => h.client })
+  await runtime.connect()
+  const resumed = runtime.resume()
+  expect(s.pendingAction).toBe('resume')
+  await delay(0)
+  expect(h.sent.at(-1)?.type).toBe('resume')
+  h.receive({ type: 'phase', phase: 'running' })
+  expect(s.pendingAction).toBeNull()
+  h.receive({ type: 'phase', phase: 'idle' })
+  await resumed
+  expect(s.pendingAction).toBeNull()
+})
+
+test('a closed connection ends a pending resume', async () => {
+  const h = clientHarness()
+  const s = state()
+  const runtime = new ConversationRuntime({ state: s, prepareModel: async () => provider, connect: async () => h.client })
+  await runtime.connect()
+  void runtime.resume().catch(() => {})
+  expect(s.pendingAction).toBe('resume')
+  h.receive({ type: 'closed' })
+  expect(s.pendingAction).toBeNull()
+  runtime.dispose()
 })

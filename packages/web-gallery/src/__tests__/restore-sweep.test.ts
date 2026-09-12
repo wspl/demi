@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { delay } from '@demicodes/utils'
-import { RestoreSweep } from '../session-restore'
+import { RestoreSweep } from '../fixtures/restore-sweep'
 
 test('retry sweeps loading then ready', async () => {
   const sweep = new RestoreSweep()

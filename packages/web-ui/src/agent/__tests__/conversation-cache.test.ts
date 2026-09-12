@@ -15,7 +15,7 @@ function fixture(id: string) {
   const state: RuntimeState = {
     id, cwd: '/', blocks: [], phase: 'idle', queue: [], pendingSteers: [],
     model: { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null },
-    lastError: null, load: 'loading',
+    lastError: null, load: 'loading', pendingAction: null,
   }
   let receive: (frame: ServerFrame) => void = () => {}
   let connections = 0

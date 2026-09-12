@@ -185,6 +185,7 @@ export class AgentWorkspace {
       hasContent: false,
       lastError: null,
       load,
+      pendingAction: null,
     })
     this.sessions[meta.id] = state
     this.runtimes.set(
