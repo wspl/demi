@@ -3,6 +3,7 @@ import { computed, type Component } from 'vue'
 import { Brain, History, SquareTerminal } from '@lucide/vue'
 import ActivityMark from '@demicodes/web-ui/ui/ActivityMark.vue'
 import ChromeRoll from '@demicodes/web-ui/ui/ChromeRoll.vue'
+import { CHROME_ENTER_MS } from '@demicodes/web-ui/ui/chrome-enter'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { t } from '@demicodes/web-ui/infra/i18n'
 import type { ActivityKind, HandoffBlock } from '../activity-slot'
@@ -57,7 +58,10 @@ const label = computed(() => incomingFace.value?.label ?? waitLabel.value)
 </script>
 
 <template>
-  <div class="flex h-7 items-center gap-2 px-[var(--agent-pad-x,2rem)] text-chrome text-fg-muted">
+  <div
+    class="chrome-enter flex h-7 items-center gap-2 px-[var(--agent-pad-x,2rem)] text-chrome text-fg-muted"
+    :style="{ '--chrome-enter-ms': `${CHROME_ENTER_MS}ms` }"
+  >
     <ChromeRoll
       class="min-w-0"
       :face-key="faceKey"
