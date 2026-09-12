@@ -358,6 +358,18 @@ function compact(): void {
 
 const sessionRestore = new RestoreSweep()
 const composerArchived = ref(true)
+// The model catalog failed to load; Retry reloads it the way the product revalidates.
+const composerModelLoad = ref<'loading' | 'ready' | 'failed'>('failed')
+const composerModelRestore = new RestoreSweep()
+function retryModels(): void {
+  composerModelRestore.start((phase) => {
+    composerModelLoad.value = phase
+  })
+}
+function breakModels(): void {
+  composerModelRestore.stop()
+  composerModelLoad.value = 'failed'
+}
 const liveLoad = ref<SessionLoad>('failed')
 const liveHasTranscript = computed(() => liveLoad.value === 'ready')
 const livePane = computed(() =>
@@ -381,7 +393,10 @@ onMounted(() => {
   playTurn('turn')
 })
 
-onBeforeUnmount(() => sessionRestore.stop())
+onBeforeUnmount(() => {
+  sessionRestore.stop()
+  composerModelRestore.stop()
+})
 function abortAgent(id: string) {
   const agent = agents.find((entry) => entry.id === id)
   if (agent && agent.phase === 'running') {
@@ -607,6 +622,24 @@ function abortTerminal(id: string) {
             <GalleryComposer
               placeholder="Ask Demi…"
               :providers="offlineProviders"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="models failed · live"
+            wide
+          >
+            <div class="mb-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                :disabled="composerModelLoad === 'failed'"
+                @click="breakModels"
+              >Break</Button>
+            </div>
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              :model-load="composerModelLoad"
+              @retry-models="retryModels"
             />
           </GallerySpecimen>
           <GallerySpecimen
