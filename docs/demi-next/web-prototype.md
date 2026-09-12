@@ -198,6 +198,16 @@ when the conversation changes, and on unmount. A text block is never handed off:
 it becomes a row at once. A block that arrives while no row is showing (thinking
 straight after thinking, a tool after thinking) is appended without a roll.
 
+A chrome row that joins a live transcript enters: over `CHROME_ENTER_MS`
+(200ms) it slides in from 8px to the left while fading in, on the block's
+wrapper in `AgentMessageVirtualBlock` for thinking, tool and abort rows, and on
+`ActivitySlot` when the slot appears. `useChromeEntrance` decides which rows
+enter: blocks present when the list opens are history and stay still, a block
+that joins afterwards enters once and is then settled, so a virtual row that
+scrolling remounts does not move again, and a block handed off through the
+slot is settled before it becomes a row. Text blocks do not enter; they stream.
+Reduced motion skips the entrance.
+
 Retry and Resume are one action: both call `resume()`; only the record they
 recover from differs. Resuming
 `[user] [abort] ▸ Resuming ▸ Requesting ▸ Brain Thinking` and retrying

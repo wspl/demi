@@ -9,6 +9,7 @@ import { pendingSteersToRenderBlocks, type MessageListBlock } from './pending-st
 import { queuedMessagesToRenderBlocks } from './queued-messages'
 import { activitySlotKind, type PendingAction } from './activity-slot'
 import { useActivityHandoff } from './useActivityHandoff'
+import { useChromeEntrance } from './useChromeEntrance'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import AgentMessageVirtualBlock from './blocks/AgentMessageVirtualBlock.vue'
 import ActivitySlot from './blocks/ActivitySlot.vue'
@@ -109,6 +110,11 @@ const renderBlocks = computed<MessageListBlock[]>(() => [
   ...visibleTranscriptBlocks.value,
   ...tailBlocks.value,
 ])
+const { isEntering } = useChromeEntrance(
+  () => visibleTranscriptBlocks.value,
+  () => heldId.value,
+  () => props.conversationId,
+)
 
 const paneStatus = computed(() =>
   props.pendingSubmission ? null : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.length > 0),
@@ -240,6 +246,7 @@ defineExpose({
                 :fork="fork ? () => forkMessage(renderBlocks[item.index]!.id) : undefined"
                 :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
                 :retry="renderBlocks[item.index]!.id === retryTargetId ? retry : undefined"
+                :entering="isEntering(renderBlocks[item.index]!.id)"
                 :editable="renderBlocks[item.index]!.id === editableUserId && !props.readOnly && phase === 'idle' && !queue.length && !pendingSteers.length"
                 @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
                 @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
