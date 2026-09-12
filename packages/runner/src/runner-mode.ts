@@ -21,7 +21,7 @@ import {
   type RunnerToBackendMessage,
 } from '@demicodes/runner-protocol'
 import { HostRpcServer } from './serve/host-rpc-server'
-import { JobTable } from './serve/jobs'
+import { JOB_PATH_PREFIX_VAR, JobTable } from './serve/jobs'
 import type { Host } from '@demicodes/shell'
 import {
   collectBytes,
@@ -126,16 +126,15 @@ export class RunnerMode {
     }
   }
 
-  private executionEnvironment(
-    context: ExecutionContext,
-    env: Record<string, string | undefined>
-  ): Record<string, string> {
+  private executionEnvironment(context: ExecutionContext): Record<string, string> {
     const bin = context.manifest
       ? this.cache.binDirectory(context.manifest)
       : dirnamePath(this.options.clientExecutable)
+    // The command directory reaches PATH through the script prelude, after
+    // the login shell's profiles; the env carries it only by name.
     return {
       ...this.contexts.environment(context, this.endpoint),
-      PATH: `${bin}:${env.PATH ?? this.options.deviceEnv.PATH ?? '/usr/bin:/bin'}`,
+      [JOB_PATH_PREFIX_VAR]: bin,
     }
   }
 
@@ -346,7 +345,7 @@ export class RunnerMode {
           {},
           await this.cache.current()
         )
-        return this.executionEnvironment(context, message.env ?? {})
+        return this.executionEnvironment(context)
       }
     )
     const jobs = new JobTable({
@@ -368,7 +367,7 @@ export class RunnerMode {
           await this.cache.current(),
           message.jobId
         )
-        return this.executionEnvironment(context, message.env)
+        return this.executionEnvironment(context)
       },
       pipes: this.pipes,
       send: (message) => this.sendToBackend(message),

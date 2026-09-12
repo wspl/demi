@@ -70,7 +70,12 @@ All executed provider turns used scripted providers. No real-model tests ran.
 
 The env-gated `real-firecracker.e2e.test.ts` ran inside the local ARM64 Lima KVM
 host using Firecracker 1.16.1, the repository-built Linux 6.1.155 kernel and
-Ubuntu 24.04 rootfs. Both direct and jailer launch modes passed.
+the Ubuntu 26.04 rootfs. Both direct and jailer launch modes passed on the
+24.04 rootfs; the 26.04 rootfs ran in direct mode, with the machine manager
+as its own process reached over the Unix socket, and from a macOS backend
+through the `demi-machines` Lima instance created from the checked-in
+template. The login-shell scenario in the same file (rustup, then `cargo` in
+the next command; nvm, then `node` from `~/.nvm`) passed on 26.04.
 
 The scenario verified upload ownership and shell uid 1000, shared machine
 identity for another project, persistence of a system installation and home

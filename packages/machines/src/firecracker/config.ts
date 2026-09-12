@@ -59,6 +59,9 @@ export const MANAGED_ENV = {
 export const DEFAULTS = {
   vcpus: 2,
   memMib: 2048,
+  // Nominal capacities, grown on demand. Publication copies each image in
+  // full (no reflink on ext4), so a generation costs both capacities on the
+  // host: keep these modest until the copy preserves holes.
   systemMib: 1024,
   homeMib: 1024,
   subnet: '172.16.0.0/16',

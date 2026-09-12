@@ -13,7 +13,7 @@ cpus: 4
 memory: 8GiB
 disk: 40GiB
 
-base: template:ubuntu-24.04
+base: template:ubuntu-26.04
 
 # The checkout is read from the home mount; the manager's own state lives on
 # the instance disk (`/var/lib/demi-machines`), never on the mount.
@@ -31,7 +31,7 @@ provision:
       set -euxo pipefail
       export DEBIAN_FRONTEND=noninteractive
       apt-get update -qq
-      apt-get install -y -qq e2fsprogs nftables iproute2 curl unzip
+      apt-get install -y -qq e2fsprogs nftables iproute2 acl curl unzip
       firecracker_version=v1.16.1
       if ! [ -x /usr/local/bin/firecracker ]; then
         arch=$(uname -m)

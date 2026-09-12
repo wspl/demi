@@ -112,23 +112,26 @@ test(
   'a job runs in the device environment underneath the shell\'s: a device entry reaches it, a backend entry wins, DEMI_HOME is the runner\'s',
   async () => {
     const { shell } = await connected()
+    // A login shell: the profile may rewrite PATH (Ubuntu's /etc/profile
+    // does), so the device's entries are asserted present, not alone.
     const result = await shell.exec({
-      script: 'echo "$DEVICE_FACT|$SHARED|$PATH|${DEMI_SESSION_ID:-none}"',
+      script: 'echo "$DEVICE_FACT|$SHARED|${DEMI_SESSION_ID:-none}"; echo "$PATH"',
       timeoutMs: 5_000,
       agentSessionId: 's1'
     })
-    expect(result.status === 'exited' && result.stdout.delta)
-      .toBe('from the device|device|/usr/bin:/bin|s1\n')
+    const [facts, path] = (result.status === 'exited' ? result.stdout.delta : '').split('\n')
+    expect(facts).toBe('from the device|device|s1')
+    expect(path?.split(':')).toContain('/usr/bin')
     const overriding = new RemoteShellEnvironment({
       host: (await connected()).remote,
       initialEnv: { SHARED: 'backend' }
     })
     const overridden = await overriding.exec({
-      script: 'echo "$SHARED|$PATH"',
+      script: 'echo "$SHARED"',
       timeoutMs: 5_000
     })
     expect(overridden.status === 'exited' && overridden.stdout.delta)
-      .toBe('backend|/usr/bin:/bin\n')
+      .toBe('backend\n')
   }
 )
 

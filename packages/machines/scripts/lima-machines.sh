@@ -71,6 +71,9 @@ limactl shell "$instance" -- sudo -n bash "$here/scripts/install-managed-hosts.s
   --user "$(id -un)" --mode direct \
   --backend-address "$backend_address" --backend-port "$backend_port" \
   --slots "$slots"
+# The kvm group the install script grants takes effect at the next login,
+# and Lima multiplexes its shells over one ssh session; an ACL applies now.
+limactl shell "$instance" -- sudo -n setfacl -m "u:$(id -un):rw" /dev/kvm
 
 uid=$(limactl shell "$instance" -- id -u)
 echo "backend: DEMI_MACHINES_SOCKET=$HOME/.lima/$instance/sock/demi-machines.sock DEMI_BACKEND_PUBLIC_URL=http://$backend_address:$backend_port"

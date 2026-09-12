@@ -119,6 +119,13 @@ export async function bootGuest(
   )
   if (ownership.code !== 0)
     throw new Error('Cannot assign runner state to the guest user')
+  // The first boot furnishes the empty home from the skeleton, as `useradd -m`
+  // would (`managed-hosts.md` § First use of the home).
+  if (config.firstBoot) {
+    const furnished = await run('cp', ['-a', '/etc/skel/.', GUEST_USER.homeDir])
+    if (furnished.code !== 0)
+      throw new Error('Cannot furnish the guest home from /etc/skel')
+  }
   // A freshly made image carries the backend user's ownership (`mke2fs -d`); every later boot finds the guest user's.
   await run(
     'chown',

@@ -92,3 +92,67 @@ e2e(
   },
   240_000
 )
+
+// The login shell on the real guest (`runner.md` § Jobs and the tee): a
+// toolchain installed by one command is on PATH for the next, with nothing
+// sourced — rustup through `~/.profile`, nvm through the skeleton's
+// `~/.bashrc`. Needs egress from the guest; several minutes.
+e2e(
+  'managed runner: rustup in one command and cargo in the next; nvm likewise',
+  async () => {
+    const dataDir = await mkdtemp(join(process.env.DEMI_FIRECRACKER_E2E_DATA ??
+      tmpdir(), 'demi-fc-login-'))
+    const config = firecrackerConfigFromEnv(process.env, dataDir)
+    if (!config)
+      throw new Error('DEMI_MANAGED_FIRECRACKER is required')
+    const publicUrl = process.env.DEMI_FIRECRACKER_E2E_PUBLIC ??
+      'http://172.16.0.1:3277'
+    const world = await World.create({
+      dataDir,
+      port: Number(new URL(publicUrl).port),
+      publicUrl,
+      managedHosts: {
+        provisioner: new FirecrackerProvisioner(config),
+        config: { idleMs: 600_000, sweepMs: 600_000 }
+      }
+    })
+    try {
+      const driver = await world.conversation('cloud')
+      const facts = await driver.turn({ model: [
+          model.shell('facts', 'ls -A ~; uv --version; node --version'),
+          model.say('facts')
+        ] })
+      expect(facts.received[0]).toContain('.profile')
+      expect(facts.received[0]).toContain('uv 0.')
+      await driver.turn({ model: [
+          model.shell(
+            'rustup',
+            "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal > /dev/null 2>&1; echo rustup-exit=$?",
+            600_000
+          ),
+          model.say('installed')
+        ] })
+      const cargo = await driver.turn({ model: [
+          model.shell('cargo', 'cargo --version'),
+          model.say('cargo')
+        ] })
+      expect(cargo.received[0]).toContain('cargo 1.')
+      await driver.turn({ model: [
+          model.shell(
+            'nvm',
+            'curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh | bash > /dev/null 2>&1; . ~/.bashrc; nvm install --lts > /dev/null 2>&1; echo nvm-exit=$?',
+            600_000
+          ),
+          model.say('nvm')
+        ] })
+      const node = await driver.turn({ model: [
+          model.shell('node', 'node --version; command -v node'),
+          model.say('node')
+        ] })
+      expect(node.received[0]).toContain('/.nvm/versions/node/')
+    } finally {
+      await world.close()
+    }
+  },
+  1_200_000
+)

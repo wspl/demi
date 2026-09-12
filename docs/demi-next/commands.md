@@ -56,7 +56,7 @@ in `PATH`; everything else is whatever the machine has.
 
  backend                          runner on the target                 processes on the target
  ───────                          ────────────────────                 ───────────────────────
- job_start {script, cwd,   ────▶  spawn  bash -c "<script>"     ────▶  bash
+ job_start {script, cwd,   ────▶  spawn  bash -lc "<script>"     ────▶  bash
             env + conv/shell ids}   │  tee stdout/stderr → output         │
                                     │  files under commandOutputDir        ├─ demi file edit src/a.ts        (native C client)
                                     │                                      │    read ${DEMI_HOME}/commands/<hash>/   manifest cache
@@ -287,7 +287,8 @@ demi host shell --host <name|id> <shell_content>  run a shell string in that hos
 ```
 
 `<shell_content>` is one positional argument executed by that host's
-`bash -c`, so pipes, redirections and globs apply remotely. It starts in
+login shell, `bash -lc`, so pipes, redirections and globs apply remotely and
+the host's profile is in effect. It starts in
 the host's recorded working directory — for the main host the
 conversation's directory there, for an attached host the directory its
 last `shell --host` ended in (`sessions-and-targets.md` § Attached hosts)

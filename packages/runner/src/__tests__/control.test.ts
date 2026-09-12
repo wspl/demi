@@ -56,7 +56,7 @@ test(
             type: 'spawn',
             spawnId: kind,
             command: 'bash',
-            args: ['-c', script],
+            args: ['-lc', script],
             killProcessGroup: true
           })
         await waitFor(
