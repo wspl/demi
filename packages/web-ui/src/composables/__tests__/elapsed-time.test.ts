@@ -4,8 +4,9 @@ import { useElapsedTime } from '../useElapsedTime'
 import { thinkingFaceLabel } from '../../agent/thinking-label'
 
 test('thinking distinguishes subsecond durations from a full second', () => {
-  expect(thinkingFaceLabel(false, 0)).toBe('Thought for <1s')
-  expect(thinkingFaceLabel(false, 999)).toBe('Thought for <1s')
+  expect(thinkingFaceLabel(false, 0)).toBe('Thought briefly')
+  expect(thinkingFaceLabel(false, 999)).toBe('Thought briefly')
+  expect(thinkingFaceLabel(true, 500)).toBe('Thinking')
   expect(thinkingFaceLabel(true, 1000)).toBe('Thinking for 1s')
   expect(thinkingFaceLabel(false, 60000)).toBe('Thought for 1m')
 })

@@ -18,6 +18,8 @@ export function formatThinkingDuration(ms: number): string {
 export function thinkingFaceLabel(streaming: boolean, elapsedMs: number | null): string {
   if (elapsedMs === null)
     return t('agent.block.thinking')
+  if (elapsedMs < 1000)
+    return t(streaming ? 'agent.block.thinking' : 'agent.block.thoughtBriefly')
   const prefix = t(streaming
     ? 'agent.block.thinkingFor'
     : 'agent.block.thoughtFor')
