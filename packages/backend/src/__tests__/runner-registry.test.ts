@@ -139,13 +139,14 @@ test(
 )
 
 test(
-  'rpc cancellation and runner disconnect abort the handler and release its live stdin',
+  'RPC terminal events abort the handler, release live stdin and preserve the first cause',
   async () => {
-    for (const disconnect of [false, true]) {
+    for (const event of ['cancel', 'disconnect', 'stdout', 'stdin', 'report', 'job', 'shutdown']) {
       const pipes = new PipeBroker()
       const started = deferred<void>()
       const stopped = deferred<void>()
       let ended = false
+      let reason: unknown
       const registry = new RunnerRegistry({
         control,
         pipes,
@@ -163,9 +164,10 @@ test(
               { once: true }
             )
           )
+          reason = io.signal.reason
           await input
           stopped.resolve()
-          return 130
+          return 0
         }
       })
       const a = socket(registry)
@@ -198,20 +200,44 @@ test(
         json: false,
         cwd: '/',
         env: {},
-        stdin: false
+        stdin: true
       }))
       await started.promise
-      if (disconnect)
+      const refs = a.frames.find((frame) => frame.type === 'rpc_pipes')!
+      if (event === 'disconnect')
         a.handleClose()
-      else a.handleMessage(wire.encode({ type: 'rpc_cancel', callId: 'call' }))
+      else if (event === 'shutdown')
+        await registry.close()
+      else if (event === 'cancel')
+        a.handleMessage(wire.encode({ type: 'rpc_cancel', callId: 'call' }))
+      else if (event === 'report')
+        a.handleMessage(wire.encode({
+          type: 'pipe_done', pipeId: refs.stdout.id, ok: false, error: 'upload failed'
+        }))
+      else if (event === 'job')
+        a.handleMessage(wire.encode({ type: 'job_exit', jobId, exitCode: 7 }))
+      else
+        pipes.fail(event === 'stdin' ? refs.stdin!.id : refs.stdout.id, 'HTTP connection lost')
       await stopped.promise
       expect(ended).toBe(true)
-      if (!disconnect)
-        await waitFor(
-          () => a.frames.some(
-            (frame) => frame.type === 'rpc_exit' && frame.exitCode === 130
-          )
-        )
+      const expectedReason = event === 'cancel' ? 'command cancelled'
+        : event === 'disconnect' ? 'runner disconnected'
+        : event === 'shutdown' ? 'backend shutting down'
+        : event === 'report' ? 'upload failed'
+        : event === 'job' ? 'exited before its RPC completed'
+        : 'HTTP connection lost'
+      expect(reason).toBeInstanceOf(Error)
+      expect((reason as Error).message).toContain(expectedReason)
+      if (event !== 'disconnect' && event !== 'shutdown') {
+        // A later job exit must not overwrite a transfer failure or cancellation.
+        a.handleMessage(wire.encode({ type: 'job_exit', jobId, exitCode: 7 }))
+        await waitFor(() => a.frames.some((frame) => frame.type === 'rpc_exit'))
+        expect(a.frames.find((frame) => frame.type === 'rpc_exit')?.exitCode)
+          .toBe(event === 'cancel' ? 130 : 1)
+        const output = a.frames.filter((frame) => frame.type === 'rpc_output')
+          .map((frame) => new TextDecoder().decode(frame.bytes)).join('')
+        expect(output).toContain(expectedReason)
+      }
       await registry.close()
       pipes.close()
     }

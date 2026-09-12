@@ -74,6 +74,7 @@ interface PendingPipe {
   failure: Error | null
   cancelBody?: (error: Error) => void
   channel: ByteChannel | null
+  releaseRequests: Array<() => void>
 }
 
 export class PipeBroker {
@@ -101,6 +102,7 @@ export class PipeBroker {
       sinkArrived: false,
       failure: null,
       channel: null,
+      releaseRequests: [],
     }
     // Unobserved rejections on the two internal promises are expected paths.
     pending.body.promise.catch(noop)
@@ -130,7 +132,8 @@ export class PipeBroker {
   async put(
     id: string,
     deviceId: string,
-    body: ReadableStream<Uint8Array> | null
+    body: ReadableStream<Uint8Array> | null,
+    signal?: AbortSignal
   ): Promise<{
     status: number;
     message: string
@@ -150,8 +153,10 @@ export class PipeBroker {
     pipe.sourceArrived = true
     this.updateArrivalTimer(id, pipe)
     pipe.cancelBody = () => {
+      // Failure is already recorded; cancellation cannot replace its cause.
       void body.cancel().catch(noop)
     }
+    this.watchRequest(id, pipe, 'source', signal)
     pipe.body.resolve(body)
     try {
       await pipe.drained.promise
@@ -167,7 +172,8 @@ export class PipeBroker {
    */
   async get(
     id: string,
-    deviceId: string
+    deviceId: string,
+    signal?: AbortSignal
   ): Promise<{
     status: 200;
     body: ReadableStream<Uint8Array>
@@ -184,6 +190,7 @@ export class PipeBroker {
       return { status: 409, message: 'sink already connected' }
     pipe.sinkArrived = true
     this.updateArrivalTimer(id, pipe)
+    this.watchRequest(id, pipe, 'sink', signal)
     let body: ReadableStream<Uint8Array>
     try {
       body = await pipe.body.promise
@@ -192,7 +199,7 @@ export class PipeBroker {
     }
     if (pipe.failure)
       return { status: 409, message: pipe.failure.message }
-    return { status: 200, body: this.settling(id, body) }
+    return { status: 200, body: this.settling(id, pipe, body) }
   }
 
   /** Fails every pipe a device is an end of — its connection dropped. */
@@ -203,6 +210,17 @@ export class PipeBroker {
       if (isEnd(pipe.source) || isEnd(pipe.sink))
         this.fail(id, `device ${deviceId} disconnected`)
     }
+  }
+
+  /** A failed transfer report is authoritative only for a device at an end. */
+  failFromDevice(id: string, deviceId: string, reason: string): void {
+    const pipe = this.pipes.get(id)
+    if (!pipe)
+      return
+    if ([pipe.source, pipe.sink].some((end) =>
+      end?.kind === 'device' && end.deviceId === deviceId
+    ))
+      this.fail(id, reason)
   }
 
   fail(id: string, reason: string): void {
@@ -253,6 +271,21 @@ export class PipeBroker {
     }
   }
 
+  private watchRequest(
+    id: string,
+    pipe: PendingPipe,
+    end: 'source' | 'sink',
+    signal?: AbortSignal
+  ): void {
+    if (!signal)
+      return
+    const abort = () => this.fail(id, `${end} HTTP request disconnected`)
+    signal.addEventListener('abort', abort, { once: true })
+    pipe.releaseRequests.push(() => signal.removeEventListener('abort', abort))
+    if (signal.aborted)
+      abort()
+  }
+
   /**
    * The in-process sink: pulls the body chunk by chunk; stopping early counts
    * as drained, the way a closed pipe does.
@@ -270,8 +303,9 @@ export class PipeBroker {
     pipe.sinkArrived = true
     this.updateArrivalTimer(id, pipe)
     const reader = (await pipe.body.promise).getReader()
-    pipe.cancelBody = () => {
-      void reader.cancel().catch(noop)
+    pipe.cancelBody = (error) => {
+      // The failed pipe already carries the error for its readers and writer.
+      void reader.cancel(error).catch(noop).finally(() => reader.releaseLock())
     }
     let ended = false
     try {
@@ -288,10 +322,13 @@ export class PipeBroker {
       this.fail(id, errorMessage(error))
       throw error
     } finally {
-      if (!ended)
-        reader.cancel().catch(noop)
       this.finish(id)
       pipe.drained.resolve()
+      if (!ended) {
+        // An intentional early return is a successful in-process drain.
+        await reader.cancel().catch(noop)
+      }
+      reader.releaseLock()
     }
   }
 
@@ -322,11 +359,17 @@ export class PipeBroker {
           new ReadableStream<Uint8Array>({
             pull: async (controller) => {
               const next = await chunks.next()
+              if (!this.pipes.has(id))
+                return
               if (next.done)
                 controller.close()
               else controller.enqueue(next.value)
             },
-            cancel: () => void chunks.return?.(),
+            cancel: async () => {
+              // Wake an outstanding next() before returning the iterator.
+              channel.close()
+              await chunks.return?.()
+            },
           }, { highWaterMark: 0 }),
         )
       }
@@ -346,27 +389,22 @@ export class PipeBroker {
   }
 
   /**
-   * Wraps the source body so the pipe settles with the sink's read; a sink
-   * stopping early counts as drained.
+   * Wraps the source body so EOF completes the pipe. An HTTP sink that
+   * disconnects before EOF fails the transfer.
    */
   private settling(
     id: string,
+    pipe: PendingPipe,
     body: ReadableStream<Uint8Array>
   ): ReadableStream<Uint8Array> {
     const reader = body.getReader()
-    const pipe = this.pipes.get(id)
-    const settle = (): void => {
-      const pipe = this.pipes.get(id)
-      this.finish(id)
-      pipe?.drained.resolve()
-    }
     return new ReadableStream<Uint8Array>({
       start: (controller) => {
-        if (pipe)
-          pipe.cancelBody = (error) => {
-            controller.error(error)
-            void reader.cancel().catch(noop)
-          }
+        pipe.cancelBody = (error) => {
+          controller.error(error)
+          // Preserve the pipe's first failure even if cancellation fails.
+          void reader.cancel(error).catch(noop).finally(() => reader.releaseLock())
+        }
       },
       pull: async (controller) => {
         let next: Awaited<ReturnType<typeof reader.read>>
@@ -374,19 +412,21 @@ export class PipeBroker {
           next = await reader.read()
         } catch (error) {
           this.fail(id, errorMessage(error))
-          controller.error(error)
           return
         }
+        if (!this.pipes.has(id))
+          return
         if (next.done) {
           controller.close()
-          settle()
+          reader.releaseLock()
+          this.finish(id)
+          pipe.drained.resolve()
           return
         }
         controller.enqueue(next.value)
       },
       cancel: () => {
-        reader.cancel().catch(noop)
-        settle()
+        this.fail(id, 'sink HTTP response disconnected before EOF')
       },
     })
   }
@@ -398,6 +438,9 @@ export class PipeBroker {
     if (pipe.timer !== null)
       clearTimeout(pipe.timer)
     this.pipes.delete(id)
+    for (const release of pipe.releaseRequests)
+      release()
+    pipe.releaseRequests.length = 0
   }
 }
 

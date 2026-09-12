@@ -27,7 +27,9 @@ export function pipeRoutes(options: {
     const deviceId = await deviceOf(c.req.header('authorization'))
     if (!deviceId)
       return c.text('device token required', 401)
-    const result = await broker.put(c.req.param('id'), deviceId, c.req.raw.body)
+    const result = await broker.put(
+      c.req.param('id'), deviceId, c.req.raw.body, c.req.raw.signal
+    )
     return c.text(result.message, result.status as 200)
   })
 
@@ -35,7 +37,7 @@ export function pipeRoutes(options: {
     const deviceId = await deviceOf(c.req.header('authorization'))
     if (!deviceId)
       return c.text('device token required', 401)
-    const result = await broker.get(c.req.param('id'), deviceId)
+    const result = await broker.get(c.req.param('id'), deviceId, c.req.raw.signal)
     if (result.status !== 200 || !('body' in result))
       return c.text('message' in result
         ? result.message
