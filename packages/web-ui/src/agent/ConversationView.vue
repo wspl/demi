@@ -89,6 +89,7 @@ function handleReconnect() {
         :queue="queuedMessages"
         :phase="phase"
         :load="load"
+        :pending-action="session?.pendingAction ?? null"
         :load-error="session?.lastError"
         :bottom-offset="surfaceRef?.dockHeight ?? 0"
         :persisted-scroll-state="undefined"

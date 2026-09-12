@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { reactive } from 'vue'
-import ChatSession, {
-  type ChatSessionState,
-} from '@demicodes/web-ui/agent/ChatSession.vue'
+import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
+import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import type { Block } from '@demicodes/core'
 import { generationErrorBlock, shortTranscriptBlocks } from '../fixtures/blocks'
@@ -42,6 +41,7 @@ function state(
     phase: 'idle',
     load: 'ready',
     lastError: null,
+    pendingAction: null,
     archived: false,
     status: 'idle',
     scroll: null,
