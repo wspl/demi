@@ -1,6 +1,8 @@
 import { t } from '@demicodes/web-ui/infra/i18n'
 
 export function formatThinkingDuration(ms: number): string {
+  if (ms < 1000)
+    return '<1s'
   const s = Math.round(ms / 1000)
   if (s < 60)
     return `${s}s`

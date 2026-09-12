@@ -261,6 +261,7 @@ defineExpose({
         </div>
         <ActivitySlot
           v-if="slot"
+          :key="conversationId"
           v-bind="chromeEntrance(true)"
           :kind="slot.kind"
           :incoming="slot.incoming"
