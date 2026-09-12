@@ -176,6 +176,43 @@ test('percent helpers', () => {
   expect(severityFromUsedPercent(90)).toBe('warning')
   expect(severityFromUsedPercent(99)).toBe('critical')
   expect(unixSecondsToIso(1_700_000_000)).toMatch(/^\d{4}-/)
-  expect(unixSecondsToIso('2026-07-09T09:00:00.000Z'))
+  expect(unixSecondsToIso(0)).toBe('1970-01-01T00:00:00.000Z')
+  expect(unixSecondsToIso(null)).toBeNull()
+})
+
+test('quota timestamp contracts use explicit seconds and preserve unknown values', async () => {
+  const { quotaResetSchema, quotaEpochSecondsSchema } = await import('../quota-schemas')
+  expect(quotaResetSchema.parse(1_700_000_000)).toBe('2023-11-14T22:13:20.000Z')
+  expect(quotaResetSchema.parse('1700000000')).toBe('2023-11-14T22:13:20.000Z')
+  expect(quotaResetSchema.parse('2026-07-09T09:00:00.000Z'))
     .toBe('2026-07-09T09:00:00.000Z')
+  expect(unixSecondsToIso(1_700_000_000_000 / 1000)).toBe('2023-11-14T22:13:20.000Z')
+  expect(quotaEpochSecondsSchema.safeParse(1e30).success).toBe(false)
+  for (const value of ['', 'yesterday', '2026-02-30T00:00:00Z', [], {}, -1, Infinity]) {
+    expect(quotaResetSchema.safeParse(value).success).toBe(false)
+  }
+})
+
+test('number headers distinguish absent values from malformed decimal input', async () => {
+  const { numberHeader } = await import('../http')
+  expect(numberHeader(new Headers(), 'x-number')).toBeNull()
+  expect(numberHeader(new Headers({ 'x-number': '0' }), 'x-number')).toBe(0)
+  expect(numberHeader(new Headers({ 'x-number': '35.5' }), 'x-number')).toBe(35.5)
+  for (const value of ['', ' ', '0x10', 'Infinity', 'NaN', 'private-value']) {
+    try {
+      numberHeader(new Headers({ 'x-number': value }), 'x-number')
+      throw new Error('expected rejection')
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'invalid_provider_response' })
+      expect(String(error)).not.toContain('private-value')
+    }
+  }
+})
+
+
+test('quota math rejects corrupt internal measurements instead of treating them as unknown', () => {
+  expect(() => clampUsedPercent(NaN)).toThrow()
+  expect(() => usedPercentFromRatio(-1, 10)).toThrow()
+  expect(() => usedPercentFromRatio(Infinity, 10)).toThrow()
+  expect(usedPercentFromRatio(1e308, 1e-308)).toBe(100)
 })

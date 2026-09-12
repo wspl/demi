@@ -1,7 +1,9 @@
-import { isRecord, stringOrNull } from '@demicodes/utils'
+import { grokQuotaUserSchema, grokQuotaBillingSchema, grokRateLimitSchema } from './quota-schemas'
 import {
   clampUsedPercent,
+  parseProviderData,
   createProviderQuota,
+  ProviderDataError,
   numberHeader,
   severityFromUsedPercent,
   usedPercentFromRatio,
@@ -89,27 +91,26 @@ export function mapGrokQuotaProbe(
   billing: unknown,
   auth?: Pick<GrokResolvedAuth, 'email'>,
 ): ProviderQuotaProbeResult {
-  const userRecord = isRecord(user) ? user : {}
-  const billingRecord = isRecord(billing) ? billing : {}
-  const config = isRecord(billingRecord.config) ? billingRecord.config : {}
+  const userRecord = parseProviderData(grokQuotaUserSchema, user, 'Grok quota user')
+  const billingRecord = parseProviderData(grokQuotaBillingSchema, billing, 'Grok quota billing')
+  const config = billingRecord.config
 
-  const period = isRecord(config.currentPeriod) ? config.currentPeriod : null
-  const isWeekly = stringOrNull(period?.type) === 'USAGE_PERIOD_TYPE_WEEKLY'
-  const resetsAt = stringOrNull(period?.end)
-    ?? stringOrNull(config.billingPeriodEnd)
-  const monthlyLimit = moneyVal(config.monthlyLimit)
-  const used = moneyVal(config.used)
-  const onDemandCap = moneyVal(config.onDemandCap)
-  const usedPercent = clampUsedPercent(config.creditUsagePercent)
-    ?? usedPercentFromRatio(
-    used,
-    monthlyLimit
-  )
+  const period = config?.currentPeriod
+  const periodType = period?.type
+  const isWeekly = periodType === 'USAGE_PERIOD_TYPE_WEEKLY'
+  const isMonthly = periodType === 'USAGE_PERIOD_TYPE_MONTHLY'
+    || (periodType === undefined && config?.monthlyLimit != null)
+  const resetsAt = period?.end ?? config?.billingPeriodEnd ?? null
+  const monthlyLimit = config?.monthlyLimit ?? null
+  const used = config?.used ?? null
+  const onDemandCap = config?.onDemandCap ?? null
+  const usedPercent = clampUsedPercent(config?.creditUsagePercent)
+    ?? usedPercentFromRatio(used, monthlyLimit)
 
-  const windows: ProviderQuotaWindow[] = [
+  const windows: ProviderQuotaWindow[] = config ? [
     {
-      id: isWeekly ? 'weekly' : 'monthly',
-      label: isWeekly ? 'Weekly credits' : 'Monthly credits',
+      id: isWeekly ? 'weekly' : isMonthly ? 'monthly' : 'credits',
+      label: isWeekly ? 'Weekly credits' : isMonthly ? 'Monthly credits' : 'Credits',
       usedPercent,
       used,
       limit: monthlyLimit,
@@ -117,7 +118,7 @@ export function mapGrokQuotaProbe(
       resetsAt,
       severity: severityFromUsedPercent(usedPercent),
     },
-  ]
+  ] : []
 
   if (onDemandCap != null && onDemandCap > 0) {
     windows.push({
@@ -131,10 +132,10 @@ export function mapGrokQuotaProbe(
     })
   }
 
-  const tier = stringOrNull(userRecord.subscriptionTier)
+  const tier = userRecord.subscriptionTier
   return {
     plan: tier ? { id: tier, label: tier, raw: tier } : null,
-    accountLabel: auth?.email ?? stringOrNull(userRecord.email),
+    accountLabel: auth?.email ?? userRecord.email ?? null,
     windows,
     raw: { user, billing },
   }
@@ -146,38 +147,24 @@ export function observeGrokRateLimitHeaders(
 ): ProviderQuotaProbeResult | null {
   if (!headers)
     return null
-  const remReq = numberHeader(headers, 'x-ratelimit-remaining-requests')
-  const limReq = numberHeader(headers, 'x-ratelimit-limit-requests')
-  const remTok = numberHeader(headers, 'x-ratelimit-remaining-tokens')
-  const limTok = numberHeader(headers, 'x-ratelimit-limit-tokens')
-  if (remReq == null && limReq == null && remTok == null && limTok == null)
-    return null
-
   const windows: ProviderQuotaWindow[] = []
-  if (limReq != null) {
-    const used = remReq != null ? limReq - remReq : null
-    const usedPercent = usedPercentFromRatio(used, limReq)
+  for (const kind of ['requests', 'tokens'] as const) {
+    const { remaining, limit } = parseProviderData(grokRateLimitSchema, {
+      remaining: numberHeader(headers, `x-ratelimit-remaining-${kind}`),
+      limit: numberHeader(headers, `x-ratelimit-limit-${kind}`),
+    }, `Grok ${kind} quota`)
+    if (limit === null) {
+      continue
+    }
+    const used = remaining === null ? null : limit - remaining
+    const usedPercent = usedPercentFromRatio(used, limit)
     windows.push({
-      id: 'rpm',
-      label: 'Requests (short window)',
+      id: kind === 'requests' ? 'rpm' : 'tpm',
+      label: kind === 'requests' ? 'Requests (short window)' : 'Tokens (short window)',
       usedPercent,
       used,
-      limit: limReq,
-      unit: 'requests',
-      resetsAt: null,
-      severity: severityFromUsedPercent(usedPercent),
-    })
-  }
-  if (limTok != null) {
-    const used = remTok != null ? limTok - remTok : null
-    const usedPercent = usedPercentFromRatio(used, limTok)
-    windows.push({
-      id: 'tpm',
-      label: 'Tokens (short window)',
-      usedPercent,
-      used,
-      limit: limTok,
-      unit: 'tokens',
+      limit,
+      unit: kind,
       resetsAt: null,
       severity: severityFromUsedPercent(usedPercent),
     })
@@ -205,19 +192,21 @@ async function fetchJson(
   headers.set('accept', 'application/json')
   const response = await fetchImpl(url, { method: 'GET', headers, signal })
   if (!response.ok) {
-    const body = await response.text().catch(() => '')
+    await response.body?.cancel().catch(() => {
+      // An errored response body is already closed.
+    })
     throw new Error(
-      `Grok quota request failed (${response.status}): ${body.slice(0, 200)}`
+      `Grok quota request failed (HTTP ${response.status})`
     )
   }
-  return response.json()
-}
-
-function moneyVal(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value))
-    return value
-  if (isRecord(value) && typeof value.val === 'number'
-    && Number.isFinite(value.val)) return value.val
-  return null
+  try {
+    return await response.json()
+  } catch (error) {
+    signal?.throwIfAborted()
+    if (error instanceof SyntaxError) {
+      throw new ProviderDataError('Grok quota', 'invalid JSON')
+    }
+    throw error
+  }
 }
 

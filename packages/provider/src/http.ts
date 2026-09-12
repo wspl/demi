@@ -3,7 +3,8 @@
 // of re-deriving the same status/keyword tables.
 import { shortHash } from '@demicodes/utils'
 import type { ProviderAuthState, ProviderEvent } from './types'
-import { ProviderDataError } from './validation'
+import { ProviderDataError, parseProviderData } from './validation'
+import { z } from 'zod'
 
 type SecretResolver = () => string | Promise<string> | null | undefined
 type HeadersResolver = () => Record<string, string>
@@ -139,13 +140,14 @@ export function retryAfterMsFromHeader(value: string | null): number | undefined
   return undefined
 }
 
-/** Reads a header as a finite number, or null when absent/blank/non-numeric. */
+const numberHeaderSchema = z.string()
+  .regex(/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/)
+  .transform(Number).pipe(z.number())
+
+/** Decodes a finite decimal header; absent is null and malformed is an error. */
 export function numberHeader(headers: Headers, name: string): number | null {
   const raw = headers.get(name)
-  if (raw == null || raw === '')
-    return null
-  const n = Number(raw)
-  return Number.isFinite(n) ? n : null
+  return raw === null ? null : parseProviderData(numberHeaderSchema, raw, `Header ${name}`)
 }
 
 /** Builds a redacted provider `error` event from a failed HTTP response. */

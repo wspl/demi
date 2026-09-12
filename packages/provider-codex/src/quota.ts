@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto'
-import { isRecord } from '@demicodes/utils'
+import { codexQuotaWindowSchema } from './quota-schemas'
 import {
   clampUsedPercent,
+  parseProviderData,
   numberHeader,
   createProviderQuota,
   severityFromUsedPercent,
   unixSecondsToIso,
   type ProviderQuota,
-  type ProviderQuotaProbeResult,
   type ProviderQuotaWindow,
 } from '@demicodes/provider'
 import { FileCodexAuthStore, type CodexAuthStore } from './auth'
@@ -90,9 +90,15 @@ export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota
         body: JSON.stringify(body),
         signal,
       })
-      const partial = mapCodexRateLimitHeaders(response.headers)
-      await response.body?.cancel().catch(() => {})
-      if (!partial || partial.windows.length === 0) {
+      let partial: ReturnType<typeof mapCodexRateLimitHeaders>
+      try {
+        partial = mapCodexRateLimitHeaders(response.headers)
+      } finally {
+        await response.body?.cancel().catch(() => {
+          // An errored body is already closed; cancellation only releases the probe stream.
+        })
+      }
+      if (!partial) {
         throw new Error(
           `Codex quota probe got no rate-limit headers (HTTP ${response.status})`
         )
@@ -101,7 +107,7 @@ export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota
         ...partial,
         accountLabel,
         raw: {
-          ...(isRecord(partial.raw) ? partial.raw : {}),
+          ...partial.raw,
           httpStatus: response.status,
           authKind: auth.kind
         },
@@ -113,7 +119,7 @@ export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota
 
 export function mapCodexRateLimitHeaders(
   headers: Headers | undefined
-): ProviderQuotaProbeResult | null {
+) {
   if (!headers)
     return null
   const primary = parseCodexWindow(headers, 'primary')
@@ -134,25 +140,20 @@ function parseCodexWindow(
   headers: Headers,
   kind: 'primary' | 'secondary'
 ): ProviderQuotaWindow | null {
-  const usedPercent = clampUsedPercent(numberHeader(
-    headers,
-    `x-codex-${kind}-used-percent`
-  ))
-  if (usedPercent == null && !headers.has(`x-codex-${kind}-used-percent`))
+  const window = parseProviderData(codexQuotaWindowSchema, {
+    usedPercent: numberHeader(headers, `x-codex-${kind}-used-percent`),
+    windowMinutes: numberHeader(headers, `x-codex-${kind}-window-minutes`),
+    resetSeconds: numberHeader(headers, `x-codex-${kind}-reset-at`),
+  }, `Codex ${kind} quota`)
+  const usedPercent = clampUsedPercent(window.usedPercent)
+  const resetAt = unixSecondsToIso(window.resetSeconds)
+  if (usedPercent === null && window.windowMinutes === null && resetAt === null) {
     return null
-  const windowMinutes = numberHeader(headers, `x-codex-${kind}-window-minutes`)
-  const resetAt = unixSecondsToIso(numberHeader(
-    headers,
-    `x-codex-${kind}-reset-at`
-  ))
-  const label =
-    kind === 'primary'
-      ? windowMinutes != null
-        ? `Primary (${windowMinutes}m)`
-        : 'Primary'
-      : windowMinutes != null
-        ? `Secondary (${windowMinutes}m)`
-        : 'Secondary'
+  }
+  const baseLabel = kind === 'primary' ? 'Primary' : 'Secondary'
+  const label = window.windowMinutes === null
+    ? baseLabel
+    : `${baseLabel} (${window.windowMinutes}m)`
   return {
     id: kind,
     label,

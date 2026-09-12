@@ -177,3 +177,31 @@ test(
     expect(events.some((event) => event.type === 'error')).toBe(false)
   }
 )
+
+test('Codex quota rejects invalid headers and preserves absent usage as unknown', () => {
+  expect(mapCodexRateLimitHeaders(new Headers())).toBeNull()
+  expect(mapCodexRateLimitHeaders(new Headers({
+    'x-codex-primary-reset-at': '1700000000',
+  }))?.windows[0]).toMatchObject({ usedPercent: null, resetsAt: '2023-11-14T22:13:20.000Z' })
+  for (const [name, value] of [
+    ['used-percent', ''], ['used-percent', 'NaN'], ['used-percent', '-1'],
+    ['window-minutes', '-2'], ['reset-at', '1e30'], ['reset-at', 'tomorrow'],
+  ]) {
+    expect(() => mapCodexRateLimitHeaders(new Headers({
+      [`x-codex-primary-${name}`]: value!,
+    }))).toThrow()
+  }
+})
+
+test('Codex quota cancels its probe stream when header validation fails', async () => {
+  let cancelled = false
+  const quota = createCodexQuota({
+    authStore: staticStore(),
+    fetch: async () => new Response(new ReadableStream({ cancel() { cancelled = true } }), {
+      headers: { 'x-codex-primary-used-percent': 'private-invalid' },
+    }),
+  })
+  await expect(quota.probe()).rejects.toMatchObject({ code: 'invalid_provider_response' })
+  expect(cancelled).toBe(true)
+  expect(quota.latest()).toBeNull()
+})

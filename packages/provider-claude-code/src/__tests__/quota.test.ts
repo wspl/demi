@@ -168,3 +168,46 @@ class FakeClaudeTransport implements ClaudeTransport, AsyncIterator<unknown> {
     return ''
   }
 }
+
+test('Claude quota validates known fields while absent and null windows stay unknown', () => {
+  expect(mapClaudeUsagePayload({ five_hour: null }).windows).toEqual([])
+  expect(mapClaudeUsagePayload({ five_hour: {} }).windows[0])
+    .toMatchObject({ usedPercent: null, resetsAt: null })
+  expect(mapClaudeUsagePayload({ five_hour: { utilization: 0, resets_at: 0 } }).windows[0])
+    .toMatchObject({ usedPercent: 0, resetsAt: '1970-01-01T00:00:00.000Z' })
+  for (const value of [
+    [], null, { five_hour: [] }, { five_hour: { utilization: '0' } },
+    { five_hour: { utilization: NaN } }, { five_hour: { utilization: -1 } },
+    { five_hour: { utilization: 2, used_percentage: 'bad' } },
+    { seven_day: { resets_at: 'not-a-date' } }, { limits: {} },
+    { limits: [{}] }, { limits: [{ kind: 'session', percent: '20' }] },
+    { limits: [{ kind: 'session', scope: [] }] },
+  ]) {
+    expect(() => mapClaudeUsagePayload(value)).toThrow()
+  }
+  expect(() => observeClaudeStreamBody({ rate_limits: [] })).toThrow()
+  expect(() => observeClaudeStreamBody({ message: { rate_limits: false } })).toThrow()
+  expect(observeClaudeStreamBody({ type: 'system', future: [] })).toBeNull()
+  expect(mapClaudeUsagePayload({ limits: [{ kind: 'session', percent: 12 }] }).windows[0])
+    .toMatchObject({ id: 'limit:session', usedPercent: 12 })
+})
+
+test('Claude header observation does not guess the overage channel percentage scale', () => {
+  const value = observeClaudeRateLimitHeaders(new Headers({
+    'anthropic-ratelimit-unified-overage-period-channel-utilization': '0.5',
+    'anthropic-ratelimit-unified-status': 'allowed_warning',
+  }))
+  expect(value?.windows[0]).toMatchObject({ usedPercent: null, severity: 'warning' })
+  expect(value?.raw).toMatchObject({ overageUtil: 0.5 })
+  expect(() => observeClaudeRateLimitHeaders(new Headers({
+    'anthropic-ratelimit-unified-reset': 'invalid',
+  }))).toThrow()
+})
+
+test('malformed Claude quota observations preserve the previous cache', () => {
+  const quota = createClaudeCodeQuota({ resolveAccess: async () => null })
+  quota.observeResponse!({ body: { rate_limits: { five_hour: { utilization: 12 } } } })
+  expect(() => quota.observeResponse!({ body: { rate_limits: { five_hour: { utilization: '12' } } } }))
+    .toThrow()
+  expect(quota.latest()?.windows[0]?.usedPercent).toBe(12)
+})

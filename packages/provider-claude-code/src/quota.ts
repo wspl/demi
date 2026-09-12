@@ -1,10 +1,16 @@
-import { isRecord, stringOrNull } from '@demicodes/utils'
+import {
+  claudeQuotaEnvelopeSchema, claudeQuotaPayloadSchema,
+  type ClaudeQuotaPayload, type ClaudeQuotaWindow,
+} from './quota-schemas'
 import {
   clampUsedPercent,
   createProviderQuota,
   numberHeader,
   severityFromUsedPercent,
-  unixSecondsToIso,
+  parseProviderData,
+  parseProviderJson,
+  quotaAmountSchema,
+  quotaResetSchema,
   type ProviderQuota,
   type ProviderQuotaProbeResult,
   type ProviderQuotaWindow,
@@ -64,13 +70,15 @@ export function createClaudeCodeQuota(
         { method: 'GET', headers, signal }
       )
       if (!response.ok) {
-        const body = await response.text().catch(() => '')
+        await response.body?.cancel().catch(() => {
+          // An errored response body is already closed.
+        })
         throw new Error(
-          `Claude usage request failed (${response.status}): ${body.slice(0, 200)}`
+          `Claude usage request failed (HTTP ${response.status})`
         )
       }
-      const payload = await response.json()
-      return mapClaudeUsagePayload(payload, access)
+      const payload = parseProviderJson(claudeQuotaPayloadSchema, await response.text(), 'Claude quota')
+      return mapClaudeQuota(payload, access)
     },
     observe: ({ headers, body }) => {
       if (headers) {
@@ -89,28 +97,26 @@ export function createClaudeCodeQuota(
 export function observeClaudeStreamBody(
   body: unknown
 ): ProviderQuotaProbeResult | null {
-  if (!isRecord(body))
+  const envelope = parseProviderData(claudeQuotaEnvelopeSchema, body, 'Claude quota envelope')
+  const rateLimits = envelope.rate_limits ?? envelope.message?.rate_limits
+  if (!rateLimits) {
     return null
-  const rateLimits = isRecord(body.rate_limits)
-    ? body.rate_limits
-    : isRecord(body.message) && isRecord(body.message.rate_limits)
-      ? body.message.rate_limits
-      : null
-  if (!rateLimits)
-    return null
-  // Reuse payload mapper shape: five_hour / seven_day on the rate_limits object.
-  const partial = mapClaudeUsagePayload(rateLimits)
-  return partial.windows.length > 0 ? {
-    windows: partial.windows,
-    raw: rateLimits
-  } : null
+  }
+  const partial = mapClaudeQuota(rateLimits)
+  return partial.windows.length > 0 ? partial : null
 }
 
 export function mapClaudeUsagePayload(
   payload: unknown,
   access?: ClaudeCodeOAuthAccess | null,
 ): ProviderQuotaProbeResult {
-  const record = isRecord(payload) ? payload : {}
+  return mapClaudeQuota(parseProviderData(claudeQuotaPayloadSchema, payload, 'Claude quota'), access)
+}
+
+function mapClaudeQuota(
+  record: ClaudeQuotaPayload,
+  access?: ClaudeCodeOAuthAccess | null,
+): ProviderQuotaProbeResult {
   const windows: ProviderQuotaWindow[] = []
 
   pushWindow(windows, 'five_hour', '5h session', record.five_hour)
@@ -118,36 +124,23 @@ export function mapClaudeUsagePayload(
   pushWindow(windows, 'seven_day_sonnet', '7d Sonnet', record.seven_day_sonnet)
   pushWindow(windows, 'seven_day_opus', '7d Opus', record.seven_day_opus)
 
-  if (Array.isArray(record.limits)) {
+  if (record.limits) {
     for (const item of record.limits) {
-      if (!isRecord(item))
+      const kind = item.kind
+      // A dedicated window takes precedence only when it is supplied.
+      if ((kind === 'session' && record.five_hour)
+        || (kind === 'weekly_all' && record.seven_day)) {
         continue
-      const kind = typeof item.kind === 'string' ? item.kind : null
-      if (!kind)
-        continue
-      // Prefer dedicated five_hour/seven_day objects when present.
-      if (kind === 'session' || kind === 'weekly_all')
-        continue
-      const percent = clampUsedPercent(typeof item.percent === 'number'
-        ? item.percent
-        : null)
-      const scopeLabel =
-        isRecord(item.scope) && isRecord(item.scope.model)
-          && typeof item.scope.model.display_name === 'string'
-          ? item.scope.model.display_name
-          : undefined
+      }
+      const percent = clampUsedPercent(item.percent)
+      const scopeLabel = item.scope?.model?.display_name
       windows.push({
         id: `limit:${kind}${scopeLabel ? `:${scopeLabel}` : ''}`,
         label: scopeLabel ? `${kind} (${scopeLabel})` : kind,
         usedPercent: percent,
         unit: 'percent',
-        resetsAt: unixSecondsToIso(item.resets_at)
-          ?? stringOrNull(item.resets_at),
-        severity:
-          item.severity === 'critical' || item.severity === 'warning'
-            || item.severity === 'normal'
-            ? item.severity
-            : severityFromUsedPercent(percent),
+        resetsAt: item.resets_at ?? null,
+        severity: item.severity ?? severityFromUsedPercent(percent),
         scope: scopeLabel ? { kind: 'model', label: scopeLabel } : { kind },
       })
     }
@@ -162,7 +155,7 @@ export function mapClaudeUsagePayload(
     } : null,
     accountLabel: null,
     windows,
-    raw: payload,
+    raw: record,
   }
 }
 
@@ -178,52 +171,46 @@ export function observeClaudeRateLimitHeaders(
   const overageUtil = headers.get(
     'anthropic-ratelimit-unified-overage-period-channel-utilization'
   )
-  if (!status && !reset && !claim && !overageUtil)
+  if (status === null && reset === null && claim === null && overageUtil === null)
     return null
 
-  const usedPercent = clampUsedPercent(numberHeader(
+  const utilization = parseProviderData(quotaAmountSchema.nullable(), numberHeader(
     headers,
-    'anthropic-ratelimit-unified-overage-period-channel-utilization'
-  ))
+    'anthropic-ratelimit-unified-overage-period-channel-utilization',
+  ), 'Claude quota utilization')
+  // This header describes an overage channel, not a documented quota percentage.
+  // Preserve the validated value in raw metadata without guessing its scale.
+  const resetsAt = parseProviderData(quotaResetSchema.nullable(), reset, 'Claude quota reset')
   const windows: ProviderQuotaWindow[] = [
     {
       id: 'unified',
       label: claim ?? 'Unified rate limit',
-      usedPercent,
+      usedPercent: null,
       unit: 'percent',
-      resetsAt: unixSecondsToIso(reset),
-      severity:
-        status === 'rejected' || status === 'allowed_warning'
-          ? status === 'rejected'
-            ? 'critical'
-            : 'warning'
-          : severityFromUsedPercent(usedPercent),
+      resetsAt,
+      severity: status === 'rejected' ? 'critical'
+        : status === 'allowed_warning' ? 'warning' : null,
     },
   ]
-  return { windows, raw: { status, reset, claim, overageUtil } }
+  return { windows, raw: { status, reset, claim, overageUtil: utilization } }
 }
 
 function pushWindow(
   windows: ProviderQuotaWindow[],
   id: string,
   label: string,
-  value: unknown,
+  value: ClaudeQuotaWindow | null | undefined,
 ): void {
-  if (!isRecord(value))
+  if (!value) {
     return
-  const usedPercent = clampUsedPercent(
-    typeof value.utilization === 'number'
-      ? value.utilization
-      : typeof value.used_percentage
-        === 'number' ? value.used_percentage : null,
-  )
+  }
+  const usedPercent = clampUsedPercent(value.utilization ?? value.used_percentage)
   windows.push({
     id,
     label,
     usedPercent,
     unit: 'percent',
-    resetsAt: unixSecondsToIso(value.resets_at)
-      ?? stringOrNull(value.resets_at),
+    resetsAt: value.resets_at ?? null,
     severity: severityFromUsedPercent(usedPercent),
   })
 }

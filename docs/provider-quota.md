@@ -219,3 +219,52 @@ Guidance:
 | Primary steady-state path? | **observe** on live inference where possible |
 | Agent protocol change? | **None** |
 | Tied to multi-cred? | **Yes** — active credential + `clearLatest` on switch |
+
+## Data validation and unknown values
+
+Concrete `quota-schemas.ts` modules own the consumed Claude and Grok response
+fields. Their public mapping functions validate unknown input once, then map typed
+values to quota windows. The shared provider package owns finite nonnegative quota
+amounts, quota reset timestamps and HTTP decimal-header decoding. Extra vendor
+fields are permitted. Present known fields with the wrong type fail with
+`ProviderDataError`; absent measurements remain null, and numeric zero remains
+zero. Known percentage values are capped at 100 for display. Amount ratios require
+finite nonnegative inputs; a zero or unknown limit has no known percentage.
+
+| Input | Supported reset representation |
+| --- | --- |
+| Codex `x-codex-*-reset-at` | Finite nonnegative epoch seconds |
+| Claude quota JSON and unified reset header | Epoch seconds, decimal seconds text, or timezone-qualified ISO timestamp |
+| Grok billing/current-period dates | Timezone-qualified ISO timestamp, preserving its textual precision |
+
+There is no magnitude heuristic for seconds versus milliseconds. The shared
+`unixSecondsToIso` maps numeric seconds only; callers holding milliseconds must
+convert them explicitly. Dates outside the representable range, empty strings and
+invalid calendar dates fail validation. For example, seconds `1700000000` map to
+`2023-11-14T22:13:20.000Z`; an absent timestamp maps to null.
+
+Claude's dedicated windows and their measurements may be absent or null. An empty
+window has unknown usage and reset time. `limits` entries require a kind and valid
+optional percent, scope, severity and reset fields. Session/weekly limit entries
+are skipped only when their corresponding dedicated window exists. The unified
+overage channel header is validated and retained in raw metadata; its conversion
+to a subscription usage percentage has no established contract, so the unified
+window reports unknown usage. Known rejected/warning status values still provide
+severity; other statuses do not imply a numeric utilization.
+
+Grok's missing billing config produces no billing window. A present config with
+missing measurements produces unknown values, not zero credit use. Weekly and
+monthly periods receive explicit labels; unidentified periods use `Credits`.
+`creditUsagePercent` takes precedence over an amount ratio, but a malformed percent
+cannot fall back to the ratio. Request/token counters are nonnegative integers;
+remaining cannot exceed limit. Amount fields accept a number or the tested vendor
+`{ val: number }` representation. Wrong optional shapes are errors.
+
+Absent quota headers produce no observation. A Codex header window containing
+only a reset or duration still carries unknown usage. Invalid headers are errors,
+including blank/nondecimal values and invalid numeric ranges. Failed direct
+observations or probes preserve the previous cache. Inference adapters isolate
+passive observation errors so they cannot stop inference. Existing generation
+invalidation prevents old-account observations and probes from replacing the new
+account's state. Probe response bodies are consumed or cancelled on success and
+failure; protocol diagnostics never include response bodies.

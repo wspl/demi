@@ -208,3 +208,33 @@ test(
     ])
   }
 )
+
+test('Grok quota validates whole payloads and keeps absent billing unknown', () => {
+  expect(mapGrokQuotaProbe({}, {}).windows).toEqual([])
+  expect(mapGrokQuotaProbe({}, { config: {} }).windows[0])
+    .toMatchObject({ id: 'credits', used: null, limit: null, usedPercent: null, resetsAt: null })
+  expect(mapGrokQuotaProbe({}, { config: { monthlyLimit: 0, used: 0 } }).windows[0])
+    .toMatchObject({ used: 0, limit: 0, usedPercent: null })
+  for (const billing of [
+    null, [], { config: [] }, { config: null }, { config: { monthlyLimit: '20' } },
+    { config: { monthlyLimit: { val: '20' } } }, { config: { used: -1 } },
+    { config: { creditUsagePercent: NaN } }, { config: { creditUsagePercent: '20', used: 10, monthlyLimit: 20 } },
+    { config: { currentPeriod: { end: 'tomorrow' } } },
+    { config: { billingPeriodEnd: '2026-02-30T00:00:00Z' } },
+  ]) {
+    expect(() => mapGrokQuotaProbe({}, billing)).toThrow()
+  }
+  expect(() => mapGrokQuotaProbe({ subscriptionTier: 1 }, {})).toThrow()
+  expect(() => mapGrokQuotaProbe({ email: [] }, {})).toThrow()
+})
+
+test('Grok rate limits reject negative, fractional and inconsistent counters', () => {
+  for (const [limit, remaining] of [['0', '-1'], ['10', '20'], ['10.5', '1'], ['10', 'bad']]) {
+    expect(() => observeGrokRateLimitHeaders(new Headers({
+      'x-ratelimit-limit-requests': limit!,
+      'x-ratelimit-remaining-requests': remaining!,
+    }))).toThrow()
+  }
+  expect(observeGrokRateLimitHeaders(new Headers({ 'x-ratelimit-limit-requests': '10' }))?.windows[0])
+    .toMatchObject({ used: null, limit: 10, usedPercent: null })
+})

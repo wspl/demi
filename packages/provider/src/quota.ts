@@ -296,9 +296,12 @@ function mergeQuotaWindows(
 }
 
 /** Clamp percent into 0–100 or null. */
-export function clampUsedPercent(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value))
+export function clampUsedPercent(value: number | null | undefined): number | null {
+  if (value == null)
     return null
+  if (!Number.isFinite(value)) {
+    throw new RangeError('Quota percentage must be finite')
+  }
   if (value < 0)
     return 0
   if (value > 100)
@@ -311,28 +314,21 @@ export function usedPercentFromRatio(
   used: number | null | undefined,
   limit: number | null | undefined
 ): number | null {
-  if (used == null || limit == null || !Number.isFinite(used)
-    || !Number.isFinite(limit)
-    || limit <= 0) return null
-  return clampUsedPercent((used / limit) * 100)
+  if (used == null || limit == null) {
+    return null
+  }
+  if (!Number.isFinite(used) || !Number.isFinite(limit) || used < 0 || limit < 0) {
+    throw new RangeError('Quota amounts must be finite and nonnegative')
+  }
+  if (limit === 0) {
+    return null
+  }
+  return used >= limit ? 100 : (used / limit) * 100
 }
 
-export function unixSecondsToIso(value: unknown): string | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    // Heuristic: ms vs seconds
-    const ms = value > 1e12 ? value : value * 1000
-    return new Date(ms).toISOString()
-  }
-  if (typeof value === 'string' && value.trim()) {
-    const asNum = Number(value)
-    if (Number.isFinite(asNum) && /^\d+(\.\d+)?$/.test(value.trim())) {
-      return unixSecondsToIso(asNum)
-    }
-    const parsed = Date.parse(value)
-    if (Number.isFinite(parsed))
-      return new Date(parsed).toISOString()
-  }
-  return null
+/** Converts validated epoch seconds; milliseconds require explicit conversion. */
+export function unixSecondsToIso(value: number | null | undefined): string | null {
+  return value == null ? null : new Date(value * 1000).toISOString()
 }
 
 export function severityFromUsedPercent(
