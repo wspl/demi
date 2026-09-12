@@ -11,6 +11,7 @@ browser package typechecks and checks affected specimens in the browser.
 | --- | --- | --- |
 | Sign in: email and password on the left, a wide empty intro on the right; wrong credentials, lockout, and an ended session | auth/EmailLoginPage | Sign in page over pinned phases; `web` LoginPage over the real authentication adapter |
 | Sidebar entries: New, then Skills (disabled, In development tooltip) and Archived opening its settings section; New on the Conversations heading | AppSidebar `openSettings(section)` | Sidebar live specimen; `web` opens Archived from the entry |
+| A single conversation's context menu copies its ID to the clipboard and confirms with a toast; clipboard failures show an error | SidebarSelectionMenu and shared `copyConversationId`, also used by AgentTabBar | Sidebar live specimen and `web` AppSidebar |
 | Archived conversations: searchable list with Restore | settings/SettingsArchived | Settings full mock; `web` restores and opens the conversation |
 | Marquee, read indicators, ordering, temporary folding and centered scrolling; a conversation stays active while its root or any subagent runs | Sidebar components, `isConversationActive`, and drag controller | Sidebar live specimen includes an idle parent with a running child; `web` updates status after applying child events and restoring history |
 | Menu sizing, label/value rows, section headings and status indicators | Menu, MenuItem, MenuGroup | Overlays specimens |
