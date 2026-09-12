@@ -35,7 +35,7 @@ export function createFileGroup(): CommandGroup {
         input: {
           path: z.string().describe('Target file path'),
           content: z.string()
-            .describe('File content, passed via stdin/heredoc'),
+            .describe('File content'),
         },
         positionals: ['path'],
         stdinField: 'content',
@@ -67,7 +67,7 @@ export function createFileGroup(): CommandGroup {
         failureOutput: 'writes parse, validation, or write errors to stderr and exits non-zero after rolling back partial writes when possible',
         input: {
           patch: z.string()
-            .describe('Unified diff content, passed via stdin/heredoc'),
+            .describe('Unified diff content'),
         },
         stdinField: 'patch',
       },

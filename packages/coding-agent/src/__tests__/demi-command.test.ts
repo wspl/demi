@@ -33,6 +33,33 @@ test('demi file read returns a text file as text', async () => {
   expect(read.stdout.delta).toBe('hello world\n')
 })
 
+test('file bodies use quoted heredocs and body options fail before changing files', async () => {
+  const { env, host } = await createDemiEnvironment()
+  const created = await env.exec({
+    script: "demi file create note.txt <<'EOF'\n$HOME `echo unsafe` \"quotes\"\nEOF",
+  })
+  expect(created).toMatchObject({ status: 'exited', exitCode: 0 })
+  const contents = '$HOME `echo unsafe` "quotes"\n'
+  expect(new TextDecoder().decode(await host.fs.readFile('note.txt', {
+    cwd: host.defaultCwd,
+  }))).toBe(contents)
+
+  for (const script of [
+    "demi file create forbidden.txt --content <<'EOF'\nbody\nEOF",
+    "demi file create forbidden.txt --content 'body'",
+    "demi file patch --patch <<'EOF'\nnot a patch\nEOF",
+  ]) {
+    const result = await env.exec({ script })
+    expect(result).toMatchObject({ status: 'exited', exitCode: 1 })
+    expect(result.stderr.delta).toContain('only from stdin. Remove --')
+  }
+  await expect(host.fs.readFile('forbidden.txt', { cwd: host.defaultCwd }))
+    .rejects.toThrow()
+  expect(new TextDecoder().decode(await host.fs.readFile('note.txt', {
+    cwd: host.defaultCwd,
+  }))).toBe(contents)
+})
+
 test(
   'demi file read emits raw bytes; binary files surface as binaryStdout at the boundary',
   async () => {
@@ -82,7 +109,7 @@ test(
     if (help.status !== 'exited')
       throw new Error('expected exited result')
     expect(help.stdout.delta).toContain('shown to you as viewable media')
-    expect(help.stdout.delta).toContain('<path> - File path to read')
+    expect(help.stdout.delta).toContain('<path> (required) - File path to read')
 
     const leafHelp = await env.exec({
       shellId: help.shellId,

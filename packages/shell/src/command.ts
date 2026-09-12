@@ -50,6 +50,7 @@ interface CommandLeafBase {
   failureOutput?: string
   input?: CommandInputSpec
   positionals?: string[]
+  /** Text read only from stdin (heredoc, pipe, or redirection), never argv. */
   stdinField?: string
   /**
    * Field receiving every token after a literal `--`, unparsed — for
@@ -219,7 +220,7 @@ export class CommandRegistry {
 
 // Stated once for the whole registry so per-command renders only carry deviations.
 export const COMMAND_HELP_DEFAULTS =
-  'Unless a command states otherwise: success prints raw text on stdout, failure writes an error message to stderr and exits non-zero. Pass --help at any level to print a command\'s documentation.'
+  'Unless a command states otherwise: success prints raw text on stdout, failure writes an error message to stderr and exits non-zero. Pass --help at any level to print a command\'s documentation. Usage uses <placeholders> for values and [brackets] for optional arguments. Quote values containing spaces. Stdin bodies use a quoted heredoc, pipe, or input redirection; they have no command-line option. Use --name=value for option values beginning with --, and -- before positional values beginning with --.'
 
 /**
  * Resolves argv through the tree and parses the leaf's arguments. A group
@@ -285,49 +286,69 @@ function parseArgs(
   const values: Record<string, unknown> = {}
   let json = false
   let positionalIndex = 0
+  let optionsEnded = false
 
   for (let i = startIndex; i < argv.length; i += 1) {
     const token = argv[i]!
-    if (command.restField && token === '--') {
-      values[command.restField] = argv.slice(i + 1)
-      break
+    if (!optionsEnded && token === '--') {
+      if (command.restField) {
+        values[command.restField] = argv.slice(i + 1)
+        break
+      }
+      optionsEnded = true
+      continue
     }
-    if (token === '--help') {
+    if (!optionsEnded && token === '--help') {
       return { path: [...path], help: true, values: {}, json: false }
     }
-    if (token === '--json') {
+    if (!optionsEnded && token === '--json') {
+      if (!command.output?.json)
+        throw new Error(`Command "${displayPath}" does not define JSON output`)
       json = true
       continue
     }
 
-    if (token.startsWith('--')) {
-      const field = token.slice(2)
+    if (!optionsEnded && token.startsWith('--')) {
+      const equals = token.indexOf('=')
+      const field = token.slice(2, equals === -1 ? undefined : equals)
       const schema = input[field]
       if (!schema)
         throw new Error(`Unknown option "--${field}" for "${displayPath}"`)
+      const source = fieldSource(command, field)
+      if (source === 'stdin') {
+        throw new Error(
+          `"${displayPath}" reads ${field} only from stdin. Remove --${field} and use a quoted heredoc, pipe, or input redirection.`,
+        )
+      }
+      if (source !== 'option') {
+        throw new Error(
+          `"${field}" is ${source === 'rest' ? 'passed after --' : 'a positional argument'} for "${displayPath}"; --${field} is not an option`,
+        )
+      }
 
       const next = argv[i + 1]
-      const takesImplicitBoolean = isBooleanSchema(schema)
+      const takesImplicitBoolean = equals === -1 && isBooleanSchema(schema)
         && (next === undefined || next.startsWith('--'))
-      const rawValue = takesImplicitBoolean ? true : next
-      if (!takesImplicitBoolean)
+      const rawValue = equals !== -1
+        ? token.slice(equals + 1)
+        : takesImplicitBoolean ? true : next
+      if (equals === -1 && !takesImplicitBoolean)
         i += 1
-      if (rawValue === undefined)
+      if (rawValue === undefined ||
+        (equals === -1 && typeof rawValue === 'string' && rawValue.startsWith('--')))
         throw new Error(`Missing value for "--${field}"`)
-      setParsedValue(values, field, rawValue)
+      setParsedValue(values, field, rawValue, schema)
       continue
     }
 
     const field = command.positionals?.[positionalIndex]
     if (!field)
       throw new Error(`Unexpected positional argument "${token}"`)
-    setParsedValue(values, field, token)
+    setParsedValue(values, field, token, input[field]!)
     positionalIndex += 1
   }
 
-  // A field can be both positional and stdin-fed ("positional, or stdin when
-  // omitted"); an explicit positional wins over piped stdin.
-  if (command.stdinField && values[command.stdinField] === undefined) {
+  if (command.stdinField) {
     values[command.stdinField] = stdinText
   }
 
@@ -393,10 +414,6 @@ export async function runRegisteredCommand(
   )
   if (parsed.help)
     return help()
-  if (parsed.json && !node.output?.json) {
-    throw new Error(`Command "${displayPath}" does not define JSON output`)
-  }
-
   const capture = new CapturingIO(ctx.io)
   const io = parsed.json ? capture : ctx.io
   try {
@@ -467,7 +484,7 @@ export function renderCommandHelp(command: Command, parentPath = ''): string {
 
   if (!isCommandGroup(command)) {
     lines.push('', 'Usage:')
-    lines.push('', `  ${path}`)
+    lines.push('', ...renderUsage(command, path).map(line => `  ${line}`))
     if (command.successOutput) lines.push(`    Success output: ${command.successOutput}`)
     else if (command.output?.json) {
       lines.push(
@@ -478,24 +495,27 @@ export function renderCommandHelp(command: Command, parentPath = ''): string {
       lines.push(`    Failure output: ${command.failureOutput}`)
 
     const fields = Object.entries(command.input ?? {})
+      .filter(([field]) => field !== command.stdinField)
     if (fields.length > 0) {
       lines.push('    Parameters:')
       for (const [field, schema] of fields) {
-        const positional = command.positionals?.includes(field) ?? false
-        const stdin = command.stdinField === field
-        lines.push(`      ${formatField(field, schema, positional, stdin)}`)
+        const source = fieldSource(command, field)
+        const required = schema.isOptional() ? 'optional' : 'required'
+        const repeatable = source === 'option' && isArraySchema(schema)
+          ? ', repeatable'
+          : ''
+        lines.push(
+          `      ${fieldSyntax(field, schema, source)} (${required}${repeatable})${fieldDescription(schema)}`,
+        )
       }
     }
 
     if (command.stdinField) {
-      lines.push(`    stdin/heredoc: ${command.stdinField}`)
+      const schema = command.input![command.stdinField]!
+      lines.push(`    Stdin body: ${command.stdinField}${fieldDescription(schema)}`)
     }
     if (command.output?.json) {
       lines.push('    --json: emits machine-readable JSON for this command')
-    } else {
-      lines.push(
-        '    --json: accepted only when this command defines JSON output'
-      )
     }
   }
 
@@ -549,6 +569,12 @@ export function validateCommandTree(command: Command, path: string): void {
     )
   }
   const input = command.input ?? {}
+  for (const field of Object.keys(input)) {
+    if (!COMMAND_NAME_PATTERN.test(field))
+      throw new Error(`CommandRegistry: "${path}" has invalid input name "${field}"`)
+    if (fieldSource(command, field) === 'option' && ['help', 'json'].includes(field))
+      throw new Error(`CommandRegistry: "${path}" option "${field}" is reserved`)
+  }
   if (command.stdinField && !(command.stdinField in input)) {
     throw new Error(
       `CommandRegistry: "${path}" stdinField "${command.stdinField}" is not in input`
@@ -559,11 +585,29 @@ export function validateCommandTree(command: Command, path: string): void {
       `CommandRegistry: "${path}" restField "${command.restField}" is not in input`
     )
   }
+  if (command.stdinField && command.stdinField === command.restField) {
+    throw new Error(`CommandRegistry: "${path}" field "${command.stdinField}" has multiple input sources`)
+  }
+  if (command.stdinField && zodTypeName(unwrapSchema(input[command.stdinField]!)) !== 'string') {
+    throw new Error(`CommandRegistry: "${path}" stdinField must be a string`)
+  }
+  const seenPositionals = new Set<string>()
+  let optionalPositional = false
   for (const positional of command.positionals ?? []) {
     if (!(positional in input)) {
       throw new Error(
         `CommandRegistry: "${path}" positional "${positional}" is not in input`
       )
+    }
+    if (positional === command.stdinField || positional === command.restField ||
+      seenPositionals.has(positional)) {
+      throw new Error(`CommandRegistry: "${path}" field "${positional}" has multiple input sources`)
+    }
+    seenPositionals.add(positional)
+    if (input[positional]!.isOptional()) {
+      optionalPositional = true
+    } else if (optionalPositional) {
+      throw new Error(`CommandRegistry: "${path}" required positional "${positional}" follows an optional positional`)
     }
   }
 }
@@ -580,12 +624,15 @@ function unavailableStorage(displayPath: string): CommandStorage {
 function setParsedValue(
   values: Record<string, unknown>,
   field: string,
-  value: unknown
+  value: unknown,
+  schema: z.ZodType,
 ): void {
   if (values[field] === undefined) {
     values[field] = value
     return
   }
+  if (!isArraySchema(schema))
+    throw new Error(`Duplicate value for "${field}"`)
   if (Array.isArray(values[field])) {
     values[field].push(value)
     return
@@ -629,18 +676,58 @@ function coerceValue(schema: z.ZodType, value: unknown): unknown {
   return value
 }
 
-function formatField(
+type FieldSource = 'stdin' | 'positional' | 'rest' | 'option'
+
+function fieldSource(command: CommandLeaf, field: string): FieldSource {
+  if (command.stdinField === field)
+    return 'stdin'
+  if (command.restField === field)
+    return 'rest'
+  return command.positionals?.includes(field) ? 'positional' : 'option'
+}
+
+function renderUsage(command: CommandLeaf, path: string): string[] {
+  const input = command.input ?? {}
+  const fields = [
+    ...(command.positionals ?? []),
+    ...Object.keys(input).filter(field => fieldSource(command, field) === 'option'),
+    ...(command.restField ? [command.restField] : []),
+  ]
+  const arguments_ = fields.map(field => {
+    const schema = input[field]!
+    const syntax = fieldSyntax(field, schema, fieldSource(command, field))
+    return schema.isOptional() ? `[${syntax}]` : syntax
+  })
+  if (command.output?.json)
+    arguments_.splice(command.restField ? arguments_.length - 1 : arguments_.length, 0, '[--json]')
+  const invocation = [path, ...arguments_].join(' ')
+  return command.stdinField
+    ? [`${invocation} <<'EOF'`, `<${command.stdinField}>`, 'EOF']
+    : [invocation]
+}
+
+function fieldSyntax(
   field: string,
   schema: z.ZodType,
-  positional: boolean,
-  stdin: boolean
+  source: FieldSource,
 ): string {
-  const prefix = positional ? `<${field}>` : `--${field}`
-  const source = stdin ? ' (from stdin/heredoc)' : ''
+  if (source === 'positional')
+    return `<${field}>`
+  if (source === 'rest')
+    return `-- <${field}>...`
+  if (isBooleanSchema(schema))
+    return `--${field} [true|false]`
+  const unwrapped = unwrapSchema(schema)
+  const label = zodTypeName(unwrapped) === 'enum'
+    ? (unwrapped as z.ZodEnum).options.join('|')
+    : field
+  return `--${field} <${label}>`
+}
+
+function fieldDescription(schema: z.ZodType): string {
   // A reconstructed optional schema carries its description on the inner type.
   const text = schema.description ?? unwrapSchema(schema).description
-  const description = text ? ` - ${text}` : ''
-  return `${prefix}${source}${description}`
+  return text ? ` - ${text}` : ''
 }
 
 function isArraySchema(schema: z.ZodType): boolean {

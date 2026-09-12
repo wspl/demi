@@ -66,7 +66,6 @@ export function testRoots(): Command[] {
               kind: 'rpc',
               summary: 'Add a note.',
               input: { text: z.string().describe('Note text') },
-              positionals: ['text'],
               stdinField: 'text',
               output: { json: z.object({ count: z.number() }) },
               run: async ({ parsed, io, storage }) => {
