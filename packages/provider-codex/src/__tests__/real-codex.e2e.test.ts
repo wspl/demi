@@ -1,3 +1,4 @@
+import { externalTestEnabled } from '../../../../scripts/test-policy'
 import { expect, test } from 'bun:test'
 import { CommandRegistry } from '@demicodes/shell'
 import { randomUUID } from 'node:crypto'
@@ -16,13 +17,13 @@ import { LocalHost } from '@demicodes/runner/testing'
 import { FileCodexAuthStore } from '../auth'
 import { CodexProvider } from '../provider'
 
-const e2e = process.env.DEMI_CODEX_E2E === '1' ? test : test.skip
-const cacheE2e = process.env.DEMI_CODEX_CACHE_E2E === '1' ? test : test.skip
-const thinkingE2e = process.env.DEMI_CODEX_THINKING_E2E === '1'
+const e2e = externalTestEnabled('DEMI_CODEX_E2E') ? test : test.skip
+const cacheE2e = externalTestEnabled('DEMI_CODEX_CACHE_E2E') ? test : test.skip
+const thinkingE2e = externalTestEnabled('DEMI_CODEX_THINKING_E2E')
   ? test
   : test.skip
-const toolE2e = process.env.DEMI_CODEX_TOOL_E2E === '1' ? test : test.skip
-const steerE2e = process.env.DEMI_CODEX_STEER_E2E === '1' ? test : test.skip
+const toolE2e = externalTestEnabled('DEMI_CODEX_TOOL_E2E') ? test : test.skip
+const steerE2e = externalTestEnabled('DEMI_CODEX_STEER_E2E') ? test : test.skip
 const modelId = process.env.DEMI_CODEX_E2E_MODEL ?? 'gpt-5.4'
 const transport = parseTransport(process.env.DEMI_CODEX_TRANSPORT)
 

@@ -1,10 +1,10 @@
+import { createProductClient, type ProductAgentClient } from './session'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
-import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider, type AgentProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { decodeUtf8, deferred, delay, waitFor } from '@demicodes/utils'
@@ -125,9 +125,7 @@ async function openConversation(
       { once: true }
     )
   })
-  const client = new AgentClient(
-    createWebSocketClientTransport(socket as never)
-  )
+  const client = createProductClient(socket)
   await client.open(selectionFor(providerId), '/ignored', 'ignored')
   return client
 }
@@ -674,9 +672,7 @@ test(
         { once: true }
       )
     )
-    const client = new AgentClient(
-      createWebSocketClientTransport(socket as never)
-    )
+    const client = createProductClient(socket)
     await client.open(selectionFor(providerId), '/ignored', 'ignored')
 
     expect(sessions).toHaveLength(1)
@@ -852,7 +848,7 @@ test(
       },
     })
     const runners: Awaited<ReturnType<typeof startTxikiRunner>>[] = []
-    let client: AgentClient | undefined
+    let client: ProductAgentClient | undefined
     try {
       const workspaces: Array<{
         id: string;
@@ -978,7 +974,7 @@ test(
       },
     })
     const backend = await openBackend({ dataDir, port: 0 })
-    let client: AgentClient | undefined
+    let client: ProductAgentClient | undefined
     try {
       const created = await api<{ provider: { id: string } }>(
         backend,

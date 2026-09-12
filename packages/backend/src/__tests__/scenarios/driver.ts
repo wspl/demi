@@ -1,16 +1,16 @@
+import { createProductClient, type ProductAgentClient } from '../session'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Block, UserContentBlock } from '@demicodes/core'
+import type { UserContentBlock } from '@demicodes/core'
 import {
-  AgentClient,
-  createWebSocketClientTransport,
+  type DisplayedBlock,
   type ClientSessionEvent
 } from '@demicodes/agent'
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import type { z } from 'zod'
-import { type uploadRefBlockSchema } from '@demicodes/product-contracts'
+import { contentReference, type uploadRefBlockSchema } from '@demicodes/product-contracts'
 import { ATTACHMENTS_DIR } from '../../conversation/attachment-refs'
 import { CLOUD_HOME } from '../../conversation/execution-target'
 import type { TurnScript } from './model'
@@ -20,7 +20,7 @@ import type { World } from './world'
 /** `cloud`, or `runner:<name>` for a device the world paired. */
 export type Target = 'cloud' | `runner:${string}`
 
-export type ShellOutputEvent = Extract<ClientSessionEvent, { type: 'shell_output' }>
+export type ShellOutputEvent = Extract<ClientSessionEvent<DisplayedBlock>, { type: 'shell_output' }>
 
 export interface Turn {
   /**
@@ -31,7 +31,7 @@ export interface Turn {
   /** The shell_output frames of this turn. */
   shell: ShellOutputEvent[]
   /** The blocks this turn appended to the live transcript. */
-  blocks: Block[]
+  blocks: DisplayedBlock[]
   /**
    * The inference requests this turn made, for assertions on what the model was
    * shown.
@@ -45,8 +45,8 @@ export interface Turn {
  * and returns the turn's observation.
  */
 export class Driver {
-  readonly events: ClientSessionEvent[] = []
-  private client!: AgentClient
+  readonly events: ClientSessionEvent<DisplayedBlock>[] = []
+  private client!: ProductAgentClient
   private socket!: WebSocket
   private seenToolResults = new Set<string>()
 
@@ -97,9 +97,7 @@ export class Driver {
       )
     })
     this.socket = socket
-    this.client = new AgentClient(
-      createWebSocketClientTransport(socket as never)
-    )
+    this.client = createProductClient(socket)
     this.client.subscribe((event) => void this.events.push(event))
     await this.client.open(
       this.world.selection,
@@ -145,7 +143,9 @@ export class Driver {
     this.script(...script.model)
     const begin = this.begin()
     await this.client.send(
-      (script.content ?? [{ type: 'text', text: script.text ?? 'go' }]) as UserContentBlock[]
+      (script.content ?? [{ type: 'text', text: script.text ?? 'go' }]).map(
+        block => block.type === 'upload' ? contentReference(block) : block
+      )
     )
     return this.observe(begin)
   }
@@ -209,7 +209,7 @@ export class Driver {
     }
   }
 
-  transcript(): Block[] {
+  transcript(): DisplayedBlock[] {
     return this.client.transcript().blocks
   }
 
@@ -243,7 +243,7 @@ export class Driver {
     return readFile(this.filePath(relative), 'utf8').catch(() => null)
   }
 
-  get agent(): AgentClient {
+  get agent(): ProductAgentClient {
     return this.client
   }
 

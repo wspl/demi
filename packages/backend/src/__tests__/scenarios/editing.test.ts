@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { deferred, waitFor } from '@demicodes/utils'
-import type { Block } from '@demicodes/core'
+import type { DisplayedBlock } from '@demicodes/agent'
 import type { EditRequest } from '@demicodes/agent'
 import { World } from './world'
 import { model } from './driver'
@@ -70,7 +70,7 @@ test('authenticated edit restores todos, preserves files, and reconciles across 
     release.resolve()
   }
   await waitFor(() => driver.lastText() === 'answer-edited')
-  const cold = await world.api<{ blocks: Block[] }>(`/api/conversations/${driver.id}/transcript`)
+  const cold = await world.api<{ blocks: DisplayedBlock[] }>(`/api/conversations/${driver.id}/transcript`)
   expect(cold.blocks.map((block) => block.id)).toEqual(driver.transcript().map((block) => block.id))
   expect(await driver.readFile('sentinel.txt')).toBe('permanent')
   const accepted = structuredClone(driver.transcript())

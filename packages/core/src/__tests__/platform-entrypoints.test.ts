@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import { parseSync, Visitor } from 'oxc-parser'
+import { functionImplementations, listProductionSources, moduleSpecifiers, parseSourcePrograms, readSourcePrograms, unvalidatedJsonAssertions } from '../../../../scripts/source-audit'
 
 const repoRoot = resolve(import.meta.dir, '../../../..')
 
@@ -16,20 +17,8 @@ const manifests = new Map([...workspaces].map(([name, pkg]) => [
 ]))
 const documentedDependencyGraph = await readDocumentedDependencyGraph()
 
-// `web-ui` and `web-gallery` are Vite/Vue packages: the `.ts`-only source scans
-// below do not cover them, and their boundary is enforced at the manifest level.
-const browserPackages = new Set([
-  '@demicodes/web-ui',
-  '@demicodes/web-gallery',
-  '@demicodes/web'
-])
 const productionPackageDirectories = new Map(
-  [...workspaces].filter(([name]) => !browserPackages.has(name)).map((
-    [name, pkg]
-  ) => [
-    name,
-    pkg.directory
-  ] as const),
+  [...workspaces].map(([name, pkg]) => [name, pkg.directory] as const),
 )
 
 // Every entry a package exports under its `development` condition, as the specifier
@@ -102,8 +91,6 @@ const neutralPackageLeakPatterns = [
   ],
 ] as const
 
-const staticSpecifierPattern = /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g
-const dynamicSpecifierPattern = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
 
 const nodeOnlyFiles = new Set(
   [...nodeOnlySubpaths].map((specifier) => resolveRepoPath(entryFile(specifier)))
@@ -386,6 +373,25 @@ test('root tsconfig paths are the packages\' development exports', async () => {
   expect(sortedEntries(subpaths)).toEqual(sortedEntries(expected))
 })
 
+test('production source coverage includes every workspace and Vue scripts', async () => {
+  expect([...productionPackageDirectories.keys()].sort()).toEqual([...workspaces.keys()].sort())
+  const files = await listProductionSourceFiles()
+  expect(files.some(file => file.endsWith('.vue'))).toBe(true)
+  for (const file of files)
+    await readSourcePrograms(file)
+})
+
+test('decoded JSON cannot acquire domain types through direct assertions', async () => {
+  const violations: string[] = []
+  for (const file of await listProductionSourceFiles()) {
+    for (const { program } of await readSourcePrograms(file)) {
+      if (unvalidatedJsonAssertions(program).length)
+        violations.push(formatPath(file))
+    }
+  }
+  expect(violations).toEqual([])
+})
+
 test(
   'root scripts name existing paths and the test script covers every package with tests',
   async () => {
@@ -399,6 +405,8 @@ test(
     }
     expect(missing).toEqual([])
 
+    expect(rootManifest.scripts?.test).toContain('DEMI_TEST_MODE=offline bun test')
+    expect(rootManifest.scripts?.test).toContain('./scripts/__tests__')
     const tested = new Set(
       rootManifest.scripts?.test?.match(/packages\/[\w-]+\/src/g)
         ?? []
@@ -413,20 +421,17 @@ test(
 )
 
 test(
-  'generic helpers provided by shared packages are not re-implemented in production source',
+  'production functions do not copy shared helper implementations',
   async () => {
-    // Helpers consolidated into a shared package. Re-defining one (instead of importing it) is a
-    // code-reuse regression and must fail, the same way boundary violations do. `messageOf` is the
-    // deleted alias of `errorMessage` and must not return. Each helper records the package that owns
-    // it; the canonical definition lives under `home` and is exempt.
+    // Exact runtime-AST copies are reuse regressions. The comparison ignores
+    // function names; same-named functions with different operations are allowed.
+    // Scope-sensitive functions are left to review and behavior tests.
     const utilsHelperNames = [
       'isRecord',
       'numberOrZero',
       'asError',
       'errorMessage',
-      'messageOf',
       'isAbortError',
-      'AbortError',
       'throwIfAborted',
       'abortable',
       'noop',
@@ -461,22 +466,24 @@ test(
       },
     ]
     const files = await listProductionSourceFiles()
+    const implementations = new Map(await Promise.all(files.map(async file => [
+      file,
+      (await readSourcePrograms(file)).flatMap(({ program }) => functionImplementations(program)),
+    ] as const)))
+    const canonical = sharedHelpers.flatMap(helper => {
+      const matches = [...implementations].filter(([file]) => formatPath(file).startsWith(helper.home))
+        .flatMap(([, definitions]) => definitions.filter(definition => definition.name === helper.name))
+      return matches.map(definition => ({ ...helper, fingerprint: definition.fingerprint }))
+    })
     const violations: string[] = []
-
-    for (const file of files) {
+    for (const [file, definitions] of implementations) {
       const relativePath = formatPath(file)
-      const source = await readFile(file, 'utf8')
-      for (const { name, home, pkg } of sharedHelpers) {
-        if (relativePath.startsWith(home))
-          continue // the canonical definition lives here
-        // Match a function or class definition (not local variables that happen to share the name).
-        const definition = new RegExp(
-          `\\b(?:export\\s+)?(?:async\\s+)?function ${name}\\b|\\b(?:export\\s+)?(?:abstract\\s+)?class ${name}\\b`
-        )
-        if (definition.test(source))
-          violations.push(
-            `${relativePath} re-implements "${name}" (import it from ${pkg})`
-          )
+      for (const definition of definitions) {
+        for (const helper of canonical) {
+          if (!relativePath.startsWith(helper.home) && definition.fingerprint === helper.fingerprint) {
+            violations.push(`${relativePath}: ${definition.name} copies ${helper.name} from ${helper.pkg}`)
+          }
+        }
       }
     }
 
@@ -597,7 +604,7 @@ async function findPlatformViolations(entry: string): Promise<string[]> {
         violations.push(`${relativeFile} contains ${label}`)
     }
 
-    for (const specifier of findModuleSpecifiers(source)) {
+    for (const specifier of findModuleSpecifiers(file, source)) {
       if (nodeOnlySubpaths.has(specifier)) {
         violations.push(
           `${relativeFile} imports explicit Node-only subpath ${specifier}`
@@ -614,19 +621,9 @@ async function findPlatformViolations(entry: string): Promise<string[]> {
   return violations.sort()
 }
 
-function findModuleSpecifiers(source: string): string[] {
-  const specifiers = new Set<string>()
-  for (const pattern of [staticSpecifierPattern, dynamicSpecifierPattern]) {
-    pattern.lastIndex = 0
-    let match = pattern.exec(source)
-    while (match) {
-      const specifier = match[1]
-      if (specifier)
-        specifiers.add(specifier)
-      match = pattern.exec(source)
-    }
-  }
-  return [...specifiers]
+function findModuleSpecifiers(file: string, source: string): string[] {
+  return [...new Set(parseSourcePrograms(file, source)
+    .flatMap(({ program }) => moduleSpecifiers(program)))]
 }
 
 function findNeutralPackageLeaks(file: string, source: string): string[] {
@@ -737,7 +734,8 @@ async function resolveLocalModule(
   fromDir: string,
   specifier: string
 ): Promise<string> {
-  const base = resolve(fromDir, specifier)
+  // Vite query suffixes change asset loading, not workspace ownership.
+  const base = resolve(fromDir, specifier.split(/[?#]/, 1)[0]!)
   const candidates = [
     base,
     `${base}.ts`,
@@ -756,24 +754,7 @@ async function resolveLocalModule(
 }
 
 async function listSourceFiles(directory: string): Promise<string[]> {
-  const entries = await readdir(directory, { withFileTypes: true })
-  const files: string[] = []
-
-  for (const entry of entries) {
-    const path = join(directory, entry.name)
-    const relativePath = formatPath(path)
-    // Tests and the `/testing` entries are test code: they may depend upward.
-    if (entry.isDirectory()) {
-      if (entry.name === '__tests__' || entry.name === 'testing')
-        continue
-      files.push(...(await listSourceFiles(path)))
-    } else if (entry.isFile() && entry.name.endsWith('.ts')
-      && entry.name !== 'testing.ts') {
-      files.push(path)
-    }
-  }
-
-  return files
+  return listProductionSources(directory)
 }
 
 async function listProductionSourceFiles(): Promise<string[]> {
@@ -907,7 +888,7 @@ async function collectProductionWorkspaceImportEdges(): Promise<ProductionImport
     const files = await listSourceFiles(sourceDirectory)
     for (const file of files) {
       const source = await readFile(file, 'utf8')
-      for (const specifier of findModuleSpecifiers(source)) {
+      for (const specifier of findModuleSpecifiers(file, source)) {
         const toPackage = await resolveWorkspacePackageDependency(
           file,
           specifier

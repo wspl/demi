@@ -1,10 +1,10 @@
+import { createProductClient } from './session'
 import { existsSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
-import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { FileCredentialPool } from '@demicodes/provider/credentials-pool'
 import { startTxikiRunner } from '@demicodes/runner/testing'
 import { delay, waitFor } from '@demicodes/utils'
@@ -102,160 +102,174 @@ chain(
       },
     })
 
-    const backend = await openBackend({
-      dataDir,
-      port: 0,
-      runner: { pingIntervalMs: 0 },
-      providerTypes: {
-        // The builtin factory, plus the provider's public env overlay pointing
-        // the CLI at the mock upstream.
-        'claude-code': {
-          credential: 'subscription',
-          create: ({ providerId, label, vaultDir, session }) =>
-          createClaudeCodeProvider({
-            id: providerId,
-            displayName: label,
-            stateDir: vaultDir,
-            ...(session ? { spawn: session.spawn } : {}),
-            env: { ANTHROPIC_BASE_URL: `http://localhost:${upstream.port}` },
-          }),
+    try {
+      const backend = await openBackend({
+        dataDir,
+        port: 0,
+        runner: { pingIntervalMs: 0 },
+        providerTypes: {
+          // The builtin factory, plus the provider's public env overlay pointing
+          // the CLI at the mock upstream.
+          'claude-code': {
+            credential: 'subscription',
+            create: ({ providerId, label, vaultDir, session }) =>
+            createClaudeCodeProvider({
+              id: providerId,
+              displayName: label,
+              stateDir: vaultDir,
+              ...(session ? { spawn: session.spawn } : {}),
+              env: { ANTHROPIC_BASE_URL: `http://localhost:${upstream.port}` },
+            }),
+          },
         },
-      },
-    })
+      })
 
-    // Pair the runner.
-    const runner = await startTxikiRunner({
-      backendUrl: backend.url,
-      stateDir,
-      home: runnerDir,
-      name: 'chain-device'
-    })
-    await waitFor(
-      () => runner.codes.length > 0,
-      () => runner.log.join('\n'),
-      { timeoutMs: 10_000 }
-    )
-    const codes = runner.codes
-    const claimResponse = await backend.session.fetch(`/api/devices/claim`, {
-      method: 'POST',
-      body: JSON.stringify({ code: codes[0] }),
-      headers: { 'content-type': 'application/json' },
-    })
-    const { device } = (await claimResponse.json()) as { device: { id: string } }
+      try {
+        // Pair the runner.
+        const runner = await startTxikiRunner({
+          backendUrl: backend.url,
+          stateDir,
+          home: runnerDir,
+          name: 'chain-device'
+        })
+        try {
+          await waitFor(
+            () => runner.codes.length > 0,
+            () => runner.log.join('\n'),
+            { timeoutMs: 10_000 }
+          )
+          const codes = runner.codes
+          const claimResponse = await backend.session.fetch(`/api/devices/claim`, {
+            method: 'POST',
+            body: JSON.stringify({ code: codes[0] }),
+            headers: { 'content-type': 'application/json' },
+          })
+          const { device } = (await claimResponse.json()) as { device: { id: string } }
 
-    // A claude-code subscription provider whose vault pool holds the (fake)
-    // OAuth secret — written control-plane-side exactly as a completed login
-    // would leave it. The runner never sees this value.
-    const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
-    const control = new LocalControlService(controlDb)
-    const vault = new ProviderVault(
-      control,
-      loadOrCreateInstanceSecret(dataDir)
-    )
-    const provider = await vault.create({
-      ownerUserId: null, // shared mode: the instance's provider
-      label: 'Claude subscription',
-      config: { kind: 'subscription', providerType: 'claude-code' },
-    })
-    const pool = new FileCredentialPool({
-      stateDir: join(dataDir, 'vault', provider.id),
-      providerKey: 'claude-code',
-      secretFileName: 'oauth.json',
-    })
-    const meta = await pool.writeEntry(
-      {
-        id: 'cred-chain',
-        label: 'chain@example.com',
-        updatedAt: new Date().toISOString()
-      },
-      JSON.stringify({
-        accessToken: 'vault-oauth-token',
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString()
-      }),
-    )
-    await pool.setActiveId(meta.id)
+          // A claude-code subscription provider whose vault pool holds the (fake)
+          // OAuth secret — written control-plane-side exactly as a completed login
+          // would leave it. The runner never sees this value.
+          const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
+          try {
+            const control = new LocalControlService(controlDb)
+            const vault = new ProviderVault(
+              control,
+              loadOrCreateInstanceSecret(dataDir)
+            )
+            const provider = await vault.create({
+              ownerUserId: null, // shared mode: the instance's provider
+              label: 'Claude subscription',
+              config: { kind: 'subscription', providerType: 'claude-code' },
+            })
+            const pool = new FileCredentialPool({
+              stateDir: join(dataDir, 'vault', provider.id),
+              providerKey: 'claude-code',
+              secretFileName: 'oauth.json',
+            })
+            const meta = await pool.writeEntry(
+              {
+                id: 'cred-chain',
+                label: 'chain@example.com',
+                updatedAt: new Date().toISOString()
+              },
+              JSON.stringify({
+                accessToken: 'vault-oauth-token',
+                expiresAt: new Date(Date.now() + 3_600_000).toISOString()
+              }),
+            )
+            await pool.setActiveId(meta.id)
 
-    // Conversation bound to the runner workspace.
-    const created = await backend.session.fetch(
-      `/api/conversations`,
-      { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }
-    )
-    const { conversation } = (await created.json()) as { conversation: { id: string } }
-    const workspace = await control.createWorkspace({
-      userId: backend.session.user.id,
-      deviceId: device.id,
-      path: runnerDir,
-      name: 'chain workspace',
-    })
-    await control.setConversationWorkspace(conversation.id, workspace.id)
-    controlDb.close()
+            // Conversation bound to the runner workspace.
+            const created = await backend.session.fetch(
+              `/api/conversations`,
+              { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) }
+            )
+            const { conversation } = (await created.json()) as { conversation: { id: string } }
+            const workspace = await control.createWorkspace({
+              userId: backend.session.user.id,
+              deviceId: device.id,
+              path: runnerDir,
+              name: 'chain workspace',
+            })
+            await control.setConversationWorkspace(conversation.id, workspace.id)
 
-    const socket = backend.session.socket(
-      `/api/conversations/${conversation.id}/stream`
-    )
-    await new Promise<void>(
-      (resolve) => socket.addEventListener(
-        'open',
-        () => resolve(),
-        { once: true }
-      )
-    )
-    const client = new AgentClient(
-      createWebSocketClientTransport(socket as never)
-    )
-    const model: ModelSelection = {
-      providerId: provider.id,
-      model: {
-        id: 'claude-sonnet-4-6',
-        name: 'Claude Sonnet',
-        contextWindow: 200_000,
-        outputLimit: null,
-        inputLimit: null,
-        thinking: [],
-        acceptedExtensions: [],
-      },
-      thinking: null,
+            const socket = backend.session.socket(
+              `/api/conversations/${conversation.id}/stream`
+            )
+            await new Promise<void>(
+              (resolve) => socket.addEventListener(
+                'open',
+                () => resolve(),
+                { once: true }
+              )
+            )
+            const client = createProductClient(socket)
+            const model: ModelSelection = {
+              providerId: provider.id,
+              model: {
+                id: 'claude-sonnet-4-6',
+                name: 'Claude Sonnet',
+                contextWindow: 200_000,
+                outputLimit: null,
+                inputLimit: null,
+                thinking: [],
+                acceptedExtensions: [],
+              },
+              thinking: null,
+            }
+            try {
+              await client.open({ providerId: provider.id, model }, '/ignored', 'ignored')
+              await client.send([{ type: 'text', text: 'Reply with exactly OK.' }])
+
+              // The mock's answer streamed back through CLI → runner → backend → browser.
+              const texts = client
+                .transcript()
+              .blocks.filter((block) => block.type === 'text')
+                .map((block) => (block.type === 'text' ? block.text : ''))
+              expect(texts.join(' ')).toContain('OK from mock upstream')
+
+              // Token swap happened at the passthrough: the upstream saw the vault token,
+              // and the CLI-side env token is a different, backend-minted value.
+              expect(upstreamAuths.length).toBeGreaterThan(0)
+              for (const auth of upstreamAuths)
+                expect(auth).toBe('Bearer vault-oauth-token')
+
+              // Device-config isolation: the CLI's config home lived inside the
+              // workspace artifacts dir, not the device's ~/.claude.
+              expect(existsSync(join(runnerDir, '.demi-artifacts', 'claude-config')))
+                .toBe(true)
+
+              // Metering: the CLI turn's usage landed in the ledger.
+              await delay(100)
+              const usage = (await (await backend.session.fetch(`/api/usage`)).json()) as {
+                totals: Array<{
+                  providerId: string;
+                  requests: number
+                }>
+              }
+              expect(
+                usage.totals.some(
+                  (row) => row.providerId === provider.id && row.requests >= 1
+                )
+              )
+                .toBe(true)
+
+            } finally {
+              await client.close()
+              socket.close()
+            }
+          } finally {
+            controlDb.close()
+          }
+        } finally {
+          await runner.stop()
+        }
+      } finally {
+        await backend.close()
+      }
+    } finally {
+      upstream.stop(true)
     }
-    await client.open({ providerId: provider.id, model }, '/ignored', 'ignored')
-    await client.send([{ type: 'text', text: 'Reply with exactly OK.' }])
-
-    // The mock's answer streamed back through CLI → runner → backend → browser.
-    const texts = client
-      .transcript()
-    .blocks.filter((block) => block.type === 'text')
-      .map((block) => (block.type === 'text' ? block.text : ''))
-    expect(texts.join(' ')).toContain('OK from mock upstream')
-
-    // Token swap happened at the passthrough: the upstream saw the vault token,
-    // and the CLI-side env token is a different, backend-minted value.
-    expect(upstreamAuths.length).toBeGreaterThan(0)
-    for (const auth of upstreamAuths)
-      expect(auth).toBe('Bearer vault-oauth-token')
-
-    // Device-config isolation: the CLI's config home lived inside the
-    // workspace artifacts dir, not the device's ~/.claude.
-    expect(existsSync(join(runnerDir, '.demi-artifacts', 'claude-config')))
-      .toBe(true)
-
-    // Metering: the CLI turn's usage landed in the ledger.
-    await delay(100)
-    const usage = (await (await backend.session.fetch(`/api/usage`)).json()) as {
-      totals: Array<{
-        providerId: string;
-        requests: number
-      }>
-    }
-    expect(
-      usage.totals.some(
-        (row) => row.providerId === provider.id && row.requests >= 1
-      )
-    )
-      .toBe(true)
-
-    await client.close()
-    await runner.stop()
-    await backend.close()
-    upstream.stop(true)
   },
   120_000
 )

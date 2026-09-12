@@ -301,7 +301,7 @@ $DEMI_HOME|~/.demi/
 Rules:
 
 - `meta.json` is listable; secret files are never returned from public APIs.
-- `active` missing or pointing at a deleted entry → treat as unauthenticated / fall back to vendor default import path once (see §6).
+- A missing `active` pointer selects the first existing pool entry by ID. A malformed pointer or a pointer to missing metadata raises `CredentialPoolError`; it never selects a different identity. An empty pool follows the provider-specific default import behavior in §6.
 - File mode `0600` for secret files; directories `0700` when created by demi.
 - Credential ids: opaque stable strings (e.g. `import-<hash>` or product-supplied slug). Labels are display-only and may change.
 

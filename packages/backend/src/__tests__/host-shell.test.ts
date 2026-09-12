@@ -1,3 +1,4 @@
+import { createProductClient } from './session'
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -5,8 +6,6 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import {
-  AgentClient,
-  createWebSocketClientTransport,
   type ClientSessionEvent
 } from '@demicodes/agent'
 import { defineProvider } from '@demicodes/provider'
@@ -78,9 +77,7 @@ async function openClient(
       { once: true }
     )
   })
-  const client = new AgentClient(
-    createWebSocketClientTransport(socket as never)
-  )
+  const client = createProductClient(socket)
   const shellEvents: Extract<ClientSessionEvent, { type: 'shell_output' }>[] = []
   client.subscribe((event) => {
     if (event.type === 'shell_output')

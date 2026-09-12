@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { events } from '@demicodes/provider/testing'
+import { deferred, delay } from '@demicodes/utils'
 import { JOB_VIEW_BYTES } from '@demicodes/runner-protocol'
 import { FakeProvisioner } from './fake-provisioner'
 import { World } from './world'
@@ -126,7 +128,16 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
       const driver = await world.conversation(target)
       // A subagent whose model takes longer than the window: `demi agent spawn`
       // is the long-running command both targets share.
-      world.model.scriptChild(model.slowSay('child done', 3_000))
+      const childStarted = deferred<void>()
+      world.model.scriptChild(async function* (request) {
+        childStarted.resolve()
+        await delay(3_000, request.cancel)
+        if (request.cancel.aborted)
+          return
+        yield events.text('child done')
+        yield events.response()
+      })
+      let commandId: string | undefined
       const turn = await driver.turn({
         model: [
           model.shell(
@@ -134,29 +145,35 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
             "demi agent spawn <<< 'take a while' --description slow",
             300
           ),
-          (request) => {
+          async function* (request) {
             const last = request.items.at(-1)
             const text = last?.type === 'tool_result'
               ? last.output.map((b) => (b.type === 'text'
                 ? b.text
                 : '')).join('\n')
               : ''
-            const commandId = /commandId: (\S+)/.exec(text)?.[1]
+            commandId = /commandId: (\S+)/.exec(text)?.[1]
             if (!commandId)
               throw new Error(`no command handle in: ${text}`)
-            return model.tool('t2', 'shell_abort', { commandId })
+            await childStarted.promise
+            yield* model.tool('t2', 'shell_status', { commandId })
+          },
+          () => {
+            if (!commandId)
+              throw new Error('Missing command handle')
+            return model.tool('t3', 'shell_abort', { commandId })
           },
           model.say('stopped'),
         ],
       })
       expect(turn.received[0]).toContain('status: running')
-      expect(turn.received[0])
-        .toContain('next: the child agent is still working')
-      expect(turn.received[0])
-        .toContain('Do not poll with shell_status or timed yields')
-      expect(turn.received[0]).not.toContain('next: command is still running')
-      expect(turn.received[1]).toContain('status: aborted')
       expect(turn.received[1])
+        .toContain('next: the child agent is still working')
+      expect(turn.received[1])
+        .toContain('Do not poll with shell_status or timed yields')
+      expect(turn.received[1]).not.toContain('next: command is still running')
+      expect(turn.received[2]).toContain('status: aborted')
+      expect(turn.received[2])
         .toContain('next: command was intentionally stopped.')
     }, 30_000)
   }

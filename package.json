@@ -35,7 +35,7 @@
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "release": "bun run scripts/release.ts",
-    "test": "bun run --conditions development packages/runner/runtime/prepare-tests.ts && bun test --conditions development ./packages/utils/src ./packages/core/src ./packages/provider/src ./packages/agent/src ./packages/shell/src ./packages/command-loader/src ./packages/runner-protocol/src ./packages/host-remote/src ./packages/runner/src ./packages/product-contracts/src ./packages/backend/src ./packages/machines/src ./packages/coding-agent/src ./packages/provider-codex/src ./packages/provider-claude-code/src ./packages/provider-openai-api/src ./packages/provider-anthropic-api/src ./packages/provider-google/src ./packages/provider-grok-build/src ./packages/web-ui/src ./packages/web/src ./packages/web-gallery/src",
+    "test": "bun run --conditions development packages/runner/runtime/prepare-tests.ts && DEMI_TEST_MODE=offline bun test --conditions development ./packages/utils/src ./packages/core/src ./packages/provider/src ./packages/agent/src ./packages/shell/src ./packages/command-loader/src ./packages/runner-protocol/src ./packages/host-remote/src ./packages/runner/src ./packages/product-contracts/src ./packages/backend/src ./packages/machines/src ./packages/coding-agent/src ./packages/provider-codex/src ./packages/provider-claude-code/src ./packages/provider-openai-api/src ./packages/provider-anthropic-api/src ./packages/provider-google/src ./packages/provider-grok-build/src ./packages/web-ui/src ./packages/web/src ./packages/web-gallery/src ./scripts/__tests__",
     "fixtures:compaction:build": "bun run packages/agent/fixtures/compaction/build-fixture.ts",
     "fixtures:compaction:verify": "bun run packages/agent/fixtures/compaction/verify-compaction.ts",
     "fixtures:compaction:verify-switch": "bun run packages/agent/fixtures/compaction/verify-window-switch.ts",
@@ -50,7 +50,8 @@
     "oxc-parser": "^0.137.0",
     "tsdown": "^0.22.3",
     "unrun": "^0.3.1",
-    "zod": "^4.5.4"
+    "zod": "^4.5.4",
+    "@vue/compiler-sfc": "^3.5.42"
   },
   "license": "Apache-2.0",
   "repository": {

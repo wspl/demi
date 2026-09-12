@@ -44,6 +44,25 @@ Raw JSON is `unknown`. A cast, an object guard, or a check of `type` alone does 
 validate its structure. After a discriminated union has been validated, direct
 tag comparisons are ordinary type narrowing and should remain simple.
 
+## Boundary examples
+
+- `JSON.parse(text)` only decodes JSON. For a saved credential entry, the provider
+  storage reader must parse the decoded value with its metadata schema before it
+  can return a credential. `JSON.parse(text) as Credential` accepts wrong shapes.
+- After an agent frame passes its direction-specific union schema, checking
+  `frame.type === 'send'` narrows a validated value. Testing only an unknown
+  object's `type` and claiming the whole frame type leaves its content unchecked.
+- CLI `--enabled false` decodes to boolean `false`, then uses the command schema.
+  RPC `{enabled: "false"}` is rejected because RPC already carries typed values.
+- A provider's known text delta may contain an empty string and unrelated new
+  fields. A text delta whose `text` is an object is a protocol error; the mapper
+  must not turn it into an empty string. Unknown event policy is defined separately
+  for each provider below.
+- A product transcript image can contain a blob `ref`. Its display schema accepts
+  that shape; the inline provider schema rejects it. Backend media resolution
+  reads the blob before passing inline bytes to inference. An assertion cannot
+  replace that read or make a missing blob valid.
+
 ## Missing and invalid values
 
 | Case | Policy |
@@ -221,8 +240,10 @@ Assistant content and streamed text, thinking, signatures and redacted data requ
 their string fields; empty strings are valid. Tool blocks require string IDs and
 names. Missing tool input is invalid, and explicit null input remains null for the
 agent's tool schema to reject. MCP requests require a string or integer request ID;
-notifications can omit it and receive no response. SDK envelopes require the outer
-request ID and the `main` server. Missing MCP tool names are protocol failures.
+notifications can omit it and receive no JSON-RPC response. SDK envelopes require
+the outer request ID and the `main` server. `provider.ts` acknowledges the outer
+SDK request with an empty success response even for an inner notification, so the
+CLI can proceed with its next MCP request. Missing MCP tool names are protocol failures.
 An initialization error response fails immediately. These failures terminate and
 reap the active CLI process before propagating `ProviderDataError` or the explicit
 initialization error.
@@ -255,8 +276,10 @@ Do not derive every expected result from the implementation under test.
 
 Use fake providers, injected fetch/streams, synthetic credentials and temporary
 storage. Never invoke real models or read real credential stores in validation
-tests. Run selected suites with `bun test --conditions development <test paths>`;
-runner integration suites additionally require their documented native test setup.
+tests. Use the offline commands and native prerequisites in [Testing](testing.md).
+The production-source audit includes every workspace and Vue script blocks; its
+structural helper comparison and direct JSON-assertion checks supplement runtime
+examples and do not prove arbitrary data-flow or semantic equivalence.
 Run `bun run typecheck`; changes to browser source also require browser typechecks
 and verification of both product and gallery usage.
 
@@ -453,14 +476,15 @@ recognize Windows paths and file URLs. These are separate formatting contracts.
 
 `backend/startup.ts`, `machines/startup.ts` and `runner/startup.ts` validate
 process environment values before constructing services. Unrelated environment
-keys are ignored. Present path/name values must not be blank. Backend URLs use
+keys are ignored. Present path/name values must not be blank. The backend public URL uses
 HTTP(S); the backend instance mode reuses the product contract. A machine socket
 requires the guest-facing backend URL. Backend ports are decimal integers from
 1 through 65535. Defaults apply only to absent variables.
 
 Runner `DEMI_RUNNER_MANAGED` accepts `0` or `1`; absence means false. Reconnect
 milliseconds are decimal integers from 1 through 2147483647. CLI backend URLs
-use the same URL schema as persisted runner configuration. Library-only runtime
+use the same HTTP(S)/WS(S) URL schema as persisted runner configuration. Runner
+WebSocket URLs remain valid; pipe URL construction derives the HTTP(S) origin. Library-only runtime
 dependencies such as hosts, volume implementations and callbacks remain typed
 injection points, separate from environment parsing.
 
@@ -508,3 +532,13 @@ and local behavior tests, rather than inferred from a major-version label.
 The workspace declares Zod `^4.5.4` and locks 4.5.4. Command-schema round-trip
 tests exercise `toJSONSchema` and `fromJSONSchema` on that installed version;
 this is the supported minimum, not a claim about when each API first appeared.
+
+## Optional Grok client identification
+
+`provider-grok-build/headers.ts` validates local `version.json` with a version
+string schema. This file supplies optional client-identification metadata only.
+Missing, malformed or unreadable metadata selects the built-in client version;
+credential and token errors still follow the strict authentication policies.
+`clientVersion` and `grokHome` are explicit dependencies. Device login resolves
+one version for the complete flow, and tests inject a synthetic version or a
+temporary directory rather than reading the user's Grok installation.

@@ -187,7 +187,7 @@ export function createGrokBuildProvider(
     ? createGrokBuildCredentials(
       pool,
       authStore,
-      { grokHome: options.grokHome, quota }
+      { grokHome: options.grokHome, clientVersion: options.clientVersion, quota }
     )
     : undefined
   const runtimeOptions: GrokBuildRuntimeOptions = {

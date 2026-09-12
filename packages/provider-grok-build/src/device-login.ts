@@ -37,6 +37,8 @@ export interface GrokDeviceLoginPending {
 }
 
 export interface GrokDeviceLoginOptions {
+  clientVersion?: string
+  grokHome?: string
   signal?: AbortSignal
   /** Fires once with the URL + one-time code the user needs. */
   onPending?: (pending: GrokDeviceLoginPending) => void
@@ -58,10 +60,10 @@ function resolveLoginSurface(options: GrokDeviceLoginOptions): GrokLoginSurface 
   return options.onPending ? 'ui' : 'headless'
 }
 
-function oauthHeaders(surface: GrokLoginSurface): Record<string, string> {
+function oauthHeaders(surface: GrokLoginSurface, clientVersion: string): Record<string, string> {
   return {
     'content-type': 'application/x-www-form-urlencoded',
-    'x-grok-client-version': resolveGrokClientVersion(),
+    'x-grok-client-version': clientVersion,
     'x-grok-client-surface': surface,
   }
 }
@@ -71,11 +73,12 @@ async function postForm(
   url: string,
   params: Record<string, string>,
   surface: GrokLoginSurface,
+  clientVersion: string,
   signal?: AbortSignal,
 ): Promise<Response> {
   return fetchImpl(url, {
     method: 'POST',
-    headers: oauthHeaders(surface),
+    headers: oauthHeaders(surface, clientVersion),
     body: new URLSearchParams(params).toString(),
     signal,
   })
@@ -95,6 +98,7 @@ async function requestDeviceCode(
   clientId: string,
   scope: string,
   surface: GrokLoginSurface,
+  clientVersion: string,
   signal?: AbortSignal,
 ): Promise<DeviceAuthorization> {
   const response = await postForm(
@@ -102,6 +106,7 @@ async function requestDeviceCode(
     `${issuer}/oauth2/device/code`,
     { client_id: clientId, scope, referrer: GROK_LOGIN_REFERRER },
     surface,
+    clientVersion,
     signal,
   )
   if (!response.ok) {
@@ -133,6 +138,7 @@ async function pollForTokens(
   clientId: string,
   device: DeviceAuthorization,
   surface: GrokLoginSurface,
+  clientVersion: string,
   signal?: AbortSignal,
 ): Promise<DeviceTokens> {
   let intervalSeconds = Math.max(device.intervalSeconds, 1)
@@ -156,6 +162,7 @@ async function pollForTokens(
         client_id: clientId
       },
       surface,
+      clientVersion,
       signal,
     )
     if (response.ok) {
@@ -182,6 +189,7 @@ async function pollForTokens(
 async function fetchUserEnrichment(
   fetchImpl: typeof fetch,
   accessToken: string,
+  clientVersion: string,
   signal?: AbortSignal,
 ): Promise<GrokUserInfo | null> {
   let response: Response
@@ -190,7 +198,7 @@ async function fetchUserEnrichment(
       headers: {
         authorization: `Bearer ${accessToken}`,
         'X-XAI-Token-Auth': GROK_CLI_TOKEN_AUTH,
-        'x-grok-client-version': resolveGrokClientVersion(),
+        'x-grok-client-version': clientVersion,
         'x-grok-client-mode': 'interactive',
       },
       signal,
@@ -250,6 +258,7 @@ async function assembleAuthEntry(
   issuer: string,
   clientId: string,
   tokens: DeviceTokens,
+  clientVersion: string,
   signal?: AbortSignal,
 ): Promise<GrokAuthEntry> {
   const idClaims = tokens.idToken ? decodeGrokJwtPayload(tokens.idToken) : null
@@ -291,6 +300,7 @@ async function assembleAuthEntry(
   const enriched = await fetchUserEnrichment(
     fetchImpl,
     tokens.accessToken,
+    clientVersion,
     signal
   )
   if (enriched)
@@ -310,6 +320,7 @@ export async function runGrokDeviceLogin(
   const clientId = options.clientId ?? GROK_CLI_CLIENT_ID
   const scope = options.scope ?? GROK_LOGIN_SCOPE
   const surface = resolveLoginSurface(options)
+  const clientVersion = resolveGrokClientVersion(options.clientVersion, options.grokHome)
 
   const device = await requestDeviceCode(
     fetchImpl,
@@ -317,6 +328,7 @@ export async function runGrokDeviceLogin(
     clientId,
     scope,
     surface,
+    clientVersion,
     options.signal
   )
   options.onPending?.({
@@ -331,6 +343,7 @@ export async function runGrokDeviceLogin(
     clientId,
     device,
     surface,
+    clientVersion,
     options.signal
   )
   const entry = await assembleAuthEntry(
@@ -338,6 +351,7 @@ export async function runGrokDeviceLogin(
     issuer,
     clientId,
     tokens,
+    clientVersion,
     options.signal
   )
   return { entryKey: `${issuer}::${clientId}`, entry }

@@ -99,6 +99,7 @@ export function createGrokBuildCredentials(
   options: {
     grokHome?: string
     quota?: ProviderQuota | null
+    clientVersion?: string
     /** Injectable fetch for the device-code login flow (tests). */
     loginFetch?: typeof fetch
   } = {},
@@ -194,6 +195,8 @@ export function createGrokBuildCredentials(
           onPending: loginOptions?.onPending,
           fetch: options.loginFetch,
           surface: 'ui',
+          grokHome: vendorHome,
+          clientVersion: options.clientVersion,
         })
         const info = await importAuthFile(parseGrokAuthData({ [entryKey]: entry }), 'login:device')
         return { status: 'completed', credentialId: info.id }

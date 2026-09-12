@@ -4,6 +4,8 @@ import {
   decodeUtf8,
   errorMessage,
   noop,
+  nonEmptyString,
+  parseJsonObject,
   utf8Slice,
 } from '@demicodes/utils'
 import type {
@@ -1271,15 +1273,8 @@ function trimToolRecords(tools: ChildToolRecord[]): void {
 }
 
 function toolCallTitle(block: Extract<Block, { type: 'tool_call' }>): string {
-  try {
-    const input = JSON.parse(block.input) as Record<string, unknown>
-    if (typeof input.description === 'string' && input.description.trim()) {
-      return input.description.trim()
-    }
-  } catch {
-    // Fall through to the tool name.
-  }
-  return block.toolName
+  const input = parseJsonObject(block.input)
+  return nonEmptyString(input?.description)?.trim() ?? block.toolName
 }
 
 function lastAssistantText(blocks: Block[]): string {

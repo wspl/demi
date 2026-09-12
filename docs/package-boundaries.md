@@ -405,7 +405,18 @@ Existing boundary coverage:
 - The same test checks that `@demicodes/shell` does not depend on the agent runtime.
 - The same test checks selected package manifest layering boundaries.
 - The same test scans `@demicodes/core` and `@demicodes/provider` production source for concrete provider names, concrete catalog source labels, backend identifiers, and product-specific source identifiers.
-- Repository-wide production scans enumerate the existing production package directory table. The models.dev client's endpoint and diagnostics belong only in `provider/src/models-dev.ts`; shared model/catalog metadata still cannot expose concrete source labels. Quota cache metadata follows its separate domain contract.
+- Repository-wide production scans discover all workspace packages from the root manifest and read production TS, JS and Vue scripts, excluding tests, fixtures and declarations. `scripts/source-audit.ts` parses both Vue script blocks; template text is not treated as code. The models.dev client's endpoint and diagnostics belong only in `provider/src/models-dev.ts`; shared model/catalog metadata still cannot expose concrete source labels. Quota cache metadata follows its separate domain contract.
 - The same test builds the production source package graph and fails on cycles or edges outside the enforced graph.
 - The same test checks that production workspace imports are declared in package `dependencies`.
 - The same test checks public provider root exports so internal transport, parser, protocol, auth-store, stream, and testing helpers do not leak through by accident.
+
+- The source audit rejects direct casts or typed assignments from unvalidated
+  JSON decoding. It compares runtime ASTs to detect copies of shared helpers,
+  including renamed arrow functions. Matching names alone are not violations.
+  This bounded structural check skips scope-sensitive functions and does not
+  prove schema completeness or arbitrary semantic equivalence; independent
+  boundary tests and review cover those questions.
+- TypeScript uses workspace `development` export conditions, including browser
+  typechecks. A clean checkout does not require generated agent declarations.
+- `bun run test` forces offline test mode. Explicit external-service test flags
+  cannot override this command; see [Testing](testing.md).

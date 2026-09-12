@@ -17,8 +17,9 @@ untyped data with hand-rolled per-file helpers (three copies of
 Both come from organizing by impression instead of by design: files were
 never mapped to the package's modules, and validation was never assigned a
 home. This record fixes both with the already-ratified rules — Module
-Layout Conventions (`docs/package-boundaries.md`) and the Data Validation
-tiers (`AGENTS.md`).
+layout and validation guidance used for that checkpoint. The current rules
+are [Package Boundaries](package-boundaries.md) and
+[Data Contracts](data-contracts.md).
 
 ## Part 1 — `@demicodes/agent` layout
 
@@ -115,17 +116,15 @@ Mechanics to watch (verified against the repo):
   byte-identical, so no other package changes except import paths inside
   `agent` itself.
 
-## Part 2 — Boundary schemas (schema-ization)
+## Part 2 — Historical boundary decisions
 
-Per the AGENTS.md Data Validation guidance: structured data arriving from
-outside the process gets a zod schema next to the boundary's types (TS
-types via `z.infer`); field probes of thrown values use the
-`@demicodes/utils` guards; where both sides are our code, the contract
-itself carries the type.
+The following table records this checkpoint's decisions, including exclusions
+that are superseded by [Data Contracts](data-contracts.md). It is not an
+implementation checklist or a source of current exceptions.
 
 ### Boundary inventory and placement
 
-| # | Boundary | Today | Target |
+| # | Boundary | Before this checkpoint | Historical decision |
 |---|---|---|---|
 | 1 | Browser → backend HTTP bodies | blind `c.req.json<{…}>()` casts | zod schema per route module (`backend/src/http/*.ts`), parse before use, 400 with `{code, message}` on failure |
 | 2 | Browser → backend WS frames (`ClientFrame`) | `JSON.parse` + cast; frame types hand-written in `frames.ts` | `agent/src/protocol/schemas.ts` declares the client frames as zod schemas and becomes the **single source of truth**: `frames.ts` derives `ClientFrame` via `z.infer` (no parallel hand-written declaration to keep in sync). Validated once at AgentServer transport ingress (the binding); rejected frames answered with the existing `rejected`/`error` frames |
@@ -135,7 +134,7 @@ itself carries the type.
 | 6 | Persisted rows read back (`control.sqlite`, conversation DBs, host_store) | typed cast | **cast stays, by design** — single-writer own data; corruption fails loudly, never normalized |
 | 7 | Provider HTTP responses | provider-kit wire mapping | out of scope here — provider kits own their wire; revisit per-provider if their hand mapping grows validation chains |
 
-Notes:
+Historical notes (superseded where they conflict with Data Contracts):
 
 - The browser-side `AgentClient` does **not** validate server frames: the
   server is the same product's authoritative peer; a malformed frame is a

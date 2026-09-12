@@ -1,9 +1,9 @@
+import { createProductClient } from './session'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
-import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { delay } from '@demicodes/utils'
@@ -113,9 +113,7 @@ async function turn(
       { once: true }
     )
   })
-  const client = new AgentClient(
-    createWebSocketClientTransport(socket as never)
-  )
+  const client = createProductClient(socket)
   const model: ModelSelection = {
     providerId: providerId,
     model: {

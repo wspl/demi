@@ -1,3 +1,4 @@
+import { noop } from '@demicodes/utils'
 import { onBeforeUnmount, watch, type WatchSource } from 'vue'
 import type { OverlayLayer, OverlayStore } from '../overlay/overlayStore'
 
@@ -8,7 +9,7 @@ export function useOverlay(
   layer: OverlayLayer = 'exclusive',
 ): string {
   const id = crypto.randomUUID()
-  let remove = () => {}
+  let remove = noop
 
   watch(isOpen, (open) => {
     remove()

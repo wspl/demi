@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runnerBackendUrlSchema, runnerStartupFromEnv } from '../startup'
 import { RunnerState } from '../state'
+import { startTxikiRunner } from '../testing'
 import { nodeFileSystem } from '../testing/node-fs'
 
 test('runner environment has explicit managed flag and bounded reconnect delay', () => {
@@ -35,6 +36,7 @@ test('runner environment has explicit managed flag and bounded reconnect delay',
   expect(runnerBackendUrlSchema.parse('http://localhost:3271')).toBe(
     'http://localhost:3271',
   )
+  expect(runnerBackendUrlSchema.parse('ws://localhost:3271/api/runner')).toBe('ws://localhost:3271/api/runner')
 })
 
 test('runner durable state separates absence, corruption and IO failures', async () => {
@@ -77,3 +79,14 @@ test('runner durable state separates absence, corruption and IO failures', async
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test('runner test startup reports early process exit and reaps its output readers', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'demi-runner-invalid-start-'))
+  try {
+    await expect(startTxikiRunner({
+      backendUrl: 'file:///invalid-backend', stateDir: dir, home: dir,
+    })).rejects.toThrow('Runner exited before startup')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}, 15_000)

@@ -1,4 +1,5 @@
-import { isRecord, nonEmptyString } from '@demicodes/utils'
+import { z } from 'zod'
+import { nonEmptyString } from '@demicodes/utils'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { InferenceRequest } from '@demicodes/provider'
@@ -71,16 +72,17 @@ export function resolveGrokClientVersion(
   return fromFile ?? DEFAULT_GROK_CLIENT_VERSION
 }
 
+const grokCliVersionSchema = z.object({ version: z.string().regex(/\S/) })
+
 function readGrokCliVersion(grokHome: string): string | null {
   try {
-    const parsed = JSON.parse(readFileSync(
+    const parsed = grokCliVersionSchema.safeParse(JSON.parse(readFileSync(
       join(grokHome, 'version.json'),
       'utf8'
-    )) as unknown
-    if (!isRecord(parsed))
-      return null
-    return nonEmptyString(parsed.version) ?? null
+    )))
+    return parsed.success ? parsed.data.version : null
   } catch {
+    // Client-identification metadata is optional; unavailable files use the built-in version.
     return null
   }
 }

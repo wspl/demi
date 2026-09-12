@@ -1,8 +1,8 @@
+import { createProductClient, type ProductAgentClient } from './session'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
 import { deferred } from '@demicodes/utils'
@@ -127,7 +127,7 @@ test(
         },
       }
     })
-    let client: AgentClient | undefined
+    let client: ProductAgentClient | undefined
     try {
       const { provider } = await (await backend.session.fetch(
         '/api/providers',
@@ -150,7 +150,7 @@ test(
           { once: true }
         )
       )
-      client = new AgentClient(createWebSocketClientTransport(socket as never))
+      client = createProductClient(socket)
       await client.open({
         providerId: provider.id,
         model: {

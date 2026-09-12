@@ -223,6 +223,18 @@ export class ClaudeCodeProvider implements AgentProvider {
         })
         if (raw.type === 'stream_event')
           active.hasStreamed = true
+        if (mapped.notificationRequestId !== undefined) {
+          await active.transport.writeJson({
+            type: 'control_response',
+            response: {
+              subtype: 'success',
+              request_id: mapped.notificationRequestId,
+              response: {},
+            },
+          })
+          continue
+        }
+
         if (mapped.controlRequest) {
           const handled = await this.handleControlRequest(
             active,

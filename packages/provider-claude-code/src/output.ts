@@ -7,6 +7,7 @@ import type {
 export interface OutputMapping {
   events: ProviderEvent[]
   controlRequest?: ClaudeControlRequest
+  notificationRequestId?: string
   terminal: boolean
 }
 
@@ -39,6 +40,10 @@ export function mapClaudeStdoutMessage(
       events.push(...mapStreamEvent(message.event))
       break
     case 'control_request': {
+      if ('request' in message && message.request.message.id === undefined) {
+        // The inner JSON-RPC notification needs no reply; its SDK envelope does.
+        return { events, notificationRequestId: message.request_id, terminal: false }
+      }
       const request = parseControlRequest(message)
       if (request) {
         return { events, controlRequest: request, terminal: false }

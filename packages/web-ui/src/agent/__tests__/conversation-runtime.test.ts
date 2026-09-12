@@ -2,13 +2,14 @@ import { expect, test } from 'bun:test'
 import {
   AgentClient,
   type ClientFrame,
-  type ServerFrame,
+  type DisplayedBlock,
   type ProviderSelection,
 } from '@demicodes/agent/client'
 import { deferred, delay, waitFor } from '@demicodes/utils'
 import { computed } from 'vue'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
 import { AgentSocketError } from '../../transport/agent-socket'
+import type { ServerFrame } from '../../transport/protocol'
 
 const provider: ProviderSelection = {
   providerId: 'stub',
@@ -48,7 +49,7 @@ function state(): RuntimeState {
 function clientHarness() {
   const sent: ClientFrame[] = []
   let receive: (frame: ServerFrame) => void = () => {}
-  const client = new AgentClient({
+  const client = new AgentClient<DisplayedBlock>({
       onError: () => () => {},
     send(frame) {
       sent.push(frame)

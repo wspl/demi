@@ -107,7 +107,7 @@ test.each([false, true])(
       status: async () => ({ status: 'authenticated', accountLabel: 'a@b.com' }),
       resolveAuth: async () => auth,
     }
-    const provider = createGrokBuildProvider({
+    const provider = createGrokBuildProvider({ clientVersion: 'synthetic-client',
       authStore: store,
       fetch: async () => {
         if (invalidate)
@@ -184,7 +184,7 @@ test(
       entryKey: 'k',
       authFile: '/tmp/auth.json',
     }
-    const quota = createGrokBuildQuota({
+    const quota = createGrokBuildQuota({ clientVersion: 'synthetic-client',
       authStore: {
         status: async () => ({
           status: 'authenticated',

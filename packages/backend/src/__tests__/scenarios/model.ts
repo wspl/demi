@@ -69,9 +69,11 @@ export class ScriptedModel {
             `ScriptedModel: nothing scripted for session ${request.sessionId} (request #${model.requests.length})`
           )
         const events = typeof turn === 'function' ? turn(request) : turn
-        for await (const event of events)
+        for await (const event of events) {
+          if (event.type === 'response')
+            model.answered += 1
           yield event
-        model.answered += 1
+        }
       },
       clone: () => model.runtime(),
     }

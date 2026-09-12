@@ -65,7 +65,9 @@ test('SDK MCP IDs are preserved; notifications do not invent a request ID', () =
     method: 'tools/call', params: { name: 'tool' },
   }))).toThrow(ProviderDataError)
   const notification = parseClaudeOutputMessage(sdkMessage({ method: 'notifications/initialized' }))
-  expect(mapClaudeStdoutMessage(notification).controlRequest).toBeUndefined()
+  expect(mapClaudeStdoutMessage(notification)).toEqual({
+    events: [], notificationRequestId: 'outer', terminal: false,
+  })
   const call = mapClaudeStdoutMessage(parseClaudeOutputMessage(sdkMessage({
     id: 0, method: 'tools/call',
     params: { name: 'mcp__main__shell_exec', arguments: null, _meta: { 'claudecode/toolUseId': 'tool-1' } },

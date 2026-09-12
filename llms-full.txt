@@ -163,7 +163,8 @@ End every successful turn with a single `response` event carrying token usage.
 ## A minimal provider
 
 ```ts
-import { defineProvider, zeroUsage, type AgentProvider, type InferenceRequest, type ProviderRun } from '@demicodes/provider'
+import { zeroUsage } from '@demicodes/core'
+import { defineProvider, type AgentProvider, type InferenceRequest, type ProviderRun } from '@demicodes/provider'
 
 export function createEchoProvider() {
   return defineProvider({
@@ -201,10 +202,58 @@ re-implementing several of these:
 - `createProviderQuota`, `ensureQuota`, percent/severity helpers — subscription rate-limit
   surface (`docs/provider-quota.md`).
 - `zeroUsage` (from `@demicodes/core`) — a zeroed `TokenUsage`.
-- `normalizeBaseUrl`, `parseJsonObject`, `numberOrZero` (from `@demicodes/utils`).
+- `parseProviderData`, `parseProviderJson`, `ProviderDataError` — validate a concrete
+  provider's schema and classify failures without including payload values.
+- `normalizeBaseUrl` (from `@demicodes/utils`). JSON decoding helpers do not validate
+  wire data; numeric fallback helpers do not replace a usage schema.
 
-See `packages/provider-anthropic-api` / `packages/provider-google` (HTTP) and
-`packages/provider-codex` (CLI/OAuth) for full references.
+## Validate incoming data
+
+Define the fields the mapper consumes, derive its types, and validate at transport
+ingress. Do not cast decoded JSON to an event type. Extra fields may be permitted
+without accepting malformed known fields. Specify exactly which event tags are
+ignored; unsupported tags must not silently swallow terminal or tool-call events.
+
+This runnable example illustrates a provider-owned wire protocol:
+
+```ts
+import { z } from 'zod'
+import { zeroUsage } from '@demicodes/core'
+import { parseProviderJson, type ProviderEvent } from '@demicodes/provider'
+
+const eventSchema = z.discriminatedUnion('type', [
+  z.looseObject({ type: z.literal('text'), text: z.string() }),
+  z.looseObject({ type: z.literal('complete') }),
+  z.looseObject({ type: z.literal('progress') }),
+])
+
+function mapEvent(event: z.infer<typeof eventSchema>): ProviderEvent | null {
+  switch (event.type) {
+    case 'text':
+      return { type: 'text_delta', text: event.text }
+    case 'complete':
+      return { type: 'response', usage: zeroUsage() }
+    case 'progress':
+      return null
+  }
+}
+
+export function receiveEvent(json: string): ProviderEvent | null {
+  return mapEvent(parseProviderJson(eventSchema, json, 'Example stream'))
+}
+
+receiveEvent('{"type":"text","text":"hello","extra":1}') // Text delta.
+receiveEvent('{"type":"progress"}') // Explicitly ignored.
+// Both throw ProviderDataError with field paths, excluding payload values:
+// receiveEvent('{"type":"text","text":{}}')
+// receiveEvent('{"type":"unknown_terminal"}')
+```
+
+For the complete transport/schema/mapper path, see Codex's `sse.ts`,
+`response-schemas.ts` (WebSocket envelope), `responses.ts`, and
+`response-contracts.test.ts` under `packages/provider-codex/src`, together with
+its shared wire contract in `packages/provider/src/responses-wire.ts`. Follow [Data Contracts](../data-contracts.md) for
+missing/null policies, persistent data, and tests with synthetic inputs.
 
 ## Optional: quota
 
@@ -286,6 +335,9 @@ is the required final package set, not a claim that all workspace manifests have
 already been brought into agreement. Implementation checkpoints must reconcile
 source, manifests and boundary checks with this contract.
 
+Data ingress, schema ownership, decoding and validation follow
+[Data Contracts](data-contracts.md).
+
 ## Dependency Direction
 
 Package direction is a core architecture invariant. Lower-level packages must not know higher-level products, adapters, UI shells, concrete providers, or local machine implementations.
@@ -308,7 +360,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: none.
-- Owns: generic, platform-neutral helper functions only — type guards, error/abort helpers, async primitives, byte/UTF-8/base64 helpers, string helpers, the portable JSON codec (`Uint8Array`/`bigint` round-trip used by agent transports and HostStore implementations), and id generation.
+- Owns: generic, platform-neutral helper functions only — type guards, error/abort helpers, async primitives, byte/UTF-8/base64 helpers, string helpers, the portable JSON codec (strict reserved markers for `Uint8Array`/`bigint`/`Date` round-trip used by agent transports and HostStore implementations; domain validation belongs to callers), and id generation.
 - Public boundary: pure utility functions shared across packages; no domain types or runtime services.
 - Must not: contain domain logic; transcript, provider, shell, or agent types; Node-only adapters; or any package-specific behavior.
 
@@ -316,8 +368,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/utils`.
-- Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, required `AgentProvider.clone()` for independent per-session runtimes, unified subscription/rate-limit quota types (`ProviderQuota` / `ProviderQuotaSnapshot`; see `docs/provider-quota.md`), optional multi-credential types (`ProviderCredentials` / `ProviderCredentialInfo` — global active switch, not multi-instance providers; see `docs/provider-global-credentials.md`), the shared node-only credential pool IO behind the `@demicodes/provider/credentials-pool` subpath (the main entry stays platform-neutral), model catalog shape, and the models.dev catalog client (`models-dev.ts`: the fetch with its cache and stale fallback, the zod schema of the parts read, the entry-to-catalog-model mapping) that concrete providers and the backend filter for their own lists.
-- Public boundary: provider contract, direct `Provider[]` composition types, quota helpers (`createProviderQuota`, `ensureQuota`), credential public types, provider test helpers only from `@demicodes/provider/testing`, and pool IO only from `@demicodes/provider/credentials-pool`.
+- Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, required `AgentProvider.clone()` for independent per-session runtimes, unified subscription/rate-limit quota types (`ProviderQuota` / `ProviderQuotaSnapshot`; see `docs/provider-quota.md`), optional multi-credential types (`ProviderCredentials` / `ProviderCredentialInfo` — global active switch, not multi-instance providers; see `docs/provider-global-credentials.md`), the shared node-only credential pool IO behind the `@demicodes/provider/credentials-pool` subpath (the main entry stays platform-neutral), model catalog shape, configured model schema/types and projection (`configured-models.ts`), and the models.dev catalog client (`models-dev.ts`: the fetch with its cache and stale fallback, the zod schema of the parts read, the entry-to-catalog-model mapping) that concrete providers and the backend filter for their own lists.
+- Public boundary: provider contract, direct `Provider[]` composition types, quota helpers (`createProviderQuota`, `ensureQuota`) and shared quota amount/reset schemas, credential public types, schema parsing with payload-free diagnostics (`parseProviderData`, `parseProviderJson`, `parseProviderJwt`, `ProviderDataError`), shared SSE framing (`readServerSentEvents`, `ServerSentEvent`) and the named Responses/Chat wire contracts, provider test helpers only from `@demicodes/provider/testing`, and pool IO only from `@demicodes/provider/credentials-pool`. Concrete providers own their unique wire schemas. Shared Responses schemas/usage (`responses-wire.ts`) and content projection (`responses.ts`) serve Codex and OpenAI; shared Chat Completions schemas and stream mapping (`chat-completions-wire.ts`, `chat-completions.ts`) serve OpenAI-compatible and Grok endpoints. These modules have no endpoint, auth or concrete-provider dependency. The shared parser owns JSON/JWT payload decoding and validation error classification. JWT payload decoding extracts metadata without verifying signatures.
 - Model catalog boundary: common catalog state exposes portable fields only: model ids, display metadata, capability metadata, service tiers, `sourceFetchedAt`, `stale`, and `warnings`.
 - Model catalog must not: expose provider-specific `source` labels such as `codex-backend`, `models.dev`, or `cache` in public types.
 - Must not: import concrete providers, the agent runtime, the shell packages, or Host implementations.
@@ -326,13 +378,13 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/utils`.
-- Owns three contracts and nothing that implements them. **The Host contract** (`host.ts`): `defaultCwd`, `identity`, `fs`, `process` (`openCwd`, `spawn`), `store`; `fileHostStore` (a `HostStore` as JSON files on any `HostFileSystem`). **The command system** (`command.ts`, `command-abi.ts`, `storage.ts`, `reserved-names.ts`, `shell-quote.ts`): command specs and kinds, the command ABI (`CommandContext`, `CommandResult`, `DispatchIO`, `runtimeModule`, `importCommandModule`), `CommandRegistry` with the one reserved-name table, HostStore-scoped command storage. **The shell-environment contract** (`shell-environment.ts`, `command-records.ts`): `ShellEnvironment` behind the `shell_*` tools, the command record, the model's status view (each stream's delta since the last view, its tail, and the output path when the target keeps one). The production shell is `RemoteShellEnvironment` in `host-remote`, over real runner jobs.
-- Entries: the root runs on every runtime (Bun, txiki.js; the runner bundles it); `storage` too. `testing` is the in-memory store and the Host conformance suite (`hostConformanceCases`, run by every Host implementation; including process cases), runtime-neutral so the suite runs on txiki.js. No entry imports Node.
+- Owns three contracts and nothing that implements them. **The Host contract** (`host.ts`): `defaultCwd`, `identity`, `fs`, `process` (`openCwd`, `spawn`), `store`; `fileHostStore` (a `HostStore` as JSON files on any `HostFileSystem`; reads return decoded `unknown` for caller-owned validation). **The command system** (`command.ts`, `command-schema.ts`, `command-abi.ts`, `reserved-names.ts`, `shell-quote.ts`): command specs and kinds, the command ABI (`CommandContext`, `CommandResult`, `DispatchIO`, `runtimeModule`, `importCommandModule`), `CommandRegistry` with the one reserved-name table, the atomic `CommandStorage` interface. **The shell-environment contract** (`shell-environment.ts`, `command-records.ts`): `ShellEnvironment` behind the `shell_*` tools, the command record, the model's status view (each stream's delta since the last view, its tail, and the output path when the target keeps one). The production shell is `RemoteShellEnvironment` in `host-remote`, over real runner jobs.
+- Entries: the root runs on every runtime (Bun, txiki.js; the runner bundles it). `testing` supplies in-memory Host and command stores and the Host conformance suite (`hostConformanceCases`, run by every Host implementation; including process cases), runtime-neutral so the suite runs on txiki.js. No entry imports Node.
 - `Host.defaultCwd` is a default working-directory helper only. It is not a sandbox, workspace boundary, permission boundary, or access-control source.
 - Runtime file operations go through `Host.fs`; `Host.fs` is a system-level file access facet whose allowed paths are decided by the Host backend policy, not by `defaultCwd`.
 - True external process execution goes through `Host.process.spawn`.
 - An `rpc` command's `run` receives the invoking shell's Host in its context; command implementations use that Host instead of closing over an assembly-time Host.
-- Command JSON state (`CommandStorage`) goes through `Host.store`, scoped per agent node; agent session state does not — it belongs to the agent's own store contract (`AgentTreeStore`, `@demicodes/agent`), which a product injects independently of any Host.
+- Command JSON state (`CommandStorage`) belongs to the agent node. `agent/session` serializes its immutable versions and transcript cutoffs through `AgentTreeStore`; `backend/storage` commits them in the conversation database. The shell receives a job-bound handle from the node. `Host.store` remains an independent Host storage facet.
 - HostSpawnHandle must use platform-neutral types; `kill` must not expose `NodeJS.Signals`.
 - Must not: import `@demicodes/agent`, `@demicodes/provider`, concrete providers, `@demicodes/coding-agent`, a Host implementation, or Node.
 
@@ -351,20 +403,28 @@ Test code may depend upward for integration coverage. Production code must not.
 - Session-tree options: `subagents.maxLiveSubagents` limits each session's live direct children (default 8); `notifyParentOnIdle` controls only the root's automatic wakeups. Every descendant shares the root's agent directory and inherits its tool options.
 - Shell previews: `tools.shellPreviewBudgetTokens(contextWindow)` selects the token budget against each request's current model, across the entire session tree. The default is 10,000 tokens below an 800,000-token context window and 100,000 at or above it.
 - Layout (directories mirror the package's modules; root keeps entrypoints, `types.ts`, and single-file modules like `tools.ts`):
-  - `session/` — the AgentSession state machine and its collaborators (turn loop, steer queue, yield scheduler, recovery, retry policy, compaction).
-  - `transcript/` — the TranscriptLog mutation journal and patch application.
-  - `store/` — the persistence contract's helpers (the completion-message id and which completions a checkpoint carries) and the media blob contract (externalize/rehydrate); realizations live with the products (`@demicodes/backend`) and in `testing.ts`.
+  - `session/` — the AgentSession state machine and its collaborators (turn loop, steer queue, yield scheduler, recovery, retry policy, compaction, and transactional message editing with durable operation receipts; see `docs/message-editing.md`).
+  - `transcript/` — the TranscriptLog mutation journal, snapshot versions, editable-user selection, retained-prefix preparation, suffix replacement, and patch application.
+  - `store/` — the persistence contract's helpers (the completion-message id and which completions a checkpoint carries) and the media blob contract (`media-contracts.ts` owns stored/displayed schemas; `media.ts` externalizes/rehydrates); realizations live with the products (`@demicodes/backend`) and in `testing.ts`.
   - `node/` — the session-tree node: the one assembly that builds a root or a subagent (session from the store or fresh, supervisor, command tree, tools), the node's per-Host shell environments with handle ownership checks, and the lifecycle policy applied on restore.
-  - `protocol/` — frame types, the inbound-frame zod schemas (`ClientFrame`'s single source of truth), and the transports (`stdio-transport.ts` backs the `./stdio` entry).
-  - `server/` — the server facade, transport binding (frame dispatch, ingress validation), the root node's transport view (the frame sink), ownership registry, and frame-view mappers.
+  - `protocol/` — schemas for both frame directions and transcript blocks, schema-derived frame types, ordered delivery/error subscriptions, and serialized transports that validate incoming frames (`stdio-transport.ts` backs the `./stdio` entry).
+  - `server/` — the server facade, transport binding (validated frame dispatch and transport error handling), the root node's transport view (the frame sink), ownership registry, and frame-view mappers.
   - `subagent/` — the relationship module: the supervisor (spawn, resume, abort, messages, the close policy and completion delivery over the store), the root-session agent directory, tree formatting, and the declarative `demi agent` command tree behind the `SubagentCommandOps` seam.
   - `client/` — AgentClient.
+
+### `@demicodes/product-contracts`
+
+- Status: implemented.
+- Production deps: `@demicodes/agent`, `@demicodes/core`.
+- Owns: the product's shared authentication inputs, settings, configured-model metadata, conversation targets, REST response schemas, transcript response schema and conversation client-frame extensions. Types derive from these schemas. Product-reference encoding is an explicit mapping into the typed agent client's reference field.
+- Entries: the platform-neutral root exports schemas, inferred types and pure wire mappings. Agent protocol imports use the browser-safe `@demicodes/agent/client` entry.
+- Must not: import backend, UI packages, concrete providers, Node, or storage/network implementations. It does not authorize users, access files, apply settings, render forms or execute frames.
 
 ### `@demicodes/coding-agent`
 
 - Status: implemented.
 - Production deps: `@demicodes/agent`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: coding harness, coding prompt, coding commands (the `demi` root: every subcommand is a noun domain group — `file` as `runtime` modules written against the ABI and `todo` as `rpc` built in, product groups like the backend's `host` composed in), and file reference resolution.
+- Owns: coding harness, coding prompt, coding commands (the `demi` root: every subcommand is a noun domain group — `file` as `runtime` modules written against the ABI and `todo` as `rpc` built in, product groups like the backend's `host` composed in). A `reference` block reaches the model as its path; the model reads the file with tools.
 - Public boundary: harness and coding command construction based on Host and Command contracts.
 - Must not: instantiate AgentSession, AgentServer, a shell environment, concrete providers, or a Host implementation.
 - Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism, the standard agent tool surface, or provide an alternate shell/tool runtime.
@@ -372,7 +432,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/provider-claude-code`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`, `zod`.
 - Owns: Claude Code provider transport, JSONL/MCP mapping (including preservation of model-emitted parallel tool batches across the sequential SDK-MCP callback channel; see `docs/tool-call-concurrency.md`), model catalog mapping, provider event mapping, OAuth usage quota probe (`/api/oauth/usage`), active OAuth resolution injected into the CLI env at spawn, device-config isolation for injected-spawn runs (`CLAUDE_CONFIG_DIR` pinned inside the workspace artifacts dir — a managed device's CLI consumes zero device-local settings), provider glue over the shared credential pool (`@demicodes/provider/credentials-pool`; see `docs/provider-global-credentials.md`), and provider-specific tests.
 - Public boundary: `createClaudeCodeProvider`, model catalog function, quota helpers, and public option types from root.
 - Secret boundary: OAuth tokens and pool secret files stay inside the provider creator/auth resolver and must not cross AgentClient/Web browser-visible frames.
@@ -382,7 +442,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/provider-codex`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`, `zod`.
 - Owns: Codex auth reuse, Responses transport, model catalog mapping, provider event mapping, rate-limit quota probe (`x-codex-*` headers), provider glue over the shared credential pool (`@demicodes/provider/credentials-pool`; see `docs/provider-global-credentials.md`), and provider-specific tests.
 - Public boundary: `createCodexProvider`, auth status helper, model catalog function, quota helpers, transport mode type, and public option types from root.
 - Secret boundary: auth.json material and pool secret files stay inside the provider creator/auth store and must not cross AgentClient/Web browser-visible frames.
@@ -397,47 +457,47 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: `createOpenAIApiProvider`, default model catalog function, and public option/model types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.openai.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `OPENAI`. `wireApi` defaults to `responses`; compatible endpoints can pass `wireApi: 'chat-completions'`.
 - Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
-- Internal boundary: Responses body builders, Chat Completions body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
+- Internal boundary: Responses body builders, Chat Completions body builders, stream mappers, runtime classes, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
 ### `@demicodes/provider-anthropic-api`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
-- Owns: Anthropic Messages API request mapping, event-stream mapping, official Anthropic API defaults, endpoint/env/api-key resolution, compatible endpoint options, model metadata mapping mirrored from Claude Code defaults unless caller-supplied models replace it, and provider-specific tests.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`, `zod`.
+- Owns: Anthropic Messages API request mapping, Messages wire schemas (`response-schemas.ts`) and event-stream mapping, official Anthropic API defaults, endpoint/env/api-key resolution, compatible endpoint options, model metadata mapping mirrored from Claude Code defaults unless caller-supplied models replace it, and provider-specific tests.
 - Public boundary: `createAnthropicApiProvider`, default model catalog function, and public option/model types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.anthropic.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `ANTHROPIC`. `baseUrl` must already include the API version prefix (typically `/v1`); the provider only appends `/messages` (or leaves the URL alone when it already ends with `/messages`). Claude Code / Kimi-style roots such as `https://api.kimi.com/coding/` are not drop-in values — pass `…/coding/v1` instead.
 - Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
-- Internal boundary: Messages body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
+- Internal boundary: Messages body builders, stream mappers, runtime classes, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
 ### `@demicodes/provider-grok-build`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`, `zod`.
 - Owns: Grok Build CLI OAuth session reuse (`~/.grok/auth.json`), native RFC 8628 device login against auth.x.ai using the official frozen OAuth2 scopes, OIDC token refresh, cli-chat-proxy Chat Completions transport, model catalog mapping from `/v1/models`, billing/subscription quota probe (`/v1/billing?format=credits`, `/v1/user?include=subscription`), demi credential pool for global multi-credential switch, provider event mapping, and provider-specific tests.
-- Public boundary: `createGrokBuildProvider`, auth status helper, model catalog function, quota helpers, and public option types from root.
+- Public boundary: `createGrokBuildProvider`, `parseGrokBuildProviderConfig` for serializable configuration, auth status helper, model catalog function, quota helpers, and public option types from root. `config-schema.ts` owns the parsed configuration type and the matching creator option fields.
 - Endpoint boundary: explicit `baseUrl` wins, then `https://cli-chat-proxy.grok.com/v1`. Auth is the Grok CLI OAuth session or native device login against `https://auth.x.ai` (no API-key product path).
 - Secret boundary: session tokens, refresh tokens, raw auth file contents, and pool secret files stay inside the provider creator/auth store and must not cross AgentClient/Web browser-visible frames.
-- Internal boundary: auth stores, Chat Completions builders, SSE readers, stream mappers, runtime classes, credential pool IO, and test helpers stay behind implementation files.
+- Internal boundary: auth stores, Chat Completions builders, stream mappers, runtime classes, credential pool IO, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
 ### `@demicodes/provider-google`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
-- Owns: Google Gemini `generateContent` API request mapping (native wire, not OpenAI-compatible), SSE event mapping including thought summaries / thought signatures / thinking token counts, tool-returned media as inline parts (including video), official Gemini API defaults, endpoint/env/api-key resolution, model metadata mapping, and provider-specific tests.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`, `zod`.
+- Owns: Google Gemini `generateContent` API request mapping (native wire, not OpenAI-compatible), generateContent response schemas (`response-schemas.ts`) and SSE event mapping including thought summaries / thought signatures / thinking token counts, tool-returned media as inline parts (including video), official Gemini API defaults, endpoint/env/api-key resolution, model metadata mapping, and provider-specific tests.
 - Public boundary: `createGoogleProvider`, default model catalog function, and public option/model types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://generativelanguage.googleapis.com/v1beta`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `GOOGLE`.
 - Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
-- Internal boundary: generateContent body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
+- Internal boundary: generateContent body builders, stream mappers, runtime classes, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
 ### `@demicodes/backend`
 
 - Status: target contract; acceptance tracked in `docs/demi-next/progress.md`.
-- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
-- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, the per-conversation `AgentTreeStore` over node and block rows, blob store, machine-image store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the transfer broker, browse endpoints), the managed-hosts module (`ManagedHostProvisioner` driving Firecracker under jailer through the privileged helper, images and the machine-image store, lifecycle/hibernate, the backend-contributed `demi host` subcommand group), the LLM module (per-provider provider assembly, live model catalog, metering wrap), the credential vault (instance secret, GCM-encrypted providers, subscription device-login flows over per-provider provider pools), and usage accounting (ledger + rate limit). The backend never touches credential bytes (it names where a provider's pool lives) and never proxies model traffic.
+- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/machines`, `@demicodes/product-contracts`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
+- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, the per-conversation `AgentTreeStore` over node and block rows, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the transfer broker, browse endpoints), the managed-hosts module (one managed device per user over the `ManagedHostProvisioner` contract, reached through `@demicodes/machines`' `RemoteProvisioner` as the machine manager's client; lifecycle/hibernate/reset, the backend-contributed `demi host` subcommand group), the LLM module (per-provider provider assembly, live model catalog, metering wrap), the credential vault (instance secret, GCM-encrypted providers, subscription device-login flows over per-provider provider pools), and usage accounting (ledger + rate limit). The backend accepts explicitly submitted API keys and setup tokens at authenticated write boundaries, passes subscription material to provider-owned credential pools, and never returns secrets or proxies model traffic.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
 - May assemble: concrete providers, AgentServer, `RemoteHost`, `RemoteShellEnvironment` and the coding harness.
 - Builds the JS command manifest with Bun's transpiler, serves it to runners and executes authenticated RPC handlers. All shell scripts execute on the selected machine.
@@ -446,19 +506,29 @@ Test code may depend upward for integration coverage. Production code must not.
   - `backend.ts` — the composition root (wire and mount only).
   - `testing.ts` — test-only real-runner shell fixtures for agent and command tests; exported through `@demicodes/backend/testing`, never imported by production code.
   - `http/` — the external HTTP surface: app assembly, the session gate over `/api/*` with its exemptions, the cookie helpers, one route module per resource (setup, auth, transfers and blobs included), the WS upgrade adapter.
-  - `auth/` — identity: the roles and the authenticated user shape, password hashing, the cookie sessions over the control plane, the login lockout.
-  - `conversation/` — frame scoping/rewrite, attachment references, Cloud/device/workspace target resolution, target/file admission and per-node execution context. The root and subagents resolve the conversation selection per action.
+  - `auth/` — identity: the roles and the authenticated user shape, password hashing, the cookie sessions over the control plane, the login lockout, and email-change verification through an injected mail sender.
+  - `settings/` — validated per-user appearance and shortcut overrides, merged field by field in control storage.
+  - `sync/` — reconstructible user-scoped product snapshots for conditional HTTP polling; chat stays on the agent protocol.
+  - `conversation/` — frame scoping/rewrite, attachment and remote-file references, partial metadata updates, archive admission, read/activity summaries, persistent Fork creation and publication, Cloud/device/workspace target resolution, target/file admission and per-node execution context. The root and subagents resolve the conversation selection per action.
   - `storage/` — the SQLite layer (database seam, migrations, control service, the conversation stores with the `AgentTreeStore` realization, blob store, host store).
   - `runner/` — runner management: pairing-code/device-token primitives, the registry (pending claims, one live socket per device, stable per-target `RemoteHost`s, liveness, the rpc relay), the transfer broker, installation script generation and the shared `demi host` command group. `http/runner-install.ts` serves the generated script and release artifacts; `runner/installer.ts` defines the installation steps.
   - `llm/` — the provider runtime assembled per provider entry (the family registry with each family's credential kind, the vendor catalog over models.dev, the model catalog, the Test button) and the metering wrap at the inference entry.
   - `vault/` — instance secret, credential crypto, the typed provider vault over the control plane, and the provider scope (whose providers a caller works with under the instance mode).
   - `usage/` — enforcement (the provider-request rate limiter); the ledger rows live on the `ControlService`.
-  - `managed/` — one managed device per user, lazy allocation/wake, device-wide admission, idle shutdown, paired system/home checkpointing, volume growth, external system reset, Cloud project directory creation.
-  - `managed/firecracker/` — the Firecracker implementation of the seam: the image tools over e2fsprogs (`mke2fs -d` from a directory, create both writable volumes and grow backing files), the VM process in its two launch modes (direct, or the jailer through the privileged helper), the Firecracker API over its socket, the tap slots and the per-VM kernel command line. Spawning `firecracker`, the jailer and e2fsprogs is this module's transport — the intentional external-process exception; nothing else in the backend spawns.
-  - `scripts/` (beside `src/`) — Linux deployment scripts, included in the backend package. `install-managed-hosts.sh` configures taps, forwarding and egress rules; `firecracker-jailer.sh` prepares image paths and permissions, invokes jailer and monitors the VM, or kills its recorded PID. The backend invokes the latter through `sudo -n`. Jailer owns isolation; the script has no runner communication or business logic.
+  - `managed/` — one managed device per user, lazy allocation/wake, device-wide admission, idle shutdown, paired system/home checkpointing, volume growth, external system reset, Cloud project directory creation. Every VM and disk operation goes to the `ManagedHostProvisioner` it is given; the backend never spawns a hypervisor or an image tool itself.
   - New modules get sibling directories — never new files at the root.
 
 - Execution coordination: authenticated live-job RPC routing, conversation target/file admission and user-device lifecycle admission. Managed operations persist allocation/reset intent and recover it before new work; every conversation using Cloud shares its device-wide operation gate.
+
+### `@demicodes/machines`
+
+- Status: implemented (`docs/demi-next/managed-hosts.md` § Provisioning).
+- Production deps: `@demicodes/utils`; external: `zod`.
+- Owns: the machine manager — the `ManagedHostProvisioner` contract (reconcile, base version, image state, wake, hibernate, checkpoint, volume growth, reset, close, death events) and the `MachineImageState` schema; the machine wire (`protocol.ts`: the `machineOps` table from which the request union and the typed replies derive, newline-delimited JSON over a Unix socket); `serveMachines` (the service end: one socket, any number of backend connections, every request dispatched to one provisioner, deaths broadcast); `RemoteProvisioner` (the backend's end: a provisioner whose calls travel over the socket, reconnecting on the next call after a drop); the Firecracker implementation (`firecracker/`: the image tools over e2fsprogs, the VM process in its two launch modes, the Firecracker API over its socket, the tap slots, the per-VM kernel command line) and the machine-image store (paired system/home generations, pinned bases); the `demi-machines` bin (`main.ts`: `DEMI_MACHINES_SOCKET`, `DEMI_MACHINES_DATA`, `DEMI_MANAGED_*`).
+- Public boundary: the provisioner types and `imageStateSchema`, the protocol schemas, `RemoteProvisioner`, `serveMachines`, `FirecrackerProvisioner`, `firecrackerConfigFromEnv` from root; the `demi-machines` bin.
+- Deployment files: `scripts/install-managed-hosts.sh` (taps, forwarding, egress rules), `scripts/firecracker-jailer.sh` (the privileged jailer helper the manager invokes through `sudo -n`), `scripts/lima-machines.sh` and `lima/demi-machines.yaml` (the manager inside a Lima instance with nested virtualization, for macOS).
+- Spawning `firecracker`, the jailer and e2fsprogs is this package's transport — the intentional external-process exception.
+- Must not: listen on TCP (the socket file's permissions are the boundary; there is no authentication); know users, conversations or the control database (it receives device ids and boot arguments); import the backend.
 
 ### `@demicodes/command-loader`
 
@@ -517,16 +587,18 @@ Test code may depend upward for integration coverage. Production code must not.
   - `commands/` — live execution contexts, worker dispatch and worker entry; no command definitions.
   - `init/` — PID 1 on a managed guest: the kernel command line as the guest's configuration, the boot as a plan of rootfs commands (kernel filesystems, persistent system overlay over the pinned base, separate home, network and `/run/demi` temporary state), per-volume usage, sync and growth. Pure over injected spawn and read, so Bun tests cover it without a kernel; `boot.ts` binds it to the machine layer.
   - `testing/` — Node-only filesystem and process fixtures; imported only through the testing entry.
-  - `runner-mode.ts`, `entry.ts`, `management.ts`, `manifest-cache.ts`, `state.ts`, `transfers.ts` — runner startup/administration, manifest storage and machine-local state.
+  - `runner-mode.ts`, `entry.ts`, `startup.ts`, `management.ts`, `manifest-cache.ts`, `state.ts`, `transfers.ts` — runner startup/administration, manifest storage and machine-local state.
 - Must not: hold credentials other than the backend-issued device token, store any conversation or transcript state, or import `@demicodes/agent`, `@demicodes/coding-agent`, provider packages, or Node in production code.
 
 ### `@demicodes/web-ui`
 
 - Status: implemented; published to npm as a source-form package (no build step — `.vue`/`.ts`
   source exports compiled by the consumer's bundler, which must handle Vue SFC + TypeScript).
-- Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`.
+- Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`, `@demicodes/product-contracts`.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
-  Input surfaces, shared UI primitives, markdown/theme, the conversation/tab store, shared sidebar presentation and list interaction, the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), the reusable device pairing dialog and lifecycle (`devices/`, driven by a host-provided claim adapter), and a
+  Input surfaces, the assembled ChatSession page, the message editor and its
+  draft/submission lifecycle (`agent/message-editing.ts`, `SessionComposer.vue`, and the inert `MessageEditRegion.vue`), sidebar layout, workspace and
+  remote-file selection flows, shared UI primitives, markdown/theme, the conversation/tab store, shared sidebar presentation and list interaction, the sign-in page (`auth/EmailLoginPage`: email and password on the left, a wide empty intro on the right, over a host-reported phase), the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), the reusable device pairing dialog and lifecycle (`devices/`, driven by a host-provided claim adapter), and a
   transport-agnostic control-client interface. Consumes an injected `AgentClient`.
 - Public boundary: source-path exports (`./*`) consumed by web hosts; third parties embed it
   by supplying an `AgentClient` and a control client. External products consume the published
@@ -540,20 +612,27 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/web`
 
-- Status: frontend prototype in development (M13.1).
-- Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`.
-- Owns: the Vue SPA application frame, route navigation, product state and frontend
-  prototype workflows. Vue 3 + TypeScript + Vite, vue-router, Pinia and Tailwind 4.
+- Status: backend-integrated web product.
+- Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`, `@demicodes/product-contracts`.
+- Owns: the Vue SPA application frame, route navigation, product state and backend request handlers. Vue 3 + TypeScript + Vite, vue-router, Pinia and Tailwind 4.
 - Public boundary: `bun run web:dev` and `bun run web:build`; no published library API.
-- Layout: `main.ts` is the only composition root (app, router, stores and simulation
-  clock); `App.vue` is the application frame; `conversation/` owns chat state and
+- Layout: `main.ts` is the only composition root (app, router, account-scoped stores); `App.vue` is the application frame; `conversation/` owns chat state and
   containers; `targets/` owns environment selection; `settings/` owns settings
-  containers; `auth/` owns the entry experience; `prototype/` owns local fixture
-  data and simulated resource state. Reusable UI belongs to `web-ui`.
-- Prototype boundary: the prototype uses browser-local state and scripted responses;
-  it does not import backend code, use provider transports or call real models.
-  Production backend integration belongs to M13.3.
+  containers; `auth/` owns cookie-session state and entry containers; `api/` owns
+  HTTP/agent wire adapters using `product-contracts` and upload requests; `state/` owns
+  server snapshots, preferences and per-user local state; `devices/` owns pairing
+  and filesystem adapters. Reusable UI belongs to `web-ui`.
+- Integration boundary: authentication calls the backend over same-origin HTTP.
+  Chat uses the agent client over WebSocket; resource and settings operations use
+  REST. The browser does not import backend code or concrete providers.
+  See `docs/web-integration.md` for state ownership and operation contracts.
 - Must not: import `web-gallery`, Node, Host implementations or concrete providers.
+
+The optional `web-ui/agent/AgentWorkspace` host adapter owns client tabs and
+runtime lifetimes; `transport/protocol.ts` owns its control response DTOs and
+`control-client.ts` validates the WebSocket adapter. The embedding host closes
+its control connection. Product REST state remains in `web`; it reuses the
+library's model intent, tool display and scroll-state contracts.
 
 ### `@demicodes/web-gallery`
 
@@ -579,6 +658,7 @@ utils -> none
 provider -> core, utils
 shell -> utils
 agent -> core, provider, shell, utils
+product-contracts -> agent, core
 coding-agent -> agent, core, shell, utils
 provider-claude-code -> core, provider, utils
 provider-codex -> core, provider, utils
@@ -588,12 +668,13 @@ provider-grok-build -> core, provider, utils
 provider-google -> core, provider, utils
 command-loader -> shell, utils
 runner-protocol -> shell, utils
+machines -> utils
 host-remote -> runner-protocol, shell, utils
 runner -> command-loader, runner-protocol, shell, utils
-backend -> agent, coding-agent, command-loader, core, host-remote, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
-web-ui -> agent, core, utils
+backend -> agent, coding-agent, command-loader, core, host-remote, machines, product-contracts, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
+web-ui -> agent, core, product-contracts, utils
 web-gallery -> web-ui, core, utils
-web -> web-ui, core, utils
+web -> web-ui, core, product-contracts, utils
 ```
 
 `web-ui`, `web-gallery` and `web` are browser/product packages built with Vite/Vue; their internal source
@@ -651,10 +732,21 @@ Existing boundary coverage:
 - The same test checks that `@demicodes/shell` does not depend on the agent runtime.
 - The same test checks selected package manifest layering boundaries.
 - The same test scans `@demicodes/core` and `@demicodes/provider` production source for concrete provider names, concrete catalog source labels, backend identifiers, and product-specific source identifiers.
-- Repository-wide production scans enumerate the existing production package directory table. The models.dev client's endpoint and diagnostics belong only in `provider/src/models-dev.ts`; shared model/catalog metadata still cannot expose concrete source labels. Quota cache metadata follows its separate domain contract.
+- Repository-wide production scans discover all workspace packages from the root manifest and read production TS, JS and Vue scripts, excluding tests, fixtures and declarations. `scripts/source-audit.ts` parses both Vue script blocks; template text is not treated as code. The models.dev client's endpoint and diagnostics belong only in `provider/src/models-dev.ts`; shared model/catalog metadata still cannot expose concrete source labels. Quota cache metadata follows its separate domain contract.
 - The same test builds the production source package graph and fails on cycles or edges outside the enforced graph.
 - The same test checks that production workspace imports are declared in package `dependencies`.
 - The same test checks public provider root exports so internal transport, parser, protocol, auth-store, stream, and testing helpers do not leak through by accident.
+
+- The source audit rejects direct casts or typed assignments from unvalidated
+  JSON decoding. It compares runtime ASTs to detect copies of shared helpers,
+  including renamed arrow functions. Matching names alone are not violations.
+  This bounded structural check skips scope-sensitive functions and does not
+  prove schema completeness or arbitrary semantic equivalence; independent
+  boundary tests and review cover those questions.
+- TypeScript uses workspace `development` export conditions, including browser
+  typechecks. A clean checkout does not require generated agent declarations.
+- `bun run test` forces offline test mode. Explicit external-service test flags
+  cannot override this command; see [Testing](testing.md).
 
 ---
 
@@ -932,6 +1024,55 @@ Guidance:
 | Agent protocol change? | **None** |
 | Tied to multi-cred? | **Yes** — active credential + `clearLatest` on switch |
 
+## Data validation and unknown values
+
+Concrete `quota-schemas.ts` modules own the consumed Claude and Grok response
+fields. Their public mapping functions validate unknown input once, then map typed
+values to quota windows. The shared provider package owns finite nonnegative quota
+amounts, quota reset timestamps and HTTP decimal-header decoding. Extra vendor
+fields are permitted. Present known fields with the wrong type fail with
+`ProviderDataError`; absent measurements remain null, and numeric zero remains
+zero. Known percentage values are capped at 100 for display. Amount ratios require
+finite nonnegative inputs; a zero or unknown limit has no known percentage.
+
+| Input | Supported reset representation |
+| --- | --- |
+| Codex `x-codex-*-reset-at` | Finite nonnegative epoch seconds |
+| Claude quota JSON and unified reset header | Epoch seconds, decimal seconds text, or timezone-qualified ISO timestamp |
+| Grok billing/current-period dates | Timezone-qualified ISO timestamp, preserving its textual precision |
+
+There is no magnitude heuristic for seconds versus milliseconds. The shared
+`unixSecondsToIso` maps numeric seconds only; callers holding milliseconds must
+convert them explicitly. Dates outside the representable range, empty strings and
+invalid calendar dates fail validation. For example, seconds `1700000000` map to
+`2023-11-14T22:13:20.000Z`; an absent timestamp maps to null.
+
+Claude's dedicated windows and their measurements may be absent or null. An empty
+window has unknown usage and reset time. `limits` entries require a kind and valid
+optional percent, scope, severity and reset fields. Session/weekly limit entries
+are skipped only when their corresponding dedicated window exists. The unified
+overage channel header is validated and retained in raw metadata; its conversion
+to a subscription usage percentage has no established contract, so the unified
+window reports unknown usage. Known rejected/warning status values still provide
+severity; other statuses do not imply a numeric utilization.
+
+Grok's missing billing config produces no billing window. A present config with
+missing measurements produces unknown values, not zero credit use. Weekly and
+monthly periods receive explicit labels; unidentified periods use `Credits`.
+`creditUsagePercent` takes precedence over an amount ratio, but a malformed percent
+cannot fall back to the ratio. Request/token counters are nonnegative integers;
+remaining cannot exceed limit. Amount fields accept a number or the tested vendor
+`{ val: number }` representation. Wrong optional shapes are errors.
+
+Absent quota headers produce no observation. A Codex header window containing
+only a reset or duration still carries unknown usage. Invalid headers are errors,
+including blank/nondecimal values and invalid numeric ranges. Failed direct
+observations or probes preserve the previous cache. Inference adapters isolate
+passive observation errors so they cannot stop inference. Existing generation
+invalidation prevents old-account observations and probes from replacing the new
+account's state. Probe response bodies are consumed or cancelled on success and
+failure; protocol diagnostics never include response bodies.
+
 ---
 
 # Reference: Provider Global Credentials
@@ -965,6 +1106,30 @@ Removing the active pool entry currently clears its pointer. A later pool-aware
 lookup selects the first remaining entry by ID, or uses vendor defaults when the
 pool is empty. This is the existing library behavior; product UI policy for
 removing the current account remains separate.
+
+## Pool read contract
+
+`provider/src/credentials-pool.ts` owns the persisted metadata schema and derives
+`CredentialEntryMeta` from it. IDs are non-empty directory-safe alphanumeric,
+underscore or hyphen strings. Labels and present optional text fields contain a
+non-whitespace character. `updatedAt` is an ISO datetime with an explicit offset.
+Readers preserve valid values; they do not trim metadata, invent IDs, fill missing
+timestamps, or replace malformed optional fields with null.
+
+Only `ENOENT` yields an absent metadata/pointer result or an empty missing pool.
+Malformed JSON, invalid fields, mismatched metadata IDs and invalid active pointers
+raise `CredentialPoolError` with code `credential_invalid`, without including raw
+file bodies. Other filesystem errors propagate. Listing fails on any incomplete or
+invalid entry, including an entry removed concurrently during the listing; callers
+may retry the complete operation. A missing pointer permits the documented first
+entry selection. An existing pointer to missing metadata is invalid and does not
+select a different account.
+
+The active pointer format is one valid ID, optionally followed by a newline.
+Removing an active entry clears the pointer. Clearing and setting the pointer must
+report filesystem failures. A missing secret is `credential_not_found`; an unreadable
+secret retains its IO error. Provider-specific secret schemas remain the concrete
+provider's responsibility.
 
 ## 1. Problem
 
@@ -1216,7 +1381,7 @@ $DEMI_HOME|~/.demi/
 Rules:
 
 - `meta.json` is listable; secret files are never returned from public APIs.
-- `active` missing or pointing at a deleted entry → treat as unauthenticated / fall back to vendor default import path once (see §6).
+- A missing `active` pointer selects the first existing pool entry by ID. A malformed pointer or a pointer to missing metadata raises `CredentialPoolError`; it never selects a different identity. An empty pool follows the provider-specific default import behavior in §6.
 - File mode `0600` for secret files; directories `0700` when created by demi.
 - Credential ids: opaque stable strings (e.g. `import-<hash>` or product-supplied slug). Labels are display-only and may change.
 
@@ -1229,13 +1394,13 @@ Rules:
 Each of the three packages owns:
 
 1. **Pool store** — list / read meta / read secret / write / setActive pointer.
-2. **Active AuthStore** (or equivalent resolver) — `resolveAuth()` loads **only** the active entry’s material; refresh writes back into **that entry’s** secret file (and updates `meta.updatedAt`).
+2. **Active AuthStore** (or equivalent resolver) — `resolveAuth()` loads **only** the active entry’s material; refresh writes back into **that entry’s** secret file. Pool metadata timestamps record writes through `FileCredentialPool.writeEntry`; auth-file refresh does not rewrite metadata.
 3. **`ProviderCredentials` adapter** wired on `create*Provider`.
 4. **Import default** (optional helper, not automatic on every boot unless pool empty — see bootstrap).
 
 Bootstrap (final-state default):
 
-1. If pool has entries → use `active` (or first entry if `active` invalid, and repair `active`).
+1. If the pool has entries, use `active`. A missing pointer selects the first entry by ID; an invalid pointer raises `CredentialPoolError` and does not change the selection.
 2. If pool empty → **read-through** vendor default (today’s path). Do **not** silently invent pool entries unless the product calls `importDefault` / `importFromPath` / explicit add.
 3. Product that wants multi-cred: import A, import B, `setActive`.
 
@@ -1256,42 +1421,139 @@ Optional public helpers per package (root or documented internal used by product
 
 `createCodexProvider` always constructs one provider id `codex` (override still allowed). Credentials surface is attached when a pool is enabled (default **on** with demi home, or always on with lazy empty pool).
 
+`provider-codex/auth-schemas.ts` owns file, token refresh, device grant and consumed
+claim schemas. `auth.ts` parses files before resolving their mode; `credentials.ts`
+uses the same parser and pure `resolveCodexAuth` before writing an imported entry.
+An incomplete credential cannot be imported as a generic `codex` entry. Missing
+files report `auth_missing`; malformed files report `auth_invalid`; other import
+IO failures retain their filesystem error. Unknown fields in valid vendor auth
+files are preserved. `add` accepts exactly one of `authJsonText`, `authFile`,
+`auth`, or `authJson`.
+
+Absent or null optional API keys, token records, account IDs and refresh dates
+represent missing material. Present token strings cannot be blank or contain
+whitespace. Present refresh dates must be ISO datetimes. Token records validate
+the fields they contain; mode resolution separately requires the credentials and
+account ID needed by that mode. Unsupported Bedrock mode reports `auth_unsupported`.
+JWT payloads supply metadata only; decoding does not verify a signature. Opaque
+access tokens have no claims. JWT-shaped tokens must have a JSON object payload,
+string account/email fields, boolean FedRAMP flags and a representable nonnegative
+integer expiry when those fields exist.
+
+Refresh responses require a new access token and validate optional ID/refresh
+tokens. Claims are resolved before the atomic auth-file replacement, so a bad
+refresh preserves the previous file. Locks and temporary files are released on
+both success and failure; cleanup IO errors are reported.
+
+Device login validates each response before polling or exchanging tokens. It
+accepts `user_code` and the existing `usercode` variant, rejecting disagreement
+when both appear. Poll intervals are integer seconds from 0 to 900, supplied as a
+number or decimal digit string; an absent interval defaults to 5 seconds. Null,
+blank strings, wrong types and out-of-range values fail validation. The 15-minute
+poll window limits interval waits, and cancellation clears the pending timer.
+Successful exchange requires ID, access and refresh tokens plus a resolvable
+ChatGPT account ID. Protocol errors exclude response bodies.
+
 ### 6.3 Grok Build
 
-| Concern | Behavior |
-|---|---|
-| Active resolve | Pool entry secret is either a full `auth.json` map with one preferred key, or a single entry payload + `entryKey` |
-| Refresh | Update that entry in the pool secret file |
-| Vendor default | If pool empty: today’s `FileGrokAuthStore` + `selectAuthEntry` |
-| Import | For each OIDC entry in `~/.grok/auth.json`, or import selected entry only — product chooses; recommended **import-all-entries** as separate pool credentials |
-| Native multi-entry | Vendor file can feed the pool; **runtime no longer auto-picks for multi-cred mode** — active pointer wins |
+`provider-grok-build/auth-schemas.ts` owns the vendor auth map, entry, OAuth token,
+device authorization, user profile and consumed JWT claims. File reads and all
+credential-add forms validate every entry before selection or writing. Each entry
+requires a nonblank `key`; optional tokens, identity fields and ISO `expires_at`
+must have their declared types when present. Null is not a substitute for missing
+Grok fields. Unconsumed vendor extension fields remain intact. A missing file or
+empty map is unauthenticated; malformed entries and IO failures are errors.
 
-When pool is empty, keep current auto-pick for backward compatibility.
+Pool secrets contain an auth map with one entry. The active metadata identity key
+selects that entry. With an empty pool, the vendor map is selected by OIDC mode,
+refresh-token availability and the auth.x.ai issuer, then lexical map-key order.
+Import validates and copies all entries; default import activates that same
+preferred entry. Explicit `{ entryKey, entry }`, `authJsonText` and `authFile` add
+forms are mutually exclusive.
+
+Refresh validates the raw response before replacing the selected entry, preserving
+sibling entries and extension fields. `expires_in` is a finite nonnegative integer
+number of seconds; strings and unrepresentable dates fail. A missing lifetime uses
+the new token's expiration claim, or leaves expiry unknown. The old token's expiry
+is not applied to its replacement. Missing refresh tokens retain the current
+refresh token. The file lock protects reread, refresh and atomic replacement; a
+fresh token written by another process is adopted. Failed validation preserves
+the previous file. Temporary files and owned locks are released on failure, and
+unexpected lock IO errors propagate.
+
+Device authorization requires a positive lifetime and the base verification URI.
+The optional complete URI uses the same checks: HTTPS or HTTP on localhost/
+127.0.0.1, with no control characters. User codes contain only ASCII letters,
+digits and hyphens. Missing polling interval defaults to five seconds; present
+intervals are nonnegative integer seconds within the timer range. Polling waits at
+least one second, adds five seconds for `slow_down`, and never extends the returned
+expiration. Cancellation clears the wait and prevents the next request.
+
+The optional `/user` enrichment may be unavailable due to a network failure or
+non-success HTTP status. A successful response must satisfy its schema; malformed
+profiles and cancellation are errors. Existing camel-case/snake-case profile
+fields map explicitly to vendor entry fields. Team/organization token principals
+seed account identity before optional profile enrichment.
+
+Codex and Grok share `provider/validation.ts` JWT payload decoding. Opaque tokens
+have no claims. JWT-shaped tokens require valid base64url, UTF-8 JSON and the
+provider's consumed-claims schema. This extracts metadata and does not verify
+signatures or confer authentication authority.
 
 ### 6.4 Claude Code
 
 | Concern | Behavior |
 |---|---|
 | Active resolve | Pool entry `oauth.json` → access token |
-| Inference | CLI child env: set `CLAUDE_CODE_OAUTH_TOKEN` from active entry (override process env for that spawn). Extend `buildClaudeEnv` / transport factory to accept token or env overlay from the active resolver |
-| Quota probe | `resolveClaudeCodeOAuthAccess` becomes pool-aware (active entry first; else env; else keychain) |
-| Vendor default | If pool empty: today’s env / keychain |
+| Inference | The transport resolves the configured auth store before spawning and injects file/static/env tokens through `CLAUDE_CODE_OAUTH_TOKEN`. Keychain tokens remain owned by the CLI and are not injected. |
+| Quota probe | The provider factory injects its shared auth store into `createClaudeCodeQuota`. The standalone `resolveClaudeCodeOAuthAccess` helper reads env/keychain only. |
+| Vendor default | If pool empty: env, then keychain |
 | Import | Snapshot token from env or Keychain into pool |
 | CLI constraint | Claude Code CLI still must accept token via env; if a future CLI ignores env, this path needs a different transport — out of scope until proven |
 
-Claude is the weakest link today (no AuthStore abstraction). Final-state requires:
+`provider-claude-code/auth-schemas.ts` owns the pool secret, access projection,
+keychain envelope, OAuth response and credential-add schemas. `auth.ts` validates
+the selected source before returning access. A configured OAuth file is
+authoritative; an invalid file cannot fall back to another identity. Missing
+files or absent default credentials are `auth_missing`. Malformed JSON and known
+fields are `auth_invalid`; other file/keychain IO failures propagate. Optional
+lookup helpers return null only for `auth_missing`. Quota and CLI consumers use
+that same distinction, so corrupt auth stops a spawn instead of using CLI defaults.
 
-- `ClaudeCodeAuthStore` (or `resolveAccess(): Promise<ClaudeCodeOAuthAccess>`) injectable into provider + quota + transport.
-- Transport **must not** only call bare `buildClaudeEnv()` without active token overlay when a store is configured.
+Pool secrets require camel-case `accessToken`. Optional refresh tokens, expiry,
+scopes and display metadata may be absent or null. Present tokens contain no
+whitespace; expiry is an ISO datetime; scopes are arrays of nonempty strings
+without whitespace. Wrong optional types are invalid. The vendor keychain has
+its own schema: `claudeAiOauth.expiresAt` is an epoch in milliseconds. The platform
+adapter treats the `security` command's item-not-found exit (44) as absent and
+propagates other failures. This mapping follows Apple's
+[command implementation](https://github.com/apple-oss-distributions/Security/blob/main/SecurityTool/macOS/keychain_find.c)
+and [error constant](https://github.com/apple-oss-distributions/Security/blob/main/base/SecBase.h).
+Tests inject both environment and keychain readers.
+
+`login.ts` validates OAuth response tokens, numeric `expires_in`, space-separated
+scope and account metadata before constructing a secret. Zero seconds means an
+expired token; absent expiry means unknown (`null`). A refresh without new metadata
+keeps existing metadata and the refresh token, but does not assign the previous
+access token's expiry to the new token. Explicit force-refresh reaches the file
+store through the pool-aware store. Renewed secrets are validated before atomic
+replacement with mode 0600; temporary files are removed on success and failure.
+
+Credential add accepts a secret directly or an `oauth` object and preserves its
+refresh fields. Login, add and default import share the same entry writer and
+identity rule: email when available, otherwise a token fingerprint. Default
+import snapshots the resolved access token and display metadata. Login's pasted
+input accepts a code or `code#state`, rejects extra fragments and verifies a
+returned state. Cancelling the login stops waiting for pasted input.
 
 ## 7. Switch semantics
 
 ### 7.1 `setActive(id)`
 
-1. Validate entry exists and secret file parses.
+1. Validate the entry metadata and require a readable secret file.
 2. Write `active` pointer (atomic replace).
 3. Invalidate quota cache for this provider.
-4. Return `getActive()` (re-resolved status).
+4. Return `getActive()`; the concrete auth store parses the selected secret and reports its status.
 5. Do **not** abort in-flight provider runs.
 6. Do **not** rewrite `ProviderSelection` or restart AgentSession.
 
@@ -2068,19 +2330,74 @@ SDK-MCP session; it does not add a proxy process or alternate MCP transport.
 
 # Command help
 
-Registered `Command` trees render into agent `commandsPrompt` and `--help` via
-`renderCommandHelp` in `@demicodes/shell`. Help carries summary, usage, outputs,
-parameters, stdin/heredoc fields, `--json`, and subcommands.
+Registered `Command` trees render into the agent's `commandsPrompt` and
+`--help` through `renderCommandHelp` in `@demicodes/shell`. The parser and
+renderer use the same input declarations. Each field has one input source:
 
-Command specs intentionally omit invocation examples. Concrete example lines
-tend to overfit the model toward copying those strings instead of composing from
-the parameter contract, so help stays declarative.
+- `stdinField`: a text body supplied through a quoted heredoc, pipe, or input
+  redirection. It has no option or positional form.
+- `positionals`: ordered arguments. They have no named-option aliases.
+- `restField`: raw arguments after `--`. It has no named-option alias.
+- Other input fields: named options. Their schemas define values, optionality,
+  boolean flags, enums, and repeated array options.
+
+Registration rejects overlapping input sources, duplicate positional fields,
+required positionals after optional ones, and options named `help` or `json`.
+The parser rejects repeated scalar values and reports missing option values
+before consuming the next option. `--name=value` supplies an option value
+beginning with `--`; a standalone `--` ends option parsing for positionals or
+starts the declared raw-argument field.
+
+Help displays a complete usage template, value placeholders, required and
+optional arguments, enum choices, and repeatable options. Stdin bodies appear
+in their own section and in a quoted heredoc template. `--json` appears only
+on commands with a JSON output schema. Usage templates are generated from the
+contract; command specs do not carry separate examples to keep in sync.
+
+For example, the generated structure for file creation is:
+
+```sh
+demi file create <path> <<'EOF'
+<content>
+EOF
+```
+
+Angle brackets identify placeholders; square brackets identify optional
+arguments. The agent substitutes actual values and quotes shell arguments.
+A body option such as `--content` is rejected with a diagnostic directing the
+caller to remove it and use stdin.
+
+## Demi command inputs
+
+| Command | Positional input | Named options | Stdin |
+| --- | --- | --- | --- |
+| `file read` | path | none | unused |
+| `file create` | path | none | file content |
+| `file edit` | path | old, new, occurrence, context | unused |
+| `file patch` | none | none | unified diff |
+| `todo add` | text | JSON output | unused |
+| `todo update` | id | text, status, JSON output | unused |
+| `todo done` | id | JSON output | unused |
+| `todo list` | none | JSON output | unused |
+| `agent spawn` | none | profile, description, no-subagents, JSON output | task brief |
+| `agent send`, `steer`, `resume` | id | JSON output | message |
+| `agent abort`, `show` | id | JSON output | unused |
+| `agent list` | none | JSON output | unused |
+| `host shell` | one quoted script | host | streamed to the remote program |
+| `host list`, `current` | none | none | unused |
+
+`file edit` has two separate text operands; its old and new values are quoted
+option arguments. Use `file patch` for a multiline change supplied as one
+heredoc. `host shell` takes the script as one quoted argument so its stdin
+remains available for the remote program's data. These commands do not claim
+that stdin supplies their script or edit operands.
 
 ## Test coverage
 
-| Module | Intended coverage |
-| --- | --- |
-| `packages/shell/src/__tests__/command.test.ts` | Help rendering and registry validation for the declarative command contract (no example fields). |
+The shell tests cover exclusive input sources, diagnostics, complete usage,
+option value handling, and schema-derived help. Command-loader tests verify
+the same contract after manifest serialization. Coding-agent and subagent
+tests execute heredoc bodies through the runner without calling real models.
 
 ---
 

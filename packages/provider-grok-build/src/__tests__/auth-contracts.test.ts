@@ -107,7 +107,7 @@ test('Grok device authorization validates optional fields and does not extend ex
     { ...device, verification_uri_complete: [] }, { ...device, verification_uri: 'file:///tmp/login' },
   ]) {
     let calls = 0
-    await expect(runGrokDeviceLogin({ fetch: (async (_input: string | URL | Request) => {
+    await expect(runGrokDeviceLogin({ clientVersion: 'synthetic-client', fetch: (async (_input: string | URL | Request) => {
       calls += 1
       return response(bad)
     }) as typeof fetch })).rejects.toThrow()
@@ -116,7 +116,7 @@ test('Grok device authorization validates optional fields and does not extend ex
   const controller = new AbortController()
   const before = Date.now()
   let calls = 0
-  await expect(runGrokDeviceLogin({
+  await expect(runGrokDeviceLogin({ clientVersion: 'synthetic-client',
     signal: controller.signal,
     fetch: (async (_input: string | URL | Request) => {
       calls += 1
@@ -133,7 +133,7 @@ test('Grok device authorization validates optional fields and does not extend ex
 
 test('Grok token and successful user profile responses are validated during device login', async () => {
   for (const stage of ['token', 'profile']) {
-    await expect(runGrokDeviceLogin({ fetch: (async (input) => {
+    await expect(runGrokDeviceLogin({ clientVersion: 'synthetic-client', fetch: (async (input) => {
       const url = String(input)
       if (url.endsWith('/oauth2/device/code')) {
         return response(device)

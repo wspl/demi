@@ -33,7 +33,7 @@ test(
   'Grok catalog reads contact the source, including explicit refresh requests',
   async () => {
     let calls = 0
-    const provider = createGrokBuildProvider({
+    const provider = createGrokBuildProvider({ clientVersion: 'synthetic-client',
       authStore: new StaticGrokAuthStore(staticAuth),
       fetch: async () => {
         calls += 1
@@ -52,7 +52,7 @@ test(
   'Grok Build provider posts chat completions with CLI session headers',
   async () => {
     const requests: CapturedRequest[] = []
-    const provider = createGrokBuildProvider({
+    const provider = createGrokBuildProvider({ clientVersion: 'synthetic-client',
       authStore: new StaticGrokAuthStore(staticAuth),
       baseUrl: 'https://cli-chat-proxy.example/v1',
       fetch: captureFetch(
@@ -115,7 +115,7 @@ test(
         return staticAuth
       },
     }
-    const provider = createGrokBuildProvider({
+    const provider = createGrokBuildProvider({ clientVersion: 'synthetic-client',
       authStore,
       fetch: async (input, init) => {
         const url = String(input)

@@ -1,10 +1,10 @@
+import { createProductClient, type ProductAgentClient } from './session'
 import { FakeProvisioner } from './scenarios/fake-provisioner'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
-import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { openBackend, type TestBackend } from './session'
@@ -81,7 +81,7 @@ async function connectClient(
   backend: TestBackend,
   conversationId: string,
 ): Promise<{
-  client: AgentClient;
+  client: ProductAgentClient;
   socket: WebSocket
 }> {
   const socket = backend.session.socket(
@@ -96,7 +96,7 @@ async function connectClient(
     )
   })
   return {
-    client: new AgentClient(createWebSocketClientTransport(socket as never)),
+    client: createProductClient(socket),
     socket
   }
 }

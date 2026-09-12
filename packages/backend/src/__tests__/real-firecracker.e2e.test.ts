@@ -1,3 +1,4 @@
+import { externalTestEnabled } from '../../../../scripts/test-policy'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,7 +13,7 @@ import { World } from './scenarios/world'
 import { model } from './scenarios/driver'
 
 // Real Linux/KVM and guest filesystem verification, with a scripted provider.
-const e2e = process.env.DEMI_FIRECRACKER_E2E === '1' ? test : test.skip
+const e2e = externalTestEnabled('DEMI_FIRECRACKER_E2E') ? test : test.skip
 
 e2e(
   'managed runner: one user machine, matching file/job identity, both disks persist, external reset retains home',

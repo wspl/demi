@@ -8,7 +8,7 @@ import { commandClientBinary } from '../../command-client/build'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { waitFor } from '@demicodes/utils'
+import { errorMessage, waitFor } from '@demicodes/utils'
 
 import { runtimeBinary, packRuntime } from '../runtime/build'
 export const txikiBinary = runtimeBinary
@@ -157,19 +157,37 @@ export async function startTxikiRunner(
       }
     }
   }
-  void read(child.stderr as ReadableStream<Uint8Array>)
-  void read(child.stdout as ReadableStream<Uint8Array>)
-  runner.stop = async () => {
+  const outputDone = Promise.all([read(child.stderr), read(child.stdout)])
+  void outputDone.catch(error => {
+    runner.log.push(errorMessage(error))
     child.kill('SIGTERM')
+  })
+  runner.stop = async () => {
+    if (child.exitCode === null)
+      child.kill('SIGTERM')
     await child.exited
+    await outputDone
     runner.statuses.push('stopped')
   }
-  await waitFor(
-    () => runner.statuses.length > 0,
-    undefined,
-    { timeoutMs: 10_000 }
-  )
-  return runner
+  try {
+    await waitFor(
+      () => runner.statuses.length > 0 || child.exitCode !== null,
+      () => runner.log.join('\n'),
+      { timeoutMs: 10_000 }
+    )
+    if (runner.statuses.length === 0) {
+      await outputDone
+      throw new Error(`Runner exited before startup: ${runner.log.join('\n')}`)
+    }
+    return runner
+  } catch (error) {
+    try {
+      await runner.stop()
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], 'Runner startup and cleanup failed')
+    }
+    throw error
+  }
 }
 
 export { LocalHost, type LocalHostOptions } from './testing/local-host'

@@ -10,7 +10,7 @@ import {
 import { runnerShell } from '@demicodes/backend/testing'
 
 import { LocalHost } from '@demicodes/runner/testing'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -93,20 +93,22 @@ test(
   'Claude Code public provider reports auth via credential store and defers runtime state',
   async () => {
     const stateDir = await mkdtemp(join(tmpdir(), 'demi-claude-auth-'))
-    const provider = createClaudeCodeProvider({ stateDir })
+    try {
+      const provider = createClaudeCodeProvider({ stateDir })
 
-    const status = await provider.auth?.status()
-    // Pool empty → vendor default; may be unauthenticated or authenticated depending on host.
-    expect(status?.status === 'authenticated'
-      || status?.status === 'unauthenticated'
-      || status?.status === 'error').toBe(true)
-    expect(await provider.state?.()).toEqual({
-      status: 'unknown',
-      message: 'Runtime is checked when a Claude Code request runs',
-    })
-    expect(provider.credentials).toBeDefined()
-    // The CLI transport needs a process-capable execution target.
-    expect(provider.requiresProcessCapableHost).toBe(true)
+      await provider.credentials!.add!({ accessToken: 'synthetic-provider-token' })
+      const status = await provider.auth?.status()
+      expect(status?.status).toBe('authenticated')
+      expect(await provider.state?.()).toEqual({
+        status: 'unknown',
+        message: 'Runtime is checked when a Claude Code request runs',
+      })
+      expect(provider.credentials).toBeDefined()
+      // The CLI transport needs a process-capable execution target.
+      expect(provider.requiresProcessCapableHost).toBe(true)
+    } finally {
+      await rm(stateDir, { recursive: true, force: true })
+    }
   }
 )
 
@@ -396,6 +398,13 @@ test(
   'ClaudeCodeProvider handles SDK MCP control_request tool calls across run calls',
   async () => {
     const transport = new FakeClaudeTransport([
+      {
+        type: 'control_request', request_id: 'notification-envelope',
+        request: {
+          subtype: 'mcp_message', server_name: 'main',
+          message: { jsonrpc: '2.0', method: 'notifications/initialized' },
+        },
+      },
       sdkMcpRequest('list-sdk', 'list-1', 'tools/list'),
       sdkMcpRequest('call-sdk', 'call-1', 'tools/call', {
         name: 'shell_exec',
@@ -430,6 +439,12 @@ test(
       ? firstEvents[0].toolUseId
       : null
     expect(firstToolUseId).toMatch(/^mcp-control-/)
+    expect(transport.writes).toContainEqual({
+      type: 'control_response',
+      response: {
+        subtype: 'success', request_id: 'notification-envelope', response: {},
+      },
+    })
     expect(findSdkMcpResponse(transport.writes, 'list-sdk').result).toEqual({
       tools: [{
         name: 'shell_exec',

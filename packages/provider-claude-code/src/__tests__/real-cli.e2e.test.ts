@@ -1,14 +1,15 @@
+import { externalTestEnabled } from '../../../../scripts/test-policy'
 import { expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import type { TokenUsage } from '@demicodes/core'
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { ClaudeCodeProvider } from '../provider'
 
-const e2e = process.env.DEMI_CLAUDE_CODE_E2E === '1' ? test : test.skip
-const cacheE2e = process.env.DEMI_CLAUDE_CODE_CACHE_E2E === '1'
+const e2e = externalTestEnabled('DEMI_CLAUDE_CODE_E2E') ? test : test.skip
+const cacheE2e = externalTestEnabled('DEMI_CLAUDE_CODE_CACHE_E2E')
   ? test
   : test.skip
-const thinkingE2e = process.env.DEMI_CLAUDE_CODE_THINKING_E2E === '1'
+const thinkingE2e = externalTestEnabled('DEMI_CLAUDE_CODE_THINKING_E2E')
   ? test
   : test.skip
 const thinkingAttempts = Math.max(

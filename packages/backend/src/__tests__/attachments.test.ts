@@ -1,14 +1,14 @@
+import { createProductClient } from './session'
 import { FakeProvisioner } from './scenarios/fake-provisioner'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection, UserContentBlock } from '@demicodes/core'
-import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider, type InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { waitFor } from '@demicodes/utils'
-import { uploadRefBlockSchema } from '@demicodes/product-contracts'
+import { uploadRefBlockSchema, contentReference } from '@demicodes/product-contracts'
 import { ATTACHMENTS_DIR } from '../conversation/attachment-refs'
 import { openBackend, type TestBackend } from './session'
 
@@ -72,9 +72,7 @@ async function connectClient(
       { once: true }
     )
   })
-  const client = new AgentClient(
-    createWebSocketClientTransport(socket as never)
-  )
+  const client = createProductClient(socket)
   await client.open(selection, '/ignored-by-server', 'ignored')
   return client
 }
@@ -144,11 +142,11 @@ test(
     // The send frame carries only the upload reference; the provider sees the
     // inline bytes and, right after them, the attachment record naming the
     // file on the host.
-    const uploadBlock = {
+    const uploadBlock = contentReference({
       type: 'upload',
       ref: attachment.id,
-      fileName: 'photo.png'
-    } as never as UserContentBlock
+      fileName: 'photo.png',
+    })
     await client.send([{ type: 'text', text: 'describe this' }, uploadBlock])
     const userItem = requests[0]?.items.find(
       (item): item is Extract<(typeof requests)[0]['items'][number], { type: 'user_message' }> => item.type === 'user_message',
@@ -176,12 +174,12 @@ test(
       .transcript()
     .blocks.filter((block) => block.type === 'user')
       .flatMap((block) => (block.type === 'user' ? block.content : []))
-      .find((block): block is Extract<UserContentBlock, { type: 'image' }> => block.type === 'image')
+      .find((block) => block.type === 'image')
     expect(liveImage?.source).toEqual({
       type: 'ref',
       ref: attachment.sha256,
       mediaType: 'image/png'
-    } as never)
+    })
     await client.close()
     const revived = await connectClient(backend, conversation.id, selection)
     await waitFor(
@@ -193,12 +191,12 @@ test(
       .transcript()
     .blocks.filter((block) => block.type === 'user')
       .flatMap((block) => (block.type === 'user' ? block.content : []))
-      .find((block): block is Extract<UserContentBlock, { type: 'image' }> => block.type === 'image')
+      .find((block) => block.type === 'image')
     expect(revivedImage?.source).toEqual({
       type: 'ref',
       ref: attachment.sha256,
       mediaType: 'image/png'
-    } as never)
+    })
     const blob = await api(
       backend,
       `/api/blobs/${attachment.sha256}?type=image/png`
@@ -226,11 +224,11 @@ test(
       .toBe(404)
 
     // A missing reference degrades loudly to a visible placeholder, never a crash.
-    const ghost = {
+    const ghost = contentReference({
       type: 'upload',
       ref: 'no-such-id',
-      fileName: 'ghost.png'
-    } as never as UserContentBlock
+      fileName: 'ghost.png',
+    })
     await revived.send([ghost]).catch(() => {})
     const placeholder = revived
       .transcript()
@@ -316,11 +314,11 @@ test('attachment upload limits and the file on the host', async () => {
     if (event.type === 'shell_output' && event.status.status === 'exited')
       outputs.push(event.status.stdout.delta)
   })
-  const clean = {
+  const clean = contentReference({
     type: 'upload',
     ref: attachment.id,
-    fileName: 'readme.md'
-  } as never as UserContentBlock
+    fileName: 'readme.md',
+  })
   await client.send([{ type: 'text', text: 'read the drop' }, clean])
   expect(outputs.at(-1)).toBe('dropped content')
 

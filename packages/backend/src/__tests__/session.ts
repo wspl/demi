@@ -1,4 +1,13 @@
 import {
+  AgentClient,
+  createWebSocketTransport,
+  displayedServerFrameSchema,
+  type ClientFrame,
+  type DisplayedBlock,
+  type ServerFrame,
+} from '@demicodes/agent'
+import { encodeClientFrame } from '@demicodes/product-contracts'
+import {
   createBackend,
   type Backend,
   type BackendOptions,
@@ -121,4 +130,16 @@ export function webSession(
       { headers: { cookie } }
     ),
   }
+}
+
+export type ProductAgentClient = AgentClient<DisplayedBlock>
+
+/** The same display-frame contract used by the product browser. */
+export function createProductClient(socket: WebSocket): ProductAgentClient {
+  return new AgentClient(
+    createWebSocketTransport<ClientFrame, ServerFrame<DisplayedBlock>>(socket, {
+      decode: displayedServerFrameSchema.parse,
+      encode: encodeClientFrame,
+    })
+  )
 }

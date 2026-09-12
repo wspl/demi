@@ -1,5 +1,6 @@
 import {
   createId,
+  parseJsonOrString,
   safeJsonStringify,
   stringifyPortableJson,
   sliceHead,
@@ -577,7 +578,7 @@ export class TranscriptLog implements CoreTranscript {
             modelId: block.model.model.id,
             toolUseId: block.toolUseId,
             toolName: block.toolName,
-            input: parseToolInput(block.input),
+            input: parseJsonOrString(block.input),
           })
           if (block.status !== 'executing') {
             items.push({
@@ -754,14 +755,6 @@ function findPendingToolCallIndex(
 
 function stringifyToolInput(input: unknown): string {
   return typeof input === 'string' ? input : safeStringify(input, 'null')
-}
-
-function parseToolInput(input: string): unknown {
-  try {
-    return JSON.parse(input)
-  } catch {
-    return input
-  }
 }
 
 function estimateBlockTokens(block: Block): number {

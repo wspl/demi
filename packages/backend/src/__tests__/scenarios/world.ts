@@ -2,7 +2,8 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect } from 'bun:test'
-import type { Block, ModelSelection } from '@demicodes/core'
+import type { ModelSelection } from '@demicodes/core'
+import type { DisplayedBlock } from '@demicodes/agent'
 import { defineProvider } from '@demicodes/provider'
 import {
   JOB_VIEW_BYTES,
@@ -358,7 +359,7 @@ export class World {
     // The cold transcript equals the live one.
     for (const driver of this.drivers) {
       const live = driver.transcript().map((block) => block.id)
-      const cold = await this.api<{ blocks: Block[] }>(
+      const cold = await this.api<{ blocks: DisplayedBlock[] }>(
         `/api/conversations/${driver.id}/transcript`
       )
       expect(

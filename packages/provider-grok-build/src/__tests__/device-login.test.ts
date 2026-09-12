@@ -70,7 +70,7 @@ test(
     }) as typeof fetch
 
     const pendings: GrokDeviceLoginPending[] = []
-    const { entryKey, entry } = await runGrokDeviceLogin({
+    const { entryKey, entry } = await runGrokDeviceLogin({ clientVersion: 'synthetic-client',
       fetch: fakeFetch,
       onPending: (p) => pendings.push(p)
     })
@@ -142,7 +142,7 @@ test(
       throw new Error(`unexpected fetch: ${url}`)
     }) as typeof fetch
 
-    const { entry } = await runGrokDeviceLogin({ fetch: fakeFetch })
+    const { entry } = await runGrokDeviceLogin({ clientVersion: 'synthetic-client', fetch: fakeFetch })
     expect(entry.user_id).toBe('team-123')
     expect(entry.principal_type).toBe('Team')
     expect(entry.principal_id).toBe('team-123')
@@ -168,6 +168,6 @@ test('runGrokDeviceLogin fails fast on terminal oauth errors', async () => {
     }
     return jsonResponse(400, { error: 'access_denied' })
   }) as typeof fetch
-  await expect(runGrokDeviceLogin({ fetch: fakeFetch }))
+  await expect(runGrokDeviceLogin({ clientVersion: 'synthetic-client', fetch: fakeFetch }))
     .rejects.toThrow('access_denied')
 })

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { deferred, waitFor } from '@demicodes/utils'
-import type { Block } from '@demicodes/core'
+import type { DisplayedBlock } from '@demicodes/agent'
 import { events } from '@demicodes/provider/testing'
 import type { ConversationRecord } from '../../storage/control'
 import { login } from '../session'
@@ -49,7 +49,7 @@ test('Fork keeps the exact prefix and historical todos while the source runs, wi
     if (created.target.kind === 'cloud') expect(created.target.path).toContain(source.id)
     expect(source.events.filter((event) => event.type === 'phase').at(-1)?.phase).toBe('running')
     expect(world.model.requests).toHaveLength(requests)
-    const cold = await world.api<{ blocks: Block[]; subagents: unknown[] }>(`/api/conversations/${id}/transcript`)
+    const cold = await world.api<{ blocks: DisplayedBlock[]; subagents: unknown[] }>(`/api/conversations/${id}/transcript`)
     expect(cold.blocks).toEqual(prefix)
     expect(cold.subagents).toEqual([])
     expect((await fork(source.id, answer.id, id)).conversation.id).toBe(id)
@@ -104,12 +104,12 @@ test('a source child continues only in the source tree and its existing referenc
     await childStarted.promise
     const answer = source.transcript().filter((block) => block.type === 'text').at(-1)!
     const created = (await fork(source.id, answer.id)).conversation
-    const before = await world.api<{ blocks: Block[]; subagents: unknown[] }>(`/api/conversations/${created.id}/transcript`)
+    const before = await world.api<{ blocks: DisplayedBlock[]; subagents: unknown[] }>(`/api/conversations/${created.id}/transcript`)
     expect(before.blocks.some((block) => block.type === 'tool_call')).toBe(true)
     expect(before.subagents).toEqual([])
     releaseChild.resolve()
     await waitFor(() => source.events.some((event) => event.type === 'subagent' && event.event === 'closed'))
-    const after = await world.api<{ blocks: Block[]; subagents: unknown[] }>(`/api/conversations/${created.id}/transcript`)
+    const after = await world.api<{ blocks: DisplayedBlock[]; subagents: unknown[] }>(`/api/conversations/${created.id}/transcript`)
     expect(after).toEqual(before)
     const branch = await Driver.attachExisting(world, created.id, 'cloud')
     const checked = await branch.turn({ model: [model.shell('children', 'demi agent list'), model.say('empty tree')] })

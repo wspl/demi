@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const runnerBackendUrlSchema = z.url({ protocol: /^https?$/ })
+export const runnerBackendUrlSchema = z.url({ protocol: /^(https?|wss?)$/ })
 const runnerEnvironmentSchema = z.object({
   DEMI_HOME: z.string().regex(/\S/, 'must not be blank').optional(),
   DEMI_RUNNER_NAME: z.string().regex(/\S/, 'must not be blank').optional(),
