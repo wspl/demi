@@ -156,3 +156,10 @@ tests. Run selected suites with `bun test --conditions development <test paths>`
 runner integration suites additionally require their documented native test setup.
 Run `bun run typecheck`; changes to browser source also require browser typechecks
 and verification of both product and gallery usage.
+
+Provider authentication files, device grants and token responses use each
+provider's `auth-schemas.ts`. Their field and missing-value policies are specified
+in [global provider credentials](provider-global-credentials.md#6-per-provider-behavior).
+The shared provider validation module owns JSON and JWT payload decoding and
+value-free schema diagnostics; each provider owns the claims it consumes. JWT
+payload parsing is metadata extraction, not signature verification.

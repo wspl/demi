@@ -376,15 +376,49 @@ ChatGPT account ID. Protocol errors exclude response bodies.
 
 ### 6.3 Grok Build
 
-| Concern | Behavior |
-|---|---|
-| Active resolve | Pool entry secret is either a full `auth.json` map with one preferred key, or a single entry payload + `entryKey` |
-| Refresh | Update that entry in the pool secret file |
-| Vendor default | If pool empty: today’s `FileGrokAuthStore` + `selectAuthEntry` |
-| Import | For each OIDC entry in `~/.grok/auth.json`, or import selected entry only — product chooses; recommended **import-all-entries** as separate pool credentials |
-| Native multi-entry | Vendor file can feed the pool; **runtime no longer auto-picks for multi-cred mode** — active pointer wins |
+`provider-grok-build/auth-schemas.ts` owns the vendor auth map, entry, OAuth token,
+device authorization, user profile and consumed JWT claims. File reads and all
+credential-add forms validate every entry before selection or writing. Each entry
+requires a nonblank `key`; optional tokens, identity fields and ISO `expires_at`
+must have their declared types when present. Null is not a substitute for missing
+Grok fields. Unconsumed vendor extension fields remain intact. A missing file or
+empty map is unauthenticated; malformed entries and IO failures are errors.
 
-When pool is empty, keep current auto-pick for backward compatibility.
+Pool secrets contain an auth map with one entry. The active metadata identity key
+selects that entry. With an empty pool, the vendor map is selected by OIDC mode,
+refresh-token availability and the auth.x.ai issuer, then lexical map-key order.
+Import validates and copies all entries; default import activates that same
+preferred entry. Explicit `{ entryKey, entry }`, `authJsonText` and `authFile` add
+forms are mutually exclusive.
+
+Refresh validates the raw response before replacing the selected entry, preserving
+sibling entries and extension fields. `expires_in` is a finite nonnegative integer
+number of seconds; strings and unrepresentable dates fail. A missing lifetime uses
+the new token's expiration claim, or leaves expiry unknown. The old token's expiry
+is not applied to its replacement. Missing refresh tokens retain the current
+refresh token. The file lock protects reread, refresh and atomic replacement; a
+fresh token written by another process is adopted. Failed validation preserves
+the previous file. Temporary files and owned locks are released on failure, and
+unexpected lock IO errors propagate.
+
+Device authorization requires a positive lifetime and the base verification URI.
+The optional complete URI uses the same checks: HTTPS or HTTP on localhost/
+127.0.0.1, with no control characters. User codes contain only ASCII letters,
+digits and hyphens. Missing polling interval defaults to five seconds; present
+intervals are nonnegative integer seconds within the timer range. Polling waits at
+least one second, adds five seconds for `slow_down`, and never extends the returned
+expiration. Cancellation clears the wait and prevents the next request.
+
+The optional `/user` enrichment may be unavailable due to a network failure or
+non-success HTTP status. A successful response must satisfy its schema; malformed
+profiles and cancellation are errors. Existing camel-case/snake-case profile
+fields map explicitly to vendor entry fields. Team/organization token principals
+seed account identity before optional profile enrichment.
+
+Codex and Grok share `provider/validation.ts` JWT payload decoding. Opaque tokens
+have no claims. JWT-shaped tokens require valid base64url, UTF-8 JSON and the
+provider's consumed-claims schema. This extracts metadata and does not verify
+signatures or confer authentication authority.
 
 ### 6.4 Claude Code
 

@@ -59,4 +59,4 @@ export {
   type ProviderQuotaWindow,
   type ProviderQuotaWindowUnit,
 } from './quota'
-export { ProviderDataError, parseProviderData, parseProviderJson } from './validation'
+export { ProviderDataError, parseProviderData, parseProviderJson, parseProviderJwt } from './validation'

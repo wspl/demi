@@ -3,7 +3,6 @@ import {
   errorCode,
   errorMessage,
 } from '@demicodes/utils'
-import { Buffer } from 'node:buffer'
 import {
   chmod,
   mkdir,
@@ -18,6 +17,7 @@ import { dirname, join } from 'node:path'
 import {
   parseProviderData,
   parseProviderJson,
+  parseProviderJwt,
   redactCredentialText,
   type ProviderAuthState
 } from '@demicodes/provider'
@@ -461,19 +461,7 @@ async function writeAuthJsonAtomic(
 
 /** Decodes claims for metadata only; this does not verify the JWT signature. */
 function readJwtClaims(jwt: string) {
-  const parts = jwt.split('.')
-  if (parts.length !== 3) {
-    // Opaque access tokens have no claims to consume.
-    return null
-  }
-  if (!parts[1] || !/^[A-Za-z0-9_-]+$/.test(parts[1])) {
-    throw new CodexAuthError('auth_invalid', 'Codex JWT contains an invalid payload encoding')
-  }
-  return parseProviderJson(
-    codexJwtClaimsSchema,
-    Buffer.from(parts[1], 'base64url').toString('utf8'),
-    'Codex JWT claims',
-  )
+  return parseProviderJwt(codexJwtClaimsSchema, jwt, 'Codex JWT claims')
 }
 
 function expiresWithin(

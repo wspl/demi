@@ -2,7 +2,12 @@
 // loopback PKCE); the request contract matches the official Grok CLI: frozen
 // OAuth2 scopes, referrer=grok-build, client version/surface headers, id_token
 // + access-token principal peek, then cli-chat-proxy GET /user enrichment.
-import { delay, isRecord, nonEmptyString } from '@demicodes/utils'
+import { delay } from '@demicodes/utils'
+import { parseProviderJson } from '@demicodes/provider'
+import {
+  grokDeviceCodeSchema, grokTokenResponseSchema, grokOAuthErrorSchema, grokUserInfoSchema,
+  type GrokUserInfo,
+} from './auth-schemas'
 import {
   GrokAuthError,
   decodeGrokJwtPayload,
@@ -20,8 +25,6 @@ const GROK_CLI_CLIENT_ID = 'b1a00492-073a-47ea-816f-4c329264a828'
 const GROK_LOGIN_SCOPE =
   'openid profile email offline_access grok-cli:access api:access conversations:read conversations:write workspaces:read workspaces:write'
 const GROK_LOGIN_REFERRER = 'grok-build'
-const GROK_LOGIN_FALLBACK_INTERVAL_S = 5
-const GROK_LOGIN_MIN_EXPIRES_S = 10 * 60
 const TEAM_PRINCIPAL = 'Team'
 const ORGANIZATION_PRINCIPAL = 'Organization'
 
@@ -78,56 +81,6 @@ async function postForm(
   })
 }
 
-async function jsonBody(
-  response: Response,
-  what: string
-): Promise<Record<string, unknown>> {
-  const body: unknown = await response.json().catch(() => null)
-  if (!isRecord(body))
-    throw new GrokAuthError(
-      'auth_invalid',
-      `${what} response is not a JSON object`
-    )
-  return body
-}
-
-function assertUserCode(userCode: string): void {
-  if (![...userCode].every((ch) => /[A-Za-z0-9-]/.test(ch))) {
-    throw new GrokAuthError(
-      'auth_invalid',
-      'Grok device code response has an invalid user_code'
-    )
-  }
-}
-
-function assertVerificationUri(uri: string): void {
-  if ([...uri].some((ch) => ch.charCodeAt(0) < 32)) {
-    throw new GrokAuthError(
-      'auth_invalid',
-      'Grok device code response has an invalid verification URI'
-    )
-  }
-  let parsed: URL
-  try {
-    parsed = new URL(uri)
-  } catch {
-    throw new GrokAuthError(
-      'auth_invalid',
-      'Grok device code response has an invalid verification URI'
-    )
-  }
-  if (parsed.protocol === 'https:')
-    return
-  if (parsed.protocol === 'http:'
-    && (parsed.hostname
-      === 'localhost' || parsed.hostname
-      === '127.0.0.1')) return
-  throw new GrokAuthError(
-    'auth_invalid',
-    'Grok device code response has an unsupported verification URI scheme'
-  )
-}
-
 type DeviceAuthorization = {
   deviceCode: string
   userCode: string
@@ -157,37 +110,13 @@ async function requestDeviceCode(
       `Grok device code request failed with HTTP ${response.status}`
     )
   }
-  const body = await jsonBody(response, 'Grok device code')
-  const deviceCode = nonEmptyString(body.device_code)
-  const userCode = nonEmptyString(body.user_code)
-  const verificationUrl = nonEmptyString(body.verification_uri_complete)
-    ?? nonEmptyString(body.verification_uri)
-  const verificationUri = nonEmptyString(body.verification_uri)
-  if (!deviceCode || !userCode || !verificationUrl) {
-    throw new GrokAuthError(
-      'auth_invalid',
-      'Grok device code response is missing device_code, user_code, or verification_uri'
-    )
-  }
-  assertUserCode(userCode)
-  if (verificationUri)
-    assertVerificationUri(verificationUri)
-  if (nonEmptyString(body.verification_uri_complete))
-    assertVerificationUri(nonEmptyString(body.verification_uri_complete)!)
-  const interval = Number(body.interval)
-  const expiresIn = Number(body.expires_in)
+  const body = parseProviderJson(grokDeviceCodeSchema, await response.text(), 'Grok device code')
   return {
-    deviceCode,
-    userCode,
-    verificationUrl,
-    intervalSeconds: Number.isFinite(interval) && interval >= 0
-      ? interval
-      : GROK_LOGIN_FALLBACK_INTERVAL_S,
-    expiresAt:
-      Date.now() + Math.max(
-        Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 0,
-        GROK_LOGIN_MIN_EXPIRES_S
-      ) * 1000,
+    deviceCode: body.device_code,
+    userCode: body.user_code,
+    verificationUrl: body.verification_uri_complete ?? body.verification_uri,
+    intervalSeconds: body.interval,
+    expiresAt: Date.now() + body.expires_in * 1000,
   }
 }
 
@@ -209,7 +138,9 @@ async function pollForTokens(
   let intervalSeconds = Math.max(device.intervalSeconds, 1)
   for (;;) {
     signal?.throwIfAborted()
-    await delay(intervalSeconds * 1000)
+    const remainingMs = Math.max(0, device.expiresAt - Date.now())
+    await delay(Math.min(intervalSeconds * 1000, remainingMs), signal)
+    signal?.throwIfAborted()
     if (Date.now() >= device.expiresAt) {
       throw new GrokAuthError(
         'auth_invalid',
@@ -227,31 +158,22 @@ async function pollForTokens(
       surface,
       signal,
     )
-    const body = await jsonBody(response, 'Grok device token')
     if (response.ok) {
-      const accessToken = nonEmptyString(body.access_token)
-      if (!accessToken)
-        throw new GrokAuthError(
-          'auth_invalid',
-          'Grok token response is missing access_token'
-        )
-      const expiresIn = Number(body.expires_in)
+      const body = parseProviderJson(grokTokenResponseSchema, await response.text(), 'Grok device token')
       return {
-        accessToken,
-        refreshToken: nonEmptyString(body.refresh_token) ?? null,
-        expiresIn: Number.isFinite(expiresIn) && expiresIn > 0
-          ? expiresIn
-          : null,
-        idToken: nonEmptyString(body.id_token) ?? null,
+        accessToken: body.access_token,
+        refreshToken: body.refresh_token ?? null,
+        expiresIn: body.expires_in ?? null,
+        idToken: body.id_token ?? null,
       }
     }
-    const error = nonEmptyString(body.error)
+    const { error } = parseProviderJson(grokOAuthErrorSchema, await response.text(), 'Grok OAuth error')
     if (error === 'slow_down') {
-      intervalSeconds += 5
+      intervalSeconds = Math.min(intervalSeconds + 5, 2_147_483)
     } else if (error !== 'authorization_pending') {
       throw new GrokAuthError(
         'auth_invalid',
-        `Grok device login failed: ${error ?? `HTTP ${response.status}`}`
+        `Grok device login failed: ${error}`
       )
     }
   }
@@ -261,9 +183,10 @@ async function fetchUserEnrichment(
   fetchImpl: typeof fetch,
   accessToken: string,
   signal?: AbortSignal,
-): Promise<Record<string, unknown> | null> {
+): Promise<GrokUserInfo | null> {
+  let response: Response
   try {
-    const response = await fetchImpl(`${DEFAULT_GROK_BUILD_BASE_URL}/user`, {
+    response = await fetchImpl(`${DEFAULT_GROK_BUILD_BASE_URL}/user`, {
       headers: {
         authorization: `Bearer ${accessToken}`,
         'X-XAI-Token-Auth': GROK_CLI_TOKEN_AUTH,
@@ -272,50 +195,52 @@ async function fetchUserEnrichment(
       },
       signal,
     })
-    if (!response.ok)
+  } catch (error) {
+    signal?.throwIfAborted()
+    // User profile enrichment is optional when its endpoint is unavailable.
+    if (error instanceof TypeError) {
       return null
-    const body: unknown = await response.json().catch(() => null)
-    if (!isRecord(body))
-      return null
-    if (!nonEmptyString(body.userId) && !nonEmptyString(body.user_id))
-      return null
-    return body
-  } catch {
+    }
+    throw error
+  }
+  signal?.throwIfAborted()
+  if (!response.ok) {
     return null
   }
+  return parseProviderJson(grokUserInfoSchema, await response.text(), 'Grok user profile')
 }
 
 function applyUserInfoEnrichment(
   entry: GrokAuthEntry,
-  user: Record<string, unknown>
+  user: GrokUserInfo
 ): void {
-  const userId = nonEmptyString(user.userId) ?? nonEmptyString(user.user_id)
+  const userId = user.userId ?? user.user_id
   if (userId)
     entry.user_id = userId
-  const firstName = nonEmptyString(user.firstName)
-    ?? nonEmptyString(user.first_name)
+  const firstName = user.firstName
+    ?? user.first_name
   if (firstName)
     entry.first_name = firstName
-  const lastName = nonEmptyString(user.lastName)
-    ?? nonEmptyString(user.last_name)
+  const lastName = user.lastName
+    ?? user.last_name
   if (lastName)
     entry.last_name = lastName
-  const principalType = nonEmptyString(user.principalType)
-    ?? nonEmptyString(user.principal_type)
+  const principalType = user.principalType
+    ?? user.principal_type
   if (principalType)
     entry.principal_type = principalType
-  const principalId = nonEmptyString(user.principalId)
-    ?? nonEmptyString(user.principal_id)
+  const principalId = user.principalId
+    ?? user.principal_id
   if (principalId)
     entry.principal_id = principalId
-  const teamId = nonEmptyString(user.teamId) ?? nonEmptyString(user.team_id)
+  const teamId = user.teamId ?? user.team_id
   if (teamId)
     entry.team_id = teamId
-  const organizationId = nonEmptyString(user.organizationId)
-    ?? nonEmptyString(user.organization_id)
+  const organizationId = user.organizationId
+    ?? user.organization_id
   if (organizationId)
     entry.organization_id = organizationId
-  const email = nonEmptyString(user.email)
+  const email = user.email
   if (email)
     entry.email = email
 }
@@ -328,8 +253,8 @@ async function assembleAuthEntry(
   signal?: AbortSignal,
 ): Promise<GrokAuthEntry> {
   const idClaims = tokens.idToken ? decodeGrokJwtPayload(tokens.idToken) : null
-  let userId = nonEmptyString(idClaims?.sub) ?? ''
-  let email = nonEmptyString(idClaims?.email) ?? null
+  let userId = idClaims?.sub ?? ''
+  let email = idClaims?.email ?? null
   const peeked = peekGrokAccessTokenPrincipal(tokens.accessToken)
   const principalType = peeked?.principalType ?? null
   const principalId = peeked?.principalId ?? null
@@ -350,7 +275,7 @@ async function assembleAuthEntry(
     key: tokens.accessToken,
     auth_mode: 'oidc',
     ...(tokens.refreshToken ? { refresh_token: tokens.refreshToken } : {}),
-    ...(tokens.expiresIn ? {
+    ...(tokens.expiresIn !== null ? {
       expires_at: new Date(Date.now() + tokens.expiresIn * 1000).toISOString()
     } : {}),
     oidc_issuer: issuer,

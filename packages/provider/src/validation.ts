@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { base64ToBytes, decodeUtf8Strict } from '@demicodes/utils'
 
 /** A malformed provider payload, with diagnostics that exclude its values. */
 export class ProviderDataError extends Error {
@@ -45,4 +46,33 @@ export function parseProviderJson<T extends z.core.$ZodType>(
     throw new ProviderDataError(source, 'invalid JSON')
   }
   return parseProviderData(schema, value, source)
+}
+
+/** Decodes metadata claims only; it does not verify a JWT signature. */
+export function parseProviderJwt<T extends z.core.$ZodType>(
+  schema: T,
+  jwt: string,
+  source: string,
+): z.core.output<T> | null {
+  const parts = jwt.split('.')
+  if (parts.length !== 3) {
+    // Opaque access tokens do not expose claims.
+    return null
+  }
+  const payload = parts[1]
+  if (!payload || !/^[A-Za-z0-9_-]+$/.test(payload) || payload.length % 4 === 1) {
+    throw new ProviderDataError(source, 'invalid payload encoding')
+  }
+  let json: string | null
+  try {
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')
+    json = decodeUtf8Strict(base64ToBytes(padded))
+  } catch {
+    throw new ProviderDataError(source, 'invalid payload encoding')
+  }
+  if (json === null) {
+    throw new ProviderDataError(source, 'invalid UTF-8 payload')
+  }
+  return parseProviderJson(schema, json, source)
 }
