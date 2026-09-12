@@ -4,6 +4,7 @@ import { useScroll } from '@vueuse/core'
 import type { Block, QueuedMessage, SessionPhase } from '@demicodes/core'
 import { BLOCK_GAP, useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { getVisibleBlocks } from './visible-blocks'
+import { assistantFooterIds } from './assistant-footer'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'
 import { pendingSteersToRenderBlocks, type MessageListBlock } from './pending-steers'
 import { queuedMessagesToRenderBlocks } from './queued-messages'
@@ -69,6 +70,7 @@ const emit = defineEmits<{
 const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => props.conversationId)
 
 const visibleBlocks = computed(() => getVisibleBlocks(props.blocks))
+const footerIds = computed(() => assistantFooterIds(visibleBlocks.value, props.phase))
 // A recovery hides the record it recovers from: the tail row names the recovery, then the turn running.
 const transcriptBlocks = computed(() => {
   const visible = visibleBlocks.value
@@ -244,6 +246,7 @@ defineExpose({
                 :conversation-id="props.conversationId"
                 :is-thinking-streaming="isStreamingThinkingAt(item.index)"
                 :is-text-streaming="isStreamingTextAt(item.index)"
+                :show-assistant-footer="footerIds.has(renderBlocks[item.index]!.id)"
                 :thinking-ended-at="thinkingEndedAt(item.index)"
                 :fork="fork ? () => forkMessage(renderBlocks[item.index]!.id) : undefined"
                 :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
