@@ -1,4 +1,5 @@
 import type { SidebarAccount, SidebarConversation, SidebarProject } from '@demicodes/web-ui/sidebar/types'
+import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
@@ -41,6 +42,15 @@ export function demoProjects(): SidebarProject[] {
 export function demoConversations(): SidebarConversation[] {
   return [
     // Plain conversations: questions with no checkout behind them.
+    {
+      id: 'c-child-running',
+      title: 'Parent finished · subagent still running',
+      updatedAt: ago(60 * 1000),
+      status: isConversationActive('idle', [{ phase: 'running' }]) ? 'active' : 'idle',
+      projectId: null,
+      pinned: false,
+      unread: false,
+    },
     {
       id: 'c-shift',
       title: 'How does floating-ui limitShift differ from shift?',
@@ -154,4 +164,3 @@ export function demoConversations(): SidebarConversation[] {
     },
   ]
 }
-
