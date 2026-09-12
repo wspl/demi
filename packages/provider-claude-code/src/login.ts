@@ -5,29 +5,18 @@
 // Constants verified against the shipped Claude Code CLI binary (client id, authorize URL,
 // scopes, /v1/oauth/token and /oauth/code/callback paths).
 import { randomBytes, createHash } from 'node:crypto'
-import { isRecord, nonEmptyString } from '@demicodes/utils'
+import { abortable } from '@demicodes/utils'
+import {
+  claudeAuthorizationCodeSchema, claudeOAuthSecretSchema, claudeTokenResponseSchema,
+  parseClaudeAuthData, parseClaudeAuthJson, type ClaudeCodeOAuthSecret,
+} from './auth-schemas'
+export type { ClaudeCodeOAuthSecret } from './auth-schemas'
 import { ClaudeCodeAuthError } from './auth'
 
 const CLAUDE_AUTHORIZE_URL = 'https://claude.ai/oauth/authorize'
 const CLAUDE_CONSOLE_BASE = 'https://console.anthropic.com'
 const CLAUDE_CODE_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e'
 const CLAUDE_LOGIN_SCOPE = 'org:create_api_key user:profile user:inference'
-
-/**
- * Pool-entry oauth.json shape (demi-owned; refreshable when refreshToken
- * present).
- */
-export interface ClaudeCodeOAuthSecret {
-  accessToken: string
-  refreshToken?: string | null
-  /** ISO-8601 access token expiry. */
-  expiresAt?: string | null
-  scopes?: string[] | null
-  subscriptionType?: string | null
-  rateLimitTier?: string | null
-  emailAddress?: string | null
-  [key: string]: unknown
-}
 
 export interface ClaudeCodeLoginOptions {
   signal?: AbortSignal
@@ -66,35 +55,17 @@ async function requestTokens(
       `Claude OAuth token request failed with HTTP ${response.status}`
     )
   }
-  const parsed: unknown = await response.json().catch(() => null)
-  if (!isRecord(parsed))
-    throw new ClaudeCodeAuthError(
-      'auth_invalid',
-      'Claude OAuth token response is not a JSON object'
-    )
-  const accessToken = nonEmptyString(parsed.access_token)
-  if (!accessToken)
-    throw new ClaudeCodeAuthError(
-      'auth_invalid',
-      'Claude OAuth token response is missing access_token'
-    )
-  const expiresIn = Number(parsed.expires_in)
-  const account = isRecord(parsed.account) ? parsed.account : {}
+  const parsed = parseClaudeAuthJson(claudeTokenResponseSchema, await response.text(), 'Claude OAuth token response')
   return {
-    accessToken,
-    refreshToken: nonEmptyString(parsed.refresh_token) ?? null,
-    expiresAt: Number.isFinite(expiresIn) && expiresIn > 0
-      ? new Date(Date.now() + expiresIn * 1000).toISOString()
-      : null,
-    scopes: typeof parsed.scope === 'string'
-      ? parsed.scope.split(' ').filter(Boolean)
-      : null,
-    subscriptionType: nonEmptyString(parsed.subscription_type)
-      ?? nonEmptyString(account.subscription_type)
-      ?? null,
-    ...(nonEmptyString(account.email_address) ? {
-      emailAddress: nonEmptyString(account.email_address)
+    accessToken: parsed.access_token,
+    ...(parsed.refresh_token !== undefined ? { refreshToken: parsed.refresh_token } : {}),
+    expiresAt: parsed.expires_in === undefined
+      ? null : new Date(Date.now() + parsed.expires_in * 1000).toISOString(),
+    ...(parsed.scope !== undefined ? { scopes: parsed.scope.split(' ').filter(Boolean) } : {}),
+    ...(parsed.subscription_type !== undefined || parsed.account?.subscription_type !== undefined ? {
+      subscriptionType: parsed.subscription_type ?? parsed.account?.subscription_type,
     } : {}),
+    ...(parsed.account?.email_address !== undefined ? { emailAddress: parsed.account.email_address } : {}),
   }
 }
 
@@ -102,6 +73,7 @@ async function requestTokens(
 export async function runClaudeCodeLogin(
   options: ClaudeCodeLoginOptions
 ): Promise<ClaudeCodeOAuthSecret> {
+  options.signal?.throwIfAborted()
   const fetchImpl = options.fetch ?? fetch
   const consoleBase = options.consoleBase ?? CLAUDE_CONSOLE_BASE
 
@@ -125,18 +97,13 @@ export async function runClaudeCodeLogin(
     requiresCodeInput: true
   })
 
-  const pasted = (await options.promptForCode()).trim()
-  if (!pasted)
-    throw new ClaudeCodeAuthError(
-      'auth_invalid',
-      'Empty authorization code'
-    )
-  const [code, returnedState] = pasted.split('#')
-  if (!nonEmptyString(code))
-    throw new ClaudeCodeAuthError(
-      'auth_invalid',
-      'Authorization code is missing the code part'
-    )
+  const pendingCode = options.promptForCode()
+  const rawCode = options.signal ? await abortable(pendingCode, options.signal) : await pendingCode
+  options.signal?.throwIfAborted()
+  const pasted = parseClaudeAuthData(claudeAuthorizationCodeSchema, rawCode, 'Claude authorization code')
+  const separator = pasted.indexOf('#')
+  const code = separator === -1 ? pasted : pasted.slice(0, separator)
+  const returnedState = separator === -1 ? undefined : pasted.slice(separator + 1)
   if (returnedState && returnedState !== state) {
     throw new ClaudeCodeAuthError(
       'auth_invalid',
@@ -146,7 +113,7 @@ export async function runClaudeCodeLogin(
 
   return requestTokens(fetchImpl, consoleBase, {
     grant_type: 'authorization_code',
-    code: code!,
+    code,
     state: returnedState ?? state,
     client_id: CLAUDE_CODE_CLIENT_ID,
     redirect_uri: redirectUri,
@@ -163,7 +130,8 @@ export async function refreshClaudeCodeSecret(
     signal?: AbortSignal
   } = {},
 ): Promise<ClaudeCodeOAuthSecret> {
-  const refreshToken = nonEmptyString(secret.refreshToken)
+  const validated = parseClaudeAuthData(claudeOAuthSecretSchema, secret, 'Claude OAuth refresh input')
+  const refreshToken = validated.refreshToken
   if (!refreshToken)
     throw new ClaudeCodeAuthError(
       'auth_missing',
@@ -180,17 +148,6 @@ export async function refreshClaudeCodeSecret(
   },
     options.signal
   )
-  // Field-wise merge: refresh responses may omit metadata the original login carried.
-  return {
-    ...secret,
-    accessToken: renewed.accessToken,
-    refreshToken: renewed.refreshToken ?? refreshToken,
-    expiresAt: renewed.expiresAt ?? secret.expiresAt ?? null,
-    scopes: renewed.scopes ?? secret.scopes ?? null,
-    subscriptionType: renewed.subscriptionType ?? secret.subscriptionType
-      ?? null,
-    ...(nonEmptyString(renewed.emailAddress) ? {
-      emailAddress: renewed.emailAddress
-    } : {}),
-  }
+  // Omitted metadata keeps its prior value; the new access token has its own expiry.
+  return { ...validated, ...renewed }
 }

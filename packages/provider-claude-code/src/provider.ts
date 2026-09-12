@@ -28,7 +28,7 @@ import {
   toolResultsToClaudeMessage
 } from './jsonl'
 import { listClaudeCodeModels } from './models'
-import { injectableCliToken } from './oauth'
+import { injectableCliToken, resolveAccessFromStore } from './oauth'
 import {
   controlRequestToToolCall,
   mapClaudeStdoutMessage,
@@ -145,11 +145,8 @@ export class ClaudeCodeProvider implements AgentProvider {
         env: options.env,
         resolveOAuthAccessToken: options.authStore
           ? async () => {
-              try {
-                return injectableCliToken(await options.authStore!.resolveAccess())
-              } catch {
-                return null
-              }
+              const access = await resolveAccessFromStore(options.authStore!)
+              return access ? injectableCliToken(access) : null
             }
           : undefined,
       })
@@ -752,13 +749,7 @@ export function createClaudeCodeProvider(
 
   const quota = createClaudeCodeQuota({
     providerId: id,
-    resolveAccess: async () => {
-      try {
-        return await authStore.resolveAccess()
-      } catch {
-        return null
-      }
-    },
+    resolveAccess: () => resolveAccessFromStore(authStore),
   })
 
   const credentialsApi = pool

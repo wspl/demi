@@ -28,6 +28,7 @@ import type {
   ClaudeTransport,
   ClaudeTransportFactory,
 } from '../transport'
+import { ClaudeCodeAuthError } from '../auth'
 
 const model: ModelSelection = {
   providerId: 'claude-code',
@@ -1723,6 +1724,26 @@ for (const change of ['last-message', 'attachment-bytes'] as const) {
     expect(replacement.killed).toBe(true)
   })
 }
+
+test('invalid auth stops Claude before spawning instead of using the CLI default identity', async () => {
+  let spawned = false
+  const error = new ClaudeCodeAuthError('auth_invalid', 'Malformed synthetic OAuth file')
+  const provider = new ClaudeCodeProvider({
+    authStore: {
+      status: async () => ({ status: 'error', message: error.message }),
+      resolveAccess: async () => { throw error },
+    },
+    spawn: async () => {
+      spawned = true
+      throw new Error('must not spawn')
+    },
+  })
+  const iterator = provider.run(makeRequest([{
+    type: 'user_message', content: [{ type: 'text', text: 'hi' }],
+  }]))[Symbol.asyncIterator]()
+  await expect(iterator.next()).rejects.toBe(error)
+  expect(spawned).toBe(false)
+})
 
 test('Claude initialization errors fail immediately and reap the transport', async () => {
   class RejectedInitializeTransport extends FakeClaudeTransport {

@@ -1,10 +1,16 @@
 import type { ProviderAuthState } from '@demicodes/provider'
-import { isRecord, nonEmptyString } from '@demicodes/utils'
+import { errorCode, isRecord } from '@demicodes/utils'
 import { execFile } from 'node:child_process'
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, writeFile, rename, rm } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { promisify } from 'node:util'
 import process from 'node:process'
-import type { ClaudeCodeOAuthAccess } from './oauth'
+import {
+  ClaudeCodeAuthError, claudeKeychainSchema, claudeOAuthSecretSchema, claudeTokenSchema,
+  parseClaudeAuthData, parseClaudeAuthJson,
+  type ClaudeCodeOAuthAccess, type ClaudeCodeOAuthSecret,
+} from './auth-schemas'
+export { ClaudeCodeAuthError } from './auth-schemas'
 
 const execFileAsync = promisify(execFile)
 
@@ -20,8 +26,8 @@ export interface ClaudeCodeAuthStore {
  * tests).
  */
 export type ClaudeCodeSecretRefresh = (
-  secret: Record<string, unknown>
-) => Promise<Record<string, unknown>>
+  secret: ClaudeCodeOAuthSecret
+) => Promise<unknown>
 
 const OAUTH_EXPIRY_SKEW_MS = 5 * 60 * 1000
 
@@ -32,6 +38,9 @@ export interface FileClaudeCodeAuthStoreOptions {
   accessToken?: string | null
   /** Renews the oauth file when its access token nears expiry. */
   refresh?: ClaudeCodeSecretRefresh
+  /** Inject external state readers for tests or managed environments. */
+  env?: Record<string, string | undefined>
+  readKeychain?: () => Promise<string | null>
 }
 
 /**
@@ -42,11 +51,17 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
   private readonly oauthFile: string | null
   private readonly accessToken: string | null
   private readonly refresh: ClaudeCodeSecretRefresh | null
+  private readonly env: Record<string, string | undefined>
+  private readonly readKeychain: () => Promise<string | null>
 
   constructor(options: FileClaudeCodeAuthStoreOptions = {}) {
     this.oauthFile = options.oauthFile ?? null
-    this.accessToken = nonEmptyString(options.accessToken) ?? null
+    this.accessToken = parseClaudeAuthData(
+      claudeTokenSchema.nullable().optional(), options.accessToken, 'Claude static token',
+    ) ?? null
     this.refresh = options.refresh ?? null
+    this.env = options.env ?? process.env
+    this.readKeychain = options.readKeychain ?? readClaudeKeychain
   }
 
   async status(): Promise<ProviderAuthState> {
@@ -54,7 +69,7 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
       const access = await this.resolveAccess()
       return {
         status: 'authenticated',
-        accountLabel: nonEmptyString(access.subscriptionType) ?? 'Claude Code',
+        accountLabel: access.subscriptionType ?? 'Claude Code',
       }
     } catch (error) {
       if (error instanceof ClaudeCodeAuthError && error.code
@@ -68,102 +83,82 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
     }
   }
 
-  async resolveAccess(): Promise<ClaudeCodeOAuthAccess> {
+  async resolveAccess(options: { forceRefresh?: boolean } = {}): Promise<ClaudeCodeOAuthAccess> {
     if (this.accessToken) {
       return { accessToken: this.accessToken, source: 'static' }
     }
     if (this.oauthFile) {
+      let text: string
       try {
-        let raw = JSON.parse(await readFile(this.oauthFile, 'utf8')) as unknown
-        if (!isRecord(raw))
-          throw new ClaudeCodeAuthError(
-            'auth_invalid',
-            `Invalid OAuth file: ${this.oauthFile}`
-          )
-        const expiresAt = nonEmptyString(raw.expiresAt)
-        const isExpiring = expiresAt !== undefined
-          && Date.parse(expiresAt) - Date.now() < OAUTH_EXPIRY_SKEW_MS
-        if (isExpiring && nonEmptyString(raw.refreshToken) && this.refresh) {
-          raw = await this.refresh(raw)
-          await writeFile(this.oauthFile, `${JSON.stringify(raw, null, 2)}\n`)
-        }
-        if (!isRecord(raw))
-          throw new ClaudeCodeAuthError(
-            'auth_invalid',
-            `Invalid OAuth file: ${this.oauthFile}`
-          )
-        const accessToken = nonEmptyString(raw.accessToken)
-          ?? nonEmptyString(raw.access_token)
-        if (!accessToken)
-          throw new ClaudeCodeAuthError(
-            'auth_missing',
-            `No accessToken in ${this.oauthFile}`
-          )
-        return {
-          accessToken,
-          source: 'file',
-          subscriptionType: nonEmptyString(raw.subscriptionType) ?? null,
-          rateLimitTier: nonEmptyString(raw.rateLimitTier) ?? null,
-        }
+        text = await readFile(this.oauthFile, 'utf8')
       } catch (error) {
-        if (error instanceof ClaudeCodeAuthError)
-          throw error
-        throw new ClaudeCodeAuthError(
-          'auth_missing',
-          `Failed to read Claude OAuth file ${this.oauthFile}: ${error instanceof Error ? error.message : String(error)}`,
-        )
+        if (errorCode(error) === 'ENOENT') {
+          throw new ClaudeCodeAuthError('auth_missing', `Claude OAuth file not found: ${this.oauthFile}`)
+        }
+        throw error
+      }
+      let secret = parseClaudeAuthJson(claudeOAuthSecretSchema, text, 'Claude OAuth file')
+      const isExpiring = secret.expiresAt !== undefined && secret.expiresAt !== null
+        && Date.parse(secret.expiresAt) - Date.now() < OAUTH_EXPIRY_SKEW_MS
+      if ((options.forceRefresh || isExpiring) && secret.refreshToken && this.refresh) {
+        secret = parseClaudeAuthData(claudeOAuthSecretSchema, await this.refresh(secret), 'Claude renewed OAuth secret')
+        await writeOAuthSecret(this.oauthFile, secret)
+      }
+      return {
+        accessToken: secret.accessToken, source: 'file',
+        subscriptionType: secret.subscriptionType ?? null,
+        rateLimitTier: secret.rateLimitTier ?? null,
       }
     }
-
-    const fromEnv = nonEmptyString(process.env.CLAUDE_CODE_OAUTH_TOKEN)
-    if (fromEnv)
+    const fromEnv = parseClaudeAuthData(
+      claudeTokenSchema.optional(), this.env.CLAUDE_CODE_OAUTH_TOKEN, 'Claude environment token',
+    )
+    if (fromEnv !== undefined) {
       return { accessToken: fromEnv, source: 'env' }
-
-    if (process.platform === 'darwin') {
-      try {
-        const { stdout } = await execFileAsync(
-          'security',
-          ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
-          { encoding: 'utf8', timeout: 5_000 },
-        )
-        const parsed = JSON.parse(stdout.trim()) as unknown
-        if (!isRecord(parsed)) {
-          throw new ClaudeCodeAuthError(
-            'auth_missing',
-            'Claude Code keychain item is not a JSON object'
-          )
-        }
-        const oauth = isRecord(parsed.claudeAiOauth)
-          ? parsed.claudeAiOauth
-          : null
-        if (!oauth)
-          throw new ClaudeCodeAuthError(
-            'auth_missing',
-            'Claude Code keychain missing claudeAiOauth'
-          )
-        const accessToken = nonEmptyString(oauth.accessToken)
-        if (!accessToken)
-          throw new ClaudeCodeAuthError(
-            'auth_missing',
-            'Claude Code keychain missing accessToken'
-          )
+    }
+    const keychainText = await this.readKeychain()
+    if (keychainText !== null) {
+      const { claudeAiOauth: oauth } = parseClaudeAuthJson(claudeKeychainSchema, keychainText, 'Claude keychain item')
+      if (oauth) {
         return {
-          accessToken,
-          source: 'keychain',
-          subscriptionType: nonEmptyString(oauth.subscriptionType) ?? null,
-          rateLimitTier: nonEmptyString(oauth.rateLimitTier) ?? null,
+          accessToken: oauth.accessToken, source: 'keychain',
+          subscriptionType: oauth.subscriptionType ?? null,
+          rateLimitTier: oauth.rateLimitTier ?? null,
         }
-      } catch (error) {
-        if (error instanceof ClaudeCodeAuthError)
-          throw error
-        // fall through
       }
     }
-
     throw new ClaudeCodeAuthError(
       'auth_missing',
       'Claude Code OAuth access token not found (set CLAUDE_CODE_OAUTH_TOKEN or log in with Claude Code)',
     )
+  }
+}
+
+async function readClaudeKeychain(): Promise<string | null> {
+  if (process.platform !== 'darwin') {
+    return null
+  }
+  try {
+    const { stdout } = await execFileAsync('security', [
+      'find-generic-password', '-s', 'Claude Code-credentials', '-w',
+    ], { encoding: 'utf8', timeout: 5_000 })
+    return stdout
+  } catch (error) {
+    // security returns errSecItemNotFound (-25300), whose process exit byte is 44.
+    if (isRecord(error) && error.code === 44) {
+      return null
+    }
+    throw error
+  }
+}
+
+async function writeOAuthSecret(path: string, secret: ClaudeCodeOAuthSecret): Promise<void> {
+  const temp = `${path}.${randomUUID()}.tmp`
+  try {
+    await writeFile(temp, `${JSON.stringify(secret, null, 2)}\n`, { mode: 0o600, flag: 'wx' })
+    await rename(temp, path)
+  } finally {
+    await rm(temp, { force: true })
   }
 }
 
@@ -173,22 +168,11 @@ export class StaticClaudeCodeAuthStore implements ClaudeCodeAuthStore {
   async status(): Promise<ProviderAuthState> {
     return {
       status: 'authenticated',
-      accountLabel: nonEmptyString(this.access.subscriptionType)
-        ?? 'Claude Code',
+      accountLabel: this.access.subscriptionType ?? 'Claude Code',
     }
   }
 
   async resolveAccess(): Promise<ClaudeCodeOAuthAccess> {
     return this.access
-  }
-}
-
-export class ClaudeCodeAuthError extends Error {
-  constructor(
-    readonly code: 'auth_missing' | 'auth_invalid',
-    message: string,
-  ) {
-    super(message)
-    this.name = 'ClaudeCodeAuthError'
   }
 }

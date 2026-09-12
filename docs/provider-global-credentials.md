@@ -391,25 +391,55 @@ When pool is empty, keep current auto-pick for backward compatibility.
 | Concern | Behavior |
 |---|---|
 | Active resolve | Pool entry `oauth.json` → access token |
-| Inference | CLI child env: set `CLAUDE_CODE_OAUTH_TOKEN` from active entry (override process env for that spawn). Extend `buildClaudeEnv` / transport factory to accept token or env overlay from the active resolver |
-| Quota probe | `resolveClaudeCodeOAuthAccess` becomes pool-aware (active entry first; else env; else keychain) |
-| Vendor default | If pool empty: today’s env / keychain |
+| Inference | The transport resolves the configured auth store before spawning and injects file/static/env tokens through `CLAUDE_CODE_OAUTH_TOKEN`. Keychain tokens remain owned by the CLI and are not injected. |
+| Quota probe | The provider factory injects its shared auth store into `createClaudeCodeQuota`. The standalone `resolveClaudeCodeOAuthAccess` helper reads env/keychain only. |
+| Vendor default | If pool empty: env, then keychain |
 | Import | Snapshot token from env or Keychain into pool |
 | CLI constraint | Claude Code CLI still must accept token via env; if a future CLI ignores env, this path needs a different transport — out of scope until proven |
 
-Claude is the weakest link today (no AuthStore abstraction). Final-state requires:
+`provider-claude-code/auth-schemas.ts` owns the pool secret, access projection,
+keychain envelope, OAuth response and credential-add schemas. `auth.ts` validates
+the selected source before returning access. A configured OAuth file is
+authoritative; an invalid file cannot fall back to another identity. Missing
+files or absent default credentials are `auth_missing`. Malformed JSON and known
+fields are `auth_invalid`; other file/keychain IO failures propagate. Optional
+lookup helpers return null only for `auth_missing`. Quota and CLI consumers use
+that same distinction, so corrupt auth stops a spawn instead of using CLI defaults.
 
-- `ClaudeCodeAuthStore` (or `resolveAccess(): Promise<ClaudeCodeOAuthAccess>`) injectable into provider + quota + transport.
-- Transport **must not** only call bare `buildClaudeEnv()` without active token overlay when a store is configured.
+Pool secrets require camel-case `accessToken`. Optional refresh tokens, expiry,
+scopes and display metadata may be absent or null. Present tokens contain no
+whitespace; expiry is an ISO datetime; scopes are arrays of nonempty strings
+without whitespace. Wrong optional types are invalid. The vendor keychain has
+its own schema: `claudeAiOauth.expiresAt` is an epoch in milliseconds. The platform
+adapter treats the `security` command's item-not-found exit (44) as absent and
+propagates other failures. This mapping follows Apple's
+[command implementation](https://github.com/apple-oss-distributions/Security/blob/main/SecurityTool/macOS/keychain_find.c)
+and [error constant](https://github.com/apple-oss-distributions/Security/blob/main/base/SecBase.h).
+Tests inject both environment and keychain readers.
+
+`login.ts` validates OAuth response tokens, numeric `expires_in`, space-separated
+scope and account metadata before constructing a secret. Zero seconds means an
+expired token; absent expiry means unknown (`null`). A refresh without new metadata
+keeps existing metadata and the refresh token, but does not assign the previous
+access token's expiry to the new token. Explicit force-refresh reaches the file
+store through the pool-aware store. Renewed secrets are validated before atomic
+replacement with mode 0600; temporary files are removed on success and failure.
+
+Credential add accepts a secret directly or an `oauth` object and preserves its
+refresh fields. Login, add and default import share the same entry writer and
+identity rule: email when available, otherwise a token fingerprint. Default
+import snapshots the resolved access token and display metadata. Login's pasted
+input accepts a code or `code#state`, rejects extra fragments and verifies a
+returned state. Cancelling the login stops waiting for pasted input.
 
 ## 7. Switch semantics
 
 ### 7.1 `setActive(id)`
 
-1. Validate entry exists and secret file parses.
+1. Validate the entry metadata and require a readable secret file.
 2. Write `active` pointer (atomic replace).
 3. Invalidate quota cache for this provider.
-4. Return `getActive()` (re-resolved status).
+4. Return `getActive()`; the concrete auth store parses the selected secret and reports its status.
 5. Do **not** abort in-flight provider runs.
 6. Do **not** rewrite `ProviderSelection` or restart AgentSession.
 

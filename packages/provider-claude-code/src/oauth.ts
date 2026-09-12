@@ -1,5 +1,7 @@
 import type { ClaudeCodeAuthStore } from './auth'
-import { FileClaudeCodeAuthStore } from './auth'
+import { ClaudeCodeAuthError, FileClaudeCodeAuthStore } from './auth'
+import type { ClaudeCodeOAuthAccess } from './auth-schemas'
+export type { ClaudeCodeOAuthAccess } from './auth-schemas'
 
 /**
  * Where a resolved token came from. Callers that inject the token into a
@@ -8,14 +10,7 @@ import { FileClaudeCodeAuthStore } from './auth'
  * refresh flow — the run starts 401ing as soon as the token expires. Owned
  * sources (static/file/env) are the caller's responsibility and inject as-is.
  */
-export type ClaudeCodeOAuthSource = 'static' | 'file' | 'env' | 'keychain'
-
-export interface ClaudeCodeOAuthAccess {
-  accessToken: string
-  source: ClaudeCodeOAuthSource
-  subscriptionType?: string | null
-  rateLimitTier?: string | null
-}
+export type ClaudeCodeOAuthSource = ClaudeCodeOAuthAccess['source']
 
 /**
  * The token to inject into a spawned CLI as CLAUDE_CODE_OAUTH_TOKEN, or null
@@ -34,11 +29,7 @@ export function injectableCliToken(access: ClaudeCodeOAuthAccess): string | null
  */
 export async function resolveClaudeCodeOAuthAccess(): Promise<ClaudeCodeOAuthAccess
   | null> {
-  try {
-    return await new FileClaudeCodeAuthStore().resolveAccess()
-  } catch {
-    return null
-  }
+  return resolveAccessFromStore(new FileClaudeCodeAuthStore())
 }
 
 export async function resolveAccessFromStore(
@@ -46,7 +37,10 @@ export async function resolveAccessFromStore(
 ): Promise<ClaudeCodeOAuthAccess | null> {
   try {
     return await store.resolveAccess()
-  } catch {
-    return null
+  } catch (error) {
+    if (error instanceof ClaudeCodeAuthError && error.code === 'auth_missing') {
+      return null
+    }
+    throw error
   }
 }
