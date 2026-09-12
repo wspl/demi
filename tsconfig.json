@@ -25,7 +25,6 @@
       "@demicodes/runner-protocol/msgpack": ["./packages/runner-protocol/src/codec.ts"],
       "@demicodes/runner/serve": ["./packages/runner/src/serve/index.ts"],
       "@demicodes/runner/testing": ["./packages/runner/src/testing.ts"],
-      "@demicodes/shell/storage": ["./packages/shell/src/storage.ts"],
       "@demicodes/shell/testing": ["./packages/shell/src/testing.ts"],
       "@demicodes/backend/testing": ["./packages/backend/src/testing.ts"],
       "@demicodes/*": ["./packages/*/src/index.ts"]

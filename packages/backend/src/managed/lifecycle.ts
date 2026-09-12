@@ -6,7 +6,7 @@ import type {
   DeviceRecord,
   ManagedOperation
 } from '../storage/control'
-import type { ManagedHostProvisioner, ManagedVolume } from './provisioner'
+import type { ManagedHostProvisioner, ManagedVolume } from '@demicodes/machines'
 
 export interface ManagedHostsConfig {
   idleMs: number
