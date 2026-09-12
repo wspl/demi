@@ -81,6 +81,32 @@ behavior at registration/build with the command and field name; do not silently
 drop it during JSON Schema conversion. Help, original trees, reconstructed trees,
 runtime modules and RPC handlers must agree on the supported input semantics.
 
+## Codex Responses ingress
+
+`provider-codex/response-schemas.ts` owns the consumed Responses event union.
+`sse.ts` and `transport.ts` validate each decoded event before `responses.ts` maps
+it. WebSocket envelopes and `response.done` are explicit transport mappings into
+that union. Invalid JSON, wrong field types and unsupported event tags fail with
+`invalid_provider_response`; this error does not trigger an SSE retry. Unrelated
+fields are allowed on supported events. Known progress events and hosted tool
+items listed in the schema are ignored because Demi does not execute them.
+
+Message content is an array. Reasoning summary/content may be absent but must be
+arrays of text parts when present; encrypted content may be null. Function calls
+require nonempty item ID, call ID and name, plus a string of arguments. The completed
+item supplies the full arguments; argument deltas are validated but do not cause
+execution. This follows the complete-item examples in the official
+[function calling guide](https://developers.openai.com/api/docs/guides/function-calling)
+and [streaming guide](https://developers.openai.com/api/docs/guides/streaming-responses).
+
+Terminal events require a response object. Missing or null usage means unavailable
+counts, represented by zero in `TokenUsage`; present counts are nonnegative integers,
+and cached input cannot exceed total input. Missing error details produce a generic
+failure message; wrong detail types fail validation. Reasoning replay validates
+Codex-tagged signatures and omits opaque signatures from other providers.
+SSE readers cancel and release their lock on completion, parsing failure or early
+consumer return. WebSocket listeners and timers are removed when consumption ends.
+
 ## Verification
 
 Before introducing a helper, compare its actual semantics with the installed

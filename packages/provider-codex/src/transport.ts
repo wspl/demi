@@ -1,6 +1,7 @@
 import { isRecord, parseJsonObject } from '@demicodes/utils'
+import { ProviderDataError } from '@demicodes/provider'
 import { parseSseResponseStream } from './sse'
-import type { CodexResponseStreamEvent } from './responses'
+import { parseCodexWebSocketEvent, type CodexResponseStreamEvent } from './response-schemas'
 import type { CodexTransportMode } from './types'
 
 export interface CodexTransportRequest {
@@ -152,12 +153,10 @@ export class WebSocketCodexResponsesTransport
       armIdleTimer()
       try {
         const parsed = parseWebSocketMessage(event.data)
-        if (parsed) {
-          push(parsed)
-          if (isTerminalResponseEvent(parsed)) {
-            finish()
-            socket.close(1000, 'response_done')
-          }
+        push(parsed)
+        if (isTerminalResponseEvent(parsed)) {
+          finish()
+          socket.close(1000, 'response_done')
         }
       } catch (error) {
         push(error instanceof Error ? error : new Error(String(error)))
@@ -218,7 +217,7 @@ export class AutoCodexResponsesTransport implements CodexResponsesTransport {
       }
       return
     } catch (error) {
-      if (started)
+      if (started || error instanceof ProviderDataError || request.signal.aborted)
         throw error
     }
     yield* this.sse.stream(request)
@@ -396,31 +395,14 @@ function connectWebSocket(
   })
 }
 
-function parseWebSocketMessage(data: unknown): CodexResponseStreamEvent | null {
+function parseWebSocketMessage(data: unknown): CodexResponseStreamEvent {
   if (typeof data === 'string')
-    return parseWebSocketJson(data)
+    return parseCodexWebSocketEvent(data)
   if (data instanceof ArrayBuffer)
-    return parseWebSocketJson(new TextDecoder().decode(data))
+    return parseCodexWebSocketEvent(new TextDecoder().decode(data))
   if (data instanceof Uint8Array)
-    return parseWebSocketJson(new TextDecoder().decode(data))
-  return null
-}
-
-function parseWebSocketJson(text: string): CodexResponseStreamEvent | null {
-  const parsed = JSON.parse(text) as CodexResponseStreamEvent | {
-    type?: string;
-    event?: CodexResponseStreamEvent;
-    response?: unknown
-  }
-  if (parsed.type === 'response.done') {
-    return {
-      type: 'response.completed',
-      response: parsed.response as CodexResponseStreamEvent['response']
-    }
-  }
-  if ('event' in parsed && isRecord(parsed.event))
-    return parsed.event as CodexResponseStreamEvent
-  return parsed as CodexResponseStreamEvent
+    return parseCodexWebSocketEvent(new TextDecoder().decode(data))
+  throw new ProviderDataError('Codex WebSocket', 'unsupported message data')
 }
 
 function isTerminalResponseEvent(event: CodexResponseStreamEvent): boolean {

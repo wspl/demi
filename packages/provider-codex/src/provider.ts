@@ -1,5 +1,6 @@
 import { isRecord, parseJsonObject, stringOrNull } from '@demicodes/utils'
 import {
+  ProviderDataError,
   applyModelPolicy,
   clampPromptCacheKey,
   defineProvider,
@@ -406,7 +407,7 @@ function providerErrorFromUnknown(error: unknown): ProviderEvent {
   return {
     type: 'error',
     message: redactCodexSecretText(message),
-    code: normalizeErrorCode(null, message),
+    code: error instanceof ProviderDataError ? error.code : normalizeErrorCode(null, message),
     diagnostics: { source: 'transport' },
   }
 }

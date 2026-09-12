@@ -207,7 +207,8 @@ test(
           type: 'function_call',
           id: 'fc_1',
           call_id: 'call_1',
-          name: 'shell_exec'
+          name: 'shell_exec',
+          arguments: '{"script":"pwd"}'
         }
       },
       {

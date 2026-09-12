@@ -101,10 +101,56 @@ re-implementing several of these:
 - `createProviderQuota`, `ensureQuota`, percent/severity helpers — subscription rate-limit
   surface (`docs/provider-quota.md`).
 - `zeroUsage` (from `@demicodes/core`) — a zeroed `TokenUsage`.
-- `normalizeBaseUrl`, `parseJsonObject`, `numberOrZero` (from `@demicodes/utils`).
+- `parseProviderData`, `parseProviderJson`, `ProviderDataError` — validate a concrete
+  provider's schema and classify failures without including payload values.
+- `normalizeBaseUrl` (from `@demicodes/utils`). JSON decoding helpers do not validate
+  wire data; numeric fallback helpers do not replace a usage schema.
 
-See `packages/provider-anthropic-api` / `packages/provider-google` (HTTP) and
-`packages/provider-codex` (CLI/OAuth) for full references.
+## Validate incoming data
+
+Define the fields the mapper consumes, derive its types, and validate at transport
+ingress. Do not cast decoded JSON to an event type. Extra fields may be permitted
+without accepting malformed known fields. Specify exactly which event tags are
+ignored; unsupported tags must not silently swallow terminal or tool-call events.
+
+This runnable example illustrates a provider-owned wire protocol:
+
+```ts
+import { z } from 'zod'
+import { parseProviderJson, zeroUsage, type ProviderEvent } from '@demicodes/provider'
+
+const eventSchema = z.discriminatedUnion('type', [
+  z.looseObject({ type: z.literal('text'), text: z.string() }),
+  z.looseObject({ type: z.literal('complete') }),
+  z.looseObject({ type: z.literal('progress') }),
+])
+
+function mapEvent(event: z.infer<typeof eventSchema>): ProviderEvent | null {
+  switch (event.type) {
+    case 'text':
+      return { type: 'text_delta', text: event.text }
+    case 'complete':
+      return { type: 'response', usage: zeroUsage() }
+    case 'progress':
+      return null
+  }
+}
+
+export function receiveEvent(json: string): ProviderEvent | null {
+  return mapEvent(parseProviderJson(eventSchema, json, 'Example stream'))
+}
+
+receiveEvent('{"type":"text","text":"hello","extra":1}') // Text delta.
+receiveEvent('{"type":"progress"}') // Explicitly ignored.
+// Both throw ProviderDataError with field paths, excluding payload values:
+// receiveEvent('{"type":"text","text":{}}')
+// receiveEvent('{"type":"unknown_terminal"}')
+```
+
+For the complete transport/schema/mapper path, see Codex's `sse.ts`,
+`response-schemas.ts`, `responses.ts`, and `response-contracts.test.ts` under
+`packages/provider-codex/src`. Follow [Data Contracts](../data-contracts.md) for
+missing/null policies, persistent data, and tests with synthetic inputs.
 
 ## Optional: quota
 

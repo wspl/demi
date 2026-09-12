@@ -8,6 +8,7 @@ import {
   type AgentHarnessRuntime
 } from '@demicodes/agent'
 import {
+  ProviderDataError,
   clampPromptCacheKey,
   providerRuntime,
   type InferenceRequest,
@@ -415,6 +416,17 @@ test(
     }])
   }
 )
+
+test('Auto transport never retries a malformed WebSocket response over SSE', async () => {
+  const sse = new FakeCodexTransport([])
+  const transport = new AutoCodexResponsesTransport(
+    new FakeCodexTransport([new ProviderDataError('Codex event', 'invalid fields: delta')]),
+    sse,
+  )
+  await expect(transport.stream(makeTransportRequest())[Symbol.asyncIterator]().next())
+    .rejects.toBeInstanceOf(ProviderDataError)
+  expect(sse.requests).toHaveLength(0)
+})
 
 test(
   'WebSocketCodexResponsesTransport uses the Responses WebSocket beta header',

@@ -3,6 +3,7 @@
 // of re-deriving the same status/keyword tables.
 import { shortHash } from '@demicodes/utils'
 import type { ProviderAuthState, ProviderEvent } from './types'
+import { ProviderDataError } from './validation'
 
 type SecretResolver = () => string | Promise<string> | null | undefined
 type HeadersResolver = () => Record<string, string>
@@ -99,7 +100,7 @@ export function providerErrorFromUnknown(
   return {
     type: 'error',
     message: redactSecretText(message, secret),
-    code: normalizeErrorCode(null, message)
+    code: error instanceof ProviderDataError ? error.code : normalizeErrorCode(null, message)
   }
 }
 

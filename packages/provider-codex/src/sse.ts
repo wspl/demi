@@ -1,4 +1,5 @@
-import type { CodexResponseStreamEvent } from './responses'
+import { parseProviderJson } from '@demicodes/provider'
+import { codexResponseEventSchema, type CodexResponseStreamEvent } from './response-schemas'
 
 export async function* parseSseResponseStream(
   body: ReadableStream<Uint8Array>
@@ -25,7 +26,13 @@ export async function* parseSseResponseStream(
     if (final)
       yield final
   } finally {
-    reader.releaseLock()
+    try {
+      await reader.cancel()
+    } catch {
+      // An already errored body can reject cancellation; the lock is still released.
+    } finally {
+      reader.releaseLock()
+    }
   }
 }
 
@@ -38,5 +45,5 @@ export function parseSseChunk(chunk: string): CodexResponseStreamEvent | null {
     .trim()
   if (!data || data === '[DONE]')
     return null
-  return JSON.parse(data) as CodexResponseStreamEvent
+  return parseProviderJson(codexResponseEventSchema, data, 'Codex SSE event')
 }
