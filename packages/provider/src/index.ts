@@ -62,3 +62,5 @@ export {
 export { ProviderDataError, parseProviderData, parseProviderJson, parseProviderJwt } from './validation'
 
 export { quotaAmountSchema, quotaEpochSecondsSchema, quotaResetSchema } from './quota-schemas'
+
+export { configuredModelSchema, modelListFromConfiguredModels, STATIC_CATALOG_SOURCE_DATE, type ConfiguredModelOptions, type ConfiguredCatalogOptions } from './configured-models'

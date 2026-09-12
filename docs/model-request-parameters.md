@@ -164,3 +164,14 @@ defaults fail validation. Built-in fallback metadata is a separate static catalo
 marked stale with a reason explaining why live discovery was unavailable. Its
 fixed epoch source date denotes static, unfetched content and is never substituted
 for a missing or malformed date in a live catalog.
+
+
+OpenAI API, Anthropic API and Google use `provider/configured-models.ts` for their
+caller-configured model schema, option types and catalog projection. Their
+concrete `models.ts` modules own only the built-in model declarations and default
+selection. The shared mapper validates positive integer token limits, optional
+capabilities, effort lists, service tiers, unique model IDs and the requested
+default. Missing capabilities remain null. An omitted default picks the first
+model; explicit null means no default, and a named default must be present. The
+returned arrays and tier objects are independent of caller configuration. Static
+source dates use the shared `STATIC_CATALOG_SOURCE_DATE` constant.

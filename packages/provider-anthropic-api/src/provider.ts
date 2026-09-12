@@ -20,12 +20,12 @@ import type {
 import {
   authStatusFromKey,
   defineProvider,
+  modelListFromConfiguredModels,
   httpErrorCode,
   httpRequestFailedEvent,
   normalizeErrorCode,
   providerErrorFromUnknown,
   redactSecretText,
-  withProviderId,
   type AgentProvider,
   type InferenceItem,
   type InferenceRequest,
@@ -36,7 +36,6 @@ import {
 } from '@demicodes/provider'
 import {
   anthropicApiDefaultModels,
-  modelListFromAnthropicApiModels,
   type AnthropicApiModelOptions,
 } from './models'
 
@@ -195,11 +194,11 @@ export function createAnthropicApiProvider(
   const fetchImpl = options.fetch ?? fetch
   const modelList = (): ProviderModelList =>
     options.models
-      ? modelListFromAnthropicApiModels(
+      ? modelListFromConfiguredModels(
         options.models,
-        { providerId: id, defaultModelId: options.defaultModelId ?? null }
+        { providerId: id, defaultModelId: options.defaultModelId }
       )
-      : withProviderId(anthropicApiDefaultModels(id), id)
+      : anthropicApiDefaultModels(id)
   const runtimeOptions: AnthropicApiRuntimeOptions = {
     baseUrl,
     apiKey,

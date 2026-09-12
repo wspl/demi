@@ -1,5 +1,5 @@
 import { normalizeBaseUrl } from '@demicodes/utils'
-import { parseProviderData, parseProviderJson, type ProviderModel, type ProviderModelList } from '@demicodes/provider'
+import { STATIC_CATALOG_SOURCE_DATE, parseProviderData, parseProviderJson, type ProviderModel, type ProviderModelList } from '@demicodes/provider'
 import type { GrokAuthStore, GrokResolvedAuth } from './auth'
 import { FileGrokAuthStore, GrokAuthError } from './auth'
 import { DEFAULT_GROK_BUILD_BASE_URL, buildGrokBuildHeaders } from './headers'
@@ -17,12 +17,10 @@ export interface GrokBuildModelCatalogOptions {
   ) => Promise<Response>
 }
 
-const FALLBACK_SOURCE_FETCHED_AT = '1970-01-01T00:00:00.000Z'
-
 export function grokBuildFallbackModels(
   providerId = 'grok-build'
 ): ProviderModelList {
-  const sourceFetchedAt = FALLBACK_SOURCE_FETCHED_AT
+  const sourceFetchedAt = STATIC_CATALOG_SOURCE_DATE
   const model: ProviderModel = {
     providerId,
     id: 'grok-4.5',

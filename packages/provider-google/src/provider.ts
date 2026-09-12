@@ -18,10 +18,10 @@ import type {
 import {
   authStatusFromKey,
   defineProvider,
+  modelListFromConfiguredModels,
   httpRequestFailedEvent,
   normalizeErrorCode,
   providerErrorFromUnknown,
-  withProviderId,
   type AgentProvider,
   type InferenceItem,
   type InferenceRequest,
@@ -32,7 +32,6 @@ import {
 } from '@demicodes/provider'
 import {
   googleDefaultModels,
-  modelListFromGoogleModels,
   type GoogleModelOptions
 } from './models'
 
@@ -194,11 +193,11 @@ export function createGoogleProvider(
   const fetchImpl = options.fetch ?? fetch
   const modelList = (): ProviderModelList =>
     options.models
-      ? modelListFromGoogleModels(
+      ? modelListFromConfiguredModels(
         options.models,
-        { providerId: id, defaultModelId: options.defaultModelId ?? null }
+        { providerId: id, defaultModelId: options.defaultModelId }
       )
-      : withProviderId(googleDefaultModels(id), id)
+      : googleDefaultModels(id)
   const runtimeOptions: GoogleRuntimeOptions = {
     baseUrl,
     apiKey,

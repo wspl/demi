@@ -1,31 +1,11 @@
-import type { ProviderModel, ProviderModelList } from '@demicodes/provider'
+import { modelListFromConfiguredModels, STATIC_CATALOG_SOURCE_DATE, type ConfiguredModelOptions, type ProviderModelList } from '@demicodes/provider'
 
-export interface GoogleModelOptions {
-  id: string
-  displayName?: string
-  description?: string
-  contextWindow: number
-  outputLimit?: number | null
-  supportsTools?: boolean | null
-  supportsAttachments?: boolean | null
-  /**
-   * Gemini takes video natively (inline `inlineData` parts), audio track
-   * included.
-   */
-  supportsVideo?: boolean | null
-  supportsReasoning?: boolean | null
-  supportedThinkingEfforts?: string[] | null
-  defaultThinkingEffort?: string | null
-  canDisableThinking?: boolean | null
-  serviceTiers?: ProviderModel['serviceTiers']
-  defaultServiceTierId?: string | null
-}
+export type GoogleModelOptions = ConfiguredModelOptions
 
-const SOURCE_FETCHED_AT = '1970-01-01T00:00:00.000Z'
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
 
 export function googleDefaultModels(providerId = 'google'): ProviderModelList {
-  return modelListFromGoogleModels(
+  return modelListFromConfiguredModels(
     [
       {
         id: 'gemini-3.6-flash',
@@ -79,67 +59,7 @@ export function googleDefaultModels(providerId = 'google'): ProviderModelList {
     {
       providerId,
       defaultModelId: 'gemini-3.6-flash',
-      sourceFetchedAt: SOURCE_FETCHED_AT,
+      sourceFetchedAt: STATIC_CATALOG_SOURCE_DATE,
     },
   )
-}
-
-export function modelListFromGoogleModels(
-  models: GoogleModelOptions[],
-  options: {
-    providerId: string
-    defaultModelId?: string | null
-    sourceFetchedAt?: string
-    stale?: boolean
-  },
-): ProviderModelList {
-  const sourceFetchedAt = options.sourceFetchedAt ?? new Date().toISOString()
-  const stale = options.stale === true
-  const mapped = models.map((model): ProviderModel => ({
-    providerId: options.providerId,
-    id: model.id,
-    displayName: model.displayName ?? model.id,
-    description: model.description,
-    contextWindow: positiveInteger(
-      model.contextWindow,
-      `models[${model.id}].contextWindow`
-    ),
-    outputLimit: model.outputLimit == null ? null : positiveInteger(
-      model.outputLimit,
-      `models[${model.id}].outputLimit`
-    ),
-    supportsTools: model.supportsTools ?? null,
-    supportsAttachments: model.supportsAttachments ?? null,
-    supportsVideo: model.supportsVideo ?? null,
-    supportsReasoning: model.supportsReasoning ?? null,
-    supportedThinkingEfforts: model.supportedThinkingEfforts
-      ? [...model.supportedThinkingEfforts]
-      : null,
-    defaultThinkingEffort: model.defaultThinkingEffort ?? null,
-    canDisableThinking: model.canDisableThinking ?? null,
-    serviceTiers: model.serviceTiers ? model.serviceTiers.map((tier) => ({
-      ...tier
-    })) : model.serviceTiers,
-    defaultServiceTierId: model.defaultServiceTierId ?? null,
-    sourceFetchedAt,
-    stale,
-  }))
-  return {
-    providerId: options.providerId,
-    models: mapped,
-    defaultModelId:
-      options.defaultModelId
-        && mapped.some((model) => model.id === options.defaultModelId)
-        ? options.defaultModelId
-        : mapped[0]?.id ?? null,
-    warnings: [],
-    sourceFetchedAt,
-    stale,
-  }
-}
-
-function positiveInteger(value: number, field: string): number {
-  if (!Number.isInteger(value) || value <= 0)
-    throw new Error(`${field} must be a positive integer`)
-  return value
 }

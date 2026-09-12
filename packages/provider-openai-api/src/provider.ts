@@ -15,6 +15,7 @@ import type { ToolResultContentBlock, UserContentBlock } from '@demicodes/core'
 import {
   authStatusFromKey,
   defineProvider,
+  modelListFromConfiguredModels,
   httpErrorCode,
   clampPromptCacheKey,
   httpRequestFailedEvent,
@@ -22,7 +23,6 @@ import {
   providerErrorFromUnknown,
   redactSecretText,
   toolResultContentToText,
-  withProviderId,
   type AgentProvider,
   type InferenceItem,
   type InferenceRequest,
@@ -33,7 +33,6 @@ import {
   type ToolDefinition,
 } from '@demicodes/provider'
 import {
-  modelListFromOpenAIApiModels,
   openAIApiDefaultModels,
   type OpenAIApiModelOptions,
 } from './models'
@@ -261,11 +260,11 @@ export function createOpenAIApiProvider(
   const fetchImpl = options.fetch ?? fetch
   const modelList = (): ProviderModelList =>
     options.models
-      ? modelListFromOpenAIApiModels(
+      ? modelListFromConfiguredModels(
         options.models,
-        { providerId: id, defaultModelId: options.defaultModelId ?? null }
+        { providerId: id, defaultModelId: options.defaultModelId }
       )
-      : withProviderId(openAIApiDefaultModels(id), id)
+      : openAIApiDefaultModels(id)
   const runtimeOptions: OpenAIApiRuntimeOptions = {
     baseUrl,
     apiKey,
