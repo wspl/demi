@@ -1101,7 +1101,7 @@ function abortTerminal(id: string) {
     <template v-if="view === 'windows'">
       <GallerySection
         title="Agents"
-        note="Half-session inspect. Tabs are running children; Stop all uses the same quiet button style as Completed, the searchable finished list."
+        note="Half-session inspect. Tabs are running children. The circle-stop icon and Stop all label stop every running agent. Completed opens the searchable finished list."
       >
         <div class="relative h-[24rem] min-h-0">
           <SubagentPanel

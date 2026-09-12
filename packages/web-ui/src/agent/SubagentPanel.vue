@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Square } from '@lucide/vue'
-import IconButton from '../ui/IconButton.vue'
+import { CircleStop } from '@lucide/vue'
+import Button from '../ui/Button.vue'
+import { ICON_PX } from '../ui/icon-metrics'
 import Tooltip from '../ui/Tooltip.vue'
 import AgentMessageList from './AgentMessageList.vue'
 import SessionOverlay from './SessionOverlay.vue'
@@ -74,13 +75,15 @@ function closeTab(agent: SubagentRecord): void {
         v-if="agents.some((agent) => agent.phase === 'running')"
         content="Stop all agents"
       >
-        <IconButton
-          :icon="Square"
+        <Button
           size="sm"
           variant="ghost"
           aria-label="Stop all agents"
           @click="emit('abort')"
-        />
+        >
+          <CircleStop :size="ICON_PX.in24" aria-hidden="true" />
+          Stop all
+        </Button>
       </Tooltip>
       <SubagentHistoryMenu
         :agents="agents"
