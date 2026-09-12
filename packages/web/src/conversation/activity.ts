@@ -4,10 +4,11 @@ import {
 } from '@demicodes/web-ui/transport/protocol'
 import type { Conversation } from '../state/types'
 import { transcriptTerminals } from './terminals'
+import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
 
 /** Map agent events to the product's child and terminal presentation records. */
 export function updateLiveStatus(conversation: Conversation): void {
-  if (conversation.phase !== 'idle') {
+  if (isConversationActive(conversation.phase, conversation.subagents)) {
     conversation.status = 'active'
     return
   }
@@ -26,7 +27,6 @@ export function applyConversationEvent(
   conversation: Conversation,
   event: ClientSessionEvent,
 ): void {
-  updateLiveStatus(conversation)
   if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
     // A stored end (`endedAt`) is final; a stored view of a running command only names it.
     const stored = transcriptTerminals(conversation.blocks)
@@ -96,4 +96,5 @@ export function applyConversationEvent(
       conversation.terminals.push(snapshot)
     }
   }
+  updateLiveStatus(conversation)
 }
