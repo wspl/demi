@@ -424,7 +424,7 @@ test(
           block: {
             type: 'user',
             id: 'u1',
-            turnId: completionMessageId('a'),
+            turnId: completionMessageId('a', 1),
             createdAt: '2026-01-01T00:00:00.000Z',
             model,
             content: [{ type: 'text', text: 'x' }],
@@ -435,7 +435,7 @@ test(
     })
     expect((await tree.node('a'))?.delivered).toBe(true)
     expect((await tree.node('b'))?.delivered).toBe(false)
-    await tree.markDelivered('b')
+    await tree.markDelivered('b', 2)
     expect((await tree.node('b'))?.delivered).toBe(true)
 
     const reviving = {
@@ -456,6 +456,22 @@ test(
       spawnedAt: 9
     })
     expect((await tree.sessionStore('a').load())?.queue).toEqual([reviving])
+
+    // A delayed checkpoint for the old round cannot consume the new result.
+    await tree.closeNode('a', {
+      phase: 'completed', closedAt: 10, result: 'second result', failure: null,
+    })
+    await tree.sessionStore('c').save({
+      ...emptyCheckpoint(),
+      queue: [{ id: completionMessageId('a', 1), text: 'old', content: [] }],
+    })
+    await tree.markDelivered('a', 1)
+    expect((await tree.node('a'))?.delivered).toBe(false)
+    await tree.sessionStore('c').save({
+      ...emptyCheckpoint(),
+      queue: [{ id: completionMessageId('a', 9), text: 'new', content: [] }],
+    })
+    expect((await tree.node('a'))?.delivered).toBe(true)
 
     await tree.deleteNode('a')
     expect(await tree.node('a')).toBeNull()

@@ -1,7 +1,8 @@
+import { z } from 'zod'
 import {
   ActivityGate,
+  SerialQueue,
   createId,
-  decodeUtf8,
   errorMessage,
   noop,
   utf8Slice,
@@ -9,7 +10,7 @@ import {
 import type {
   Command,
   CommandGroup,
-  CommandIO,
+  CommandStorage,
   ShellEnvironment,
 } from '@demicodes/shell'
 import type { Block, QueuedMessage, UserContentBlock } from '@demicodes/core'
@@ -56,6 +57,27 @@ export type SubagentExecution =
   | 'finalizing'
   | 'pending_yield'
 
+const startInputSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('spawn'),
+    prompt: z.string(),
+    profileName: z.string().nullable(),
+    description: z.string(),
+    isSpawnForbidden: z.boolean(),
+  }).strict(),
+  z.object({
+    kind: z.literal('resume'),
+    id: z.string(),
+    message: z.string(),
+  }).strict(),
+])
+const startReceiptSchema = z.object({
+  input: startInputSchema,
+  nodeId: z.string(),
+  spawnedAt: z.number().int().nonnegative(),
+}).strict()
+type StartInput = z.infer<typeof startInputSchema>
+
 interface SubagentClose {
   phase: AgentNodeClosePhase
   result?: string
@@ -65,6 +87,7 @@ interface SubagentClose {
 /** A closed child as its parent hears of it, live or from the store. */
 interface Completion {
   id: string
+  spawnedAt: number
   description: string
   metadata: AgentMetadata | null
   phase: AgentNodeClosePhase
@@ -100,11 +123,6 @@ export interface ChildJob<State> {
   closed: Promise<SubagentClose>
   settleClosed: (close: SubagentClose) => void
   isClosing: boolean
-  /**
-   * True while the spawn or resume command awaits this child in this process:
-   * its exit is the result's return path.
-   */
-  attended: boolean
   /**
    * Wakes the settle loop when the child set or an inbound send changes the
    * picture.
@@ -167,6 +185,7 @@ export interface ChildSupervisorOptions<State> {
  * agent in the tree. Every node — root or subagent — owns one.
  */
 export class ChildSupervisor<State = unknown> {
+  private readonly starts = new SerialQueue()
   private readonly options: ChildSupervisorOptions<State>
   private readonly jobs = new Map<string, ChildJob<State>>()
   private parentSession: AgentSession<State> | null = null
@@ -227,18 +246,72 @@ export class ChildSupervisor<State = unknown> {
     }
   }
 
+  /** Reserve the operation identity before creating a node, so retry can finish or reuse it. */
+  private startRequest(
+    input: StartInput,
+    requestId: string,
+    storage: CommandStorage,
+  ): Promise<string> {
+    return this.starts.run(() => this.withLifecycleAccess(async () => {
+      if (this.isDisposed) {
+        throw new Error('owner session is closing')
+      }
+      const key = `agent.start.${requestId}`
+      const current = await storage.readJson<unknown>(key)
+      let receipt: z.infer<typeof startReceiptSchema>
+      if (current !== null) {
+        receipt = startReceiptSchema.parse(current)
+        if (JSON.stringify(receipt.input) !== JSON.stringify(startInputSchema.parse(input))) {
+          throw new Error('request-id already belongs to different agent arguments')
+        }
+      } else {
+        const previous = input.kind === 'resume'
+          ? await this.options.tree.store.node(input.id)
+          : null
+        receipt = {
+          input,
+          nodeId: input.kind === 'resume' ? input.id : createId(),
+          spawnedAt: Math.max(Date.now(), (previous?.spawnedAt ?? 0) + 1),
+        }
+        await storage.writeJson(key, receipt)
+      }
+      const record = await this.options.tree.store.node(receipt.nodeId)
+      if (record) {
+        if (record.parentId !== this.options.ownerId) {
+          throw new Error('request-id references an agent owned by another session')
+        }
+        if (input.kind === 'spawn' || record.spawnedAt === receipt.spawnedAt) {
+          if (record.closedPhase === null && !this.jobs.has(record.id)) {
+            await this.restoreJob(record)
+          }
+          return record.id
+        }
+        if (record.spawnedAt > receipt.spawnedAt) {
+          throw new Error('resume request has been superseded by a later round')
+        }
+      }
+      const job = input.kind === 'spawn'
+        ? await this.spawn({ ...input, profileName: input.profileName ?? undefined }, receipt.nodeId, receipt.spawnedAt)
+        : await this.resumeArchived(input.id, input.message, receipt.spawnedAt)
+      return job.id
+    }))
+  }
+
   /**
    * The `agent` node shared by every session, with lifecycle authority scoped
    * to its own children.
    */
   rootCommandNode(): CommandGroup {
-    return subagentCommandNode<ChildJob<State>>({
+    return subagentCommandNode({
       canSpawn: this.options.canSpawn,
       profileNames: () => this.configuredProfileNames(),
-      spawn: (input) => this.withLifecycleAccess(() => this.spawn(input)),
-      resumeArchived: (id, message) =>
-        this.withLifecycleAccess(() => this.resumeArchived(id, message)),
-      attend: (job, ctx) => this.attendChild(job, ctx),
+      spawn: (input, requestId, storage) => this.startRequest({
+        ...input,
+        kind: 'spawn',
+        profileName: input.profileName ?? null,
+      }, requestId, storage),
+      resumeArchived: (id, message, requestId, storage) =>
+        this.startRequest({ kind: 'resume', id, message }, requestId, storage),
       getRunning: (id) => this.jobs.get(id) ?? null,
       send: (id, message) => this.deliverSend(id, message),
       steer: (id, message) => this.deliverSteer(id, message),
@@ -319,6 +392,7 @@ export class ChildSupervisor<State = unknown> {
    */
   async dispose(): Promise<void> {
     this.isDisposed = true
+    await this.starts.settled()
     for (const job of [...this.jobs.values()]) {
       job.isClosing = true
       job.unsubscribe()
@@ -382,6 +456,7 @@ export class ChildSupervisor<State = unknown> {
   private async resumeArchived(
     id: string,
     message: string,
+    spawnedAt: number,
   ): Promise<ChildJob<State>> {
     const parent = this.requireParent()
     if (this.isDisposed) {
@@ -403,11 +478,14 @@ export class ChildSupervisor<State = unknown> {
     ) {
       throw new Error(`no archived subagent "${id}" (see \`demi agent list\`)`)
     }
+    if (!record.delivered) {
+      throw new Error('The previous completion is not saved by the parent yet; retry resume after receiving it')
+    }
     // Validate before mutating: a profile that no longer exists must leave the archive intact.
     const profile = this.resolveProfile(record.profileName ?? undefined)
     const fields = {
       metadata: parent.actionMetadata(),
-      spawnedAt: Date.now(),
+      spawnedAt,
     }
     const content: UserContentBlock[] = [
       {
@@ -465,7 +543,7 @@ export class ChildSupervisor<State = unknown> {
     profileName: string | undefined
     description: string
     isSpawnForbidden: boolean
-  }): Promise<ChildJob<State>> {
+  }, id: string, spawnedAt: number): Promise<ChildJob<State>> {
     const parent = this.requireParent()
     if (!this.options.canSpawn) {
       throw new Error('this session may not spawn subagents')
@@ -480,12 +558,12 @@ export class ChildSupervisor<State = unknown> {
     }
     const profile = this.resolveProfile(input.profileName)
     const record: AgentNodeRecord = {
-      id: createId(),
+      id,
       parentId: this.options.ownerId,
       description: input.description,
       profileName: input.profileName ?? null,
       metadata: parent.actionMetadata(),
-      spawnedAt: Date.now(),
+      spawnedAt,
       canSpawnSubagents:
         !input.isSpawnForbidden && profile.canSpawnSubagents !== false,
       closedPhase: null,
@@ -552,7 +630,7 @@ export class ChildSupervisor<State = unknown> {
       const tracked = job
       node.continue((turn) => this.trackTurn(tracked, turn))
       await node.supervisor.restore()
-      void this.settleJob(job)
+      void this.settleJob(job).catch(error => this.reportLifecycleFailure(error))
       return job
     } finally {
       release()
@@ -583,7 +661,6 @@ export class ChildSupervisor<State = unknown> {
       closed,
       settleClosed,
       isClosing: false,
-      attended: false,
       wake: null,
     }
     job.unsubscribe = node.session.subscribe((event) => {
@@ -618,60 +695,6 @@ export class ChildSupervisor<State = unknown> {
       revision: transcript.revision,
     })
     return job
-  }
-
-  /**
-   * Shared spawn/resume foreground behaviour: announce the id, wire abort and
-   * stdin steers, wait for close, report the outcome.
-   */
-  private async attendChild(
-    job: ChildJob<State>,
-    ctx: {
-      io: CommandIO
-      isJson: boolean
-      signal: AbortSignal
-      stdinStream: AsyncIterable<Uint8Array>
-    },
-  ): Promise<{ exitCode: number }> {
-    const { io, isJson, signal, stdinStream } = ctx
-    await io.stderr(`subagentId: ${job.id}\n`)
-
-    const onAbort = (): void => {
-      void this.abortSubtree(job.id).catch(noop)
-    }
-    if (signal.aborted) {
-      onAbort()
-    } else {
-      signal.addEventListener('abort', onAbort, { once: true })
-    }
-    void this.pumpStdinSteers(job.id, stdinStream)
-
-    job.attended = true
-    const close = await job.closed
-    job.attended = false
-    signal.removeEventListener('abort', onAbort)
-    if (close.phase === 'completed') {
-      const text = close.result ?? ''
-      if (isJson) {
-        await io.stdout(
-          `${JSON.stringify({
-            subagentId: job.id,
-            text,
-          })}\n`,
-        )
-      } else if (text.length > 0) {
-        await io.stdout(text.endsWith('\n') ? text : `${text}\n`)
-      }
-      return { exitCode: 0 }
-    }
-    if (close.phase === 'aborted') {
-      await io.stderr(`demi agent: subagent ${job.id} aborted\n`)
-      return { exitCode: 130 }
-    }
-    await io.stderr(
-      `demi agent: subagent ${job.id} failed: ${close.failure ?? 'unknown error'}\n`,
-    )
-    return { exitCode: 1 }
   }
 
   /**
@@ -789,48 +812,6 @@ export class ChildSupervisor<State = unknown> {
   }
 
   /**
-   * Delivers one stdin chunk from the attending spawner: mid-turn as a steer,
-   * otherwise as a new user turn.
-   */
-  private async steerChild(job: ChildJob<State>, message: string): Promise<void> {
-    const content: UserContentBlock[] = [
-      {
-        type: 'text',
-        text: message,
-      },
-    ]
-    if (job.node.session.phase() !== 'idle') {
-      try {
-        await job.node.session.steer(content)
-        return
-      } catch {
-        // Turn boundary raced the steer; fall through to a fresh turn.
-      }
-    }
-    this.trackTurn(job, job.node.session.send(content))
-  }
-
-  private async pumpStdinSteers(
-    id: string,
-    stdinStream: AsyncIterable<Uint8Array>,
-  ): Promise<void> {
-    try {
-      for await (const chunk of stdinStream) {
-        const job = this.jobs.get(id)
-        if (!job) {
-          return
-        }
-        const message = decodeUtf8(chunk).trim()
-        if (message) {
-          await this.steerChild(job, message)
-        }
-      }
-    } catch {
-      // The spawn command result reports the child outcome; stdin pump errors are not a channel.
-    }
-  }
-
-  /**
    * Observes one turn promise of an own child: a non-abort failure closes the
    * job as an error.
    */
@@ -840,7 +821,7 @@ export class ChildSupervisor<State = unknown> {
         return
       }
       job.failure = errorMessage(error)
-      void this.closeJob(job, 'error')
+      void this.closeJob(job, 'error').catch(error => this.reportLifecycleFailure(error))
     })
   }
 
@@ -859,7 +840,7 @@ export class ChildSupervisor<State = unknown> {
         !job.node.session.hasPendingYields() &&
         !job.node.supervisor.hasLiveJobs()
       ) {
-        void this.closeJob(job, 'completed')
+        await this.closeJob(job, 'completed')
         return
       }
       await new Promise<void>((resolve) => {
@@ -899,8 +880,6 @@ export class ChildSupervisor<State = unknown> {
     job.isClosing = true
     job.phase = phase
     job.unsubscribe()
-    this.jobs.delete(job.id)
-    this.options.tree.directory.unregister(job.id)
     job.wake?.()
 
     // A natural completion has no live descendants by construction; an abort
@@ -913,7 +892,7 @@ export class ChildSupervisor<State = unknown> {
         : null
     // dispose() flushes the final checkpoint; the close row is the next commit
     // (`docs/subagent.md` § Persistence), the node quiescent between the two.
-    await job.node.session.dispose().catch(noop)
+    await job.node.session.dispose()
     await job.node.disposeEnvironments()
     const closedAt = Date.now()
     await this.options.tree.store
@@ -923,7 +902,8 @@ export class ChildSupervisor<State = unknown> {
         result,
         failure: job.failure,
       })
-      .catch(noop)
+    this.jobs.delete(job.id)
+    this.options.tree.directory.unregister(job.id)
 
     const close: SubagentClose = {
       phase,
@@ -940,37 +920,26 @@ export class ChildSupervisor<State = unknown> {
     await this.deliverClose(
       {
         id: job.id,
+        spawnedAt: job.spawnedAt,
         description: job.description,
         metadata: job.metadata,
         phase,
         result,
         failure: job.failure,
       },
-      job.attended,
     )
   }
 
-  /**
-   * Where a completion goes (`docs/subagent.md` § Persistence): a product that
-   * drives the root itself has the `closed` frame, and an owner busy in the
-   * spawn command has that command's exit — the store is told at once in both
-   * cases. Otherwise the owner gets a user message — now if idle, at its next
-   * turn boundary if busy — that its own checkpoint records as delivered. A
-   * detached owner waits for the restore.
-   */
+  /** Completion messages are persisted by the parent's checkpoint; restore retries delivery. */
   private async deliverClose(
     completion: Completion,
-    attended: boolean,
   ): Promise<void> {
     const parent = this.parentSession
     if (!parent || this.isDisposed) {
       return
     }
-    if (
-      !this.options.notifyParentOnIdle ||
-      (attended && parent.phase() !== 'idle')
-    ) {
-      await this.options.tree.store.markDelivered(completion.id).catch(noop)
+    if (!this.options.notifyParentOnIdle) {
+      await this.options.tree.store.markDelivered(completion.id, completion.spawnedAt)
       return
     }
     this.sendCompletion(parent, completion)
@@ -983,11 +952,12 @@ export class ChildSupervisor<State = unknown> {
   private async deliverCompletion(record: AgentNodeRecord): Promise<void> {
     const parent = this.requireParent()
     if (!this.options.notifyParentOnIdle || record.closedPhase === null) {
-      await this.options.tree.store.markDelivered(record.id).catch(noop)
+      await this.options.tree.store.markDelivered(record.id, record.spawnedAt)
       return
     }
     this.sendCompletion(parent, {
       id: record.id,
+      spawnedAt: record.spawnedAt,
       description: record.description,
       metadata: record.metadata,
       phase: record.closedPhase,
@@ -1006,7 +976,8 @@ export class ChildSupervisor<State = unknown> {
           : `[${label}] failed: ${completion.failure ?? 'unknown error'}`
     // The wakeup round runs on behalf of the round that spawned the child, so it
     // carries that round's metadata; its id names the child, so the owner's
-    // checkpoint that carries it marks the completion delivered.
+    // checkpoint that carries it marks the completion delivered. A failed parent
+    // turn is reported by the session; the persisted close remains retryable.
     void parent
       .send(
         [
@@ -1016,11 +987,16 @@ export class ChildSupervisor<State = unknown> {
           },
         ],
         {
-          id: completionMessageId(completion.id),
+          id: completionMessageId(completion.id, completion.spawnedAt),
           ...(completion.metadata ? { metadata: completion.metadata } : {}),
         },
       )
       .catch(noop)
+  }
+
+  private reportLifecycleFailure(error: unknown): void {
+    // Keep the persisted child undelivered; a later open retries its lifecycle.
+    this.options.tree.emit({ type: 'error', message: errorMessage(error) })
   }
 
   private requireParent(): AgentSession<State> {
