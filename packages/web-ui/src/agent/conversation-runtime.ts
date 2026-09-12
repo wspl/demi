@@ -8,6 +8,7 @@ import type {
 } from '@demicodes/agent/client'
 import type { UserContentBlock } from '@demicodes/core'
 import { ProviderStreamError } from '@demicodes/agent/client'
+import { AgentSocketError } from '../transport/agent-socket'
 import type { ConversationState } from './types'
 
 /**
@@ -38,9 +39,24 @@ export interface ConversationRuntimeOptions {
   connect: (signal: AbortSignal) => Promise<AgentClient>
   prepareModel: () => Promise<ProviderSelection>
   onEvent?: (event: ClientSessionEvent) => void
+  /** The wait before the first reconnect attempt; every later one doubles it, up to `maxMs`. */
+  reconnect?: { baseMs: number; maxMs: number }
 }
 
-/** Owns one reconnectable client. Disposing a view leaves its server task alive. */
+const DEFAULT_RECONNECT = { baseMs: 1000, maxMs: 15_000 }
+const OPEN_TIMEOUT_MS = 30_000
+
+/**
+ * Owns one reconnectable client. Disposing a view leaves its server task alive.
+ *
+ * A connection that cannot be made or is lost is never a failure the reader
+ * is told about: on a weak network it comes and goes, so the runtime keeps
+ * `load` at `reconnecting` (the transcript's tail row says Connecting, the
+ * composer stays) and retries with backoff until the socket is back or the
+ * view is disposed. An action taken meanwhile waits for the connection.
+ * Only the session refusing to open is a failure, told once through `load`
+ * `failed` and `lastError`.
+ */
 export class ConversationRuntime {
   private readonly options: ConversationRuntimeOptions
   private readonly client = shallowRef<AgentClient | null>(null)
@@ -152,6 +168,16 @@ export class ConversationRuntime {
     client.abortSubagents()
   }
 
+  async abortSubagent(id: string): Promise<void> {
+    const client = await this.ensureOpen()
+    client.abortSubagent(id)
+  }
+
+  async abortTerminal(commandId: string): Promise<void> {
+    const client = await this.ensureOpen()
+    client.shellAbort(commandId)
+  }
+
   async retry(): Promise<void> {
     this.options.state.lastError = null
     await (await this.ensureOpen()).retry()
@@ -172,9 +198,7 @@ export class ConversationRuntime {
 
   async reconnect(): Promise<void> {
     this.releaseConnection()
-    this.options.state.load = this.options.state.blocks.length
-      ? 'reconnecting'
-      : 'loading'
+    this.options.state.load = 'reconnecting'
     await this.connect()
   }
 
@@ -213,18 +237,49 @@ export class ConversationRuntime {
     return this.opening
   }
 
+  /** One opening: attempts until the session opens, backing off after each lost connection. */
   private async openSession(controller: AbortController): Promise<AgentClient> {
+    const reconnect = this.options.reconnect ?? DEFAULT_RECONNECT
+    let delay = reconnect.baseMs
+    for (;;) {
+      try {
+        return await this.openOnce(controller)
+      } catch (error) {
+        if (this.controller !== controller) {
+          // Released meanwhile: disposed, or a newer opening took over.
+          throw error
+        }
+        if (!(error instanceof AgentSocketError)) {
+          this.client.value = null
+          this.opening = null
+          this.options.state.load = 'failed'
+          this.options.state.lastError =
+            error instanceof Error ? error.message : String(error)
+          throw error
+        }
+        this.options.state.load = 'reconnecting'
+        await this.pause(delay, controller.signal)
+        delay = Math.min(delay * 2, reconnect.maxMs)
+      }
+    }
+  }
+
+  private async openOnce(controller: AbortController): Promise<AgentClient> {
     let client: AgentClient | null = null
     let unsubscribe: (() => void) | null = null
+    // Each attempt has its own deadline; the opening's controller ends them all.
+    const attempt = new AbortController()
+    const abortAttempt = () => attempt.abort(controller.signal.reason)
+    controller.signal.addEventListener('abort', abortAttempt, { once: true })
     const timeout = setTimeout(
-      () => controller.abort(new Error('The conversation did not open in time')),
-      30_000,
+      () => attempt.abort(new AgentSocketError('The conversation did not open in time')),
+      OPEN_TIMEOUT_MS,
     )
     try {
       const provider = await this.options.prepareModel()
-      controller.signal.throwIfAborted()
-      client = await this.options.connect(controller.signal)
-      controller.signal.throwIfAborted()
+      attempt.signal.throwIfAborted()
+      client = await this.options.connect(attempt.signal)
+      attempt.signal.throwIfAborted()
       unsubscribe = client.subscribe((event) => {
         if (this.controller === controller) {
           this.applyEvent(event)
@@ -232,7 +287,7 @@ export class ConversationRuntime {
         }
       })
       await client.open(provider, this.options.state.cwd, this.options.state.id)
-      controller.signal.throwIfAborted()
+      attempt.signal.throwIfAborted()
       this.client.value = client
       this.unsubscribe = unsubscribe
       this.options.state.load = 'ready'
@@ -242,17 +297,29 @@ export class ConversationRuntime {
     } catch (error) {
       unsubscribe?.()
       client?.disconnect()
-      if (this.controller === controller) {
-        this.client.value = null
-        this.opening = null
-        this.options.state.load = 'failed'
-        this.options.state.lastError =
-          error instanceof Error ? error.message : String(error)
-      }
       throw error
     } finally {
       clearTimeout(timeout)
+      controller.signal.removeEventListener('abort', abortAttempt)
     }
+  }
+
+  /** Waits before the next attempt; releasing the connection ends the wait. */
+  private pause(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer)
+        this.retryTimer = null
+        reject(signal.reason ?? new Error('The connection attempt was released'))
+      }
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort)
+        this.retryTimer = null
+        resolve()
+      }, ms)
+      this.retryTimer = timer
+      signal.addEventListener('abort', onAbort, { once: true })
+    })
   }
 
   private applyEvent(event: ClientSessionEvent): void {
@@ -288,12 +355,12 @@ export class ConversationRuntime {
       case 'disconnected':
         this.releaseConnection()
         if (!this.disposed) {
-          state.load = state.blocks.length ? 'reconnecting' : 'loading'
+          state.load = 'reconnecting'
           this.retryTimer = setTimeout(() => {
             this.retryTimer = null
-            // openSession records a failed reconnect for the shared Retry UI.
+            // The opening keeps trying on its own; only a refused open rejects here.
             void this.connect().catch(() => {})
-          }, 1000)
+          }, this.options.reconnect?.baseMs ?? DEFAULT_RECONNECT.baseMs)
         }
         break
     }

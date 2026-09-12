@@ -19,7 +19,8 @@ import type { SessionAttachment, SessionOwnershipRegistry } from './ownership'
 import {
   errorDiagnostics,
   progressToOutput,
-  progressToShellOutput
+  progressToShellOutput,
+  storedRunningCommandIds
 } from './summaries'
 import type { AgentTransportBinding, ProviderResolver } from './server'
 
@@ -280,15 +281,24 @@ export class AgentTransportBindingImpl
           await this.live?.supervisor.abortAll()
           return
         }
+        case 'abort_subagent': {
+          await this.live?.supervisor.abortSubtree(frame.subagentId)
+          return
+        }
         case 'shell_write':
           await this.handleShellWrite(frame)
           return
+        case 'shell_abort':
+          await this.handleShellAbort(frame)
+          return
         case 'sync_transcript': {
+          const live = this.live
           const session = this.sessionFor('sync_transcript')
-          if (!session)
+          if (!session || !live)
             return
           this.sendTranscriptReset(session)
-          this.live?.supervisor.replay()
+          this.observeSessionAction(this.sendLiveShells(live))
+          live.supervisor.replay()
           return
         }
         case 'close':
@@ -394,6 +404,7 @@ export class AgentTransportBindingImpl
       type: 'pending_steers',
       pendingSteers: live.session.pendingSteers()
     })
+    this.observeSessionAction(this.sendLiveShells(live))
   }
 
   /** Aligns an adopted live session with the model/provider this open named. */
@@ -490,7 +501,44 @@ export class AgentTransportBindingImpl
       commandId: frame.commandId,
       stdin: frame.stdin,
     })
-    this.sendShellWriteResult(frame.commandId, result)
+    this.sendShellOutput(result)
+    this.send({
+      type: 'shell_write_result',
+      commandId: frame.commandId,
+      output: progressToOutput(result)
+    })
+  }
+
+  private async handleShellAbort(
+    frame: Extract<ClientFrame, { type: 'shell_abort' }>
+  ): Promise<void> {
+    const live = this.live
+    const session = this.sessionFor('shell_abort')
+    if (!session || !live)
+      return
+
+    const environment = await live.resolveEnvironment(
+      { state: session.state(), metadata: frame.metadata ?? null },
+      { commandId: frame.commandId },
+    )
+    const result = await environment.abort({ commandId: frame.commandId })
+    this.sendShellOutput(result)
+  }
+
+  /**
+   * The commands the transcript last saw running that this session still owns,
+   * as `shell_output` frames after a transcript reset. A stored view is history;
+   * a command it names is live only if an environment of this node has it, so a
+   * reopened session shows what runs and a fork inherits none of its source's.
+   */
+  private async sendLiveShells(live: LiveSession): Promise<void> {
+    for (const commandId of storedRunningCommandIds(live.session.transcript().blocks)) {
+      const environment = live.node.environments()
+        .find((candidate) => candidate.hasCommand(commandId))
+      if (!environment)
+        continue
+      this.sendShellOutput(await environment.status({ commandId }))
+    }
   }
 
   private sessionFor(command: string): AgentSession<unknown> | null {
@@ -513,20 +561,15 @@ export class AgentTransportBindingImpl
     return true
   }
 
-  private sendShellWriteResult(commandId: string, progress: unknown): void {
+  private sendShellOutput(progress: unknown): void {
     const shell = progressToShellOutput(progress)
-    if (shell) {
-      this.send({
-        type: 'shell_output',
-        shellId: shell.shellId,
-        commandId: shell.commandId,
-        status: shell.status,
-      })
-    }
+    if (!shell)
+      return
     this.send({
-      type: 'shell_write_result',
-      commandId,
-      output: progressToOutput(progress)
+      type: 'shell_output',
+      shellId: shell.shellId,
+      commandId: shell.commandId,
+      status: shell.status,
     })
   }
 

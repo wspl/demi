@@ -548,6 +548,54 @@ test(
 )
 
 test(
+  'AgentServer stops a running command on shell_abort and tells its final status',
+  async () => {
+    const { client } = createAgentClientHarness({
+      shell: {
+        initialEnv: { PATH: process.env.PATH ?? '' },
+        shellIdFactory: () => 'agent-abort-shell',
+        commandIdFactory: () => 'agent-abort-command',
+      },
+      providerTurns: [
+        [
+          events.toolCall('tool-1', 'shell_exec', {
+            script: 'sleep 30',
+            timeoutMs: 1,
+          }),
+        ],
+        [events.text('waiting'), events.response()],
+      ],
+    })
+    const seen: ClientSessionEvent[] = []
+    client.subscribe((event) => seen.push(event))
+
+    await client.open(providerConfig([
+        [
+          events.toolCall('tool-1', 'shell_exec', {
+            script: 'sleep 30',
+            timeoutMs: 1,
+          }),
+        ],
+        [events.text('waiting'), events.response()],
+      ]),
+      process.cwd(),
+      globalThis.crypto.randomUUID(),
+    )
+    await client.send([{ type: 'text', text: 'start process' }])
+    await waitFor(
+      () => client.transcript()
+        .blocks.some((block) => block.type === 'response')
+    )
+
+    seen.length = 0
+    client.shellAbort('agent-abort-command')
+    await waitFor(() => seen.some((event) => event.type === 'shell_output'
+      && event.commandId === 'agent-abort-command'
+      && event.status.status === 'aborted'))
+  }
+)
+
+test(
   'AgentClient.shellWrite waits for shell_write_result and rejects when no session is open',
   async () => {
     const unopened = createAgentClientHarness({ providerTurns: [] })

@@ -1,22 +1,26 @@
 import type { UserContentBlock } from '@demicodes/core'
-import { fileExtensionSupport, sniffModelMediaType } from '@demicodes/core'
+import { ATTACHMENT_SNIPPET_MAX_CHARS, attachmentSnippet, isTextAttachment, sniffModelMediaType } from '@demicodes/core'
 import { delay } from '@demicodes/utils'
 import { t } from '../../infra/i18n'
 
-export type AttachmentDestination = 'message' | 'workspace'
 /** An upload that fails leaves the composer with a toast; there is no failed phase to show. */
-export type AttachmentPhase = 'staged' | 'uploading' | 'ready'
+export type AttachmentPhase = 'uploading' | 'ready'
 
-/** A local file: one phase, and whether it goes to the model or the working directory. */
+/**
+ * A local file on its way to the message. Every file reaches the host's
+ * working directory on send and the message names its path; media the model
+ * reads natively also rides inline (`product.md` § Attachments).
+ */
 export interface ComposerFileAttachment {
   kind: 'file'
   id: string
   name: string
   src?: string
-  destination: AttachmentDestination
   phase: AttachmentPhase
   /** 0–1 while `phase` is `uploading`. */
   progress?: number
+  /** The opening of a text file, for the tile that shows it as a page. */
+  snippet?: string
 }
 
 /** A host path. The tile is the same; the tooltip is `host · filename`. */
@@ -59,6 +63,60 @@ export interface AttachmentUploadUpdate {
 }
 
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
+
+/**
+ * A paste this long is a file, not typing: it lands in the composer as
+ * `pasted-text.txt`, keeping the draft readable and the text intact.
+ */
+export const PASTE_AS_FILE_MIN_CHARS = 2000
+export const PASTE_AS_FILE_MIN_LINES = 40
+const PASTED_TEXT_BASENAME = 'pasted-text'
+
+export function pastedTextIsLong(text: string): boolean {
+  if (text.length >= PASTE_AS_FILE_MIN_CHARS) {
+    return true
+  }
+  let lines = 1
+  for (const char of text) {
+    if (char === '\n') {
+      lines += 1
+      if (lines >= PASTE_AS_FILE_MIN_LINES) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+/** The file a long paste becomes; its name steps past the ones already attached. */
+export function pastedTextFile(text: string, existingNames: Iterable<string>): File {
+  const taken = new Set(existingNames)
+  let name = `${PASTED_TEXT_BASENAME}.txt`
+  for (let index = 2; taken.has(name); index += 1) {
+    name = `${PASTED_TEXT_BASENAME}-${index}.txt`
+  }
+  return new File([text], name, { type: 'text/plain' })
+}
+
+/** The opening of a text file, by the same rule the transcript's attachment record uses. */
+export async function readTextSnippet(file: File): Promise<string | null> {
+  if (!isTextAttachment(file.name, file.type)) {
+    return null
+  }
+  const head = await file.slice(0, ATTACHMENT_SNIPPET_MAX_CHARS * 4).text()
+  return attachmentSnippet(head)
+}
+
+/** Fills `snippet` on a text attachment once the file's opening has been read. */
+export async function attachTextSnippet(
+  item: ComposerFileAttachment,
+  file: File,
+): Promise<void> {
+  const snippet = await readTextSnippet(file)
+  if (snippet) {
+    item.snippet = snippet
+  }
+}
 export const PROTOTYPE_UPLOAD_MS = 1400
 
 export function clampUnit(value: number): number {
@@ -92,15 +150,6 @@ export function applyAttachmentUpdate(
     update.phase === 'uploading' ? clampUnit(update.progress ?? 0) : undefined
 }
 
-export function attachmentDestination(
-  file: File,
-  acceptedExtensions: readonly string[] | null,
-): AttachmentDestination {
-  return fileMatchesAcceptedExtensions(file, acceptedExtensions)
-    ? 'message'
-    : 'workspace'
-}
-
 export function composerRemoteAttachment(
   input: ComposerRemoteInput,
 ): ComposerRemoteAttachment {
@@ -131,22 +180,18 @@ export function composerAttachment(
     id: input.id ?? crypto.randomUUID(),
     name: input.name,
     src: input.src,
-    destination: input.destination ?? 'workspace',
     phase: input.phase ?? 'ready',
     progress: input.progress,
+    snippet: input.snippet,
   }
 }
 
-export function composerAttachmentFromFile(
-  file: File,
-  acceptedExtensions: readonly string[] | null,
-): ComposerFileAttachment {
+export function composerAttachmentFromFile(file: File): ComposerFileAttachment {
   return {
     kind: 'file',
     id: crypto.randomUUID(),
     name: file.name,
     src: filePreviewUrl(file),
-    destination: attachmentDestination(file, acceptedExtensions),
     phase: 'uploading',
     progress: 0,
   }
@@ -165,24 +210,18 @@ export function attachmentFileError(
 }
 
 export function attachmentsReady(items: readonly ComposerAttachment[]): boolean {
-  return items.every((item) => item.kind === 'reference' || item.phase === 'ready' || item.phase === 'staged')
+  return items.every((item) => item.kind === 'reference' || item.phase === 'ready')
 }
 
+/** The tile's tooltip: a host file by host and path, an upload by its progress, a file by name. */
 export function attachmentCaption(item: ComposerAttachment): string {
-  if (item.kind === 'file' && item.phase === 'staged') {
-    return `Uploads when you send · ${item.name}`
-  }
   if (item.kind === 'reference') {
     return `${item.host} · ${item.path}`
   }
   if (item.phase === 'uploading') {
     return `${t('agent.input.attachmentUploading')} ${Math.round(attachmentProgress(item) * 100)}% · ${item.name}`
   }
-  const destination =
-    item.destination === 'message'
-      ? t('agent.input.attachmentMessage')
-      : t('agent.input.attachmentWorkspace')
-  return `${destination} · ${item.name}`
+  return item.name
 }
 
 export function encodeRemoteReference(host: string, path: string): string {
@@ -219,11 +258,13 @@ export function decodeRemoteReference(reference: string): {
 
 export function contentBlockCaption(block: UserContentBlock): string | undefined {
   if (block.type === 'image') {
-    const name = imageNameFromSource(block.source)
-    return `${t('agent.input.attachmentMessage')} · ${name}`
+    return imageNameFromSource(block.source)
   }
   if (block.type === 'document') {
-    return `${t('agent.input.attachmentMessage')} · ${block.source.fileName}`
+    return block.source.fileName
+  }
+  if (block.type === 'attachment') {
+    return `${block.name} · ${block.path}`
   }
   if (block.type === 'reference') {
     const { host, path } = decodeRemoteReference(block.reference)
@@ -445,48 +486,6 @@ export async function fileToUserContent(
       fileName: file.name,
     },
   }
-}
-
-export function fileMatchesAcceptedExtensions(
-  file: File,
-  acceptedExtensions: readonly string[] | null,
-): boolean {
-  const ext = file.name.split('.').pop()?.toLowerCase()
-  if (!ext) {
-    return false
-  }
-  return fileExtensionSupport(acceptedExtensions, ext) === true
-}
-
-/** Splits a drop or paste into the files the model accepts and the ones it does not. */
-export function partitionAcceptedFiles(
-  files: readonly File[],
-  acceptedExtensions: readonly string[] | null,
-): {
-  accepted: File[]
-  rejected: File[]
-} {
-  const accepted: File[] = []
-  const rejected: File[] = []
-  for (const file of files) {
-    ;(fileMatchesAcceptedExtensions(file, acceptedExtensions)
-      ? accepted
-      : rejected
-    ).push(file)
-  }
-  return {
-    accepted,
-    rejected,
-  }
-}
-
-export function acceptAttribute(
-  acceptedExtensions: readonly string[] | null,
-): string | undefined {
-  if (acceptedExtensions === null || acceptedExtensions.length === 0) {
-    return undefined
-  }
-  return acceptedExtensions.map((ext) => `.${ext}`).join(',')
 }
 
 export function filePreviewUrl(file: File): string | undefined {

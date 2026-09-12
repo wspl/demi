@@ -417,7 +417,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                         ><IconButton
                           size="sm"
                           :icon="TextCursorInput"
-                          aria-label="Rename provider"
+                          aria-label="Rename"
                           @click="beginRename"
                       /></Tooltip>
                     </template>
@@ -497,12 +497,12 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     @click="emit('activateAccount', selected, account.id)"
                     >Activate</Button
                   >
-                  <Tooltip content="Remove account"
+                  <Tooltip content="Remove"
                     ><IconButton
                       size="sm"
                       :icon="Trash2"
                       variant="danger"
-                      aria-label="Remove account"
+                      aria-label="Remove"
                       :loading="
                         accountPending(selected.id, account.id, 'remove')
                       "
@@ -643,7 +643,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   >
                   <Tag v-if="selected.stale" tone="warning">Stale</Tag>
                   <span v-if="selected.kind === 'subscription'" class="ml-auto"
-                    ><Tooltip content="Refresh the list"
+                    ><Tooltip content="Refresh"
                       ><IconButton
                         size="sm"
                         :icon="RefreshCw"
@@ -653,7 +653,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                           selected.configured === false ||
                           refreshing === selected.id
                         "
-                        aria-label="Refresh models"
+                        aria-label="Refresh"
                         @click="emit('refresh', selected)" /></Tooltip
                   ></span>
                   <Segmented
@@ -696,7 +696,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     :disabled="!!operations?.[selected.id]"
                     @click="openModel('create', null)"
                 /></Tooltip>
-                <Tooltip v-else content="Refresh the catalog"
+                <Tooltip v-else content="Refresh"
                   ><IconButton
                     size="sm"
                     :icon="RefreshCw"
@@ -706,7 +706,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       selected.configured === false ||
                       refreshing === selected.id
                     "
-                    aria-label="Refresh models"
+                    aria-label="Refresh"
                     @click="emit('refresh', selected)"
                 /></Tooltip>
               </div>
@@ -762,7 +762,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       ><IconButton
                         size="sm"
                         :icon="SlidersHorizontal"
-                        aria-label="Edit model"
+                        aria-label="Edit"
                         :disabled="!!operations?.[selected.id]"
                         @click="openModel('edit', m)"
                     /></Tooltip>
@@ -771,7 +771,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                         size="sm"
                         :icon="Trash2"
                         variant="danger"
-                        aria-label="Remove model"
+                        aria-label="Remove"
                         :disabled="
                           selected.configured !== false &&
                           selected.models.length === 1
@@ -783,7 +783,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     ><IconButton
                       size="sm"
                       :icon="Info"
-                      aria-label="Model details"
+                      aria-label="Details"
                       @click="openModel('view', m)"
                   /></Tooltip>
                   <Switch

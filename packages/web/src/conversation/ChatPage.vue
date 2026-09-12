@@ -20,7 +20,7 @@ const conversation = computed(() =>
 )
 const pageKind = computed(() =>
   !route.params.id && store.listStatus === 'ready'
-    ? 'empty'
+    ? 'none'
     : conversationPageKind(store.listStatus, !!conversation.value),
 )
 watch(
@@ -98,6 +98,8 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @retry="store.start(conversation)"
     @retry-load="store.reloadSession(conversation.id)"
     @abort-subagents="store.abortSubagents(conversation)"
+    @abort-subagent="store.abortSubagent(conversation, $event)"
+    @abort-terminal="store.abortTerminal(conversation, $event)"
     @remove-queued="store.removeQueued(conversation, $event)"
     @send-queued="store.sendQueued(conversation, $event)"
     @remove-pending-steer="store.removePendingSteer(conversation, $event)"

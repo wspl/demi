@@ -2,15 +2,17 @@
 import { Sun, Moon } from '@lucide/vue'
 import { useTheme, toggleTheme } from '../theme/appTheme'
 import IconButton from './IconButton.vue'
+import Tooltip from './Tooltip.vue'
 
 const { theme } = useTheme()
 </script>
 
 <template>
-  <IconButton
-    :icon="theme === 'dark' ? Sun : Moon"
-    :aria-label="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
-    :title="theme === 'dark' ? 'Light mode' : 'Dark mode'"
-    @click="toggleTheme()"
-  />
+  <Tooltip :content="theme === 'dark' ? 'Light theme' : 'Dark theme'">
+    <IconButton
+      :icon="theme === 'dark' ? Sun : Moon"
+      :aria-label="theme === 'dark' ? 'Light theme' : 'Dark theme'"
+      @click="toggleTheme()"
+    />
+  </Tooltip>
 </template>

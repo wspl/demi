@@ -1,3 +1,4 @@
+import { attachmentTag } from '@demicodes/core'
 import {
   isRecord,
   numberOrZero,
@@ -319,11 +320,12 @@ function userContentToParts(
       type: 'text',
       text: block.reference
     })
+    else if (block.type === 'attachment') parts.push({
+      type: 'text',
+      text: attachmentTag(block)
+    })
     else if (block.type === 'document') {
-      parts.push({
-        type: 'text',
-        text: `[document:${block.source.fileName} ${block.source.mediaType}]`
-      })
+      // No document input here; the file is on the host and the message names its path.
     } else if (block.type === 'video') {
       // The chat-completions surface has no video content type (catalog marks
       // video unsupported); degrade defensively instead of mislabeling it as an image.

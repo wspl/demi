@@ -2,7 +2,7 @@
 defineProps<{
   label: string
   values: readonly T[]
-  modelValue: T
+  modelValue?: T
   names?: Partial<Record<T, string>>
 }>()
 

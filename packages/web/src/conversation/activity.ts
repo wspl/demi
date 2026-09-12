@@ -28,12 +28,13 @@ export function applyConversationEvent(
 ): void {
   updateLiveStatus(conversation)
   if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
+    // A stored end (`endedAt`) is final; a stored view of a running command only names it.
     const stored = transcriptTerminals(conversation.blocks)
     for (const terminal of stored) {
       const current = conversation.terminals.find((item) => item.id === terminal.id)
       if (!current) {
         conversation.terminals.push(terminal)
-      } else if (terminal.phase === 'exited') {
+      } else if (terminal.endedAt) {
         Object.assign(current, terminal)
       } else {
         current.name = terminal.name
@@ -80,7 +81,8 @@ export function applyConversationEvent(
     const status = event.status
     const snapshot = {
       id: event.commandId,
-      name: event.shellId,
+      // The transcript names the command by its script; the shell id is the fallback.
+      name: current?.name ?? event.shellId,
       phase:
         status.status === 'running' ? ('running' as const) : ('exited' as const),
       startedAt:

@@ -25,7 +25,7 @@ const emit = defineEmits<{
   <div
     role="button"
     :aria-expanded="!collapsed"
-    class="group/project flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2 pr-1 text-chrome text-fg transition-colors duration-200 ease-out"
+    class="group/project flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2.5 pr-0.5 text-chrome text-fg transition-colors duration-200 ease-out"
     :class="[focused ? 'ring-1 ring-inset ring-line-focus' : '']"
     @click="emit('toggle')"
     @contextmenu.prevent="emit('contextmenu', $event)"
@@ -64,7 +64,7 @@ const emit = defineEmits<{
             :icon="SquarePen"
             size="sm"
             variant="ghost"
-            aria-label="New conversation in project"
+            aria-label="New conversation"
             tabindex="0"
             @keydown.enter.stop.prevent="emit('create')"
             @keydown.space.stop.prevent="emit('create')"

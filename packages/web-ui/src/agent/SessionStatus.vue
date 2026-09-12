@@ -6,9 +6,11 @@ import RegionStatus from '../ui/RegionStatus.vue'
 import { sessionStatusCopy, type SessionStatusKind } from './session-status'
 
 /**
- * The session pane's stand-in for the transcript: loading, failed, empty or
- * missing. It is the shared `RegionStatus` pane over the session copy table,
- * filling the pane it replaces.
+ * The session pane's stand-in for the transcript: loading, failed, empty,
+ * missing, or no conversation open. It is the shared `RegionStatus` pane over
+ * the session copy table, filling the pane it replaces. Only the kinds with
+ * nothing under them act: a failure retries, a missing or absent conversation
+ * offers to start one. An empty conversation leaves that to its composer.
  */
 const props = defineProps<{
   kind: SessionStatusKind
@@ -46,7 +48,7 @@ function act(): void {
     class="h-full min-h-0 flex-1"
     :busy="kind === 'loading'"
     :failed="kind === 'failed'"
-    :icon="kind === 'empty' ? MessageSquareDashed : kind === 'missing' ? MessageSquareOff : undefined"
+    :icon="kind === 'empty' || kind === 'none' ? MessageSquareDashed : kind === 'missing' ? MessageSquareOff : undefined"
     :label="copy.label"
     :detail="kind === 'failed' ? detail : null"
     :action="actionLabel"

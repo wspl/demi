@@ -53,13 +53,16 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
   (target) => {
     test('a stream past the view budget', async () => {
       const driver = await world.conversation(target)
-      await driver.upload('big.txt', new TextEncoder().encode(BIG_TEXT))
+      const big = await driver.upload('big.txt', new TextEncoder().encode(BIG_TEXT))
       expect(BIG_TEXT.length).toBeGreaterThan(3 * JOB_VIEW_BYTES)
 
-      const turn = await driver.turn({ model: [
-          model.shell('t1', 'cat big.txt'),
+      const turn = await driver.turn({
+        content: [{ type: 'text', text: 'go' }, big],
+        model: [
+          model.shell('t1', `cat ${driver.attachmentPath('big.txt')}`),
           model.say('seen')
-        ] })
+        ]
+      })
       const received = turn.received[0]!
       expect(received).toContain('exitCode: 0')
       expect(received).toContain(`stdoutBytes: ${BIG_TEXT.length}`)
@@ -81,11 +84,14 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
 
     test('a binary final stream', async () => {
       const driver = await world.conversation(target)
-      await driver.upload('image.png', PNG_BYTES)
-      const turn = await driver.turn({ model: [
-          model.shell('t1', 'cat image.png'),
+      const image = await driver.upload('image.png', PNG_BYTES)
+      const turn = await driver.turn({
+        content: [{ type: 'text', text: 'go' }, image],
+        model: [
+          model.shell('t1', `cat ${driver.attachmentPath('image.png')}`),
           model.say('seen')
-        ] })
+        ]
+      })
       const received = turn.received[0]!
       expect(received).toContain('exitCode: 0')
       expect(received).toContain(

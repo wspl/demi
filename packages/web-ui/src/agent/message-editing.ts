@@ -9,7 +9,7 @@ import type { MessageListBlock } from './pending-steers'
 export { EditRejectedError } from '@demicodes/agent/client'
 
 /** Displayed media may be an authenticated blob reference supplied by the host. */
-export type MessageEditContent = Extract<UserContentBlock, { type: 'text' | 'reference' }> | {
+export type MessageEditContent = Extract<UserContentBlock, { type: 'text' | 'reference' | 'attachment' }> | {
   [Kind in 'image' | 'video' | 'document']: {
     type: Kind
     source: Extract<UserContentBlock, { type: Kind }>['source'] | BlobReferenceSource

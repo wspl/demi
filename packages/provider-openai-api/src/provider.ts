@@ -1,3 +1,4 @@
+import { attachmentTag } from '@demicodes/core'
 import {
   isAbortError,
   isRecord,
@@ -370,6 +371,11 @@ export type OpenAIResponseUserContent =
       image_url: string;
       detail?: 'auto' | 'low' | 'high'
     }
+  | {
+      type: 'input_file';
+      filename: string;
+      file_data: string
+    }
 
 export interface OpenAIResponseTool {
   type: 'function'
@@ -695,6 +701,13 @@ export type OpenAIUserContentPart =
         detail?: 'auto' | 'low' | 'high'
       }
     }
+  | {
+      type: 'file';
+      file: {
+        filename: string;
+        file_data: string
+      }
+    }
 
 export interface OpenAIChatTool {
   type: 'function'
@@ -958,10 +971,18 @@ function userContentToOpenAI(
       type: 'text',
       text: block.reference
     })
+    else if (block.type === 'attachment') parts.push({
+      type: 'text',
+      text: attachmentTag(block)
+    })
     else if (block.type === 'document') {
+      // A document is a PDF the model reads natively; the file is also on the host by path.
       parts.push({
-        type: 'text',
-        text: `[document:${block.source.fileName} ${block.source.mediaType}]`
+        type: 'file',
+        file: {
+          filename: block.source.fileName,
+          file_data: `data:${block.source.mediaType};base64,${Buffer.from(block.source.data).toString('base64')}`,
+        },
       })
     } else if (block.source.type === 'url') {
       parts.push({
@@ -1126,10 +1147,14 @@ function userContentToOpenAIResponses(
         type: 'input_text',
         text: block.reference
       }]
+    if (block.type === 'attachment')
+      return [{ type: 'input_text', text: attachmentTag(block) }]
     if (block.type === 'document') {
+      // A document is a PDF the model reads natively; the file is also on the host by path.
       return [{
-        type: 'input_text',
-        text: `[document:${block.source.fileName} ${block.source.mediaType}]`
+        type: 'input_file',
+        filename: block.source.fileName,
+        file_data: `data:${block.source.mediaType};base64,${Buffer.from(block.source.data).toString('base64')}`,
       }]
     }
     if (block.source.type === 'url')

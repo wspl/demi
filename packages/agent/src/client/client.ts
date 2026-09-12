@@ -336,6 +336,20 @@ export class AgentClient {
     this.sendFrame({ type: 'abort_subagents' })
   }
 
+  /** Aborts one live child agent with its subtree; it settles through `subagent closed`. */
+  abortSubagent(subagentId: string): void {
+    this.sendFrame({ type: 'abort_subagent', subagentId })
+  }
+
+  /** Stops one running command; its final status arrives as a `shell_output` event. */
+  shellAbort(commandId: string, options: AgentActionOptions = {}): void {
+    this.sendFrame({
+      type: 'shell_abort',
+      commandId,
+      metadata: options.metadata,
+    })
+  }
+
   shellWrite(
     commandId: string,
     stdin: string,

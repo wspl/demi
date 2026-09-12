@@ -28,7 +28,7 @@ function sampleThinkingEndedAt(index: number): string | null {
         Every specimen is the same component the product mounts.
       </p>
       <p>
-        The header remaps token values so the same session can be judged under each paradigm.
+        The appearance menu remaps token values so the same session can be judged under each paradigm.
         Product still ships one light/dark pair.
       </p>
       <p class="text-fg-muted">
