@@ -87,6 +87,13 @@
         "@demicodes/runner": "workspace:^",
       },
     },
+    "packages/command-protocol": {
+      "name": "@demicodes/command-protocol",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.0.0",
+      },
+    },
     "packages/core": {
       "name": "@demicodes/core",
       "version": "0.24.0",
@@ -365,6 +372,8 @@
     "@demicodes/coding-agent": ["@demicodes/coding-agent@workspace:packages/coding-agent"],
 
     "@demicodes/command-loader": ["@demicodes/command-loader@workspace:packages/command-loader"],
+
+    "@demicodes/command-protocol": ["@demicodes/command-protocol@workspace:packages/command-protocol"],
 
     "@demicodes/core": ["@demicodes/core@workspace:packages/core"],
 
