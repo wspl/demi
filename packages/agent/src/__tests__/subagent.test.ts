@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -70,6 +71,7 @@ async function openHarness(options: {
   const harness: AgentHarness<Record<string, never>> = {
     name: 'subagent-test',
     context: options.context,
+    stateSchema: z.strictObject({}),
     initialState: () => ({}),
     commands: () => [probeCommand()],
     host: (ctx) => {

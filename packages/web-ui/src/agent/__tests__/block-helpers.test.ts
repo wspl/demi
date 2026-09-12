@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import type { Block, ModelSelection } from '@demicodes/core'
+import type { ModelSelection } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/agent/client'
 import { shellTerminalOutputChunks } from '../block-helpers'
 
 test('shell terminal output renders the view chunks', () => {

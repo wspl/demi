@@ -7,6 +7,7 @@ export type { AgentActionOptions } from './client/client'
 export type { AgentMetadata } from './types'
 export {
   createWebSocketClientTransport,
+  createWebSocketTransport,
   createWebSocketServerTransport,
   type JsonWebSocket
 } from './protocol/websocket-transport'
@@ -34,3 +35,7 @@ export {
 } from './protocol/schemas'
 export { isEditableUserMessage } from './transcript/user-message'
 export { applyTranscriptPatches } from './transcript/patch'
+
+export * from './protocol/block-schemas'
+export * from './store/media-contracts'
+export * from './protocol/server-schemas'

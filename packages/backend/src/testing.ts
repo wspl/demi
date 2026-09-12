@@ -205,35 +205,27 @@ export function probeCommand(): Command {
       {
         name: 'hold',
         summary: 'Wait `ms` milliseconds (aborted with the command).',
-        input: { ms: z.coerce.number() },
+        input: { ms: z.number().int().nonnegative() },
         positionals: ['ms'],
         kind: 'rpc',
         run: async ({ parsed, signal }) => {
           const ms = parsed.values.ms as number
-          const held = delay(ms)
-          const aborted = new Promise<'aborted'>(
-            (resolve) => signal.addEventListener(
-              'abort',
-              () => resolve('aborted'),
-              { once: true }
-            )
-          )
-          return (await Promise.race([
-            held.then(() => 'held' as const),
-            aborted
-          ])) === 'aborted' ? { exitCode: 130 } : { exitCode: 0 }
+          await delay(ms, signal)
+          return { exitCode: signal.aborted ? 130 : 0 }
         },
       },
       {
         name: 'stdin',
         summary: 'Print the first line written to the running command (`--delay` waits before printing).',
-        input: { delay: z.coerce.number().optional() },
+        input: { delay: z.number().int().nonnegative().optional() },
         kind: 'rpc',
-        run: async ({ parsed, stdinStream, io }) => {
+        run: async ({ parsed, stdinStream, io, signal }) => {
           for await (const line of utf8Lines(stdinStream)) {
             const wait = parsed.values.delay as number | undefined
             if (wait)
-              await delay(wait)
+              await delay(wait, signal)
+            if (signal.aborted)
+              return { exitCode: 130 }
             await io.stdout(line)
             return { exitCode: 0 }
           }

@@ -1,5 +1,6 @@
 import { isRecord } from '@demicodes/utils'
-import type { Block, TokenUsage } from '@demicodes/core'
+import type { TokenUsage } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/agent/client'
 import { Allow, parse } from 'partial-json'
 import { shouldParsePartialToolInput } from './tool-rendering'
 

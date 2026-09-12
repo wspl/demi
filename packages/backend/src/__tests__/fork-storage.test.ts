@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -32,7 +33,9 @@ async function fixture() {
   const blobs = new UserBlobStores(join(root, 'blobs'), control)
   const stores = new ConversationStores(join(root, 'conversations'), (id) => blobs.forConversation(id))
   const harness = {
-    name: 'fork-test', initialState: () => ({}), restoreState: () => ({}), systemPrompt: () => '',
+    name: 'fork-test',
+    stateSchema: z.strictObject({}),
+    initialState: () => ({}), restoreState: () => ({}), systemPrompt: () => '',
     host: () => { throw new Error('Fork must not construct a Host') },
   }
   const server = new AgentServer({

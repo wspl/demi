@@ -1,4 +1,5 @@
-import type { Block, ModelSelection, TokenUsage, UserContentBlock } from '@demicodes/core'
+import type { ModelSelection, TokenUsage, UserContentBlock } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/web-ui/transport/protocol'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { PendingSteerRenderBlock } from '@demicodes/web-ui/agent/pending-steers'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
@@ -25,6 +26,17 @@ export const demoUsage: TokenUsage = {
 }
 
 export const demoImageUrl = '/fixtures/attachment-thumb.png'
+export const demoBlobRef = '3a67f4226f12c0966bf9c99d94042b7cee181c655d0bd29f7bf659621961ea58'
+
+export const storedImageContent = [{
+  type: 'image' as const,
+  source: { type: 'ref' as const, ref: demoBlobRef, mediaType: 'image/png' },
+}]
+
+export const storedImageTool = toolCall({
+  id: 'stored-image-tool', toolName: 'render_image', input: '{}', status: 'completed',
+  output: [{ type: 'image', source: { ref: demoBlobRef, mediaType: 'image/png' } }],
+})
 
 export const longUserText = [
   'The login test in packages/web/src/auth.test.ts started failing after we renamed the session cookie from sid to session. CI is red on main and on this branch.',

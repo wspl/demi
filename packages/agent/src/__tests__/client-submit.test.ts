@@ -22,6 +22,7 @@ function harness() {
   let receive: (frame: ServerFrame) => void = () => {}
   let closes = 0
   const client = new AgentClient({
+    onError: () => () => {},
     send: (frame) => {
       sent.push(frame)
     },

@@ -644,3 +644,8 @@ Only the node assembly instantiates `AgentSession`.
   a virtual foreground job
 - `packages/coding-agent/src/__tests__/coding-harness.test.ts` — unnamed inherit / `explore`
   profiles and the injected `demi agent` prompt-field help
+
+Harness state on cold restore is validated by `AgentHarness.stateSchema` before
+node assembly invokes commands or other harness hooks. Generic storage validates
+checkpoint fields and stored block shapes; it leaves harness state to that owner.
+A mismatched harness or corrupt checkpoint fails opening without deleting history.

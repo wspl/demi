@@ -1,4 +1,4 @@
-import type { BlobStore } from '@demicodes/agent'
+import { blobKeySchema, type BlobStore } from '@demicodes/agent'
 import { Hono } from 'hono'
 import type { AuthEnv } from '../auth/identity'
 
@@ -28,7 +28,7 @@ export function blobRoutes(
 
   app.get('/:sha256', async (c) => {
     const sha256 = c.req.param('sha256')
-    if (!/^[0-9a-f]{64}$/.test(sha256))
+    if (!blobKeySchema.safeParse(sha256).success)
       return c.json({ code: 'not_found', message: 'No such blob' }, 404)
     const bytes = await options.blobsFor(c.get('user').id).get(sha256)
     if (!bytes)

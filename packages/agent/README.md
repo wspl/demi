@@ -24,6 +24,12 @@ const client = server.client()
 await client.open(selection, cwd, sessionId)
 ```
 
+`AgentHarness.stateSchema` validates durable harness state before restored hooks run.
+Serialized transports validate both frame directions and report failures through
+`onError`; `AgentClient` disconnects and rejects outstanding waits on transport
+failure. Stored and displayed transcript media use explicit reference types.
+See [Data Contracts](../../docs/data-contracts.md) for ownership and failure policies.
+
 `sessionId` is caller-owned and required so a conversation is never silently
 un-resumable.
 

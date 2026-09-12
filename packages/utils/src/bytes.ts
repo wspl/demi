@@ -148,6 +148,12 @@ export function base64ToBytes(base64: string): Uint8Array {
     const second = base64Value(clean[index + 1])
     const third = clean[index + 2] === '=' ? 0 : base64Value(clean[index + 2])
     const fourth = clean[index + 3] === '=' ? 0 : base64Value(clean[index + 3])
+    if (clean[index + 2] === '=' && (index !== clean.length - 4
+      || clean[index + 3] !== '=' || (second & 15) !== 0)) {
+      throw new Error('Invalid base64 padding')
+    }
+    if (clean[index + 3] === '=' && (index !== clean.length - 4 || (third & 3) !== 0))
+      throw new Error('Invalid base64 padding')
     const triple = (first << 18) | (second << 12) | (third << 6) | fourth
 
     if (offset < bytes.byteLength)

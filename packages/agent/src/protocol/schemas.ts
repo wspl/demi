@@ -6,19 +6,15 @@
 // annotation for static assignability; negative fixtures verify runtime constraints.
 import { z } from 'zod'
 import type {
-  DocumentSource,
-  ImageSource,
   Model,
   ModelSelection,
   PendingSteer,
   ThinkingCapability,
   ThinkingConfig,
-  UserContentBlock,
-  VideoSource,
 } from '@demicodes/core'
 import { FILE_EXTENSIONS } from '@demicodes/core'
 import type { ProviderSelection } from '@demicodes/provider'
-import type { PortableJsonValue } from '@demicodes/utils'
+import { base64ToBytes, type PortableJsonValue } from '@demicodes/utils'
 import type { AgentMetadata, ModelSwitchApply } from '../types'
 
 // ── shared-type validators ──────────────────────────────────────────
@@ -68,9 +64,9 @@ export const thinkingConfigSchema: z.ZodType<ThinkingConfig> = z.discriminatedUn
 const modelSchema: z.ZodType<Model> = z.object({
   id: z.string(),
   name: z.string(),
-  contextWindow: z.number(),
+  contextWindow: z.number().int().positive(),
   outputLimit: z.number().int().positive().nullable(),
-  inputLimit: z.number().nullable(),
+  inputLimit: z.number().int().positive().nullable(),
   thinking: z.array(thinkingCapabilitySchema),
   acceptedExtensions: z.array(fileExtensionSchema).nullable(),
 })
@@ -87,37 +83,30 @@ const providerSelectionSchema: z.ZodType<ProviderSelection> = z.object({
   model: modelSelectionSchema,
 })
 
-const imageSourceSchema: z.ZodType<ImageSource> = z.union([
-  z.object({
-    type: z.literal('binary'),
-    data: z.instanceof(Uint8Array),
-    mediaType: z.string()
-  }),
-  z.object({ type: z.literal('url'), url: z.string() }),
-])
+export const bytesSchema: z.ZodType<Uint8Array> = z.instanceof(Uint8Array)
 
-const videoSourceSchema: z.ZodType<VideoSource> = z.union([
-  z.object({
-    type: z.literal('binary'),
-    data: z.instanceof(Uint8Array),
-    mediaType: z.string()
-  }),
-  z.object({ type: z.literal('url'), url: z.string() }),
-])
-
-const documentSourceSchema: z.ZodType<DocumentSource> = z.object({
-  data: z.instanceof(Uint8Array),
+export const binarySourceSchema = z.strictObject({
+  type: z.literal('binary'),
+  data: bytesSchema,
   mediaType: z.string(),
-  fileName: z.string(),
+})
+export const urlSourceSchema = z.strictObject({ type: z.literal('url'), url: z.string() })
+export const mediaSourceSchema = z.union([binarySourceSchema, urlSourceSchema])
+export const documentSourceSchema = z.strictObject({
+  data: bytesSchema,
+  mediaType: z.string(),
+  fileName: z.string().min(1),
 })
 
-export const userContentBlockSchema: z.ZodType<UserContentBlock> = z.discriminatedUnion(
-  'type',
-  [
+export function createUserContentSchema<M extends z.ZodType, D extends z.ZodType>(
+  media: M,
+  document: D,
+) {
+  return z.discriminatedUnion('type', [
     z.object({ type: z.literal('text'), text: z.string() }),
-    z.object({ type: z.literal('image'), source: imageSourceSchema }),
-    z.object({ type: z.literal('video'), source: videoSourceSchema }),
-    z.object({ type: z.literal('document'), source: documentSourceSchema }),
+    z.object({ type: z.literal('image'), source: media }),
+    z.object({ type: z.literal('video'), source: media }),
+    z.object({ type: z.literal('document'), source: document }),
     z.object({ type: z.literal('reference'), reference: z.string() }),
     z.object({
       type: z.literal('attachment'),
@@ -128,8 +117,34 @@ export const userContentBlockSchema: z.ZodType<UserContentBlock> = z.discriminat
       sha256: z.string().min(1),
       snippet: z.string().optional(),
     }),
-  ]
+  ])
+}
+
+export const userContentBlockSchema = createUserContentSchema(
+  mediaSourceSchema,
+  documentSourceSchema,
 )
+
+export function createToolContentSchema<S extends z.ZodType>(source: S) {
+  return z.discriminatedUnion('type', [
+    z.object({ type: z.literal('text'), text: z.string() }),
+    z.object({ type: z.literal('image'), source }),
+    z.object({ type: z.literal('video'), source }),
+  ])
+}
+
+export const base64SourceSchema = z.strictObject({
+  mediaType: z.string(),
+  data: z.string().refine((value) => {
+    try {
+      base64ToBytes(value)
+      return true
+    } catch {
+      return false
+    }
+  }, 'Invalid base64 media'),
+})
+export const toolResultContentBlockSchema = createToolContentSchema(base64SourceSchema)
 
 export const transcriptVersionSchema = z.object({
   epoch: z.string().min(1),
@@ -151,6 +166,11 @@ export const editReceiptSchema = z.object({
   digest: z.string().regex(/^[a-f0-9]{64}$/),
   turnId: z.string().min(1),
 })
+
+export const editReceiptsSchema = z.array(editReceiptSchema).refine(
+  (items) => new Set(items.map((item) => item.operationId)).size === items.length,
+  'Duplicate accepted edit operation IDs',
+)
 
 export const editResultSchema = z.discriminatedUnion('status', [
   z.object({
@@ -198,7 +218,7 @@ export const portableJsonValueSchema: z.ZodType<PortableJsonValue> = z.lazy(() =
   ]),
 )
 
-const metadataSchema: z.ZodType<AgentMetadata> = z.record(
+export const metadataSchema: z.ZodType<AgentMetadata> = z.record(
   z.string(),
   portableJsonValueSchema
 )
@@ -275,3 +295,10 @@ export const clientFrameSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('sync_transcript') }),
   z.object({ type: z.literal('close') }),
 ])
+
+export const sessionPhaseSchema = z.enum(['idle', 'running', 'compacting'])
+export const queuedMessageSchema = z.object({
+  id: z.string().min(1),
+  text: z.string(),
+  content: z.array(userContentBlockSchema),
+})

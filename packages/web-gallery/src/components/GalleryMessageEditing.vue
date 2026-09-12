@@ -10,7 +10,7 @@ import {
   submitMessageEdit,
   type MessageEditState,
 } from '@demicodes/web-ui/agent/message-editing'
-import type { Block } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/web-ui/transport/protocol'
 import { demoModel } from '../fixtures/blocks'
 
 const session = reactive<ChatSessionState>({

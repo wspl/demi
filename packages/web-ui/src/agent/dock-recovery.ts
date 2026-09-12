@@ -1,4 +1,5 @@
-import type { Block, SessionPhase } from '@demicodes/core'
+import type { SessionPhase } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/agent/client'
 import { getVisibleBlocks } from './visible-blocks'
 
 /**

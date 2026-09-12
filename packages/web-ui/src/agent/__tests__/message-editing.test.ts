@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { deferred } from '@demicodes/utils'
 import { reactive, toRaw } from 'vue'
-import type { Block } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/agent/client'
 import {
   beginMessageEdit,
   changeMessageEditContent,

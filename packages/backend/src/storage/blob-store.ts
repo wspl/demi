@@ -1,49 +1,53 @@
 import { mkdirSync } from 'node:fs'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createId } from '@demicodes/utils'
-import type { BlobStore } from '@demicodes/agent'
+import { createId, isFileNotFoundError } from '@demicodes/utils'
+import { blobKeySchema, type BlobStore } from '@demicodes/agent'
 
-/**
- * The N=1 blob store: content-addressed files under the supplied root.
- * Writes go through a temp file + rename so a crash never leaves a partial
- * blob under its final name; an existing blob short-circuits (content
- * addressing makes puts idempotent).
- */
+/** Content-addressed files, atomically replaced and checked on read. */
 export class DirBlobStore implements BlobStore {
   constructor(private readonly root: string) {
     mkdirSync(root, { recursive: true })
   }
 
   async put(data: Uint8Array): Promise<string> {
-    const hasher = new Bun.CryptoHasher('sha256')
-    hasher.update(data)
-    const sha256 = hasher.digest('hex')
+    const sha256 = digest(data)
     const path = join(this.root, sha256)
-    if (await Bun.file(path).exists())
+    try {
+      if (!(await stat(path)).isFile()) throw new Error('Corrupt blob storage entry')
       return sha256
+    } catch (error) {
+      if (!isFileNotFoundError(error)) throw error
+    }
     await mkdir(this.root, { recursive: true })
     const temp = join(this.root, `.tmp-${createId()}`)
-    await writeFile(temp, data)
     try {
+      await writeFile(temp, data)
       await rename(temp, path)
     } catch (error) {
-      await rm(temp, { force: true })
-      if (!(await Bun.file(path).exists()))
-        throw error
+      try {
+        await rm(temp, { force: true })
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], 'Blob write and cleanup failed')
+      }
+      throw error
     }
     return sha256
   }
 
-  async get(sha256: string): Promise<Uint8Array | null> {
-    if (!/^[0-9a-f]{64}$/.test(sha256))
-      return null
+  async get(key: string): Promise<Uint8Array | null> {
+    const sha256 = blobKeySchema.parse(key)
     try {
-      return new Uint8Array(await readFile(join(this.root, sha256)))
+      const bytes = new Uint8Array(await readFile(join(this.root, sha256)))
+      if (digest(bytes) !== sha256) throw new Error('Corrupt blob content digest')
+      return bytes
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-        return null
+      if (isFileNotFoundError(error)) return null
       throw error
     }
   }
+}
+
+function digest(bytes: Uint8Array): string {
+  return new Bun.CryptoHasher('sha256').update(bytes).digest('hex')
 }

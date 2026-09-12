@@ -75,7 +75,7 @@ const DATE_MARKER = '__demiDate'
  * string. Decode with `parsePortableJson`.
  */
 export function stringifyPortableJson(value: unknown, space?: number): string {
-  return JSON.stringify(
+  const encoded = JSON.stringify(
     value,
     function (this: unknown, key, nested) {
       // toJSON (Date, Node byte arrays) runs before the replacer, so these
@@ -87,6 +87,9 @@ export function stringifyPortableJson(value: unknown, space?: number): string {
         .some((marker) => marker in original)) {
         throw new Error('Portable JSON marker keys are reserved')
       }
+      if (typeof original === 'function' || typeof original === 'symbol'
+        || (Array.isArray(this) && original === undefined))
+        throw new Error('Unsupported portable JSON value')
       if (typeof nested === 'number' && !Number.isFinite(nested))
         throw new Error('Portable JSON numbers must be finite')
       if (original instanceof Date) {
@@ -103,6 +106,11 @@ export function stringifyPortableJson(value: unknown, space?: number): string {
             : (nested as Uint8Array)),
         }
       }
+      if (isRecord(original) && (
+        ![Object.prototype, null].includes(Object.getPrototypeOf(original))
+        || typeof original.toJSON === 'function'
+      ))
+        throw new Error('Unsupported portable JSON object')
       if (typeof nested === 'bigint') {
         return {
           [BIGINT_MARKER]: true,
@@ -113,40 +121,49 @@ export function stringifyPortableJson(value: unknown, space?: number): string {
     },
     space,
   )
+  if (encoded === undefined)
+    throw new Error('Unsupported portable JSON root value')
+  return encoded
 }
 
 /**
  * Parses JSON produced by `stringifyPortableJson`, reviving marked
  * `Uint8Array`, `bigint`, and `Date` values.
  */
-export function parsePortableJson<T>(text: string): T {
-  return JSON.parse(text, (_key, nested) => {
-    if (typeof nested === 'number' && !Number.isFinite(nested))
-      throw new Error('Portable JSON numbers must be finite')
-    if (!isRecord(nested))
+export function parsePortableJson(text: string): unknown {
+  try {
+    return JSON.parse(text, (_key, nested) => {
+      if (typeof nested === 'number' && !Number.isFinite(nested))
+        throw new Error('Portable JSON numbers must be finite')
+      if (!isRecord(nested))
+        return nested
+      if (BINARY_MARKER in nested) {
+        const encoded = markerPayload(nested, BINARY_MARKER, 'base64')
+        const bytes = base64ToBytes(encoded)
+        if (bytesToBase64(bytes) !== encoded)
+          throw new Error('Invalid portable JSON binary marker')
+        return bytes
+      }
+      if (BIGINT_MARKER in nested) {
+        const encoded = markerPayload(nested, BIGINT_MARKER, 'value')
+        if (!/^(?:0|-?[1-9][0-9]*)$/.test(encoded))
+          throw new Error('Invalid portable JSON bigint marker')
+        return BigInt(encoded)
+      }
+      if (DATE_MARKER in nested) {
+        const encoded = markerPayload(nested, DATE_MARKER, 'iso')
+        const date = new Date(encoded)
+        if (!Number.isFinite(date.getTime()) || date.toISOString() !== encoded)
+          throw new Error('Invalid portable JSON date marker')
+        return date
+      }
       return nested
-    if (BINARY_MARKER in nested) {
-      const encoded = markerPayload(nested, BINARY_MARKER, 'base64')
-      const bytes = base64ToBytes(encoded)
-      if (bytesToBase64(bytes) !== encoded)
-        throw new Error('Invalid portable JSON binary marker')
-      return bytes
-    }
-    if (BIGINT_MARKER in nested) {
-      const encoded = markerPayload(nested, BIGINT_MARKER, 'value')
-      if (!/^(?:0|-?[1-9][0-9]*)$/.test(encoded))
-        throw new Error('Invalid portable JSON bigint marker')
-      return BigInt(encoded)
-    }
-    if (DATE_MARKER in nested) {
-      const encoded = markerPayload(nested, DATE_MARKER, 'iso')
-      const date = new Date(encoded)
-      if (!Number.isFinite(date.getTime()) || date.toISOString() !== encoded)
-        throw new Error('Invalid portable JSON date marker')
-      return date
-    }
-    return nested
-  }) as T
+    })
+  } catch (error) {
+    if (error instanceof SyntaxError)
+      throw new Error('Invalid portable JSON syntax')
+    throw error
+  }
 }
 
 /** Marker keys are reserved; malformed marked objects cannot become user data. */

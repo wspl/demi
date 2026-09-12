@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { memoryAgentStores } from '../testing'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -261,6 +262,7 @@ test(
     const server = new AgentServer({ store: memoryAgentStores(),
       agent: {
         name: 'preview',
+        stateSchema: z.strictObject({}),
         initialState: () => ({}),
         host: () => host,
         systemPrompt: () => 'test'

@@ -1,4 +1,7 @@
+import type { Block } from '@demicodes/core'
 import type { ClientFrame, ServerFrame } from './frames'
+import { AgentTransportError, FrameChannel } from './frame-channel'
+export { AgentTransportError } from './frame-channel'
 
 export interface AgentTransport<SendFrame, ReceiveFrame> {
   send(frame: SendFrame): void
@@ -7,10 +10,11 @@ export interface AgentTransport<SendFrame, ReceiveFrame> {
    * handling finishes.
    */
   onFrame(handler: (frame: ReceiveFrame) => void | Promise<void>): () => void
+  onError(handler: (error: AgentTransportError) => void): () => void
   close(): void
 }
 
-export type AgentClientTransport = AgentTransport<ClientFrame, ServerFrame>
+export type AgentClientTransport<B extends Block<unknown, unknown> = Block> = AgentTransport<ClientFrame, ServerFrame<B>>
 export type AgentServerTransport = AgentTransport<ServerFrame, ClientFrame>
 
 export interface InProcessTransportPair {
@@ -29,7 +33,7 @@ export function createInProcessTransportPair(): InProcessTransportPair {
 class InProcessEndpoint<SendFrame, ReceiveFrame>
   implements AgentTransport<SendFrame, ReceiveFrame> {
   private peer: InProcessEndpoint<ReceiveFrame, SendFrame> | null = null
-  private readonly handlers = new Set<(frame: ReceiveFrame) => void>()
+  private readonly channel = new FrameChannel<ReceiveFrame>()
   private closed = false
 
   connect(peer: InProcessEndpoint<ReceiveFrame, SendFrame>): void {
@@ -45,22 +49,24 @@ class InProcessEndpoint<SendFrame, ReceiveFrame>
   }
 
   onFrame(handler: (frame: ReceiveFrame) => void | Promise<void>): () => void {
-    this.handlers.add(handler)
-    return () => {
-      this.handlers.delete(handler)
-    }
+    return this.channel.onFrame(handler)
+  }
+
+  onError(handler: (error: AgentTransportError) => void): () => void {
+    return this.channel.onError(handler)
   }
 
   close(): void {
+    if (this.closed)
+      return
     this.closed = true
-    this.handlers.clear()
+    this.channel.close()
+    this.peer?.channel.report(new AgentTransportError('closed', 'Agent transport closed'))
+    this.peer = null
   }
 
   private receive(frame: ReceiveFrame): void {
-    if (this.closed)
-      return
-    queueMicrotask(() => {
-      for (const handler of this.handlers) handler(frame)
-    })
+    if (!this.closed)
+      void this.channel.receive(frame)
   }
 }

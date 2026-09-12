@@ -1,4 +1,4 @@
-import type { Block } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/agent/client'
 import type { ConversationStatus } from './conversation-status'
 
 export type SubagentPhase = 'running' | 'completed' | 'aborted' | 'error'

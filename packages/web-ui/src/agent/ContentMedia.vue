@@ -1,22 +1,12 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type {
-  Base64ImageSource,
-  DocumentSource,
-  ImageSource,
-  VideoSource,
-} from '@demicodes/core'
+import { base64ToBytes } from '@demicodes/utils'
 import AttachmentTile from './AttachmentTile.vue'
-import type { BlobReferenceSource } from './media-source'
+import type { DisplayedMediaSource } from './media-source'
 
 const props = defineProps<{
   kind: 'image' | 'video' | 'document'
-  source:
-    | ImageSource
-    | VideoSource
-    | DocumentSource
-    | BlobReferenceSource
-    | Base64ImageSource
+  source: DisplayedMediaSource
   name: string
   asAttachment?: boolean
   removable?: boolean
@@ -30,16 +20,16 @@ watch(
       src.value = source.url
       return
     }
-    if ('type' in source && source.type === 'ref') {
+    if ('ref' in source) {
       src.value = `/api/blobs/${encodeURIComponent(source.ref)}?type=${encodeURIComponent(source.mediaType)}`
       return
     }
     const data =
       typeof source.data === 'string'
-        ? Uint8Array.from(atob(source.data), (char) => char.charCodeAt(0))
+        ? base64ToBytes(source.data)
         : source.data
     const url = URL.createObjectURL(
-      new Blob([data as BlobPart], { type: source.mediaType }),
+      new Blob([new Uint8Array(data)], { type: source.mediaType }),
     )
     src.value = url
     cleanup(() => URL.revokeObjectURL(url))

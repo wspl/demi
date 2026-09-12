@@ -1,7 +1,8 @@
+import { sessionPhaseSchema } from '@demicodes/agent'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { parsePortableJson } from '@demicodes/utils'
-import type { Block } from '@demicodes/core'
+import type { StoredBlock } from '@demicodes/agent'
 import type { HostStore } from '@demicodes/shell'
 import type { AgentTreeStore, BlobStore } from '@demicodes/agent'
 import { openSqliteDatabase, type SqlDatabase, type SqlParams } from './database'
@@ -81,7 +82,7 @@ export class ConversationStores {
   /**
    * Cold transcript read of the root node: the raw rows, media left as refs.
    */
-  transcriptBlocks(conversationId: string): Block[] {
+  transcriptBlocks(conversationId: string): StoredBlock[] {
     return readNode(this.db(conversationId), conversationId)?.blocks ?? []
   }
 
@@ -117,7 +118,7 @@ export class ConversationStores {
     ])
     const phase = node
       ? z
-          .object({ phase: z.enum(['idle', 'running', 'compacting']) })
+          .object({ phase: sessionPhaseSchema })
           .parse(parsePortableJson(node.state_json)).phase
       : 'idle'
     const terminal = db.get<{ block_json: string }>(
@@ -131,7 +132,7 @@ export class ConversationStores {
       : null
     return {
       phase,
-      revision: node?.output_revision ?? 0,
+      revision: node ? z.number().int().nonnegative().parse(node.output_revision) : 0,
       last,
     }
   }

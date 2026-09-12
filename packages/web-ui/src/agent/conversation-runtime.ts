@@ -1,7 +1,6 @@
+import type { AgentClient, ClientSessionEvent } from '../transport/protocol'
 import { shallowRef, triggerRef } from 'vue'
 import type {
-  AgentClient,
-  ClientSessionEvent,
   ProviderSelection,
   EditRequest,
   TranscriptVersion,

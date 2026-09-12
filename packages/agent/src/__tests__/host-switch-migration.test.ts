@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { memoryAgentStores } from '../testing'
 import { mkdtemp, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -50,6 +51,7 @@ test(
     let lastTarget: string | null = null
     const harness: AgentHarness<Record<string, never>> = {
       name: 'host-switch-migration-test',
+      stateSchema: z.strictObject({}),
       initialState: () => ({}),
       host: (ctx) => {
         if (!('metadata' in ctx))

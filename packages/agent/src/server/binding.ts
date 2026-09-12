@@ -4,7 +4,6 @@ import { providerRuntime, type ProviderSelection } from '@demicodes/provider'
 import type { AgentSession } from '../session/session'
 import { cloneBlocks } from '../transcript/patch'
 import type { ClientFrame, ServerFrame } from '../protocol/frames'
-import { clientFrameSchema } from '../protocol/schemas'
 import type { AgentServerTransport } from '../protocol/transport'
 import type {
   AgentHarness,
@@ -49,6 +48,7 @@ export class AgentTransportBindingImpl
   private readonly sessions: SessionOwnershipRegistry
   private live: LiveSession | null = null
   private unsubscribeTransport: (() => void) | null = null
+  private unsubscribeError: (() => void) | null = null
   private closed = false
 
   constructor(options: AgentTransportBindingOptions) {
@@ -58,6 +58,13 @@ export class AgentTransportBindingImpl
     this.deps = options.deps
     this.store = options.store
     this.sessions = options.sessions
+    this.unsubscribeError = this.transport.onError((error) => {
+      if (error.code === 'invalid_frame') {
+        this.send({ type: 'error', code: error.code, message: error.message })
+      } else {
+        void this.close()
+      }
+    })
     this.unsubscribeTransport = this.transport.onFrame((frame) => this.handleFrame(frame))
   }
 
@@ -83,6 +90,8 @@ export class AgentTransportBindingImpl
     this.detach()
     this.unsubscribeTransport?.()
     this.unsubscribeTransport = null
+    this.unsubscribeError?.()
+    this.unsubscribeError = null
     this.transport.close()
   }
 
@@ -96,18 +105,6 @@ export class AgentTransportBindingImpl
   }
 
   private async handleFrame(frame: ClientFrame): Promise<void> {
-    // The transport hands over whatever arrived on the wire; this is the
-    // trust boundary, so the frame is validated before anything acts on it.
-    const parsed = clientFrameSchema.safeParse(frame)
-    if (!parsed.success) {
-      const issue = parsed.error.issues[0]
-      this.send({
-        type: 'error',
-        message: `Invalid client frame${issue ? `: ${issue.path.join('.')} ${issue.message}` : ''}`,
-        code: 'invalid_frame',
-      })
-      return
-    }
     try {
       switch (frame.type) {
         case 'open':
@@ -339,7 +336,6 @@ export class AgentTransportBindingImpl
       return
     }
 
-    const provider = await this.createRuntime(frame.provider, agentSessionId)
     const agent = this.agent
     // The tree this root heads: its store, its directory, its frame sink, the harness profiles.
     let live: LiveSession | null = null
@@ -354,6 +350,7 @@ export class AgentTransportBindingImpl
       emit: (serverFrame) => live?.sink(serverFrame),
     }
     const record = createRootRecord(agentSessionId)
+    const provider = await this.createRuntime(frame.provider, agentSessionId)
     const { node, restored } = await assembleNode(this.deps, tree, {
       record,
       cwd: frame.cwd,
@@ -373,6 +370,9 @@ export class AgentTransportBindingImpl
       policy: ROOT_POLICY,
       firstMessage: null,
       onJobsChanged: null,
+    }).catch(async (error: unknown) => {
+      await provider.dispose?.()
+      throw error
     })
     tree.directory.attachRoot(node)
     live = new LiveSession(node, frame.provider.providerId)

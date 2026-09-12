@@ -78,10 +78,10 @@ Test code may depend upward for integration coverage. Production code must not.
 - Layout (directories mirror the package's modules; root keeps entrypoints, `types.ts`, and single-file modules like `tools.ts`):
   - `session/` — the AgentSession state machine and its collaborators (turn loop, steer queue, yield scheduler, recovery, retry policy, compaction, and transactional message editing with durable operation receipts; see `docs/message-editing.md`).
   - `transcript/` — the TranscriptLog mutation journal, snapshot versions, editable-user selection, retained-prefix preparation, suffix replacement, and patch application.
-  - `store/` — the persistence contract's helpers (the completion-message id and which completions a checkpoint carries) and the media blob contract (externalize/rehydrate); realizations live with the products (`@demicodes/backend`) and in `testing.ts`.
+  - `store/` — the persistence contract's helpers (the completion-message id and which completions a checkpoint carries) and the media blob contract (`media-contracts.ts` owns stored/displayed schemas; `media.ts` externalizes/rehydrates); realizations live with the products (`@demicodes/backend`) and in `testing.ts`.
   - `node/` — the session-tree node: the one assembly that builds a root or a subagent (session from the store or fresh, supervisor, command tree, tools), the node's per-Host shell environments with handle ownership checks, and the lifecycle policy applied on restore.
-  - `protocol/` — frame types, the inbound-frame zod schemas (`ClientFrame`'s single source of truth), and the transports (`stdio-transport.ts` backs the `./stdio` entry).
-  - `server/` — the server facade, transport binding (frame dispatch, ingress validation), the root node's transport view (the frame sink), ownership registry, and frame-view mappers.
+  - `protocol/` — schemas for both frame directions and transcript blocks, schema-derived frame types, ordered delivery/error subscriptions, and serialized transports that validate incoming frames (`stdio-transport.ts` backs the `./stdio` entry).
+  - `server/` — the server facade, transport binding (validated frame dispatch and transport error handling), the root node's transport view (the frame sink), ownership registry, and frame-view mappers.
   - `subagent/` — the relationship module: the supervisor (spawn, resume, abort, messages, the close policy and completion delivery over the store), the root-session agent directory, tree formatting, and the declarative `demi agent` command tree behind the `SubagentCommandOps` seam.
   - `client/` — AgentClient.
 

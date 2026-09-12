@@ -298,3 +298,68 @@ exactly the version, a 12-byte IV, a 16-byte GCM authentication tag and cipherte
 with canonical base64 fields. Format, authentication, UTF-8 and JSON failures
 propagate. `backend/vault/providers.ts` validates the decrypted provider config
 using its config schema before returning it. Encryption is not domain validation.
+
+## Agent transport boundaries
+
+`agent/protocol/schemas.ts` and `server-schemas.ts` own the client and server
+frame schemas; frame and patch types derive from them. WebSocket and stdio
+adapters decode portable JSON into unknown data and validate the inbound
+direction. WebSocket frames must be text; stdio uses UTF-8 JSON lines and accepts
+CRLF. A custom WebSocket protocol supplies its own validated decoder. Typed
+in-process transports already receive domain frames and do not parse them again.
+
+`FrameChannel` preserves delivery order across asynchronous handlers and reports
+handler failures through `onError`. Synchronous handlers complete without an
+extra microtask per frame. Malformed serialized input reports `invalid_frame`;
+socket/stream errors and closure have separate transport error codes. The server
+binding replies to invalid client input with an error frame and keeps the
+connection usable. Other transport failures detach the binding. The client
+disconnects on any transport error, rejects outstanding requests and removes
+listeners and timers. Closing a channel releases queued deliveries.
+
+Transcript patch schemas validate integer indices. Patch application checks those
+indices against the current transcript and rejects text appends to other block
+types. A failed patch leaves the existing transcript intact.
+
+## Transcript representations
+
+`core.Block` describes transcript structure independently of its user and tool
+content parameters. Its defaults contain inline model input. `agent/protocol`
+owns the corresponding boundary schemas: common block fields are declared once
+and combined with the content schemas for each representation.
+
+`agent/store/media-contracts.ts` owns stored and displayed content schemas.
+Stored image/video sources contain a blob reference or an existing user URL;
+stored documents require a blob reference and filename. User blob sources carry
+`type: ref`; tool result blob sources carry `ref` and `mediaType`. Stored blocks
+contain no inline media. Displayed blocks accept inline or stored media so the
+shared renderer can display product history and local client transcripts.
+
+`agent/store/media.ts` maps inline blocks into stored blocks and rehydrates stored
+blocks into inline blocks before inference. The storage reader validates stored
+blocks before this mapping. A malformed reference fails validation; a valid
+reference whose blob is missing becomes the documented missing-media text.
+Blob IO errors propagate. No mapper invents a filename for malformed records.
+
+Agent clients, transcript patches and server frames carry an explicit block type.
+Product transcript frames use displayed blocks, while queue, pending-steer and
+transient tool-output frames retain their inline content contracts. The backend
+externalizes transcript media; the browser validates the same displayed contract
+used by the shared renderers. Displayed blocks cannot be passed to model input
+without the explicit rehydration mapping.
+
+## Session storage ownership
+
+`agent/store/session-schema.ts` declares the persisted session fields. Backend
+`storage/tree-store.ts` validates them and each stored block before returning a
+checkpoint. Block indices are contiguous and match `block_count`; invalid node
+flags, metadata and block sequences fail the read. Existing command-state schemas
+validate version/boundary references. Cold summary reads validate the fields they
+consume without rehydrating media.
+
+Harness state remains opaque in the generic store. Each `AgentHarness` supplies
+`stateSchema`, which `agent/node/assemble.ts` parses before passing restored state
+to commands, host resolution or other hooks. The coding harness owns a strict
+empty-object schema. A checkpoint belonging to a different harness is an error;
+opening a connection does not delete it. `restoreState` is the separate editing
+and fork hook that computes state from retained history.

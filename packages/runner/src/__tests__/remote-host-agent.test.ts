@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { memoryAgentStores } from '@demicodes/agent/testing'
 import { mkdtemp } from 'node:fs/promises'
 import { existsSync, readFileSync } from 'node:fs'
@@ -114,6 +115,7 @@ test(
 
     const harness: AgentHarness<Record<string, never>> = {
       name: 'runner-e2e-test',
+      stateSchema: z.strictObject({}),
       initialState: () => ({}),
       host: () => remoteHost,
       systemPrompt: () => 'test',

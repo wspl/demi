@@ -1,3 +1,4 @@
+import type { JsonWebSocket } from './protocol/websocket-transport'
 import { stringifyPortableJson } from '@demicodes/utils'
 import type { Block, QueuedMessage } from '@demicodes/core'
 import { completedChildrenCarriedBy } from './store/tree-store'
@@ -193,4 +194,58 @@ function snapshotOf<State>(
 export function memoryAgentStores(): (rootSessionId: string) => MemoryAgentStore {
   const store = new MemoryAgentStore()
   return () => store
+}
+
+/** In-memory sockets exercise the actual JSON transports without network services. */
+export function createMemoryWebSocketPair(): [MemoryWebSocket, MemoryWebSocket] {
+  const client = new MemoryWebSocket()
+  const server = new MemoryWebSocket()
+  client.peer = server
+  server.peer = client
+  return [client, server]
+}
+
+export class MemoryWebSocket implements JsonWebSocket {
+  peer: MemoryWebSocket | null = null
+  private readonly listeners = new Map<string, Set<(event: { data: unknown }) => void>>()
+  private closed = false
+
+  send(data: string): void {
+    if (this.closed || !this.peer || this.peer.closed)
+      throw new Error('Memory socket is closed')
+    const peer = this.peer
+    queueMicrotask(() => peer.deliver('message', data))
+  }
+
+  addEventListener(type: 'message' | 'error' | 'close', listener: (event: { data: unknown }) => void): void {
+    const listeners = this.listeners.get(type) ?? new Set()
+    listeners.add(listener)
+    this.listeners.set(type, listeners)
+  }
+
+  removeEventListener(type: 'message' | 'error' | 'close', listener: (event: { data: unknown }) => void): void {
+    this.listeners.get(type)?.delete(listener)
+  }
+
+  deliver(type: 'message' | 'error' | 'close', data?: unknown): void {
+    if (this.closed)
+      return
+    for (const listener of [...this.listeners.get(type) ?? []])
+      listener({ data })
+  }
+
+  listenerCount(): number {
+    return [...this.listeners.values()].reduce((total, listeners) => total + listeners.size, 0)
+  }
+
+  close(): void {
+    if (this.closed)
+      return
+    this.closed = true
+    const listeners = [...this.listeners.get('close') ?? []]
+    this.listeners.clear()
+    for (const listener of listeners)
+      listener({ data: undefined })
+    this.peer?.close()
+  }
 }

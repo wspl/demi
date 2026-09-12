@@ -30,6 +30,7 @@ function pending(id: string): PendingSteer {
 function clientHarness() {
   let receive: (frame: ServerFrame) => void = () => {}
   const client = new AgentClient({
+    onError: () => () => {},
     send() {},
     close() {},
     onFrame(handler) {
@@ -95,7 +96,7 @@ test(
 )
 
 test(
-  'AgentClient validates pending data and owns copies of binary attachments',
+  'AgentClient owns copies of pending binary attachments',
   () => {
     const { client, receive } = clientHarness()
     const steer: PendingSteer = {
@@ -126,12 +127,6 @@ test(
         }
       },
     ])
-    expect(
-      () => receive(
-        { type: 'pending_steers', pendingSteers: [{ id: 7 }] } as unknown as ServerFrame
-      )
-    ).toThrow()
-    expect(client.pendingSteers()[0]!.id).toBe('binary')
     receive({ type: 'closed' })
     expect(client.pendingSteers()).toEqual([])
   }

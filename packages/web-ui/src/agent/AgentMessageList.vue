@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useScroll } from '@vueuse/core'
-import type { Block, QueuedMessage, SessionPhase } from '@demicodes/core'
+import type { QueuedMessage, SessionPhase } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/agent/client'
 import { BLOCK_GAP, useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { getVisibleBlocks } from './visible-blocks'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'

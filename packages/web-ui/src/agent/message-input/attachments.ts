@@ -1,3 +1,4 @@
+import type { DisplayedUserContent } from '@demicodes/agent/client'
 import type { UserContentBlock } from '@demicodes/core'
 import { ATTACHMENT_SNIPPET_MAX_CHARS, attachmentSnippet, isTextAttachment, sniffModelMediaType } from '@demicodes/core'
 import { delay } from '@demicodes/utils'
@@ -256,7 +257,7 @@ export function decodeRemoteReference(reference: string): {
   }
 }
 
-export function contentBlockCaption(block: UserContentBlock): string | undefined {
+export function contentBlockCaption(block: DisplayedUserContent): string | undefined {
   if (block.type === 'image') {
     return imageNameFromSource(block.source)
   }
@@ -273,7 +274,7 @@ export function contentBlockCaption(block: UserContentBlock): string | undefined
 }
 
 function imageNameFromSource(
-  source: Extract<UserContentBlock, { type: 'image' }>['source'],
+  source: Extract<DisplayedUserContent, { type: 'image' }>['source'],
 ): string {
   if (source.type === 'url') {
     const leaf = source.url.split('/').pop()

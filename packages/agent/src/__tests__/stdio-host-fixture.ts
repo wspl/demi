@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { memoryAgentStores } from '../testing'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
@@ -27,6 +28,7 @@ server.attachTransport(createStdioServerTransport(process.stdin, process.stdout)
 function createHarness(): AgentHarness<Record<string, never>> {
   return {
     name: 'test',
+    stateSchema: z.strictObject({}),
     initialState: () => ({}),
     host: (ctx) => new LocalHost(ctx.cwd),
     systemPrompt: () => 'system',

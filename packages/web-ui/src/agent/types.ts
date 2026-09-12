@@ -1,4 +1,5 @@
-import type { Block, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
+import type { QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/agent/client'
 import type { PendingAction } from './activity-slot'
 import type { ConversationStatus } from './conversation-status'
 import type { SessionLoad } from './session-status'

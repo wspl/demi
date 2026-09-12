@@ -1,7 +1,7 @@
-/** Backend transcripts display media through authenticated blob references. */
-export interface BlobReferenceSource {
-  type: 'ref'
-  ref: string
-  mediaType: string
-  fileName?: string
-}
+import type { DisplayedUserContent, DisplayedToolContent } from '@demicodes/agent/client'
+
+/** Media accepted by the shared renderer after the host validates its transcript. */
+export type DisplayedMediaSource = Extract<
+  DisplayedUserContent | DisplayedToolContent,
+  { type: 'image' | 'video' | 'document' }
+>['source']

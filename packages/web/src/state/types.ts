@@ -1,4 +1,5 @@
-import type { Block, QueuedMessage, SessionPhase } from '@demicodes/core'
+import type { QueuedMessage, SessionPhase } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/web-ui/transport/protocol'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type {
   SidebarConversation,

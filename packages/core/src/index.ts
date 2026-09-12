@@ -360,17 +360,20 @@ export interface ProviderErrorDiagnostics {
 
 // ── transcript block ────────────────────────────────────────────────
 
-export type Block =
+export type Block<
+  UserContent = UserContentBlock,
+  ToolContent = ToolResultContentBlock,
+> =
   | {
       type: 'user'
       id: string
       turnId: string
       createdAt: string
       model: ModelSelection
-      content: UserContentBlock[]
+      content: UserContent[]
       preamble: string | null
       /** Materialized reference input, present only when different from content. */
-      resolvedContent?: UserContentBlock[]
+      resolvedContent?: UserContent[]
       // When true, this user turn is an internal input (e.g. a yield wakeup): replayed to the
       // model like any user_message, but never rendered to the user. Absent/false for real input.
       hidden?: boolean
@@ -388,7 +391,7 @@ export type Block =
       turnId: string
       createdAt: string
       model: ModelSelection
-      content: UserContentBlock[]
+      content: UserContent[]
       // When true, this steer is an internal input (e.g. a yield wakeup): replayed as user_steer
       // but never rendered. Absent/false for real user steers.
       hidden?: boolean
@@ -426,8 +429,8 @@ export type Block =
       toolName: string
       input: string
       status: ToolCallStatus
-      streamingOutput: ToolResultContentBlock[]
-      output: ToolResultContentBlock[]
+      streamingOutput: ToolContent[]
+      output: ToolContent[]
       /**
        * Bounded UI-facing enhancement data, typed by the tool's owning layer.
        * Never replayed to the model. Must not embed unbounded payloads (full

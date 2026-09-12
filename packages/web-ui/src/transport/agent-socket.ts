@@ -1,9 +1,10 @@
 import {
   AgentClient,
   type ClientFrame,
-  type ServerFrame,
+  createWebSocketTransport,
+  displayedServerFrameSchema,
 } from '@demicodes/agent/client'
-import { parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
+import type { AgentClient as DisplayedAgentClient, ServerFrame } from './protocol'
 
 export function agentSocketUrl(baseUrl: string, cwd: string): string {
   const url = new URL('/agent', baseUrl)
@@ -34,11 +35,11 @@ export interface AgentSocketOptions {
 export function connectAgentClient(
   url: string,
   options: AgentSocketOptions = {},
-): Promise<AgentClient> {
+): Promise<DisplayedAgentClient> {
   return new Promise((resolve, reject) => {
     options.signal?.throwIfAborted()
     const socket = new WebSocket(url)
-    let client: AgentClient | null = null
+    let client: DisplayedAgentClient | null = null
     const cleanup = () => {
       clearTimeout(timeout)
       socket.removeEventListener('open', opened)
@@ -78,36 +79,19 @@ export function connectAgentClient(
     const opened = () => {
       clearTimeout(timeout)
       socket.removeEventListener('open', opened)
-      const listeners = new Set<(event: MessageEvent) => void>()
+      socket.removeEventListener('error', failed)
+      socket.removeEventListener('close', closed)
+      const transport = createWebSocketTransport<ClientFrame, ServerFrame>(socket, {
+        decode: options.decodeFrame ?? displayedServerFrameSchema.parse,
+        encode: options.encodeFrame,
+      })
       client = new AgentClient({
-        send: (frame) => {
-          const encoded = options.encodeFrame ? options.encodeFrame(frame) : frame
-          socket.send(stringifyPortableJson(encoded))
-        },
-        onFrame: (handler) => {
-          const listener = (event: MessageEvent) => {
-            try {
-              const frame = parsePortableJson<ServerFrame>(String(event.data))
-              handler(options.decodeFrame ? options.decodeFrame(frame) : frame)
-            } catch (error) {
-              client?.disconnect(
-                error instanceof Error ? error : new Error(String(error)),
-              )
-            }
-          }
-          listeners.add(listener)
-          socket.addEventListener('message', listener)
-          return () => {
-            listeners.delete(listener)
-            socket.removeEventListener('message', listener)
-          }
-        },
+        send: (frame) => transport.send(frame),
+        onFrame: (handler) => transport.onFrame(handler),
+        onError: (handler) => transport.onError(handler),
         close: () => {
-          for (const listener of listeners) {
-            socket.removeEventListener('message', listener)
-          }
-          listeners.clear()
-          detach()
+          cleanup()
+          transport.close()
         },
       })
       resolve(client)

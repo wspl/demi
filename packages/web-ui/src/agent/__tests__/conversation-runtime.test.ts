@@ -49,6 +49,7 @@ function clientHarness() {
   const sent: ClientFrame[] = []
   let receive: (frame: ServerFrame) => void = () => {}
   const client = new AgentClient({
+      onError: () => () => {},
     send(frame) {
       sent.push(frame)
       if (frame.type === 'open') {

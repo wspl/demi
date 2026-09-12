@@ -119,17 +119,17 @@ export async function assembleNode<State>(
   const { agent, shellPreviewBudgetTokens } = deps
   const stored = await tree.store.node(params.record.id)
   const sessionStore = tree.store.sessionStore(params.record.id)
-  let checkpoint = stored ? await sessionStore.load() : null
+  const checkpoint = stored ? await sessionStore.load() : null
+  if (stored && !checkpoint)
+    throw new Error('Stored node has no checkpoint')
   if (checkpoint && checkpoint.harnessName !== agent.name) {
-    // Another harness's node under this id: the id starts over.
-    await tree.store.deleteNode(params.record.id)
-    checkpoint = null
+    throw new Error('Stored checkpoint belongs to another harness')
   }
   const record = checkpoint && stored ? stored : params.record
 
   // One live state object, shared by the harness closures and the session.
   const state = checkpoint
-    ? structuredClone(checkpoint.state)
+    ? structuredClone(agent.stateSchema.parse(checkpoint.state))
     : agent.initialState()
   const harnessCommands = await params.commands(state)
 

@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import type { AgentCommandsContext, AgentHarness } from '@demicodes/agent'
 import {
   CommandRegistry,
@@ -7,7 +8,8 @@ import {
 } from '@demicodes/shell'
 import { createDemiCommand } from './demi-command'
 
-export type CodingState = Record<string, never>
+export const codingStateSchema = z.strictObject({})
+export type CodingState = z.infer<typeof codingStateSchema>
 
 /**
  * Per-action Host resolution (`AgentHarness.host` signature) for multi-target
@@ -58,6 +60,7 @@ export function createCodingAgentHarness(
       : () => options.host as Host
   return {
     name: 'coding',
+    stateSchema: codingStateSchema,
     initialState: () => ({}),
     restoreState: () => ({}),
     host: resolveHost,

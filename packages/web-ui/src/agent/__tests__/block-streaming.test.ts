@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import type { Block, ModelSelection } from '@demicodes/core'
+import type { ModelSelection } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/agent/client'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from '../block-streaming'
 
 const model: ModelSelection = {

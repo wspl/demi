@@ -26,6 +26,7 @@ function fixture(id: string) {
     connect: async () => {
       connections += 1
       return new AgentClient({
+      onError: () => () => {},
         send(frame) {
           if (frame.type === 'open') {
             receive({ type: 'opened' })

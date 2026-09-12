@@ -1,20 +1,14 @@
 import { toRaw } from 'vue'
 import { EditRejectedError, isEditableUserMessage } from '@demicodes/agent/client'
 import type { EditRequest, TranscriptVersion } from '@demicodes/agent/client'
-import type { Block, UserContentBlock } from '@demicodes/core'
+import type { DisplayedBlock as Block, DisplayedUserContent } from '@demicodes/agent/client'
 import { reportError } from '../infra/errors'
-import type { BlobReferenceSource } from './media-source'
 import type { MessageListBlock } from './pending-steers'
 
 export { EditRejectedError } from '@demicodes/agent/client'
 
 /** Displayed media may be an authenticated blob reference supplied by the host. */
-export type MessageEditContent = Extract<UserContentBlock, { type: 'text' | 'reference' | 'attachment' }> | {
-  [Kind in 'image' | 'video' | 'document']: {
-    type: Kind
-    source: Extract<UserContentBlock, { type: Kind }>['source'] | BlobReferenceSource
-  }
-}['image' | 'video' | 'document']
+export type MessageEditContent = DisplayedUserContent
 
 export interface MessageEditRequest extends Omit<EditRequest, 'content'> {
   content: MessageEditContent[]

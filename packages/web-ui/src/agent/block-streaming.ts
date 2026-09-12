@@ -1,4 +1,5 @@
-import type { Block, SessionPhase } from '@demicodes/core'
+import type { SessionPhase } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/agent/client'
 
 function isTailBlockOfType(
   blocks: readonly Block[],

@@ -1,4 +1,4 @@
-import type { Block } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/agent/client'
 
 export function getVisibleBlocks(blocks: readonly Block[]): Block[] {
   const visible: Block[] = []

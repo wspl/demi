@@ -1,4 +1,4 @@
-import type { Block } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/web-ui/transport/protocol'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import { demoModel, thinkingText } from './blocks'
 

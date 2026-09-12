@@ -1,15 +1,17 @@
+import { z } from 'zod'
 import { parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
-import type { Block, QueuedMessage } from '@demicodes/core'
+import type { QueuedMessage } from '@demicodes/core'
 import {
   completedChildrenCarriedBy,
+  metadataSchema,
+  sessionStateSchema,
+  storedBlockSchema,
+  type StoredBlock,
   emptyCommandState,
   externalizeBlockMedia,
   rehydrateBlockMedia,
-  type AgentMetadata,
   type AgentNodeClose,
-  type AgentNodeClosePhase,
   type AgentNodeRecord,
-  type AgentSessionCheckpoint,
   type AgentSessionPersistUpdate,
   type AgentSessionStore,
   type AgentTreeStore,
@@ -22,22 +24,22 @@ import { readCommandState, writeCommandState } from './command-state'
  * The checkpoint fields other than the transcript, as `nodes.state_json` holds
  * them.
  */
-type NodeState = Omit<AgentSessionCheckpoint<unknown>, 'transcript' | 'commandState'>
-
-interface NodeRow {
-  id: string
-  parent_id: string | null
-  description: string
-  profile_name: string | null
-  metadata_json: string | null
-  spawned_at: number
-  can_spawn: number
-  closed_phase: AgentNodeClosePhase | null
-  closed_at: number | null
-  result: string | null
-  failure: string | null
-  delivered: number
-}
+type NodeState = z.infer<typeof sessionStateSchema>
+const nodeRowSchema = z.object({
+  id: z.string().min(1),
+  parent_id: z.string().min(1).nullable(),
+  description: z.string(),
+  profile_name: z.string().nullable(),
+  metadata_json: z.string().nullable(),
+  spawned_at: z.number().int().nonnegative().max(8.64e15),
+  can_spawn: z.union([z.literal(0), z.literal(1)]),
+  closed_phase: z.enum(['completed', 'aborted', 'error']).nullable(),
+  closed_at: z.number().int().nonnegative().max(8.64e15).nullable(),
+  result: z.string().nullable(),
+  failure: z.string().nullable(),
+  delivered: z.union([z.literal(0), z.literal(1)]),
+})
+type NodeRow = z.infer<typeof nodeRowSchema>
 
 const NODE_SELECT = 'SELECT id, parent_id, description, profile_name, metadata_json, spawned_at, can_spawn, closed_phase, closed_at, result, failure, delivered FROM nodes'
 
@@ -51,22 +53,25 @@ export function sqliteAgentTreeStore(
   db: SqlDatabase,
   blobs: BlobStore
 ): AgentTreeStore<unknown> {
-  const record = (row: NodeRow): AgentNodeRecord => ({
-    id: row.id,
-    parentId: row.parent_id,
-    description: row.description,
-    profileName: row.profile_name,
-    metadata: row.metadata_json === null
-      ? null
-      : parsePortableJson<AgentMetadata>(row.metadata_json),
-    spawnedAt: row.spawned_at,
-    canSpawnSubagents: row.can_spawn === 1,
-    closedPhase: row.closed_phase,
-    closedAt: row.closed_at,
-    result: row.result,
-    failure: row.failure,
-    delivered: row.delivered === 1,
-  })
+  const record = (input: NodeRow): AgentNodeRecord => {
+    const row = nodeRowSchema.parse(input)
+    return {
+      id: row.id,
+      parentId: row.parent_id,
+      description: row.description,
+      profileName: row.profile_name,
+      metadata: row.metadata_json === null
+        ? null
+        : metadataSchema.parse(parsePortableJson(row.metadata_json)),
+      spawnedAt: row.spawned_at,
+      canSpawnSubagents: row.can_spawn === 1,
+      closedPhase: row.closed_phase,
+      closedAt: row.closed_at,
+      result: row.result,
+      failure: row.failure,
+      delivered: row.delivered === 1,
+    }
+  }
   const stateOf = (update: AgentSessionPersistUpdate<unknown>): NodeState => ({
     state: update.state,
     phase: update.phase,
@@ -215,7 +220,7 @@ export function sqliteAgentTreeStore(
         )
         if (!row)
           throw new Error(`no node "${id}" to reopen`)
-        const state = parsePortableJson<NodeState>(row.state_json)
+        const state = sessionStateSchema.parse(parsePortableJson(row.state_json))
         db.run(
           'UPDATE nodes SET metadata_json = ?, spawned_at = ?, closed_phase = NULL, closed_at = NULL, result = NULL, failure = NULL, delivered = 0, state_json = ? WHERE id = ?',
           [
@@ -250,7 +255,7 @@ export function readNode(
   id: string
 ): {
   state: NodeState;
-  blocks: Block[]
+  blocks: StoredBlock[]
 } | null {
   const row = db.get<{
     state_json: string;
@@ -258,12 +263,15 @@ export function readNode(
   }>('SELECT state_json, block_count FROM nodes WHERE id = ?', [id])
   if (!row)
     return null
-  const rows = db.all<{ block_json: string }>(
-    'SELECT block_json FROM blocks WHERE node_id = ? AND idx < ? ORDER BY idx',
-    [id, row.block_count]
+  const count = z.number().int().nonnegative().parse(row.block_count)
+  const rows = db.all<{ idx: number; block_json: string }>(
+    'SELECT idx, block_json FROM blocks WHERE node_id = ? ORDER BY idx',
+    [id]
   )
+  if (rows.length !== count || rows.some((block, index) => block.idx !== index))
+    throw new Error('Corrupt transcript block sequence')
   return {
-    state: parsePortableJson<NodeState>(row.state_json),
-    blocks: rows.map((block) => parsePortableJson<Block>(block.block_json))
+    state: sessionStateSchema.parse(parsePortableJson(row.state_json)),
+    blocks: rows.map((block) => storedBlockSchema.parse(parsePortableJson(block.block_json)))
   }
 }

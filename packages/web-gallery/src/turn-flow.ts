@@ -1,5 +1,5 @@
 import { onBeforeUnmount, reactive } from 'vue'
-import type { Block } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/web-ui/transport/protocol'
 import { ACTIVITY_HANDOFF_MS } from '@demicodes/web-ui/agent/activity-slot'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import { conversationStatus } from '@demicodes/web-ui/agent/conversation-status'

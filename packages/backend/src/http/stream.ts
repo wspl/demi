@@ -1,5 +1,7 @@
 import {
-  createWebSocketServerTransport,
+  createWebSocketTransport,
+  type ServerFrame,
+  type DisplayedBlock,
   type AgentServer,
   type AgentTransportBinding,
   type BlobStore,
@@ -12,6 +14,7 @@ import type { WSContext } from 'hono/ws'
 import type { RunnerRegistry } from '../runner/registry'
 import { resolveExecutionTarget } from '../conversation/execution-target'
 import { resolveRemoteFileRefs } from '../conversation/remote-file-refs'
+import { conversationClientFrameSchema, type ConversationClientFrame } from '../conversation/client-frames'
 import { conversationScopedTransport } from '../conversation/scoped-transport'
 import type { ControlService } from '../storage/control'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
@@ -68,7 +71,10 @@ export function streamRoutes(options: {
       return {
         onOpen(_event, ws) {
           const transport = conversationScopedTransport(
-            createWebSocketServerTransport(adapter.socket(ws)),
+            createWebSocketTransport<ServerFrame<DisplayedBlock>, ConversationClientFrame>(
+              adapter.socket(ws),
+              { decode: conversationClientFrameSchema.parse },
+            ),
             conversation,
             {
               control,
@@ -100,12 +106,14 @@ export function streamRoutes(options: {
           binding = agentServer.attachTransport(transport)
         },
         onMessage(event) {
-          adapter.deliver(
-            typeof event.data === 'string' ? event.data : String(event.data)
-          )
+          adapter.deliver('message', event.data)
         },
         onClose() {
+          adapter.deliver('close')
           void binding?.close()
+        },
+        onError() {
+          adapter.deliver('error')
         },
       }
     })(c, next)
@@ -116,7 +124,7 @@ export function streamRoutes(options: {
 
 /** Adapts Hono's WSContext to the agent transport's socket shape. */
 class WsContextAdapter {
-  private readonly listeners = new Set<(event: { data: unknown }) => void>()
+  private readonly listeners = new Map<string, Set<(event: { data: unknown }) => void>>()
 
   socket(ws: WSContext): JsonWebSocket {
     return {
@@ -126,17 +134,19 @@ class WsContextAdapter {
       close: () => {
         ws.close()
       },
-      addEventListener: (_type, listener) => {
-        this.listeners.add(listener)
+      addEventListener: (type, listener) => {
+        const listeners = this.listeners.get(type) ?? new Set()
+        listeners.add(listener)
+        this.listeners.set(type, listeners)
       },
-      removeEventListener: (_type, listener) => {
-        this.listeners.delete(listener)
+      removeEventListener: (type, listener) => {
+        this.listeners.get(type)?.delete(listener)
       },
     }
   }
 
-  deliver(data: string): void {
-    for (const listener of [...this.listeners])
+  deliver(type: 'message' | 'close' | 'error', data?: unknown): void {
+    for (const listener of this.listeners.get(type) ?? [])
       listener({ data })
   }
 }

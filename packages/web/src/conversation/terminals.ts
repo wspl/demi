@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Block } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/web-ui/transport/protocol'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 
 const shellViewSchema = z.object({

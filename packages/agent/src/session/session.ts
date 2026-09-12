@@ -43,7 +43,7 @@ import { ProviderTurnLoop, type ProviderTurnLoopHost } from './turn-loop'
 import { resolveRetryPolicy, type TurnRetryPolicy } from './retry-policy'
 import { findResumePoint } from './recovery'
 import {
-  editReceiptSchema,
+  editReceiptsSchema,
   editRequestSchema,
   type EditReceipt,
   type EditRequest,
@@ -215,10 +215,7 @@ export class AgentSession<State> {
       },
       options,
     )
-    const receipts = editReceiptSchema.array().refine(
-      (items) => new Set(items.map((item) => item.operationId)).size === items.length,
-      'Duplicate accepted edit operation IDs',
-    ).optional().parse(checkpoint.edits)
+    const receipts = editReceiptsSchema.optional().parse(checkpoint.edits)
     for (const receipt of receipts ?? []) {
       session.editReceipts.push(receipt)
     }

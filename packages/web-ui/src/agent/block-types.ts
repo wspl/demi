@@ -1,4 +1,4 @@
-import type { Block } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/agent/client'
 
 // agent-gui exposed per-variant block interfaces; demi @demicodes/core exposes only the Block
 // union, so we recover the named variants here for the ported components.

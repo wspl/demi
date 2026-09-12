@@ -1,6 +1,11 @@
+import { createMemoryWebSocketPair } from '@demicodes/agent/testing'
+import { conversationClientFrameSchema, type ConversationClientFrame } from '../conversation/client-frames'
 import { afterEach, expect, test } from 'bun:test'
 import {
+  createWebSocketTransport,
   createInProcessTransportPair,
+  displayedServerFrameSchema,
+  type DisplayedBlock,
   type BlobStore,
   type ClientFrame,
   type ServerFrame
@@ -30,31 +35,38 @@ async function fixture(
     role: 'user'
   })
   const conversation = await control.createConversation(user!.id)
-  const pair = createInProcessTransportPair()
-  const scoped = conversationScopedTransport(pair.server, conversation, {
+  const [clientSocket, serverSocket] = createMemoryWebSocketPair()
+  const client = createWebSocketTransport<unknown, ServerFrame<DisplayedBlock>>(clientSocket, {
+    decode: displayedServerFrameSchema.parse,
+  })
+  const server = createWebSocketTransport<ServerFrame<DisplayedBlock>, ConversationClientFrame>(serverSocket, {
+    decode: conversationClientFrameSchema.parse,
+  })
+  const scoped = conversationScopedTransport(server, conversation, {
     control: wrap(control),
     blobs,
     writeAttachment: async (fileName) => `/work/.demi/attachments/${fileName}`,
     providerAllowed: async (providerId) => providerId !== 'someone-elses',
   })
   const received: ClientFrame[] = []
-  const replies: ServerFrame[] = []
+  const replies: ServerFrame<DisplayedBlock>[] = []
   scoped.onFrame((frame) => {
     received.push(frame)
   })
-  pair.client.onFrame((frame) => {
+  scoped.onError((error) => scoped.send({ type: 'error', code: error.code, message: error.message }))
+  client.onFrame((frame) => {
     replies.push(frame)
   })
   cleanup.push(() => {
-    scoped.close();
-    pair.client.close();
+    scoped.close()
+    client.close()
     db.close()
   })
   return {
     control,
     conversation,
     scoped,
-    client: pair.client,
+    client,
     received,
     replies,
     user: user!
@@ -77,7 +89,7 @@ test(
           }]
       },
     ])
-      f.client.send(frame as never)
+      f.client.send(frame)
     f.client.send({ type: 'abort' })
     await waitFor(() => f.received.length === 1 && f.replies.length === 4)
     expect(f.received).toEqual([{ type: 'abort' }])
@@ -117,15 +129,15 @@ test(
       sessionId: 'ignored',
       cwd: '/ignored',
       provider: selection('someone-elses')
-    } as never)
+    })
     f.client.send({
       type: 'set_provider',
       provider: selection('someone-elses')
-    } as never)
+    })
     f.client.send({
       type: 'set_provider',
       provider: selection('mine')
-    } as never)
+    })
     await waitFor(() => f.received.length === 1 && f.replies.length === 2)
     expect(
       f.replies.every(
@@ -146,7 +158,7 @@ test('malformed edits never reach the session and an archived refusal is correla
     version: { epoch: 'session-epoch', revision: 4 },
     content: [{ type: 'text' as const, text: 'B-edited' }],
   }
-  f.client.send({ type: 'edit_and_send', request: { ...request, content: [null] } } as never)
+  f.client.send({ type: 'edit_and_send', request: { ...request, content: [null] } })
   await waitFor(() => f.replies.length === 1)
   expect(f.replies[0]).toMatchObject({ type: 'error', code: 'invalid_frame' })
   await f.control.setConversationArchived(f.conversation.id, true)
@@ -216,8 +228,8 @@ test(
         ref: attachment.id,
         fileName: 'shot.png'
       }]
-    f.client.send({ type: 'send', messageId: 'one', content } as never)
-    f.client.send({ type: 'steer', steerId: 'two', content } as never)
+    f.client.send({ type: 'send', messageId: 'one', content })
+    f.client.send({ type: 'steer', steerId: 'two', content })
     await waitFor(() => f.received.length === 2)
     for (const frame of f.received)
       expect(frame).toMatchObject({
@@ -301,7 +313,8 @@ test(
       providerAllowed: async () => true,
       admitFrame: () => gate.tryEnter(),
     })
-    const replies: ServerFrame[] = []
+    const replies: ServerFrame<DisplayedBlock>[] = []
+    scoped.onError((error) => scoped.send({ type: 'error', code: error.code, message: error.message }))
     pair.client.onFrame(frame => {
       replies.push(frame)
     })

@@ -1,4 +1,5 @@
-import type { Block, ImageSource, UserContentBlock } from '@demicodes/core'
+import type { ImageSource, UserContentBlock } from '@demicodes/core'
+import type { DisplayedBlock as Block, DisplayedUserContent } from '@demicodes/agent/client'
 import type { QueueDividerBlock, QueuedRenderBlock } from './queued-messages'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 
@@ -76,11 +77,11 @@ export function pendingSteersToRenderBlocks(
   }))
 }
 
-function contentKey(content: readonly UserContentBlock[]): string {
+function contentKey(content: readonly DisplayedUserContent[]): string {
   return JSON.stringify(content.map(normalizeContentBlock))
 }
 
-function normalizeContentBlock(block: UserContentBlock): unknown {
+function normalizeContentBlock(block: DisplayedUserContent): unknown {
   switch (block.type) {
     case 'text':
       return { type: block.type, text: block.text }
@@ -90,6 +91,8 @@ function normalizeContentBlock(block: UserContentBlock): unknown {
       return { ...block }
     case 'image':
     case 'video':
+      if (block.source.type === 'ref')
+        return block
       return {
         type: block.type,
         source:
@@ -102,6 +105,8 @@ function normalizeContentBlock(block: UserContentBlock): unknown {
             },
       }
     case 'document':
+      if ('ref' in block.source)
+        return block
       return {
         type: block.type,
         source: {

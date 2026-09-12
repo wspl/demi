@@ -6,8 +6,6 @@ import type {
 } from '@demicodes/core'
 import {
   editRequestSchema,
-  editResultSchema,
-  pendingSteersFrameSchema,
   type EditRequest,
   type TranscriptVersion,
 } from '../protocol/schemas'
@@ -22,7 +20,7 @@ import type { AgentClientTransport } from '../protocol/transport'
 import type { AbortResult, AgentMetadata, ModelSwitchApply } from '../types'
 import { ProviderStreamError } from '../session/provider-stream-error'
 
-export type AgentClientListener = (event: ClientSessionEvent) => void
+export type AgentClientListener<B extends Block<unknown, unknown> = Block> = (event: ClientSessionEvent<B>) => void
 
 export interface AgentActionOptions {
   metadata?: AgentMetadata
@@ -56,14 +54,14 @@ interface AbortWaiter {
   reject: (error: Error) => void
 }
 
-export class AgentClient {
-  private readonly transport: AgentClientTransport
-  private readonly listeners = new Set<AgentClientListener>()
+export class AgentClient<B extends Block<unknown, unknown> = Block> {
+  private readonly transport: AgentClientTransport<B>
+  private readonly listeners = new Set<AgentClientListener<B>>()
   private readonly pendingActionWaiters: ActionWaiter[] = []
   private readonly pendingSteerWaiters = new Map<string, SteerWaiter>()
   private readonly pendingAbortWaiters: AbortWaiter[] = []
   private readonly queuedMessageIds = new Set<string>()
-  private blocks: Block[] = []
+  private blocks: B[] = []
   private pending: PendingSteer[] = []
   private revision: number | null = null
   private epoch: string | null = null
@@ -71,9 +69,11 @@ export class AgentClient {
   private disconnected = false
   private phase: SessionPhase | null = null
   private unsubscribeTransport: () => void
+  private unsubscribeError: () => void
 
-  constructor(transport: AgentClientTransport) {
+  constructor(transport: AgentClientTransport<B>) {
     this.transport = transport
+    this.unsubscribeError = transport.onError((error) => this.disconnect(error))
     this.unsubscribeTransport = transport.onFrame((frame) =>
       this.handleServerFrame(frame),
     )
@@ -378,6 +378,7 @@ export class AgentClient {
     }
     this.disconnected = true
     this.unsubscribeTransport()
+    this.unsubscribeError()
     this.transport.close()
     this.rejectAllActionWaiters(reason)
     this.rejectAllSteerWaiters(reason)
@@ -386,14 +387,14 @@ export class AgentClient {
     this.listeners.clear()
   }
 
-  subscribe(listener: AgentClientListener): () => void {
+  subscribe(listener: AgentClientListener<B>): () => void {
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)
     }
   }
 
-  transcript(): { blocks: Block[] } {
+  transcript(): { blocks: B[] } {
     return { blocks: [...this.blocks] }
   }
 
@@ -429,7 +430,7 @@ export class AgentClient {
     }
   }
 
-  private handleServerFrame(frame: ServerFrame): void {
+  private handleServerFrame(frame: ServerFrame<B>): void {
     switch (frame.type) {
       case 'transcript_reset':
         this.blocks = [...frame.blocks]
@@ -442,15 +443,9 @@ export class AgentClient {
           blocks: this.blocks,
         })
         return
-      case 'edit_result': {
-        const parsed = editResultSchema.safeParse(frame)
-        if (!parsed.success) {
-          this.disconnect(new Error('Invalid edit result frame'))
-          return
-        }
-        this.emit(parsed.data)
+      case 'edit_result':
+        this.emit(frame)
         return
-      }
       case 'transcript_patch':
         if (this.awaitingResync) {
           return
@@ -462,8 +457,8 @@ export class AgentClient {
           this.sendFrame({ type: 'sync_transcript' })
           return
         }
-        this.revision = frame.revision
         this.blocks = applyTranscriptPatches(this.blocks, frame.patches)
+        this.revision = frame.revision
         this.removeMaterializedSteers()
         this.emit({
           type: 'transcript_patch',
@@ -504,7 +499,7 @@ export class AgentClient {
         return
       case 'pending_steers':
         this.pending = structuredClone(
-          pendingSteersFrameSchema.parse(frame).pendingSteers,
+          frame.pendingSteers,
         )
         this.removeMaterializedSteers(false)
         this.emitPendingSteers()
@@ -805,7 +800,7 @@ export class AgentClient {
     })
   }
 
-  private emit(event: ClientSessionEvent): void {
+  private emit(event: ClientSessionEvent<B>): void {
     for (const listener of this.listeners) {
       listener(event)
     }

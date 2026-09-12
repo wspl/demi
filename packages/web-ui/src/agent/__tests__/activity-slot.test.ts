@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import type { Block, SessionPhase, ToolCallStatus } from '@demicodes/core'
+import type { SessionPhase, ToolCallStatus } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/agent/client'
 import type { MessageListBlock } from '../pending-steers'
 import { activitySlotKind, type PendingAction } from '../activity-slot'
 import type { SessionLoad } from '../session-status'

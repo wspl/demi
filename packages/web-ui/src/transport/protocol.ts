@@ -1,4 +1,14 @@
-import type { ProviderSelection } from '@demicodes/agent/client'
+import type {
+  ProviderSelection,
+  DisplayedBlock,
+  AgentClient as CoreAgentClient,
+  ServerFrame as AgentServerFrame,
+  ClientSessionEvent as AgentSessionEvent,
+} from '@demicodes/agent/client'
+
+export type AgentClient = CoreAgentClient<DisplayedBlock>
+export type ServerFrame = AgentServerFrame<DisplayedBlock>
+export type ClientSessionEvent = AgentSessionEvent<DisplayedBlock>
 
 // Control-plane protocol. Decoupled from @demicodes/provider so the component library stays
 // portable: hosts map their own catalogs onto these DTOs.
@@ -74,12 +84,17 @@ export type ControlResponse =
   }
 
 export {
+  displayedBlockSchema,
+  displayedUserContentSchema,
+  displayedServerFrameSchema,
+  usageSchema,
+  shellStatusSchema,
   modelSelectionSchema,
   thinkingConfigSchema,
   editRequestSchema,
   editResultSchema,
   transcriptVersionSchema,
 } from '@demicodes/agent/client'
-export type { ProviderSelection, ClientFrame, ServerFrame, ClientSessionEvent } from '@demicodes/agent/client'
+export type { ProviderSelection, ClientFrame, DisplayedBlock, DisplayedUserContent, DisplayedToolContent } from '@demicodes/agent/client'
 
 export { applyTranscriptPatches } from '@demicodes/agent/client'

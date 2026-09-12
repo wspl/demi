@@ -1,3 +1,4 @@
+import { editRequestSchema } from '@demicodes/agent'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -93,7 +94,7 @@ for (const boundary of ['inside-transaction', 'after-commit', 'after-output']) {
           try {
             expect(session.transcript().blocks).toEqual(checkpoint.transcript.blocks)
             expect(calls).toBe(0)
-            const request = parsePortableJson<EditRequest>(await Bun.file(join(root, 'request.json')).text())
+            const request = editRequestSchema.parse(parsePortableJson(await Bun.file(join(root, 'request.json')).text()))
             await expect(session.editAndSend(request)).resolves.toEqual(checkpoint.edits![0])
             expect(calls).toBe(0)
             if (boundary === 'after-commit') {

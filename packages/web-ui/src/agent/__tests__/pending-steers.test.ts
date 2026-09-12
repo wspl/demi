@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { reactive } from 'vue'
-import type { Block, UserContentBlock } from '@demicodes/core'
+import type { UserContentBlock } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/agent/client'
 import {
   createPendingSteerMessage,
   pendingSteersToRenderBlocks,

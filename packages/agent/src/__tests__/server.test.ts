@@ -1,3 +1,6 @@
+import { z } from 'zod'
+import { createMemoryWebSocketPair } from '../testing'
+import { createWebSocketClientTransport, createWebSocketServerTransport } from '../protocol/websocket-transport'
 import { MemoryAgentStore } from '../testing'
 import { access, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -158,6 +161,7 @@ test(
     const seen: unknown[] = []
     const harness: AgentHarness<Record<string, never>> = {
       name: 'metadata',
+      stateSchema: z.strictObject({}),
       initialState: () => ({}),
       host: (ctx) => new LocalHost(ctx.cwd),
       systemPrompt: (ctx) => {
@@ -220,6 +224,7 @@ test(
     const host = new LocalHost(root)
     const harness: AgentHarness<Record<string, never>> = {
       name: 'stored-session',
+      stateSchema: z.strictObject({}),
       initialState: () => ({}),
       host: () => host,
       systemPrompt: () => 'system',
@@ -275,6 +280,7 @@ test(
     const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
     const harness: AgentHarness<Record<string, never>> = {
       name: 'resumable',
+      stateSchema: z.strictObject({}),
       initialState: () => ({}),
       host: () => host,
       systemPrompt: () => 'system',
@@ -328,6 +334,7 @@ test(
     let seenCommandsPrompt: string | null = null
     const harness: AgentHarness<Record<string, never>> = {
       name: 'command-prompt',
+      stateSchema: z.strictObject({}),
       initialState: () => ({}),
       host: () => host,
       commands: () => [
@@ -1672,6 +1679,7 @@ test('AgentServer.close disposes harness resources directly', async () => {
   let disposed = false
   const harness: AgentHarness<Record<string, never>> = {
     name: 'direct-close',
+    stateSchema: z.strictObject({}),
     initialState: () => ({}),
     host: (ctx) => new LocalHost(ctx.cwd),
     systemPrompt: () => 'system',
@@ -1737,6 +1745,7 @@ for (const lost of ['replacement-patch', 'acceptance'] as const) {
     let resyncs = 0
     server.attachTransport({
       close: () => pair.server.close(),
+      onError: (handler) => pair.server.onError(handler),
       onFrame(handler) {
         return pair.server.onFrame((frame) => {
           if (frame.type === 'sync_transcript') resyncs += 1
@@ -1939,6 +1948,7 @@ function createTextHarness(): AgentHarness<Record<string, never>> {
   const hosts = new Map<string, LocalHost>()
   return {
     name: 'test',
+    stateSchema: z.strictObject({}),
     initialState: () => ({}),
     commands: () => [probeCommand()],
     host: (ctx) => {
@@ -2018,20 +2028,21 @@ test(
         () => new StubProvider([[events.text('ok'), events.response()]])
       )],
     })
-    const pair = createInProcessTransportPair()
-    server.attachTransport(pair.server)
+    const [clientSocket, serverSocket] = createMemoryWebSocketPair()
+    server.attachTransport(createWebSocketServerTransport(serverSocket))
+    const clientTransport = createWebSocketClientTransport(clientSocket)
     const received: unknown[] = []
-    pair.client.onFrame((frame) => {
+    clientTransport.onFrame((frame) => {
       received.push(frame)
     })
 
     // Missing required fields: `send` without messageId/content.
-    pair.client.send({ type: 'send' } as never)
+    clientSocket.send(JSON.stringify({ type: 'send' }))
     await waitFor(() => received.length > 0)
     expect(received[0]).toMatchObject({ type: 'error', code: 'invalid_frame' })
 
     // An unknown frame type is equally rejected.
-    pair.client.send({ type: 'definitely_not_a_frame' } as never)
+    clientSocket.send(JSON.stringify({ type: 'definitely_not_a_frame' }))
     await waitFor(() => received.length > 1)
     expect(received[1]).toMatchObject({ type: 'error', code: 'invalid_frame' })
     await server.close()

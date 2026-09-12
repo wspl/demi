@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { memoryAgentStores } from '../testing'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -59,6 +60,7 @@ function createStatefulHarness(
   const host = new LocalHost(cwd)
   return {
     name: 'stateful-test',
+    stateSchema: z.strictObject({ count: z.number().int().nonnegative() }),
     initialState: () => ({ count: 0 }),
     host: (ctx) => {
       hostStates.push(ctx.state)
@@ -208,3 +210,65 @@ test(
     await server.close()
   }
 )
+
+test('cold restore validates harness-owned state and preserves a mismatched checkpoint', async () => {
+  for (const sample of [
+    { state: { count: 'corrupt' }, harnessName: 'stateful-test' },
+    { state: { count: 1, unexpected: true }, harnessName: 'stateful-test' },
+    { state: { count: 1 }, harnessName: 'another-harness' },
+  ]) {
+    const stores = memoryAgentStores()
+    const store = stores('restore-contract')
+    await store.createNode({
+      id: 'restore-contract', parentId: null, description: '', profileName: null,
+      metadata: null, spawnedAt: 1, canSpawnSubagents: true, closedPhase: null,
+      closedAt: null, result: null, failure: null, delivered: false,
+    }, {
+      ...sample, changedBlocks: [], blockCount: 0, queue: [], cwd: '/workspace', model, phase: 'idle',
+    })
+    let hooks = 0
+    let disposed = 0
+    const server = new AgentServer({
+      store: stores,
+      shellEnvironment: runnerShellFactory,
+      agent: {
+        name: 'stateful-test',
+        stateSchema: z.strictObject({ count: z.number().int().nonnegative() }),
+        initialState: () => ({ count: 0 }),
+        commands: () => {
+          hooks += 1
+          return []
+        },
+        host: () => {
+          throw new Error('Host must not be built for corrupt state')
+        },
+        systemPrompt: () => '',
+      },
+      providers: [defineProvider({
+        id: 'stub',
+        displayName: 'Stub',
+        createRuntime: () => {
+          const runtime = new StubProvider([])
+          return {
+            run: runtime.run.bind(runtime),
+            clone: runtime.clone.bind(runtime),
+            dispose: () => {
+              disposed += 1
+            },
+          }
+        },
+      })],
+    })
+    const client = server.client()
+    try {
+      await expect(client.open(selection, '/workspace', 'restore-contract')).rejects.toThrow()
+      expect(hooks).toBe(0)
+      expect(disposed).toBe(1)
+      expect((await store.sessionStore('restore-contract').load())?.state).toEqual(sample.state)
+      expect(await store.node('restore-contract')).not.toBeNull()
+    } finally {
+      client.disconnect()
+      await server.close()
+    }
+  }
+})

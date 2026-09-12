@@ -9,6 +9,7 @@ import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activity-slot'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
+import ToolGenericBlock from '@demicodes/web-ui/agent/blocks/ToolGenericBlock.vue'
 import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
 import ModelMenu from '@demicodes/web-ui/agent/ModelMenu.vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
@@ -41,6 +42,8 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import {
   demoImageUrl,
+  storedImageContent,
+  storedImageTool,
   demoModel,
   runningShellTool,
   shellTool,
@@ -335,7 +338,7 @@ async function submitEdit(): Promise<void> {
         {
           type: 'user', id: request.operationId, turnId: request.operationId,
           createdAt: new Date().toISOString(), model: demoModel,
-          content: request.content as UserContentBlock[], preamble: null,
+          content: request.content, preamble: null,
         },
         {
           type: 'text', id: `reply-${request.operationId}`,
@@ -760,6 +763,12 @@ function abortTerminal(id: string) {
           >
             <div class="gallery-frame gallery-user-frame bg-surface">
               <UserBlock :content="attachmentBubble" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="stored media references" wide>
+            <div class="gallery-frame gallery-user-frame bg-surface">
+              <UserBlock :content="storedImageContent" />
+              <ToolGenericBlock :block="storedImageTool" :input="{}" />
             </div>
           </GallerySpecimen>
           <GallerySpecimen

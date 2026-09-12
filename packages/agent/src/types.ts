@@ -1,3 +1,5 @@
+import type { sessionStateSchema } from './store/session-schema'
+import type { z } from 'zod'
 import type {
   Block,
   ModelSelection,
@@ -15,7 +17,6 @@ import type { PortableJsonValue } from '@demicodes/utils'
 import type { TranscriptPatch } from './protocol/frames'
 import type { TurnRetryPolicy } from './session/retry-policy'
 import type { TranscriptLog } from './transcript/transcript'
-import type { EditReceipt } from './protocol/schemas'
 import type { CommandStateSnapshot } from './store/command-state'
 
 /** Pure reconstruction over a detached retained transcript. */
@@ -116,6 +117,8 @@ export interface SubagentProfile<State = unknown> {
 
 export interface AgentHarness<State = unknown> {
   name: string
+  /** Validates persisted state before any harness hook receives it on cold restore. */
+  stateSchema: z.ZodType<State>
   initialState(): State
   /** Opts into editing. Returns a plain record; never mutates live state. */
   restoreState?(ctx: AgentStateRewriteContext): Promise<State> | State
@@ -300,16 +303,9 @@ export interface AgentSessionCheckpoint<State> extends AgentSessionStateSnapshot
 }
 
 /** Everything a session persists except the transcript blocks. */
-export interface AgentSessionStateSnapshot<State> {
-  state: State
-  phase: SessionPhase
-  queue: QueuedMessage[]
-  cwd: string
-  model: ModelSelection
-  harnessName: string
-  /** Accepted edits survive removal of their replacement turns. Omitted when empty. */
-  edits?: EditReceipt[]
-}
+export type AgentSessionStateSnapshot<State> = Omit<
+  z.infer<typeof sessionStateSchema>, 'state'
+> & { state: State }
 
 /**
  * One persist tick: the journal write. `changedBlocks` carries only the

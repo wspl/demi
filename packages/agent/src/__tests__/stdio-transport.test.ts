@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { memoryAgentStores } from '../testing'
 import { PassThrough } from 'node:stream'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -331,6 +332,7 @@ test(
 function createHarness(): AgentHarness<Record<string, never>> {
   return {
     name: 'test',
+    stateSchema: z.strictObject({}),
     initialState: () => ({}),
     commands: () => [probeCommand()],
     host: (ctx) => new LocalHost(ctx.cwd),

@@ -244,7 +244,7 @@ test('DirBlobStore content-addresses bytes and is idempotent', async () => {
   expect(await blobs.put(new Uint8Array([10, 20, 30]))).toBe(sha)
   expect([...((await blobs.get(sha)) ?? [])]).toEqual([10, 20, 30])
   expect(await blobs.get('0'.repeat(64))).toBeNull()
-  expect(await blobs.get('../escape')).toBeNull()
+  await expect(blobs.get('../escape')).rejects.toThrow()
   rmSync(root, { recursive: true, force: true })
 })
 

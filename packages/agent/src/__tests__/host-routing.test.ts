@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { memoryAgentStores } from '../testing'
 import { mkdtemp, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -50,6 +51,7 @@ function routedHarness(
 ): AgentHarness<Record<string, never>> {
   return {
     name: 'host-routing-test',
+    stateSchema: z.strictObject({}),
     initialState: () => ({}),
     commands: () => [probeCommand()],
     host: (ctx) => {

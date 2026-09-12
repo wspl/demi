@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { memoryAgentStores } from '../testing'
 import { expect, test } from 'bun:test'
 import { runnerShellFactory } from '@demicodes/backend/testing'
@@ -245,6 +246,7 @@ function nextFrame<T>(
 function createHarness(): AgentHarness<Record<string, never>> {
   return {
     name: 'test',
+    stateSchema: z.strictObject({}),
     initialState: () => ({}),
     host: (ctx) => new LocalHost(ctx.cwd),
     systemPrompt: () => 'system',
@@ -382,7 +384,7 @@ class FakeSocket implements JsonWebSocket {
   }
 
   addEventListener(
-    type: 'message',
+    type: 'message' | 'close' | 'error',
     listener: (event: { data: unknown }) => void
   ): void {
     if (type === 'message')
@@ -390,7 +392,7 @@ class FakeSocket implements JsonWebSocket {
   }
 
   removeEventListener(
-    type: 'message',
+    type: 'message' | 'close' | 'error',
     listener: (event: { data: unknown }) => void
   ): void {
     if (type === 'message')

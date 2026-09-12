@@ -3,6 +3,9 @@ import {
   clientFrameSchema,
   externalizeBlockMedia,
   type AgentServerTransport,
+  type AgentTransport,
+  type DisplayedBlock,
+  type StoredBlock,
   type BlobStore,
   type ClientFrame,
   type ServerFrame
@@ -12,7 +15,6 @@ import { errorMessage, SerialQueue } from '@demicodes/utils'
 import type { ControlService, ConversationRecord } from '../storage/control'
 import { resolveUploadRefs } from './attachment-refs'
 import {
-  conversationClientFrameSchema,
   type ConversationClientFrame
 } from './client-frames'
 
@@ -63,7 +65,7 @@ class FrameRefused extends Error {
 }
 
 export function conversationScopedTransport(
-  inner: AgentServerTransport,
+  inner: AgentTransport<ServerFrame<DisplayedBlock>, ConversationClientFrame>,
   conversation: ConversationRecord,
   options: ConversationTransportOptions,
 ): AgentServerTransport {
@@ -104,17 +106,9 @@ export function conversationScopedTransport(
     onFrame: (handler) => {
       let subscribed = true
       const unsubscribe = inner.onFrame((frame) => {
-        void deliveries.run(async () => {
+        return deliveries.run(async () => {
           if (closed || !subscribed)
             return
-          const parsed = conversationClientFrameSchema.safeParse(frame)
-          if (!parsed.success) {
-            reportError(
-              'invalid_frame',
-              `Invalid client frame: ${parsed.error.issues[0]?.message ?? 'invalid shape'}`
-            )
-            return
-          }
           const release = options.admitFrame ? options.admitFrame() : () => {}
           if (!release)
             throw new FrameRefused(
@@ -125,13 +119,13 @@ export function conversationScopedTransport(
             const current = await options.control.getConversation(
               conversation.id
             )
-            if (!current || (current.archived && parsed.data.type !== 'close'))
+            if (!current || (current.archived && frame.type !== 'close'))
               throw new FrameRefused(
                 'archived',
                 'Restore the conversation before writing to it'
               )
             const rewritten = await rewriteFrame(
-              parsed.data,
+              frame,
               current,
               options,
               cwd
@@ -142,13 +136,12 @@ export function conversationScopedTransport(
             release()
           }
         }).catch((error: unknown) => {
-          const parsed = conversationClientFrameSchema.safeParse(frame)
-          if (parsed.success && parsed.data.type === 'edit_and_send') {
+          if (frame.type === 'edit_and_send') {
             if (!closed) {
               try {
                 inner.send({
                   type: 'edit_result',
-                  operationId: parsed.data.request.operationId,
+                  operationId: frame.request.operationId,
                   status: 'rejected',
                   reason: errorMessage(error),
                 })
@@ -170,6 +163,7 @@ export function conversationScopedTransport(
         unsubscribe()
       }
     },
+    onError: (handler) => inner.onError(handler),
     close: () => {
       closed = true
       inner.close()
@@ -181,7 +175,7 @@ export function conversationScopedTransport(
 async function externalizeFrameMedia(
   frame: ServerFrame,
   blobs: BlobStore
-): Promise<ServerFrame> {
+): Promise<ServerFrame<StoredBlock>> {
   const externalize = (blocks: Block[]) => Promise.all(
     blocks.map((block) => externalizeBlockMedia(block, blobs))
   )

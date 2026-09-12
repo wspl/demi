@@ -3,7 +3,7 @@ import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessag
 import PendingSubmission from '@demicodes/web-ui/agent/PendingSubmission.vue'
 import type { PendingSubmissionState } from '@demicodes/web-ui/agent/types'
 import { composerAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
-import type { Block } from '@demicodes/core'
+import type { DisplayedBlock as Block } from '@demicodes/web-ui/transport/protocol'
 import { demoModel, errorTool } from '../fixtures/blocks'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
