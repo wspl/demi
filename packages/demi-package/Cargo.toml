@@ -1,0 +1,28 @@
+[package]
+name = "demi-builtin-package"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "demi-commands"
+path = "rust/main.rs"
+
+[lib]
+path = "rust/lib.rs"
+
+[dependencies]
+demi-command-service = { path = "../command-service" }
+bytes.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tempfile = "3"
+regex = "1"
+
+[dev-dependencies]
+demi-command-runtime = { path = "../command-runtime" }
+sha2 = "0.10"
+futures-util.workspace = true
