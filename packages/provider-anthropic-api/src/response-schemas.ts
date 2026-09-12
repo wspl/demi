@@ -37,7 +37,7 @@ const blockSchema = z.union([
   ignoredVariant(knownBlockSchema.options.map((option) => option.shape.type.value)),
 ])
 
-export type AnthropicContentBlock = z.infer<typeof blockSchema>
+export type AnthropicResponseBlock = z.infer<typeof blockSchema>
 
 const knownDeltaSchema = z.discriminatedUnion('type', [
   z.looseObject({ type: z.literal('text_delta'), text: z.string() }),

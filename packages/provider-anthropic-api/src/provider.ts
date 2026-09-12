@@ -1,5 +1,5 @@
 import { readServerSentEvents, ProviderDataError, type ServerSentEvent } from '@demicodes/provider'
-import { parseAnthropicEvent, type AnthropicUsage, type AnthropicContentBlock } from './response-schemas'
+import { parseAnthropicEvent, type AnthropicUsage, type AnthropicResponseBlock } from './response-schemas'
 import { attachmentTag } from '@demicodes/core'
 import {
   isAbortError,
@@ -462,12 +462,12 @@ export async function* mapAnthropicMessageStream(
   throw new ProviderDataError('Anthropic stream', 'stream ended before message_stop')
 }
 
-type AnthropicToolBlock = Extract<AnthropicContentBlock, { type: 'tool_use' }>
+type AnthropicToolBlock = Extract<AnthropicResponseBlock, { type: 'tool_use' }>
 type AnthropicBlockState = Pick<AnthropicToolBlock, 'type' | 'id' | 'name'> & {
   initialInput: AnthropicToolBlock['input']
   inputJson: string
 } | {
-  type: Exclude<AnthropicContentBlock['type'], 'tool_use'>
+  type: Exclude<AnthropicResponseBlock['type'], 'tool_use'>
 }
 
 function inferenceItemsToAnthropicMessages(
