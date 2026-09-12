@@ -10,6 +10,7 @@ import { queuedMessagesToRenderBlocks } from './queued-messages'
 import { activitySlotKind, type PendingAction } from './activity-slot'
 import { useActivityHandoff } from './useActivityHandoff'
 import { useChromeEntrance } from './useChromeEntrance'
+import { chromeEntrance } from '../ui/chrome-enter'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import AgentMessageVirtualBlock from './blocks/AgentMessageVirtualBlock.vue'
 import ActivitySlot from './blocks/ActivitySlot.vue'
@@ -260,6 +261,7 @@ defineExpose({
         </div>
         <ActivitySlot
           v-if="slot"
+          v-bind="chromeEntrance(true)"
           :kind="slot.kind"
           :incoming="slot.incoming"
           :style="{ marginTop: renderBlocks.length ? `${BLOCK_GAP}px` : '0' }"

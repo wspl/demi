@@ -2,28 +2,30 @@
 import { computed, type Component } from 'vue'
 import { Brain, History, SquareTerminal } from '@lucide/vue'
 import ActivityMark from '@demicodes/web-ui/ui/ActivityMark.vue'
-import ChromeRoll from '@demicodes/web-ui/ui/ChromeRoll.vue'
-import { CHROME_ENTER_MS } from '@demicodes/web-ui/ui/chrome-enter'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { t } from '@demicodes/web-ui/infra/i18n'
 import type { ActivityKind, HandoffBlock } from '../activity-slot'
 import { parseToolCallInput } from '../block-helpers'
 import { thinkingFaceLabel } from '../thinking-label'
 import { standardToolTitle, toolRenderKind } from '../tool-rendering'
+import FunctionalBlock from './FunctionalBlock.vue'
 
 /**
- * The transcript's tail row while it waits: the wait mark and why. A block
- * handed to it rolls in with the face its transcript row will have, so the
- * row that takes over afterwards looks the same.
+ * The transcript's tail row while it waits: a FunctionalBlock face with the
+ * wait mark and why. A block handed to it rolls in with the icon and label its
+ * own row (ThinkingBlock, ToolShellBlock, ToolShellControlBlock or
+ * ToolGenericBlock) will have, so that row takes over without a change.
  */
 const props = defineProps<{
   kind: ActivityKind
   incoming?: HandoffBlock | null
 }>()
 
-const faceKey = computed(() => props.incoming?.id ?? props.kind)
-// The wait mark stays while only the reason changes; a block brings its own icon, so the whole face rolls.
-const iconKey = computed(() => (props.incoming ? `block:${props.incoming.id}` : 'wait'))
+interface Face {
+  /** `wait` is the ActivityMark; null is a row without an icon cell. */
+  icon: Component | 'wait' | null
+  label: string
+}
 
 const waitLabel = computed(() => {
   switch (props.kind) {
@@ -38,11 +40,10 @@ const waitLabel = computed(() => {
   }
 })
 
-/** Icon and label of the block's own transcript row: ThinkingBlock, ToolShellBlock, ToolShellControlBlock or ToolGenericBlock. */
-const incomingFace = computed<{ icon: Component | null; label: string } | null>(() => {
+const face = computed<Face>(() => {
   const block = props.incoming
   if (!block) {
-    return null
+    return { icon: 'wait', label: waitLabel.value }
   }
   if (block.type === 'thinking') {
     return { icon: Brain, label: thinkingFaceLabel(true, null) }
@@ -54,34 +55,28 @@ const incomingFace = computed<{ icon: Component | null; label: string } | null>(
   const label = standardToolTitle(kind, parseToolCallInput(block))
   return { icon: kind === 'yield' ? History : SquareTerminal, label }
 })
-const label = computed(() => incomingFace.value?.label ?? waitLabel.value)
+
+const rollKey = computed(() => props.incoming?.id ?? props.kind)
+// The wait mark stays while only the reason changes; a block brings its own icon, so the whole face rolls.
+const iconKey = computed(() => (props.incoming ? `block:${props.incoming.id}` : 'wait'))
 </script>
 
 <template>
-  <div
-    class="chrome-enter flex h-7 items-center gap-2 px-[var(--agent-pad-x,2rem)] text-chrome text-fg-muted"
-    :style="{ '--chrome-enter-ms': `${CHROME_ENTER_MS}ms` }"
-  >
-    <ChromeRoll
-      class="min-w-0"
-      :face-key="faceKey"
+  <div class="px-[var(--agent-pad-x,2rem)]">
+    <FunctionalBlock
+      loading
+      :roll-key="rollKey"
       :icon-key="iconKey"
     >
-      <template #icon>
-        <span
-          v-if="!incomingFace || incomingFace.icon"
-          class="flex shrink-0 items-center justify-center"
-          :style="{ width: `${ICON_PX.in28}px`, height: `${ICON_PX.in28}px` }"
-        >
-          <component
-            :is="incomingFace.icon"
-            v-if="incomingFace?.icon"
-            :size="ICON_PX.in28"
-          />
-          <ActivityMark v-else />
-        </span>
+      <template v-if="face.icon !== null" #icon>
+        <ActivityMark v-if="face.icon === 'wait'" />
+        <component
+          :is="face.icon"
+          v-else
+          :size="ICON_PX.in28"
+        />
       </template>
-      <span class="min-w-0 truncate thinking-shimmer">{{ label }}</span>
-    </ChromeRoll>
+      <span class="min-w-0 truncate thinking-shimmer">{{ face.label }}</span>
+    </FunctionalBlock>
   </div>
 </template>

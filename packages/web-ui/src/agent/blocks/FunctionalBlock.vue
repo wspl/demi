@@ -32,7 +32,8 @@ const props = defineProps<{
 const slots = useSlots()
 const isOpen = defineModel<boolean>('open', { default: false })
 const hasBodySlot = () => !!slots['body']
-const showIcon = computed(() => !!slots['icon'] || props.tone === 'danger')
+// Read at render time: a conditional icon slot changes between renders, and slots are not reactive.
+const showIcon = () => !!slots['icon'] || props.tone === 'danger'
 const isExpandable = computed(() => props.expandable || hasBodySlot() || !!props.errorText)
 const bodyScroll = ref<HTMLElement>()
 let closeTimer: ReturnType<typeof setTimeout> | undefined
@@ -98,7 +99,7 @@ onUpdated(() => {
         :face-key="rollKey ?? 'static'"
         :icon-key="iconKey ?? 'icon'"
       >
-        <template v-if="showIcon" #icon>
+        <template v-if="showIcon()" #icon>
           <div
             class="functional-block-icon flex shrink-0 items-center justify-center"
             :style="{ width: `${ICON_PX.in28}px`, height: `${ICON_PX.in28}px` }"
@@ -143,7 +144,7 @@ onUpdated(() => {
     <Fold v-if="isExpandable" :open="isOpen">
       <div class="mb-1 flex overflow-hidden">
         <div
-          v-if="showIcon"
+          v-if="showIcon()"
           class="functional-block-rail shrink-0"
           :style="{ width: `${ICON_PX.in28}px` }"
         />

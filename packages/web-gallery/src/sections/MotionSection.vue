@@ -11,6 +11,7 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessageVirtualBlock.vue'
 import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
+import { chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
 import type { Block } from '@demicodes/core'
 import { demoModel, shellTool } from '../fixtures/blocks'
 import GallerySection from '../components/GallerySection.vue'
@@ -168,7 +169,10 @@ const exploratoryMarks: {
         :key="entranceKey"
         class="gallery-frame gallery-block-frame-y bg-surface"
       >
-        <ActivitySlot kind="requesting" />
+        <ActivitySlot
+          v-bind="chromeEntrance(true)"
+          kind="requesting"
+        />
         <AgentMessageVirtualBlock
           :block="entranceThinking"
           conversation-id="motion"
