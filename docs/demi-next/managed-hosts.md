@@ -190,8 +190,18 @@ prepares the tap pool with the Mac as the backend address (printed as the
 `DEMI_BACKEND_PUBLIC_URL` to use), and runs the manager in the foreground on
 `/run/user/<uid>/demi-machines.sock`, which Lima forwards to
 `~/.lima/demi-machines/sock/demi-machines.sock`. The manager's state lives on
-the instance disk under `/var/lib/demi-machines`. Start the backend on the Mac
-with:
+the instance disk under `/var/lib/demi-machines`.
+
+The install script adds the guest user to `kvm`. The launcher starts the
+manager through `sudo -n -H -u <guest-user>` so its supplementary groups are
+loaded from the guest's user database, including when Lima reuses an SSH
+session opened before installation. The manager and Firecracker run as that
+ordinary user. Access relies on the device's `kvm` group, not a temporary
+per-user ACL that udev or logind can replace. Before starting the manager,
+the launcher opens `/dev/kvm` read-write as that user and fails immediately
+with a permission diagnostic if it cannot.
+
+Start the backend on the Mac with:
 
 ```sh
 DEMI_MACHINES_SOCKET=$HOME/.lima/demi-machines/sock/demi-machines.sock \

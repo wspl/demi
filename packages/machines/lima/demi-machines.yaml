@@ -31,7 +31,7 @@ provision:
       set -euxo pipefail
       export DEBIAN_FRONTEND=noninteractive
       apt-get update -qq
-      apt-get install -y -qq e2fsprogs nftables iproute2 acl curl unzip
+      apt-get install -y -qq e2fsprogs nftables iproute2 curl unzip
       firecracker_version=v1.16.1
       if ! [ -x /usr/local/bin/firecracker ]; then
         arch=$(uname -m)
@@ -50,7 +50,7 @@ provision:
       fi
 
 probes:
-  - description: "kvm is available to the user"
+  - description: "the kvm device exists"
     script: |
       #!/bin/bash
       set -eux
