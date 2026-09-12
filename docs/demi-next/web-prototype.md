@@ -185,9 +185,10 @@ from conversation state alone which face it shows, in this order:
    or a hidden recovery record, the turn is requesting.
 4. Otherwise there is no row.
 
-The row is a 28px `ChromeRoll` face: the `ActivityMark` sweep and the reason.
-A change of reason (Connecting to Requesting, Retrying to Requesting) rolls the
-label under a standing mark. A thinking or tool block that arrives while the row
+The row is a `FunctionalBlock`, the same 28px face every thinking and tool row
+uses, carrying the `ActivityMark` sweep and the reason through its `rollKey`
+and `iconKey`. A change of reason (Connecting to Requesting, Retrying to
+Requesting) rolls the label under a standing mark. A thinking or tool block that arrives while the row
 is showing does not replace it: `useActivityHandoff` holds the block out of the
 list, the row rolls its whole face to the block's own icon and label (Brain and
 Thinking; the terminal mark and the shell title; the tool name alone for a
@@ -199,9 +200,10 @@ it becomes a row at once. A block that arrives while no row is showing (thinking
 straight after thinking, a tool after thinking) is appended without a roll.
 
 A chrome row that joins a live transcript enters: over `CHROME_ENTER_MS`
-(200ms) it slides in from 8px to the left while fading in, on the block's
-wrapper in `AgentMessageVirtualBlock` for thinking, tool and abort rows, and on
-`ActivitySlot` when the slot appears. `useChromeEntrance` decides which rows
+(200ms) it slides in from 8px to the left while fading in. `chromeEntrance`
+binds the one class and duration, on the block's wrapper in
+`AgentMessageVirtualBlock` for thinking, tool and abort rows, and from
+`AgentMessageList` on `ActivitySlot` when the slot appears. `useChromeEntrance` decides which rows
 enter: blocks present when the list opens are history and stay still, a block
 that joins afterwards enters once and is then settled, so a virtual row that
 scrolling remounts does not move again, and a block handed off through the
