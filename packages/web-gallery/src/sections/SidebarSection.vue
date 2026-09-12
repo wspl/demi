@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { moveBefore } from '@demicodes/utils'
 import type { SidebarConversation, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
-import { RestoreSweep } from '@demicodes/web-ui/agent/session-restore'
+import { RestoreSweep } from '../fixtures/restore-sweep'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'

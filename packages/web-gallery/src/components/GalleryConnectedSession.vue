@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
-import ChatSession, {
-  type ChatSessionState,
-} from '@demicodes/web-ui/agent/ChatSession.vue'
+import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
+import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import SidebarAccount from '@demicodes/web-ui/sidebar/SidebarAccount.vue'
 import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
@@ -23,6 +22,7 @@ const session = reactive<ChatSessionState>({
   phase: 'idle',
   load: 'ready',
   lastError: null,
+  pendingAction: null,
   archived: false,
   status: 'idle',
   scroll: null,

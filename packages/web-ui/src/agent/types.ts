@@ -1,6 +1,11 @@
 import type { Block, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
+import type { PendingAction } from './activity-slot'
+import type { ConversationStatus } from './conversation-status'
 import type { SessionLoad } from './session-status'
+import type { SubagentRecord } from './subagents'
+import type { TerminalRecord } from './terminals'
 import type { ComposerAttachment } from './message-input/attachments'
+import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
 
 export interface ModelIntent {
   providerId: string
@@ -49,4 +54,27 @@ export interface ConversationState {
   lastError: string | null
   /** History restore and the live socket. A new conversation starts `ready`. */
   load: SessionLoad
+  /** A recovery sent and not yet acknowledged by a `phase` event; the tail row names it. */
+  pendingAction: PendingAction
+}
+
+/** What `ChatSession` reads: the live conversation fields plus what the product keeps beside them. */
+export interface ChatSessionState
+  extends Pick<
+    ConversationState,
+    | 'id'
+    | 'title'
+    | 'blocks'
+    | 'queue'
+    | 'pendingSteers'
+    | 'phase'
+    | 'load'
+    | 'lastError'
+    | 'pendingAction'
+  > {
+  archived: boolean
+  status: ConversationStatus
+  scroll: PersistedScrollState | null
+  subagents: SubagentRecord[]
+  terminals: TerminalRecord[]
 }

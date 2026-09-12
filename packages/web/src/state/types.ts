@@ -9,6 +9,7 @@ import type {
   ComposerFileAttachment,
   ComposerRemoteAttachment,
 } from '@demicodes/web-ui/agent/message-input/attachments'
+import type { PendingAction } from '@demicodes/web-ui/agent/activity-slot'
 import type { SessionLoad } from '@demicodes/web-ui/agent/session-status'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
@@ -51,6 +52,7 @@ export interface Conversation extends SidebarConversation {
   subagents: SubagentRecord[]
   terminals: TerminalRecord[]
   load: SessionLoad
+  pendingAction: PendingAction
 }
 
 export interface Device {

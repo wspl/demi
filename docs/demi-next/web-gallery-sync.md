@@ -20,7 +20,7 @@ browser package typechecks and checks affected specimens in the browser.
 | Tab strip: close and insert collapse or grow from the current width | TabStrip, TabItem | Session Tab bar and overlay inspect tabs |
 | Subagent roster and inspect | AgentsChip, SubagentPanel over SessionOverlay, SubagentHistoryMenu | Session Windows view and dock chip; `web` ChatPage over conversation.subagents |
 | Live shell jobs | TerminalChip, TerminalPanel, XtermView over SessionOverlay | Session Windows view and Running chip; `web` ChatPage over conversation.terminals |
-| Transcript blocks, markdown and tool output | Shared agent renderers | Session page Blocks, Turns and Session views; Markdown and Code |
+| Transcript blocks, markdown and tool output | Shared agent renderers under AgentMessageList | Session page Blocks (single blocks), Turns and Stream (AgentMessageList over `useTurnFlow`), Session (ChatSession over `useTurnFlow`); Markdown and Code |
 | Fold: height and chevron | ui/Fold, ui/FoldChevron | Motion Fold specimen; Skills packs; FunctionalBlock |
 | Settings shell, rail, pages, groups, rows, split lists | settings/SettingsDialog, sections (`SETTINGS_SECTIONS`), SettingsPage, SettingsGroup, SettingsRow, SettingsSplit, SettingsListItem | Settings full mock and narrow variant; the product settings in `web` |
 | Settings pages: General (theme, tone, accent, text size), Account, Archived, Keyboard; Notifications and Data & privacy pages exist as specimens behind disabled rail entries | settings/SettingsGeneral, SettingsAccount, SettingsNotifications, SettingsArchived, SettingsKeyboard, SettingsData | Settings full mock over fixture state; `web` over backend preferences, where General applies appearance and Keyboard drives the shared application shortcut binding. A whole unused page is disabled on the rail; leftover rows on a usable page stay disabled with the In development tooltip |
@@ -36,7 +36,8 @@ browser package typechecks and checks affected specimens in the browser.
 | File browser: folder and file choosing over a `FileBrowserSource`, address bar, places and devices, states | files/FileBrowser, FileBrowserDialog, FileIcon (see `docs/file-browser.md`) | Files page over fixture trees; the workspace picker, new-project Browse and the composer's remote attachment in `web` |
 | Composer Add menu: local files, and a remote file when the conversation has a host | SessionComposer `remoteFiles` / `attachRemote` | GalleryComposer opens the Files dialog; both hosts add a reference tile |
 | Composer attachment upload: determinate donut from 0 to 1, then ready; a failed upload leaves the composer with a toast | AttachmentTile, `ComposerAttachment` phase / progress / destination, SessionComposer send block | Session Composer specimens pin ready and a mid-upload ring; gallery uses timed fixtures; `web` uses actual byte-transfer progress |
-| Session and list load: first opening uses the loading pane through history and initial connection; cached navigation reuses state and connection without reloading; an open session's dropped connection uses the Connecting tail row (same as Requesting). Failed restore never reads as an empty conversation or first-run list. Retry sweeps loading then ready | SessionStatus, `ConversationCache`, `RestoreSweep`, `LoadingBlock`, `SessionLoad` / `ListLoad`, AgentMessageList, AppSidebar `listStatus` | Session States view (cached switching uses ConversationCache and AgentMessageList; failed and missing are live; reconnecting pins `LoadingBlock`); Sidebar States loading / failed · live / first run; `web` ChatPage and AppSidebar |
+| Session and list load: first opening uses the loading pane through history and initial connection; cached navigation reuses state and connection without reloading; an open session's dropped connection shows Connecting in the activity slot. Failed restore never reads as an empty conversation or first-run list. Retry reloads: loading, then ready | SessionStatus, `ConversationCache`, ActivitySlot, `SessionLoad` / `ListLoad`, AgentMessageList, AppSidebar `listStatus` | Session States view (cached switching uses ConversationCache and AgentMessageList; failed and missing are live; reconnecting pins ActivitySlot); Sidebar States loading / failed · live / first run, timed by the gallery's `RestoreSweep` fixture; `web` ChatPage and AppSidebar |
+| Activity slot: Connecting, Resuming, Retrying, Requesting faces; a thinking or tool block rolls into the row before its transcript row takes over | ActivitySlot, `activitySlotKind`, `useActivityHandoff`, `ConversationRuntime.resume()` setting `pendingAction`, all through AgentMessageList | Session Blocks view pins every face and an incoming thinking and shell block; Turns view plays turn, resume, retry and connect over `useTurnFlow` state; `web` ChatPage over the live runtime |
 | Composer when no model can send: snackbar in the composer slot, Configure models. Last choice unusable: warning on the chip, send blocked, switch required | SessionNoticeBar via SessionComposer, ModelSelector, `composerModel` | Session Composer `model unavailable` and `no models`; `web` ConversationComposer opens Models & providers |
 | Archived conversation: the same snackbar, Restore conversation | SessionNoticeBar via SessionComposer `archived` | Session Composer `archived` and `archived · live`; `web` ChatPage |
 
@@ -77,8 +78,15 @@ See `managed-hosts.md` and `product.md` for authoritative behavior.
 
 The Session States page also embeds `GalleryConnectedSession`: the same
 `ChatSession`, `SidebarLayout` and `WorkspaceDirectoryMenu` used by the product,
-with fixture handlers and a failed-upload retry example. Both composers use
-`RemoteFilePicker`; media links and video use `ContentMedia` with shared cleanup.
+with fixture handlers. Both composers use `RemoteFilePicker`; media links and
+video use `ContentMedia` with shared cleanup.
+
+The gallery never renders a transcript through a component of its own. Every
+session specimen mounts `AgentMessageList` (directly or through `ChatSession`)
+over state shaped like the product's conversation state; `turn-flow.ts` only
+changes that state on a schedule, the way the runtime does on events. The tail
+row, its faces, the handoff of a block into the row and the follow-on scrolling
+are `web-ui`'s, so a motion seen in the gallery is the motion the product has.
 
 The Session States “Scroll control without task chips” example uses `ChatSession`
 and `SessionDock` with no task chips. Scrolling away from and back to the bottom

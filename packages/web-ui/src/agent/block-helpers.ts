@@ -1,5 +1,7 @@
 import { isRecord } from '@demicodes/utils'
 import type { Block, TokenUsage } from '@demicodes/core'
+import { Allow, parse } from 'partial-json'
+import { shouldParsePartialToolInput } from './tool-rendering'
 
 type ToolCallBlock = Extract<Block, { type: 'tool_call' }>
 
@@ -40,6 +42,26 @@ export function toolOutputText(block: ToolCallBlock): string {
 
 export function shellTerminalOutputChunks(block: ToolCallBlock): ShellTerminalOutputChunk[] {
   return outputChunks(block.view)
+}
+
+/**
+ * A tool call's input as an object while it may still be streaming: standard
+ * tools parse the partial JSON so their row can name the command early; any
+ * other tool waits for the complete document.
+ */
+export function parseToolCallInput(block: ToolCallBlock): Record<string, unknown> {
+  if (!block.input)
+    return {}
+  try {
+    const result = shouldParsePartialToolInput(block.toolName)
+      ? parse(block.input, Allow.ALL)
+      : JSON.parse(block.input)
+    return typeof result === 'object' && result !== null
+      ? result as Record<string, unknown>
+      : {}
+  } catch {
+    return {}
+  }
 }
 
 export function parseToolInput(raw: string): Record<string, unknown> {

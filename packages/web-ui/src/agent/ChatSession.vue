@@ -13,7 +13,7 @@ import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { useSessionPanels } from './useSessionPanels'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
-import type { PendingSubmissionState } from './types'
+import type { ChatSessionState, PendingSubmissionState } from './types'
 import type { MessageForkHandler } from './message-fork'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
@@ -21,30 +21,8 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { t } from '../infra/i18n'
 import { sessionFailureNotice } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
-import type { ConversationState } from './types'
-import type { ConversationStatus } from './conversation-status'
-import type { SubagentRecord } from './subagents'
-import type { TerminalRecord } from './terminals'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
 
-export interface ChatSessionState
-  extends Pick<
-    ConversationState,
-    | 'id'
-    | 'title'
-    | 'blocks'
-    | 'queue'
-    | 'pendingSteers'
-    | 'phase'
-    | 'load'
-    | 'lastError'
-  > {
-  archived: boolean
-  status: ConversationStatus
-  scroll: PersistedScrollState | null
-  subagents: SubagentRecord[]
-  terminals: TerminalRecord[]
-}
 const props = defineProps<{
   conversation: ChatSessionState
   hasProvider: boolean
@@ -161,6 +139,7 @@ watch(() => props.conversation.id, close)
             :pending-steers="conversation.pendingSteers"
             :phase="conversation.phase"
             :load="conversation.load"
+            :pending-action="conversation.pendingAction"
             :load-error="conversation.lastError"
             :failure="failureNotice"
             :retry="canRecover ? () => emit('retry') : undefined"

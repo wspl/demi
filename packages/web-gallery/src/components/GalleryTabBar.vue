@@ -49,6 +49,7 @@ function createTab(
       hasContent: status !== 'active' && status !== 'idle',
       lastError: status === 'error' ? 'rate limited' : null,
       load: 'ready',
+      pendingAction: null,
     },
   }
 }

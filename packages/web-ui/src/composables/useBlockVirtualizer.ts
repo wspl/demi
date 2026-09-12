@@ -9,7 +9,8 @@ interface VirtualizedBlock {
 }
 
 const OVERSCAN = 8
-const BLOCK_GAP = 4
+/** Space between transcript rows; a row placed after the list keeps it too. */
+export const BLOCK_GAP = 4
 const AUTO_SCROLL_REENGAGE_THRESHOLD = 1
 
 const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {

@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { parse, Allow } from 'partial-json'
 import type { ToolCallBlock } from '../block-types'
+import { parseToolCallInput } from '../block-helpers'
 import ToolShellBlock from './ToolShellBlock.vue'
 import ToolShellStatusBlock from './ToolShellStatusBlock.vue'
 import ToolShellWriteBlock from './ToolShellWriteBlock.vue'
 import ToolShellAbortBlock from './ToolShellAbortBlock.vue'
 import ToolYieldBlock from './ToolYieldBlock.vue'
 import ToolGenericBlock from './ToolGenericBlock.vue'
-import { shouldParsePartialToolInput, toolRenderKind } from '../tool-rendering'
+import { toolRenderKind } from '../tool-rendering'
 
 const props = defineProps<{
   block: ToolCallBlock
@@ -16,20 +16,7 @@ const props = defineProps<{
   isStreaming: boolean
 }>()
 
-const parsedInput = computed<Record<string, unknown>>(() => {
-  if (!props.block.input)
-    return {}
-  try {
-    const result = shouldParsePartialToolInput(props.block.toolName)
-      ? parse(props.block.input, Allow.ALL)
-      : JSON.parse(props.block.input)
-    return typeof result === 'object' && result !== null
-      ? result as Record<string, unknown>
-      : {}
-  } catch {
-    return {}
-  }
-})
+const parsedInput = computed(() => parseToolCallInput(props.block))
 const renderKind = computed(() => toolRenderKind(props.block.toolName))
 </script>
 

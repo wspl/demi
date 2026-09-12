@@ -1,18 +1,21 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { Play, RotateCw } from '@lucide/vue'
+import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import ErrorBlock from '@demicodes/web-ui/agent/blocks/ErrorBlock.vue'
 import ToolShellBlock from '@demicodes/web-ui/agent/blocks/ToolShellBlock.vue'
 import { parseToolInput } from '@demicodes/web-ui/agent/block-helpers'
-import LoadingBlock from '@demicodes/web-ui/agent/blocks/LoadingBlock.vue'
+import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
+import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activity-slot'
+import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
+import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
 import ModelMenu from '@demicodes/web-ui/agent/ModelMenu.vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import PendingSubmission from '@demicodes/web-ui/agent/PendingSubmission.vue'
-import { RestoreSweep } from '@demicodes/web-ui/agent/session-restore'
+import { RestoreSweep } from '../fixtures/restore-sweep'
 import {
   sessionPaneStatus,
   type SessionLoad,
@@ -25,27 +28,24 @@ import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { runningSubagents } from '@demicodes/web-ui/agent/subagents'
-import { useSessionPanels } from '@demicodes/web-ui/agent/useSessionPanels'
 import GalleryCachedSessions from '../components/GalleryCachedSessions.vue'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
 import GalleryAssistantMessages from '../components/GalleryAssistantMessages.vue'
-import { beginMessageEdit, lastEditableUserMessageId, submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
+import { submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
-import type { Block, ThinkingConfig, UserContentBlock } from '@demicodes/core'
-import type { PendingSteerRenderBlock } from '@demicodes/web-ui/agent/pending-steers'
-import { queuedMessagesToRenderBlocks } from '@demicodes/web-ui/agent/queued-messages'
+import type { ThinkingConfig, UserContentBlock } from '@demicodes/core'
+import { createPendingSteerMessage } from '@demicodes/web-ui/agent/pending-steers'
 import { composerAttachment, encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import ActivitySlot from '../components/ActivitySlot.vue'
 import {
   demoImageUrl,
   demoModel,
+  runningShellTool,
   shellTool,
   thinkingText,
   longUserText,
-  pendingSteerDemo,
   steerPrompt,
   transcriptDemoBlocks,
 } from '../fixtures/blocks'
@@ -59,51 +59,30 @@ import {
 } from '../fixtures/catalog'
 import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
-import { useTurnFlow } from '../turn-flow'
+import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
-import GallerySessionPane from '../components/GallerySessionPane.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import GalleryTabBar from '../components/GalleryTabBar.vue'
-import GalleryTranscript from '../components/GalleryTranscript.vue'
 import { useGalleryView } from '../gallery-views'
 
 const { view } = useGalleryView()
 const submissionError = ref<string | null>('Connection closed before confirmation')
 
-const hiddenIds = ref(new Set<string>())
-const sessionBase = ref(transcriptDemoBlocks())
 const messageEdit = ref<MessageEditState | null>(null)
 const editRevision = ref(0)
-const extras = ref<Block[]>([])
-// Pending steers sit after every transcript block, like AgentMessageList orders them.
-const pendingSteers = ref<PendingSteerRenderBlock[]>([pendingSteerDemo])
 const compacting = ref(false)
-const queue = ref([
-  {
-    id: 'q1',
-    text: 'Also add a case for the expired cookie.',
-  },
-  {
-    id: 'q2',
-    text: 'Keep the light-mode screenshot in the same PR.',
-  },
-])
 const fullComposer = ref<{ setDraft: (text: string) => void }>()
 const agents = reactive(gallerySubagents())
 const terminals = reactive(galleryTerminals())
 const finishedOnly = agents.filter((agent) => agent.phase !== 'running')
-const { activeSubagentId, activeTerminalId, toggleAgents, toggleTerminals } =
-  useSessionPanels(
-    () => agents,
-    () => terminals,
-  )
 const exhibitAgentId = ref<string | null>(
   runningSubagents(agents)[0]?.id ?? agents[0]?.id ?? null,
 )
 const exhibitTerminalId = ref<string | null>(firstRunningTerminalId(terminals))
 const fillPane = computed(() => view.value === 'session')
+const editVersion = computed(() => ({ epoch: 'gallery-session', revision: editRevision.value }))
 
 watch(
   view,
@@ -119,45 +98,42 @@ watch(
 let nextQueue = 3
 let nextSent = 1
 
-const sessionFlow = useTurnFlow()
-const streamFlow = useTurnFlow()
-const turnFlow = useTurnFlow()
-const {
-  blocks: sessionFlowBlocks,
-  slot: sessionSlot,
-  endedAtById: sessionEndedAt,
-  streamingThinkingId: sessionStreamingId,
-  streamingTextId: sessionTextId,
-  running: sessionRunning,
-  play: playSession,
-  stop: stopSession,
-} = sessionFlow
-const {
-  blocks: streamBlocks,
-  endedAtById: streamEndedAt,
-  streamingThinkingId: streamThinkingId,
-  streamingTextId: streamTextId,
-} = streamFlow
+// The Session view is the product's ChatSession over a scripted runtime; Turns and Stream replay one flow each.
+const sessionFlow = useTurnFlow({
+  id: 'gallery-session',
+  title: 'Login test',
+  blocks: transcriptDemoBlocks(),
+  subagents: agents,
+  terminals,
+})
+const session = sessionFlow.state
+session.pendingSteers = [createPendingSteerMessage('pending-1', steerPrompt, session.blocks)]
+session.queue = [
+  {
+    id: 'q1',
+    text: 'Also add a case for the expired cookie.',
+    content: [{ type: 'text', text: 'Also add a case for the expired cookie.' }],
+  },
+  {
+    id: 'q2',
+    text: 'Keep the light-mode screenshot in the same PR.',
+    content: [{ type: 'text', text: 'Keep the light-mode screenshot in the same PR.' }],
+  },
+]
+const streamFlow = useTurnFlow({ id: 'gallery-stream' })
+const turnFlow = useTurnFlow({ id: 'gallery-turn' })
+const turnSurface = ref<{ dockHeight: number }>()
+const turnList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
+const streamSurface = ref<{ dockHeight: number }>()
+const streamList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
 
 function playStream(): void {
   streamFlow.play('stream')
 }
-const {
-  blocks: turnBlocks,
-  slot: turnSlot,
-  endedAtById: turnEndedAt,
-  streamingThinkingId: turnStreamingId,
-  streamingTextId: turnTextId,
-  play: playTurn,
-} = turnFlow
 
-const sessionBlocks = computed(() => [
-  ...sessionBase.value.filter((block) => !hiddenIds.value.has(block.id)),
-  ...extras.value.filter((block) => !hiddenIds.value.has(block.id)),
-  ...sessionFlowBlocks.value,
-  ...pendingSteers.value,
-  ...queuedMessagesToRenderBlocks(queue.value),
-])
+function playTurn(kind: TurnFlowKind): void {
+  turnFlow.play(kind)
+}
 
 const selectorProvider = ref('anthropic')
 const selectorModel = ref('claude-sonnet')
@@ -274,107 +250,74 @@ const functionalThinkingStartedAt = new Date().toISOString()
 const functionalThinkingEndedAt = new Date(
   Date.parse(functionalThinkingStartedAt) + 8_000,
 ).toISOString()
-
-function hideBlock(id: string): void {
-  hiddenIds.value = new Set(hiddenIds.value).add(id)
+const activityKinds: ActivityKind[] = ['requesting', 'connecting', 'resuming', 'retrying']
+const incomingThinking: HandoffBlock = {
+  type: 'thinking',
+  id: 'incoming-thinking',
+  createdAt: functionalThinkingStartedAt,
+  model: demoModel,
+  text: '',
+  signature: null,
 }
 
-function takePendingSteer(
-  pendingSteerId: string,
-): PendingSteerRenderBlock | undefined {
-  const block = pendingSteers.value.find(
-    (candidate) => candidate.pendingSteerId === pendingSteerId,
-  )
-  pendingSteers.value = pendingSteers.value.filter(
-    (candidate) => candidate !== block,
-  )
-  return block
+function takePendingSteer(id: string) {
+  const pending = session.pendingSteers.find((candidate) => candidate.id === id)
+  session.pendingSteers = session.pendingSteers.filter((candidate) => candidate !== pending)
+  return pending
 }
 
-function deletePendingSteer(pendingSteerId: string): void {
-  takePendingSteer(pendingSteerId)
+function deletePendingSteer(id: string): void {
+  takePendingSteer(id)
 }
 
-function interruptPendingSteer(pendingSteerId: string): void {
-  const block = takePendingSteer(pendingSteerId)
-  if (!block) {
+function interruptPendingSteer(id: string): void {
+  const pending = takePendingSteer(id)
+  if (!pending) {
     return
   }
-  const text = block.content.find(
-    (
-      part,
-    ): part is Extract<
-      typeof part,
-      {
-        type: 'text'
-      }
-    > => part.type === 'text',
+  const text = pending.content.find(
+    (part): part is Extract<typeof part, { type: 'text' }> => part.type === 'text',
   )?.text
-  if (text) {
-    extras.value = [
-      ...extras.value,
-      {
-        type: 'steer',
-        id: `steer-sent-${nextSent++}`,
-        turnId: 'turn-gallery',
-        createdAt: new Date().toISOString(),
-        model: demoModel,
-        content: [
-          {
-            type: 'text',
-            text,
-          },
-        ],
-      },
-    ]
-    playSession('turn', text)
+  if (!text) {
+    return
   }
-}
-
-function send(text: string): void {
-  playSession('turn', text)
+  sessionFlow.stop()
+  session.blocks = [
+    ...session.blocks,
+    {
+      type: 'steer',
+      id: `steer-sent-${nextSent++}`,
+      turnId: 'turn-gallery',
+      createdAt: new Date().toISOString(),
+      model: demoModel,
+      content: [{ type: 'text', text }],
+    },
+  ]
+  sessionFlow.turn(text)
 }
 
 function queueDraft(text: string): void {
-  queue.value.push({
+  session.queue.push({
     id: `q${nextQueue++}`,
     text,
+    content: [{ type: 'text', text }],
   })
 }
 
 function removeQueued(id: string): void {
-  queue.value = queue.value.filter((entry) => entry.id !== id)
+  session.queue = session.queue.filter((entry) => entry.id !== id)
 }
 
 function sendNow(id: string): void {
-  const item = queue.value.find((entry) => entry.id === id)
+  const item = session.queue.find((entry) => entry.id === id)
   if (!item) {
     return
   }
-  queue.value = queue.value.filter((entry) => entry.id !== id)
-  pendingSteers.value = [
-    ...pendingSteers.value,
-    {
-      type: 'pending_steer',
-      id: `pending-steer:gallery-${nextSent}`,
-      pendingSteerId: `gallery-${nextSent++}`,
-      content: [
-        {
-          type: 'text',
-          text: item.text,
-        },
-      ],
-    },
+  session.queue = session.queue.filter((entry) => entry.id !== id)
+  session.pendingSteers = [
+    ...session.pendingSteers,
+    createPendingSteerMessage(`gallery-${nextSent++}`, item.content, session.blocks),
   ]
-}
-
-function editUser(id: string): void {
-  const block = sessionBlocks.value.find((part) => part.id === id)
-  if (!block || block.type !== 'user' || messageEdit.value
-    || id !== lastEditableUserMessageId(sessionBlocks.value)) {
-    return
-  }
-  messageEdit.value = beginMessageEdit(block, { epoch: 'gallery-session', revision: editRevision.value })
 }
 
 async function submitEdit(): Promise<void> {
@@ -382,13 +325,12 @@ async function submitEdit(): Promise<void> {
     get: () => messageEdit.value,
     set: (state) => { messageEdit.value = state },
     send: async (request) => {
-      const blocks = [...sessionBase.value, ...extras.value, ...sessionFlowBlocks.value]
-        .filter((block) => !hiddenIds.value.has(block.id)) as Block[]
+      const blocks = session.blocks
       const index = blocks.findIndex((block) => block.id === request.targetBlockId)
       if (index < 0) {
         throw new Error('Message not found')
       }
-      sessionBase.value = [
+      session.blocks = [
         ...blocks.slice(0, index),
         {
           type: 'user', id: request.operationId, turnId: request.operationId,
@@ -401,8 +343,6 @@ async function submitEdit(): Promise<void> {
           text: 'Continuing from the edited message.',
         },
       ]
-      extras.value = []
-      sessionFlowBlocks.value = []
       editRevision.value += 1
     },
   })
@@ -962,88 +902,137 @@ function abortTerminal(id: string) {
       </GallerySection>
 
       <GallerySection
-        title="LoadingBlock"
-        note="Requesting row before the first block."
-      >
-        <GallerySpecimen
-          variant="requesting"
-          wide
-        >
-          <div class="gallery-frame gallery-activity-frame bg-surface">
-            <LoadingBlock />
-          </div>
-        </GallerySpecimen>
-      </GallerySection>
-
-      <GallerySection
         title="ActivitySlot"
-        note="Connecting, resuming, retrying, and requesting."
+        note="The transcript's tail row while it waits: why, and then the block rolling into it with the face its own row will have."
       >
-        <GallerySpecimen
-          variant="connecting"
-          wide
-        >
-          <div class="gallery-frame gallery-activity-frame bg-surface">
-            <ActivitySlot
-              kind="connecting"
-              label="Connecting"
-            />
-          </div>
-        </GallerySpecimen>
+        <div class="specimen-stack">
+          <GallerySpecimen
+            v-for="kind in activityKinds"
+            :key="kind"
+            :variant="kind"
+            wide
+          >
+            <div class="gallery-frame gallery-activity-frame bg-surface">
+              <ActivitySlot :kind="kind" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="incoming · thinking"
+            wide
+          >
+            <div class="gallery-frame gallery-activity-frame bg-surface">
+              <ActivitySlot
+                kind="requesting"
+                :incoming="incomingThinking"
+              />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="incoming · shell"
+            wide
+          >
+            <div class="gallery-frame gallery-activity-frame bg-surface">
+              <ActivitySlot
+                kind="requesting"
+                :incoming="runningShellTool"
+              />
+            </div>
+          </GallerySpecimen>
+        </div>
       </GallerySection>
     </template>
 
     <template v-if="view === 'turns'">
-      <GallerySessionPane label="Turn" :blocks="turnBlocks">
-        <GalleryTranscript
-          :blocks="turnBlocks"
-          :streaming-thinking-id="turnStreamingId"
-          :streaming-text-id="turnTextId"
-          :ended-at-by-id="turnEndedAt"
-          :activity="turnSlot"
-        />
-        <template #dock="{ showScrollToBottom, scrollToEnd }">
-          <SessionDock
-            :show-scroll-to-bottom="showScrollToBottom"
-            @scroll-to-bottom="scrollToEnd"
-          >
-            <template #chips>
-              <SessionDockChip @click="playTurn('turn')">
-                <RotateCw :size="ICON_PX.in28" />
-                Replay
-              </SessionDockChip>
-              <SessionDockChip @click="playTurn('resume')">
-                <Play :size="ICON_PX.in28" />
-                Resume
-              </SessionDockChip>
-              <SessionDockChip @click="playTurn('retry')"> Retry </SessionDockChip>
-              <SessionDockChip @click="playTurn('connect')">
-                Connect
-              </SessionDockChip>
+      <GallerySection
+        title="Turn"
+        note="Requesting, then each block rolls into the tail row; Resume, Retry and Connect wait for the server first."
+      >
+        <div class="mb-3 flex flex-wrap gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="playTurn('turn')"
+          >Replay</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="playTurn('resume')"
+          >Resume</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="playTurn('retry')"
+          >Retry</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="playTurn('connect')"
+          >Connect</Button>
+        </div>
+        <div class="gallery-frame h-[20rem] bg-surface">
+          <SessionSurface ref="turnSurface">
+            <div class="flex h-full min-h-0 flex-col">
+              <AgentMessageList
+                ref="turnList"
+                class="min-h-0 flex-1"
+                :conversation-id="turnFlow.state.id"
+                :blocks="turnFlow.state.blocks"
+                :pending-steers="[]"
+                :queue="[]"
+                :phase="turnFlow.state.phase"
+                :load="turnFlow.state.load"
+                :pending-action="turnFlow.state.pendingAction"
+                :bottom-offset="turnSurface?.dockHeight ?? 0"
+                :persisted-scroll-state="undefined"
+                read-only
+              />
+            </div>
+            <template #dock>
+              <SessionDock
+                :show-scroll-to-bottom="!!turnList && !turnList.isAtBottom"
+                @scroll-to-bottom="turnList?.scrollToBottom()"
+              />
             </template>
-          </SessionDock>
-        </template>
-      </GallerySessionPane>
+          </SessionSurface>
+        </div>
+      </GallerySection>
 
       <GallerySection
         title="Stream"
-        note="Thinking then reply, same reveal."
+        note="Thinking then reply with nothing waited for: the reveal alone."
       >
         <div class="mb-3">
           <Button
             variant="ghost"
             size="sm"
             @click="playStream"
-            >Replay</Button
-          >
+          >Replay</Button>
         </div>
-        <div class="gallery-frame gallery-block-frame-y bg-surface">
-          <GalleryTranscript
-            :blocks="streamBlocks"
-            :streaming-thinking-id="streamThinkingId"
-            :streaming-text-id="streamTextId"
-            :ended-at-by-id="streamEndedAt"
-          />
+        <div class="gallery-frame h-[20rem] bg-surface">
+          <SessionSurface ref="streamSurface">
+            <div class="flex h-full min-h-0 flex-col">
+              <AgentMessageList
+                ref="streamList"
+                class="min-h-0 flex-1"
+                :conversation-id="streamFlow.state.id"
+                :blocks="streamFlow.state.blocks"
+                :pending-steers="[]"
+                :queue="[]"
+                :phase="streamFlow.state.phase"
+                :load="streamFlow.state.load"
+                :pending-action="streamFlow.state.pendingAction"
+                :bottom-offset="streamSurface?.dockHeight ?? 0"
+                :persisted-scroll-state="undefined"
+                read-only
+              />
+            </div>
+            <template #dock>
+              <SessionDock
+                :show-scroll-to-bottom="!!streamList && !streamList.isAtBottom"
+                @scroll-to-bottom="streamList?.scrollToBottom()"
+              />
+            </template>
+          </SessionSurface>
         </div>
       </GallerySection>
     </template>
@@ -1128,7 +1117,7 @@ function abortTerminal(id: string) {
             wide
           >
             <div class="gallery-frame gallery-activity-frame bg-surface">
-              <LoadingBlock :label="t('agent.block.connecting')" />
+              <ActivitySlot kind="connecting" />
             </div>
           </GallerySpecimen>
           <GallerySpecimen
@@ -1140,7 +1129,7 @@ function abortTerminal(id: string) {
             >
               <div class="min-h-0 flex-1 overflow-y-auto pt-2">
                 <UserBlock :content="userBubble" />
-                <LoadingBlock :label="t('agent.block.connecting')" />
+                <ActivitySlot kind="connecting" />
               </div>
             </div>
           </GallerySpecimen>
@@ -1217,71 +1206,40 @@ function abortTerminal(id: string) {
     </template>
 
     <template v-if="view === 'session'">
-      <GallerySessionPane fill :blocks="sessionBlocks">
-        <GalleryTranscript
-          :blocks="sessionBlocks"
-          :streaming-thinking-id="sessionStreamingId ?? 'thinking-streaming'"
-          :streaming-text-id="sessionTextId"
-          :ended-at-by-id="sessionEndedAt"
-          :activity="sessionSlot"
-          :editable="!sessionRunning && !queue.length && !pendingSteers.length && !messageEdit"
-          :edit-target-id="messageEdit?.request.targetBlockId"
-          @delete-pending-steer="deletePendingSteer"
-          @interrupt-pending-steer="interruptPendingSteer"
-          @delete-queued="removeQueued"
-          @send-queued="sendNow"
-          @edit-user="editUser"
-        />
-        <template #dock="{ showScrollToBottom, scrollToEnd }">
-          <SessionDock
-            :show-scroll-to-bottom="showScrollToBottom"
-            @scroll-to-bottom="scrollToEnd"
-          >
-            <template #chips>
-              <SessionDockChip @click="playSession('resume')">
-                <Play :size="ICON_PX.in28" />
-                Resume
-              </SessionDockChip>
-              <TerminalChip
-                :terminals="terminals"
-                :open="activeTerminalId != null"
-                @open="toggleTerminals"
-              />
-              <AgentsChip
-                :agents="agents"
-                :open="activeSubagentId != null"
-                @open="toggleAgents"
-              />
-            </template>
-            <GalleryComposer
-              ref="fullComposer"
-              v-model:message-edit="messageEdit"
-              @submit-edit="submitEdit"
-              placeholder="Ask Demi about the failing login test…"
-              conversation-id="demo"
-              :running="sessionRunning"
-              :compacting="compacting"
-              @send="send"
-              @queue="queueDraft"
-              @stop="stopSession"
-              @compact="compact"
-            />
-          </SessionDock>
-        </template>
-        <template #panel>
-          <SubagentPanel
-            v-model:active-id="activeSubagentId"
-            :agents="agents"
-            @abort="abortAgents"
-            @abort-agent="abortAgent"
-          />
-          <TerminalPanel
-            v-model:active-id="activeTerminalId"
-            :terminals="terminals"
-            @abort="abortTerminal"
+      <ChatSession
+        :conversation="session"
+        has-provider
+        :edit-version="editVersion"
+        v-model:message-edit="messageEdit"
+        @retry="sessionFlow.resume()"
+        @archive="session.archived = true"
+        @save-scroll="(_id, state) => (session.scroll = state)"
+        @abort-subagents="abortAgents"
+        @abort-subagent="abortAgent"
+        @abort-terminal="abortTerminal"
+        @remove-queued="removeQueued"
+        @send-queued="sendNow"
+        @remove-pending-steer="deletePendingSteer"
+        @interrupt-pending-steer="interruptPendingSteer"
+      >
+        <template #composer>
+          <GalleryComposer
+            ref="fullComposer"
+            v-model:message-edit="messageEdit"
+            @submit-edit="submitEdit"
+            placeholder="Ask Demi about the failing login test…"
+            :conversation-id="session.id"
+            :running="session.phase === 'running'"
+            :compacting="compacting"
+            :archived="session.archived"
+            @restore="session.archived = false"
+            @send="sessionFlow.turn"
+            @queue="queueDraft"
+            @stop="sessionFlow.stop"
+            @compact="compact"
           />
         </template>
-      </GallerySessionPane>
+      </ChatSession>
     </template>
   </div>
 </template>

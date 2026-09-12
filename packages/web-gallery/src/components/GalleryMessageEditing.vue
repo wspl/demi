@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, reactive, ref, shallowRef } from 'vue'
 import { deferred, type Deferred } from '@demicodes/utils'
-import ChatSession, { type ChatSessionState } from '@demicodes/web-ui/agent/ChatSession.vue'
+import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
+import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import GalleryComposer from './GalleryComposer.vue'
 import {
@@ -14,7 +15,7 @@ import { demoModel } from '../fixtures/blocks'
 
 const session = reactive<ChatSessionState>({
   id: 'editing-example', title: 'Edit and resend', blocks: [], queue: [],
-  pendingSteers: [], phase: 'idle', load: 'ready', lastError: null,
+  pendingSteers: [], phase: 'idle', load: 'ready', lastError: null, pendingAction: null,
   archived: false, status: 'idle', scroll: null, subagents: [], terminals: [],
 })
 const revision = ref(0)

@@ -153,15 +153,57 @@ visible cache during that handshake and does not repeat the REST history request
 Archived conversations and conversations without an available model finish loading
 after their history arrives. Loading history never reads as an empty conversation.
 A dropped socket in an already open session keeps a
-cached transcript and shows Connecting as the same tail row as Requesting
-(`LoadingBlock`); without a cache it is that row alone, not a centered pane or
-a bar. A failed restore offers Retry, which sweeps loading then ready. An
+cached transcript and shows Connecting in the activity slot, the same tail row
+as Requesting; without a cache it is that row alone, not a centered pane or
+a bar. A failed restore offers Retry, which reloads: loading, then ready. An
 unknown id waits until the sidebar list is ready, then shows Conversation not
 found. The sidebar list uses the same three-way status: a spinner while loading,
-Retry when restore fails (the same sweep), and a first run only after the list
-is ready. `RestoreSweep` times gallery-only simulated restores; real request completion drives the product. `SessionStatus` owns the
+Retry when restore fails (the same reload), and a first run only after the list
+is ready. Real request completion drives the product; the gallery's
+`fixtures/restore-sweep.ts` times its simulated restores. `SessionStatus` owns the
 copy and chrome for loading, failed, empty, and missing. The Session States and
 Sidebar States gallery views pin every kind; failed (and missing) are live.
+
+## Activity slot
+
+The transcript's tail row while the conversation waits is `ActivitySlot`
+(`web-ui/agent/blocks/ActivitySlot.vue`), rendered by `AgentMessageList` and
+nothing else. `activitySlotKind` in `web-ui/agent/activity-slot.ts` decides
+from conversation state alone which face it shows, in this order:
+
+1. `load` is `reconnecting`: Connecting. The socket comes first; nothing else
+   can progress without it.
+2. `pendingAction` is `resume`: Retrying when the visible transcript ends with
+   an error record, Resuming otherwise. `ConversationRuntime.resume()` sets
+   `pendingAction` when Resume or Retry is pressed and clears it on the
+   server's next `phase` event, on a refused request, and when the connection
+   is released. The list hides the error record from the moment the recovery
+   is pending, so the row names the recovery in its place.
+3. `phase` is `running` and the tail is not content: Requesting. Content is a
+   thinking or text block, or an executing tool row. After a user message, a
+   steer, a pending steer, a compaction boundary, a completed or failed tool,
+   or a hidden recovery record, the turn is requesting.
+4. Otherwise there is no row.
+
+The row is a 28px `ChromeRoll` face: the `ActivityMark` sweep and the reason.
+A change of reason (Connecting to Requesting, Retrying to Requesting) rolls the
+label under a standing mark. A thinking or tool block that arrives while the row
+is showing does not replace it: `useActivityHandoff` holds the block out of the
+list, the row rolls its whole face to the block's own icon and label (Brain and
+Thinking; the terminal mark and the shell title; the tool name alone for a
+generic tool, which has no icon), and after `ACTIVITY_HANDOFF_MS`
+(`CHROME_ROLL_MS` plus 80ms) the block's transcript row takes over in the same
+place with the same face. The hold also ends when the block leaves the tail,
+when the conversation changes, and on unmount. A text block is never handed off:
+it becomes a row at once. A block that arrives while no row is showing (thinking
+straight after thinking, a tool after thinking) is appended without a roll.
+
+Retry and Resume are one action: both call `resume()`; only the record they
+recover from differs. Resuming
+`[user] [abort] ▸ Resuming ▸ Requesting ▸ Brain Thinking` and retrying
+`[user] [error hidden] ▸ Retrying ▸ Requesting ▸ Brain Thinking` are the same
+three faces in the same row. The gallery Session page's Turns view plays each
+sequence from fixture state through the product's `AgentMessageList`.
 
 Conversation headers show the title with device name/status and workspace name
 to its right. Metadata moves below the title on narrow screens. Hosts
