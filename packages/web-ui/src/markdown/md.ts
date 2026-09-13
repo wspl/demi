@@ -5,14 +5,7 @@ import { liveCheckboxHtml } from './gfm-task'
 import { isHttpUrl } from './filePath'
 import { codeToHtml } from './highlight'
 import type { MarkdownRenderOptions } from './types'
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
+import { escapeHtml } from './html'
 
 const userMarked = new Marked({
   gfm: true,

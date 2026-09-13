@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { Block } from '@demicodes/core'
-import { blockSchema, transcriptSchema, decodeServerFrame } from './transcript'
+import { blockSchema } from '@demicodes/web-ui/transport/protocol'
+import { transcriptSchema } from './transcript'
 
 const receipt: Extract<Block, { type: 'agent_message' }> = {
   type: 'agent_message', id: 'subagent:child:42', turnId: 'turn', createdAt: '2026-09-12T12:00:01.000Z',
@@ -16,12 +17,20 @@ const receipt: Extract<Block, { type: 'agent_message' }> = {
   },
 }
 
-test('cold transcript, reconnect reset, and live patches retain agent receipts with source metadata', () => {
-  expect(transcriptSchema.parse({ blocks: [receipt], subagents: [] }).blocks).toEqual([receipt])
-  expect(decodeServerFrame({ type: 'transcript_reset', epoch: 'fixture', revision: 1, blocks: [receipt] }))
-    .toMatchObject({ blocks: [receipt] })
-  expect(decodeServerFrame({ type: 'transcript_patch', revision: 2, patches: [{ op: 'add', path: ['blocks', 0], value: receipt }] }))
-    .toMatchObject({ patches: [{ value: receipt }] })
+test('a cold transcript keeps agent receipts with their source metadata', () => {
+  const transcript = transcriptSchema.parse({
+    blocks: [receipt],
+    subagents: [
+      {
+        id: 'child', name: 'UI implementation', phase: 'completed',
+        startedAt: '2026-09-12T12:00:00.000Z', endedAt: '2026-09-12T12:00:01.000Z',
+        blocks: [receipt],
+      },
+    ],
+  })
+
+  expect(transcript.blocks).toEqual([receipt])
+  expect(transcript.subagents[0]?.blocks).toEqual([receipt])
 })
 
 test('the product rejects corrupt receipt identities and unsupported outcomes', () => {
