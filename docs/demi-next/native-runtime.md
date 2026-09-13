@@ -21,34 +21,63 @@ Consider `demi file patch` running on a laptop. Its declaration names
 logical binding to an immutable package descriptor. The job pins that descriptor,
 so the command has an exact meaning throughout execution.
 
+The process diagram shows the native execution path. Each box is a process;
+arrows show requests, labeled with their contents and transport. Response paths
+are omitted. The runner and command service execute on the laptop.
+
 ```text
-Embedding application (Demi backend or SDK application)
-  command tree + startup package catalog
-                  |
-           pinned job manifest
-                  v
-Runner on laptop
-  brush declared builtin ----+
-  external command client ---+--> validated command dispatcher
-                                     |                  |
-                                  native               rpc
-                                     |                  `--> application callback
-                           acquire pinned executable
-                                     |
-                          reused HTTP/2 connection
-                          over child stdin/stdout
-                                     v
-                         Resident demi-commands service
-                           file.patch -> laptop files
-                                     |
-                         stdout / stderr / completion
-                                     v
-                              calling shell job
+Native command execution: process communication
+
++----------------------------+
+| Application process        |
+| Defines commands and jobs  |
++----------------------------+
+              |
+              | Job + pinned manifest
+              | MessagePack / WebSocket
+              v
++----------------------------+
+| Runner process             |
+| Runs shell and dispatches  |
++----------------------------+
+              |
+              | Native invocation
+              | HTTP/2 over stdio
+              v
++----------------------------+
+| Command service process    |
+| Executes native operations |
++----------------------------+
 ```
 
 On the first call, the runner acquires and verifies the laptop's artifact, starts
 its service and checks the handshake. Later calls in the same sharing scope reuse
 that service. Concurrent calls use separate HTTP/2 streams.
+
+The sequence below starts with an installed executable. Time runs downward;
+arrows show interactions between the runner and service. Each invocation uses
+its own stream on the reused connection.
+
+```text
+Native command execution: startup and successful calls
+
+Runner                                  Command service
+  |                                           |
+  |--- Start process ------------------------>|
+  |--- GET /v1/info -------------------------->|
+  |<-- Protocol version + operations ---------|
+  |                                           |
+  |    Validate against pinned descriptor     |
+  |                                           |
+  |--- POST /v1/invoke ----------------------->|
+  |                                           | Execute
+  |<-- stdout / stderr records ---------------|
+  |<-- completion record ---------------------|
+  |                                           |
+  |--- Next invocation ---------------------->|
+  |                                           | Reuse process
+  :                                           :
+```
 
 The patch handler works beside the file, so patching does not require transferring
 the original file through the backend. The caller receives byte output and an
@@ -65,9 +94,10 @@ The responsibility boundaries are:
 | Shared command-service SDK | Handle framing, HTTP/2, byte IO, and cancellation over supplied transport. |
 | Native package | Implement operations, validate their arguments, and release operation resources. |
 
-The shared SDK owns no artifact or process management. Both command entry paths
-use the same dispatcher, which supplies validated operation metadata to the native
-service. The service never receives raw CLI requests.
+The shared SDK owns no artifact or process management. Brush builtins and external
+command clients use the same dispatcher, which supplies validated operation
+metadata to the native service. Application callbacks return to the embedding
+application instead. The native service never receives raw CLI requests.
 
 Related contracts define the surrounding behavior:
 
