@@ -1,6 +1,6 @@
 # Native shell dependency
 
-`packages/runner/upstream/brush-core` contains brush-core 0.5.0 from upstream
+`vendor/brush-core` contains brush-core 0.5.0 from upstream
 commit `96a26d0c66cbc018a1517e9562944418fef5b272`. Its MIT license is retained
 beside the source. The workspace patches this crate for both the runner and
 brush-builtins so they use one interpreter implementation.
