@@ -97,9 +97,8 @@ function buildEditorTheme(p: CodeThemePalette, isDark: boolean) {
       right: '0',
       width: '10px',
       height: '100%',
-      backgroundColor: isDark
-        ? 'color-mix(in srgb, var(--color-fg-ghost) 18%, transparent)'
-        : 'color-mix(in srgb, var(--color-fg-ghost) 32%, transparent)',
+      // No track: only the thumb and its markers show over the text.
+      backgroundColor: 'transparent',
       pointerEvents: 'auto',
       zIndex: '3',
       opacity: '1',
@@ -111,9 +110,8 @@ function buildEditorTheme(p: CodeThemePalette, isDark: boolean) {
       bottom: '0',
       height: '10px',
       width: '100%',
-      backgroundColor: isDark
-        ? 'color-mix(in srgb, var(--color-fg-ghost) 18%, transparent)'
-        : 'color-mix(in srgb, var(--color-fg-ghost) 32%, transparent)',
+      // No track: only the thumb and its markers show over the text.
+      backgroundColor: 'transparent',
       pointerEvents: 'auto',
       zIndex: '3',
       opacity: '1',
@@ -150,38 +148,34 @@ function buildEditorTheme(p: CodeThemePalette, isDark: boolean) {
     '[data-scrollbar-markers="vertical-right"]': {
       right: '0',
     },
+    // The thumb is the app's ScrollArea thumb: 6px, the overlay hue at 12%,
+    // 25% under the pointer, fading over 250ms.
     '[data-scrollbar-thumb="vertical"], [data-scrollbar-thumb="horizontal"]': {
       position: 'absolute',
       borderRadius: '999px',
-      backgroundColor: isDark
-        ? 'color-mix(in srgb, var(--color-fg-ghost) 56%, transparent)'
-        : 'color-mix(in srgb, #9ca3af 62%, transparent)',
+      backgroundColor: 'color-mix(in srgb, var(--color-overlay) 12%, transparent)',
       opacity: '0',
-      mixBlendMode: isDark ? 'screen' : 'multiply',
       pointerEvents: 'auto',
-      transition: 'opacity 140ms ease, background-color 140ms ease',
+      transition: 'opacity 250ms ease-out, background-color 250ms ease-out',
     },
     '[data-editor-scrollbar][data-scrollbar-visible="true"] [data-scrollbar-thumb]': {
-      opacity: isDark ? '0.88' : '0.64',
+      opacity: '1',
     },
-    '[data-editor-scrollbar]:hover [data-scrollbar-thumb]': {
-      backgroundColor: isDark
-        ? 'color-mix(in srgb, var(--color-fg-ghost) 68%, transparent)'
-        : 'color-mix(in srgb, #6b7280 72%, transparent)',
-      opacity: isDark ? '0.95' : '0.76',
+    '[data-scrollbar-thumb]:hover': {
+      backgroundColor: 'color-mix(in srgb, var(--color-overlay) 25%, transparent)',
     },
     '[data-editor-scrollbar][data-scrollbar-scrollable="false"] [data-scrollbar-thumb]': {
       opacity: '0',
     },
     '[data-scrollbar-thumb="vertical"]': {
       top: '0',
-      left: '1px',
-      width: '8px',
+      left: '2px',
+      width: '6px',
     },
     '[data-scrollbar-thumb="horizontal"]': {
-      top: '1px',
+      top: '2px',
       left: '0',
-      height: '8px',
+      height: '6px',
     },
     '[data-editor-scrollbar-marker="selection"]': {
       backgroundColor: 'var(--color-on-accent)',

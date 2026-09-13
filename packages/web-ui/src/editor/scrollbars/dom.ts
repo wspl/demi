@@ -17,7 +17,9 @@ export interface MountedScrollbarDomOptions {
 }
 
 export function mountScrollbarDom(view: EditorView, options: MountedScrollbarDomOptions = {}): MountedScrollbarDom {
-  const idleMs = 900
+  // Same rhythm as the app's ScrollArea: the thumb shows while the pointer is
+  // inside the editor, while scrolling, and for this long after.
+  const idleMs = 700
   const vertical = document.createElement('div')
   vertical.dataset['editorScrollbar'] = 'vertical'
   vertical.dataset['scrollbarVisible'] = 'false'
@@ -179,14 +181,19 @@ export function mountScrollbarDom(view: EditorView, options: MountedScrollbarDom
     bumpScrollActivity('vertical', view)
   })
 
-  vertical.addEventListener('pointerenter', () => {
+  // Hovering anywhere in the editor shows both thumbs, as the app's scroll areas do.
+  const onEditorEnter = () => {
     verticalHovered = true
+    horizontalHovered = true
     refreshVisibility(view)
-  })
-  vertical.addEventListener('pointerleave', () => {
+  }
+  const onEditorLeave = () => {
     verticalHovered = false
+    horizontalHovered = false
     refreshVisibility(view)
-  })
+  }
+  view.dom.addEventListener('pointerenter', onEditorEnter)
+  view.dom.addEventListener('pointerleave', onEditorLeave)
 
   verticalThumb.addEventListener('pointerdown', (event) => {
     event.stopPropagation()
@@ -229,14 +236,6 @@ export function mountScrollbarDom(view: EditorView, options: MountedScrollbarDom
     bumpScrollActivity('horizontal', view)
   })
 
-  horizontal.addEventListener('pointerenter', () => {
-    horizontalHovered = true
-    refreshVisibility(view)
-  })
-  horizontal.addEventListener('pointerleave', () => {
-    horizontalHovered = false
-    refreshVisibility(view)
-  })
 
   horizontalThumb.addEventListener('pointerdown', (event) => {
     event.stopPropagation()
@@ -281,6 +280,8 @@ export function mountScrollbarDom(view: EditorView, options: MountedScrollbarDom
       if (activity.horizontal) bumpScrollActivity('horizontal', view)
     },
     destroy() {
+      view.dom.removeEventListener('pointerenter', onEditorEnter)
+      view.dom.removeEventListener('pointerleave', onEditorLeave)
       clearTimer(verticalScrollTimer)
       clearTimer(horizontalScrollTimer)
       verticalDragCleanup?.()
