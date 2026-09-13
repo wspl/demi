@@ -11,14 +11,69 @@ source, manifests and boundary checks with this contract.
 ## Source organization
 
 TypeScript packages live under `packages/`; Rust crates live under `crates/`.
-Each has its own source, tests and build manifest. A Rust crate does not also
-serve as an npm package.
+An independent package requires independent use, distribution or dependency
+isolation. Separate responsibilities within one consumer belong in modules.
+Cross-language type correspondence does not require matching packages.
 
-Authoritative Zod schemas remain in the TypeScript package that owns the
-protocol. Rust consumers generate from those definitions during Cargo builds;
-there is no separate contracts directory. Shared generation tools belong under
-`scripts/`, not inside another protocol package's private build scripts.
-Generated Rust types and validators belong in Cargo `OUT_DIR`, not source control.
+The following tree shows all first-party Rust crates and the TypeScript packages
+that own their contracts. Other TypeScript packages retain their registry entries.
+
+```text
+packages/
+├── runner-protocol/
+│   └── src/schemas.ts          # Authoritative Zod runner messages
+├── command-loader/
+│   └── src/manifest/schema.ts  # Authoritative Zod manifest structure
+└── command-protocol/
+    └── src/index.ts            # Authoritative Zod command wire/package contracts
+
+crates/
+├── runner/                    # Execution host; distributed as demi-runner
+│   ├── Cargo.toml
+│   ├── build.rs               # Generates runner messages and manifest bindings
+│   └── src/
+│       ├── main.rs            # Executable entry point
+│       ├── connection/        # Backend connection and runner-message codec
+│       ├── commands/          # Manifest, CLI parsing/help, dispatch, callbacks,
+│       │                      # artifact cache and resident-process ownership
+│       └── shell/             # In-process brush, standard utility adaptation
+├── command-service/           # Communication SDK shared by execution hosts
+│   ├── Cargo.toml             # and independently distributed command programs
+│   ├── build.rs               # Generates command wire and package bindings
+│   └── src/
+│       ├── lib.rs             # Library entry point
+│       ├── protocol.rs        # Generated types and incremental framing
+│       ├── client.rs          # Caller side
+│       └── server.rs          # Handler side
+└── demi-commands/              # Independently distributed Demi command program
+    ├── Cargo.toml
+    └── src/
+        ├── main.rs            # Resident service entry point
+        ├── files.rs           # Demi file operations
+        └── patch.rs           # Demi patch implementation
+
+scripts/
+├── rust-zod.ts                # Shared Zod-to-Rust generation tooling
+└── native/                    # Cross-target builds and release packaging
+```
+
+Each package keeps its own source, tests and build manifest. The tree names the
+modules relevant to these boundaries, not every implementation file. Vendored
+third-party crates remain under `vendor/` outside the first-party workspace.
+
+Zod schemas remain authoritative in their owning TypeScript packages. The runner
+consumes runner-message and manifest definitions; command-service consumes command
+wire and package definitions. The latter supplies its Rust types to both runner
+and command programs. There is no separate contracts directory, mirrored Rust
+protocol package or independently maintained Rust schema source.
+
+Cargo generation writes types and validators to each consuming crate's `OUT_DIR`.
+Generated Rust and intermediate schema documents do not belong in source control.
+Test fixtures belong with tests; release descriptors belong with release artifacts.
+Shared generation tools live under `scripts/`; protocol packages do not import
+one another's private generation scripts. General-purpose operations use standard
+or established libraries. Shell-specific path conventions belong to shell
+adaptation, not a standalone path utility package.
 
 ## Dependency Direction
 
@@ -106,7 +161,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Native binding: the file command tree declares package and operation ids.
   The backend supplies exact release descriptors at runtime; command declarations
   do not import a compiled-in release catalog. The Rust command implementation
-  remains in `packages/demi-package`.
+  remains in `crates/demi-commands`.
 
 ### `@demicodes/provider-claude-code`
 
@@ -209,25 +264,20 @@ Test code may depend upward for integration coverage. Production code must not.
 - Spawning `firecracker`, the jailer and e2fsprogs is this package's transport — the intentional external-process exception.
 - Must not: listen on TCP (the socket file's permissions are the boundary; there is no authentication); know users, conversations or the control database (it receives device ids and boot arguments); import the backend.
 
-### `@demicodes/command-loader` and `crates/command-loader`
+### `@demicodes/command-loader`
 
-- The TypeScript package owns manifest schemas and TS loading. The Rust crate
-  owns native manifest validation, CLI parsing and help. Its `build.rs` consumes
-  the TypeScript manifest schema.
 - Status: accepted native manifest contract; acceptance is tracked separately.
 - Production deps: `@demicodes/command-protocol`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: strict manifest schemas, canonical manifest identities, package catalog validation, declaration serialization, manifest sources, and TypeScript dispatch for embedders through injected RPC/native executors. Manifests pin complete package descriptors and exact operation bindings; they contain no implementation source or artifact location.
 - Public boundary: `buildManifest`, `parseManifest`, manifest types, `createLoader`, manifest sources, `inProcessRpc`, RPC transport types and `treeFromManifest`.
 - Must not: know the backend, spawn processes, resolve object-store credentials, hold command definitions, transpile source or load downloaded code. The native runner consumes generated Rust manifest values and implements its CLI dispatch in Rust.
 
-### `@demicodes/runner-protocol` and `crates/runner-protocol`
+### `@demicodes/runner-protocol`
 
-- The TypeScript package owns Zod message schemas and its codec. The Rust crate
-  owns the Rust codec and generated bindings; its `build.rs` consumes those schemas.
 - Status: implemented (the final wire: MessagePack frames, per-op fs messages, jobs, the rpc relay, the manifest push, transfers).
 - Production deps: `@demicodes/command-protocol`, `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
-- Owns: the backend runner wire and generated Rust validation contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` used by Bun; Rust uses the generated contract and rmp-serde), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
-- Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`; six-target runner release schemas under `release`. Both ends of the wire depend on this package; it depends on neither end.
+- Owns: the authoritative Zod backend runner wire contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` used by Bun; Rust uses the generated contract and rmp-serde), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
+- Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`; six-target runner release schemas under `release`. The backend consumes this package directly; the Rust runner generates bindings from its Zod schemas. It depends on neither endpoint.
 - Must not: contain network IO, a Host implementation, a shell environment, the job table, credentials, claim policy, device registry, or conversation state.
 
 ### `@demicodes/host-remote`
@@ -246,93 +296,75 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` with a command alias at `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
 
-### `@demicodes/command-protocol` and `crates/command-protocol`
+### `@demicodes/command-protocol`
 
-- Owns: native command-service metadata, strict wire values, protocol constants
-  and bounded incremental response framing. See
-  [Native runner and command services](demi-next/native-runtime.md).
-- The TypeScript package owns the Zod native package descriptor contract.
-  The Rust crate owns framing and native bindings. Its `build.rs` generates
-  Rust types and direct validation code in `OUT_DIR` from the owning TypeScript
-  package's authoritative Zod schemas. The validation mechanism remains open
-  in `demi-next/native-runtime.md`.
+- Owns: authoritative Zod command-service wire and native package descriptor
+  schemas, derived TypeScript types, protocol constants and package identities.
   Package identities use canonical JSON and SHA-256.
-- Depends on: serde, serde_json, bytes, thiserror, sha2 and
-  serde_json_canonicalizer; no runtime or transport IO.
-- Must not: implement command algorithms, spawn services or hold backend state.
+- Production deps: none.
+- Public boundary: command wire and package schemas, types and constants.
+- Must not: implement command algorithms, perform transport IO, spawn services
+  or hold backend state. Rust bindings belong to `crates/command-service`.
 
-### `crates/command-service` (Rust crate)
+### `crates/command-service` (Rust library)
 
-- Owns: HTTP/2 command-service transport over injected duplex IO, bounded input
-  and output, invocation admission, handler cancellation and connection cleanup.
-- Depends on: `demi-command-protocol`, Tokio, tokio-util, h2, http, futures-util,
-  bytes, serde_json and thiserror. No product or runner dependency.
-- Public boundary: service entry point, handler contract and invocation IO.
-- Must not: define builtin commands, resolve artifacts, hold credentials or
-  modify process-global cwd or environment on behalf of an invocation.
+- Owns: generated command wire/package types and validation, incremental framing,
+  HTTP/2 client and server, bounded invocation IO and handler cancellation.
+- Independent boundary: the runner and independently distributed command programs
+  use the same communication SDK. Third-party command authors depend on this
+  library without depending on runner or Demi command implementations.
+- `build.rs` consumes the Zod definitions in `packages/command-protocol`.
+  `src/protocol.rs` includes generated types and owns framing; `client.rs` and
+  `server.rs` own the two transport roles.
+- Depends on: Tokio, tokio-util, h2, http, futures-util, bytes, serde, serde_json,
+  thiserror and package-identity hashing/canonicalization libraries.
+- Public boundary: protocol types, client, service entry point, handler and IO.
+- Must not: implement commands, download artifacts, start command processes,
+  hold credentials or change process-global cwd/environment for an invocation.
 
-### `crates/command-runtime` (Rust crate)
+### `crates/demi-commands` (Rust executable)
 
-- Owns: artifact acquisition through an injected resolver, bounded direct HTTPS
-  downloads or local file copies, SHA-256 verification, atomic executable cache
-  publication, shared download cancellation, resident process startup, capability
-  verification, bounded diagnostic tails, shutdown deadlines and child reaping.
-- Depends on: command-protocol, command-service, Tokio, tokio-util, reqwest,
-  futures-util, sha2, tempfile and thiserror.
-- Public boundary: artifact cache and resolver, resident service with its command
-  client. The registration owner shuts down the cache and retains service objects
-  for the lifetime of their environments and invocations.
-- Must not: select backend storage vendors, construct command trees or implement
-  command operations.
-
-### `crates/demi-package` (Rust crate)
-
-- Owns: the `demi-commands` resident service, native Demi command operations and
-  package metadata. `coding-agent` owns the TypeScript command bindings; the
-  backend owns the runtime release catalog supplied to runners.
-  `scripts/native/release-package.ts` builds the six-target release bundle.
-  File operations receive invocation cwd, arguments and cancellation through the
-  command-service handler contract. Mutations serialize planning and application;
-  each replacement publishes atomically, and multi-file patches roll back earlier
-  changes if a later write fails.
-- Depends on: command-service, Tokio, tokio-util, bytes, serde, serde_json,
-  tempfile and regex. Test-only dependencies include command-runtime.
-- Must not: host a runner connection, define the agent's command tree, or store
-  conversation state.
-
-### `crates/native-path` (Rust crate)
-
-- Owns: cross-platform absolute path and lexical path normalization used by native filesystem commands and the runner.
-- Must not: access the filesystem, change cwd or know command declarations.
-
-### `crates/native-utils` (Rust crate)
-
-- Owns: embedded standard utilities for brush. Its upstream utility sources in
-  the root `vendor/` route cwd, environment and byte IO through an invocation context.
-- Must not: implement agent-specific commands or change process-global cwd/environment during a utility invocation.
+- Owns: the independently released `demi-commands` resident program and all native
+  Demi command implementations, including file read/create/edit/patch.
+  `coding-agent` owns the TypeScript declarations; backend supplies the runtime
+  release catalog. `scripts/native/release-package.ts` packages six target binaries.
+- Uses command-service for transport and invocation context. File operations use
+  invocation-local cwd and cancellation. Mutations serialize planning and
+  application; each replacement publishes atomically, and multi-file patches
+  roll back earlier changes if a later write fails.
+- First-party production dependency: command-service only.
+- Must not: host a runner connection, define the agent's command tree, store
+  conversations or be linked into runner. Standard shell utilities belong to
+  runner's shell module.
 
 ### `crates/runner` (Rust executable)
 
-- Owns: the `demi-runner` executable, one outbound backend WebSocket per registration, pairing/reconnection, filesystem and process RPC, shell jobs, local command forwarding and installation state.
-- `src/main.rs` selects runner administration, external command forwarding or
-  Linux guest initialization. Command aliases point to this same executable.
-- `src/shell.rs` runs brush and native utility builtins inside the resident runner
-  process. Jobs own their cwd, environment and IO; they do not start separate
-  runner processes. Declared command builtins call the dispatcher directly.
-  External programs remain child processes, and their command calls use the
-  forwarding executable. Cancelling one job must preserve the runner and other jobs.
-- Command definitions and the implementation catalog are fixed for the lifetime
-  of the server or SDK agent host program. Context disposal owns binding cleanup;
-  command changes are not live updates during that program's execution.
-- The root `vendor/brush-core` provides concurrent function/compound pipeline
-  stages and temporary-file here-documents.
-- `src/dispatch.rs` validates declarations and arguments. `rpc.rs` forwards application callbacks; `native.rs` shares resident services by artifact digest. The runner does not link `demi-package` implementations.
-- `src/local.rs`, `command_client.rs` and `stdio.rs` own owner-restricted local HTTP/2 transport, input demand and byte streaming. Unix uses domain sockets; Windows uses named pipes.
-- `src/state.rs`, `management.rs` and `mode.rs` own registration locks, private state, draining and backend connection lifetime. `init.rs` and `volumes.rs` own Linux PID 1 boot and volume operations. Managed state lives under `/run/demi`.
-- Public boundary: the executable. `scripts/native/build.ts` builds six native
-  targets; `scripts/native/release-runner.ts` verifies and packages them.
-  TypeScript integration fixtures belong to `host-remote/testing`.
-- Must not: hold provider credentials as configuration, own transcripts, import agent/provider implementations, execute downloaded JavaScript or contain native command algorithms.
+- Owns: the `demi-runner` execution host, backend registration and connection,
+  filesystem/process RPC, shell jobs, local command forwarding and installation.
+- `build.rs` consumes the Zod runner-message and manifest definitions from
+  `packages/runner-protocol` and `packages/command-loader`. Generated bindings
+  remain internal to the consuming runner modules.
+- `src/connection/` owns the backend connection and runner-message codec.
+- `src/commands/` owns manifest validation, CLI parsing/help, dispatch, application
+  callbacks, artifact acquisition/cache and resident command-process lifetimes.
+  It verifies exact artifacts and reuses services by digest. Backend supplies
+  artifact locations; storage-vendor selection remains outside runner.
+- `src/shell/` owns brush execution and standard utility registration/adaptation.
+  Brush, subshells and utility builtins execute inside the resident runner.
+  Each job owns cwd, environment and IO. Declared builtins call the dispatcher
+  directly; external programs call it through the forwarding executable.
+- Command definitions and package catalogs are fixed during the host program's
+  lifetime. Context disposal releases bindings and service references.
+  Cancellation preserves the runner and unrelated jobs; see
+  [runner.md](demi-next/runner.md) for lifecycle behavior.
+- Local forwarding uses an owner-restricted Unix socket or Windows named pipe.
+  Guest initialization owns Linux PID 1 boot and volume operations.
+- First-party production dependency: command-service only. Vendored brush and
+  utility libraries are external dependencies, not additional Demi workspace crates.
+- Public boundary: the executable. Native build/release scripts produce six
+  target artifacts. TypeScript integration fixtures belong to host-remote/testing.
+- Must not: own conversations or model/provider implementations, execute
+  downloaded JavaScript, or link Demi command algorithms into the runner.
 
 ### `@demicodes/web-ui`
 
@@ -393,8 +425,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ## Production Dependency Graph
 
 The production dependency graph contains every TypeScript workspace package and
-must stay acyclic. Rust crate dependencies are defined by their Cargo manifests
-and the package responsibilities above:
+must stay acyclic:
 
 ```text
 core -> none
@@ -420,6 +451,19 @@ web-gallery -> web-ui, core, utils
 web -> web-ui, core, utils
 ```
 
+First-party Rust production dependencies are:
+
+```text
+runner -> command-service
+demi-commands -> command-service
+command-service -> none
+```
+
+Zod source consumption during Cargo builds is a build dependency on the owning
+TypeScript definitions, not a Rust runtime dependency or a mirrored crate.
+Cargo manifests must match this graph; external libraries and vendored dependencies
+are outside it.
+
 `web-ui`, `web-gallery` and `web` are browser/product packages built with Vite/Vue; their internal source
 is `.vue` + `.ts`. The `.ts`-only `platform-entrypoints` boundary test does not scan them as
 production source. `web-ui`'s outward boundary (no Node/adapter/provider dependencies) is
@@ -439,24 +483,20 @@ is always `src/index.ts`), and the root `test` script names every package that h
 How files and directories are organized inside a package. These are design
 rules, enforceable in review — not taste:
 
-Rust crates keep `Cargo.toml` at the package root and source in `src/`, using
-Cargo's standard `src/lib.rs` and `src/main.rs` entrypoints. Native implementation
-packages are Rust-only. TypeScript belongs in a native package only when that
-package owns a contract or bridge used directly by the TypeScript application.
-`command-protocol`, `runner-protocol` and `command-loader` share such contracts.
-Their Rust contract generation is driven by each crate's `build.rs`; generated
-types and validation code live in `OUT_DIR` and are included with `include!`.
-Generated contract artifacts are not committed or written into `src/`. A build
-script may call a JS/TS generator, without requiring a manual generation step.
-Cross-target build and release orchestration belongs in `scripts/native/`.
-The unresolved definition and validation choices are recorded in
-`demi-next/native-runtime.md`. Cross-language integration fixtures belong
-to the TypeScript adapter that exercises the native executable.
+Rust crates keep `Cargo.toml` at the crate root, Rust source under `src/` and
+Cargo's standard library/executable entrypoints. TypeScript source stays in its
+own package or repository build tooling. Each consuming `build.rs` generates
+Rust types and validation from authoritative Zod schemas into `OUT_DIR`, included
+with `include!`. A normal Cargo build runs generation without a manual preparation
+step. Cross-target build/release orchestration belongs in `scripts/native/`.
+See [native-runtime.md](demi-next/native-runtime.md#contract-generation-and-validation)
+for validation requirements. Cross-language integration fixtures belong to the
+TypeScript adapter exercising the native executable.
 
 Third-party source trees belong in the repository root's `vendor/<crate>/`,
 with their upstream metadata and licenses retained. The root `Cargo.toml`
 declares their `[patch.crates-io]` paths and excludes them from workspace
-membership. Demi adapters stay in their responsible `packages/` crate. Dependency
+membership. Demi adapters stay in their responsible `crates/` module. Dependency
 versions and source identifiers stay in manifests, lockfiles and vendor metadata.
 `docs/` describes current architecture and usage, not dependency inventories,
 artifact hashes, CI run logs or one-off acceptance records.

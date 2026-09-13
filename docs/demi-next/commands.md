@@ -50,21 +50,24 @@ the runner. The command tree does not depend on a compiled-in release JSON file.
 The Rust package's resident `demi-commands` executable implements Demi's native file read/create/edit/patch
 operations. Additional packages implement the same independent service contract.
 All native Demi implementations belong in this package; standard shell utilities
-belong in `native-utils`, and application-state callbacks remain with their owners.
+belong in `crates/runner/src/shell/`. Application-state callbacks remain with
+their owners.
 
 ## Dispatch
 
 The backend sends a manifest and each job pins its hash. The job receives command
 aliases pointing at its runner, an exact local endpoint and an opaque context.
-The client forwards root/argv; the runner authenticates context, parses the command,
-validates input and dispatches the selected binding. Native operations execute
-beside their files in a resident service. RPC operations travel to the embedding
+Brush builtins call the runner's commands module directly. External clients
+forward root/argv to that same dispatcher. It authenticates context, parses the
+command, validates input and dispatches the selected binding. Native operations
+execute beside their files in a resident service. RPC operations travel to the embedding
 application over the authenticated runner connection and byte-pipe transport.
 
 The same TypeScript declarations serve SDK embedders through `createLoader` with
 injected RPC and native executors. The Rust runner uses generated manifest types
-and its own dispatcher, with shared fixtures for argument behavior. The loader
-does not spawn processes or resolve object-store credentials.
+inside its commands module, with shared fixtures for argument behavior. There
+is no separate Rust loader crate. The TypeScript loader does not spawn processes
+or resolve object-store credentials.
 
 ## Input, output and cancellation
 
@@ -80,7 +83,7 @@ loss or missing completion is a failure. Cancellation stops the invocation and
 releases its input, output, callback resources and running hint. One cancelled
 native invocation does not terminate unrelated calls in the shared service.
 
-File algorithms live in `demi-package/src`, not the runner or command loader.
+File algorithms live in `crates/demi-commands/src/`, not the runner or command loader.
 They receive per-call cwd and cancellation, and do not change global process
 state. Native package installation, flow-control limits, service retirement and
 six-target release rules are defined in [native-runtime.md](native-runtime.md).
