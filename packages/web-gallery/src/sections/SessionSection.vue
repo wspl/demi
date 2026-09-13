@@ -1546,7 +1546,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="File view"
-        note="A file of the workspace: the path as crumbs from the workspace root, the highlighted text, and the workspace tree beside it with the file selected. The control at the end of the crumb row hides and shows the tree; a click on another file in the tree opens it here. Reads carry the fixture's latency, so the text and each directory show their loading state first."
+        note="A file of the workspace: the path as crumbs from the workspace root, the highlighted text, and the workspace tree beside it with the file selected. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, or clicked in the tree, opens here. The control at the end of the crumb row hides and shows the tree. Reads carry the fixture's latency, so the text and each directory show their loading state first."
       >
         <GallerySpecimen variant="cookie.ts · live" wide>
           <div class="gallery-frame flex h-[28rem] overflow-hidden">
