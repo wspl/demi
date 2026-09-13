@@ -4,6 +4,11 @@
 triples in `command-protocol`. The release environment is Linux, including Apple
 and Windows cross-compilation. Host platform execution is a separate CI gate.
 
+The first-party Cargo workspace contains `crates/runner`,
+`crates/command-service` and `crates/demi-commands`. Runner and Demi commands
+produce executables; command-service is their shared library. TypeScript protocol
+packages are build inputs, not additional Cargo workspace members.
+
 ## Toolchain
 
 `rust-toolchain.toml` and `scripts/native/Dockerfile` pin the build tools.
@@ -11,9 +16,12 @@ and Windows cross-compilation. Host platform execution is a separate CI gate.
 Cargo runs contract generation through each consuming crate's `build.rs`.
 Generated Rust types and validation code go into `OUT_DIR` and are included by
 the crate; there is no manual source-generation prerequisite or committed
-generated contract. A build script may invoke JS/TS tooling. The definition
-format and validation mechanism remain open in
-[the runtime design](demi-next/native-runtime.md#contract-generation-and-validation).
+generated contract. Zod schemas in the owning TypeScript packages are the sole
+authority. Runner generates message and manifest bindings; command-service
+generates command wire and package bindings. A build script may invoke the shared
+JS/TS generation tooling in `scripts/`. See
+[the runtime design](demi-next/native-runtime.md#contract-generation-and-validation)
+for direct Rust validation requirements.
 
 The Dockerfile installs the Linux build tools. Supply an Apple SDK directory;
 the script validates its SDK metadata before building. `ring` chooses `clang`
@@ -68,7 +76,7 @@ registration separation, release reuse and draining upgrades.
 Each installer and publication fixture runs three times per platform job to
 exercise repeated process startup and teardown.
 
-`command-service/examples/benchmark.rs` is a standalone synthetic service and
+`crates/command-service/examples/benchmark.rs` is a standalone synthetic service and
 client. Build it with `cargo build --release -p demi-command-service --example
 benchmark`, then execute `target/release/examples/benchmark`. It never calls a
 model. Run it directly to obtain measurements for the current machine and build.

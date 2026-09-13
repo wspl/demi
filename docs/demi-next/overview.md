@@ -130,10 +130,10 @@ realization inside the runner:
 | Where | Role | Runs in |
 |---|---|---|
 | `@demicodes/host-remote` | the Host of every user host and managed host as the backend sees it: each call forwarded over the runner wire | the backend |
-| `packages/runner/src` | filesystem, process and shell-job execution requested through `host-remote` | native Rust runner |
+| `crates/runner/src` | filesystem, process and shell-job execution requested through `host-remote` | native Rust runner |
 
-The wire between the last two is `@demicodes/runner-protocol`, which both
-ends depend on.
+The wire is defined by Zod schemas in `@demicodes/runner-protocol`. The backend
+uses that package; runner generates its Rust bindings during Cargo builds.
 
 ## Components
 
@@ -141,15 +141,17 @@ ends depend on.
   hosting, LLM module, vault, accounting, runner management, managed hosts,
   the command manifest — that scales by running more copies plus one
   control-plane process. `backend.md`, `storage.md`.
-- **Runner** (`packages/runner`, Rust): one executable for execution targets,
-  embedded brush shell jobs, standard utilities, Host RPC and local command
-  forwarding. `runner.md`.
-- **Command loader** (`packages/command-loader`, TypeScript and generated Rust
-  contract): validates declarations and binds commands to application callbacks
-  or independently distributed native packages. `commands.md`.
-- **Command services** (`command-protocol`, `command-service`, `command-runtime`):
-  bounded HTTP/2 streaming, verified artifact installation and resident executable
-  lifetime. `native-runtime.md`.
+- **Runner** (`crates/runner`): the execution-host executable. Owns in-process
+  brush and standard utilities, Host RPC, command parsing/dispatch/forwarding,
+  artifact caching and resident command-process lifetimes. `runner.md`.
+- **Command loader** (`packages/command-loader`, TypeScript): declares the Zod
+  manifest structure, serializes declarations and supplies TS loading. Runner's
+  commands module consumes generated manifest bindings. `commands.md`.
+- **Command service SDK** (`crates/command-service`): shared HTTP/2 client/server,
+  streaming IO and generated protocol types. Its authoritative Zod definitions
+  belong to `packages/command-protocol`. `native-runtime.md`.
+- **Demi commands** (`crates/demi-commands`): independently released native Demi
+  command program using the command service SDK. `commands.md`.
 - **Managed hosts**: Firecracker microVMs the backend provisions on demand,
   persisting a pinned base plus a writable system layer and home. `managed-hosts.md`.
 - **Web frontend** (`@demicodes/web`): the product SPA over
