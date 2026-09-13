@@ -10,7 +10,7 @@ import ResizeHandle from '../ui/ResizeHandle.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import ChangeTree from './ChangeTree.vue'
-import { type ChangeMode, type ChangeSources } from './changes'
+import { changeTotals, type ChangeMode, type ChangeSources } from './changes'
 import { TREE_WIDTH } from './file-view'
 import { FileBrowserError } from './types'
 import { joinPath } from './paths'
@@ -18,14 +18,15 @@ import { joinPath } from './paths'
 /**
  * The changes as diffs, from one of two sources the switch in the header
  * picks between: files picked from the conversation, each a snapshot around
- * one tool call, or the workspace's uncommitted changes. Either way the
- * diff of the selected file is on the left and the tree of that source's
- * files, with their kinds and line counts, on the right. Back and Forward
- * walk what the view has shown, across modes; the host keeps that history
- * (`showChangeInTab`) along with the mode, the selected file, and the
- * tree's visibility and width. The header also holds the control that opens
- * the selected file itself (not a deleted one) and the one that shows and
- * hides the tree.
+ * one tool call, or the workspace's uncommitted changes. Uncommitted shows
+ * the diff of the selected file beside the tree of changed files, with
+ * their kinds and line counts, and sums them up in the header; Conversation
+ * is one picked file at a time, named in the header with its counts, no
+ * tree. Back and Forward walk what the view has shown, across modes; the
+ * host keeps that history (`showChangeInTab`) along with the mode, the
+ * selected file, and the tree's visibility and width. The header also holds
+ * the control that opens the selected file itself (not a deleted one) and,
+ * under Uncommitted, the one that shows and hides the tree.
  */
 const props = defineProps<{
   changes: ChangeSources
@@ -58,11 +59,9 @@ const source = computed(() => props.changes[mode.value])
 const selectedChange = computed(
   () => source.value.files.find((file) => file.path === selected.value) ?? null,
 )
+const totals = computed(() => changeTotals(source.value.files))
+const treeShown = computed(() => mode.value === 'uncommitted' && tree.value)
 
-/** What the empty side says: how to fill it, per mode. */
-const emptyText = computed(() =>
-  mode.value === 'conversation' ? 'Nothing from the conversation yet' : 'No uncommitted changes',
-)
 const idleText = computed(() => {
   if (source.value.files.length > 0) {
     return 'Select a changed file.'
@@ -125,7 +124,23 @@ onBeforeUnmount(() => {
         </Tooltip>
       </div>
       <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1" />
-      <span class="min-w-0 flex-1" />
+      <!-- What is shown, summed up: the working tree's files and lines, or the picked file and its lines. -->
+      <span class="ml-auto flex min-w-0 items-center gap-1 pl-2 text-chrome text-fg-muted">
+        <template v-if="mode === 'uncommitted' && source.files.length > 0">
+          <span class="truncate">{{ source.files.length }} {{ source.files.length === 1 ? 'file' : 'files' }} changed</span>
+          <span class="shrink-0 font-mono text-[11px] tabular-nums">
+            <span v-if="totals.added > 0" class="text-on-success">+{{ totals.added }}</span>
+            <span v-if="totals.removed > 0" class="ml-1 text-on-danger">−{{ totals.removed }}</span>
+          </span>
+        </template>
+        <template v-else-if="mode === 'conversation' && selectedChange">
+          <span class="truncate font-mono text-[11px]" :class="selectedChange.kind === 'deleted' ? 'line-through' : ''" :title="selectedChange.path">{{ selectedChange.path }}</span>
+          <span class="shrink-0 font-mono text-[11px] tabular-nums">
+            <span v-if="selectedChange.added > 0" class="text-on-success">+{{ selectedChange.added }}</span>
+            <span v-if="selectedChange.removed > 0" class="ml-1 text-on-danger">−{{ selectedChange.removed }}</span>
+          </span>
+        </template>
+      </span>
       <Tooltip content="Open file" class="shrink-0">
         <IconButton
           :icon="FileOutput"
@@ -135,7 +150,7 @@ onBeforeUnmount(() => {
           @click="selectedChange && emit('open', selectedChange.path)"
         />
       </Tooltip>
-      <Tooltip :content="tree ? 'Hide changed files' : 'Show changed files'" class="shrink-0">
+      <Tooltip v-if="mode === 'uncommitted'" :content="tree ? 'Hide changed files' : 'Show changed files'" class="shrink-0">
         <IconButton
           :icon="FolderTree"
           variant="ghost"
@@ -169,7 +184,7 @@ onBeforeUnmount(() => {
           @action="read"
         />
       </div>
-      <template v-if="tree">
+      <template v-if="treeShown">
         <ResizeHandle
           v-model="treeWidth"
           side="end"
@@ -184,7 +199,7 @@ onBeforeUnmount(() => {
           :files="source.files"
           :root="root"
           :selected="selected"
-          :empty-text="emptyText"
+          empty-text="No uncommitted changes"
           @select="selected = $event"
         />
       </template>

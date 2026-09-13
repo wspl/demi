@@ -1630,12 +1630,12 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Change view"
-        note="Diffs from one of two sources, the switch in the header picks: Conversation holds the files picked from the conversation's tool rows, each a snapshot around that call; Uncommitted the working tree against the last commit. The diff of the selected file is on the left, that source's files as a tree on the right with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts; the tree's caption counts the files and lines. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself and hides the tree. A new change tab opens on Conversation when something was picked, else on Uncommitted; with nothing picked, Conversation says how to fill it."
+        note="Diffs from one of two sources, the switch in the header picks. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the header. Conversation is one file picked from the conversation's tool rows, a snapshot around that call, named in the header with its counts and shown alone: no tree. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself and, under Uncommitted, hides the tree. A new change tab opens on Conversation when something was picked, else on Uncommitted; with nothing picked, Conversation says how to fill it."
       >
         <GallerySpecimen
           v-for="specimen in [
             { variant: 'uncommitted · live', work: changeUncommitted },
-            { variant: 'conversation · three picked', work: changePicked },
+            { variant: 'conversation · picked', work: changePicked },
             { variant: 'conversation · nothing picked', work: changeEmpty },
           ]"
           :key="specimen.variant"
