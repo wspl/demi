@@ -38,38 +38,39 @@ const failureText = computed(() => {
     role="treeitem"
     :aria-selected="selected"
     :aria-expanded="row.isDirectory ? open : undefined"
-    class="flex h-7 shrink-0 cursor-default select-none items-center gap-1 rounded-md pr-1 text-chrome transition-colors duration-200 ease-out"
+    class="flex h-7 shrink-0 cursor-default select-none items-center rounded-md pr-1 text-chrome transition-colors duration-200 ease-out"
     :class="selected ? 'bg-active text-fg-emphasis' : 'text-fg-body hover:bg-hover'"
     :style="{ paddingLeft: `${4 + row.depth * 12}px` }"
     @click="$emit('activate')"
   >
-    <!-- Directories fold on a chevron; files keep its width so names line up. -->
-    <span class="flex size-4 shrink-0 items-center justify-center text-fg-faint">
-      <ChevronRight
-        v-if="row.isDirectory"
-        :size="ICON_PX.in20"
-        class="transition-transform duration-150"
-        :class="open ? 'rotate-90' : ''"
-      />
-    </span>
-    <!-- A directory that could not be listed wears a red dot; hovering the icon tells why. -->
+    <!-- A directory that could not be listed wears a red dot on its icon; the whole row tells why on hover. -->
     <Tooltip
       tag="span"
-      class="relative inline-flex shrink-0"
+      class="flex h-full min-w-0 flex-1 items-center gap-1"
       :content="failureText"
       :disabled="!failure"
       placement="bottom"
     >
-      <FileIcon :name="row.name" :is-directory="row.isDirectory" />
-      <CornerDot v-if="failure" tone="danger" size="xs" ring="editor" :label="failureText" />
+      <!-- Directories fold on a chevron; files keep its width so names line up. -->
+      <span class="flex size-4 shrink-0 items-center justify-center text-fg-faint">
+        <ChevronRight
+          v-if="row.isDirectory"
+          :size="ICON_PX.in20"
+          class="transition-transform duration-150"
+          :class="open ? 'rotate-90' : ''"
+        />
+      </span>
+      <span class="relative inline-flex shrink-0">
+        <FileIcon :name="row.name" :is-directory="row.isDirectory" />
+        <CornerDot v-if="failure" tone="danger" size="xs" ring="editor" :label="failureText" />
+      </span>
+      <span class="truncate">{{ row.name }}</span>
+      <IndeterminateSpinner
+        v-if="loading"
+        class="ml-auto mr-1 shrink-0 text-fg-faint"
+        :size="12"
+        :stroke-width="1.5"
+      />
     </Tooltip>
-    <span class="truncate">{{ row.name }}</span>
-    <!-- A listing in flight: a thin spinner at the row's end, the chevron untouched. -->
-    <IndeterminateSpinner
-      v-if="loading"
-      class="ml-auto mr-1 shrink-0 text-fg-faint"
-      :size="12"
-      :stroke-width="1.5"
-    />
   </div>
 </template>
