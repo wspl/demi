@@ -1,225 +1,76 @@
-# Native runner and command services
+# Native command execution
 
-Status: design contract. The open decisions under "Contract generation and
-validation" require discussion before implementation.
+This document defines how a declared native command reaches an independently
+released executable on its execution target: package binding, distribution,
+invocation and service lifetime. It is the design authority for that contract;
+it does not record implementation progress.
 
-## Confirmed direction
+The runner is a Rust process with an embedded brush shell. Native command
+algorithms run in separate resident executables, without rebuilding the runner
+or embedding a JavaScript engine. All native Demi commands belong to the
+`demi.builtin` package; SDK applications can supply additional packages using the
+same contract. Shell utilities and application callbacks have their own owners.
 
-The runner does not execute downloaded JavaScript. Agent-defined commands have
-two execution destinations: a callback to the agent's embedding application, or
-a native command implementation on the execution target. The callback need not
-belong to the Demi backend product; programming SDK users supply their own.
+## One command, from declaration to result
 
-All Demi builtin command implementations belong to one `demiPackage`, including
-commands such as `demi file patch`. SDK developers can supply additional independent
-implementation packages. These packages must be distributable without rebuilding the
-runner. Compile-time registration into the runner does not meet that requirement.
-SDK developers can build their own implementation executable. A package may
-implement several commands rather than requiring an executable per command.
-
-The backend distributes declarations and native artifacts. Artifact selection
-must identify OS, architecture and relevant binary compatibility requirements;
-the runner caches exact content-addressed versions. A command declaration binds
-to an implementation artifact and an operation within it. Protocol validation,
-installation and execution are runner responsibilities; file-editing algorithms
-remain in the implementation package. The implementation package contract is specified below.
-
-Rust shell and standard utility builtins remain a separate concern from these
-downloadable agent-specific command implementations. The runner can still ship
-as a single executable while downloading additional command executables.
-
-Auditing remains out of scope. This direction removes the need for downloaded-JS
-workers; it does not remove cancellation and cleanup requirements. The runner itself is implemented in Rust and embeds no JS engine.
-The LLRT report records earlier feasibility evidence, not a runtime selection.
-
-## Resident services and HTTP/2
-
-A native implementation executable runs as a resident command service and handles
-multiple concurrent invocations. The runner reuses the service and its HTTP/2
-connection. Do not spawn a process for each command or introduce a worker-process
-pool as the normal dispatch mechanism. Separate implementation packages may have
-separate resident services; a package can serve multiple command operations.
-
-HTTP/2 is the selected communication protocol. Map each invocation to a separate
-HTTP/2 stream, with incremental request input and response output. Use parent-owned process stdin/stdout pipes as the HTTP/2 transport. The runner
-is the HTTP/2 client and the resident executable is the HTTP/2 server. Use direct
-HTTP/2 requests, not gRPC. The application wire contract is specified below.
-
-The implementation SDK must provide the following execution guarantees:
-
-- Dispatch concurrent invocations within the resident process. CPU-bound or
-  blocking work must not block connection processing or cancellation delivery.
-- Keep cwd, environment, input, output and cancellation per invocation. Do not
-  mutate process-global cwd or environment to execute a command.
-- Carry logical stdout, stderr and completion distinctly. Preserve binary payloads
-  without base64 or JSON byte arrays. Keep service diagnostics separate.
-- Use bounded queues and HTTP/2 flow control. A slow invocation must not block
-  unrelated invocations or grow memory without a bound. Continue processing
-  connection/control frames while individual consumers are stalled.
-- Propagate stream cancellation to the native handler and release its resources.
-  HTTP/2 stream reset alone is not proof that computation stopped. Do not kill the
-  shared service to perform ordinary cancellation of one invocation.
-- Report failures of a shared service to all affected invocations. Do not blindly
-  retry commands with side effects after an ambiguous process failure.
-- Define service shutdown and version replacement so active invocations are
-  accounted for and process/connection resources are released.
-
-The design objective is to amortize startup and connection costs, avoid repeated
-process creation and keep steady-state calls inexpensive.
-`crates/command-service/examples/benchmark.rs` exercises the transport;
-file-command performance requires separate measurements.
-
-File operations run beside their files. Applying a patch does not require sending
-the entire original file through the runner. The native service owns the patch
-implementation; the runner owns distribution, connection and invocation routing.
-
-## Required distribution targets
-
-Every released native command implementation package must provide all six
-artifacts below for the same package version and protocol contract. The runner
-release must cover the same target matrix.
-
-| Operating system | Architecture |
-| --- | --- |
-| macOS | arm64 |
-| macOS | x64 |
-| Linux | arm64 |
-| Linux | x64 |
-| Windows | arm64 |
-| Windows | x64 |
-
-These are six native executable artifacts, not source-only support or a promise
-that a compiler might support the target. Each artifact must identify its target
-and content hash. The backend selects the artifact for the target runner; a
-missing target prevents publishing a complete release. Emulation is not a
-substitute for supplying the native artifact.
-
-Release validation must distinguish successful cross-compilation from execution
-on the target. The same protocol and command conformance cases must be exercised
-across all six targets. Target modern operating systems; do not introduce a
-legacy OS support matrix. The selected Linux baseline is statically linked
-musl: x86_64-unknown-linux-musl and aarch64-unknown-linux-musl. Inspect final
-artifacts for unexpected shared-library dependencies; selecting a musl target
-alone does not prove a self-contained executable. Native dependencies must
-support that build. musl is a distribution choice, not a performance guarantee.
-Windows uses the MSVC targets with static CRT linkage. Target execution is validated separately from cross-compilation.
-
-## Build and distribution architecture
-
-The selected build environment is Linux for all six release artifacts:
-
-| Target | Toolchain |
-| --- | --- |
-| Linux arm64/x64 | cargo-zigbuild, static musl |
-| macOS arm64/x64 | cargo-zigbuild, Apple SDK |
-| Windows arm64/x64 | cargo-xwin, LLVM, Microsoft SDK/CRT, MSVC targets |
-
-Windows target triples are x86_64-pc-windows-msvc and
-aarch64-pc-windows-msvc. Linux target triples are x86_64-unknown-linux-musl and
-aarch64-unknown-linux-musl. macOS targets are x86_64-apple-darwin and
-aarch64-apple-darwin. Build tools, SDKs and dependencies must be pinned for
-reproducible releases. Target execution tests are separate from cross-compilation.
-The build entry point is `scripts/native/build.ts`; `scripts/native/Dockerfile` pins the Linux toolchain.
+Consider `demi file patch` running on a laptop. Its declaration names
+`demi.builtin` and `file.patch`. The application's startup catalog resolves that
+logical binding to an immutable package descriptor. The job pins that descriptor,
+so the command has an exact meaning throughout execution.
 
 ```text
-Implementation developer
-        |
-        v
-Linux build environment
-  +-- cargo-zigbuild + musl ------> Linux   arm64 / x64
-  +-- cargo-zigbuild + Apple SDK -> macOS   arm64 / x64
-  +-- cargo-xwin + Windows SDK --> Windows arm64 / x64
-        |
-        v
-Versioned implementation package (6 binaries + metadata/hashes)
-        |
-        v
-Backend distribution ----> Runner selects/caches target artifact
+Embedding application (Demi backend or SDK application)
+  command tree + startup package catalog
+                  |
+           pinned job manifest
+                  v
+Runner on laptop
+  brush declared builtin ----+
+  external command client ---+--> validated command dispatcher
+                                     |                  |
+                                  native               rpc
+                                     |                  `--> application callback
+                           acquire pinned executable
+                                     |
+                          reused HTTP/2 connection
+                          over child stdin/stdout
+                                     v
+                         Resident demi-commands service
+                           file.patch -> laptop files
+                                     |
+                         stdout / stderr / completion
+                                     v
+                              calling shell job
 ```
 
-## Execution architecture
+On the first call, the runner acquires and verifies the laptop's artifact, starts
+its service and checks the handshake. Later calls in the same sharing scope reuse
+that service; concurrent calls use separate HTTP/2 streams. The patch handler
+works beside the file, so patching does not require transferring the original
+file through the backend. The caller receives byte output and an exit status.
 
-```text
-Agent host (Demi product or programming SDK application)
-  |-- command declarations + callback handlers
-  |-- shell execution requests
-  |-- implementation package references
-  |
-  | authenticated MessagePack WebSocket and HTTP byte pipes
-  v
-Resident runner process on execution target
-  |-- job lifecycle, input/output, cancellation
-  |-- brush execution inside this same process
-  |     |-- shell/core utilities -> builtins
-  |     |-- git/python/node -----> system executables
-  |     `-- declared command ---> command dispatcher
-  |                                |-- callback -> agent host
-  |                                `-- native binding
-  |-- local forwarding endpoint <- external command client process
-  |                                -> same command dispatcher
-  |-- artifact cache and resident-service lifecycle
-  |                                      |
-  |                              reused HTTP/2 connection
-  |                              concurrent invocation streams
-  |                                      v
-  |                    Independent resident command executable
-  |                      |-- implementation SDK / dispatcher
-  |                      |-- read / create / edit / patch
-  |                      `-- local files and native capabilities
-  |
-  `-- other implementation packages use the same service contract
-```
+The responsibility boundaries are:
 
-The execution diagram describes responsibility and process boundaries. HTTP/2
-runs over stdio; service-instance sharing is scoped as specified below.
-The runner package must not depend on a concrete file-command implementation.
-Service libraries are compiled into independently distributed executables, not
-linked into the runner. The agent-side declaration chooses a callback or an
-artifact binding; neither sends JavaScript implementation text.
+| Owner | Responsibility |
+| --- | --- |
+| Agent command tree | Names, help, argument schemas, logical bindings and callback handlers. |
+| Execution adapter (`host-remote`) | Validate bindings against the startup catalog and resolve artifact locations. |
+| Backend artifact module | Publish complete releases and authorize artifact downloads. No command algorithms. |
+| Runner commands module | Validate dispatch, install artifacts, own service processes and route invocations. |
+| Shared command-service SDK | Validate and frame messages; drive HTTP/2, byte IO and cancellation over supplied transport. No artifact or process management. |
+| Native package | Implement operations, validate their arguments and release operation resources. |
 
-## Local command client
+[Command declarations](commands.md) own CLI parsing and manifest semantics;
+[local forwarding](command-client.md) owns external clients and endpoint access;
+[runner jobs](runner.md#shell-jobs) own brush, profiles and whole-job cleanup.
+Both command entry paths use the same dispatcher. The native service receives
+validated operation metadata, never raw CLI requests. Source module ownership is
+specified in [package boundaries](../package-boundaries.md#source-organization).
 
-The runner's command-client module implements forwarding as a mode of the same
-runner executable. Command aliases select their root by basename. Unix domain
-sockets serve Linux/macOS; byte-mode named pipes serve Windows. The local endpoint
-is restricted to the current account and each invocation must provide its live
-execution context. Normal stdin/stdout/stderr remain available for pipelines.
+## Bind an exact package
 
-Each client opens one HTTP/2 connection and one invocation stream. The runner
-validates the raw root/argv/context request, resolves the pinned declaration and
-constructs a validated native operation or application callback. Local CLI metadata
-and native invocation metadata remain distinct schemas; their bounded framing,
-input demand and completion rules are shared.
-
-HTTP/2 is useful here for protocol reuse, flow control and cancellation, not for
-substantial multiplexing within one short-lived CLI process. It adds handshake
-and library costs, so a speed or size improvement is not established. The
-connection driver must continue processing resets and disconnects while output
-consumers block; bounded output queues must not block that driver. Preserve
-stdin-on-demand behavior: HTTP/2 receive-window capacity alone is not permission
-to consume command stdin. Specify explicit input demand in the local endpoint
-contract before implementation, including commands which never read stdin.
-
-Local client loss cancels its invocation; cancellation propagates through the
-runner to the selected destination. stdin EOF is independent of cancellation.
-Retain execution-context validation and local endpoint access controls. Validate
-blocked output, idle terminal input, disconnects and cancellation on all platforms.
-
-The embedded shell resolves declared roots to builtins that call the dispatcher
-inside the resident runner process. External programs resolve those roots to
-executable aliases and use local forwarding. The executable contains forwarding
-and dispatch code; native Demi algorithms live only in the independently
-distributed `demi-commands` service.
-
-## Initialization and responsibility boundaries
-
-`AgentServerOptions.shellEnvironment` receives a
-ShellEnvironmentFactory. Its context includes the invoking Host, CommandRegistry,
-root/agent session identity and command storage. AgentHarness.commands declares
-the command tree. The backend supplies the remote shell-environment factory from its assembly. These are the appropriate boundaries;
-implementation packages do not belong in model/provider configuration or env vars.
-
-Public composition API:
+The embedding application supplies packages through its execution adapter, not
+through model settings or environment variables:
 
 ```ts
 const shellEnvironment = createRemoteShellEnvironmentFactory({
@@ -235,330 +86,119 @@ const server = new AgentServer({
 });
 ```
 
-The backend supplies `runtimePackageCatalog` from its deployed releases at
-runtime. Command declarations do not import a compiled-in release descriptor.
-
-The Demi builtin package provides all Demi command implementations in one resident
-executable per target platform. It is not limited to file commands. These Demi
-commands are distinct from the shell and standard utility builtins embedded in
-the runner. The runtime catalog may also contain SDK developer implementations.
-
-The execution adapter owns the package catalog and artifact resolution. The
-factory validates declared native bindings against that catalog before making a
-command manifest usable. A local programming embedder can resolve artifacts to
-already-installed executables; a remote embedder supplies downloadable locations.
-Core agent initialization stays independent of S3, OSS and cloud credentials.
-`createRemoteShellEnvironmentFactory` belongs to the host-remote execution adapter
-and uses structural context types rather than importing agent implementation code.
-The same catalog may serve multiple node/Host environments; each invocation still
-carries its own execution context and authorized command manifest.
-
-`AgentHarness.commands` continues to own command names, help, argument schemas
-and callback handlers. A native leaf declares a logical package id and operation;
-the execution adapter resolves the exact release from its runtime catalog:
+`AgentHarness.commands` declares the tree. A native leaf includes:
 
 ```ts
 {
   name: 'patch',
   kind: 'native',
   binding: { package: 'demi.builtin', operation: 'file.patch' },
-  // Existing help, input/output schemas, positionals and stdinField go here.
+  // Help and argument schemas complete this declaration; see commands.md.
 }
 ```
 
-Within one factory catalog, each package id resolves to exactly one immutable
-package descriptor. Duplicate ids fail initialization; there is no latest-version
-lookup during execution. The finalized command manifest records the descriptor
-hash, so the wire binding is exact even when another catalog uses another version.
-Callbacks remain agent-host functions; their source code is not distributed.
-New native operations require no change to the generic runner.
+Each package id resolves to exactly one immutable descriptor within a factory
+catalog. Duplicate ids, incomplete packages and unknown operations fail
+initialization. Declarations do not import compiled-in release descriptors.
+The factory context supplies the invoking Host, command registry, session identity
+and command storage; each invocation retains its own authorized context even
+when several environments share a catalog. Core agent initialization has no
+object-store dependency. Callbacks remain functions in the embedding application;
+their source is not distributed.
 
-## Implementation package and exact binding
+A release consists of its descriptor and exactly six target executables:
 
-An implementation release contains a descriptor and exactly six executables.
-The descriptor has these fields:
-
-- `id`: stable namespaced package identity, for example `demi.builtin` for
-  `demiPackage`.
-- `version`: human-readable release version; immutable within the publisher.
-- `protocolVersion`: supported command-service wire major version.
-- `operations`: unique operation ids implemented by this package.
-- `targets`: exactly the six selected target triples, each with SHA-256 and size.
-
-The descriptor hash is computed from a canonical encoding of those fields. Local
-file paths, object-store keys and download URLs are transport metadata and do not
-participate in package identity. Descriptor types and boundary validators come
-from one explicit schema; Rust and TypeScript bindings use that contract.
-
-The factory checks each declared operation exists and each package is complete.
-The runner independently validates received descriptors and binding references.
-The native handler validates input at its boundary as well. Command input schema
-changes that affect native behavior require a matching package release; no silent
-argument conversion or version fallback is permitted.
-
-A release validator rejects missing targets, duplicate operation ids, unsupported
-wire versions and a reused id/version with different content. The distribution
-record pins the complete descriptor hash. Different immutable versions coexist
-in the cache; an artifact URL never determines which version a command means.
-
-## Next-only object-store publication and distribution
-
-Only the Next backend implements package synchronization to S3/OSS. It is a
-backend infrastructure module, proposed as `backend/src/command-packages/`, with
-publication and artifact-location responsibilities. It does not contain command
-algorithms. S3 and OSS use their own adapters behind a small object-store
-interface; do not assume OSS is identical to every S3 API.
-
-Next startup receives configured local release bundles and object-store
-configuration. Before enabling a command catalog it:
-
-1. Validates the descriptor and computes/checks hashes and sizes for all six files.
-2. Synchronizes missing executables under immutable content-addressed object keys,
-   e.g. `native-commands/blobs/<sha256>`. Uses bounded upload concurrency and
-   collapses duplicate uploads in one process. Object metadata/checksums identify
-   existing content; multipart ETags are not treated as SHA-256.
-3. Publishes the descriptor only after every artifact is available. Its immutable
-   key is `native-commands/packages/<descriptor-hash>.json`.
-4. Makes the catalog available to the shell-environment factory and runner
-   manifest path. A failed publication never exposes a partial release as ready.
-
-Repeated startup reuses existing objects. Upload completion does not authorize a
-mutable latest pointer to change an active invocation. Interrupted uploads may
-leave unreferenced objects, but no incomplete descriptor becomes active. A local
-source bundle with changed bytes is a different release and cannot overwrite the
-meaning of an existing id/version.
-
-For downloads, the backend resolver returns `{url, expiresAt?}` for an exact
-artifact digest after validating the runner's active package reference. Use an
-HTTPS object-store/CDN URL if that deployment publishes artifacts publicly; use
-a presigned GET URL for a private bucket. Both are direct downloads from object
-storage, not a backend byte proxy. Default private-store integration uses signed
-URLs and leaves bucket access policy unchanged.
-
-A URL is issued when an uncached artifact is needed. It is not baked permanently
-into an immutable manifest or used as a cache key. If it expires, the runner asks
-for a fresh URL for the same digest. Arbitrary download failures are not treated
-as expiration; size/hash mismatches fail installation. Storage credentials stay
-in the backend. The common execution SDK only knows an artifact resolver, so a
-programming SDK user can supply local files, their own HTTPS hosting or another
-resolver without using Next or object storage.
-
-```text
-Next configuration: release bundles + object-store settings
-                |
-                v
-Next package publisher -- uploads --> S3 / OSS
-                |
-                +--> immutable package catalog
-                              |
-Agent shell-environment factory / manifest
-                              |
-                              v
-Runner -- resolve artifact --> Next (metadata / signed URL only)
-   |
-   +--------- direct HTTPS GET ----------------> S3 / OSS
-   |
-   +--> validate hash + atomic cache installation
-   +--> launch resident executable
-   +--> HTTP/2 over stdio
-```
-
-## Runner installation, handshake and sharing
-
-The runner selects the exact target tuple and fetches only that executable. One
-in-flight download per digest is shared by concurrent requests. Downloads go to a
-temporary file, enforce the declared byte size, verify SHA-256 and atomically
-publish into the cache after success. Failure/cancellation releases the response
-and removes the temporary file. One caller cancelling must not cancel a download
-still needed by another caller. Native executable permissions are applied where
-required. Do not execute partial or mismatched artifacts.
-
-A resident instance is scoped to one runner registration, execution user/security
-context and artifact digest. Sessions with that same scope share it; no service
-is shared across a privilege boundary. All requests carry their own cwd, env and
-invocation identity rather than changing process-global values. Separate immutable
-artifacts may run as separate resident services; calls do not create processes.
-
-Launch the executable with a fixed SDK service-mode argument. The runner owns
-stdin, stdout and stderr pipe endpoints. Establish HTTP/2 using prior knowledge;
-there is no port listener, HTTP/1 upgrade or TLS inside these parent-owned pipes.
-Before accepting invocations, `GET /v1/info` returns the wire version and operation
-ids. The runner validates them against the pinned descriptor. Handshake timeout,
-missing operations or version disagreement fail service startup explicitly.
-Verified executable bytes already establish the artifact identity; the service
-need not embed its own executable hash, which would be circular.
-
-The server or SDK agent host program fixes its command definitions and package
-catalog at startup. The set changes only when that program restarts. Connection
-loss and reconnection follow the
-[runner lifetime contract](runner.md#command-lifetime).
-
-Spawn is single-flight within the instance scope. The service stays resident for
-reuse while live execution contexts or invocations need it. Each active command
-uses its context's package binding. Context disposal releases builtin and
-forwarding bindings and service references. A service with no remaining owners
-can retire. There is no runtime catalog hot-update mechanism. Close through an application
-shutdown request, drain streams, close stdin to deliver EOF, and reap the child;
-a bounded shutdown deadline permits terminating the whole retiring service.
-
-## Direct HTTP/2 command protocol
-
-One HTTP/2 stream represents one command invocation:
-
-- `GET /v1/info`: startup negotiation described above.
-- `POST /v1/invoke`: one invocation; request/response bodies can stream concurrently.
-- `POST /v1/shutdown`: stop admitting invocations and drain before process exit.
-
-The invocation body starts with one bounded length-prefixed JSON metadata record:
-operation id, invocation id, parsed arguments, cwd and env. Each following stdin
-chunk has a four-byte big-endian length followed by at most 64 KiB of binary
-payload. An input-pull response record authorizes exactly one chunk or EOF. The
-SDK sends this record when the handler requests its next input chunk. The caller
-preserves that boundary across HTTP/2 DATA frames, so a short live-stdin read does
-not authorize additional reads. Request END_STREAM means stdin EOF, not
-cancellation. The server sends response headers before waiting for input.
-
-The response body is a sequence of application records: a one-byte kind plus a
-four-byte big-endian payload length, followed by bytes. Kinds distinguish stdout,
-stderr, input pull and a final completion object. Output payloads are raw bytes; completion
-is bounded JSON containing exit status and any structured command error. Exactly
-one completion record ends a normally handled invocation. Missing completion
-means an interrupted/failed invocation, even if HTTP response headers were 200.
-HTTP/2 DATA frame boundaries are not application record boundaries.
-
-Use HTTP status for rejection before execution (invalid metadata, unknown binding,
-unsupported protocol, admission failure). Command failure after execution starts
-is represented by the completion record, including any partial-operation result.
-Define record/metadata size limits in the shared schema and SDK constants before
-implementation; enforce them while decoding, not after buffering arbitrary input.
-
-The runner and service drive their HTTP/2 connections continuously. Window updates
-follow consumption into bounded queues, with per-stream and aggregate limits.
-The runtime separates blocking command work from connection processing.
-RST_STREAM(CANCEL) cancels that invocation's SDK token; native handlers must stop
-and release resources cooperatively. Cancelling one invocation does not close the
-shared connection. Service failure fails all affected calls and does not replay
-side effects automatically. A cancellation deadline violation is a handler/service
-fault; it must not be falsely reported as successful cancellation.
-
-Executable stdout contains only HTTP/2 bytes. Service diagnostics go to process
-stderr, which the runner drains independently with bounded retention. Invocation
-stdout/stderr are the logical output records, not writes to process stdio.
-The SDK owns the protocol IO. Command implementations must use SDK output
-writers and must not print to process stdout; arbitrary native code can still
-violate that contract, so malformed protocol output fails the connection.
-
-## Shared Rust service contract
-
-`packages/command-protocol` owns the authoritative Zod wire and package schemas.
-`crates/command-service` generates Rust bindings from them and owns incremental
-framing plus the HTTP/2 client/server over injected asynchronous duplex IO.
-The runner and independently distributed command programs share this library.
-It contains no Demi command algorithms or artifact/process management.
-
-`crates/runner/src/commands/` owns artifact acquisition, caching and resident
-process lifetimes. `crates/demi-commands` owns the independently released Demi
-command implementations. The complete source tree and dependency boundaries are
-specified in [package-boundaries.md](../package-boundaries.md#source-organization).
-
-Protocol version 1 uses these limits:
-
-| Resource | Limit |
+| Descriptor field | Meaning |
 | --- | --- |
-| Invocation metadata JSON | 256 KiB |
-| Response record payload | 64 KiB |
-| HTTP/2 header list | 16 KiB |
-| Admitted concurrent service streams | 32 |
-| Queued output records per invocation | 4 |
-| Handshake and invocation metadata timeout | 10 seconds |
-| Cooperative cancellation grace | 5 seconds |
+| `id` | Stable namespaced identity, such as `demi.builtin`. |
+| `version` | Human-readable release version, immutable within its publisher. |
+| `protocolVersion` | Command-service wire major version. |
+| `operations` | Unique operation ids supplied by the package. |
+| `targets` | All required target triples, each with executable SHA-256 and byte size. |
 
-Response kinds are 1 for stdout, 2 for stderr, 3 for completion, and 4 for input
-pull. Input pull has an empty payload. Completion
-contains `exitCode` (0 through 255) and an optional `error` with `code` and
-`message`. Unknown metadata fields, malformed records, oversized declared payloads,
-missing completion and bytes after completion fail validation. Handlers validate
-their own operation argument schema before performing work.
+The descriptor's SHA-256 covers its canonical JSON fields. Paths, object keys and
+URLs are location metadata, excluded from identity. The manifest pins the
+descriptor hash and operation; an artifact URL or a later catalog cannot change
+that binding. The runner independently validates descriptors and references.
+Reusing an id/version with different content, unsupported wire versions and
+missing targets are rejected. An input-schema change affecting native behavior
+requires a matching release; there is no argument repair or version fallback.
 
-Input returns HTTP/2 capacity while assembling one bounded, requested chunk.
-No additional stdin read is authorized until the handler requests another chunk. Output
-uses bounded queues and reserves HTTP/2 capacity before sending DATA. Connection
-processing continues while output waits for capacity. A cancellation deadline
-violation produces a fatal service error requiring process retirement; aborting
-an async task does not prove that non-cooperative native work has stopped.
+Command definitions and catalogs remain fixed for the embedding program's
+lifetime. New definitions take effect when that program restarts; there is no
+catalog hot update. Existing contexts retain their pinned binding. Connection
+loss and context disposal follow the [runner command lifetime](runner.md#command-lifetime).
 
-## Contract generation and validation
+## Publish and install
 
-This section covers the fixed messages between the TypeScript backend and Rust
-runner, the command manifest structure, and native package descriptor structure.
-Zod schemas in the owning TypeScript packages are authoritative:
-`runner-protocol/src/schemas.ts` owns runner messages,
-`command-loader/src/manifest/schema.ts` owns manifests, and
-`command-protocol/src/index.ts` owns native package descriptors. These paths are
-under `packages/`; there is no separate contracts directory or second schema
-source. Runtime command argument definitions are a separate concern.
+A complete package and the runner release cover these native targets. Linux is
+the build environment for all six; cross-compilation alone is not evidence of
+successful target execution.
 
-`crates/runner/build.rs` consumes runner messages and manifests;
-`crates/command-service/build.rs` consumes command wire and package descriptors.
-The command-service library exposes its generated types to runner and command
-programs. There are no separate Rust protocol or manifest crates.
+| Platform | Target triples | Release toolchain |
+| --- | --- | --- |
+| macOS | `aarch64-apple-darwin`, `x86_64-apple-darwin` | cargo-zigbuild with Apple SDK |
+| Linux | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | cargo-zigbuild, static musl |
+| Windows | `aarch64-pc-windows-msvc`, `x86_64-pc-windows-msvc` | cargo-xwin, LLVM and Microsoft SDK, static CRT |
 
-Each consuming crate's `build.rs` owns Rust contract generation as part of the
-normal Cargo build. Bun and installed workspace dependencies are prerequisites;
-`bun install --frozen-lockfile` prepares them before `cargo build`. A developer
-does not run a separate generation command first.
-The build script may invoke a JS/TS generator; its implementation language does
-not change Cargo's ownership of this build step.
-
-Generated Rust types and validation code are written to that crate's `OUT_DIR`
-and included by the crate with `include!`. Generated files are build artifacts:
-they are not written into the source tree or committed to the repository.
-
-Rust validates received values directly with Rust code or native validation
-tools. Generated structure types alone do not establish that value constraints
-have been checked. Fixed contract validation does not use a separately generated
-JSON Schema document or convert decoded values to JSON for schema validation. Generated
-field deserializers enforce literals, enum membership, ranges, string and array
-constraints, record keys and required versus optional/null values. Unsupported
-Zod constructs or refinements fail generation. A native package's operation
-array declares the supported uniqueness constraint in its Zod metadata.
-Runtime command argument schemas remain JSON Schema values supplied by command
-definitions and are validated by the command dispatcher.
+Release tools and SDKs are pinned. Final Linux artifacts must have no unexpected
+shared-library dependencies; selecting musl alone does not establish this.
+Every target runs the same protocol and command conformance cases. Emulation or
+source-only support cannot substitute for a native release artifact. The
+[build guide](../native-builds.md) owns commands and toolchain setup. Managed guest
+images consume the Linux runner; their image lifecycle and execution-surface
+verification belong to [managed hosts](managed-hosts.md#images).
 
 ```text
-Authoritative Zod schemas in packages/
-    |
-    v
-Consuming crate's build.rs
-    |  may invoke a JS/TS generator
-    v
-OUT_DIR: Rust types and validation code
-    |
-    v
-include! -> compiled crate -> input validation
+Local release bundles
+         |
+Backend validates all six executables
+         |
+         +--> immutable blobs --> S3 / OSS
+         +--> descriptor (only after all blobs exist)
+         `--> enabled startup catalog
+                         |
+Runner requests exact digest location
+                         |
+Backend returns authorized URL
+                         |
+Runner downloads directly from storage
+         -> temporary file -> size/hash check -> atomic cache install
 ```
 
-## Configuration boundaries
+The backend artifact module, `packages/backend/src/runner/artifacts/`, owns S3
+and OSS publication through separate adapters. Before accepting application
+requests, it validates every release's descriptor, sizes and hashes; uploads
+missing content-addressed blobs with bounded concurrency and duplicate-upload
+suppression; publishes the descriptor and immutable package/version mapping;
+then exposes the catalog. Conditional writes reject conflicting content.
+Multipart ETags are not SHA-256. Repeated startup reuses existing objects.
+Interrupted publication can leave unreferenced blobs but cannot expose a partial
+release or overwrite an existing version's meaning.
 
-Protocol limits are fixed SDK constants. Object-store adapters belong to
-backend deployment assembly. The service SDK supplies cancellable platform stdio;
-Windows runner releases use static CRT linkage.
+For an uncached artifact, the backend validates its active package reference and
+returns a location for that exact digest and size. Runners download directly
+from storage over HTTPS. Private storage uses signed URLs without changing bucket
+policy; deployments with public artifacts can supply public HTTPS locations.
+The default backend resolver issues signed GET URLs valid for five minutes.
+Credentials remain in the backend. An SDK embedder can instead provide installed
+files or its own hosting through the resolver.
 
-Deployment covers paired runner processes, native command packages and managed
-guest images. The guest-image pipeline consumes the Linux runner executable;
-the machine manager pins the configured kernel and rootfs by content hash.
-Release acceptance verifies the runner actually booted by each configured
-execution surface and resolves native command artifacts on that target. The
-managed-image lifecycle and its verification are defined in
-[`managed-hosts.md`](managed-hosts.md#images).
+URLs are obtained on demand and never become package identity or permanent
+manifest fields. Expiration permits refreshing the URL for the same digest;
+arbitrary download failures do not count as expiration. The runner selects only
+its exact target executable. Concurrent callers share one download per digest;
+cancelling one caller preserves a download still needed by another. Failed or
+cancelled downloads release the response and remove temporary files. Size and
+SHA-256 must match before atomic installation and executable permissions are
+applied. Partial or mismatched files are never executed.
 
-## Backend deployment configuration
+### Backend deployment configuration
 
-`backend/src/runner/artifacts/config.ts` reads the JSON file named by
-`DEMI_NATIVE_CONFIG`. The backend publishes the configured releases before it
-accepts application requests. Release directories contain `descriptor.json` and
-one executable under each target triple. Windows executable names end in `.exe`.
-Relative release directories resolve against the configuration file's directory.
+`DEMI_NATIVE_CONFIG` names a JSON file read by the backend artifact module.
+Each release directory contains `descriptor.json` and one executable under each
+target triple; Windows filenames end in `.exe`. Relative directories resolve
+against the configuration file's directory.
 
 ```json
 {
@@ -574,58 +214,152 @@ Relative release directories resolve against the configuration file's directory.
 }
 ```
 
-The S3 adapter uses the AWS SDK credential provider chain. An OSS store specifies
-`"provider": "oss"`, its bucket and region, and reads
-`ALIBABA_CLOUD_ACCESS_KEY_ID`, `ALIBABA_CLOUD_ACCESS_KEY_SECRET` and optional
-`ALIBABA_CLOUD_SECURITY_TOKEN`. Both adapters accept an optional HTTPS endpoint;
-S3 also accepts `forcePathStyle`. Storage credentials stay in this module and
-never enter a runner message.
+S3 uses the AWS SDK credential provider chain. OSS uses `"provider": "oss"`,
+bucket and region, with `ALIBABA_CLOUD_ACCESS_KEY_ID`,
+`ALIBABA_CLOUD_ACCESS_KEY_SECRET` and optional `ALIBABA_CLOUD_SECURITY_TOKEN`.
+Both accept an optional HTTPS endpoint; S3 also accepts `forcePathStyle`.
+S3 verifies SHA-256 upload checksums; OSS verifies MD5 upload checksums and retains
+the descriptor's SHA-256 in metadata.
 
-`publish.ts` verifies the SHA-256 and byte count of all six target files before
-uploading any object. It writes immutable blobs, the content-addressed descriptor,
-and then the immutable package/version descriptor. S3 verifies a SHA-256 upload
-checksum; OSS verifies an MD5 upload checksum while retaining the descriptor's
-SHA-256 as object metadata. Conditional writes reject conflicting objects.
-The resolver returns a signed HTTPS GET URL with a five-minute expiry and checks
-that the requested digest and size belong to the published catalog.
+Backend assembly injects `nativeCommands: { packages, resolveArtifact }` into
+`createBackend`. Cross-host commands receive the calling session's catalog.
+Local test fixtures may supply local resolvers and host-only descriptors; those
+are not valid publication inputs.
 
-`createBackend` receives `nativeCommands: { packages, resolveArtifact }` explicitly.
-The command factory binds each job to its own manifest. Cross-host `demi host
-shell` jobs receive the calling session's catalog through `host-command.ts`.
-Test and local development fixtures supply an explicitly local resolver and a
-host-only test descriptor; those descriptors are never publication inputs.
+## Invoke and retire a service
 
-The runner's connection module owns the backend connection. Its commands module
-validates pinned declarations, handles help without reading stdin, dispatches
-callbacks or native operations, and owns running hints. It also shares verified
-services by artifact digest and retires them after execution contexts and live
-invocations release their references.
-The `demi-runner` executable also implements the external command-client mode:
-job aliases name that executable, and their basename selects the declared root.
+One resident service is shared only within the same runner registration,
+execution user/security context and artifact digest. Startup is single-flight
+within that scope. Different immutable artifacts can run side by side; no
+service crosses a privilege boundary. Reuse amortizes process and connection
+startup. It does not establish a performance claim for individual commands.
 
-### Shell job lifetime
+The runner launches the executable in SDK service mode and owns all three process
+pipes. HTTP/2 uses prior knowledge over stdin/stdout, with the runner as client
+and service as server. There is no port listener, TLS, HTTP/1 upgrade or gRPC.
+Before admitting calls, the runner checks `GET /v1/info` against the pinned wire
+version and operation set. Timeout, missing operations or version mismatch fail
+startup. The verified file establishes executable identity; no self-hash is
+required in the handshake.
 
-`crates/runner/src/shell/` executes brush within the resident runner process, with
-job-owned shell state and IO. It loads
-login profiles, then restores the runner-owned context, command alias precedence
-and requested cwd before executing the script. The job waits for
-its asynchronous shell tasks before reporting completion, and preserves the
-foreground script's exit status. For example, `(sleep 2; echo done) & echo started`
-emits `started` immediately, remains a running job during the sleep, then emits
-`done` and exits. A tool timeout returns that running job's handle; `shell_status`
-and `shell_abort` continue to control it. Background tasks belong to this job and
-do not become detached services. Cancellation stops that job's shell work and
-external descendants without terminating the runner or unrelated jobs.
+Each invocation owns its cwd, environment, identity, input, output and cancellation.
+Handlers must not change process-global cwd or environment. Concurrent operations,
+including blocking or CPU-bound work, must allow connection processing and
+cancellation to continue. File algorithms belong in the native package, not in
+the runner or shared SDK.
 
-Brush's internal asynchronous tasks do not expose operating-system process IDs
-through `$!`. Tests that kill an external command client identify its actual PID
-from that child process; ordinary shell job cancellation uses the runner's job
-handle. Job cancellation and resource cleanup follow the
-[runner shell-job contract](runner.md#shell-jobs).
+| Event | Required result |
+| --- | --- |
+| Normal command completion | Deliver its output and exactly one completion record; release invocation resources. Keep the service available to its owners. |
+| One invocation is cancelled | Propagate cancellation to its handler and release its resources. Preserve unrelated calls and the shared connection. EOF alone is not cancellation. |
+| Handler exceeds cancellation grace | Report a service fault and retire the process. An aborted task or reset stream does not prove native work stopped. |
+| Service crashes or corrupts the protocol | Fail affected invocations. Do not automatically replay potentially completed side effects. |
+| Execution context is disposed | Release its bindings and service references. Live contexts or invocations keep their service owned. |
+| Service has no remaining owners | Stop admission, request shutdown, drain streams, close stdin and reap the child. A bounded shutdown deadline permits terminating the retiring process. |
 
-Raw `Host.process.spawn` calls use only their supplied environment. A caller can
-set `inheritEnv: true` to extend the device process environment; an explicitly
-undefined value removes an inherited variable. The backend's
-`llm/session-providers.ts` selects inheritance when launching provider CLIs, so
-program lookup uses the device's `PATH` and credentials remain explicit overlays.
-The backend never copies its own environment to the device.
+For example, two jobs using the same artifact can share one service. Cancelling
+one call normally leaves the other running. If its handler refuses to stop within
+the grace period, retiring the faulty service also fails the other affected call;
+the runner must report that failure rather than claim isolated cancellation.
+Changing the startup catalog creates new pinned bindings, not an in-place
+replacement of an executable serving an existing context.
+
+## Invocation protocol
+
+Protocol version 1 uses direct HTTP/2 requests. The shared SDK owns process IO;
+handlers use logical output writers. Executable stdout contains only protocol
+bytes. Process stderr carries service diagnostics, drained independently by the
+runner with bounded retention.
+
+| Request | Purpose |
+| --- | --- |
+| `GET /v1/info` | Return wire version and operation ids before invocations. |
+| `POST /v1/invoke` | Run one invocation on one stream with concurrent request/response bodies. |
+| `POST /v1/shutdown` | Stop admission and drain before process exit. |
+
+The invocation request begins with a four-byte big-endian JSON byte length,
+then bounded JSON containing `operation`, `invocationId`, parsed `args`, `cwd`
+and `env`. Each subsequent stdin
+chunk has a four-byte big-endian length and at most 64 KiB of binary payload.
+
+The service sends response headers before waiting for input. When the handler
+asks for input, an input-pull record authorizes exactly one chunk or EOF. The
+caller preserves that chunk across HTTP/2 DATA frames; a short live-stdin read
+does not authorize another read. Receive-window capacity is not input demand.
+Request END_STREAM means stdin EOF.
+
+Responses contain records with a one-byte kind, four-byte big-endian payload
+length and payload. DATA frame boundaries are unrelated to record boundaries.
+
+| Kind | Payload |
+| --- | --- |
+| 1: stdout | Raw bytes. |
+| 2: stderr | Raw bytes. |
+| 3: completion | JSON: `exitCode` from 0 to 255, optionally `error: { code, message }`. |
+| 4: input pull | Empty; requests one input chunk or EOF. |
+
+A normally handled invocation ends with exactly one completion record. Missing
+completion is failure even after HTTP 200; bytes after completion are invalid.
+Reject unknown metadata fields, malformed or oversized records and invalid
+operation arguments. Enforce limits while decoding, before unbounded allocation.
+HTTP status reports rejection before execution, such as invalid metadata or
+admission failure. After execution starts, command failure uses completion,
+with any partial-operation result carried by command output.
+
+| Resource | Version 1 limit |
+| --- | --- |
+| Invocation metadata JSON | 256 KiB |
+| Response record payload | 64 KiB |
+| HTTP/2 header list | 16 KiB |
+| Concurrent admitted service streams | 32 |
+| Queued output records per invocation | 4 |
+| Handshake and invocation metadata timeout | 10 seconds |
+| Cooperative cancellation grace | 5 seconds |
+
+These are fixed SDK limits. Flow control and bounded per-stream/aggregate queues
+prevent a slow consumer from blocking unrelated calls or growing memory without
+bound. Input returns receive capacity while assembling one requested, bounded
+chunk. Output reserves capacity before sending DATA. Connection processing must
+continue through blocked output to receive resets and disconnects.
+`RST_STREAM(CANCEL)` triggers the invocation's cancellation token; the service
+lifetime rules above determine whether cleanup succeeds or the process is faulty.
+
+Local forwarding reuses framing, demand and completion rules but has a distinct
+raw CLI metadata schema. Its authentication and disconnect behavior remain in
+[the local client contract](command-client.md#transport-and-lifetime).
+
+## Contract generation and validation
+
+Design rules above define the contract. Their executable schemas are maintained
+once in the owning TypeScript packages; generated Rust must enforce the same
+constraints rather than introduce a second manually maintained definition.
+
+| Schema owner | Consumer |
+| --- | --- |
+| `packages/runner-protocol/src/schemas.ts` — runner messages | `crates/runner/build.rs` |
+| `packages/command-loader/src/manifest/schema.ts` — manifests | `crates/runner/build.rs` |
+| `packages/command-protocol/src/index.ts` — native wire and descriptors | `crates/command-service/build.rs` |
+
+```text
+Owning Zod schemas -> consuming crate's build.rs
+                   -> OUT_DIR types and validation -> compiled Rust boundary
+```
+
+Normal Cargo builds run generation, with Bun and installed workspace dependencies
+as prerequisites. Build scripts may invoke JS/TS tooling. Generated files stay
+in `OUT_DIR`, are included by the crate and are not committed. The shared
+command-service library exposes its bindings to the runner and native programs.
+
+Rust validates fixed contracts directly: literals, enums, ranges, string/array
+constraints, record keys, required/optional/null values and declared operation
+uniqueness. Unsupported Zod constructs or refinements fail generation. Structure
+types alone are insufficient; fixed contract validation does not round-trip values
+through JSON or a separately generated JSON Schema. Runtime command argument
+schemas are a distinct contract: declarations supply JSON Schema for dispatcher
+validation, and native handlers validate their own arguments before work.
+
+The [build guide](../native-builds.md#validation) identifies release checks.
+Acceptance of this design requires the same observable outcomes for successful
+calls, blocked IO, malformed input, cancellation and service failure on all six
+targets, as well as verified publication and installation. Synthetic transport
+benchmarks do not establish file-command performance.
