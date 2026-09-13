@@ -7,14 +7,15 @@ import MenuItem from '../ui/MenuItem.vue'
 import MenuGroup from '../ui/MenuGroup.vue'
 import MenuDivider from '../ui/MenuDivider.vue'
 import Button from '../ui/Button.vue'
+import CornerDot from '../ui/CornerDot.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { ICON_PX } from '../ui/icon-metrics'
 import HostPicker from './HostPicker.vue'
-import type { HostDeviceOption, HostMenuMainHost } from './types'
+import type { HostDeviceOption, HostMenuHost } from './types'
 
 const props = defineProps<{
-  mainHost: HostMenuMainHost
-  attachedHosts: HostDeviceOption[]
+  mainHost: HostMenuHost
+  attachedHosts: HostMenuHost[]
   devices: HostDeviceOption[]
   pending?: boolean
   mainLocked?: boolean
@@ -71,11 +72,18 @@ function connect() {
         aria-label="Manage conversation hosts"
         :loading="pending"
       >
-        <component
-          :is="mainHost.kind === 'cloud' ? Cloud : Monitor"
-          :size="ICON_PX.in28"
-          class="shrink-0"
-        />
+        <span class="relative flex shrink-0">
+          <component
+            :is="mainHost.kind === 'cloud' ? Cloud : Monitor"
+            :size="ICON_PX.in28"
+          />
+          <CornerDot
+            v-if="mainHost.kind === 'device'"
+            :tone="mainHost.online ? 'success' : 'muted'"
+            ring="button"
+            :label="mainHost.online ? 'Online' : 'Offline'"
+          />
+        </span>
         <span class="max-w-28 truncate">{{ mainHost.name }}</span>
         <span v-if="attachedHosts.length" class="text-[11px] text-fg-subtle">
           +{{ attachedHosts.length }}
@@ -87,6 +95,8 @@ function connect() {
         <MenuItem
           :icon="mainHost.kind === 'cloud' ? Cloud : Monitor"
           label="Main host"
+          :indicator="mainHost.kind === 'cloud' ? undefined : mainHost.online ? 'success' : 'muted'"
+          :indicator-label="mainHost.online ? 'Online' : 'Offline'"
           :value="mainHost.name"
           :disabled="mainLocked"
           has-submenu
@@ -105,19 +115,19 @@ function connect() {
           <MenuItem
             v-for="host in attachedHosts"
             :key="host.id"
-            :icon="Monitor"
+            :icon="host.kind === 'cloud' ? Cloud : Monitor"
             :label="host.name"
-            :indicator="host.online ? 'success' : 'muted'"
+            :indicator="host.kind === 'cloud' ? undefined : host.online ? 'success' : 'muted'"
             :indicator-label="host.online ? 'Online' : 'Offline'"
-            :note="host.online ? undefined : 'offline'"
+            :note="host.kind === 'device' && !host.online ? 'offline' : undefined"
             has-submenu
           >
             <template #submenu>
               <Menu>
                 <MenuItem
                   label="Use as main environment…"
-                  :icon="Monitor"
-                  :disabled="mainLocked || !host.online"
+                  :icon="host.kind === 'cloud' ? Cloud : Monitor"
+                  :disabled="mainLocked || (host.kind === 'device' && !host.online)"
                   @select="selectMain(host.id)"
                 />
 

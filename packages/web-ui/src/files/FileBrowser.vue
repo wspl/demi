@@ -383,16 +383,16 @@ defineExpose({
                 :key="host.id"
                 :icon="hostIcon(host)"
                 :indicator="
-                  host.id === CLOUD_HOST_ID
+                  host.id === CLOUD_HOST_ID || host.canWake
                     ? undefined
                     : host.online
                       ? 'success'
                       : 'muted'
                 "
-                :indicator-label="host.online ? 'Online' : host.canWake ? 'Stopped' : 'Offline'"
+                :indicator-label="host.online ? 'Online' : 'Offline'"
                 :note="
-                  host.id !== CLOUD_HOST_ID && !host.online
-                    ? host.canWake ? 'stopped' : 'offline'
+                  host.id !== CLOUD_HOST_ID && !host.canWake && !host.online
+                    ? 'offline'
                     : undefined
                 "
                 :disabled="host.id !== CLOUD_HOST_ID && !host.online && !host.canWake"
