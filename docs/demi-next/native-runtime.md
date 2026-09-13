@@ -66,7 +66,7 @@ The implementation SDK must provide the following execution guarantees:
 
 The design objective is to amortize startup and connection costs, avoid repeated
 process creation and keep steady-state calls inexpensive.
-`packages/command-service/examples/benchmark.rs` exercises the transport;
+`crates/command-service/examples/benchmark.rs` exercises the transport;
 file-command performance requires separate measurements.
 
 File operations run beside their files. Applying a patch does not require sending
@@ -179,7 +179,7 @@ artifact binding; neither sends JavaScript implementation text.
 
 ## Local command client
 
-`runner/src/command_client.rs` implements forwarding as a mode of the same
+The runner's command-client module implements forwarding as a mode of the same
 runner executable. Command aliases select their root by basename. Unix domain
 sockets serve Linux/macOS; byte-mode named pipes serve Windows. The local endpoint
 is restricted to the current account and each invocation must provide its live
@@ -450,9 +450,16 @@ violate that contract, so malformed protocol output fails the connection.
 
 ## Shared Rust service contract
 
-`packages/command-protocol` owns strict serde wire types and incremental response
-framing. `packages/command-service` owns HTTP/2 service dispatch over injected
-asynchronous duplex IO. Neither crate contains Demi builtin command algorithms.
+`packages/command-protocol` owns the authoritative Zod wire and package schemas.
+`crates/command-service` generates Rust bindings from them and owns incremental
+framing plus the HTTP/2 client/server over injected asynchronous duplex IO.
+The runner and independently distributed command programs share this library.
+It contains no Demi command algorithms or artifact/process management.
+
+`crates/runner/src/commands/` owns artifact acquisition, caching and resident
+process lifetimes. `crates/demi-commands` owns the independently released Demi
+command implementations. The complete source tree and dependency boundaries are
+specified in [package-boundaries.md](../package-boundaries.md#source-organization).
 
 Protocol version 1 uses these limits:
 
@@ -490,6 +497,11 @@ Zod schemas in the owning TypeScript packages are authoritative:
 `command-protocol/src/index.ts` owns native package descriptors. These paths are
 under `packages/`; there is no separate contracts directory or second schema
 source. Runtime command argument definitions are a separate concern.
+
+`crates/runner/build.rs` consumes runner messages and manifests;
+`crates/command-service/build.rs` consumes command wire and package descriptors.
+The command-service library exposes its generated types to runner and command
+programs. There are no separate Rust protocol or manifest crates.
 
 Each consuming crate's `build.rs` owns Rust contract generation as part of the
 normal Cargo build. A developer does not run a separate generation command first.
@@ -548,7 +560,7 @@ Relative release directories resolve against the configuration file's directory.
 {
   "prefix": "native",
   "releases": [
-    { "directory": "./demi-package", "executable": "demi-commands" }
+    { "directory": "./demi-commands", "executable": "demi-commands" }
   ],
   "store": {
     "provider": "s3",
@@ -579,18 +591,17 @@ shell` jobs receive the calling session's catalog through `host-command.ts`.
 Test and local development fixtures supply an explicitly local resolver and a
 host-only test descriptor; those descriptors are never publication inputs.
 
-The runner's Rust `mode` module owns one backend connection, its jobs and command
-contexts. `dispatch` validates the pinned declaration, handles help without
-reading stdin, and routes the invocation to `rpc` or `native`. `rpc` owns the
-running-hint guard; dropping an invocation clears the hint and cancels its
-callback. `native` shares one verified service per artifact digest and retires
-services after the current declaration and live jobs release their references.
+The runner's connection module owns the backend connection. Its commands module
+validates pinned declarations, handles help without reading stdin, dispatches
+callbacks or native operations, and owns running hints. It also shares verified
+services by artifact digest and retires them after execution contexts and live
+invocations release their references.
 The `demi-runner` executable also implements the external command-client mode:
 job aliases name that executable, and their basename selects the declared root.
 
 ### Shell job lifetime
 
-`runner/src/shell.rs` executes brush within the resident runner process, with
+`crates/runner/src/shell/` executes brush within the resident runner process, with
 job-owned shell state and IO. It loads
 login profiles, then restores the runner-owned context, command alias precedence
 and requested cwd before executing the script. The job waits for
