@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import FileTreeRow from './FileTreeRow.vue'
-import { TREE_ROW_PX, stickyTreeRows, type FileTreeRow as Row } from './file-tree'
+import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, type FileTreeRow as Row } from './file-tree'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource } from './types'
 import { baseName, isHiddenName, joinPath, normalizePath, parentPath } from './paths'
 
@@ -160,6 +160,9 @@ const scrollArea = ref<InstanceType<typeof ScrollArea> | null>(null)
 const rowEls = new Map<string, HTMLElement>()
 const stickyPaths = ref<string[]>([])
 const stickyOffset = ref(0)
+// The selected row loses its fill once any of it is under the stack: a sliver
+// of highlight at the stack's edge would read as a line.
+const selectedUnderStack = ref(false)
 const stickyRows = computed(() => {
   const byPath = new Map(rows.value.map((row) => [row.path, row]))
   return stickyPaths.value.flatMap((path) => {
@@ -192,6 +195,9 @@ function updateSticky(): void {
   )
   stickyPaths.value = stack.paths
   stickyOffset.value = stack.offset
+  const stackBottom = viewport.scrollTop + STACK_TOP_PX + stack.paths.length * TREE_ROW_PITCH_PX + stack.offset
+  const selectedTop = props.selected ? rowEls.get(normalizePath(props.selected))?.offsetTop : undefined
+  selectedUnderStack.value = selectedTop !== undefined && selectedTop < stackBottom
 }
 
 /** A pinned directory takes the top of the view, under the caption. */
@@ -274,7 +280,7 @@ function activate(row: Row): void {
         :key="row.path"
         :ref="(el) => bindRow(row.path, el)"
         :row="row"
-        :selected="row.path === selected"
+        :selected="row.path === selected && !selectedUnderStack"
         v-bind="rowState(row)"
         @activate="activate(row)"
       />
