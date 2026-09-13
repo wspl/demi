@@ -41,7 +41,7 @@ def flatten_use(text):
     return paths
 
 
-root = Path(__file__).resolve().parents[1] / 'upstream'
+root = Path(__file__).resolve().parents[3] / 'vendor'
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('packages', nargs='+', help='Newly imported upstream package names')
 for name in parser.parse_args().packages:

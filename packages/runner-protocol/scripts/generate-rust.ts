@@ -9,7 +9,7 @@ import { JOB_VIEW_BYTES, RUNNER_PROTOCOL_VERSION } from '../src/messages'
 
 // The Zod wire contract owns fields and constraints. Generated Rust decodes the
 // MessagePack types, then checks all remaining constraints against the same schema.
-const directory = resolve(import.meta.dir, '../rust')
+const directory = resolve(import.meta.dir, '../src')
 const declarations = new Map<string, string>()
 const objectTypes = new Map<z.ZodType, string>()
 const derive = '#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]'

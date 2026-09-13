@@ -7,10 +7,7 @@ rust-version.workspace = true
 
 [[bin]]
 name = "demi-commands"
-path = "rust/main.rs"
-
-[lib]
-path = "rust/lib.rs"
+path = "src/main.rs"
 
 [dependencies]
 demi-command-service = { path = "../command-service" }

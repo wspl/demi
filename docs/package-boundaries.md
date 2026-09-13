@@ -274,18 +274,18 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `packages/native-utils` (Rust crate)
 
-- Owns: embedded standard utilities for brush. Its pinned upstream utility sources route cwd, environment and byte IO through an invocation context. `upstream/` records the upstream versions and targeted adaptations.
+- Owns: embedded standard utilities for brush. Its pinned upstream utility sources route cwd, environment and byte IO through an invocation context. The patched sources live in the root `vendor/`; `native-utils-dependencies.md` records their provenance and invocation adaptations.
 - Must not: implement agent-specific commands or change process-global cwd/environment during a utility invocation.
 
 ### `@demicodes/runner` / `packages/runner` (Rust executable and TypeScript test adapter)
 
 - Owns: the `demi-runner` executable, one outbound backend WebSocket per registration, pairing/reconnection, filesystem and process RPC, shell jobs, local command forwarding and installation state.
-- `rust/main.rs` selects runner administration, local command forwarding, isolated shell jobs or Linux guest initialization. Command aliases point to this same executable.
-- `rust/shell.rs` embeds brush and native utilities. Each job runs in its own process, with per-job cwd/environment and output files. Unix process groups and Windows Job Objects release descendants on cancellation.
-- `upstream/brush-core` owns the pinned interpreter adaptations described in `native-shell-dependency.md`: concurrent function/compound pipeline stages and temporary-file here-documents.
-- `rust/dispatch.rs` validates declarations and arguments. `rpc.rs` forwards application callbacks; `native.rs` shares resident services by artifact digest. The runner does not link `demi-package` implementations.
-- `rust/local.rs`, `command_client.rs` and `stdio.rs` own owner-restricted local HTTP/2 transport, input demand and byte streaming. Unix uses domain sockets; Windows uses named pipes.
-- `rust/state.rs`, `management.rs` and `mode.rs` own registration locks, private state, draining and backend connection lifetime. `init.rs` and `volumes.rs` own Linux PID 1 boot and volume operations. Managed state lives under `/run/demi`.
+- `src/main.rs` selects runner administration, local command forwarding, isolated shell jobs or Linux guest initialization. Command aliases point to this same executable.
+- `src/shell.rs` embeds brush and native utilities. Each job runs in its own process, with per-job cwd/environment and output files. Unix process groups and Windows Job Objects release descendants on cancellation.
+- `vendor/brush-core` owns the pinned interpreter adaptations described in `native-shell-dependency.md`: concurrent function/compound pipeline stages and temporary-file here-documents.
+- `src/dispatch.rs` validates declarations and arguments. `rpc.rs` forwards application callbacks; `native.rs` shares resident services by artifact digest. The runner does not link `demi-package` implementations.
+- `src/local.rs`, `command_client.rs` and `stdio.rs` own owner-restricted local HTTP/2 transport, input demand and byte streaming. Unix uses domain sockets; Windows uses named pipes.
+- `src/state.rs`, `management.rs` and `mode.rs` own registration locks, private state, draining and backend connection lifetime. `init.rs` and `volumes.rs` own Linux PID 1 boot and volume operations. Managed state lives under `/run/demi`.
 - Public boundary: the executable; `runnerBinary`, `startRunner`, `connectTestRunner`, `LocalHost` and `nodeFileSystem` under the test-only TypeScript entry. `scripts/native/build.ts` builds six native targets; `runtime/release.ts` verifies and packages them.
 - Must not: hold provider credentials as configuration, own transcripts, import agent/provider implementations, execute downloaded JavaScript or contain native command algorithms.
 
@@ -393,6 +393,18 @@ is always `src/index.ts`), and the root `test` script names every package that h
 
 How files and directories are organized inside a package. These are design
 rules, enforceable in review — not taste:
+
+Rust crates keep `Cargo.toml` at the package root and source in `src/`, using
+Cargo's standard `src/lib.rs` and `src/main.rs` entrypoints. A package that also
+exports TypeScript keeps its `.ts` and `.rs` modules in that same `src/` tree;
+each toolchain resolves its own entrypoints. Generated contracts and their
+fixtures stay with the owning protocol module, and generators write there.
+
+Third-party source trees belong in the repository root's `vendor/<crate>/`,
+with their upstream metadata and licenses retained. The root `Cargo.toml`
+declares their `[patch.crates-io]` paths and excludes them from workspace
+membership. Demi adapters stay in their responsible `packages/` crate.
+Dependency provenance and local adaptations are documented under `docs/`.
 
 1. **One composition root per product package.** Exactly one file assembles
    the package (`backend.ts`, `main.ts`): it may construct, inject, mount,

@@ -38,6 +38,6 @@ const cases = inputs.map(input => {
     return { ...input, invalid: true }
   }
 })
-const directory = new URL('../rust/fixtures/', import.meta.url)
+const directory = new URL('../src/fixtures/', import.meta.url)
 await mkdir(directory, { recursive: true })
 await writeFile(new URL('cli.json', directory), `${JSON.stringify({ manifest: await buildManifest([root], { packages: [descriptor] }), help: renderCommandHelp(root), cases }, null, 2)}\n`)

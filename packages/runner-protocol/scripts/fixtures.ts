@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { msgpackCodec } from '../src/codec'
 import { backendToRunnerMessageSchema } from '../src/schemas'
 
-const dir = resolve(import.meta.dir, '../rust/fixtures')
+const dir = resolve(import.meta.dir, '../src/fixtures')
 await mkdir(dir, { recursive: true })
 const fixtures = {
   binary: { type: 'fs_writeFile', id: 'binary', path: '/tmp/data', data: new Uint8Array([0, 255, 13, 10]), createParents: true },

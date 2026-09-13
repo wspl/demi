@@ -176,7 +176,7 @@ artifact binding; neither sends JavaScript implementation text.
 
 ## Local command client
 
-`runner/rust/command_client.rs` implements forwarding as a mode of the same
+`runner/src/command_client.rs` implements forwarding as a mode of the same
 runner executable. Command aliases select their root by basename. Unix domain
 sockets serve Linux/macOS; byte-mode named pipes serve Windows. The local endpoint
 is restricted to the current account and each invocation must provide its live
@@ -505,7 +505,7 @@ record verification independently of these implementation choices.
 
 - [HTTP/2 streams and flow control](https://www.rfc-editor.org/rfc/rfc9113.html)
 - Existing implementation: `packages/shell/src/command.ts`,
-  `packages/command-loader/src/manifest/`, and `packages/runner/rust/dispatch.rs`.
+  `packages/command-loader/src/manifest/`, and `packages/runner/src/dispatch.rs`.
 
 ## Backend deployment configuration
 
@@ -561,7 +561,7 @@ job aliases name that executable, and their basename selects the declared root.
 
 ### Shell job lifetime
 
-`runner/rust/shell.rs` creates a fresh brush login shell for each job. It loads
+`runner/src/shell.rs` creates a fresh brush login shell for each job. It loads
 login profiles, then restores the runner-owned context, command alias precedence
 and requested cwd before executing the script. The job waits for
 its asynchronous shell tasks before reporting completion, and preserves the
