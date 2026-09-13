@@ -33,14 +33,29 @@ async function run(
     env: { ...process.env, HOME: home, USERPROFILE: home, ...extra },
     stdout: Bun.file(stdout),
     stderr: Bun.file(stderr),
-    timeout: 60_000,
   })
-  const code = await child.exited
-  const [out, err] = await Promise.all([
-    readFile(stdout, 'utf8'),
-    readFile(stderr, 'utf8'),
-  ])
-  return { code, out, err }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const code = await Promise.race([
+      child.exited,
+      new Promise<null>(resolve => {
+        timer = setTimeout(() => resolve(null), 60_000)
+      }),
+    ])
+    const [out, err] = await Promise.all([
+      readFile(stdout, 'utf8'),
+      readFile(stderr, 'utf8'),
+    ])
+    if (code === null) {
+      console.error('Installer process did not exit', { command: args, out, err })
+      child.kill()
+      await child.exited
+      throw new Error('Installer process exceeded 60 seconds')
+    }
+    return { code, out, err }
+  } finally {
+    clearTimeout(timer)
+  }
 }
 test(
   'installer keeps backend registrations separate, reuses a release, and drains only its own upgrade',
@@ -140,5 +155,5 @@ test(
       await rm(work, { recursive: true, force: true })
     }
   },
-  180_000
+  240_000
 )
