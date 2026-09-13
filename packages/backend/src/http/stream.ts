@@ -1,3 +1,4 @@
+import type { ConversationHostAccess } from '../conversation/target'
 import {
   createWebSocketServerTransport,
   type AgentServer,
@@ -18,7 +19,6 @@ import type { AuthEnv, InstanceMode } from '../auth/identity'
 import type { ProviderVault } from '../vault/providers'
 import { visibleProvider } from '../vault/scope'
 import { writeAttachmentToHost } from '../conversation/attachment-refs'
-import type { Host } from '@demicodes/shell'
 
 /**
  * `WS /api/conversations/:id/stream` — the live frame-protocol socket.
@@ -34,11 +34,7 @@ export function streamRoutes(options: {
   agentServer: AgentServer
   upgradeWebSocket: UpgradeWebSocket
   blobsFor: (userId: string) => BlobStore
-  withHost: <T>(
-    conversationId: string,
-    operation: (host: Host) => Promise<T>,
-    signal?: AbortSignal,
-  ) => Promise<T>
+  withHost: ConversationHostAccess
   vault: ProviderVault
   mode: InstanceMode
 }): Hono<AuthEnv> {

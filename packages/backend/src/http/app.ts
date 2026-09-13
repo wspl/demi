@@ -1,3 +1,4 @@
+import type { ConversationHostAccess } from '../conversation/target'
 import { webAssetRoutes } from './web-assets'
 import {
   runnerInstallRoutes,
@@ -15,7 +16,6 @@ import type { ChangeStore } from '../storage/change-store'
 import type { ProviderVault } from '../vault/providers'
 import type { SubscriptionLoginFlows } from '../vault/subscription-login'
 import type { UserBlobStores } from '../storage/user-blobs'
-import type { RemoteHost } from '@demicodes/host-remote'
 import type { ManagedHosts } from '../managed/lifecycle'
 import type { LoginLimiter } from '../auth/login-limiter'
 import type { WebSessions } from '../auth/sessions'
@@ -73,11 +73,7 @@ export function createApp(options: {
   pipes: PipeBroker
   upgradeWebSocket: UpgradeWebSocket
   blobs: UserBlobStores
-  withHost: <T>(
-    conversationId: string,
-    operation: (host: RemoteHost) => Promise<T>,
-    signal?: AbortSignal
-  ) => Promise<T>
+  withHost: ConversationHostAccess
   managedHosts: ManagedHosts | null
   createCloudWorkspace: ((
     userId: string,
