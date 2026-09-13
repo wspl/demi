@@ -1,4 +1,4 @@
-import { demiPackage } from '@demicodes/demi-package'
+import { demiPackage } from './package'
 import { type CommandGroup } from '@demicodes/shell'
 import { z } from 'zod'
 

@@ -13,7 +13,7 @@ test('runner releases verify immutable artifacts before advancing the manifest',
   async function publish() {
     const child = Bun.spawn([
       process.execPath, '--conditions', 'development',
-      resolve(import.meta.dir, '../../runtime/release.ts'),
+      resolve(import.meta.dir, '../release-runner.ts'),
       '--artifacts', artifacts, '--output', output,
     ], { stdout: 'pipe', stderr: 'pipe' })
     const [code, stdout, stderr] = await Promise.all([

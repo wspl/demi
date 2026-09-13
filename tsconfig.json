@@ -22,8 +22,7 @@
       "@demicodes/provider/testing": ["./packages/provider/src/testing.ts"],
       "@demicodes/runner-protocol/release": ["./packages/runner-protocol/src/release.ts"],
       "@demicodes/runner-protocol/msgpack": ["./packages/runner-protocol/src/codec.ts"],
-      "@demicodes/demi-package/testing": ["./packages/demi-package/src/testing.ts"],
-      "@demicodes/runner/testing": ["./packages/runner/src/testing.ts"],
+      "@demicodes/host-remote/testing": ["./packages/host-remote/src/testing.ts"],
       "@demicodes/shell/testing": ["./packages/shell/src/testing.ts"],
       "@demicodes/backend/testing": ["./packages/backend/src/testing.ts"],
       "@demicodes/*": ["./packages/*/src/index.ts"]

@@ -5,23 +5,29 @@ import { nativePackageSchema, NATIVE_TARGETS, type ArtifactResolver } from '@dem
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { buildNativePackageFixture } from './testing/native-package'
 
+const repositoryRoot = resolve(import.meta.dir, '../../..')
 let binary: Promise<string> | undefined
+let packageFixture: ReturnType<typeof buildNativePackageFixture> | undefined
+
+export function nativePackageFixture() {
+  return packageFixture ??= buildNativePackageFixture(repositoryRoot)
+}
 
 export function runnerBinary(): Promise<string> {
   return binary ??= (async () => {
     if (process.env.DEMI_RUNNER_TEST_BINARY)
       return resolve(process.env.DEMI_RUNNER_TEST_BINARY)
-    const root = resolve(import.meta.dir, '../../..')
     const installed = join(homedir(), '.cargo/bin', process.platform === 'win32' ? 'cargo.exe' : 'cargo')
     const child = Bun.spawn([existsSync(installed) ? installed : 'cargo', 'build', '-p', 'demi-runner', '--features', 'test-fixtures'], {
-      cwd: root, stdout: 'ignore', stderr: 'pipe',
+      cwd: repositoryRoot, stdout: 'ignore', stderr: 'pipe',
     })
     const diagnostics = new Response(child.stderr).text()
     if (await child.exited !== 0)
       throw new Error(`Runner build failed: ${await diagnostics}`)
     await diagnostics
-    return join(root, 'target/debug', `demi-runner${process.platform === 'win32' ? '.exe' : ''}`)
+    return join(repositoryRoot, 'target/debug', `demi-runner${process.platform === 'win32' ? '.exe' : ''}`)
   })()
 }
 
@@ -157,4 +163,4 @@ export async function nativeCommandFixture() {
   return { descriptor, resolveArtifact }
 }
 
-export { connectTestRunner } from './testing-connection'
+export { connectTestRunner } from './testing/connection'

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-08 |
-| Status | Target architecture contract; acceptance tracked in `progress.md` |
+| Status | Target architecture contract |
 | Scope | The `@demicodes/backend` program: modules, deployment topology, routing, the Web API |
 
 ## One program, one architecture

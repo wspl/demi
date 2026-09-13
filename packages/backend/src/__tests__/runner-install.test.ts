@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
-import { runnerBinary } from '@demicodes/runner/testing'
+import { runnerBinary } from '@demicodes/host-remote/testing'
 import { runnerInstallRoutes, type RunnerRelease } from '../http/runner-install'
 import { RUNNER_PROTOCOL_VERSION } from '@demicodes/runner-protocol'
 import { NATIVE_PROTOCOL_VERSION, NATIVE_TARGETS } from '@demicodes/command-protocol'

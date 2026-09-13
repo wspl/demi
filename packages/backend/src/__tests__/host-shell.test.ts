@@ -12,7 +12,7 @@ import {
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import type { RunnerProtocolMessage } from '@demicodes/runner-protocol'
-import { startRunner } from '@demicodes/runner/testing'
+import { startRunner } from '@demicodes/host-remote/testing'
 import { waitFor } from '@demicodes/utils'
 import { FakeProvisioner } from './scenarios/fake-provisioner'
 import { openBackend, type TestBackend } from './session'

@@ -113,7 +113,7 @@ already identifies a project.
 - `bun run typecheck:web` and `bun run web:build`: browser compilation.
 
 Product acceptance follows the Web delivery stages in `roadmap.md`; verified
-checks are recorded in `progress.md`.
+checks run against the same shared components.
 
 Navigation uses the sidebar and URL only, with no conversation tabs. Interface
 labels and controls are not selectable; message content, paths and editable
@@ -388,8 +388,7 @@ The current backend gives each user one persistent Cloud device; projects and
 unassigned conversations use directories on that device. The product's Cloud,
 project list and environment selector express this structure without separate machine-ownership controls. Authoritative target and persistence rules live in
 [sessions-and-targets.md](sessions-and-targets.md) and
-[managed-hosts.md](managed-hosts.md); implementation acceptance is recorded in
-[progress.md](progress.md).
+[managed-hosts.md](managed-hosts.md).
 
 `web-ui/cloud/CloudSettings.vue` owns the shared Cloud status, storage-limit
 readout, reset confirmation, progress and retry interaction. `SettingsDevices`
@@ -405,9 +404,7 @@ the same ID. The gallery supplies local phases to the same component.
 
 The backend wakes Cloud automatically when an operation needs it. The product
 keeps Cloud folder browsing disabled, while workspace uploads and execution use
-the existing backend capability. Device browsing remains available. Backend
-persistence/reset scenarios are recorded in `progress.md`; browser verification
-uses a disposable backend and simulated provisioner.
+the existing backend capability. Device browsing remains available. Browser verification uses a disposable backend and simulated provisioner.
 
 
 Model choices use one account-wide catalog in `web/state/product.ts`, shared

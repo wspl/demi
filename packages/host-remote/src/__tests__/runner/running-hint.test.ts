@@ -12,7 +12,7 @@ import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { type Command } from '@demicodes/shell'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
-import { startRunner, nativeCommandFixture, type Runner } from '../testing'
+import { startRunner, nativeCommandFixture, type Runner } from '../../testing'
 
 const wire = createRunnerWire(msgpackCodec)
 

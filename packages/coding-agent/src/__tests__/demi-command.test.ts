@@ -5,7 +5,7 @@ import { afterEach, expect, test } from 'bun:test'
 import type { ShellEnvironment } from '@demicodes/shell'
 import { runnerShell } from '@demicodes/backend/testing'
 
-import { LocalHost } from '@demicodes/runner/testing'
+import { LocalHost } from '@demicodes/host-remote/testing'
 import { bytesToBase64 } from '@demicodes/utils'
 import { createCodingCommandRegistry } from '../index'
 

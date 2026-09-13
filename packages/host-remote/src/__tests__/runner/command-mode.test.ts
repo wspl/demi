@@ -11,7 +11,7 @@ import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { type Command } from '@demicodes/shell'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
-import { runnerBinary, startRunner, nativeCommandFixture } from '../testing'
+import { runnerBinary, startRunner, nativeCommandFixture } from '../../testing'
 
 async function fixture(label: string, commands: Command[] = []) {
   const home = await realpath(await mkdtemp(join(tmpdir(), 'demi-native-home-')))

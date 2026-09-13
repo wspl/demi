@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { RemoteHost } from '@demicodes/host-remote'
 import { hostConformanceCases, memoryHostStore } from '@demicodes/shell/testing'
-import { connectTestRunner } from '../testing'
+import { connectTestRunner } from '../../testing'
 
 test('the Rust runner passes the Host conformance suite over its actual wire', async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'demi-conformance-')))

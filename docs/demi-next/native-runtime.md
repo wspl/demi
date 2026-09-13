@@ -1,6 +1,6 @@
 # Native runner and command services
 
-Status: implementation contract. Execution evidence is tracked in `progress.md`.
+Status: implementation contract.
 
 ## Confirmed direction
 
@@ -64,9 +64,9 @@ The implementation SDK must provide the following execution guarantees:
   accounted for and process/connection resources are released.
 
 The design objective is to amortize startup and connection costs, avoid repeated
-process creation and keep steady-state calls inexpensive. The synthetic transport benchmark and its measured limits are recorded in
-[Native transport measurements](../native-transport-measurements.md). Product
-file-command performance must be measured separately.
+process creation and keep steady-state calls inexpensive.
+`packages/command-service/examples/benchmark.rs` exercises the transport;
+file-command performance requires separate measurements.
 
 File operations run beside their files. Applying a patch does not require sending
 the entire original file through the runner. The native service owns the patch
@@ -118,7 +118,7 @@ aarch64-pc-windows-msvc. Linux target triples are x86_64-unknown-linux-musl and
 aarch64-unknown-linux-musl. macOS targets are x86_64-apple-darwin and
 aarch64-apple-darwin. Build tools, SDKs and dependencies must be pinned for
 reproducible releases. Target execution tests are separate from cross-compilation.
-The build entry point is `scripts/native/build.ts`; `scripts/native/Dockerfile` pins the Linux toolchain. Build evidence belongs in the acceptance ledger.
+The build entry point is `scripts/native/build.ts`; `scripts/native/Dockerfile` pins the Linux toolchain.
 
 ```text
 Implementation developer
@@ -434,26 +434,6 @@ The SDK owns the protocol IO. Command implementations must use SDK output
 writers and must not print to process stdout; arbitrary native code can still
 violate that contract, so malformed protocol output fails the connection.
 
-## Transport feasibility and validation gates
-
-Rust h2 accepts an AsyncRead + AsyncWrite transport. The runner can combine child
-stdout for reading and child stdin for writing; the service uses the corresponding
-stdin/stdout ends. This makes HTTP/2 over stdio feasible without a socket server.
-It is a protocol/library feasibility result, not yet a six-platform executable test.
-
-Tokio's generic stdin uses a blocking read that cannot be cancelled. The service
-SDK must deliberately handle pipe EOF and reader-thread/resource shutdown rather
-than assume dropping a future closes an OS read. Use platform-appropriate pipe
-adapters behind the SDK; verify behavior on both Windows architectures and Unix.
-No per-invocation thread/process allocation should be required by the transport.
-
-Before implementation acceptance, test concurrent calls, interleaved binary
-output, slow readers, stdin EOF, cancellation during CPU and IO work, parent death,
-service crashes, handshake mismatch, old/new release coexistence, URL expiration,
-download interruption, hash mismatch and all six native release targets. Benchmark
-warm invocation latency, throughput and bounded memory. No real model calls are
-needed for these checks.
-
 ## Shared Rust service contract
 
 `packages/command-protocol` owns strict serde wire types and incremental response
@@ -491,21 +471,7 @@ an async task does not prove that non-cooperative native work has stopped.
 TypeScript package and manifest contracts generate Rust values and validation
 schemas. Protocol limits are fixed SDK constants. Object-store adapters belong to
 backend deployment assembly. The service SDK supplies cancellable platform stdio;
-Windows runner releases use static CRT linkage. Platform tests and benchmarks
-record verification independently of these implementation choices.
-
-## Sources
-
-- [h2 transport bounds](https://docs.rs/h2/latest/h2/client/fn.handshake.html)
-- [Tokio stdin lifecycle](https://docs.rs/tokio/latest/tokio/io/fn.stdin.html)
-- [S3 direct signed downloads](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html)
-
-- [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild)
-- [cargo-xwin](https://github.com/rust-cross/cargo-xwin)
-
-- [HTTP/2 streams and flow control](https://www.rfc-editor.org/rfc/rfc9113.html)
-- Existing implementation: `packages/shell/src/command.ts`,
-  `packages/command-loader/src/manifest/`, and `packages/runner/src/dispatch.rs`.
+Windows runner releases use static CRT linkage.
 
 ## Backend deployment configuration
 
