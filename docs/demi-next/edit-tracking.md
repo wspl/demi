@@ -80,6 +80,19 @@ Recording never fails the command: a copy that cannot be taken or a path that
 disappeared leaves that entry with counts 0 and 0 and no contents, and the
 command's own result stands.
 
+## Extending the scope
+
+Everything after the notice is path-based and knows nothing about which
+command wrote: the scope, the copies, the counts, the report, the store, the
+view. Bringing a new kind of write into scope is therefore one thing: send the
+notice with the destination path at the place its bytes reach the disk, before
+they do. Nothing downstream changes.
+
+For `cp` that is three notices: `context::fs::copy` and `hard_link` for their
+destination, `uucore::safe_copy::create_dest_restrictive` (the Linux copy opens
+its destination there, through `rustix`), and the macOS copy before it calls
+`clonefile(2)`. A copied file then reports as `added` like any other.
+
 ## The report
 
 `job_exit` carries `files`, one entry per changed path in the order of first
@@ -177,6 +190,6 @@ history and go with it, and because two sides of one edit are only meaningful
 together.
 
 Only creations and modifications are reported because the conversation shows
-what the model wrote, not the state of the directory. Copies are left out
-because `cp` reaches the disk outside the shared context on macOS and Linux,
-and a copied file is not an edit the reader is looking for.
+what the model wrote, not the state of the directory. Copies are left out for
+now because a copied file is not an edit the reader is looking for; the section
+above says what it takes to add them.
