@@ -405,7 +405,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Integration boundary: authentication calls the backend over same-origin HTTP.
   Chat uses the agent client over WebSocket; resource and settings operations use
   REST. The browser does not import backend code or concrete providers.
-  See `docs/web-integration.md` for state ownership and operation contracts.
+  See `docs/demi-next/web-application.md` for state ownership and operation contracts.
 - Must not: import `web-gallery`, Node, Host implementations or concrete providers.
 
 ### `@demicodes/web-gallery`

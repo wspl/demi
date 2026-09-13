@@ -42,5 +42,5 @@ authenticated app aborts account requests. Display-name autosave reports its sav
 state and retains failed input for retry.
 The signed-in route opens the backend-integrated product; state polling, provider
 configuration, devices, files and live conversations are described in
-[web integration](web-integration.md). Tests use disposable accounts and fake mail
+[web integration](demi-next/web-application.md). Tests use disposable accounts and fake mail
 delivery, without real model calls.

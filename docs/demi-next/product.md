@@ -75,7 +75,7 @@ explicit replacement. With no saved choice, the first available model is used.
 
 The first send creates the backend record. The default title comes from the
 first user message and can be renamed. Draft persistence and confirmation of
-uncertain sends belong to [Web integration](../web-integration.md). Choosing a
+uncertain sends belong to [Web integration](web-application.md). Choosing a
 project or device directory affects subsequent execution; target-switch admission
 and context announcements are defined in
 [Sessions and targets](sessions-and-targets.md).
@@ -191,8 +191,8 @@ state, routing, and API handlers; `web-gallery` supplies specimens of the same
 components. Both surfaces must exercise UI changes in the same checkpoint.
 The browser is a Vue SPA built by Vite, using vue-router and Pinia. Deployment
 and browser integration are defined in [Backend](backend.md) and
-[Web integration](../web-integration.md); detailed shared behavior is documented
-in [Web application](web-prototype.md).
+[Web application](web-application.md); shared session behavior is documented
+in [Session interface](session-interface.md).
 
 ## Cloud settings
 
