@@ -32,9 +32,17 @@ Composer, Blocks, Turns, States, Session, Windows), Primitives (Buttons, Fields,
 (Menus, Dialogs), Files (Browser, Dialogs), Settings (Settings, Account, Device,
 Sign in). A short page has one view named after the page. The default view omits
 the query. Session defaults to the assembled Session view, which fills the pane.
-The Session Tab bar specimen closes a tab the way Chrome does: the departing
-tab keeps its place, fades, and collapses from its current width so the
-remaining tabs slide in; reduced motion skips the transition.
+Every tab bar (session tabs, the inspect windows, the work panel) is one
+`TabStrip` of `TabItem`s. Tabs are all one width. A faint short line sits in
+the gap between neighbours and fades out while either of them is active or
+hovered. When the tabs outgrow the row the strip scrolls without a scrollbar,
+fades out at whichever edge has more behind it, and scrolls the active tab
+into view when it changes. The strip names the surface it sits on: on the base
+surface the active tab is raised to the surface color, on a raised surface
+(the work panel) it is pressed to the base color; the tabs and fades take
+their colors from the strip. Closing a tab works the way Chrome does: the
+departing tab keeps its place, fades, and collapses from its current width so
+the remaining tabs slide in; reduced motion skips the transition.
 Appearance (paradigm, mode, tone, accent, density, radius, shadow) opens from a
 palette in the top-right as a floating menu. Each view keeps its own scroll. This is opt-in preview navigation;
 conversation scrolling retains its existing behavior.
@@ -52,17 +60,12 @@ sidebar's. The panel control in the session header shows only while the
 panel is closed and opens it; the panel's own fold control closes it. Below the medium breakpoint each side
 pane is an overlay and only one is open at a time: opening one closes the
 other, and the scrim closes whichever is open. The panel continues the
-session's raised sheet behind a hairline divider, with its tab row at the
-height of the session header; the divider is the resize handle. Tabs are the
-files and diffs open for the conversation on screen, kept per conversation by
-the host; a file tab carries the file's icon, a diff tab adds a compare mark,
-and the tab's tooltip is the path. Tabs are all one width; when they outgrow
-the row the strip scrolls without a scrollbar and fades out at whichever edge
-has more behind it, and the active tab is scrolled into view. A faint short
-line separates neighbouring tabs; it goes where a tab is active or hovered.
-The active tab
-keeps its close control and the others show it on hover; closing the active
-tab activates the one before it. The Panel view of the Session gallery shows the frame with the panel open
+session's raised sheet behind a hairline divider, with its tab row on that
+surface at the height of the session header; the divider is the resize
+handle. Tabs are the files and diffs open for the conversation on screen,
+kept per conversation by the host; a file tab carries the file's icon, a diff
+tab adds a compare mark, and the tab's tooltip is the path. Closing the
+active tab activates the one before it. The Panel view of the Session gallery shows the frame with the panel open
 and the panel alone. The content pane is a placeholder: file and diff views,
 and what opens a tab (a changed-file pill, a file browser entry), are not
 designed yet. The product does not mount the panel until they are.
