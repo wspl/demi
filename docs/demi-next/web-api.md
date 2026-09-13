@@ -282,9 +282,7 @@ read produces the existing host-command error; the reference is not a byte snaps
 
 `GET /api/devices/:id/fs/file?path=...` returns `{ path, text }` for a text file
 on a connected device. A file over 4 MiB answers 413 `file_too_large`; one that
-is not UTF-8 text answers 415 `not_text`. The file view reads through this
-route, and so does the change view's Conversation mode for the sides a tool
-call's report names ([Edit tracking](edit-tracking.md)).
+is not UTF-8 text answers 415 `not_text`. The file view reads through this route.
 
 `GET /api/conversations/:id/changes` lists the uncommitted changes of the
 conversation's execution directory as `{ root, repository, head, files,
