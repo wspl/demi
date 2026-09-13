@@ -15,7 +15,7 @@ import { changeWorkTab, closeWorkTabs, fileWorkTab, findChangeWorkTab, goBackInT
 import { emptyChangeSet, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
-import { createGalleryWorkspace } from '../fixtures/workspace'
+import { createGalleryChangeSet, createGalleryWorkspace } from '../fixtures/workspace'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import { ASIDE_WIDTH, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
@@ -225,6 +225,14 @@ const exhibitWork = useWorkTabs('w1')
 const changeUncommitted = useChangeTab('uncommitted', 'src/auth/cookie.ts', workspace.changes)
 const changePicked = useChangeTab('conversation', 'src/auth/cookie.ts', workspace.changes)
 const changeEmpty = useChangeTab('conversation', null, { conversation: emptyChangeSet, uncommitted: workspace.changes.uncommitted })
+const changeNoRepository = useChangeTab('uncommitted', null, {
+  conversation: emptyChangeSet,
+  uncommitted: createGalleryChangeSet(200, { unavailable: 'no-repository' }),
+})
+const changeStale = useChangeTab('uncommitted', 'src/auth/cookie.ts', {
+  conversation: emptyChangeSet,
+  uncommitted: createGalleryChangeSet(200, { truncated: true, failure: 'The device is offline.' }),
+})
 const emptyTabs: WorkTab[] = []
 let nextQueue = 3
 let nextSent = 1
@@ -1630,11 +1638,13 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Change view"
-        note="Diffs from one of two sources, the switch in the header picks. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation is one file picked from the conversation's tool rows, a snapshot around that call, shown alone: no tree. Either way the header names the file shown with its counts. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself and, under Uncommitted, hides the tree. A new change tab opens on Conversation when something was picked, else on Uncommitted; with nothing picked, Conversation says how to fill it."
+        note="Diffs from one of two sources, the switch in the header picks. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation is one file picked from the conversation's tool rows, a snapshot around that call, shown alone: no tree. Either way the header names the file shown with its counts. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself and, under Uncommitted, hides the tree; the tree's caption lists the changes again, its control turning while the list is on its way. A new change tab opens on Conversation when something was picked, else on Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted the view also says when the workspace is no repository, keeps the last list when a listing failed, and says under the rows when the list was cut short."
       >
         <GallerySpecimen
           v-for="specimen in [
             { variant: 'uncommitted · live', work: changeUncommitted },
+            { variant: 'uncommitted · not a repository', work: changeNoRepository },
+            { variant: 'uncommitted · listing failed, cut short', work: changeStale },
             { variant: 'conversation · picked', work: changePicked },
             { variant: 'conversation · nothing picked', work: changeEmpty },
           ]"

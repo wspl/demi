@@ -295,9 +295,10 @@ modified }` for one changed file: `original` as the last commit has it (empty
 for an added file), `modified` as the working tree has it (empty for a deleted
 one), under the text limits of the file route.
 
-The browser lists again after each of the conversation's shell commands exits,
-when the page becomes visible again, when the change view is shown, and on its
-Refresh control. It never polls while idle.
+The browser lists again when the change view is shown, after each of the
+conversation's tool calls finishes while it shows (a call that finishes while
+the view is away marks the list stale for its next showing), when the page
+becomes visible again, and on its Refresh control. It never polls while idle.
 
 ## Serving the browser build
 

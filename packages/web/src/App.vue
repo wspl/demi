@@ -14,6 +14,7 @@ import { useDevicePairing } from '@demicodes/web-ui/devices/pairing'
 import { isSettingsSectionEnabled } from '@demicodes/web-ui/settings/sections'
 import SettingsDialog from './settings/SettingsDialog.vue'
 import TargetDialog from './targets/TargetDialog.vue'
+import WorkPane from './conversation/WorkPane.vue'
 import { useConversations } from './conversation/store'
 import { useResources } from './state/resources'
 import { useSession } from './auth/session'
@@ -21,9 +22,11 @@ import { claimDevice, deviceInstallation } from './devices/pairing'
 const session = useSession()
 const conversations = useConversations()
 const resources = useResources()
-// The width follows the divider frame by frame; the preference takes it when a resize settles.
+// The widths follow the dividers frame by frame; the preference takes them when a resize settles.
 const sidebarWidth = ref(resources.sidebarWidth)
 watch(() => resources.sidebarWidth, (width) => { sidebarWidth.value = width })
+const asideWidth = ref(resources.asideWidth)
+watch(() => resources.asideWidth, (width) => { asideWidth.value = width })
 const router = useRouter()
 const route = useRoute()
 const folded = computed({
@@ -140,7 +143,11 @@ useAppShortcuts(
     v-else-if="route.path !== '/login'"
     v-model:open="resources.sidebarOpen"
     v-model:width="sidebarWidth"
+    v-model:aside-width="asideWidth"
+    :aside-open="resources.asideOpen && activeId !== null"
+    @update:aside-open="resources.asideOpen = $event"
     @resize-end="resources.sidebarWidth = $event"
+    @aside-resize-end="resources.asideWidth = $event"
   >
     <template #sidebar>
       <AppSidebar
@@ -167,6 +174,14 @@ useAppShortcuts(
       />
     </template>
     <RouterView />
+    <template #aside>
+      <!-- The panel belongs to the open conversation; the frame shows it only while one is open. -->
+      <WorkPane
+        v-if="activeId"
+        :conversation-id="activeId"
+        @close="resources.asideOpen = false"
+      />
+    </template>
     <template #dialogs>
       <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->
       <SettingsDialog @sign-out="signOut" />

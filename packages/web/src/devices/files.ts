@@ -5,7 +5,7 @@ import {
   type FileBrowserSource,
 } from '@demicodes/web-ui/files/types'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
-import { directorySchema } from '../api/contracts'
+import { directorySchema, fileTextSchema } from '../api/contracts'
 import type { Device, Project } from '../state/types'
 
 function browserError(error: unknown): never {
@@ -65,6 +65,17 @@ export function fileSourceFor(device: Device | null): FileBrowserSource {
                 signal,
                 ...jsonBody({ path }),
               })
+            } catch (error) {
+              browserError(error)
+            }
+          },
+          async read(path: string, signal?: AbortSignal) {
+            try {
+              const response = await apiRequest(
+                `${endpoint}/file?${new URLSearchParams({ path })}`,
+                { signal },
+              )
+              return (await readResponse(response, fileTextSchema)).text
             } catch (error) {
               browserError(error)
             }

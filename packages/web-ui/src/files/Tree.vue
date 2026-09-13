@@ -38,6 +38,8 @@ defineSlots<{
   name?(props: { row: R }): unknown
   trailing?(props: { row: R }): unknown
   empty?(): unknown
+  /** Under the last row, when there is something to say about the list itself. */
+  after?(): unknown
 }>()
 
 // The pinned stack: measured from the rows' positions on every scroll and layout.
@@ -186,6 +188,7 @@ defineExpose({ scrollToRow, scrollBy })
         <template #trailing><slot name="trailing" :row="row" /></template>
       </TreeRow>
       <slot v-if="rows.length === 0" name="empty" />
+      <slot v-else name="after" />
     </div>
   </ScrollArea>
 </template>

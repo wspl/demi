@@ -318,7 +318,7 @@ onMounted(() => {
     <template v-if="view === 'tree'">
       <GallerySection
         title="Rows"
-        note="The workspace tree: open and closed directories, files, the selected file, hidden entries after the rest, deep nesting, long names truncated. Click a directory to fold it, a file to select it."
+        note="The workspace tree: open and closed directories, files, the selected file, hidden entries after the rest, deep nesting, long names truncated. Click a directory to fold it, a file to select it; the control at the caption's end lists the open directories again."
       >
         <GallerySpecimen variant="rows · live">
           <div class="gallery-frame h-[28rem] w-[220px] overflow-hidden bg-surface-editor">

@@ -106,8 +106,10 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @interrupt-pending-steer="store.interruptWithSteer(conversation, $event)"
     :edit-version="store.editVersion(conversation)"
     :message-edit="conversation.messageEdit"
+    :aside-open="resources.asideOpen"
     @update:message-edit="conversation.messageEdit = $event"
     @save-scroll="saveScroll"
+    @open-aside="resources.asideOpen = true"
   >
     <template #workspace
       ><WorkspaceInfo :project="project" :conversation="conversation"

@@ -11,8 +11,32 @@ import type { TreeRow } from './tree'
  */
 export interface ChangeSetSource {
   files: readonly ShellFileChange[]
+  /** The list stopped at the host's limit; there are more changed files than it holds. */
+  truncated?: boolean
+  /** Why there is nothing to list, when the reason is not that nothing changed. */
+  unavailable?: 'no-repository' | null
+  /** A new list is on its way; `files` are the last one until it lands. */
+  refreshing?: boolean
+  /** The last listing failed, in these words; `files` are the last list that succeeded. */
+  failure?: string | null
+  /** Lists again. Absent when the source has one fixed list, such as the conversation's picks. */
+  refresh?(): void
   /** Both sides of one file: empty `original` for an added file, empty `modified` for a deleted one. */
   read(path: string, signal?: AbortSignal): Promise<{ original: string; modified: string }>
+}
+
+/** What an empty change set says in place of its files, by why it is empty. */
+export function emptyChangeSetText(source: ChangeSetSource, mode: ChangeMode): string {
+  if (mode === 'conversation') {
+    return 'Click a changed file in the conversation to see its diff here.'
+  }
+  if (source.unavailable === 'no-repository') {
+    return 'Not a git repository.'
+  }
+  if (source.failure) {
+    return 'Could not list the changes.'
+  }
+  return 'The working tree matches the last commit.'
 }
 
 /**
@@ -36,17 +60,6 @@ export const emptyChangeSet: ChangeSetSource = {
 /** The mode a new change tab opens in: what was picked from the conversation, if anything, else the working tree. */
 export function changeModeToOpen(changes: ChangeSources): ChangeMode {
   return changes.conversation.files.length > 0 ? 'conversation' : 'uncommitted'
-}
-
-/** Lines added and removed across every file. */
-export function changeTotals(files: readonly ShellFileChange[]): { added: number; removed: number } {
-  let added = 0
-  let removed = 0
-  for (const file of files) {
-    added += file.added
-    removed += file.removed
-  }
-  return { added, removed }
 }
 
 /** One row of the change tree: a directory on the way to changed files (no change), or a changed file. */
