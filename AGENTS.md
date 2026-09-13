@@ -22,8 +22,10 @@
 
 # Writing and Communication
 
-- Write for the reader's understanding. Be clear, concrete, and concise.
-- Prefer diagrams for structures, relationships, and flows; use ASCII diagrams when practical. Prefer concrete examples over abstract descriptions.
+- Make the first explanation understandable without requiring the reader to ask for a simpler version. Start with what happens in a concrete example, then explain the rule. Use familiar words; introduce a technical term only when needed and explain it on first use.
+- When identifying a problem or ambiguity, show the exact situation, what each rule would make happen, and why the difference matters. Do not substitute abstract labels such as "content missing" or "rules overlap" for that explanation.
+- Before sending an explanation, check whether the reader can tell who does what, to which thing, and with what result. Rewrite sentences that require the reader to translate terminology or infer omitted steps. Keep necessary technical detail; remove detail that does not help answer the question.
+- Prefer diagrams for structures, relationships, and flows when they clarify the explanation; use ASCII diagrams when practical. Labels must be understandable from the accompanying explanation.
 - Explain responsibilities, boundaries, observable behavior, and design rationale. Leave implementation details that code can express clearly to code.
 - Distinguish verified facts, suspected problems, proposals, and open decisions.
 - Follow the [Google Developer Documentation Style Guide](https://developers.google.com/style). Use Diátaxis, arc42, and C4 as optional aids to clarity and completeness, not as mandatory directories, sections, or deliverables.
