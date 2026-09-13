@@ -232,6 +232,7 @@ function add(kind: WorkTab['kind']): void {
           v-model:tree="treeOpen"
           :changes="workspace.changes"
           :root="workspace.root"
+          @open="emit('open', $event)"
         />
         <div
           v-else

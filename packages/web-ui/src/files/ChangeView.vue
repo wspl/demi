@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { FolderTree } from '@lucide/vue'
+import { FileOutput, FolderTree } from '@lucide/vue'
 import DiffEditor from '../editor/components/DiffEditor.vue'
 import { appEditorHost } from '../editor/host/appHost'
 import { toEditorUri } from '../editor/editorUri'
@@ -18,7 +18,8 @@ import { joinPath } from './paths'
  * The conversation's changes: the diff of the selected file, read through
  * the change set, and beside it the tree of changed files with their kinds
  * and line counts. The row above says how many files and lines changed and
- * holds the control that shows and hides the tree; the host keeps the tree's
+ * holds the control that opens the selected file itself (not for a deleted
+ * one) and the one that shows and hides the tree; the host keeps the tree's
  * visibility and width (v-model) as it does for the file view, and which file
  * is selected.
  */
@@ -26,6 +27,11 @@ const props = defineProps<{
   changes: ChangeSetSource
   /** The workspace the paths are relative to. */
   root: string
+}>()
+
+const emit = defineEmits<{
+  /** Open the selected file itself, by its path relative to the workspace. */
+  open: [path: string]
 }>()
 
 const selected = defineModel<string | null>('selected', { default: null })
@@ -87,6 +93,15 @@ onBeforeUnmount(() => {
           <span v-if="totals.removed > 0" class="ml-1 text-on-danger">−{{ totals.removed }}</span>
         </span>
       </span>
+      <Tooltip content="Open file" class="shrink-0">
+        <IconButton
+          :icon="FileOutput"
+          variant="ghost"
+          aria-label="Open file"
+          :disabled="!selectedChange || selectedChange.kind === 'deleted'"
+          @click="selectedChange && emit('open', selectedChange.path)"
+        />
+      </Tooltip>
       <Tooltip :content="tree ? 'Hide changed files' : 'Show changed files'" class="shrink-0">
         <IconButton
           :icon="FolderTree"
