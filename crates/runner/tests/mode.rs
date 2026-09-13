@@ -77,10 +77,12 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
             result = &mut running => panic!("runner exited before backend connection: {result:?}"),
         };
         let mut socket = tokio_tungstenite::accept_async(socket).await.unwrap();
-        assert!(matches!(
-            receive(&mut socket).await,
-            Reply::Hello { protocol: 10.0 }
-        ));
+        match receive(&mut socket).await {
+            Reply::Hello { protocol } => {
+                assert_eq!(protocol, demi_runner::connection::wire::VERSION as f64)
+            }
+            _ => panic!("expected hello"),
+        }
         send(&mut socket, json!({"type":"hello_ok", "deviceId":"device"})).await;
         eprintln!("mode test: runner connected");
         let body = json!({"roots": {"fixture": {"tree": {
@@ -132,6 +134,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         let active = state.active().await.unwrap();
         assert!(state.lock().is_err());
         let request = Invocation {
+            edits: None,
             operation: "manage".into(),
             invocation_id: "drain".into(),
             args: json!({"secret":active.secret, "action":"drain"}),

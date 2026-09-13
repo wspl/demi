@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { changeWorkTab, closeWorkTabs, fileWorkTab, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showFileInTab, workTabTitle, type WorkTab } from '../work-panel'
+import { changeWorkTab, changeTabPath, showCallEdit, closeWorkTabs, fileWorkTab, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showFileInTab, workTabTitle, type WorkTab } from '../work-panel'
 import { tabsToClose } from '../tab-close'
 
 const tabs: WorkTab[] = [
@@ -76,18 +76,18 @@ describe('work panel tabs', () => {
   test('the change tab steps through modes and files, and back across them', () => {
     const stepOf = (list: WorkTab[]) => {
       const tab = findChangeWorkTab(list)!
-      return `${tab.mode}:${tab.selected[tab.mode]}`
+      return `${tab.mode}:${changeTabPath(tab)}`
     }
     let state = showChangeInTab(tabs, 'b', 'uncommitted', 'src/auth/cookie.ts')
-    state = showChangeInTab(state, 'b', 'conversation', 'README.md')
+    state = showCallEdit(state, { commandId: 'readme-call', file: { path: 'README.md', kind: 'modified', added: 1, removed: 1, edits: [{ kept: true }] } }, () => 'new').tabs
     // The same step again is not a step.
-    state = showChangeInTab(state, 'b', 'conversation', 'README.md')
+    state = showCallEdit(state, { commandId: 'readme-call', file: { path: 'README.md', kind: 'modified', added: 1, removed: 1, edits: [{ kept: true }] } }, () => 'new').tabs
     expect(stepOf(state)).toBe('conversation:README.md')
     expect(findChangeWorkTab(state)!.back).toHaveLength(2)
     state = goBackInTab(state, 'b')
     expect(stepOf(state)).toBe('uncommitted:src/auth/cookie.ts')
-    // Each mode keeps the file it showed.
-    expect(findChangeWorkTab(state)!.selected.conversation).toBe('README.md')
+    // Back returns to the state before a conversation file was picked.
+    expect(changeTabPath(findChangeWorkTab(state)!, 'conversation')).toBeNull()
     state = goBackInTab(state, 'b')
     expect(stepOf(state)).toBe('uncommitted:null')
     state = goForwardInTab(state, 'b')
@@ -97,4 +97,29 @@ describe('work panel tabs', () => {
     state = showChangeInTab(state, 'b', 'uncommitted', 'src/auth/sid.ts')
     expect(findChangeWorkTab(state)!.forward).toEqual([])
   })
+})
+
+
+test('history distinguishes calls and edit segments for the same path', () => {
+  const a = { commandId: 'a', file: { path: '/work/file', kind: 'modified' as const, added: 1, removed: 1, edits: [{ kept: true }, { kept: true }] } }
+  const b = { ...a, commandId: 'b' }
+  let state = showChangeInTab(tabs, 'b', 'conversation', '/work/file', { call: a, edit: 1 })
+  state = showChangeInTab(state, 'b', 'conversation', '/work/file', { call: b, edit: 0 })
+  expect(findChangeWorkTab(state)?.call?.commandId).toBe('b')
+  state = goBackInTab(state, 'b')
+  expect(findChangeWorkTab(state)).toMatchObject({ call: a, edit: 1 })
+  state = goForwardInTab(state, 'b')
+  expect(findChangeWorkTab(state)).toMatchObject({ call: b, edit: 0 })
+})
+
+
+test('picking different files of the same call records each selection', () => {
+  const first = { path: '/work/first', kind: 'modified' as const, added: 1, removed: 1, edits: [{ kept: true }] }
+  const second = { ...first, path: '/work/second' }
+  let state = showCallEdit([], { commandId: 'one-call', file: first }, () => 'edits').tabs
+  expect(findChangeWorkTab(state)?.call).toEqual({ commandId: 'one-call', file: first })
+  state = showCallEdit(state, { commandId: 'one-call', file: second }, () => 'unused').tabs
+  expect(changeTabPath(findChangeWorkTab(state)!)).toBe(second.path)
+  state = goBackInTab(state, 'edits')
+  expect(findChangeWorkTab(state)?.call).toEqual({ commandId: 'one-call', file: first })
 })

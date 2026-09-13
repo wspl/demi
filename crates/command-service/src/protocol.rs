@@ -17,11 +17,31 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/protocol.rs"));
 }
 pub use generated::{
+    EditContext, EditCopies, EditFile, EditJournal,
+    EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS,
     CommandError, Completion, INFO_PATH, INVOKE_PATH, Invocation, MAX_INVOCATIONS,
     MAX_METADATA_BYTES, MAX_RECORD_BYTES, PackageDescriptor,
     PackageDescriptorTargetsValue as PackageArtifact, SHUTDOWN_PATH, ServiceInfo, TARGETS, VERSION,
 };
 pub use package::{canonical_digest, target_artifact};
+
+impl EditContext {
+    pub fn validate(&self) -> Result<(), String> {
+        generated::edit_context_validate(self)?;
+        if !std::path::Path::new(&self.directory).is_absolute()
+            || !std::path::Path::new(&self.lock).is_absolute()
+        {
+            return Err("edit context paths must be absolute".into());
+        }
+        Ok(())
+    }
+}
+
+impl EditJournal {
+    pub fn validate(&self) -> Result<(), String> {
+        generated::edit_journal_validate(self)
+    }
+}
 
 impl Invocation {
     pub fn validate(&self) -> Result<(), ProtocolError> {

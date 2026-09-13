@@ -5,6 +5,8 @@ import {
   commandArgsSchema, commandErrorSchema, completionSchema, invocationSchema,
   serviceInfoSchema, nativePackageSchema, NATIVE_TARGETS, NATIVE_PROTOCOL_VERSION,
   MAX_METADATA_BYTES, MAX_RECORD_BYTES, MAX_INVOCATIONS, INFO_PATH, INVOKE_PATH, SHUTDOWN_PATH,
+  editContextSchema, editCopiesSchema, editFileSchema, editJournalSchema,
+  EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS,
 } from '../packages/command-protocol/src/index'
 import { manifestSchema, manifestNodeSchema } from '../packages/command-loader/src/manifest/schema'
 import {
@@ -23,17 +25,23 @@ function flatten(schema: z.core.$ZodType): z.ZodObject[] {
 }
 
 function wire(): string {
-  const generator = new RustZodTypes({ bytes: bytesSchema, dateType: 'super::Timestamp' })
+  const generator = new RustZodTypes({
+    bytes: bytesSchema,
+    dateType: 'super::Timestamp',
+    overrides: new Map([[editCopiesSchema, 'demi_command_service::protocol::EditCopies']]),
+  })
   const schemas = flatten(backendToRunnerMessageSchema)
   const variants = schemas.map(schema => {
     const tag = (schema.shape.type as z.ZodLiteral<string>).value
     const fields = generator.fields(schema, rustPascal(tag), new Set(['type'])).replaceAll('pub ', '')
     return `#[serde(rename = ${rustString(tag)})]\n${rustPascal(tag)} {\n${fields}\n},`
   })
-  const fsIds = schemas.flatMap(schema => {
+  const requestIds = (prefix: string) => schemas.flatMap(schema => {
     const tag = (schema.shape.type as z.ZodLiteral<string>).value
-    return tag.startsWith('fs_') ? [`Self::${rustPascal(tag)} { id, .. } => Some(id),`] : []
+    return tag.startsWith(prefix) ? [`Self::${rustPascal(tag)} { id, .. } => Some(id),`] : []
   })
+  const fsIds = requestIds('fs_')
+  const gitIds = requestIds('git_')
   const outgoing = flatten(runnerToBackendMessageSchema).map(schema => {
     const literals = Object.entries(schema.shape).filter(([, child]) => child._zod.def.type === 'literal')
     const tag = (schema.shape.type as z.ZodLiteral<string>).value
@@ -68,6 +76,9 @@ function wire(): string {
       pub fn fs_request_id(&self) -> Option<&str> {
         match self { ${fsIds.join('\n')} _ => None }
       }
+      pub fn git_request_id(&self) -> Option<&str> {
+        match self { ${gitIds.join('\n')} _ => None }
+      }
     }
     ${generator.finish()}
     ${outgoing.join('\n')}`
@@ -89,11 +100,13 @@ function commandProtocol(): string {
     overrides: new Map([[commandArgsSchema, 'serde_json::Value']]),
     jsonObjects: new Set([commandArgsSchema]),
   })
-  const types = { PackageDescriptor: nativePackageSchema, ServiceInfo: serviceInfoSchema,
+  const types = { EditContext: editContextSchema, EditCopies: editCopiesSchema,
+    EditFile: editFileSchema, EditJournal: editJournalSchema,
+    PackageDescriptor: nativePackageSchema, ServiceInfo: serviceInfoSchema,
     CommandError: commandErrorSchema, Completion: completionSchema, Invocation: invocationSchema }
   for (const [name, schema] of Object.entries(types))
     generator.type(schema, name)
-  const checks = Object.entries(types).filter(([name]) => ['PackageDescriptor', 'Invocation'].includes(name)).map(([name, schema]) =>
+  const checks = Object.entries(types).filter(([name]) => ['PackageDescriptor', 'Invocation', 'EditContext', 'EditJournal'].includes(name)).map(([name, schema]) =>
     `pub fn ${rustField(name)}_validate(value: &${name}) -> Result<(), String> {
       ${generator.validate(schema, 'value')}\nOk(())
     }`)
@@ -104,6 +117,10 @@ function commandProtocol(): string {
     pub const MAX_METADATA_BYTES: usize = ${MAX_METADATA_BYTES};
     pub const MAX_RECORD_BYTES: usize = ${MAX_RECORD_BYTES};
     pub const MAX_INVOCATIONS: usize = ${MAX_INVOCATIONS};
+    pub const EDIT_FILE_BYTES: usize = ${EDIT_FILE_BYTES};
+    pub const EDIT_JOB_BYTES: u64 = ${EDIT_JOB_BYTES};
+    pub const EDIT_JOB_FILES: usize = ${EDIT_JOB_FILES};
+    pub const EDIT_JOB_SEGMENTS: u64 = ${EDIT_JOB_SEGMENTS};
     pub const INFO_PATH: &str = ${rustString(INFO_PATH)};
     pub const INVOKE_PATH: &str = ${rustString(INVOKE_PATH)};
     pub const SHUTDOWN_PATH: &str = ${rustString(SHUTDOWN_PATH)};`

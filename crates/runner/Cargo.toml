@@ -28,6 +28,8 @@ serde_bytes = "0.11"
 regex = "1"
 url = "2"
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+gix = { version = "0.87", default-features = false, features = ["status", "blob-diff", "sha1", "parallel"] }
+notify = "8.2"
 
 ripgrep = "15.2.0"
 jaq = { version = "3.1.1", default-features = false }

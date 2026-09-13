@@ -50,6 +50,7 @@ impl Handler for Fixture {
 
 fn request(operation: &str) -> Invocation {
     Invocation {
+        edits: None,
         operation: operation.into(),
         invocation_id: "benchmark".into(),
         args: serde_json::json!({}),

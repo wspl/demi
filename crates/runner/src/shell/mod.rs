@@ -1,6 +1,7 @@
 //! Fresh brush shells with streaming, in-process native utilities.
 
 mod declared;
+pub mod edit_report;
 pub mod job;
 pub mod scope;
 pub mod utilities;

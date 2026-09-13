@@ -161,6 +161,12 @@ test(
       ['PATCH', `/api/conversations/${conversation.id}`, { title: 'taken' }],
       ['PATCH', `/api/conversations/${conversation.id}`, { archived: true }],
       ['GET', `/api/conversations/${conversation.id}/hosts`],
+      ['GET', `/api/conversations/${conversation.id}/fs`],
+      ['POST', `/api/conversations/${conversation.id}/fs`, { path: join(home, 'made') }],
+      ['GET', `/api/conversations/${conversation.id}/fs/file?path=${encodeURIComponent(home)}`],
+      ['GET', `/api/conversations/${conversation.id}/hosts/${device.id}/fs`],
+      ['POST', `/api/conversations/${conversation.id}/hosts/${device.id}/fs`, { path: join(home, 'made') }],
+      ['GET', `/api/conversations/${bobs.id}/hosts/${device.id}/fs`],
       [
         'POST',
         `/api/conversations/${conversation.id}/hosts`,
