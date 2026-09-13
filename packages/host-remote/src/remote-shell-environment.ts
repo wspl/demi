@@ -7,8 +7,8 @@ import {
   commandStatusView,
   createCommandRecord,
   finalStdoutBoundary,
-  normalizeTimeoutMs,
   settleExited,
+  shellExecInputSchema,
   type CommandStorage,
   type ShellAbortInput,
   type ShellCommandRecord,
@@ -23,7 +23,6 @@ import {
   concatBytes,
   decodeUtf8,
   delay,
-  isAbsolutePath,
   toBytes
 } from '@demicodes/utils'
 import type { RemoteHost, RemoteJob, RemoteJobExit } from './remote-host'
@@ -107,25 +106,14 @@ export class RemoteShellEnvironment implements ShellEnvironment {
   }
 
   async exec(input: ShellExecInput): Promise<ShellCommandStatus> {
-    const timeoutMs = normalizeTimeoutMs(input.timeoutMs ?? DEFAULT_TIMEOUT_MS)
-    if (input.shellId && input.ephemeral) {
-      throw new Error(
-        'ShellExecInput: "shellId" and "ephemeral" are mutually exclusive'
-      )
-    }
-    if (input.cwd !== undefined && !input.ephemeral) {
-      throw new Error(
-        'ShellExecInput: "cwd" requires "ephemeral"; a persistent shell owns its cwd'
-      )
-    }
-    if (input.cwd !== undefined && !isAbsolutePath(input.cwd)) {
-      throw new Error(`Shell exec cwd must be absolute: ${input.cwd}`)
-    }
-    const shell = input.shellId
-      ? this.requireShell(input.shellId)
-      : input.ephemeral
-        ? this.createShell(input.agentSessionId, input.cwd)
-        : this.defaultShell(input.agentSessionId)
+    // Every rule an exec request must satisfy lives in the schema.
+    const request = shellExecInputSchema.parse(input)
+    const timeoutMs = request.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    const shell = request.shellId
+      ? this.requireShell(request.shellId)
+      : request.ephemeral
+        ? this.createShell(request.agentSessionId, request.cwd)
+        : this.defaultShell(request.agentSessionId)
     if (shell.exited)
       throw new Error(`Shell session "${shell.id}" has exited`)
     if (shell.foreground) {
@@ -133,7 +121,7 @@ export class RemoteShellEnvironment implements ShellEnvironment {
         `Shell session "${shell.id}" is already running command "${shell.foreground.record.id}"`
       )
     }
-    const running = this.start(shell, input.script, input.signal)
+    const running = this.start(shell, request.script, request.signal)
     await settledOrElapsed(running.settled, timeoutMs)
     return this.view(running.record)
   }

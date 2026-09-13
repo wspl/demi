@@ -209,8 +209,3 @@ export const DEFAULT_BINARY_LIMIT_BYTES = 16 * 1024 * 1024
  * on the embedding process, not a view budget.
  */
 export const DEFAULT_CAPTURE_LIMIT_BYTES = 64 * 1024 * 1024
-
-/** The observation window rule alone, for a caller that has only that number. */
-export function normalizeTimeoutMs(value: number): number {
-  return timeoutMsSchema.parse(value)
-}

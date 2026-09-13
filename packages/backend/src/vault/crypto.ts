@@ -15,7 +15,11 @@ export function encryptJson(secret: Uint8Array, value: unknown): string {
   return `v1:${iv.toString('base64')}:${cipher.getAuthTag().toString('base64')}:${ciphertext.toString('base64')}`
 }
 
-export function decryptJson<T>(secret: Uint8Array, packed: string): T {
+/**
+ * The stored document, as it was written. Credential rows are data from
+ * outside this process: the caller validates the result with its own schema.
+ */
+export function decryptJson(secret: Uint8Array, packed: string): unknown {
   const [version, iv, tag, ciphertext] = packed.split(':')
   if (version !== 'v1' || !iv || !tag || !ciphertext) {
     throw new Error('Corrupt encrypted credential: unrecognized format')
@@ -30,5 +34,5 @@ export function decryptJson<T>(secret: Uint8Array, packed: string): T {
     decipher.update(Buffer.from(ciphertext, 'base64')),
     decipher.final()
   ])
-  return JSON.parse(plain.toString('utf8')) as T
+  return JSON.parse(plain.toString('utf8'))
 }

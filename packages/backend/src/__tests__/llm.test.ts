@@ -192,6 +192,11 @@ test(
       .toEqual(['custom-1', 'custom-2'])
     expect(models.body.providers[0]?.models[0]?.providerId).toBe(providerId)
 
+    // `refresh` is spelled exactly true or false; nothing else stands in.
+    expect((await api(backend, '/api/models?refresh=1')).status).toBe(400)
+    expect((await api(backend, '/api/models?refresh=TRUE')).status).toBe(400)
+    expect((await api(backend, '/api/models?refresh=false')).status).toBe(200)
+
     const deleted = await backend.session.fetch(
       `/api/providers/${providerId}`,
       { method: 'DELETE' }
