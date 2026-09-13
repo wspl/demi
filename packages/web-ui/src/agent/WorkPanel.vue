@@ -36,7 +36,7 @@ const active = computed(
   <aside class="flex h-full min-w-0 flex-col overflow-hidden border-l border-line bg-surface text-fg">
     <div class="flex h-11 shrink-0 items-center gap-1 px-2">
       <TabStrip
-        class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto"
+        class="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden"
         role="tablist"
       >
         <span
@@ -44,7 +44,7 @@ const active = computed(
           :key="tab.id"
           role="tab"
           :aria-selected="tab.id === activeId"
-          class="group relative flex h-7 shrink-0 cursor-default select-none items-center overflow-hidden rounded-md pl-1.5 pr-7 text-chrome"
+          class="group relative flex h-7 min-w-0 shrink cursor-default select-none items-center overflow-hidden rounded-md pl-1.5 pr-7 text-chrome"
           :class="
             tab.id === activeId
               ? 'bg-surface-base text-fg-emphasis'
@@ -63,7 +63,7 @@ const active = computed(
           <Tooltip
             :content="tab.path"
             placement="bottom"
-            class="max-w-28 truncate whitespace-nowrap px-1.5"
+            class="min-w-0 max-w-28 truncate whitespace-nowrap px-1.5"
             >{{ workTabTitle(tab) }}</Tooltip
           >
           <span
