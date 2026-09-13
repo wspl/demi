@@ -228,7 +228,63 @@ function tree(): MemoryDirectory {
   })
 }
 
-/** What the conversation changed: the cookie rename, its test, a new helper, an old one gone, a rename. */
+/** Lines added and removed between two texts, by a longest common subsequence of lines. */
+function lineCounts(original: string, modified: string): { added: number; removed: number } {
+  const a = original === '' ? [] : original.split('\n')
+  const b = modified === '' ? [] : modified.split('\n')
+  const table: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0))
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      table[i]![j] = a[i] === b[j] ? table[i + 1]![j + 1]! + 1 : Math.max(table[i + 1]![j]!, table[i]![j + 1]!)
+    }
+  }
+  const common = table[0]![0]!
+  return { added: b.length - common, removed: a.length - common }
+}
+
+/** A generated source file of `lines` numbered statements, so a diff has room for several hunks. */
+function generated(path: string, lines: number, seed = 1): string {
+  const name = path.slice(path.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '')
+  const out = [`// ${path}`, '', `export const ${name.replace(/[^a-zA-Z0-9]/g, '_')}Version = ${seed}`, '']
+  for (let i = 1; i <= lines; i++) {
+    if (i % 12 === 1) {
+      out.push(`export function step${i}(input: number): number {`)
+    }
+    out.push(`  const value${i} = input * ${i} + ${seed}`)
+    if (i % 12 === 0 || i === lines) {
+      out.push(`  return value${i}`, '}', '')
+    }
+  }
+  return out.join('\n') + '\n'
+}
+
+/** `text` with a few edits spread through it: lines changed, a block added, a block removed. */
+function edited(text: string, seed: number): string {
+  const lines = text.split('\n')
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!
+    // Edits far enough apart that the unchanged stretches between them fold.
+    if (i % 41 === 5) {
+      out.push(line.replace(/\+ \d+$/, `+ ${seed * 10}`))
+      continue
+    }
+    if (i % 61 === 17) {
+      continue
+    }
+    out.push(line)
+    if (i % 53 === 9) {
+      out.push(`  // added in this change (${seed})`, `  const extra${i} = value${i - 1} ?? 0`)
+    }
+  }
+  return out.join('\n')
+}
+
+/**
+ * What the conversation changed: the cookie rename with its test and helpers,
+ * then the wider work around it across the monorepo, so the change view has
+ * many files, deep directories and diffs with several hunks.
+ */
 const cookieBefore = cookieTs
   .replace("/** The session cookie: renamed from `sid` so the old name stops working. */\nexport const SESSION_COOKIE = 'session'", "export const SESSION_COOKIE = 'sid'")
   .replace("    sameSite: 'lax',\n", '')
@@ -245,21 +301,56 @@ const authTestBefore = authTest
   })
 `, '')
 
-const changedFiles: ShellFileChange[] = [
-  { path: 'src/auth/cookie.ts', kind: 'modified', added: 3, removed: 1 },
-  { path: 'src/auth/session.ts', kind: 'added', added: sessionTs.split('\n').length - 1, removed: 0 },
-  { path: 'src/auth/sid.ts', kind: 'deleted', added: 0, removed: sidTs.split('\n').length - 1 },
-  { path: 'tests/login/auth.test.ts', kind: 'modified', added: 4, removed: 1 },
-  { path: 'docs/guides/getting-started.md', kind: 'renamed', from: 'docs/getting-started.md', added: 0, removed: 0 },
-]
+const readmeBefore = readme.replace('bun run dev\n', 'bun run dev\nbun run typecheck\n')
 
-const sidesByPath: Record<string, { original: string; modified: string }> = {
-  'src/auth/cookie.ts': { original: cookieBefore, modified: cookieTs },
-  'src/auth/session.ts': { original: '', modified: sessionTs },
-  'src/auth/sid.ts': { original: sidTs, modified: '' },
-  'tests/login/auth.test.ts': { original: authTestBefore, modified: authTest },
-  'docs/guides/getting-started.md': { original: '# getting-started\n', modified: '# getting-started\n' },
+interface ChangedSides {
+  kind: ShellFileChange['kind']
+  from?: string
+  original: string
+  modified: string
 }
+
+function generatedChange(path: string, lines: number, seed: number): ChangedSides {
+  const original = generated(path, lines, seed)
+  return { kind: 'modified', original, modified: edited(original, seed) }
+}
+
+const changeSides: Record<string, ChangedSides> = {
+  'src/auth/cookie.ts': { kind: 'modified', original: cookieBefore, modified: cookieTs },
+  'src/auth/session.ts': { kind: 'added', original: '', modified: sessionTs },
+  'src/auth/sid.ts': { kind: 'deleted', original: sidTs, modified: '' },
+  'src/http/middleware.ts': generatedChange('src/http/middleware.ts', 72, 3),
+  'tests/login/auth.test.ts': { kind: 'modified', original: authTestBefore, modified: authTest },
+  'tests/login/session.test.ts': { kind: 'added', original: '', modified: generated('tests/login/session.test.ts', 30, 4) },
+  'tests/http/router.test.ts': generatedChange('tests/http/router.test.ts', 48, 5),
+  'README.md': { kind: 'modified', original: readmeBefore, modified: readme },
+  'docs/guides/getting-started.md': {
+    kind: 'renamed',
+    from: 'docs/getting-started.md',
+    original: '# getting-started\n\nInstall bun, then run the dev server.\n',
+    modified: '# getting-started\n\nInstall bun, then run the dev server.\n\nThe session cookie is named `session`.\n',
+  },
+  'docs/demi-next/web-application.md': generatedChange('docs/demi-next/web-application.md', 40, 6),
+  'packages/web-ui/src/agent/WorkPanel.vue': generatedChange('packages/web-ui/src/agent/WorkPanel.vue', 96, 7),
+  'packages/web-ui/src/agent/work-panel.ts': generatedChange('packages/web-ui/src/agent/work-panel.ts', 60, 8),
+  'packages/web-ui/src/agent/blocks/FileChangePills.vue': generatedChange('packages/web-ui/src/agent/blocks/FileChangePills.vue', 84, 9),
+  'packages/web-ui/src/files/FileTree.vue': generatedChange('packages/web-ui/src/files/FileTree.vue', 120, 10),
+  'packages/web-ui/src/files/changes.ts': { kind: 'added', original: '', modified: generated('packages/web-ui/src/files/changes.ts', 64, 11) },
+  'packages/web/src/state/resources.ts': generatedChange('packages/web/src/state/resources.ts', 110, 12),
+  'packages/agent/src/tools.ts': generatedChange('packages/agent/src/tools.ts', 90, 13),
+  'scripts/release.ts': { kind: 'deleted', original: generated('scripts/release.ts', 36, 14), modified: '' },
+  '.github/workflows/ci.yml': generatedChange('.github/workflows/ci.yml', 24, 15),
+  'package.json': { kind: 'modified', original: packageJson.replace('"typecheck": "tsgo --noEmit"', '"typecheck": "tsc --noEmit"'), modified: packageJson },
+}
+
+const changedFiles: ShellFileChange[] = Object.entries(changeSides).map(([path, sides]) => {
+  const counts = lineCounts(sides.original, sides.modified)
+  const change: ShellFileChange = { path, kind: sides.kind, ...counts }
+  if (sides.from) {
+    change.from = sides.from
+  }
+  return change
+})
 
 function createGalleryChanges(latencyMs: number): ChangeSetSource {
   return {
@@ -272,11 +363,11 @@ function createGalleryChanges(latencyMs: number): ChangeSetSource {
           reject(new DOMException('Aborted', 'AbortError'))
         }, { once: true })
       })
-      const sides = sidesByPath[path]
+      const sides = changeSides[path]
       if (!sides) {
         throw new Error(`No change recorded for ${path}`)
       }
-      return sides
+      return { original: sides.original, modified: sides.modified }
     },
   }
 }
