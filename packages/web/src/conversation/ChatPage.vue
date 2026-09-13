@@ -82,6 +82,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :conversation="conversation"
     :has-provider="hasProvider"
     :fork="fork"
+    :select-edit="(call, path) => work.selectEdit(work.stateFor(conversation.id), call, path)"
     :pending-submission="
       conversation.pendingSend
         ? {

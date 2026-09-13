@@ -10,6 +10,8 @@ import { ConversationForks } from '../conversation/fork'
 import { openSqliteDatabase } from '../storage/database'
 import { LocalControlService } from '../storage/control'
 import { ConversationStores } from '../storage/conversation-store'
+import { ChangeStore } from '../storage/change-store'
+import { DirChangeObjects } from '../storage/change-objects'
 import { UserBlobStores } from '../storage/user-blobs'
 import { CONTROL_MIGRATIONS, migrate } from '../storage/migrations'
 
@@ -54,7 +56,7 @@ async function fixture() {
   ])
   await session.commandStorage().writeJson('todos.json', ['done'])
   const blockId = session.transcript().blocks.find((block) => block.type === 'text')!.id
-  const forks = () => new ConversationForks({ control, stores, server, registry: { deviceIdentity: () => null } })
+  const forks = () => new ConversationForks({ changes: new ChangeStore(new DirChangeObjects(root)), control, stores, server, registry: { deviceIdentity: () => null } })
   return {
     root, control, source, user, stores, session, blockId, server, forks,
     failPublication: (value: boolean) => { failPublication = value },

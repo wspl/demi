@@ -902,7 +902,7 @@ dependencies = [
 
 [[package]]
 name = "demi-command-service"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "bytes",
  "futures-util",
@@ -913,6 +913,7 @@ dependencies = [
  "serde_json",
  "serde_json_canonicalizer",
  "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
@@ -921,7 +922,7 @@ dependencies = [
 
 [[package]]
 name = "demi-commands"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "bytes",
  "demi-command-service",
@@ -938,7 +939,7 @@ dependencies = [
 
 [[package]]
 name = "demi-runner"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "brush-builtins",
  "brush-core",

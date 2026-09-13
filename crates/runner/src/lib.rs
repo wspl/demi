@@ -18,3 +18,5 @@ pub mod tasks;
 pub mod volumes;
 
 pub mod commands;
+
+pub(crate) mod file_diff;

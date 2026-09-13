@@ -52,10 +52,7 @@ pub(super) fn execute(
         };
         let cancellation = scope.cancellation.child_token();
         let _cancel_on_return = cancellation.drop_guard_ref();
-        let input_scope = Scope {
-            cancellation: cancellation.clone(),
-            ..scope.clone()
-        };
+        let input_scope = scope.with_cancellation(cancellation.clone());
         let input = Input::from_stream(futures_util::stream::try_unfold(
             (stdin, input_scope),
             |(file, scope)| async move {
@@ -77,6 +74,7 @@ pub(super) fn execute(
         let (output, mut records) = Output::channel(cancellation.clone());
         let invocation = commands.dispatcher.invoke(InvocationContext {
             request: Invocation {
+                edits: None,
                 operation: "raw".into(),
                 invocation_id: uuid::Uuid::new_v4().simple().to_string(),
                 args: serde_json::to_value(raw).map_err(io::Error::other)?,
