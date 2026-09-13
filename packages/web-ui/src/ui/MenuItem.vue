@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CornerDot from './CornerDot.vue'
 import { computed, inject, onBeforeUnmount, ref, useSlots } from 'vue'
 import type { Component } from 'vue'
 import { Check, ChevronRight } from '@lucide/vue'
@@ -163,16 +164,16 @@ const toneClass = computed(() => {
           :size="ICON_PX.in28"
         />
         <!-- The dot rides the icon's corner, or stands alone in the gutter. -->
+        <CornerDot v-if="indicator && icon" :tone="indicator" ring="float" :label="indicatorLabel" />
         <span
-          v-if="indicator"
+          v-else-if="indicator"
           class="size-1.5 shrink-0 rounded-full"
-          :class="[
+          :class="
             indicator === 'success' ? 'bg-on-success'
               : indicator === 'accent' ? 'bg-on-accent'
                 : indicator === 'danger' ? 'bg-on-danger'
-                  : 'bg-fg-faint',
-            icon ? 'absolute -right-0.5 -top-0.5 ring-2 ring-surface-float' : '',
-          ]"
+                  : 'bg-fg-faint'
+          "
           role="img"
           :aria-label="indicatorLabel"
         />
