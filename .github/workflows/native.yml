@@ -53,7 +53,7 @@ jobs:
         shell: bash
         env:
           DEMI_RUNNER_TEST_BINARY: target/${{ matrix.target }}/debug/demi-runner${{ startsWith(matrix.os, 'windows') && '.exe' || '' }}
-        run: bun test --conditions development packages/backend/src/__tests__/runner-install.test.ts packages/runner/src/__tests__/release.test.ts
+        run: bun test --conditions development --rerun-each 3 packages/backend/src/__tests__/runner-install.test.ts packages/runner/src/__tests__/release.test.ts
       - name: Build executables
         shell: bash
         run: cargo build --locked --release --target '${{ matrix.target }}' -p demi-runner -p demi-builtin-package

@@ -61,6 +61,8 @@ OS/architecture combinations. Linux jobs use musl and reject an ELF interpreter
 or shared-library dependency. Windows uses static CRT and exercises the
 PowerShell installer; Unix exercises the shell installer. These checks include
 registration separation, release reuse and draining upgrades.
+Each installer and publication fixture runs three times per platform job to
+exercise repeated process startup and teardown.
 
 `command-service/examples/benchmark.rs` is a standalone synthetic service and
 client. Build it with `cargo build --release -p demi-command-service --example
