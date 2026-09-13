@@ -432,7 +432,7 @@ test(
           ? 'head -c 20000000 /dev/zero | demi host shell --host alpha \'printf "ready\\n" >&2; sleep 30\''
           : 'demi host shell --host alpha \'printf "ready\\n" >&2; read line; printf "got:%s\\n" "$line"; sleep 30\''
         if (caller === 'device-child-kill')
-          script = `sh -c 'head -c 20000000 /dev/zero | demi host shell --host alpha "printf ready >&2; sleep 30" & child=$!; sleep 1; kill -KILL "$child"; wait "$child"; sleep 30'`
+          script = `sh -c 'head -c 20000000 /dev/zero | demi host shell --host alpha "printf ready >&2; sleep 30" & child=$!; read trigger; kill -KILL "$child"; wait "$child"; sleep 30'`
         const { conversation } = await (await api(
           backend,
           '/api/conversations',
@@ -517,6 +517,7 @@ test(
           if (targetJob.type !== 'job_start')
             throw new Error('missing target job')
           if (caller === 'device-child-kill') {
+            await client.shellWrite(commandId, 'kill\n')
             await waitFor(
               () => since().some(
                 (frame) => frame.deviceId === a.deviceId &&
