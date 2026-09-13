@@ -1,136 +1,148 @@
-# Demi Next: Runner
+# Runner connections and shell jobs
 
-The native `demi-runner` executable turns a machine into an execution target.
-It owns filesystem/process RPC, shell jobs, local command dispatch and its outbound
-backend connection. It has no agent or model implementation. The detailed native
-service contract is in [native-runtime.md](native-runtime.md); declarations are in
-[commands.md](commands.md).
+`demi-runner` turns a device into an execution target. It connects to the backend,
+performs Host filesystem and process operations, and owns shell jobs. The backend
+retains agent sessions, provider selection, and conversation history.
+
+This document owns registration and job lifetime. [Commands](commands.md) defines
+declared command dispatch, and [native execution](native-runtime.md) defines
+artifact installation and resident command services.
 
 ## Connection and identity
 
-`crates/runner/src/connection/` owns the registration's outbound WebSocket and
-validates MessagePack messages using bindings generated from the TypeScript
-runner-protocol package. Runner owns the associated jobs and command contexts.
-A connected user device pairs with the backend, persists its device token in private installation state,
-and reconnects using that token. A managed guest receives its token at boot and
-keeps it in temporary state. The backend owns pairing policy and user ownership.
+Each backend registration has its own credentials, cache, local endpoint, and
+selected runner release. The runner keys installation state by normalized backend
+URL and holds an OS lock while that installation is active. Separate
+registrations do not share their authorization context.
 
-`state.rs` selects an installation by normalized backend URL, holds its OS lock,
-and publishes active endpoint metadata. Independent registrations have independent
-credentials, caches, endpoints and release selection. `management.rs` implements
-status and draining over the authenticated local endpoint. Draining closes job
-admission, waits for active work, and releases the installation lock.
+A paired device stores its device token in private installation state. A managed
+guest receives a token at boot and keeps temporary state. The backend owns device
+claiming and user ownership; the runner opens an outbound WebSocket and validates
+MessagePack messages against the generated runner-protocol contract.
+
+The authenticated local management endpoint exposes status and drain. Draining
+stops admission, waits for active work, and releases the installation lock so a
+replacement runner can start. [External command clients](commands.md#external-command-clients)
+defines local endpoint access and installer verification.
 
 ## Host operations
 
-`host.rs` dispatches filesystem and raw process requests independently of running
-shell jobs. `fs.rs` validates paths and performs machine-local IO. `process.rs`
-owns child IO and cancellation. Raw spawn with an explicit environment replaces
-the device environment; `inheritEnv: true` extends it, and undefined entries remove
-inherited values. Omitting the environment uses the device environment. Provider
-CLI assembly explicitly requests inheritance; the runner has no provider logic.
+Filesystem and raw process requests do not require a shell job. The runner
+performs them on the target device. Raw process environment selection follows
+these rules:
 
-A spawn or job receives an opaque execution context. Contexts bind callbacks to
-the live job, registration and exact manifest. They are released on completion,
-cancellation and connection loss. The runner overrides its owned context variables
-so callers cannot substitute another job’s attribution.
+| Request | Child environment |
+| --- | --- |
+| No `env` | Inherit the device process environment. |
+| Explicit `env` | Use the supplied values. |
+| `env` with `inheritEnv: true` | Overlay supplied values on the device environment. |
+| Undefined value in an overlay | Remove that inherited variable. |
+
+Runner-owned context variables override caller values. An opaque context ties
+command callbacks to the live execution, registration, and pinned manifest.
+The runner releases contexts when execution completes, is cancelled, or loses
+its backend connection. Provider CLI assembly can request environment inheritance,
+but the runner has no provider-specific behavior.
 
 ## Shell jobs
 
-Brush executes inside the resident runner process. Shell jobs own their cwd,
-environment, IO and execution state; a shell job does not launch another runner
-process. `crates/runner/src/shell/` registers and adapts embedded standard
-utilities and registers declared command roots as builtins. Declared builtins
-call the runner's dispatcher directly. External programs such as git, Python and Node remain child
-processes. An external program calling a declared command uses the forwarding
-executable and local endpoint described in
-[external command clients](commands.md#external-command-clients).
+A shell job owns its working directory, environment, IO, and asynchronous work.
+Brush runs inside the resident runner process. Declared roots call the shared
+command dispatcher; external tools such as Git, Python, and Node run as child
+processes.
 
-The job’s foreground exit status and final cwd are reported to the backend.
-Subsequent jobs start a fresh login shell at that cwd. Brush loads the system
-profile and the first readable user login profile, so toolchain installers can
-add environment setup for subsequent jobs. Shell variables and functions do not
-persist except through those files. After profile loading, the runner restores
-its owned execution context, prepends its command aliases to the resulting PATH
-and restores the requested cwd. The job joins its background tasks before reporting completion.
-For example, `(sleep 2; echo done) & echo started` emits `started`, remains running,
-then emits `done`. Tool timeout returns a handle; it does not stop the job.
-Background tasks are job-owned. Brush does not expose their OS PIDs through `$!`.
+The diagram shows ownership, not execution order. Cancelling job A releases its
+work while preserving the runner and job B.
 
-The runner owns cancellation of the whole job, including background work,
-command invocations, IO and external children. Brush and embedded utilities
-cooperate with cancellation inside the runner process. Cancelling one job must
-preserve the runner and unrelated jobs. Native builtins use invocation-local
-state and IO rather than process-global cwd, environment or exit.
+```text
+Runner process
++--------------------------------------------------+
+| Job A                    Job B                   |
+| +--------------------+   +--------------------+  |
+| | Brush execution    |   | Brush execution    |  |
+| | Background tasks   |   | Background tasks   |  |
+| | IO and child work  |   | IO and child work  |  |
+| +--------------------+   +--------------------+  |
++--------------------------------------------------+
+```
 
-`shell/job.rs` owns the job's input/output pumps and completion task.
-`scope.rs` tracks interpreter tasks, utility workers and external children until
-they release their resources. Interpreter steps and utility IO, sleeps and
-unbounded evaluation loops check the job's cancellation token. Unix pipe IO
-checks readiness before bounded reads/writes; Windows cancels pending synchronous
-IO on the owning worker. External children use a Unix process group or Windows
-Job Object and are reaped before completion. After the foreground script and
-background jobs finish, the owner joins process substitutions and other work
-tracked by the scope. Failure or cancellation stops the remaining work before
-joining it; successful completion preserves all produced output.
+Each job starts a fresh login shell. Brush loads the system profile and first
+readable user login profile. The runner then restores its execution context,
+places command aliases first in PATH, and restores the requested cwd. Shell
+variables and functions do not carry over to the next job; persisted profile
+changes do. The backend receives the final cwd and foreground exit status.
 
-`declared.rs` adapts shell descriptors to pull-driven command-service input and
-bounded output records, then calls the shared dispatcher. A declared command
-reads stdin only when its handler requests it. External forwarding and direct
-builtins share parsing, validation, native-service acquisition and callback
-routing.
+A job waits for background tasks and process substitutions before reporting
+completion. For example:
 
-A cancellation request is not proof that execution stopped. Job completion waits
-for local work and resource cleanup; unconfirmed remote execution is reported as
-an unknown outcome. Cancellation does not undo completed side effects. The runner
-continues serving control requests while a job produces output, waits for input
-or is being cancelled.
+```sh
+(sleep 2; echo done) & echo started
+```
+
+The caller sees `started`, then a running job, then `done` and completion.
+A tool timeout returns the running job's handle. `shell_status` observes that job,
+and `shell_abort` cancels it. Background tasks remain job-owned rather than
+becoming detached services. Brush's internal tasks do not expose OS PIDs in `$!`.
+
+### Cancellation and completion
+
+Completion means the job has released its local work and IO, not merely that its
+foreground script returned. The shell scope tracks interpreter tasks, utility
+workers, and external children until they finish.
+
+| Outcome | Cleanup |
+| --- | --- |
+| Success | Join remaining job-owned work and preserve produced output. |
+| Failure | Cancel remaining work, join it, and report the failure. |
+| Cancellation | Stop shell work, command invocations, and external descendants; release IO and reap children. |
+
+Embedded execution cooperates with cancellation. Blocking IO must be interruptible;
+external children belong to a Unix process group or Windows Job Object. The runner
+continues handling control requests while a job blocks on input or output.
+
+A cancellation request alone does not establish that execution stopped. If the
+backend cannot confirm remote termination, it reports an unknown outcome.
+Cancellation does not undo completed file changes or other side effects.
 
 ## Command lifetime
 
-The server or SDK agent host program determines its command definitions and
-implementation catalog at startup. They remain fixed during that program's
-lifetime; changing them requires restarting that program. There is no live
-command-update broadcast across running shells.
+Builtin calls and external forwarding use the same execution context. Releasing
+that context releases command bindings and service references. The command set
+and package catalog follow the embedding program's
+[startup binding contract](native-runtime.md#bind-an-exact-package).
 
-Builtin bindings and external forwarding use the same execution context.
-Releasing that context releases its bindings and references to command services.
-Brush may be forked to provide the necessary registration and removal APIs.
-Connection loss invalidates its execution contexts and cancels their work.
-Reconnection creates fresh contexts; it does not resume streams or replay
-commands. A network reconnect does not change the host program's command set.
-Restarting the host program establishes a new lifetime with its startup catalog.
+Connection loss invalidates contexts and cancels their work. Reconnection creates
+fresh contexts; it does not resume streams or replay commands. Reconnecting the
+network does not itself change the embedding program's command set.
 
 ## Pipes and output
 
-Jobs retain full output in device-local files and send bounded output views.
-`shell_status` returns new output since the preceding view. Consumers needing the
-complete output read its retained file or accumulate views. Binary command payloads
-remain bytes through local HTTP/2 and backend HTTP pipe transfers.
+Jobs retain full output in device-local files and send bounded views to the
+backend. `shell_status` returns output since the preceding view. A caller needing
+complete output reads the retained file or accumulates those views.
 
-`pipes.rs` owns cancellable direct HTTP transfers. Backend `runner/pipes.ts` owns
-the broker’s rendezvous and lifetime. EOF ends input; cancellation aborts work.
-Live input is chunked and demand-driven. A command that does not read stdin does
-not consume the next pipeline or interactive input. The commands module forwards
-callbacks, owns their running hints and routes resident service invocations.
-It also owns artifact downloads, verification, caching and service processes;
-the shared command-service library supplies communication only.
+The runner owns its HTTP pipe transfers; the backend's pipe broker owns their
+rendezvous and lifetime. Binary payloads remain bytes. EOF ends input, while
+cancellation aborts execution. Live input follows
+[explicit command demand](commands.md#deliver-io-and-release-an-invocation), so a
+command that never reads stdin does not consume subsequent interactive input.
 
-## Managed guests
+## Managed guests and verification
 
-`init.rs` handles Linux PID 1 initialization: validated kernel parameters,
-filesystem mounts, network configuration, temporary state, child reaping and
-permanent privilege drop. `volumes.rs` handles volume usage and growth.
-Filesystem RPC and jobs use the same guest account after initialization. The VM
-is the security boundary. See [managed-hosts.md](managed-hosts.md).
+In a managed guest, the runner performs Linux PID 1 initialization, mounts
+filesystems, configures networking, reaps children, and permanently drops to the
+guest account. Filesystem operations and jobs use that account. The VM provides
+the isolation boundary. [Managed hosts](managed-hosts.md) owns boot, volumes,
+provisioning, and reset policy.
 
-## Build and checks
+The implementation belongs to `crates/runner`: connection and registration code
+owns transport lifetime; `host.rs` dispatches Host operations; `shell/` owns brush
+and job cleanup. [Package boundaries](../package-boundaries.md) defines module
+ownership without duplicating it here.
 
-`scripts/native/build.ts` builds runner and command-package executables for the
-six target triples. `scripts/native/release-runner.ts` verifies all bytes, creates an
-immutable hash-named release and atomically advances its manifest.
-
-Rust integration tests cover Host IO, jobs, local endpoints, dispatch, streaming,
-connection lifetime and shell behavior. TypeScript tests start the actual Rust
-runner through `host-remote/testing`; `LocalHost` is a test-only Node fixture. Provider
-integration tests use mock upstreams. The native CI workflow executes the same tests on each supported platform.
+Verification fixtures under `crates/runner/tests/` cover connections, processes,
+Host operations, shells, pipes, and local clients. TypeScript integration uses the
+actual Rust executable through `host-remote/testing`. The
+[native build guide](../native-builds.md#validation) defines target execution checks.
+Test locations identify the required coverage. Target execution results belong
+to CI and acceptance reports.
