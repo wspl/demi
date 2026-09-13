@@ -1,51 +1,96 @@
-# Device pairing UI
+# Device pairing
 
-The reusable `web-ui/devices/DevicePairingDialog` and `useDevicePairing` own the
-pairing presentation and lifecycle. Settings, onboarding and host pickers can
-supply deployment-specific installer endpoints and an asynchronous claim adapter. The current product and
-gallery use prototype adapters, not live device APIs.
+Pairing links a running user-device runner to the signed-in account. The runner
+connects first and receives a pending code from the backend. The browser claims
+that code; it never creates a code or receives the device's authentication token.
+Managed Cloud devices receive pre-issued tokens and do not use this flow.
 
-Devices has an Add device button on the right of Your devices. Revocation is
-reflected by removal from the list; it does not append success text. A blocked
-revocation uses an error toast because the action has no input field.
+`web-ui/devices/DevicePairingDialog` owns presentation and
+`useDevicePairing` owns its lifecycle. Product and gallery supply a
+`DeviceInstallation` and an asynchronous claim adapter. The product adapter
+calls the real `/api/devices/claim` endpoint and refreshes account state. The
+gallery uses fixture results and reserved example-domain installer URLs.
 
-## Flow
+```text
+Runner -- unauthenticated connection --> backend -- pending code --> runner log
+Browser -- signed-in claim(code) ------> backend -- device token --> runner
+                                        |
+                                        +-- device identity --> browser list
+```
 
-1. Install and start runner: select Linux, macOS or Windows. A bordered command
-   box displays a curl-to-shell command on Linux/macOS, or a PowerShell `.ps1`
-   invocation on Windows. Copy always uses the selected system's command.
-   The deployment supplies `DeviceInstallation` (shell and PowerShell installer
-   URLs); `deviceInstallCommand` owns shell-specific quoting.
-   The proposed scripts carry their deployment’s backend configuration and
-   install/start the runner without extra command-line arguments. Unix examples
-   follow [rustup](https://rustup.rs/) (`--proto '=https' --tlsv1.2 -sSf` piped
-   to `sh`); Windows uses `irm <installer.ps1> | iex`. Rustup itself offers a
-   Windows executable; the PowerShell flow is Demi’s proposed installer contract.
-   Keep the terminal open until pairing completes.
-   `ui/CopyCode` owns the bordered command surface, wrapping, copy action and
-   copied feedback. Provider login commands use the same component.
-   These installers are not implemented or published in this repository yet;
-   OS selection is a UI prototype, not a claim of native Windows runner support.
-2. Enter code: paste the full code printed by the runner. The browser does not
-   issue a device code. The backend owns normalization and verification.
-3. Pairing: disable duplicate submission and keep the entered code visible.
-4. Complete: display the returned device name and Done. The host adds the device
-   to its list; no success notice is left below the list.
+## Install and claim
 
-Invalid, expired, used and disconnected codes share `invalid_code` in the real
-backend. The dialog asks for the runner's latest code without pretending to know
-which cause occurred. `rate_limited` asks the user to wait before retrying;
-network failures retain the input for retry. Closing the dialog invalidates late
-UI transitions; a completed host mutation still belongs in the device list.
+1. Add device opens setup with Linux, macOS, and Windows choices. `CopyCode`
+   shows and copies the selected command. `deviceInstallCommand` quotes the
+   supplied URL for the selected shell: curl piped to `sh` on Unix, or
+   `irm '<installer URL>' | iex` in PowerShell.
+2. The deployment's script downloads and starts its runner. The user reads the
+   pending code from runner output or its pairing log and continues to code entry.
+3. The user pastes the complete code. The UI trims surrounding whitespace; the
+   backend owns normalization and verification.
+4. Submission changes the phase from `code` to `pairing`, retains the visible
+   input, and blocks duplicate submission.
+5. Success shows the returned device name and Done. The refreshed device list
+   shows the linked device; it does not retain an additional success message.
 
-The backend rotates pending codes every ten minutes by default, so no countdown
-is invented in the browser. Managed hosts receive pre-issued tokens and never
-enter this flow. See [runner.md](runner.md) and [managed-hosts.md](managed-hosts.md).
+The shared phase is `setup | code | pairing | done`; an error belongs to the
+code-entry phase so the user can correct or retry it. Back returns to setup.
+Opening the dialog starts a new setup flow. Entry points in Settings, the host
+menu, and the workspace form use this same interaction; a nested entry stacks
+the pairing dialog above its parent.
 
-The Settings gallery has a separate Add device pairing-flow specimen using the
-same dialog, with directly selectable setup, code, pairing, one representative error and
-completed states, plus a clickable happy path. Error examples demonstrate styling
-rather than enumerate backend failure modes.
-The gallery uses reserved example-domain installer URLs and performs no connection.
-The product prototype uses same-origin placeholder installer paths; a production
-host must supply published scripts before offering executable setup commands.
+## Failure and closure
+
+| Result | UI behavior |
+|---|---|
+| `invalid_code` | Ask for the latest code from the running runner |
+| `rate_limited` | Ask the user to wait before retrying |
+| Network or other unavailable result | Keep input and offer another attempt |
+
+Invalid, expired, already-used, and disconnected codes share `invalid_code`.
+The UI does not invent a more specific cause or a countdown. The registry rotates
+pending codes every ten minutes by default and limits claim attempts per user.
+[Runner](runner.md) owns connection and registration semantics.
+
+Closing, reopening, resetting, or unmounting aborts the outstanding browser
+request and invalidates its UI generation. Late results cannot reopen or advance
+an old dialog. Aborting HTTP does not roll back a claim already committed by the
+backend: account snapshots remain authoritative for the device list. If a
+response or the post-claim refresh is lost, inspect that list before assuming the
+claim failed; the same one-use code may no longer be available.
+
+Revocation is separate from pairing. Devices settings removes a successfully
+revoked user device from the list. A refused revoke shows an error toast. The
+backend refuses revocation while workspaces reference that device and does not
+allow this action for Cloud. API details belong to [Web API](web-api.md).
+
+## Installation boundary
+
+The product supplies same-origin `/install.sh` and `/install.ps1` URLs. The backend
+implements both routes over its configured native release directory
+(`DEMI_RUNNER_RELEASE_DIR`). Scripts carry the backend address, select a platform
+artifact, verify its checksum, and start a registration-specific runner. Downloads
+contain no device credentials. [Native runtime](native-runtime.md) owns artifact
+publication, installation isolation, and upgrade behavior.
+
+A deployment must provide the native release manifest and artifacts for each
+platform it offers. Without release configuration the script routes return 503;
+a platform choice in the dialog does not prove its artifact is available.
+The Unix copy command restricts curl to HTTPS, so the displayed command requires
+an HTTPS deployment; it cannot bootstrap directly from the plain-HTTP development
+origin.
+
+## Implementation and acceptance limits
+
+Live claiming and script generation are implemented. The setup copy still tells
+the user to keep the terminal open, although generated installers start a
+background runner. Unix prints its initial log; the Windows installer prints the
+pairing-log path rather than the code itself. The setup guidance should identify
+that log when the code is not visible. This is a remaining UI guidance discrepancy,
+not a missing installer implementation.
+
+The Settings gallery pins setup, code, pairing, representative error, and done
+states and provides a fixture happy path. Verify input retention, duplicate-submit
+blocking, closure during a request, a late success, and a nested-dialog entry.
+Real acceptance also requires a configured release and an actual runner claim;
+fixture success does not verify native installation on each supported OS.
