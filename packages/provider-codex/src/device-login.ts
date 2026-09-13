@@ -2,7 +2,8 @@
 // request a user code, let the user confirm at {issuer}/codex/device from any browser on any
 // device, poll until the server issues an authorization code with server-generated PKCE, then
 // run the standard authorization_code exchange. No vendor CLI and no host-side browser involved.
-import { delay, isRecord, nonEmptyString } from '@demicodes/utils'
+import { delay } from '@demicodes/utils'
+import { z } from 'zod'
 import {
   CodexAuthError,
   codexOauthClientId,
@@ -29,20 +30,69 @@ export interface CodexDeviceLoginOptions {
   issuer?: string
 }
 
-type DeviceUserCode = {
-  deviceAuthId: string;
-  userCode: string;
-  intervalSeconds: number
-}
-type DeviceAuthorization = {
-  authorizationCode: string;
-  codeVerifier: string
-}
-type ExchangedTokens = {
-  idToken: string;
-  accessToken: string;
-  refreshToken: string
-}
+/**
+ * How long to wait between polls, in seconds. The server sends a number, some
+ * deployments send it as a digit string; anything else means "no preference",
+ * which is the fallback rather than a failed login.
+ */
+const pollIntervalSecondsSchema = z
+  .union([
+    z.number(),
+    z.string().trim().regex(/^\d+(\.\d+)?$/).transform(Number),
+  ])
+  .refine((seconds) => Number.isFinite(seconds) && seconds >= 0)
+  .catch(DEVICE_LOGIN_FALLBACK_INTERVAL_S)
+
+/** The device-code request's answer: what to show the user and how to poll. */
+const deviceUserCodeSchema = z
+  .looseObject({
+    device_auth_id: z.string().min(1),
+    // Deployments disagree on the spelling of this one field.
+    user_code: z.string().min(1).optional(),
+    usercode: z.string().min(1).optional(),
+    interval: pollIntervalSecondsSchema,
+  })
+  .transform((body, ctx) => {
+    const userCode = body.user_code ?? body.usercode
+    if (!userCode) {
+      ctx.addIssue({ code: 'custom', message: 'user_code is missing' })
+      return z.NEVER
+    }
+    return {
+      deviceAuthId: body.device_auth_id,
+      userCode,
+      intervalSeconds: body.interval,
+    }
+  })
+
+type DeviceUserCode = z.infer<typeof deviceUserCodeSchema>
+
+/** The confirmed login: an authorization code with server-generated PKCE. */
+const deviceAuthorizationSchema = z
+  .looseObject({
+    authorization_code: z.string().min(1),
+    code_verifier: z.string().min(1),
+  })
+  .transform((body) => ({
+    authorizationCode: body.authorization_code,
+    codeVerifier: body.code_verifier,
+  }))
+
+type DeviceAuthorization = z.infer<typeof deviceAuthorizationSchema>
+
+const exchangedTokensSchema = z
+  .looseObject({
+    id_token: z.string().min(1),
+    access_token: z.string().min(1),
+    refresh_token: z.string().min(1),
+  })
+  .transform((body) => ({
+    idToken: body.id_token,
+    accessToken: body.access_token,
+    refreshToken: body.refresh_token,
+  }))
+
+type ExchangedTokens = z.infer<typeof exchangedTokensSchema>
 
 async function postJson(
   fetchImpl: typeof fetch,
@@ -58,17 +108,21 @@ async function postJson(
   })
 }
 
-async function jsonBody(
+/** Decodes one login response; `what` names the step in the failure. */
+async function decodeJsonBody<T>(
   response: Response,
-  what: string
-): Promise<Record<string, unknown>> {
+  schema: z.ZodType<T>,
+  what: string,
+): Promise<T> {
   const body: unknown = await response.json().catch(() => null)
-  if (!isRecord(body))
+  const decoded = schema.safeParse(body)
+  if (!decoded.success) {
     throw new CodexAuthError(
       'auth_login_failed',
-      `${what} response is not a JSON object`
+      `${what} response is malformed: ${z.prettifyError(decoded.error)}`
     )
-  return body
+  }
+  return decoded.data
 }
 
 async function requestUserCode(
@@ -95,26 +149,7 @@ async function requestUserCode(
       `Device code request failed with HTTP ${response.status}`
     )
   }
-  const body = await jsonBody(response, 'Device code')
-  const deviceAuthId = nonEmptyString(body.device_auth_id)
-  const userCode = nonEmptyString(body.user_code)
-    ?? nonEmptyString(body.usercode)
-  if (!deviceAuthId || !userCode) {
-    throw new CodexAuthError(
-      'auth_login_failed',
-      'Device code response is missing device_auth_id or user_code'
-    )
-  }
-  const interval = Number(typeof body.interval === 'string'
-    ? body.interval.trim()
-    : body.interval)
-  return {
-    deviceAuthId,
-    userCode,
-    intervalSeconds: Number.isFinite(interval) && interval >= 0
-      ? interval
-      : DEVICE_LOGIN_FALLBACK_INTERVAL_S,
-  }
+  return decodeJsonBody(response, deviceUserCodeSchema, 'Device code')
 }
 
 async function pollForAuthorization(
@@ -133,16 +168,11 @@ async function pollForAuthorization(
       signal,
     )
     if (response.ok) {
-      const body = await jsonBody(response, 'Device authorization')
-      const authorizationCode = nonEmptyString(body.authorization_code)
-      const codeVerifier = nonEmptyString(body.code_verifier)
-      if (!authorizationCode || !codeVerifier) {
-        throw new CodexAuthError(
-          'auth_login_failed',
-          'Device authorization response is missing authorization_code or code_verifier'
-        )
-      }
-      return { authorizationCode, codeVerifier }
+      return decodeJsonBody(
+        response,
+        deviceAuthorizationSchema,
+        'Device authorization'
+      )
     }
     // 403/404 mean "user has not confirmed yet"; anything else is terminal.
     if (response.status !== 403 && response.status !== 404) {
@@ -187,17 +217,7 @@ async function exchangeAuthorizationCode(
       `Device-code token exchange failed with HTTP ${response.status}`
     )
   }
-  const body = await jsonBody(response, 'Token exchange')
-  const idToken = nonEmptyString(body.id_token)
-  const accessToken = nonEmptyString(body.access_token)
-  const refreshToken = nonEmptyString(body.refresh_token)
-  if (!idToken || !accessToken || !refreshToken) {
-    throw new CodexAuthError(
-      'auth_login_failed',
-      'Token exchange response is missing id_token, access_token, or refresh_token'
-    )
-  }
-  return { idToken, accessToken, refreshToken }
+  return decodeJsonBody(response, exchangedTokensSchema, 'Token exchange')
 }
 
 /** Runs the full device-code flow and returns vendor-shaped auth material. */

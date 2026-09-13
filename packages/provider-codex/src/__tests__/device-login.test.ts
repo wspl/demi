@@ -112,6 +112,20 @@ test(
   }
 )
 
+test(
+  'runCodexDeviceLogin rejects a device code response without a user code',
+  async () => {
+    const fakeFetch = (async (input: string | URL | Request) => {
+      if (String(input).endsWith('/deviceauth/usercode'))
+        return jsonResponse(200, { device_auth_id: 'dev_auth_1' })
+      throw new Error(`unexpected fetch: ${String(input)}`)
+    }) as typeof fetch
+
+    await expect(runCodexDeviceLogin({ fetch: fakeFetch }))
+      .rejects.toThrow('user_code is missing')
+  }
+)
+
 test('runCodexDeviceLogin reports unsupported servers distinctly', async () => {
   const fakeFetch = (async (_input: string | URL | Request, _init?: RequestInit) => jsonResponse(
     404,
