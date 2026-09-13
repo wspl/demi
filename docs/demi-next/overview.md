@@ -128,7 +128,7 @@ implementation.
 | How are commands declared and dispatched? | [Commands](commands.md) |
 | How are native commands installed and executed? | [Native runtime](native-runtime.md) |
 | What does a device runner own? | [Runner](runner.md) |
-| How do external programs call declared commands? | [Local command client](command-client.md) |
+| How do external programs call declared commands? | [External command clients](commands.md#external-command-clients) |
 | How is Cloud provisioned and reset? | [Managed hosts](managed-hosts.md) |
 | How does the web application fit together? | [Web application](web-prototype.md) |
 | How does a user pair a device? | [Device pairing](device-pairing-ui.md) |

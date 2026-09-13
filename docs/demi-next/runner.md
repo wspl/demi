@@ -43,7 +43,8 @@ process. `crates/runner/src/shell/` registers and adapts embedded standard
 utilities and registers declared command roots as builtins. Declared builtins
 call the runner's dispatcher directly. External programs such as git, Python and Node remain child
 processes. An external program calling a declared command uses the forwarding
-executable and local endpoint described in `command-client.md`.
+executable and local endpoint described in
+[external command clients](commands.md#external-command-clients).
 
 The job’s foreground exit status and final cwd are reported to the backend.
 Subsequent jobs start a fresh login shell at that cwd. Brush loads the system
