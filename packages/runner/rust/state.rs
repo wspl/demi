@@ -44,7 +44,8 @@ impl RunnerState {
 
     pub fn try_lock(&self) -> io::Result<Option<StateLease>> {
         let mut options = std::fs::OpenOptions::new();
-        options.create(true).append(true);
+        // Windows file locking requires read or write access, not append alone.
+        options.create(true).read(true).append(true);
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
