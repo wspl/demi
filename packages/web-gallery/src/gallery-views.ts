@@ -68,6 +68,10 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
       label: 'Browser',
     },
     {
+      value: 'tree',
+      label: 'Tree',
+    },
+    {
       value: 'dialogs',
       label: 'Dialogs',
     },

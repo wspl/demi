@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
 import type { WorkspaceDraft, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
+import FileTree from '@demicodes/web-ui/files/FileTree.vue'
+import { TREE_ROOT, TREE_SELECTED, failingSource, offlineSource, rowsSource, stuckSource } from '../fixtures/file-trees'
 import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserMode, FileBrowserSource } from '@demicodes/web-ui/files/types'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
@@ -241,6 +243,41 @@ function selectHost(target: 'folder' | 'file', id: string) {
     fileKey.value += 1
   }
 }
+
+// The Tree view: one source per specimen, and the pinned-path specimens set up scrolled.
+const treeRows = rowsSource()
+const treeStuckRoot = stuckSource(TREE_ROOT)
+const treeStuckDir = stuckSource(`${TREE_ROOT}/src/http`)
+const treeFailing = failingSource()
+const treeOffline = offlineSource()
+const treeSelected = ref<string | null>(TREE_SELECTED)
+type TreeHandle = { scrollToRow: (path: string) => void; scrollBy: (px: number) => void }
+const pinnedTwo = ref<TreeHandle | null>(null)
+const pinnedLeaving = ref<TreeHandle | null>(null)
+const pinnedPast = ref<TreeHandle | null>(null)
+
+/** Once the listings are in, scroll each pinned-path specimen to its state. */
+async function scrollPinnedSpecimens() {
+  await nextTick()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  // Path pinned: the selected file's directories all scrolled out above it.
+  pinnedTwo.value?.scrollToRow(`${TREE_ROOT}/src/auth/providers/oauth`)
+  // Leaving: github's last row half under the stack, so the deepest pinned row slides.
+  pinnedLeaving.value?.scrollToRow(`${TREE_ROOT}/src/auth/providers/oauth/github`)
+  pinnedLeaving.value?.scrollBy(3 * 29 + 14)
+  // Past: everything in src scrolled out, nothing pins.
+  pinnedPast.value?.scrollToRow(`${TREE_ROOT}/tests`)
+}
+watch(view, (next) => {
+  if (next === 'tree') {
+    void scrollPinnedSpecimens()
+  }
+})
+onMounted(() => {
+  if (view.value === 'tree') {
+    void scrollPinnedSpecimens()
+  }
+})
 </script>
 
 <template>
@@ -272,6 +309,73 @@ function selectHost(target: 'folder' | 'file', id: string) {
           >
             <FileIcon :name="name" :is-directory="isDirectory" />{{ name }}
           </span>
+        </div>
+      </GallerySection>
+    </template>
+
+    <template v-if="view === 'tree'">
+      <GallerySection
+        title="Rows"
+        note="The workspace tree: open and closed directories, files, the selected file, hidden entries after the rest, deep nesting, long names truncated. Click a directory to fold it, a file to select it."
+      >
+        <GallerySpecimen variant="rows · live">
+          <div class="gallery-frame h-[28rem] w-[220px] overflow-hidden bg-surface-editor">
+            <FileTree :source="treeRows" :root="TREE_ROOT" :selected="treeSelected" @open="treeSelected = $event" />
+          </div>
+        </GallerySpecimen>
+      </GallerySection>
+      <GallerySection
+        title="Loading and failures"
+        note="A workspace still listing shows a spinner in place of rows; a directory still listing keeps its chevron and spins at the row's end. A directory that refuses says No access, one that fails Unavailable, both with the reason as tooltip. A workspace that cannot be listed says so."
+      >
+        <div class="flex flex-wrap gap-6">
+          <GallerySpecimen variant="workspace listing">
+            <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree :source="treeStuckRoot" :root="TREE_ROOT" :selected="null" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="directory listing">
+            <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree :source="treeStuckDir" :root="TREE_ROOT" :selected="`${TREE_ROOT}/src/http/router.ts`" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="no access · unavailable">
+            <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree :source="treeFailing" :root="TREE_ROOT" :selected="`${TREE_ROOT}/src/auth/cookie.ts`" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="workspace unavailable">
+            <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree :source="treeOffline" :root="TREE_ROOT" :selected="null" />
+            </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+      <GallerySection
+        title="Pinned path"
+        note="The workspace name always heads the tree. Under it pin the directories enclosing the selected file, each once its own row scrolls out above and until its last row has too; the deepest slides out under the ones above. Other unfolded directories never pin. Scroll each tree to move through the states."
+      >
+        <div class="flex flex-wrap gap-6">
+          <GallerySpecimen variant="at the top">
+            <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree :source="rowsSource()" :root="TREE_ROOT" :selected="TREE_SELECTED" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="path pinned">
+            <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree ref="pinnedTwo" :source="rowsSource()" :root="TREE_ROOT" :selected="TREE_SELECTED" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="deepest leaving">
+            <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree ref="pinnedLeaving" :source="rowsSource()" :root="TREE_ROOT" :selected="TREE_SELECTED" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="past the file">
+            <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree ref="pinnedPast" :source="rowsSource()" :root="TREE_ROOT" :selected="TREE_SELECTED" />
+            </div>
+          </GallerySpecimen>
         </div>
       </GallerySection>
     </template>
