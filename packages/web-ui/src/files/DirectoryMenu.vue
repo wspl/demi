@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { h, onBeforeUnmount, ref, watch } from 'vue'
+import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import FileIcon from './FileIcon.vue'
@@ -90,7 +91,9 @@ function isCurrent(entry: FileBrowserEntry): boolean {
 
 <template>
   <Menu>
-    <MenuItem v-if="loading" label="Loading…" disabled />
+    <div v-if="loading" class="flex h-7 items-center justify-center text-fg-faint">
+      <IndeterminateSpinner :size="12" :stroke-width="1.5" />
+    </div>
     <MenuItem
       v-else-if="failure"
       :label="failure.kind === 'permission' ? 'No access' : 'Unavailable'"
