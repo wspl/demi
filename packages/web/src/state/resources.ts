@@ -17,6 +17,7 @@ import type { Device, Project } from './types'
 function productDevice(device: NonNullable<ProductState['devices']>[number]): Device {
   return {
     id: device.id,
+    kind: device.kind,
     name: device.name,
     online: device.online,
     home: device.home,

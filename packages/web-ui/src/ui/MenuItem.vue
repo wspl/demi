@@ -16,6 +16,8 @@ import {
   shouldDismissMenuTree
 } from './menu-context'
 
+export type MenuIndicator = 'success' | 'muted' | 'accent' | 'danger'
+
 defineOptions({ inheritAttrs: false })
 
 const props = defineProps<{
@@ -23,7 +25,7 @@ const props = defineProps<{
   label?: string
   value?: string
   /** A status dot: alone in the gutter, or on the icon's corner when there is one. */
-  indicator?: 'success' | 'muted' | 'accent' | 'danger'
+  indicator?: MenuIndicator
   indicatorLabel?: string
   /** A quiet qualifier after the label, in parentheses: `offline`, `read-only`. */
   note?: string
@@ -123,7 +125,7 @@ const toneClass = computed(() => {
       return 'bg-active text-fg-emphasis'
     if (props.isFocused || submenuOpen.value)
       return 'bg-hover text-fg'
-    return 'text-fg-muted hover:bg-hover hover:text-fg'
+    return 'text-fg-body hover:bg-hover hover:text-fg'
   }
   if (submenuOpen.value)
     return 'bg-active text-fg-emphasis'
@@ -148,6 +150,7 @@ const toneClass = computed(() => {
       class="menu-row h-full w-full cursor-default select-none items-center rounded-md px-2 text-chrome transition-colors duration-200 ease-out"
       :class="toneClass"
       :aria-checked="isChoice ? isSelected : undefined"
+      :aria-disabled="isDisabled || undefined"
       :aria-haspopup="showsSubmenu ? 'menu' : undefined"
       :aria-expanded="showsSubmenu ? submenuOpen : undefined"
       @click="handleClick"
