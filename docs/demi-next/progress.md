@@ -31,10 +31,24 @@ binaries are inspected for ELF interpreter/dynamic-library dependencies. Windows
 builds use static CRT. A workflow definition is not a passed execution result;
 record the workflow run and exact commit when results are available.
 
-Workflow run `34730295303` on commit `c03d8e52` passed the complete Linux x64
-and both macOS architecture jobs. Windows exposed path-representation assertions and a
-runner lifecycle timeout; Linux arm64 exposed integration timeouts while hashing
-large debug executables. Those gates require a new run after their corrections.
+[Native workflow run 34733491545](https://github.com/wspl/demi/actions/runs/34733491545)
+on commit `3be21941` passed all six native platform jobs and the Rust formatting
+and Clippy gate. Each platform executed the Rust workspace suite, installer and
+immutable publication fixtures, and built both release executables. Both Linux
+jobs also passed the static-linkage inspection. Installer and publication fixtures
+each passed three consecutive executions per platform.
+[Application workflow run 34734045186](https://github.com/wspl/demi/actions/runs/34734045186)
+on commit `7a116340` passed typechecks, application tests, package and frontend
+builds, and generated-documentation validation.
+
+Earlier Windows arm64 installer fixture runs intermittently exceeded their test
+deadline. The fixture now bounds HTTP requests, records installer progress and
+process output, and checks retained artifacts with HEAD without leaving a binary
+response body unread. Windows arm64 passed another three installer executions in
+[diagnostic run 34734045193](https://github.com/wspl/demi/actions/runs/34734045193)
+on commit `7a116340`. The earlier timeout's root cause remains unconfirmed;
+successful reruns do not establish that a specific change eliminated it.
+
 The Intel Mac release passed 17 Host, file-command and installer tests under
 Rosetta on the local arm64 Mac; this is translated execution.
 
@@ -57,9 +71,11 @@ process reap and Linux RSS. They do not measure actual file-command performance.
 
 The native change leaves backend ownership, scoped journals, device selection,
 Cloud lifecycle and shared web components with their existing responsible
-packages. The backend on port 3271, product frontend on 18922 and gallery on 18944 were
-restarted and returned HTTP 200. The connected macOS runner uses the native
-release and reports online with its existing registration. The local backend uses
+packages. The backend on port 3271, product frontend on 18922 and gallery on 18944
+were restarted. The backend installer endpoint `/install.sh` and both frontend
+root pages returned HTTP 200. The connected macOS runner uses the native
+release `4e0cc15a4c68a5269237dd078c862c01d8cdb0ad55d428c0a89016f1172dea03`
+and reports online with its existing registration. The local backend uses
 an explicit development assembly with verified local artifacts; production
 S3/OSS deployment configuration has not been supplied. Implementation contracts are in `native-runtime.md`,
 `runner.md`, `commands.md` and `package-boundaries.md`.
