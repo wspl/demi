@@ -32,6 +32,8 @@ const emit = defineEmits<{
 }>()
 
 defineSlots<{
+  /** After the caption, at the row's end. */
+  captionTrailing?(): unknown
   mark?(props: { row: R }): unknown
   name?(props: { row: R }): unknown
   trailing?(props: { row: R }): unknown
@@ -139,7 +141,8 @@ defineExpose({ scrollToRow, scrollBy })
         class="relative z-10 flex h-7 shrink-0 select-none items-center bg-surface-editor px-2 text-chrome font-medium text-fg-muted"
         :title="captionTitle"
       >
-        <span class="truncate">{{ caption }}</span>
+        <span class="min-w-0 flex-1 truncate">{{ caption }}</span>
+        <slot name="captionTrailing" />
       </div>
       <!-- Each pinned row in its own clip; only the deepest slides up as its
            directory leaves, its clip shrinking with it, while the rows above stay. -->
