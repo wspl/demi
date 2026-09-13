@@ -3,9 +3,10 @@ import { computed } from 'vue'
 import { SquareTerminal } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AnsiText from './AnsiText.vue'
+import FileChangePills from './FileChangePills.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import type { ToolCallBlock } from '../block-types'
-import { getToolErrorText, shellTerminalOutputChunks } from '../block-helpers'
+import { getToolErrorText, shellFileChanges, shellTerminalOutputChunks } from '../block-helpers'
 import { standardToolTitle } from '../tool-rendering'
 
 const props = defineProps<{
@@ -20,6 +21,7 @@ const errorText = computed(() => getToolErrorText(props.block))
 const terminalOutputText = computed(
   () => shellTerminalOutputChunks(props.block).map((chunk) => chunk.text).join('')
 )
+const files = computed(() => shellFileChanges(props.block))
 const isOpen = defineModel<boolean>('open', { default: false })
 </script>
 
@@ -53,4 +55,11 @@ const isOpen = defineModel<boolean>('open', { default: false })
       </div>
     </template>
   </FunctionalBlock>
+  <!-- Under the row, aligned with its label: the icon width plus the row's gap. -->
+  <FileChangePills
+    v-if="files.length > 0"
+    class="py-1"
+    :style="{ paddingLeft: `${ICON_PX.in28 + 8}px` }"
+    :files="files"
+  />
 </template>
