@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { FolderTree } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, FolderTree } from '@lucide/vue'
 import CodeEditor from '../editor/components/CodeEditor.vue'
 import { appEditorHost } from '../editor/host/appHost'
 import { toEditorUri } from '../editor/editorUri'
@@ -20,7 +20,8 @@ import { FileBrowserError, type FileBrowserSource } from './types'
  * workspace tree with the file selected. The control at the end of the crumb row shows and
  * hides the tree, and the divider before the tree sizes it; the host keeps
  * both (v-model) so they hold across files. A click on another file in the
- * tree, or a pick from a crumb's menu, asks the host to open it.
+ * tree, or a pick from a crumb's menu, asks the host to show it here; Back
+ * and Forward before the crumbs ask for the files shown before and after.
  */
 const props = defineProps<{
   source: FileBrowserSource
@@ -28,10 +29,15 @@ const props = defineProps<{
   root: string
   /** The file, by absolute path. */
   path: string
+  /** Whether the host has a file to go back or forward to in this view. */
+  canBack?: boolean
+  canForward?: boolean
 }>()
 
 const emit = defineEmits<{
   open: [path: string]
+  back: []
+  forward: []
 }>()
 
 const tree = defineModel<boolean>('tree', { default: true })
@@ -83,6 +89,15 @@ onBeforeUnmount(() => {
 <template>
   <div class="flex h-full min-h-0 flex-col">
     <div class="flex h-11 shrink-0 items-center gap-1 px-2">
+      <!-- Back and Forward move through the files this view has shown. -->
+      <div class="flex shrink-0 items-center">
+        <Tooltip content="Back">
+          <IconButton :icon="ArrowLeft" variant="ghost" aria-label="Back" :disabled="!canBack" @click="emit('back')" />
+        </Tooltip>
+        <Tooltip content="Forward">
+          <IconButton :icon="ArrowRight" variant="ghost" aria-label="Forward" :disabled="!canForward" @click="emit('forward')" />
+        </Tooltip>
+      </div>
       <!-- Crumbs open menus of what lies beside them: another file is a pick away. -->
       <FileBrowserAddressBar
         class="min-w-0 flex-1"
