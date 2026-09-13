@@ -1,208 +1,147 @@
-# Demi Next: Multi-User Web — Overview
+# Demi Next overview
 
-| | |
-|---|---|
-| Date | 2026-09-08 |
-| Status | Target architecture contract |
-| Scope | The hosted multi-user chat product. This document holds the core shape and the index; each subsystem has its own record in this directory. |
+Demi Next is the hosted, multi-user web product built on Demi. The backend owns
+conversations and agent execution. Runners provide filesystem, process, and shell
+operations on paired devices or managed Cloud machines.
 
-## Documents
+Users configure model providers and choose where tools execute. A conversation
+starts with Cloud selected, but selecting Cloud does not start a machine. File
+operations, processes, and providers that require a process acquire the execution
+host when needed. Reading history and using an HTTP provider do not require a
+running Cloud machine.
 
-| Record | Covers |
-|---|---|
-| `overview.md` | motivation, protocol layering, invariants, component map, prior art |
-| `roadmap.md` | milestones, acceptance, deferred items |
-| `execution-coordination.md` | execution identity, tree admission, shared-device admission and recovery |
-| `backend.md` | the backend program: modules, deployment topology, routing, Web API |
-| `storage.md` | control and conversation databases, `ControlService`, blob and machine-image stores, replication |
-| `product.md` | instance mode, users, conversations, attachments, provider management, web UI |
-| `sessions-and-targets.md` | a conversation's execution target: Cloud, paired devices, workspaces, switching, attached hosts |
-| `commands.md` | the command system: root commands (`demi` built in, library users add their own), `rpc` and `runtime` kinds, the command ABI, manifest, loader |
-| `native-runtime.md` | Rust runner, embedded shell, resident command services and artifact distribution |
-| `runner.md` | the runner program: handshake, Host RPC, jobs, tee, the local relay |
-| `managed-hosts.md` | Firecracker provisioning, images, system/home persistence, reset, lifecycle, security |
-| `providers-and-vault.md` | the LLM module, credential vault, usage accounting, Claude Code |
-| `scenarios.md` | the scenario suite over the headless system: the world fixture, the driver, the teardown invariants, the scenarios and restarts |
+## System boundaries
 
-Every record describes the architecture of its subsystem. Implementation history
-belongs to Git; test results belong to the test runner and CI.
+The diagram shows application processes and request directions. Labels identify
+the transport; responses travel over the corresponding connection. Provider
+services are external to Demi.
 
-## Motivation
-
-A deployable, multi-user, pure-web chat GUI built on Demi. Differentiators
-over ChatGPT/Claude web UIs:
-
-- **BYOK and subscription reuse**: users bring API keys or connect their
-  existing subscriptions (Claude Code, Codex, Grok, …); all credentials are
-  stored server-side and usable from any of the user's devices.
-- **Choice of execution environment**: agent tools run on the user's own
-  devices via the runner program (user hosts) or in operator-provisioned
-  microVMs (managed hosts).
-- **Chat-first default**: new conversations select the user's Cloud immediately.
-  The VM starts only when a file, process or process-backed provider needs it;
-  reading history and ordinary inference do not require an active machine.
-- **Personal Cloud**: one managed device per user, persistent system and home,
-  project directories shared on that machine, and self-service system reset
-  that preserves home.
-
-## Protocol layering (the core shape)
-
-```
-web  ←— our protocol —→  backend  ←— official provider wires —→  LLM providers
-                            │
-                            └←— our runner protocol (Host RPC) —→ runner (user host / managed host)
-                                     ├─ real bash on the target, `demi` commands via the loader
-                                     └─ claude code CLI (spawned by backend via the runner;
-                                        stream-json over stdio to the backend)
-                                            └── its own native Anthropic HTTPS ——▶ Claude backend
+```text
++------------------+
+| Browser          |
+| Chat application |
++------------------+
+         |
+         | HTTP + conversation WebSocket
+         v
++------------------+  Provider HTTPS  +------------------+
+| Backend          |---------------->| Provider service |
+| Agent and data   |                 | Model inference  |
++------------------+                 +------------------+
+         |
+         | MessagePack / WebSocket + HTTP byte pipes
+         v
++------------------+
+| Runner           |
+| Host operations  |
++------------------+
 ```
 
-- Browser ↔ backend: Demi's agent protocol (`ClientFrame`/`ServerFrame`) on
-  the per-conversation stream socket, plus the Web API — plain HTTP REST for
-  everything else the page calls (`backend.md`).
-- Backend ↔ LLM providers: the official wire protocols, spoken by the real
-  provider runtimes instantiated inside the backend with vault credentials at
-  their native endpoints (`providers-and-vault.md`).
-- Backend ↔ runner: Demi's runner protocol — a remote form of the `Host`
-  contract (filesystem ops, process spawn with streamed stdio) plus the job
-  and output messages (`runner.md`). The backend runs TypeScript on Bun and the runner runs Rust. Shared schemas generate the Rust wire contract.
-- Target ↔ backend for root commands (`demi` and any library-defined
-  root): a root command uses the runner’s local HTTP/2 dispatcher;
-  `native` commands run in resident target-side executables, `rpc` commands travel to the
-  backend as typed messages through the runner's socket (`commands.md`).
-- The one special case is the **Claude Code provider**: its transport is the
-  CLI, which must run on a real machine. The provider runs in the backend
-  like every other provider and spawns its CLI on the conversation's runner
-  through the ordinary `spawn`, speaking stream-json over the spawned
-  process's stdio. The CLI's HTTPS goes directly to the Claude backend with
-  the provider's vault OAuth token injected as process env. The backend
-  never proxies or rewrites any provider's model traffic.
+The runner can execute on a user's device or inside a managed guest. Its outbound
+connection registers with the backend; the diagram's arrow indicates who requests
+Host operations, not who opens that connection.
 
-## Invariants
+| Part | Responsibility |
+| --- | --- |
+| Web application | Present conversations and product controls through shared `web-ui` components. |
+| Backend | Authorize users, host agent sessions, persist conversations, resolve providers, and manage execution targets. |
+| Provider package | Implement its provider's authentication and inference transport. |
+| Runner | Execute Host operations and brush jobs; dispatch declared commands. |
+| Native command service | Run independently released native operations beside the target's files. |
+| Managed-host provisioner | Create and operate the user's Cloud guest and its persistent volumes. |
 
-1. **Sessions live in the backend.** AgentSession, the transcript, tool
-   orchestration and the command tree all run in the backend; the
-   authoritative conversation store is backend-local. Runners hold no
-   conversation state. Command output beyond the model's view is the one
-   thing that stays on the target, and stays there
-   (`sessions-and-targets.md`).
-2. **The execution target is a mutable conversation property.** A
-   conversation's tools execute against the remote `Host` of a runner — on a
-   user-paired device or the user's unique managed Cloud device. `AgentHarness.host`
-   resolves a stable Host per execution target from action metadata.
-   Switching targets is a first-class operation at a turn boundary,
-   announced to the model with an injected context block.
-3. **All credentials are stored server-side, and each provider package owns
-   its own credential machinery.** API keys and subscription OAuth material
-   live in the vault; login and refresh run server-side through the
-   provider's own flows. The one CLI transport (Claude Code) receives its
-   access token only as process env at spawn time — the device never
-   persists a credential, and the runner program itself is never given one.
-4. **Protocols carry references, never bulk bytes.** File reads and writes
-   happen on the target; the runner tees full command output to output
-   files on the target and the wire carries only the model's view of it;
-   media reaches the browser by reference; every pipe between processes —
-   an `rpc` command's stdin and stdout, a cross-host job's — is an HTTP
-   stream brokered by the backend (`runner.md` § Pipes).
-5. **One command manifest.** Every root command — `demi`, and any root a
-   library user declares — is defined once in the backend and served to
-   every execution surface by the loader; no target has a second
-   implementation of a command (`commands.md`).
+Most providers make HTTP requests from the backend. Claude Code instead uses a
+CLI on the conversation's execution target. Its backend runtime exchanges
+stream-json with that process through Host process IO. The CLI contacts its
+provider directly. [Providers and credentials](providers-and-vault.md) defines
+that boundary; [native execution](native-runtime.md) defines native command
+services, which are separate from provider CLIs.
 
-## Vocabulary
+## A conversation using a device
 
-Four words are easy to confuse and are used in exactly one sense each:
+For example, a user opens a conversation, selects a paired laptop, and asks the
+agent to edit a file:
 
-| Word | Means | Never means |
-|---|---|---|
-| **target** (execution target) | the conversation's pointer to where its commands run: Cloud, a paired device/directory, or a workspace | a machine |
-| **device** | a row in the registry with a token: a paired user device or a managed one | |
-| **host** | a machine that executes for Demi, seen through the `Host` contract: a paired device or the user's managed Cloud | the machine that runs a VM |
-| **guest** / **backend machine** | virtualization terms only: the microVM, and the machine running the backend and Firecracker | a Demi host |
+1. The browser sends the conversation action to the backend.
+2. The backend runs the agent and selects the authorized execution target.
+3. The runner executes the shell job. A declared native command calls a resident
+   command service on the laptop; an application callback returns to the backend.
+4. The backend records the conversation result and streams updates to the browser.
 
-So a managed host is a *guest* on the *backend machine*; the word "host"
-on its own is always Demi's sense.
+The edited file stays on the laptop. Switching the conversation's target changes
+where subsequent operations run; it does not move files or the transcript.
+[Sessions and targets](sessions-and-targets.md) owns switching and attachment
+rules. [Execution coordination](execution-coordination.md) owns admission while
+agent nodes or device operations are active.
 
-The `Host` contract (`@demicodes/shell`) has one production implementation the
-backend injects into the agent and one internal
-realization inside the runner:
+Keeping the agent in the backend gives the transcript and orchestration one owner.
+Keeping file operations on the target avoids transferring an entire file merely
+to edit it. The tradeoff is trust: a paired device executes authorized backend
+requests, so the backend is part of that device's execution trust boundary.
 
-| Where | Role | Runs in |
-|---|---|---|
-| `@demicodes/host-remote` | the Host of every user host and managed host as the backend sees it: each call forwarded over the runner wire | the backend |
-| `crates/runner/src` | filesystem, process and shell-job execution requested through `host-remote` | native Rust runner |
+## Data and credentials
 
-The wire is defined by Zod schemas in `@demicodes/runner-protocol`. The backend
-uses that package; runner generates its Rust bindings during Cargo builds.
+Conversation records live in backend storage. Working files and full shell output
+live on their execution targets. The backend receives bounded shell output views
+and can request target files when needed. Runner messages can carry bytes, and
+HTTP pipes stream command IO; the protocols are not reference-only.
+[Storage](storage.md) defines persistence, and [runner IO](runner.md#pipes-and-output)
+defines output and pipe lifetimes.
 
-## Components
+The backend vault stores configured provider credentials. A process-backed
+provider can pass a credential through the runner in the target process's
+environment. This does not make the runner a credential vault, but the credential
+is available to that process and its execution environment. The browser uses
+backend APIs rather than receiving stored provider secrets.
 
-- **Backend** (`@demicodes/backend`): one program — Web API, conversation
-  hosting, LLM module, vault, accounting, runner management, managed hosts,
-  the command manifest — that scales by running more copies plus one
-  control-plane process. `backend.md`, `storage.md`.
-- **Runner** (`crates/runner`): the execution-host executable. Owns in-process
-  brush and standard utilities, Host RPC, command parsing/dispatch/forwarding,
-  artifact caching and resident command-process lifetimes. `runner.md`.
-- **Command loader** (`packages/command-loader`, TypeScript): declares the Zod
-  manifest structure, serializes declarations and supplies TS loading. Runner's
-  commands module consumes generated manifest bindings. `commands.md`.
-- **Command service SDK** (`crates/command-service`): shared HTTP/2 client/server,
-  streaming IO and generated protocol types. Its authoritative Zod definitions
-  belong to `packages/command-protocol`. `native-runtime.md`.
-- **Demi commands** (`crates/demi-commands`): independently released native Demi
-  command program using the command service SDK. `commands.md`.
-- **Managed hosts**: Firecracker microVMs the backend provisions on demand,
-  persisting a pinned base plus a writable system layer and home. `managed-hosts.md`.
-- **Web frontend** (`@demicodes/web`): the product SPA over
-  `@demicodes/web-ui` and the Web API. `product.md`.
+## Terms
 
-## Prior art and the empty quadrant
+| Term | Meaning |
+| --- | --- |
+| Conversation | Backend-owned transcript, agent state, and product settings. |
+| Execution target | The conversation's selection of Cloud, a device directory, or a workspace. |
+| Device | A registered execution device, either user-paired or managed. |
+| Host | The filesystem/process abstraction used to execute on a device. |
+| Guest | A managed virtual machine running a runner. |
+| Backend machine | The machine running backend infrastructure or the guest provisioner. |
 
-Every component of this architecture has large-scale precedent; only the
-combination is rare.
+The backend uses `host-remote` to access devices through the Host contract.
+The Rust runner performs those operations on the device. Their shared protocol
+schemas define the messages; the runner generates Rust bindings during its build.
+[Package boundaries](../package-boundaries.md) owns package responsibilities and
+dependencies.
 
-- "Agent loop in a service, execution environment across a wire" is the
-  standard cloud-sandbox agent shape (E2B/Modal/Daytona-style sandbox APIs
-  are fs + exec over HTTP; Devin, Codex cloud, Copilot coding agent all run
-  this way).
-- "Orchestration in the cloud, execution on user-owned machines" is the CI
-  self-hosted-runner shape (GitHub Actions runners; Ansible control nodes).
-- Command-granular remote execution is SSH-shaped: one round trip per
-  command plus streamed output, proven over WAN for decades.
-- Firecracker microVMs with a shared read-only rootfs and a per-owner
-  persistent volume is the cloud-workspace shape (E2B, Gitpod's
-  stop/backup/resume, Codespaces).
-- Shipping command implementations as modules to a thin runtime, keyed by
-  content hash, is the plugin-host shape (editor extension hosts, edge
-  function runtimes).
+## Reading map
 
-The genuinely unoccupied quadrant is the combination: **loop in a
-datacenter + execution target on user devices + a fine-grained fs
-protocol**. It is empty for two reasons, in this order of importance:
+Each design rule has one authoritative document. These links cover every other
+document in this directory; a linked design does not by itself certify completed
+implementation.
 
-1. **Trust asymmetry (structural, the main reason).** A datacenter service
-   holding "execute arbitrary commands on user devices" means a backend
-   compromise turns every claimed device into a bot. We accept the
-   asymmetry deliberately, with three answers: self-host-first positioning
-   (the user controls the datacenter), a runner so thin and frozen it is
-   auditable, and explicit device claiming plus per-conversation attached hosts
-   (`sessions-and-targets.md`). If this product ever becomes public
-   multi-tenant SaaS, device-side capability narrowing is the next step; the
-   line exists and we know where it is.
-2. **Fine-grained fs over WAN has a famous failure (engineering, the lesser
-   reason).** VS Code Remote originally tried "editor logic local, files
-   remote," failed on per-op latency, and moved the extension host to the
-   file side. Here the load is agent-turn-granular, the heavy operations are
-   command-granular (real bash on the target), and file commands run on the
-   target as `runtime` modules; the chatty residue is bounded.
+| Question | Document |
+| --- | --- |
+| What does the product let users do? | [Product](product.md) |
+| How is the backend assembled and exposed? | [Backend](backend.md) |
+| Where is data stored? | [Storage](storage.md) |
+| How are providers, credentials, and usage managed? | [Providers and vault](providers-and-vault.md) |
+| Where does a conversation execute? | [Sessions and targets](sessions-and-targets.md) |
+| How are concurrent operations admitted? | [Execution coordination](execution-coordination.md) |
+| How are commands declared and dispatched? | [Commands](commands.md) |
+| How are native commands installed and executed? | [Native runtime](native-runtime.md) |
+| What does a device runner own? | [Runner](runner.md) |
+| How do external programs call declared commands? | [Local command client](command-client.md) |
+| How is Cloud provisioned and reset? | [Managed hosts](managed-hosts.md) |
+| How does the web application fit together? | [Web application](web-prototype.md) |
+| How does a user pair a device? | [Device pairing](device-pairing-ui.md) |
+| What does the host menu show and permit? | [Host menu](host-menu.md) |
+| How are sidebar items ordered? | [Sidebar ordering](sidebar-order.md) |
+| How do product and gallery share UI behavior? | [Web/gallery synchronization](web-gallery-sync.md) |
+| Which end-to-end cases must hold? | [Scenarios](scenarios.md) |
+| What is the delivery plan? | [Roadmap](roadmap.md) |
 
-**Considered and closed: running the agent loop on the runner.** It would buy
-zero-latency tool execution at the price of putting the wire through the
-system's fastest-moving interface instead of its most stable one. The Host
-contract is essentially frozen; the agent internals change constantly — and
-the runner on user devices is the hardest component to update, so it must
-contain the least-changing code. A runner-side loop also resurrects
-everything this design deleted: transcript sync back to the backend, a
-browser↔runner relay, sessions with two homes. The latency win is bounded
-(turn wall-clock is inference-dominated) while the costs are structural.
+## Implementation scope
+
+The current `createBackend` entry point opens a local control SQLite database and
+local conversation stores. The multi-node control service, routing, and replicated
+storage described in subsystem designs are target deployment architecture, not
+the current entry point's deployment behavior. Those documents must distinguish
+implemented behavior from remaining work.
