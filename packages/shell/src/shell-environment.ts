@@ -1,25 +1,54 @@
 /** The agent's shell tools use this interface. RemoteShellEnvironment dispatches
  * real bash jobs through the shared runner protocol on every machine target. */
 
-export interface ShellExecInput {
-  script: string
-  shellId?: string
-  agentSessionId?: string
-  timeoutMs?: number
-  signal?: AbortSignal
+import { isAbsolutePath } from '@demicodes/utils'
+import { z } from 'zod'
+
+/** Upper bound for a single exec observation window. */
+export const MAX_TIMEOUT_MS = 600_000
+
+const timeoutMsSchema = z.number().int().min(1).max(MAX_TIMEOUT_MS)
+
+/**
+ * One exec request, with every rule an environment enforces before it starts a
+ * job. Environments validate their input against this schema; callers inside
+ * the process get the same rules from the derived type where it can express
+ * them.
+ */
+export const shellExecInputSchema = z.strictObject({
+  script: z.string(),
+  shellId: z.string().optional(),
+  agentSessionId: z.string().optional(),
+  /** The observation window; `DEFAULT_TIMEOUT_MS` when the caller omits it. */
+  timeoutMs: timeoutMsSchema.optional(),
+  signal: z.instanceof(AbortSignal).optional(),
   /**
    * Run in a dedicated one-shot shell instead of the session default shell, so
    * cd/env side effects never leak into other execs sharing the session. The
    * caller owns the shell and should `disposeShell(snapshot.shellId)` when done.
    * Mutually exclusive with `shellId`.
    */
-  ephemeral?: boolean
+  ephemeral: z.boolean().optional(),
   /**
    * Initial working directory of the shell this exec creates. Requires
    * `ephemeral` — a persistent shell owns its cwd (that is what `cd` is for).
    */
-  cwd?: string
-}
+  cwd: z.string().optional(),
+})
+  .refine((input) => !(input.shellId && input.ephemeral), {
+    path: ['ephemeral'],
+    message: '"shellId" and "ephemeral" are mutually exclusive',
+  })
+  .refine((input) => input.cwd === undefined || input.ephemeral === true, {
+    path: ['cwd'],
+    message: '"cwd" requires "ephemeral"; a persistent shell owns its cwd',
+  })
+  .refine((input) => input.cwd === undefined || isAbsolutePath(input.cwd), {
+    path: ['cwd'],
+    message: 'shell exec cwd must be absolute',
+  })
+
+export type ShellExecInput = z.infer<typeof shellExecInputSchema>
 
 export interface ShellStatusInput {
   commandId: string
@@ -180,12 +209,8 @@ export const DEFAULT_BINARY_LIMIT_BYTES = 16 * 1024 * 1024
  * on the embedding process, not a view budget.
  */
 export const DEFAULT_CAPTURE_LIMIT_BYTES = 64 * 1024 * 1024
-/** Upper bound for a single exec observation window. */
-export const MAX_TIMEOUT_MS = 600_000
 
+/** The observation window rule alone, for a caller that has only that number. */
 export function normalizeTimeoutMs(value: number): number {
-  if (!Number.isFinite(value) || value < 1 || value > MAX_TIMEOUT_MS) {
-    throw new Error(`timeoutMs must be between 1 and ${MAX_TIMEOUT_MS}`)
-  }
-  return Math.floor(value)
+  return timeoutMsSchema.parse(value)
 }
