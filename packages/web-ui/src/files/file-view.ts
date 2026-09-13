@@ -2,5 +2,5 @@
 export const TREE_WIDTH = {
   min: 120,
   max: 480,
-  default: 160,
+  default: 220,
 } as const
