@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { AgentSession, type EditRequest } from '@demicodes/agent'
+import { AgentSession, editRequestSchema } from '@demicodes/agent'
 import { parsePortableJson } from '@demicodes/utils'
 import { model, text } from '../../../agent/src/__tests__/helpers'
 import { editStorageFixture } from './fixtures/edit-crash'
@@ -93,7 +93,7 @@ for (const boundary of ['inside-transaction', 'after-commit', 'after-output']) {
           try {
             expect(session.transcript().blocks).toEqual(checkpoint.transcript.blocks)
             expect(calls).toBe(0)
-            const request = parsePortableJson<EditRequest>(await Bun.file(join(root, 'request.json')).text())
+            const request = editRequestSchema.parse(parsePortableJson(await Bun.file(join(root, 'request.json')).text()))
             await expect(session.editAndSend(request)).resolves.toEqual(checkpoint.edits![0])
             expect(calls).toBe(0)
             if (boundary === 'after-commit') {

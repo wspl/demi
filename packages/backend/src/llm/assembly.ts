@@ -6,7 +6,7 @@ import {
   modelSelectionFromCatalog,
   providerRuntime,
   type AgentProvider,
-  withProviderId,
+  withCatalogProviderId,
   type Provider,
   type ProviderModelList
 } from '@demicodes/provider'
@@ -447,7 +447,7 @@ export class ProviderAssembly {
           ? await this.vendors.models(entry.config.vendorId, entry.id, true, signal)
           : await provider?.listModels?.({ refresh: true, signal })
         signal.throwIfAborted()
-        const list = raw ? withProviderId(raw, entry.id) : null
+        const list = raw ? withCatalogProviderId(raw, entry.id) : null
         return {
           models: list?.models ?? [],
           sourceFetchedAt: list?.sourceFetchedAt ?? '1970-01-01T00:00:00.000Z',

@@ -105,7 +105,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/utils`, `zod`.
-- Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, required `AgentProvider.clone()` for independent per-session runtimes, unified subscription/rate-limit quota types (`ProviderQuota` / `ProviderQuotaSnapshot`; see `docs/provider-quota.md`), optional multi-credential types (`ProviderCredentials` / `ProviderCredentialInfo` — global active switch, not multi-instance providers; see `docs/provider-global-credentials.md`), the shared node-only credential pool IO behind the `@demicodes/provider/credentials-pool` subpath (the main entry stays platform-neutral), model catalog shape, the models.dev catalog client (`models-dev.ts`: the fetch with its cache and stale fallback, the zod schema of the parts read, the entry-to-catalog-model mapping) that concrete providers and the backend filter for their own lists, and the vendor-wire building blocks every HTTP provider decodes with: server-sent-event framing (`sse.ts`), the two-step decode of payloads tagged by `type` (`tagged-union.ts`: an unregistered tag is ignored, a registered tag with a malformed payload is an error), the schemas of the OpenAI-shaped formats Demi reads (`responses.ts`, `chat-completions.ts`), and their token accounting (`usage.ts`).
+- Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, required `AgentProvider.clone()` for independent per-session runtimes, unified subscription/rate-limit quota types (`ProviderQuota` / `ProviderQuotaSnapshot`; see `docs/provider-quota.md`), optional multi-credential types (`ProviderCredentials` / `ProviderCredentialInfo` — global active switch, not multi-instance providers; see `docs/provider-global-credentials.md`), the shared node-only credential pool IO behind the `@demicodes/provider/credentials-pool` subpath (the main entry stays platform-neutral; the same subpath owns `writeJsonFileAtomic`, which a provider uses to rewrite its vendor `auth.json` after a refresh), model catalog shape, the models.dev catalog client (`models-dev.ts`: the fetch with its cache and stale fallback, the zod schema of the parts read, the entry-to-catalog-model mapping) that concrete providers and the backend filter for their own lists, the token limits every catalog entry must state (`model-limits.ts`), and the vendor-wire building blocks every HTTP provider decodes with: server-sent-event framing (`sse.ts`), the two-step decode of payloads tagged by `type` (`vendor-schema.ts`: an unregistered tag is ignored, a registered tag with a malformed payload is an error), the schemas of the OpenAI-shaped formats Demi reads (`responses.ts`, `chat-completions.ts`) with the stream mappers that turn them into provider events (`responses-stream.ts`, `chat-completions-stream.ts`, the vendor's name only a label in the error text) and the two request-body fields those formats share (`openai-request.ts`), the OAuth device-login pieces (`oauth.ts`: one response decoder and the RFC 8628 seconds schemas), and their token accounting (`usage.ts`).
 - Public boundary: provider contract, direct `Provider[]` composition types, quota helpers (`createProviderQuota`, `ensureQuota`), credential public types, provider test helpers only from `@demicodes/provider/testing`, and pool IO only from `@demicodes/provider/credentials-pool`.
 - Model catalog boundary: common catalog state exposes portable fields only: model ids, display metadata, capability metadata, service tiers, `sourceFetchedAt`, `stale`, and `warnings`.
 - Model catalog must not: expose provider-specific `source` labels such as `codex-backend`, `models.dev`, or `cache` in public types.
@@ -375,11 +375,12 @@ Test code may depend upward for integration coverage. Production code must not.
   Input surfaces, the assembled ChatSession page, the message editor and its
   draft/submission lifecycle (`agent/message-editing.ts`, `SessionComposer.vue`, and the inert `MessageEditRegion.vue`), sidebar layout, workspace and
   remote-file selection flows, shared UI primitives, markdown/theme, shared sidebar presentation and list interaction, the sign-in page (`auth/EmailLoginPage`: email and password on the left, a wide empty intro on the right, over a host-reported phase), the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), the reusable device pairing dialog and lifecycle (`devices/`, driven by a host-provided claim adapter), and the
-  transport-agnostic control interface (`transport/protocol.ts`: the `ControlApi` DTOs the host
-  implements, plus the agent's frame, block and tool-view schemas re-exported for the host).
+  model-catalog DTOs the composer reads (`transport/protocol.ts`: `ProviderInfo`, `ModelInfo`
+  and friends, which the host fills from its own catalog, plus the agent's frame, block and
+  tool-view schemas re-exported for the host).
   Consumes an injected `AgentClient`; the library ships no control-plane transport of its own.
 - Public boundary: source-path exports (`./*`) consumed by web hosts; third parties embed it
-  by supplying an `AgentClient` and a `ControlApi` implementation. External products consume the
+  by supplying an `AgentClient` and the model-catalog DTOs. External products consume the
   published package (registry semver), not `link:` paths into this repo.
 - Must not: import Node, `@demicodes/shell`, `@demicodes/coding-agent`, concrete providers, or
   `@demicodes/web` or `@demicodes/web-gallery`. It may import the `@demicodes/agent` client surface only (`AgentClient`,
@@ -391,7 +392,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/web`
 
 - Status: backend-integrated web product.
-- Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`.
+- Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`, `pinia`, `zod`.
 - Owns: the Vue SPA application frame, route navigation, product state and backend request handlers. Vue 3 + TypeScript + Vite, vue-router, Pinia and Tailwind 4.
 - Public boundary: `bun run web:dev` and `bun run web:build`; no published library API.
 - Build order: the root `bun run build` finishes library builds before invoking

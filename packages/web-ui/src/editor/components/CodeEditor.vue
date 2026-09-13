@@ -22,7 +22,11 @@ import { lspSignatureExtension } from '../lsp/signature'
 import { lspInlayHintsExtension } from '../lsp/inlayHints'
 import { lspFoldingExtension } from '../lsp/folding'
 import { requestLspRefresh } from '../lsp/refresh'
-import { getResourceBasename } from '../lsp/utils'
+import {
+  fromLspPosition,
+  getResourceBasename,
+  toLspPosition,
+} from '../lsp/utils'
 import { indentationMarkers } from '@replit/codemirror-indentation-markers'
 import type { EditorHost } from '../host/types'
 import { VueRenderer } from '../render/vueRenderer'
@@ -306,20 +310,6 @@ function focus() {
 function refreshLspState() {
   if (!view) return
   requestLspRefresh(view)
-}
-
-function fromLspPosition(doc: Text, pos: { line: number; character: number }): number {
-  if (pos.line >= doc.lines) return doc.length
-  const line = doc.line(pos.line + 1)
-  return Math.min(line.from + pos.character, line.to)
-}
-
-function toLspPosition(doc: Text, offset: number): { line: number; character: number } {
-  const line = doc.lineAt(offset)
-  return {
-    line: line.number - 1,
-    character: offset - line.from,
-  }
 }
 
 onBeforeUnmount(() => {

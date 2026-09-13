@@ -94,8 +94,13 @@ function createEchoRuntime(): AgentProvider {
 Don't re-derive what `@demicodes/provider` already ships — the boundary test forbids
 re-implementing several of these:
 
-- `modelSelectionFromCatalog`, `withProviderId` — turn a `listModels()` catalog into
-  selections / stamp the provider id.
+- `modelSelectionFromCatalog`, `withCatalogProviderId`, `withModelProviderId` — turn a
+  `listModels()` catalog into selections / stamp the provider id onto a catalog or one
+  model.
+- `modelLimitsSchema` — the `contextWindow` / `outputLimit` constraint every catalog
+  entry must satisfy.
+- `thinkingToReasoningEffort`, `stringifyToolArguments` — the two request-body fields
+  the OpenAI-compatible formats spell the same way.
 - `redactSecretText`, `httpErrorCode`, `normalizeErrorCode`, `providerErrorFromUnknown`,
   `authStatusFromKey`, `httpRequestFailedEvent` — for HTTP backends.
 - `createProviderQuota`, `ensureQuota`, percent/severity helpers — subscription rate-limit
@@ -125,8 +130,19 @@ Do not copy another provider's decoder. `@demicodes/provider` owns these:
 - `chat-completions.ts` — the OpenAI Chat Completions stream:
   `decodeChatCompletionChunk`, the chunk/delta/tool-call schemas, and
   `tokenUsageFromChatCompletionsUsage`. Every OpenAI-compatible gateway uses these.
+- `mapResponsesStream(frames, vendorLabel, signal)` / `mapResponsesEvents` and
+  `mapChatCompletionsStream(frames, vendorLabel, signal)` — the whole stream, decoded
+  and mapped to `ProviderEvent`s. A Responses or Chat Completions provider writes only
+  its request body: the mapper is shared, and the vendor's name reaches the user
+  through `vendorLabel` in the error text.
 - `taggedUnion(branches)` — for a vendor whose events carry their own `type` tag
   (Anthropic, Claude Code, xAI). Register a schema per tag you map.
+- For a login flow: `decodeJsonResponse(response, schema, onMalformed)` decodes one
+  OAuth response and reports a body that does not match through your own error class,
+  and `oauthSecondsSchema` / `pollIntervalSecondsSchema` / `lifetimeSecondsSchema` read
+  the RFC 8628 durations a server states as either a number or a digit string.
+  `writeJsonFileAtomic` (from `@demicodes/provider/credentials-pool`) writes the
+  vendor `auth.json` a refresh produces.
 
 `taggedUnion` fixes the failure policy so every provider treats the vendor the same
 way: **an unregistered `type` decodes to `null` and is ignored** (a vendor shipping a
