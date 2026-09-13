@@ -1,32 +1,38 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { FileOutput, FolderTree } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, FileOutput, FolderTree } from '@lucide/vue'
 import DiffEditor from '../editor/components/DiffEditor.vue'
 import { appEditorHost } from '../editor/host/appHost'
 import { toEditorUri } from '../editor/editorUri'
 import IconButton from '../ui/IconButton.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
+import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import ChangeTree from './ChangeTree.vue'
-import { changeTotals, type ChangeSetSource } from './changes'
+import { type ChangeMode, type ChangeSources } from './changes'
 import { TREE_WIDTH } from './file-view'
 import { FileBrowserError } from './types'
 import { joinPath } from './paths'
 
 /**
- * The conversation's changes: the diff of the selected file, read through
- * the change set, and beside it the tree of changed files with their kinds
- * and line counts. The row above says how many files and lines changed and
- * holds the control that opens the selected file itself (not for a deleted
- * one) and the one that shows and hides the tree; the host keeps the tree's
- * visibility and width (v-model) as it does for the file view, and which file
- * is selected.
+ * The changes as diffs, from one of two sources the switch in the header
+ * picks between: files picked from the conversation, each a snapshot around
+ * one tool call, or the workspace's uncommitted changes. Either way the
+ * diff of the selected file is on the left and the tree of that source's
+ * files, with their kinds and line counts, on the right. Back and Forward
+ * walk what the view has shown, across modes; the host keeps that history
+ * (`showChangeInTab`) along with the mode, the selected file, and the
+ * tree's visibility and width. The header also holds the control that opens
+ * the selected file itself (not a deleted one) and the one that shows and
+ * hides the tree.
  */
 const props = defineProps<{
-  changes: ChangeSetSource
+  changes: ChangeSources
   /** The workspace the paths are relative to. */
   root: string
+  canBack?: boolean
+  canForward?: boolean
   /** Fold the unchanged stretches between changes in the diff; off shows whole files. */
   collapseUnchanged?: boolean
 }>()
@@ -34,16 +40,37 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** Open the selected file itself, by its path relative to the workspace. */
   open: [path: string]
+  back: []
+  forward: []
 }>()
 
+const mode = defineModel<ChangeMode>('mode', { required: true })
 const selected = defineModel<string | null>('selected', { default: null })
 const tree = defineModel<boolean>('tree', { default: true })
 const treeWidth = defineModel<number>('treeWidth', { default: TREE_WIDTH.default })
 
-const totals = computed(() => changeTotals(props.changes.files))
+const modeOptions: readonly SegmentedOption<ChangeMode>[] = [
+  { value: 'conversation', label: 'Conversation' },
+  { value: 'uncommitted', label: 'Uncommitted' },
+]
+
+const source = computed(() => props.changes[mode.value])
 const selectedChange = computed(
-  () => props.changes.files.find((file) => file.path === selected.value) ?? null,
+  () => source.value.files.find((file) => file.path === selected.value) ?? null,
 )
+
+/** What the empty side says: how to fill it, per mode. */
+const emptyText = computed(() =>
+  mode.value === 'conversation' ? 'Nothing from the conversation yet' : 'No uncommitted changes',
+)
+const idleText = computed(() => {
+  if (source.value.files.length > 0) {
+    return 'Select a changed file.'
+  }
+  return mode.value === 'conversation'
+    ? 'Click a changed file in the conversation to see its diff here.'
+    : 'The working tree matches the last commit.'
+})
 
 const sides = ref<{ original: string; modified: string } | null>(null)
 const state = ref<'idle' | 'loading' | 'ready' | 'failed'>('idle')
@@ -63,7 +90,7 @@ async function read(): Promise<void> {
   state.value = 'loading'
   failure.value = null
   try {
-    const result = await props.changes.read(path, current.signal)
+    const result = await source.value.read(path, current.signal)
     if (current.signal.aborted) {
       return
     }
@@ -78,7 +105,7 @@ async function read(): Promise<void> {
   }
 }
 
-watch(() => [props.changes, selected.value], read, { immediate: true })
+watch(() => [source.value, selected.value], read, { immediate: true })
 
 onBeforeUnmount(() => {
   controller?.abort()
@@ -87,14 +114,18 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
-    <div class="flex h-11 shrink-0 items-center gap-2 px-3">
-      <span class="min-w-0 flex-1 truncate text-chrome text-fg-muted">
-        {{ changes.files.length }} {{ changes.files.length === 1 ? 'file' : 'files' }} changed
-        <span class="ml-1 font-mono text-[11px] tabular-nums">
-          <span v-if="totals.added > 0" class="text-on-success">+{{ totals.added }}</span>
-          <span v-if="totals.removed > 0" class="ml-1 text-on-danger">−{{ totals.removed }}</span>
-        </span>
-      </span>
+    <div class="flex h-11 shrink-0 items-center gap-1 px-2">
+      <!-- Back and Forward move through what this view has shown, mode and file. -->
+      <div class="flex shrink-0 items-center">
+        <Tooltip content="Back">
+          <IconButton :icon="ArrowLeft" variant="ghost" aria-label="Back" :disabled="!canBack" @click="emit('back')" />
+        </Tooltip>
+        <Tooltip content="Forward">
+          <IconButton :icon="ArrowRight" variant="ghost" aria-label="Forward" :disabled="!canForward" @click="emit('forward')" />
+        </Tooltip>
+      </div>
+      <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1" />
+      <span class="min-w-0 flex-1" />
       <Tooltip content="Open file" class="shrink-0">
         <IconButton
           :icon="FileOutput"
@@ -132,7 +163,7 @@ onBeforeUnmount(() => {
           class="h-full"
           :busy="state === 'loading'"
           :failed="state === 'failed'"
-          :label="state === 'loading' ? 'Reading…' : state === 'failed' ? 'Could not read this change.' : 'Select a changed file.'"
+          :label="state === 'loading' ? 'Reading…' : state === 'failed' ? 'Could not read this change.' : idleText"
           :detail="failure"
           :action="state === 'failed' ? 'Retry' : undefined"
           @action="read"
@@ -150,9 +181,10 @@ onBeforeUnmount(() => {
         <ChangeTree
           class="border-l border-line"
           :style="{ flex: `0 0 ${treeWidth}px`, width: `${treeWidth}px` }"
-          :files="changes.files"
+          :files="source.files"
           :root="root"
           :selected="selected"
+          :empty-text="emptyText"
           @select="selected = $event"
         />
       </template>

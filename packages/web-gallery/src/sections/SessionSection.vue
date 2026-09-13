@@ -11,7 +11,8 @@ import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activity-slot'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { closeWorkTabs, fileWorkTab, goBackInTab, goForwardInTab, showFileInTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import { changeWorkTab, closeWorkTabs, fileWorkTab, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showFileInTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import { emptyChangeSet, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryWorkspace } from '../fixtures/workspace'
@@ -123,7 +124,7 @@ const panelActiveConversationId = ref<string | null>('c-login')
 function workTabs(): WorkTab[] {
   return [
     fileWorkTab('w1', 'src/auth/cookie.ts'),
-    { id: 'w2', kind: 'change' },
+    changeWorkTab('w2', 'uncommitted'),
     fileWorkTab('w3', 'tests/login/auth.test.ts'),
     fileWorkTab('w4', 'packages/web-ui/src/agent/blocks/FileChangePills.vue'),
   ]
@@ -138,14 +139,17 @@ function useWorkTabs(activeId: string | null) {
     tabs.value = next.tabs
     active.value = next.activeId
   }
-  function add(kind: WorkTab['kind']) {
+  function add(kind: WorkTab['kind'], mode?: ChangeMode) {
     if (kind === 'file') {
       open('src/auth/session.ts')
       return
     }
     const id = `w${nextId++}`
-    tabs.value = [...tabs.value, { id, kind }]
+    tabs.value = [...tabs.value, changeWorkTab(id, mode ?? 'uncommitted')]
     active.value = id
+  }
+  function showChange(id: string, mode: ChangeMode, path: string | null) {
+    tabs.value = showChangeInTab(tabs.value, id, mode, path)
   }
   /** A file by workspace path, shown in the active tab in place. */
   function open(path: string) {
@@ -163,12 +167,37 @@ function useWorkTabs(activeId: string | null) {
     tabs.value = workTabs()
     active.value = activeId
   }
-  return { tabs, active, close, add, open, back, forward, reset }
+  return { tabs, active, close, add, open, showChange, back, forward, reset }
 }
 const workspace = createGalleryWorkspace()
 const fileViewTree = ref(true)
 const changeViewTree = ref(true)
-const changeSelected = ref<string | null>('src/auth/cookie.ts')
+/** One change tab on its own, stepped the way the panel steps the host's: for the Change view specimens. */
+function useChangeTab(mode: ChangeMode, path: string | null, changes: ChangeSources) {
+  const tabs = ref<WorkTab[]>(showChangeInTab([changeWorkTab('c', mode)], 'c', mode, path))
+  const tab = computed(() => findChangeWorkTab(tabs.value)!)
+  /** The file the tab holds in its mode, else the first there is. */
+  const selected = computed(() => {
+    const held = tab.value.selected[tab.value.mode]
+    const files = changes[tab.value.mode].files
+    if (held !== null && files.some((file) => file.path === held)) {
+      return held
+    }
+    return files[0]?.path ?? null
+  })
+  function show(mode: ChangeMode, path: string | null) {
+    tabs.value = showChangeInTab(tabs.value, 'c', mode, path)
+  }
+  return {
+    tab,
+    selected,
+    changes,
+    setMode: (mode: ChangeMode) => show(mode, tab.value.selected[mode]),
+    select: (path: string | null) => show(tab.value.mode, path),
+    back: () => (tabs.value = goBackInTab(tabs.value, 'c')),
+    forward: () => (tabs.value = goForwardInTab(tabs.value, 'c')),
+  }
+}
 const fileViewPath = ref(`${workspace.root}/src/auth/cookie.ts`)
 const fileViewBack = ref<string[]>([])
 const fileViewForward = ref<string[]>([])
@@ -193,6 +222,9 @@ function fileViewGoForward() {
 }
 const panelWork = useWorkTabs('w2')
 const exhibitWork = useWorkTabs('w1')
+const changeUncommitted = useChangeTab('uncommitted', 'src/auth/cookie.ts', workspace.changes)
+const changePicked = useChangeTab('conversation', 'src/auth/cookie.ts', workspace.changes)
+const changeEmpty = useChangeTab('conversation', null, { conversation: emptyChangeSet, uncommitted: workspace.changes.uncommitted })
 const emptyTabs: WorkTab[] = []
 let nextQueue = 3
 let nextSent = 1
@@ -1530,6 +1562,7 @@ function abortTerminal(id: string) {
                   @select="(id) => (panelWork.active.value = id)"
                   @close-tabs="panelWork.close"
                   @add="panelWork.add"
+                  @show-change="panelWork.showChange"
                   @open="panelWork.open"
                   @back="panelWork.back"
                   @forward="panelWork.forward"
@@ -1559,6 +1592,7 @@ function abortTerminal(id: string) {
                 @select="(id) => (exhibitWork.active.value = id)"
                 @close-tabs="exhibitWork.close"
                 @add="exhibitWork.add"
+                @show-change="exhibitWork.showChange"
                 @open="exhibitWork.open"
                 @back="exhibitWork.back"
                 @forward="exhibitWork.forward"
@@ -1596,16 +1630,32 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Change view"
-        note="The conversation's changes: the diff of the selected file on the left, the changed files as a tree on the right with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, kept clear of the scrollbar. The row above counts the files and lines and holds the controls that open the selected file itself and hide the tree; the divider before the tree sizes it."
+        note="Diffs from one of two sources, the switch in the header picks: Conversation holds the files picked from the conversation's tool rows, each a snapshot around that call; Uncommitted the working tree against the last commit. The diff of the selected file is on the left, that source's files as a tree on the right with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts; the tree's caption counts the files and lines. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself and hides the tree. A new change tab opens on Conversation when something was picked, else on Uncommitted; with nothing picked, Conversation says how to fill it."
       >
-        <GallerySpecimen variant="cookie rename · live" wide>
+        <GallerySpecimen
+          v-for="specimen in [
+            { variant: 'uncommitted · live', work: changeUncommitted },
+            { variant: 'conversation · three picked', work: changePicked },
+            { variant: 'conversation · nothing picked', work: changeEmpty },
+          ]"
+          :key="specimen.variant"
+          :variant="specimen.variant"
+          wide
+        >
           <div class="gallery-frame flex h-[40rem] overflow-hidden">
             <ChangeView
               class="w-full"
-              v-model:selected="changeSelected"
               v-model:tree="changeViewTree"
-              :changes="workspace.changes"
+              :mode="specimen.work.tab.value.mode"
+              :selected="specimen.work.selected.value"
+              :changes="specimen.work.changes"
               :root="workspace.root"
+              :can-back="specimen.work.tab.value.back.length > 0"
+              :can-forward="specimen.work.tab.value.forward.length > 0"
+              @update:mode="specimen.work.setMode"
+              @update:selected="specimen.work.select"
+              @back="specimen.work.back"
+              @forward="specimen.work.forward"
             />
           </div>
         </GallerySpecimen>

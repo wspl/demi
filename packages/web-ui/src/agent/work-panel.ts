@@ -1,30 +1,75 @@
+import type { ChangeMode } from '../files/changes'
 import { baseName } from '../files/paths'
 
 /**
- * One tab in the work panel: a file to read, or the conversation's changes
- * (its diff), of which there is at most one. The panel shows tabs for the
- * conversation on screen; the host keeps them per conversation and swaps
- * the set when the conversation changes.
+ * One tab in the work panel: a file to read, or the changes (diffs), of
+ * which there is at most one. The panel shows tabs for the conversation on
+ * screen; the host keeps them per conversation and swaps the set when the
+ * conversation changes. Each tab walks what it has shown with Back and
+ * Forward: a file tab its files, the change tab its steps, each a mode and
+ * the file shown in it, so Back can cross modes.
  */
-export type WorkTab =
-  | {
-      id: string
-      kind: 'file'
-      /** The working-tree path the tab shows. */
-      path: string
-      /** The paths shown before, latest last; Back returns to them. */
-      back: string[]
-      /** The paths left by Back, latest last; Forward returns to them. */
-      forward: string[]
-    }
-  | {
-      id: string
-      kind: 'change'
-    }
+export type WorkTab = FileWorkTab | ChangeWorkTab
+
+export interface FileWorkTab {
+  id: string
+  kind: 'file'
+  /** The working-tree path the tab shows. */
+  path: string
+  /** The paths shown before, latest last; Back returns to them. */
+  back: string[]
+  /** The paths left by Back, latest last; Forward returns to them. */
+  forward: string[]
+}
+
+export interface ChangeWorkTab {
+  id: string
+  kind: 'change'
+  mode: ChangeMode
+  /** The file each mode shows, by path relative to the workspace; null leaves the choice to the view. */
+  selected: Record<ChangeMode, string | null>
+  back: ChangeStep[]
+  forward: ChangeStep[]
+}
+
+/** What the change tab showed at one point: a mode and the file selected in it. */
+export interface ChangeStep {
+  mode: ChangeMode
+  path: string | null
+}
 
 /** A file tab showing `path`, with nothing to go back or forward to. */
 export function fileWorkTab(id: string, path: string): WorkTab {
   return { id, kind: 'file', path, back: [], forward: [] }
+}
+
+/** The change tab opened in `mode`, with nothing to go back or forward to. */
+export function changeWorkTab(id: string, mode: ChangeMode): WorkTab {
+  return { id, kind: 'change', mode, selected: { conversation: null, uncommitted: null }, back: [], forward: [] }
+}
+
+function currentChangeStep(tab: ChangeWorkTab): ChangeStep {
+  return { mode: tab.mode, path: tab.selected[tab.mode] }
+}
+
+function atChangeStep(tab: ChangeWorkTab, step: ChangeStep): ChangeWorkTab {
+  return { ...tab, mode: step.mode, selected: { ...tab.selected, [step.mode]: step.path } }
+}
+
+/**
+ * The change tab showing `path` in `mode`, remembering what it showed: a
+ * mode switch and a pick in the tree are both steps Back returns to.
+ */
+export function showChangeInTab(tabs: readonly WorkTab[], id: string, mode: ChangeMode, path: string | null): WorkTab[] {
+  return tabs.map((tab) => {
+    if (tab.id !== id || tab.kind !== 'change') {
+      return tab
+    }
+    if (tab.mode === mode && tab.selected[mode] === path) {
+      return tab
+    }
+    return { ...atChangeStep(tab, { mode, path }), back: [...tab.back, currentChangeStep(tab)], forward: [] }
+  })
 }
 
 /**
@@ -52,25 +97,37 @@ export function showFileInTab(
   return { tabs: tabs.map((tab) => (tab.id === active.id ? replaced : tab)), activeId: active.id }
 }
 
-/** The tab showing the file it showed before, the current one kept for Forward. */
+/** The tab showing what it showed before, the current step kept for Forward. */
 export function goBackInTab(tabs: readonly WorkTab[], id: string): WorkTab[] {
   return tabs.map((tab) => {
-    if (tab.id !== id || tab.kind !== 'file' || tab.back.length === 0) {
+    if (tab.id !== id || tab.back.length === 0) {
       return tab
     }
-    const back = tab.back.slice(0, -1)
-    return { ...tab, path: tab.back[tab.back.length - 1]!, back, forward: [...tab.forward, tab.path] }
+    if (tab.kind === 'file') {
+      return { ...tab, path: tab.back.at(-1)!, back: tab.back.slice(0, -1), forward: [...tab.forward, tab.path] }
+    }
+    return {
+      ...atChangeStep(tab, tab.back.at(-1)!),
+      back: tab.back.slice(0, -1),
+      forward: [...tab.forward, currentChangeStep(tab)],
+    }
   })
 }
 
-/** The tab showing the file Back left, the current one kept for Back. */
+/** The tab showing what Back left, the current step kept for Back. */
 export function goForwardInTab(tabs: readonly WorkTab[], id: string): WorkTab[] {
   return tabs.map((tab) => {
-    if (tab.id !== id || tab.kind !== 'file' || tab.forward.length === 0) {
+    if (tab.id !== id || tab.forward.length === 0) {
       return tab
     }
-    const forward = tab.forward.slice(0, -1)
-    return { ...tab, path: tab.forward[tab.forward.length - 1]!, forward, back: [...tab.back, tab.path] }
+    if (tab.kind === 'file') {
+      return { ...tab, path: tab.forward.at(-1)!, forward: tab.forward.slice(0, -1), back: [...tab.back, tab.path] }
+    }
+    return {
+      ...atChangeStep(tab, tab.forward.at(-1)!),
+      forward: tab.forward.slice(0, -1),
+      back: [...tab.back, currentChangeStep(tab)],
+    }
   })
 }
 
@@ -80,8 +137,8 @@ export function workTabTitle(tab: WorkTab): string {
 }
 
 /** The one change tab, when it is open. */
-export function changeWorkTab(tabs: readonly WorkTab[]): WorkTab | null {
-  return tabs.find((tab) => tab.kind === 'change') ?? null
+export function findChangeWorkTab(tabs: readonly WorkTab[]): ChangeWorkTab | null {
+  return tabs.find((tab): tab is ChangeWorkTab => tab.kind === 'change') ?? null
 }
 
 /**
