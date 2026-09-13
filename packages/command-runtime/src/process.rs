@@ -2,6 +2,7 @@ use std::{collections::BTreeMap, path::Path, process::Stdio, sync::Arc, time::Du
 
 use demi_command_protocol::PackageDescriptor;
 use demi_command_service::Client;
+use process_wrap::tokio::{CommandWrap, KillOnDrop};
 use tokio::{
     io::AsyncReadExt,
     process::Command,
@@ -43,11 +44,17 @@ impl ResidentService {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        let mut command = CommandWrap::from(command);
+        command.wrap(KillOnDrop);
+        #[cfg(unix)]
+        command.wrap(process_wrap::tokio::ProcessGroup::leader());
+        #[cfg(windows)]
+        command.wrap(process_wrap::tokio::JobObject);
         let mut child = command.spawn()?;
         let pid = child.id().expect("newly spawned process has an ID");
-        let input = child.stdin.take().expect("piped stdin");
-        let output = child.stdout.take().expect("piped stdout");
-        let mut stderr = child.stderr.take().expect("piped stderr");
+        let input = child.stdin().take().expect("piped stdin");
+        let output = child.stdout().take().expect("piped stdout");
+        let mut stderr = child.stderr().take().expect("piped stderr");
         let (client, connection) = match tokio::time::timeout(
             START_TIMEOUT,
             Client::connect(tokio::io::join(output, input)),
@@ -56,7 +63,7 @@ impl ResidentService {
         {
             Ok(Ok(result)) => result,
             result => {
-                child.kill().await?;
+                Box::into_pin(child.kill()).await?;
                 return Err(match result {
                     Ok(Err(error)) => error.into(),
                     Err(_) => RuntimeError::Deadline("handshake"),
@@ -126,7 +133,7 @@ impl ResidentService {
             };
             // Reap even after transport failure; kill_on_drop also covers owner cancellation.
             let reaped = if child.try_wait()?.is_none() {
-                child.kill().await
+                Box::into_pin(child.kill()).await
             } else {
                 Ok(())
             };
@@ -166,6 +173,17 @@ impl ResidentService {
 
     pub async fn diagnostics(&self) -> Vec<u8> {
         self.diagnostics.lock().await.clone()
+    }
+
+    /// Observes service death without polling or losing the process owner on cancellation.
+    pub async fn wait_closed(&mut self) -> Result<(), RuntimeError> {
+        let result = self
+            .owner
+            .as_mut()
+            .expect("service owner exists until observed")
+            .await;
+        self.owner.take();
+        result.map_err(|error| RuntimeError::Artifact(format!("native process owner: {error}")))?
     }
 
     pub async fn shutdown(mut self) -> Result<(), RuntimeError> {

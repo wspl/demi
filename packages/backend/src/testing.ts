@@ -1,3 +1,4 @@
+import { nativePackageFixture } from '@demicodes/demi-package/testing'
 // Integration fixtures use the production registry, pipes, packed runner and shell.
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -6,7 +7,7 @@ import { Hono } from 'hono'
 import { createBunWebSocket } from 'hono/bun'
 import { buildManifest, inProcessRpc } from '@demicodes/command-loader'
 import { RemoteShellEnvironment } from '@demicodes/host-remote'
-import { startTxikiRunner } from '@demicodes/runner/testing'
+import { startRunner } from '@demicodes/runner/testing'
 import {
   type CommandStorage,
   type CommandRegistry,
@@ -14,8 +15,6 @@ import {
   type ShellEnvironmentOptions
 } from '@demicodes/shell'
 import { memoryCommandStorage } from '@demicodes/shell/testing'
-import { waitFor } from '@demicodes/utils'
-import { transpileCommandModule } from './conversation/command-manifest'
 import { runnerSocketRoutes } from './http/runner-socket'
 import { pipeRoutes } from './http/pipes'
 import { generateDeviceToken, hashDeviceToken } from './runner/claim-codes'
@@ -55,7 +54,9 @@ export async function runnerShell(options: ShellEnvironmentOptions & {
     deviceId: fixture.deviceId,
     path: host.defaultCwd
   }, agentSessionId, host.store)
+  const native = await nativePackageFixture()
   const environment = new RemoteShellEnvironment({
+    commands: { manifest: await buildManifest(commands.list(), { packages: native.packages }), resolveArtifact: native.resolveArtifact },
     ...shell,
     initialEnv: {
       DEMI_SESSION_ID: agentSessionId,
@@ -109,10 +110,8 @@ async function createFixture(
   const pipes = new PipeBroker()
   const roots = initialCommands.list()
   const commands = new Map<string, CommandRegistry>()
-  const manifest = await buildManifest(
-    roots,
-    { transpile: transpileCommandModule }
-  )
+  const native = await nativePackageFixture()
+  const manifest = await buildManifest(roots, { packages: native.packages })
   const registry = new RunnerRegistry({
     control,
     pipes,
@@ -149,7 +148,7 @@ async function createFixture(
   app.route('/api/pipes', pipeRoutes({ control, broker: pipes }))
   const server = Bun.serve({ port: 0, idleTimeout: 0, fetch: app.fetch, websocket })
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-test-runner-'))
-  let runner: Awaited<ReturnType<typeof startTxikiRunner>> | undefined
+  let runner: Awaited<ReturnType<typeof startRunner>> | undefined
   const close = async () => {
     await runner?.stop()
     await registry.close()
@@ -158,18 +157,14 @@ async function createFixture(
     db.close()
   }
   try {
-    runner = await startTxikiRunner({
+    runner = await startRunner({
       backendUrl: `http://localhost:${server.port}`,
       stateDir,
       home: host.defaultCwd,
       deviceToken: token
     })
     await registry.whenOnline(device.id)
-    await waitFor(
-      () => runner!.log.some(line => line.includes(' installed:')),
-      () => runner!.log.join('\n'),
-      { timeoutMs: 15_000 }
-    )
+
     return { registry, deviceId: device.id, commands, users: 0, close }
   } catch (error) {
     await close();

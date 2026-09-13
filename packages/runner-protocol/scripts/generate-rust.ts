@@ -108,6 +108,11 @@ async function main(): Promise<void> {
     return `#[serde(rename = ${JSON.stringify(type)})]\n${name} {\n${body}\n},`
   })
 
+  const fsIds = flatten(backendToRunnerMessageSchema).flatMap(schema => {
+    const type = (schema.shape.type as z.ZodLiteral<string>).value
+    return type.startsWith('fs_') ? [`Self::${pascal(type)} { id, .. } => Some(id),`] : []
+  })
+
   const outgoing = flatten(runnerToBackendMessageSchema).map(schema => {
     const literals = Object.entries(schema.shape).filter(([, child]) => definition(child).type === 'literal')
     const type = (schema.shape.type as z.ZodLiteral<string>).value
@@ -149,6 +154,7 @@ async function main(): Promise<void> {
     `pub const JOB_VIEW_BYTES: usize = ${JOB_VIEW_BYTES};`,
     `${derive}\n#[serde(tag = "type", deny_unknown_fields)]\npub enum Inbound {\n${inboundVariants.join('\n')}\n}`,
     ...declarations.values(),
+    `impl Inbound { pub fn fs_request_id(&self) -> Option<&str> { match self { ${fsIds.join('\n')} _ => None, } } }`,
     ...outgoing,
     '',
   ].join('\n\n'))

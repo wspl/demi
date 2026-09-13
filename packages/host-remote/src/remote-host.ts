@@ -1,3 +1,5 @@
+import { artifactLocationSchema } from '@demicodes/command-protocol'
+import type { RemoteCommandCatalog } from './shell-environment-factory'
 import type {
   CommandStorage,
   Host,
@@ -13,7 +15,7 @@ import type {
   HostStore,
 } from '@demicodes/shell'
 import { createLogicalHostCwd } from '@demicodes/shell'
-import { createId, deferred, type Deferred } from '@demicodes/utils'
+import { createId, deferred, errorMessage, type Deferred } from '@demicodes/utils'
 import type {
   BackendToRunnerMessage,
   FsOp,
@@ -80,6 +82,7 @@ export class RemoteHost implements Host {
   private readonly pendingCalls = new Map<string, Deferred<unknown>>()
   private readonly activeSpawns = new Map<string, RemoteSpawn>()
   private readonly activeJobs = new Map<string, RemoteJobState>()
+  private readonly artifactRequests = new Set<string>()
 
   constructor(private readonly options: RemoteHostOptions) {
     this.defaultCwd = options.defaultCwd
@@ -181,7 +184,8 @@ export class RemoteHost implements Host {
     env: Record<string, string>;
     stdin?: PipeRef;
     stdout?: PipeRef;
-    commandStorage?: CommandStorage
+    commandStorage?: CommandStorage;
+    commands?: RemoteCommandCatalog
   }): RemoteJob {
     const release = this.options.admit?.()
     const jobId = createId()
@@ -189,7 +193,8 @@ export class RemoteHost implements Host {
       jobId,
       (message) => this.dispatch(message),
       Object.freeze({ ...params.env }),
-      params.commandStorage
+      params.commandStorage,
+      params.commands ? { ...params.commands } : undefined
     )
     void job.handle().wait().finally(() => release?.())
     if (!this.send) {
@@ -202,8 +207,11 @@ export class RemoteHost implements Host {
     }
     this.activeJobs.set(jobId, job)
     try {
+      if (params.commands)
+        this.send({ type: 'manifest', manifest: params.commands.manifest })
       this.send({
         type: 'job_start',
+        ...(params.commands ? { manifestHash: params.commands.manifest.hash } : {}),
         jobId,
         script: params.script,
         cwd: params.cwd,
@@ -213,10 +221,41 @@ export class RemoteHost implements Host {
       })
     } catch (error) {
       this.activeJobs.delete(jobId)
-      release?.()
+      job.finish({ exitCode: null, signal: errorMessage(error), spawnError: { kind: 'other' } })
       throw error
     }
     return job.handle()
+  }
+
+  private async resolveArtifact(message: Extract<RunnerToBackendMessage, { type: 'artifact_resolve' }>): Promise<void> {
+    const send = this.send
+    if (!send)
+      return
+    const job = this.activeJobs.get(message.jobId)
+    if (!job?.commands || job.commands.manifest.hash !== message.manifestHash) {
+      send({ type: 'artifact_location', id: message.id, error: 'No matching active job command catalog' })
+      return
+    }
+    if (this.artifactRequests.has(message.id) || this.artifactRequests.size >= 32) {
+      send({ type: 'artifact_location', id: message.id, error: 'Artifact resolution request limit or duplicate id' })
+      return
+    }
+    this.artifactRequests.add(message.id)
+    try {
+      const artifact = Object.values(job.commands.manifest.packages)
+        .map(descriptor => descriptor.targets[message.target])
+        .find(artifact => artifact.sha256 === message.sha256)
+      if (!artifact)
+        throw new Error('Artifact does not belong to the active job catalog')
+      const location = artifactLocationSchema.parse(await job.commands.resolveArtifact(artifact, job.signal))
+      if (this.send === send && this.activeJobs.get(message.jobId) === job)
+        send({ type: 'artifact_location', id: message.id, location })
+    } catch (error) {
+      if (this.send === send && this.activeJobs.get(message.jobId) === job)
+        send({ type: 'artifact_location', id: message.id, error: errorMessage(error) })
+    } finally {
+      this.artifactRequests.delete(message.id)
+    }
   }
 
   /**
@@ -224,6 +263,13 @@ export class RemoteHost implements Host {
    * streams).
    */
   handleMessage(message: RunnerToBackendMessage): void {
+    if (message.type === 'artifact_resolve') {
+      void this.resolveArtifact(message).catch(error => {
+        // A transport failure belongs to the registry's connection lifecycle.
+        console.error(`Artifact response delivery failed: ${errorMessage(error)}`)
+      })
+      return
+    }
     if (message.type === 'fs_ok' || message.type === 'fs_error') {
       const pending = this.pendingCalls.get(message.id)
       if (!pending)
@@ -327,6 +373,7 @@ export class RemoteHost implements Host {
         ...(params.args ? { args: params.args } : {}),
         ...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
         ...(params.env ? { env: params.env } : {}),
+        ...(params.inheritEnv !== undefined ? { inheritEnv: params.inheritEnv } : {}),
         ...(params.killProcessGroup !== undefined ? {
           killProcessGroup: params.killProcessGroup
         } : {}),
@@ -339,8 +386,14 @@ export class RemoteHost implements Host {
     return spawn.handle()
   }
 
-  private openCwd(path: string): HostCwd {
-    return createLogicalHostCwd(path)
+  private async openCwd(path: string): Promise<HostCwd> {
+    const validate = async (candidate: string) => {
+      const stat = await this.fs.stat(candidate)
+      if (!stat.isDirectory)
+        throw fsError('ENOTDIR', `Not a directory: ${candidate}`)
+    }
+    await validate(path)
+    return createLogicalHostCwd(path, validate)
   }
 }
 
@@ -458,6 +511,8 @@ class RemoteSpawn {
 
 /** One job's chunk log and exit, the same cursor model as a spawn. */
 class RemoteJobState {
+  private readonly abort = new AbortController()
+  get signal(): AbortSignal { return this.abort.signal }
   private readonly chunks: HostProcessOutputChunk[] = []
   private readonly runningHints = new Map<string, string>()
   private done = false
@@ -469,6 +524,7 @@ class RemoteJobState {
     private readonly send: (message: BackendToRunnerMessage) => void,
     readonly env: Readonly<Record<string, string>>,
     readonly commandStorage?: CommandStorage,
+    readonly commands?: RemoteCommandCatalog,
   ) {}
 
   pushChunk(chunk: HostProcessOutputChunk): void {
@@ -489,6 +545,7 @@ class RemoteJobState {
     if (this.done)
       return
     this.done = true
+    this.abort.abort(new Error('Runner job finished'))
     this.runningHints.clear()
     this.exitPromise.resolve(exit)
     this.wake()

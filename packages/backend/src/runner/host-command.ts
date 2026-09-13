@@ -1,3 +1,4 @@
+import type { RemoteCommandCatalog } from '@demicodes/host-remote'
 import { abortable, errorMessage, noop } from '@demicodes/utils'
 import {
   type Command,
@@ -14,6 +15,7 @@ import type { AttachedHostRecord, ControlService } from '../storage/control'
 import type { ManagedHosts } from '../managed/lifecycle'
 
 export interface HostCommandDeps {
+  catalogFor(agentSessionId: string): Promise<RemoteCommandCatalog>
   control: ControlService
   registry: RunnerRegistry
   pipes: PipeBroker
@@ -252,8 +254,10 @@ async function runOnHost(
         conversationId }
     if (ctx.env.DEMI_SHELL_ID)
       env.DEMI_SHELL_ID = ctx.env.DEMI_SHELL_ID
+    const commands = await deps.catalogFor(env.DEMI_SESSION_ID!)
     const { stdin, stdout } = attachEnds(ctx.io, target.deviceId)
     const job = host.startJob({
+      commands,
       script,
       cwd: target.path,
       env,

@@ -18,10 +18,10 @@ import {
   inProcessRpc,
   type Loader
 } from '../index'
-import { memoryStorage, testRoots, transpile } from './fixtures'
+import { memoryStorage, testRoots, testPackage, testNative } from './fixtures'
 
 /**
- * The loader against a real directory: runtime modules over `host.fs`, rpc in
+ * The loader against a real directory: native commands over `host.fs`, rpc in
  * process.
  */
 
@@ -29,10 +29,11 @@ async function world(withRpc = true) {
   const dir = mkdtempSync(join(tmpdir(), 'command-loader-'))
   const host = new LocalHost(dir, { storeRoot: join(dir, '.store') })
   const roots = testRoots()
-  const manifest = await buildManifest(roots, { transpile })
+  const manifest = await buildManifest(roots, { packages: [testPackage] })
   const loader = await createLoader({
     source: inMemorySource(manifest),
     host,
+    native: testNative(host),
     rpc: withRpc
       ? inProcessRpc(roots, { storage: memoryStorage(), host })
       : undefined,
@@ -91,7 +92,7 @@ describe('dispatch', () => {
   })
 
   test(
-    'a runtime module runs against the host filesystem with the caller cwd and args',
+    'a native command runs against the host filesystem with the caller cwd and args',
     async () => {
       const w = await world()
       try {
@@ -119,7 +120,7 @@ describe('dispatch', () => {
   )
 
   test(
-    'stdin streams into a runtime module, env is visible, the exit code is the module\'s',
+    'stdin streams into a native command, env is visible, the exit code is the executor\'s',
     async () => {
       const w = await world()
       try {
@@ -193,7 +194,7 @@ describe('dispatch', () => {
   )
 
   test(
-    'without a transport, rpc leaves report the missing transport while runtime leaves still run',
+    'without a transport, rpc leaves report the missing transport while native leaves still run',
     async () => {
       const w = await world(false)
       try {

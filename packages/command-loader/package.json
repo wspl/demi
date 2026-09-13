@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/command-loader",
-  "description": "Demi command loader: the manifest, and dispatch of root commands to runtime modules and rpc handlers, for any embedder.",
+  "description": "Demi command declarations, immutable native package manifests, and dispatch through explicit execution adapters.",
   "version": "0.20.0",
   "private": false,
   "type": "module",
@@ -12,11 +12,6 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
-    },
-    "./build": {
-      "development": "./src/build.ts",
-      "types": "./dist/build.d.mts",
-      "import": "./dist/build.mjs"
     }
   },
   "files": [
@@ -26,6 +21,7 @@
     "build": "tsdown"
   },
   "dependencies": {
+    "@demicodes/command-protocol": "workspace:^",
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^",
     "zod": "^4.0.0"

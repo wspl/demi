@@ -2,7 +2,7 @@
 # The shared read-only rootfs (managed-hosts.md § The shipped base): Ubuntu
 # 26.04 by debootstrap, the toolchain from packages.txt, uv as one binary,
 # the guest user `demi` (uid 1000) with passwordless sudo, the runner as
-# /demi-runner and the native client as /usr/bin/demi, packed with
+# /demi-runner with /usr/bin/demi-runner linked to it, packed with
 # `mke2fs -d`. Versions pinned here: UV_VERSION.
 # Runs as root on Linux. Usage: sudo rootfs/build.sh <aarch64|x86_64>
 set -euo pipefail
@@ -10,8 +10,7 @@ arch="${1:?arch}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 out="$here/out/$arch"
 runner="$out/demi-runner"
-client="$out/demi"
-[ -x "$runner" ] && [ -x "$client" ] || {
+[ -x "$runner" ] || {
   echo "build the runner first: runner/build.sh $arch" >&2
   exit 2
 }
@@ -85,9 +84,9 @@ if [ ! -x "$uv_dir/uv" ]; then
 fi
 install -m 0755 "$uv_dir/uv" "$uv_dir/uvx" "$work/usr/local/bin/"
 
-# The runner owns init; jobs invoke the separate native command client.
+# The runner supervises boot and supplies per-job command aliases.
 install -m 0755 "$runner" "$work/demi-runner"
-install -m 0755 "$client" "$work/usr/bin/demi"
+ln -s /demi-runner "$work/usr/bin/demi-runner"
 # /home is the owner's image; the rootfs carries only the mount point.
 rm -rf "$work/home/demi"
 mkdir -p "$work/home"

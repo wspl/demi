@@ -1,7 +1,7 @@
 import { mkdtemp, rm, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { startTxikiRunner, type TxikiRunner } from '@demicodes/runner/testing'
+import { startRunner, type Runner } from '@demicodes/runner/testing'
 import type {
   BootArgs,
   ManagedHostProvisioner
@@ -11,7 +11,7 @@ interface Guest {
   owner: string
   homeDir: string
   stateDir: string
-  runner: TxikiRunner | null
+  runner: Runner | null
   /**
    * Set around a stop the provisioner itself performs, so the exit is not
    * reported as a death.
@@ -132,7 +132,7 @@ export class FakeProvisioner implements ManagedHostProvisioner {
   private async start(guest: Guest, boot: BootArgs): Promise<void> {
     if (guest.runner)
       throw new Error(`guest ${guest.owner} already runs`)
-    const runner = await startTxikiRunner({
+    const runner = await startRunner({
       backendUrl: boot.backendUrl,
       stateDir: guest.stateDir,
       home: guest.homeDir,

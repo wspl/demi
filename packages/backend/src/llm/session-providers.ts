@@ -53,7 +53,7 @@ export function createSessionProviderResolver(
     const session: SessionProviderContext = {
       spawn: async (params) => {
         const target = await host()
-        return target.process.spawn(params)
+        return target.process.spawn({ ...params, inheritEnv: true })
       },
     }
     const meter: MeterOptions = {
