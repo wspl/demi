@@ -33,11 +33,8 @@ use rand::{RngExt as _, rng};
 #[cfg(not(target_os = "wasi"))]
 use rayon::slice::ParallelSliceMut;
 use std::cmp::Ordering;
-use uucore::context::env;
 use std::ffi::{OsStr, OsString};
-use uucore::context::fs::{File, OpenOptions};
 use std::hash::{Hash, Hasher};
-use uucore::context::io::{BufRead, BufReader, BufWriter, Read, Write, stdin, stdout};
 use std::num::IntErrorKind;
 use std::ops::Range;
 use std::path::Path;
@@ -45,6 +42,9 @@ use std::path::PathBuf;
 use std::str::Utf8Error;
 use std::sync::OnceLock;
 use thiserror::Error;
+use uucore::context::env;
+use uucore::context::fs::{File, OpenOptions};
+use uucore::context::io::{BufRead, BufReader, BufWriter, Read, Write, stdin, stdout};
 use uucore::diagnostics::OptionValue;
 use uucore::display::Quotable;
 use uucore::error::{FromIo, strip_errno};
@@ -159,7 +159,10 @@ pub enum SortError {
     OpenTmpFileFailed { error: uucore::context::io::Error },
 
     #[error("{}", translate!("sort-compress-prog-execution-failed", "prog" => .prog, "error" => strip_errno(.error)))]
-    CompressProgExecutionFailed { prog: String, error: uucore::context::io::Error },
+    CompressProgExecutionFailed {
+        prog: String,
+        error: uucore::context::io::Error,
+    },
 
     #[error("{}", translate!("sort-compress-prog-terminated-abnormally", "prog" => .prog.quote()))]
     CompressProgTerminatedAbnormally { prog: String },
@@ -702,7 +705,11 @@ impl<'a> Line<'a> {
         Self { line, index }
     }
 
-    fn write(&self, writer: &mut impl Write, settings: &GlobalSettings) -> uucore::context::io::Result<()> {
+    fn write(
+        &self,
+        writer: &mut impl Write,
+        settings: &GlobalSettings,
+    ) -> uucore::context::io::Result<()> {
         if settings.debug {
             self.write_debug(settings, writer)?;
         } else {
@@ -2256,7 +2263,9 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
         let threads = matches
             .get_one::<u64>(options::PARALLEL)
             .copied()
-            .unwrap_or_else(|| uucore::context::thread::available_parallelism().map_or(1, |n| n.get() as u64));
+            .unwrap_or_else(|| {
+                uucore::context::thread::available_parallelism().map_or(1, |n| n.get() as u64)
+            });
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(threads.max(1) as usize)
             .spawn_handler(|thread| {
@@ -2777,6 +2786,7 @@ fn compare_by<'a>(
     a_line_data: &LineData<'a>,
     b_line_data: &LineData<'a>,
 ) -> Ordering {
+    uucore::context::check_cancelled();
     if global_settings.precomputed.fast_lexicographic {
         let cmp = a.line.cmp(b.line);
         return if global_settings.reverse {

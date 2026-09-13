@@ -9,7 +9,10 @@
 
 use crate::io::{RawReader, RawWriter};
 use rustix::pipe::{SpliceFlags, fcntl_setpipe_size};
-use {crate::context::io::PipeReader, crate::context::io::PipeWriter, crate::context::io::Read, crate::context::io::Write, std::os::fd::AsFd};
+use {
+    crate::context::io::PipeReader, crate::context::io::PipeWriter, crate::context::io::Read,
+    crate::context::io::Write, std::os::fd::AsFd,
+};
 pub const MAX_ROOTLESS_PIPE_SIZE: usize = 1024 * 1024;
 const KERNEL_DEFAULT_PIPE_SIZE: usize = 64 * 1024;
 
@@ -48,6 +51,11 @@ pub fn pipe<const SIZE_REQUIRED: bool>() -> crate::context::io::Result<(PipeRead
 /// splice_unbounded_broker or splice_unbounded_auto in the case.
 #[inline]
 pub fn splice(source: &impl AsFd, target: &impl AsFd, len: usize) -> rustix::io::Result<usize> {
+    crate::context::check_cancelled();
+    if crate::context::control().is_some() {
+        // The caller's read/write fallback preserves execution-owned cancellation.
+        return Err(rustix::io::Errno::NOSYS);
+    }
     rustix::pipe::splice(source, None, target, None, len, SpliceFlags::empty())
 }
 
@@ -112,7 +120,14 @@ pub fn splice_unbounded_auto(source: &impl AsFd, dest: &mut impl AsFd) -> PipeRe
 /// splice `n` bytes with read/write fallback
 /// return actually sent bytes
 #[inline]
-pub fn send_n_bytes(input: impl AsFd, target: impl AsFd, n: u64) -> crate::context::io::Result<u64> {
+pub fn send_n_bytes(
+    input: impl AsFd,
+    target: impl AsFd,
+    n: u64,
+) -> crate::context::io::Result<u64> {
+    if crate::context::control().is_some() {
+        return crate::context::io::copy(&mut RawReader(input).take(n), &mut RawWriter(target));
+    }
     let pipe_size = MAX_ROOTLESS_PIPE_SIZE.min(n as usize);
     // improve throughput if output is pipe
     // expected that input is already extended if it is coming from splice
@@ -145,7 +160,8 @@ pub fn send_n_bytes(input: impl AsFd, target: impl AsFd, n: u64) -> crate::conte
         }
     }
     // remove buffering from this fallback by RawReader, or order of output would be wrong with multiple input
-    bytes_written += crate::context::io::copy(&mut RawReader(input).take(n), &mut RawWriter(target))?;
+    bytes_written +=
+        crate::context::io::copy(&mut RawReader(input).take(n), &mut RawWriter(target))?;
     Ok(bytes_written)
 }
 
@@ -154,6 +170,10 @@ pub fn send_n_bytes(input: impl AsFd, target: impl AsFd, n: u64) -> crate::conte
 /// Err(b) means we discarded b bytes, but we should try to discarding remaining bytes by read
 #[inline]
 pub fn discard_n_bytes(fd: impl AsFd, n: usize) -> Result<usize, usize> {
+    if crate::context::control().is_some() {
+        // Report zero consumed bytes so the caller uses its controlled reader.
+        return Err(0);
+    }
     let mut discarded = 0;
     let dev_null = dev_null().ok_or(0_usize)?;
     while discarded < n
