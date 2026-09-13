@@ -10,8 +10,9 @@ import {
   metadataSchema,
   modelSelectionSchema,
   pendingInternalSteerSchema,
+  queuedMessageSchema,
   rehydrateBlockMedia,
-  userContentBlockSchema,
+  sessionPhaseSchema,
   type AgentNodeClose,
   type AgentNodeClosePhase,
   type AgentNodeRecord,
@@ -37,12 +38,8 @@ type NodeState = Omit<AgentSessionCheckpoint<unknown>, 'transcript' | 'commandSt
  */
 const nodeStateSchema: z.ZodType<NodeState> = z.object({
   state: z.unknown(),
-  phase: z.enum(['idle', 'running', 'compacting']),
-  queue: z.array(z.object({
-    id: z.string(),
-    text: z.string(),
-    content: z.array(userContentBlockSchema),
-  })),
+  phase: sessionPhaseSchema,
+  queue: z.array(queuedMessageSchema),
   pendingInternalSteers: z.array(pendingInternalSteerSchema).optional(),
   cwd: z.string(),
   model: modelSelectionSchema,

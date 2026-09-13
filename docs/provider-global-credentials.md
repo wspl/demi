@@ -305,6 +305,11 @@ Optional public helpers per package (root or documented internal used by product
 - `importDefaultCodexCredential(pool)` — copy current `~/.codex/auth.json` into pool, set active if first.
 - Same for grok / claude-code.
 
+Each package reads its own stored provider config through a strict schema
+(`parseCodexProviderConfig`, `parseGrokBuildProviderConfig`,
+`parseClaudeCodeProviderConfig`): **a key the schema does not name is an error**, not an
+ignored extra, so a misspelled setting is reported instead of silently doing nothing.
+
 ### 6.2 Codex
 
 | Concern | Behavior |

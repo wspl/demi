@@ -180,14 +180,14 @@ export function useBlockVirtualizer(
         _delta,
         currentInstance
       ) => {
-        const internalInstance = currentInstance as unknown as {
-          getScrollOffset(): number;
-          scrollAdjustments: number
-        }
-        const offset = internalInstance.getScrollOffset()
+        // Before the first measurement the virtualizer states no offset; the
+        // top of the list is where it starts, which is what its own private
+        // getter also falls back to.
+        const offset = currentInstance.scrollOffset ?? 0
         const isStreamingTail = item.index === blocks.value.length - 1
         const allowCorrection = shouldAutoScroll.value || !isStreamingTail
-        return allowCorrection && item.start < offset + internalInstance.scrollAdjustments
+        return allowCorrection
+          && item.start < offset + currentInstance.scrollAdjustments
       }
     },
     { immediate: true },

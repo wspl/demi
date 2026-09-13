@@ -14,12 +14,14 @@ export {
   type ModelsDevProvider,
   type ModelsDevSnapshot,
 } from './models-dev'
+export { modelLimitsSchema } from './model-limits'
 export { applyModelPolicy, defineProvider, providerRuntime } from './provider'
 export {
   DEFAULT_ATTACHMENT_EXTENSIONS,
   modelSelectionFromCatalog,
   thinkingCapabilitiesFromProviderModel,
-  withProviderId,
+  withCatalogProviderId,
+  withModelProviderId,
   type ModelSelectionFromCatalogOptions,
 } from './model-selection'
 export {
@@ -34,6 +36,13 @@ export {
   redactSecretText,
   retryAfterMsFromHeader,
 } from './http'
+export {
+  decodeJsonResponse,
+  lifetimeSecondsSchema,
+  oauthSecondsSchema,
+  pollIntervalSecondsSchema,
+  DEFAULT_POLL_INTERVAL_SECONDS,
+} from './oauth'
 export { readServerSentEvents, type ServerSentEvent } from './sse'
 export {
   reportedStringSchema,
@@ -81,6 +90,10 @@ export {
   mapResponsesStream,
 } from './responses-stream'
 export { mapChatCompletionsStream } from './chat-completions-stream'
+export {
+  stringifyToolArguments,
+  thinkingToReasoningEffort,
+} from './openai-request'
 export {
   clampUsedPercent,
   createProviderQuota,
