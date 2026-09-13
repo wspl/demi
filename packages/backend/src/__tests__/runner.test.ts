@@ -16,7 +16,7 @@ import {
   createRunnerWire
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
-import { startTxikiRunner } from '@demicodes/runner/testing'
+import { startRunner } from '@demicodes/runner/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
@@ -46,7 +46,7 @@ test(
       runner: { pingIntervalMs: 0 }
     })
 
-    const runner = await startTxikiRunner({
+    const runner = await startRunner({
       backendUrl: backend.url,
       stateDir,
       home: runnerDir,
@@ -146,7 +146,7 @@ test(
         await delay(20)
     }
     expect(offline).toBe(true)
-    const restarted = await startTxikiRunner({
+    const restarted = await startRunner({
       backendUrl: backend.url,
       stateDir,
       home: runnerDir,
@@ -189,7 +189,7 @@ test(
       port: 0,
       runner: { pingIntervalMs: 0, claimTtlMs: 150 },
     })
-    const runner = await startTxikiRunner({
+    const runner = await startRunner({
       backendUrl: backend.url,
       stateDir,
       home: runnerDir,
@@ -396,7 +396,7 @@ test(
     // Pair a device, then point the conversation's workspace at it (the M6
     // workspace endpoints do this over HTTP; here the control plane is written
     // directly).
-    const runner = await startTxikiRunner({
+    const runner = await startRunner({
       backendUrl: backend.url,
       stateDir,
       home: runnerDir,
@@ -470,7 +470,7 @@ test(
     expect(failed?.status.status).not.toBe('running')
 
     // A fresh runner process with the persisted device token: reconnect resumes.
-    const revived = await startTxikiRunner({
+    const revived = await startRunner({
       backendUrl: backend.url,
       stateDir,
       home: runnerDir,
@@ -518,7 +518,7 @@ test(
       }
     })
 
-    const runner = await startTxikiRunner({
+    const runner = await startRunner({
       backendUrl: backend.url,
       stateDir,
       home: runnerDir,
@@ -548,7 +548,7 @@ test(
       join(twinState, 'runner-token'),
       readFileSync(join(stateDir, 'runner-token'))
     )
-    const twin = await startTxikiRunner({
+    const twin = await startRunner({
       backendUrl: backend.url,
       stateDir: twinState,
       home: runnerDir,

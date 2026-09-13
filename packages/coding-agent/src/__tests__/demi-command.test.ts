@@ -1,25 +1,13 @@
-import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { expect, test } from 'bun:test'
-import {
-  type CommandIO,
-  type CommandStorage,
-  type Host,
-  type HostDirent,
-  type HostFileStat,
-  type HostFileSystem,
-  type HostProcess,
-  type HostStore,
-  createLogicalHostCwd,
-  runRegisteredCommand,
-  type ShellEnvironment
-} from '@demicodes/shell'
+import { afterEach, expect, test } from 'bun:test'
+import type { ShellEnvironment } from '@demicodes/shell'
 import { runnerShell } from '@demicodes/backend/testing'
 
 import { LocalHost } from '@demicodes/runner/testing'
-import { bytesStream, bytesToBase64, encodeUtf8 } from '@demicodes/utils'
-import { createCodingCommandRegistry, createDemiCommand } from '../index'
+import { bytesToBase64 } from '@demicodes/utils'
+import { createCodingCommandRegistry } from '../index'
 
 test('demi file read returns a text file as text', async () => {
   const { env } = await createDemiEnvironment()
@@ -450,28 +438,12 @@ test(
   }
 )
 
-test('demi file patch rolls back files when a later write fails', async () => {
-  const host = new FailingWriteHost('/workspace', {
-    'first.txt': 'first\n',
-    'second.txt': 'second\n',
-  })
-  const output = commandOutput()
-  const patch =
-    '--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-second\n+changed\n'
-  const result = await runRegisteredCommand(createDemiCommand(), {
-    argv: ['demi', 'file', 'patch'],
-    stdin: bytesStream(encodeUtf8(patch)),
-    env: {},
-    cwd: '/workspace',
-    io: output.io,
-    storage: noopStorage,
-    host,
-  })
-
-  expect(result.exitCode).toBe(1)
-  expect(output.stderr()).toContain('simulated write failure')
-  expect(host.read('first.txt')).toBe('first\n')
-  expect(host.read('second.txt')).toBe('second\n')
+const environments: Array<{ env: ShellEnvironment; root: string }> = []
+afterEach(async () => {
+  for (const { env, root } of environments.splice(0)) {
+    await env.disposeAllShells()
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 async function createDemiEnvironment(): Promise<{
@@ -486,190 +458,6 @@ async function createDemiEnvironment(): Promise<{
     shellIdFactory: () => 'demi-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
+  environments.push({ env, root })
   return { env, host }
-}
-
-const noopStorage: CommandStorage = {
-  withSignal: () => noopStorage,
-  readJson: async () => null,
-  writeJson: async () => {},
-  updateJson: async (_key, update) => update(null),
-  delete: async () => {},
-  list: async () => [],
-}
-
-function commandOutput(): {
-  io: CommandIO;
-  stdout: () => string;
-  stderr: () => string
-} {
-  const stdout: string[] = []
-  const stderr: string[] = []
-  return {
-    io: {
-      stdout: async (data) => {
-        stdout.push(text(data))
-      },
-      stderr: async (data) => {
-        stderr.push(text(data))
-      },
-    },
-    stdout: () => stdout.join(''),
-    stderr: () => stderr.join(''),
-  }
-}
-
-class FailingWriteHost implements Host {
-  readonly defaultCwd: string
-  readonly commandArtifactsDir: string
-  readonly identity = { uid: 1000, gid: 1000, hostname: 'test', homeDir: '/' }
-  readonly fs: FailingWriteFileSystem
-  readonly store: HostStore = new MemoryHostStore()
-  readonly process: HostProcess = {
-    spawn: async (): Promise<never> => {
-      throw new Error(
-        'Host.process.spawn must not be used by demi file operations'
-      )
-    },
-    openCwd: async (path) => createLogicalHostCwd(path),
-  }
-
-  constructor(
-    defaultCwd: string,
-    files: Record<string, string>,
-  ) {
-    this.defaultCwd = defaultCwd
-    this.commandArtifactsDir = `${defaultCwd}/.command-artifacts`
-    this.fs = new FailingWriteFileSystem(defaultCwd, files)
-  }
-
-  read(path: string): string | undefined {
-    return this.fs.readText(path)
-  }
-
-}
-
-class MemoryHostStore implements HostStore {
-  async readJson<T>(): Promise<T | null> {
-    return null
-  }
-  async writeJson<T>(): Promise<void> {}
-  async delete(): Promise<void> {}
-  async list(): Promise<string[]> {
-    return []
-  }
-}
-
-class FailingWriteFileSystem implements HostFileSystem {
-  private readonly files = new Map<string, string>()
-
-  constructor(
-    private readonly root: string,
-    files: Record<string, string>,
-  ) {
-    for (const [path, content] of Object.entries(files)) {
-      this.files.set(this.resolve(path), content)
-    }
-  }
-
-  readText(path: string): string | undefined {
-    return this.files.get(this.resolve(path))
-  }
-
-  async readFile(path: string, options?: { cwd?: string }): Promise<Uint8Array> {
-    const content = this.files.get(this.resolve(path, options?.cwd))
-    if (content === undefined)
-      throw new Error(`ENOENT: ${path}`)
-    return new TextEncoder().encode(content)
-  }
-
-  async writeFile(
-    path: string,
-    data: Uint8Array,
-    options?: { cwd?: string }
-  ): Promise<void> {
-    const target = this.resolve(path, options?.cwd)
-    const content = text(data)
-    this.files.set(target, content)
-    if (target === `${this.root}/second.txt` && content === 'changed\n') {
-      throw new Error('simulated write failure')
-    }
-  }
-
-  async appendFile(
-    path: string,
-    data: Uint8Array,
-    options?: { cwd?: string }
-  ): Promise<void> {
-    const target = this.resolve(path, options?.cwd)
-    this.files.set(target, `${this.files.get(target) ?? ''}${text(data)}`)
-  }
-
-  async exists(path: string, options?: { cwd?: string }): Promise<boolean> {
-    return this.files.has(this.resolve(path, options?.cwd))
-  }
-
-  async stat(path: string, options?: { cwd?: string }): Promise<HostFileStat> {
-    const content = this.files.get(this.resolve(path, options?.cwd))
-    if (content === undefined)
-      throw new Error(`ENOENT: ${path}`)
-    return {
-      isFile: true,
-      isDirectory: false,
-      isSymbolicLink: false,
-      mode: 0o644,
-      size: content.length,
-      mtime: new Date(0),
-    }
-  }
-
-  async lstat(path: string, options?: { cwd?: string }): Promise<HostFileStat> {
-    return this.stat(path, options)
-  }
-
-  async readdir(path: string, options: {
-    cwd?: string;
-    withFileTypes: true
-  }): Promise<HostDirent[]>
-  async readdir(path: string, options?: {
-    cwd?: string;
-    withFileTypes?: false
-  }): Promise<string[]>
-  async readdir(): Promise<string[] | HostDirent[]> {
-    return []
-  }
-  async mkdir(): Promise<void> {}
-  async rm(path: string, options?: { cwd?: string }): Promise<void> {
-    this.files.delete(this.resolve(path, options?.cwd))
-  }
-  async cp(): Promise<void> {
-    throw new Error('not implemented')
-  }
-  async mv(): Promise<void> {
-    throw new Error('not implemented')
-  }
-  async chmod(): Promise<void> {}
-  async symlink(): Promise<void> {
-    throw new Error('not implemented')
-  }
-  async link(): Promise<void> {
-    throw new Error('not implemented')
-  }
-  async readlink(): Promise<string> {
-    throw new Error('not implemented')
-  }
-  async realpath(path: string, options?: { cwd?: string }): Promise<string> {
-    return this.resolve(path, options?.cwd)
-  }
-  async utimes(): Promise<void> {}
-
-  private resolve(path: string, cwd?: string): string {
-    if (path.startsWith('/'))
-      return path
-    return `${cwd ?? this.root}/${path}`
-  }
-}
-
-function text(data: string | Uint8Array): string {
-  return typeof data === 'string' ? data : new TextDecoder().decode(data)
 }

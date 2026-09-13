@@ -1,0 +1,157 @@
+# sed (uutils)
+# * see the repository LICENSE, README, and CONTRIBUTING files for more information
+
+# spell-checker:ignore (libs) mangen sed
+
+[package]
+name = "sed"
+version = "0.2.0"
+license = "MIT"
+description = "sed ~ implemented as universal (cross-platform) utils, written in Rust"
+default-run = "sed"
+
+homepage = "https://github.com/uutils/sed"
+repository = "https://github.com/uutils/sed"
+readme = "README.md"
+keywords = ["sed", "uutils", "cross-platform", "cli", "utility"]
+categories = ["command-line-utilities"]
+edition = "2024"
+rust-version = "1.88"
+
+build = "build.rs"
+
+[features]
+default = ["feat_common_core"]
+
+feat_common_core = ["sed"]
+sed = []
+
+[workspace.dependencies]
+assert_fs = "1.1.3"
+chrono = { version = "0.4.37", default-features = false, features = [
+  "clock",
+] }
+clap = { version = "4.4", features = ["wrap_help", "cargo"] }
+clap_complete = "4.5"
+clap_mangen = "0.3"
+divan = { package = "codspeed-divan-compat", version = "5.0.0" }
+fancy-regex = "0.18.0"
+hex = "0.4"
+libc = "0.2.153"
+memchr = "2.7.4"
+memmap2 = "0.9"
+phf = "0.14.0"
+phf_codegen = "0.14.0"
+predicates = "3.1.3"
+rand = { version = "0.10.0" }
+regex = "1.10.4"
+sha2 = "0.11"
+tempfile = "3.10.1"
+terminal_size = "0.4.2"
+textwrap = { version = "0.16.1", features = ["terminal_size"] }
+uucore = { version = "0.10.0", features = ["libc"] }
+rustix = "1.1.4"
+xattr = "1.3.1"
+
+
+[dependencies]
+clap = { workspace = true }
+clap_complete = { workspace = true }
+clap_mangen = { workspace = true }
+fancy-regex =  { workspace = true }
+memchr = { workspace = true }
+memmap2.workspace = true
+phf = { workspace = true }
+predicates = { workspace = true }
+regex = { workspace = true }
+tempfile = { workspace = true }
+terminal_size = { workspace = true }
+textwrap = { workspace = true }
+uucore = { workspace = true }
+rustix = { workspace = true }
+
+[dev-dependencies]
+assert_fs = { workspace = true }
+chrono = { workspace = true }
+ctor = "1.0.0"
+divan = { workspace = true }
+hex = { workspace = true }
+libc = { workspace = true }
+pretty_assertions = "1"
+rand = { workspace = true }
+regex = { workspace = true }
+sha2 = { workspace = true }
+tempfile = { workspace = true }
+uucore = { workspace = true, features = ["entries", "process", "signals", "benchmark"] }
+uutests = "0.10.0"
+
+[target.'cfg(unix)'.dev-dependencies]
+xattr = { workspace = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dev-dependencies]
+rlimit = "0.11.0"
+
+[build-dependencies]
+phf_codegen = { workspace = true }
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "sed"
+path = "src/bin/sed.rs"
+
+[[bench]]
+name = "sed_bench"
+harness = false
+
+[profile.release]
+lto = true
+panic = "abort"
+# should be dropped to 1 for binary size without performance drop
+codegen-units = 7
+
+# A release-like profile that is as small as possible.
+[profile.release-small]
+inherits = "release"
+opt-level = "z"
+strip = true
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+
+cargo = { level = "warn", priority = -1 }
+
+pedantic = { level = "warn", priority = -1 }
+# The counts were generated with this command:
+#   cargo +nightly clippy --all-targets --workspace --message-format=json --quiet \
+#     | jq -r '.message.code.code | select(. != null and startswith("clippy::"))' \
+#     | sort | uniq -c | sort -h -r
+missing_errors_doc = "allow"                 # 69
+doc_markdown = "allow"                       # 63
+must_use_candidate = "allow"                 # 56
+needless_raw_string_hashes = "allow"         # 20
+needless_pass_by_value = "allow"             # 15
+missing_panics_doc = "allow"                 # 12
+# cast_possible_truncation = "allow"           # 7
+unnecessary_wraps = "allow"                  # 6
+match_wildcard_for_single_variants = "allow" # 4
+cast_sign_loss = "allow"                     # 4
+cast_possible_wrap = "allow"                 # 4
+uninlined_format_args = "allow"              # 3
+similar_names = "allow"                      # 3
+used_underscore_binding = "allow"            # 2
+too_many_lines = "allow"                     # 2
+struct_excessive_bools = "allow"             # 2
+match_same_arms = "allow"                    # 2
+ignore_without_reason = "allow"              # 2
+format_push_string = "allow"                 # 2
+should_panic_without_expect = "allow"        # 1
+many_single_char_names = "allow"             # 1
+comparison_chain = "allow"
+multiple_crate_versions = "allow"
+unnested_or_patterns = "allow"
+
+restriction = { level = "allow", priority = -1 }
+cognitive_complexity = "warn"
+redundant_clone = "warn"

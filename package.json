@@ -19,6 +19,7 @@
     "packages/machines",
     "packages/command-loader",
     "packages/command-protocol",
+    "packages/demi-package",
     "packages/runner-protocol",
     "packages/host-remote",
     "packages/runner",

@@ -1,3 +1,5 @@
+import { isAbsolutePath, normalizePath } from '@demicodes/utils'
+
 export interface Host {
   defaultCwd: string
   fs: HostFileSystem
@@ -161,6 +163,8 @@ export interface HostSpawnParams {
   args?: string[]
   cwd?: string
   env?: Record<string, string | undefined>
+  /** Extend the target process environment; undefined entries remove inherited names. */
+  inheritEnv?: boolean
   killProcessGroup?: boolean
 }
 
@@ -195,7 +199,10 @@ export interface HostSpawnExit {
 /**
  * Path-string cwd for test doubles and Hosts that cannot hold a directory fd.
  */
-export function createLogicalHostCwd(initialPath: string): HostCwd {
+export function createLogicalHostCwd(
+  initialPath: string,
+  validate?: (path: string) => Promise<void>
+): HostCwd {
   let path = initialPath
   return {
     get path() {
@@ -207,7 +214,9 @@ export function createLogicalHostCwd(initialPath: string): HostCwd {
     async chdir(next: string) {
       if (next === '.')
         return
-      path = resolveLogicalCwd(path, next)
+      const target = normalizePath(isAbsolutePath(next) ? next : `${path}/${next}`)
+      await validate?.(target)
+      path = target
     },
     async snapshot() {
       const saved = path
@@ -220,17 +229,3 @@ export function createLogicalHostCwd(initialPath: string): HostCwd {
     async close() {},
   }
 }
-
-function resolveLogicalCwd(base: string, next: string): string {
-  if (next.startsWith('/'))
-    return next
-  const parts = base.split('/').filter(Boolean)
-  for (const part of next.split('/')) {
-    if (!part || part === '.')
-      continue
-    if (part === '..') parts.pop()
-    else parts.push(part)
-  }
-  return `/${parts.join('/')}`
-}
-

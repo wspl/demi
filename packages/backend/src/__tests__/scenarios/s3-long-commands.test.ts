@@ -150,7 +150,7 @@ describe.each<Target>(['cloud', 'runner:alpha'])(
 )
 
 describe('S3 on a runner only', () => {
-  test('a background job outlives its command', async () => {
+  test('the runner job waits for its background shell tasks', async () => {
     const driver = await world.conversation('runner:alpha')
     const turn = await driver.turn({
       model: [

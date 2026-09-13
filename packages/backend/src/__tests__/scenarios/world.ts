@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect } from 'bun:test'
@@ -8,7 +8,7 @@ import {
   JOB_VIEW_BYTES,
   type RunnerProtocolMessage
 } from '@demicodes/runner-protocol'
-import { startTxikiRunner, type TxikiRunner } from '@demicodes/runner/testing'
+import { startRunner, type Runner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
 import type { BackendOptions } from '../../index'
 import { openBackend, type TestBackend } from '../session'
@@ -20,7 +20,7 @@ import { Driver, type Target } from './driver'
 
 /**
  * The world: one backend over a temp data directory, its `stub` provider
- * type answered by the scripted model, and the packed txiki.js runners named
+ * type answered by the scripted model, and the native Rust runners named
  * in `runners`, each paired as a device with a workspace at its home. One
  * world per test file, one conversation per scenario.
  */
@@ -60,7 +60,7 @@ export interface Device {
   name: string
   home: string
   stateDir: string
-  runner: TxikiRunner
+  runner: Runner
   deviceId: string
   workspaceId: string
   /**
@@ -173,11 +173,11 @@ export class World {
 
   /** Starts a runner, claims its pairing code, creates its workspace. */
   async pair(name: string): Promise<Device> {
-    const home = await mkdtemp(join(tmpdir(), `demi-scenario-${name}-`))
+    const home = await realpath(await mkdtemp(join(tmpdir(), `demi-scenario-${name}-`)))
     const stateDir = await mkdtemp(
       join(tmpdir(), `demi-scenario-${name}-state-`)
     )
-    const runner = await startTxikiRunner(
+    const runner = await startRunner(
       { backendUrl: this.url, stateDir, home, name }
     )
     await waitFor(
@@ -243,7 +243,7 @@ export class World {
 
   async returnRunner(name: string): Promise<void> {
     const device = this.device(name)
-    device.runner = await startTxikiRunner({
+    device.runner = await startRunner({
       backendUrl: this.url,
       stateDir: device.stateDir,
       home: device.home,

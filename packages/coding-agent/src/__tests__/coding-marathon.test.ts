@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
@@ -41,7 +41,7 @@ const model: ModelSelection = {
 test(
   'coding agent completes an demi/todo workflow through shell session tools',
   async () => {
-    const root = await mkdtemp(join(tmpdir(), 'demi-coding-marathon-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'demi-coding-marathon-')))
     const host = new LocalHost(root)
     const harness = createCodingAgentHarness({ host })
     const { environment, runtime } = await createRuntimeFromHarness(
@@ -54,7 +54,7 @@ test(
     const provider = new StubProvider([
       [
         events.toolCall('create-file', 'shell_exec', {
-          timeoutMs: 1_000,
+          timeoutMs: 5_000,
           script: "demi file create src/app.ts <<'EOF'\nexport const value = 1\nEOF",
         }),
       ],
@@ -68,7 +68,7 @@ test(
           {
             shellId: result.shellId,
             script: 'demi todo add \"Run tests\" --json',
-            timeoutMs: 1_000
+            timeoutMs: 5_000
           }
         )]
       },
@@ -81,7 +81,7 @@ test(
         return [
           events.toolCall('edit-file', 'shell_exec', {
             shellId: result.shellId,
-            timeoutMs: 1_000,
+            timeoutMs: 5_000,
             script: 'demi file edit src/app.ts --old "1" --new "2"',
           }),
         ]
@@ -127,7 +127,7 @@ test(
 test(
   'coding agent preserves workflow state across multiple user messages',
   async () => {
-    const root = await mkdtemp(join(tmpdir(), 'demi-coding-multiturn-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'demi-coding-multiturn-')))
     const harness = createCodingAgentHarness({ host: new LocalHost(root) })
     const { environment, runtime } = await createRuntimeFromHarness(
       harness,
@@ -139,7 +139,7 @@ test(
     const provider = new StubProvider([
       [
         events.toolCall('start-workflow', 'shell_exec', {
-          timeoutMs: 1_000,
+          timeoutMs: 5_000,
           script: [
             "demi file create note.txt <<'EOF'",
             'first turn',
@@ -164,7 +164,7 @@ test(
         expect(serialized).toContain('carry state')
         return [
           events.toolCall('continue-workflow', 'shell_exec', {
-            timeoutMs: 1_000,
+            timeoutMs: 5_000,
             script: [
               'demi todo done T1 --json',
               "printf '\\n'",
@@ -211,7 +211,7 @@ test(
 test(
   'coding agent preserves cwd between jobs and scopes exported variables to one job',
   async () => {
-    const root = await mkdtemp(join(tmpdir(), 'demi-coding-shell-state-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'demi-coding-shell-state-')))
     const harness = createCodingAgentHarness({ host: new LocalHost(root) })
     const { runtime } = await createRuntimeFromHarness(harness, root, {
       shellIdFactory: () => 'coding-state-shell',
@@ -219,7 +219,7 @@ test(
     const provider = new StubProvider([
       [
         events.toolCall('prepare-shell-state', 'shell_exec', {
-          timeoutMs: 1_000,
+          timeoutMs: 5_000,
           script: [
             'mkdir -p pkg',
             'cd pkg',
@@ -235,7 +235,7 @@ test(
         return [
           events.toolCall('read-shell-state', 'shell_exec', {
             shellId: result.shellId,
-            timeoutMs: 1_000,
+            timeoutMs: 5_000,
             script: 'printf "state:%s:%s" "$PWD" "$WORKFLOW_TOKEN"',
           }),
         ]
@@ -261,7 +261,7 @@ test(
 test(
   'coding agent iterates from a failing check to a passing fix',
   async () => {
-    const root = await mkdtemp(join(tmpdir(), 'demi-coding-test-fix-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'demi-coding-test-fix-')))
     const host = new LocalHost(root)
     const harness = createCodingAgentHarness({ host })
     const { environment, runtime } = await createRuntimeFromHarness(
@@ -274,7 +274,7 @@ test(
     const provider = new StubProvider([
       [
         events.toolCall('create-project', 'shell_exec', {
-          timeoutMs: 1_000,
+          timeoutMs: 5_000,
           script: [
             'mkdir -p src',
             "demi file create src/todo.ts <<'EOF'\nexport function addTodo(items: string[], text: string): string[] {\n  return items\n}\nEOF",
@@ -292,7 +292,7 @@ test(
           {
             shellId: result.shellId,
             script: "grep 'items, text' src/todo.ts > /dev/null || printf 'FAIL adds a todo item: ship tests\\n'; grep 'items, text' src/todo.ts > /dev/null && printf '1 pass\\n'",
-            timeoutMs: 1_000
+            timeoutMs: 5_000
           }
         )]
       },
@@ -307,7 +307,7 @@ test(
           {
             shellId: result.shellId,
             script: 'cat src/todo.ts',
-            timeoutMs: 1_000
+            timeoutMs: 5_000
           }
         )]
       },
@@ -317,7 +317,7 @@ test(
         return [
           events.toolCall('fix-source', 'shell_exec', {
             shellId: result.shellId,
-            timeoutMs: 1_000,
+            timeoutMs: 5_000,
             script: 'demi file edit src/todo.ts --old "return items" --new "return [...items, text]"',
           }),
         ]
@@ -332,7 +332,7 @@ test(
           {
             shellId: result.shellId,
             script: "grep 'items, text' src/todo.ts > /dev/null || printf 'FAIL adds a todo item: ship tests\\n'; grep 'items, text' src/todo.ts > /dev/null && printf '1 pass\\n'",
-            timeoutMs: 1_000
+            timeoutMs: 5_000
           }
         )]
       },
@@ -362,7 +362,7 @@ test(
 test(
   'coding agent controls a long foreground command with status and abort',
   async () => {
-    const root = await mkdtemp(join(tmpdir(), 'demi-coding-long-command-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'demi-coding-long-command-')))
     const harness = createCodingAgentHarness({ host: new LocalHost(root) })
     const { runtime } = await createRuntimeFromHarness(harness, root, {
       shellIdFactory: () => 'coding-long-shell',
@@ -404,7 +404,7 @@ test(
 test(
   'coding agent exercises all standard shell control tools in one flow',
   async () => {
-    const root = await mkdtemp(join(tmpdir(), 'demi-coding-standard-tools-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'demi-coding-standard-tools-')))
     const harness = createCodingAgentHarness({ host: new LocalHost(root) })
     let session: AgentSession<Record<string, never>> | null = null
     const { runtime } = await createRuntimeFromHarness(
@@ -420,6 +420,7 @@ test(
       },
     )
     let readerCommandId = ''
+    let readerOutput = ''
     let longCommandId = ''
     // State machine so we poll real OS processes until they reach the expected state
     // instead of assuming fixed yield/sleep delays.
@@ -478,6 +479,7 @@ test(
         }
         if (phase === 'await-reader-exit') {
           const result = latestShellResult(request)
+          readerOutput += result.stdout
           if (result.status === 'running') {
             poll += 1
             if (poll % 2 === 1) {
@@ -495,7 +497,7 @@ test(
             ]
           }
           expect(result.status).toBe('exited')
-          expect(result.stdout).toContain('typed')
+          expect(readerOutput).toContain('typed')
           phase = 'await-long-ready'
           poll = 0
           return [

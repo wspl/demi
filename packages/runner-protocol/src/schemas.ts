@@ -6,6 +6,7 @@
 // hand-written types; their validators carry a `z.ZodType<T>` annotation so
 // drift is a compile error.
 import { z } from 'zod'
+import { artifactDigestSchema, artifactLocationSchema, nativeTargetSchema } from '@demicodes/command-protocol'
 import type {
   HostDirent,
   HostFileStat,
@@ -233,6 +234,14 @@ const jobOutputSchema = z.object({
 
 export const runnerToBackendMessageSchema = z.union([
   z.object({
+    type: z.literal('artifact_resolve'),
+    id: z.string(),
+    jobId: z.string(),
+    manifestHash: artifactDigestSchema,
+    sha256: artifactDigestSchema,
+    target: nativeTargetSchema,
+  }).strict(),
+  z.object({
     type: z.literal('hello'),
     protocol: z.number(),
     /** Absent on an unclaimed first start. */
@@ -397,6 +406,7 @@ export const backendToRunnerMessageSchema = z.union([
       args: z.array(z.string()).optional(),
       cwd: z.string().optional(),
       env: z.record(z.string(), z.string().optional()).optional(),
+      inheritEnv: z.boolean().optional(),
       killProcessGroup: z.boolean().optional(),
     }),
     z.object({
@@ -418,6 +428,7 @@ export const backendToRunnerMessageSchema = z.union([
     z.object({
       type: z.literal('job_start'),
       jobId: z.string(),
+      manifestHash: artifactDigestSchema.optional(),
       script: z.string(),
       cwd: z.string(),
       env: z.record(z.string(), z.string()),
@@ -440,6 +451,7 @@ export const backendToRunnerMessageSchema = z.union([
      * `PUT`s the process's pipe into `stdin` (present when the call declared
      * one) and `GET`s `stdout` into the process (`runner.md` § Pipes).
      */
+    z.object({ type: z.literal('rpc_stdin_pull'), callId: z.string() }),
     z.object({
       type: z.literal('rpc_pipes'),
       callId: z.string(),
@@ -467,6 +479,12 @@ export const backendToRunnerMessageSchema = z.union([
      * applies; the protocol carries it opaque so it owns no command types.
      */
     z.object({ type: z.literal('manifest'), manifest: z.unknown() }),
+    z.object({
+      type: z.literal('artifact_location'),
+      id: z.string(),
+      location: artifactLocationSchema.optional(),
+      error: z.string().optional(),
+    }).strict(),
   ]),
   fsCallMessageSchema,
 ])

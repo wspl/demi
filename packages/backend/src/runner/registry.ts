@@ -1,3 +1,4 @@
+import { LiveInput } from './live-input'
 import { administrativeStore } from '../storage/host-store'
 import { RemoteHost } from '@demicodes/host-remote'
 import {
@@ -21,7 +22,6 @@ import type {
 } from '@demicodes/shell'
 import {
   AbortError,
-  ByteQueue,
   createId,
   deferred,
   errorMessage,
@@ -162,7 +162,7 @@ interface RunnerConnection {
   /** Live stdin queues of the rpc calls relayed on this connection. */
   rpcCalls: Map<string, {
     jobId: string;
-    live: ByteQueue;
+    live: LiveInput;
     controller: AbortController;
     pipes: Pipe[]
   }>
@@ -515,7 +515,11 @@ export class RunnerRegistry {
       return
     }
     if (message.type === 'rpc_stdin') {
-      connection.rpcCalls.get(message.callId)?.live.push(message.bytes)
+      try {
+        connection.rpcCalls.get(message.callId)?.live.push(message.bytes)
+      } catch (error) {
+        this.stopRpc(connection, message.callId, new Error(errorMessage(error)))
+      }
       return
     }
     if (message.type === 'rpc_stdin_end') {
@@ -559,6 +563,14 @@ export class RunnerRegistry {
     }
     // fs results, spawn and job streams: each per-target host claims its own ids.
     const deviceHosts = this.hosts.get(connection.deviceId)
+    if (message.type === 'artifact_resolve') {
+      const host = [...(deviceHosts?.values() ?? [])].find(host => host.jobEnvironment(message.jobId) !== undefined)
+      if (host)
+        host.handleMessage(message)
+      else
+        connection.send({ type: 'artifact_location', id: message.id, error: 'No matching active job on this device' })
+      return
+    }
     if (!deviceHosts)
       return
     for (const host of deviceHosts.values())
@@ -624,7 +636,7 @@ export class RunnerRegistry {
       connection.close()
       return
     }
-    const live = new ByteQueue()
+    const live = new LiveInput(() => connection.send({ type: 'rpc_stdin_pull', callId: call.callId }))
     const controller = new AbortController()
     const pipes: Pipe[] = []
     connection.rpcCalls.set(

@@ -29,6 +29,8 @@
     "build": "tsdown"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1131.0",
+    "@aws-sdk/s3-request-presigner": "^3.1131.0",
     "@demicodes/agent": "workspace:^",
     "@demicodes/coding-agent": "workspace:^",
     "@demicodes/command-loader": "workspace:^",
@@ -45,11 +47,15 @@
     "@demicodes/runner-protocol": "workspace:^",
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^",
+    "ali-oss": "^6.23.0",
     "hono": "^4.13.5",
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "@demicodes/command-protocol": "workspace:^",
+    "@demicodes/demi-package": "workspace:^"
   },
   "devDependencies": {
-    "@demicodes/runner": "workspace:^"
+    "@demicodes/runner": "workspace:^",
+    "@types/ali-oss": "^6.23.3"
   },
   "license": "Apache-2.0",
   "publishConfig": {

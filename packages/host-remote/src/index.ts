@@ -10,3 +10,10 @@ export {
   RemoteShellEnvironment,
   type RemoteShellEnvironmentOptions
 } from './remote-shell-environment'
+
+export {
+  createRemoteShellEnvironmentFactory,
+  type RemoteShellEnvironmentFactoryOptions,
+  type RemoteShellEnvironmentContext,
+  type RemoteCommandCatalog,
+} from './shell-environment-factory'

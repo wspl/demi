@@ -4,8 +4,10 @@ pub use demi_command_protocol as protocol;
 
 mod client;
 mod server;
+mod stdio;
 mod stream;
+pub use stdio::serve_stdio;
 
 pub use client::{Client, CommandInput, CommandOutput};
-pub use server::{Handler, InvocationContext, Output, serve};
+pub use server::{Handler, InvocationContext, Output, serve, serve_cancellable};
 pub use stream::{Input, ServiceError};

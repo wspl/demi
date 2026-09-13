@@ -3,10 +3,13 @@ use futures_util::future::poll_fn;
 use h2::{RecvStream, SendStream};
 use thiserror::Error;
 
-use crate::protocol::{Invocation, MAX_METADATA_BYTES, ProtocolError};
+use crate::Output;
+use crate::protocol::{Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, ProtocolError};
 
 #[derive(Debug, Error)]
 pub enum ServiceError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
     #[error(transparent)]
     Protocol(#[from] ProtocolError),
     #[error(transparent)]
@@ -30,7 +33,8 @@ pub enum ServiceError {
 pub struct Input {
     stream: RecvStream,
     pending: Bytes,
-    delivered: usize,
+    output: Option<Output>,
+    ended: bool,
 }
 
 impl Input {
@@ -38,25 +42,45 @@ impl Input {
         Self {
             stream,
             pending: Bytes::new(),
-            delivered: 0,
+            output: None,
+            ended: false,
         }
     }
 
-    /// Returns capacity for the previous chunk only when the consumer asks again.
+    pub(crate) fn set_output(&mut self, output: Output) {
+        self.output = Some(output);
+    }
+
+    /// Requests exactly one caller chunk. HTTP/2 capacity is transport
+    /// backpressure, not permission to read from the caller's live stdin.
     pub async fn next(&mut self) -> Result<Option<Bytes>, ServiceError> {
-        self.stream
-            .flow_control()
-            .release_capacity(self.delivered)?;
-        self.delivered = 0;
-        let chunk = if self.pending.is_empty() {
-            self.stream.data().await.transpose()?
-        } else {
-            Some(std::mem::take(&mut self.pending))
-        };
-        if let Some(bytes) = &chunk {
-            self.delivered = bytes.len();
+        if self.ended {
+            return Ok(None);
         }
-        Ok(chunk)
+        if self.pending.is_empty() && self.stream.is_end_stream() {
+            self.ended = true;
+            return Ok(None);
+        }
+        self.output
+            .as_ref()
+            .expect("input attached before handler invocation")
+            .pull()
+            .await?;
+        while self.pending.is_empty() {
+            match self.stream.data().await.transpose()? {
+                Some(bytes) => self.pending = bytes,
+                None => {
+                    self.ended = true;
+                    return Ok(None);
+                }
+            }
+        }
+        let prefix = self.read_exact(4).await?;
+        let length = u32::from_be_bytes(prefix[..].try_into().unwrap()) as usize;
+        if length > MAX_RECORD_BYTES {
+            return Err(ProtocolError::TooLarge.into());
+        }
+        Ok(Some(self.read_exact(length).await?))
     }
 
     pub(crate) async fn invocation(&mut self) -> Result<Invocation, ServiceError> {

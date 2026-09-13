@@ -55,19 +55,13 @@ impl Handler for DemiCommands {
                     error: None,
                 }),
                 Err(ServiceError::Cancelled) => Err(ServiceError::Cancelled),
-                Err(error) => {
-                    context
-                        .output
-                        .stderr(Bytes::from(format!("{error}\n")))
-                        .await?;
-                    Ok(Completion {
-                        exit_code: 1,
-                        error: Some(CommandError {
-                            code: "command_failed".into(),
-                            message: error.to_string(),
-                        }),
-                    })
-                }
+                Err(error) => Ok(Completion {
+                    exit_code: 1,
+                    error: Some(CommandError {
+                        code: "command_failed".into(),
+                        message: error.to_string(),
+                    }),
+                }),
             }
         })
     }

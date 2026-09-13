@@ -8,7 +8,7 @@ import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider, type AgentProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { decodeUtf8, deferred, delay, waitFor } from '@demicodes/utils'
-import { startTxikiRunner } from '@demicodes/runner/testing'
+import { startRunner } from '@demicodes/runner/testing'
 import type { SessionProviderContext } from '../llm/assembly'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
@@ -622,7 +622,7 @@ test(
     })
 
     // Claim a runner and bind a conversation's workspace to it (M4 machinery).
-    const runner = await startTxikiRunner({
+    const runner = await startRunner({
       backendUrl: backend.url,
       stateDir,
       home: runnerDir,
@@ -851,7 +851,7 @@ test(
         },
       },
     })
-    const runners: Awaited<ReturnType<typeof startTxikiRunner>>[] = []
+    const runners: Awaited<ReturnType<typeof startRunner>>[] = []
     let client: AgentClient | undefined
     try {
       const workspaces: Array<{
@@ -861,7 +861,7 @@ test(
       for (const name of ['a', 'b']) {
         const home = await mkdtemp(join(tmpdir(), `demi-provider-${name}-`))
         const stateDir = await mkdtemp(join(tmpdir(), 'demi-provider-runner-'))
-        const runner = await startTxikiRunner(
+        const runner = await startRunner(
           { backendUrl: backend.url, stateDir, home, name }
         )
         runners.push(runner)

@@ -1,6 +1,6 @@
 # Native runner and command services
 
-Status: accepted architecture; implementation acceptance is tracked separately.
+Status: implementation contract. Execution evidence is tracked in `progress.md`.
 
 ## Confirmed direction
 
@@ -28,8 +28,7 @@ downloadable agent-specific command implementations. The runner can still ship
 as a single executable while downloading additional command executables.
 
 Auditing remains out of scope. This direction removes the need for downloaded-JS
-workers; it does not remove cancellation and cleanup requirements. Removing the
-JS engine altogether also requires porting the current TypeScript runner itself.
+workers; it does not remove cancellation and cleanup requirements. The runner itself is implemented in Rust and embeds no JS engine.
 The LLRT report records earlier feasibility evidence, not a runtime selection.
 
 ## Resident services and HTTP/2
@@ -65,9 +64,9 @@ The implementation SDK must provide the following execution guarantees:
   accounted for and process/connection resources are released.
 
 The design objective is to amortize startup and connection costs, avoid repeated
-process creation and keep steady-state calls inexpensive. Performance has not
-been measured. Acceptance needs benchmarks for small-call latency, concurrent
-throughput, large binary streams, slow consumers, cancellation and memory usage.
+process creation and keep steady-state calls inexpensive. The synthetic transport benchmark and its measured limits are recorded in
+[Native transport measurements](../native-transport-measurements.md). Product
+file-command performance must be measured separately.
 
 File operations run beside their files. Applying a patch does not require sending
 the entire original file through the runner. The native service owns the patch
@@ -102,8 +101,7 @@ musl: x86_64-unknown-linux-musl and aarch64-unknown-linux-musl. Inspect final
 artifacts for unexpected shared-library dependencies; selecting a musl target
 alone does not prove a self-contained executable. Native dependencies must
 support that build. musl is a distribution choice, not a performance guarantee.
-Windows runtime linkage and the target execution infrastructure still need
-implementation choices. Cross-platform release support is required, not yet verified.
+Windows uses the MSVC targets with static CRT linkage. Target execution is validated separately from cross-compilation.
 
 ## Build and distribution architecture
 
@@ -120,8 +118,7 @@ aarch64-pc-windows-msvc. Linux target triples are x86_64-unknown-linux-musl and
 aarch64-unknown-linux-musl. macOS targets are x86_64-apple-darwin and
 aarch64-apple-darwin. Build tools, SDKs and dependencies must be pinned for
 reproducible releases. Target execution tests are separate from cross-compilation.
-The toolchain direction is agreed; successful six-target project builds have not
-been demonstrated.
+The build entry point is `scripts/native/build.ts`; `scripts/native/Dockerfile` pins the Linux toolchain. Build evidence belongs in the acceptance ledger.
 
 ```text
 Implementation developer
@@ -147,7 +144,7 @@ Agent host (Demi product or programming SDK application)
   |-- shell execution requests
   |-- implementation package references
   |
-  | existing remote execution connection (protocol changes TBD)
+  | authenticated MessagePack WebSocket and HTTP byte pipes
   v
 Native runner on execution target -- one runner executable
   |-- job lifecycle, input/output, cancellation
@@ -179,28 +176,17 @@ artifact binding; neither sends JavaScript implementation text.
 
 ## Local command client
 
-Verified current implementation: `packages/command-client` builds the `demi`
-executable from C and libuv. Each process forwards one command to the runner relay,
-including command arguments, cwd, environment and execution context. Its custom
-local framing uses separate data and watch connections. The data reader pauses
-while writing command output; the watch connection remains readable to detect
-disconnection and cancel even when output is blocked. Input is read on explicit
-runner demand. The client contains no builtin command implementations.
+`runner/rust/command_client.rs` implements forwarding as a mode of the same
+runner executable. Command aliases select their root by basename. Unix domain
+sockets serve Linux/macOS; byte-mode named pipes serve Windows. The local endpoint
+is restricted to the current account and each invocation must provide its live
+execution context. Normal stdin/stdout/stderr remain available for pipelines.
 
-Implement the forwarding client in Rust alongside
-the runner and share command transport contracts. Use HTTP/2 over a local duplex
-transport: Unix domain sockets on Linux/macOS and byte-mode named pipes on Windows.
-Keep command stdin/stdout/stderr available for normal pipelines and redirection;
-the forwarding client's local connection is separate from those descriptors.
-The resident implementation package continues to use HTTP/2 over its own stdio.
-
-Each external client invocation opens one connection and one invocation stream.
-The runner authenticates the execution context, resolves the declared command and
-validates arguments before dispatching to an agent-host callback or a native
-package operation. The local CLI endpoint carries root/argv/context; the native
-service endpoint carries an already-resolved operation. Share framing, bounded
-stream adapters and completion/cancellation handling without conflating these
-request schemas or forwarding unvalidated CLI requests directly to a package.
+Each client opens one HTTP/2 connection and one invocation stream. The runner
+validates the raw root/argv/context request, resolves the pinned declaration and
+constructs a validated native operation or application callback. Local CLI metadata
+and native invocation metadata remain distinct schemas; their bounded framing,
+input demand and completion rules are shared.
 
 HTTP/2 is useful here for protocol reuse, flow control and cancellation, not for
 substantial multiplexing within one short-lived CLI process. It adds handshake
@@ -216,22 +202,19 @@ runner to the selected destination. stdin EOF is independent of cancellation.
 Retain execution-context validation and local endpoint access controls. Validate
 blocked output, idle terminal input, disconnects and cancellation on all platforms.
 
-The embedded shell can dispatch recognized declared commands directly inside the
-runner through the same dispatcher. Preserve the external forwarding executable
-for calls from scripts or external programs. Whether its code ships as a small
-separate binary or a mode of the runner executable remains an implementation
-decision; neither form contains `demiPackage` implementations.
+The embedded shell resolves declared roots to these aliases. The executable
+contains forwarding and dispatch code; native Demi algorithms live only in the
+independently distributed `demi-commands` service.
 
 ## Initialization and responsibility boundaries
 
-Verified current code: AgentServerOptions.shellEnvironment receives a
+`AgentServerOptions.shellEnvironment` receives a
 ShellEnvironmentFactory. Its context includes the invoking Host, CommandRegistry,
 root/agent session identity and command storage. AgentHarness.commands declares
-the command tree. The Next backend currently builds a manifest and supplies
-RemoteShellEnvironment from its assembly. These are the appropriate boundaries;
+the command tree. The backend supplies the remote shell-environment factory from its assembly. These are the appropriate boundaries;
 implementation packages do not belong in model/provider configuration or env vars.
 
-Target public composition API:
+Public composition API:
 
 ```ts
 const shellEnvironment = createRemoteShellEnvironmentFactory({
@@ -413,13 +396,17 @@ One HTTP/2 stream represents one command invocation:
 - `POST /v1/shutdown`: stop admitting invocations and drain before process exit.
 
 The invocation body starts with one bounded length-prefixed JSON metadata record:
-operation id, invocation id, parsed arguments, cwd and env. The remainder is raw
-stdin bytes. Request END_STREAM means stdin EOF, not cancellation. The server
-sends response headers early rather than buffering stdin to completion.
+operation id, invocation id, parsed arguments, cwd and env. Each following stdin
+chunk has a four-byte big-endian length followed by at most 64 KiB of binary
+payload. An input-pull response record authorizes exactly one chunk or EOF. The
+SDK sends this record when the handler requests its next input chunk. The caller
+preserves that boundary across HTTP/2 DATA frames, so a short live-stdin read does
+not authorize additional reads. Request END_STREAM means stdin EOF, not
+cancellation. The server sends response headers before waiting for input.
 
 The response body is a sequence of application records: a one-byte kind plus a
 four-byte big-endian payload length, followed by bytes. Kinds distinguish stdout,
-stderr and a final completion object. Output payloads are raw bytes; completion
+stderr, input pull and a final completion object. Output payloads are raw bytes; completion
 is bounded JSON containing exit status and any structured command error. Exactly
 one completion record ends a normally handled invocation. Missing completion
 means an interrupted/failed invocation, even if HTTP response headers were 200.
@@ -485,27 +472,27 @@ Protocol version 1 uses these limits:
 | Handshake and invocation metadata timeout | 10 seconds |
 | Cooperative cancellation grace | 5 seconds |
 
-Response kinds are 1 for stdout, 2 for stderr, and 3 for completion. Completion
+Response kinds are 1 for stdout, 2 for stderr, 3 for completion, and 4 for input
+pull. Input pull has an empty payload. Completion
 contains `exitCode` (0 through 255) and an optional `error` with `code` and
 `message`. Unknown metadata fields, malformed records, oversized declared payloads,
 missing completion and bytes after completion fail validation. Handlers validate
 their own operation argument schema before performing work.
 
-Input returns HTTP/2 capacity as the handler advances through its stream. Output
+Input returns HTTP/2 capacity while assembling one bounded, requested chunk.
+No additional stdin read is authorized until the handler requests another chunk. Output
 uses bounded queues and reserves HTTP/2 capacity before sending DATA. Connection
 processing continues while output waits for capacity. A cancellation deadline
 violation produces a fatal service error requiring process retirement; aborting
 an async task does not prove that non-cooperative native work has stopped.
 
-## Remaining implementation choices
+## Configuration boundaries
 
-- TypeScript bindings generated from the native package descriptor contract.
-- Public configuration of service limits.
-- Concrete S3/OSS SDK adapters and configuration fields.
-- Platform-specific cancellable stdio implementation and Windows runtime linkage.
-
-The implementation must satisfy the validation gates before the Rust runtime
-becomes the production runner. Partial compilation does not establish acceptance.
+TypeScript package and manifest contracts generate Rust values and validation
+schemas. Protocol limits are fixed SDK constants. Object-store adapters belong to
+backend deployment assembly. The service SDK supplies cancellable platform stdio;
+Windows runner releases use static CRT linkage. Platform tests and benchmarks
+record verification independently of these implementation choices.
 
 ## Sources
 
@@ -518,4 +505,81 @@ becomes the production runner. Partial compilation does not establish acceptance
 
 - [HTTP/2 streams and flow control](https://www.rfc-editor.org/rfc/rfc9113.html)
 - Existing implementation: `packages/shell/src/command.ts`,
-  `packages/command-loader/src/manifest/`, and `packages/runner/src/relay/`.
+  `packages/command-loader/src/manifest/`, and `packages/runner/rust/dispatch.rs`.
+
+## Backend deployment configuration
+
+`backend/src/runner/artifacts/config.ts` reads the JSON file named by
+`DEMI_NATIVE_CONFIG`. The backend publishes the configured releases before it
+accepts application requests. Release directories contain `descriptor.json` and
+one executable under each target triple. Windows executable names end in `.exe`.
+Relative release directories resolve against the configuration file's directory.
+
+```json
+{
+  "prefix": "native",
+  "releases": [
+    { "directory": "./demi-package", "executable": "demi-commands" }
+  ],
+  "store": {
+    "provider": "s3",
+    "bucket": "demi-native",
+    "region": "us-east-1"
+  }
+}
+```
+
+The S3 adapter uses the AWS SDK credential provider chain. An OSS store specifies
+`"provider": "oss"`, its bucket and region, and reads
+`ALIBABA_CLOUD_ACCESS_KEY_ID`, `ALIBABA_CLOUD_ACCESS_KEY_SECRET` and optional
+`ALIBABA_CLOUD_SECURITY_TOKEN`. Both adapters accept an optional HTTPS endpoint;
+S3 also accepts `forcePathStyle`. Storage credentials stay in this module and
+never enter a runner message.
+
+`publish.ts` verifies the SHA-256 and byte count of all six target files before
+uploading any object. It writes immutable blobs, the content-addressed descriptor,
+and then the immutable package/version descriptor. S3 verifies a SHA-256 upload
+checksum; OSS verifies an MD5 upload checksum while retaining the descriptor's
+SHA-256 as object metadata. Conditional writes reject conflicting objects.
+The resolver returns a signed HTTPS GET URL with a five-minute expiry and checks
+that the requested digest and size belong to the published catalog.
+
+`createBackend` receives `nativeCommands: { packages, resolveArtifact }` explicitly.
+The command factory binds each job to its own manifest. Cross-host `demi host
+shell` jobs receive the calling session's catalog through `host-command.ts`.
+Test and local development fixtures supply an explicitly local resolver and a
+host-only test descriptor; those descriptors are never publication inputs.
+
+The runner's Rust `mode` module owns one backend connection, its jobs and command
+contexts. `dispatch` validates the pinned declaration, handles help without
+reading stdin, and routes the invocation to `rpc` or `native`. `rpc` owns the
+running-hint guard; dropping an invocation clears the hint and cancels its
+callback. `native` shares one verified service per artifact digest and retires
+services after the current declaration and live jobs release their references.
+The `demi-runner` executable also implements the external command-client mode:
+job aliases name that executable, and their basename selects the declared root.
+
+### Shell job lifetime
+
+`runner/rust/shell.rs` creates a fresh brush login shell for each job. It loads
+login profiles, then restores the runner-owned context, command alias precedence
+and requested cwd before executing the script. The job waits for
+its asynchronous shell tasks before reporting completion, and preserves the
+foreground script's exit status. For example, `(sleep 2; echo done) & echo started`
+emits `started` immediately, remains a running job during the sleep, then emits
+`done` and exits. A tool timeout returns that running job's handle; `shell_status`
+and `shell_abort` continue to control it. Background tasks belong to this job and
+do not become detached services. Cancellation and connection loss terminate the
+job process and its descendants.
+
+Brush's internal asynchronous tasks do not expose operating-system process IDs
+through `$!`. Tests that kill an external command client identify its actual PID
+from that child process; ordinary shell job cancellation uses the runner's job
+handle. Unix process groups and Windows Job Objects provide process-tree cleanup.
+
+Raw `Host.process.spawn` calls use only their supplied environment. A caller can
+set `inheritEnv: true` to extend the device process environment; an explicitly
+undefined value removes an inherited variable. The backend's
+`llm/session-providers.ts` selects inheritance when launching provider CLIs, so
+program lookup uses the device's `PATH` and credentials remain explicit overlays.
+The backend never copies its own environment to the device.

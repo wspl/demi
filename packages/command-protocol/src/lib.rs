@@ -16,6 +16,7 @@ pub use package_generated::{
 pub const VERSION: u32 = 1;
 pub const MAX_METADATA_BYTES: usize = 256 * 1024;
 pub const MAX_RECORD_BYTES: usize = 64 * 1024;
+pub const MAX_INVOCATIONS: usize = 32;
 pub const INFO_PATH: &str = "/v1/info";
 pub const INVOKE_PATH: &str = "/v1/invoke";
 pub const SHUTDOWN_PATH: &str = "/v1/shutdown";
@@ -88,6 +89,8 @@ pub enum Record {
     Stdout(Bytes),
     Stderr(Bytes),
     Completion(Completion),
+    /// Permission for exactly one bounded stdin chunk, or stdin EOF.
+    InputPull,
 }
 
 impl Record {
@@ -96,6 +99,7 @@ impl Record {
             Self::Stdout(bytes) => (1, bytes.clone()),
             Self::Stderr(bytes) => (2, bytes.clone()),
             Self::Completion(value) => (3, Bytes::from(serde_json::to_vec(value)?)),
+            Self::InputPull => (4, Bytes::new()),
         };
         if payload.len() > MAX_RECORD_BYTES {
             return Err(ProtocolError::TooLarge);
@@ -106,6 +110,18 @@ impl Record {
         bytes.extend_from_slice(&payload);
         Ok(bytes.freeze())
     }
+}
+
+/// Input chunk boundaries survive HTTP/2 DATA fragmentation. Each InputPull
+/// permits one frame; END_STREAM represents EOF and never cancellation.
+pub fn encode_input(bytes: Bytes) -> Result<Bytes, ProtocolError> {
+    if bytes.len() > MAX_RECORD_BYTES {
+        return Err(ProtocolError::TooLarge);
+    }
+    let mut frame = BytesMut::with_capacity(4 + bytes.len());
+    frame.put_u32(bytes.len() as u32);
+    frame.extend_from_slice(&bytes);
+    Ok(frame.freeze())
 }
 
 #[derive(Debug, Error)]
@@ -145,7 +161,7 @@ impl RecordDecoder {
             return Ok(None);
         }
         let kind = self.pending[0];
-        if !(1..=3).contains(&kind) {
+        if !(1..=4).contains(&kind) {
             return Err(ProtocolError::UnknownRecord);
         }
         let length = u32::from_be_bytes(self.pending[1..5].try_into().unwrap()) as usize;
@@ -166,6 +182,8 @@ impl RecordDecoder {
                 self.completed = true;
                 Record::Completion(completion)
             }
+            4 if payload.is_empty() => Record::InputPull,
+            4 => return Err(ProtocolError::InvalidMetadata),
             _ => unreachable!(),
         };
         Ok(Some(record))
