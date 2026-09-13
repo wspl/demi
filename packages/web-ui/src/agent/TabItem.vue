@@ -17,7 +17,8 @@ const props = withDefaults(
   defineProps<{
     tab: Pick<ConversationState, 'id' | 'title'>
     isActive: boolean
-    status: ConversationStatus
+    /** The dot on the mark; none without it. */
+    status?: ConversationStatus
     isDragging?: boolean
     isDragTarget?: boolean
     isSettling?: boolean
@@ -25,8 +26,11 @@ const props = withDefaults(
     isRenaming?: boolean
     renameValue?: string
     providerIconId?: string | null
+    /** The built-in mark; the `mark` slot replaces it. */
     mark?: 'provider' | 'bot' | 'terminal'
     closable?: boolean
+    /** The tooltip on the title; the title itself without it. */
+    tooltip?: string
   }>(),
   {
     isDragging: false,
@@ -38,6 +42,7 @@ const props = withDefaults(
     providerIconId: null,
     mark: 'provider',
     closable: true,
+    tooltip: undefined,
   },
 )
 
@@ -82,17 +87,22 @@ const tabStyle = computed(() => {
 </script>
 
 <template>
+  <!--
+    One width for every tab. A faint line sits in the gap after the tab and
+    goes when the tab or its neighbour is active or hovered.
+  -->
   <span
     role="tab"
-    class="relative flex h-7 max-w-[220px] shrink cursor-default items-center overflow-hidden rounded-md text-chrome select-none touch-none"
+    :aria-selected="isActive"
+    class="relative flex h-7 w-40 shrink-0 cursor-default items-center rounded-md text-chrome select-none touch-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line last:after:hidden hover:after:hidden has-[+:hover]:after:hidden has-[+[aria-selected=true]]:after:hidden"
     :class="[
       isActive
-        ? 'bg-surface text-fg-emphasis'
+        ? 'bg-(--tab-active) text-fg-emphasis after:hidden'
         : isDragging && isDragTarget
-          ? 'bg-surface text-fg-body'
+          ? 'bg-(--tab-active) text-fg-body'
           : 'text-fg-subtle',
       !isDragging && 'group',
-      !isDragging && !isActive && 'hover:bg-surface hover:text-fg-body',
+      !isDragging && !isActive && 'hover:bg-(--tab-hover) hover:text-fg-body',
       isDragging && isDragTarget && 'z-50',
     ]"
     :style="tabStyle"
@@ -103,36 +113,38 @@ const tabStyle = computed(() => {
     @contextmenu.prevent="emit('contextmenu', $event)"
   >
     <span
-      v-if="uiOptions.showTabIcon"
+      v-if="$slots.mark || uiOptions.showTabIcon"
       class="relative ml-1.5 flex shrink-0 items-center justify-center"
     >
-      <Bot
-        v-if="mark === 'bot'"
-        :size="ICON_PX.markIn28"
-        class="text-fg-subtle"
-      />
-      <SquareTerminal
-        v-else-if="mark === 'terminal'"
-        :size="ICON_PX.markIn28"
-        class="text-fg-subtle"
-      />
-      <ProviderIcon
-        v-else-if="providerIconId"
-        :provider-id="providerIconId"
-        :size="ICON_PX.markIn28"
-        class="text-fg-subtle"
-      />
-      <span
-        v-else
-        class="inline-block size-4 rounded-full bg-surface-raised"
-      />
-      <ConversationStatusDot :status="status" />
+      <slot name="mark">
+        <Bot
+          v-if="mark === 'bot'"
+          :size="ICON_PX.markIn28"
+          class="text-fg-subtle"
+        />
+        <SquareTerminal
+          v-else-if="mark === 'terminal'"
+          :size="ICON_PX.markIn28"
+          class="text-fg-subtle"
+        />
+        <ProviderIcon
+          v-else-if="providerIconId"
+          :provider-id="providerIconId"
+          :size="ICON_PX.markIn28"
+          class="text-fg-subtle"
+        />
+        <span
+          v-else
+          class="inline-block size-4 rounded-full bg-surface-raised"
+        />
+      </slot>
+      <ConversationStatusDot v-if="status" :status="status" />
     </span>
     <input
       v-if="isRenaming"
       ref="renameInputRef"
       :value="renameValue"
-      class="w-32 truncate bg-transparent px-1.5 outline-none"
+      class="min-w-0 flex-1 truncate bg-transparent px-1.5 outline-none"
       @input="emit('update:renameValue', ($event.target as HTMLInputElement).value)"
       @keydown.enter="emit('renameSubmit')"
       @keydown.escape="emit('renameCancel')"
@@ -142,26 +154,26 @@ const tabStyle = computed(() => {
     />
     <Tooltip
       v-else
-      :content="tab.title"
+      :content="tooltip ?? tab.title"
       placement="bottom"
-      class="w-32 truncate whitespace-nowrap px-1.5"
+      class="min-w-0 flex-1 truncate whitespace-nowrap px-1.5"
       >{{ tab.title }}</Tooltip
     >
     <span
       v-if="closable"
-      class="pointer-events-none absolute inset-y-0 right-0 z-10 flex w-9 items-center justify-end pr-1.5 opacity-0 transition-opacity group-hover:opacity-100"
+      class="pointer-events-none absolute inset-y-0 right-0 z-10 flex w-9 items-center justify-end overflow-hidden rounded-r-md pr-1.5 opacity-0 transition-opacity group-hover:opacity-100"
     >
       <span
         class="absolute inset-y-0 left-0 w-4"
         :class="
           isActive
-            ? 'bg-linear-to-r from-surface/0 to-surface'
-            : 'bg-linear-to-r from-surface-base/0 to-surface-base group-hover:from-surface/0 group-hover:to-surface'
+            ? 'bg-linear-to-r from-transparent to-(--tab-active)'
+            : 'bg-linear-to-r from-transparent to-(--tab-row) group-hover:to-(--tab-hover)'
         "
       />
       <span
         class="absolute inset-y-0 right-0 w-6"
-        :class="isActive ? 'bg-surface' : 'bg-surface-base group-hover:bg-surface'"
+        :class="isActive ? 'bg-(--tab-active)' : 'bg-(--tab-row) group-hover:bg-(--tab-hover)'"
       />
       <span
         role="button"
