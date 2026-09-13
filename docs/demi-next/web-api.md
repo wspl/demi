@@ -310,8 +310,9 @@ All three operations use [conversation Host access](sessions-and-targets.md#host
 including Cloud wake and the file gate. Archived conversations answer 409
 `conversation_archived`. A paired device without a live runner answers 409
 `device_offline`; a Cloud that cannot wake answers 503 with the lifecycle's code.
-A file over 4 MiB answers 413 `file_too_large`; one that is not UTF-8 text answers
-415 `not_text`.
+A file over 8 MiB answers 413 `file_too_large`, the same limit a retained edit
+snapshot has ([Edit tracking](edit-tracking.md#scope)); one that is not UTF-8
+text, or contains a NUL byte, answers 415 `not_text`.
 
 The remote attachment picker lists and creates directories through
 `GET/POST /api/conversations/:id/hosts/:deviceId/fs`, with the same directory
