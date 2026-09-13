@@ -12,11 +12,13 @@ renderer use the same input declarations. Each field has one input source:
   boolean flags, enums, and repeated array options.
 
 Registration rejects overlapping input sources, duplicate positional fields,
-required positionals after optional ones, and options named `help` or `json`.
-The parser rejects repeated scalar values and reports missing option values
-before consuming the next option. `--name=value` supplies an option value
-beginning with `--`; a standalone `--` ends option parsing for positionals or
-starts the declared raw-argument field.
+required positionals after optional ones, options named `help` or `json`, and
+field schemas outside the input subset defined by
+[command declarations](demi-next/commands.md#parse-input-and-render-help). The
+parser rejects repeated scalar values and reports missing option values before
+consuming the next option. `--name=value` supplies an option value beginning
+with `--`; a standalone `--` ends option parsing for positionals or starts the
+declared raw-argument field.
 
 Help displays a complete usage template, value placeholders, required and
 optional arguments, enum choices, and repeatable options. Stdin bodies appear

@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { LocalHost } from '@demicodes/host-remote/testing'
-import type { DispatchIO } from '@demicodes/shell'
+import { z } from 'zod'
+import type { Command, DispatchIO } from '@demicodes/shell'
 import {
   bytesStream,
   collectBytes,
@@ -219,6 +220,51 @@ describe('dispatch', () => {
         expect(loader.roots.map((root) => root.name)).toEqual(['scout'])
       } finally {
         w.dispose()
+      }
+    }
+  )
+
+  test(
+    'rpc arguments arrive as decoded JSON and are validated as a whole',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'command-loader-rpc-'))
+      const host = new LocalHost(dir, { storeRoot: join(dir, '.store') })
+      try {
+        let seen: unknown = null
+        const roots: Command[] = [{
+          name: 'gauge',
+          summary: 'Record a reading.',
+          kind: 'rpc',
+          input: { count: z.number(), note: z.string().optional() },
+          run: ({ parsed }) => {
+            seen = parsed.values
+            return { exitCode: 0 }
+          },
+        }]
+        const rpc = inProcessRpc(roots, { storage: memoryStorage(), host })
+        const invoke = (args: Record<string, unknown>) => rpc({
+          root: 'gauge',
+          path: ['gauge'],
+          argv: ['gauge'],
+          args,
+          json: false,
+          stdin: null,
+          cwd: dir,
+          env: {},
+          io: { stdout: async () => {}, stderr: async () => {} },
+          signal: new AbortController().signal,
+          stdinStream: emptyByteStream(),
+        })
+
+        expect(await invoke({ count: 7 })).toEqual({ exitCode: 0 })
+        expect(seen).toEqual({ count: 7 })
+        // The CLI converts argv text; a wire argument is taken as it comes.
+        await expect(invoke({ count: '7' }))
+          .rejects.toThrow('Invalid value for "count"')
+        await expect(invoke({ count: 7, extra: true }))
+          .rejects.toThrow('Unrecognized key: "extra"')
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
       }
     }
   )

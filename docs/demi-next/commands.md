@@ -46,6 +46,11 @@ The public types belong to `packages/shell/src/command.ts`. A group contains
 subcommands and does not execute a handler. Roots and sibling names must be
 unique. Registration rejects reserved root names and invalid command trees.
 
+A leaf written inside a `Command[]` literal is typed by the tree, so its
+`parsed.values` carry no field types. Declaring it through `defineCommand`
+keeps its own input schemas: `parsed.values.path` is then a `string` the
+handler uses directly, and the leaf still belongs in the same tree.
+
 ## Parse input and render help
 
 Each input field has one source:
@@ -59,9 +64,26 @@ Each input field has one source:
 | Remaining input fields | Named options such as `--path notes.txt`. |
 | `output.json` | A schema enabling validated structured output through `--json`. |
 
-Unknown options, missing required values, duplicate scalar values, and schema
-failures reject execution. The parser converts numeric and boolean option text
-before schema validation. Without `restField`, `--` ends option parsing.
+Unknown options, unknown fields, missing required values, duplicate scalar
+values, and schema failures reject execution, and one rejection names every
+field that failed. Without `restField`, `--` ends option parsing.
+
+Conversion belongs to the CLI alone. An argv token is text, so the parser turns
+it into the number, boolean, or array element its field declares — each element
+of a repeated option separately — and then validates the whole input at once. An
+external client sends arguments as decoded JSON, which are validated as they
+arrive: `"7"` for a numeric field is a usage error there, not a 7.
+
+An input field may declare `string`, `number` (`.int()` included), `boolean`,
+`enum`, or an array of those, optionally wrapped in `.optional()`, with
+`.describe()` supplying its help text. Registration rejects anything else,
+naming the field. The reason is that a tree reaches an external runner as JSON
+Schema, and only the subset means the same thing on both sides: `.nullable()`
+returns from that trip as a plain union the argv parser cannot spell,
+`.default()` returns as a bare optional whose value nobody fills in, and
+`.refine()`, `.transform()` and `.pipe()` vanish, leaving the runner accepting
+what the declaring process rejects. A field that needs a value when the caller
+omits one, or a rule the subset cannot state, belongs in the leaf's own `run`.
 
 A group-only invocation or `--help` prints help and exits successfully without
 running a handler or reading stdin. For example, `demi file read --help` must work

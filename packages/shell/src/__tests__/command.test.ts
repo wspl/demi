@@ -8,6 +8,7 @@ import {
   parseCommandInput,
   renderCommandHelp,
   runRegisteredCommand,
+  validateCommandValues,
   type Command,
   type CommandGroup,
   type CommandIO,
@@ -276,6 +277,90 @@ test('parseCommandInput rejects unknown options and invalid values', () => {
       ]
     ),
   ).toThrow('Invalid value for "occurrence"')
+})
+
+test('argv text becomes the value each field schema expects', () => {
+  const command: Command = {
+    name: 'measure',
+    summary: 'Record readings.',
+    kind: 'rpc',
+    input: {
+      v: z.array(z.number()).describe('Readings'),
+      label: z.array(z.string()).optional(),
+      quiet: z.boolean().optional(),
+    },
+    run: () => ({ exitCode: 0 }),
+  }
+
+  // Every element of a repeated option is converted, not just the array.
+  expect(parseCommandInput(command, ['measure', '--v', '12', '--v', '13']).values)
+    .toEqual({ v: [12, 13] })
+  expect(parseCommandInput(command, ['measure', '--v', '12']).values)
+    .toEqual({ v: [12] })
+  expect(parseCommandInput(
+    command,
+    ['measure', '--v', '1', '--label', 'a', '--quiet']
+  ).values).toEqual({ v: [1], label: ['a'], quiet: true })
+  expect(parseCommandInput(command, ['measure', '--v', '1', '--quiet=false']).values)
+    .toEqual({ v: [1], quiet: false })
+  expect(() => parseCommandInput(command, ['measure', '--v', 'twelve']))
+    .toThrow('Invalid value for "v.0"')
+})
+
+test('validated values reject wire text, unknown fields, and report every issue', () => {
+  const input = { count: z.number(), name: z.string() }
+
+  expect(validateCommandValues(input, { count: 7, name: 'x' }))
+    .toEqual({ count: 7, name: 'x' })
+  expect(() => validateCommandValues(input, { count: '7', name: 'x' }))
+    .toThrow('Invalid value for "count"')
+  expect(() => validateCommandValues(input, { count: 7, name: 'x', extra: 1 }))
+    .toThrow('Unrecognized key: "extra"')
+  expect(() => validateCommandValues(input, { count: '7' }))
+    .toThrow(
+      'Invalid value for "count": Invalid input: expected number, received string; '
+      + 'Invalid value for "name": Invalid input: expected string, received undefined'
+    )
+})
+
+test('registration accepts the command input subset and rejects the rest', () => {
+  const base: Command = {
+    name: 'send',
+    summary: 'Send text.',
+    kind: 'rpc',
+    run: () => ({ exitCode: 0 }),
+  }
+  const accepted = {
+    text: z.string().describe('Body'),
+    count: z.number().int(),
+    quiet: z.boolean().optional(),
+    status: z.enum(['pending', 'done']).optional(),
+    tag: z.array(z.string()).optional(),
+  }
+  expect(() => new CommandRegistry().register({ ...base, input: accepted }))
+    .not.toThrow()
+
+  const rejected: Array<[z.ZodType, string]> = [
+    [z.string().nullable(), 'uses an unsupported "nullable" schema'],
+    [z.number().default(3), 'uses .default()'],
+    [z.number().default(3).optional(), 'uses .default()'],
+    [z.string().refine((value) => value.length > 0), 'carries a .refine()'],
+    [z.string().transform((value) => value.length), 'uses an unsupported "pipe" schema'],
+    [z.record(z.string(), z.string()), 'uses an unsupported "record" schema'],
+    [
+      z.array(z.array(z.string())),
+      'has an array element that uses an unsupported "array" schema',
+    ],
+    [
+      z.array(z.object({ a: z.string() })),
+      'has an array element that uses an unsupported "object" schema',
+    ],
+  ]
+  for (const [schema, reason] of rejected) {
+    expect(() => new CommandRegistry()
+      .register({ ...base, input: { field: schema } }))
+      .toThrow(`input "field" ${reason}`)
+  }
 })
 
 test('parseCommandInput walks nested groups down to a leaf', () => {
