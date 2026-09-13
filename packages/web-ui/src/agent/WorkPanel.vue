@@ -52,7 +52,8 @@ import { findChangeWorkTab, workTabTitle, type ChangeWorkTab, type WorkTab } fro
 const props = defineProps<{
   tabs: readonly WorkTab[]
   activeId: string | null
-  workspace?: { source: FileBrowserSource; root: string; changes?: ChangeSources }
+  /** `name` stands in for the root directory's name wherever the views name the workspace. */
+  workspace?: { source: FileBrowserSource; root: string; name?: string; changes?: ChangeSources }
 }>()
 const emit = defineEmits<{
   select: [id: string]
@@ -229,6 +230,7 @@ function add(kind: WorkTab['kind']): void {
           v-model:tree="treeOpen"
           :source="workspace.source"
           :root="workspace.root"
+          :root-name="workspace.name"
           :path="absolutePath(active.path)"
           :can-back="active.back.length > 0"
           :can-forward="active.forward.length > 0"
@@ -243,6 +245,7 @@ function add(kind: WorkTab['kind']): void {
           :selected="changeSelection(active)"
           :changes="workspace.changes"
           :root="workspace.root"
+          :root-name="workspace.name"
           :can-back="active.back.length > 0"
           :can-forward="active.forward.length > 0"
           @update:mode="emit('showChange', active.id, $event, active.selected[$event])"

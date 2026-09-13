@@ -22,6 +22,8 @@ const props = defineProps<{
   source: ChangeSetSource
   /** The workspace, named at the top. */
   root: string
+  /** What heads the tree in place of the root directory's name. */
+  rootName?: string
   /** The selected file, by path relative to the workspace. */
   selected: string | null
   /** What the tree says when there are no files. */
@@ -35,7 +37,7 @@ const emit = defineEmits<{
 const folded = ref(new Set<string>())
 const files = computed(() => props.source.files)
 const rows = computed(() => changeTreeRows(files.value, folded.value))
-const rootName = computed(() => baseName(props.root) || '/')
+const rootName = computed(() => props.rootName ?? (baseName(props.root) || '/'))
 
 function toggle(path: string): void {
   const next = new Set(folded.value)
