@@ -131,11 +131,14 @@ and password recovery are not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the browser host's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
-`settings`). A null shortcut removes that override. Unknown fields are rejected.
+`settings`). A null shortcut removes that override. `lastModel` stores the explicit new-conversation
+default as `{ providerId, modelId, thinkingEffort, serviceTierId }`, with nullable
+thinking and tier. Choosing a model in an unsent draft saves this preference;
+existing conversations keep their own selection. Unknown fields are rejected.
 The control service reads, merges and writes in one transaction, preserving
 concurrent changes to other fields. Preferences persist across restarts and are
 separate for every user in both instance modes. The product browser reads and

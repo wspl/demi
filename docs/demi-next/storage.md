@@ -50,7 +50,8 @@ meaning and atomicity rather than duplicating every SQL column.
   consumes the challenge in one transaction. Account behavior belongs to
   [Product](product.md) and its HTTP contract to [Backend](backend.md).
 - **Preferences:** `user_preferences` stores validated appearance and shortcut
-  overrides. A patch merges specified fields in one transaction so independent
+  overrides and the last explicit model selection for new conversations. A patch
+  merges specified fields in one transaction so independent
   edits do not overwrite each other.
 - **Devices and workspaces:** `devices` stores ownership, kind, identity, token
   hash, and timestamps. A partial unique index permits one managed device per

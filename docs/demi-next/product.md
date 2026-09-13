@@ -1,237 +1,212 @@
 # Demi Next: Product Design
 
-| | |
-|---|---|
-| Date | 2026-09-08 |
-| Status | Target architecture contract |
-| Scope | What the product stores and exposes: instance mode, users, conversations, attachments, provider management, the web UI and frontend package |
+Demi is a browser application for conversations that can run commands on Cloud
+or the user's connected machines. Conversation history belongs to the backend;
+project files belong to execution devices. Changing a conversation's target
+changes where subsequent work runs without moving its history or copying files.
 
 ## Instance mode: shared vs isolated
 
-An instance runs in exactly one of two modes; there is no mixing and no
-per-provider ownership machinery. The mode is a deployment decision
-made at startup (`DEMI_INSTANCE_MODE`), never changed from the product:
+`DEMI_INSTANCE_MODE` selects provider ownership at startup. The product cannot
+change this deployment setting.
 
-- **Shared**: providers are instance-wide. Only admins create,
-  modify or delete them; ordinary users just use the models. Typical
-  self-host.
-- **Isolated**: every user manages their own providers; nothing
-  is shared. Typical public host.
+| Mode | Provider configuration | Model use | Usage visibility |
+|---|---|---|---|
+| Shared | Master and admins manage instance-owned entries | All users use the instance's entries | Each user sees their own usage; admins can see instance usage by user |
+| Isolated | Each user manages their own entries | Each user uses their own entries | Each user sees their own usage |
 
-Usage is metered per user in both modes; in shared mode admins also
-see the instance's usage by user. There are no instance settings beyond
-the mode, and the page reads it (`GET /api/settings`) to know what to
-show. A **provider** is one entry of the scope's list: a runtime family
-(openai, anthropic, google, claude-code, codex, grok-build) with one
-credential — an API key, or a completed subscription login — at an
-endpoint, with a model source. A scope holds at most one entry per
-subscription family and any number of API-key entries, each with its
-own label, so model selection is keyed by `(providerId, modelId)` — one
-provider runtime per entry.
+Conversation, device, workspace, and attachment ownership remains per user in
+both modes. Administrator status does not grant access to another user's
+conversations or files. Shared usage reporting and account administration are
+explicit exceptions to owner-only product records.
+
+A provider is a configured entry with a stable ID and label. Model selection uses
+`(providerId, modelId)`, so two entries can offer the same vendor model under
+different accounts or endpoints. Subscription entries can contain multiple
+accounts with one selected account. Credential and catalog rules belong to
+[Providers](providers-and-vault.md).
 
 ## User system
 
-Email + password (argon2id), cookie session (httpOnly, 30 days
-sliding); the conversation stream WebSocket and the Web API authenticate
-by the same same-origin cookie. **No self-registration and no password
-recovery**. Setup and administrators provision accounts without a mail dependency.
-Changing an email requires a code sent to the new address through the deployment's
-`AccountMailSender`; an unconfigured sender returns `mail_unavailable`. The instance's first account is made
-by the setup call while it has no users (`POST /api/setup`), which the
-login page routes to when `GET /api/setup` says so. Everyone can change
-their own password with the current one in hand; five failed logins in a
-row lock the email for a minute. Each account also stores its current nickname, separately from the login address.
-Accounts are managed through the admin API; the admin page is deferred:
+Accounts use email and password; nickname is a separate display value. The first
+account is created by instance setup. Administrators create subsequent accounts;
+there is no public registration or password-recovery flow.
 
-- **master**: the instance's first account, created at initial setup; can
-  do everything, including creating admins.
-- **admin**: everything master can do except creating admins — creates
-  users, resets passwords, manages the instance's providers (shared mode),
-  edits instance settings.
-- **user**: uses the product.
+| Role | Account administration |
+|---|---|
+| Master | Creates admins and users; resets passwords of admins and users |
+| Admin | Creates users; resets user passwords |
+| User | No administration of other accounts |
 
-No organizations, teams or further roles. **User data is isolated
-absolutely**: a conversation, device, workspace, attachment or usage row
-is visible to its owner alone; master and admin manage accounts and, in
-shared mode, the providers — they never read another user's data.
+A role can act only on lower roles. No role can reset a peer's password through
+the admin endpoint. Everyone can change their own password by providing the
+current password, edit their nickname, and change email after verifying a code
+sent to the new address. Setup and account creation do not require email delivery;
+email change does, and reports an unavailable mail service explicitly.
 
-## Conversation system
+Browser HTTP and conversation WebSockets use the same session cookie.
+[Backend authentication](backend.md#authentication-and-ownership) owns session
+and lockout behavior; [Web API](web-api.md#account-api) owns account request
+shapes and verification limits. There are no organizations or team roles.
 
-A conversation is one AgentSession plus one metadata row: id, owner,
-title, execution target (`sessions-and-targets.md`), provider/model
-selection, timestamps, archived flag.
+## Conversations and projects
 
-- **Archive only, no delete.** Archiving hides a conversation; an archived
-  view lists them and any can be restored. No user data is deleted in v1.
-- **Titles**: default is the first user message plus manual rename.
-- **New conversation is one click**: immediately typeable — target defaults
-  to the user's Cloud. The model, thinking effort and service tier default to
-  the user's last explicit selection, stored in backend user preferences even
-  when the choice was made in an empty unsent draft. Existing conversations
-  keep their own selections.
-- **Message-level operations: everything Demi implements gets exposed** —
-  mid-turn steering, the message queue, abort, retry, resume, manual
-  compaction, mid-conversation provider/model switch, interactive stdin to
-  running commands (`shell_write`). Most ships with the web-ui components.
+A conversation owns one agent tree, including its root and subagents, plus
+product metadata such as title, target, model selection, archive state, pin and
+read state. A project is a named directory on a device; the API calls it a
+workspace. It groups conversations without creating a separate execution machine.
 
-The **streaming interface is the agent frame protocol** — no parallel SSE
-API; cold history rides the same rendering path.
+```text
+User
++-- Cloud device
+|   +-- project directory A <- conversations 1, 2
+|   +-- project directory B <- conversation 3
++-- connected laptop
+|   +-- project directory C <- conversation 4
++-- ungrouped conversations -> Cloud or a direct device directory
+```
+
+New conversation opens an immediately typeable draft with Cloud as its default
+target. It inherits the user's last explicit model, thinking effort, and service
+tier, including a choice made in an empty unsent draft. These defaults are backend
+user preferences; existing conversations keep their own selections. If a saved
+choice becomes unavailable, the picker keeps it with a warning and requires an
+explicit replacement. With no saved choice, the first available model is used.
+
+The first send creates the backend record. The default title comes from the
+first user message and can be renamed. Draft persistence and confirmation of
+uncertain sends belong to [Web integration](../web-integration.md). Choosing a
+project or device directory affects subsequent execution; target-switch admission
+and context announcements are defined in
+[Sessions and targets](sessions-and-targets.md).
+
+Conversations can be archived and restored, but not deleted. Archiving is refused
+while root or child work or conflicting operations are active. Archived history
+remains readable; sending and metadata changes require restore. Sidebar groups,
+pinning, multi-selection, and persistent ordering follow
+[Sidebar ordering](sidebar-order.md).
+
+The conversation interface exposes steering, queued messages, stop, Retry/Resume,
+manual compaction, model switching, message editing, Fork, and child/terminal
+inspection. Retry/Resume continues the interrupted session; it does not silently
+rerun completed tool effects. [Message editing](../message-editing.md) and
+[Conversation Fork](../conversation-fork.md) define their history boundaries.
+Interactive stdin is an agent-protocol capability; exposing a terminal input
+control remains separate from read-only job inspection.
 
 ## Attachments
 
-Text the reader gives the model arrives in exactly one of two forms, never
-both:
+Short pasted text stays in the composer and sends as message text. A paste of at
+least 2,000 characters or 40 lines becomes `pasted-text.txt`, using the shared
+composer's paste thresholds. Dropped, selected, and pasted files use the same
+staged attachment flow.
 
-- **Typed text** is the user message itself. A paste under the paste
-  threshold stays in the composer as text and is sent as the message's
-  `text` block, with nothing wrapped around it. The threshold is one
-  constant (`PASTE_AS_FILE_MIN_CHARS`, with a line count for many short
-  lines); it is the only knob.
-- **A file** is on the host and the message only refers to it. A paste at
-  or over the threshold becomes `pasted-text.txt`; a dropped, chosen or
-  pasted file is a file. On send, the backend writes the uploaded bytes to
-  the conversation's host through the Host RPC write, under the host user's
-  home at `~/.demi/attachments/<conversation id>/` with the file's own name
-  (a name already there gets a numeric suffix). Nothing of Demi's lands in a
-  working directory: the workspace is the reader's, and a path a transcript
-  names must stay readable later, which the system temp directory does not
-  promise. The message then carries one `attachment` content block per file,
-  the single record of it: name, host path, media type, size, blob hash and,
-  for a text file, its opening lines. Every provider adapter renders that
-  block as one self-closing tag,
-  `<attachment name="…" type="…" size="…" path="…"/>`, so the model knows a
-  file came with the message and where to read it; the file's content never
-  rides in the message. The user message carries a
-  `reference` block naming that path and nothing of the file's content: the
-  model opens, greps, converts or runs the file with its tools. A draft
-  without a host keeps the file staged and writes it when the host binds on
-  the first send; a Cloud target obtains or wakes the machine first.
+Sending a file proceeds through three owners:
 
-Media the model reads natively is the one addition to a file: an image or
-video, and a PDF on a provider with native document input (Anthropic API,
-OpenAI Responses, Codex, Google, Claude Code), also rides in the message as
-its media block beside the path reference, because tools cannot show the
-model a picture. The selected model's `acceptedExtensions` names those
-types; every other file is path only. A provider adapter never degrades a
-supported media type to a placeholder.
+```text
+Composer file -> backend upload/blob -> selected Host attachment directory
+                         |                          |
+                         +-- attachment ID          +-- absolute file path
+                                                       in the agent message
+```
 
-The page draws one tile per `attachment` block, the same tile the composer
-showed; a native media file's media block sits right before its attachment
-block and is that tile. Uploads go once: **HTTP POST → attachment id**, bytes into the blob store, metadata
-into the `attachments` table (`backend.md`). The `send` frame carries the
-attachment id in an `upload` block; the conversation module resolves it
-into the host write, the `attachment` block and, for native media, the
-inline block before handing the message to the AgentSession. In the other
-direction the transcript carries `source.ref` and the page fetches
-`GET /api/blobs/:sha256`. Never inline bulk bytes into the frame socket: WS
-messages serialize, so a multi-MB message would block steer/abort/ping.
-Size cap hardcoded (25 MB).
+Files remain staged in the draft until send. The backend writes the file under the Host
+user's `~/.demi/attachments/<conversation>/`, adding a numeric suffix to avoid
+an existing name. It does not put attachment files in the project directory.
+A Cloud target may need to wake before this write.
+
+The agent message contains one `attachment` record with name, path, media type,
+size, and blob hash; text files can include a short opening preview. Providers
+render the record as an attachment tag so the model can read the file with tools.
+The complete text file is not duplicated into the message.
+
+Native media adds the corresponding image, video, audio, or document input beside
+the attachment record when the selected model supports it. The attachment remains
+one visible tile. The model's accepted extensions govern selection; an adapter
+must not replace supported media with a placeholder. Other files remain
+accessible by path. Attachment presence and model capability are separate facts.
+
+The upload cap is 25 MiB. Upload IDs and transcript media references travel in
+conversation frames; bulk bytes use HTTP. Exact wire forms, ownership checks,
+missing-upload behavior, and browser blob delivery are defined in
+[Backend media handling](backend.md#media-by-reference) and
+[Web API uploads](web-api.md#uploads-and-media).
+
+A remote-file selection is different from an upload: it names an existing file
+on a connected device. Its bytes are read when the model executes the supplied
+host command, so it is not a snapshot. Revocation, disconnect, or file changes
+can affect that later read.
 
 ## Provider management
 
-The providers page (admin-only in shared mode, per-user in isolated
-mode) is a list of entries, and the model picker shows that list with
-each entry's models under it. Adding an entry has three doors:
+Models & providers is available to users permitted to configure their provider
+scope. The model picker groups models by entry. Adding an entry has three paths:
 
-```
-Add provider
- ├─ a subscription: Claude Code / Codex / Grok Build
- │     one per scope per family (the door is closed once it exists);
- │     the backend runs the family's device login, the UI shows the
- │     code/URL and polls until claimed
- ├─ from the vendor catalog: "DeepSeek", "Z.AI Coding Plan", "OpenAI" …
- │     the vendor's family and endpoint are prefilled (the endpoint is
- │     editable), the label defaults to the vendor's name, the key is
- │     pasted; the model list is the vendor's, live — or a typed list
- └─ a custom endpoint: the family and protocol chosen by hand
-       (OpenAI Chat Completions / OpenAI Responses / Anthropic Messages /
-       Google), endpoint, key, typed model list
-```
+| Path | User input and result |
+|---|---|
+| Subscription | Claude setup-token import, or Codex/Grok device login; additional accounts go into the existing family entry |
+| Vendor catalog | Select vendor, label, key, and optional endpoint/model overrides; the family is derived from supported vendor metadata |
+| Custom endpoint | Select family and protocol, then label, endpoint, key, and model configuration |
 
-The vendor catalog is models.dev, read live by the backend and never
-stored: the vendors whose protocol one of our runtimes speaks, which
-covers the first-party vendors and the third-party gateways and coding
-plans alike; the same vendor can be added more than once under different
-labels and keys. An entry stores only its vendor's id, so a vendor's
-model list follows models.dev. Entries are editable (label; and for an
-API-key entry the endpoint, the key, and the model list, where clearing
-the typed list returns to the live one) and deletable, and have a
-**Test** button; each shows auth state and the latest quota snapshot.
-Labels need not be unique. No model-level configuration of any kind.
+Entries can be renamed, edited, or removed. API entries support a manual model
+list; clearing it returns to catalog discovery. Labels need not be unique.
+Provider configuration stores explicit endpoint and model overrides. Fetched
+model directories are cached; they are not a fresh network lookup on every
+conversation opening.
 
-## Web UI surface inventory
+The page displays authentication/runtime state, account selection, and available
+quota information. Reading status must not run inference. An explicit Test action
+can make a real request; a process provider is tried through a conversation on
+an execution target. Hiding a provider or model from the picker is a browser
+preference and does not stop existing work. Provider protocol, credential,
+catalog, and quota details have their authoritative home in
+[Providers](providers-and-vault.md).
 
-Chat view (existing web-ui components) + conversation sidebar; model picker
-at the input area; execution-target picker (Cloud, the user's devices
-with a directory browser and directory creation, workspaces; the
-new-project device dropdown adds **Cloud**); the conversation's host list
-(the main host, the attached hosts with name and directory; attach,
-rename, detach); device management (claim-token
-entry, online status, revoke — user hosts only, managed hosts never
-appear); providers page; usage page; admin-only user management and
-instance settings. A command's output in the browser is the view the
-model saw, never more. Nothing else in the first final state — sharing,
-collaboration and search are explicitly out.
+## Browser surfaces
 
-## The frontend package
+The application uses a conversation sidebar and chat pane, with a right work
+panel where enabled. The conversation header contains its title, host, and
+working directory controls. Model, thinking, and service-tier selection belong
+at the composer. Host attachment and target switching are distinct actions;
+[Host menu](host-menu.md) defines that interaction.
 
-`@demicodes/web` is a pure SPA (no SSR): Vue 3 + Vite, vue-router for pages
-(login and chat; settings in tabbed dialogs), Pinia for app state,
-consuming `@demicodes/web-ui` (injected `AgentClient` + transport-agnostic
-control client) and the Web API. Production: the built assets ship inside
-the backend image and the backend serves them alongside `/api`;
-development: Vite dev server proxying `/api`.
+Settings opens as a dialog from the account menu rather than a separate route.
+Nested forms stack on it; Escape and scrim dismissal act on the top dialog.
+The current functional sections are General, Account, Models & providers
+(permission-dependent), Devices, Archived, and Keyboard. General saves appearance;
+Account handles identity changes; Devices includes pairing and Cloud controls.
 
-M13 develops the web product in three parts: a standalone frontend prototype,
-then incremental feature design and development in that prototype, then full
-frontend/backend integration. The prototype uses local fixtures and simulated
-behavior without a running backend or real models. It reuses web-ui and the
-gallery's visual work; gallery remains a component catalog. Accepted additions
-are recorded here with their behavior and state ownership before integration.
-The backend contract is completed to support the reviewed product experience;
-the existing API inventory is not a limit on prototype design. See `roadmap.md`
-for each part's acceptance criteria.
+Notifications, MCP servers, Skills, and Data & privacy remain visible but disabled
+with the shared development-state tooltip. Language and account deletion are
+also deferred. Administrative account management and usage have backend APIs;
+their dedicated browser pages are not implemented. This does not change the
+account and usage authorization rules above.
 
-Layout and information architecture:
+The interface is responsive, with side panes becoming overlays at narrow widths.
+The selected scope excludes public sharing, collaboration, search, offline mode,
+PWA behavior, push notifications, and localization; copy is English.
 
-- Classic three-pane: sidebar (conversation list + new conversation + user
-  menu), chat area, and a conversation header carrying title, target
-  display/switch and the conversation-level operations (compact, abort,
-  retry, …). The model picker lives at the input area — web-ui's existing
-  design.
-- A work panel on the right, a sibling of the sidebar and the chat area,
-  where files and diffs open in tabs beside the conversation. The frame owns
-  whether it is open and how wide it is; its tabs belong to the conversation
-  on screen. See `web-prototype.md` for its behavior; the product mounts it
-  once file and diff views exist.
-- The conversation list is **grouped by workspace**: the first group is
-  conversations without a workspace, then one group per
-  workspace, plus an archived view.
-- **Settings are modal dialogs** from the sidebar user menu, with tabs:
-  devices, providers, usage, user management (admin), instance settings
-  (admin). No settings routes.
-- Responsive (sidebar collapses to a drawer on mobile); no PWA, no
-  offline, no push.
-- **Component placement rule**: generic and LLM-domain components live in
-  `@demicodes/web-ui` (the design system plus LLM component library);
-  `@demicodes/web` keeps only the application-frame containers and the
-  wiring. web-ui stays product-neutral in its dependencies.
-- Visual language follows web-ui's theme system (light/dark);
-  English-only copy in v1.
+`web-ui` owns every reusable behavior and component. `web` supplies product data,
+state, routing, and API handlers; `web-gallery` supplies specimens of the same
+components. Both surfaces must exercise UI changes in the same checkpoint.
+The browser is a Vue SPA built by Vite, using vue-router and Pinia. Deployment
+and browser integration are defined in [Backend](backend.md) and
+[Web integration](../web-integration.md); detailed shared behavior is documented
+in [Web application](web-prototype.md).
 
 ## Cloud settings
 
-Each user has one Cloud device. Settings show lifecycle state, resource usage
-and limits, and a Reset environment action. The reset dialog explains that all
-Cloud tasks stop, system packages and configuration are replaced, and `/home`
-is preserved. Confirmation starts a backend operation; shared UI shows its
-progress and failure/retry state even if the guest cannot connect. Project
-links and conversation history remain intact. Reset is not a project action.
+Each user has one Cloud device shared by all their Cloud projects. Those projects
+can access each other's files; they are not isolation boundaries. Creating or
+removing project metadata does not allocate or delete a machine.
 
-All Cloud projects share the user's machine and can access each other's files.
-Project creation chooses or creates a directory there. Archiving conversations
-or deleting project metadata does not delete files or reset Cloud. Lifecycle,
-persistence and reset guarantees are defined in `managed-hosts.md`.
+Settings shows lifecycle state, storage usage and limits, and Reset environment.
+The confirmation explains that reset stops all of the user's Cloud work, replaces
+system packages and settings, and preserves home files. Acceptance starts an
+operation; the UI follows progress and offers retry of the same operation ID
+on failure, including when the guest is offline. Project links and history remain
+intact. Reset is a user Cloud action, not a project action.
 
-The dialog and lifecycle presentation live in `web-ui`; `web` supplies API
-state and handlers and `web-gallery` supplies fixtures for the same components.
+[Managed hosts](managed-hosts.md) owns lifecycle and durability guarantees.
+`web-ui` owns the status and reset interaction, while product and gallery provide
+real state or fixtures to that same component.
