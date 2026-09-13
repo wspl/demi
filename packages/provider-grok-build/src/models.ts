@@ -1,10 +1,5 @@
-import {
-  isRecord,
-  nonEmptyString,
-  normalizeBaseUrl,
-  numberOrNull,
-  stringOrNull
-} from '@demicodes/utils'
+import { normalizeBaseUrl } from '@demicodes/utils'
+import { z } from 'zod'
 import type { ProviderModel, ProviderModelList } from '@demicodes/provider'
 import type { GrokAuthStore } from './auth'
 import { FileGrokAuthStore } from './auth'
@@ -24,6 +19,36 @@ export interface GrokBuildModelCatalogOptions {
 }
 
 const FALLBACK_SOURCE_FETCHED_AT = '1970-01-01T00:00:00.000Z'
+const FALLBACK_CONTEXT_WINDOW = 200_000
+
+/**
+ * One model of the Grok `/v1/models` catalog. Only the fields Demi maps are
+ * described; a context window is a count of tokens, so it is a positive
+ * integer. A reasoning effort is named by `id` or, on older deployments, by
+ * `value`.
+ */
+const grokCatalogModelSchema = z.looseObject({
+  id: z.string().min(1).optional(),
+  model: z.string().min(1).optional(),
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  context_window: z.number().int().positive().optional(),
+  supports_reasoning_effort: z.boolean().optional(),
+  reasoning_effort: z.string().min(1).optional(),
+  reasoning_efforts: z.array(z.looseObject({
+    id: z.string().min(1).optional(),
+    value: z.string().min(1).optional(),
+    default: z.boolean().optional(),
+  })).optional(),
+})
+
+type GrokCatalogModel = z.infer<typeof grokCatalogModelSchema>
+
+/** The catalog, as an OpenAI-style envelope or as the bare list. */
+const grokModelsPayloadSchema = z.union([
+  z.looseObject({ data: z.array(grokCatalogModelSchema).optional() }),
+  z.array(grokCatalogModelSchema),
+])
 
 export function grokBuildFallbackModels(
   providerId = 'grok-build'
@@ -68,9 +93,10 @@ export async function listGrokBuildModels(
   const baseUrl = normalizeBaseUrl(options.baseUrl
     ?? DEFAULT_GROK_BUILD_BASE_URL)
 
+  let response: Response
   try {
     const auth = await authStore.resolveAuth()
-    const response = await fetchImpl(modelsUrl(baseUrl), {
+    response = await fetchImpl(modelsUrl(baseUrl), {
       method: 'GET',
       signal: options.signal,
       headers: buildGrokBuildHeaders(auth, undefined, {
@@ -78,19 +104,22 @@ export async function listGrokBuildModels(
         grokHome: options.grokHome,
       }),
     })
-    if (!response.ok) {
-      const fallback = grokBuildFallbackModels(providerId)
-      return {
-        ...fallback,
-        warnings: [`Grok Build /v1/models returned HTTP ${response.status}; using fallback catalog`],
-      }
-    }
-    const payload = (await response.json()) as unknown
-    return modelListFromGrokModelsPayload(payload, providerId)
   } catch {
+    // No session or no route to the vendor: the fallback catalog keeps the
+    // model picker usable offline.
     options.signal?.throwIfAborted()
     return grokBuildFallbackModels(providerId)
   }
+  if (!response.ok) {
+    const fallback = grokBuildFallbackModels(providerId)
+    return {
+      ...fallback,
+      warnings: [`Grok Build /v1/models returned HTTP ${response.status}; using fallback catalog`],
+    }
+  }
+  // A vendor that answers with a catalog Demi cannot read is a protocol error,
+  // not an unreachable vendor: report it instead of silently substituting one.
+  return modelListFromGrokModelsPayload(await response.json(), providerId)
 }
 
 export function modelListFromGrokModelsPayload(
@@ -98,39 +127,33 @@ export function modelListFromGrokModelsPayload(
   providerId: string
 ): ProviderModelList {
   const sourceFetchedAt = new Date().toISOString()
-  const data = isRecord(payload) && Array.isArray(payload.data)
-    ? payload.data
-    : Array.isArray(payload) ? payload : []
+  const decoded = grokModelsPayloadSchema.parse(payload)
+  const data = Array.isArray(decoded) ? decoded : decoded.data ?? []
   const models: ProviderModel[] = []
 
   for (const item of data) {
-    if (!isRecord(item))
-      continue
-    const id = nonEmptyString(item.id) ?? nonEmptyString(item.model)
+    const id = item.id ?? item.model
     if (!id)
       continue
-    const reasoningEfforts = parseReasoningEfforts(item)
+    const reasoning = reasoningEffortsOf(item)
     models.push({
       providerId,
       id,
-      displayName: stringOrNull(item.name) ?? id,
-      description: stringOrNull(item.description) ?? undefined,
-      contextWindow: positiveOrDefault(
-        numberOrNull(item.context_window),
-        200_000
-      ),
+      displayName: item.name ?? id,
+      description: item.description,
+      contextWindow: item.context_window ?? FALLBACK_CONTEXT_WINDOW,
       outputLimit: null,
       supportsTools: true,
       // cli-chat-proxy omits modalities; Grok Build stock harness keeps native images.
       supportsAttachments: true,
       supportsReasoning: item.supports_reasoning_effort === true
-        || reasoningEfforts.length > 0
+        || reasoning.ids.length > 0
         ? true
         : null,
-      supportedThinkingEfforts: reasoningEfforts.length > 0
-        ? reasoningEfforts
+      supportedThinkingEfforts: reasoning.ids.length > 0
+        ? reasoning.ids
         : null,
-      defaultThinkingEffort: defaultReasoningEffort(item, reasoningEfforts),
+      defaultThinkingEffort: reasoning.defaultId,
       canDisableThinking: null,
       serviceTiers: null,
       defaultServiceTierId: null,
@@ -157,39 +180,26 @@ function modelsUrl(baseUrl: string): string {
   return normalized.endsWith('/models') ? normalized : `${normalized}/models`
 }
 
-function parseReasoningEfforts(item: Record<string, unknown>): string[] {
-  if (!Array.isArray(item.reasoning_efforts))
-    return []
+/**
+ * The reasoning efforts a model advertises and the one it starts on. An entry
+ * flagged `default` decides; failing that, the model's own `reasoning_effort`,
+ * failing that the first effort it lists.
+ */
+function reasoningEffortsOf(
+  item: GrokCatalogModel
+): { ids: string[]; defaultId: string | null } {
   const ids: string[] = []
-  for (const entry of item.reasoning_efforts) {
-    if (!isRecord(entry))
+  let flagged: string | undefined
+  for (const entry of item.reasoning_efforts ?? []) {
+    const id = entry.id ?? entry.value
+    if (!id)
       continue
-    const id = nonEmptyString(entry.id) ?? nonEmptyString(entry.value)
-    if (id)
-      ids.push(id)
+    ids.push(id)
+    if (entry.default === true)
+      flagged ??= id
   }
-  return ids
-}
-
-function defaultReasoningEffort(
-  item: Record<string, unknown>,
-  efforts: string[]
-): string | null {
-  if (Array.isArray(item.reasoning_efforts)) {
-    for (const entry of item.reasoning_efforts) {
-      if (isRecord(entry) && entry.default === true) {
-        return nonEmptyString(entry.id) ?? nonEmptyString(entry.value) ?? null
-      }
-    }
+  return {
+    ids,
+    defaultId: flagged ?? item.reasoning_effort ?? ids[0] ?? null,
   }
-  const advertised = nonEmptyString(item.reasoning_effort)
-  if (advertised)
-    return advertised
-  return efforts[0] ?? null
-}
-
-function positiveOrDefault(value: number | null, fallback: number): number {
-  return value !== null && Number.isFinite(value) && value > 0
-    ? Math.trunc(value)
-    : fallback
 }

@@ -1,12 +1,11 @@
 import {
+  decodeJwtPayload,
   delay,
   errorCode,
   errorMessage,
-  isRecord,
-  nonEmptyString,
-  stringOrNull
+  nonEmptyString
 } from '@demicodes/utils'
-import { Buffer } from 'node:buffer'
+import { z } from 'zod'
 import {
   open,
   readFile,
@@ -22,30 +21,43 @@ import { dirname, join } from 'node:path'
 import process from 'node:process'
 import {
   redactCredentialText,
+  reportedStringSchema,
   type ProviderAuthState
 } from '@demicodes/provider'
 
-/** One credential entry as written by the Grok CLI (`~/.grok/auth.json`). */
-export interface GrokAuthEntry {
-  key?: string
-  auth_mode?: string
-  refresh_token?: string
-  expires_at?: string
-  oidc_issuer?: string
-  oidc_client_id?: string
-  email?: string
-  first_name?: string
-  last_name?: string
-  user_id?: string
-  team_id?: string
-  principal_type?: string
-  principal_id?: string
-  organization_id?: string
-  [key: string]: unknown
-}
+/**
+ * One credential entry as written by the Grok CLI (`~/.grok/auth.json`).
+ *
+ * Demi reads the fields below; every other field survives a decode, because
+ * the store rewrites the whole file on refresh and must not drop what a newer
+ * Grok CLI wrote. `key` (the access token) is optional here: an entry without
+ * one is a login the CLI never completed, and is skipped rather than rejected.
+ * A field Demi does read must have the right type — a number `refresh_token`
+ * is corrupt credential material, not a value to repair.
+ */
+export const grokAuthEntrySchema = z.looseObject({
+  key: z.string().optional(),
+  auth_mode: z.string().optional(),
+  refresh_token: z.string().optional(),
+  expires_at: z.string().optional(),
+  oidc_issuer: z.string().optional(),
+  oidc_client_id: z.string().optional(),
+  email: z.string().optional(),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  user_id: z.string().optional(),
+  team_id: z.string().optional(),
+  principal_type: z.string().optional(),
+  principal_id: z.string().optional(),
+  organization_id: z.string().optional(),
+})
+
+export type GrokAuthEntry = z.infer<typeof grokAuthEntrySchema>
 
 /** Full auth.json map: key is typically `issuer::client_id`. */
-export type GrokAuthDotJson = Record<string, GrokAuthEntry>
+export const grokAuthDotJsonSchema = z.record(z.string(), grokAuthEntrySchema)
+
+export type GrokAuthDotJson = z.infer<typeof grokAuthDotJsonSchema>
 
 export interface GrokResolvedAuth {
   accessToken: string
@@ -81,12 +93,19 @@ export interface FileGrokAuthStoreOptions {
   lockTimeoutMs?: number
 }
 
-export interface GrokRefreshTokenResponse {
-  access_token?: string
-  refresh_token?: string
-  expires_in?: number
-  token_type?: string
-}
+/**
+ * The OAuth token endpoint's answer to a refresh. A response without an access
+ * token is a failed refresh however it is spelled, so the field is required.
+ */
+export const grokRefreshTokenResponseSchema = z.looseObject({
+  access_token: z.string().min(1),
+  refresh_token: z.string().min(1).optional(),
+  expires_in: z.number().positive().optional(),
+  token_type: z.string().optional(),
+})
+
+export type GrokRefreshTokenResponse =
+  z.infer<typeof grokRefreshTokenResponseSchema>
 
 export type GrokTokenRefresh = (
   input: {
@@ -176,15 +195,7 @@ export class FileGrokAuthStore implements GrokAuthStore {
       )
     }
 
-    const { entryKey, entry } = selected
-    const accessToken = nonEmptyString(entry.key)
-    if (!accessToken) {
-      throw new GrokAuthError(
-        'auth_missing',
-        `Grok auth entry "${entryKey}" has no access token (key)`
-      )
-    }
-
+    const { entryKey, entry, accessToken } = selected
     const refreshToken = nonEmptyString(entry.refresh_token) ?? null
     const clientId = nonEmptyString(entry.oidc_client_id)
       ?? parseClientIdFromEntryKey(entryKey)
@@ -204,8 +215,8 @@ export class FileGrokAuthStore implements GrokAuthStore {
         refreshToken,
         clientId,
         tokenEndpoint: tokenEndpointForIssuer(issuer),
-        principalType: stringOrNull(entry.principal_type),
-        principalId: stringOrNull(entry.principal_id),
+        principalType: entry.principal_type ?? null,
+        principalId: entry.principal_id ?? null,
       })
     }
 
@@ -233,7 +244,7 @@ export class FileGrokAuthStore implements GrokAuthStore {
     return this.withAuthFileLock(async () => {
       const latest = await this.readAuthFile()
       const latestEntry = latest[entryKey]
-      if (!latestEntry || typeof latestEntry !== 'object') {
+      if (!latestEntry) {
         throw new GrokAuthError(
           'auth_missing',
           `Grok auth entry "${entryKey}" disappeared during refresh`
@@ -274,31 +285,21 @@ export class FileGrokAuthStore implements GrokAuthStore {
         clientId,
         tokenEndpoint: tokenEndpointForIssuer(issuer)
           || refreshInput.tokenEndpoint,
-        principalType: stringOrNull(latestEntry.principal_type)
+        principalType: latestEntry.principal_type
           ?? refreshInput.principalType,
-        principalId: stringOrNull(latestEntry.principal_id)
-          ?? refreshInput.principalId,
+        principalId: latestEntry.principal_id ?? refreshInput.principalId,
       })
-      const accessToken = nonEmptyString(response.access_token)
-      if (!accessToken) {
-        throw new GrokAuthError(
-          'auth_refresh_failed',
-          'Grok token refresh returned no access_token'
-        )
-      }
-
-      const expiresAt =
-        typeof response.expires_in === 'number'
-          && Number.isFinite(response.expires_in)
-          ? new Date(this.now().getTime() + response.expires_in * 1000)
-          : parseJwtExpiration(accessToken)
+      const accessToken = response.access_token
+      const expiresAt = response.expires_in === undefined
+        ? parseJwtExpiration(accessToken)
+        : new Date(this.now().getTime() + response.expires_in * 1000)
 
       const nextEntry: GrokAuthEntry = {
         ...latestEntry,
         key: accessToken,
-        ...(nonEmptyString(response.refresh_token) ? {
-          refresh_token: response.refresh_token
-        } : {}),
+        ...(response.refresh_token
+          ? { refresh_token: response.refresh_token }
+          : {}),
         ...(expiresAt ? { expires_at: expiresAt.toISOString() } : {}),
       }
       const nextFile: GrokAuthDotJson = { ...latest, [entryKey]: nextEntry }
@@ -316,18 +317,10 @@ export class FileGrokAuthStore implements GrokAuthStore {
   }
 
   private async readAuthFile(): Promise<GrokAuthDotJson> {
+    let text: string
     try {
-      const parsed = JSON.parse(await readFile(this.authFile, 'utf8')) as unknown
-      if (!isRecord(parsed)) {
-        throw new GrokAuthError(
-          'auth_invalid',
-          `Grok auth file is not an object: ${this.authFile}`
-        )
-      }
-      return parsed as GrokAuthDotJson
+      text = await readFile(this.authFile, 'utf8')
     } catch (error) {
-      if (error instanceof GrokAuthError)
-        throw error
       if (errorCode(error) === 'ENOENT') {
         throw new GrokAuthError(
           'auth_missing',
@@ -339,6 +332,7 @@ export class FileGrokAuthStore implements GrokAuthStore {
         `Failed to read Grok auth file ${this.authFile}: ${redactGrokSecretText(errorMessage(error))}`,
       )
     }
+    return parseGrokAuthDotJson(text, `Grok auth file ${this.authFile}`)
   }
 
   private async withAuthFileLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -432,22 +426,24 @@ export function defaultGrokHome(): string {
   return fromEnv && fromEnv.trim() ? fromEnv : join(homedir(), '.grok')
 }
 
+/**
+ * The auth.json entry Demi will use, with the access token it carries. An
+ * entry whose `key` is missing or blank is a login the Grok CLI never
+ * finished: the selectors skip it, so a selected entry always has a token.
+ */
+export interface SelectedGrokAuthEntry {
+  entryKey: string
+  entry: GrokAuthEntry
+  accessToken: string
+}
+
 export function selectAuthEntry(
   file: GrokAuthDotJson
-): {
-  entryKey: string;
-  entry: GrokAuthEntry
-} | null {
-  const candidates: Array<{
-    entryKey: string;
-    entry: GrokAuthEntry;
-    score: number
-  }> = []
-  for (const [entryKey, value] of Object.entries(file)) {
-    if (!isRecord(value))
-      continue
-    const entry = value as GrokAuthEntry
-    if (!nonEmptyString(entry.key))
+): SelectedGrokAuthEntry | null {
+  const candidates: Array<SelectedGrokAuthEntry & { score: number }> = []
+  for (const [entryKey, entry] of Object.entries(file)) {
+    const accessToken = nonEmptyString(entry.key)
+    if (!accessToken)
       continue
     let score = 0
     if (entry.auth_mode === 'oidc')
@@ -456,27 +452,29 @@ export function selectAuthEntry(
       score += 2
     if (entryKey.includes('auth.x.ai')
       || entry.oidc_issuer === 'https://auth.x.ai') score += 1
-    candidates.push({ entryKey, entry, score })
+    candidates.push({ entryKey, entry, accessToken, score })
   }
   candidates.sort((a, b) => b.score - a.score
     || a.entryKey.localeCompare(b.entryKey))
-  return candidates[0] ?? null
+  const best = candidates[0]
+  if (!best)
+    return null
+  return {
+    entryKey: best.entryKey,
+    entry: best.entry,
+    accessToken: best.accessToken
+  }
 }
 
 export function selectAuthEntryByKey(
   file: GrokAuthDotJson,
   entryKey: string,
-): {
-  entryKey: string;
-  entry: GrokAuthEntry
-} | null {
-  const value = file[entryKey]
-  if (!isRecord(value))
+): SelectedGrokAuthEntry | null {
+  const entry = file[entryKey]
+  const accessToken = entry ? nonEmptyString(entry.key) : undefined
+  if (!entry || !accessToken)
     return null
-  const entry = value as GrokAuthEntry
-  if (!nonEmptyString(entry.key))
-    return null
-  return { entryKey, entry }
+  return { entryKey, entry, accessToken }
 }
 
 export async function refreshGrokOidcToken(
@@ -515,7 +513,32 @@ export async function refreshGrokOidcToken(
       `Grok token refresh failed with HTTP ${response.status}`
     )
   }
-  return (await response.json()) as GrokRefreshTokenResponse
+  return grokRefreshTokenResponseSchema.parse(await response.json())
+}
+
+/**
+ * Decodes stored Grok auth material. `what` names the source in the error a
+ * malformed file or payload raises; corrupt material is reported, never
+ * repaired.
+ */
+export function parseGrokAuthDotJson(
+  text: string,
+  what: string
+): GrokAuthDotJson {
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    throw new GrokAuthError('auth_invalid', `${what} is not valid JSON`)
+  }
+  const file = grokAuthDotJsonSchema.safeParse(value)
+  if (!file.success) {
+    throw new GrokAuthError(
+      'auth_invalid',
+      `${what} is malformed: ${redactGrokSecretText(z.prettifyError(file.error))}`,
+    )
+  }
+  return file.data
 }
 
 export function peekGrokAccessTokenPrincipal(
@@ -525,26 +548,19 @@ export function peekGrokAccessTokenPrincipal(
   principalId: string
   teamId: string | null
 } | null {
-  const payload = decodeGrokJwtPayload(accessToken)
-  if (!payload)
+  const claims = grokJwtClaims(accessToken)
+  if (!claims)
     return null
-  const principalType = nonEmptyString(payload.principal_type)
-    ?? nonEmptyString(payload.principalType)
-  const principalId = nonEmptyString(payload.principal_id)
-    ?? nonEmptyString(payload.principalId)
+  const principalType = claims.principal_type ?? claims.principalType
+  const principalId = claims.principal_id ?? claims.principalId
   if (!principalType || !principalId)
     return null
-  return {
-    principalType,
-    principalId,
-    teamId: nonEmptyString(payload.team_id) ?? null
-  }
+  return { principalType, principalId, teamId: claims.team_id ?? null }
 }
 
 export function parseJwtExpiration(jwt: string): Date | null {
-  const payload = decodeGrokJwtPayload(jwt)
-  const exp = payload?.exp
-  return typeof exp === 'number' ? new Date(exp * 1000) : null
+  const exp = grokJwtClaims(jwt)?.exp
+  return exp === undefined ? null : new Date(exp * 1000)
 }
 
 function tokenEndpointForIssuer(issuer: string | null): string {
@@ -569,8 +585,13 @@ function parseClientIdFromEntryKey(entryKey: string): string | null {
   return entryKey.slice(sep + 2) || null
 }
 
-function parseExpiresAt(value: unknown): Date | null {
-  if (typeof value !== 'string' || !value)
+/**
+ * The entry's `expires_at`, or null when it is absent or not a date. Expiry
+ * only decides when to refresh early, and the access token's own `exp` is the
+ * fallback, so an unreadable timestamp is not a reason to reject the entry.
+ */
+function parseExpiresAt(value: string | undefined): Date | null {
+  if (!value)
     return null
   const ms = Date.parse(value)
   return Number.isFinite(ms) ? new Date(ms) : null
@@ -595,20 +616,31 @@ async function writeAuthJsonAtomic(
   await rename(temp, authFile)
 }
 
-export function decodeGrokJwtPayload(
-  jwt: string
-): Record<string, unknown> | null {
-  const parts = jwt.split('.')
-  if (parts.length !== 3 || !parts[1])
+/**
+ * The claims Demi reads from a Grok access or id token. The signature is not
+ * verified and the backend is what accepts or rejects the token, so a claim of
+ * the wrong type reads as absent rather than failing an otherwise usable
+ * login. Grok spells its principal claims in both snake and camel case.
+ */
+const grokJwtClaimsSchema = z.looseObject({
+  exp: z.number().optional().catch(undefined),
+  sub: reportedStringSchema,
+  email: reportedStringSchema,
+  principal_type: reportedStringSchema,
+  principalType: reportedStringSchema,
+  principal_id: reportedStringSchema,
+  principalId: reportedStringSchema,
+  team_id: reportedStringSchema,
+})
+
+export type GrokJwtClaims = z.infer<typeof grokJwtClaimsSchema>
+
+/** The claims of a Grok JWT, or null when the token carries none Demi reads. */
+export function grokJwtClaims(jwt: string): GrokJwtClaims | null {
+  const payload = decodeJwtPayload(jwt)
+  if (payload === null)
     return null
-  try {
-    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
-    return JSON.parse(Buffer.from(padded, 'base64')
-      .toString('utf8')) as Record<string, unknown>
-  } catch {
-    return null
-  }
+  return grokJwtClaimsSchema.parse(payload)
 }
 
 function resolveGrokUserId(
@@ -616,9 +648,10 @@ function resolveGrokUserId(
   accessToken: string
 ): string | null {
   return (
-    stringOrNull(entry.user_id) ??
+    entry.user_id ??
     peekGrokAccessTokenPrincipal(accessToken)?.principalId ??
-    stringOrNull(decodeGrokJwtPayload(accessToken)?.sub)
+    grokJwtClaims(accessToken)?.sub ??
+    null
   )
 }
 
@@ -639,12 +672,10 @@ function resolvedAuthFromEntry(
     accessToken,
     refreshToken: rest.refreshToken,
     expiresAt: rest.expiresAt,
-    email: stringOrNull(entry.email),
+    email: entry.email ?? null,
     userId: resolveGrokUserId(entry, accessToken),
-    principalType: stringOrNull(entry.principal_type) ?? peeked?.principalType
-      ?? null,
-    principalId: stringOrNull(entry.principal_id) ?? peeked?.principalId
-      ?? null,
+    principalType: entry.principal_type ?? peeked?.principalType ?? null,
+    principalId: entry.principal_id ?? peeked?.principalId ?? null,
     issuer: rest.issuer,
     clientId: rest.clientId,
     entryKey: rest.entryKey,

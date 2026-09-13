@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { redactCredentialText } from '@demicodes/provider'
 import {
   FileGrokAuthStore,
+  grokRefreshTokenResponseSchema,
   isAbandonedGrokAuthLock,
   selectAuthEntry
 } from '../auth'
@@ -127,6 +128,50 @@ test(
     }
   }
 )
+
+test(
+  'an entry without an access token is skipped, a mistyped field is an error',
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'demi-grok-entry-shape-'))
+    const access = jwt({ exp: 1_900_000_000 })
+    try {
+      // No `key`: a login the CLI never finished. The usable sibling wins.
+      await writeFile(
+        join(dir, 'auth.json'),
+        JSON.stringify({
+          'https://auth.x.ai::pending': { auth_mode: 'oidc' },
+          'https://auth.x.ai::client-1': { key: access, auth_mode: 'oidc' },
+        }),
+      )
+      const store = new FileGrokAuthStore({ grokHome: dir })
+      expect((await store.resolveAuth()).entryKey)
+        .toBe('https://auth.x.ai::client-1')
+
+      // A field Demi reads with the wrong type is corrupt material.
+      await writeFile(
+        join(dir, 'auth.json'),
+        JSON.stringify({
+          'https://auth.x.ai::client-1': { key: access, refresh_token: 7 },
+        }),
+      )
+      expect(await new FileGrokAuthStore({ grokHome: dir }).status())
+        .toMatchObject({ status: 'error' })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }
+)
+
+test('a refresh response without an access token is an error', () => {
+  expect(grokRefreshTokenResponseSchema.parse({
+    access_token: 'at',
+    scope: 'kept',
+  })).toMatchObject({ access_token: 'at', scope: 'kept' })
+  expect(() => grokRefreshTokenResponseSchema.parse({
+    token_type: 'Bearer',
+    expires_in: 3600,
+  })).toThrow('access_token')
+})
 
 test('selectAuthEntry prefers OIDC entries on auth.x.ai', () => {
   const selected = selectAuthEntry({
