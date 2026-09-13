@@ -12,19 +12,18 @@ export function createStdioClientTransport(
   readable: Readable,
   writable: Writable
 ): AgentClientTransport {
-  return new JsonLineTransport<ClientFrame, ServerFrame>(readable, writable)
+  return new JsonLineTransport<ClientFrame>(readable, writable)
 }
 
 export function createStdioServerTransport(
   readable: Readable,
   writable: Writable
 ): AgentServerTransport {
-  return new JsonLineTransport<ServerFrame, ClientFrame>(readable, writable)
+  return new JsonLineTransport<ServerFrame>(readable, writable)
 }
 
-class JsonLineTransport<SendFrame, ReceiveFrame>
-  implements AgentTransport<SendFrame, ReceiveFrame> {
-  private readonly handlers = new Set<(frame: ReceiveFrame) => void>()
+class JsonLineTransport<SendFrame> implements AgentTransport<SendFrame> {
+  private readonly handlers = new Set<(frame: unknown) => void>()
   private readonly readline
   private closed = false
 
@@ -36,7 +35,15 @@ class JsonLineTransport<SendFrame, ReceiveFrame>
     this.readline.on('line', (line) => {
       if (this.closed || line.trim() === '')
         return
-      const frame = parsePortableJson<ReceiveFrame>(line)
+      let frame: unknown
+      try {
+        frame = parsePortableJson(line)
+      } catch {
+        // A line that is not JSON breaks the framing itself, not one frame:
+        // nothing after it can be trusted to start where a frame starts.
+        this.close()
+        return
+      }
       for (const handler of this.handlers) handler(frame)
     })
   }
@@ -47,7 +54,7 @@ class JsonLineTransport<SendFrame, ReceiveFrame>
     this.writable.write(`${stringifyPortableJson(frame)}\n`)
   }
 
-  onFrame(handler: (frame: ReceiveFrame) => void): () => void {
+  onFrame(handler: (frame: unknown) => void): () => void {
     this.handlers.add(handler)
     return () => {
       this.handlers.delete(handler)

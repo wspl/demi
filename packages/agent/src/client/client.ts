@@ -434,7 +434,7 @@ export class AgentClient {
    * that does not match cannot be understood in part, so the connection drops
    * with the reason instead.
    */
-  private receiveServerFrame(frame: ServerFrame): void {
+  private receiveServerFrame(frame: unknown): void {
     const parsed = serverFrameSchema.safeParse(frame)
     if (!parsed.success) {
       const issue = parsed.error.issues[0]

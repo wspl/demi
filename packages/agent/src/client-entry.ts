@@ -29,9 +29,19 @@ export {
   editRequestSchema,
   editResultSchema,
   transcriptVersionSchema,
+  serverFrameSchema,
+  blockSchema,
+  transcriptPatchSchema,
+  shellCommandStatusSchema,
+  toolResultContentBlockSchema,
+  refSourceSchema,
+  refBase64SourceSchema,
   type EditRequest,
   type TranscriptVersion,
+  type RefSource,
+  type RefBase64Source,
 } from './protocol/schemas'
+export { shellToolViewSchema } from './server/summaries'
 export { isEditableUserMessage } from './transcript/user-message'
 export { applyTranscriptPatches } from './transcript/patch'
 

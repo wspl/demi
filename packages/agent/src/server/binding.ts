@@ -95,10 +95,10 @@ export class AgentTransportBindingImpl
     this.sessions.release(live.agentSessionId, this)
   }
 
-  private async handleFrame(frame: ClientFrame): Promise<void> {
+  private async handleFrame(raw: unknown): Promise<void> {
     // The transport hands over whatever arrived on the wire; this is the
     // trust boundary, so the frame is validated before anything acts on it.
-    const parsed = clientFrameSchema.safeParse(frame)
+    const parsed = clientFrameSchema.safeParse(raw)
     if (!parsed.success) {
       const issue = parsed.error.issues[0]
       this.send({
@@ -108,6 +108,7 @@ export class AgentTransportBindingImpl
       })
       return
     }
+    const frame = parsed.data
     try {
       switch (frame.type) {
         case 'open':

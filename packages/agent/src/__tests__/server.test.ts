@@ -7,6 +7,7 @@ import { type ShellEnvironmentOptions } from '@demicodes/shell'
 import { runnerShellFactory, probeCommand } from '@demicodes/backend/testing'
 
 import { deferred, waitFor } from '@demicodes/utils'
+import { clientFrameSchema } from '../protocol/schemas'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
 import { LocalHost } from '@demicodes/host-remote/testing'
@@ -1739,7 +1740,8 @@ for (const lost of ['replacement-patch', 'acceptance'] as const) {
       close: () => pair.server.close(),
       onFrame(handler) {
         return pair.server.onFrame((frame) => {
-          if (frame.type === 'sync_transcript') resyncs += 1
+          const parsed = clientFrameSchema.safeParse(frame)
+          if (parsed.success && parsed.data.type === 'sync_transcript') resyncs += 1
           return handler(frame)
         })
       },

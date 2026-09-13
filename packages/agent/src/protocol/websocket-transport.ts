@@ -22,23 +22,30 @@ export interface JsonWebSocket {
 export function createWebSocketClientTransport(
   socket: JsonWebSocket
 ): AgentClientTransport {
-  return new WebSocketJsonTransport<ClientFrame, ServerFrame>(socket)
+  return new WebSocketJsonTransport<ClientFrame>(socket)
 }
 
 export function createWebSocketServerTransport(
   socket: JsonWebSocket
 ): AgentServerTransport {
-  return new WebSocketJsonTransport<ServerFrame, ClientFrame>(socket)
+  return new WebSocketJsonTransport<ServerFrame>(socket)
 }
 
-class WebSocketJsonTransport<SendFrame, ReceiveFrame>
-  implements AgentTransport<SendFrame, ReceiveFrame> {
-  private readonly handlers = new Set<(frame: ReceiveFrame) => void>()
+class WebSocketJsonTransport<SendFrame> implements AgentTransport<SendFrame> {
+  private readonly handlers = new Set<(frame: unknown) => void>()
   private readonly onMessage = (event: { data: unknown }): void => {
     const text = typeof event.data === 'string'
       ? event.data
       : String(event.data)
-    const frame = parsePortableJson<ReceiveFrame>(text)
+    let frame: unknown
+    try {
+      frame = parsePortableJson(text)
+    } catch {
+      // A message that is not JSON is a peer that does not speak the
+      // protocol; the socket is closed rather than the message skipped.
+      this.close()
+      return
+    }
     for (const handler of this.handlers) handler(frame)
   }
 
@@ -50,7 +57,7 @@ class WebSocketJsonTransport<SendFrame, ReceiveFrame>
     this.socket.send(stringifyPortableJson(frame))
   }
 
-  onFrame(handler: (frame: ReceiveFrame) => void): () => void {
+  onFrame(handler: (frame: unknown) => void): () => void {
     this.handlers.add(handler)
     return () => {
       this.handlers.delete(handler)
