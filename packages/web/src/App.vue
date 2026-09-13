@@ -16,6 +16,7 @@ import SettingsDialog from './settings/SettingsDialog.vue'
 import TargetDialog from './targets/TargetDialog.vue'
 import WorkPane from './conversation/WorkPane.vue'
 import { useConversations } from './conversation/store'
+import { useWorkPanel } from './conversation/work'
 import { useResources } from './state/resources'
 import { useSession } from './auth/session'
 import { claimDevice, deviceInstallation } from './devices/pairing'
@@ -50,6 +51,16 @@ watch(
 const activeId = computed(() =>
   typeof route.params.id === 'string' ? route.params.id : null,
 )
+// The panel opens per conversation; the frame shows the open conversation's.
+const work = useWorkPanel()
+const asideOpen = computed({
+  get: () => activeId.value !== null && work.stateFor(activeId.value).open,
+  set: (open: boolean) => {
+    if (activeId.value !== null) {
+      work.setOpen(work.stateFor(activeId.value), open)
+    }
+  },
+})
 watch(
   () => [
     activeId.value,
@@ -144,8 +155,7 @@ useAppShortcuts(
     v-model:open="resources.sidebarOpen"
     v-model:width="sidebarWidth"
     v-model:aside-width="asideWidth"
-    :aside-open="resources.asideOpen && activeId !== null"
-    @update:aside-open="resources.asideOpen = $event"
+    v-model:aside-open="asideOpen"
     @resize-end="resources.sidebarWidth = $event"
     @aside-resize-end="resources.asideWidth = $event"
   >
@@ -179,7 +189,7 @@ useAppShortcuts(
       <WorkPane
         v-if="activeId"
         :conversation-id="activeId"
-        @close="resources.asideOpen = false"
+        @close="asideOpen = false"
       />
     </template>
     <template #dialogs>
