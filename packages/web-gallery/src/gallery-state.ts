@@ -1,20 +1,37 @@
 import { reactive, watch } from 'vue'
+import { z } from 'zod'
 import {
   DEFAULT_ACCENT,
   PRODUCT_ACCENTS,
   productAppearance,
   type ProductAccent
 } from '@demicodes/web-ui/theme/productAppearance'
-import { appThemeStore, setTheme } from '@demicodes/web-ui/theme/appTheme'
+import {
+  appThemeStore,
+  setTheme,
+  themeModeSchema,
+  type ThemeMode,
+} from '@demicodes/web-ui/theme/appTheme'
 
-type ThemeMode = 'light' | 'dark'
+const paradigmIdSchema = z.enum([
+  'demi',
+  'neutral',
+  'hairline',
+  'carved',
+  'overlay',
+])
+const toneIdSchema = z.enum(['zinc', 'cool', 'warm', 'ink'])
+const accentIdSchema = z.literal(PRODUCT_ACCENTS.map((accent) => accent.id))
+const densityIdSchema = z.enum(['compact', 'regular', 'comfortable'])
+const radiusIdSchema = z.enum(['tight', 'medium', 'soft'])
+const shadowIdSchema = z.enum(['hairline', 'soft', 'carved'])
 
-export type ParadigmId = 'demi' | 'neutral' | 'hairline' | 'carved' | 'overlay'
-export type ToneId = 'zinc' | 'cool' | 'warm' | 'ink'
+export type ParadigmId = z.infer<typeof paradigmIdSchema>
+export type ToneId = z.infer<typeof toneIdSchema>
 export type AccentId = ProductAccent
-export type DensityId = 'compact' | 'regular' | 'comfortable'
-export type RadiusId = 'tight' | 'medium' | 'soft'
-export type ShadowId = 'hairline' | 'soft' | 'carved'
+export type DensityId = z.infer<typeof densityIdSchema>
+export type RadiusId = z.infer<typeof radiusIdSchema>
+export type ShadowId = z.infer<typeof shadowIdSchema>
 
 export const ACCENTS = PRODUCT_ACCENTS
 
@@ -101,47 +118,53 @@ function matchesParadigm(state: GalleryState, paradigm: Paradigm): boolean {
   )
 }
 
-interface StoredGalleryState {
-  paradigm?: string
-  mode?: string
-  tone?: ToneId
-  accent?: string
-  density?: DensityId
-  radius?: RadiusId
-  shadow?: ShadowId
-}
+/**
+ * What `persistGalleryState` wrote. The gallery writes the whole state at once,
+ * so a record that no longer matches is style, not data: it is dropped whole
+ * and the gallery opens on its default paradigm.
+ */
+const storedGalleryStateSchema = z.object({
+  paradigm: z.union([paradigmIdSchema, z.literal('custom')]),
+  mode: themeModeSchema,
+  tone: toneIdSchema,
+  accent: accentIdSchema,
+  density: densityIdSchema,
+  radius: radiusIdSchema,
+  shadow: shadowIdSchema,
+})
 
-function resolveAccent(id: unknown): AccentId {
-  if (typeof id === 'string' && ACCENTS.some((item) => item.id === id))
-    return id as AccentId
-  return DEFAULT_ACCENT
-}
-
-function readStored(): StoredGalleryState {
+function readStored(): GalleryState | null {
   if (typeof localStorage === 'undefined')
-    return {}
+    return null
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) as StoredGalleryState : {}
+    const stored = storedGalleryStateSchema.safeParse(
+      JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null'),
+    )
+    return stored.success ? stored.data : null
   } catch {
-    return {}
+    // Storage may be unavailable, or hold text that is not JSON.
+    return null
   }
 }
 
-const stored = readStored()
-// A stored paradigm carries its own axes; only `custom` keeps the stored axes as they are.
-const custom = stored.paradigm === 'custom'
-const base = PARADIGMS.find((item) => item.id === stored.paradigm) ?? paradigmById('demi')
+/** A stored paradigm carries its own axes; only `custom` keeps the stored axes as they are. */
+function initialState(): GalleryState {
+  const stored = readStored()
+  if (stored?.paradigm === 'custom')
+    return stored
+  const base = paradigmById(stored ? stored.paradigm : 'demi')
+  return {
+    paradigm: base.id,
+    mode: stored?.mode ?? 'dark',
+    tone: base.tone,
+    accent: stored?.accent ?? DEFAULT_ACCENT,
+    density: base.density,
+    radius: base.radius,
+    shadow: base.shadow,
+  }
+}
 
-export const galleryState = reactive<GalleryState>({
-  paradigm: custom ? 'custom' : base.id,
-  mode: stored.mode === 'light' || stored.mode === 'dark' ? stored.mode : 'dark',
-  tone: custom ? stored.tone ?? base.tone : base.tone,
-  accent: resolveAccent(stored.accent),
-  density: custom ? stored.density ?? base.density : base.density,
-  radius: custom ? stored.radius ?? base.radius : base.radius,
-  shadow: custom ? stored.shadow ?? base.shadow : base.shadow,
-})
+export const galleryState = reactive<GalleryState>(initialState())
 
 export function applyParadigm(id: ParadigmId): void {
   const paradigm = paradigmById(id)

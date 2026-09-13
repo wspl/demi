@@ -73,6 +73,8 @@ export type ControlResponse =
     error: string
   }
 
+// The agent owns the session contract; an embedder reads it through here so it
+// never has to describe a frame, a block or a tool view a second time.
 export {
   agentMessageSchema,
   modelSelectionSchema,
@@ -80,6 +82,9 @@ export {
   editRequestSchema,
   editResultSchema,
   transcriptVersionSchema,
+  blockSchema,
+  refSourceSchema,
+  shellToolViewSchema,
 } from '@demicodes/agent/client'
 export type { ProviderSelection, ClientFrame, ServerFrame, ClientSessionEvent } from '@demicodes/agent/client'
 

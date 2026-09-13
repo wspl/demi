@@ -49,6 +49,7 @@ import {
   type SettingsVendor,
   type SettingsWireApi,
 } from './types'
+import { formatTokens } from '../ui/token-count'
 
 /**
  * Models & providers: a rail of providers beside the selected one. Every supported
@@ -212,13 +213,6 @@ function commitRename() {
 
 const modelFilter = ref('')
 const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1)
-
-function formatTokens(n: number | null): string {
-  if (n === null) {
-    return '—'
-  }
-  return n >= 1_000_000 ? `${n / 1_000_000}M` : `${Math.round(n / 1000)}K`
-}
 
 const isUnknown = (m: SettingsProviderModel) => m.contextWindow === null
 

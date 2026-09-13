@@ -1,12 +1,9 @@
 import type { SidebarAccount, SidebarConversation, SidebarProject } from '@demicodes/web-ui/sidebar/types'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
+import { ago } from '../fixtures/time'
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
-
-function ago(ms: number): string {
-  return new Date(Date.now() - ms).toISOString()
-}
 
 export const demoAccount: SidebarAccount = {
   name: 'Zan',
