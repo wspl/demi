@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { formatTokens } from '../../ui/token-count'
 
 const props = defineProps<{
   summary: string
@@ -7,14 +8,6 @@ const props = defineProps<{
   isCompacting: boolean
   createdAt: string
 }>()
-
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000)
-    return `${(tokens / 1_000_000).toFixed(1)}M`
-  if (tokens >= 1_000)
-    return `${(tokens / 1_000).toFixed(1)}K`
-  return String(tokens)
-}
 
 const label = computed(() => {
   if (props.isCompacting)

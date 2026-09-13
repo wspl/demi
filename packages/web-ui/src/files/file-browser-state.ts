@@ -10,16 +10,28 @@ export interface FileBrowserSort {
   direction: 'asc' | 'desc'
 }
 
+export interface FileBrowserSortOptions {
+  /** Hidden names sort after the visible ones, among directories and files alike. */
+  hiddenLast?: boolean
+}
+
 /** Directories first, then the chosen column; names compare naturally so `file2` precedes `file10`. */
 export function sortEntries(
   entries: readonly FileBrowserEntry[],
-  sort: FileBrowserSort
+  sort: FileBrowserSort,
+  options: FileBrowserSortOptions = {}
 ): FileBrowserEntry[] {
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
   const sign = sort.direction === 'asc' ? 1 : -1
   return [...entries].sort((a, b) => {
     if (a.isDirectory !== b.isDirectory)
       return a.isDirectory ? -1 : 1
+    if (options.hiddenLast) {
+      const hiddenA = isHiddenName(a.name)
+      const hiddenB = isHiddenName(b.name)
+      if (hiddenA !== hiddenB)
+        return hiddenA ? 1 : -1
+    }
     let order = 0
     if (sort.key === null)
       return collator.compare(a.name, b.name)

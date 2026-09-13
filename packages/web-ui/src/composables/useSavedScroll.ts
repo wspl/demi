@@ -1,10 +1,13 @@
 import { nextTick, onBeforeUnmount, watch, type Ref } from 'vue'
+import { z } from 'zod'
 
-interface ScrollPosition {
-  top: number
-  anchor: string | null
-  offset: number
-}
+/** A saved viewport, as it comes back from session storage. */
+const scrollPositionSchema = z.object({
+  top: z.number().nonnegative(),
+  anchor: z.string().nullable(),
+  offset: z.number(),
+})
+type ScrollPosition = z.infer<typeof scrollPositionSchema>
 
 /** Restore a scroll viewport by location key, optionally anchored to stable content. */
 export function useSavedScroll(
@@ -20,7 +23,7 @@ export function useSavedScroll(
       return
     const element = viewportElement
 
-    const saved = readPosition(storageKey)
+    const saved = savedScrollPosition(storageKey)
     let disposed = false
     let restoring = true
     let observer: ResizeObserver | undefined
@@ -104,12 +107,18 @@ export function useSavedScroll(
   onBeforeUnmount(unwatch)
 }
 
-function readPosition(key: string): ScrollPosition | null {
+/**
+ * The viewport saved under a key. A snapshot that does not match is ignored
+ * whole rather than patched: a half-restored position is worse than the top.
+ */
+export function savedScrollPosition(key: string): ScrollPosition | null {
   try {
-    const value: unknown = JSON.parse(sessionStorage.getItem(key) ?? 'null')
-    return isScrollPosition(value) ? value : null
+    const saved = scrollPositionSchema.safeParse(
+      JSON.parse(sessionStorage.getItem(key) ?? 'null'),
+    )
+    return saved.success ? saved.data : null
   } catch {
-    // Storage may be unavailable, or contain an invalid snapshot; start at the top.
+    // Storage may be unavailable, or hold text that is not JSON; start at the top.
     return null
   }
 }
@@ -120,17 +129,4 @@ function writePosition(key: string, position: ScrollPosition): void {
   } catch {
     // Scrolling must still work when storage is unavailable.
   }
-}
-
-function isScrollPosition(value: unknown): value is ScrollPosition {
-  if (typeof value !== 'object' || value === null)
-    return false
-
-  const position = value as Record<string, unknown>
-  return typeof position.top === 'number'
-    && Number.isFinite(position.top)
-    && position.top >= 0
-    && typeof position.offset === 'number'
-    && Number.isFinite(position.offset)
-    && (position.anchor === null || typeof position.anchor === 'string')
 }

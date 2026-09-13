@@ -1,15 +1,16 @@
-import { isRecord } from '@demicodes/utils'
 import type { Block, TokenUsage } from '@demicodes/core'
-import type { ShellFileChange } from '@demicodes/agent'
+import type { ShellFileChange, ShellToolView } from '@demicodes/agent'
+import { shellToolViewSchema } from '@demicodes/agent/client'
 import { Allow, parse } from 'partial-json'
+import { z } from 'zod'
 import { shouldParsePartialToolInput } from './tool-rendering'
 
 type ToolCallBlock = Extract<Block, { type: 'tool_call' }>
 
-export interface ShellTerminalOutputChunk {
-  stream: 'stdout' | 'stderr'
-  text: string
-}
+export type ShellTerminalOutputChunk = ShellToolView['chunks'][number]
+
+/** A tool call's input is a JSON object; anything else is nothing to render. */
+const toolInputSchema = z.record(z.string(), z.unknown())
 
 export function getLatestResponseUsage(blocks: readonly Block[]): TokenUsage | null {
   for (let i = blocks.length - 1; i >= 0; i--) {
@@ -41,8 +42,10 @@ export function toolOutputText(block: ToolCallBlock): string {
     .join('\n')
 }
 
+/** The output a shell call left on its view; a view that is not one shows nothing. */
 export function shellTerminalOutputChunks(block: ToolCallBlock): ShellTerminalOutputChunk[] {
-  return outputChunks(block.view)
+  const view = shellToolViewSchema.safeParse(block.view)
+  return view.success ? view.data.chunks : []
 }
 
 /**
@@ -57,9 +60,8 @@ export function parseToolCallInput(block: ToolCallBlock): Record<string, unknown
     const result = shouldParsePartialToolInput(block.toolName)
       ? parse(block.input, Allow.ALL)
       : JSON.parse(block.input)
-    return typeof result === 'object' && result !== null
-      ? result as Record<string, unknown>
-      : {}
+    const input = toolInputSchema.safeParse(result)
+    return input.success ? input.data : {}
   } catch {
     return {}
   }
@@ -69,10 +71,8 @@ export function parseToolInput(raw: string): Record<string, unknown> {
   if (!raw)
     return {}
   try {
-    const parsed = JSON.parse(raw)
-    return typeof parsed === 'object' && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : {}
+    const input = toolInputSchema.safeParse(JSON.parse(raw))
+    return input.success ? input.data : {}
   } catch {
     return {}
   }
@@ -80,44 +80,13 @@ export function parseToolInput(raw: string): Record<string, unknown> {
 
 export type { ShellFileChange }
 
-/** The files a shell call changed, from its view; malformed entries are dropped. */
+/**
+ * The files a shell call changed, from its view. The view is one record: a
+ * shape the contract does not describe is not a shell view, and shows nothing.
+ */
 export function shellFileChanges(block: ToolCallBlock): ShellFileChange[] {
-  const view = block.view
-  if (!isRecord(view) || !Array.isArray(view['files']))
+  const view = shellToolViewSchema.safeParse(block.view)
+  if (!view.success)
     return []
-  return view['files'].flatMap((entry): ShellFileChange[] => {
-    if (!isRecord(entry))
-      return []
-    const path = entry['path']
-    const kind = entry['kind']
-    const added = entry['added']
-    const removed = entry['removed']
-    const from = entry['from']
-    if (typeof path !== 'string' || path.length === 0)
-      return []
-    if (kind !== 'added' && kind !== 'modified' && kind !== 'deleted' && kind !== 'renamed')
-      return []
-    if (typeof added !== 'number' || typeof removed !== 'number')
-      return []
-    const change: ShellFileChange = { path, kind, added, removed }
-    if (typeof from === 'string')
-      change.from = from
-    return [change]
-  })
-}
-
-function outputChunks(view: unknown): ShellTerminalOutputChunk[] {
-  if (!isRecord(view) || !Array.isArray(view['chunks']))
-    return []
-  return view['chunks'].flatMap((chunk): ShellTerminalOutputChunk[] => {
-    if (!isRecord(chunk))
-      return []
-    const stream = chunk['stream']
-    const text = chunk['text']
-    if ((stream !== 'stdout' && stream !== 'stderr') ||
-      typeof text !== 'string' ||
-      text.length === 0)
-      return []
-    return [{ stream, text }]
-  })
+  return view.data.files ?? []
 }
