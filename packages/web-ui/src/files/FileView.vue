@@ -20,7 +20,7 @@ import { FileBrowserError, type FileBrowserSource } from './types'
  * workspace tree with the file selected. The control at the end of the crumb row shows and
  * hides the tree, and the divider before the tree sizes it; the host keeps
  * both (v-model) so they hold across files. A click on another file in the
- * tree asks the host to open it.
+ * tree, or a pick from a crumb's menu, asks the host to open it.
  */
 const props = defineProps<{
   source: FileBrowserSource
@@ -83,13 +83,16 @@ onBeforeUnmount(() => {
 <template>
   <div class="flex h-full min-h-0 flex-col">
     <div class="flex h-11 shrink-0 items-center gap-1 px-2">
+      <!-- Crumbs open menus of what lies beside them: another file is a pick away. -->
       <FileBrowserAddressBar
         class="min-w-0 flex-1"
+        mode="browse"
         :path="path"
         :root="root"
         :source="source"
         leaf="file"
         :editable="false"
+        @open="emit('open', $event)"
       />
       <Tooltip :content="tree ? 'Hide file tree' : 'Show file tree'" class="shrink-0">
         <IconButton
