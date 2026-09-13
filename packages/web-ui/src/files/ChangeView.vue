@@ -27,6 +27,8 @@ const props = defineProps<{
   changes: ChangeSetSource
   /** The workspace the paths are relative to. */
   root: string
+  /** Fold the unchanged stretches between changes in the diff; off shows whole files. */
+  collapseUnchanged?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -123,6 +125,7 @@ onBeforeUnmount(() => {
           :modified="sides.modified"
           :filename="selectedChange.path"
           :resource-uri="toEditorUri('workspace', joinPath(root, selectedChange.path))"
+          :collapse-unchanged="collapseUnchanged"
         />
         <RegionStatus
           v-else

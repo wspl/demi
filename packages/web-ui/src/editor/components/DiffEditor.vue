@@ -26,9 +26,12 @@ const props = withDefaults(defineProps<{
   modified: string
   filename?: string
   resourceUri?: string
+  /** Fold the unchanged stretches between changes behind an "N lines folded" line; off shows the whole file. */
+  collapseUnchanged?: boolean
 }>(), {
   filename: '',
   resourceUri: '',
+  collapseUnchanged: false,
 })
 
 const containerRef = ref<HTMLDivElement>()
@@ -62,9 +65,10 @@ onMounted(async () => {
           gutter: false,
           mergeControls: false,
           syntaxHighlightDeletions: true,
-          collapseUnchanged: { margin: 5, minSize: 6 },
+          ...(props.collapseUnchanged ? { collapseUnchanged: { margin: 5, minSize: 6 } } : {}),
         }),
-        ViewPlugin.define((view) => {
+        // The folded stretches read "N lines folded" rather than the merge view's own wording.
+        ...(props.collapseUnchanged ? [ViewPlugin.define((view) => {
           function relabel() {
             for (const el of view.dom.querySelectorAll('.cm-collapsedLines')) {
               if (el.textContent?.includes('folded')) continue
@@ -75,7 +79,7 @@ onMounted(async () => {
           }
           relabel()
           return { update: relabel }
-        }),
+        })] : []),
         ...(props.resourceUri ? [
           lspFileUri.of(props.resourceUri),
           lspDocSyncExtension(props.host),
