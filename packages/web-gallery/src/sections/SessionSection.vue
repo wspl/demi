@@ -12,6 +12,7 @@ import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activit
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import { closeWorkTabs, fileWorkTab, goBackInTab, goForwardInTab, showFileInTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryWorkspace } from '../fixtures/workspace'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
@@ -166,6 +167,8 @@ function useWorkTabs(activeId: string | null) {
 }
 const workspace = createGalleryWorkspace()
 const fileViewTree = ref(true)
+const changeViewTree = ref(true)
+const changeSelected = ref<string | null>('src/auth/cookie.ts')
 const fileViewPath = ref(`${workspace.root}/src/auth/cookie.ts`)
 const fileViewBack = ref<string[]>([])
 const fileViewForward = ref<string[]>([])
@@ -1543,7 +1546,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="The panel alone. A file tab carries the file's icon; the one Change tab a diff mark. New tab follows the last tab until they scroll, then stays at the right. Right-click a tab for its menu; a file tab also copies its path. A file tab reads its file from the workspace, and a file chosen in its tree or crumbs takes the tab's place instead of opening another; the Change tab is a placeholder until the change view exists."
+        note="The panel alone. A file tab carries the file's icon; the one Change tab a diff mark. New tab follows the last tab until they scroll, then stays at the right. Right-click a tab for its menu; a file tab also copies its path. A file tab reads its file from the workspace, and a file chosen in its tree or crumbs takes the tab's place instead of opening another; the Change tab shows the workspace's changes."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
@@ -1575,7 +1578,7 @@ function abortTerminal(id: string) {
         note="A file of the workspace: the path as crumbs from the workspace root, the highlighted text, and the workspace tree beside it with the file selected. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, or clicked in the tree, replaces the one shown, and Back and Forward before the crumbs walk the files shown. The control at the end of the crumb row hides and shows the tree. Reads carry the fixture's latency, so the text and each directory show their loading state first."
       >
         <GallerySpecimen variant="cookie.ts · live" wide>
-          <div class="gallery-frame flex h-[28rem] overflow-hidden">
+          <div class="gallery-frame flex h-[40rem] overflow-hidden">
             <FileView
               class="w-full"
               v-model:tree="fileViewTree"
@@ -1587,6 +1590,22 @@ function abortTerminal(id: string) {
               @open="showInFileView"
               @back="fileViewGoBack"
               @forward="fileViewGoForward"
+            />
+          </div>
+        </GallerySpecimen>
+      </GallerySection>
+      <GallerySection
+        title="Change view"
+        note="The conversation's changes: the diff of the selected file on the left, the changed files as a tree on the right with the kind of each change (a green dot for a new file, a struck name for a deleted one, the old path as tooltip for a renamed one) and its line counts. The row above counts the files and lines and holds the control that hides the tree; the divider before the tree sizes it."
+      >
+        <GallerySpecimen variant="cookie rename · live" wide>
+          <div class="gallery-frame flex h-[40rem] overflow-hidden">
+            <ChangeView
+              class="w-full"
+              v-model:selected="changeSelected"
+              v-model:tree="changeViewTree"
+              :changes="workspace.changes"
+              :root="workspace.root"
             />
           </div>
         </GallerySpecimen>
