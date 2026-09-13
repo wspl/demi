@@ -7,6 +7,7 @@ import MenuItem from '../ui/MenuItem.vue'
 import MenuGroup from '../ui/MenuGroup.vue'
 import MenuDivider from '../ui/MenuDivider.vue'
 import Button from '../ui/Button.vue'
+import CornerDot from '../ui/CornerDot.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { ICON_PX } from '../ui/icon-metrics'
 import HostPicker from './HostPicker.vue'
@@ -71,11 +72,17 @@ function connect() {
         aria-label="Manage conversation hosts"
         :loading="pending"
       >
-        <component
-          :is="mainHost.kind === 'cloud' ? Cloud : Monitor"
-          :size="ICON_PX.in28"
-          class="shrink-0"
-        />
+        <span class="relative flex shrink-0">
+          <component
+            :is="mainHost.kind === 'cloud' ? Cloud : Monitor"
+            :size="ICON_PX.in28"
+          />
+          <CornerDot
+            :tone="mainHost.online ? 'success' : 'muted'"
+            ring="button"
+            :label="mainHost.online ? 'Online' : 'Offline'"
+          />
+        </span>
         <span class="max-w-28 truncate">{{ mainHost.name }}</span>
         <span v-if="attachedHosts.length" class="text-[11px] text-fg-subtle">
           +{{ attachedHosts.length }}
@@ -87,6 +94,8 @@ function connect() {
         <MenuItem
           :icon="mainHost.kind === 'cloud' ? Cloud : Monitor"
           label="Main host"
+          :indicator="mainHost.online ? 'success' : 'muted'"
+          :indicator-label="mainHost.online ? 'Online' : 'Offline'"
           :value="mainHost.name"
           :disabled="mainLocked"
           has-submenu
