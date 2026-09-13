@@ -6,7 +6,11 @@
 - Do not keep a second value that can be calculated from existing data. For mutually exclusive phases, use one status such as `idle | running | finished`, rather than separate `running` and `finished` flags that can contradict each other.
 - Whenever you create a timer, listener, stream, or worker, check where it is stopped or released on success, failure, and cancellation. Share cleanup code when those paths need the same cleanup. If you ignore an error, make clear why it is safe to ignore.
 - Implement the intended final design. Do not add compatibility layers or legacy-data migration, cleanup, or normalization paths.
-- Validate external data at system boundaries using explicit schemas. Derive types from contracts; do not silently repair corrupt internal data.
+- Before writing a helper, state its purpose in one generic sentence. If that sentence does not mention this project's domain, the helper almost certainly exists: search the standard library, the package's declared dependencies, `@demicodes/utils`, and the workspace, in that order. Write it only when the search fails, and place it where the next caller will find it. Small size is not a reason to write a local copy.
+- Use a library from its installed types and documentation, not from memory. Any cast, `as unknown as`, `any`, or type-only import used to get around a library's types means you do not know its API: stop and read it. If the library genuinely lacks the capability, say so in a comment at the workaround.
+- When a library is adopted for a job, use the whole of it for that job. Using it for one step and hand-writing the adjacent step it also covers (its coercion, its introspection, its error reporting) is a defect.
+- A type assertion is not a check. A value from outside the process (network, file, socket, environment, storage, model output, child process) is validated against a schema at the point of entry; the type is derived from the schema, never asserted onto the value. Do not silently repair corrupt data.
+- Two implementations of the same one-sentence purpose are a defect regardless of length or package. Consolidate to one owner and import.
 - Prefer protocols, APIs, and file interfaces over external CLI processes.
 - Preserve unrelated work and keep changes within the task's scope.
 - Run checks appropriate to the change. Never run tests that call real models.
