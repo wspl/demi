@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { changeWorkTab, closeWorkTabs, fileWorkTab, goBackInTab, goForwardInTab, showFileInTab, workTabTitle, type WorkTab } from '../work-panel'
+import { changeWorkTab, closeWorkTabs, fileWorkTab, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showFileInTab, workTabTitle, type WorkTab } from '../work-panel'
 import { tabsToClose } from '../tab-close'
 
 const tabs: WorkTab[] = [
   fileWorkTab('a', 'src/auth/cookie.ts'),
-  { id: 'b', kind: 'change' },
+  changeWorkTab('b', 'uncommitted'),
   fileWorkTab('c', 'tests/login/auth.test.ts'),
 ]
 
@@ -15,8 +15,8 @@ describe('work panel tabs', () => {
   })
 
   test('the change tab is found when open', () => {
-    expect(changeWorkTab(tabs)?.id).toBe('b')
-    expect(changeWorkTab([tabs[0]!])).toBeNull()
+    expect(findChangeWorkTab(tabs)?.id).toBe('b')
+    expect(findChangeWorkTab([tabs[0]!])).toBeNull()
   })
 
   test('closing the active tab activates the nearest one before it, else the first', () => {
@@ -71,5 +71,30 @@ describe('work panel tabs', () => {
     state = showFileInTab(state, 'a', 'README.md', () => 'new').tabs
     const tab = state[0]!
     expect(tab.kind === 'file' && tab.forward).toEqual([])
+  })
+
+  test('the change tab steps through modes and files, and back across them', () => {
+    const stepOf = (list: WorkTab[]) => {
+      const tab = findChangeWorkTab(list)!
+      return `${tab.mode}:${tab.selected[tab.mode]}`
+    }
+    let state = showChangeInTab(tabs, 'b', 'uncommitted', 'src/auth/cookie.ts')
+    state = showChangeInTab(state, 'b', 'conversation', 'README.md')
+    // The same step again is not a step.
+    state = showChangeInTab(state, 'b', 'conversation', 'README.md')
+    expect(stepOf(state)).toBe('conversation:README.md')
+    expect(findChangeWorkTab(state)!.back).toHaveLength(2)
+    state = goBackInTab(state, 'b')
+    expect(stepOf(state)).toBe('uncommitted:src/auth/cookie.ts')
+    // Each mode keeps the file it showed.
+    expect(findChangeWorkTab(state)!.selected.conversation).toBe('README.md')
+    state = goBackInTab(state, 'b')
+    expect(stepOf(state)).toBe('uncommitted:null')
+    state = goForwardInTab(state, 'b')
+    state = goForwardInTab(state, 'b')
+    expect(stepOf(state)).toBe('conversation:README.md')
+    state = goBackInTab(state, 'b')
+    state = showChangeInTab(state, 'b', 'uncommitted', 'src/auth/sid.ts')
+    expect(findChangeWorkTab(state)!.forward).toEqual([])
   })
 })

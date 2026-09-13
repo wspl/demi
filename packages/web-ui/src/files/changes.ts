@@ -15,6 +15,29 @@ export interface ChangeSetSource {
   read(path: string, signal?: AbortSignal): Promise<{ original: string; modified: string }>
 }
 
+/**
+ * Where a change view's diffs come from: files picked from the conversation
+ * (each a snapshot around one tool call, nothing to do with git) or the
+ * workspace's uncommitted changes against its last commit.
+ */
+export type ChangeMode = 'conversation' | 'uncommitted'
+
+export const CHANGE_MODES: readonly ChangeMode[] = ['conversation', 'uncommitted']
+
+/** A change set per mode; the change view switches between them. */
+export type ChangeSources = Record<ChangeMode, ChangeSetSource>
+
+/** A change set with nothing in it, for a conversation nothing has been picked from yet. */
+export const emptyChangeSet: ChangeSetSource = {
+  files: [],
+  read: () => Promise.reject(new Error('No change recorded')),
+}
+
+/** The mode a new change tab opens in: what was picked from the conversation, if anything, else the working tree. */
+export function changeModeToOpen(changes: ChangeSources): ChangeMode {
+  return changes.conversation.files.length > 0 ? 'conversation' : 'uncommitted'
+}
+
 /** Lines added and removed across every file. */
 export function changeTotals(files: readonly ShellFileChange[]): { added: number; removed: number } {
   let added = 0
