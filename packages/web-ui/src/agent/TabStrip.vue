@@ -16,6 +16,8 @@ import {
  * has more behind it, and the active tab is scrolled into view when it
  * changes. Close and insert collapse or grow from the current width.
  * The host passes its `TabItem`s as children and sizes the strip in its row.
+ * The `trailing` slot (a New tab control) follows the last tab while the
+ * tabs fit, and stays at the strip's right edge once they scroll.
  *
  * `surface` is what the row sits on. On the base surface the active tab is
  * raised to the surface color; on a raised surface it is pressed to the base
@@ -106,7 +108,8 @@ defineExpose({ el })
 </script>
 
 <template>
-  <div class="relative min-w-0" :style="colors">
+  <div class="flex min-w-0 items-center" :style="colors">
+    <div class="relative min-w-0 shrink">
     <TransitionGroup
       :ref="bindEl"
       :name="TAB_TRANSITION"
@@ -135,6 +138,8 @@ defineExpose({ el })
       aria-hidden="true"
       class="pointer-events-none absolute inset-y-0 right-0 w-6 bg-linear-to-l from-(--tab-row) to-transparent"
     />
+    </div>
+    <slot name="trailing" />
   </div>
 </template>
 

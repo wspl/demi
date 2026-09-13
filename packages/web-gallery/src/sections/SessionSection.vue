@@ -11,7 +11,7 @@ import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activity-slot'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { nextActiveWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import { closeWorkTabs, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import { ASIDE_WIDTH, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
@@ -119,31 +119,34 @@ const panelActiveConversationId = ref<string | null>('c-login')
 function workTabs(): WorkTab[] {
   return [
     { id: 'w1', kind: 'file', path: 'src/auth/cookie.ts' },
-    { id: 'w2', kind: 'diff', path: 'src/auth/cookie.ts' },
-    { id: 'w3', kind: 'diff', path: 'tests/login/auth.test.ts' },
+    { id: 'w2', kind: 'change', path: 'src/auth/cookie.ts' },
+    { id: 'w3', kind: 'change', path: 'tests/login/auth.test.ts' },
     { id: 'w4', kind: 'file', path: 'packages/web-ui/src/agent/blocks/FileChangePills.vue' },
   ]
 }
-const panelTabs = ref(workTabs())
-const panelActiveTabId = ref<string | null>('w2')
-function closeWorkTab(id: string) {
-  if (panelActiveTabId.value === id) {
-    panelActiveTabId.value = nextActiveWorkTab(panelTabs.value, id)
+/** A work panel's tabs and active tab, with the closes and adds the panel asks for. */
+function useWorkTabs(activeId: string | null) {
+  const tabs = ref(workTabs())
+  const active = ref<string | null>(activeId)
+  let nextId = 5
+  function close(ids: string[]) {
+    const next = closeWorkTabs(tabs.value, active.value, ids)
+    tabs.value = next.tabs
+    active.value = next.activeId
   }
-  panelTabs.value = panelTabs.value.filter((tab) => tab.id !== id)
-}
-function resetWorkTabs() {
-  panelTabs.value = workTabs()
-  panelActiveTabId.value = 'w2'
-}
-const exhibitTabs = ref(workTabs())
-const exhibitActiveTabId = ref<string | null>('w1')
-function closeExhibitTab(id: string) {
-  if (exhibitActiveTabId.value === id) {
-    exhibitActiveTabId.value = nextActiveWorkTab(exhibitTabs.value, id)
+  function add(kind: WorkTab['kind']) {
+    const id = `w${nextId++}`
+    tabs.value = [...tabs.value, { id, kind, path: 'src/auth/session.ts' }]
+    active.value = id
   }
-  exhibitTabs.value = exhibitTabs.value.filter((tab) => tab.id !== id)
+  function reset() {
+    tabs.value = workTabs()
+    active.value = activeId
+  }
+  return { tabs, active, close, add, reset }
 }
+const panelWork = useWorkTabs('w2')
+const exhibitWork = useWorkTabs('w1')
 const emptyTabs: WorkTab[] = []
 let nextQueue = 3
 let nextSent = 1
@@ -1418,7 +1421,7 @@ function abortTerminal(id: string) {
     <template v-if="view === 'panel'">
       <GallerySection
         title="The frame"
-        note="The app frame with the work panel open on the right: the sidebar, the session, and the panel are siblings, each side pane behind its own divider. The header's panel control opens it and the panel's fold control closes it; drag or double-click the divider on its left; Show tabs restores the ones you closed."
+        note="The app frame with the work panel open on the right: the sidebar, the session, and the panel are siblings, each side pane behind its own divider. The header's panel control opens it and the panel's fold control closes it; drag or double-click the divider on its left; Show tabs restores the starting tabs."
       >
         <GallerySpecimen variant="frame · live" wide>
           <div class="gallery-frame flex h-[44rem] w-full overflow-hidden">
@@ -1464,10 +1467,11 @@ function abortTerminal(id: string) {
               </ChatSession>
               <template #aside>
                 <WorkPanel
-                  :tabs="panelTabs"
-                  :active-id="panelActiveTabId"
-                  @select="(id) => (panelActiveTabId = id)"
-                  @close-tab="closeWorkTab"
+                  :tabs="panelWork.tabs.value"
+                  :active-id="panelWork.active.value"
+                  @select="(id) => (panelWork.active.value = id)"
+                  @close-tabs="panelWork.close"
+                  @add="panelWork.add"
                   @close="panelAsideOpen = false"
                 />
               </template>
@@ -1475,24 +1479,25 @@ function abortTerminal(id: string) {
           </div>
         </GallerySpecimen>
         <div class="flex gap-2">
-          <Button size="sm" @click="resetWorkTabs">Show tabs</Button>
+          <Button size="sm" @click="panelWork.reset">Show tabs</Button>
           <span class="self-center font-mono text-[11px] text-fg-faint">panel {{ panelAsideWidth }}px · {{ ASIDE_WIDTH.min }}–{{ ASIDE_WIDTH.max }}</span>
         </div>
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="The panel alone. A file tab carries the file's icon; a diff tab adds a compare mark. The active tab keeps its close control; the rest show it on hover. The content pane is a placeholder until file and diff views exist."
+        note="The panel alone. A file tab carries the file's icon; a change tab a diff mark. New tab follows the last tab until they scroll, then stays at the right. Right-click a tab for its menu; a file tab also copies its path. The content pane is a placeholder until file and change views exist."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
               <WorkPanel
                 class="w-full"
-                :tabs="exhibitTabs"
-                :active-id="exhibitActiveTabId"
-                @select="(id) => (exhibitActiveTabId = id)"
-                @close-tab="closeExhibitTab"
-                @close="exhibitTabs = []"
+                :tabs="exhibitWork.tabs.value"
+                :active-id="exhibitWork.active.value"
+                @select="(id) => (exhibitWork.active.value = id)"
+                @close-tabs="exhibitWork.close"
+                @add="exhibitWork.add"
+                @close="exhibitWork.close(exhibitWork.tabs.value.map((tab) => tab.id))"
               />
             </div>
           </GallerySpecimen>
