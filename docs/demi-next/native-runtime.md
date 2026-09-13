@@ -484,7 +484,12 @@ an async task does not prove that non-cooperative native work has stopped.
 
 This section covers the fixed messages between the TypeScript backend and Rust
 runner, the command manifest structure, and native package descriptor structure.
-Runtime command argument definitions are a separate concern.
+Zod schemas in the owning TypeScript packages are authoritative:
+`runner-protocol/src/schemas.ts` owns runner messages,
+`command-loader/src/manifest/schema.ts` owns manifests, and
+`command-protocol/src/index.ts` owns native package descriptors. These paths are
+under `packages/`; there is no separate contracts directory or second schema
+source. Runtime command argument definitions are a separate concern.
 
 Each consuming crate's `build.rs` owns Rust contract generation as part of the
 normal Cargo build. A developer does not run a separate generation command first.
@@ -501,7 +506,7 @@ have been checked. Fixed contract validation does not use a separately generated
 JSON Schema document or convert decoded values to JSON for schema validation.
 
 ```text
-Shared contract definitions (source format remains open)
+Authoritative Zod schemas in packages/
     |
     v
 Consuming crate's build.rs
@@ -515,9 +520,6 @@ include! -> compiled crate -> input validation
 
 ### Open decisions
 
-- The authoritative definition format for backend/runner messages, manifest
-  structure and package descriptors. The build rules above do not select Zod,
-  Rust declarations or another format as that source.
 - The Rust validation mechanism and how generation represents constraints such
   as ranges, lengths, allowed values and relationships between fields. No
   validation library or custom validation framework is selected here.
