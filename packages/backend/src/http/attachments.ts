@@ -1,7 +1,24 @@
 import type { BlobStore } from '@demicodes/agent'
 import { Hono } from 'hono'
+import { z } from 'zod'
 import type { AuthEnv } from '../auth/identity'
 import type { ControlService } from '../storage/control'
+
+/**
+ * The upload's own media type, as `content-type` names it: one RFC 9110
+ * `type/subtype`, with the parameters the sender attached. `multipart/*` is a
+ * form envelope rather than a file's bytes, so it is not one of them.
+ */
+const attachmentMediaTypeSchema = z
+  .string()
+  .regex(
+    /^[A-Za-z0-9!#$%&'*+.^_`|~-]+\/[A-Za-z0-9!#$%&'*+.^_`|~-]+\s*(;.*)?$/,
+    'expected a type/subtype media type',
+  )
+  .refine(
+    (value) => !value.toLowerCase().startsWith('multipart/'),
+    'multipart uploads carry no single file',
+  )
 
 /**
  * Hardcoded upload ceiling (demi-next.md § Attachments: one number,
@@ -22,13 +39,16 @@ export function attachmentRoutes(options: {
   const app = new Hono<AuthEnv>()
 
   app.post('/', async (c) => {
-    const mediaType = c.req.header('content-type')
-    if (!mediaType || mediaType.startsWith('multipart/')) {
+    const parsed = attachmentMediaTypeSchema.safeParse(
+      c.req.header('content-type')
+    )
+    if (!parsed.success) {
       return c.json({
         code: 'invalid_body',
         message: 'Send the raw file bytes with its media type as content-type'
       }, 400)
     }
+    const mediaType = parsed.data
     const bytes = new Uint8Array(await c.req.arrayBuffer())
     if (bytes.length === 0)
       return c.json({ code: 'invalid_body', message: 'Empty upload' }, 400)

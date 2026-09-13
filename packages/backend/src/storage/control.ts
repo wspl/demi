@@ -402,7 +402,7 @@ const forkMetadataSchema = z.strictObject({
   title: z.string().min(1),
   target: conversationTargetSchema,
   model: modelSelectionSchema,
-  createdAt: z.string().datetime(),
+  createdAt: z.iso.datetime(),
   attachedHosts: z.array(z.strictObject({
     deviceId: z.string().min(1),
     name: z.string().min(1),

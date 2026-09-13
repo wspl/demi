@@ -9,6 +9,7 @@ import { join, resolve } from 'node:path'
 import { stat } from 'node:fs/promises'
 import type { Readable } from 'node:stream'
 import { fileHostStore } from '@demicodes/shell'
+import { errorCode } from '@demicodes/utils'
 import { nodeFileSystem } from './node-fs'
 import type {
   Host,
@@ -235,7 +236,7 @@ async function classifySpawnFailure(
   } catch {
     return 'cwd_unusable'
   }
-  const code = 'code' in error ? String((error as { code: unknown }).code) : ''
+  const code = errorCode(error)
   if (code === 'ENOENT')
     return 'executable_not_found'
   if (code === 'EACCES' || code === 'EPERM')
@@ -259,8 +260,7 @@ async function* streamBytes(stream: Readable | null): AsyncIterable<Uint8Array> 
   } catch (error) {
     // A child that failed to spawn closes its stdio pipes without ending them;
     // the process never produced output, so the stream simply ends.
-    if ((error as NodeJS.ErrnoException | null)?.code
-      === 'ERR_STREAM_PREMATURE_CLOSE')
+    if (errorCode(error) === 'ERR_STREAM_PREMATURE_CLOSE')
       return
     throw error
   }

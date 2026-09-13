@@ -21,7 +21,7 @@ async function fixture(label: string, commands: Command[] = []) {
     {
       name: 'where', summary: 'Invocation context', kind: 'native',
       binding: { package: native.descriptor.id, operation: 'where' },
-      input: { label: z.string().default(label) },
+      input: { label: z.string().optional() },
     },
     ...['echo', 'spin', 'result'].map(name => ({
       name, summary: name, kind: 'native' as const,
@@ -88,8 +88,14 @@ test(
     const a = await fixture('A'), b = await fixture('B')
     try {
       const calls = await Promise.all([
-        a.shell.exec({ script: 'PROBE=alpha demi where', timeoutMs: 10_000 }),
-        b.shell.exec({ script: 'PROBE=beta demi where', timeoutMs: 10_000 })
+        a.shell.exec({
+          script: 'PROBE=alpha demi where --label A',
+          timeoutMs: 10_000
+        }),
+        b.shell.exec({
+          script: 'PROBE=beta demi where --label B',
+          timeoutMs: 10_000
+        })
       ])
       expect(JSON.parse(calls[0]!.stdout.delta)).toEqual({
         label: 'A',
