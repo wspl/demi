@@ -8,7 +8,7 @@ import { useSession } from '../auth/session'
 import { useProduct } from './product'
 import { usePreferences } from './preferences'
 import { modelInfo, providerView, wireApi } from './catalog'
-import { ASIDE_WIDTH, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
+import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { emptyLocalState, readLocalState, writeLocalState } from './local'
 import type { Device, Project } from './types'
 
@@ -26,7 +26,6 @@ export const useResources = defineStore('resources', () => {
   const targetOpen = ref(false)
   const pairingOpen = ref(false)
   const sidebarOpen = ref(false)
-  const asideOpen = ref(false)
 
   watch(
     () => session.user?.id,
@@ -37,7 +36,6 @@ export const useResources = defineStore('resources', () => {
       targetOpen.value = false
       pairingOpen.value = false
       sidebarOpen.value = false
-      asideOpen.value = false
       selectedProviderId.value = null
       providerDetailOpen.value = false
       local.value = id ? readLocalState(id) : emptyLocalState()
@@ -167,12 +165,6 @@ export const useResources = defineStore('resources', () => {
       local.value.sidebarWidth = width
     },
   })
-  const asideWidth = computed({
-    get: () => local.value.asideWidth ?? ASIDE_WIDTH.default,
-    set: (width: number) => {
-      local.value.asideWidth = width
-    },
-  })
   const recentProjectIds = computed(() => local.value.recentProjects)
 
   function rememberProject(id: string): void {
@@ -270,8 +262,6 @@ export const useResources = defineStore('resources', () => {
     pairingOpen,
     sidebarOpen,
     sidebarWidth,
-    asideOpen,
-    asideWidth,
     recentProjectIds,
     rememberProject,
     hideProvider,
