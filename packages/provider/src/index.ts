@@ -34,6 +34,47 @@ export {
   redactSecretText,
   retryAfterMsFromHeader,
 } from './http'
+export { readServerSentEvents, type ServerSentEvent } from './sse'
+export {
+  reportedStringSchema,
+  taggedUnion,
+  tokenCountSchema
+} from './vendor-schema'
+export { tokenUsageWithCachedInput } from './usage'
+export {
+  decodeResponsesEvent,
+  responsesErrorSchema,
+  responsesEventSchema,
+  responsesFunctionCallItemSchema,
+  responsesItemSchema,
+  responsesMessageItemSchema,
+  responsesMessagePartSchema,
+  responsesReasoningItemSchema,
+  responsesUsageSchema,
+  tokenUsageFromResponsesUsage,
+  type ResponsesError,
+  type ResponsesEvent,
+  type ResponsesFunctionCallItem,
+  type ResponsesItem,
+  type ResponsesMessageItem,
+  type ResponsesMessagePart,
+  type ResponsesReasoningItem,
+  type ResponsesUsage,
+} from './responses'
+export {
+  chatCompletionChoiceSchema,
+  chatCompletionChunkSchema,
+  chatCompletionDeltaSchema,
+  chatCompletionToolCallDeltaSchema,
+  chatCompletionsUsageSchema,
+  decodeChatCompletionChunk,
+  tokenUsageFromChatCompletionsUsage,
+  type ChatCompletionChoice,
+  type ChatCompletionChunk,
+  type ChatCompletionDelta,
+  type ChatCompletionToolCallDelta,
+  type ChatCompletionsUsage,
+} from './chat-completions'
 export {
   clampUsedPercent,
   createProviderQuota,
