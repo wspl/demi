@@ -1,3 +1,4 @@
+import type { ChangeStore } from '../storage/change-store'
 import type { ModelSelection } from '@demicodes/core'
 import { ForkPreparationError, type AgentServer } from '@demicodes/agent'
 import type { ControlService, ConversationRecord } from '../storage/control'
@@ -16,6 +17,7 @@ export class ConversationForks {
   private readonly pending = new Map<string, Promise<unknown>>()
 
   constructor(private readonly deps: {
+    changes: ChangeStore
     control: ControlService
     stores: ConversationStores
     server: AgentServer
@@ -95,6 +97,7 @@ export class ConversationForks {
       }
     }
     checkpoint.model = structuredClone(operation.model)
+    await this.deps.changes.fork(sourceId, id, checkpoint.transcript.blocks)
     await server.initializeFork(id, checkpoint)
     return { conversation: await control.publishConversationFork(id), created: true, model: operation.model }
   }

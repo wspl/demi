@@ -301,11 +301,11 @@ modified }` for one changed file: `original` as the last commit has it (empty
 for an added file), `modified` as the working tree has it (empty for a deleted
 one), under the text limits of the file route.
 
-`GET /api/conversations/:id/commands/:commandId/changes/file?path=...` returns
-the same shape for one file a tool call edited, from the conversation's change
+`GET /api/conversations/:id/commands/:commandId/changes/file?path=...&edit=0` returns
+the same shape for one retained edit segment of a tool call, from the conversation's change
 store, without touching the host ([Edit tracking](edit-tracking.md#the-change-store)).
 
-The browser lists again when the change view is shown, after each of the
+The browser lists the working tree again when its change view is shown, after each of the
 conversation's tool calls finishes while it shows (a call that finishes while
 the view is away marks the list stale for its next showing), when the page
 becomes visible again, and on its Refresh control. It never polls while idle.

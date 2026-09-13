@@ -16,7 +16,7 @@ import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from '../files/FileIcon.vue'
 import ChangeView from '../files/ChangeView.vue'
 import FileView from '../files/FileView.vue'
-import { changeModeToOpen, type ChangeMode, type ChangeSources } from '../files/changes'
+import { callChangeSet, emptyChangeSet, changeModeToOpen, type ReadCallChange, type ChangeMode, type ChangeSources } from '../files/changes'
 import { joinPath, normalizePath } from '../files/paths'
 import type { FileBrowserSource } from '../files/types'
 import TabItem from './TabItem.vue'
@@ -52,6 +52,8 @@ import { findChangeWorkTab, workTabTitle, type ChangeWorkTab, type WorkTab } fro
 const props = defineProps<{
   tabs: readonly WorkTab[]
   activeId: string | null
+  readCallChange?: ReadCallChange
+  historyRoot?: string
   /** `name` stands in for the root directory's name wherever the views name the workspace. */
   workspace?: { source: FileBrowserSource; root: string; name?: string; changes?: ChangeSources }
 }>()
@@ -61,7 +63,7 @@ const emit = defineEmits<{
   /** New tab: a file, the host decides which; or the change tab, in the given mode. */
   add: [kind: 'file'] | [kind: 'change', mode: ChangeMode]
   /** The change tab's next step: this mode, showing this file (null leaves the choice to the view). */
-  showChange: [id: string, mode: ChangeMode, path: string | null]
+  showChange: [id: string, mode: ChangeMode, path: string | null, selection?: { call: ChangeWorkTab['call']; edit: number }]
   /** A file from the tree or a crumb menu, by its path relative to the workspace root: show it in the active tab. */
   open: [path: string]
   /** The active tab's Back and Forward. */
@@ -72,11 +74,20 @@ const emit = defineEmits<{
 }>()
 
 const treeOpen = ref(true)
+const changes = computed<ChangeSources>(() => {
+  const call = active.value?.kind === 'change' ? active.value.call : null
+  return {
+    uncommitted: props.workspace?.changes?.uncommitted ?? emptyChangeSet,
+    conversation: call && props.readCallChange
+      ? callChangeSet(call, props.readCallChange)
+      : props.workspace?.changes?.conversation ?? emptyChangeSet,
+  }
+})
 
 /** The file the change tab shows in its mode: the one it holds, else the first there is. */
 function changeSelection(tab: ChangeWorkTab): string | null {
   const held = tab.selected[tab.mode]
-  const files = props.workspace?.changes?.[tab.mode].files ?? []
+  const files = changes.value[tab.mode].files ?? []
   if (held !== null && files.some((file) => file.path === held)) {
     return held
   }
@@ -84,7 +95,7 @@ function changeSelection(tab: ChangeWorkTab): string | null {
 }
 
 function absolutePath(path: string): string {
-  return joinPath(props.workspace?.root ?? '/', path)
+  return path.startsWith('/') ? path : joinPath(props.workspace?.root ?? '/', path)
 }
 
 function openFromTree(path: string): void {
@@ -239,16 +250,18 @@ function add(kind: WorkTab['kind']): void {
           @forward="emit('forward', active.id)"
         />
         <ChangeView
-          v-else-if="active?.kind === 'change' && workspace?.changes"
+          v-else-if="active?.kind === 'change'"
           v-model:tree="treeOpen"
           :mode="active.mode"
           :selected="changeSelection(active)"
-          :changes="workspace.changes"
-          :root="workspace.root"
-          :root-name="workspace.name"
+          :changes="changes"
+          :edit="active.edit"
+          :root="workspace?.root ?? historyRoot ?? '/'"
+          :root-name="workspace?.name"
           :can-back="active.back.length > 0"
           :can-forward="active.forward.length > 0"
           @update:mode="emit('showChange', active.id, $event, active.selected[$event])"
+          @update:edit="emit('showChange', active.id, active.mode, changeSelection(active), { call: active.call, edit: $event })"
           @update:selected="emit('showChange', active.id, active.mode, $event)"
           @back="emit('back', active.id)"
           @forward="emit('forward', active.id)"

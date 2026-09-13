@@ -124,6 +124,7 @@ impl InPlace {
 
         let orig = self.original_path.take().expect("original_path unset");
         let temp = self.temp_file.take().expect("temp_file unset");
+        let _edit = uucore::context::edit(&orig);
 
         // Backup original if suffix is provided
         if let Some(ref suffix) = self.in_place_suffix {

@@ -42,6 +42,19 @@ impl ChildProcess {
         }
     }
 
+    /// Do not finish a command until its redirected bytes reached their files.
+    pub fn with_outputs(mut self, outputs: Vec<crate::execution_host::OutputCompletion>) -> Self {
+        let process = self.exec_future;
+        self.exec_future = Box::pin(async move {
+            let result = process.await;
+            for output in outputs {
+                output.await?;
+            }
+            result
+        });
+        self
+    }
+
     /// Returns the process's ID.
     pub const fn pid(&self) -> Option<sys::process::ProcessId> {
         self.pid

@@ -1,3 +1,4 @@
+import type { ShellEditsView } from '@demicodes/agent/client'
 import type { ChangeMode } from '../files/changes'
 import { baseName } from '../files/paths'
 
@@ -26,16 +27,20 @@ export interface ChangeWorkTab {
   id: string
   kind: 'change'
   mode: ChangeMode
-  /** The file each mode shows, by path relative to the workspace; null leaves the choice to the view. */
+  /** The lookup path each mode shows, absolute for recorded edits; null leaves the choice to the view. */
   selected: Record<ChangeMode, string | null>
+  call: ShellEditsView | null
+  edit: number
   back: ChangeStep[]
   forward: ChangeStep[]
 }
 
-/** What the change tab showed at one point: a mode and the file selected in it. */
+/** A history step identifies the mode, call, file and edit segment. */
 export interface ChangeStep {
   mode: ChangeMode
   path: string | null
+  call: ShellEditsView | null
+  edit: number
 }
 
 /** A file tab showing `path`, with nothing to go back or forward to. */
@@ -45,31 +50,49 @@ export function fileWorkTab(id: string, path: string): WorkTab {
 
 /** The change tab opened in `mode`, with nothing to go back or forward to. */
 export function changeWorkTab(id: string, mode: ChangeMode): WorkTab {
-  return { id, kind: 'change', mode, selected: { conversation: null, uncommitted: null }, back: [], forward: [] }
+  return { id, kind: 'change', mode, selected: { conversation: null, uncommitted: null }, call: null, edit: 0, back: [], forward: [] }
 }
 
 function currentChangeStep(tab: ChangeWorkTab): ChangeStep {
-  return { mode: tab.mode, path: tab.selected[tab.mode] }
+  return { mode: tab.mode, path: tab.selected[tab.mode], call: tab.call, edit: tab.edit }
 }
 
 function atChangeStep(tab: ChangeWorkTab, step: ChangeStep): ChangeWorkTab {
-  return { ...tab, mode: step.mode, selected: { ...tab.selected, [step.mode]: step.path } }
+  return { ...tab, mode: step.mode, call: step.call, edit: step.edit, selected: { ...tab.selected, [step.mode]: step.path } }
 }
 
 /**
  * The change tab showing `path` in `mode`, remembering what it showed: a
  * mode switch and a pick in the tree are both steps Back returns to.
  */
-export function showChangeInTab(tabs: readonly WorkTab[], id: string, mode: ChangeMode, path: string | null): WorkTab[] {
+export function showChangeInTab(tabs: readonly WorkTab[], id: string, mode: ChangeMode, path: string | null, selection?: { call: ShellEditsView | null; edit: number }): WorkTab[] {
   return tabs.map((tab) => {
     if (tab.id !== id || tab.kind !== 'change') {
       return tab
     }
-    if (tab.mode === mode && tab.selected[mode] === path) {
+    const call = selection ? selection.call : tab.call
+    const edit = selection?.edit ?? (tab.mode === mode && tab.selected[mode] === path ? tab.edit : 0)
+    if (tab.mode === mode && tab.selected[mode] === path && tab.call?.commandId === call?.commandId && tab.edit === edit) {
       return tab
     }
-    return { ...atChangeStep(tab, { mode, path }), back: [...tab.back, currentChangeStep(tab)], forward: [] }
+    return { ...atChangeStep(tab, { mode, path, call, edit }), back: [...tab.back, currentChangeStep(tab)], forward: [] }
   })
+}
+
+/** A file pill selects its call in the single change tab, creating that tab if needed. */
+export function showCallEdit(
+  tabs: readonly WorkTab[],
+  call: ShellEditsView,
+  path: string,
+  newId: () => string,
+): { tabs: WorkTab[]; activeId: string } {
+  const existing = findChangeWorkTab(tabs)
+  const tab = existing ?? changeWorkTab(newId(), 'conversation')
+  const opened = existing ? tabs : [...tabs, tab]
+  return {
+    tabs: showChangeInTab(opened, tab.id, 'conversation', path, { call, edit: 0 }),
+    activeId: tab.id,
+  }
 }
 
 /**

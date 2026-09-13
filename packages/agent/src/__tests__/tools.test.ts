@@ -97,7 +97,7 @@ test(
     const released: string[] = []
     const tools = createStandardAgentTools({
       environment: {
-        exec: async () => shellSnapshot('done\n'),
+        exec: async () => ({ ...shellSnapshot('done\n'), files: [{ path: '/private-edited-file', kind: 'modified', added: 1, removed: 1, edits: [{ kept: true }] }] }),
         releaseCommand: async (commandId: string) => {
           released.push(commandId)
           return true
@@ -122,6 +122,8 @@ test(
     expect(text).not.toContain('commandId:')
     expect(text).not.toContain('stdoutPath:')
     expect(text).not.toContain('/artifacts/session-1/cmd-1')
+    expect(JSON.stringify(result.view)).toContain('/private-edited-file')
+    expect(text).not.toContain('/private-edited-file')
     expect(released).toEqual(['cmd-1'])
   }
 )
