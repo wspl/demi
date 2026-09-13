@@ -12,15 +12,21 @@
 - Run checks appropriate to the change. Never run tests that call real models.
 - Every UI behavior lives in `web-ui` as a reusable component or primitive; `web` and `web-gallery` supply only data, state and handlers. A behavior first built for one surface (a control's affordance, a page's interaction, a dialog flow) is generalized into `web-ui` before the checkpoint, never left local to the gallery or the product.
 - Keep `web` and `web-gallery` synchronized in both directions. Every UI change is made once in `web-ui`, whether the request came from the gallery or the product, and lands in both surfaces in the same checkpoint: update the gallery specimens and the product usage together, and verify the result in both. A change visible in only one of them is incomplete.
-- Keep implementation documentation consistent with the implementation; keep history separate.
-- When designing a new feature or architecture, directly update or create the corresponding design document under `docs/`. Describe the intended design in its final form; do not narrate what was missing, how it worked before, or the transition from the old design. Design-document changes may be committed before implementation; use their commit diff to determine the implementation work.
-- Documentation must be readable and unambiguous. Name the responsible module, the data or action, and the observable result. Distinguish verified behavior, suspected problems, proposals, and open decisions. Explain necessary terminology in plain language; do not blur framework, backend, and UI responsibilities.
-- Explain designs with concrete examples and diagrams when they improve clarity.
+- When designing a new feature or architecture, directly update or create the corresponding design document under `docs/`. Design-document changes may be committed before implementation; use their commit diff to determine the implementation work.
 - Write code comments in English.
 - Write separate steps on separate lines. Do not squeeze several assignments, branches, or cleanup actions into one line. A helper function should have a clear job; moving a complicated block into a vaguely named helper does not simplify it.
 - Before committing, reread the complete functions you changed, not just the added lines. Check for repeated conditions, duplicate or unused values, ignored errors, and code in the wrong package. Fix those problems before calling the work complete, even when tests pass.
 - When a batch of changes is ready for acceptance, restart every locally running process that serves it on the new code before reporting (the backend on port 3271 and the web front end); do not hand the restart to the user. Restart once per batch, after the whole batch is complete, not after every edit.
 - Commit completed checkpoints with Conventional Commit subjects and push after each commit.
+
+# Writing and Communication
+
+- Write for the reader's understanding. Be clear, concrete, and concise.
+- Prefer diagrams for structures, relationships, and flows; use ASCII diagrams when practical. Prefer concrete examples over abstract descriptions.
+- Explain responsibilities, boundaries, observable behavior, and design rationale. Leave implementation details that code can express clearly to code.
+- Distinguish verified facts, suspected problems, proposals, and open decisions.
+- Describe designs in their intended final form. Keep history separate, and keep documentation consistent with the implementation.
+- Follow Google Technical Writing for expression, Diátaxis for documentation organization, and arc42 / C4 model for architecture documentation, as applicable.
 
 # Coding Standards
 
