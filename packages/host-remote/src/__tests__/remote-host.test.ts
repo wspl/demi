@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test } from 'bun:test'
-import { connectTestRunner } from '@demicodes/runner/testing'
+import { connectTestRunner } from '@demicodes/host-remote/testing'
 import {
   type BackendToRunnerMessage,
 } from '@demicodes/runner-protocol'

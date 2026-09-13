@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-08 |
-| Status | Target architecture contract; acceptance tracked in `progress.md` |
+| Status | Target architecture contract |
 | Scope | The hosted multi-user chat product. This document holds the core shape and the index; each subsystem has its own record in this directory. |
 
 ## Documents
@@ -23,12 +23,9 @@
 | `managed-hosts.md` | Firecracker provisioning, images, system/home persistence, reset, lifecycle, security |
 | `providers-and-vault.md` | the LLM module, credential vault, usage accounting, Claude Code |
 | `scenarios.md` | the scenario suite over the headless system: the world fixture, the driver, the teardown invariants, the scenarios and restarts |
-| `progress.md` | acceptance ledger and verification evidence |
 
-Every record describes the target architecture. These contracts do not certify
-that the current source implements every requirement. `progress.md` records
-verified acceptance only; implementation history belongs to Git. The diff of
-these contracts is the basis for implementation planning.
+Every record describes the architecture of its subsystem. Implementation history
+belongs to Git; test results belong to the test runner and CI.
 
 ## Motivation
 

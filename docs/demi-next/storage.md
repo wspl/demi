@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-08 |
-| Status | Target architecture contract; acceptance tracked in `progress.md` |
+| Status | Target architecture contract |
 | Scope | The two databases, `ControlService`, the blob store, the machine-image store, replication, the N>1 topology |
 
 ## The split

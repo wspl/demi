@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRunnerWire, type BackendToRunnerMessage, type RunnerToBackendMessage } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
-import { startRunner, type Runner } from './testing'
+import { startRunner, type Runner } from '../testing'
 
 type Hello = Extract<RunnerToBackendMessage, { type: 'hello' }>
 

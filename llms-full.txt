@@ -353,11 +353,15 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/coding-agent`
 
 - Status: implemented.
-- Production deps: `@demicodes/agent`, `@demicodes/core`, `@demicodes/demi-package`, `@demicodes/shell`, `@demicodes/utils`.
+- Production deps: `@demicodes/agent`, `@demicodes/command-protocol`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: coding harness, coding prompt, coding commands (the `demi` root: every subcommand is a noun domain group — `file` as `runtime` modules written against the ABI and `todo` as `rpc` built in, product groups like the backend's `host` composed in). A `reference` block reaches the model as its path; the model reads the file with tools.
 - Public boundary: harness and coding command construction based on Host and Command contracts.
 - Must not: instantiate AgentSession, AgentServer, a shell environment, concrete providers, or a Host implementation.
 - Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism, the standard agent tool surface, or provide an alternate shell/tool runtime.
+
+- Native binding: `commands/file/package.ts` validates the generated release
+  descriptor used by the file command tree. The Rust command implementation
+  remains in `packages/demi-package`.
 
 ### `@demicodes/provider-claude-code`
 
@@ -425,7 +429,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/backend`
 
-- Status: target contract; acceptance tracked in `docs/demi-next/progress.md`.
+- Status: target contract.
 - Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/machines`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
 - Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, the per-conversation `AgentTreeStore` over node and block rows, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the transfer broker, browse endpoints), the managed-hosts module (one managed device per user over the `ManagedHostProvisioner` contract, reached through `@demicodes/machines`' `RemoteProvisioner` as the machine manager's client; lifecycle/hibernate/reset, the backend-contributed `demi host` subcommand group), the LLM module (per-provider provider assembly, model metadata caching in memory and control.sqlite with TTL and shared refresh, metering wrap), the credential vault (instance secret, GCM-encrypted providers, subscription device-login flows over per-provider provider pools), and usage accounting (ledger + rate limit). The backend accepts explicitly submitted API keys and setup tokens at authenticated write boundaries, passes subscription material to provider-owned credential pools, and never returns secrets or proxies model traffic.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
@@ -484,6 +488,10 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: `RemoteHost`, `RemoteShellEnvironment`, `createRemoteShellEnvironmentFactory` and their option types from root. The factory validates a package catalog and serializes each context's declarations. Each job pins its manifest; artifact location requests are admitted only for a matching active job, manifest and target artifact. The injected resolver supplies a location, and job completion cancels outstanding resolutions.
 - Must not: contain network IO (the wire is an injected send/handle pair), credentials, the device registry, or conversation state. `Host.store` never crosses the wire.
 
+- Test boundary: `@demicodes/host-remote/testing` owns native process fixtures,
+  the test WebSocket bridge, host conformance adapters and host-only native
+  package catalogs. These are excluded from its platform-neutral root.
+
 ### `packages/guest-image` (not a workspace package)
 
 - Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` with a command alias at `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
@@ -523,9 +531,12 @@ Test code may depend upward for integration coverage. Production code must not.
 - Must not: select backend storage vendors, construct command trees or implement
   command operations.
 
-### `@demicodes/demi-package` / `packages/demi-package` (TypeScript and Rust)
+### `packages/demi-package` (Rust crate)
 
-- Owns: the `demiPackage` descriptor exported to application assembly, the six-target release bundle builder, the `demi-commands` resident service and native Demi command operations. TypeScript depends on `@demicodes/command-protocol` for the descriptor contract.
+- Owns: the `demi-commands` resident service, native Demi command operations and
+  package metadata in `package-info.json`. `coding-agent` owns the TypeScript
+  command bindings and generated release descriptor consumed by those bindings.
+  `scripts/native/release-package.ts` builds the six-target release bundle.
   File operations receive invocation cwd, arguments and cancellation through the
   command-service handler contract. Mutations serialize planning and application;
   each replacement publishes atomically, and multi-file patches roll back earlier
@@ -542,19 +553,23 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `packages/native-utils` (Rust crate)
 
-- Owns: embedded standard utilities for brush. Its pinned upstream utility sources route cwd, environment and byte IO through an invocation context. The patched sources live in the root `vendor/`; `native-utils-dependencies.md` records their provenance and invocation adaptations.
+- Owns: embedded standard utilities for brush. Its upstream utility sources in
+  the root `vendor/` route cwd, environment and byte IO through an invocation context.
 - Must not: implement agent-specific commands or change process-global cwd/environment during a utility invocation.
 
-### `@demicodes/runner` / `packages/runner` (Rust executable and TypeScript test adapter)
+### `packages/runner` (Rust executable)
 
 - Owns: the `demi-runner` executable, one outbound backend WebSocket per registration, pairing/reconnection, filesystem and process RPC, shell jobs, local command forwarding and installation state.
 - `src/main.rs` selects runner administration, local command forwarding, isolated shell jobs or Linux guest initialization. Command aliases point to this same executable.
 - `src/shell.rs` embeds brush and native utilities. Each job runs in its own process, with per-job cwd/environment and output files. Unix process groups and Windows Job Objects release descendants on cancellation.
-- `vendor/brush-core` owns the pinned interpreter adaptations described in `native-shell-dependency.md`: concurrent function/compound pipeline stages and temporary-file here-documents.
+- The root `vendor/brush-core` provides concurrent function/compound pipeline
+  stages and temporary-file here-documents.
 - `src/dispatch.rs` validates declarations and arguments. `rpc.rs` forwards application callbacks; `native.rs` shares resident services by artifact digest. The runner does not link `demi-package` implementations.
 - `src/local.rs`, `command_client.rs` and `stdio.rs` own owner-restricted local HTTP/2 transport, input demand and byte streaming. Unix uses domain sockets; Windows uses named pipes.
 - `src/state.rs`, `management.rs` and `mode.rs` own registration locks, private state, draining and backend connection lifetime. `init.rs` and `volumes.rs` own Linux PID 1 boot and volume operations. Managed state lives under `/run/demi`.
-- Public boundary: the executable; `runnerBinary`, `startRunner`, `connectTestRunner`, `LocalHost` and `nodeFileSystem` under the test-only TypeScript entry. `scripts/native/build.ts` builds six native targets; `runtime/release.ts` verifies and packages them.
+- Public boundary: the executable. `scripts/native/build.ts` builds six native
+  targets; `scripts/native/release-runner.ts` verifies and packages them.
+  TypeScript integration fixtures belong to `host-remote/testing`.
 - Must not: hold provider credentials as configuration, own transcripts, import agent/provider implementations, execute downloaded JavaScript or contain native command algorithms.
 
 ### `@demicodes/web-ui`
@@ -615,7 +630,9 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ## Production Dependency Graph
 
-The canonical production source graph contains every Demi package and must stay acyclic:
+The production dependency graph contains every TypeScript workspace package and
+must stay acyclic. Rust crate dependencies are defined by their Cargo manifests
+and the package responsibilities above:
 
 ```text
 core -> none
@@ -623,7 +640,7 @@ utils -> none
 provider -> core, utils
 shell -> command-protocol, utils
 agent -> core, provider, shell, utils
-coding-agent -> agent, core, demi-package, shell, utils
+coding-agent -> agent, command-protocol, core, shell, utils
 provider-claude-code -> core, provider, utils
 provider-codex -> core, provider, utils
 provider-openai-api -> core, provider, utils
@@ -631,13 +648,11 @@ provider-anthropic-api -> core, provider, utils
 provider-grok-build -> core, provider, utils
 provider-google -> core, provider, utils
 command-protocol -> none
-demi-package -> command-protocol
 command-loader -> command-protocol, shell, utils
 runner-protocol -> command-protocol, shell, utils
 machines -> utils
 host-remote -> command-loader, command-protocol, runner-protocol, shell, utils
-runner -> command-loader, runner-protocol, shell, utils
-backend -> agent, coding-agent, command-loader, command-protocol, core, demi-package, host-remote, machines, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
+backend -> agent, coding-agent, command-loader, command-protocol, core, host-remote, machines, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
 web-ui -> agent, core, utils
 web-gallery -> web-ui, core, utils
 web -> web-ui, core, utils
@@ -663,16 +678,21 @@ How files and directories are organized inside a package. These are design
 rules, enforceable in review — not taste:
 
 Rust crates keep `Cargo.toml` at the package root and source in `src/`, using
-Cargo's standard `src/lib.rs` and `src/main.rs` entrypoints. A package that also
-exports TypeScript keeps its `.ts` and `.rs` modules in that same `src/` tree;
-each toolchain resolves its own entrypoints. Generated contracts and their
-fixtures stay with the owning protocol module, and generators write there.
+Cargo's standard `src/lib.rs` and `src/main.rs` entrypoints. Native implementation
+packages are Rust-only. TypeScript belongs in a native package only when that
+package owns a contract or bridge used directly by the TypeScript application.
+`command-protocol`, `runner-protocol` and `command-loader` share such contracts;
+their generated Rust and TypeScript modules live in `src/`. Build and release
+scripts belong in `scripts/native/`. Cross-language integration fixtures belong
+to the TypeScript adapter that exercises the native executable.
 
 Third-party source trees belong in the repository root's `vendor/<crate>/`,
 with their upstream metadata and licenses retained. The root `Cargo.toml`
 declares their `[patch.crates-io]` paths and excludes them from workspace
-membership. Demi adapters stay in their responsible `packages/` crate.
-Dependency provenance and local adaptations are documented under `docs/`.
+membership. Demi adapters stay in their responsible `packages/` crate. Dependency
+versions and source identifiers stay in manifests, lockfiles and vendor metadata.
+`docs/` describes current architecture and usage, not dependency inventories,
+artifact hashes, CI run logs or one-off acceptance records.
 
 1. **One composition root per product package.** Exactly one file assembles
    the package (`backend.ts`, `main.ts`): it may construct, inject, mount,
@@ -722,10 +742,13 @@ Existing boundary coverage:
 
 # Package Versioning
 
-Demi versions all first-party packages with one shared version. The Changesets
-configuration places these packages in a single fixed group, so any
+Demi's TypeScript packages listed below share one version. The Changesets
+configuration places them in a single fixed group, so any
 release-worthy change bumps the whole group together and publishes every public
 package in the group.
+
+Native crates use the Cargo workspace version and native release manifests;
+they are not npm packages or members of the Changesets group.
 
 ## Release Set
 
@@ -744,7 +767,6 @@ The fixed group contains:
 - `@demicodes/provider-google`
 - `@demicodes/provider-grok-build`
 - `@demicodes/provider-openai-api`
-- `@demicodes/runner`
 - `@demicodes/runner-protocol`
 - `@demicodes/shell`
 - `@demicodes/utils`

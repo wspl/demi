@@ -1,6 +1,6 @@
 # Demi Next: Execution Identity and Coordination
 
-Status: final-state contract; acceptance tracked in `progress.md`.
+Status: final-state contract.
 
 ## Identity
 

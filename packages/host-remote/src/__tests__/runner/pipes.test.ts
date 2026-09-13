@@ -8,7 +8,7 @@ import {
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { deferred, waitFor } from '@demicodes/utils'
-import { startRunner } from '../testing'
+import { startRunner } from '../../testing'
 
 // The runner's ends of pipes (`runner.md` § Pipes): a job started with
 // `stdin` GETs the origin-relative URL with its device token into the job's

@@ -1,8 +1,7 @@
 # Demi Next: Delivery and Acceptance
 
-Status: target delivery plan. A milestone is complete only with evidence in
-`progress.md`; this document specifies dependencies and acceptance, not historical
-completion. The architecture contracts and their Git diff define implementation
+Status: target delivery plan. A milestone is complete when its implementation
+and required tests pass. The architecture contracts and their Git diff define implementation
 scope. No compatibility paths or legacy-data conversion are part of the design.
 
 ## Delivery order

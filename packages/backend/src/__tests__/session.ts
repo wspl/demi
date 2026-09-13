@@ -1,4 +1,4 @@
-import { nativePackageFixture } from '@demicodes/demi-package/testing'
+import { nativePackageFixture } from '@demicodes/host-remote/testing'
 import {
   createBackend,
   type Backend,

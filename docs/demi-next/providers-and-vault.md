@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-08 |
-| Status | Target architecture contract; acceptance tracked in `progress.md` |
+| Status | Target architecture contract |
 | Scope | The LLM module, the credential vault, usage accounting, and the Claude Code special case |
 
 ## LLM module

@@ -19,7 +19,7 @@ import {
 } from '@demicodes/shell'
 import { runnerShell, probeCommand } from '@demicodes/backend/testing'
 
-import { LocalHost } from '@demicodes/runner/testing'
+import { LocalHost } from '@demicodes/host-remote/testing'
 import type { InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { createCodingAgentHarness } from '../index'

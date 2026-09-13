@@ -6,7 +6,7 @@ import { expect, test } from 'bun:test'
 import { runnerShellFactory } from '@demicodes/backend/testing'
 
 import type { Block, ModelSelection } from '@demicodes/core'
-import { LocalHost } from '@demicodes/runner/testing'
+import { LocalHost } from '@demicodes/host-remote/testing'
 import { defineProvider, type InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {

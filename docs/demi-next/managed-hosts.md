@@ -1,6 +1,6 @@
 # Demi Next: Managed Hosts
 
-Status: target architecture contract. Implementation acceptance is recorded in `progress.md`.
+Status: target architecture contract.
 
 ## Ownership
 

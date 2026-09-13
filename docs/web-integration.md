@@ -206,4 +206,4 @@ fixtures; they never call real models. Coverage includes message admission,
 disconnect/cancellation, subagent history, metadata reconciliation, partial batch
 failure, read acknowledgement, file and provider contracts, and shared UI helpers.
 Browser verification uses a disposable backend account and device. Exact check
-results are recorded in [progress](demi-next/progress.md).
+results are reported by the integration test suite.

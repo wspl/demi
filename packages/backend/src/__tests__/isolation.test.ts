@@ -3,7 +3,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { startRunner } from '@demicodes/runner/testing'
+import { startRunner } from '@demicodes/host-remote/testing'
 import { waitFor } from '@demicodes/utils'
 import {
   login,

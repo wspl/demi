@@ -1,6 +1,6 @@
 # Demi Next: Sessions and Execution Targets
 
-Status: target architecture contract. Implementation acceptance is recorded in `progress.md`.
+Status: target architecture contract.
 
 ## Session and target
 

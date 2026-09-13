@@ -8,7 +8,7 @@ import { runnerShellFactory } from '@demicodes/backend/testing'
 import { waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/runner/testing'
+import { LocalHost } from '@demicodes/host-remote/testing'
 import {
   defineProvider,
   type Provider,

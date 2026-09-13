@@ -1,4 +1,4 @@
-import { nativePackageFixture } from '@demicodes/demi-package/testing'
+import { nativePackageFixture } from '@demicodes/host-remote/testing'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

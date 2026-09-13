@@ -9,7 +9,7 @@ import { runnerShellFactory, probeCommand } from '@demicodes/backend/testing'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/runner/testing'
+import { LocalHost } from '@demicodes/host-remote/testing'
 import {
   defineProvider,
   type AgentProvider,

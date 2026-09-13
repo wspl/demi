@@ -6,11 +6,7 @@ and Windows cross-compilation. Host platform execution is a separate CI gate.
 
 ## Toolchain
 
-- Rust 1.98.1, as pinned in `rust-toolchain.toml`.
-- Zig 0.15.2 and cargo-zigbuild 0.23.4 for Linux musl and macOS.
-- cargo-xwin 0.23.1 with LLVM for Windows MSVC, static CRT linkage.
-- Apple SDK 15.4, with macOS deployment minimum 13.0.
-- Windows SDK 10.0.26100 and CRT package 14.44.17.14.
+`rust-toolchain.toml` and `scripts/native/Dockerfile` pin the build tools.
 
 The Dockerfile installs the Linux build tools. Supply an Apple SDK directory;
 the script validates its SDK metadata before building. `ring` chooses `clang`
@@ -19,9 +15,9 @@ release optimization to match cargo-xwin's SDK flags. The container target path
 is `/build`, avoiding clang-cl's interpretation of `/output` as an output flag.
 
 ```sh
-docker build -t demi-native-tools:rust-1.98.1 -f scripts/native/Dockerfile .
+docker build -t demi-native-tools -f scripts/native/Dockerfile .
 bun --conditions development scripts/native/build.ts \
-  --container demi-native-tools:rust-1.98.1 \
+  --container demi-native-tools \
   --sdk /path/to/MacOSX15.4.sdk
 ```
 
@@ -31,15 +27,15 @@ Cargo target directory; its default is `.cache/native-target`.
 ## Packaging
 
 ```sh
-bun --conditions development packages/demi-package/scripts/release.ts \
+bun --conditions development scripts/native/release-package.ts \
   --artifacts .cache/native-target --output .cache/releases/demi-builtin-0.1.0
-bun --conditions development packages/runner/runtime/release.ts \
+bun --conditions development scripts/native/release-runner.ts \
   --artifacts .cache/native-target --output .cache/releases/runners
 ```
 
 The command package directory contains `descriptor.json` and six target
-subdirectories. The script also updates the public `demiPackage` descriptor in
-`packages/demi-package/src/release.json` to identify those exact bytes. A version
+subdirectories. The script also updates the application binding descriptor in
+`packages/coding-agent/src/commands/file/release.json` to identify those exact bytes. A version
 is immutable: choose a new package version when publishing different artifacts.
 
 Runner packaging creates a hash-named directory containing `manifest.json` and
@@ -67,5 +63,4 @@ exercise repeated process startup and teardown.
 `command-service/examples/benchmark.rs` is a standalone synthetic service and
 client. Build it with `cargo build --release -p demi-command-service --example
 benchmark`, then execute `target/release/examples/benchmark`. It never calls a
-model. Execution evidence belongs in `docs/demi-next/progress.md`; a compiled
-binary or a workflow definition alone does not establish target runtime acceptance.
+model. Run it directly to obtain measurements for the current machine and build.

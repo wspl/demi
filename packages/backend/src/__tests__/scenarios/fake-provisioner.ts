@@ -1,7 +1,7 @@
 import { mkdtemp, rm, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { startRunner, type Runner } from '@demicodes/runner/testing'
+import { startRunner, type Runner } from '@demicodes/host-remote/testing'
 import type {
   BootArgs,
   ManagedHostProvisioner

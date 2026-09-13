@@ -8,7 +8,7 @@ import {
   JOB_VIEW_BYTES,
   type RunnerProtocolMessage
 } from '@demicodes/runner-protocol'
-import { startRunner, type Runner } from '@demicodes/runner/testing'
+import { startRunner, type Runner } from '@demicodes/host-remote/testing'
 import { waitFor } from '@demicodes/utils'
 import type { BackendOptions } from '../../index'
 import { openBackend, type TestBackend } from '../session'

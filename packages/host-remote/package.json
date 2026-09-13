@@ -12,6 +12,11 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./testing": {
+      "development": "./src/testing.ts",
+      "types": "./dist/testing.d.mts",
+      "import": "./dist/testing.mjs"
     }
   },
   "files": [
@@ -39,6 +44,8 @@
   "homepage": "https://github.com/wspl/demi/tree/main/packages/host-remote#readme",
   "bugs": "https://github.com/wspl/demi/issues",
   "devDependencies": {
-    "@demicodes/runner": "workspace:^"
+    "@demicodes/agent": "workspace:^",
+    "@demicodes/core": "workspace:^",
+    "@demicodes/provider": "workspace:^"
   }
 }

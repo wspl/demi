@@ -1,9 +1,12 @@
 # Package Versioning
 
-Demi versions all first-party packages with one shared version. The Changesets
-configuration places these packages in a single fixed group, so any
+Demi's TypeScript packages listed below share one version. The Changesets
+configuration places them in a single fixed group, so any
 release-worthy change bumps the whole group together and publishes every public
 package in the group.
+
+Native crates use the Cargo workspace version and native release manifests;
+they are not npm packages or members of the Changesets group.
 
 ## Release Set
 
@@ -22,7 +25,6 @@ The fixed group contains:
 - `@demicodes/provider-google`
 - `@demicodes/provider-grok-build`
 - `@demicodes/provider-openai-api`
-- `@demicodes/runner`
 - `@demicodes/runner-protocol`
 - `@demicodes/shell`
 - `@demicodes/utils`

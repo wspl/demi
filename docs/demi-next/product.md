@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-08 |
-| Status | Target architecture contract; acceptance tracked in `progress.md` |
+| Status | Target architecture contract |
 | Scope | What the product stores and exposes: instance mode, users, conversations, attachments, provider management, the web UI and frontend package |
 
 ## Instance mode: shared vs isolated

@@ -2,19 +2,12 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { nativePackageSchema, NATIVE_TARGETS, type ArtifactResolver } from '@demicodes/command-protocol'
-import info from '../package-info.json'
-
-let fixture: ReturnType<typeof buildFixture> | undefined
+import info from '../../../demi-package/package-info.json'
 
 /** Host-only test executable and catalog. Never publish this fixture descriptor. */
-export function nativePackageFixture() {
-  return fixture ??= buildFixture()
-}
-
-async function buildFixture() {
-  const root = resolve(import.meta.dir, '../../..')
+export async function buildNativePackageFixture(root: string) {
   const executable = process.env.DEMI_NATIVE_TEST_BINARY ?? join(root, 'target/debug', `demi-commands${process.platform === 'win32' ? '.exe' : ''}`)
   if (!process.env.DEMI_NATIVE_TEST_BINARY) {
     const installed = join(homedir(), '.cargo/bin', process.platform === 'win32' ? 'cargo.exe' : 'cargo')

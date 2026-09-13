@@ -16,7 +16,7 @@ import {
   createRunnerWire
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
-import { startRunner } from '@demicodes/runner/testing'
+import { startRunner } from '@demicodes/host-remote/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'

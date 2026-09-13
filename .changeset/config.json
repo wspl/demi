@@ -18,7 +18,6 @@
       "@demicodes/provider-google",
       "@demicodes/provider-grok-build",
       "@demicodes/provider-openai-api",
-      "@demicodes/runner",
       "@demicodes/runner-protocol",
       "@demicodes/shell",
       "@demicodes/tinybash",

@@ -1,6 +1,6 @@
 # Demi Next: Scenario Suite
 
-Status: target acceptance contract; completion requires evidence in `progress.md`.
+Status: target acceptance contract.
 
 ## Composition under test
 
