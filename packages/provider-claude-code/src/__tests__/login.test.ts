@@ -97,3 +97,28 @@ test(
     expect(renewed.subscriptionType).toBe('max')
   }
 )
+
+test('a token response without an access token is a credential error', async () => {
+  const fakeFetch = (async (_input: string | URL | Request) => jsonResponse(
+    200,
+    { refresh_token: 'rt', expires_in: 3600 },
+  )) as typeof fetch
+  await expect(
+    refreshClaudeCodeSecret(
+      { accessToken: 'at_old', refreshToken: 'rt_old' },
+      { fetch: fakeFetch },
+    ),
+  ).rejects.toThrow(/access_token/)
+})
+
+test('expires_in is read as a number however the endpoint spells it', async () => {
+  const fakeFetch = (async (_input: string | URL | Request) => jsonResponse(
+    200,
+    { access_token: 'at_new', expires_in: '28800' },
+  )) as typeof fetch
+  const renewed = await refreshClaudeCodeSecret(
+    { accessToken: 'at_old', refreshToken: 'rt_old' },
+    { fetch: fakeFetch },
+  )
+  expect(Date.parse(renewed.expiresAt!) - Date.now()).toBeGreaterThan(27_000_000)
+})
