@@ -16,6 +16,7 @@ import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ref } from 'vue'
+import HostPicker from '@demicodes/web-ui/hosts/HostPicker.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import type { HostMenuMainHost } from '@demicodes/web-ui/hosts/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
@@ -30,18 +31,25 @@ const hostDevices = [
   { id: 'build', name: 'build-01', online: true },
   { id: 'studio', name: 'studio', online: false },
 ]
+const hostStatusItems = hostDevices.map((device) => ({
+  id: device.id,
+  label: device.name,
+  indicator: device.online ? 'success' as const : 'muted' as const,
+  indicatorLabel: device.online ? 'Online' : 'Offline',
+}))
 const mainHost = ref<HostMenuMainHost>({
   id: 'mac',
   name: 'zan-mbp',
-  kind: 'device'
+  kind: 'device',
+  online: true,
 })
 const attachedHosts = ref(hostDevices.filter(device => device.id !== 'mac'))
 
 function switchMainHost(id: string) {
   const device = hostDevices.find(device => device.id === id)
   mainHost.value = device
-    ? { id: device.id, name: device.name, kind: 'device' }
-    : { id: 'cloud', name: 'Cloud', kind: 'cloud' }
+    ? { id: device.id, name: device.name, kind: 'device', online: device.online }
+    : { id: 'cloud', name: 'Cloud', kind: 'cloud', online: true }
 }
 
 function attachHost(id: string) {
@@ -154,7 +162,7 @@ function itemLabel(id: string, list: {
 
       <GallerySection
         title="Menu"
-        note="Actions, choices, submenus, tall, and filter."
+        note="Actions, choices, submenus, tall, and filter. Enabled choices use normal text; being unselected does not dim them. Disabled rows keep their status dot and explain why they cannot be chosen."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="actions">
@@ -315,6 +323,17 @@ function itemLabel(id: string, list: {
             </Menu>
           </GallerySpecimen>
         </GalleryOverlayWell>
+        <GallerySpecimen variant="host picker · online, bound and offline">
+          <HostPicker
+            :devices="hostDevices"
+            :bound-ids="['build']"
+            @select="showToast({ title: `Selected ${$event}` })"
+            @connect="showToast({ title: 'Connect new device' })"
+          />
+        </GallerySpecimen>
+        <GallerySpecimen variant="status dots · virtual list without icons">
+          <Menu :items="hostStatusItems" :item-height="28" />
+        </GallerySpecimen>
         <GallerySpecimen variant="host menu · label/value and status">
           <HostMenu
             :main-host="mainHost"

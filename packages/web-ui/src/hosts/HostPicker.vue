@@ -21,15 +21,22 @@ const items = computed(() =>
     label: device.name,
     icon: Monitor,
     note: device.online ? undefined : 'offline',
+    indicator: device.online ? 'success' as const : 'muted' as const,
+    indicatorLabel: device.online ? 'Online' : 'Offline',
+    disabledReason: disabledReason(device),
   })),
 )
-function disabled(device: HostDeviceOption) {
-  return (
-    device.id === props.selectedId ||
-    props.boundIds?.includes(device.id) ||
-    // An offline device cannot be chosen anywhere; it stays listed so its absence is visible.
-    !device.online
-  )
+function disabledReason(device: HostDeviceOption): string | undefined {
+  if (device.id === props.selectedId) {
+    return 'Current main host.'
+  }
+  if (props.boundIds?.includes(device.id)) {
+    return 'Already attached to this conversation.'
+  }
+  if (!device.online) {
+    return 'This device is offline.'
+  }
+  return undefined
 }
 </script>
 
@@ -38,7 +45,7 @@ function disabled(device: HostDeviceOption) {
     :items="items"
     :iconless="false"
     :selected-id="selectedId"
-    :is-item-disabled="disabled"
+    :is-item-disabled="(item) => !!item.disabledReason"
     filterable
     filter-placeholder="Search hosts…"
     empty-text="No hosts found"

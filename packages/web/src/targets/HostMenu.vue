@@ -26,13 +26,14 @@ const mainHost = computed<HostMenuMainHost>(() => {
     id: execution.deviceId ?? 'cloud',
     name: execution.name,
     kind: execution.kind,
+    online: execution.online,
   }
 })
 const attachedHosts = computed(() =>
   props.conversation.attachedHosts.map((host) => ({
     id: host.deviceId,
     name: host.name,
-    online: host.online,
+    online: resources.deviceById(host.deviceId)?.online ?? false,
   })),
 )
 

@@ -8,4 +8,5 @@ export interface HostMenuMainHost {
   id: string
   name: string
   kind: 'cloud' | 'device'
+  online: boolean
 }
