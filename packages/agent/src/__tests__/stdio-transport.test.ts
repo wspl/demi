@@ -9,6 +9,8 @@ import { expect, test } from 'bun:test'
 import { runnerShellFactory, probeCommand } from '@demicodes/backend/testing'
 
 import { deferred, waitFor } from '@demicodes/utils'
+import type { z } from 'zod'
+import { clientFrameSchema, serverFrameSchema } from '../protocol/schemas'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
 import { LocalHost } from '@demicodes/host-remote/testing'
@@ -54,7 +56,7 @@ test(
     const serverToClient = new PassThrough()
     const server = createStdioServerTransport(clientToServer, serverToClient)
     const client = createStdioClientTransport(serverToClient, clientToServer)
-    const received = nextFrame<ClientFrame>(server)
+    const received = nextFrame(server, clientFrameSchema)
 
     client.send({
       type: 'send',
@@ -366,12 +368,13 @@ function runtimeProvider(
 }
 
 function nextFrame<T>(
-  transport: { onFrame(handler: (frame: T) => void): () => void }
+  transport: { onFrame(handler: (frame: unknown) => void): () => void },
+  schema: z.ZodType<T>,
 ): Promise<T> {
   return new Promise((resolve) => {
     const unsubscribe = transport.onFrame((frame) => {
       unsubscribe()
-      resolve(frame)
+      resolve(schema.parse(frame))
     })
   })
 }

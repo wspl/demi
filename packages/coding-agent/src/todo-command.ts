@@ -59,16 +59,14 @@ export function createTodoCommand(): CommandGroup {
         },
         kind: 'rpc',
         run: async ({ parsed, io, storage }) => {
-          const todos = TodoListSchema.parse(
-            await storage.updateJson(TODO_STORAGE_KEY, (current) => {
-              const items = TodoListSchema.parse(current ?? [])
-              return [...items, {
-                id: nextTodoId(items),
-                text: parsed.values.text,
-                status: 'pending' as const,
-              }]
-            }),
-          )
+          const todos = await storage.updateJson(TODO_STORAGE_KEY, (current) => {
+            const items = TodoListSchema.parse(current ?? [])
+            return [...items, {
+              id: nextTodoId(items),
+              text: parsed.values.text,
+              status: 'pending' as const,
+            }]
+          })
           const todo = todos.at(-1)!
           if (parsed.json) await io.stdout(JSON.stringify({ todo }))
           else await io.stdout(`${formatTodo(todo)}\n`)
@@ -141,15 +139,13 @@ async function updateTodo(
   id: string,
   patch: Partial<Pick<TodoItem, 'text' | 'status'>>,
 ): Promise<TodoItem> {
-  const todos = TodoListSchema.parse(
-    await storage.updateJson(TODO_STORAGE_KEY, (current) => {
-      const items = TodoListSchema.parse(current ?? [])
-      if (!items.some((todo) => todo.id === id)) {
-        throw new Error(`Todo not found: ${id}`)
-      }
-      return items.map((todo) => todo.id === id ? { ...todo, ...patch } : todo)
-    }),
-  )
+  const todos = await storage.updateJson(TODO_STORAGE_KEY, (current) => {
+    const items = TodoListSchema.parse(current ?? [])
+    if (!items.some((todo) => todo.id === id)) {
+      throw new Error(`Todo not found: ${id}`)
+    }
+    return items.map((todo) => todo.id === id ? { ...todo, ...patch } : todo)
+  })
   return todos.find((todo) => todo.id === id)!
 }
 
