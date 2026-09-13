@@ -244,7 +244,9 @@ beforeId: string | null }`; null appends. Conversation moves stay within the sam
 project and pin partition. [Storage](storage.md) owns persistent ordering. Activity timestamps never reorder rows.
 
 `GET /api/conversations?archived=true|false` includes `status`, `revision`,
-`readRevision` and `unread`. Status is running/compacting from the live agent tree,
+`readRevision`, `unread`, and `cwd`, the directory the conversation's work
+runs in, resolved the same way for a device directory, a workspace, and the
+Cloud, so the browser never derives it. Status is running/compacting from the live agent tree,
 otherwise completed/error/stopped from its latest terminal block, or idle.
 An unfinished checkpoint without a live session is interrupted. Checkpoint output
 changes advance a persisted revision; user input alone does not. A browser sends
@@ -252,8 +254,9 @@ changes advance a persisted revision; user input alone does not. A browser sends
 Acknowledgements only move forward, and revisions beyond current output are refused.
 
 `sync/product-state.ts` assembles `GET /api/state`: current user, mode, preferences,
-projects, active and archived conversation summaries, devices, public provider
-status and Cloud state. It never starts Cloud or runs inference. Responses use a
+projects, active and archived conversation summaries, devices (the paired ones
+and the user's Cloud device, which the file and working-tree routes address
+alike), public provider status and Cloud state. It never starts Cloud or runs inference. Responses use a
 private ETag; `If-None-Match` returns 304 when unchanged. Browsers revalidate
 on open, reconnect and a polling interval. This is a reconstructible snapshot,
 not an atomic transaction across the control and conversation databases; a later
