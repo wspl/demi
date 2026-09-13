@@ -12,13 +12,23 @@ import type { FileBrowserSource } from './types'
 /**
  * The path as crumbs, each its folder glyph and a jump; a click on the bar's free
  * space turns it into a text field with the full path, the way the Windows address
- * bar edits.
+ * bar edits. A bar with a `root` starts its crumbs there, the way a file view shows
+ * a path inside its workspace; `leaf` says what the last crumb is, so a file shows
+ * its file glyph.
  */
-const props = defineProps<{
-  path: string
-  /** Where the root and the home are, for their glyphs. */
-  source: Pick<FileBrowserSource, 'platform' | 'home'>
-}>()
+const props = withDefaults(
+  defineProps<{
+    path: string
+    /** Where the root and the home are, for their glyphs. */
+    source: Pick<FileBrowserSource, 'platform' | 'home'>
+    /** The first crumb; the ancestors above it are not shown. */
+    root?: string
+    leaf?: 'directory' | 'file'
+    /** False for a bar that only shows: no text field on a click. */
+    editable?: boolean
+  }>(),
+  { root: undefined, leaf: 'directory', editable: true },
+)
 
 const emit = defineEmits<{
   navigate: [path: string]
@@ -30,7 +40,13 @@ const input = ref<InstanceType<typeof TextInput>>()
 const bar = ref<HTMLElement>()
 const { width } = useElementSize(bar)
 
-const crumbs = computed(() => pathSegments(props.path))
+const crumbs = computed(() => {
+  const all = pathSegments(props.path)
+  if (props.root === undefined)
+    return all
+  const start = all.findIndex((crumb) => crumb.path === normalizePath(props.root!))
+  return start < 0 ? all : all.slice(start)
+})
 /** Deep paths keep the root and the last few crumbs, fewer in a narrow bar; the middle folds into an ellipsis. */
 const shown = computed(() => {
   const all = crumbs.value
@@ -45,6 +61,8 @@ const shown = computed(() => {
 })
 
 function startEdit() {
+  if (!props.editable)
+    return
   draft.value = props.path
   editing.value = true
   nextTick(() => {
@@ -120,7 +138,7 @@ watch(() => props.path, () => {
         <!-- The root and the home wear their landmark glyphs; every crumb has the same shape. -->
         <FileIcon
           :name="crumb.name"
-          :is-directory="true"
+          :is-directory="!(leaf === 'file' && index === shown.length - 1)"
           :icon="landmarkIcon(crumb.path, source)"
         />
         <span class="truncate">{{ crumb.name }}</span>
