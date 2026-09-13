@@ -1545,7 +1545,7 @@ function abortTerminal(id: string) {
     <template v-if="view === 'panel'">
       <GallerySection
         title="The frame"
-        note="The app frame with the work panel open on the right: the sidebar, the session, and the panel are siblings, each side pane behind its own divider. The header's panel control opens it and the panel's fold control closes it, with equal space above, below and to its right; drag or double-click the divider on its left; Show tabs restores the starting tabs."
+        note="The app frame with the work panel open on the right: the sidebar, the session, and the panel are siblings, each side pane behind its own divider. The header's panel control opens it and the panel's fold control closes it, using the same 28px button, 14px icon, 12px right inset, tooltip and hover treatment as the conversation’s Open panel control; drag or double-click the divider on its left; Show tabs restores the starting tabs."
       >
         <GallerySpecimen variant="frame · live" wide>
           <div class="gallery-frame flex h-[44rem] w-full overflow-hidden">
