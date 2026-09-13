@@ -1638,15 +1638,15 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Change view"
-        note="Diffs from one of two sources, the switch in the header picks. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation is one file picked from the conversation's tool rows, a snapshot around that call, shown alone: no tree. Either way the header names the file shown with its counts. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself and, under Uncommitted, hides the tree; the tree's caption lists the changes again, its control turning while the list is on its way. A new change tab opens on Conversation when something was picked, else on Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted the view also says when the workspace is no repository, keeps the last list when a listing failed, and says under the rows when the list was cut short."
+        note="Diffs from one of two sources, the switch in the header picks. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation is one file picked from the conversation's tool rows, a snapshot around that call, shown alone: no tree. Either way the header names the file shown with its counts. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself and, under Uncommitted, hides the tree; the tree's caption lists the changes again, its control turning while the list is on its way. A new change tab opens on Conversation when something was picked, else on Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted the view also says when the workspace is no repository, keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
       >
         <GallerySpecimen
           v-for="specimen in [
-            { variant: 'uncommitted · live', work: changeUncommitted },
-            { variant: 'uncommitted · not a repository', work: changeNoRepository },
-            { variant: 'uncommitted · listing failed, cut short', work: changeStale },
-            { variant: 'conversation · picked', work: changePicked },
-            { variant: 'conversation · nothing picked', work: changeEmpty },
+            { variant: 'uncommitted · live', work: changeUncommitted, rootName: undefined },
+            { variant: 'uncommitted · not a repository, named Workspace', work: changeNoRepository, rootName: 'Workspace' },
+            { variant: 'uncommitted · listing failed, cut short', work: changeStale, rootName: undefined },
+            { variant: 'conversation · picked', work: changePicked, rootName: undefined },
+            { variant: 'conversation · nothing picked', work: changeEmpty, rootName: undefined },
           ]"
           :key="specimen.variant"
           :variant="specimen.variant"
@@ -1660,6 +1660,7 @@ function abortTerminal(id: string) {
               :selected="specimen.work.selected.value"
               :changes="specimen.work.changes"
               :root="workspace.root"
+              :root-name="specimen.rootName"
               :can-back="specimen.work.tab.value.back.length > 0"
               :can-forward="specimen.work.tab.value.forward.length > 0"
               @update:mode="specimen.work.setMode"
