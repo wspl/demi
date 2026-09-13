@@ -13,7 +13,7 @@ import type { PendingAction } from '@demicodes/web-ui/agent/activity-slot'
 import type { SessionLoad } from '@demicodes/web-ui/agent/session-status'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import type { BackendConversation } from '../api/contracts'
+import type { BackendConversation, ProductState } from '../api/contracts'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import type { SavedDraft, SavedFile } from '../conversation/drafts'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
@@ -57,6 +57,7 @@ export interface Conversation extends SidebarConversation {
 
 export interface Device {
   id: string
+  kind: NonNullable<ProductState['devices']>[number]['kind']
   name: string
   online: boolean
   platform: FileBrowserPlatform

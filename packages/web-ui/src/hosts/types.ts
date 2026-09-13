@@ -4,9 +4,6 @@ export interface HostDeviceOption {
   online: boolean
 }
 
-export interface HostMenuMainHost {
-  id: string
-  name: string
+export interface HostMenuHost extends HostDeviceOption {
   kind: 'cloud' | 'device'
-  online: boolean
 }
