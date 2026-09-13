@@ -9,7 +9,7 @@
 
 use crate::io::{RawReader, RawWriter};
 use rustix::pipe::{SpliceFlags, fcntl_setpipe_size};
-use {crate::context::io::PipeReader, crate::context::io::PipeWriter, crate::context::io::Read, crate::context::io::Write, std::os::fd::AsFd, std::sync::OnceLock};
+use {crate::context::io::PipeReader, crate::context::io::PipeWriter, crate::context::io::Read, crate::context::io::Write, std::os::fd::AsFd};
 pub const MAX_ROOTLESS_PIPE_SIZE: usize = 1024 * 1024;
 const KERNEL_DEFAULT_PIPE_SIZE: usize = 64 * 1024;
 
@@ -79,8 +79,8 @@ pub fn drain_pipe(pipe: &PipeReader, dest: &impl AsFd, len: usize) -> PipeRes {
 /// This includes read ahead and optimization for stdout's pipe size
 #[inline]
 pub fn splice_unbounded_auto(source: &impl AsFd, dest: &mut impl AsFd) -> PipeRes {
-    static PIPE_CACHE: OnceLock<Option<(PipeReader, PipeWriter)>> = OnceLock::new();
-    let Some((pipe_rd, pipe_wr)) = PIPE_CACHE.get_or_init(|| pipe::<false>().ok()) else {
+    // A broker belongs to one transfer; sharing it mixes concurrent invocations.
+    let Ok((pipe_rd, pipe_wr)) = pipe::<false>() else {
         return Ok(Err(()));
     };
 
@@ -94,7 +94,7 @@ pub fn splice_unbounded_auto(source: &impl AsFd, dest: &mut impl AsFd) -> PipeRe
     match splice(&source, &pipe_wr, MAX_ROOTLESS_PIPE_SIZE) {
         Ok(0) => return Ok(Ok(())),
         Ok(n) => {
-            if drain_pipe(pipe_rd, dest, n)?.is_err() {
+            if drain_pipe(&pipe_rd, dest, n)?.is_err() {
                 return Ok(Err(()));
             }
         }
@@ -103,7 +103,7 @@ pub fn splice_unbounded_auto(source: &impl AsFd, dest: &mut impl AsFd) -> PipeRe
     // GNU cat catches all strace injections for 2nd+ splice
     while let mut n @ 1.. = splice(&source, &pipe_wr, MAX_ROOTLESS_PIPE_SIZE)? {
         while n > 0 {
-            n -= splice(pipe_rd, dest, n)?;
+            n -= splice(&pipe_rd, dest, n)?;
         }
     }
     Ok(Ok(()))
@@ -113,21 +113,20 @@ pub fn splice_unbounded_auto(source: &impl AsFd, dest: &mut impl AsFd) -> PipeRe
 /// return actually sent bytes
 #[inline]
 pub fn send_n_bytes(input: impl AsFd, target: impl AsFd, n: u64) -> crate::context::io::Result<u64> {
-    static PIPE_CACHE: OnceLock<Option<(PipeReader, PipeWriter)>> = OnceLock::new();
     let pipe_size = MAX_ROOTLESS_PIPE_SIZE.min(n as usize);
     // improve throughput if output is pipe
     // expected that input is already extended if it is coming from splice
     if pipe_size > KERNEL_DEFAULT_PIPE_SIZE {
         let _ = fcntl_setpipe_size(&target, pipe_size);
     }
-    let Some((broker_r, broker_w)) = PIPE_CACHE.get_or_init(|| {
+    let Some((broker_r, broker_w)) = (|| {
         // use crate::context::io::pipe to avoid unnecessary fcntl
         let pair = crate::context::io::pipe().ok()?;
         if pipe_size > KERNEL_DEFAULT_PIPE_SIZE {
             let _ = fcntl_setpipe_size(&pair.0, pipe_size);
         }
         Some(pair)
-    }) else {
+    })() else {
         return crate::context::io::copy(&mut RawReader(input).take(n), &mut RawWriter(target));
     };
     let mut n = n;
@@ -138,7 +137,7 @@ pub fn send_n_bytes(input: impl AsFd, target: impl AsFd, n: u64) -> crate::conte
             Ok(s) => {
                 n -= s as u64;
                 bytes_written += s as u64;
-                if drain_pipe(broker_r, &target, s)?.is_err() {
+                if drain_pipe(&broker_r, &target, s)?.is_err() {
                     break;
                 }
             }

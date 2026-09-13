@@ -124,7 +124,7 @@ e2e(
         ] })
       expect(facts.received[0]).toContain('.profile')
       expect(facts.received[0]).toContain('uv 0.')
-      await driver.turn({ model: [
+      const rustup = await driver.turn({ model: [
           model.shell(
             'rustup',
             "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal > /dev/null 2>&1; echo rustup-exit=$?",
@@ -132,12 +132,13 @@ e2e(
           ),
           model.say('installed')
         ] })
+      expect(rustup.received[0]).toContain('rustup-exit=0')
       const cargo = await driver.turn({ model: [
           model.shell('cargo', 'cargo --version'),
           model.say('cargo')
         ] })
       expect(cargo.received[0]).toContain('cargo 1.')
-      await driver.turn({ model: [
+      const nvm = await driver.turn({ model: [
           model.shell(
             'nvm',
             'curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh | bash > /dev/null 2>&1; . ~/.bashrc; nvm install --lts > /dev/null 2>&1; echo nvm-exit=$?',
@@ -145,6 +146,7 @@ e2e(
           ),
           model.say('nvm')
         ] })
+      expect(nvm.received[0]).toContain('nvm-exit=0')
       const node = await driver.turn({ model: [
           model.shell('node', 'node --version; command -v node'),
           model.say('node')
