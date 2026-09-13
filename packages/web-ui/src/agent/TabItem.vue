@@ -91,14 +91,10 @@ const tabStyle = computed(() => {
     One width for every tab. A faint line sits in the gap after the tab and
     fades out while the tab or its neighbour is active or hovered.
   -->
-  <Tooltip
-    tag="span"
+  <span
     role="tab"
     :aria-selected="isActive"
-    :content="tooltip ?? tab.title"
-    placement="bottom"
-    :disabled="isRenaming || isDragging"
-    class="relative flex h-7 w-40 shrink-0 cursor-default items-center rounded-md text-chrome select-none touch-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:opacity-0 hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
+    class="relative flex h-7 w-40 shrink-0 cursor-default items-center rounded-md text-chrome select-none touch-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
     :class="[
       isActive
         ? 'bg-(--tab-active) text-fg-emphasis after:opacity-0'
@@ -116,6 +112,14 @@ const tabStyle = computed(() => {
     @lostpointercapture="emit('lostpointercapture')"
     @contextmenu.prevent="emit('contextmenu', $event)"
   >
+    <!-- The tooltip covers the whole tab; the tab itself stays a plain element so the strip can transition it. -->
+    <Tooltip
+      tag="span"
+      :content="tooltip ?? tab.title"
+      placement="bottom"
+      :disabled="isRenaming || isDragging"
+      class="flex h-full min-w-0 flex-1 items-center"
+    >
     <span
       v-if="$slots.mark || uiOptions.showTabIcon"
       class="relative ml-1.5 flex shrink-0 items-center justify-center"
@@ -187,5 +191,6 @@ const tabStyle = computed(() => {
         <X :size="ICON_PX.in20" />
       </span>
     </span>
-  </Tooltip>
+    </Tooltip>
+  </span>
 </template>

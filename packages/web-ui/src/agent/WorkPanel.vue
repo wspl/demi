@@ -17,19 +17,20 @@ import FileIcon from '../files/FileIcon.vue'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
 import { tabsToClose, type TabCloseScope } from './tab-close'
-import { workTabTitle, type WorkTab } from './work-panel'
+import { changeWorkTab, workTabTitle, type WorkTab } from './work-panel'
 
 /**
  * The work panel: the app frame's right pane, where the reader keeps files
- * and changes (diffs) open beside the conversation. It continues the
+ * and the conversation's changes (its diff) open beside it. It continues the
  * session's raised sheet behind a hairline divider, with the tab row (on the
  * raised surface) at the height of the session header. The host owns the
  * tabs and which one is active; the panel shows them, asks for new ones, and
  * says which to close.
  *
  * A tab's menu closes it, the others, or one side of it; a file tab also
- * copies its path. The content pane is a placeholder until file and change
- * views exist.
+ * copies its path. There is one change tab at most: asking for it again
+ * selects the open one. The content pane is a placeholder until file and
+ * change views exist.
  */
 const props = defineProps<{
   tabs: readonly WorkTab[]
@@ -85,7 +86,7 @@ function scopeIsEmpty(scope: TabCloseScope): boolean {
 
 async function copyPath(): Promise<void> {
   const tab = menuTab.value
-  if (!tab) {
+  if (tab?.kind !== 'file') {
     return
   }
   try {
@@ -98,7 +99,12 @@ async function copyPath(): Promise<void> {
 
 function add(kind: WorkTab['kind']): void {
   addOpen.value = false
-  emit('add', kind)
+  const open = kind === 'change' ? changeWorkTab(props.tabs) : null
+  if (open) {
+    emit('select', open.id)
+  } else {
+    emit('add', kind)
+  }
 }
 </script>
 
@@ -110,7 +116,7 @@ function add(kind: WorkTab['kind']): void {
           v-for="tab in tabs"
           :key="tab.id"
           :tab="{ id: tab.id, title: workTabTitle(tab) }"
-          :tooltip="tab.path"
+          :tooltip="tab.kind === 'file' ? tab.path : undefined"
           :is-active="tab.id === activeId"
           @pointerdown="emit('select', tab.id)"
           @contextmenu="openTabMenu($event, tab.id)"
@@ -168,10 +174,11 @@ function add(kind: WorkTab['kind']): void {
         <div
           class="flex flex-1 select-none flex-col items-center justify-center gap-1 text-[13px] text-fg-faint"
         >
-          <template v-if="active">
-            <span>{{ active.kind === 'change' ? 'Change' : 'File' }}</span>
+          <template v-if="active?.kind === 'file'">
+            <span>File</span>
             <span class="max-w-full truncate px-4 font-mono text-[11px]">{{ active.path }}</span>
           </template>
+          <span v-else-if="active">Change</span>
           <span v-else>No files open</span>
         </div>
       </slot>

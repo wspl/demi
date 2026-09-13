@@ -119,8 +119,8 @@ const panelActiveConversationId = ref<string | null>('c-login')
 function workTabs(): WorkTab[] {
   return [
     { id: 'w1', kind: 'file', path: 'src/auth/cookie.ts' },
-    { id: 'w2', kind: 'change', path: 'src/auth/cookie.ts' },
-    { id: 'w3', kind: 'change', path: 'tests/login/auth.test.ts' },
+    { id: 'w2', kind: 'change' },
+    { id: 'w3', kind: 'file', path: 'tests/login/auth.test.ts' },
     { id: 'w4', kind: 'file', path: 'packages/web-ui/src/agent/blocks/FileChangePills.vue' },
   ]
 }
@@ -136,7 +136,10 @@ function useWorkTabs(activeId: string | null) {
   }
   function add(kind: WorkTab['kind']) {
     const id = `w${nextId++}`
-    tabs.value = [...tabs.value, { id, kind, path: 'src/auth/session.ts' }]
+    tabs.value = [
+      ...tabs.value,
+      kind === 'file' ? { id, kind, path: 'src/auth/session.ts' } : { id, kind },
+    ]
     active.value = id
   }
   function reset() {
@@ -1485,7 +1488,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="The panel alone. A file tab carries the file's icon; a change tab a diff mark. New tab follows the last tab until they scroll, then stays at the right. Right-click a tab for its menu; a file tab also copies its path. The content pane is a placeholder until file and change views exist."
+        note="The panel alone. A file tab carries the file's icon; the one Change tab a diff mark. New tab follows the last tab until they scroll, then stays at the right. Right-click a tab for its menu; a file tab also copies its path. The content pane is a placeholder until file and change views exist."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
