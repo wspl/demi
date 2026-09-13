@@ -1596,7 +1596,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Change view"
-        note="The conversation's changes: the diff of the selected file on the left, the changed files as a tree on the right with the kind of each change (a green dot for a new file, a struck name for a deleted one, the old path as tooltip for a renamed one) and its line counts. The row above counts the files and lines and holds the control that hides the tree; the divider before the tree sizes it."
+        note="The conversation's changes: the diff of the selected file on the left, the changed files as a tree on the right with the kind of each change (a green dot for a new file, a struck name for a deleted one, the old path as tooltip for a renamed one) and its line counts. The row above counts the files and lines and holds the controls that open the selected file itself and hide the tree; the divider before the tree sizes it."
       >
         <GallerySpecimen variant="cookie rename · live" wide>
           <div class="gallery-frame flex h-[40rem] overflow-hidden">
