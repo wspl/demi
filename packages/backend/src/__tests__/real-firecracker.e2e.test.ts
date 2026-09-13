@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
@@ -89,6 +89,7 @@ e2e(
     } finally {
       await world.close()
     }
+    await rm(dataDir, { recursive: true, force: true })
   },
   240_000
 )
@@ -155,6 +156,7 @@ e2e(
     } finally {
       await world.close()
     }
+    await rm(dataDir, { recursive: true, force: true })
   },
   1_200_000
 )

@@ -102,7 +102,9 @@ async fn verified_artifact_launches_and_retires_through_runtime() {
             })
         }
     }
-    tokio::time::timeout(Duration::from_secs(15), async {
+    // Debug executables contain large symbol tables; hashing and copying them on
+    // small CI hosts is separate from the resident service's own deadlines.
+    tokio::time::timeout(Duration::from_secs(60), async {
         let root = tempfile::tempdir().unwrap();
         let bytes = tokio::fs::read(env!("CARGO_BIN_EXE_demi-commands")).await.unwrap();
         let artifact = PackageArtifact { sha256: format!("{:x}", Sha256::digest(&bytes)), size: bytes.len() as u64 };

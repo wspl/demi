@@ -27,7 +27,8 @@ impl ArtifactResolver for Local {
 
 #[tokio::test]
 async fn concurrent_acquisition_shares_service_and_checks_every_descriptor() {
-    tokio::time::timeout(Duration::from_secs(20), async {
+    // Two acquisitions verify the full debug executable, including symbol data.
+    tokio::time::timeout(Duration::from_secs(60), async {
         let directory = tempfile::tempdir().unwrap();
         let bytes = tokio::fs::read(env!("CARGO_BIN_EXE_demi-commands")).await.unwrap();
         let artifact = PackageArtifact { sha256: format!("{:x}", Sha256::digest(&bytes)), size: bytes.len() as u64 };
