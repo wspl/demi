@@ -12,64 +12,40 @@ export interface FileTreeRow {
   parent: string | null
 }
 
-/** What to pin: the directory rows, and how far up the stack is pushed as the last one leaves. */
-export interface StickyTreeStack {
-  paths: string[]
-  /** Zero or negative px: the stack slides up by this much while its last directory scrolls out. */
-  offset: number
-}
-
 /**
  * The directory rows to pin at the top for a viewport scrolled to `scrollTop`:
- * the enclosing directories of the rows under the caption, the way an
- * explorer's sticky scroll keeps the path in view. Each pinned row covers one
- * more row of the tree, and the directory pinned at a level is the one at
- * that depth above the row it covers, so a directory whose own row has
- * scrolled under the stack still shows. As the last row of the deepest
- * pinned directory scrolls under the stack, the stack is pushed up with it.
+ * the directories that enclose the selected file, each pinned once its own
+ * row has scrolled under the stack above it, so the selected file's path
+ * stays in sight while the rest of the tree scrolls freely. Other unfolded
+ * directories never pin, so the stack changes only with the scroll position
+ * of these few rows.
  */
 export function stickyTreeRows(
   rows: readonly FileTreeRow[],
   rowTop: (path: string) => number | undefined,
   scrollTop: number,
   captionPx: number,
-): StickyTreeStack {
+  selected: string | null,
+): string[] {
   const byPath = new Map(rows.map((row) => [row.path, row]))
-  const ancestorsOf = (row: FileTreeRow): string[] => {
-    const chain: string[] = []
-    let parent = row.parent
-    while (parent !== null) {
-      chain.unshift(parent)
-      parent = byPath.get(parent)?.parent ?? null
-    }
-    return chain
+  const selectedRow = selected === null ? undefined : byPath.get(selected)
+  if (!selectedRow) {
+    return []
   }
-  const rowUnder = (y: number): FileTreeRow | undefined =>
-    rows.find((row) => {
-      const top = rowTop(row.path)
-      return top !== undefined && top + TREE_ROW_PX > y
-    })
-  // Level by level: the row a pinned row at this level would cover names the
-  // directory to pin there, as long as it agrees with the levels above.
+  const ancestors: string[] = []
+  let parent = selectedRow.parent
+  while (parent !== null) {
+    ancestors.unshift(parent)
+    parent = byPath.get(parent)?.parent ?? null
+  }
   const paths: string[] = []
-  for (let level = 0; level < 16; level++) {
-    const covered = rowUnder(scrollTop + captionPx + level * TREE_ROW_PITCH_PX)
-    if (!covered) {
+  for (const [level, path] of ancestors.entries()) {
+    const top = rowTop(path)
+    // A directory whose row is still visible below the stack needs no pin, nor do those under it.
+    if (top === undefined || top >= scrollTop + captionPx + level * TREE_ROW_PITCH_PX) {
       break
     }
-    const ancestors = ancestorsOf(covered)
-    const next = ancestors[level]
-    if (next === undefined || !paths.every((path, index) => ancestors[index] === path)) {
-      break
-    }
-    paths.push(next)
+    paths.push(path)
   }
-  const deepest = paths.at(-1)
-  if (deepest === undefined) {
-    return { paths, offset: 0 }
-  }
-  const lastInside = rows.findLast((row) => ancestorsOf(row).includes(deepest))
-  const lastBottom = lastInside ? (rowTop(lastInside.path) ?? 0) + TREE_ROW_PX : 0
-  const stackBottom = scrollTop + captionPx + paths.length * TREE_ROW_PITCH_PX
-  return { paths, offset: Math.min(0, lastBottom - stackBottom) }
+  return paths
 }

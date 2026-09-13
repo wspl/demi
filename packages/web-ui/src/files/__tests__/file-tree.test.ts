@@ -7,43 +7,31 @@ const rows: FileTreeRow[] = [
   { path: '/w/src/auth', name: 'auth', isDirectory: true, depth: 1, parent: '/w/src' },
   { path: '/w/src/auth/cookie.ts', name: 'cookie.ts', isDirectory: false, depth: 2, parent: '/w/src/auth' },
   { path: '/w/src/auth/session.ts', name: 'session.ts', isDirectory: false, depth: 2, parent: '/w/src/auth' },
-  { path: '/w/src/index.ts', name: 'index.ts', isDirectory: false, depth: 1, parent: '/w/src' },
+  { path: '/w/src/index.ts', name: 'index.ts', isDirectory: true, depth: 1, parent: '/w/src' },
   { path: '/w/tests', name: 'tests', isDirectory: true, depth: 0, parent: null },
 ]
 const caption = 28
 const top = (path: string) => caption + rows.findIndex((row) => row.path === path) * TREE_ROW_PITCH_PX
+const selected = '/w/src/auth/session.ts'
 
 describe('sticky tree rows', () => {
-  test('nothing pins at the top', () => {
-    expect(stickyTreeRows(rows, top, 0, caption).paths).toEqual([])
+  test('nothing pins at the top, or without a selected file', () => {
+    expect(stickyTreeRows(rows, top, 0, caption, selected)).toEqual([])
+    expect(stickyTreeRows(rows, top, 5 * TREE_ROW_PITCH_PX, caption, null)).toEqual([])
+    expect(stickyTreeRows(rows, top, 5 * TREE_ROW_PITCH_PX, caption, '/w/none')).toEqual([])
   })
 
-  test('each level pins the directory at that depth above the row it covers', () => {
-    // Scrolled so cookie.ts is under the caption: src pins over it, auth over session.ts.
-    expect(stickyTreeRows(rows, top, 2 * TREE_ROW_PITCH_PX, caption).paths).toEqual(['/w/src', '/w/src/auth'])
-    // Scrolled so the auth row itself is under the caption: it still pins, over cookie.ts.
-    expect(stickyTreeRows(rows, top, 1 * TREE_ROW_PITCH_PX, caption).paths).toEqual(['/w/src', '/w/src/auth'])
+  test("a selected file's directory pins once its row scrolls under the stack", () => {
+    // One pixel in: src's row is under the caption and auth's under the pinned src, so both pin.
+    expect(stickyTreeRows(rows, top, 1, caption, selected)).toEqual(['/w/src', '/w/src/auth'])
+    // With the tree taller between them, auth's row is still clear of the stack: only src pins.
+    const spaced = (path: string) => (path === '/w/src' ? caption : caption + 3 * TREE_ROW_PITCH_PX)
+    expect(stickyTreeRows(rows, spaced, 1, caption, selected)).toEqual(['/w/src'])
   })
 
-  test('a directory stays pinned while its last descendant is under the caption', () => {
-    expect(stickyTreeRows(rows, top, 4 * TREE_ROW_PITCH_PX, caption).paths).toEqual(['/w/src'])
-  })
-
-  test('a level goes once the row it covers leaves its directory', () => {
-    // Scrolled so session.ts is first: src and auth are candidates, but auth would
-    // cover index.ts, which is outside auth, so only src pins.
-    expect(stickyTreeRows(rows, top, 3 * TREE_ROW_PITCH_PX, caption).paths).toEqual(['/w/src'])
-    // Scrolled past src entirely: nothing pins.
-    expect(stickyTreeRows(rows, top, 5 * TREE_ROW_PITCH_PX, caption).paths).toEqual([])
-  })
-
-  test('the stack is pushed up as the deepest pinned directory scrolls out', () => {
-    // src pinned alone. Its last row, index.ts, ends 11px above the stack's
-    // bottom (the stack is a caption and a row with its gap), so the stack
-    // rides up by that much.
-    const scrollTop = 4 * TREE_ROW_PITCH_PX + 10
-    const stack = stickyTreeRows(rows, top, scrollTop, caption)
-    expect(stack.paths).toEqual(['/w/src'])
-    expect(stack.offset).toBe(-11)
+  test('the stack keeps the selected path even past the file, and ignores other directories', () => {
+    expect(stickyTreeRows(rows, top, 5 * TREE_ROW_PITCH_PX, caption, selected)).toEqual(['/w/src', '/w/src/auth'])
+    // With index.ts selected, auth never pins however far the tree scrolls.
+    expect(stickyTreeRows(rows, top, 3 * TREE_ROW_PITCH_PX, caption, '/w/src/index.ts')).toEqual(['/w/src'])
   })
 })
