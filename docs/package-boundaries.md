@@ -91,8 +91,9 @@ Test code may depend upward for integration coverage. Production code must not.
 - Must not: instantiate AgentSession, AgentServer, a shell environment, concrete providers, or a Host implementation.
 - Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism, the standard agent tool surface, or provide an alternate shell/tool runtime.
 
-- Native binding: `commands/file/package.ts` validates the generated release
-  descriptor used by the file command tree. The Rust command implementation
+- Native binding: the file command tree declares package and operation ids.
+  The backend supplies exact release descriptors at runtime; command declarations
+  do not import a compiled-in release catalog. The Rust command implementation
   remains in `packages/demi-package`.
 
 ### `@demicodes/provider-claude-code`
@@ -233,9 +234,11 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: native command-service metadata, strict wire values, protocol constants
   and bounded incremental response framing. See
   [Native runner and command services](demi-next/native-runtime.md).
-- Owns the native package descriptor schema in TypeScript and generates its Rust
-  values and validation schema. Package identities use canonical JSON and SHA-256.
-- Depends on: serde, serde_json, bytes, thiserror, jsonschema, sha2 and
+- Owns the shared native package descriptor contract. Its `build.rs` generates
+  Rust types and direct validation code in `OUT_DIR`. The authoritative definition
+  format and validation mechanism remain open in `demi-next/native-runtime.md`.
+  Package identities use canonical JSON and SHA-256.
+- Depends on: serde, serde_json, bytes, thiserror, sha2 and
   serde_json_canonicalizer; no runtime or transport IO.
 - Must not: implement command algorithms, spawn services or hold backend state.
 
@@ -266,8 +269,8 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `packages/demi-package` (Rust crate)
 
 - Owns: the `demi-commands` resident service, native Demi command operations and
-  package metadata in `package-info.json`. `coding-agent` owns the TypeScript
-  command bindings and generated release descriptor consumed by those bindings.
+  package metadata. `coding-agent` owns the TypeScript command bindings; the
+  backend owns the runtime release catalog supplied to runners.
   `scripts/native/release-package.ts` builds the six-target release bundle.
   File operations receive invocation cwd, arguments and cancellation through the
   command-service handler contract. Mutations serialize planning and application;
@@ -413,9 +416,14 @@ Rust crates keep `Cargo.toml` at the package root and source in `src/`, using
 Cargo's standard `src/lib.rs` and `src/main.rs` entrypoints. Native implementation
 packages are Rust-only. TypeScript belongs in a native package only when that
 package owns a contract or bridge used directly by the TypeScript application.
-`command-protocol`, `runner-protocol` and `command-loader` share such contracts;
-their generated Rust and TypeScript modules live in `src/`. Build and release
-scripts belong in `scripts/native/`. Cross-language integration fixtures belong
+`command-protocol`, `runner-protocol` and `command-loader` share such contracts.
+Their Rust contract generation is driven by each crate's `build.rs`; generated
+types and validation code live in `OUT_DIR` and are included with `include!`.
+Generated contract artifacts are not committed or written into `src/`. A build
+script may call a JS/TS generator, without requiring a manual generation step.
+Cross-target build and release orchestration belongs in `scripts/native/`.
+The unresolved definition and validation choices are recorded in
+`demi-next/native-runtime.md`. Cross-language integration fixtures belong
 to the TypeScript adapter that exercises the native executable.
 
 Third-party source trees belong in the repository root's `vendor/<crate>/`,
