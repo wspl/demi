@@ -9,10 +9,12 @@ import ConversationComposer from './ConversationComposer.vue'
 import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
 import { useConversations } from './store'
 import { useResources } from '../state/resources'
+import { useWorkPanel } from './work'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 
 const store = useConversations()
 const resources = useResources()
+const work = useWorkPanel()
 const route = useRoute()
 const router = useRouter()
 const conversation = computed(() =>
@@ -106,10 +108,10 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @interrupt-pending-steer="store.interruptWithSteer(conversation, $event)"
     :edit-version="store.editVersion(conversation)"
     :message-edit="conversation.messageEdit"
-    :aside-open="resources.asideOpen"
+    :aside-open="work.stateFor(conversation.id).open"
     @update:message-edit="conversation.messageEdit = $event"
     @save-scroll="saveScroll"
-    @open-aside="resources.asideOpen = true"
+    @open-aside="work.setOpen(work.stateFor(conversation.id), true)"
   >
     <template #workspace
       ><WorkspaceInfo :project="project" :conversation="conversation"

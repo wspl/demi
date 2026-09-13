@@ -14,18 +14,19 @@ import {
 } from '@demicodes/web-ui/agent/work-panel'
 import { createWorkingTreeSource, type WorkingTreeSource } from './changes'
 
-/** One conversation's work panel: its tabs, the active one, and its working tree. */
+/** One conversation's work panel: whether it is open, its tabs, the active one, and its working tree. */
 export interface WorkState {
+  open: boolean
   tabs: WorkTab[]
   activeId: string | null
   changes: WorkingTreeSource
 }
 
 /**
- * The work panel's state per conversation, for the page's lifetime: the
- * tabs the reader opened beside each conversation and the working-tree
- * source behind its Change tab. Nothing here persists; a reload starts
- * every conversation's panel empty.
+ * The work panel's state per conversation, for the page's lifetime: whether
+ * the reader has it open beside that conversation, the tabs they opened
+ * there, and the working-tree source behind its Change tab. Nothing here
+ * persists; a reload starts every conversation's panel closed and empty.
  */
 export const useWorkPanel = defineStore('work-panel', () => {
   const states = reactive(new Map<string, WorkState>())
@@ -33,7 +34,12 @@ export const useWorkPanel = defineStore('work-panel', () => {
 
   function stateFor(conversationId: string): WorkState {
     if (!states.has(conversationId)) {
-      states.set(conversationId, { tabs: [], activeId: null, changes: createWorkingTreeSource(conversationId) })
+      states.set(conversationId, {
+        open: false,
+        tabs: [],
+        activeId: null,
+        changes: createWorkingTreeSource(conversationId),
+      })
     }
     // The map's own (reactive) view of the entry, never the plain object it was made from.
     return states.get(conversationId)!
@@ -42,6 +48,10 @@ export const useWorkPanel = defineStore('work-panel', () => {
   function newId(): string {
     nextId += 1
     return `work-${nextId}`
+  }
+
+  function setOpen(state: WorkState, open: boolean): void {
+    state.open = open
   }
 
   function select(state: WorkState, id: string): void {
@@ -92,5 +102,5 @@ export const useWorkPanel = defineStore('work-panel', () => {
     state.tabs = goForwardInTab(state.tabs, id)
   }
 
-  return { stateFor, select, close, addFile, addChange, open, showChange, back, forward }
+  return { stateFor, setOpen, select, close, addFile, addChange, open, showChange, back, forward }
 })
