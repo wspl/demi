@@ -12,14 +12,12 @@ import { useAgentInputSessionState } from './message-input/useAgentInputSessionS
 import { docToContent, type InputModel } from './message-input/input-model'
 import { composerHasLineBreak } from './message-input/composer-multiline'
 import {
-  acceptAttribute,
   applyAttachmentUpdate,
   AttachmentUploadQueue,
   attachmentsReady,
   composerAttachmentFromFile,
   dataTransferFiles,
   fileToUserContent,
-  partitionAcceptedFiles,
   type AttachmentUploadUpdate,
   type ComposerFileAttachment,
 } from './message-input/attachments'
@@ -46,7 +44,6 @@ const {
   selectedModelId,
   serviceTierId,
   thinkingConfig,
-  acceptedExtensions,
   isRunning,
   isCompacting,
   canCompact,
@@ -210,7 +207,6 @@ const displayAttachments = computed(() => attachments.value.map((held) => held.i
     :multiline="isMultiline"
     :has-content="hasContent"
     :attachments="displayAttachments"
-    :accept="acceptAttribute(acceptedExtensions)"
     :providers="workspace.providers.value"
     :models="workspace.models"
     :selected-provider-id="selectedProviderId"
