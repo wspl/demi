@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { modelSelectionSchema } from '@demicodes/web-ui/transport/protocol'
+import { modelIntentSchema } from '@demicodes/web-ui/agent/model-selection'
 
 export const userSchema = z.object({
   id: z.string().min(1),
@@ -19,6 +20,10 @@ export const appearanceSchema = z.object({
   fontSize: z.number().int().min(12).max(18).optional(),
 })
 export const preferencesSchema = z.object({
+  lastModel: modelIntentSchema.extend({
+    providerId: z.string().min(1),
+    modelId: z.string().min(1),
+  }).optional(),
   appearance: appearanceSchema,
   shortcuts: z.object({
     new: z.string().optional(),
@@ -29,6 +34,7 @@ export const preferencesSchema = z.object({
 export type AppearancePatch = z.infer<typeof appearanceSchema>
 export type Preferences = z.infer<typeof preferencesSchema>
 export type PreferencesPatch = {
+  lastModel?: Preferences['lastModel']
   appearance?: AppearancePatch
   shortcuts?: Partial<Record<'new' | 'sidebar' | 'settings', string | null>>
 }

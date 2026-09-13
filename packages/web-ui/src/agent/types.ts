@@ -6,13 +6,9 @@ import type { SubagentRecord } from './subagents'
 import type { TerminalRecord } from './terminals'
 import type { ComposerAttachment } from './message-input/attachments'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
+import type { ModelIntent } from './model-selection'
 
-export interface ModelIntent {
-  providerId: string
-  modelId: string
-  thinkingEffort: string | null
-  serviceTierId: string | null
-}
+export type { ModelIntent } from './model-selection'
 
 export interface ConversationDraft {
   inputModel: unknown | null
