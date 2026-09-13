@@ -9,7 +9,7 @@ import {
   encodeUtf8,
   throwIfAborted
 } from '@demicodes/utils'
-import type { z } from 'zod'
+import { z } from 'zod'
 import {
   type CommandResult,
   type CommandWriter,
@@ -18,6 +18,11 @@ import {
 } from './command-abi'
 import type { Host } from './host'
 
+/**
+ * A leaf's argument declarations. Only the zod subset that survives the
+ * manifest's JSON Schema round trip is allowed; `unsupportedInputSchema`
+ * states it and registration enforces it.
+ */
 export type CommandInputSpec = Record<string, z.ZodType>
 
 export interface CommandOutputSpec {
@@ -40,14 +45,16 @@ export interface CommandGroup {
 
 export type CommandKind = 'rpc' | 'native'
 
-export type CommandLeaf = RpcCommand | NativeCommand
+export type CommandLeaf<I extends CommandInputSpec = CommandInputSpec> =
+  | RpcCommand<I>
+  | NativeCommand<I>
 
-interface CommandLeafBase {
+interface CommandLeafBase<I extends CommandInputSpec> {
   name: string
   summary: string
   successOutput?: string
   failureOutput?: string
-  input?: CommandInputSpec
+  input?: I
   positionals?: string[]
   /** Text read only from stdin (heredoc, pipe, or redirection), never argv. */
   stdinField?: string
@@ -70,16 +77,21 @@ interface CommandLeafBase {
 /**
  * A leaf whose implementation runs in the backend, against conversation or
  * platform state.
+ *
+ * `run` is a method so that a leaf declared with concrete input schemas still
+ * belongs in a `Command[]` tree.
  */
-export interface RpcCommand extends CommandLeafBase {
+export interface RpcCommand<I extends CommandInputSpec = CommandInputSpec>
+  extends CommandLeafBase<I> {
   kind: 'rpc'
-  run: (ctx: CommandRunContext) => Promise<CommandResult> | CommandResult
+  run(ctx: CommandRunContext<I>): Promise<CommandResult> | CommandResult
 }
 
 /**
  * A leaf whose implementation runs in a native service on the execution target.
  */
-export interface NativeCommand extends CommandLeafBase {
+export interface NativeCommand<I extends CommandInputSpec = CommandInputSpec>
+  extends CommandLeafBase<I> {
   kind: 'native'
   binding: NativeBinding
 }
@@ -88,7 +100,20 @@ export function isCommandGroup(command: Command): command is CommandGroup {
   return 'subcommands' in command
 }
 
-export interface ParsedCommandInput {
+/**
+ * Declares a leaf whose `parsed.values` follow its own input schemas. Without
+ * it, a leaf written inside a `Command[]` literal is typed by the tree and its
+ * values stay `unknown`.
+ */
+export function defineCommand<I extends CommandInputSpec>(
+  leaf: CommandLeaf<I>
+): CommandLeaf<I> {
+  return leaf
+}
+
+export interface ParsedCommandInput<
+  I extends CommandInputSpec = CommandInputSpec
+> {
   /**
    * Path from root through the selected node, including the root name.
    * For help: path of the node help was requested for.
@@ -99,14 +124,17 @@ export interface ParsedCommandInput {
    * after it.
    */
   help: boolean
-  values: Record<string, unknown>
+  /** The leaf's input, as its schemas validated it. */
+  values: z.infer<z.ZodObject<I>>
   json: boolean
 }
 
 /** What an `rpc` handler receives. */
-export interface CommandRunContext {
+export interface CommandRunContext<
+  I extends CommandInputSpec = CommandInputSpec
+> {
   argv: string[]
-  parsed: ParsedCommandInput
+  parsed: ParsedCommandInput<I>
   /**
    * The pipe: finite, read as it arrives (`runner.md` § Pipes). `null` when
    * the command was invoked without one — fd 0 is the shell's live stdin —
@@ -278,7 +306,7 @@ function parseArgs(
 ): ParsedCommandInput {
   const displayPath = path.join(' ')
   const input = command.input ?? {}
-  const values: Record<string, unknown> = {}
+  const tokens: Record<string, ArgvToken> = {}
   let json = false
   let positionalIndex = 0
   let optionsEnded = false
@@ -287,7 +315,7 @@ function parseArgs(
     const token = argv[i]!
     if (!optionsEnded && token === '--') {
       if (command.restField) {
-        values[command.restField] = argv.slice(i + 1)
+        tokens[command.restField] = argv.slice(i + 1)
         break
       }
       optionsEnded = true
@@ -332,19 +360,28 @@ function parseArgs(
       if (rawValue === undefined ||
         (equals === -1 && typeof rawValue === 'string' && rawValue.startsWith('--')))
         throw new Error(`Missing value for "--${field}"`)
-      setParsedValue(values, field, rawValue, schema)
+      setArgvToken(tokens, field, rawValue, schema)
       continue
     }
 
     const field = command.positionals?.[positionalIndex]
     if (!field)
       throw new Error(`Unexpected positional argument "${token}"`)
-    setParsedValue(values, field, token, input[field]!)
+    setArgvToken(tokens, field, token, input[field])
     positionalIndex += 1
   }
 
   if (command.stdinField) {
-    values[command.stdinField] = stdinText
+    tokens[command.stdinField] = stdinText
+  }
+
+  // argv text becomes the value each field's schema expects. A token for a
+  // field the leaf does not declare travels unchanged, for the validation
+  // below to report as an unrecognized key.
+  const values: Record<string, unknown> = {}
+  for (const [field, token] of Object.entries(tokens)) {
+    const schema = input[field]
+    values[field] = schema === undefined ? token : argvValue(schema, token)
   }
 
   return {
@@ -560,11 +597,14 @@ export function validateCommandTree(command: Command, path: string): void {
   if (command.kind === 'native')
     nativeBindingSchema.parse(command.binding)
   const input = command.input ?? {}
-  for (const field of Object.keys(input)) {
+  for (const [field, schema] of Object.entries(input)) {
     if (!COMMAND_NAME_PATTERN.test(field))
       throw new Error(`CommandRegistry: "${path}" has invalid input name "${field}"`)
     if (fieldSource(command, field) === 'option' && ['help', 'json'].includes(field))
       throw new Error(`CommandRegistry: "${path}" option "${field}" is reserved`)
+    const unsupported = unsupportedInputSchema(schema)
+    if (unsupported)
+      throw new Error(`CommandRegistry: "${path}" input "${field}" ${unsupported}`)
   }
   if (command.stdinField && !(command.stdinField in input)) {
     throw new Error(
@@ -579,7 +619,8 @@ export function validateCommandTree(command: Command, path: string): void {
   if (command.stdinField && command.stdinField === command.restField) {
     throw new Error(`CommandRegistry: "${path}" field "${command.stdinField}" has multiple input sources`)
   }
-  if (command.stdinField && zodTypeName(unwrapSchema(input[command.stdinField]!)) !== 'string') {
+  if (command.stdinField
+    && !(unwrapSchema(input[command.stdinField]!) instanceof z.ZodString)) {
     throw new Error(`CommandRegistry: "${path}" stdinField must be a string`)
   }
   const seenPositionals = new Set<string>()
@@ -603,6 +644,73 @@ export function validateCommandTree(command: Command, path: string): void {
   }
 }
 
+const INPUT_SUBSET = 'Command input allows string, number, boolean, enum, and '
+  + 'arrays of those, with .optional() and .describe().'
+
+const REFINEMENT_REASON =
+  'carries a .refine() or .check() predicate, which JSON Schema drops, so a '
+  + 'remote runner would accept what this process rejects'
+
+const DEFAULT_REASON =
+  'uses .default(), whose value the manifest round trip loses: a remote runner '
+  + 'rebuilds the field as a plain optional and fills in nothing'
+
+/**
+ * Why a field schema falls outside the subset a command input may use, or
+ * null when it is inside it.
+ *
+ * A command tree travels to a remote runner as JSON Schema
+ * (`docs/demi-next/commands.md`): the subset is what survives that round trip
+ * unchanged, so both ends accept the same values, and it is what the argv
+ * parser and help renderer know how to spell.
+ */
+export function unsupportedInputSchema(schema: z.ZodType): string | null {
+  const reason = fieldSchemaReason(schema)
+  return reason === null ? null : `${reason}. ${INPUT_SUBSET}`
+}
+
+function fieldSchemaReason(schema: z.ZodType): string | null {
+  if (hasCustomCheck(schema))
+    return REFINEMENT_REASON
+  if (schema instanceof z.ZodDefault)
+    return DEFAULT_REASON
+  if (schema instanceof z.ZodOptional)
+    return fieldSchemaReason(classicSchema(schema.unwrap()))
+  if (schema instanceof z.ZodArray) {
+    const element = elementSchemaReason(classicSchema(schema.element))
+    return element === null ? null : `has an array element that ${element}`
+  }
+  return scalarSchemaReason(schema)
+}
+
+/** An array element takes no wrapper of its own, and no array of its own. */
+function elementSchemaReason(element: z.ZodType): string | null {
+  return hasCustomCheck(element) ? REFINEMENT_REASON : scalarSchemaReason(element)
+}
+
+function scalarSchemaReason(schema: z.ZodType): string | null {
+  const supported = schema instanceof z.ZodString
+    || schema instanceof z.ZodNumber
+    || schema instanceof z.ZodBoolean
+    || schema instanceof z.ZodEnum
+  if (supported)
+    return null
+  return `uses an unsupported "${schema.type}" schema`
+}
+
+/**
+ * True when a refinement rides along with the schema's own constraints.
+ *
+ * A check's kind is readable only through `_zod`, zod's internals namespace:
+ * the classic API exposes the checks array on `def` but no accessor for what
+ * each check is. Both members are declared in zod's types (`$ZodTypeDef.checks`
+ * and `$ZodCheckInternals.def.check`), so this reads them without a cast.
+ */
+function hasCustomCheck(schema: z.ZodType): boolean {
+  const checks = schema.def.checks ?? []
+  return checks.some((check) => check._zod.def.check === 'custom')
+}
+
 function unavailableStorage(displayPath: string): CommandStorage {
   const refuse = () => {
     throw new Error(
@@ -612,59 +720,71 @@ function unavailableStorage(displayPath: string): CommandStorage {
   return { withSignal: refuse, readJson: refuse, writeJson: refuse, updateJson: refuse, delete: refuse, list: refuse }
 }
 
-function setParsedValue(
-  values: Record<string, unknown>,
+/** One field as argv spelled it: a value, a bare boolean flag, or repetitions. */
+export type ArgvToken = string | true | (string | true)[]
+
+function setArgvToken(
+  tokens: Record<string, ArgvToken>,
   field: string,
-  value: unknown,
-  schema: z.ZodType,
+  token: string | true,
+  schema: z.ZodType | undefined,
 ): void {
-  if (values[field] === undefined) {
-    values[field] = value
+  const existing = tokens[field]
+  if (existing === undefined) {
+    tokens[field] = token
     return
   }
-  if (!isArraySchema(schema))
+  if (schema === undefined || !isArraySchema(schema))
     throw new Error(`Duplicate value for "${field}"`)
-  if (Array.isArray(values[field])) {
-    values[field].push(value)
-    return
-  }
-  values[field] = [values[field], value]
+  tokens[field] = Array.isArray(existing)
+    ? [...existing, token]
+    : [existing, token]
 }
 
-export function validateCommandValues(
-  input: CommandInputSpec,
-  values: Record<string, unknown>
-): Record<string, unknown> {
-  const parsed: Record<string, unknown> = {}
-  for (const [field, schema] of Object.entries(input)) {
-    const candidate = coerceValue(schema, values[field])
-    const result = schema.safeParse(candidate)
-    if (!result.success) {
-      const issue = result.error.issues[0]
-      throw new Error(
-        `Invalid value for "${field}": ${issue?.message ?? 'validation failed'}`
-      )
-    }
-    parsed[field] = result.data
+/**
+ * The value an argv token stands for under a field's schema: argv carries only
+ * text, while the schemas describe numbers, booleans and arrays. This is the
+ * CLI path alone — an RPC invocation carries decoded JSON and is validated as
+ * it arrives, without conversion.
+ */
+export function argvValue(schema: z.ZodType, token: ArgvToken): unknown {
+  const inner = unwrapSchema(schema)
+  if (inner instanceof z.ZodArray) {
+    const element = classicSchema(inner.element)
+    const items = Array.isArray(token) ? token : [token]
+    return items.map((item) => argvValue(element, item))
   }
-  return parsed
-}
-
-function coerceValue(schema: z.ZodType, value: unknown): unknown {
-  if (value === undefined)
-    return value
-  if (isArraySchema(schema))
-    return Array.isArray(value) ? value : [value]
-  if (isNumberSchema(schema) && typeof value === 'string'
-    && value.trim() !== '')
-    return Number(value)
-  if (isBooleanSchema(schema) && typeof value === 'string') {
-    if (value === 'true')
+  if (inner instanceof z.ZodNumber && typeof token === 'string'
+    && token.trim() !== '')
+    return Number(token)
+  if (inner instanceof z.ZodBoolean) {
+    if (token === 'true')
       return true
-    if (value === 'false')
+    if (token === 'false')
       return false
   }
-  return value
+  return token
+}
+
+/**
+ * Validates one invocation's values against the leaf's whole input: unknown
+ * fields are rejected, and the error carries every issue with its field.
+ */
+export function validateCommandValues<I extends CommandInputSpec>(
+  input: I,
+  values: unknown
+): z.infer<z.ZodObject<I>> {
+  const result = z.strictObject(input).safeParse(values)
+  if (!result.success)
+    throw new Error(result.error.issues.map(issueMessage).join('; '))
+  return result.data
+}
+
+function issueMessage(issue: z.core.$ZodIssue): string {
+  const field = issue.path.join('.')
+  return field === ''
+    ? issue.message
+    : `Invalid value for "${field}": ${issue.message}`
 }
 
 type FieldSource = 'stdin' | 'positional' | 'rest' | 'option'
@@ -706,11 +826,11 @@ function fieldSyntax(
     return `<${field}>`
   if (source === 'rest')
     return `-- <${field}>...`
-  if (isBooleanSchema(schema))
-    return `--${field} [true|false]`
   const unwrapped = unwrapSchema(schema)
-  const label = zodTypeName(unwrapped) === 'enum'
-    ? (unwrapped as z.ZodEnum).options.join('|')
+  if (unwrapped instanceof z.ZodBoolean)
+    return `--${field} [true|false]`
+  const label = unwrapped instanceof z.ZodEnum
+    ? unwrapped.options.join('|')
     : field
   return `--${field} <${label}>`
 }
@@ -722,29 +842,31 @@ function fieldDescription(schema: z.ZodType): string {
 }
 
 function isArraySchema(schema: z.ZodType): boolean {
-  return zodTypeName(unwrapSchema(schema)) === 'array'
+  return unwrapSchema(schema) instanceof z.ZodArray
 }
 
 function isBooleanSchema(schema: z.ZodType): boolean {
-  return zodTypeName(unwrapSchema(schema)) === 'boolean'
+  return unwrapSchema(schema) instanceof z.ZodBoolean
 }
 
-function isNumberSchema(schema: z.ZodType): boolean {
-  return zodTypeName(unwrapSchema(schema)) === 'number'
-}
-
-function zodTypeName(schema: z.ZodType): string | undefined {
-  return (schema as unknown as { def?: { type?: string } }).def?.type
-}
-
-function unwrapSchema(schema: z.ZodType): z.ZodType {
+/** The value schema under `.optional()`, the one wrapper a command input allows. */
+export function unwrapSchema(schema: z.ZodType): z.ZodType {
   let current = schema
-  while (true) {
-    const inner = (current as unknown as { def?: { innerType?: z.ZodType } }).def?.innerType
-    if (!inner)
-      return current
-    current = inner
+  while (current instanceof z.ZodOptional) {
+    current = classicSchema(current.unwrap())
   }
+  return current
+}
+
+/**
+ * zod declares `unwrap()` and `element` as the core schema interface, which
+ * carries no `type` or `description`. Every schema a command input holds is a
+ * classic one, and this restores that for the members the CLI reads.
+ */
+function classicSchema(schema: z.core.$ZodType): z.ZodType {
+  if (!(schema instanceof z.ZodType))
+    throw new Error('Command input schemas must come from the zod entrypoint')
+  return schema
 }
 
 class CapturingIO implements CommandIO {

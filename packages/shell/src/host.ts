@@ -129,7 +129,12 @@ export interface HostCwd {
  * since stored values such as agent session snapshots carry binary content.
  */
 export interface HostStore {
-  readJson<T>(key: string): Promise<T | null>
+  /**
+   * The stored document, or `null` when the key holds nothing. Stored JSON is
+   * data from outside this process: validate it with a schema, the reader's
+   * own, before using it.
+   */
+  readJson(key: string): Promise<unknown>
   writeJson<T>(key: string, value: T): Promise<void>
   delete(key: string): Promise<void>
   list(prefix: string): Promise<string[]>
