@@ -12,11 +12,67 @@ export type WorkTab =
       kind: 'file'
       /** The working-tree path the tab shows. */
       path: string
+      /** The paths shown before, latest last; Back returns to them. */
+      back: string[]
+      /** The paths left by Back, latest last; Forward returns to them. */
+      forward: string[]
     }
   | {
       id: string
       kind: 'change'
     }
+
+/** A file tab showing `path`, with nothing to go back or forward to. */
+export function fileWorkTab(id: string, path: string): WorkTab {
+  return { id, kind: 'file', path, back: [], forward: [] }
+}
+
+/**
+ * Shows `path` in the active file tab, in place: the tab turns into that
+ * file and remembers the one it showed. A tab already showing the file is
+ * activated instead, so a file has one tab. Without an active file tab
+ * (a change tab, or none) a new file tab opens.
+ */
+export function showFileInTab(
+  tabs: readonly WorkTab[],
+  activeId: string | null,
+  path: string,
+  newId: () => string,
+): { tabs: WorkTab[]; activeId: string | null } {
+  const shown = tabs.find((tab) => tab.kind === 'file' && tab.path === path)
+  if (shown) {
+    return { tabs: [...tabs], activeId: shown.id }
+  }
+  const active = tabs.find((tab) => tab.id === activeId)
+  if (active?.kind !== 'file') {
+    const tab = fileWorkTab(newId(), path)
+    return { tabs: [...tabs, tab], activeId: tab.id }
+  }
+  const replaced: WorkTab = { ...active, path, back: [...active.back, active.path], forward: [] }
+  return { tabs: tabs.map((tab) => (tab.id === active.id ? replaced : tab)), activeId: active.id }
+}
+
+/** The tab showing the file it showed before, the current one kept for Forward. */
+export function goBackInTab(tabs: readonly WorkTab[], id: string): WorkTab[] {
+  return tabs.map((tab) => {
+    if (tab.id !== id || tab.kind !== 'file' || tab.back.length === 0) {
+      return tab
+    }
+    const back = tab.back.slice(0, -1)
+    return { ...tab, path: tab.back[tab.back.length - 1]!, back, forward: [...tab.forward, tab.path] }
+  })
+}
+
+/** The tab showing the file Back left, the current one kept for Back. */
+export function goForwardInTab(tabs: readonly WorkTab[], id: string): WorkTab[] {
+  return tabs.map((tab) => {
+    if (tab.id !== id || tab.kind !== 'file' || tab.forward.length === 0) {
+      return tab
+    }
+    const forward = tab.forward.slice(0, -1)
+    return { ...tab, path: tab.forward[tab.forward.length - 1]!, forward, back: [...tab.back, tab.path] }
+  })
+}
 
 /** What the tab is labelled with: the file's name, or Change. */
 export function workTabTitle(tab: WorkTab): string {
