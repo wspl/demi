@@ -4,10 +4,7 @@ import {
   DEMO_RG,
 } from '@demicodes/web-ui/agent/terminal-demo'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-
-function ago(ms: number): string {
-  return new Date(Date.now() - ms).toISOString()
-}
+import { ago } from './time'
 
 export function galleryTerminals(): TerminalRecord[] {
   return [

@@ -6,6 +6,7 @@ import {
   type Highlighter
 } from 'shiki'
 import { codeThemes, findCodeTheme } from '../theme/codeThemes'
+import { escapeHtml } from './html'
 import type { MarkdownThemeSnapshot } from './types'
 
 const ALL_SHIKI_THEMES: BundledTheme[] = [
@@ -59,10 +60,6 @@ if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') 
     attributes: true,
     attributeFilter: ['data-theme']
   })
-}
-
-function escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 function detectThemeMode(): 'light' | 'dark' {

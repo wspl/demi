@@ -32,7 +32,11 @@ covers only the browser's technology and architectural boundaries.
 The browser uses same-origin cookie authentication. REST supplies account,
 conversation, project, device, provider, and preference data. The agent WebSocket
 supplies live transcript, queue, child-agent, and shell-job events. Browser API
-adapters validate responses and agent frames before applying them to state.
+adapters validate REST responses before applying them to state. Agent frames,
+transcript blocks, and tool views are validated against the session contract's
+own schemas: the agent client checks every frame it receives, and `web-ui`
+re-exports those schemas (`transport/protocol.ts`) so the product describes the
+wire once, where it is produced.
 [Web API](web-api.md) defines HTTP contracts;
 [Authentication](../web-authentication.md) defines session integration.
 

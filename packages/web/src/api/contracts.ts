@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { modelSelectionSchema } from '@demicodes/web-ui/transport/protocol'
+import { themeChoiceSchema } from '@demicodes/web-ui/theme/appTheme'
 import { modelIntentSchema } from '@demicodes/web-ui/agent/model-selection'
 
 export const userSchema = z.object({
@@ -12,7 +13,7 @@ export const userSchema = z.object({
 export const identitySchema = z.object({ user: userSchema })
 
 export const appearanceSchema = z.object({
-  theme: z.enum(['system', 'light', 'dark']).optional(),
+  theme: themeChoiceSchema.optional(),
   tone: z.enum(['ink', 'warm']).optional(),
   accent: z
     .enum(['blue', 'purple', 'pink', 'red', 'orange', 'green', 'teal'])

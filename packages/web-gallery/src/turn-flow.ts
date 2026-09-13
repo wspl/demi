@@ -7,7 +7,7 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { ChatSessionState, ConversationState } from '@demicodes/web-ui/agent/types'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
-import { demoModel } from './fixtures/blocks'
+import { demoModel, shellView } from './fixtures/blocks'
 
 /**
  * `turn` is a full turn from a sent message; `resume` and `retry` recover an
@@ -167,9 +167,11 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       }),
       streamingOutput: [],
       output,
-      view: {
+      view: shellView({
+        commandId: `cmd-${id}`,
+        status: status === 'executing' ? 'running' : 'exited',
         chunks: [{ stream: 'stdout', text: output[0]?.text ?? '' }],
-      },
+      }),
     }
   }
 

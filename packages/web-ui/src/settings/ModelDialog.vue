@@ -15,6 +15,7 @@ import {
   THINKING_EFFORTS,
   type SettingsModelDraft,
 } from './types'
+import { formatTokens } from '../ui/token-count'
 
 /**
  * One model, in its own dialog: created or edited for a custom endpoint, or viewed
@@ -61,13 +62,6 @@ const title = computed(() =>
 )
 
 const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1)
-
-function formatTokens(n: number | null): string {
-  if (n === null) {
-    return '—'
-  }
-  return n >= 1_000_000 ? `${n / 1_000_000}M` : `${Math.round(n / 1000)}K`
-}
 
 function toggleEffort(effort: string) {
   const list = draft.value.efforts

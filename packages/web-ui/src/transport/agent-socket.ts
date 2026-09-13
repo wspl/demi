@@ -1,8 +1,4 @@
-import {
-  AgentClient,
-  type ClientFrame,
-  type ServerFrame,
-} from '@demicodes/agent/client'
+import { AgentClient, type ClientFrame } from '@demicodes/agent/client'
 import { parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
 
 export function agentSocketUrl(baseUrl: string, cwd: string): string {
@@ -27,7 +23,6 @@ export interface AgentSocketOptions {
   signal?: AbortSignal
   /** Product wire extensions are translated before serialization. */
   encodeFrame?: (frame: ClientFrame) => unknown
-  decodeFrame?: (frame: unknown) => ServerFrame
 }
 
 /** A socket lifetime is a connection lifetime, never a server-task lifetime. */
@@ -87,8 +82,10 @@ export function connectAgentClient(
         onFrame: (handler) => {
           const listener = (event: MessageEvent) => {
             try {
-              const frame = parsePortableJson<ServerFrame>(String(event.data))
-              handler(options.decodeFrame ? options.decodeFrame(frame) : frame)
+              // Only the JSON text is decoded here; the frame's shape is the
+              // client's trust boundary, and it drops the connection itself
+              // when a frame does not match the contract.
+              handler(parsePortableJson(String(event.data)))
             } catch (error) {
               client?.disconnect(
                 error instanceof Error ? error : new Error(String(error)),

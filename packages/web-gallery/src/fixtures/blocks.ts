@@ -1,7 +1,35 @@
+import type { z } from 'zod'
 import type { AgentMessage, Block, ModelSelection, TokenUsage, UserContentBlock } from '@demicodes/core'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { PendingSteerRenderBlock } from '@demicodes/web-ui/agent/pending-steers'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
+import type { shellToolViewSchema } from '@demicodes/web-ui/transport/protocol'
+
+export type ShellView = z.infer<typeof shellToolViewSchema>
+
+/**
+ * A complete shell view, the shape `shell_exec` writes and every reader
+ * validates. A specimen names only the parts it is about; the rest is what a
+ * finished command leaves behind.
+ */
+export function shellView(
+  parts: Partial<ShellView> & Pick<ShellView, 'chunks'>
+): ShellView {
+  const view: ShellView = {
+    kind: 'shell',
+    status: 'exited',
+    shellId: 'shell-demo',
+    commandId: 'cmd-demo',
+    runningMs: 1_200,
+    idleMs: 0,
+    viewTruncated: false,
+    ...parts,
+  }
+  // A command reports its exit code only once it has exited.
+  if (view.status === 'exited')
+    view.exitCode = parts.exitCode ?? 0
+  return view
+}
 
 export const demoModel: ModelSelection = {
   providerId: 'anthropic',
@@ -113,14 +141,15 @@ export const shellTool = toolCall({
     script: 'rg -n "sid" packages/web/src/auth.test.ts',
     description: 'Find the old cookie name in the login test',
   }),
-  view: {
+  view: shellView({
+    commandId: 'cmd-find',
     chunks: [
       {
         stream: 'stdout',
         text: 'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")\n'
       },
     ],
-  },
+  }),
 })
 
 export const runningShellTool = toolCall({
@@ -131,9 +160,11 @@ export const runningShellTool = toolCall({
     script: 'bun test packages/web/src/auth.test.ts',
     description: 'Run the login test',
   }),
-  view: {
+  view: shellView({
+    commandId: 'cmd-run',
+    status: 'running',
     chunks: [{ stream: 'stdout', text: 'bun test v1.2\n' }],
-  },
+  }),
 })
 
 export const editingShellTool = toolCall({
@@ -144,19 +175,20 @@ export const editingShellTool = toolCall({
     script: 'sed -i "s/sid/session/" packages/web/src/auth.test.ts && bun test packages/web/src/auth.test.ts',
     description: 'Rename the cookie in the login test',
   }),
-  view: {
+  view: shellView({
+    commandId: 'cmd-edit',
     chunks: [{ stream: 'stdout', text: 'bun test v1.2\n 3 pass\n 0 fail\n' }],
     files: [
       { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 12, removed: 3 },
       { path: 'packages/web/src/cookie.ts', kind: 'modified', added: 1, removed: 1 },
     ],
-  },
+  }),
 })
 
 function fileChangeCase(
   id: string,
   description: string,
-  files: unknown[],
+  files: ShellView['files'],
   status: ToolCallBlock['status'] = 'completed',
 ): ToolCallBlock {
   return toolCall({
@@ -164,7 +196,11 @@ function fileChangeCase(
     toolName: 'shell_exec',
     status,
     input: JSON.stringify({ script: `demi-edit ${id}`, description }),
-    view: { chunks: [{ stream: 'stdout', text: 'done\n' }], files },
+    view: shellView({
+      commandId: `cmd-files-${id}`,
+      chunks: [{ stream: 'stdout', text: 'done\n' }],
+      files,
+    }),
   })
 }
 

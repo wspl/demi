@@ -374,14 +374,16 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
   Input surfaces, the assembled ChatSession page, the message editor and its
   draft/submission lifecycle (`agent/message-editing.ts`, `SessionComposer.vue`, and the inert `MessageEditRegion.vue`), sidebar layout, workspace and
-  remote-file selection flows, shared UI primitives, markdown/theme, shared sidebar presentation and list interaction, the sign-in page (`auth/EmailLoginPage`: email and password on the left, a wide empty intro on the right, over a host-reported phase), the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), the reusable device pairing dialog and lifecycle (`devices/`, driven by a host-provided claim adapter), and a
-  transport-agnostic control-client interface. Consumes an injected `AgentClient`.
+  remote-file selection flows, shared UI primitives, markdown/theme, shared sidebar presentation and list interaction, the sign-in page (`auth/EmailLoginPage`: email and password on the left, a wide empty intro on the right, over a host-reported phase), the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), the reusable device pairing dialog and lifecycle (`devices/`, driven by a host-provided claim adapter), and the
+  transport-agnostic control interface (`transport/protocol.ts`: the `ControlApi` DTOs the host
+  implements, plus the agent's frame, block and tool-view schemas re-exported for the host).
+  Consumes an injected `AgentClient`; the library ships no control-plane transport of its own.
 - Public boundary: source-path exports (`./*`) consumed by web hosts; third parties embed it
-  by supplying an `AgentClient` and a control client. External products consume the published
-  package (registry semver), not `link:` paths into this repo.
+  by supplying an `AgentClient` and a `ControlApi` implementation. External products consume the
+  published package (registry semver), not `link:` paths into this repo.
 - Must not: import Node, `@demicodes/shell`, `@demicodes/coding-agent`, concrete providers, or
   `@demicodes/web` or `@demicodes/web-gallery`. It may import the `@demicodes/agent` client surface only (`AgentClient`,
-  WebSocket client transport, frame/event/block types).
+  WebSocket client transport, frame/event/block types and their schemas).
 - Enforcement: because the components are `.vue` (not scanned by the `.ts` boundary test),
   the web-ui boundary is enforced at the package-manifest level (no Node/adapter/provider
   dependencies declared), not by the production import-graph scan.
@@ -411,7 +413,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/web-gallery`
 
 - Status: implemented.
-- Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`.
+- Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`, `zod`.
 - Owns: the Vite-only component catalog for `@demicodes/web-ui`. It remaps `web-ui` tokens so paradigms
   (tone, accent, density, radius, shadow, light/dark) can be compared against the catalog.
   Pages are vue-router paths; Markdown and Code are full-pane preview routes. Roadmap

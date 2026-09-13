@@ -5,7 +5,8 @@ import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Tree from './Tree.vue'
 import type { TreeRow } from './tree'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource } from './types'
-import { baseName, isHiddenName, joinPath, normalizePath, parentPath } from './paths'
+import { baseName, joinPath, normalizePath, parentPath } from './paths'
+import { sortEntries, type FileBrowserSort } from './file-browser-state'
 
 /**
  * A directory tree over a `FileBrowserSource`, rooted at `root`, on a
@@ -46,19 +47,8 @@ function listing(path: string): Listing {
   return entry
 }
 
-function sortEntries(entries: FileBrowserEntry[]): FileBrowserEntry[] {
-  return [...entries].sort((a, b) => {
-    if (a.isDirectory !== b.isDirectory) {
-      return a.isDirectory ? -1 : 1
-    }
-    const hiddenA = isHiddenName(a.name)
-    const hiddenB = isHiddenName(b.name)
-    if (hiddenA !== hiddenB) {
-      return hiddenA ? 1 : -1
-    }
-    return a.name.localeCompare(b.name)
-  })
-}
+/** Directories first, hidden names last, then by name: a tree has no sort controls. */
+const listingOrder: FileBrowserSort = { key: null, direction: 'asc' }
 
 async function load(path: string): Promise<void> {
   const entry = listing(path)
@@ -68,7 +58,11 @@ async function load(path: string): Promise<void> {
   entry.loading = true
   entry.failure = null
   try {
-    entry.entries = sortEntries(await props.source.list(path, controller.signal))
+    entry.entries = sortEntries(
+      await props.source.list(path, controller.signal),
+      listingOrder,
+      { hiddenLast: true },
+    )
   } catch (error) {
     if (controller.signal.aborted) {
       return

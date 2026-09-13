@@ -1,9 +1,17 @@
 import { computed, type ComputedRef } from 'vue'
+import { z } from 'zod'
 import { createThemeStore, type ThemeStoreState } from './themeStore'
 
-export type ThemeMode = ThemeStoreState['mode']
+/** The two modes a theme resolves to. Everything that stores or transports one reads this. */
+export const themeModeSchema: z.ZodType<ThemeStoreState['mode']> = z.enum([
+  'light',
+  'dark',
+])
 /** What the user asked for: a mode, or to follow the OS. */
-export type ThemeChoice = ThemeMode | 'system'
+export const themeChoiceSchema = themeModeSchema.or(z.literal('system'))
+
+export type ThemeMode = z.infer<typeof themeModeSchema>
+export type ThemeChoice = z.infer<typeof themeChoiceSchema>
 
 const STORAGE_KEY = 'demi-theme-mode'
 
@@ -18,8 +26,8 @@ function systemPrefersLight(): boolean {
 function storedMode(): ThemeMode | null {
   if (typeof localStorage === 'undefined')
     return null
-  const value = localStorage.getItem(STORAGE_KEY)
-  return value === 'light' || value === 'dark' ? value : null
+  const mode = themeModeSchema.safeParse(localStorage.getItem(STORAGE_KEY))
+  return mode.success ? mode.data : null
 }
 
 /** Initial mode: an explicit saved choice, else the OS preference, else dark. */

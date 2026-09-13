@@ -5,7 +5,8 @@ import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import FileIcon from './FileIcon.vue'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource } from './types'
-import { isHiddenName, joinPath } from './paths'
+import { joinPath } from './paths'
+import { sortEntries, type FileBrowserSort } from './file-browser-state'
 
 /**
  * One directory as a menu: its entries, directories first, each directory
@@ -31,19 +32,8 @@ const loading = ref(true)
 const failure = ref<FileBrowserFailure | null>(null)
 let controller: AbortController | null = null
 
-function sortEntries(list: FileBrowserEntry[]): FileBrowserEntry[] {
-  return [...list].sort((a, b) => {
-    if (a.isDirectory !== b.isDirectory) {
-      return a.isDirectory ? -1 : 1
-    }
-    const hiddenA = isHiddenName(a.name)
-    const hiddenB = isHiddenName(b.name)
-    if (hiddenA !== hiddenB) {
-      return hiddenA ? 1 : -1
-    }
-    return a.name.localeCompare(b.name)
-  })
-}
+/** Directories first, hidden names last, then by name: a menu has no sort controls. */
+const listingOrder: FileBrowserSort = { key: null, direction: 'asc' }
 
 async function load(): Promise<void> {
   controller?.abort()
@@ -54,7 +44,7 @@ async function load(): Promise<void> {
   try {
     const list = await props.source.list(props.path, current.signal)
     if (!current.signal.aborted) {
-      entries.value = sortEntries(list)
+      entries.value = sortEntries(list, listingOrder, { hiddenLast: true })
     }
   } catch (error) {
     if (current.signal.aborted) {

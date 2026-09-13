@@ -1,10 +1,7 @@
 import type { Block } from '@demicodes/core'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
-import { demoModel, thinkingText } from './blocks'
-
-function ago(ms: number): string {
-  return new Date(Date.now() - ms).toISOString()
-}
+import { demoModel, shellView, thinkingText } from './blocks'
+import { ago } from './time'
 
 function user(id: string, createdAt: string, text: string): Block {
   return {
@@ -65,14 +62,15 @@ function shell(
     status,
     streamingOutput: [],
     output: [],
-    view: {
+    view: shellView({
+      commandId: `cmd-${id}`,
       chunks: [
         {
           stream: 'stdout',
           text: stdout,
         },
       ],
-    },
+    }),
   }
 }
 

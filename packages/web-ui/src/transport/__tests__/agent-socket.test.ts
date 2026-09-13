@@ -46,13 +46,9 @@ test('malformed JSON closes the connection and rejects unconfirmed sends', async
   expect(socket.closed).toBe(true)
 })
 
-test('an invalid product frame is handled like a failed connection', async () => {
+test('a frame that is not in the contract is handled like a failed connection', async () => {
   globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket
-  const opening = connectAgentClient('ws://fixture', {
-    decodeFrame() {
-      throw new Error('Invalid frame')
-    },
-  })
+  const opening = connectAgentClient('ws://fixture')
   const socket = FakeSocket.latest
   socket.dispatchEvent(new Event('open'))
   const client = await opening
@@ -60,7 +56,11 @@ test('an invalid product frame is handled like a failed connection', async () =>
   client.subscribe((event) => {
     disconnected = event.type === 'disconnected'
   })
-  socket.dispatchEvent(new MessageEvent('message', { data: '{}' }))
+  socket.dispatchEvent(
+    new MessageEvent('message', {
+      data: '{"type":"transcript_reset","blocks":"not blocks"}',
+    }),
+  )
   expect(disconnected).toBe(true)
   expect(socket.closed).toBe(true)
 })

@@ -31,7 +31,7 @@ export const draftSchema = z.object({
   messageEdit: messageEditSchema.nullable().optional(),
   pendingSend: z
     .object({
-      id: z.string().uuid(),
+      id: z.uuid(),
       text: z.string(),
       fileIds: z.array(z.string()),
       error: z.string().nullable(),

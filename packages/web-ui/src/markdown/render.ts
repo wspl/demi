@@ -10,6 +10,7 @@ import {
   resolveAbsolutePath,
   toLocalFileUrl
 } from './filePath'
+import { escapeHtml } from './html'
 
 // `$...$` inline / `$$...$$` block LaTeX, rendered to self-contained HTML (KaTeX CSS is loaded
 // by the app). `nonStandard` lets inline math sit flush against CJK text the model writes;
@@ -22,14 +23,6 @@ const katexExtension = markedKatex({
 
 const INLINE_CODE_RE = /`([^`\n]+)`/g
 const MARKDOWN_LINK_RE = /\[[^\]]*]\(([^)]+)\)/g
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
 
 function extractLinkHref(rawTarget: string): string {
   const trimmed = rawTarget.trim()

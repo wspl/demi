@@ -4,6 +4,7 @@ import type { TokenUsage } from '@demicodes/core'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { t } from '@demicodes/web-ui/infra/i18n'
+import { formatTokens } from '../ui/token-count'
 
 const props = defineProps<{
   conversationId?: string
@@ -63,14 +64,6 @@ const ringColor = computed(() => {
     return 'text-on-warning'
   return 'text-fg-muted'
 })
-
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000)
-    return `${(tokens / 1_000_000).toFixed(1)}M`
-  if (tokens >= 1_000)
-    return `${(tokens / 1_000).toFixed(1)}K`
-  return String(tokens)
-}
 
 function handleClick() {
   if (!props.isClickable || props.isCompacting)

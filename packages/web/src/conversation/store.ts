@@ -31,7 +31,6 @@ import {
 } from '../api/contracts'
 import {
   contentReference,
-  decodeServerFrame,
   encodeClientFrame,
   transcriptSchema,
 } from '../api/transcript'
@@ -571,7 +570,6 @@ export const useConversations = defineStore('conversations', () => {
           return connectAgentClient(url.toString(), {
             signal,
             encodeFrame: encodeClientFrame,
-            decodeFrame: decodeServerFrame,
           })
         },
         onEvent: (next) => {

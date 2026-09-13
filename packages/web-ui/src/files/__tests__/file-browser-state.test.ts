@@ -40,6 +40,15 @@ test('directories lead and names sort naturally', () => {
   )
 })
 
+test('the tree and the breadcrumb menu push hidden names to the end of their kind', () => {
+  expect(
+    names(sortEntries(entries, { key: null, direction: 'asc' }, { hiddenLast: true })),
+  ).toEqual(['src', '.git', 'file2.txt', 'file10.txt'])
+  expect(names(sortEntries(entries, { key: null, direction: 'asc' }))).toEqual(
+    ['.git', 'src', 'file2.txt', 'file10.txt']
+  )
+})
+
 test('time and size sort within each kind and fall back to the name', () => {
   expect(names(sortEntries(entries, { key: 'modifiedAt', direction: 'desc' }))).toEqual(
     [

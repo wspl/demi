@@ -1,20 +1,7 @@
 import { z } from 'zod'
 import type { Block } from '@demicodes/core'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-
-const shellViewSchema = z.object({
-  kind: z.literal('shell'),
-  status: z.enum(['running', 'exited', 'aborted']),
-  shellId: z.string(),
-  commandId: z.string(),
-  runningMs: z.number(),
-  chunks: z.array(
-    z.object({
-      stream: z.enum(['stdout', 'stderr']),
-      text: z.string(),
-    }),
-  ),
-})
+import { shellToolViewSchema } from '@demicodes/web-ui/transport/protocol'
 
 /**
  * The commands a transcript remembers: name, start, output, and the end when
@@ -29,7 +16,7 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
     if (block.type !== 'tool_call') {
       continue
     }
-    const parsed = shellViewSchema.safeParse(block.view)
+    const parsed = shellToolViewSchema.safeParse(block.view)
     if (!parsed.success) {
       continue
     }
