@@ -1,14 +1,14 @@
 import { describe, expect, test } from 'bun:test'
-import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, type FileTreeRow } from '../file-tree'
+import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, type TreeRow } from '../tree'
 
 // src/, src/auth/, src/auth/cookie.ts, src/auth/session.ts, src/index.ts, tests/
-const rows: FileTreeRow[] = [
-  { path: '/w/src', name: 'src', isDirectory: true, depth: 0, parent: null },
-  { path: '/w/src/auth', name: 'auth', isDirectory: true, depth: 1, parent: '/w/src' },
-  { path: '/w/src/auth/cookie.ts', name: 'cookie.ts', isDirectory: false, depth: 2, parent: '/w/src/auth' },
-  { path: '/w/src/auth/session.ts', name: 'session.ts', isDirectory: false, depth: 2, parent: '/w/src/auth' },
-  { path: '/w/src/index.ts', name: 'index.ts', isDirectory: false, depth: 1, parent: '/w/src' },
-  { path: '/w/tests', name: 'tests', isDirectory: true, depth: 0, parent: null },
+const rows: TreeRow[] = [
+  { path: '/w/src', name: 'src', isDirectory: true, depth: 0, parent: null, open: true },
+  { path: '/w/src/auth', name: 'auth', isDirectory: true, depth: 1, parent: '/w/src', open: true },
+  { path: '/w/src/auth/cookie.ts', name: 'cookie.ts', isDirectory: false, depth: 2, parent: '/w/src/auth', open: false },
+  { path: '/w/src/auth/session.ts', name: 'session.ts', isDirectory: false, depth: 2, parent: '/w/src/auth', open: false },
+  { path: '/w/src/index.ts', name: 'index.ts', isDirectory: false, depth: 1, parent: '/w/src', open: false },
+  { path: '/w/tests', name: 'tests', isDirectory: true, depth: 0, parent: null, open: false },
 ]
 const caption = 28
 const top = (path: string) => caption + rows.findIndex((row) => row.path === path) * TREE_ROW_PITCH_PX
@@ -17,13 +17,15 @@ const paths = (scrollTop: number, file: string | null = selected) =>
   stickyTreeRows(rows, top, scrollTop, caption, file).paths
 
 describe('sticky tree rows', () => {
-  test('nothing pins at the top, or without a selected file', () => {
-    expect(paths(0)).toEqual([])
+  test('nothing pins without a selected file', () => {
     expect(paths(2 * TREE_ROW_PITCH_PX, null)).toEqual([])
     expect(paths(2 * TREE_ROW_PITCH_PX, '/w/none')).toEqual([])
   })
 
-  test("a selected file's directories pin as their rows scroll under the stack", () => {
+  test("a selected file's directories pin as their rows reach the stack", () => {
+    // At the top, src's row lies exactly in the first slot and auth's in the second: pinned
+    // copies over the rows themselves, so the swap shows nothing.
+    expect(paths(0)).toEqual(['/w/src', '/w/src/auth'])
     // One pixel in: src's row is under the caption and auth's under the pinned src.
     expect(paths(1)).toEqual(['/w/src', '/w/src/auth'])
   })
