@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { FolderTree } from '@lucide/vue'
-import CodePreview from '../ui/CodePreview.vue'
+import CodeEditor from '../editor/components/CodeEditor.vue'
+import { appEditorHost } from '../editor/host/appHost'
+import { toEditorUri } from '../editor/editorUri'
 import IconButton from '../ui/IconButton.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
-import { getLanguageFromPath } from '../markdown/highlight'
 import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
 import FileTree from './FileTree.vue'
 import { TREE_WIDTH } from './file-view'
@@ -14,8 +15,9 @@ import { FileBrowserError, type FileBrowserSource } from './types'
 
 /**
  * One file of a workspace, read through its source: the path as crumbs from
- * the workspace root, the highlighted text, and beside it the workspace tree
- * with the file selected. The control at the end of the crumb row shows and
+ * the workspace root, the text in the code editor (read-only for now: the
+ * editor can edit, the product does not yet save), and beside it the
+ * workspace tree with the file selected. The control at the end of the crumb row shows and
  * hides the tree, and the divider before the tree sizes it; the host keeps
  * both (v-model) so they hold across files. A click on another file in the
  * tree asks the host to open it.
@@ -36,7 +38,7 @@ const tree = defineModel<boolean>('tree', { default: true })
 
 const treeWidth = defineModel<number>('treeWidth', { default: TREE_WIDTH.default })
 
-const text = ref('')
+const editor = ref<InstanceType<typeof CodeEditor> | null>(null)
 const state = ref<'loading' | 'ready' | 'failed'>('loading')
 const failure = ref<string | null>(null)
 let controller: AbortController | null = null
@@ -57,8 +59,9 @@ async function read(): Promise<void> {
     if (current.signal.aborted) {
       return
     }
-    text.value = content
     state.value = 'ready'
+    await nextTick()
+    editor.value?.setFile({ resourceUri: toEditorUri('workspace', props.path), content })
   } catch (error) {
     if (current.signal.aborted) {
       return
@@ -75,8 +78,6 @@ watch(() => [props.source, props.path], read, { immediate: true })
 onBeforeUnmount(() => {
   controller?.abort()
 })
-
-const lang = computed(() => getLanguageFromPath(props.path))
 </script>
 
 <template>
@@ -102,7 +103,13 @@ const lang = computed(() => getLanguageFromPath(props.path))
     </div>
     <div class="flex min-h-0 flex-1 border-t border-line">
       <div class="relative min-w-0 flex-1">
-        <CodePreview v-if="state === 'ready'" :code="text" :lang="lang" />
+        <CodeEditor
+          v-if="state === 'ready'"
+          ref="editor"
+          class="h-full"
+          :host="appEditorHost"
+          read-only
+        />
         <RegionStatus
           v-else
           class="h-full"
