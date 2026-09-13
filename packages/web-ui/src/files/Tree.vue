@@ -8,9 +8,9 @@ import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, type TreeRow as Row } f
  * A tree of rows laid out by its host: a caption, then the rows, on the
  * editor's surface. A click on a row asks the host to activate it (fold a
  * directory, open a file). The caption stays pinned; under it pin the
- * directories enclosing the selected row, each while its own row has
- * scrolled out above and its contents have not, so the selected row's path
- * stays in sight through its directories and goes past them. A pinned
+ * directories the rows at the top sit in, each while its own row has
+ * scrolled out above and its contents have not, so the way to what is in
+ * view stays in sight and goes once the tree is past it. A pinned
  * directory scrolls its own row to the top, or acts as the row once it is
  * there. The rows are dressed through
  * the slots `mark`, `name` and `trailing`, given the row; `tooltip` covers a
@@ -77,7 +77,6 @@ function updateSticky(): void {
     (path) => rowEls.get(path)?.offsetTop,
     viewport.scrollTop,
     STACK_TOP_PX,
-    props.selected,
   )
   stickyPaths.value = stack.paths
   stickyOffset.value = stack.offset
@@ -129,7 +128,7 @@ defineExpose({ scrollToRow, scrollBy })
 <template>
   <!-- The tree paints its own surface, the editor's, so the pinned stack matches it wherever it sits. -->
   <ScrollArea ref="scrollArea" class="h-full min-h-0 bg-surface-editor" viewport-class="p-1" @scroll="updateSticky">
-    <!-- The pinned stack: the caption stays put; the selected row's directories under it
+    <!-- The pinned stack: the caption stays put; the directories under it
          slide up beneath the caption as the tree scrolls past them. -->
     <!-- Above the rows (whose transformed chevrons would otherwise paint through), below the
          scroll area's thumb; `isolate` keeps the caption's layering inside. The surface covers
