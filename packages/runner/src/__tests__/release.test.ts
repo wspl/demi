@@ -27,10 +27,12 @@ test('runner releases verify immutable artifacts before advancing the manifest',
       await mkdir(directory, { recursive: true })
       await writeFile(join(directory, filename(target)), `fixture ${target}`)
     }
-    expect((await publish()).code).toBe(0)
+    const first = await publish()
+    expect(first.code, first.stderr).toBe(0)
     const original = await readFile(join(output, 'manifest.json'), 'utf8')
     const manifest = runnerReleaseSchema.parse(JSON.parse(original))
-    expect((await publish()).code).toBe(0)
+    const repeated = await publish()
+    expect(repeated.code, repeated.stderr).toBe(0)
     const target = NATIVE_TARGETS[0]
     await writeFile(join(output, manifest.release, target, filename(target)), 'corrupt')
     const rejected = await publish()

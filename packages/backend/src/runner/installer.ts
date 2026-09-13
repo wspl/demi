@@ -202,7 +202,14 @@ try {
   }
   [IO.Directory]::CreateDirectory($demiStage) | Out-Null
   $demiDownload = Join-Path $demiStage 'demi-runner.exe'
-  Invoke-WebRequest -UseBasicParsing -Uri "$demiBase/runner-artifacts/$demiRelease/$demiTarget/demi-runner.exe" -OutFile $demiDownload
+  Write-Output "Downloading runner for $demiTarget..."
+  $demiPreviousProgress = $ProgressPreference
+  try {
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -UseBasicParsing -Uri "$demiBase/runner-artifacts/$demiRelease/$demiTarget/demi-runner.exe" -OutFile $demiDownload
+  } finally {
+    $ProgressPreference = $demiPreviousProgress
+  }
   if ((Get-Item $demiDownload).Length -ne $demiArtifacts[$demiTarget].Size -or
       (Get-FileHash -Algorithm SHA256 $demiDownload).Hash.ToLowerInvariant() -ne $demiArtifacts[$demiTarget].Hash) {
     throw 'Runner download checksum mismatch'
@@ -249,6 +256,7 @@ try {
 exit $demiExit
 '@
   [IO.File]::WriteAllText((Join-Path $demiState 'run.ps1'), $demiLauncher, $demiUtf8)
+  Write-Output 'Starting runner...'
   $demiProcess = Start-Process -FilePath $demiExe -ArgumentList @('run', '--backend', $demiBackend) -WorkingDirectory $demiHome -WindowStyle Hidden -RedirectStandardOutput (Join-Path $demiState 'runner.stdout.log') -RedirectStandardError (Join-Path $demiState 'runner.log') -PassThru
   $demiStarted = $false
   for ($demiAttempt = 0; $demiAttempt -lt 100; $demiAttempt++) {
