@@ -132,7 +132,7 @@ onBeforeUnmount(() => {
         />
         <!-- The tree's width is the divider's; flex must not grow or shrink it. -->
         <FileTree
-          class="border-l border-line bg-surface-editor"
+          class="border-l border-line"
           :style="{ flex: `0 0 ${treeWidth}px`, width: `${treeWidth}px` }"
           :source="source"
           :root="root"

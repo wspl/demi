@@ -232,7 +232,8 @@ function activate(row: Row): void {
 </script>
 
 <template>
-  <ScrollArea ref="scrollArea" class="h-full min-h-0" viewport-class="p-1" @scroll="updateSticky">
+  <!-- The tree paints its own surface, the editor's, so the pinned stack matches it wherever it sits. -->
+  <ScrollArea ref="scrollArea" class="h-full min-h-0 bg-surface-editor" viewport-class="p-1" @scroll="updateSticky">
     <!-- The pinned stack: the caption stays put; the selected file's directories under it
          slide up beneath the caption as the tree scrolls past them. -->
     <!-- Above the rows (whose transformed chevrons would otherwise paint through), below the
