@@ -271,6 +271,8 @@ function activate(row: Row): void {
           />
         </div>
       </div>
+      <!-- A soft fall-off in the surface's own hue below the stack, so it reads as sitting above the rows. -->
+      <div class="pointer-events-none absolute inset-x-0 top-full h-2 bg-linear-to-b from-surface-editor to-transparent" />
     </div>
     <!-- The caption's room plus one gap; the pinned copy above covers it. -->
     <div class="h-[29px] shrink-0" aria-hidden="true" />
