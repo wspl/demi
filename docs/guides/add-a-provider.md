@@ -99,14 +99,14 @@ re-implementing several of these:
   model.
 - `modelLimitsSchema` — the `contextWindow` / `outputLimit` constraint every catalog
   entry must satisfy.
-- `thinkingToReasoningEffort`, `stringifyToolArguments` — the two request-body fields
+- `thinkingToReasoningEffort` — the request-body field
   the OpenAI-compatible formats spell the same way.
 - `redactSecretText`, `httpErrorCode`, `normalizeErrorCode`, `providerErrorFromUnknown`,
   `authStatusFromKey`, `httpRequestFailedEvent` — for HTTP backends.
 - `createProviderQuota`, `ensureQuota`, percent/severity helpers — subscription rate-limit
   surface (`docs/provider-quota.md`).
 - `zeroUsage` (from `@demicodes/core`) — a zeroed `TokenUsage`.
-- `normalizeBaseUrl`, `parseJsonObject`, `numberOrZero`, `decodeJwtPayload` (from
+- `normalizeBaseUrl`, `parseJsonObject`, `numberOrZero`, `decodeJwtPayload`, `stringifyToolInput` (from
   `@demicodes/utils`; `decodeJwtPayload` returns the claims as `unknown` and verifies
   nothing — validate what you read from it).
 

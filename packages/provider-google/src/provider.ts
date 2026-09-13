@@ -5,7 +5,8 @@ import { z } from 'zod'
 import {
   isAbortError,
   isRecord,
-  normalizeBaseUrl
+  normalizeBaseUrl,
+  stringifyToolInput
 } from '@demicodes/utils'
 import { zeroUsage } from '@demicodes/core'
 import type {
@@ -586,13 +587,6 @@ function ownSignature(signature: string | null): string | null {
   return signature.slice(SIGNATURE_TAG.length) || null
 }
 
-function stringifyToolInput(input: unknown): string {
-  try {
-    return JSON.stringify(input ?? {}) ?? '{}'
-  } catch {
-    return '{}'
-  }
-}
 
 function toolResultText(output: ToolResultContentBlock[]): string {
   return output.map((block) => (block.type === 'text'
