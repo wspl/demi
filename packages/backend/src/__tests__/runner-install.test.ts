@@ -92,8 +92,14 @@ test(
     }
     const initial = await publish('initial')
     const app = runnerInstallRoutes({ directory: artifacts })
-    const a = Bun.serve({ port: 0, fetch: app.fetch })
-    const b = Bun.serve({ port: 0, fetch: app.fetch })
+    const serve = async (request: Request) => {
+      console.info('Installer fixture request', request.method, request.url)
+      const response = await app.fetch(request)
+      console.info('Installer fixture response', response.status)
+      return response
+    }
+    const a = Bun.serve({ port: 0, fetch: serve })
+    const b = Bun.serve({ port: 0, fetch: serve })
     const state = (port: number) => join(
       home,
       '.demi/instances',
@@ -104,17 +110,23 @@ test(
     )
     async function install(port: number, extra: Record<string, string> = {}) {
       const script = join(work, `install-${port}.${extension}`)
+      console.info(`Fetching installer for port ${port}`)
       await writeFile(
         script,
-        await (await fetch(`http://localhost:${port}/install.${extension}`)).text()
+        await (await fetch(`http://localhost:${port}/install.${extension}`, {
+          signal: AbortSignal.timeout(10_000),
+        })).text()
       )
+      console.info(`Launching installer for port ${port}`)
       const result = await run(launchScript(script), home, extra)
       if (result.code)
         throw new Error(JSON.stringify(result))
       return result
     }
     try {
-      const windowsInstaller = await fetch(`http://localhost:${a.port}/install.ps1`)
+      const windowsInstaller = await fetch(`http://localhost:${a.port}/install.ps1`, {
+        signal: AbortSignal.timeout(10_000),
+      })
       expect(windowsInstaller.status).toBe(200)
       expect(await windowsInstaller.text()).toContain('aarch64-pc-windows-msvc')
       await install(a.port!)
@@ -134,13 +146,17 @@ test(
       await install(a.port!)
       expect(
         (await fetch(
-          `http://localhost:${a.port}/runner-artifacts/${initial}/${platform}/${executable}`
+          `http://localhost:${a.port}/runner-artifacts/${initial}/${platform}/${executable}`,
+          { method: 'HEAD', signal: AbortSignal.timeout(10_000) },
         )).status
       )
         .toBe(200)
       expect((await active(a.port!)).release).toBe(upgraded)
       expect((await active(a.port!)).endpoint).not.toBe(firstA.endpoint)
       expect((await active(b.port!)).endpoint).toBe(firstB.endpoint)
+    } catch (error) {
+      console.error('Installer acceptance failed', error)
+      throw error
     } finally {
       for (const port of [a.port!, b.port!]) {
         // A failed installation may not have produced its launcher; teardown
