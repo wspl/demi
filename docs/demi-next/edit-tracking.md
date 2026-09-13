@@ -34,6 +34,7 @@ The limits keep tracking cheap and bounded whatever a script does:
 | File size, before or after | 8 MiB | The entry keeps its path and kind; counts are 0 and 0 and it has no diff. Binary content is treated the same. |
 | Diff size, per file | 256 KiB | The entry keeps its counts and has no diff. |
 | Diff size, per job | 1 MiB | Entries past the total keep their counts and have no diff. |
+| Bytes copied per job | 64 MiB | Later paths are recorded with their kind only: no counts, no diff. |
 | Recorded paths per job | 500 | Later writes go unrecorded and the report says `filesTruncated`. |
 
 ## How a job records
@@ -86,7 +87,7 @@ write, and `filesTruncated`:
 
 | Field | Meaning |
 | --- | --- |
-| `path` | Relative to the job's starting directory when under it; absolute otherwise. |
+| `path` | Absolute, as the target names it. A persistent shell keeps its cwd across jobs, so the job's directory is not the workspace root; the browser shows the path relative to the workspace root when under it, absolute otherwise, with `/` separators. |
 | `kind` | `added` or `modified`. |
 | `added`, `removed` | Lines added and removed; 0 and 0 when there is no diff. |
 | `diff` | The hunks as a unified diff, without the file header. Absent under the limits above or for binary content. |
@@ -116,8 +117,9 @@ it.
 | Where | Change |
 | --- | --- |
 | `vendor/brush-core` | The execution host trait gains the write notice; the shell's file opening sends it for every write-capable option set. |
-| `vendor/uucore` | The execution control trait gains the write notice; `context::fs` sends it from creating and write-capable opens, whole-file writes, and the destination of copy, rename, and hard link. A helper persists a temporary file over a target with the notice. |
+| `vendor/uucore` | The execution control trait gains the write notice; `context::fs` sends it from creating and write-capable opens, whole-file writes, and the destination of copy, rename, and hard link; `safe_copy::create_dest_restrictive`, which opens `cp`'s destination through `rustix` on Linux, sends it too. A helper persists a temporary file over a target with the notice. |
 | `vendor/sed` | In-place editing persists through that helper. |
+| `vendor/uu_cp` | The macOS copy clones the destination with `clonefile(2)` outside any file open; it sends the notice first. |
 | `crates/runner` | `Scope` implements both notices, keeps the copies in the job's directory, diffs at exit, and reports; the line diff moves out of the working tree module to be shared; `job_exit` gains the fields. |
 | `packages/runner-protocol` | `job_exit` schema and the generated Rust bindings. |
 | `packages/shell`, `packages/host-remote` | The command's exit status carries `files`. |
@@ -125,10 +127,10 @@ it.
 | `packages/web-ui` | The pill opens the change view; Conversation mode renders hunks from a report instead of reading sides. |
 | `packages/web`, `packages/web-gallery` | Product wiring and specimens. |
 
-The other vendored utilities need no change: `cp`, `mv`, `tee`, `sort`,
-`touch`, and `uniq` already open through `context::fs`; `sort` and `tac` use
-anonymous temporary files; `ripgrep`, `jaq`, `findutils`, and `diffutils` do
-not write files.
+The other vendored utilities need no change: `mv`, `tee`, `sort`, `touch`,
+and `uniq` open through `context::fs`; `sort` and `tac` use anonymous
+temporary files; `ripgrep`, `jaq`, `findutils`, and `diffutils` do not write
+files.
 
 ## Rationale
 
