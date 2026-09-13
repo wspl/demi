@@ -89,15 +89,15 @@ const tabStyle = computed(() => {
 <template>
   <!--
     One width for every tab. A faint line sits in the gap after the tab and
-    goes when the tab or its neighbour is active or hovered.
+    fades out while the tab or its neighbour is active or hovered.
   -->
   <span
     role="tab"
     :aria-selected="isActive"
-    class="relative flex h-7 w-40 shrink-0 cursor-default items-center rounded-md text-chrome select-none touch-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line last:after:hidden hover:after:hidden has-[+:hover]:after:hidden has-[+[aria-selected=true]]:after:hidden"
+    class="relative flex h-7 w-40 shrink-0 cursor-default items-center rounded-md text-chrome select-none touch-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:opacity-0 hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
     :class="[
       isActive
-        ? 'bg-(--tab-active) text-fg-emphasis after:hidden'
+        ? 'bg-(--tab-active) text-fg-emphasis after:opacity-0'
         : isDragging && isDragTarget
           ? 'bg-(--tab-active) text-fg-body'
           : 'text-fg-subtle',
