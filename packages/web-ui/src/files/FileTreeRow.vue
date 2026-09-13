@@ -45,7 +45,7 @@ defineEmits<{
     <!-- A listing in flight: a thin spinner at the row's end, the chevron untouched. -->
     <IndeterminateSpinner
       v-if="loading"
-      class="ml-auto shrink-0 text-fg-faint"
+      class="ml-auto mr-1 shrink-0 text-fg-faint"
       :size="12"
       :stroke-width="1.5"
     />
