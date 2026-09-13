@@ -15,6 +15,10 @@ async fn call(
 ) -> (Completion, Vec<u8>, Vec<u8>) {
     let (_input, mut output) = client
         .invoke(&Invocation {
+            edits: Some(demi_command_service::protocol::EditContext {
+                directory: std::path::Path::new(cwd).join("changes").to_string_lossy().into_owned(),
+                lock: std::path::Path::new(cwd).join("edits.lock").to_string_lossy().into_owned(),
+            }),
             operation: operation.into(),
             invocation_id: operation.into(),
             args,
@@ -71,6 +75,27 @@ async fn resident_executable_runs_all_builtin_file_operations() {
         let (result, output, _) = call(&client, cwd, "file.read", serde_json::json!({"path":"image.bin"})).await;
         assert_eq!(result.exit_code, 0);
         assert_eq!(output, binary);
+        let recorder = demi_command_service::edits::Recorder::new(demi_command_service::protocol::EditContext {
+            directory: root.path().join("changes").to_string_lossy().into_owned(),
+            lock: root.path().join("edits.lock").to_string_lossy().into_owned(),
+        }).unwrap();
+        let report = recorder.report().unwrap();
+        let large = root.path().join("large.txt");
+        std::fs::write(&large, "x".repeat(demi_command_service::protocol::EDIT_FILE_BYTES + 1)).unwrap();
+        for (operation, args) in [
+            ("file.create", serde_json::json!({"path":"large.txt", "content":"overwrite"})),
+            ("file.edit", serde_json::json!({"path":"large.txt", "old":"absent", "new":"replacement"})),
+            ("file.patch", serde_json::json!({"patch":"--- a/large.txt\n+++ b/large.txt\n@@ -1 +1 @@\n-absent\n+replacement\n"})),
+        ] {
+            let (result, _, _) = call(&client, cwd, operation, args).await;
+            assert_eq!(result.exit_code, 1);
+        }
+        assert_eq!(recorder.report().unwrap().files.len(), 2);
+        assert_eq!(report.files.len(), 2);
+        assert_eq!(report.files[0].kind, "added");
+        assert_eq!(report.files[0].edits.len(), 1);
+        assert_eq!(std::fs::read(report.files[0].edits[0].modified.as_ref().unwrap()).unwrap(), b"alpha\ndelta\n");
+        assert_eq!(std::fs::read(report.files[1].edits[0].modified.as_ref().unwrap()).unwrap(), b"created\n");
         assert_eq!(child.id(), Some(pid));
         client.shutdown().await.unwrap();
         let status = child.wait().await.unwrap();

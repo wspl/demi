@@ -14,6 +14,7 @@ import { type ControlService } from '../storage/control'
 import type { RunnerRegistry } from '../runner/registry'
 import { resolveExecutionTarget } from '../conversation/execution-target'
 import type { ConversationStores } from '../storage/conversation-store'
+import type { ChangeStore } from '../storage/change-store'
 import { ForkRefused, type ConversationForks } from '../conversation/fork'
 import { ManagedHostError } from '../managed/lifecycle'
 import { TextFileRefused, readTextFile, textOf } from '../runner/file-browser'
@@ -29,6 +30,7 @@ export function conversationRoutes(options: {
   agentServer: AgentServer
   control: ControlService
   conversationStores: ConversationStores
+  changes: ChangeStore
   withHost: <T>(
     conversationId: string,
     operation: (host: RemoteHost) => Promise<T>,
@@ -48,6 +50,27 @@ export function conversationRoutes(options: {
       ? conversation
       : null
   }
+
+  app.get('/:id/commands/:commandId/changes/file', async (c) => {
+    const conversation = await own(c)
+    if (!conversation) {
+      return c.json({ code: 'not_found', message: 'No such conversation' }, 404)
+    }
+    const query = z.object({
+      path: z.string().min(1),
+      edit: z.string().regex(/^(0|[1-9][0-9]*)$/).transform(Number).pipe(z.number().int().nonnegative()),
+    }).safeParse(c.req.query())
+    if (!query.success) {
+      return c.json({ code: 'invalid_query', message: 'Expected a file path and edit index' }, 400)
+    }
+    const command = c.req.param('commandId')
+    const files = conversationStores.commandFiles(conversation.id, command)
+    const sides = files && await options.changes.read(conversation.id, command, files, query.data.path, query.data.edit)
+    if (!sides) {
+      return c.json({ code: 'not_found', message: 'No retained edit' }, 404)
+    }
+    return c.json(sides)
+  })
 
   app.get('/', async (c) => {
     const parsed = z

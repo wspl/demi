@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
 import { defineStore } from 'pinia'
-import type { ChangeMode } from '@demicodes/web-ui/files/changes'
+import type { ShellEditsView } from '@demicodes/agent'
+import type { ChangeMode, ReadCallChange } from '@demicodes/web-ui/files/changes'
 import {
   changeWorkTab,
   closeWorkTabs,
@@ -9,16 +10,19 @@ import {
   goBackInTab,
   goForwardInTab,
   showChangeInTab,
+  showCallEdit,
   showFileInTab,
   type WorkTab,
+  type ChangeWorkTab,
 } from '@demicodes/web-ui/agent/work-panel'
-import { createWorkingTreeSource, type WorkingTreeSource } from './changes'
+import { createCallChangeReader, createWorkingTreeSource, type WorkingTreeSource } from './changes'
 
 /** One conversation's work panel: whether it is open, its tabs, the active one, and its working tree. */
 export interface WorkState {
   open: boolean
   tabs: WorkTab[]
   activeId: string | null
+  readCallChange: ReadCallChange
   changes: WorkingTreeSource
 }
 
@@ -38,6 +42,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
         open: false,
         tabs: [],
         activeId: null,
+        readCallChange: createCallChangeReader(conversationId),
         changes: createWorkingTreeSource(conversationId),
       })
     }
@@ -90,8 +95,15 @@ export const useWorkPanel = defineStore('work-panel', () => {
     state.activeId = next.activeId
   }
 
-  function showChange(state: WorkState, id: string, mode: ChangeMode, path: string | null): void {
-    state.tabs = showChangeInTab(state.tabs, id, mode, path)
+  function showChange(state: WorkState, id: string, mode: ChangeMode, path: string | null, selection?: { call: ChangeWorkTab['call']; edit: number }): void {
+    state.tabs = showChangeInTab(state.tabs, id, mode, path, selection)
+  }
+
+  function selectEdit(state: WorkState, call: ShellEditsView, path: string): void {
+    const next = showCallEdit(state.tabs, call, path, newId)
+    state.tabs = next.tabs
+    state.activeId = next.activeId
+    state.open = true
   }
 
   function back(state: WorkState, id: string): void {
@@ -102,5 +114,5 @@ export const useWorkPanel = defineStore('work-panel', () => {
     state.tabs = goForwardInTab(state.tabs, id)
   }
 
-  return { stateFor, setOpen, select, close, addFile, addChange, open, showChange, back, forward }
+  return { stateFor, setOpen, select, close, addFile, addChange, open, showChange, selectEdit, back, forward }
 })

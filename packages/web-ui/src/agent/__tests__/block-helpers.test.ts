@@ -77,24 +77,9 @@ const model: ModelSelection = {
   serviceTierId: null,
 }
 
-test('shell file changes come from the view and drop malformed entries', () => {
-  const block = tool({
-    view: {
-      kind: 'shell',
-      chunks: [],
-      files: [
-        { path: 'a.ts', kind: 'modified', added: 1, removed: 2 },
-        { path: 'b.ts', kind: 'renamed', from: 'c.ts', added: 0, removed: 0 },
-        { path: '', kind: 'added', added: 1, removed: 0 },
-        { path: 'd.ts', kind: 'touched', added: 1, removed: 0 },
-        { path: 'e.ts', kind: 'added', added: '1', removed: 0 },
-        'f.ts',
-      ],
-    },
-  })
-  expect(shellFileChanges(block)).toEqual([
-    { path: 'a.ts', kind: 'modified', added: 1, removed: 2 },
-    { path: 'b.ts', kind: 'renamed', from: 'c.ts', added: 0, removed: 0 },
-  ])
+test('shell file changes validate retained metadata without repairing corrupt entries', () => {
+  const file = { path: '/work/a.ts', kind: 'modified' as const, added: 1, removed: 2, edits: [{ kept: true }] }
+  expect(shellFileChanges(tool({ view: { kind: 'shell', commandId: 'c', files: [file] } }))).toEqual([file])
+  expect(() => shellFileChanges(tool({ view: { kind: 'shell', commandId: 'c', files: [{ ...file, kind: 'deleted' }] } }))).toThrow()
   expect(shellFileChanges(tool({}))).toEqual([])
 })

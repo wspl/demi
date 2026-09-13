@@ -54,12 +54,16 @@ import { ProviderAccounts } from './vault/provider-accounts'
 import { ProviderOperations } from './vault/provider-operations'
 import { SubscriptionLoginFlows } from './vault/subscription-login'
 import { UserBlobStores } from './storage/user-blobs'
+import { ChangeStore } from './storage/change-store'
+import { DirChangeObjects, type ChangeObjects } from './storage/change-objects'
 import { ConversationStores } from './storage/conversation-store'
 import { LocalControlService, type ControlService } from './storage/control'
 import { openSqliteDatabase } from './storage/database'
 import { CONTROL_MIGRATIONS, migrate } from './storage/migrations'
 
 export interface BackendOptions {
+  /** Published historical edits; the caller owns an injected storage client. */
+  changeObjects?: ChangeObjects
   /** Exact native package catalog and deployment-owned artifact resolution. */
   nativeCommands: RemoteShellEnvironmentFactoryOptions
   /**
@@ -146,6 +150,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const loginLimiter = new LoginLimiter(options.auth)
 
   const blobs = new UserBlobStores(join(options.dataDir, 'blobs'), control)
+  const changes = new ChangeStore(options.changeObjects ?? new DirChangeObjects(options.dataDir))
   const conversationStores = new ConversationStores(
     join(options.dataDir, 'conversations'),
     (id) => blobs.forConversation(id)
@@ -360,7 +365,10 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       rootSessionId: ctx.rootSessionId,
       commands: ctx.commands
     })
-    return createShellEnvironment(ctx)
+    return createShellEnvironment({
+      ...ctx,
+      retainEdits: (commandId, files) => changes.retain(ctx.rootSessionId, commandId, ctx.host, files),
+    })
   }
 
   const agentServer = new AgentServer({
@@ -376,7 +384,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const runnerReleaseDir = options.runnerReleaseDir ??
     process.env.DEMI_RUNNER_RELEASE_DIR
   const conversationForks = new ConversationForks({
-    control, stores: conversationStores, server: agentServer, registry: runnerRegistry,
+    changes, control, stores: conversationStores, server: agentServer, registry: runnerRegistry,
   })
   await conversationForks.recover()
 
@@ -418,6 +426,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     pipes,
     upgradeWebSocket,
     blobs,
+    changes,
     withHost: (id, operation, signal) => targets.withHost(id, operation, signal),
     managedHosts,
     createCloudWorkspace: managedHosts

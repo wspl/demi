@@ -1760,7 +1760,12 @@ pub(crate) async fn setup_redirect(
                     let fd_num = specified_fd_num.unwrap_or(default_fd_if_unspecified);
 
                     let opened_file = shell
-                        .open_file(&options, &expanded_file_path, params)
+                        .open_file(
+                            &options,
+                            !matches!(kind, ast::IoFileRedirectKind::Read | ast::IoFileRedirectKind::DuplicateInput),
+                            &expanded_file_path,
+                            params,
+                        )
                         .map_err(|err| {
                             error::ErrorKind::RedirectionFailure(
                                 expanded_file_path.to_string_lossy().to_string(),
@@ -1931,7 +1936,7 @@ fn setup_redirect_output_and_error_to(
         .append(append);
 
     let stdout_file = shell
-        .open_file(&file_options, Path::new(file_path), params)
+        .open_file(&file_options, true, Path::new(file_path), params)
         .map_err(|err| {
             error::ErrorKind::RedirectionFailure(file_path.to_owned(), err.to_string())
         })?;

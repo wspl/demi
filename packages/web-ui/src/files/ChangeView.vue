@@ -10,26 +10,13 @@ import ResizeHandle from '../ui/ResizeHandle.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import ChangeTree from './ChangeTree.vue'
-import { emptyChangeSetText, type ChangeMode, type ChangeSources } from './changes'
+import { changeAbsolutePath, changeDisplayPath, emptyChangeSetText, type ChangeMode, type ChangeSources } from './changes'
 import { TREE_WIDTH } from './file-view'
-import { FileBrowserError } from './types'
-import { joinPath } from './paths'
 
 /**
- * The changes as diffs, from one of two sources the switch in the header
- * picks between: files picked from the conversation, each a snapshot around
- * one tool call, or the workspace's uncommitted changes. Uncommitted shows
- * the diff of the selected file beside the tree of changed files, with
- * their kinds and line counts, the files and lines summed up in the tree's
- * caption; Conversation is one picked file at a time, no tree. Either way
- * the header names the file shown, with its counts. Back and Forward walk
- * what the view has shown, across modes; the
- * host keeps that history (`showChangeInTab`) along with the mode, the
- * selected file, and the tree's visibility and width. The header also holds
- * the control that opens the selected file itself (not a deleted one) and,
- * under Uncommitted, the one that shows and hides the tree; the tree's own
- * caption lists the changes again. With nothing to list, the view says why:
- * nothing changed, no repository, or a listing that failed.
+ * One working-tree file or one retained segment of a call. The shared tree,
+ * segment control and Back/Forward events use the selection held by the host.
+ * A missing retained pair leaves the editor area empty.
  */
 const props = defineProps<{
   changes: ChangeSources
@@ -52,6 +39,7 @@ const emit = defineEmits<{
 
 const mode = defineModel<ChangeMode>('mode', { required: true })
 const selected = defineModel<string | null>('selected', { default: null })
+const edit = defineModel<number>('edit', { default: 0 })
 const tree = defineModel<boolean>('tree', { default: true })
 const treeWidth = defineModel<number>('treeWidth', { default: TREE_WIDTH.default })
 
@@ -64,13 +52,14 @@ const source = computed(() => props.changes[mode.value])
 const selectedChange = computed(
   () => source.value.files.find((file) => file.path === selected.value) ?? null,
 )
-const treeShown = computed(() => mode.value === 'uncommitted' && tree.value)
+const segments = computed(() => source.value.segments?.(selected.value ?? '') ?? [])
+const displayPath = computed(() => changeDisplayPath(selected.value ?? '', props.root))
 
 const emptyText = computed(() => emptyChangeSetText(source.value, mode.value))
 const idleText = computed(() => (source.value.files.length > 0 ? 'Select a changed file.' : emptyText.value))
 
 const sides = ref<{ original: string; modified: string } | null>(null)
-const state = ref<'idle' | 'loading' | 'ready' | 'failed'>('idle')
+const state = ref<'idle' | 'loading' | 'ready' | 'failed' | 'unavailable'>('idle')
 const failure = ref<string | null>(null)
 let controller: AbortController | null = null
 
@@ -82,27 +71,32 @@ async function read(): Promise<void> {
     sides.value = null
     return
   }
+  if (segments.value[edit.value]?.kept === false) {
+    state.value = 'unavailable'
+    sides.value = null
+    return
+  }
   const current = new AbortController()
   controller = current
   state.value = 'loading'
   failure.value = null
   try {
-    const result = await source.value.read(path, current.signal)
+    const result = await source.value.read(path, current.signal, edit.value)
     if (current.signal.aborted) {
       return
     }
     sides.value = result
-    state.value = 'ready'
+    state.value = result === null ? 'unavailable' : 'ready'
   } catch (error) {
     if (current.signal.aborted) {
       return
     }
     state.value = 'failed'
-    failure.value = error instanceof FileBrowserError || error instanceof Error ? error.message : String(error)
+    failure.value = error instanceof Error ? error.message : String(error)
   }
 }
 
-watch(() => [source.value, selected.value], read, { immediate: true })
+watch(() => [source.value, selected.value, edit.value], read, { immediate: true })
 
 onBeforeUnmount(() => {
   controller?.abort()
@@ -125,12 +119,17 @@ onBeforeUnmount(() => {
       <!-- The right side, whether or not a file is shown: its name and counts, then the controls. -->
       <div class="ml-auto flex min-w-0 items-center gap-1">
         <span v-if="selectedChange" class="flex min-w-0 items-center gap-1 pl-2 font-mono text-[11px] text-fg-muted">
-          <span class="truncate" :class="selectedChange.kind === 'deleted' ? 'line-through' : ''" :title="selectedChange.path">{{ selectedChange.path }}</span>
+          <span class="truncate" :class="selectedChange.kind === 'deleted' ? 'line-through' : ''" :title="selectedChange.path">{{ displayPath }}</span>
           <span class="shrink-0 tabular-nums">
             <span v-if="selectedChange.added > 0" class="text-on-success">+{{ selectedChange.added }}</span>
             <span v-if="selectedChange.removed > 0" class="ml-1 text-on-danger">−{{ selectedChange.removed }}</span>
           </span>
         </span>
+        <div v-if="segments.length > 1" class="flex shrink-0 items-center gap-1 text-xs text-fg-muted">
+          <IconButton :icon="ArrowLeft" variant="ghost" aria-label="Previous edit" :disabled="edit === 0" @click="edit -= 1" />
+          <span class="whitespace-nowrap">Edit {{ edit + 1 }} of {{ segments.length }}</span>
+          <IconButton :icon="ArrowRight" variant="ghost" aria-label="Next edit" :disabled="edit >= segments.length - 1" @click="edit += 1" />
+        </div>
         <Tooltip content="Open file" class="shrink-0">
           <IconButton
             :icon="FileOutput"
@@ -140,7 +139,7 @@ onBeforeUnmount(() => {
             @click="selectedChange && emit('open', selectedChange.path)"
           />
         </Tooltip>
-        <Tooltip v-if="mode === 'uncommitted'" :content="tree ? 'Hide changed files' : 'Show changed files'" class="shrink-0">
+        <Tooltip :content="tree ? 'Hide changed files' : 'Show changed files'" class="shrink-0">
           <IconButton
             :icon="FolderTree"
             variant="ghost"
@@ -156,16 +155,16 @@ onBeforeUnmount(() => {
         <!-- A diff is built for one pair of texts: a new file is a new editor. -->
         <DiffEditor
           v-if="state === 'ready' && sides && selectedChange"
-          :key="selectedChange.path"
+          :key="`${source.identity ?? mode}:${selectedChange.path}:${edit}`"
           :host="appEditorHost"
           :original="sides.original"
           :modified="sides.modified"
           :filename="selectedChange.path"
-          :resource-uri="toEditorUri('workspace', joinPath(root, selectedChange.path))"
+          :resource-uri="toEditorUri('workspace', changeAbsolutePath(selectedChange.path, root))"
           :collapse-unchanged="collapseUnchanged"
         />
         <RegionStatus
-          v-else
+          v-else-if="state !== 'unavailable'"
           class="h-full"
           :busy="state === 'loading'"
           :failed="state === 'failed'"
@@ -175,7 +174,7 @@ onBeforeUnmount(() => {
           @action="read"
         />
       </div>
-      <template v-if="treeShown">
+      <template v-if="tree">
         <ResizeHandle
           v-model="treeWidth"
           side="end"

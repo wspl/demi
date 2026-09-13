@@ -86,7 +86,21 @@ export interface BinaryStdout {
   limitBytes: number
 }
 
-export type ShellCommandStatus =
+/** Retained edit history for presentation; never formatted into model output. */
+export interface ShellEditedFile {
+  path: string
+  kind: 'added' | 'modified'
+  added: number
+  removed: number
+  edits: { kept: boolean }[]
+}
+
+export interface ShellEditView {
+  files?: ShellEditedFile[]
+  filesTruncated?: boolean
+}
+
+export type ShellCommandStatus = ShellEditView & (
   | {
       status: 'exited'
       shellId: string
@@ -134,6 +148,7 @@ export type ShellCommandStatus =
       runningMs: number
       idleMs: number
     }
+)
 
 export interface ShellEnvironment {
   exec(input: ShellExecInput): Promise<ShellCommandStatus>

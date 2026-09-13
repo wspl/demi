@@ -1,5 +1,6 @@
+import type { ShellEditsView } from '@demicodes/agent/client'
 import type { ShellFileChange } from '@demicodes/agent'
-import { baseName } from './paths'
+import { baseName, joinPath } from './paths'
 import type { TreeRow } from './tree'
 
 /**
@@ -7,10 +8,12 @@ import type { TreeRow } from './tree'
  * shows them: the files with their kinds and line counts, and both sides of
  * any one of them on request. A host maps its own source (the backend's
  * working-tree compare, a fixture) onto this. Paths are relative to the
- * workspace root.
+ * workspace root for working-tree entries and absolute for retained call edits.
  */
 export interface ChangeSetSource {
   files: readonly ShellFileChange[]
+  identity?: string
+  segments?(path: string): readonly { kept: boolean }[]
   /** The list stopped at the host's limit; there are more changed files than it holds. */
   truncated?: boolean
   /** Why there is nothing to list, when the reason is not that nothing changed. */
@@ -22,7 +25,36 @@ export interface ChangeSetSource {
   /** Lists again. Absent when the source has one fixed list, such as the conversation's picks. */
   refresh?(): void
   /** Both sides of one file: empty `original` for an added file, empty `modified` for a deleted one. */
-  read(path: string, signal?: AbortSignal): Promise<{ original: string; modified: string }>
+  read(path: string, signal?: AbortSignal, edit?: number): Promise<ChangeSides | null>
+}
+
+export interface ChangeSides { original: string; modified: string }
+export type ReadCallChange = (commandId: string, path: string, edit: number, signal?: AbortSignal) => Promise<ChangeSides | null>
+
+/** A fixed call list, with retained contents loaded only for the selected segment. */
+export function callChangeSet(call: ShellEditsView, read: ReadCallChange): ChangeSetSource {
+  return {
+    identity: call.commandId,
+    files: call.files,
+    truncated: call.filesTruncated,
+    segments: (path) => call.files.find((file) => file.path === path)?.edits ?? [],
+    read: (path, signal, edit = 0) => read(call.commandId, path, edit, signal),
+  }
+}
+
+/** Recorded paths can be absolute on either supported path syntax. */
+export function changeAbsolutePath(path: string, root: string): string {
+  const normalized = path.replaceAll('\\', '/')
+  return normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)
+    ? normalized
+    : joinPath(root, normalized)
+}
+
+/** Display under-root paths relatively without changing their lookup identity. */
+export function changeDisplayPath(path: string, root: string): string {
+  const normalized = path.replaceAll('\\', '/')
+  const prefix = root.replaceAll('\\', '/').replace(/\/$/, '') + '/'
+  return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized
 }
 
 /** What an empty change set says in place of its files, by why it is empty. */
@@ -72,14 +104,14 @@ export interface ChangeTreeRow extends TreeRow {
  * by name, with the directories in `folded` closed: their rows stay, what is
  * under them does not.
  */
-export function changeTreeRows(files: readonly ShellFileChange[], folded: ReadonlySet<string>): ChangeTreeRow[] {
+export function changeTreeRows(files: readonly ShellFileChange[], folded: ReadonlySet<string>, workspaceRoot = ''): ChangeTreeRow[] {
   interface Node {
     dirs: Map<string, Node>
     files: ShellFileChange[]
   }
   const root: Node = { dirs: new Map(), files: [] }
   for (const file of files) {
-    const segments = file.path.split('/').filter(Boolean)
+    const segments = changeDisplayPath(file.path, workspaceRoot).split('/').filter(Boolean)
     let node = root
     for (const segment of segments.slice(0, -1)) {
       let child = node.dirs.get(segment)
@@ -101,8 +133,8 @@ export function changeTreeRows(files: readonly ShellFileChange[], folded: Readon
         walk(node.dirs.get(name)!, path, depth + 1, path)
       }
     }
-    for (const change of [...node.files].sort((a, b) => baseName(a.path).localeCompare(baseName(b.path)))) {
-      rows.push({ path: change.path, name: baseName(change.path), isDirectory: false, depth, parent, open: false, change })
+    for (const change of [...node.files].sort((a, b) => baseName(changeDisplayPath(a.path, workspaceRoot)).localeCompare(baseName(changeDisplayPath(b.path, workspaceRoot))))) {
+      rows.push({ path: change.path, name: baseName(changeDisplayPath(change.path, workspaceRoot)), isDirectory: false, depth, parent, open: false, change })
     }
   }
   walk(root, '', 0, null)

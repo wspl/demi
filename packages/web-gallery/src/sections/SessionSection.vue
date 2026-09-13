@@ -9,9 +9,11 @@ import ToolShellBlock from '@demicodes/web-ui/agent/blocks/ToolShellBlock.vue'
 import { parseToolInput } from '@demicodes/web-ui/agent/block-helpers'
 import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activity-slot'
+import type { ShellEditsView } from '@demicodes/agent/client'
+import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { changeWorkTab, closeWorkTabs, fileWorkTab, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showFileInTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import { changeWorkTab, closeWorkTabs, fileWorkTab, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
 import { emptyChangeSet, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
@@ -148,8 +150,8 @@ function useWorkTabs(activeId: string | null) {
     tabs.value = [...tabs.value, changeWorkTab(id, mode ?? 'uncommitted')]
     active.value = id
   }
-  function showChange(id: string, mode: ChangeMode, path: string | null) {
-    tabs.value = showChangeInTab(tabs.value, id, mode, path)
+  function showChange(id: string, mode: ChangeMode, path: string | null, selection?: { call: ChangeWorkTab['call']; edit: number }) {
+    tabs.value = showChangeInTab(tabs.value, id, mode, path, selection)
   }
   /** A file by workspace path, shown in the active tab in place. */
   function open(path: string) {
@@ -163,11 +165,16 @@ function useWorkTabs(activeId: string | null) {
   function forward(id: string) {
     tabs.value = goForwardInTab(tabs.value, id)
   }
+  function selectEdit(call: ShellEditsView, path: string) {
+    const next = showCallEdit(tabs.value, call, path, () => `w${nextId++}`)
+    tabs.value = next.tabs
+    active.value = next.activeId
+  }
   function reset() {
     tabs.value = workTabs()
     active.value = activeId
   }
-  return { tabs, active, close, add, open, showChange, back, forward, reset }
+  return { tabs, active, close, add, open, showChange, selectEdit, back, forward, reset }
 }
 const workspace = createGalleryWorkspace()
 const fileViewTree = ref(true)
@@ -222,6 +229,14 @@ function fileViewGoForward() {
 }
 const panelWork = useWorkTabs('w2')
 const exhibitWork = useWorkTabs('w1')
+const editWork = useWorkTabs('w2')
+provideEditSelection(editWork.selectEdit)
+async function readCallChange(commandId: string, path: string, edit: number) {
+  return {
+    original: `// ${path}\nconst cookie = '${edit === 0 ? 'sid' : 'session'}'\n`,
+    modified: `// ${path}\nconst cookie = '${edit === 0 ? 'session' : 'session-v2'}' // ${commandId}\n`,
+  }
+}
 const changeUncommitted = useChangeTab('uncommitted', 'src/auth/cookie.ts', workspace.changes)
 const changePicked = useChangeTab('conversation', 'src/auth/cookie.ts', workspace.changes)
 const changeEmpty = useChangeTab('conversation', null, { conversation: emptyChangeSet, uncommitted: workspace.changes.uncommitted })
@@ -1202,9 +1217,18 @@ function abortTerminal(id: string) {
           </SessionSurface>
         </div>
       </GallerySection>
+      <div class="h-[480px] overflow-hidden rounded-lg border border-line">
+        <WorkPanel
+          :tabs="editWork.tabs.value" :active-id="editWork.active.value"
+          :workspace="workspace" :read-call-change="readCallChange"
+          @select="editWork.active.value = $event" @close-tabs="editWork.close"
+          @add="editWork.add" @show-change="editWork.showChange" @open="editWork.open"
+          @back="editWork.back" @forward="editWork.forward"
+        />
+      </div>
       <GallerySection
         title="Changed files"
-        note="A shell call lists the files it touched under its row: icon, name and line counts as pills that wrap. A new file carries a green dot; a deleted one is struck through; a renamed one keeps its old path in the tooltip. Past three rows the rest fold into +N files. The row folds the command and output on its own; the pills do not move."
+        note="A shell call lists the files it touched under its row: icon, name and line counts as pills that wrap. A new file carries a green dot. Pick a file to show that call’s edits in the panel; unavailable contents leave the diff blank. Past three rows the rest fold into +N files. The row folds the command and output on its own; the pills do not move."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -1541,6 +1565,7 @@ function abortTerminal(id: string) {
                 :conversation="session"
                 has-provider
                 :aside-open="panelAsideOpen"
+                :select-edit="(call, path) => { panelWork.selectEdit(call, path); panelAsideOpen = true }"
                 @open-aside="panelAsideOpen = true"
                 @retry="sessionFlow.resume()"
                 @abort-subagents="abortAgents"
@@ -1564,6 +1589,7 @@ function abortTerminal(id: string) {
               </ChatSession>
               <template #aside>
                 <WorkPanel
+                  :read-call-change="readCallChange"
                   :tabs="panelWork.tabs.value"
                   :active-id="panelWork.active.value"
                   :workspace="workspace"
@@ -1638,7 +1664,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Change view"
-        note="Diffs from one of two sources, the switch in the header picks. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation is one file picked from the conversation's tool rows, a snapshot around that call, shown alone: no tree. Either way the header names the file shown with its counts. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself and, under Uncommitted, hides the tree; the tree's caption lists the changes again, its control turning while the list is on its way. A new change tab opens on Conversation when something was picked, else on Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted the view also says when the workspace is no repository, keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
+        note="Diffs from one of two sources, the switch in the header picks. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation lists the files of the picked call. Each file shows its retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Either way the header names the file shown with its counts. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself and hides the tree; the tree's caption lists the changes again, its control turning while the list is on its way. A new change tab opens on Conversation when something was picked, else on Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted the view also says when the workspace is no repository, keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
       >
         <GallerySpecimen
           v-for="specimen in [
@@ -1677,6 +1703,7 @@ function abortTerminal(id: string) {
       <ChatSession
         :conversation="session"
         has-provider
+        :select-edit="(call, path) => { panelWork.selectEdit(call, path); panelAsideOpen = true; view = 'panel' }"
         :edit-version="editVersion"
         v-model:message-edit="messageEdit"
         @retry="sessionFlow.resume()"

@@ -20,7 +20,7 @@ test(
       sent.push(message)
       if (message.type === 'job_kill')
         host.handleMessage({
-          type: 'job_exit',
+          type: 'job_exit', files: [], filesTruncated: false,
           jobId: message.jobId,
           exitCode: null,
           signal: 'SIGTERM'

@@ -17,7 +17,7 @@ import { useWorkPanel } from './work'
  * conversation: it is taken when the tab shows, listed again after each of
  * the conversation's tool calls finishes while it shows (marked stale
  * otherwise, for the next showing), and when the page becomes visible
- * again. The Conversation mode has no picks yet.
+ * again. Conversation diffs read retained contents independently of the live device.
  */
 const props = defineProps<{ conversationId: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -131,10 +131,12 @@ function add(kind: 'file' | 'change', mode?: ChangeMode): void {
     :tabs="state.tabs"
     :active-id="state.activeId"
     :workspace="workspace"
+    :read-call-change="state.readCallChange"
+    :history-root="conversation ? executionFor(conversation).path ?? undefined : undefined"
     @select="work.select(state, $event)"
     @close-tabs="work.close(state, $event)"
     @add="add"
-    @show-change="(id, mode, path) => work.showChange(state, id, mode, path)"
+    @show-change="(id, mode, path, selection) => work.showChange(state, id, mode, path, selection)"
     @open="work.open(state, $event)"
     @back="work.back(state, $event)"
     @forward="work.forward(state, $event)"

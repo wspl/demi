@@ -253,6 +253,40 @@ pub fn compose_std_command<S: AsRef<OsStr>, SE: extensions::ShellExtensions>(
     Ok(cmd)
 }
 
+fn forward_external_outputs(
+    context: &ExecutionContext<'_, impl extensions::ShellExtensions>,
+    command: &mut std::process::Command,
+) -> Result<Vec<crate::execution_host::OutputCompletion>, error::Error> {
+    let mut outputs = Vec::new();
+    let Some(host) = context.shell.execution_host() else {
+        return Ok(outputs);
+    };
+    let mut forwarded: Vec<(std::sync::Arc<dyn crate::execution_host::FileControl>, std::fs::File)> = Vec::new();
+    for fd in [OpenFiles::STDOUT_FD, OpenFiles::STDERR_FD] {
+        let Some(OpenFile::Controlled { file, control }) = context.try_fd(fd) else {
+            continue;
+        };
+        // Descriptor duplication retains its control. One pipe preserves the
+        // order of stdout/stderr writes when the shell uses `2>&1`.
+        let file = if let Some((_, writer)) = forwarded.iter().find(|(previous, _)| std::sync::Arc::ptr_eq(previous, &control)) {
+            writer.try_clone()?
+        } else {
+            let (writer, completion) = host.external_output(file)?;
+            if let Some(completion) = completion {
+                forwarded.push((control, writer.try_clone()?));
+                outputs.push(completion);
+            }
+            writer
+        };
+        if fd == OpenFiles::STDOUT_FD {
+            command.stdout(file);
+        } else {
+            command.stderr(file);
+        }
+    }
+    Ok(outputs)
+}
+
 pub(crate) async fn on_preexecute(
     cmd: &mut commands::SimpleCommand<'_, impl extensions::ShellExtensions>,
 ) -> Result<(), error::Error> {
@@ -656,7 +690,8 @@ pub(crate) fn execute_external_command(
     );
 
     if let Some(host) = context.shell.execution_host() {
-        return Ok(ExecutionSpawnResult::StartedProcess(host.spawn(cmd)?));
+        let outputs = forward_external_outputs(&context, &mut cmd)?;
+        return Ok(ExecutionSpawnResult::StartedProcess(host.spawn(cmd)?.with_outputs(outputs)));
     }
 
     match sys::process::spawn(cmd) {

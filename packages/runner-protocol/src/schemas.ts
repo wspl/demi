@@ -6,7 +6,7 @@
 // hand-written types; their validators carry a `z.ZodType<T>` annotation so
 // drift is a compile error.
 import { z } from 'zod'
-import { artifactDigestSchema, artifactLocationSchema, nativeTargetSchema } from '@demicodes/command-protocol'
+import { artifactDigestSchema, artifactLocationSchema, nativeTargetSchema, editFileSchema, EDIT_JOB_FILES } from '@demicodes/command-protocol'
 import type {
   HostDirent,
   HostFileStat,
@@ -18,6 +18,11 @@ import type {
 // generic; the wire carries plain Uint8Array views.
 export const bytesSchema = z.custom<Uint8Array>((value) => value instanceof Uint8Array)
 const cwd = z.string().optional()
+
+export const jobFileChangeSchema = editFileSchema.extend({
+  added: z.number().int().nonnegative(),
+  removed: z.number().int().nonnegative(),
+}).strict()
 
 const hostIdentitySchema: z.ZodType<HostIdentity> = z.strictObject({
   uid: z.number(),
@@ -413,6 +418,8 @@ export const runnerToBackendMessageSchema = z.union([
      */
     cwd: z.string().optional(),
     output: jobOutputSchema.optional(),
+    files: z.array(jobFileChangeSchema).max(EDIT_JOB_FILES),
+    filesTruncated: z.boolean(),
   }),
   /**
    * An `rpc` command invoked on the target. `stdin` says whether the process

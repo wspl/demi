@@ -126,6 +126,7 @@ impl Dispatcher {
                     .await
                     .map_err(handler)?;
                 let request = Invocation {
+                    edits: context.edits.get().cloned(),
                     operation: binding.operation.clone(),
                     invocation_id: invocation.request.invocation_id,
                     args: parsed.values.into(),

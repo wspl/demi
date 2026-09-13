@@ -98,3 +98,16 @@ describe('work panel tabs', () => {
     expect(findChangeWorkTab(state)!.forward).toEqual([])
   })
 })
+
+
+test('history distinguishes calls and edit segments for the same path', () => {
+  const a = { kind: 'shell' as const, commandId: 'a', files: [] }
+  const b = { ...a, commandId: 'b' }
+  let state = showChangeInTab(tabs, 'b', 'conversation', '/work/file', { call: a, edit: 1 })
+  state = showChangeInTab(state, 'b', 'conversation', '/work/file', { call: b, edit: 0 })
+  expect(findChangeWorkTab(state)?.call?.commandId).toBe('b')
+  state = goBackInTab(state, 'b')
+  expect(findChangeWorkTab(state)).toMatchObject({ call: a, edit: 1 })
+  state = goForwardInTab(state, 'b')
+  expect(findChangeWorkTab(state)).toMatchObject({ call: b, edit: 0 })
+})

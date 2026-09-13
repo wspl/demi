@@ -170,7 +170,7 @@ export class RemoteHost implements Host {
     const jobs = [...this.activeJobs.values()]
     this.activeJobs.clear()
     for (const job of jobs) {
-      job.finish({
+      job.finish({ files: [], filesTruncated: false,
         exitCode: null,
         signal: reason,
         spawnError: { kind: 'other' }
@@ -230,7 +230,7 @@ export class RemoteHost implements Host {
     )
     void job.handle().wait().finally(() => release?.())
     if (!this.send) {
-      job.finish({
+      job.finish({ files: [], filesTruncated: false,
         exitCode: null,
         signal: 'runner disconnected',
         spawnError: { kind: 'other' }
@@ -253,7 +253,7 @@ export class RemoteHost implements Host {
       })
     } catch (error) {
       this.activeJobs.delete(jobId)
-      job.finish({ exitCode: null, signal: errorMessage(error), spawnError: { kind: 'other' } })
+      job.finish({ files: [], filesTruncated: false, exitCode: null, signal: errorMessage(error), spawnError: { kind: 'other' } })
       throw error
     }
     return job.handle()

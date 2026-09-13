@@ -134,6 +134,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         let active = state.active().await.unwrap();
         assert!(state.lock().is_err());
         let request = Invocation {
+            edits: None,
             operation: "manage".into(),
             invocation_id: "drain".into(),
             args: json!({"secret":active.secret, "action":"drain"}),

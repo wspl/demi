@@ -36,7 +36,7 @@ const emit = defineEmits<{
 
 const folded = ref(new Set<string>())
 const files = computed(() => props.source.files)
-const rows = computed(() => changeTreeRows(files.value, folded.value))
+const rows = computed(() => changeTreeRows(files.value, folded.value, props.root))
 const rootName = computed(() => props.rootName ?? (baseName(props.root) || '/'))
 
 function toggle(path: string): void {

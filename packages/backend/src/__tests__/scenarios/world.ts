@@ -25,6 +25,8 @@ import { Driver, type Target } from './driver'
  * world per test file, one conversation per scenario.
  */
 export interface WorldOptions {
+  /** A packaged release for acceptance on real managed guests. */
+  nativeCommands?: BackendOptions['nativeCommands']
   /** Runner names; each becomes a device and a workspace. */
   runners?: string[]
   /**
@@ -135,6 +137,7 @@ export class World {
   ): Promise<TestBackend> {
     return openBackend({
       dataDir,
+      ...(options.nativeCommands ? { nativeCommands: options.nativeCommands } : {}),
       port: options.port ?? 0,
       runner: {
         pingIntervalMs: options.pingIntervalMs ?? 0,
