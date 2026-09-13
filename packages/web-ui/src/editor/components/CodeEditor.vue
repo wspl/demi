@@ -57,9 +57,19 @@ let lastFlashToken = 0
 const langCompartment = new Compartment()
 const readOnlyCompartment = new Compartment()
 
-// Read-only here means a viewer: no caret and no edits, selection and copy still work.
+// Read-only here means a viewer: no edits and no caret, while the editor
+// still owns the mouse, so a selection starts anywhere in it (gutter, past
+// a line's end, below the last line) the way it does when editing.
+const viewerTheme = EditorView.theme({
+  '&.cm-viewer .cm-cursorLayer': { display: 'none' },
+  '&.cm-viewer .cm-content': { caretColor: 'transparent' },
+})
 function readOnlyExtensions(readOnly: boolean) {
-  return [EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]
+  return [
+    EditorState.readOnly.of(readOnly),
+    EditorView.editorAttributes.of({ class: readOnly ? 'cm-viewer' : '' }),
+    viewerTheme,
+  ]
 }
 const lspUriCompartment = new Compartment()
 
