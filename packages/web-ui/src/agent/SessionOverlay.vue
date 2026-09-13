@@ -43,7 +43,7 @@ onDismissOutside(
       class="overlay-window pointer-events-auto absolute inset-0 z-10 flex min-h-0 origin-bottom flex-col overflow-hidden rounded-xl bg-surface"
     >
       <div class="flex h-10 shrink-0 items-center gap-1 bg-surface-base px-1.5">
-        <TabStrip class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+        <TabStrip class="flex-1">
           <slot name="tabs" />
         </TabStrip>
         <slot name="trailing" />

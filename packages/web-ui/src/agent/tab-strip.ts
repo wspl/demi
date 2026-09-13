@@ -9,7 +9,8 @@ const enterWidths = new WeakMap<HTMLElement, number>()
 function measureOpenWidth(tab: HTMLElement): number {
   const prevWidth = tab.style.width
   const prevShrink = tab.style.flexShrink
-  tab.style.width = 'auto'
+  // No inline width: the tab's own class width is what it opens to.
+  tab.style.width = ''
   tab.style.flexShrink = ''
   void tab.offsetWidth
   const width = tab.getBoundingClientRect().width
