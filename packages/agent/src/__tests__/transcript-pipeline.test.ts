@@ -16,6 +16,7 @@ import type {
   AgentSessionStore
 } from '../types'
 import type { ClientFrame } from '../protocol/frames'
+import { clientFrameSchema } from '../protocol/schemas'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -144,7 +145,7 @@ test(
     const client = new AgentClient(pair.client)
     const receivedFrames: ClientFrame[] = []
     pair.server.onFrame((frame) => {
-      receivedFrames.push(frame)
+      receivedFrames.push(clientFrameSchema.parse(frame))
     })
 
     const blockAt = (id: string, text: string): Block => ({

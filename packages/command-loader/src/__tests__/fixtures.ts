@@ -6,6 +6,8 @@ import {
 } from '@demicodes/shell'
 import { z } from 'zod'
 
+const notesSchema = z.array(z.string())
+
 import { nativePackageSchema, NATIVE_TARGETS } from '@demicodes/command-protocol'
 
 export const testPackage = nativePackageSchema.parse({
@@ -69,7 +71,7 @@ export function testRoots(): Command[] {
               stdinField: 'text',
               output: { json: z.object({ count: z.number() }) },
               run: async ({ parsed, io, storage }) => {
-                const notes = ((await storage.readJson<string[]>('notes'))
+                const notes = (notesSchema.nullable().parse(await storage.readJson('notes'))
                   ?? []).concat(String(parsed.values.text))
                 await storage.writeJson('notes', notes)
                 await io.stdout(parsed.json ? JSON.stringify({

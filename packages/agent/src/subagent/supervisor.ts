@@ -259,7 +259,7 @@ export class ChildSupervisor<State = unknown> {
         throw new Error('owner session is closing')
       }
       const key = `agent.start.${requestId}`
-      const current = await storage.readJson<unknown>(key)
+      const current = await storage.readJson(key)
       let receipt: z.infer<typeof startReceiptSchema>
       if (current !== null) {
         receipt = startReceiptSchema.parse(current)
