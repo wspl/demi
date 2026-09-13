@@ -79,8 +79,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
     v-if="pageKind === 'session' && conversation"
     :conversation="conversation"
     :has-provider="hasProvider"
-    :aside-open="resources.asideOpen"
-    @toggle-aside="resources.asideOpen = !resources.asideOpen"
     :fork="fork"
     :pending-submission="
       conversation.pendingSend
