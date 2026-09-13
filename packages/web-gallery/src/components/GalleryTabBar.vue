@@ -139,7 +139,7 @@ function closeContextMenu(): void {
 
 <template>
   <div class="flex h-11 items-center">
-    <TabStrip class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+    <TabStrip class="flex-1">
       <TabItem
         v-for="entry in tabs"
         :key="entry.tab.id"

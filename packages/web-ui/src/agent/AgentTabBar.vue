@@ -335,7 +335,7 @@ function finishSettle() {
   <div class="flex h-11 shrink-0 items-center bg-surface-base px-2">
     <TabStrip
       ref="stripRef"
-      class="titlebar-no-drag flex min-w-0 items-center gap-0.5 overflow-x-auto"
+      class="titlebar-no-drag"
     >
       <TabItem
         v-for="(tab, index) in localTabs"
