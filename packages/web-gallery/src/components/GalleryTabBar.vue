@@ -70,7 +70,7 @@ function fixtureTabs(): GalleryTab[] {
 
 const tabs = ref<GalleryTab[]>(fixtureTabs())
 
-const activeTabId = ref('tab-1')
+const activeTabId = ref<string | null>('tab-1')
 const renamingTabId = ref<string | null>(null)
 const renameValue = ref('')
 // Past the fixture ids: a repeated key would break the strip's diff and motion.
@@ -94,11 +94,11 @@ function selectTab(id: string): void {
 
 function closeTab(id: string): void {
   const index = tabs.value.findIndex((entry) => entry.tab.id === id)
-  if (index < 0 || tabs.value.length === 1)
+  if (index < 0)
     return
   tabs.value.splice(index, 1)
   if (activeTabId.value === id) {
-    activeTabId.value = tabs.value[Math.max(0, index - 1)]!.tab.id
+    activeTabId.value = tabs.value[Math.max(0, index - 1)]?.tab.id ?? null
   }
   if (renamingTabId.value === id) {
     renamingTabId.value = null
@@ -124,7 +124,7 @@ function tabIds(): string[] {
   return tabs.value.map((entry) => entry.tab.id)
 }
 
-function activeId(): string {
+function activeId(): string | null {
   return activeTabId.value
 }
 
@@ -230,7 +230,6 @@ function closeContextMenu(): void {
       <MenuItem
         :icon="X"
         label="Close"
-        :disabled="tabs.length === 1"
         @select="closeScope('self')"
       />
       <MenuItem
