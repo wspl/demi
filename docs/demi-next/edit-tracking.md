@@ -6,6 +6,7 @@ on request. The runner learns this from the commands themselves as they run,
 not from the filesystem afterwards: every in-process file write passes through
 a layer the runner owns, and that layer takes notes. This is why the shell runs
 in process and why the utilities are forked to open files through one context.
+Native Demi file commands also participate in recording, as described below.
 
 Edit tracking has one consumer: the file pills under a shell call in the
 conversation, and the work panel's change view in Conversation mode that a
@@ -22,8 +23,9 @@ browser fetches them when a file is opened.
 
 | Recorded | Not recorded |
 | --- | --- |
-| A file a brush redirection opens for writing (`>`, `>>`, `<>`, `exec 3>f`). | Anything an external child process does: git, python, node, user-installed tools. |
+| A file a brush redirection opens for writing (`>`, `>>`, `<>`, `exec 3>f`). | Writes by external programs that do not participate in recording: git, python, node, user-installed tools. |
 | A file an embedded utility opens for writing, writes whole, or renames over (`sed -i`, `tee`, `sort -o`, `uniq` with an output file). | Copies and hard links (`cp`), deletions, renames as moves, directories, permissions, ownership, times. |
+| Files created or modified by `demi file create`, `demi file edit`, and `demi file patch`, including when one patch edits several files. | Edits prepared by a native command but never written, or successfully rolled back. |
 | Every in-process part of the job: subshells, functions, background tasks, process substitutions. | Reads, and the empty file `mktemp` creates. |
 
 An entry is `added` when the path did not exist at the job's first write to it,
@@ -82,6 +84,35 @@ under that directory's lifetime ([Pipes and output](runner.md#pipes-and-output))
 Recording never fails the command: a copy that cannot be taken for a remaining
 path leaves that entry with counts 0 and 0 and no contents, and the command's
 own result stands.
+
+## Native Demi file edits
+
+Native Demi file commands run in a separate command service
+([Native execution](native-runtime.md#one-command-from-declaration-to-result)).
+Their edits are part of the invoking shell job's report. The command service must supply
+recording information through its invocation protocol, since its filesystem
+calls do not pass through brush or `context::fs`. The runner remains responsible
+for the job's report, limits, and retained copies.
+
+Recording describes actual file changes. For example, if a patch writes the
+first file, fails on the second, and restores the first, it must not report the
+prepared patch as an applied edit. If restoration fails, recording must reflect
+the changes left behind. The scope rules above still exclude deleted files.
+
+## Open recording decisions
+
+The first-write/job-exit snapshots described above do not isolate edits made by
+concurrent jobs. If A writes `1`, B overwrites it with `2`, and A then exits,
+A's final copy contains `2`. Capturing after each edit can avoid that late read,
+but one job can also edit the same file more than once with another job's edit
+in between. One comparison of its first and last copies can still include the
+other job's changes.
+
+Before implementing dependent recording behavior, settle when one edit begins
+and ends, how its before/after contents are captured during concurrent writes,
+and how interleaved edits appear under one call. Define the native command
+protocol exchange against that same recording contract. These decisions are
+unresolved; the native commands' inclusion in scope is required.
 
 ## The report
 
@@ -152,6 +183,8 @@ its content is one call's list, and picking a pill of another call replaces it.
 | `vendor/brush-core` | The execution host trait gains the write notice; the shell's file opening sends it for every write-capable option set. |
 | `vendor/uucore` | The execution control trait gains the write notice; `context::fs` sends it from creating and write-capable opens, whole-file writes, and the destination of a rename. A helper persists a temporary file over a target with the notice. |
 | `vendor/sed` | In-place editing persists through that helper. |
+| `crates/demi-commands` | Record actual edits from file create, edit, and patch, including failure and rollback outcomes. |
+| `packages/command-protocol`, `crates/command-service` | Carry native edit-recording information within the invoking command; the exchange depends on the open recording decisions above. |
 | `crates/runner` | `Scope` implements both notices, keeps the copies in the job's directory, counts lines at exit, and reports; the line counting moves out of the working tree module to be shared; `job_exit` gains the fields. |
 | `packages/runner-protocol` | `job_exit` schema and the generated Rust bindings. |
 | `packages/shell`, `packages/host-remote` | The command's exit status carries the entries with their copy paths. |
@@ -168,9 +201,10 @@ files; `ripgrep`, `jaq`, `findutils`, and `diffutils` do not write files.
 
 Watching the filesystem or diffing the working tree around a call cannot say
 which call made a change, misses edits outside the repository, and blurs
-concurrent calls. Notices from the write path are exact for everything that
-runs in process and free of scanning. External processes are outside that path
-by nature; their edits still appear in the working tree view, unattributed.
+concurrent calls. Notices from the write path identify which job attempts a
+write without scanning the directory. Native Demi commands participate explicitly
+through their invocation protocol. Other external programs remain outside that
+path; their edits still appear in the working tree view, unattributed.
 
 The list is in the block because it is small and is read every time the
 conversation is shown. The contents are not, because a transcript is loaded
