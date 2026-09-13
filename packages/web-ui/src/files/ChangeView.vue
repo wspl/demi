@@ -55,7 +55,7 @@ const selectedChange = computed(() => mode.value === 'conversation'
   : workingTree.value.files.find((file) => file.path === selected.value) ?? null)
 const segments = computed(() => call.value?.file.edits ?? [])
 const displayPath = computed(() => changeDisplayPath(selectedChange.value?.path ?? '', props.root))
-const treeShown = computed(() => mode.value === 'uncommitted' && tree.value)
+const treeAvailable = computed(() => mode.value === 'uncommitted' && workingTree.value.unavailable !== 'no-repository')
 const emptyText = computed(() => emptyChangeSetText(workingTree.value))
 const idleText = computed(() => mode.value === 'conversation'
   ? 'Click a changed file in the conversation to see its diff here.'
@@ -148,7 +148,7 @@ onBeforeUnmount(() => {
             @click="selectedChange && emit('open', selectedChange.path)"
           />
         </Tooltip>
-        <Tooltip v-if="mode === 'uncommitted'" :content="tree ? 'Hide changed files' : 'Show changed files'" class="shrink-0">
+        <Tooltip v-if="treeAvailable" :content="tree ? 'Hide changed files' : 'Show changed files'" class="shrink-0">
           <IconButton
             :icon="FolderTree"
             variant="ghost"
@@ -183,7 +183,7 @@ onBeforeUnmount(() => {
           @action="read"
         />
       </div>
-      <template v-if="treeShown">
+      <template v-if="treeAvailable && tree">
         <ResizeHandle
           v-model="treeWidth"
           side="end"

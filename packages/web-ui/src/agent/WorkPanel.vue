@@ -168,7 +168,7 @@ function add(kind: WorkTab['kind']): void {
 
 <template>
   <aside class="flex h-full min-w-0 flex-col overflow-hidden border-l border-line bg-surface text-fg">
-    <div class="flex h-11 shrink-0 items-center gap-1 px-2">
+    <div class="flex h-11 shrink-0 items-center gap-1 pl-2 pr-2.5">
       <TabStrip class="flex-1" surface="raised">
         <TabItem
           v-for="tab in tabs"
