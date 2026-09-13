@@ -71,7 +71,7 @@ agent to edit a file:
 The edited file stays on the laptop. Switching the conversation's target changes
 where subsequent operations run; it does not move files or the transcript.
 [Sessions and targets](sessions-and-targets.md) owns switching and attachment
-rules. [Execution coordination](execution-coordination.md) owns admission while
+rules. [Execution coordination](sessions-and-targets.md#coordinate-shared-cloud-activity) owns admission while
 agent nodes or device operations are active.
 
 Keeping the agent in the backend gives the transcript and orchestration one owner.
@@ -124,7 +124,7 @@ implementation.
 | Where is data stored? | [Storage](storage.md) |
 | How are providers, credentials, and usage managed? | [Providers and vault](providers-and-vault.md) |
 | Where does a conversation execute? | [Sessions and targets](sessions-and-targets.md) |
-| How are concurrent operations admitted? | [Execution coordination](execution-coordination.md) |
+| How are concurrent operations admitted? | [Execution coordination](sessions-and-targets.md#coordinate-shared-cloud-activity) |
 | How are commands declared and dispatched? | [Commands](commands.md) |
 | How are native commands installed and executed? | [Native runtime](native-runtime.md) |
 | What does a device runner own? | [Runner](runner.md) |

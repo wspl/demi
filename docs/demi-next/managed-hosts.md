@@ -317,7 +317,7 @@ On backend restart, reconciliation fences and terminates prior VM processes
 before saving their working disks or allowing another boot. A writable disk
 never has two active VM writers. Checkpoint, growth, shutdown, reset and boot
 are serialized per managed device. Scaled deployment needs worker fencing in
-addition to routing affinity (`execution-coordination.md`).
+addition to routing affinity ([execution coordination](sessions-and-targets.md#implementation-ownership-and-checks)).
 
 ## Lifecycle
 
