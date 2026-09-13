@@ -23,13 +23,41 @@ function tabEl(el: Element): HTMLElement {
   return el as HTMLElement
 }
 
+/** The gap between a strip's tabs. */
+export function stripGap(strip: HTMLElement): number {
+  const gap = Number.parseFloat(getComputedStyle(strip).columnGap)
+  return Number.isFinite(gap) ? gap : 0
+}
+
 function columnGap(el: HTMLElement): number {
   const parent = el.parentElement
   if (!parent) {
     return 0
   }
-  const gap = Number.parseFloat(getComputedStyle(parent).columnGap)
-  return Number.isFinite(gap) ? gap : 0
+  return stripGap(parent)
+}
+
+/** True while the tab is on its way out and no longer part of the settled layout. */
+export function isLeavingTab(tab: Element): boolean {
+  return tab.classList.contains(`${TAB_TRANSITION}-leave-active`)
+}
+
+/**
+ * Where `tab` will sit once the strip's motion ends: tabs on their way out
+ * take no room, a tab on its way in takes the width it opens to.
+ */
+export function settledTabBounds(strip: HTMLElement, tab: HTMLElement): { left: number; right: number } {
+  const gap = stripGap(strip)
+  let left = 0
+  for (const child of strip.children) {
+    if (child === tab) {
+      break
+    }
+    if (child instanceof HTMLElement && !isLeavingTab(child)) {
+      left += settledTabWidth(child) + gap
+    }
+  }
+  return { left, right: left + settledTabWidth(tab) }
 }
 
 function prefersReducedMotion(): boolean {
@@ -63,6 +91,11 @@ export function enterTab(el: Element): void {
   tab.style.transition = ''
   tab.style.width = `${width}px`
   tab.style.opacity = ''
+}
+
+/** The width a tab will have once its entrance ends; its current width otherwise. */
+export function settledTabWidth(tab: HTMLElement): number {
+  return enterWidths.get(tab) ?? tab.getBoundingClientRect().width
 }
 
 export function afterEnterTab(el: Element): void {
