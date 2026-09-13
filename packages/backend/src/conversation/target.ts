@@ -1,4 +1,5 @@
-import type { Host } from '@demicodes/shell'
+import type { RemoteGit } from '@demicodes/host-remote'
+import type { Host, HostFileSystem } from '@demicodes/shell'
 import { ActivityGate } from '@demicodes/utils'
 import type { ManagedHosts } from '../managed/lifecycle'
 import type { RunnerRegistry } from '../runner/registry'
@@ -30,6 +31,13 @@ export type SwitchTargetResult = {
     'archived' |
     'turn_in_flight' |
     'conflict'
+}
+
+/** A conversation's execution directory on its live runner, for the working-tree routes. */
+export interface WorkingTreeAccess {
+  root: string
+  git: RemoteGit
+  fs: HostFileSystem
 }
 
 export class ConversationTargets {
@@ -108,6 +116,24 @@ export class ConversationTargets {
     if (target.kind === 'cloud')
       await host.fs.mkdir(path, { recursive: true })
     return host
+  }
+
+  /**
+   * The execution directory and the runner facets that read it; `null`
+   * while the device has no live runner. Never wakes a machine, unlike
+   * `withHost`.
+   */
+  async workingTree(id: string): Promise<WorkingTreeAccess | null> {
+    const { registry, stores } = this.deps
+    const target = await this.resolve(id)
+    if (!target.deviceId || !registry.deviceOnline(target.deviceId))
+      return null
+    const host = registry.hostFor(
+      { deviceId: target.deviceId, path: target.path },
+      id,
+      stores.hostStore(id)
+    )
+    return { root: target.path, git: host.git, fs: host.fs }
   }
 
   async switch(

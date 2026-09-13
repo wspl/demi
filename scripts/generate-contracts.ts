@@ -30,10 +30,12 @@ function wire(): string {
     const fields = generator.fields(schema, rustPascal(tag), new Set(['type'])).replaceAll('pub ', '')
     return `#[serde(rename = ${rustString(tag)})]\n${rustPascal(tag)} {\n${fields}\n},`
   })
-  const fsIds = schemas.flatMap(schema => {
+  const requestIds = (prefix: string) => schemas.flatMap(schema => {
     const tag = (schema.shape.type as z.ZodLiteral<string>).value
-    return tag.startsWith('fs_') ? [`Self::${rustPascal(tag)} { id, .. } => Some(id),`] : []
+    return tag.startsWith(prefix) ? [`Self::${rustPascal(tag)} { id, .. } => Some(id),`] : []
   })
+  const fsIds = requestIds('fs_')
+  const gitIds = requestIds('git_')
   const outgoing = flatten(runnerToBackendMessageSchema).map(schema => {
     const literals = Object.entries(schema.shape).filter(([, child]) => child._zod.def.type === 'literal')
     const tag = (schema.shape.type as z.ZodLiteral<string>).value
@@ -67,6 +69,9 @@ function wire(): string {
     impl Inbound {
       pub fn fs_request_id(&self) -> Option<&str> {
         match self { ${fsIds.join('\n')} _ => None }
+      }
+      pub fn git_request_id(&self) -> Option<&str> {
+        match self { ${gitIds.join('\n')} _ => None }
       }
     }
     ${generator.finish()}

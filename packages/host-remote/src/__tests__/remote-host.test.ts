@@ -7,7 +7,7 @@ import {
   type BackendToRunnerMessage,
 } from '@demicodes/runner-protocol'
 import { memoryHostStore } from '@demicodes/shell/testing'
-import { RemoteHost } from '../index'
+import { RemoteGitError, RemoteHost } from '../index'
 import { deferred } from '@demicodes/utils'
 
 const cleanup: (() => Promise<void>)[] = []
@@ -276,5 +276,46 @@ test(
       remote.detach();
       await server.close()
     }
+  }
+)
+
+test(
+  'the working-tree facet lists uncommitted changes and shows the last commit',
+  async () => {
+    const { dir, remote } = await connectedPair()
+    const git = (...args: string[]) => {
+      const result = Bun.spawnSync(['git', ...args], {
+        cwd: dir,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: 'Test',
+          GIT_AUTHOR_EMAIL: 'test@example.com',
+          GIT_COMMITTER_NAME: 'Test',
+          GIT_COMMITTER_EMAIL: 'test@example.com',
+        },
+      })
+      expect(result.exitCode).toBe(0)
+    }
+    const outside = await remote.git.changes(dir)
+    expect(outside).toEqual({ repository: false, head: null, files: [], truncated: false, watched: false })
+
+    git('init', '-q', '-b', 'main')
+    await Bun.write(join(dir, 'a.txt'), '1\n2\n')
+    git('add', '.')
+    git('commit', '-q', '-m', 'first')
+    await Bun.write(join(dir, 'a.txt'), '1\n2\n3\n')
+    await Bun.write(join(dir, 'b.txt'), 'new\n')
+
+    const changes = await remote.git.changes(dir)
+    expect(changes.repository).toBe(true)
+    expect(changes.head).toMatch(/^[0-9a-f]{40}$/)
+    expect(changes.files).toEqual([
+      { path: 'a.txt', kind: 'modified', added: 1, removed: 0 },
+      { path: 'b.txt', kind: 'added', added: 1, removed: 0 },
+    ])
+    expect(new TextDecoder().decode(await remote.git.show(dir, 'a.txt'))).toBe('1\n2\n')
+    const missing = await remote.git.show(dir, 'b.txt').catch((error: unknown) => error)
+    expect(missing).toBeInstanceOf(RemoteGitError)
+    expect((missing as RemoteGitError).code).toBe('ENOENT')
   }
 )

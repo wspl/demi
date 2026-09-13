@@ -23,11 +23,12 @@ Partial conversation mutations use the explicit outcomes described below.
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }` |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories; `WS /conversations/:id/stream` carries agent frames |
+| Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...` |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
 | Usage | `GET /usage` for the caller; `GET /usage/instance` for admins in shared mode |
-| Devices | `GET /devices`, `POST /devices/claim { code }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=...`, `POST /devices/:id/fs { path }` |
+| Devices | `GET /devices`, `POST /devices/claim { code }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=...`, `POST /devices/:id/fs { path }`, `GET /devices/:id/fs/file?path=...` |
 | Workspaces | `GET/POST /workspaces`, `PATCH /workspaces/:id { name }`, `DELETE /workspaces/:id` |
 | Cloud | `GET /cloud`, `POST /cloud/reset { operationId }` |
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
@@ -273,6 +274,30 @@ devices through the existing host mechanism, then supplies text preserving the
 device identity and a shell-quoted `demi host shell --host` read command. The agent
 reads the file's contents at execution time. Revocation or disconnect before that
 read produces the existing host-command error; the reference is not a byte snapshot.
+
+## File text and working tree changes
+
+`GET /api/devices/:id/fs/file?path=...` returns `{ path, text }` for a text file
+on a connected device. A file over 4 MiB answers 413 `file_too_large`; one that
+is not UTF-8 text answers 415 `not_text`. The file view reads through this route.
+
+`GET /api/conversations/:id/changes` lists the uncommitted changes of the
+conversation's execution directory as `{ root, repository, head, files,
+truncated, watched }`, the runner's reply ([Runner](runner.md#working-tree))
+plus `root`, the directory the paths are relative to. The request never wakes a
+machine: an offline device or a stopped Cloud answers 409 `device_offline`. The
+runner's `busy` answers 503 `changes_busy` and its timeout 504
+`changes_timeout`; the browser then keeps its previous list and says the
+refresh failed.
+
+`GET /api/conversations/:id/changes/file?path=...` returns `{ original,
+modified }` for one changed file: `original` as the last commit has it (empty
+for an added file), `modified` as the working tree has it (empty for a deleted
+one), under the text limits of the file route.
+
+The browser lists again after each of the conversation's shell commands exits,
+when the page becomes visible again, when the change view is shown, and on its
+Refresh control. It never polls while idle.
 
 ## Serving the browser build
 

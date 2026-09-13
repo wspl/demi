@@ -1,5 +1,6 @@
+import { RemoteGitError } from '@demicodes/host-remote'
 import type { Host } from '@demicodes/shell'
-import { errorMessage } from '@demicodes/utils'
+import { errorCode, errorMessage } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import type { AuthEnv } from '../auth/identity'
@@ -15,6 +16,8 @@ import type { RunnerRegistry } from '../runner/registry'
 import { resolveExecutionTarget } from '../conversation/execution-target'
 import type { ConversationStores } from '../storage/conversation-store'
 import { ForkRefused, type ConversationForks } from '../conversation/fork'
+import type { WorkingTreeAccess } from '../conversation/target'
+import { TextFileRefused, readTextFile, textOf } from '../runner/file-browser'
 
 const attachBodySchema = z.object({ deviceId: z.string().min(1) })
 const renameHostBodySchema = z.object({ name: z.string().trim().min(1).max(64) })
@@ -34,8 +37,10 @@ export function conversationRoutes(options: {
   ) => Promise<T>
   /** Whether a device has a live runner socket, for the host list. */
   registry: RunnerRegistry
+  /** The execution directory on its live runner, or null while offline; never wakes a machine. */
+  workingTree: (conversationId: string) => Promise<WorkingTreeAccess | null>
 }): Hono<AuthEnv> {
-  const { control, conversationStores, withHost, registry } = options
+  const { control, conversationStores, withHost, registry, workingTree } = options
   const app = new Hono<AuthEnv>()
 
   // The caller's conversation, or null: another user's answers like a missing one.
@@ -413,6 +418,72 @@ export function conversationRoutes(options: {
   // Workspace file drop: bytes land in the execution target's working
   // directory over the ordinary Host fs — filesystem data, not conversation
   // data. The returned path is what the client inserts as a text reference.
+  // The working tree behind the change view (`web-api.md` § File text and
+  // working tree changes): what is uncommitted, and one file's two sides.
+  const withWorkingTree = async (
+    c: Context<AuthEnv>,
+    operation: (tree: WorkingTreeAccess) => Promise<Response>,
+  ): Promise<Response> => {
+    const conversation = await own(c)
+    if (!conversation) {
+      return c.json(
+        {
+          code: 'conversation_not_found',
+          message: 'No such conversation',
+        },
+        404,
+      )
+    }
+    const tree = await workingTree(conversation.id)
+    if (!tree) {
+      return c.json(
+        {
+          code: 'device_offline',
+          message: 'The execution device is offline',
+        },
+        409,
+      )
+    }
+    try {
+      return await operation(tree)
+    } catch (error) {
+      return workingTreeError(c, error)
+    }
+  }
+
+  app.get('/:id/changes', (c) =>
+    withWorkingTree(c, async (tree) => {
+      const changes = await tree.git.changes(tree.root)
+      return c.json({ root: tree.root, ...changes })
+    }),
+  )
+
+  app.get('/:id/changes/file', (c) =>
+    withWorkingTree(c, async (tree) => {
+      const path = c.req.query('path')
+      if (!path || path.startsWith('/') || path.split('/').includes('..')) {
+        return c.json(
+          {
+            code: 'invalid_body',
+            message: 'Expected a relative path query parameter',
+          },
+          400,
+        )
+      }
+      const original = await tree.git.show(tree.root, path).then(textOf, (error: unknown) => {
+        if (error instanceof RemoteGitError && error.code === 'ENOENT')
+          return ''
+        throw error
+      })
+      const modified = await readTextFile(tree.fs, `${tree.root}/${path}`).catch((error: unknown) => {
+        if (errorCode(error) === 'ENOENT')
+          return ''
+        throw error
+      })
+      return c.json({ original, modified })
+    }),
+  )
+
   app.get('/:id/transcript', async (c) => {
     const conversation = await own(c)
     if (!conversation) {
@@ -431,4 +502,24 @@ export function conversationRoutes(options: {
   })
 
   return app
+}
+
+function workingTreeError(c: Context<AuthEnv>, error: unknown): Response {
+  if (error instanceof TextFileRefused)
+    return c.json({ code: error.code, message: error.message }, error.code === 'file_too_large' ? 413 : 415)
+  if (error instanceof RemoteGitError) {
+    switch (error.code) {
+      case 'busy':
+        return c.json({ code: 'changes_busy', message: error.message }, 503)
+      case 'timeout':
+        return c.json({ code: 'changes_timeout', message: error.message }, 504)
+      case 'not_repository':
+        return c.json({ code: 'not_repository', message: error.message }, 409)
+      case 'too_large':
+        return c.json({ code: 'file_too_large', message: error.message }, 413)
+      default:
+        return c.json({ code: 'changes_failed', message: error.message }, 500)
+    }
+  }
+  return c.json({ code: 'changes_failed', message: errorMessage(error) }, 500)
 }
