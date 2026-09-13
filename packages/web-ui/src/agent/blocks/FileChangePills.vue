@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import CornerDot from '../../ui/CornerDot.vue'
-import type { ShellFileChange } from '../block-helpers'
+import type { ChangeFile } from '../../files/changes'
 
 /**
  * The files a tool call changed, as pills that wrap: icon, name, and the
@@ -13,7 +13,7 @@ import type { ShellFileChange } from '../block-helpers'
  */
 const props = withDefaults(
   defineProps<{
-    files: ShellFileChange[]
+    files: ChangeFile[]
     maxRows?: number
   }>(),
   { maxRows: 3 },

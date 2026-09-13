@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import type { ShellFileChange } from '@demicodes/agent'
-import { changeTreeRows } from '../changes'
+import { changeTreeRows, type ChangeFile } from '../changes'
 
-const files: ShellFileChange[] = [
+const files: ChangeFile[] = [
   { path: 'src/auth/cookie.ts', kind: 'modified', added: 12, removed: 3 },
   { path: 'src/auth/session.ts', kind: 'added', added: 20, removed: 0 },
   { path: 'README.md', kind: 'modified', added: 1, removed: 1 },

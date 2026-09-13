@@ -1,6 +1,5 @@
 import { reactive } from 'vue'
-import type { ShellFileChange } from '@demicodes/agent'
-import type { ChangeSetSource, ReadCallChange } from '@demicodes/web-ui/files/changes'
+import type { ChangeFile, ChangeSetSource, ReadCallChange } from '@demicodes/web-ui/files/changes'
 import { ApiError, apiRequest, readResponse } from '../api/client'
 import { changeSidesSchema, workingTreeChangesSchema } from '../api/contracts'
 
@@ -58,7 +57,7 @@ export function createWorkingTreeSource(conversationId: string): WorkingTreeSour
   }
 
   const source: WorkingTreeSource = reactive({
-    files: [] as ShellFileChange[],
+    files: [] as ChangeFile[],
     truncated: false,
     unavailable: null,
     refreshing: false,
