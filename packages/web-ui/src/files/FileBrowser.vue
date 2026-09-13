@@ -383,7 +383,7 @@ defineExpose({
                 :key="host.id"
                 :icon="hostIcon(host)"
                 :indicator="
-                  host.id === CLOUD_HOST_ID
+                  host.id === CLOUD_HOST_ID || host.canWake
                     ? undefined
                     : host.online
                       ? 'success'

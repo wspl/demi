@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
-import type { HostMenuMainHost } from '@demicodes/web-ui/hosts/types'
+import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import type { Conversation, Project } from '../state/types'
 import { useResources } from '../state/resources'
 import { executionFor } from './execution'
@@ -20,7 +20,7 @@ const store = useConversations()
 const mainLocked = computed(
   () => props.conversation.phase !== 'idle' || props.conversation.archived,
 )
-const mainHost = computed<HostMenuMainHost>(() => {
+const mainHost = computed<HostMenuHost>(() => {
   const execution = executionFor(props.conversation)
   return {
     id: execution.deviceId ?? 'cloud',
@@ -29,12 +29,16 @@ const mainHost = computed<HostMenuMainHost>(() => {
     online: execution.online,
   }
 })
-const attachedHosts = computed(() =>
-  props.conversation.attachedHosts.map((host) => ({
-    id: host.deviceId,
-    name: host.name,
-    online: resources.deviceById(host.deviceId)?.online ?? false,
-  })),
+const attachedHosts = computed<HostMenuHost[]>(() =>
+  props.conversation.attachedHosts.map((host) => {
+    const device = resources.deviceById(host.deviceId)
+    return {
+      id: host.deviceId,
+      name: host.name,
+      kind: device?.kind === 'managed' ? 'cloud' : 'device',
+      online: device?.online ?? false,
+    }
+  }),
 )
 
 function switchMain(id: string) {

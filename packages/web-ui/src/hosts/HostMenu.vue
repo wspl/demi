@@ -11,11 +11,11 @@ import CornerDot from '../ui/CornerDot.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { ICON_PX } from '../ui/icon-metrics'
 import HostPicker from './HostPicker.vue'
-import type { HostDeviceOption, HostMenuMainHost } from './types'
+import type { HostDeviceOption, HostMenuHost } from './types'
 
 const props = defineProps<{
-  mainHost: HostMenuMainHost
-  attachedHosts: HostDeviceOption[]
+  mainHost: HostMenuHost
+  attachedHosts: HostMenuHost[]
   devices: HostDeviceOption[]
   pending?: boolean
   mainLocked?: boolean
@@ -78,6 +78,7 @@ function connect() {
             :size="ICON_PX.in28"
           />
           <CornerDot
+            v-if="mainHost.kind === 'device'"
             :tone="mainHost.online ? 'success' : 'muted'"
             ring="button"
             :label="mainHost.online ? 'Online' : 'Offline'"
@@ -94,7 +95,7 @@ function connect() {
         <MenuItem
           :icon="mainHost.kind === 'cloud' ? Cloud : Monitor"
           label="Main host"
-          :indicator="mainHost.online ? 'success' : 'muted'"
+          :indicator="mainHost.kind === 'cloud' ? undefined : mainHost.online ? 'success' : 'muted'"
           :indicator-label="mainHost.online ? 'Online' : 'Offline'"
           :value="mainHost.name"
           :disabled="mainLocked"
@@ -114,9 +115,9 @@ function connect() {
           <MenuItem
             v-for="host in attachedHosts"
             :key="host.id"
-            :icon="Monitor"
+            :icon="host.kind === 'cloud' ? Cloud : Monitor"
             :label="host.name"
-            :indicator="host.online ? 'success' : 'muted'"
+            :indicator="host.kind === 'cloud' ? undefined : host.online ? 'success' : 'muted'"
             :indicator-label="host.online ? 'Online' : 'Offline'"
             :note="host.online ? undefined : 'offline'"
             has-submenu
