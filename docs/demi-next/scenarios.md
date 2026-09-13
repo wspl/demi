@@ -1,89 +1,127 @@
-# Demi Next: Scenario Suite
+# Backend scenario acceptance
 
-Status: target acceptance contract.
+Scenario tests verify complete backend paths with scripted providers and real
+native runners. They complement package tests for schemas, primitive conformance,
+provider adapters, and command parsing. No scenario calls a real model.
 
-## Composition under test
+## System under test
 
 ```text
-Web API → backend → agent → RemoteShellEnvironment → native Rust runner
-                                                      → real bash → JS commands
-        ← model-visible result, persisted transcript, ledger and blob references
+Authenticated API / AgentClient
+    -> backend conversation and agent
+    -> remote shell environment
+    -> native Rust runner with embedded brush
+         +-- native command service beside the files
+         +-- RPC relay to the invoking node's backend handler
+
+Observe: next provider request, target files, transcript, usage, and wire frames
 ```
 
-The suite uses scripted providers, temporary backend data and real native Rust
-runners over sockets. A fake managed provisioner drives lifecycle transitions
-using those runners; disk/VM guarantees require a separate Linux/KVM smoke.
-No test calls a real model. Package-level suites separately cover schemas, native
-primitives, provider adapters, authentication and command parsing.
+`backend/src/__tests__/scenarios/World` owns temporary backend storage, a scripted
+provider, paired runners, trace collection, and cleanup. `Driver` opens a
+conversation through the API, connects an `AgentClient`, supplies scripted events,
+and records inference requests and tool results. Assertions inspect what the model
+receives, not just what the client displays.
 
-## World and driver
+A fake managed provisioner starts the same native runner as a local process with
+a retained home directory and a pre-issued token. It records wake, hibernate,
+checkpoint, reset, and growth calls. It does not create a VM, mount disk images,
+or implement filesystem isolation. Its reset clears runner state while retaining
+home; a successful fake reset does not demonstrate replacement of system packages.
 
-One world owns the backend, test users, claimed runners, fake provisioner, wire
-trace and teardown. It can create multiple conversations/projects per user and
-at least two users. Device selection is Cloud, a paired device or a workspace.
-Each driver queues scripted provider events, sends a turn and observes the exact
-input of the next inference request. File assertions read the target's disk;
-conversation state assertions read the cold transcript and scoped backend store.
+Restart tests reuse the data directory and a fixed backend port. Runner restarts
+reuse device identity and persistent directories. Multi-user scenarios must use
+separate authenticated sessions; `World`'s default helper uses one session and
+must not be mistaken for an isolation test by itself.
 
-Restart tests reopen the same data directory and fixed backend port. Runner
-restarts use the same device identity and persistent directory. Fake provisioner
-results do not certify overlayfs, ext4 or Firecracker behavior.
+## Required scenario coverage
 
-## Scenario matrix
+The matrix defines required observations. Existing scenarios cover the named
+paths, while the implementation limits below distinguish narrower assertions and
+future deployment requirements.
 
-| Scenario | Required observation |
+| Path | Required observation |
 |---|---|
-| File workflow | heredoc, read, edit and list agree with files on the selected machine |
-| Output view | long/binary output, nonzero exit and timeout produce bounded model views; full bytes stay in target files |
-| Long jobs | status, live stdin, abort and background jobs preserve identity and leave no orphan processes |
-| Todo | RPC traverses the local relay; per-node storage survives turns and differs between conversations |
-| Subagents | parent/child use the same selected target, independent command state and the correct completion frames |
-| Target switch | Cloud → paired device → Cloud changes per-node context; files stay on each original device |
-| Same-device project switch | cwd changes while both project trees remain accessible; no duplicate attachment |
-| Concurrent conversations | cwd/job handles remain scoped; files are shared on the same user machine |
-| Attachments | provider receives inline media while transcript/browser use authorized blob references |
-| Client disconnect | turn completes in backend; cold and reattached transcripts agree |
-| First Cloud use | no VM for history-only access; concurrent machine requests allocate one logical device and one VM |
-| Multiple Cloud projects | distinct project directories reference the same device; a file in one is readable from another |
-| User isolation | another user cannot resolve, reset or invoke RPC on the first user's Cloud |
-| Managed lifecycle | active turns in any relevant tree and admitted file/process operations prevent idle retirement; wake preserves disks |
-| Project/conversation archive | archiving or deleting metadata does not destroy Cloud or delete its directories |
-| Reset | all affected jobs end; home remains; system returns to selected base; device and project identities remain |
-| Admission races | first use, wake, upload, shutdown, checkpoint and reset serialize without duplicate writers or silent replay |
-| Cross-host RPC | unknown/exited jobs, mismatched node/shell and unauthorized devices are refused; valid callbacks use the invoking Host |
-| Cross-host pipes | binary stdin/stdout stream end-to-end; cancellation reaches the remote job; control sockets carry no bulk payload |
+| File workflow | Create, read, edit, and list agree with bytes on the selected target |
+| Output view | Long/binary output and nonzero exits preserve full target files while bounding model-visible previews |
+| Long jobs | Status, stdin, abort, and background jobs retain attribution and do not leave orphan processes; observation timeout does not cancel work |
+| Command storage | Todo RPC reaches the invoking node; state survives turns and remains separate across nodes and conversations |
+| Subagents | Inherited execution target, independent command state, completion events, and cross-host callbacks retain child identity |
+| Target exchange | Cloud/device/project changes update each node's context; files stay on their original device; same-device changes do not duplicate bindings |
+| Concurrent conversations | cwd and job handles stay scoped while filesystem data is shared on the same machine |
+| Attachments | Provider requests receive authorized bytes; persisted references and blob reads enforce ownership |
+| Client disconnect | Backend work continues and the client can reattach to persisted results |
+| Editing and Fork | History and command-state boundaries are durable and retries are idempotent; external file effects and source children are not replayed or cloned |
+| First Cloud use | History-only access does not boot a machine; concurrent execution joins one allocation and wake |
+| Multiple Cloud projects | Project directories share one user's managed device and can read each other's files |
+| User isolation | Another account cannot resolve, reset, read, or invoke commands on the first account's resources |
+| Lifecycle admission | Active trees and admitted file/process operations prevent idle retirement; wake/reset/checkpoint races do not create duplicate writers |
+| Archive and project removal | Metadata operations preserve machine identity and files; conversation deletion is not a product operation |
+| Reset | Affected jobs end, retained home survives, and the selected system generation becomes authoritative without changing device/project identity |
+| Cross-host RPC and pipes | Valid callbacks use the invoking Host; unauthorized or mismatched job/node/device contexts fail; bulk bytes stream separately from bounded control views |
 
-## Recovery matrix
+Use [Commands](commands.md), [Sessions and targets](sessions-and-targets.md),
+[Storage](storage.md), and [Managed hosts](managed-hosts.md) as the authorities for
+behavior. A fixture must not define an alternative execution contract.
 
-| Failure | Required observation |
+## Failure and recovery
+
+| Failure | Required result |
 |---|---|
-| Backend restart while idle | transcript and command state restore; devices reconnect; new work runs |
-| Backend restart during a job | dispatched call without result becomes an unknown-outcome error, never automatic replay |
-| Runner death | running jobs fail; reconnect enables new jobs; existing disk files remain |
-| Cloud shutdown/wake | system and home changes survive; old processes and temporary output do not |
-| Failed checkpoint publication | previous committed generation remains valid; newer working files remain for retry |
-| Reset before publication | retained home and previous generation remain recoverable; no new work uses an indeterminate system |
-| Reset after publication, boot failure | committed new generation remains authoritative; retry boots it without another reset |
-| Broken guest | backend reset works without a runner connection or functioning guest commands |
-| Worker ownership loss | old writer is fenced before a replacement VM can access writable disks |
+| Idle backend restart | History and command state restore, devices reconnect, and new work runs |
+| Backend restart after dispatch but before a result | The call has an explicit unknown outcome and is never silently replayed |
+| Runner death | Existing jobs fail; reconnect permits new work; persistent files remain |
+| Cloud hibernate/wake | System and home changes survive; old processes and temporary output do not |
+| Checkpoint publication failure | Previous committed generation remains usable; working files remain available for retry |
+| Reset failure before publication | Home and the previous generation remain recoverable; new work cannot use an indeterminate system |
+| Boot failure after reset publication | The new committed generation stays authoritative; retry boots it without resetting again |
+| Broken or disconnected guest | Backend-controlled reset does not depend on guest commands |
+| Worker ownership loss | The old writer is fenced before a replacement gains writable disk access |
 
-## Teardown invariants
+The last row requires distributed ownership infrastructure. It is an acceptance
+requirement for that deployment, not an implemented guarantee of the local suite.
 
-Every world verifies cold/live transcript block equality, bounded runner frames,
-correct job attribution, completed or explicitly disconnected jobs, drained pipes
-and one usage row per completed scripted provider request. Failed assertions name
-the user, conversation and device. No scenario assumes shared machine files imply
-shared conversation command storage or authorization across users.
+## Existing shared checks and their limits
 
-## Real machine verification
+`World.close()` checks that scripted responses were consumed and compares cold
+and live transcript **block IDs in order**. It does not compare every block field.
+Tests for content, media, queue, and command-state correctness must assert those
+values explicitly; ID equality alone cannot establish full transcript recovery.
 
-Environment-gated Linux/KVM tests exercise `direct` and `jailer` launch modes with
-the shipped kernel/base. Install a system package, write a home file, hibernate,
-wake and verify both. Reset and verify the system change is gone while the home
-file survives. Exercise guest boot failure, independent disk growth, interrupted
-saves and reset commit boundaries. Record actual resident memory, peak workload
-memory, cold command-ready latency, wake latency and checkpoint I/O separately.
+For explicitly paired devices, the world totals `job_output` bytes per job,
+checks the bound derived from `JOB_VIEW_BYTES`, and reconciles job starts with
+exit reports or intentionally lost jobs. It also checks named pipe ends against
+`pipe_done` reports, allowing losses only for intentionally stopped runners.
+These are count and byte checks, not a complete proof of job ownership or every
+wire-frame limit. Managed fake runners are not in the world's paired-device map,
+so their equivalent trace coverage needs separate assertions.
 
-The scenario fixtures remain internal to `backend`; runner primitives and Host
-conformance belong to their own package tests. Test doubles for agent contracts
-are test-only and do not define an alternative production execution environment.
+The usage check compares ledger totals with answered scripted requests. Those
+scripts emit a response carrying usage. This does not establish billing for every
+failed/cancelled request or guarantee durable usage delivery; see
+[Provider limits](providers-and-vault.md#implementation-limits).
+
+Cleanup belongs to the world and its provisioner, including assertion failures.
+Drivers detach, runners stop, and the backend closes. Tests introducing new
+streams, processes, or failure injection must also verify their cleanup rather
+than relying only on the common job counters.
+
+## Real machine acceptance
+
+`real-firecracker.e2e.test.ts` is gated by `DEMI_FIRECRACKER_E2E=1` and requires a
+configured Linux/KVM environment. It uses scripted providers with the real
+provisioner. Its tests exercise shared Cloud identity, file/job user identity,
+uploads, retained system/home markers across wake, external reset, and toolchain
+availability across commands. The toolchain test needs network egress but does
+not call a model.
+
+Run acceptance separately in direct and jailer launch modes; a single configured
+run does not cover both. The current test's system marker and disabled Bash binary
+do not establish every broken-guest case, package lifecycle, disk-growth case,
+or publication failure boundary. Exercise those through targeted provisioner and
+image-store fault tests and real-machine checks as appropriate.
+
+Record resident/peak memory, cold command-ready latency, wake latency, and
+checkpoint I/O separately from functional assertions. No fake-provisioner result
+certifies ext4 durability, Firecracker isolation, or distributed writer fencing.
+Setup requirements are in [Cloud setup](../managed-hosts-setup.md).
