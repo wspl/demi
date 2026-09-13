@@ -35,6 +35,8 @@ const props = defineProps<{
   changes: ChangeSources
   /** The workspace the paths are relative to. */
   root: string
+  /** What the tree's caption says in place of the root directory's name. */
+  rootName?: string
   canBack?: boolean
   canForward?: boolean
   /** Fold the unchanged stretches between changes in the diff; off shows whole files. */
@@ -187,6 +189,7 @@ onBeforeUnmount(() => {
           :style="{ flex: `0 0 ${treeWidth}px`, width: `${treeWidth}px` }"
           :source="source"
           :root="root"
+          :root-name="rootName"
           :selected="selected"
           :empty-text="emptyText"
           @select="selected = $event"

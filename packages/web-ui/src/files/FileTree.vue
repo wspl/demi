@@ -23,6 +23,8 @@ import { baseName, isHiddenName, joinPath, normalizePath, parentPath } from './p
 const props = defineProps<{
   source: Pick<FileBrowserSource, 'list'>
   root: string
+  /** What heads the tree in place of the root directory's name. */
+  rootName?: string
   /** The open file, by absolute path. */
   selected: string | null
 }>()
@@ -169,7 +171,7 @@ const rows = computed<TreeRow[]>(() => {
 
 const selectedPath = computed(() => (props.selected ? normalizePath(props.selected) : null))
 const rootListing = computed(() => listings.get(normalizePath(props.root)) ?? null)
-const rootName = computed(() => baseName(props.root) || '/')
+const rootName = computed(() => props.rootName ?? (baseName(props.root) || '/'))
 
 function failureOf(row: TreeRow): FileBrowserFailure | null {
   return row.isDirectory ? (listings.get(row.path)?.failure ?? null) : null
