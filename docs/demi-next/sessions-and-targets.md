@@ -1,117 +1,191 @@
-# Demi Next: Sessions and Execution Targets
+# Conversation execution targets and coordination
 
-Status: target architecture contract.
+A conversation owns one backend agent tree and one execution-target selection.
+Each node keeps its own transcript and command storage. The target determines
+where an action runs; changing it does not relocate conversation state or files.
+This document owns target selection, job identity, switching, and admission.
 
-## Session and target
+## Resolve a target
 
-Every conversation owns one backend agent tree and one execution-target selection.
-The root and every subagent resolve that selection per action through
-`AgentHarness.host`. Transcripts and command storage belong to the conversation,
-independently of its execution device. The backend returns a stable `RemoteHost`
-for each device and uses `RemoteShellEnvironment` for shell operations.
+The root and subagents resolve the conversation's selection for each action.
+The backend supplies a RemoteHost and a remote shell environment for the selected
+device.
 
-| Selection | Resolution | Initial working directory |
-|---|---|---|
-| Cloud (default) | the user's unique managed device | `/home/demi/sessions/<conversationId>` |
-| Device | an explicitly selected paired device | the selected directory, or its reported home |
-| Workspace | the workspace's device and path | the workspace path |
+| Selection | Device | Initial directory |
+| --- | --- | --- |
+| Cloud, the default | The user's unique managed device | `/home/demi/sessions/<conversationId>` |
+| Paired device | The selected device | The selected directory or reported home |
+| Workspace | The workspace's device | The workspace path |
 
-A workspace is a named `(user, device, path)` record. It groups conversations;
-it does not own a machine or establish a filesystem permission boundary.
-New Cloud projects use `/home/demi/projects/<workspaceId>` by default. A user
-can select another existing directory. All of that user's Cloud projects and
-session directories are directly accessible from the same machine. Different
-users never share a managed device or its writable disks.
+A workspace is a named `(user, device, path)` record. It groups conversations but
+does not own a VM or restrict filesystem access. Default Cloud project paths are
+`/home/demi/projects/<workspaceId>`. A user can also select an existing directory.
+All of a user's Cloud directories share one machine; different users have separate
+managed devices and writable disks.
 
-The control record stores one explicit target selection. A Cloud selection can
-exist before the user's managed device is allocated; resolution obtains the
-unique device when an operation needs it. Opening a conversation, reading history
-and inference that requires no machine do not start a VM. A file operation,
-shell job or provider that requires a process obtains the target before execution.
-Cloud creation and wake are idempotent per user. Failure returns an operation
-error; the backend never silently selects another device.
+Resolving target metadata does not allocate or start Cloud. The first file,
+shell, or process-backed provider operation acquires the device. Concurrent first
+uses join one allocation and boot; the control database enforces device uniqueness.
+A failed wake reports an error instead of selecting another target.
 
-## Shell semantics
+Scripts run in embedded brush on the target. Cloud jobs use the guest account;
+paired-device jobs use the device account. Login profiles, cwd between jobs,
+background work, and cancellation follow the [runner job contract](runner.md#shell-jobs).
+[Managed hosts](managed-hosts.md) defines Cloud permissions and persistent volumes.
 
-Every script runs in real bash on the selected device. The runner's job table
-owns execution, streams, cancellation and output files (`runner.md`). A shell
-retains its working directory between jobs; shell variables and background
-processes follow the runner's documented job semantics. Cloud jobs run as `demi`
-with home `/home/demi` and passwordless sudo. Paired-device jobs use the device
-user's environment. Backend-owned execution identifiers are injected per job.
-System installs on Cloud survive ordinary shutdown and wake (`managed-hosts.md`).
+## Bind jobs to their caller
 
-## Switching
+The backend registers a job before sending it. Its live record binds the device,
+root conversation, agent node, shell, and invoking Host. These identities remain
+fixed for that job even when another shell starts or another conversation uses
+the same device.
 
-A user can switch between Cloud, paired devices and workspaces while the entire
-conversation tree is idle and unarchived. The backend reserves tree and file
-admission, validates the destination, commits the selection and advances the
-execution-context revision. Concurrent switches have one winner. The next
-inference of each node observes its own persisted context block describing the
-old and new device and directory; one node cannot consume another's update.
+For example, node `a1` can run jobs on both the main laptop and attached device
+`ci`. The table shows which state a callback accesses:
 
-Switching never copies files. A departed device becomes attached with its last
-cwd; the incoming device leaves the attachment set. A directory change on the
-same device does not add a duplicate attachment. The context explains that old
-output paths belong to their original device. When both directories are on
-Cloud, the old directory remains directly accessible without cross-host routing.
-Already dispatched jobs remain attributed to their original device and node.
+| Job | Execution device | Callback command state | Invoking Host |
+| --- | --- | --- | --- |
+| `j1` from `a1` | laptop | `a1`'s tree and storage | laptop |
+| `j2` from `a1` | ci | `a1`'s tree and storage | ci |
+
+A callback supplies its job reference. The backend checks the authenticated
+device connection and live job record, then validates node/shell identity and
+command arguments. Unknown, completed, or disconnected jobs cannot invoke
+callbacks. A device token does not authorize another user's jobs.
+
+Cross-host jobs preserve their originating conversation, node, and shell.
+Pipe authorization remains bound to the participating device endpoints.
+[Commands](commands.md) defines dispatch; the backend runner registry owns
+product authorization rather than delegating it to the generic Host adapter.
+
+## Switch the main target
+
+Switching requires an unarchived conversation with an idle agent tree and no
+conflicting conversation file operation. A running child counts as active even
+when the root is idle and the child is waiting for a provider.
+
+The backend performs one protected transition:
+
+1. Validate the destination and user ownership.
+2. Reserve the idle tree and conversation file admission.
+3. Commit the target and attachment changes against the expected old selection.
+4. Advance the execution-context revision and release both reservations.
+
+Concurrent changes cannot both replace the same expected selection. The backend
+reports busy or conflict rather than dispatching work against an ambiguous target.
+Turn admission uses the same tree lifecycle boundary as the reservation; checking
+only the root's displayed phase is insufficient.
+
+For a switch from an allocated Cloud device to a laptop, the result is:
+
+| State | Before | After |
+| --- | --- | --- |
+| Main device | Cloud | laptop |
+| Attached devices | None | Cloud, with its last cwd |
+| `report.txt` created on Cloud | On Cloud | Still on Cloud |
+| Conversation transcript | Backend | Same backend transcript |
+
+The incoming device leaves the attachment set. Switching directories on the same
+device does not add a duplicate attachment. Previous paths continue to refer to
+their original device; another directory on the same Cloud machine remains
+locally accessible.
+
+Each node observes the latest execution-context revision before its next inference.
+Its persisted context block describes the switch, attached hosts, and any Cloud
+reset. Observation is node-specific: the root seeing an update does not consume
+it for a child. Product execution context is independent of custom profile prompts.
 
 ## Attached hosts
 
-A conversation has one main device and zero or more attached devices. Device
-identity is unique across these bindings. `conversation_hosts` records
-`conversation_id`, `device_id`, `name`, `cwd` and `attached_at`, with unique keys
-on `(conversation_id, device_id)` and `(conversation_id, name)`.
+The user grants access by attaching devices; the agent cannot attach a device
+for itself. Each device appears once across the main and attached bindings.
+Aliases begin with device names and use numeric suffixes for collisions. Users
+can rename an alias, promote it, or detach it through the [host menu](host-menu.md).
 
-The user attaches and detaches devices; the agent cannot grant itself access.
-Aliases start from device names with a numeric suffix for collisions. The API
-can rename an alias; the host menu presents identity, status, promotion and
-detach (`host-menu.md`). Attached cwd is updated from each completed cross-host
-job and is a starting directory, never a filesystem restriction.
+`demi host list` reports accessible main and attached hosts.
+`demi host shell --host <name|id> <script>` verifies ownership and the conversation
+binding before starting a job. A sleeping Cloud device wakes for work; attachment
+alone does not keep it running. The product picker offers paired devices, while
+Cloud can become attached when it is a departed main target.
 
-`demi host list` reports main and attached devices. `demi host shell --host
-<name|id> <script>` checks the authenticated user's ownership and the conversation
-binding before dispatch. A sleeping Cloud device is woken. An attachment alone
-does not keep it running. The product offers paired devices in its attachment
-picker; Cloud can be attached as a departed main device.
-
-Transfers use ordinary shell pipelines, for example:
+Attached cwd is a starting directory, not a permission boundary. It is updated
+from completed cross-host jobs. Files can be transferred explicitly with ordinary
+shell pipelines:
 
 ```sh
 tar c . | demi host shell --host ci 'tar x -C /work'
 demi host shell --host ci 'tar c -C /work .' | tar x
 ```
 
-The backend brokers byte streams between runners (`runner.md` § Pipes).
-Attachment changes appear in each node's next execution-context update. Revoking
-a paired device terminates its connection and removes its conversation grants.
+The backend brokers the byte streams. Attachment changes advance execution context
+for each node. Revoking a paired device terminates its connection and removes its
+conversation grants.
 
-## Offline targets and recovery
+## Coordinate shared Cloud activity
 
-A sleeping Cloud device wakes on demand. An unavailable paired device or failed
-Cloud wake yields an ordinary tool error; conversation history remains readable.
-No operation is redirected to another machine to hide a failure.
+Conversation and device admission protect different resources:
 
-Before dispatch, the agent persists the tool call as executing. On backend
-recovery, a recorded result stands; a dispatched call without a recorded result
-is completed with an unknown-outcome error and is never automatically replayed.
-It may have had partial external effects. An undispatched operation can proceed
-through the normal resume path. Runner disconnect terminates its jobs according
-to `runner.md`; a reconnect permits new jobs, not resurrection of old processes.
+| Scope | Protected transition | Work that prevents an idle transition |
+| --- | --- | --- |
+| One conversation tree | Target change | Root and child turns, restores, queued work, and wakeups admitted by the tree lifecycle |
+| Conversation files | Target change | File operations such as uploads |
+| One Cloud device | Shutdown or reset | Device operations and relevant agent trees across all of its user's conversations |
 
-## What persists where
+The managed-host lifecycle reserves device admission before changing the machine.
+Tree reservations alone cannot protect a Cloud device shared by multiple
+conversations. Normal wake can be joined. Reset rejects new work with a resetting
+status, interrupts device work, and coordinates the durable disk transition in
+[managed hosts](managed-hosts.md). It does not silently replay interrupted work.
 
-- Conversation trees, transcript blocks and per-node command state live in the
-  backend's conversation database. Target switching, VM shutdown and system
-  reset do not relocate or erase them.
-- Files live on the selected device. Cloud has persistent system and home
-  volumes. Project deletion removes its metadata only after no conversations
-  reference it; it never implicitly deletes its directory or the user's VM.
-  Archiving a conversation does not destroy Cloud or its session directory.
-- Full command output lives on the target, with only the model's bounded view
-  recorded in the transcript. On Cloud, runner output is under `/run/demi` and
-  is temporary; shutdown or reset removes it. Durable results must be written
-  to a persistent directory. Output is not separately copied to the backend.
-- Browser disconnect does not abort a turn. A new client reconnects to the
-  backend and synchronizes the transcript.
+For example, an idle conversation cannot cause Cloud shutdown while another
+conversation is using that same device. A callback remains bound to the job that
+originated it throughout the shared-device activity.
+
+## Recovery and persistence
+
+An unavailable paired device or failed Cloud wake produces an operation error.
+History remains readable, and the backend does not redirect the operation.
+Browser disconnect does not abort the agent turn; a reconnecting browser
+synchronizes with the backend transcript.
+
+The agent persists a tool call as executing before dispatch. Recovery distinguishes
+these cases:
+
+| Stored state | Recovery |
+| --- | --- |
+| Result recorded | Preserve the result. |
+| Dispatched, result absent | Record an unknown outcome; do not automatically replay side effects. |
+| Not dispatched | Continue through the normal resume path. |
+
+Runner connection loss and subsequent reconnection follow the
+[runner lifetime contract](runner.md#command-lifetime). New connections do not
+resurrect old jobs.
+
+Conversation trees and command state remain in backend storage. Working files
+remain on their devices. Cloud system and home volumes persist across ordinary
+shutdown; reset preserves home. Archiving a conversation does not delete its
+session directory or Cloud machine. Workspace deletion requires no referencing
+conversations and deletes metadata, not its directory.
+
+Full shell output stays on the execution device. Cloud runner output under
+`/run/demi` is temporary and can disappear on shutdown or reset. Durable results
+must be written to persistent directories; the backend transcript retains only
+the recorded output view.
+
+## Implementation ownership and checks
+
+The agent owns tree admission and per-node context persistence. Backend
+`conversation/` owns target transitions; `runner/` owns authenticated callback
+routing; `managed/` owns device admission. The Host adapter carries live execution
+facts without knowing user policy. [Package boundaries](../package-boundaries.md)
+defines their dependencies.
+
+Backend scenarios and agent tests must cover child activity during switches,
+concurrent admission, file uploads, cross-user refusal, expired jobs, cross-host
+command storage, per-node context updates, and shared-device reset and recovery.
+Use scripted providers for these checks.
+
+The current runtime has one owning backend process. Multi-worker failover requires
+fencing the old worker's storage and execution authority, in addition to routing
+requests to a user owner. That is a scaled-deployment requirement, not an existing
+single-instance guarantee.
