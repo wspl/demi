@@ -93,7 +93,9 @@ that request and affects nothing else.
 A shell job owns its working directory, environment, IO, and asynchronous work.
 Brush runs inside the resident runner process. Declared roots call the shared
 command dispatcher; external tools such as Git, Python, and Node run as child
-processes.
+processes. Every in-process file write passes through the job's scope, which
+reports the files the job created or modified when it exits
+([Edit tracking](edit-tracking.md)).
 
 The diagram shows ownership, not execution order. Cancelling job A releases its
 work while preserving the runner and job B.
