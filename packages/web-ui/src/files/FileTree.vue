@@ -166,7 +166,7 @@ function activate(row: Row): void {
 </script>
 
 <template>
-  <ScrollArea class="min-h-0 flex-1" viewport-class="p-1">
+  <ScrollArea class="h-full min-h-0" viewport-class="p-1">
     <div role="tree" :aria-label="rootName" class="flex min-h-full flex-col gap-px">
       <div
         v-for="row in rows"
