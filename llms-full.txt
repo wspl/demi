@@ -550,6 +550,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: the `demi-runner` executable, one outbound backend WebSocket per registration, pairing/reconnection, filesystem and process RPC, shell jobs, local command forwarding and installation state.
 - `rust/main.rs` selects runner administration, local command forwarding, isolated shell jobs or Linux guest initialization. Command aliases point to this same executable.
 - `rust/shell.rs` embeds brush and native utilities. Each job runs in its own process, with per-job cwd/environment and output files. Unix process groups and Windows Job Objects release descendants on cancellation.
+- `upstream/brush-core` owns the pinned interpreter adaptations described in `native-shell-dependency.md`: concurrent function/compound pipeline stages and temporary-file here-documents.
 - `rust/dispatch.rs` validates declarations and arguments. `rpc.rs` forwards application callbacks; `native.rs` shares resident services by artifact digest. The runner does not link `demi-package` implementations.
 - `rust/local.rs`, `command_client.rs` and `stdio.rs` own owner-restricted local HTTP/2 transport, input demand and byte streaming. Unix uses domain sockets; Windows uses named pipes.
 - `rust/state.rs`, `management.rs` and `mode.rs` own registration locks, private state, draining and backend connection lifetime. `init.rs` and `volumes.rs` own Linux PID 1 boot and volume operations. Managed state lives under `/run/demi`.

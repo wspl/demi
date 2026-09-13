@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-exclude = ["packages/native-utils/upstream/*"]
+exclude = ["packages/native-utils/upstream/*", "packages/runner/upstream/*"]
 members = ["packages/native-path", "packages/command-protocol", "packages/command-loader", "packages/command-service", "packages/command-runtime", "packages/runner-protocol", "packages/runner", "packages/native-utils", "packages/demi-package"]
 
 [workspace.package]
@@ -26,6 +26,7 @@ lto = "thin"
 strip = true
 
 [patch.crates-io]
+brush-core = { path = "packages/runner/upstream/brush-core" }
 uucore = { path = "packages/native-utils/upstream/uucore" }
 uu_cat = { path = "packages/native-utils/upstream/uu_cat" }
 uucore_procs = { path = "packages/native-utils/upstream/uucore_procs" }

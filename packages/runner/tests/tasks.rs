@@ -105,6 +105,51 @@ async fn shell_job_keeps_full_logs_but_only_sends_head_and_tail_views() {
 }
 
 #[tokio::test]
+async fn functions_and_compound_pipelines_drain_large_output_and_here_documents() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("input"), vec![b'x'; 262_144]).unwrap();
+    let (table, mut receiver) = table(root.path(), 8);
+    table
+        .start(TaskSpec {
+            lifetime: None,
+            id: "pipeline".into(),
+            cwd: root.path().into(),
+            env: BTreeMap::new(),
+            command: TaskCommand::Shell {
+                script: "producer() { cat input; }; value=$(producer | cat | cat); printf '%s\\n' \"${#value}\"; { producer; } | wc -c; (producer) | wc -c; cat <<EOF | wc -c\n$value\nEOF\ncat <<< \"$value\" | wc -c".into(),
+                stdin: None,
+                stdout: None,
+            },
+        })
+        .unwrap();
+    let result = tokio::time::timeout(Duration::from_secs(20), async {
+        let mut output = Vec::new();
+        loop {
+            let message = receiver.recv().await.unwrap();
+            match rmp_serde::from_slice::<Reply>(&message.into_bytes()).unwrap() {
+                Reply::Output { stream, bytes } => {
+                    assert_eq!(stream, "stdout", "{:?}", bytes.0);
+                    output.extend(bytes.0);
+                }
+                Reply::Exit {
+                    exit_code, signal, ..
+                } => {
+                    assert_eq!(exit_code, Some(0.0), "{signal:?}");
+                    return output;
+                }
+            }
+        }
+    })
+    .await;
+    table.close().await;
+    let output = String::from_utf8(result.expect("pipeline deadlocked")).unwrap();
+    assert_eq!(
+        output.split_whitespace().collect::<Vec<_>>(),
+        ["262144", "262144", "262144", "262145", "262145"]
+    );
+}
+
+#[tokio::test]
 async fn cancellation_terminates_a_blocking_native_builtin() {
     let root = tempfile::tempdir().unwrap();
     let (table, mut receiver) = table(root.path(), 8);
