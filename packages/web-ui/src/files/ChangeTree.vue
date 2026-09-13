@@ -1,20 +1,25 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { ShellFileChange } from '@demicodes/agent'
+import { RefreshCw } from '@lucide/vue'
 import CornerDot from '../ui/CornerDot.vue'
+import IconButton from '../ui/IconButton.vue'
+import Tooltip from '../ui/Tooltip.vue'
 import Tree from './Tree.vue'
-import { changeTotals, changeTreeRows, type ChangeTreeRow } from './changes'
+import { changeTreeRows, type ChangeSetSource, type ChangeTreeRow } from './changes'
 import { baseName } from './paths'
 
 /**
  * The changed files as a tree beside the diff, on a `Tree`: directories on
  * the way to them fold and unfold, each file shows how it changed the way
  * the changed-file pills do (a green dot for a new file, a struck name for
- * a deleted one) and its line counts at the row's end; the caption row sums
- * the files and lines up. A click on a file selects it.
+ * a deleted one) and its line counts at the row's end. The caption row
+ * names the workspace and, at its end, holds the control that lists the
+ * changes again when the source can; it turns while a list is on its way.
+ * A list cut short says so under its last row. A click on a file selects
+ * it.
  */
 const props = defineProps<{
-  files: readonly ShellFileChange[]
+  source: ChangeSetSource
   /** The workspace, named at the top. */
   root: string
   /** The selected file, by path relative to the workspace. */
@@ -28,9 +33,9 @@ const emit = defineEmits<{
 }>()
 
 const folded = ref(new Set<string>())
-const rows = computed(() => changeTreeRows(props.files, folded.value))
+const files = computed(() => props.source.files)
+const rows = computed(() => changeTreeRows(files.value, folded.value))
 const rootName = computed(() => baseName(props.root) || '/')
-const totals = computed(() => changeTotals(props.files))
 
 function toggle(path: string): void {
   const next = new Set(folded.value)
@@ -60,11 +65,16 @@ function activate(row: ChangeTreeRow): void {
     @activate="activate"
   >
     <template #captionTrailing>
-      <span v-if="files.length > 0" class="ml-2 inline-flex shrink-0 gap-1 font-mono text-[11px] font-normal tabular-nums">
-        <span>{{ files.length }} {{ files.length === 1 ? 'file' : 'files' }}</span>
-        <span v-if="totals.added > 0" class="text-on-success">+{{ totals.added }}</span>
-        <span v-if="totals.removed > 0" class="text-on-danger">−{{ totals.removed }}</span>
-      </span>
+      <Tooltip v-if="source.refresh" content="Refresh" class="ml-2 shrink-0">
+        <IconButton
+          :icon="RefreshCw"
+          size="xs"
+          variant="ghost"
+          aria-label="Refresh"
+          :spinning="source.refreshing"
+          @click="source.refresh?.()"
+        />
+      </Tooltip>
     </template>
     <template #mark="{ row }">
       <CornerDot v-if="row.change?.kind === 'added'" tone="success" size="xs" ring="editor" />
@@ -82,6 +92,11 @@ function activate(row: ChangeTreeRow): void {
     <template #empty>
       <div class="flex flex-1 select-none items-center justify-center px-4 py-10 text-center text-[13px] text-fg-subtle">
         {{ emptyText }}
+      </div>
+    </template>
+    <template #after>
+      <div v-if="source.truncated" class="select-none px-2 py-2 text-[11px] text-fg-faint">
+        More files changed than the list holds.
       </div>
     </template>
   </Tree>
