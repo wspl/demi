@@ -18,13 +18,19 @@ test(
     try {
       const device = await login(backend, MASTER.email, MASTER.password)
       const path = '/api/settings/preferences'
+      const lastModel = {
+        providerId: 'codex-account', modelId: 'chosen-model',
+        thinkingEffort: 'high', serviceTierId: 'priority',
+      }
       const updates = await Promise.all([
         backend.session.fetch(path, json({ appearance: { theme: 'dark' } })),
         device.fetch(path, json({ shortcuts: { new: '⌘⇧N' } })),
         device.fetch(path, json({ appearance: { fontSize: 17 } })),
+        device.fetch(path, json({ lastModel })),
       ])
-      expect(updates.map(response => response.status)).toEqual([200, 200, 200])
+      expect(updates.map(response => response.status)).toEqual([200, 200, 200, 200])
       const expected = { preferences: {
+          lastModel,
           appearance: { theme: 'dark', fontSize: 17 },
           shortcuts: { new: '⌘⇧N' }
         } }
@@ -37,6 +43,12 @@ test(
         (await device.fetch(path, json({ shortcuts: { arbitrary: 'x' } }))).status
       )
         .toBe(400)
+      expect((await device.fetch(path, json({
+        lastModel: { ...lastModel, providerId: '' },
+      }))).status).toBe(400)
+      expect((await device.fetch(path, json({
+        lastModel: { providerId: 'codex-account', modelId: 'chosen-model' },
+      }))).status).toBe(400)
       await backend.close()
       backend = await openBackend({ dataDir, port: 0 })
       expect(await (await backend.session.fetch(path)).json()).toEqual(expected)
@@ -57,6 +69,7 @@ test(
           json({ shortcuts: { new: null } })
         )).json()
       ).toEqual({ preferences: {
+          lastModel,
           appearance: expected.preferences.appearance,
           shortcuts: {}
         } })
