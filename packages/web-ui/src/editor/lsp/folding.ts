@@ -33,8 +33,15 @@ export function lspFoldingExtension(host: EditorHost): Extension {
       const target = findPluginForResource(host, uri)
       if (!target?.capabilities.foldingRangeProvider) {
         if (version !== requestVersion || cachedUri !== uri) return
+        // Nothing has awaited yet, so this still runs inside the view update
+        // that asked; a dispatch here is refused. Only stale ranges need one,
+        // and it goes out once the update is over.
+        const hadRanges = cachedRanges.length > 0
         cachedRanges = []
-        notify?.()
+        if (hadRanges) {
+          await Promise.resolve()
+          notify?.()
+        }
         return
       }
       const result = await host.lsp.sendRequest(target, 'textDocument/foldingRange', {

@@ -1,3 +1,5 @@
+import type { ShellFileChange } from '@demicodes/agent'
+import type { ChangeSetSource } from '@demicodes/web-ui/files/changes'
 import { createMemoryFileSource, dir, textFile, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserSource } from '@demicodes/web-ui/files/types'
 
@@ -226,7 +228,60 @@ function tree(): MemoryDirectory {
   })
 }
 
-export function createGalleryWorkspace(latencyMs = 200): { source: FileBrowserSource; root: string } {
+/** What the conversation changed: the cookie rename, its test, a new helper, an old one gone, a rename. */
+const cookieBefore = cookieTs
+  .replace("/** The session cookie: renamed from `sid` so the old name stops working. */\nexport const SESSION_COOKIE = 'session'", "export const SESSION_COOKIE = 'sid'")
+  .replace("    sameSite: 'lax',\n", '')
+
+const sidTs = `/** The old cookie name, kept for callers that still import it. */
+export const SID = 'sid'
+`
+
+const authTestBefore = authTest
+  .replace("expect(readSession('session=abc; theme=dark')).toBe('abc')", "expect(readSession('sid=abc; theme=dark')).toBe('abc')")
+  .replace(`
+  test('reads nothing without a header', () => {
+    expect(readSession(undefined)).toBeNull()
+  })
+`, '')
+
+const changedFiles: ShellFileChange[] = [
+  { path: 'src/auth/cookie.ts', kind: 'modified', added: 3, removed: 1 },
+  { path: 'src/auth/session.ts', kind: 'added', added: sessionTs.split('\n').length - 1, removed: 0 },
+  { path: 'src/auth/sid.ts', kind: 'deleted', added: 0, removed: sidTs.split('\n').length - 1 },
+  { path: 'tests/login/auth.test.ts', kind: 'modified', added: 4, removed: 1 },
+  { path: 'docs/guides/getting-started.md', kind: 'renamed', from: 'docs/getting-started.md', added: 0, removed: 0 },
+]
+
+const sidesByPath: Record<string, { original: string; modified: string }> = {
+  'src/auth/cookie.ts': { original: cookieBefore, modified: cookieTs },
+  'src/auth/session.ts': { original: '', modified: sessionTs },
+  'src/auth/sid.ts': { original: sidTs, modified: '' },
+  'tests/login/auth.test.ts': { original: authTestBefore, modified: authTest },
+  'docs/guides/getting-started.md': { original: '# getting-started\n', modified: '# getting-started\n' },
+}
+
+function createGalleryChanges(latencyMs: number): ChangeSetSource {
+  return {
+    files: changedFiles,
+    async read(path, signal) {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, latencyMs)
+        signal?.addEventListener('abort', () => {
+          clearTimeout(timer)
+          reject(new DOMException('Aborted', 'AbortError'))
+        }, { once: true })
+      })
+      const sides = sidesByPath[path]
+      if (!sides) {
+        throw new Error(`No change recorded for ${path}`)
+      }
+      return sides
+    },
+  }
+}
+
+export function createGalleryWorkspace(latencyMs = 200): { source: FileBrowserSource; root: string; changes: ChangeSetSource } {
   const root = tree()
   // The workspace sits under the home directory the laptop fixtures use.
   const home = dir({ Projects: dir({ demi: root }) })
@@ -236,5 +291,5 @@ export function createGalleryWorkspace(latencyMs = 200): { source: FileBrowserSo
     root: dir({ Users: dir({ zan: home }) }),
     latencyMs,
   })
-  return { source, root: WORKSPACE_ROOT }
+  return { source, root: WORKSPACE_ROOT, changes: createGalleryChanges(latencyMs) }
 }
