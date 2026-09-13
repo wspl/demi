@@ -140,7 +140,7 @@ async function localClaudeSpawn(
 ): Promise<ClaudeSpawnHandle> {
   const child = spawn(params.command, params.args ?? [], {
     cwd: params.cwd,
-    env: params.env as NodeJS.ProcessEnv,
+    env: params.env,
     stdio: ['pipe', 'pipe', 'pipe'],
   }) as ChildProcessWithoutNullStreams
 
@@ -205,7 +205,7 @@ class SpawnHandleClaudeTransport implements ClaudeTransport {
     for await (const line of utf8Lines(this.handle.stdout)) {
       if (line.trim() === '')
         continue
-      const parsed = JSON.parse(line)
+      const parsed: unknown = JSON.parse(line)
       this.wireLog.record('out', parsed)
       yield parsed
     }
