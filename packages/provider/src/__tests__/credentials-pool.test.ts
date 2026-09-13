@@ -1,0 +1,97 @@
+import { afterEach, describe, expect, it } from 'bun:test'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  CredentialPoolError,
+  FileCredentialPool
+} from '../credentials-pool'
+
+const stateDirs: string[] = []
+
+async function newPool(): Promise<FileCredentialPool> {
+  const stateDir = await mkdtemp(join(tmpdir(), 'demi-credential-pool-'))
+  stateDirs.push(stateDir)
+  return new FileCredentialPool({
+    stateDir,
+    providerKey: 'test-provider',
+    secretFileName: 'auth.json',
+  })
+}
+
+/** Writes a raw `meta.json`, bypassing the pool's own validation on write. */
+async function writeRawMeta(
+  pool: FileCredentialPool,
+  id: string,
+  meta: unknown
+): Promise<void> {
+  await mkdir(pool.entryDir(id), { recursive: true })
+  await writeFile(pool.metaPath(id), JSON.stringify(meta), 'utf8')
+}
+
+afterEach(async () => {
+  for (const dir of stateDirs.splice(0)) await rm(dir, {
+    recursive: true,
+    force: true
+  })
+})
+
+describe('FileCredentialPool.readMeta', () => {
+  it('returns null when the entry does not exist', async () => {
+    const pool = await newPool()
+    expect(await pool.readMeta('cred-missing')).toBeNull()
+  })
+
+  it('reads back what writeEntry stored', async () => {
+    const pool = await newPool()
+    const meta = {
+      id: 'cred-1',
+      label: 'account@example.com',
+      detail: 'oidc',
+      updatedAt: new Date(1_700_000_000_000).toISOString(),
+      source: 'import',
+      identityKey: 'email:account@example.com',
+    }
+    await pool.writeEntry(meta, '{"token":"secret"}\n')
+    expect(await pool.readMeta('cred-1')).toEqual(meta)
+  })
+
+  it('rejects metadata without a label', async () => {
+    const pool = await newPool()
+    await writeRawMeta(pool, 'cred-1', {
+      id: 'cred-1',
+      updatedAt: new Date(0).toISOString(),
+    })
+    await expect(pool.readMeta('cred-1')).rejects.toThrow(CredentialPoolError)
+  })
+
+  it('rejects a numeric updatedAt instead of substituting a date', async () => {
+    const pool = await newPool()
+    await writeRawMeta(pool, 'cred-1', {
+      id: 'cred-1',
+      label: 'account',
+      updatedAt: 1_700_000_000_000,
+    })
+    await expect(pool.readMeta('cred-1')).rejects.toThrow(/updatedAt/)
+  })
+
+  it('rejects metadata that is not JSON', async () => {
+    const pool = await newPool()
+    await mkdir(pool.entryDir('cred-1'), { recursive: true })
+    await writeFile(pool.metaPath('cred-1'), 'not json', 'utf8')
+    await expect(pool.readMeta('cred-1')).rejects.toThrow(/not JSON/)
+  })
+
+  it('skips a stray file sitting beside the entry directories', async () => {
+    const pool = await newPool()
+    await mkdir(pool.entriesDir(), { recursive: true })
+    await writeFile(join(pool.entriesDir(), '.DS_Store'), 'junk', 'utf8')
+    expect(await pool.listMeta()).toEqual([])
+  })
+
+  it('lists nothing before any entry is written', async () => {
+    const pool = await newPool()
+    expect(await pool.list()).toEqual([])
+    expect(await pool.getActiveId()).toBeNull()
+  })
+})

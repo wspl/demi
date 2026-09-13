@@ -101,10 +101,57 @@ re-implementing several of these:
 - `createProviderQuota`, `ensureQuota`, percent/severity helpers — subscription rate-limit
   surface (`docs/provider-quota.md`).
 - `zeroUsage` (from `@demicodes/core`) — a zeroed `TokenUsage`.
-- `normalizeBaseUrl`, `parseJsonObject`, `numberOrZero` (from `@demicodes/utils`).
+- `normalizeBaseUrl`, `parseJsonObject`, `numberOrZero`, `decodeJwtPayload` (from
+  `@demicodes/utils`; `decodeJwtPayload` returns the claims as `unknown` and verifies
+  nothing — validate what you read from it).
 
 See `packages/provider-anthropic-api` / `packages/provider-google` (HTTP) and
 `packages/provider-codex` (CLI/OAuth) for full references.
+
+## Read the vendor's stream
+
+Everything the vendor sends — SSE frames, CLI stdout, OAuth responses, cached
+credential files — is untrusted input. Decode it with a schema at the point of entry
+and derive your types from that schema. `JSON.parse(text) as VendorEvent` is not a
+check: the first malformed field then surfaces as a `TypeError` deep in a mapper.
+
+Do not copy another provider's decoder. `@demicodes/provider` owns these:
+
+- `readServerSentEvents(body, signal)` / `ServerSentEvent` — SSE framing. One frame's
+  `data:` fields arrive joined with `\n`, so a JSON event is one `data` string. It is
+  the same reader for every provider; there is no vendor variation to fork for.
+- `responses.ts` — the OpenAI Responses API: `decodeResponsesEvent`, the event, item
+  and usage schemas, and `tokenUsageFromResponsesUsage`.
+- `chat-completions.ts` — the OpenAI Chat Completions stream:
+  `decodeChatCompletionChunk`, the chunk/delta/tool-call schemas, and
+  `tokenUsageFromChatCompletionsUsage`. Every OpenAI-compatible gateway uses these.
+- `taggedUnion(branches)` — for a vendor whose events carry their own `type` tag
+  (Anthropic, Claude Code, xAI). Register a schema per tag you map.
+
+`taggedUnion` fixes the failure policy so every provider treats the vendor the same
+way: **an unregistered `type` decodes to `null` and is ignored** (a vendor shipping a
+new event must not break a live stream), while **a registered `type` with a malformed
+payload throws**, with the offending field in the message. Describe only the fields
+you consume, and use `z.looseObject` so the vendor's other fields survive a decode —
+a reasoning item is re-sent to the vendor whole.
+
+```ts
+import { taggedUnion, readServerSentEvents } from '@demicodes/provider'
+import { z } from 'zod'
+
+const acmeEvent = taggedUnion({
+  message_delta: z.looseObject({ type: z.literal('message_delta'), text: z.string() }),
+  message_stop: z.looseObject({ type: z.literal('message_stop') }),
+})
+
+for await (const frame of readServerSentEvents(response.body, request.cancel)) {
+  const event = acmeEvent.parse(JSON.parse(frame.data))
+  if (!event)
+    continue                                  // an event type this adapter does not map
+  if (event.type === 'message_delta')
+    yield { type: 'text_delta', text: event.text }
+}
+```
 
 ## Optional: quota
 
@@ -163,9 +210,11 @@ Full design: [docs/provider-global-credentials.md](../provider-global-credential
 ## Register it
 
 The boundary contract requires concrete providers to depend only on `core`,
-`provider`, and `utils`. Add your package to `docs/package-boundaries.md` and the
-maps in `packages/core/src/__tests__/platform-entrypoints.test.ts`, then pass it to
-the server:
+`provider`, `utils`, and `zod` — declare `zod` in your `package.json`, since the
+decoders above are your own schemas. Add your package to
+`docs/package-boundaries.md` and the maps in
+`packages/core/src/__tests__/platform-entrypoints.test.ts`, then pass it to the
+server:
 
 ```ts
 const server = new AgentServer({ agent, providers: [createEchoProvider()] })
