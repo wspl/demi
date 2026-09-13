@@ -99,8 +99,9 @@ it for a child. Product execution context is independent of custom profile promp
 
 The user grants access by attaching devices; the agent cannot attach a device
 for itself. Each device appears once across the main and attached bindings.
-Aliases begin with device names and use numeric suffixes for collisions. Users
-can rename an alias, promote it, or detach it through the [host menu](host-menu.md).
+Aliases begin with device names and use numeric suffixes for collisions. The
+host API supports alias changes; the [host menu](host-menu.md) exposes promotion
+and detach, without a rename action.
 
 `demi host list` reports accessible main and attached hosts.
 `demi host shell --host <name|id> <script>` verifies ownership and the conversation
