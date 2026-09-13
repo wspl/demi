@@ -238,8 +238,9 @@ function activate(row: Row): void {
          slide up beneath the caption as the tree scrolls past them. -->
     <!-- Above the rows (whose transformed chevrons would otherwise paint through), below the
          scroll area's thumb; `isolate` keeps the caption's layering inside. The surface covers
-         the padding too, so nothing shows through the gaps. -->
-    <div class="pointer-events-none absolute inset-x-0 top-0 isolate z-[1] flex flex-col bg-surface-editor p-1 pb-0">
+         the padding too, so nothing shows through the gaps, and the stack takes the pointer, so
+         the rows it covers get no hover or click through it. -->
+    <div class="absolute inset-x-0 top-0 isolate z-[1] flex flex-col bg-surface-editor p-1 pb-0">
       <div
         class="relative z-10 flex h-7 shrink-0 select-none items-center bg-surface-editor px-2 text-chrome font-medium text-fg-muted"
         :title="root"
@@ -256,7 +257,6 @@ function activate(row: Row): void {
           :style="{ height: `${index === stickyRows.length - 1 ? Math.max(0, TREE_ROW_PX + stickyOffset) : TREE_ROW_PX}px` }"
         >
           <FileTreeRow
-            class="pointer-events-auto"
             :style="index === stickyRows.length - 1 ? { transform: `translateY(${stickyOffset}px)` } : undefined"
             :row="row"
             :selected="row.path === selected"
