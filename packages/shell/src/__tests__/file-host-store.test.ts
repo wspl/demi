@@ -2,6 +2,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { z } from 'zod'
 import { fileHostStore } from '../index'
 import { LocalHost } from '@demicodes/host-remote/testing'
 
@@ -16,9 +17,7 @@ test('fileHostStore reads, writes, lists, and deletes JSON files', async () => {
 
   await store.writeJson('nested/todos.json', [{ text: 'a' }])
 
-  expect(
-    await store.readJson<Array<{ text: string }>>('nested/todos.json')
-  ).toEqual(
+  expect(await store.readJson('nested/todos.json')).toEqual(
     [{
       text: 'a'
     }]
@@ -49,14 +48,16 @@ test(
       }],
     })
 
-    const restored = await store.readJson<{ content: Array<{ source: { data: Uint8Array } }> }>('session/checkpoint.json')
-    expect(restored?.content[0].source.data).toBeInstanceOf(Uint8Array)
-    expect([...(restored?.content[0].source.data ?? [])]).toEqual([
-      137,
-      80,
-      78,
-      71
-    ])
+    const checkpoint = z.object({
+      content: z.array(
+        z.object({ source: z.object({ data: z.instanceof(Uint8Array) }) })
+      ),
+    })
+    const restored = checkpoint.parse(
+      await store.readJson('session/checkpoint.json')
+    )
+    expect(restored.content[0].source.data).toBeInstanceOf(Uint8Array)
+    expect([...restored.content[0].source.data]).toEqual([137, 80, 78, 71])
   }
 )
 
@@ -77,12 +78,9 @@ test(
         payload
       )))
 
-      const restored = await store.readJson<{
-        writer: number;
-        filler: string
-      }>('session/checkpoint.json')
-      if (!restored)
-        throw new Error('checkpoint missing after concurrent writes')
+      // A torn write cannot satisfy the schema, and a missing key reads null.
+      const restored = z.object({ writer: z.number(), filler: z.string() })
+        .parse(await store.readJson('session/checkpoint.json'))
       expect(restored.filler).toBe(`${restored.writer}`.repeat(2_000_000))
       // No temp files may survive a completed write.
       expect(await store.list('')).toEqual(['session/checkpoint.json'])

@@ -58,6 +58,8 @@ export function inProcessRpc(
       parsed: {
         path: invocation.path,
         help: false,
+        // Wire arguments are decoded JSON: they are validated as they are,
+        // without the argv path's text conversion.
         values: validateCommandValues(leaf.input ?? {}, invocation.args),
         json: invocation.json
       },
