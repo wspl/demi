@@ -13,6 +13,7 @@ Backend data directory
 +-- control.sqlite                deployment-wide product records
 +-- conversations/<id>.sqlite     one agent tree per conversation
 +-- blobs/<userId>/<sha256>        user-owned attachment and media bytes
++-- changes/<conversationId>/     a conversation's edited-file contents per command
 +-- machines/<deviceId>/          managed-machine disk generations
 +-- vault/<providerId>/           subscription credential pools
 +-- instance secret              encrypts provider configuration
@@ -29,6 +30,7 @@ accessed through `Host.fs`; they are not conversation database content.
 | `control.sqlite` | Accounts, auth sessions, preferences, devices, workspaces, conversation index, providers, model catalogs, usage, attachment metadata, operation records | `LocalControlService` |
 | Conversation database | Root and subagent nodes, checkpoint state, transcript blocks, command history, conversation Host storage | The backend owning that conversation |
 | User blob namespace | Uploaded bytes and transcript media addressed by content hash | Backend upload and media persistence paths |
+| Change store | Both sides of every file a command edited, bound to the conversation ([Edit tracking](edit-tracking.md#the-change-store)) | Backend command completion |
 | Machine-image store | Published system/home disk generations and their manifests | Managed-host lifecycle |
 | Credential pool | Subscription account secrets and active-account selection | Provider credential implementation invoked by the vault |
 
