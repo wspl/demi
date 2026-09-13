@@ -55,10 +55,11 @@ test(
     expect(result.exitCode).toBe(4)
     expect(result.stdout.delta).toBe('hello\n')
     expect(result.stderr.delta).toBe('oops\n')
-    expect(result.output.chunks).toEqual([
-      { stream: 'stdout', text: 'hello\n' },
-      { stream: 'stderr', text: 'oops\n' }
-    ])
+    // Independent OS pipes preserve each stream's bytes, not inter-stream order.
+    for (const [stream, text] of [['stdout', 'hello\n'], ['stderr', 'oops\n']]) {
+      expect(result.output.chunks.filter(chunk => chunk.stream === stream)
+        .map(chunk => chunk.text).join('')).toBe(text)
+    }
     expect(result.outputDir).toBeDefined()
     expect(result.stdout.path).toBe(join(result.outputDir!, 'stdout.txt'))
     expect(await readFile(join(result.outputDir!, 'stdout.txt'), 'utf8'))
@@ -165,7 +166,7 @@ test(
     const { shell } = await connected()
     const total = 100_000
     const result = await shell.exec({
-      script: `i=0; while [ $i -lt ${total / 10} ]; do printf '%09d\\n' $i; i=$((i+1)); done`,
+      script: `seq -f '%09g' 0 ${total / 10 - 1}`,
       timeoutMs: 10_000
     })
     expect(result.status).toBe('exited')
