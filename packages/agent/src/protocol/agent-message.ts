@@ -1,8 +1,8 @@
+// The AgentMessage contract on its own, so `schemas.ts` can build the frame
+// and block schemas on top of it without an import cycle.
 import type { AgentMessage } from '@demicodes/core'
 import { z } from 'zod'
 import { completionMessageId } from '../store/tree-store'
-import { metadataSchema, modelSelectionSchema } from './schemas'
-import type { PendingInternalSteer } from '../session/steer-queue'
 
 export const agentMessageSchema: z.ZodType<AgentMessage> = z.object({
   id: z.string().min(1),
@@ -12,7 +12,7 @@ export const agentMessageSchema: z.ZodType<AgentMessage> = z.object({
     round: z.number().int().nonnegative(),
   }).strict(),
   recipientId: z.string().min(1),
-  timestamp: z.string().datetime(),
+  timestamp: z.iso.datetime(),
   content: z.string(),
   event: z.discriminatedUnion('type', [
     z.object({ type: z.literal('message') }).strict(),
@@ -29,11 +29,4 @@ export const agentMessageSchema: z.ZodType<AgentMessage> = z.object({
     || message.id === completionMessageId(message.sender.id, message.sender.round),
   'Completion id must identify its source round',
 )
-
-export const pendingInternalSteerSchema: z.ZodType<PendingInternalSteer> = z.object({
-  turnId: z.string().min(1),
-  model: modelSelectionSchema,
-  agentMessage: agentMessageSchema,
-  metadata: metadataSchema.nullable(),
-}).strict()
 
