@@ -203,23 +203,24 @@ watch(() => props.path, () => {
       </span>
     </template>
     <span class="h-full min-w-4 flex-1" @click="startEdit" />
+    <!-- Inside the bar, so the bar stays the component's one root and keeps the host's classes. -->
+    <Popover
+      v-if="mode === 'browse' && source.list"
+      :overlay-store="appOverlayStore"
+      :is-open="menuCrumb !== null"
+      :anchor-el="menuCrumb?.el ?? null"
+      :ignore-els="menuCrumb ? [menuCrumb.el] : []"
+      placement="bottom-start"
+      :offset="4"
+      @close="closeMenu"
+    >
+      <DirectoryMenu
+        v-if="menuDirectory !== null"
+        :source="{ list: source.list }"
+        :path="menuDirectory"
+        :current="menuCrumb?.path"
+        @pick="pick"
+      />
+    </Popover>
   </div>
-  <Popover
-    v-if="mode === 'browse' && source.list"
-    :overlay-store="appOverlayStore"
-    :is-open="menuCrumb !== null"
-    :anchor-el="menuCrumb?.el ?? null"
-    :ignore-els="menuCrumb ? [menuCrumb.el] : []"
-    placement="bottom-start"
-    :offset="4"
-    @close="closeMenu"
-  >
-    <DirectoryMenu
-      v-if="menuDirectory !== null"
-      :source="{ list: source.list }"
-      :path="menuDirectory"
-      :current="menuCrumb?.path"
-      @pick="pick"
-    />
-  </Popover>
 </template>
