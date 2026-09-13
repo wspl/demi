@@ -1,9 +1,15 @@
-import { base64ToBytes, bytesToBase64 } from '@demicodes/utils'
+import { base64ToBytes, bytesToBase64, isRecord } from '@demicodes/utils'
 import type {
   Block,
   ToolResultContentBlock,
   UserContentBlock
 } from '@demicodes/core'
+import {
+  refBase64SourceSchema,
+  refSourceSchema,
+  type RefBase64Source,
+  type RefSource,
+} from '../protocol/schemas'
 
 /**
  * Content-addressed byte storage for transcript media. Databases hold block
@@ -18,32 +24,12 @@ export interface BlobStore {
 
 // ── media externalization ───────────────────────────────────────────
 //
-// The persisted representation of a media source replaces its bytes with a
-// `ref` (the blob's sha256). This form exists only at rest — in-memory blocks
-// and providers always carry inline bytes; a missing blob degrades to a text
-// placeholder at load instead of failing the session.
-
-interface RefSource {
-  type: 'ref'
-  ref: string
-  mediaType: string
-  fileName?: string
-}
-
-interface RefBase64Source {
-  ref: string
-  mediaType: string
-}
-
-function isRefSource(value: unknown): value is RefSource {
-  return typeof value === 'object' && value !== null
-    && (value as { type?: unknown }).type === 'ref'
-}
-
-function isRefBase64Source(value: unknown): value is RefBase64Source {
-  return typeof value === 'object' && value !== null
-    && typeof (value as { ref?: unknown }).ref === 'string'
-}
+// The externalized representation of a media source replaces its bytes with a
+// `ref` (the blob's sha256). It is what a store holds, and what the backend
+// sends the page; in-memory blocks and providers always carry inline bytes.
+// `protocol/schemas.ts` declares both forms. A blob that is gone degrades to a
+// text placeholder instead of failing the session, but a reference that is
+// malformed is corrupt storage and is reported.
 
 /**
  * Returns a copy of the block with every inline media source moved into
@@ -167,9 +153,13 @@ async function rehydrateUserContent(
     !== 'video' && item.type
     !== 'document')
     return item
-  const source: unknown = item.source
-  if (!isRefSource(source))
+  const stored: unknown = item.source
+  // The `type` tag says whether the bytes were externalized; a tagged source
+  // that does not match the contract is corrupt storage, and reporting that is
+  // better than silently handing a half-read reference on.
+  if (!isRecord(stored) || stored['type'] !== 'ref')
     return item
+  const source = refSourceSchema.parse(stored)
   const data = await blobs.get(source.ref)
   if (data === null)
     return missingMediaPlaceholder(item.type, source.ref)
@@ -208,11 +198,13 @@ async function rehydrateToolResult(
 ): Promise<ToolResultContentBlock> {
   if (item.type !== 'image' && item.type !== 'video')
     return item
-  const source: unknown = item.source
-  if (typeof (source as { data?: unknown }).data === 'string')
+  const stored: unknown = item.source
+  // A tool result's source carries no type tag: inline base64 keeps its `data`,
+  // and everything else must be the externalized reference — a source that is
+  // neither is corrupt storage and is reported, not skipped.
+  if (isRecord(stored) && typeof stored['data'] === 'string')
     return item
-  if (!isRefBase64Source(source))
-    return item
+  const source = refBase64SourceSchema.parse(stored)
   const data = await blobs.get(source.ref)
   if (data === null)
     return {

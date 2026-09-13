@@ -35,7 +35,9 @@ session's list changes through the same frame type:
 { type: 'pending_steers', pendingSteers: PendingSteer[] }
 ```
 
-`AgentClient` validates this frame, keeps the current list, and exposes it through
+`AgentClient` validates the frame at ingress with every other server frame
+(`docs/agent-restructure-and-schemas.md` § Boundary inventory), keeps the current
+list, and exposes it through
 `pendingSteers()` and subscription events of type `pending_steers`. Its getter
 returns detached copies. As transcript updates arrive, the client removes pending
 items whose IDs already appear in steer blocks. Equal message text does not mean

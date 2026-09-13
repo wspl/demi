@@ -126,13 +126,28 @@ test(
         }
       },
     ])
-    expect(
-      () => receive(
-        { type: 'pending_steers', pendingSteers: [{ id: 7 }] } as unknown as ServerFrame
-      )
-    ).toThrow()
-    expect(client.pendingSteers()[0]!.id).toBe('binary')
     receive({ type: 'closed' })
     expect(client.pendingSteers()).toEqual([])
+  }
+)
+
+test(
+  'a malformed server frame disconnects the client instead of being acted on',
+  () => {
+    for (const frame of [
+      { type: 'pending_steers', pendingSteers: [{ id: 7 }] },
+      { type: 'transcript_reset', blocks: [{ type: 'text' }], epoch: 'e', revision: 0 },
+    ]) {
+      const { client, receive } = clientHarness()
+      const events: string[] = []
+      client.subscribe((event) => events.push(event.type))
+
+      receive(frame as unknown as ServerFrame)
+
+      expect(events).toEqual(['disconnected'])
+      // The frame was refused whole; nothing from it reached the transcript.
+      expect(client.transcript().blocks).toEqual([])
+      expect(client.pendingSteers()).toEqual([])
+    }
   }
 )

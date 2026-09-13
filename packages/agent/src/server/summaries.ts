@@ -9,7 +9,9 @@ import type {
   ToolResultContentBlock
 } from '@demicodes/core'
 import type { ShellCommandStatusLike } from '../protocol/frames'
+import { shellCommandStatusSchema } from '../protocol/schemas'
 import { ProviderStreamError } from '../session/provider-stream-error'
+import type { ShellToolView } from '../tools'
 
 export function progressToOutput(progress: unknown): ToolResultContentBlock[] {
   return [{ type: 'text', text: progressToText(progress) }]
@@ -27,32 +29,32 @@ function progressToText(progress: unknown): string {
   return safeJsonStringify(progress) ?? String(progress)
 }
 
-// Schemas validate; the original object is what crosses (no lossy clone).
-const shellStreamViewSchema = z.looseObject({
-  path: z.string().optional(),
-  offset: z.number(),
-  delta: z.string(),
-  tail: z.string(),
-  bytes: z.number(),
-  truncated: z.boolean(),
-})
-
-const shellCommandStatusSchema = z.looseObject({
-  shellId: z.string(),
-  commandId: z.string(),
-  status: z.enum(['running', 'exited', 'aborted']),
-  stdout: shellStreamViewSchema,
-  stderr: shellStreamViewSchema,
-  runningMs: z.number(),
-  idleMs: z.number(),
-})
-
-// The stored view of a shell tool call (`ShellToolView`): only the fields the
-// replay needs, so a view from another tool is simply not one.
-const storedShellViewSchema = z.looseObject({
+/**
+ * The `view` a shell tool call stores on its block. `shellToolView` in
+ * `../tools` produces it; a transcript is storage, so every reader — this
+ * replay, the terminal list, the change list — validates it against this one
+ * declaration, and a view from another tool is simply not one.
+ */
+export const shellToolViewSchema: z.ZodType<ShellToolView> = z.object({
   kind: z.literal('shell'),
   status: z.enum(['running', 'exited', 'aborted']),
+  shellId: z.string(),
   commandId: z.string(),
+  exitCode: z.number().optional(),
+  runningMs: z.number(),
+  idleMs: z.number(),
+  chunks: z.array(z.object({
+    stream: z.enum(['stdout', 'stderr']),
+    text: z.string(),
+  })),
+  viewTruncated: z.boolean(),
+  files: z.array(z.object({
+    path: z.string().min(1),
+    kind: z.enum(['added', 'modified', 'deleted', 'renamed']),
+    from: z.string().optional(),
+    added: z.number(),
+    removed: z.number(),
+  })).optional(),
 })
 
 /**
@@ -64,7 +66,7 @@ export function storedRunningCommandIds(blocks: readonly Block[]): string[] {
   for (const block of blocks) {
     if (block.type !== 'tool_call')
       continue
-    const view = storedShellViewSchema.safeParse(block.view)
+    const view = shellToolViewSchema.safeParse(block.view)
     if (!view.success)
       continue
     if (view.data.status === 'running')
@@ -75,6 +77,12 @@ export function storedRunningCommandIds(blocks: readonly Block[]): string[] {
   return [...ids]
 }
 
+/**
+ * A shell command's status, when that is what a tool reported as progress.
+ * Tools are arbitrary, so the channel is `unknown`; the frame's own schema
+ * says what a shell status is, and progress that is not one is not a
+ * `shell_output` frame.
+ */
 export function progressToShellOutput(
   progress: unknown,
 ): {
@@ -88,7 +96,7 @@ export function progressToShellOutput(
   return {
     shellId: parsed.data.shellId,
     commandId: parsed.data.commandId,
-    status: progress as ShellCommandStatusLike,
+    status: parsed.data,
   }
 }
 

@@ -6,8 +6,7 @@ import type {
 } from '@demicodes/core'
 import {
   editRequestSchema,
-  editResultSchema,
-  pendingSteersFrameSchema,
+  serverFrameSchema,
   type EditRequest,
   type TranscriptVersion,
 } from '../protocol/schemas'
@@ -75,7 +74,7 @@ export class AgentClient {
   constructor(transport: AgentClientTransport) {
     this.transport = transport
     this.unsubscribeTransport = transport.onFrame((frame) =>
-      this.handleServerFrame(frame),
+      this.receiveServerFrame(frame),
     )
   }
 
@@ -429,6 +428,24 @@ export class AgentClient {
     }
   }
 
+  /**
+   * The trust boundary on the client side. Whatever the transport carried is
+   * validated against the frame contract before anything acts on it; a frame
+   * that does not match cannot be understood in part, so the connection drops
+   * with the reason instead.
+   */
+  private receiveServerFrame(frame: ServerFrame): void {
+    const parsed = serverFrameSchema.safeParse(frame)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      this.disconnect(new Error(
+        `Invalid server frame${issue ? `: ${issue.path.join('.')} ${issue.message}` : ''}`,
+      ))
+      return
+    }
+    this.handleServerFrame(parsed.data)
+  }
+
   private handleServerFrame(frame: ServerFrame): void {
     switch (frame.type) {
       case 'transcript_reset':
@@ -442,15 +459,9 @@ export class AgentClient {
           blocks: this.blocks,
         })
         return
-      case 'edit_result': {
-        const parsed = editResultSchema.safeParse(frame)
-        if (!parsed.success) {
-          this.disconnect(new Error('Invalid edit result frame'))
-          return
-        }
-        this.emit(parsed.data)
+      case 'edit_result':
+        this.emit(frame)
         return
-      }
       case 'transcript_patch':
         if (this.awaitingResync) {
           return
@@ -503,9 +514,7 @@ export class AgentClient {
         this.emit(frame)
         return
       case 'pending_steers':
-        this.pending = structuredClone(
-          pendingSteersFrameSchema.parse(frame).pendingSteers,
-        )
+        this.pending = structuredClone(frame.pendingSteers)
         this.removeMaterializedSteers(false)
         this.emitPendingSteers()
         return

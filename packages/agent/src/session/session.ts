@@ -38,7 +38,12 @@ import { TranscriptLog, type TranscriptOptions } from '../transcript/transcript'
 import type { TranscriptPatch } from '../protocol/frames'
 import { YieldScheduler } from './yield-scheduler'
 import { agentMessageContent } from '../transcript/agent-message'
-import { agentMessageSchema, pendingInternalSteerSchema } from '../protocol/agent-message'
+import { agentMessageSchema } from '../protocol/agent-message'
+import {
+  blockSchema,
+  modelSelectionSchema,
+  pendingInternalSteerSchema,
+} from '../protocol/schemas'
 import { PendingSteerQueue } from './steer-queue'
 import { CompactionController, type CompactionHost } from './compaction'
 import { ProviderStreamError } from './provider-stream-error'
@@ -206,13 +211,18 @@ export class AgentSession<State> {
       )
     }
     const checkpoint = params.checkpoint
+    // The checkpoint is storage, not a value this process produced: every part
+    // of it that the session then trusts is validated here, and corrupt rows
+    // stop the restore rather than being patched up.
     const session = new AgentSession(
       {
         provider: params.provider,
-        model: checkpoint.model,
+        model: modelSelectionSchema.parse(checkpoint.model),
         cwd: checkpoint.cwd,
         runtime: params.runtime,
-        transcript: checkpoint.transcript,
+        transcript: {
+          blocks: blockSchema.array().parse(checkpoint.transcript.blocks)
+        },
         state: checkpoint.state,
         commandState: commandStateSchema.parse(checkpoint.commandState),
       },

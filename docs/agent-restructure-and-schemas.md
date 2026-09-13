@@ -126,16 +126,24 @@ itself carries the type.
 | 1 | Browser → backend HTTP bodies | blind `c.req.json<{…}>()` casts | zod schema per route module (`backend/src/http/*.ts`), parse before use, 400 with `{code, message}` on failure |
 | 2 | Browser → backend WS frames (`ClientFrame`) | `JSON.parse` + cast; frame types hand-written in `frames.ts` | `agent/src/protocol/schemas.ts` declares the client frames as zod schemas and becomes the **single source of truth**: `frames.ts` derives `ClientFrame` via `z.infer` (no parallel hand-written declaration to keep in sync). Validated once at AgentServer transport ingress (the binding); rejected frames answered with the existing `rejected`/`error` frames |
 | 3 | Runner ⇄ backend protocol messages | cast + scattered field checks; message types hand-written | same single-source treatment: `runner-protocol/src/schemas.ts` declares the messages, `messages.ts` derives the types via `z.infer`; both ends validate their inbound direction (`HostRpcServer` validates backend→runner, `RemoteHost`/backend validates runner→backend) |
-| 4 | Tool progress → shell-output frames | 40-line hand-rolled `isRecord` chain (`progressToShellOutput` / `isShellStreamView`) | zod schema in `agent/src/server/summaries.ts` — the tool-progress channel is legitimately `unknown` (tools are arbitrary), so this is a real boundary, just currently validated by hand |
-| 5 | Server → browser frames | none | **none, by design** — this process constructed them |
-| 6 | Persisted rows read back (`control.sqlite`, conversation DBs, host_store) | typed cast | **cast stays, by design** — single-writer own data; corruption fails loudly, never normalized |
+| 4 | Tool progress → shell-output frames, and the `view` a shell call stores | 40-line hand-rolled `isRecord` chain (`progressToShellOutput` / `isShellStreamView`) | zod schema in `agent/src/server/summaries.ts` — the tool-progress channel is legitimately `unknown` (tools are arbitrary), so this is a real boundary. `shellToolViewSchema` is exported from there: the replay, the page's terminal list, and the page's change list all read the stored view through that one declaration |
+| 5 | Server → browser frames (`ServerFrame`) | cast at every reader, plus a second hand-written schema in `web` | same single-source treatment as #2: `agent/src/protocol/schemas.ts` declares `serverFrameSchema` and `blockSchema`, `frames.ts` derives `ServerFrame` and `TranscriptPatch` via `z.infer`, and `AgentClient` validates every arriving frame at ingress |
+| 6 | Persisted rows read back (`control.sqlite`, conversation DBs, host_store) | typed cast | zod schema at the read — `AgentSession.fromCheckpoint` validates the model selection, the transcript blocks, the command state, the pending envelopes, and the edit receipts. Corrupt data stops the restore; it is never repaired or defaulted |
 | 7 | Provider HTTP responses | provider-kit wire mapping | out of scope here — provider kits own their wire; revisit per-provider if their hand mapping grows validation chains |
 
 Notes:
 
-- The browser-side `AgentClient` does **not** validate server frames: the
-  server is the same product's authoritative peer; a malformed frame is a
-  server bug that should surface as one.
+- `AgentClient` validates server frames at ingress and drops the connection
+  with the field path when one does not match. Trusting the peer left three
+  descriptions of the same union (the agent's hand-written type, `web`'s
+  schema, `web-ui`'s cast) and no check anywhere; one declaration with one
+  check replaces all three.
+- A block's media crosses in one of two forms — the inline bytes a session
+  produces, or the blob reference the backend rewrites them into for the page
+  (`externalizeBlockMedia`). `blockSchema` accepts both and keeps the core
+  `Block` type, which is the view contract every renderer reads;
+  `rehydrateBlockMedia` restores the bytes before a block is replayed to a
+  provider.
 - Portable-codec payloads (`Uint8Array` in fs results) validate with
   `z.instanceof(Uint8Array)` after codec decode — schema order is
   decode-then-validate, never validate the raw JSON envelope.
@@ -143,10 +151,17 @@ Notes:
   dependency-free); schemas live beside their boundary's frame types.
 - Schema-ization must never produce two declarations of one shape: where a
   hand-written type exists today, the schema replaces it as the source of
-  truth and the type becomes `z.infer`. Most `ServerFrame` variants retain
-  their hand-written types. The `pending_steers` variant is derived from its
-  schema and validated by `AgentClient`; its core-owned message type uses a
-  typed validator. See [pending user steers](agent-pending-steers.md).
+  truth and the type becomes `z.infer`. Both frame unions now follow that
+  rule, so `ClientFrame`, `ServerFrame`, `TranscriptPatch` and `SubagentJob`
+  are all `z.infer` of a declaration in `protocol/schemas.ts`. See
+  [pending user steers](agent-pending-steers.md).
+- A tool declares its input once, as a zod schema: the JSON Schema the model
+  is given comes from `z.toJSONSchema`, and the invocation validates against
+  the same object. The dialect declaration `z.toJSONSchema` puts at the root
+  is dropped, because a provider embeds the object in its own request
+  document. A whole-millisecond window (`timeoutMs`, `durationMs`) is
+  therefore declared to the model as `integer`, and a fraction is refused
+  rather than floored.
 
 ### Guard dedup sweep (tier 1)
 

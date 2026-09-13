@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import type { CommandGroup, CommandStorage } from '@demicodes/shell'
+import {
+  defineCommand,
+  type CommandGroup,
+  type CommandStorage
+} from '@demicodes/shell'
 
 const TODO_STORAGE_KEY = 'todos.json'
 
@@ -20,7 +24,7 @@ export function createTodoCommand(): CommandGroup {
     name: 'todo',
     summary: 'Manage an agent-session-scoped task list for coding work.',
     subcommands: [
-      {
+      defineCommand({
         name: 'list',
         summary: 'List todos for the current agent session.',
         successOutput: 'writes the session todo list as raw text, or JSON matching { todos } when --json is passed',
@@ -40,8 +44,8 @@ export function createTodoCommand(): CommandGroup {
           }
           return { exitCode: 0 }
         },
-      },
-      {
+      }),
+      defineCommand({
         name: 'add',
         summary: 'Add a new todo.',
         successOutput: 'writes the created todo as raw text, or JSON matching { todo } when --json is passed',
@@ -55,21 +59,23 @@ export function createTodoCommand(): CommandGroup {
         },
         kind: 'rpc',
         run: async ({ parsed, io, storage }) => {
-          const todos = await storage.updateJson<TodoItem[]>(TODO_STORAGE_KEY, (current) => {
-            const items = TodoListSchema.parse(current ?? [])
-            return [...items, {
-              id: nextTodoId(items),
-              text: String(parsed.values.text),
-              status: 'pending',
-            }]
-          })
+          const todos = TodoListSchema.parse(
+            await storage.updateJson(TODO_STORAGE_KEY, (current) => {
+              const items = TodoListSchema.parse(current ?? [])
+              return [...items, {
+                id: nextTodoId(items),
+                text: parsed.values.text,
+                status: 'pending' as const,
+              }]
+            }),
+          )
           const todo = todos.at(-1)!
           if (parsed.json) await io.stdout(JSON.stringify({ todo }))
           else await io.stdout(`${formatTodo(todo)}\n`)
           return { exitCode: 0 }
         },
-      },
-      {
+      }),
+      defineCommand({
         name: 'update',
         summary: 'Update todo text or status.',
         successOutput: 'writes the updated todo as raw text, or JSON matching { todo } when --json is passed',
@@ -85,16 +91,20 @@ export function createTodoCommand(): CommandGroup {
         },
         kind: 'rpc',
         run: async ({ parsed, io, storage }) => {
-          const todo = await updateTodo(storage, String(parsed.values.id), {
-            ...(parsed.values.text !== undefined ? { text: String(parsed.values.text) } : {}),
-            ...(parsed.values.status !== undefined ? { status: TodoStatus.parse(parsed.values.status) } : {}),
+          const todo = await updateTodo(storage, parsed.values.id, {
+            ...(parsed.values.text !== undefined
+              ? { text: parsed.values.text }
+              : {}),
+            ...(parsed.values.status !== undefined
+              ? { status: parsed.values.status }
+              : {}),
           })
           if (parsed.json) await io.stdout(JSON.stringify({ todo }))
           else await io.stdout(`${formatTodo(todo)}\n`)
           return { exitCode: 0 }
         },
-      },
-      {
+      }),
+      defineCommand({
         name: 'done',
         summary: 'Mark a todo as done.',
         successOutput: 'writes the completed todo as raw text, or JSON matching { todo } when --json is passed',
@@ -108,12 +118,16 @@ export function createTodoCommand(): CommandGroup {
         },
         kind: 'rpc',
         run: async ({ parsed, io, storage }) => {
-          const todo = await updateTodo(storage, String(parsed.values.id), { status: 'done' })
+          const todo = await updateTodo(
+            storage,
+            parsed.values.id,
+            { status: 'done' }
+          )
           if (parsed.json) await io.stdout(JSON.stringify({ todo }))
           else await io.stdout(`${formatTodo(todo)}\n`)
           return { exitCode: 0 }
         },
-      },
+      }),
     ],
   }
 }
@@ -127,13 +141,15 @@ async function updateTodo(
   id: string,
   patch: Partial<Pick<TodoItem, 'text' | 'status'>>,
 ): Promise<TodoItem> {
-  const todos = await storage.updateJson<TodoItem[]>(TODO_STORAGE_KEY, (current) => {
-    const items = TodoListSchema.parse(current ?? [])
-    if (!items.some((todo) => todo.id === id)) {
-      throw new Error(`Todo not found: ${id}`)
-    }
-    return items.map((todo) => todo.id === id ? { ...todo, ...patch } : todo)
-  })
+  const todos = TodoListSchema.parse(
+    await storage.updateJson(TODO_STORAGE_KEY, (current) => {
+      const items = TodoListSchema.parse(current ?? [])
+      if (!items.some((todo) => todo.id === id)) {
+        throw new Error(`Todo not found: ${id}`)
+      }
+      return items.map((todo) => todo.id === id ? { ...todo, ...patch } : todo)
+    }),
+  )
   return todos.find((todo) => todo.id === id)!
 }
 

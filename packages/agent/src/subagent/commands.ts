@@ -3,6 +3,7 @@
 import { createId, errorMessage } from '@demicodes/utils'
 import { z } from 'zod'
 import {
+  defineCommand,
   isCommandGroup,
   type Command,
   type CommandGroup,
@@ -46,7 +47,7 @@ export function subagentCommandNode(
 ): CommandGroup {
   const profileNames = ops.profileNames()
   const subcommands: Command[] = [
-    {
+    defineCommand({
       name: 'spawn',
       kind: 'rpc',
       summary:
@@ -72,7 +73,7 @@ export function subagentCommandNode(
       stdinField: 'prompt',
       output: { json: z.object({ subagentId: z.string() }) },
       run: async ({ parsed, io, storage }) => {
-        const prompt = (parsed.values.prompt as string).trim()
+        const prompt = parsed.values.prompt.trim()
         if (!prompt) {
           await io.stderr('demi agent spawn: prompt must not be empty\n')
           return { exitCode: 1 }
@@ -81,14 +82,10 @@ export function subagentCommandNode(
         try {
           subagentId = await ops.spawn({
             prompt,
-            profileName: parsed.values.profile === undefined
-              ? undefined
-              : String(parsed.values.profile),
-            description: parsed.values.description === undefined
-              ? ''
-              : String(parsed.values.description),
+            profileName: parsed.values.profile,
+            description: parsed.values.description ?? '',
             isSpawnForbidden: parsed.values['no-subagents'] === true,
-          }, String(parsed.values['request-id'] ?? createId()), storage)
+          }, parsed.values['request-id'] ?? createId(), storage)
         } catch (error) {
           await io.stderr(`demi agent spawn: ${errorMessage(error)}\n`)
           return { exitCode: 1 }
@@ -98,8 +95,8 @@ export function subagentCommandNode(
           : `subagentId: ${subagentId}\n`)
         return { exitCode: 0 }
       },
-    },
-    {
+    }),
+    defineCommand({
       name: 'send',
       summary:
         'Deliver information to any live agent in the tree, or parent. A busy recipient incorporates it through internal steering; an idle recipient wakes. Returns after durable acceptance, without waiting for an answer. Use for interim information, questions, or blockers; your final answer is delivered automatically. Archived recipients must be reopened by their parent with resume.',
@@ -115,13 +112,13 @@ export function subagentCommandNode(
       output: { json: z.object({ id: z.string(), accepted: z.boolean() }) },
       kind: 'rpc',
       run: async ({ parsed, io }) => {
-        const message = (parsed.values.message as string).trim()
+        const message = parsed.values.message.trim()
         if (!message) {
           await io.stderr('demi agent send: message must not be empty\n')
           return { exitCode: 1 }
         }
         try {
-          const targetId = await ops.send(String(parsed.values.id), message)
+          const targetId = await ops.send(parsed.values.id, message)
           await io.stdout(parsed.json
             ? `${JSON.stringify({ id: targetId, accepted: true })}\n`
             : `sent to ${targetId}\n`)
@@ -131,8 +128,8 @@ export function subagentCommandNode(
           return { exitCode: 1 }
         }
       },
-    },
-    {
+    }),
+    defineCommand({
       name: 'abort',
       summary: 'Abort one of your own running children and its whole subtree. Siblings are untouched; only the spawning session may abort a child.',
       input: { id: z.string().describe('subagentId from spawn stdout') },
@@ -140,7 +137,7 @@ export function subagentCommandNode(
       output: { json: z.object({ id: z.string(), aborted: z.boolean() }) },
       kind: 'rpc',
       run: async ({ parsed, io }) => {
-        const id = String(parsed.values.id)
+        const id = parsed.values.id
         if (!ops.getRunning(id)) {
           await io.stderr(
             `demi agent abort: "${id}" is not one of your running children\n`
@@ -153,8 +150,8 @@ export function subagentCommandNode(
           : `aborted ${id}\n`)
         return { exitCode: 0 }
       },
-    },
-    {
+    }),
+    defineCommand({
       name: 'resume',
       summary:
         'Revive one of your own archived children with a new user message on its preserved transcript. Return its id immediately after accepting the message; completion is delivered separately to the parent. Use agent send to communicate and agent abort to stop it. Archived ids are in agent list.',
@@ -170,15 +167,19 @@ export function subagentCommandNode(
       output: { json: z.object({ subagentId: z.string() }) },
       kind: 'rpc',
       run: async ({ parsed, io, storage }) => {
-        const id = String(parsed.values.id)
-        const message = (parsed.values.message as string).trim()
+        const message = parsed.values.message.trim()
         if (!message) {
           await io.stderr('demi agent resume: message must not be empty\n')
           return { exitCode: 1 }
         }
         let subagentId: string
         try {
-          subagentId = await ops.resumeArchived(id, message, String(parsed.values['request-id'] ?? createId()), storage)
+          subagentId = await ops.resumeArchived(
+            parsed.values.id,
+            message,
+            parsed.values['request-id'] ?? createId(),
+            storage,
+          )
         } catch (error) {
           await io.stderr(`demi agent resume: ${errorMessage(error)}\n`)
           return { exitCode: 1 }
@@ -188,8 +189,8 @@ export function subagentCommandNode(
           : `subagentId: ${subagentId}\n`)
         return { exitCode: 0 }
       },
-    },
-    {
+    }),
+    defineCommand({
       name: 'list',
       summary:
         'Render the whole session tree from the root down, marking your own position. Live agents show phase, ages, execution, and activity; each node\'s archived (finished, revivable by its parent) children render beneath it. Every age is relative to now. A read, not a wait — not for polling loops.',
@@ -214,8 +215,8 @@ export function subagentCommandNode(
         await io.stdout(`${lines.join('\n')}\n`)
         return { exitCode: 0 }
       },
-    },
-    {
+    }),
+    defineCommand({
       name: 'show',
       summary:
         'Bounded snapshot of any live agent in the tree (root excluded): execution state, recent tool titles with durations, last assistant text. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. A read, not a wait — not for polling loops.',
@@ -224,7 +225,7 @@ export function subagentCommandNode(
       output: { json: z.object({ agent: z.unknown() }) },
       kind: 'rpc',
       run: async ({ parsed, io }) => {
-        const id = String(parsed.values.id)
+        const id = parsed.values.id
         const entry = ops.show(id)
         if (!entry) {
           await io.stderr(`demi agent show: no live agent "${id}"\n`)
@@ -234,7 +235,7 @@ export function subagentCommandNode(
         else await io.stdout(entry.text)
         return { exitCode: 0 }
       },
-    },
+    }),
   ]
   return {
     name: 'agent',
