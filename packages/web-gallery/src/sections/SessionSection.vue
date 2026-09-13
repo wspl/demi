@@ -46,6 +46,9 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import {
   demoImageUrl,
   demoModel,
+  changesDemoBlocks,
+  editingShellTool,
+  fileChangeCases,
   runningShellTool,
   shellTool,
   thinkingText,
@@ -127,6 +130,9 @@ session.queue = [
 ]
 const streamFlow = useTurnFlow({ id: 'gallery-stream' })
 const turnFlow = useTurnFlow({ id: 'gallery-turn' })
+const changesFlow = useTurnFlow({ id: 'gallery-changes', title: 'Cookie rename', blocks: changesDemoBlocks() })
+const changesSurface = ref<{ dockHeight: number }>()
+const changesList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
 const turnSurface = ref<{ dockHeight: number }>()
 const turnList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
 const streamSurface = ref<{ dockHeight: number }>()
@@ -251,6 +257,8 @@ const functionalCollapsed = ref(false)
 const functionalExpanded = ref(true)
 const functionalTool = ref(false)
 const functionalShellExpanded = ref(true)
+const functionalShellFiles = ref(false)
+const changeCaseOpen = reactive<Record<string, boolean>>({})
 const functionalThinkingStartedAt = new Date().toISOString()
 const functionalThinkingEndedAt = new Date(
   Date.parse(functionalThinkingStartedAt) + 8_000,
@@ -955,6 +963,17 @@ function abortTerminal(id: string) {
               />
             </GallerySpecimen>
             <GallerySpecimen
+              variant="shell · changed files"
+              wide
+            >
+              <ToolShellBlock
+                v-model:open="functionalShellFiles"
+                :block="editingShellTool"
+                :input="parseToolInput(editingShellTool.input)"
+                :is-streaming="false"
+              />
+            </GallerySpecimen>
+            <GallerySpecimen
               variant="error"
               wide
             >
@@ -1005,6 +1024,62 @@ function abortTerminal(id: string) {
               />
             </div>
           </GallerySpecimen>
+        </div>
+      </GallerySection>
+    </template>
+
+    <template v-if="view === 'changes'">
+      <GallerySection
+        title="A heavy turn"
+        note="One refactor turn as the transcript shows it: a dozen shell calls in a row, most touching one or two files, one sweeping forty, the last still running."
+      >
+        <div class="gallery-frame h-[44rem] bg-surface">
+          <SessionSurface ref="changesSurface">
+            <div class="flex h-full min-h-0 flex-col">
+              <AgentMessageList
+                ref="changesList"
+                class="min-h-0 flex-1"
+                :conversation-id="changesFlow.state.id"
+                :blocks="changesFlow.state.blocks"
+                :pending-steers="[]"
+                :queue="[]"
+                :phase="changesFlow.state.phase"
+                :load="changesFlow.state.load"
+                :pending-action="changesFlow.state.pendingAction"
+                :bottom-offset="changesSurface?.dockHeight ?? 0"
+                :persisted-scroll-state="undefined"
+                read-only
+              />
+            </div>
+            <template #dock>
+              <SessionDock
+                :show-scroll-to-bottom="!!changesList && !changesList.isAtBottom"
+                @scroll-to-bottom="changesList?.scrollToBottom()"
+              />
+            </template>
+          </SessionSurface>
+        </div>
+      </GallerySection>
+      <GallerySection
+        title="Changed files"
+        note="A shell call lists the files it touched under its row: icon, name and line counts as pills that wrap. A new file carries a green dot; a deleted one is struck through; a renamed one keeps its old path in the tooltip. Past three rows the rest fold into +N files. The row folds the command and output on its own; the pills do not move."
+      >
+        <div class="gallery-frame gallery-block-frame bg-surface">
+          <div class="specimen-stack [--agent-pad-x:0px]">
+            <GallerySpecimen
+              v-for="item in fileChangeCases"
+              :key="item.block.id"
+              :variant="item.variant"
+              wide
+            >
+              <ToolShellBlock
+                v-model:open="changeCaseOpen[item.block.id]"
+                :block="item.block"
+                :input="parseToolInput(item.block.input)"
+                :is-streaming="false"
+              />
+            </GallerySpecimen>
+          </div>
         </div>
       </GallerySection>
     </template>

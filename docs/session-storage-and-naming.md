@@ -79,10 +79,24 @@ interface ShellToolView {
   chunks: ShellOutputChunk[]
   /** True when chunks were capped; the artifact has the full output. */
   viewTruncated: boolean
+  /** Files the command changed, once it has exited; absent while running or when nothing changed. */
+  files?: ShellFileChange[]
   audit?: BashAuditEvent[]
   commandMeta?: CommandMetadataRecord[]  // e.g. file_diffs (unifiedDiff only)
 }
+
+interface ShellFileChange {
+  path: string
+  kind: 'added' | 'modified' | 'deleted' | 'renamed'
+  from?: string              // the path before a rename
+  added: number              // lines added
+  removed: number            // lines removed
+}
 ```
+
+`files` is bounded to one entry per changed path with counts only; diffs stay in
+the command artifact. Producing `files` (comparing the working tree before and
+after the command) is not implemented yet; the web renders it when present.
 
 `SHELL_VIEW_MAX_CHARS = 32_768` (tail-biased: keep the newest chunks). The repeated-
 exec guard result becomes `{ kind: 'repeated_shell_exec', script, count }`.

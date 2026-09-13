@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { Block, ModelSelection } from '@demicodes/core'
-import { shellTerminalOutputChunks } from '../block-helpers'
+import { shellFileChanges, shellTerminalOutputChunks } from '../block-helpers'
 
 test('shell terminal output renders the view chunks', () => {
   const block = tool({
@@ -76,3 +76,25 @@ const model: ModelSelection = {
   thinking: null,
   serviceTierId: null,
 }
+
+test('shell file changes come from the view and drop malformed entries', () => {
+  const block = tool({
+    view: {
+      kind: 'shell',
+      chunks: [],
+      files: [
+        { path: 'a.ts', kind: 'modified', added: 1, removed: 2 },
+        { path: 'b.ts', kind: 'renamed', from: 'c.ts', added: 0, removed: 0 },
+        { path: '', kind: 'added', added: 1, removed: 0 },
+        { path: 'd.ts', kind: 'touched', added: 1, removed: 0 },
+        { path: 'e.ts', kind: 'added', added: '1', removed: 0 },
+        'f.ts',
+      ],
+    },
+  })
+  expect(shellFileChanges(block)).toEqual([
+    { path: 'a.ts', kind: 'modified', added: 1, removed: 2 },
+    { path: 'b.ts', kind: 'renamed', from: 'c.ts', added: 0, removed: 0 },
+  ])
+  expect(shellFileChanges(tool({}))).toEqual([])
+})

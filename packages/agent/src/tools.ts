@@ -332,6 +332,16 @@ export const SHELL_VIEW_MAX_CHARS = 32_768
  * render window and nothing else — what the model saw is what the browser
  * shows; the view never embeds raw or base64 bytes.
  */
+/** One file a command changed in the working tree, with its line counts. */
+export interface ShellFileChange {
+  path: string
+  kind: 'added' | 'modified' | 'deleted' | 'renamed'
+  /** The path before a rename. */
+  from?: string
+  added: number
+  removed: number
+}
+
 export interface ShellToolView {
   kind: 'shell'
   status: 'running' | 'exited' | 'aborted'
@@ -344,6 +354,8 @@ export interface ShellToolView {
   chunks: ShellOutputChunk[]
   /** True when chunks were capped. */
   viewTruncated: boolean
+  /** Files the command changed, once it has exited. Absent while it runs or when nothing changed. */
+  files?: ShellFileChange[]
 }
 
 function shellToolView(result: ShellCommandStatus): ShellToolView {

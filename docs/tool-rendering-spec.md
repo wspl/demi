@@ -118,6 +118,17 @@ transcript lacks interleaved output it may fall back to stdout-then-stderr, but 
 show stderr alone, nor show protocol fields such as `status`, `shellId`, `commandId`, path,
 offset, bytes, or truncation.
 
+When a `shell_exec` view carries `files`, the Web UI lists them under the row, whether the
+row is folded or open, as one wrapped line of pills aligned with the row's label. A pill is
+the file's icon, its base name and its line counts (`+N` green, `−M` red; a count of zero is
+omitted); the full path is the tooltip. A new file carries a small green dot on its icon; a
+deleted file is struck through; a renamed file shows its new name and names the old path in
+the tooltip. Past three rows the remaining pills fold into a `+N files` pill, which opens
+the full list and becomes `Show less`. Folding the file list and folding the command output
+are independent; the pills do not move when the row opens. A call without `files` renders
+exactly as before. `web-ui/agent/blocks/FileChangePills.vue` owns the pills;
+`ToolShellBlock` places them.
+
 `shell_status` may show only a command-status summary. Even when its metadata carries
 output paths, byte counters, or a preview, it must not be rendered as an expandable
 terminal-output block; the user path to output content is to view the corresponding

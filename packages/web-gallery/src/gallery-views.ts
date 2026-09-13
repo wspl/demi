@@ -86,6 +86,10 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
       label: 'Blocks',
     },
     {
+      value: 'changes',
+      label: 'Changes',
+    },
+    {
       value: 'turns',
       label: 'Turns',
     },

@@ -136,6 +136,159 @@ export const runningShellTool = toolCall({
   },
 })
 
+export const editingShellTool = toolCall({
+  id: 'tool-shell-edit',
+  toolName: 'shell_exec',
+  status: 'completed',
+  input: JSON.stringify({
+    script: 'sed -i "s/sid/session/" packages/web/src/auth.test.ts && bun test packages/web/src/auth.test.ts',
+    description: 'Rename the cookie in the login test',
+  }),
+  view: {
+    chunks: [{ stream: 'stdout', text: 'bun test v1.2\n 3 pass\n 0 fail\n' }],
+    files: [
+      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 12, removed: 3 },
+      { path: 'packages/web/src/cookie.ts', kind: 'modified', added: 1, removed: 1 },
+    ],
+  },
+})
+
+function fileChangeCase(
+  id: string,
+  description: string,
+  files: unknown[],
+  status: ToolCallBlock['status'] = 'completed',
+): ToolCallBlock {
+  return toolCall({
+    id: `tool-files-${id}`,
+    toolName: 'shell_exec',
+    status,
+    input: JSON.stringify({ script: `demi-edit ${id}`, description }),
+    view: { chunks: [{ stream: 'stdout', text: 'done\n' }], files },
+  })
+}
+
+/** One shell call per way a command can touch files, from the common single edit to the overflow. */
+export const fileChangeCases: { variant: string, block: ToolCallBlock }[] = [
+  {
+    variant: 'one edit',
+    block: fileChangeCase('one', 'Fix the cookie assertion', [
+      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 1, removed: 1 },
+    ]),
+  },
+  {
+    variant: 'new file',
+    block: fileChangeCase('new', 'Add the session helper', [
+      { path: 'packages/web/src/session.ts', kind: 'added', added: 40, removed: 0 },
+    ]),
+  },
+  {
+    variant: 'append only, not new',
+    block: fileChangeCase('append', 'Note the rename in the readme', [
+      { path: 'packages/web/README.md', kind: 'modified', added: 3, removed: 0 },
+    ]),
+  },
+  {
+    variant: 'deleted',
+    block: fileChangeCase('deleted', 'Remove the old cookie module', [
+      { path: 'packages/web/src/sid.ts', kind: 'deleted', added: 0, removed: 18 },
+    ]),
+  },
+  {
+    variant: 'renamed',
+    block: fileChangeCase('renamed', 'Rename signin to login', [
+      { path: 'packages/web/src/login.ts', kind: 'renamed', from: 'packages/web/src/signin.ts', added: 2, removed: 2 },
+    ]),
+  },
+  {
+    variant: 'a few, mixed',
+    block: fileChangeCase('mixed', 'Move the cookie name into one module', [
+      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 12, removed: 3 },
+      { path: 'packages/web/src/session.ts', kind: 'added', added: 40, removed: 0 },
+      { path: 'packages/web/src/sid.ts', kind: 'deleted', added: 0, removed: 18 },
+      { path: 'packages/web/package.json', kind: 'modified', added: 1, removed: 1 },
+    ]),
+  },
+  {
+    variant: 'long names',
+    block: fileChangeCase('long', 'Regenerate the snapshots', [
+      { path: 'packages/web/src/__snapshots__/auth.test.ts.snap', kind: 'modified', added: 2, removed: 2 },
+      { path: 'packages/web/src/components/ConversationListDropdownItemWithAVeryLongName.vue', kind: 'modified', added: 5, removed: 5 },
+      { path: 'packages/web/src/components/ConversationListDropdownItemWithAVeryLongName.test.ts', kind: 'added', added: 120, removed: 0 },
+    ]),
+  },
+  {
+    variant: 'more than three rows',
+    block: fileChangeCase('many', 'Rename the prop across every widget', Array.from({ length: 40 }, (_, i) => ({
+      path: `packages/web/src/components/Widget${i + 1}.vue`,
+      kind: i % 9 === 0 ? 'added' : 'modified',
+      added: i + 1,
+      removed: i % 3,
+    }))),
+  },
+  {
+    variant: 'still running',
+    block: fileChangeCase('running', 'Apply the codemod', [], 'executing'),
+  },
+  {
+    variant: 'no files',
+    block: fileChangeCase('none', 'List the test files', []),
+  },
+]
+
+const caseBlock = (variant: string): Block =>
+  fileChangeCases.find((item) => item.variant === variant)!.block as Block
+
+/**
+ * A heavy refactor turn: many shell calls in a row, most touching one or two
+ * files, one sweeping forty, one still running. The Changes view shows it
+ * whole so the pills are judged in a real transcript, not one row at a time.
+ */
+export function changesDemoBlocks(): Block[] {
+  const text = (id: string, offsetMs: number, body: string): Block => ({
+    type: 'text',
+    id,
+    createdAt: iso(offsetMs),
+    model: demoModel,
+    text: body,
+  })
+  return [
+    {
+      type: 'user',
+      id: 'changes-user',
+      turnId: 'changes-turn',
+      createdAt: iso(200_000),
+      model: demoModel,
+      content: [{
+        type: 'text',
+        text: 'Rename the `sid` cookie to `session` across packages/web. Keep every widget compiling and regenerate the snapshots.',
+      }],
+      preamble: null,
+    },
+    {
+      type: 'thinking',
+      id: 'changes-thinking',
+      createdAt: iso(190_000),
+      model: demoModel,
+      text: 'The name lives in cookie.ts, the login test, the snapshots and a prop on every widget. Start from the helper, then sweep the widgets with a codemod.',
+      signature: null,
+    },
+    shellTool as Block,
+    caseBlock('one edit'),
+    caseBlock('new file'),
+    caseBlock('deleted'),
+    caseBlock('renamed'),
+    text('changes-text-1', 150_000, 'The helper now writes `session`. Sweeping the widgets next; each one reads the cookie name from a prop.'),
+    caseBlock('more than three rows'),
+    caseBlock('a few, mixed'),
+    caseBlock('no files'),
+    caseBlock('long names'),
+    caseBlock('append only, not new'),
+    text('changes-text-2', 60_000, 'Every widget compiles and the snapshots match. Applying the same codemod to the docs examples.'),
+    caseBlock('still running'),
+  ]
+}
+
 export const yieldTool = toolCall({
   id: 'tool-yield',
   toolName: 'yield',
@@ -279,6 +432,7 @@ export function transcriptDemoBlocks(): Block[] {
       ],
     },
     runningShellTool as Block,
+    editingShellTool as Block,
     statusTool as Block,
     writeTool as Block,
     yieldTool as Block,
