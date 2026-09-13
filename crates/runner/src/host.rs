@@ -1,4 +1,4 @@
-//! Filesystem and process requests for one backend connection.
+//! Filesystem, working-tree and process requests for one backend connection.
 
 use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc};
 
@@ -7,6 +7,7 @@ use tokio::sync::{Semaphore, mpsc};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
+    git::GitService,
     pipes::PipeClient,
     tasks::{TaskCommand, TaskKind, TaskSpec, TaskTable},
 };
@@ -18,6 +19,8 @@ pub struct HostServer {
     output: mpsc::Sender<wire::Outbound>,
     filesystem: TaskTracker,
     filesystem_capacity: Arc<Semaphore>,
+    git: GitService,
+    git_capacity: Arc<Semaphore>,
     cancel: CancellationToken,
 }
 
@@ -45,6 +48,8 @@ impl HostServer {
             output,
             filesystem: TaskTracker::new(),
             filesystem_capacity: Arc::new(Semaphore::new(32)),
+            git: GitService::default(),
+            git_capacity: Arc::new(Semaphore::new(8)),
             cancel: CancellationToken::new(),
         }
     }
@@ -198,6 +203,60 @@ impl HostServer {
                 }
                 Err(error) => {
                     eprintln!("demi-runner: filesystem response encoding failed: {error}");
+                    cancel.cancel();
+                }
+            }
+        });
+        Ok(())
+    }
+
+    /// Working-tree work rides the filesystem tracker with its own admission:
+    /// past eight requests in flight the runner answers `busy` at once.
+    pub fn handle_git(&self, message: Inbound) -> io::Result<()> {
+        let id = message
+            .git_request_id()
+            .ok_or_else(|| io::Error::other("not a working-tree request"))?;
+        if self.cancel.is_cancelled() {
+            return Err(io::Error::other("host connection closed"));
+        }
+        let permit = match self.git_capacity.clone().try_acquire_owned() {
+            Ok(permit) => permit,
+            Err(_) => {
+                let reply = wire::git_error(
+                    id.into(),
+                    "busy".into(),
+                    "runner working-tree request limit reached".into(),
+                )
+                .map_err(io::Error::other)?;
+                return self
+                    .output
+                    .try_send(reply)
+                    .map_err(|error| io::Error::other(error.to_string()));
+            }
+        };
+        let cancel = self.cancel.clone();
+        let output = self.output.clone();
+        let cwd = self.default_cwd.clone();
+        let git = self.git.clone();
+        self.filesystem.spawn(async move {
+            let _permit = permit;
+            match crate::git::handle(&git, &message, &cwd, &cancel)
+                .await
+                .expect("validated working-tree request")
+            {
+                Ok(reply) => {
+                    tokio::select! {
+                        _ = cancel.cancelled() => {},
+                        result = output.send(reply) => {
+                            if result.is_err() {
+                                // The connection owner has closed its receiver.
+                                cancel.cancel();
+                            }
+                        }
+                    }
+                }
+                Err(error) => {
+                    eprintln!("demi-runner: working-tree response encoding failed: {error}");
                     cancel.cancel();
                 }
             }

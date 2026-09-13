@@ -2,6 +2,7 @@ export {
   RUNNER_PROTOCOL_VERSION,
   JOB_VIEW_BYTES,
   FS_OPS,
+  GIT_OPS,
   createRunnerWire,
   type BackendToRunnerMessage,
   type RunnerToBackendMessage,
@@ -15,6 +16,14 @@ export {
   type FsResult,
   type FsCallMessage,
   type FsOkMessage,
+  type GitCallMessage,
+  type GitChange,
+  type GitChanges,
+  type GitErrorCode,
+  type GitOkMessage,
+  type GitOp,
+  type GitParams,
+  type GitResult,
   type JobExitMessage,
   type JobOutput,
   type RpcCallMessage,
@@ -23,5 +32,7 @@ export {
 export {
   runnerToBackendMessageSchema,
   backendToRunnerMessageSchema,
-  fsOps
+  fsOps,
+  gitOps,
+  gitChangeSchema
 } from './schemas'
