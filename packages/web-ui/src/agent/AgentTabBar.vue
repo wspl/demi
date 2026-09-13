@@ -360,14 +360,16 @@ function finishSettle() {
         @rename-cancel="cancelRename"
         @update:rename-value="renameValue = $event"
       />
+      <template #trailing>
+        <IconButton
+          class="titlebar-no-drag ml-1"
+          :icon="Plus"
+          size="sm"
+          variant="ghost"
+          @click="handleCreateTab()"
+        />
+      </template>
     </TabStrip>
-    <IconButton
-      class="titlebar-no-drag ml-1"
-      :icon="Plus"
-      size="sm"
-      variant="ghost"
-      @click="handleCreateTab()"
-    />
     <span class="titlebar-no-drag ml-auto">
       <ConversationListDropdown
         :conversations="historyConversations"

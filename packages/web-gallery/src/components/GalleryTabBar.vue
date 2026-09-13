@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Plus } from '@lucide/vue'
+import { Plus, X } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import TabItem from '@demicodes/web-ui/agent/TabItem.vue'
 import TabStrip from '@demicodes/web-ui/agent/TabStrip.vue'
@@ -12,6 +12,7 @@ import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import Popover from '@demicodes/web-ui/ui/Popover.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import { tabsToClose, type TabCloseScope } from '@demicodes/web-ui/agent/tab-close'
 
 interface GalleryTab {
   tab: ConversationState
@@ -99,6 +100,14 @@ function closeTab(id: string): void {
   }
 }
 
+function closeScope(scope: TabCloseScope): void {
+  if (contextTabId.value === null)
+    return
+  for (const id of tabsToClose(tabs.value.map((entry) => entry.tab), contextTabId.value, scope)) {
+    closeTab(id)
+  }
+}
+
 function addTab(): void {
   const id = `tab-${nextTab.value++}`
   tabs.value.push(createTab(id, 'Untitled', 'done', 'anthropic'))
@@ -160,14 +169,16 @@ function closeContextMenu(): void {
         @rename-cancel="renamingTabId = null"
         @update:rename-value="renameValue = $event"
       />
+      <template #trailing>
+        <Tooltip
+          content="New tab"
+          class="ml-1 flex size-6 shrink-0 cursor-default items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-hover hover:text-fg-muted"
+          @click="addTab"
+        >
+          <Plus :size="14" />
+        </Tooltip>
+      </template>
     </TabStrip>
-    <Tooltip
-      content="New tab"
-      class="ml-1 flex size-6 shrink-0 cursor-default items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-hover hover:text-fg-muted"
-      @click="addTab"
-    >
-      <Plus :size="14" />
-    </Tooltip>
     <span class="ml-auto">
       <ConversationListDropdown
         :conversations="conversations"
@@ -194,9 +205,25 @@ function closeContextMenu(): void {
       <MenuItem label="New tab" @select="addTab" />
       <MenuDivider />
       <MenuItem
+        :icon="X"
         label="Close"
         :disabled="tabs.length === 1"
-        @select="contextTabId && closeTab(contextTabId)"
+        @select="closeScope('self')"
+      />
+      <MenuItem
+        label="Close others"
+        :disabled="tabs.length === 1"
+        @select="closeScope('others')"
+      />
+      <MenuItem
+        label="Close to the right"
+        :disabled="!contextTabId || tabsToClose(tabs.map((entry) => entry.tab), contextTabId, 'right').length === 0"
+        @select="closeScope('right')"
+      />
+      <MenuItem
+        label="Close to the left"
+        :disabled="!contextTabId || tabsToClose(tabs.map((entry) => entry.tab), contextTabId, 'left').length === 0"
+        @select="closeScope('left')"
       />
     </Menu>
   </Popover>
