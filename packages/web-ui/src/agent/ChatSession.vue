@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Archive, PanelRight, PanelRightClose, Play } from '@lucide/vue'
+import { Archive, PanelRight, Play } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/agent/client'
 import { beginMessageEdit, lastEditableUserMessageId, type MessageEditState } from './message-editing'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
@@ -35,7 +35,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   archive: []
-  toggleAside: []
+  openAside: []
   retry: []
   retryLoad: []
   retrySubmission: []
@@ -129,17 +129,17 @@ watch(() => props.conversation.id, close)
         <div class="min-w-0 flex-1">
           <slot name="workspace" />
         </div>
+        <!-- Only while the panel is closed: open, its own fold control closes it. -->
         <Tooltip
-          v-if="asideOpen !== undefined"
-          :content="asideOpen ? 'Close panel' : 'Open panel'"
+          v-if="asideOpen === false"
+          content="Open panel"
           class="shrink-0"
         >
           <IconButton
-            :icon="asideOpen ? PanelRightClose : PanelRight"
+            :icon="PanelRight"
             variant="ghost"
-            :aria-label="asideOpen ? 'Close panel' : 'Open panel'"
-            :aria-pressed="asideOpen"
-            @click="emit('toggleAside')"
+            aria-label="Open panel"
+            @click="emit('openAside')"
           />
         </Tooltip>
       </div>
