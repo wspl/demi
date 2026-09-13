@@ -1,12 +1,11 @@
 import { expect, test } from 'bun:test'
-import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
+import { encodeUtf8 } from '@demicodes/utils'
+import type { InferenceRequest, ResponsesEvent } from '@demicodes/provider'
 import {
   buildCodexResponsesRequestBody,
-  mapCodexResponseEvents,
-  splitCodexToolUseId,
-  usageFromResponse
+  splitCodexToolUseId
 } from '../responses'
-import { parseSseChunk } from '../sse'
+import { parseSseResponseStream } from '../sse'
 
 test(
   'buildCodexResponsesRequestBody converts inference items, tools, thinking, and cache key',
@@ -162,245 +161,44 @@ test('Codex requests preserve catalog reasoning levels without capping them', ()
   }
 })
 
-test(
-  'mapCodexResponseEvents streams thinking, text, tool calls, and usage',
-  async () => {
-    const reasoning = {
-      type: 'reasoning' as const,
-      id: 'rs_1',
-      encrypted_content: 'enc',
-      summary: [{ text: 'thought' }]
-    }
-    const events: ProviderEvent[] = []
+test('the SSE stream decodes Responses events and skips the rest', async () => {
+  const events = await collectSse([
+    'event: ignored\ndata: {"type":"response.output_text.delta","delta":"hi"}\n\n',
+    'data: {"type":"response.created","response":{"id":"resp-1"}}\n\n',
+    'data: [DONE]\n\n',
+  ])
 
-    for await (const event of mapCodexResponseEvents(iter([
-      {
-        type: 'response.output_item.added',
-        item: { type: 'reasoning', id: 'rs_1' }
-      },
-      { type: 'response.reasoning_summary_text.delta', delta: 'think' },
-      { type: 'response.output_item.done', item: reasoning },
-      { type: 'response.output_text.delta', delta: 'hello ' },
-      {
-        type: 'response.output_item.added',
-        item: {
-          type: 'function_call',
-          id: 'fc_1',
-          call_id: 'call_1',
-          name: 'shell_exec',
-          arguments: ''
-        }
-      },
-      {
-        type: 'response.function_call_arguments.delta',
-        item_id: 'fc_1',
-        delta: '{"script":'
-      },
-      {
-        type: 'response.function_call_arguments.done',
-        item_id: 'fc_1',
-        arguments: '{"script":"pwd"}'
-      },
-      {
-        type: 'response.output_item.done',
-        item: {
-          type: 'function_call',
-          id: 'fc_1',
-          call_id: 'call_1',
-          name: 'shell_exec'
-        }
-      },
-      {
-        type: 'response.completed',
-        response: {
-          id: 'resp_1',
-          usage: {
-            input_tokens: 100,
-            output_tokens: 7,
-            input_tokens_details: { cached_tokens: 60 }
-          },
-        },
-      },
-    ]))) {
-      events.push(event)
-    }
+  expect(events).toEqual([
+    { type: 'response.output_text.delta', delta: 'hi' },
+  ])
+})
 
-    expect(events).toEqual([
-      { type: 'thinking_start' },
-      { type: 'thinking_delta', text: 'think' },
-      { type: 'thinking_signature', signature: JSON.stringify(reasoning) },
-      { type: 'text_delta', text: 'hello ' },
-      {
-        type: 'tool_call_requested',
-        toolUseId: 'call_1|fc_1',
-        toolName: 'shell_exec',
-        input: { script: 'pwd' }
-      },
-      {
-        type: 'response',
-        usage: {
-          inputTokens: 40,
-          outputTokens: 7,
-          cacheReadTokens: 60,
-          cacheWriteTokens: 0
-        }
-      },
-    ])
-  }
-)
+test('the SSE stream reports a malformed mapped event', async () => {
+  const stream = collectSse([
+    'data: {"type":"response.output_text.delta","delta":42}\n\n',
+  ])
 
-test(
-  'mapCodexResponseEvents emits final reasoning text when no delta was streamed',
-  async () => {
-    const events: ProviderEvent[] = []
-    const item = {
-      type: 'reasoning' as const,
-      id: 'rs_1',
-      content: [{ text: 'raw reasoning' }],
-      encrypted_content: 'enc'
-    }
+  expect(stream).rejects.toThrow(/delta/)
+})
 
-    for await (const event of mapCodexResponseEvents(iter([
-      {
-        type: 'response.output_item.added',
-        item: { type: 'reasoning', id: 'rs_1' }
-      },
-      { type: 'response.output_item.done', item },
-    ]))) {
-      events.push(event)
-    }
-
-    expect(events).toEqual([
-      { type: 'thinking_start' },
-      { type: 'thinking_delta', text: 'raw reasoning' },
-      { type: 'thinking_signature', signature: JSON.stringify(item) },
-    ])
-  }
-)
-
-test(
-  'mapCodexResponseEvents maps failed and incomplete responses to provider errors',
-  async () => {
-    const events: ProviderEvent[] = []
-    for await (const event of mapCodexResponseEvents(iter([
-      {
-        type: 'response.failed',
-        response: {
-          error: { code: 'context_length_exceeded', message: 'too long' }
-        }
-      },
-      {
-        type: 'response.incomplete',
-        response: { incomplete_details: { reason: 'max_output_tokens' } }
-      },
-      { type: 'error', code: 'server_error', message: 'backend failed' },
-      {
-        type: 'error',
-        error: {
-          type: 'invalid_request_error',
-          message: 'Invalid prompt_cache_key'
-        },
-        status: 400
-      },
-      { type: 'error' },
-    ]))) {
-      events.push(event)
-    }
-
-    expect(events).toEqual([
-      {
-        type: 'error',
-        message: 'too long',
-        code: 'context_length_exceeded',
-        diagnostics: {
-          source: 'stream',
-          providerCode: 'context_length_exceeded'
-        },
-      },
-      {
-        type: 'error',
-        message: 'Incomplete response returned, reason: max_output_tokens',
-        code: 'context_length_exceeded'
-      },
-      {
-        type: 'error',
-        message: 'backend failed',
-        code: 'overloaded',
-        diagnostics: { source: 'stream', providerCode: 'server_error' },
-      },
-      {
-        type: 'error',
-        message: 'Invalid prompt_cache_key',
-        code: 'invalid_request_error',
-        diagnostics: { source: 'stream', providerCode: 'invalid_request_error' },
-      },
-      {
-        type: 'error',
-        message: 'Codex stream error',
-        code: null,
-        diagnostics: { source: 'stream' }
-      },
-    ])
-  }
-)
-
-test(
-  'mapCodexResponseEvents preserves request and response diagnostics',
-  async () => {
-    const events: ProviderEvent[] = []
-    for await (const event of mapCodexResponseEvents(iter([
-      {
-        type: 'response.failed',
-        response: {
-          id: 'resp-1',
-          error: {
-            code: 'server_error',
-            message: 'Failed. Please include the request ID req-1 in your message.',
-          },
-        },
-      },
-    ]))) {
-      events.push(event)
-    }
-
-    expect(events[0]).toMatchObject({
-      code: 'overloaded',
-      diagnostics: {
-        source: 'stream',
-        providerCode: 'server_error',
-        providerRequestId: 'req-1',
-        providerResponseId: 'resp-1',
-      },
-    })
-  }
-)
-
-test('SSE parser and usage helpers handle provider wire format', () => {
-  expect(
-    parseSseChunk('event: ignored\ndata: {"type":"response.created"}\n')
-  ).toEqual(
-    {
-      type: 'response.created'
-    }
-  )
-  expect(parseSseChunk('data: [DONE]\n')).toBeNull()
+test('a Codex tool use id carries the call id and the item id', () => {
   expect(splitCodexToolUseId('call_1|fc_1')).toEqual({
     callId: 'call_1',
     itemId: 'fc_1'
   })
-  expect(usageFromResponse({
-    usage: {
-      input_tokens: 10,
-      output_tokens: 2,
-      input_tokens_details: { cached_tokens: 4 }
-    }
-  })).toEqual({
-    inputTokens: 6,
-    outputTokens: 2,
-    cacheReadTokens: 4,
-    cacheWriteTokens: 0,
-  })
 })
+
+async function collectSse(chunks: string[]): Promise<ResponsesEvent[]> {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encodeUtf8(chunk))
+      controller.close()
+    },
+  })
+  const events: ResponsesEvent[] = []
+  for await (const event of parseSseResponseStream(body)) events.push(event)
+  return events
+}
 
 function makeRequest(items: InferenceRequest['items']): InferenceRequest {
   return {
@@ -420,8 +218,4 @@ function makeRequest(items: InferenceRequest['items']): InferenceRequest {
     thinking: { type: 'effort', effort: 'medium', summary: null },
     cancel: new AbortController().signal,
   }
-}
-
-async function* iter<T>(values: T[]): AsyncIterable<T> {
-  for (const value of values) yield value
 }

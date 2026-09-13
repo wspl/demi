@@ -9,9 +9,6 @@ import {
   buildOpenAIChatCompletionsBody,
   buildOpenAIResponsesBody,
   createOpenAIApiProvider,
-  mapOpenAIChatCompletionStream,
-  mapOpenAIResponseStream,
-  type ServerSentEvent,
 } from '../provider'
 
 test(
@@ -366,89 +363,6 @@ test(
         },
       ],
     })
-  }
-)
-
-test(
-  'OpenAI Responses stream maps thinking, split text, tool call arguments, and usage',
-  async () => {
-    const reasoning = {
-      type: 'reasoning' as const,
-      id: 'rs-1',
-      encrypted_content: 'enc'
-    }
-    const events = await collect(mapOpenAIResponseStream(eventsFromData([
-      {
-        type: 'response.output_item.added',
-        item: { type: 'reasoning', id: 'rs-1' }
-      },
-      { type: 'response.reasoning_text.delta', delta: 'think' },
-      { type: 'response.output_item.done', item: reasoning },
-      { type: 'response.output_text.delta', delta: 'hi ' },
-      { type: 'response.output_text.delta', delta: 'there' },
-      {
-        type: 'response.output_item.added',
-        item: {
-          type: 'function_call',
-          id: 'fc-1',
-          call_id: 'call-1',
-          name: 'read_file',
-          arguments: ''
-        }
-      },
-      {
-        type: 'response.function_call_arguments.delta',
-        item_id: 'fc-1',
-        delta: '{"path"'
-      },
-      {
-        type: 'response.function_call_arguments.done',
-        item_id: 'fc-1',
-        arguments: '{"path":"a.ts"}'
-      },
-      {
-        type: 'response.output_item.done',
-        item: {
-          type: 'function_call',
-          id: 'fc-1',
-          call_id: 'call-1',
-          name: 'read_file'
-        }
-      },
-      {
-        type: 'response.completed',
-        response: {
-          usage: {
-            input_tokens: 12,
-            output_tokens: 5,
-            input_tokens_details: { cached_tokens: 2 },
-          },
-        },
-      },
-    ])))
-
-    expect(events).toEqual([
-      { type: 'thinking_start' },
-      { type: 'thinking_delta', text: 'think' },
-      { type: 'thinking_signature', signature: JSON.stringify(reasoning) },
-      { type: 'text_delta', text: 'hi ' },
-      { type: 'text_delta', text: 'there' },
-      {
-        type: 'tool_call_requested',
-        toolUseId: 'call-1|fc-1',
-        toolName: 'read_file',
-        input: { path: 'a.ts' }
-      },
-      {
-        type: 'response',
-        usage: {
-          inputTokens: 10,
-          outputTokens: 5,
-          cacheReadTokens: 2,
-          cacheWriteTokens: 0
-        }
-      },
-    ])
   }
 )
 
@@ -809,119 +723,71 @@ test(
 )
 
 test(
-  'OpenAI Chat Completions stream maps split text, tool call arguments, and usage',
+  'the Responses runtime maps the SSE body the endpoint streams back',
   async () => {
-    const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
-      {
-        choices: [
-          {
-            delta: {
-              content: 'hi ',
-              tool_calls: [
-                {
-                  index: 0,
-                  id: 'call-1',
-                  function: { name: 'read_file', arguments: '{"path"' }
-                },
-              ],
-            },
-          },
-        ],
-      },
-      {
-        choices: [{
-          delta: {
-            content: 'there',
-            tool_calls: [{ index: 0, function: { arguments: ':"a.ts"}' } }]
-          }
-        }]
-      },
-      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
-      {
-        choices: [],
-        usage: {
-          prompt_tokens: 12,
-          completion_tokens: 5,
-          prompt_tokens_details: { cached_tokens: 2 },
+    const events = await collect(runProvider(
+      { wireApi: 'responses' },
+      sseBody([
+        { type: 'response.output_text.delta', delta: 'hi' },
+        {
+          type: 'response.completed',
+          response: { usage: { input_tokens: 3, output_tokens: 1 } },
         },
-      },
-      '[DONE]',
-    ])))
+      ]),
+    ))
 
     expect(events).toEqual([
-      { type: 'text_delta', text: 'hi ' },
-      { type: 'text_delta', text: 'there' },
-      {
-        type: 'tool_call_requested',
-        toolUseId: 'call-1',
-        toolName: 'read_file',
-        input: { path: 'a.ts' }
-      },
+      { type: 'text_delta', text: 'hi' },
       {
         type: 'response',
         usage: {
-          inputTokens: 10,
-          outputTokens: 5,
-          cacheReadTokens: 2,
-          cacheWriteTokens: 0
-        }
+          inputTokens: 3,
+          outputTokens: 1,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
       },
     ])
   }
 )
 
 test(
-  'OpenAI Chat Completions stream maps compatible reasoning content',
+  'the Chat Completions runtime maps the SSE body the endpoint streams back',
   async () => {
-    const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
-      {
-        choices: [{
-          delta: { role: 'assistant', content: null, reasoning_content: '' }
-        }]
-      },
-      { choices: [{ delta: { content: null, reasoning_content: 'think ' } }] },
-      { choices: [{ delta: { content: null, reasoning_content: 'more' } }] },
-      { choices: [{ delta: { content: 'answer' } }] },
-      '[DONE]',
-    ])))
+    const events = await collect(runProvider(
+      { wireApi: 'chat-completions' },
+      sseBody([{ choices: [{ delta: { content: 'hi' } }] }, '[DONE]']),
+    ))
 
     expect(events).toEqual([
-      { type: 'thinking_start' },
-      { type: 'thinking_delta', text: 'think ' },
-      { type: 'thinking_delta', text: 'more' },
-      { type: 'text_delta', text: 'answer' },
-      { type: 'response', usage: zeroUsage() },
+      { type: 'text_delta', text: 'hi' },
+      {
+        type: 'response',
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+      },
     ])
   }
 )
 
-test(
-  'OpenAI Chat Completions stream preserves malformed tool arguments as a string',
-  async () => {
-    const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
+test('a malformed stream event surfaces as a provider error', async () => {
+  const events = await collect(runProvider(
+    { wireApi: 'responses' },
+    sseBody([
       {
-        choices: [{
-          delta: {
-            tool_calls: [{
-              index: 0,
-              id: 'call-1',
-              function: { name: 'bad', arguments: '{' }
-            }]
-          }
-        }]
+        type: 'response.output_item.done',
+        item: { type: 'message', content: 42 }
       },
-      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
-      '[DONE]',
-    ])))
+    ]),
+  ))
 
-    expect(events[0]).toEqual({
-      type: 'tool_call_requested',
-      toolUseId: 'call-1',
-      toolName: 'bad',
-      input: '{'
-    })
-  }
-)
+  expect(events).toMatchObject([{ type: 'error' }])
+  expect(events[0]?.type === 'error' && events[0].message).toContain('content')
+})
 
 interface CapturedRequest {
   url: string
@@ -990,15 +856,31 @@ async function collect(
   return events
 }
 
-async function* eventsFromData(
-  values: Array<Record<string, unknown> | string>
-): AsyncIterable<ServerSentEvent> {
-  for (const value of values) {
-    yield {
-      event: null,
-      data: [typeof value === 'string' ? value : JSON.stringify(value)]
-    }
-  }
+/** An SSE response body carrying one frame per payload. */
+function sseBody(values: Array<Record<string, unknown> | string>): string {
+  return values
+    .map((value) => {
+      const data = typeof value === 'string' ? value : JSON.stringify(value)
+      return `data: ${data}\n\n`
+    })
+    .join('')
+}
+
+/** Runs one turn against a provider whose endpoint answers with `body`. */
+async function* runProvider(
+  options: Parameters<typeof createOpenAIApiProvider>[0],
+  body: string,
+): AsyncIterable<ProviderEvent> {
+  const provider = createOpenAIApiProvider({
+    ...options,
+    apiKey: () => 'sk-test',
+    fetch: async () => new Response(body, { status: 200 }),
+  })
+  const runtime = await providerRuntime(
+    provider,
+    selection('openai', 'gpt-test')
+  )
+  yield* runtime.run(request())
 }
 
 async function withEnv(

@@ -11,7 +11,8 @@ import {
   clampPromptCacheKey,
   providerRuntime,
   type InferenceRequest,
-  type ProviderSelection
+  type ProviderSelection,
+  type ResponsesEvent
 } from '@demicodes/provider'
 import { runnerShell } from '@demicodes/backend/testing'
 
@@ -24,7 +25,6 @@ import {
   parseCodexProviderConfig,
   responsesUrlForAuth
 } from '../provider'
-import type { CodexResponseStreamEvent } from '../responses'
 import {
   AutoCodexResponsesTransport,
   CodexHttpError,
@@ -64,7 +64,7 @@ function providerSelection(): ProviderSelection {
 }
 
 test(
-  'Codex public provider only accepts serializable config fields',
+  'Codex public provider config takes the serializable fields and nothing else',
   async () => {
     const injectedTransport = new FakeCodexTransport([])
     expect(
@@ -73,8 +73,6 @@ test(
         baseUrl: 'https://example.test/backend-api',
         transport: 'sse',
         headers: { 'x-test': 'ok' },
-        authStore: new StaticCodexAuthStore(chatgptAuth),
-        transportImpl: injectedTransport,
       }),
     ).toEqual({
       codexHome: '/tmp/codex-home',
@@ -82,11 +80,16 @@ test(
       transport: 'sse',
       headers: { 'x-test': 'ok' },
     })
-    expect(() => parseCodexProviderConfig(1)).toThrow('must be an object')
+    expect(parseCodexProviderConfig(undefined)).toEqual({})
+    expect(() => parseCodexProviderConfig(1)).toThrow('expected object')
     expect(() => parseCodexProviderConfig({ transport: 'stdio' }))
       .toThrow('transport')
     expect(() => parseCodexProviderConfig({ headers: { ok: 1 } }))
-      .toThrow('headers.ok')
+      .toThrow('headers')
+    // A runtime-only field in a config file is a mistake, not a field to drop.
+    expect(() => parseCodexProviderConfig({
+      authStore: new StaticCodexAuthStore(chatgptAuth)
+    })).toThrow('authStore')
 
     const provider = await providerRuntime(createCodexProvider({
       authStore: new StaticCodexAuthStore(chatgptAuth),
@@ -388,7 +391,7 @@ test(
         delta: 'sse'
       }]]),
     )
-    const beforeEvents: CodexResponseStreamEvent[] = []
+    const beforeEvents: ResponsesEvent[] = []
     for await (const event of beforeStart.stream(makeTransportRequest())) beforeEvents.push(event)
     expect(beforeEvents).toEqual([{
       type: 'response.output_text.delta',
@@ -405,7 +408,7 @@ test(
         delta: 'sse'
       }]]),
     )
-    const afterEvents: CodexResponseStreamEvent[] = []
+    const afterEvents: ResponsesEvent[] = []
     await expect((async () => {
       for await (const event of afterStart.stream(makeTransportRequest())) afterEvents.push(event)
     })()).rejects.toThrow('after start')
@@ -429,7 +432,7 @@ test(
     const transport = new WebSocketCodexResponsesTransport({
       WebSocket: CapturingWebSocket,
     })
-    const events: CodexResponseStreamEvent[] = []
+    const events: ResponsesEvent[] = []
 
     for await (const event of transport.stream({
       ...makeTransportRequest(),
@@ -459,7 +462,7 @@ test(
     const transport = new WebSocketCodexResponsesTransport({
       WebSocket: NonClosingCompletedWebSocket,
     })
-    const events: CodexResponseStreamEvent[] = []
+    const events: ResponsesEvent[] = []
 
     for await (const event of transport.stream({
       ...makeTransportRequest(),
@@ -683,12 +686,12 @@ class FakeCodexTransport implements CodexResponsesTransport {
   private index = 0
 
   constructor(
-    private readonly scripts: Array<CodexResponseStreamEvent[] | Error>
+    private readonly scripts: Array<ResponsesEvent[] | Error>
   ) {}
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<CodexResponseStreamEvent> {
+  ): AsyncIterable<ResponsesEvent> {
     this.requests.push(request)
     while (this.index < this.scripts.length) {
       const script = this.scripts[this.index]
@@ -707,13 +710,13 @@ class GateCodexTransport implements CodexResponsesTransport {
   private readonly gates: Array<Deferred<void>>
   private readonly started = new Map<number, Deferred<void>>()
 
-  constructor(private readonly scripts: CodexResponseStreamEvent[][]) {
+  constructor(private readonly scripts: ResponsesEvent[][]) {
     this.gates = scripts.map(() => deferred<void>())
   }
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<CodexResponseStreamEvent> {
+  ): AsyncIterable<ResponsesEvent> {
     const index = this.requests.length
     this.requests.push(request)
     this.started.get(index)?.resolve(undefined)
@@ -739,11 +742,11 @@ class GateCodexTransport implements CodexResponsesTransport {
 
 class YieldThenThrowTransport implements CodexResponsesTransport {
   constructor(
-    private readonly events: CodexResponseStreamEvent[],
+    private readonly events: ResponsesEvent[],
     private readonly error: Error,
   ) {}
 
-  async *stream(): AsyncIterable<CodexResponseStreamEvent> {
+  async *stream(): AsyncIterable<ResponsesEvent> {
     for (const event of this.events) yield event
     throw this.error
   }

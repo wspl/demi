@@ -16,6 +16,7 @@ import {
   FileCodexAuthStore,
   defaultCodexHome,
   parseChatGptClaims,
+  parseCodexAuthDotJson,
   parseIdTokenClaims,
   type CodexAuthDotJson,
   type CodexAuthStore,
@@ -124,21 +125,7 @@ export function createCodexCredentials(
     authText: string,
     source: string
   ): Promise<ProviderCredentialInfo> => {
-    let auth: CodexAuthDotJson
-    try {
-      auth = JSON.parse(authText) as CodexAuthDotJson
-    } catch {
-      throw new CodexAuthError(
-        'auth_invalid',
-        'Codex auth material is not valid JSON'
-      )
-    }
-    if (!isRecord(auth))
-      throw new CodexAuthError(
-        'auth_invalid',
-        'Codex auth material is not an object'
-      )
-
+    const auth = parseCodexAuthDotJson(authText, 'Codex auth material')
     const { label, identityKey, detail } = labelFromCodexAuth(auth)
     const existing = identityKey
       ? await pool.findByIdentityKey(identityKey)
@@ -218,10 +205,10 @@ export function createCodexCredentials(
         const text = await readFile(input.authFile, 'utf8')
         return importFromAuthJson(text, `add:authFile:${input.authFile}`)
       }
-      if (isRecord(input.auth) || isRecord(input.authJson)) {
-        const obj = (input.auth ?? input.authJson) as CodexAuthDotJson
+      const authObject = input.auth ?? input.authJson
+      if (isRecord(authObject)) {
         return importFromAuthJson(
-          `${JSON.stringify(obj, null, 2)}\n`,
+          `${JSON.stringify(authObject, null, 2)}\n`,
           'add:auth'
         )
       }
@@ -268,7 +255,7 @@ function labelFromCodexAuth(
     }
   }
   const tokens = auth.tokens
-  if (tokens && typeof tokens === 'object') {
+  if (tokens) {
     const access = nonEmptyString(tokens.access_token)
     const idClaims = parseIdTokenClaims(tokens.id_token)
     const accessClaims = access ? parseChatGptClaims(access) : {

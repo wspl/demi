@@ -76,6 +76,12 @@ export {
   type ChatCompletionsUsage,
 } from './chat-completions'
 export {
+  decodeResponsesFrame,
+  mapResponsesEvents,
+  mapResponsesStream,
+} from './responses-stream'
+export { mapChatCompletionsStream } from './chat-completions-stream'
+export {
   clampUsedPercent,
   createProviderQuota,
   ensureQuota,

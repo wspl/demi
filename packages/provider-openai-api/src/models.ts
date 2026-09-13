@@ -1,20 +1,34 @@
+import { z } from 'zod'
 import type { ProviderModel, ProviderModelList } from '@demicodes/provider'
 
-export interface OpenAIApiModelOptions {
-  id: string
-  displayName?: string
-  description?: string
-  contextWindow: number
-  outputLimit?: number | null
-  supportsTools?: boolean | null
-  supportsAttachments?: boolean | null
-  supportsReasoning?: boolean | null
-  supportedThinkingEfforts?: string[] | null
-  defaultThinkingEffort?: string | null
-  canDisableThinking?: boolean | null
-  serviceTiers?: ProviderModel['serviceTiers']
-  defaultServiceTierId?: string | null
-}
+const serviceTierSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  description: z.string().optional(),
+  fast: z.boolean(),
+})
+
+/**
+ * One model of an OpenAI-compatible endpoint, as its configuration states it.
+ * A window or limit is a count of tokens, so it is a positive integer.
+ */
+export const openAIApiModelOptionsSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1).optional(),
+  description: z.string().optional(),
+  contextWindow: z.number().int().positive(),
+  outputLimit: z.number().int().positive().nullish(),
+  supportsTools: z.boolean().nullish(),
+  supportsAttachments: z.boolean().nullish(),
+  supportsReasoning: z.boolean().nullish(),
+  supportedThinkingEfforts: z.array(z.string().min(1)).nullish(),
+  defaultThinkingEffort: z.string().min(1).nullish(),
+  canDisableThinking: z.boolean().nullish(),
+  serviceTiers: z.array(serviceTierSchema).nullish(),
+  defaultServiceTierId: z.string().min(1).nullish(),
+})
+
+export type OpenAIApiModelOptions = z.infer<typeof openAIApiModelOptionsSchema>
 
 const SOURCE_FETCHED_AT = '1970-01-01T00:00:00.000Z'
 
@@ -95,34 +109,31 @@ export function modelListFromOpenAIApiModels(
 ): ProviderModelList {
   const sourceFetchedAt = options.sourceFetchedAt ?? new Date().toISOString()
   const stale = options.stale === true
-  const mapped = models.map((model): ProviderModel => ({
-    providerId: options.providerId,
-    id: model.id,
-    displayName: model.displayName ?? model.id,
-    description: model.description,
-    contextWindow: positiveInteger(
-      model.contextWindow,
-      `models[${model.id}].contextWindow`
-    ),
-    outputLimit: model.outputLimit == null ? null : positiveInteger(
-      model.outputLimit,
-      `models[${model.id}].outputLimit`
-    ),
-    supportsTools: model.supportsTools ?? null,
-    supportsAttachments: model.supportsAttachments ?? null,
-    supportsReasoning: model.supportsReasoning ?? null,
-    supportedThinkingEfforts: model.supportedThinkingEfforts
-      ? [...model.supportedThinkingEfforts]
-      : null,
-    defaultThinkingEffort: model.defaultThinkingEffort ?? null,
-    canDisableThinking: model.canDisableThinking ?? null,
-    serviceTiers: model.serviceTiers ? model.serviceTiers.map((tier) => ({
-      ...tier
-    })) : model.serviceTiers,
-    defaultServiceTierId: model.defaultServiceTierId ?? null,
-    sourceFetchedAt,
-    stale,
-  }))
+  const mapped = models.map((entry): ProviderModel => {
+    const model = openAIApiModelOptionsSchema.parse(entry)
+    return {
+      providerId: options.providerId,
+      id: model.id,
+      displayName: model.displayName ?? model.id,
+      description: model.description,
+      contextWindow: model.contextWindow,
+      outputLimit: model.outputLimit ?? null,
+      supportsTools: model.supportsTools ?? null,
+      supportsAttachments: model.supportsAttachments ?? null,
+      supportsReasoning: model.supportsReasoning ?? null,
+      supportedThinkingEfforts: model.supportedThinkingEfforts
+        ? [...model.supportedThinkingEfforts]
+        : null,
+      defaultThinkingEffort: model.defaultThinkingEffort ?? null,
+      canDisableThinking: model.canDisableThinking ?? null,
+      serviceTiers: model.serviceTiers
+        ? model.serviceTiers.map((tier) => ({ ...tier }))
+        : model.serviceTiers,
+      defaultServiceTierId: model.defaultServiceTierId ?? null,
+      sourceFetchedAt,
+      stale,
+    }
+  })
   return {
     providerId: options.providerId,
     models: mapped,
@@ -135,10 +146,4 @@ export function modelListFromOpenAIApiModels(
     sourceFetchedAt,
     stale,
   }
-}
-
-function positiveInteger(value: number, field: string): number {
-  if (!Number.isInteger(value) || value <= 0)
-    throw new Error(`${field} must be a positive integer`)
-  return value
 }

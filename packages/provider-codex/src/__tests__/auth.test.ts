@@ -156,6 +156,38 @@ test(
   }
 )
 
+test(
+  'FileCodexAuthStore separates a malformed auth.json from a missing login',
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'demi-codex-malformed-'))
+    const authFile = join(dir, 'auth.json')
+    try {
+      const store = new FileCodexAuthStore({ codexHome: dir })
+
+      await writeFile(authFile, JSON.stringify({ tokens: 42 }))
+      expect(store.resolveAuth()).rejects.toMatchObject({
+        code: 'auth_invalid',
+        name: 'CodexAuthError',
+      })
+      expect((await store.status()).status).toBe('error')
+
+      await writeFile(authFile, '{ not json')
+      expect(store.resolveAuth()).rejects.toMatchObject({
+        code: 'auth_invalid'
+      })
+
+      // No tokens at all is a login that has not happened, not corruption.
+      await writeFile(authFile, JSON.stringify({ auth_mode: 'chatgpt' }))
+      expect(store.resolveAuth()).rejects.toMatchObject({
+        code: 'auth_missing'
+      })
+      expect((await store.status()).status).toBe('unauthenticated')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }
+)
+
 test('JWT helpers parse ChatGPT account claims conservatively', () => {
   const token = jwt({
     exp: 1_900_000_000,
