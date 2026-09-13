@@ -1,5 +1,5 @@
 import type { Block, TokenUsage } from '@demicodes/core'
-import type { ShellFileChange, ShellToolView } from '@demicodes/agent'
+import type { ShellToolView } from '@demicodes/agent'
 import { shellToolViewSchema } from '@demicodes/agent/client'
 import { Allow, parse } from 'partial-json'
 import { z } from 'zod'
@@ -85,5 +85,3 @@ export function parseToolInput(raw: string): Record<string, unknown> {
     return {}
   }
 }
-
-export type { ShellFileChange }

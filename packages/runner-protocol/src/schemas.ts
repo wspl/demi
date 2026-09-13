@@ -198,7 +198,7 @@ const fsOkMessageSchema = z.union(
   FS_OPS.map(fsOkSchema) as unknown as [z.ZodType<FsOkMessage>, ...z.ZodType<FsOkMessage>[]]
 )
 
-/** One changed file of a working tree; the shape `ShellFileChange` in `@demicodes/agent` carries. */
+/** One changed file of a working tree; the shape `ChangeFile` in `@demicodes/web-ui` renders. */
 export const gitChangeSchema = z.strictObject({
   path: z.string(),
   kind: z.enum(['added', 'modified', 'deleted', 'renamed']),
