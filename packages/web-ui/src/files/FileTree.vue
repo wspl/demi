@@ -219,26 +219,28 @@ function activate(row: Row): void {
 
 <template>
   <ScrollArea ref="scrollArea" class="h-full min-h-0" viewport-class="p-1" @scroll="updateSticky">
-    <!-- The pinned stack: the caption, then the selected file's directories that have scrolled out above. -->
-    <div
-      class="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col gap-px bg-surface-editor p-1 pb-0"
-      :style="{ transform: `translateY(${stickyOffset}px)` }"
-    >
+    <!-- The pinned stack: the caption stays put; the selected file's directories under it
+         slide up beneath the caption as the tree scrolls past them. -->
+    <div class="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col p-1 pb-0">
       <div
-        class="flex h-7 shrink-0 select-none items-center px-2 text-chrome font-medium text-fg-muted"
+        class="relative z-10 flex h-7 shrink-0 select-none items-center bg-surface-editor px-2 text-chrome font-medium text-fg-muted"
         :title="root"
       >
         <span class="truncate">{{ rootName }}</span>
       </div>
-      <FileTreeRow
-        v-for="row in stickyRows"
-        :key="row.path"
-        class="pointer-events-auto"
-        :row="row"
-        :selected="row.path === selected"
-        v-bind="rowState(row)"
-        @activate="scrollToRow(row.path)"
-      />
+      <div class="overflow-hidden">
+        <div class="flex flex-col gap-px bg-surface-editor pt-px" :style="{ transform: `translateY(${stickyOffset}px)` }">
+          <FileTreeRow
+            v-for="row in stickyRows"
+            :key="row.path"
+            class="pointer-events-auto"
+            :row="row"
+            :selected="row.path === selected"
+            v-bind="rowState(row)"
+            @activate="scrollToRow(row.path)"
+          />
+        </div>
+      </div>
     </div>
     <!-- The caption's room; the pinned copy above covers it. -->
     <div class="h-7 shrink-0" aria-hidden="true" />
