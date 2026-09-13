@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Copy, File, FileDiff, PanelRightClose, Plus, X } from '@lucide/vue'
 import { useContextMenuOwner } from '../composables/useContextMenuOwner'
 import { reportError } from '../infra/errors'
@@ -14,7 +14,9 @@ import MenuItem from '../ui/MenuItem.vue'
 import Popover from '../ui/Popover.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from '../files/FileIcon.vue'
+import ChangeView from '../files/ChangeView.vue'
 import FileView from '../files/FileView.vue'
+import type { ChangeSetSource } from '../files/changes'
 import { joinPath, normalizePath } from '../files/paths'
 import type { FileBrowserSource } from '../files/types'
 import TabItem from './TabItem.vue'
@@ -38,14 +40,15 @@ import { changeWorkTab, workTabTitle, type WorkTab } from './work-panel'
  * and the root its paths are relative to. The file view's tree shows the
  * workspace; a file chosen there, or in a crumb's menu, is asked for with
  * `open`, and the host shows it in the active tab in place (see
- * `showFileInTab`), so Back and Forward walk that tab's files. Whether the
- * tree shows is one choice for the panel, not per tab. Without a workspace, and
- * for the change tab, the content pane is a placeholder.
+ * `showFileInTab`), so Back and Forward walk that tab's files. The change
+ * tab shows the workspace's changes when the host gives them. Whether the
+ * trees show is one choice for the panel, not per tab. Without a workspace
+ * the content pane is a placeholder.
  */
 const props = defineProps<{
   tabs: readonly WorkTab[]
   activeId: string | null
-  workspace?: { source: FileBrowserSource; root: string }
+  workspace?: { source: FileBrowserSource; root: string; changes?: ChangeSetSource }
 }>()
 const emit = defineEmits<{
   select: [id: string]
@@ -62,6 +65,17 @@ const emit = defineEmits<{
 }>()
 
 const treeOpen = ref(true)
+// The change view: which changed file the diff shows, kept while the tab is open.
+const changeSelected = ref<string | null>(null)
+watch(
+  () => props.workspace?.changes?.files,
+  (files) => {
+    if (changeSelected.value === null || !files?.some((file) => file.path === changeSelected.value)) {
+      changeSelected.value = files?.[0]?.path ?? null
+    }
+  },
+  { immediate: true },
+)
 
 function absolutePath(path: string): string {
   return joinPath(props.workspace?.root ?? '/', path)
@@ -211,6 +225,13 @@ function add(kind: WorkTab['kind']): void {
           @open="openFromTree"
           @back="emit('back', active.id)"
           @forward="emit('forward', active.id)"
+        />
+        <ChangeView
+          v-else-if="active?.kind === 'change' && workspace?.changes"
+          v-model:selected="changeSelected"
+          v-model:tree="treeOpen"
+          :changes="workspace.changes"
+          :root="workspace.root"
         />
         <div
           v-else
