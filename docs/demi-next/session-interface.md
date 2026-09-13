@@ -146,7 +146,11 @@ separator in each gap fades when either adjacent tab is active or hovered.
 Overflow scrolls horizontally without a scrollbar, shows an edge fade where more
 content exists, and reveals the active tab without scrolling the page. Insertions
 grow and removals collapse from their current width while fading; reduced motion
-skips the transition. Strip observers are released on unmount.
+skips the transition. Strip observers are released on unmount. The strip's
+trailing slot holds the New tab control: it follows the last tab while the tabs
+fit and stays at the strip's right edge once they scroll. A tab's menu closes
+it, the others, or the tabs to one side; a side with nothing to close is
+disabled. Only the plain Close carries an icon.
 
 The strip receives its surface once: on a base surface, active tabs use the
 regular surface; on a raised work panel, they use the base surface. Tabs, hover
@@ -155,13 +159,16 @@ fills, close controls, and fades derive colors from that strip.
 The work panel continues the session sheet behind a hairline resize divider.
 Its tab row aligns with the session header. The session-header open control is
 visible only while the panel is closed; the panel has its own fold control.
-The host retains file/diff tabs per conversation and their active ID. File tabs
-show a file icon; diff tabs add a compare mark; tooltips show full paths. Closing
-an active tab selects the preceding tab, or the next remaining tab if it was first.
+The host retains file and change (diff) tabs per conversation and their active
+ID. File tabs show a file icon; change tabs a diff mark; tooltips show full
+paths. New tab offers File and Change; what each opens is the host's. A file
+tab's menu also copies its path; a change tab has only the close commands. When
+the active tab closes, the nearest remaining tab before it takes over, else the
+first remaining.
 
 The shared frame and `WorkPanel` exist, with assembled and standalone Session
-gallery examples. Content is a placeholder. File/diff viewers, actions that open
-them, and product mounting are deferred; a gallery panel is not evidence of those
+gallery examples. Content is a placeholder. File and change viewers, what New
+tab and the changed-file pills open, and product mounting are deferred; a gallery panel is not evidence of those
 completed flows.
 
 ## Settings and overlays
