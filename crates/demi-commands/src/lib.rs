@@ -40,7 +40,17 @@ impl Handler for DemiCommands {
                 let result = tokio::task::spawn_blocking(move || {
                     // The lock covers planning, writes and rollback, including cancellation.
                     let _guard = guard;
-                    files::mutate(&request, &cancellation)
+                    let recorder = request.edits.clone().and_then(|context| {
+                        match demi_command_service::edits::Recorder::new(context) {
+                            Ok(recorder) => Some(recorder),
+                            Err(error) => {
+                                eprintln!("edit recording failed: {error}");
+                                None
+                            }
+                        }
+                    });
+                    let mut recording = recorder.as_ref().and_then(|recorder| recorder.begin());
+                    files::mutate(&request, &cancellation, recording.as_mut())
                 })
                 .await
                 .map_err(|error| ServiceError::Handler(error.to_string()))?;

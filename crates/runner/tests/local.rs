@@ -51,6 +51,7 @@ impl Handler for Commands {
 
 fn invocation(operation: &str) -> Invocation {
     Invocation {
+        edits: None,
         operation: operation.into(),
         invocation_id: operation.into(),
         args: serde_json::json!({}),

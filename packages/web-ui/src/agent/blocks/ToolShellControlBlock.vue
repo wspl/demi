@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { History, SquareTerminal } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import ShellEditPills from './ShellEditPills.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText } from '../block-helpers'
@@ -48,4 +49,5 @@ const iconComponent = computed(() => {
       >{{ errorSummary }}</span>
     </template>
   </FunctionalBlock>
+  <ShellEditPills :block="block" />
 </template>

@@ -1,3 +1,4 @@
+import type { ConversationHostAccess } from '../conversation/target'
 import { webAssetRoutes } from './web-assets'
 import {
   runnerInstallRoutes,
@@ -11,10 +12,10 @@ import type { RunnerRegistry } from '../runner/registry'
 import type { PipeBroker } from '../runner/pipes'
 import type { ControlService, WorkspaceRecord } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
+import type { ChangeStore } from '../storage/change-store'
 import type { ProviderVault } from '../vault/providers'
 import type { SubscriptionLoginFlows } from '../vault/subscription-login'
 import type { UserBlobStores } from '../storage/user-blobs'
-import type { Host } from '@demicodes/shell'
 import type { ManagedHosts } from '../managed/lifecycle'
 import type { LoginLimiter } from '../auth/login-limiter'
 import type { WebSessions } from '../auth/sessions'
@@ -60,6 +61,7 @@ export function createApp(options: {
   admitFrame: (id: string) => (() => void) | null
   control: ControlService
   conversationStores: ConversationStores
+  changes: ChangeStore
   vault: ProviderVault
   assembly: ProviderAssembly
   vendors: VendorCatalog
@@ -71,11 +73,7 @@ export function createApp(options: {
   pipes: PipeBroker
   upgradeWebSocket: UpgradeWebSocket
   blobs: UserBlobStores
-  withHost: <T>(
-    conversationId: string,
-    operation: (host: Host) => Promise<T>,
-    signal?: AbortSignal
-  ) => Promise<T>
+  withHost: ConversationHostAccess
   managedHosts: ManagedHosts | null
   createCloudWorkspace: ((
     userId: string,
@@ -197,6 +195,7 @@ export function createApp(options: {
       agentServer: options.agentServer,
       control: options.control,
       conversationStores: options.conversationStores,
+      changes: options.changes,
       withHost: options.withHost,
       registry: options.runnerRegistry,
     }),

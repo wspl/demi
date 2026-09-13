@@ -10,6 +10,17 @@ use std::{
 
 /// Execution ownership injected by an embedding host.
 pub trait Control: Send + Sync {
+    fn open(&self, path: &Path, options: &std::fs::OpenOptions, writing: bool) -> std::io::Result<File> {
+        let _ = writing;
+        options.open(path)
+    }
+    /// A guard spans one bounded file operation, including its error paths.
+    fn edit(&self, _path: &Path) -> Option<Box<dyn Send>> {
+        None
+    }
+    fn edit_file(&self, _file: &File) -> Option<Box<dyn Send>> {
+        None
+    }
     fn check(&self) -> std::io::Result<()>;
     fn read(&self, file: &File, bytes: &mut [u8]) -> std::io::Result<usize>;
     fn write(&self, file: &File, bytes: &[u8]) -> std::io::Result<usize>;
@@ -53,6 +64,10 @@ pub fn write(file: &File, bytes: &[u8]) -> std::io::Result<usize> {
         Some(control) => control.write(file, bytes),
         None => (&*file).write(bytes),
     }
+}
+
+pub fn edit(path: &Path) -> Option<Box<dyn Send>> {
+    control().and_then(|control| control.edit(path))
 }
 
 #[derive(Clone)]

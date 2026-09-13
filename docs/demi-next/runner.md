@@ -44,12 +44,58 @@ The runner releases contexts when execution completes, is cancelled, or loses
 its backend connection. Provider CLI assembly can request environment inheritance,
 but the runner has no provider-specific behavior.
 
+### Working tree
+
+A `git_changes` request lists the uncommitted changes under a directory, and
+`git_show` returns a file as the last commit has it. The runner answers both in
+process with gitoxide; the device needs no git executable. Both name the
+directory as `root`; a `git_show` also names the file's path relative to it.
+The `git_changes` reply:
+
+| Field | Meaning |
+| --- | --- |
+| `repository` | False when the directory is not inside a git repository; the other fields are then empty. |
+| `head` | The commit the changes are against; null before the first commit. |
+| `files` | One entry per changed file under the directory, path relative to it: `added`, `modified`, `deleted`, or `renamed` (with the old path in `from`), plus the lines added and removed against `head`. |
+| `truncated` | True when the list stopped at 5,000 files. |
+| `watched` | True when the runner answered from a watched baseline, described below. |
+
+Staged and unstaged changes form one list: what a commit of everything would
+contain. Untracked files count as added; ignored files are absent. Line counts
+skip binary files and files over 8 MiB, which report 0 and 0. `git_show` refuses
+a blob over 8 MiB with `too_large`, answers `ENOENT` for a path the last commit
+does not have, and `not_repository` outside a repository.
+
+The first request for a directory walks its whole tree. It also starts a
+filesystem watch of the directory, and of the repository's `.git` when that
+lies outside it, which only records the paths changed since. The next request
+re-examines those paths and merges them into the previous result; a change
+under `.git` (a commit, a checkout, a staging) recomputes the whole. Anything
+that makes the watch unreliable turns it off for that directory, and the runner
+walks again: the watch cannot be created (an inotify limit, permissions, an
+unsupported filesystem), events overflowed, the platform asks for a rescan, or
+more than 10,000 paths accumulated. `watched` reports the outcome. A rename
+between two walks can show as a deletion and an addition until the next whole
+walk.
+
+The runner keeps at most eight watched directories per connection and drops one
+after fifteen minutes without a request; closing the connection drops them all.
+
+Working-tree work runs on blocking threads off the connection's control loop.
+At most two computations run at a time; a request beyond that answers `busy`
+at once, and requests for the same directory share one computation. A
+computation stops at its next check when the connection closes or after thirty
+seconds (`timeout`). A failure inside the git library answers `internal` for
+that request and affects nothing else.
+
 ## Shell jobs
 
 A shell job owns its working directory, environment, IO, and asynchronous work.
 Brush runs inside the resident runner process. Declared roots call the shared
 command dispatcher; external tools such as Git, Python, and Node run as child
-processes.
+processes. Every in-process file write passes through the job's scope, which
+reports the files the job created or modified when it exits
+([Edit tracking](edit-tracking.md)).
 
 The diagram shows ownership, not execution order. Cancelling job A releases its
 work while preserving the runner and job B.

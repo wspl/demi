@@ -6,6 +6,7 @@ import type {
   ShellOutputRecordChunk,
   ShellOutputView,
   ShellStreamView,
+  ShellEditView,
 } from './shell-environment'
 
 /**
@@ -13,7 +14,7 @@ import type {
  * it. Shared by every shell environment: the record does not know what ran
  * the script.
  */
-export interface ShellCommandRecord {
+export interface ShellCommandRecord extends ShellEditView {
   id: string
   shellId: string
   commandStorageId: string
@@ -87,6 +88,7 @@ export function commandStatusView(
     output,
     runningMs: Date.now() - record.startedAt,
     idleMs: Date.now() - record.lastOutputAt,
+    ...(record.files ? { files: record.files, filesTruncated: record.filesTruncated ?? false } : {}),
   }
   if (record.status === 'exited') {
     const result: ShellCommandStatus = {

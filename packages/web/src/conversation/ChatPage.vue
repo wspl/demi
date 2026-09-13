@@ -9,10 +9,13 @@ import ConversationComposer from './ConversationComposer.vue'
 import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
 import { useConversations } from './store'
 import { useResources } from '../state/resources'
+import { useWorkPanel } from './work'
+import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 
 const store = useConversations()
 const resources = useResources()
+const work = useWorkPanel()
 const route = useRoute()
 const router = useRouter()
 const conversation = computed(() =>
@@ -62,6 +65,13 @@ function saveScroll(id: string, state: PersistedScrollState | null): void {
   }
 }
 
+const selectEdit: EditSelectionHandler = (selection) => {
+  const current = conversation.value
+  if (current) {
+    work.selectEdit(work.stateFor(current.id), selection)
+  }
+}
+
 async function fork(request: MessageForkRequest): Promise<void> {
   const sourceId = conversation.value?.id
   if (!sourceId) {
@@ -80,6 +90,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :conversation="conversation"
     :has-provider="hasProvider"
     :fork="fork"
+    :select-edit="selectEdit"
     :pending-submission="
       conversation.pendingSend
         ? {
@@ -106,8 +117,10 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @interrupt-pending-steer="store.interruptWithSteer(conversation, $event)"
     :edit-version="store.editVersion(conversation)"
     :message-edit="conversation.messageEdit"
+    :aside-open="work.stateFor(conversation.id).open"
     @update:message-edit="conversation.messageEdit = $event"
     @save-scroll="saveScroll"
+    @open-aside="work.setOpen(work.stateFor(conversation.id), true)"
   >
     <template #workspace
       ><WorkspaceInfo :project="project" :conversation="conversation"

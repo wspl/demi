@@ -2,7 +2,7 @@ import { nativePackageSchema, type ArtifactResolver, type NativePackage } from '
 import { buildManifest, type Manifest } from '@demicodes/command-loader'
 import type { CommandRegistry, CommandStorage, Host, ShellEnvironmentOptions } from '@demicodes/shell'
 import { RemoteHost } from './remote-host'
-import { RemoteShellEnvironment } from './remote-shell-environment'
+import { RemoteShellEnvironment, type RemoteShellEnvironmentOptions } from './remote-shell-environment'
 
 export interface RemoteCommandCatalog {
   manifest: Manifest
@@ -20,6 +20,7 @@ export interface RemoteShellEnvironmentContext {
   commands: Pick<CommandRegistry, 'list'>
   commandStorage(signal?: AbortSignal): CommandStorage
   shell: ShellEnvironmentOptions
+  retainEdits?: RemoteShellEnvironmentOptions['retainEdits']
 }
 
 export function createRemoteShellEnvironmentFactory(options: RemoteShellEnvironmentFactoryOptions) {
@@ -38,6 +39,7 @@ export function createRemoteShellEnvironmentFactory(options: RemoteShellEnvironm
       ...context.shell,
       host: context.host,
       commandStorage: context.commandStorage,
+      retainEdits: context.retainEdits,
       commands: { manifest, resolveArtifact: options.resolveArtifact },
     })
   }

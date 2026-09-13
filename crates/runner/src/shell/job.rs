@@ -242,7 +242,7 @@ fn pump(
     })
 }
 
-fn pipe() -> io::Result<(File, File)> {
+pub(super) fn pipe() -> io::Result<(File, File)> {
     let (reader, writer) = std::io::pipe()?;
     #[cfg(unix)]
     {

@@ -108,6 +108,24 @@ binding before starting a job. A sleeping Cloud device wakes for work; attachmen
 alone does not keep it running. The product picker offers paired devices, while
 Cloud can become attached when it is a departed main target.
 
+## Host operations
+
+Everything that touches a conversation's main or attached host on the conversation's
+behalf from outside the agent, whether it writes an attachment, lists the
+working tree, or reads a file for the browser, goes through one entry, the
+conversation's host access (`ConversationTargets.withHost`). An operation can name
+a device bound as the main or an attached host; omitting the device selects the
+current main host. The binding and ownership are checked after taking the file
+gate and before reaching the Host. An unknown or detached device is refused;
+detaching prevents new access, while an already admitted operation may finish.
+That entry does the same work for every kind of target: it resolves the target as the agent
+does, refuses an archived conversation, wakes a stopped Cloud and holds it for
+the operation, and takes the conversation's file gate so the operation excludes
+an archive or a target switch. A paired device without a live runner fails the
+operation with the runner's offline error. There is no second way to a host;
+an operation that must not wake the Cloud, or must not wait for the gate, is a
+change to this rule, decided here, not a bypass in code.
+
 Attached cwd is a starting directory, not a permission boundary. It is updated
 from completed cross-host jobs. Files can be transferred explicitly with ordinary
 shell pipelines:
@@ -128,7 +146,7 @@ Conversation and device admission protect different resources:
 | Scope | Protected transition | Work that prevents an idle transition |
 | --- | --- | --- |
 | One conversation tree | Target change | Root and child turns, restores, queued work, and wakeups admitted by the tree lifecycle |
-| Conversation files | Target change | File operations such as uploads |
+| Conversation files | Target change | Host operations: uploads, the working tree, file text |
 | One Cloud device | Shutdown or reset | Device operations and relevant agent trees across all of its user's conversations |
 
 The managed-host lifecycle reserves device admission before changing the machine.

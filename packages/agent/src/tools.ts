@@ -361,11 +361,6 @@ export function toShellToolResult(
 /** Character budget for a shell view's render window (tail-biased). */
 export const SHELL_VIEW_MAX_CHARS = 32_768
 
-/**
- * Bounded UI view of a shell command stored on the tool_call block: the tail
- * render window and nothing else — what the model saw is what the browser
- * shows; the view never embeds raw or base64 bytes.
- */
 /** One file a command changed in the working tree, with its line counts. */
 export interface ShellFileChange {
   path: string
@@ -376,6 +371,7 @@ export interface ShellFileChange {
   removed: number
 }
 
+/** Bounded output and retained file metadata for the browser; never embeds file contents. */
 export interface ShellToolView {
   kind: 'shell'
   status: 'running' | 'exited' | 'aborted'
@@ -389,8 +385,11 @@ export interface ShellToolView {
   /** True when chunks were capped. */
   viewTruncated: boolean
   /** Files the command changed, once it has exited. Absent while it runs or when nothing changed. */
-  files?: ShellFileChange[]
+  files?: import('@demicodes/shell').ShellEditedFile[]
+  filesTruncated?: boolean
 }
+
+export type { ShellEditedFile } from '@demicodes/shell'
 
 function shellToolView(result: ShellCommandStatus): ShellToolView {
   const window = tailChunkWindow(result.output.chunks, SHELL_VIEW_MAX_CHARS)
@@ -406,6 +405,10 @@ function shellToolView(result: ShellCommandStatus): ShellToolView {
   }
   if (result.status === 'exited') {
     view.exitCode = result.exitCode
+  }
+  if (result.files) {
+    view.files = result.files
+    view.filesTruncated = result.filesTruncated ?? false
   }
   return view
 }

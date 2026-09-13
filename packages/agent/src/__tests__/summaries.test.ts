@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test'
 import type { Block } from '@demicodes/core'
 import type { ShellToolView } from '../tools'
-import { shellToolViewSchema, storedRunningCommandIds } from '../server/summaries'
+import { shellToolViewSchema } from '../client/shell-view'
+import { storedRunningCommandIds } from '../server/summaries'
 
 function shellView(
   commandId: string,

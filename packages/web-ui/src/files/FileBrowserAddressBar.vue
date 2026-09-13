@@ -31,11 +31,13 @@ const props = withDefaults(
     mode?: 'navigate' | 'browse'
     /** The first crumb; the ancestors above it are not shown. */
     root?: string
+    /** What the root crumb says in place of its directory's name. */
+    rootName?: string
     leaf?: 'directory' | 'file'
     /** False for a bar that only shows: no text field on a click. */
     editable?: boolean
   }>(),
-  { mode: 'navigate', root: undefined, leaf: 'directory', editable: true },
+  { mode: 'navigate', root: undefined, rootName: undefined, leaf: 'directory', editable: true },
 )
 
 const emit = defineEmits<{
@@ -98,7 +100,10 @@ const crumbs = computed(() => {
   if (props.root === undefined)
     return all
   const start = all.findIndex((crumb) => crumb.path === normalizePath(props.root!))
-  return start < 0 ? all : all.slice(start)
+  const fromRoot = start < 0 ? all : all.slice(start)
+  if (props.rootName === undefined || start < 0)
+    return fromRoot
+  return [{ ...fromRoot[0]!, name: props.rootName }, ...fromRoot.slice(1)]
 })
 /** Deep paths keep the root and the last few crumbs, fewer in a narrow bar; the middle folds into an ellipsis. */
 const shown = computed(() => {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { provideEditSelection, type EditSelectionHandler } from './edit-selection'
 import { computed, ref, watch } from 'vue'
 import { Archive, PanelRight, Play } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/agent/client'
@@ -29,6 +30,7 @@ const props = defineProps<{
   pendingSubmission?: PendingSubmissionState | null
   editVersion?: TranscriptVersion | null
   messageEdit?: MessageEditState | null
+  selectEdit?: EditSelectionHandler
   fork?: MessageForkHandler
   /** Whether the app frame's work panel is open; absent when the host has none. */
   asideOpen?: boolean
@@ -49,6 +51,7 @@ const emit = defineEmits<{
   'update:messageEdit': [state: MessageEditState | null]
   saveScroll: [id: string, state: PersistedScrollState | null]
 }>()
+provideEditSelection((selection) => props.selectEdit?.(selection))
 const surface = ref<{ dockHeight: number }>()
 // Recovery (Retry on the tail error record, Resume after an abort) needs a
 // provider and a conversation that is neither archived nor being edited.

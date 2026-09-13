@@ -16,16 +16,42 @@ import type {
 } from '@demicodes/shell'
 import { createLogicalHostCwd } from '@demicodes/shell'
 import { createId, deferred, errorMessage, type Deferred } from '@demicodes/utils'
-import { fsOps } from '@demicodes/runner-protocol'
+import { fsOps, gitOps } from '@demicodes/runner-protocol'
 import type {
   BackendToRunnerMessage,
   FsOp,
   FsParams,
   FsResult,
+  GitChanges,
+  GitErrorCode,
+  GitOp,
+  GitParams,
+  GitResult,
   JobExitMessage,
   PipeRef,
   RunnerToBackendMessage
 } from '@demicodes/runner-protocol'
+
+/**
+ * The runner's working-tree facet (`runner.md` § Working tree): the
+ * uncommitted changes under a directory, and a file as the last commit has
+ * it. Paths are the runner's; `path` is relative to `root`. A refusal is a
+ * `RemoteGitError` with the runner's code.
+ */
+export interface RemoteGit {
+  changes(root: string): Promise<GitChanges>
+  show(root: string, path: string): Promise<Uint8Array>
+}
+
+export class RemoteGitError extends Error {
+  readonly code: GitErrorCode
+
+  constructor(code: GitErrorCode, message: string) {
+    super(message)
+    this.name = 'RemoteGitError'
+    this.code = code
+  }
+}
 
 /**
  * One job on the runner as the backend drives it (`runner.md` § Jobs and the
@@ -64,7 +90,8 @@ export interface RemoteHostOptions {
  * The backend-side `Host` over a connected runner: every `fs` method is one
  * `fs_call` round trip, `process.spawn` streams over `spawn_*` messages, and
  * `openCwd` uses the contract's own logical path fallback (directory fds
- * cannot cross the wire).
+ * cannot cross the wire). `git` is the runner's working-tree facet, one
+ * `git_*` round trip per call, outside the `Host` contract.
  *
  * The object is stable across reconnects — `AgentHarness.host` must return
  * the same Host for the same execution target, so per-Host shell state
@@ -77,6 +104,7 @@ export class RemoteHost implements Host {
   readonly store: HostStore
   readonly fs: HostFileSystem
   readonly process: HostProcess
+  readonly git: RemoteGit
 
   private send: ((message: BackendToRunnerMessage) => void) | null = null
   private currentIdentity: HostIdentity
@@ -90,6 +118,10 @@ export class RemoteHost implements Host {
     this.currentIdentity = options.identity
     this.store = options.store
     this.fs = createRemoteFs((op, params) => this.call(op, params))
+    this.git = {
+      changes: (root) => this.callGit('changes', { root }),
+      show: (root, path) => this.callGit('show', { root, path }),
+    }
     this.process = {
       spawn: (params) => this.spawn(params),
       openCwd: async (path) => this.openCwd(path),
@@ -139,7 +171,7 @@ export class RemoteHost implements Host {
     const jobs = [...this.activeJobs.values()]
     this.activeJobs.clear()
     for (const job of jobs) {
-      job.finish({
+      job.finish({ files: [], filesTruncated: false,
         exitCode: null,
         signal: reason,
         spawnError: { kind: 'other' }
@@ -199,7 +231,7 @@ export class RemoteHost implements Host {
     )
     void job.handle().wait().finally(() => release?.())
     if (!this.send) {
-      job.finish({
+      job.finish({ files: [], filesTruncated: false,
         exitCode: null,
         signal: 'runner disconnected',
         spawnError: { kind: 'other' }
@@ -222,7 +254,7 @@ export class RemoteHost implements Host {
       })
     } catch (error) {
       this.activeJobs.delete(jobId)
-      job.finish({ exitCode: null, signal: errorMessage(error), spawnError: { kind: 'other' } })
+      job.finish({ files: [], filesTruncated: false, exitCode: null, signal: errorMessage(error), spawnError: { kind: 'other' } })
       throw error
     }
     return job.handle()
@@ -278,6 +310,15 @@ export class RemoteHost implements Host {
       this.pendingCalls.delete(message.id)
       if (message.type === 'fs_ok') pending.resolve(message.result)
       else pending.reject(fsError(message.code, message.message))
+      return
+    }
+    if (message.type === 'git_ok' || message.type === 'git_error') {
+      const pending = this.pendingCalls.get(message.id)
+      if (!pending)
+        return
+      this.pendingCalls.delete(message.id)
+      if (message.type === 'git_ok') pending.resolve(message.result)
+      else pending.reject(new RemoteGitError(message.code, message.message))
       return
     }
     if (message.type === 'spawn_output') {
@@ -358,6 +399,26 @@ export class RemoteHost implements Host {
       throw error
     } finally {
       release?.()
+    }
+  }
+
+  private async callGit<Op extends GitOp>(
+    op: Op,
+    params: GitParams<Op>
+  ): Promise<GitResult<Op>> {
+    if (!this.send)
+      throw offlineError('runner disconnected')
+    const id = createId()
+    const pending = deferred<unknown>()
+    this.pendingCalls.set(id, pending)
+    try {
+      this.send({ type: `git_${op}`, id, ...params } as BackendToRunnerMessage)
+      // Same widening as `call`: `gitOps[op].result` is every operation's
+      // result schema; the value is the one `op` named.
+      return gitOps[op].result.parse(await pending.promise) as GitResult<Op>
+    } catch (error) {
+      this.pendingCalls.delete(id)
+      throw error
     }
   }
 

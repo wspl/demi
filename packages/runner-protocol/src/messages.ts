@@ -7,8 +7,9 @@ import {
 
 /**
  * Wire protocol between the backend and a runner: one multiplexed connection
- * carrying the claim/auth handshake, liveness pings, and the wire form of the
- * `Host` contract's `fs` and `process` facets. `Host.store` never crosses
+ * carrying the claim/auth handshake, liveness pings, the wire form of the
+ * `Host` contract's `fs` and `process` facets, and the working-tree requests
+ * the runner answers in process. `Host.store` never crosses
  * this protocol — conversation state is backend-local.
  *
  * Frames are MessagePack (`Uint8Array` as bin, `Date` as the timestamp
@@ -24,7 +25,7 @@ import {
  * is the hardest component to update, so the backend must be able to tell an
  * incompatible runner apart from a broken one (`hello_error`).
  */
-export const RUNNER_PROTOCOL_VERSION = 10
+export const RUNNER_PROTOCOL_VERSION = 12
 
 /**
  * The view budget per stream of a job: what crosses the wire is the model's
@@ -39,9 +40,17 @@ export type {
   FsOp,
   FsParams,
   FsResult,
+  GitCallMessage,
+  GitChange,
+  GitChanges,
+  GitErrorCode,
+  GitOkMessage,
+  GitOp,
+  GitParams,
+  GitResult,
   PipeRef
 } from './schemas'
-export { FS_OPS } from './schemas'
+export { FS_OPS, GIT_OPS } from './schemas'
 
 export type RunnerToBackendMessage = z.infer<typeof runnerToBackendMessageSchema>
 export type BackendToRunnerMessage = z.infer<typeof backendToRunnerMessageSchema>

@@ -65,8 +65,9 @@ confirmed, so retry can reconcile history and queue state before resending.
 Editing and Fork use their backend operation contracts; see
 [Message editing](../message-editing.md) and [Conversation Fork](../conversation-fork.md).
 
-Product adapters connect shared file interfaces to device filesystem APIs and
-uploads, and shared account interfaces to provider, pairing, and Cloud APIs.
+Product adapters connect shared file interfaces to device filesystem APIs,
+the working-tree change routes, and uploads, and shared account interfaces to
+provider, pairing, and Cloud APIs.
 Gallery adapters use fixtures. Submitted operations and requests belong to the
 appropriate conversation or account lifetime and are released on its cleanup.
 A fixture demonstrates interface behavior; it does not establish persistence,

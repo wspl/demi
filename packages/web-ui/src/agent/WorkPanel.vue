@@ -12,17 +12,18 @@ import Menu from '../ui/Menu.vue'
 import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Popover from '../ui/Popover.vue'
+import Tooltip from '../ui/Tooltip.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from '../files/FileIcon.vue'
 import ChangeView from '../files/ChangeView.vue'
 import FileView from '../files/FileView.vue'
-import { changeModeToOpen, type ChangeMode, type ChangeSources } from '../files/changes'
+import { callChangeSource, emptyChangeSet, type ReadCallChange, type ChangeMode, type ChangeSetSource, type ChangeSources } from '../files/changes'
 import { joinPath, normalizePath } from '../files/paths'
 import type { FileBrowserSource } from '../files/types'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
 import { tabsToClose, type TabCloseScope } from './tab-close'
-import { findChangeWorkTab, workTabTitle, type ChangeWorkTab, type WorkTab } from './work-panel'
+import { findChangeWorkTab, changeTabPath, workTabTitle, type ChangeWorkTab, type WorkTab } from './work-panel'
 
 /**
  * The work panel: the app frame's right pane, where the reader keeps files
@@ -45,14 +46,17 @@ import { findChangeWorkTab, workTabTitle, type ChangeWorkTab, type WorkTab } fro
  * and on the file the tab holds; a mode switch or a pick in its tree is
  * asked for with `showChange`, and the host steps the tab (see
  * `showChangeInTab`), so Back and Forward walk those steps. A new change tab
- * opens on what was picked from the conversation, if anything, else on the
- * uncommitted changes. Whether the trees show is one choice for the panel,
- * not per tab. Without a workspace the content pane is a placeholder.
+ * starts on the uncommitted changes; picking a file pill opens its retained
+ * edit in Conversation mode. Only the file view and Uncommitted have trees.
+ * Retained edits stay readable without a workspace.
  */
 const props = defineProps<{
   tabs: readonly WorkTab[]
   activeId: string | null
-  workspace?: { source: FileBrowserSource; root: string; changes?: ChangeSources }
+  readCallChange?: ReadCallChange
+  historyRoot?: string
+  /** `name` stands in for the root directory's name wherever the views name the workspace. */
+  workspace?: { source: FileBrowserSource; root: string; name?: string; changes?: ChangeSetSource }
 }>()
 const emit = defineEmits<{
   select: [id: string]
@@ -60,7 +64,7 @@ const emit = defineEmits<{
   /** New tab: a file, the host decides which; or the change tab, in the given mode. */
   add: [kind: 'file'] | [kind: 'change', mode: ChangeMode]
   /** The change tab's next step: this mode, showing this file (null leaves the choice to the view). */
-  showChange: [id: string, mode: ChangeMode, path: string | null]
+  showChange: [id: string, mode: ChangeMode, path: string | null, selection?: { call: ChangeWorkTab['call']; edit: number }]
   /** A file from the tree or a crumb menu, by its path relative to the workspace root: show it in the active tab. */
   open: [path: string]
   /** The active tab's Back and Forward. */
@@ -71,19 +75,23 @@ const emit = defineEmits<{
 }>()
 
 const treeOpen = ref(true)
+const changes = computed<ChangeSources>(() => {
+  const call = active.value?.kind === 'change' ? active.value.call : null
+  return {
+    uncommitted: props.workspace?.changes ?? emptyChangeSet,
+    conversation: call && props.readCallChange
+      ? callChangeSource(call, props.readCallChange)
+      : null,
+  }
+})
 
 /** The file the change tab shows in its mode: the one it holds, else the first there is. */
 function changeSelection(tab: ChangeWorkTab): string | null {
-  const held = tab.selected[tab.mode]
-  const files = props.workspace?.changes?.[tab.mode].files ?? []
-  if (held !== null && files.some((file) => file.path === held)) {
-    return held
-  }
-  return files[0]?.path ?? null
+  return changeTabPath(tab, tab.mode, changes.value.uncommitted.files)
 }
 
 function absolutePath(path: string): string {
-  return joinPath(props.workspace?.root ?? '/', path)
+  return path.startsWith('/') ? path : joinPath(props.workspace?.root ?? '/', path)
 }
 
 function openFromTree(path: string): void {
@@ -155,14 +163,13 @@ function add(kind: WorkTab['kind']): void {
     emit('select', open.id)
     return
   }
-  const mode = props.workspace?.changes ? changeModeToOpen(props.workspace.changes) : 'uncommitted'
-  emit('add', 'change', mode)
+  emit('add', 'change', 'uncommitted')
 }
 </script>
 
 <template>
   <aside class="flex h-full min-w-0 flex-col overflow-hidden border-l border-line bg-surface text-fg">
-    <div class="flex h-11 shrink-0 items-center gap-1 px-2">
+    <div class="flex h-11 shrink-0 items-center gap-1 pl-2 pr-3">
       <TabStrip class="flex-1" surface="raised">
         <TabItem
           v-for="tab in tabs"
@@ -213,13 +220,14 @@ function add(kind: WorkTab['kind']): void {
           </Dropdown>
         </template>
       </TabStrip>
-      <IconButton
-        :icon="PanelRightClose"
-        size="sm"
-        variant="ghost"
-        aria-label="Close panel"
-        @click="emit('close')"
-      />
+      <Tooltip content="Close panel" class="shrink-0">
+        <IconButton
+          :icon="PanelRightClose"
+          variant="ghost"
+          aria-label="Close panel"
+          @click="emit('close')"
+        />
+      </Tooltip>
     </div>
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <slot :tab="active">
@@ -229,6 +237,7 @@ function add(kind: WorkTab['kind']): void {
           v-model:tree="treeOpen"
           :source="workspace.source"
           :root="workspace.root"
+          :root-name="workspace.name"
           :path="absolutePath(active.path)"
           :can-back="active.back.length > 0"
           :can-forward="active.forward.length > 0"
@@ -237,15 +246,18 @@ function add(kind: WorkTab['kind']): void {
           @forward="emit('forward', active.id)"
         />
         <ChangeView
-          v-else-if="active?.kind === 'change' && workspace?.changes"
+          v-else-if="active?.kind === 'change'"
           v-model:tree="treeOpen"
           :mode="active.mode"
           :selected="changeSelection(active)"
-          :changes="workspace.changes"
-          :root="workspace.root"
+          :changes="changes"
+          :edit="active.edit"
+          :root="workspace?.root ?? historyRoot ?? '/'"
+          :root-name="workspace?.name"
           :can-back="active.back.length > 0"
           :can-forward="active.forward.length > 0"
-          @update:mode="emit('showChange', active.id, $event, active.selected[$event])"
+          @update:mode="emit('showChange', active.id, $event, changeTabPath(active, $event))"
+          @update:edit="emit('showChange', active.id, active.mode, changeSelection(active), { call: active.call, edit: $event })"
           @update:selected="emit('showChange', active.id, active.mode, $event)"
           @back="emit('back', active.id)"
           @forward="emit('forward', active.id)"

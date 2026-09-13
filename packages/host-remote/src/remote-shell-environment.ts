@@ -15,6 +15,7 @@ import {
   type ShellCommandStatus,
   type ShellEnvironment,
   type ShellEnvironmentOptions,
+  type ShellEditedFile,
   type ShellExecInput,
   type ShellStatusInput,
   type ShellWriteInput,
@@ -31,6 +32,8 @@ export interface RemoteShellEnvironmentOptions extends ShellEnvironmentOptions {
   host: RemoteHost
   commands?: RemoteCommandCatalog
   commandStorage?: (signal?: AbortSignal) => CommandStorage
+  /** Publish edit snapshots before exposing the command as completed. */
+  retainEdits?: (commandId: string, files: RemoteJobExit['files']) => Promise<ShellEditedFile[]>
 }
 
 interface RemoteShell {
@@ -82,10 +85,12 @@ export class RemoteShellEnvironment implements ShellEnvironment {
 
   private readonly commands: RemoteCommandCatalog | undefined
   private readonly commandStorage: RemoteShellEnvironmentOptions['commandStorage']
+  private readonly retainEdits: RemoteShellEnvironmentOptions['retainEdits']
 
   constructor(options: RemoteShellEnvironmentOptions) {
     this.commands = options.commands
     this.commandStorage = options.commandStorage
+    this.retainEdits = options.retainEdits
     this.host = options.host
     this.shellIdFactory = options.shellIdFactory
       ?? (() => globalThis.crypto.randomUUID())
@@ -260,8 +265,25 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     }
   ): Promise<void> {
     const { record } = running
-    if (record.status !== 'running')
-      return
+    record.filesTruncated = exit.filesTruncated
+    if (exit.files.length > 0) {
+      const unavailable = exit.files.map(file => ({
+        path: file.path,
+        kind: file.kind,
+        added: file.added,
+        removed: file.removed,
+        edits: file.edits.map(() => ({ kept: false })),
+      }))
+      try {
+        record.files = this.retainEdits
+          ? await this.retainEdits(record.id, exit.files)
+          : unavailable
+      } catch (error) {
+        // History publication is best effort; it must not replace the exit status.
+        console.error('Could not retain command edits', error)
+        record.files = unavailable
+      }
+    }
     if (exit.cwd)
       shell.cwd = exit.cwd
     if (exit.spawnError) {

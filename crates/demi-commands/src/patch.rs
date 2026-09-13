@@ -31,7 +31,12 @@ struct Change {
     permissions: Option<fs::Permissions>,
 }
 
-pub fn apply(cwd: &str, diff: &str, cancellation: &CancellationToken) -> Result<String, String> {
+pub fn apply(
+    cwd: &str,
+    diff: &str,
+    cancellation: &CancellationToken,
+    mut recording: Option<&mut demi_command_service::edits::Recording>,
+) -> Result<String, String> {
     let patches = parse(diff, cancellation)?;
     let mut changes = Vec::new();
     let mut touched = HashSet::new();
@@ -110,7 +115,13 @@ pub fn apply(cwd: &str, diff: &str, cancellation: &CancellationToken) -> Result<
             return Err("Patch changes the same path more than once".into());
         }
     }
-    commit_changes(&changes, cancellation, write_change)?;
+    changes.retain(|change| change.before != change.after);
+    if let Some(recording) = &mut recording {
+        for change in &changes {
+            recording.track(&change.path);
+        }
+    }
+    commit_changes(&changes, cancellation, write_change, recording)?;
     Ok(format!("Patched {} file(s)\n", patches.len()))
 }
 
@@ -118,6 +129,7 @@ fn commit_changes(
     changes: &[Change],
     cancellation: &CancellationToken,
     mut write: impl FnMut(&Change) -> Result<(), String>,
+    mut recording: Option<&mut demi_command_service::edits::Recording>,
 ) -> Result<(), String> {
     for (index, change) in changes.iter().enumerate() {
         let result = check_cancelled(cancellation).and_then(|()| write(change));
@@ -125,6 +137,8 @@ fn commit_changes(
             for change in changes[..index].iter().rev() {
                 if let Err(rollback) = restore(change) {
                     error.push_str(&format!("\nRollback failed: {rollback}"));
+                } else if let Some(recording) = &mut recording {
+                    recording.restored(&change.path);
                 }
             }
             return Err(error);
@@ -323,7 +337,11 @@ mod transaction_tests {
             .into_iter()
             .map(|name| {
                 let path = directory.path().join(name);
-                let bytes = format!("{name}\n").into_bytes();
+                let bytes = if name == "first" {
+                    vec![b'x'; demi_command_service::protocol::EDIT_FILE_BYTES + 1]
+                } else {
+                    format!("{name}\n").into_bytes()
+                };
                 fs::write(&path, &bytes).unwrap();
                 let permissions = Some(fs::metadata(&path).unwrap().permissions());
                 Change {
@@ -334,14 +352,26 @@ mod transaction_tests {
                 }
             })
             .collect();
+        let recorder = demi_command_service::edits::Recorder::new(
+            demi_command_service::protocol::EditContext {
+                directory: directory.path().join("changes").to_string_lossy().into_owned(),
+                lock: directory.path().join("edits.lock").to_string_lossy().into_owned(),
+            },
+        ).unwrap();
+        let mut recording = recorder.begin().unwrap();
+        for change in &changes {
+            recording.track(&change.path);
+        }
         let result = commit_changes(&changes, &CancellationToken::new(), |change| {
             if change.path.file_name().unwrap() == "second" {
                 return Err("simulated write failure".into());
             }
             write_change(change)
-        });
+        }, Some(&mut recording));
+        drop(recording);
+        assert!(recorder.report().unwrap().files.is_empty());
         assert_eq!(result.unwrap_err(), "simulated write failure");
-        assert_eq!(fs::read(&changes[0].path).unwrap(), b"first\n");
+        assert_eq!(fs::read(&changes[0].path).unwrap(), *changes[0].before.as_ref().unwrap());
         assert_eq!(fs::read(&changes[1].path).unwrap(), b"second\n");
     }
 }

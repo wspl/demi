@@ -18,16 +18,21 @@ impl File {
         std::fs::File::open(super::resolve(path)).map(Self)
     }
     pub fn create(path: impl AsRef<Path>) -> io::Result<Self> {
-        std::fs::File::create(super::resolve(path)).map(Self)
+        OpenOptions::new().write(true).create(true).truncate(true).open(path)
     }
     pub fn create_new(path: impl AsRef<Path>) -> io::Result<Self> {
-        std::fs::File::create_new(super::resolve(path)).map(Self)
+        OpenOptions::new().write(true).create_new(true).open(path)
     }
     pub fn options() -> OpenOptions {
         OpenOptions::new()
     }
     pub fn try_clone(&self) -> io::Result<Self> {
         self.0.try_clone().map(Self)
+    }
+    pub fn set_len(&self, size: u64) -> io::Result<()> {
+        super::check_cancelled();
+        let _edit = super::control().and_then(|control| control.edit_file(&self.0));
+        self.0.set_len(size)
     }
 }
 impl Deref for File {
@@ -94,7 +99,7 @@ impl Seek for &File {
 }
 
 #[derive(Clone, Debug)]
-pub struct OpenOptions(std::fs::OpenOptions);
+pub struct OpenOptions(std::fs::OpenOptions, u8);
 impl Default for OpenOptions {
     fn default() -> Self {
         Self::new()
@@ -102,29 +107,34 @@ impl Default for OpenOptions {
 }
 impl OpenOptions {
     pub fn new() -> Self {
-        Self(std::fs::OpenOptions::new())
+        Self(std::fs::OpenOptions::new(), 0)
     }
     pub fn read(&mut self, enabled: bool) -> &mut Self {
         self.0.read(enabled);
         self
     }
     pub fn write(&mut self, enabled: bool) -> &mut Self {
+        self.1 = (self.1 & !(1 << 0)) | (u8::from(enabled) << 0);
         self.0.write(enabled);
         self
     }
     pub fn append(&mut self, enabled: bool) -> &mut Self {
+        self.1 = (self.1 & !(1 << 1)) | (u8::from(enabled) << 1);
         self.0.append(enabled);
         self
     }
     pub fn truncate(&mut self, enabled: bool) -> &mut Self {
+        self.1 = (self.1 & !(1 << 2)) | (u8::from(enabled) << 2);
         self.0.truncate(enabled);
         self
     }
     pub fn create(&mut self, enabled: bool) -> &mut Self {
+        self.1 = (self.1 & !(1 << 3)) | (u8::from(enabled) << 3);
         self.0.create(enabled);
         self
     }
     pub fn create_new(&mut self, enabled: bool) -> &mut Self {
+        self.1 = (self.1 & !(1 << 4)) | (u8::from(enabled) << 4);
         self.0.create_new(enabled);
         self
     }
@@ -133,7 +143,11 @@ impl OpenOptions {
         if let Some(file) = super::descriptor(path.as_ref()) {
             return file.try_clone().map(File);
         }
-        self.0.open(super::resolve(path)).map(File)
+        let path = super::resolve(path);
+        match super::control() {
+            Some(control) => control.open(&path, &self.0, self.1 != 0).map(File),
+            None => self.0.open(path).map(File),
+        }
     }
 }
 
@@ -186,7 +200,9 @@ pub fn canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     std::fs::canonicalize(super::resolve(path))
 }
 pub fn write(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
-    std::fs::write(super::resolve(path), bytes)
+    let path = super::resolve(path);
+    let _edit = super::edit(&path);
+    std::fs::write(path, bytes)
 }
 pub fn create_dir(path: impl AsRef<Path>) -> io::Result<()> {
     std::fs::create_dir(super::resolve(path))
@@ -275,6 +291,7 @@ mod unix {
             self.0.read_at(bytes, offset)
         }
         fn write_at(&self, bytes: &[u8], offset: u64) -> io::Result<usize> {
+            let _edit = super::super::control().and_then(|control| control.edit_file(&self.0));
             self.0.write_at(bytes, offset)
         }
     }
@@ -344,6 +361,7 @@ mod windows {
             self.0.seek_read(bytes, offset)
         }
         fn seek_write(&self, bytes: &[u8], offset: u64) -> io::Result<usize> {
+            let _edit = super::super::control().and_then(|control| control.edit_file(&self.0));
             self.0.seek_write(bytes, offset)
         }
     }

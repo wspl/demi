@@ -3,16 +3,33 @@ import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
-import { workspaceSchema } from '../api/contracts'
+import { workspaceSchema, type ProductState } from '../api/contracts'
 import { useSession } from '../auth/session'
 import { useProduct } from './product'
 import { usePreferences } from './preferences'
 import { modelInfo, providerView, wireApi } from './catalog'
-import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
+import { ASIDE_WIDTH, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { emptyLocalState, readLocalState, writeLocalState } from './local'
 import type { Device, Project } from './types'
 
 /** Product data and page state. Components own interaction and presentation. */
+/** A snapshot device as the file browser and the work panel take it. */
+function productDevice(device: NonNullable<ProductState['devices']>[number]): Device {
+  return {
+    id: device.id,
+    name: device.name,
+    online: device.online,
+    home: device.home,
+    seen: device.lastSeenAt ?? undefined,
+    platform:
+      device.platform === 'darwin' || device.platform === 'macos'
+        ? 'macos'
+        : device.platform === 'win32' || device.platform === 'windows'
+          ? 'windows'
+          : 'linux',
+  }
+}
+
 export const useResources = defineStore('resources', () => {
   const session = useSession()
   const product = useProduct()
@@ -70,20 +87,13 @@ export const useResources = defineStore('resources', () => {
   const devices = computed<Device[]>(() =>
     (product.snapshot?.devices ?? [])
       .filter((device) => device.kind === 'user')
-      .map((device) => ({
-        id: device.id,
-        name: device.name,
-        online: device.online,
-        home: device.home,
-        seen: device.lastSeenAt ?? undefined,
-        platform:
-          device.platform === 'darwin' || device.platform === 'macos'
-            ? 'macos'
-            : device.platform === 'win32' || device.platform === 'windows'
-              ? 'windows'
-              : 'linux',
-      })),
+      .map(productDevice),
   )
+  /** Any device of the snapshot by id, the user's Cloud included; null when unknown. */
+  function deviceById(id: string | null): Device | null {
+    const device = product.snapshot?.devices.find((candidate) => candidate.id === id)
+    return device ? productDevice(device) : null
+  }
   const projects = computed<Project[]>(() =>
     (product.snapshot?.workspaces ?? []).map((workspace) => {
       const device = product.snapshot?.devices.find(
@@ -163,6 +173,12 @@ export const useResources = defineStore('resources', () => {
     get: () => local.value.sidebarWidth ?? SIDEBAR_WIDTH.default,
     set: (width: number) => {
       local.value.sidebarWidth = width
+    },
+  })
+  const asideWidth = computed({
+    get: () => local.value.asideWidth ?? ASIDE_WIDTH.default,
+    set: (width: number) => {
+      local.value.asideWidth = width
     },
   })
   const recentProjectIds = computed(() => local.value.recentProjects)
@@ -262,6 +278,8 @@ export const useResources = defineStore('resources', () => {
     pairingOpen,
     sidebarOpen,
     sidebarWidth,
+    asideWidth,
+    deviceById,
     recentProjectIds,
     rememberProject,
     hideProvider,

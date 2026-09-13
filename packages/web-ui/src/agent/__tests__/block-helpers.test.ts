@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { Block, ModelSelection } from '@demicodes/core'
 import type { ShellToolView } from '@demicodes/agent'
-import { shellFileChanges, shellTerminalOutputChunks } from '../block-helpers'
+import { shellTerminalOutputChunks, storedShellView } from '../block-helpers'
 
 test('shell terminal output renders the view chunks', () => {
   const block = tool({
@@ -37,36 +37,29 @@ test('a view that does not match the shell contract shows nothing', () => {
   )
 })
 
-test('shell file changes come from the view', () => {
-  const block = tool({
-    view: shellView({
-      files: [
-        { path: 'a.ts', kind: 'modified', added: 1, removed: 2 },
-        { path: 'b.ts', kind: 'renamed', from: 'c.ts', added: 0, removed: 0 },
-      ],
-    }),
-  })
+test('the retained files come from the view, with their edits', () => {
+  const files = [
+    { path: 'a.ts', kind: 'modified' as const, added: 1, removed: 2, edits: [{ kept: true }] },
+    { path: 'b.ts', kind: 'added' as const, added: 3, removed: 0, edits: [{ kept: false }, { kept: true }] },
+  ]
+  const block = tool({ view: shellView({ files }) })
 
-  expect(shellFileChanges(block)).toEqual([
-    { path: 'a.ts', kind: 'modified', added: 1, removed: 2 },
-    { path: 'b.ts', kind: 'renamed', from: 'c.ts', added: 0, removed: 0 },
-  ])
-  expect(shellFileChanges(tool({ view: shellView() }))).toEqual([])
-  expect(shellFileChanges(tool({}))).toEqual([])
+  expect(storedShellView(block)?.files).toEqual(files)
+  expect(storedShellView(tool({ view: shellView() }))?.files).toBeUndefined()
+  expect(storedShellView(tool({}))).toBeNull()
 })
 
-test('a malformed file entry discards the view it is in', () => {
-  const block = tool({
-    view: {
-      ...shellView(),
-      files: [
-        { path: 'a.ts', kind: 'modified', added: 1, removed: 2 },
-        { path: 'd.ts', kind: 'touched', added: 1, removed: 0 },
-      ],
-    },
+test('a malformed file entry discards the view it is in, never a repaired entry', () => {
+  const kept = { path: 'a.ts', kind: 'modified', added: 1, removed: 2, edits: [{ kept: true }] }
+  const wrongKind = tool({
+    view: { ...shellView(), files: [kept, { ...kept, path: 'd.ts', kind: 'renamed', from: 'c.ts' }] },
+  })
+  const noEdits = tool({
+    view: { ...shellView(), files: [kept, { ...kept, path: 'e.ts', edits: [] }] },
   })
 
-  expect(shellFileChanges(block)).toEqual([])
+  expect(storedShellView(wrongKind)).toBeNull()
+  expect(storedShellView(noEdits)).toBeNull()
 })
 
 function shellView(overrides: Partial<ShellToolView> = {}): ShellToolView {

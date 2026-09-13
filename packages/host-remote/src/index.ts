@@ -2,6 +2,8 @@
 // host and managed host, and its shell environment over jobs (`runner.md`).
 export {
   RemoteHost,
+  RemoteGitError,
+  type RemoteGit,
   type RemoteHostOptions,
   type RemoteJob,
   type RemoteJobExit

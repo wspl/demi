@@ -53,6 +53,11 @@ receives output and an exit status; the backend does not need the original file.
 Keeping algorithms in an independent service allows command releases without
 rebuilding the runner.
 
+For file mutations the runner also supplies the job-owned `EditContext`. The
+service uses the shared recorder when publishing or restoring file contents;
+the runner reads its journal at job completion. The recording contract, limits
+and lifetime are defined in [Edit tracking](edit-tracking.md).
+
 The responsibility boundaries are:
 
 | Owner | Responsibility |

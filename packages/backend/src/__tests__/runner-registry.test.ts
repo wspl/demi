@@ -215,7 +215,7 @@ test(
           type: 'pipe_done', pipeId: refs.stdout.id, ok: false, error: 'upload failed'
         }))
       else if (event === 'job')
-        a.handleMessage(wire.encode({ type: 'job_exit', jobId, exitCode: 7 }))
+        a.handleMessage(wire.encode({ type: 'job_exit', files: [], filesTruncated: false, jobId, exitCode: 7 }))
       else
         pipes.fail(event === 'stdin' ? refs.stdin!.id : refs.stdout.id, 'HTTP connection lost')
       await stopped.promise
@@ -230,7 +230,7 @@ test(
       expect((reason as Error).message).toContain(expectedReason)
       if (event !== 'disconnect' && event !== 'shutdown') {
         // A later job exit must not overwrite a transfer failure or cancellation.
-        a.handleMessage(wire.encode({ type: 'job_exit', jobId, exitCode: 7 }))
+        a.handleMessage(wire.encode({ type: 'job_exit', files: [], filesTruncated: false, jobId, exitCode: 7 }))
         await waitFor(() => a.frames.some((frame) => frame.type === 'rpc_exit'))
         expect(a.frames.find((frame) => frame.type === 'rpc_exit')?.exitCode)
           .toBe(event === 'cancel' ? 130 : 1)
@@ -338,7 +338,7 @@ test(
       a.handleMessage(wire.encode(call))
       await waitFor(() => invoked === 1)
       a.handleMessage(
-        wire.encode({ type: 'job_exit', jobId, exitCode: 0, cwd: '/' })
+        wire.encode({ type: 'job_exit', files: [], filesTruncated: false, jobId, exitCode: 0, cwd: '/' })
       )
       a.handleMessage(wire.encode({ ...call, callId: 'after-exit' }))
       await waitFor(

@@ -5,6 +5,7 @@ import type { Block } from '@demicodes/core'
 import type { HostStore } from '@demicodes/shell'
 import {
   sessionPhaseSchema,
+  shellToolViewSchema,
   type AgentTreeStore,
   type BlobStore,
 } from '@demicodes/agent'
@@ -87,6 +88,25 @@ export class ConversationStores {
    */
   transcriptBlocks(conversationId: string): Block[] {
     return readNode(this.db(conversationId), conversationId)?.blocks ?? []
+  }
+
+  /** Find the call's persisted list across the root and its subagents. */
+  commandFiles(conversationId: string, commandId: string) {
+    const row = this.db(conversationId).get<{ block_json: string }>(
+      `SELECT block_json FROM blocks
+       WHERE json_extract(block_json, '$.type') = 'tool_call'
+         AND json_extract(block_json, '$.view.kind') = 'shell'
+         AND json_extract(block_json, '$.view.commandId') = ?
+         AND json_type(block_json, '$.view.files') = 'array'
+       LIMIT 1`,
+      [commandId],
+    )
+    if (!row) {
+      return null
+    }
+    const block = z.object({ view: shellToolViewSchema }).parse(parsePortableJson(row.block_json))
+    // The row filter selected a view with a list; the view's type does not know that.
+    return block.view.files ?? null
   }
 
   /** All descendant histories, retaining blob references for the browser. */

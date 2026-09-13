@@ -32,7 +32,9 @@ Persistent history is governed by `Block`:
 - `view` may carry bounded UI enhancement data such as a `ShellToolView` (`chunks`,
   `commandId`, status counters). The render layer may use it to enrich the display, but
   must not treat it as more than the model's own view: what the model saw is what the
-  browser shows (`docs/demi-next/runner.md` § Jobs and the tee).
+  browser shows (`docs/demi-next/runner.md` § Jobs and the tee). The one exception is
+  `files`, the diffs a call's edits produced (`docs/demi-next/edit-tracking.md`): they
+  are for the reader, and the model never receives them.
 
 Real-time events are governed by `ClientSessionEvent`:
 

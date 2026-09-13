@@ -1,6 +1,7 @@
 //! Native runner: machine IO, jobs, command dispatch and backend connection.
 
 pub mod fs;
+pub mod git;
 pub mod paths;
 pub mod pipes;
 pub mod process;
@@ -17,3 +18,5 @@ pub mod tasks;
 pub mod volumes;
 
 pub mod commands;
+
+pub(crate) mod file_diff;

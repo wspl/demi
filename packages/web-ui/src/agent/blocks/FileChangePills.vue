@@ -19,6 +19,8 @@ const props = withDefaults(
   { maxRows: 3 },
 )
 
+const emit = defineEmits<{ select: [path: string] }>()
+
 const container = ref<HTMLElement>()
 const pillEls = ref<HTMLElement[]>([])
 const moreEl = ref<HTMLElement>()
@@ -30,7 +32,8 @@ const visibleCount = computed(() => expanded.value ? props.files.length : fitCou
 const hidden = computed(() => props.files.length - visibleCount.value)
 
 function baseName(path: string): string {
-  return path.slice(path.lastIndexOf('/') + 1)
+  const normalized = path.replaceAll('\\', '/')
+  return normalized.slice(normalized.lastIndexOf('/') + 1)
 }
 
 function rowOf(el: HTMLElement, top: number, rowHeight: number): number {
@@ -85,12 +88,14 @@ watch([() => props.files, expanded], () => { void measure() })
     ref="container"
     class="flex min-w-0 flex-wrap items-center gap-1"
   >
-    <span
+    <button
+      type="button"
       v-for="(file, index) in files"
       v-show="index < visibleCount"
       :key="file.path"
       ref="pillEls"
-      class="inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full bg-[var(--btn-bg)] pl-1.5 pr-2 text-xs leading-4 text-fg-body shadow-[var(--shadow-btn)]"
+      class="btn inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full bg-[var(--btn-bg)] pl-1.5 pr-2 text-xs leading-4 text-fg-body shadow-[var(--shadow-btn)]"
+      @click="emit('select', file.path)"
       :title="file.from ? `${file.from} → ${file.path}` : file.path"
     >
       <span class="relative inline-flex shrink-0">
@@ -108,7 +113,7 @@ watch([() => props.files, expanded], () => { void measure() })
           <span v-if="file.removed > 0" class="text-on-danger">−{{ file.removed }}</span>
         </span>
       </span>
-    </span>
+    </button>
     <button
       v-if="hidden > 0 || expanded"
       ref="moreEl"

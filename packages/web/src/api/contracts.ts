@@ -83,6 +83,8 @@ export const conversationRecordSchema = z.object({
   updatedAt: z.string(),
 })
 export const conversationSummarySchema = conversationRecordSchema.extend({
+  /** The directory the conversation's work runs in, resolved by the backend for every kind of target. */
+  cwd: z.string(),
   status: z.enum([
     'running',
     'compacting',
@@ -328,3 +330,27 @@ export type CatalogProvider = z.infer<typeof catalogProviderSchema>
 export type CatalogModel = z.infer<typeof catalogModelSchema>
 export type ConfiguredModel = z.infer<typeof configuredModelSchema>
 export type VendorCatalog = z.infer<typeof vendorCatalogSchema>
+
+/** One text file of the conversation Host, as `GET /conversations/:id/fs/file` returns it. */
+export const fileTextSchema = z.object({ path: z.string(), text: z.string() })
+
+const changeFileSchema = z.object({
+  path: z.string().min(1),
+  kind: z.enum(['added', 'modified', 'deleted', 'renamed']),
+  from: z.string().optional(),
+  added: z.number().int().nonnegative(),
+  removed: z.number().int().nonnegative(),
+})
+
+/** The uncommitted changes of a conversation's execution directory (`web-api.md` § File text and working tree changes). */
+export const workingTreeChangesSchema = z.object({
+  root: z.string(),
+  repository: z.boolean(),
+  head: z.string().nullable(),
+  files: z.array(changeFileSchema),
+  truncated: z.boolean(),
+  watched: z.boolean(),
+})
+
+/** Both sides of one changed file. */
+export const changeSidesSchema = z.object({ original: z.string(), modified: z.string() })

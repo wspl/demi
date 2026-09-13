@@ -42,10 +42,18 @@ export function toolOutputText(block: ToolCallBlock): string {
     .join('\n')
 }
 
-/** The output a shell call left on its view; a view that is not one shows nothing. */
-export function shellTerminalOutputChunks(block: ToolCallBlock): ShellTerminalOutputChunk[] {
+/**
+ * The shell view a tool call stored, or null: a shape the contract does not
+ * describe is not a shell view, and shows nothing.
+ */
+export function storedShellView(block: ToolCallBlock): ShellToolView | null {
   const view = shellToolViewSchema.safeParse(block.view)
-  return view.success ? view.data.chunks : []
+  return view.success ? view.data : null
+}
+
+/** The output a shell call left on its view. */
+export function shellTerminalOutputChunks(block: ToolCallBlock): ShellTerminalOutputChunk[] {
+  return storedShellView(block)?.chunks ?? []
 }
 
 /**
@@ -79,14 +87,3 @@ export function parseToolInput(raw: string): Record<string, unknown> {
 }
 
 export type { ShellFileChange }
-
-/**
- * The files a shell call changed, from its view. The view is one record: a
- * shape the contract does not describe is not a shell view, and shows nothing.
- */
-export function shellFileChanges(block: ToolCallBlock): ShellFileChange[] {
-  const view = shellToolViewSchema.safeParse(block.view)
-  if (!view.success)
-    return []
-  return view.data.files ?? []
-}

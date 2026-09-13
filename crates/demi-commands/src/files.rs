@@ -68,7 +68,11 @@ pub fn atomic_write(path: &Path, bytes: &[u8], create: bool) -> Result<(), Strin
     Ok(())
 }
 
-pub fn mutate(request: &Invocation, cancellation: &CancellationToken) -> Result<String, String> {
+pub fn mutate(
+    request: &Invocation,
+    cancellation: &CancellationToken,
+    recording: Option<&mut demi_command_service::edits::Recording>,
+) -> Result<String, String> {
     check_cancelled(cancellation)?;
     match request.operation.as_str() {
         "file.create" => {
@@ -81,11 +85,14 @@ pub fn mutate(request: &Invocation, cancellation: &CancellationToken) -> Result<
             let args: Args =
                 serde_json::from_value(request.args.clone()).map_err(|error| error.to_string())?;
             let path = resolve_path(&request.cwd, &args.path)?;
+            if let Some(recording) = recording {
+                recording.track(&path);
+            }
             check_cancelled(cancellation)?;
             atomic_write(&path, args.content.as_bytes(), true)?;
             Ok(format!("Created {}\n", args.path))
         }
-        "file.edit" => edit(request, cancellation),
+        "file.edit" => edit(request, cancellation, recording),
         "file.patch" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields)]
@@ -94,13 +101,17 @@ pub fn mutate(request: &Invocation, cancellation: &CancellationToken) -> Result<
             }
             let args: Args =
                 serde_json::from_value(request.args.clone()).map_err(|error| error.to_string())?;
-            patch::apply(&request.cwd, &args.patch, cancellation)
+            patch::apply(&request.cwd, &args.patch, cancellation, recording)
         }
         _ => Err("Unknown builtin operation".into()),
     }
 }
 
-fn edit(request: &Invocation, cancellation: &CancellationToken) -> Result<String, String> {
+fn edit(
+    request: &Invocation,
+    cancellation: &CancellationToken,
+    recording: Option<&mut demi_command_service::edits::Recording>,
+) -> Result<String, String> {
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Args {
@@ -172,9 +183,15 @@ fn edit(request: &Invocation, cancellation: &CancellationToken) -> Result<String
             }
         }
     };
+    if args.old == args.new {
+        return Ok(format!("Edited {}\n", args.path));
+    }
     let mut updated = content;
     updated.replace_range(index..index + args.old.len(), &args.new);
     check_cancelled(cancellation)?;
+    if let Some(recording) = recording {
+        recording.track(&path);
+    }
     atomic_write(&path, updated.as_bytes(), false)?;
     Ok(format!("Edited {}\n", args.path))
 }

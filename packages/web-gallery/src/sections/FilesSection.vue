@@ -14,7 +14,7 @@ import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import GalleryDialogFrame from '../components/GalleryDialogFrame.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
-import { createGalleryFileHosts, laptopTree } from '../fixtures/files'
+import { createGalleryRemoteFileHosts, laptopTree } from '../fixtures/files'
 import { useGalleryView } from '../gallery-views'
 import { baseName } from '@demicodes/web-ui/files/paths'
 
@@ -67,11 +67,12 @@ const iconSamples: [string, boolean][] = [
   ['main.rs', false], ['main.go', false], ['app.py', false], ['config.yaml', false], ['logo.png', false], ['LICENSE', false], ['notes', false],
 ]
 
-const hosts = createGalleryFileHosts()
+const hosts = createGalleryRemoteFileHosts()
+const pairedHosts = hosts.filter((host) => !host.canWake)
 const { view } = useGalleryView()
 
 // New project: the working-environment dialog over the same hosts; a created project joins the list.
-const workspaceDevices = ref(hosts.map(({ id, label, online }) => ({ id, name: label, online })))
+const workspaceDevices = ref(pairedHosts.map(({ id, label, online }) => ({ id, name: label, online })))
 /** Add device stands in for the pairing flow: a new online device joins the list. */
 function connectWorkspaceDevice() {
   workspaceDevices.value.push(
@@ -142,7 +143,6 @@ function createWorkspace(draft: WorkspaceDraft) {
   )
   workspaceKey.value += 1
 }
-const hostOptions = hosts.map(({ id, label, online, icon }) => ({ id, label, online, icon }))
 
 // Select folder: the workspace picker's use, opening on the laptop's projects.
 const folderHostId = ref('mac')
@@ -318,7 +318,7 @@ onMounted(() => {
     <template v-if="view === 'tree'">
       <GallerySection
         title="Rows"
-        note="The workspace tree: open and closed directories, files, the selected file, hidden entries after the rest, deep nesting, long names truncated. Click a directory to fold it, a file to select it."
+        note="The workspace tree: open and closed directories, files, the selected file, hidden entries after the rest, deep nesting, long names truncated. Click a directory to fold it, a file to select it; the control at the caption's end lists the open directories again."
       >
         <GallerySpecimen variant="rows · live">
           <div class="gallery-frame h-[28rem] w-[220px] overflow-hidden bg-surface-editor">
@@ -385,7 +385,7 @@ onMounted(() => {
     <template v-if="view === 'dialogs'">
       <GallerySection
         title="Select folder"
-        note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline one is listed but cannot be chosen."
+        note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline device is listed but cannot be chosen."
       >
         <GalleryDialogFrame>
           <FileBrowserDialog
@@ -397,7 +397,7 @@ onMounted(() => {
             :source="folderHost.source"
             :initial-path="folderHostId === 'mac' ? '/Users/zan/Projects' : undefined"
             :places="folderHost.places"
-            :hosts="hostOptions"
+            :hosts="pairedHosts"
             :host-id="folderHostId"
             @select="folderChosen = $event"
             @update:host-id="selectHost('folder', $event)"
@@ -410,7 +410,7 @@ onMounted(() => {
 
       <GallerySection
         title="Open file"
-        note="The composer's remote attachment: opens inside the conversation's workspace. Folders are entered, a file is the answer."
+        note="The composer's remote attachment: opens inside the conversation's workspace. Folders are entered, a file is the answer. A stopped host that can wake remains selectable; its source starts it when browsing."
       >
         <GalleryDialogFrame>
           <FileBrowserDialog
@@ -422,7 +422,7 @@ onMounted(() => {
             :source="fileHost.source"
             :initial-path="fileHostId === 'mac' ? '/Users/zan/Projects/demi' : undefined"
             :places="fileHost.places"
-            :hosts="hostOptions"
+            :hosts="hosts"
             :host-id="fileHostId"
             @select="fileChosen = $event"
             @update:host-id="selectHost('file', $event)"
@@ -492,7 +492,7 @@ onMounted(() => {
             :source="narrowHost.source"
             :initial-path="narrowHostId === 'mac' ? '/Users/zan/Projects/a project with a very long directory name that will not fit in the address bar/src' : undefined"
             :places="narrowHost.places"
-            :hosts="hostOptions"
+            :hosts="hosts"
             :host-id="narrowHostId"
             @update:host-id="narrowHostId = $event"
           />
