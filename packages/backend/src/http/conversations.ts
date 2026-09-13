@@ -17,8 +17,10 @@ import type { ConversationStores } from '../storage/conversation-store'
 import type { ChangeStore } from '../storage/change-store'
 import { ForkRefused, type ConversationForks } from '../conversation/fork'
 import { ManagedHostError } from '../managed/lifecycle'
-import { TextFileRefused, readTextFile, textOf } from '../runner/file-browser'
+import { TextFileRefused, browseDirectory, readTextFile, textOf } from '../runner/file-browser'
 
+const filePathSchema = z.object({ path: z.string().min(1) })
+const directoryQuerySchema = filePathSchema.partial()
 const attachBodySchema = z.object({ deviceId: z.string().min(1) })
 const renameHostBodySchema = z.object({ name: z.string().trim().min(1).max(64) })
 
@@ -436,13 +438,8 @@ export function conversationRoutes(options: {
     return c.body(null, 204)
   })
 
-  // Workspace file drop: bytes land in the execution target's working
-  // directory over the ordinary Host fs — filesystem data, not conversation
-  // data. The returned path is what the client inserts as a text reference.
-  // The working tree behind the change view (`web-api.md` § File text and
-  // working tree changes): what is uncommitted, and one file's two sides.
-  // Both reach the host through `withHost`, like every other host operation.
-  const withWorkingTree = async (
+  // Browser reads and working-tree queries share conversation Host admission.
+  const withConversationHost = async (
     c: Context<AuthEnv>,
     operation: (host: RemoteHost, root: string) => Promise<Response>,
   ): Promise<Response> => {
@@ -456,22 +453,64 @@ export function conversationRoutes(options: {
         404,
       )
     }
+    if (conversation.archived) {
+      return c.json({ code: 'conversation_archived', message: 'Conversation is archived' }, 409)
+    }
     try {
-      return await withHost(conversation.id, (host) => operation(host, host.defaultCwd))
+      return await withHost(
+        conversation.id,
+        (host) => operation(host, host.defaultCwd),
+        c.req.raw.signal,
+      )
     } catch (error) {
-      return workingTreeError(c, error)
+      return hostOperationError(c, error)
     }
   }
 
+  app.get('/:id/fs', async (c) => {
+    const query = directoryQuerySchema.safeParse(c.req.query())
+    if (!query.success) {
+      return c.json({ code: 'invalid_query', message: 'Expected a nonempty path' }, 400)
+    }
+    return withConversationHost(c, async (host, root) => {
+      const path = query.data.path ?? root
+      const entries = await browseDirectory(host.fs, path)
+      return c.json({ path, home: host.identity.homeDir, entries })
+    })
+  })
+
+  app.post('/:id/fs', async (c) => {
+    const body = filePathSchema.safeParse(await c.req.json().catch(() => null))
+    if (!body.success) {
+      return c.json({ code: 'invalid_body', message: 'Expected { path: string }' }, 400)
+    }
+    return withConversationHost(c, async (host) => {
+      await host.fs.mkdir(body.data.path, { recursive: true })
+      return c.json({ path: body.data.path }, 201)
+    })
+  })
+
+  app.get('/:id/fs/file', async (c) => {
+    const query = filePathSchema.safeParse(c.req.query())
+    if (!query.success) {
+      return c.json({ code: 'invalid_query', message: 'Expected a path query parameter' }, 400)
+    }
+    return withConversationHost(c, async (host) => {
+      const path = query.data.path
+      const text = await readTextFile(host.fs, path)
+      return c.json({ path, text })
+    })
+  })
+
   app.get('/:id/changes', (c) =>
-    withWorkingTree(c, async (host, root) => {
+    withConversationHost(c, async (host, root) => {
       const changes = await host.git.changes(root)
       return c.json({ root, ...changes })
     }),
   )
 
   app.get('/:id/changes/file', (c) =>
-    withWorkingTree(c, async (host, root) => {
+    withConversationHost(c, async (host, root) => {
       const path = c.req.query('path')
       if (!path || path.startsWith('/') || path.split('/').includes('..')) {
         return c.json(
@@ -516,8 +555,13 @@ export function conversationRoutes(options: {
   return app
 }
 
-function workingTreeError(c: Context<AuthEnv>, error: unknown): Response {
-  if (errorCode(error) === 'ERUNNEROFFLINE')
+function hostOperationError(c: Context<AuthEnv>, error: unknown): Response {
+  const code = errorCode(error)
+  if (code === 'ENOENT')
+    return c.json({ code: 'fs_error', message: errorMessage(error) }, 404)
+  if (code === 'EACCES' || code === 'EPERM')
+    return c.json({ code: 'fs_error', message: errorMessage(error) }, 403)
+  if (code === 'ERUNNEROFFLINE')
     return c.json({ code: 'device_offline', message: 'The execution device is offline' }, 409)
   if (error instanceof ManagedHostError)
     return c.json({ code: error.code, message: error.message }, 503)
@@ -537,5 +581,5 @@ function workingTreeError(c: Context<AuthEnv>, error: unknown): Response {
         return c.json({ code: 'changes_failed', message: error.message }, 500)
     }
   }
-  return c.json({ code: 'changes_failed', message: errorMessage(error) }, 500)
+  return c.json({ code: 'host_operation_failed', message: errorMessage(error) }, 500)
 }
