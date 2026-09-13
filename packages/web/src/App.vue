@@ -8,6 +8,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
+import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import { useDevicePairing } from '@demicodes/web-ui/devices/pairing'
@@ -15,6 +16,7 @@ import { isSettingsSectionEnabled } from '@demicodes/web-ui/settings/sections'
 import SettingsDialog from './settings/SettingsDialog.vue'
 import TargetDialog from './targets/TargetDialog.vue'
 import { useConversations } from './conversation/store'
+import { useWorkPanel } from './state/work-panel'
 import { useResources } from './state/resources'
 import { useSession } from './auth/session'
 import { claimDevice, deviceInstallation } from './devices/pairing'
@@ -24,6 +26,9 @@ const resources = useResources()
 // The width follows the divider frame by frame; the preference takes it when a resize settles.
 const sidebarWidth = ref(resources.sidebarWidth)
 watch(() => resources.sidebarWidth, (width) => { sidebarWidth.value = width })
+const asideWidth = ref(resources.asideWidth)
+watch(() => resources.asideWidth, (width) => { asideWidth.value = width })
+const workPanel = useWorkPanel()
 const router = useRouter()
 const route = useRoute()
 const folded = computed({
@@ -140,7 +145,10 @@ useAppShortcuts(
     v-else-if="route.path !== '/login'"
     v-model:open="resources.sidebarOpen"
     v-model:width="sidebarWidth"
+    v-model:aside-open="resources.asideOpen"
+    v-model:aside-width="asideWidth"
     @resize-end="resources.sidebarWidth = $event"
+    @aside-resize-end="resources.asideWidth = $event"
   >
     <template #sidebar>
       <AppSidebar
@@ -167,6 +175,15 @@ useAppShortcuts(
       />
     </template>
     <RouterView />
+    <template #aside>
+      <WorkPanel
+        :tabs="workPanel.tabsFor(activeId)"
+        :active-id="workPanel.activeIdFor(activeId)"
+        @select="(id) => workPanel.select(activeId, id)"
+        @close-tab="(id) => workPanel.closeTab(activeId, id)"
+        @close="resources.asideOpen = false"
+      />
+    </template>
     <template #dialogs>
       <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->
       <SettingsDialog @sign-out="signOut" />
