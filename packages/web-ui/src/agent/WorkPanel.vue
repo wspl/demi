@@ -12,6 +12,7 @@ import Menu from '../ui/Menu.vue'
 import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Popover from '../ui/Popover.vue'
+import Tooltip from '../ui/Tooltip.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from '../files/FileIcon.vue'
 import ChangeView from '../files/ChangeView.vue'
@@ -168,7 +169,7 @@ function add(kind: WorkTab['kind']): void {
 
 <template>
   <aside class="flex h-full min-w-0 flex-col overflow-hidden border-l border-line bg-surface text-fg">
-    <div class="flex h-11 shrink-0 items-center gap-1 pl-2 pr-2.5">
+    <div class="flex h-11 shrink-0 items-center gap-1 pl-2 pr-3">
       <TabStrip class="flex-1" surface="raised">
         <TabItem
           v-for="tab in tabs"
@@ -219,13 +220,14 @@ function add(kind: WorkTab['kind']): void {
           </Dropdown>
         </template>
       </TabStrip>
-      <IconButton
-        :icon="PanelRightClose"
-        size="sm"
-        variant="ghost"
-        aria-label="Close panel"
-        @click="emit('close')"
-      />
+      <Tooltip content="Close panel" class="shrink-0">
+        <IconButton
+          :icon="PanelRightClose"
+          variant="ghost"
+          aria-label="Close panel"
+          @click="emit('close')"
+        />
+      </Tooltip>
     </div>
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <slot :tab="active">
