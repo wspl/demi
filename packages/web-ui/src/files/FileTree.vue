@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, watch } from 'vue'
-import { ChevronRight } from '@lucide/vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
-import { ICON_PX } from '../ui/icon-metrics'
-import FileIcon from './FileIcon.vue'
+import FileTreeRow from './FileTreeRow.vue'
+import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, type FileTreeRow as Row } from './file-tree'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource } from './types'
 import { baseName, isHiddenName, joinPath, normalizePath, parentPath } from './paths'
 
@@ -13,8 +12,11 @@ import { baseName, isHiddenName, joinPath, normalizePath, parentPath } from './p
  * list when first opened and keep their listing; a click on a directory
  * folds or unfolds it, a click on a file asks the host to open it. The
  * selected file's ancestors unfold on their own so it is always in view.
- * The workspace's name heads the tree as a plain caption. Loads in flight
- * are dropped when the tree goes away.
+ * The workspace's name heads the tree as a plain caption, and stays pinned
+ * with the enclosing directories of the first row in view, the way an
+ * explorer's sticky scroll keeps the path in sight; a pinned directory
+ * scrolls its own row to the top. Loads in flight are dropped when the tree
+ * goes away.
  */
 const props = defineProps<{
   source: Pick<FileBrowserSource, 'list'>
@@ -32,14 +34,6 @@ interface Listing {
   loading: boolean
   failure: FileBrowserFailure | null
   open: boolean
-}
-
-interface Row {
-  path: string
-  name: string
-  isDirectory: boolean
-  depth: number
-  listing: Listing | null
 }
 
 const listings = reactive(new Map<string, Listing>())
@@ -131,27 +125,82 @@ onBeforeUnmount(() => {
 
 const rows = computed<Row[]>(() => {
   const out: Row[] = []
-  const walk = (dir: string, depth: number): void => {
+  const walk = (dir: string, depth: number, parent: string | null): void => {
     const entry = listings.get(dir)
     if (!entry?.open) {
       return
     }
     for (const item of entry.entries) {
       const path = joinPath(dir, item.name)
-      out.push({
-        path,
-        name: item.name,
-        isDirectory: item.isDirectory,
-        depth,
-        listing: item.isDirectory ? (listings.get(path) ?? null) : null,
-      })
+      out.push({ path, name: item.name, isDirectory: item.isDirectory, depth, parent })
       if (item.isDirectory) {
-        walk(path, depth + 1)
+        walk(path, depth + 1, path)
       }
     }
   }
-  walk(normalizePath(props.root), 0)
+  walk(normalizePath(props.root), 0, null)
   return out
+})
+
+function rowState(row: Row): { open: boolean; loading: boolean; failure: FileBrowserFailure | null } {
+  const entry = row.isDirectory ? listings.get(row.path) : undefined
+  return {
+    open: entry?.open === true,
+    loading: entry?.loading === true,
+    failure: entry?.failure ?? null,
+  }
+}
+
+// The pinned stack: measured from the rows' positions on every scroll and layout.
+const scrollArea = ref<InstanceType<typeof ScrollArea> | null>(null)
+const rowEls = new Map<string, HTMLElement>()
+const stickyPaths = ref<string[]>([])
+const stickyOffset = ref(0)
+const stickyRows = computed(() => {
+  const byPath = new Map(rows.value.map((row) => [row.path, row]))
+  return stickyPaths.value.flatMap((path) => {
+    const row = byPath.get(path)
+    return row ? [row] : []
+  })
+})
+
+function bindRow(path: string, el: unknown): void {
+  if (el instanceof HTMLElement) {
+    rowEls.set(path, el)
+  } else if (el && typeof el === 'object' && '$el' in el && el.$el instanceof HTMLElement) {
+    rowEls.set(path, el.$el)
+  } else {
+    rowEls.delete(path)
+  }
+}
+
+function updateSticky(): void {
+  const viewport = scrollArea.value?.el
+  if (!viewport) {
+    return
+  }
+  const stack = stickyTreeRows(
+    rows.value,
+    (path) => rowEls.get(path)?.offsetTop,
+    viewport.scrollTop,
+    TREE_ROW_PX,
+  )
+  stickyPaths.value = stack.paths
+  stickyOffset.value = stack.offset
+}
+
+/** A pinned directory takes the top of the view, under the caption. */
+function scrollToRow(path: string): void {
+  const viewport = scrollArea.value?.el
+  const el = rowEls.get(path)
+  if (viewport && el) {
+    viewport.scrollTop = el.offsetTop - TREE_ROW_PITCH_PX
+  }
+}
+
+onMounted(updateSticky)
+watch(rows, () => {
+  void nextTick(updateSticky)
 })
 
 const rootListing = computed(() => listings.get(normalizePath(props.root)) ?? null)
@@ -167,46 +216,40 @@ function activate(row: Row): void {
 </script>
 
 <template>
-  <ScrollArea class="h-full min-h-0" viewport-class="p-1">
-    <!-- The workspace's name heads the tree: a caption, not a row. -->
+  <ScrollArea ref="scrollArea" class="h-full min-h-0" viewport-class="p-1" @scroll="updateSticky">
+    <!-- The pinned stack: the caption, then the enclosing directories of the first row under it. -->
     <div
-      class="flex h-7 shrink-0 select-none items-center px-2 text-chrome font-medium text-fg-muted"
-      :title="root"
+      class="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col gap-px bg-surface-editor p-1 pb-0"
+      :style="{ transform: `translateY(${stickyOffset}px)` }"
     >
-      <span class="truncate">{{ rootName }}</span>
-    </div>
-    <div role="tree" :aria-label="rootName" class="flex min-h-full flex-col gap-px">
       <div
+        class="flex h-7 shrink-0 select-none items-center px-2 text-chrome font-medium text-fg-muted"
+        :title="root"
+      >
+        <span class="truncate">{{ rootName }}</span>
+      </div>
+      <FileTreeRow
+        v-for="row in stickyRows"
+        :key="row.path"
+        class="pointer-events-auto"
+        :row="row"
+        :selected="row.path === selected"
+        v-bind="rowState(row)"
+        @activate="scrollToRow(row.path)"
+      />
+    </div>
+    <!-- The caption's room; the pinned copy above covers it. -->
+    <div class="h-7 shrink-0" aria-hidden="true" />
+    <div role="tree" :aria-label="rootName" class="flex min-h-full flex-col gap-px">
+      <FileTreeRow
         v-for="row in rows"
         :key="row.path"
-        role="treeitem"
-        :aria-selected="row.path === selected"
-        :aria-expanded="row.isDirectory ? row.listing?.open === true : undefined"
-        class="flex h-7 shrink-0 cursor-default select-none items-center gap-1 rounded-md pr-1 text-chrome transition-colors duration-200 ease-out"
-        :class="row.path === selected ? 'bg-active text-fg-emphasis' : 'text-fg-body hover:bg-hover'"
-        :style="{ paddingLeft: `${4 + row.depth * 12}px` }"
-        :title="row.name"
-        @click="activate(row)"
-      >
-        <!-- Directories fold on a chevron; files keep its width so names line up. -->
-        <span class="flex size-4 shrink-0 items-center justify-center text-fg-faint">
-          <IndeterminateSpinner v-if="row.listing?.loading" :size="12" />
-          <ChevronRight
-            v-else-if="row.isDirectory"
-            :size="ICON_PX.in20"
-            class="transition-transform duration-150"
-            :class="row.listing?.open ? 'rotate-90' : ''"
-          />
-        </span>
-        <FileIcon :name="row.name" :is-directory="row.isDirectory" />
-        <span class="truncate">{{ row.name }}</span>
-        <span
-          v-if="row.listing?.failure"
-          class="ml-auto truncate pl-2 text-[11px] text-fg-faint"
-          :title="row.listing.failure.message"
-          >{{ row.listing.failure.kind === 'permission' ? 'No access' : 'Unavailable' }}</span
-        >
-      </div>
+        :ref="(el) => bindRow(row.path, el)"
+        :row="row"
+        :selected="row.path === selected"
+        v-bind="rowState(row)"
+        @activate="activate(row)"
+      />
       <div
         v-if="rootListing?.loading && rows.length === 0"
         class="flex flex-1 select-none items-center justify-center py-10 text-fg-subtle"
