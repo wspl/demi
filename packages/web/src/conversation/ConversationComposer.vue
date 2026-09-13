@@ -83,7 +83,7 @@ const remoteHosts = computed(() => {
       .map((host) => ({
         id: host.deviceId,
         label: host.name,
-        online: host.online,
+        online: resources.deviceById(host.deviceId)?.online ?? false,
       })),
   ]
   return hosts.map((host) => {

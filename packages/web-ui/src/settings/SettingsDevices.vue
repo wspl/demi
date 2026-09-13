@@ -3,6 +3,7 @@ import AsyncRegion from '../ui/AsyncRegion.vue'
 import CloudSettings from '../cloud/CloudSettings.vue'
 import type { CloudState } from '../cloud/types'
 import { Monitor } from '@lucide/vue'
+import CornerDot from '../ui/CornerDot.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import SettingsGroup from './SettingsGroup.vue'
@@ -77,9 +78,10 @@ const { isOpen, phase, open, close, submit } = useDevicePairing(
           <template #leading>
             <span class="relative flex">
               <Monitor :size="ICON_PX.in28" />
-              <span
-                class="absolute -right-0.5 -top-0.5 size-1.5 rounded-full ring-2 ring-surface-float"
-                :class="device.online ? 'bg-on-success' : 'bg-fg-ghost'"
+              <CornerDot
+                :tone="device.online ? 'success' : 'muted'"
+                ring="float"
+                :label="device.online ? 'Online' : 'Offline'"
               />
             </span>
           </template>

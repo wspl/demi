@@ -1,4 +1,4 @@
-<script setup lang="ts" generic="T extends { id: string; label: string; icon?: import('vue').Component; note?: string; value?: string }">
+<script setup lang="ts" generic="T extends { id: string; label: string; icon?: import('vue').Component; note?: string; value?: string; indicator?: import('./MenuItem.vue').MenuIndicator; indicatorLabel?: string; disabledReason?: string }">
 import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { Search, CircleX } from '@lucide/vue'
@@ -64,7 +64,7 @@ const iconless = computed(() => {
     return props.iconless
   if (props.items == null)
     return false
-  return props.items.every((item) => item.icon == null)
+  return props.items.every((item) => item.icon == null && item.indicator == null)
 })
 
 provide(menuIconlessKey, iconless)
@@ -206,6 +206,9 @@ function handleKeydown(event: KeyboardEvent) {
             :label="filteredItems[vItem.index]!.label"
             :icon="filteredItems[vItem.index]!.icon"
             :note="filteredItems[vItem.index]!.note"
+            :indicator="filteredItems[vItem.index]!.indicator"
+            :indicator-label="filteredItems[vItem.index]!.indicatorLabel"
+            :disabled-reason="filteredItems[vItem.index]!.disabledReason"
             :value="filteredItems[vItem.index]!.value"
             :disabled="isItemDisabled?.(filteredItems[vItem.index]!)"
             choice
@@ -238,6 +241,9 @@ function handleKeydown(event: KeyboardEvent) {
           :label="item.label"
           :icon="item.icon"
           :note="item.note"
+          :indicator="item.indicator"
+          :indicator-label="item.indicatorLabel"
+          :disabled-reason="item.disabledReason"
           :value="item.value"
           :disabled="isItemDisabled?.(item)"
           choice

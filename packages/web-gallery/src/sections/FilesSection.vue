@@ -410,7 +410,7 @@ onMounted(() => {
 
       <GallerySection
         title="Open file"
-        note="The composer's remote attachment: opens inside the conversation's workspace. Folders are entered, a file is the answer. A stopped host that can wake remains selectable; its source starts it when browsing."
+        note="The composer's remote attachment: opens inside the conversation's workspace. Folders are entered, a file is the answer. Cloud shows no status and remains selectable while asleep; its source wakes it when browsing."
       >
         <GalleryDialogFrame>
           <FileBrowserDialog

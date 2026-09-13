@@ -6,7 +6,6 @@ import Button from '../ui/Button.vue'
 import SettingsGroup from '../settings/SettingsGroup.vue'
 import SettingsRow from '../settings/SettingsRow.vue'
 import CloudResetDialog from './CloudResetDialog.vue'
-import { resetPhaseLabels } from './reset-phases'
 
 const props = defineProps<{
   cloud: CloudState
@@ -27,19 +26,6 @@ const busy = computed(
       props.cloud.phase !== 'ready' &&
       props.cloud.phase !== 'failed'),
 )
-const label = computed(() =>
-  props.cloud.state === 'resetting' && props.cloud.phase
-    ? resetPhaseLabels[props.cloud.phase]
-    : {
-        unallocated: 'Starts when you need it',
-        off: 'Sleeping',
-        booting: 'Starting…',
-        running: 'Running',
-        saving: 'Saving…',
-        resetting: 'Resetting…',
-        unavailable: 'Unavailable',
-      }[props.cloud.state],
-)
 function begin() {
   submitted.value = false
   operationId.value = crypto.randomUUID()
@@ -58,7 +44,7 @@ function reset() {
   <SettingsGroup title="Cloud">
     <SettingsRow
       label="Your Cloud environment"
-      :description="`${label} · All your Cloud projects share this machine.`"
+      description="All your Cloud projects share this environment. Starts automatically when needed."
     >
       <Button
         size="sm"

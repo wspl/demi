@@ -27,6 +27,8 @@ Resolving target metadata does not allocate or start Cloud. The first file,
 shell, or process-backed provider operation acquires the device. Concurrent first
 uses join one allocation and boot; the control database enforces device uniqueness.
 A failed wake reports an error instead of selecting another target.
+Cloud sleep is not unavailability: selecting or using a Cloud target must not
+require a live runner in advance. The operation joins wake and waits for access.
 
 Scripts run in embedded brush on the target. Cloud jobs use the guest account;
 paired-device jobs use the device account. Login profiles, cwd between jobs,
