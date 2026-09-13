@@ -1,382 +1,169 @@
-# Demi Next: The Backend
+# Demi Next: Backend Architecture
 
-| | |
-|---|---|
-| Date | 2026-09-08 |
-| Status | Target architecture contract |
-| Scope | The `@demicodes/backend` program: modules, deployment topology, routing, the Web API |
+`@demicodes/backend` is the product server. It authenticates browser requests,
+hosts conversation agent trees, assembles providers and commands, and connects
+those sessions to execution machines. Runners execute device work; the backend
+owns conversation state and product policy.
 
-## One program, one architecture
+## Request paths and responsibilities
 
-Scaling is running more copies of the same program plus one internal
-control-plane process (serverless hosting stays out of scope so its
-constraints cannot leak into the interfaces):
-
-```
-Self-host (one instance):
-
-  browser ─────────┐
-                   ├──►  demi-backend  ──►  control.sqlite
-  runner ──────────┘     (complete: Web API │  + conversations/<id>.sqlite (per conv)
-                          + sessions + vault│  + blob dir + homes dir
-                          + runner mgmt)    └─ (litestream ──► S3, optional)
-
-
-Scaled (same program × N + one internal control-plane service):
-
-                        ┌──►  demi-backend #1 (users a,b) ─► own conversations/*.sqlite ─┐
-  browsers ──►  router  ├──►  demi-backend #2 (users c,d) ─► own conversations/*.sqlite ─┼─► demi-controld
-  runners  ──►  (pins   ├──►  demi-backend #3 (users e,f) ─► own conversations/*.sqlite ─┘   (internal RPC,
-                by user) └──►  …                                every node: litestream ─► S3   control.sqlite)
+```text
+Browser
+  +-- HTTP product data ----> HTTP routes -> domain modules -> ControlService
+  +-- conversation WS -----> scoped transport -> AgentServer -> conversation DB
+                                                   |
+                             +---------------------+-------------------+
+                             v                                         v
+                     provider runtime                         Host / shell context
+                       |         |                                     |
+                 vendor API      +-- process spawn --------------------+
+                                                                       v
+                                                              runner connection
+                                                                       |
+                                                              execution machine
 ```
 
-Every instance is a **complete** backend for its assigned users — user x's
-HTTP, conversation sockets, runner sockets, managed VMs and
-CLI processes are all pinned to the instance the user→worker map names. The
-affinity is natural because conversations, devices and (isolated mode)
-providers are all user-owned, so nothing stateful ever crosses instances.
-Self-host is the N=1 degenerate form with no router. v1 milestones implement
-N=1 only.
+For example, opening history reads stored blocks without starting a runner.
+Sending a message validates its frame and provider selection. Inference can use
+a backend HTTP provider; a shell tool or process provider obtains the selected
+execution Host when needed. The same conversation keeps its history if its target
+changes.
 
-Routing — the router is an off-the-shelf reverse proxy selecting the
-upstream from a routing key; we develop no routing code and ship a sample
-config:
+| Module | Responsibility | Design contract |
+|---|---|---|
+| `http` | Public routes, validation, authentication gates, WebSocket upgrade, browser assets | [Web API](web-api.md) |
+| `auth` | Accounts, password verification, sessions, login lockout, email-change delivery | [Product](product.md) |
+| `conversation` | Agent-tree hosting, history/Fork, summaries, target resolution, frame and file admission | [Sessions and targets](sessions-and-targets.md) |
+| Command assembly | Coding-agent roots plus the product's `host` group, manifests, incoming RPC dispatch | [Commands](commands.md) |
+| `llm`, `vault`, `usage` | Provider assembly, credential scope, model discovery, inference admission and accounting | [Providers](providers-and-vault.md) |
+| `runner` | Device pairing, live connection registry, remote Host handles, command relay, pipe broker | [Runner](runner.md) |
+| `managed` | User Cloud allocation, machine lifecycle, image generations, reset and shared-device admission | [Managed hosts](managed-hosts.md) |
+| `storage` | Control records, per-conversation persistence, user blob namespaces | [Storage](storage.md) |
+| `sync` | Reconstructible application snapshots for browser polling | [Web API state synchronization](web-api.md#sidebar-mutations-read-state-and-page-synchronization) |
 
-- **The routing key**: at login the backend sets a uid cookie (browser
-  traffic); at claim time it hands the runner its owner's route key
-  alongside the device token, and the runner sends it as a header on every
-  reconnect (device traffic). Same key ⇒ same map entry ⇒ one instance.
-  Requests without a key yet (login) may land on any worker; those
-  endpoints only talk to the control plane.
-- **Routing happens at connection establishment only.** Established
-  WebSockets are never rerouted; during a scale event in-flight turns
-  finish on the old instance.
-- **Scale events move users explicitly**, and a moved user's experience is
-  a backend restart: stop the user's sessions on the source, `litestream
-  restore` their conversation files on the target, update the map; runners
-  reconnect to the new home. Managed VMs are hibernated on the source and
-  woken on the target from the committed system/home generation.
-- **Control-plane access is the only cross-instance traffic** — the
-  `ControlService` RPC (`storage.md`).
+These are modules of one backend, not independently deployed services.
+`backend` is a product leaf: framework packages do not import it.
+[Package boundaries](../package-boundaries.md) owns the dependency contract.
 
-## Modules
+## Authentication and ownership
 
-Spoken of as modules, not separate services:
+Browser API routes use the `demi_session` cookie. It contains a random 256-bit
+token whose SHA-256 identifies the stored session. The cookie is `HttpOnly`,
+`SameSite=Lax`, and `Path=/`; HTTPS requests, including forwarded HTTPS, set
+`Secure`. A missing or expired session returns 401 `unauthenticated`; an invalid
+supplied cookie is cleared.
 
-- **Conversation module**: AgentServer hosting, the session tree's
-  persistence (the agent's `AgentTreeStore` over the conversation database:
-  node rows, block rows, the three atomic commits — `subagent.md` §
-  Persistence), session index, cold-history reads on the same rendering
-  path as live (a full-sync `transcript_reset`), compaction, session
-  concurrency via client-owned session ids and the ownership registry;
-  the conversation's execution target (`sessions-and-targets.md`) — the
-  resolution of Cloud, device or workspace selection to a Host and user switches — as one module keyed by the
-  conversation, which every session of it (root or subagent) asks.
-- **Command module**: assembles the roots (`demi` from
-  `@demicodes/coding-agent` plus the backend-contributed `host` group),
-  builds and serves the manifest and executes `rpc` commands arriving
-  from runners (`commands.md`).
-- **LLM module**, **credential vault**, **usage accounting**:
-  `providers-and-vault.md`.
-- **Runner management module**: device registry (claim tokens, device
-  tokens, online status = socket state, one live connection per token), the
-  runner-protocol server, per-conversation `RemoteHost` handles
-  (`@demicodes/host-remote`) over connected runners, the rpc relay, the
-  pipe broker (`runner.md` § Pipes).
-- **Managed hosts module**: the `ManagedHostProvisioner` (Firecracker under
-  jailer via the privileged helper), images, the machine-image store,
-  lifecycle (`managed-hosts.md`).
-- **Auth module**: users and roles, password hashing (argon2id), the
-  cookie sessions with their sliding expiry, the login lockout. Device
-  claiming is the runner module's, over the session user.
+Sessions expire 30 days after their last renewal. A request with less than
+15 days remaining renews the session and cookie. Login failures are tracked by
+email; five recent failures lock it for one minute. These are configurable auth
+defaults, separate from inference rate limiting.
+
+Setup and login are public entrances. Runner and pipe routes use device
+credentials instead of browser cookies; an unclaimed runner uses the pairing
+protocol. Public installer downloads contain no credential. All other `/api`
+resources pass through the browser session gate. Inaccessible user-owned objects
+return 404, insufficient role returns 403, and missing authentication returns 401.
+
+[Instance mode](product.md#instance-mode-shared-vs-isolated) controls provider
+ownership. Every provider lookup, catalog, configuration route, and inference
+resolution uses the same scope. Starting with provider rows whose ownership
+conflicts with the configured mode is refused.
+
+## Browser synchronization
+
+Ordinary product state uses REST with stable error codes and `{ code, message }`
+errors. Each open conversation uses one WebSocket at
+`/api/conversations/:id/stream`, carrying agent `ClientFrame` and `ServerFrame`
+messages. Execution context comes from the conversation's server-side target;
+the browser cannot override it with an arbitrary frame cwd.
+
+`GET /api/state` returns a conditional application snapshot: account, preferences,
+projects, conversation summaries, devices, providers, and Cloud status. It does
+not start Cloud or infer. The product browser polls and revalidates this snapshot;
+chat output remains on the conversation stream. A snapshot combines multiple
+stores and live state, so it is reconstructible rather than one global atomic
+read. A later poll catches changes made during assembly.
+
+`web-ui` implements reusable behavior through data and handlers. `web` supplies
+fetch, WebSocket, and state adapters; `web-gallery` supplies specimens using the
+same components. Model discovery has its own account-wide cache and loading
+state, so it does not block readable history. See
+[Model catalog caching](../model-catalog-cache.md).
 
 ## Media by reference
 
-Nothing the backend sends to a browser inlines bulk bytes. The
-conversation-scoped transport rewrites every outbound frame that carries
-transcript blocks (`transcript_reset`, `transcript_patch`, and the
-subagent pair): each inline media source becomes `{ type: 'ref', ref,
-mediaType }` — `ref` the blob's content hash, the same form the block rows
-hold at rest — and the page fetches `GET /api/blobs/:sha256?type=<media
-type>` (cookie-authenticated, private, `immutable`, cached for a year with
-`Vary: Cookie`). The type is honoured only from a fixed list of the image,
-video, audio and PDF types the page renders in place; any other type is
-served as an opaque `application/octet-stream` attachment, and every
-response carries `X-Content-Type-Options: nosniff` — a blob is bytes of
-the uploader's choosing under a predictable hash, and never executes in
-the backend's origin. Every upload and conversation uses its owner's blob
-namespace; knowing another user's hash still returns 404. Providers
-still receive inline bytes: the conversation module resolves references
-before handing a message to the provider runtime. The same rule governs
-attachments in both directions (`product.md`): an upload's `ref` in a
-`send` or `steer` frame is the attachment id, resolved inbound.
+Transcript media sent to the browser uses blob references instead of inline bulk
+bytes. The conversation transport externalizes inline media in root and subagent
+reset/patch frames, preserving frame order. The browser retrieves the referenced
+bytes through the cookie-authenticated blob route in its user's namespace.
 
-The scoped transport validates the entire inbound frame before changing
-conversation metadata or resolving attachments. Its schema extends the
-agent's send/steer content schema with uploaded attachment references;
-the agent receives only resolved content. Inbound delivery and outbound
-media externalization each preserve frame order. A failed frame reports
-an error without rejecting the queue used by later frames; close and
-unsubscribe prevent delayed work from reaching the session.
+Only the route's supported image, video, audio, and PDF media types are served
+inline. Other content downloads as `application/octet-stream`; responses include
+`X-Content-Type-Options: nosniff`, private immutable caching for one year, and
+`Vary: Cookie`. A hash is not an authorization token across users.
 
-## Web API (browser ↔ backend)
+Inbound send/steer validation accepts the agent content schema plus product upload
+and remote-file references. The scoped transport validates the entire frame
+before changing metadata or granting attachments. It resolves uploaded attachment
+IDs to caller-owned blobs and writes them under the selected Host's
+`~/.demi/attachments/<conversation>/`, outside the workspace. The agent receives
+an attachment record and any native media block it can consume. Text attachments
+can include a short preview. Missing or inaccessible uploads become an explicit
+attachment-unavailable text block.
 
-Two kinds of traffic:
+A remote-file reference retains its device and absolute path instead of copying
+bytes. The backend checks ownership and connectivity before adding attached-host
+grants; the model reads the file later through the host command. Its contents can
+change before that read. [Web API](web-api.md#device-files-and-remote-references)
+defines the wire shape.
 
-1. **Application data — plain HTTP REST.** Cookie auth, standard status
-   codes, cacheable reads, upload progress for free. Errors: HTTP status +
-   `{code, message}`, codes as stable strings. No `/v1` prefix — frontend
-   and backend ship together.
-2. **The live conversation stream — one WebSocket per open conversation**,
-   `WS /api/conversations/:id/stream`, carrying Demi's agent frame protocol
-   (`ClientFrame`/`ServerFrame`). The execution target and cwd are resolved
-   server-side from the conversation record; the browser never names a cwd.
+Inbound resolution and outbound externalization each serialize their work. A
+failed frame reports an error without poisoning later queued frames. Closing or
+unsubscribing prevents delayed work from reaching the session. The underlying
+persistence and blob ownership are defined in [Storage](storage.md).
 
-`@demicodes/web-ui` consumes a transport-agnostic client interface, backed
-with fetch by the product shell. The backend provides conditional `GET /api/state`
-polling for application data; there is no server push beyond the conversation
-stream. Connecting this snapshot to browser pages remains frontend work.
+## Deployment and user ownership
 
-**Authentication.** One session gate covers `/api/*`: the `demi_session`
-cookie (`HttpOnly; SameSite=Lax; Path=/`, `Secure` over https) names a
-row in `web_sessions` by the SHA-256 of its 256-bit token; no row or an
-expired one is 401 `unauthenticated` and the cookie is cleared. The
-session lives 30 days from its last renewal; a request arriving with
-under 15 days left renews it (a fresh `Set-Cookie`), so an active
-browser never signs out and a silent one does. The stream WebSocket and
-the blob route ride the same cookie. Exempt from the gate: `/api/setup`
-and `/api/auth/login` (the entrances) and `/api/runner`, `/api/pipes`
-(device-token authenticated; runners never hold a cookie). Answers:
-another user's object 404 as if absent, a role short of the action 403,
-no session 401. Login failures lock the email for a minute after
-five in a row.
+The local deployment runs one backend with in-process `ControlService`, local
+conversation databases, blob storage, and optional managed machines. It can serve
+the built browser directory alongside the API. Cloud setup is described in
+[Managed-host setup](../managed-hosts-setup.md).
 
-**The provider scope.** The instance mode names whose providers a
-caller works with: in shared mode the instance's (owner null; created,
-tested, logged in and deleted by admins, listed and used by everyone),
-in isolated mode the caller's own. Listing, the catalog, the model
-selection on a conversation and the provider a session resolves all go
-through the same scope, so a provider outside it is unknown — 404 on
-the API, no provider at the session. The mode is fixed once providers
-are configured: a start under the other mode with providers in the
-table refuses with the reason.
+The intended multi-worker deployment retains a complete backend per assigned
+user and introduces one internal control service:
 
-The surface below is the implemented M12 API baseline. M13.1 and M13.2
-exercise product behavior in a standalone frontend prototype. M13.3 completes
-the browser integration and any contract changes required by accepted prototype
-features; update this inventory when those contracts are defined.
+```text
+Browser / runner -> reverse proxy -> worker for that user
+                                      +-- conversations and live sessions
+                                      +-- runner connections and managed VMs
+                                      +-- remote ControlService -> demi-controld
+```
 
-| Resource | Endpoints | Lands in |
-|---|---|---|
-| setup | `GET /api/setup` (`{ needed }`), `POST /api/setup` (the master account, once; signs it in) | M12 |
-| auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `PUT /api/auth/password` (the caller's own) | M12 |
-| conversations | `GET/POST /api/conversations`; `PATCH /api/conversations/:id` (rename/archive/unarchive/target/model); `GET /api/conversations/:id/transcript`; `WS /api/conversations/:id/stream` | M2 |
-| models | `GET /api/models` (the catalog of the caller's provider scope, grouped by entry; manual model metadata, the models.dev vendor, or the runtime's own list) | M2; scoped M12 |
-| devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id` (revoke; 409 `device_in_use` while a workspace points at it; the device's attachments go with it), `GET /api/devices/:id/fs?path=…`, `POST /api/devices/:id/fs` (create directory) | M4 |
-| workspaces | `GET/POST /api/workspaces`, `PATCH/DELETE /api/workspaces/:id` (never touches files); creation takes `cloud: true` in place of a deviceId | M6; cloud flag M11 |
-| providers | `GET /api/providers/catalog` (the models.dev vendors our runtimes speak to, and each subscription family with whether the scope holds it), `GET/POST /api/providers` (creation from a vendor `{ vendorId, label, apiKey, baseUrl?, models? }` or as a custom endpoint `{ providerType, wireApi?, label, apiKey, baseUrl?, models? }`), `PATCH /api/providers/:id` (label; endpoint, key and model list of an API-key entry, `models: null` returning to the live list), `DELETE /api/providers/:id`, `POST /api/providers/:id/test`, `POST /api/providers/subscription-login` (409 `provider_exists` when the scope already holds the family) + `GET …/subscription-login/:id` — in the caller's provider scope: the instance's in shared mode (writes are admin-only), the caller's own in isolated mode | M5; scoped M12; catalog and editing M12 |
-| usage | `GET /api/usage` (the caller's), `GET /api/usage/instance` (shared mode, admins: by user) | M5; instance view M12 |
-| attachments, blobs | `POST /api/attachments` (returns a reference id; on send the bytes are written to the host under `~/.demi/attachments/<conversation>/`), `GET /api/blobs/:sha256` | M6; blobs M9 |
-| pipes | `PUT /api/pipes/:id` (the source runner), `GET /api/pipes/:id` (the sink runner); device-token authenticated, single-use, piped in flight (`runner.md` § Pipes) | M9 |
-| attached hosts | `GET /api/conversations/:id/hosts` (`{ hosts: [{ deviceId, name, cwd, online, attachedAt }] }`), `POST …/hosts { deviceId }`, `PATCH …/hosts/:deviceId { name }` (409 `name_taken` within the conversation), `DELETE …/hosts/:deviceId` (`sessions-and-targets.md` § Attached hosts) | M11 |
-| admin | `GET/POST/PATCH /api/users`, `GET /api/settings` (the instance mode, read-only: it is startup configuration) | M12 |
+A deployment route map pins each user's HTTP, conversation sockets, runner
+sockets, and managed machines to one worker. The selected routing design uses a
+browser route cookie and a runner reconnect header containing the owner's routing
+key. Routing hints select placement; authentication still establishes identity.
+Login requests can reach any worker because account lookup uses shared control
+records. Pairing also needs to reach the worker holding the unclaimed runner
+connection; its routing must preserve that connection-to-code relationship. An off-the-shelf reverse proxy applies the map; the product
+supplies deployment configuration rather than a custom router.
 
-## Packages
+Existing WebSockets remain on their worker. Moving a user requires draining or
+stopping their sessions, publishing managed-machine state, restoring replicated
+conversation state on the destination, fencing the old owner, and updating the
+route map. Runners reconnect to the destination. The experience is a backend
+restart; it is not transparent live migration. Storage publication and control
+RPC requirements are defined in [Storage](storage.md#multi-worker-storage-placement).
 
-`@demicodes/backend` is a product leaf: nothing imports it. Its production
-dependencies are the agent, coding-agent, core, provider, the provider
-runtimes, shell (the Host and shell-environment contracts and the command
-types), host-remote (the remote Host and shell it injects into the
-agent), machines (the managed-host provisioner contract and the machine
-manager's client), command-loader, runner-protocol and utils, plus `hono` on
-Bun. The module
-directories mirror the modules above (`docs/package-boundaries.md`).
+## Implementation status
 
-## User Cloud control
+The executable implements the single-backend deployment. The browser is connected
+to REST, conditional state polling, preferences, and conversation WebSockets.
+The old frontend milestone labels are not API boundaries; the current route
+contract is [Web API](web-api.md).
 
-`managed/` owns the unique managed device for each user, lazy allocation/wake,
-shared-device admission and system reset. `conversation/` resolves target
-selections and coordinates per-conversation switches. `storage/` enforces
-managed-device uniqueness, records lifecycle intents and publishes consistent
-disk generations. Workspace creation ensures a directory on the user's device;
-it does not allocate an independent VM.
-
-The authenticated Web API exposes `GET /api/cloud` for logical device identity,
-lifecycle state, disk usage/limits and pending operation, and
-`POST /api/cloud/reset` with a validated `{ operationId }`. The backend selects
-and records the shipped base version at admission. The response identifies the
-operation; the status response reports stopping, saving, rebuilding, booting,
-ready or failure. Retrying the same operation id returns the same operation.
-A reset affects every job on the user's Cloud and preserves home. Requests
-cannot name another user's device or arbitrary image paths. Settings use this
-API even when the guest is offline or broken (`managed-hosts.md`).
-
-## Account API
-
-`POST /api/setup`, `POST /api/users` and `POST /api/auth/login` accept `email`
-instead of username. HTTP validation trims and lowercases addresses; storage
-uniqueness and lookups are case-insensitive. User responses expose `id`, `email`,
-`nickname`, `role` and `createdAt`, never the password hash.
-
-- `PATCH /api/auth/me` takes `{ nickname }` (1–80 characters after trimming).
-- `PUT /api/auth/password` takes `{ current, next }` and checks the current password.
-- `POST /api/auth/email` takes `{ email, password }`, checks the current password,
-  and sends a six-digit code to the new address. Its 202 response contains
-  `{ challenge: { id, email, expiresAt } }`; the code is never returned.
-- `POST /api/auth/email/confirm` takes `{ id, code }`. A successful response
-  contains the updated user. Existing sessions keep their user identity; the
-  next login uses the new address. Resending repeats the start request after
-  its 60-second cooldown and replaces the previous code.
-
-`auth/email-change.ts` owns issuance and delivery through the injected
-`BackendOptions.accountMail` (`AccountMailSender`). No sender returns 503
-`mail_unavailable`; delivery failure returns 503 `mail_failed` and removes that
-challenge so the user can retry. Codes expire after ten minutes, allow at most
-five wrong attempts, and can be used only once. A password change invalidates
-previously issued challenges. The control service atomically checks uniqueness,
-updates the email, and consumes the challenge. Tests use captured mail only.
-Setup/admin-created accounts can sign in without a verification email; this
-flow proves the new address when an existing account changes it. Registration
-and password recovery are not provided.
-
-## User preferences
-
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts } }`
-for the signed-in user. These objects contain saved overrides; absent values use
-the browser host's defaults. `PATCH` accepts any subset of appearance fields
-(`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
-`settings`). A null shortcut removes that override. Unknown fields are rejected.
-The control service reads, merges and writes in one transaction, preserving
-concurrent changes to other fields. Preferences persist across restarts and are
-separate for every user in both instance modes. The browser is not connected yet.
-
-## Model configuration and provider inspection
-
-API providers accept `models` as a complete manual list. Each entry supplies
-`id`, `displayName`, positive `contextWindow`, nullable `outputLimit`,
-`thinkingEfforts`, nullable `acceptedExtensions` (without dots) and nullable
-`fastTier`. IDs must be unique and output limits cannot exceed context length.
-`models: null` on PATCH explicitly returns to the live catalog; refreshing never
-clears saved models. Provider adapters supply subscription catalogs; the backend caches their validated model metadata in memory and SQLite with a 15-minute TTL (`../model-catalog-cache.md`).
-
-The LLM assembly supplies these parameters to API provider factories and maps
-manual metadata onto agent model selections at open/model-switch. The session
-provider resolves the current configured output limit again at every inference
-boundary, including after a settings edit. Browser thinking and tier choices
-remain explicit; changing a catalog does not resend a failed message.
-
-`GET /api/models` is an account-wide catalog, independent of conversation id.
-Fresh entries use the shared cache; expired entries return immediately while
-one background request refreshes them. `GET /api/models?refresh=true` waits for
-a shared forced refresh. Each provider returns `sourceFetchedAt`, `stale` and `warnings`; one
-catalog failure does not erase other providers or saved models. Static or never
-fetched catalog timestamps use the framework's epoch sentinel.
-
-`GET /api/providers/:id/status` returns auth/runtime state, account metadata,
-active account, capabilities and the last real quota snapshot. No query returns
-key/token material or raw vendor quota envelopes. `POST /api/providers/:id/quota`
-refreshes only a provider's free quota probe, using request cancellation. A
-provider requiring inference for a probe returns `quota_requires_inference`;
-no data returns null, not a fabricated percentage. Reading status never invokes
-inference. Shared users can read state and refresh free quota; configuring or
-explicitly testing providers still requires admin rights.
-
-## Subscription accounts
-
-Claude subscription creation uses `POST /api/providers/setup-token` with
-`{ token, label }`; no Claude copy-back OAuth flow is exposed. Existing Claude
-providers accept another `{ token }` through `POST /api/providers/:id/accounts`.
-Tokens are imported through the framework's credential API and never returned.
-`GET /api/providers/:id/accounts` lists public account metadata and the active
-account. `PUT …/accounts/active` takes `{ credentialId }`. `DELETE
-…/accounts/:credentialId` refuses the active account: switch first, or delete
-the provider to remove its last account.
-
-Codex/Grok use `POST /api/providers/subscription-login` for the first account and
-`POST /api/providers/:id/accounts/login` for another account on an existing
-provider. Poll `GET /api/providers/subscription-login/:id`; cancel with DELETE
-at the same path. Login expires after ten minutes. Backend shutdown aborts and
-awaits active flows. Failed first logins remove their unpublished credential
-pool. Terminal poll results are retained for ten minutes. Existing-provider
-logins reserve that provider against concurrent edits, deletion and account
-mutations until the flow settles. Added accounts follow the framework's active
-account rule; the explicit active endpoint selects a different account.
-
-Provider account mutations obey the same shared-admin/isolated-owner rule as
-configuration. A switch invalidates the assembly cache so subsequent requests
-use the selected account, while an already-running request finishes with its
-original runtime. An empty subscription pool is refused before inference; the
-backend never falls back to a server operator's default account.
-
-`GET /api/models` includes auth/runtime state and availability. Optional
-`conversationId` evaluates the caller-owned conversation's target; without it,
-the default target is Cloud. This inspection does not wake Cloud or execute a
-model. Unconfigured Cloud or an offline device makes process-based providers
-unavailable. Unknown auth/runtime status stays explicit; availability describes
-known admission constraints, not a successful inference test.
-
-
-## Sidebar mutations, read state and page synchronization
-
-`conversation/updates.ts` applies PATCH fields independently and shares the
-existing agent-tree and target/file admission gates. `PATCH /api/conversations/:id`
-accepts title, archived, pinned, target and provider/model selection. A single
-refused field returns its 404/409 status; mixed outcomes return 207 with
-`results: [{ field, status, code?, message?, httpStatus? }]` and the current
-conversation. Unexpected operation failures are reported as 500 field results.
-Applied fields remain applied. Archive is evaluated before the other fields,
-so archiving and renaming together archives successfully but refuses the rename.
-`POST /api/conversations/batch` accepts up to 100 `{ id, patch }` items and returns
-207 with an outcome per item; missing conversations are reported individually.
-
-Running root or child work refuses archive. Archive also refuses while a file
-operation or asynchronous frame admission is in progress. Archived conversations
-allow transcript reads and read acknowledgements; stream upgrades, existing
-socket writes, uploads, host changes and metadata edits are refused until restore.
-The transport waits for frame handling to finish before releasing admission;
-it does not wait for an entire inference turn.
-
-`POST /api/sidebar/reorder` takes `{ kind: "conversation" | "workspace", id,
-beforeId: string | null }`; null appends. Conversation moves stay within the same
-project and pin partition. Storage owns persistent ordering; see
-[sidebar ordering](sidebar-order.md). Activity timestamps never reorder rows.
-
-`GET /api/conversations?archived=true|false` includes `status`, `revision`,
-`readRevision` and `unread`. Status is running/compacting from the live agent tree,
-otherwise completed/error/stopped from its latest terminal block, or idle.
-An unfinished checkpoint without a live session is interrupted. Checkpoint output
-changes advance a persisted revision; user input alone does not. A browser sends
-`POST /api/conversations/:id/read { revision }` for the output it actually showed.
-Acknowledgements only move forward, and revisions beyond current output are refused.
-
-`sync/product-state.ts` assembles `GET /api/state`: current user, mode, preferences,
-projects, active and archived conversation summaries, devices, public provider
-status and Cloud state. It never starts Cloud or runs inference. Responses use a
-private ETag; `If-None-Match` returns 304 when unchanged. Browsers should revalidate
-on open, reconnect and a polling interval. This is a reconstructible snapshot,
-not an atomic transaction across the control and conversation databases; a later
-poll includes changes made during a read. Chat continues using agent frames.
-
-## Device files and remote references
-
-`GET /api/devices` includes the connected runner's `home` (null while unknown).
-`GET /api/devices/:id/fs` defaults to that home when path is omitted and returns
-`{ path, home, entries }`. Each entry has name, isDirectory, isSymbolicLink, byte
-size and ISO modifiedAt. Metadata comes through the existing runner filesystem;
-entries disappearing during the listing are omitted, other errors are returned.
-
-Send and steer content may contain `{ type: "remote_file", deviceId, path }`, where
-path is absolute. The backend validates ownership and current connectivity for
-all referenced devices before adding any attachment grant. It attaches non-main
-devices through the existing host mechanism, then supplies text preserving the
-device identity and a shell-quoted `demi host shell --host` read command. The agent
-reads the file's contents at execution time. Revocation or disconnect before that
-read produces the existing host-command error; the reference is not a byte snapshot.
-
-## Serving the browser build
-
-`createBackend({ webDirectory })`, or `DEMI_WEB_DIRECTORY` for the executable,
-serves a built browser directory alongside the API and conversation sockets.
-Extensionless HTML navigations fall back to index.html, enabling deep-page refresh.
-Missing assets and `/api/*` misses remain 404. Browser build generation, Vite proxy
-configuration and frontend API wiring are separate integration work.
+Multi-worker routing, ownership fencing, the remote control service, and S3
+recovery are not implemented. Shared-mode subscription credentials also need an
+explicit multi-worker distribution and refresh policy before that deployment can
+be implemented. Routing an authenticated claim to an unclaimed runner on another
+worker is also an open deployment decision. User affinity alone does not solve instance-shared credentials.

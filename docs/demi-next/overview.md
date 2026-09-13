@@ -120,7 +120,7 @@ implementation.
 | Question | Document |
 | --- | --- |
 | What does the product let users do? | [Product](product.md) |
-| How is the backend assembled and exposed? | [Backend](backend.md) |
+| How is the backend assembled and exposed? | [Backend](backend.md), [Web API](web-api.md) |
 | Where is data stored? | [Storage](storage.md) |
 | How are providers, credentials, and usage managed? | [Providers and vault](providers-and-vault.md) |
 | Where does a conversation execute? | [Sessions and targets](sessions-and-targets.md) |
