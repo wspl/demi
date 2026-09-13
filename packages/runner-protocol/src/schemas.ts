@@ -16,17 +16,17 @@ import type {
 
 // z.instanceof(Uint8Array) infers the constructor's ArrayBuffer-bound
 // generic; the wire carries plain Uint8Array views.
-const bytesSchema = z.custom<Uint8Array>((value) => value instanceof Uint8Array)
+export const bytesSchema = z.custom<Uint8Array>((value) => value instanceof Uint8Array)
 const cwd = z.string().optional()
 
-const hostIdentitySchema: z.ZodType<HostIdentity> = z.object({
+const hostIdentitySchema: z.ZodType<HostIdentity> = z.strictObject({
   uid: z.number(),
   gid: z.number(),
   hostname: z.string(),
   homeDir: z.string(),
 })
 
-const hostSpawnErrorSchema: z.ZodType<HostSpawnError> = z.object({
+const hostSpawnErrorSchema: z.ZodType<HostSpawnError> = z.strictObject({
   kind: z.enum([
     'executable_not_found',
     'permission_denied',
@@ -37,7 +37,7 @@ const hostSpawnErrorSchema: z.ZodType<HostSpawnError> = z.object({
   detail: z.string().optional(),
 })
 
-const hostFileStatSchema: z.ZodType<HostFileStat> = z.object({
+const hostFileStatSchema: z.ZodType<HostFileStat> = z.strictObject({
   isFile: z.boolean(),
   isDirectory: z.boolean(),
   isSymbolicLink: z.boolean(),
@@ -53,7 +53,7 @@ const hostFileStatSchema: z.ZodType<HostFileStat> = z.object({
   isFIFO: z.boolean().optional(),
 })
 
-const hostDirentSchema: z.ZodType<HostDirent> = z.object({
+const hostDirentSchema: z.ZodType<HostDirent> = z.strictObject({
   name: z.string(),
   isFile: z.boolean(),
   isDirectory: z.boolean(),
@@ -66,9 +66,9 @@ const hostDirentSchema: z.ZodType<HostDirent> = z.object({
  * `fs_<op>` requests, `fs_ok { id, op, result }` / `fs_error` replies.
  */
 export const fsOps = {
-  readFile: { params: z.object({ path: z.string(), cwd }), result: bytesSchema },
+  readFile: { params: z.strictObject({ path: z.string(), cwd }), result: bytesSchema },
   writeFile: {
-    params: z.object({
+    params: z.strictObject({
       path: z.string(),
       data: bytesSchema,
       cwd,
@@ -77,7 +77,7 @@ export const fsOps = {
     result: z.null()
   },
   appendFile: {
-    params: z.object({
+    params: z.strictObject({
       path: z.string(),
       data: bytesSchema,
       cwd,
@@ -85,17 +85,17 @@ export const fsOps = {
     }),
     result: z.null()
   },
-  exists: { params: z.object({ path: z.string(), cwd }), result: z.boolean() },
+  exists: { params: z.strictObject({ path: z.string(), cwd }), result: z.boolean() },
   stat: {
-    params: z.object({ path: z.string(), cwd }),
+    params: z.strictObject({ path: z.string(), cwd }),
     result: hostFileStatSchema
   },
   lstat: {
-    params: z.object({ path: z.string(), cwd }),
+    params: z.strictObject({ path: z.string(), cwd }),
     result: hostFileStatSchema
   },
   readdir: {
-    params: z.object({
+    params: z.strictObject({
       path: z.string(),
       cwd,
       withFileTypes: z.boolean().optional()
@@ -103,7 +103,7 @@ export const fsOps = {
     result: z.union([z.array(z.string()), z.array(hostDirentSchema)])
   },
   mkdir: {
-    params: z.object({
+    params: z.strictObject({
       path: z.string(),
       cwd,
       recursive: z.boolean().optional()
@@ -111,7 +111,7 @@ export const fsOps = {
     result: z.null()
   },
   rm: {
-    params: z.object({
+    params: z.strictObject({
       path: z.string(),
       cwd,
       recursive: z.boolean().optional(),
@@ -120,7 +120,7 @@ export const fsOps = {
     result: z.null()
   },
   cp: {
-    params: z.object({
+    params: z.strictObject({
       path: z.string(),
       destination: z.string(),
       cwd,
@@ -129,25 +129,25 @@ export const fsOps = {
     result: z.null()
   },
   mv: {
-    params: z.object({ path: z.string(), destination: z.string(), cwd }),
+    params: z.strictObject({ path: z.string(), destination: z.string(), cwd }),
     result: z.null()
   },
   chmod: {
-    params: z.object({ path: z.string(), mode: z.number(), cwd }),
+    params: z.strictObject({ path: z.string(), mode: z.number(), cwd }),
     result: z.null()
   },
   symlink: {
-    params: z.object({ target: z.string(), path: z.string(), cwd }),
+    params: z.strictObject({ target: z.string(), path: z.string(), cwd }),
     result: z.null()
   },
   link: {
-    params: z.object({ existingPath: z.string(), path: z.string(), cwd }),
+    params: z.strictObject({ existingPath: z.string(), path: z.string(), cwd }),
     result: z.null()
   },
-  readlink: { params: z.object({ path: z.string(), cwd }), result: z.string() },
-  realpath: { params: z.object({ path: z.string(), cwd }), result: z.string() },
+  readlink: { params: z.strictObject({ path: z.string(), cwd }), result: z.string() },
+  realpath: { params: z.strictObject({ path: z.string(), cwd }), result: z.string() },
   utimes: {
-    params: z.object({ path: z.string(), atime: z.date(), mtime: z.date(), cwd }),
+    params: z.strictObject({ path: z.string(), atime: z.date(), mtime: z.date(), cwd }),
     result: z.null()
   },
 } as const
@@ -173,12 +173,12 @@ export type FsOkMessage = { [Op in FsOp]: {
 } }[FsOp]
 
 function fsCallSchema<Op extends FsOp>(op: Op) {
-  return z.object({ type: z.literal(`fs_${op}`), id: z.string() })
+  return z.strictObject({ type: z.literal(`fs_${op}`), id: z.string() })
     .extend(fsOps[op].params.shape)
 }
 
 function fsOkSchema<Op extends FsOp>(op: Op) {
-  return z.object({
+  return z.strictObject({
     type: z.literal('fs_ok'),
     id: z.string(),
     op: z.literal(op),
@@ -193,7 +193,7 @@ const fsOkMessageSchema = z.union(
   FS_OPS.map(fsOkSchema) as unknown as [z.ZodType<FsOkMessage>, ...z.ZodType<FsOkMessage>[]]
 )
 
-const runnerInfoSchema = z.object({
+const runnerInfoSchema = z.strictObject({
   name: z.string(),
   platform: z.string(),
   version: z.string(),
@@ -216,14 +216,14 @@ const streamSchema = z.enum(['stdout', 'stderr'])
  * runner reports `pipe_done` under, and the origin-relative URL its end
  * `PUT`s to or `GET`s from with its device token.
  */
-export const pipeRefSchema = z.object({ id: z.string(), url: z.string() })
+export const pipeRefSchema = z.strictObject({ id: z.string(), url: z.string() })
 export type PipeRef = z.infer<typeof pipeRefSchema>
 
 /**
  * Where a job's full output lives on the target, and the last bytes of each
  * stream.
  */
-const jobOutputSchema = z.object({
+const jobOutputSchema = z.strictObject({
   stdoutPath: z.string(),
   stderrPath: z.string(),
   stdoutBytes: z.number(),
@@ -233,7 +233,7 @@ const jobOutputSchema = z.object({
 })
 
 export const runnerToBackendMessageSchema = z.union([
-  z.object({
+  z.strictObject({
     type: z.literal('artifact_resolve'),
     id: z.string(),
     jobId: z.string(),
@@ -241,7 +241,7 @@ export const runnerToBackendMessageSchema = z.union([
     sha256: artifactDigestSchema,
     target: nativeTargetSchema,
   }).strict(),
-  z.object({
+  z.strictObject({
     type: z.literal('hello'),
     protocol: z.number(),
     /** Absent on an unclaimed first start. */
@@ -249,9 +249,9 @@ export const runnerToBackendMessageSchema = z.union([
     runner: runnerInfoSchema,
   }),
   /** Liveness plus the count of running jobs, which the idle rule reads. */
-  z.object({ type: z.literal('pong'), jobs: z.number().int().nonnegative() }),
+  z.strictObject({ type: z.literal('pong'), jobs: z.number().int().nonnegative() }),
   /** Every writable volume was synced, or the runner reports the failure. */
-  z.object({
+  z.strictObject({
     type: z.literal('sync_done'),
     id: z.string(),
     error: z.string().optional()
@@ -260,7 +260,7 @@ export const runnerToBackendMessageSchema = z.union([
    * A writable volume is nearly full: the runner asks for this total size;
    * `volume_grown` answers.
    */
-  z.object({
+  z.strictObject({
     type: z.literal('volume_grow'),
     id: z.string(),
     volume: z.enum(['system', 'home']),
@@ -271,19 +271,19 @@ export const runnerToBackendMessageSchema = z.union([
    * A failed fs call; `code` carries the errno-style code (ENOENT, …) when
    * there is one.
    */
-  z.object({
+  z.strictObject({
     type: z.literal('fs_error'),
     id: z.string(),
     code: z.string().optional(),
     message: z.string()
   }),
-  z.object({
+  z.strictObject({
     type: z.literal('spawn_output'),
     spawnId: z.string(),
     stream: z.enum(['stdout', 'stderr']),
     bytes: bytesSchema,
   }),
-  z.object({
+  z.strictObject({
     type: z.literal('spawn_exit'),
     spawnId: z.string(),
     exitCode: z.number().nullable(),
@@ -291,7 +291,7 @@ export const runnerToBackendMessageSchema = z.union([
     spawnError: hostSpawnErrorSchema.optional(),
   }),
   /** Live output while the job runs, up to the view budget per stream. */
-  z.object({
+  z.strictObject({
     type: z.literal('job_output'),
     jobId: z.string(),
     stream: streamSchema,
@@ -301,13 +301,13 @@ export const runnerToBackendMessageSchema = z.union([
    * A registered leaf's guidance while its invocation is active; null clears
    * that invocation.
    */
-  z.object({
+  z.strictObject({
     type: z.literal('job_running_hint'),
     jobId: z.string(),
     invocationId: z.string(),
     hint: z.string().nullable()
   }),
-  z.object({
+  z.strictObject({
     type: z.literal('job_exit'),
     jobId: z.string(),
     exitCode: z.number().nullable(),
@@ -325,7 +325,7 @@ export const runnerToBackendMessageSchema = z.union([
    * `rpc_pipes` names it (`runner.md` § Pipes). The live stdin follows as
    * `rpc_stdin` frames.
    */
-  z.object({
+  z.strictObject({
     type: z.literal('rpc_call'),
     jobId: z.string(),
     callId: z.string(),
@@ -340,18 +340,18 @@ export const runnerToBackendMessageSchema = z.union([
     env: z.record(z.string(), z.string()),
     stdin: z.boolean(),
   }),
-  z.object({
+  z.strictObject({
     type: z.literal('rpc_stdin'),
     callId: z.string(),
     bytes: bytesSchema
   }),
-  z.object({ type: z.literal('rpc_stdin_end'), callId: z.string() }),
-  z.object({ type: z.literal('rpc_cancel'), callId: z.string() }),
+  z.strictObject({ type: z.literal('rpc_stdin_end'), callId: z.string() }),
+  z.strictObject({ type: z.literal('rpc_cancel'), callId: z.string() }),
   /**
    * This runner's end of a pipe closed: its HTTP exchange completed, or why it
    * did not.
    */
-  z.object({
+  z.strictObject({
     type: z.literal('pipe_done'),
     pipeId: z.string(),
     ok: z.boolean(),
@@ -374,32 +374,32 @@ export const helloErrorCodeSchema = z.enum([
 
 export const backendToRunnerMessageSchema = z.union([
   z.discriminatedUnion('type', [
-    z.object({ type: z.literal('hello_ok'), deviceId: z.string() }),
-    z.object({ type: z.literal('claim_pending'), claimToken: z.string() }),
-    z.object({ type: z.literal('claimed'), deviceToken: z.string() }),
-    z.object({
+    z.strictObject({ type: z.literal('hello_ok'), deviceId: z.string() }),
+    z.strictObject({ type: z.literal('claim_pending'), claimToken: z.string() }),
+    z.strictObject({ type: z.literal('claimed'), deviceToken: z.string() }),
+    z.strictObject({
       type: z.literal('hello_error'),
       code: helloErrorCodeSchema,
       reason: z.string()
     }),
-    z.object({ type: z.literal('ping') }),
+    z.strictObject({ type: z.literal('ping') }),
     /**
      * Flush writable filesystems before the guest is stopped; `sync_done`
      * answers.
      */
-    z.object({ type: z.literal('sync'), id: z.string() }),
+    z.strictObject({ type: z.literal('sync'), id: z.string() }),
     /**
      * The named backing image is now `bytes` large, or an error explains why
      * growth failed.
      */
-    z.object({
+    z.strictObject({
       type: z.literal('volume_grown'),
       id: z.string(),
       volume: z.enum(['system', 'home']),
       bytes: z.number().int().positive(),
       error: z.string().nullable()
     }),
-    z.object({
+    z.strictObject({
       type: z.literal('spawn'),
       spawnId: z.string(),
       command: z.string(),
@@ -409,13 +409,13 @@ export const backendToRunnerMessageSchema = z.union([
       inheritEnv: z.boolean().optional(),
       killProcessGroup: z.boolean().optional(),
     }),
-    z.object({
+    z.strictObject({
       type: z.literal('spawn_stdin'),
       spawnId: z.string(),
       bytes: bytesSchema
     }),
-    z.object({ type: z.literal('spawn_stdin_end'), spawnId: z.string() }),
-    z.object({
+    z.strictObject({ type: z.literal('spawn_stdin_end'), spawnId: z.string() }),
+    z.strictObject({
       type: z.literal('spawn_kill'),
       spawnId: z.string(),
       signal: z.string().optional()
@@ -425,7 +425,7 @@ export const backendToRunnerMessageSchema = z.union([
      * ride in `env`. `stdin` / `stdout` attach the job's fd 0 / fd 1 to pipes
      * whose other ends are elsewhere (`runner.md` § Pipes).
      */
-    z.object({
+    z.strictObject({
       type: z.literal('job_start'),
       jobId: z.string(),
       manifestHash: artifactDigestSchema.optional(),
@@ -435,13 +435,13 @@ export const backendToRunnerMessageSchema = z.union([
       stdin: pipeRefSchema.optional(),
       stdout: pipeRefSchema.optional(),
     }),
-    z.object({
+    z.strictObject({
       type: z.literal('job_stdin'),
       jobId: z.string(),
       bytes: bytesSchema
     }),
-    z.object({ type: z.literal('job_stdin_end'), jobId: z.string() }),
-    z.object({
+    z.strictObject({ type: z.literal('job_stdin_end'), jobId: z.string() }),
+    z.strictObject({
       type: z.literal('job_kill'),
       jobId: z.string(),
       signal: z.string().optional()
@@ -451,15 +451,15 @@ export const backendToRunnerMessageSchema = z.union([
      * `PUT`s the process's pipe into `stdin` (present when the call declared
      * one) and `GET`s `stdout` into the process (`runner.md` § Pipes).
      */
-    z.object({ type: z.literal('rpc_stdin_pull'), callId: z.string() }),
-    z.object({
+    z.strictObject({ type: z.literal('rpc_stdin_pull'), callId: z.string() }),
+    z.strictObject({
       type: z.literal('rpc_pipes'),
       callId: z.string(),
       stdin: pipeRefSchema.optional(),
       stdout: pipeRefSchema
     }),
     /** The call's stderr view; stdout is the pipe. */
-    z.object({
+    z.strictObject({
       type: z.literal('rpc_output'),
       callId: z.string(),
       bytes: bytesSchema
@@ -468,7 +468,7 @@ export const backendToRunnerMessageSchema = z.union([
      * Follows the stdout pipe's drain, so the process has written everything
      * before it exits with the code.
      */
-    z.object({
+    z.strictObject({
       type: z.literal('rpc_exit'),
       callId: z.string(),
       exitCode: z.number()
@@ -478,8 +478,8 @@ export const backendToRunnerMessageSchema = z.union([
      * (`parseManifest` in `@demicodes/command-loader`), which the runner
      * applies; the protocol carries it opaque so it owns no command types.
      */
-    z.object({ type: z.literal('manifest'), manifest: z.unknown() }),
-    z.object({
+    z.strictObject({ type: z.literal('manifest'), manifest: z.unknown() }),
+    z.strictObject({
       type: z.literal('artifact_location'),
       id: z.string(),
       location: artifactLocationSchema.optional(),

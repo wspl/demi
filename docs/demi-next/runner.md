@@ -62,6 +62,23 @@ cooperate with cancellation inside the runner process. Cancelling one job must
 preserve the runner and unrelated jobs. Native builtins use invocation-local
 state and IO rather than process-global cwd, environment or exit.
 
+`shell/job.rs` owns the job's input/output pumps and completion task.
+`scope.rs` tracks interpreter tasks, utility workers and external children until
+they release their resources. Interpreter steps and utility IO, sleeps and
+unbounded evaluation loops check the job's cancellation token. Unix pipe IO
+checks readiness before bounded reads/writes; Windows cancels pending synchronous
+IO on the owning worker. External children use a Unix process group or Windows
+Job Object and are reaped before completion. After the foreground script and
+background jobs finish, the owner joins process substitutions and other work
+tracked by the scope. Failure or cancellation stops the remaining work before
+joining it; successful completion preserves all produced output.
+
+`declared.rs` adapts shell descriptors to pull-driven command-service input and
+bounded output records, then calls the shared dispatcher. A declared command
+reads stdin only when its handler requests it. External forwarding and direct
+builtins share parsing, validation, native-service acquisition and callback
+routing.
+
 A cancellation request is not proof that execution stopped. Job completion waits
 for local work and resource cleanup; unconfirmed remote execution is reported as
 an unknown outcome. Cancellation does not undo completed side effects. The runner

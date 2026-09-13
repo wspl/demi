@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 exclude = ["vendor/*"]
-members = ["packages/native-path", "packages/command-protocol", "packages/command-loader", "packages/command-service", "packages/command-runtime", "packages/runner-protocol", "packages/runner", "packages/native-utils", "packages/demi-package"]
+members = ["crates/runner", "crates/command-service", "crates/demi-commands"]
 
 [workspace.package]
 version = "0.1.0"
@@ -26,6 +26,8 @@ lto = "thin"
 strip = true
 
 [patch.crates-io]
+jaq-core = { path = "vendor/jaq-core" }
+argmax = { path = "vendor/argmax" }
 brush-core = { path = "vendor/brush-core" }
 uucore = { path = "vendor/uucore" }
 uu_cat = { path = "vendor/uu_cat" }

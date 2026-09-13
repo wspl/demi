@@ -1,0 +1,94 @@
+[package]
+name = "demi-runner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+brush-core = "0.5"
+brush-builtins = "0.2"
+demi-command-service = { path = "../command-service" }
+bytes.workspace = true
+futures-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+thiserror.workspace = true
+process-wrap.workspace = true
+jsonschema = { version = "0.56", default-features = false }
+filetime = "0.2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+tempfile = "3"
+rmp-serde = "1.3"
+serde_bytes = "0.11"
+regex = "1"
+url = "2"
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+
+ripgrep = "15.2.0"
+jaq = { version = "3.1.1", default-features = false }
+uucore = "0.11"
+uu_cat = "0.11"
+
+uu_head = "0.11"
+uu_tail = "0.11"
+uu_wc = "0.11"
+uu_ls = "0.11"
+uu_cp = "0.11"
+uu_mv = "0.11"
+uu_rm = "0.11"
+uu_mkdir = "0.11"
+uu_rmdir = "0.11"
+uu_touch = "0.11"
+uu_tee = "0.11"
+uu_sort = "0.11"
+uu_uniq = "0.11"
+uu_cut = "0.11"
+uu_tr = "0.11"
+uu_paste = "0.11"
+uu_nl = "0.11"
+uu_tac = "0.11"
+uu_basename = "0.11"
+uu_dirname = "0.11"
+uu_realpath = "0.11"
+uu_env = "0.11"
+uu_seq = "0.11"
+uu_date = "0.11"
+uu_sleep = "0.11"
+uu_mktemp = "0.11"
+uu_du = "0.11"
+uu_df = "0.11"
+uu_od = "0.11"
+
+uu_grep = "0.2.0"
+sed = "0.2.0"
+findutils = "0.10.0"
+diffutils = "0.5.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+uu_chmod = "0.11"
+uu_chown = "0.11"
+uu_stat = "0.11"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_Pipes", "Win32_System_IO"] }
+
+
+
+[target.'cfg(windows)'.dependencies.chrono]
+version = "0.4"
+default-features = false
+features = ["std"]
+
+[features]
+test-fixtures = []
+
+[[bin]]
+name = "demi-native-fixture"
+path = "tests/fixtures/service.rs"
+required-features = ["test-fixtures"]

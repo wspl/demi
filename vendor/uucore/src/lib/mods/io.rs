@@ -18,7 +18,10 @@
 use std::os::fd::{AsFd, OwnedFd};
 #[cfg(windows)]
 use std::os::windows::io::{AsHandle, OwnedHandle};
-use {crate::context::fs::File, crate::context::fs::OpenOptions, crate::context::io, std::path::Path, crate::context::process::Stdio};
+use {
+    crate::context::fs::File, crate::context::fs::OpenOptions, crate::context::io,
+    crate::context::process::Stdio, std::path::Path,
+};
 
 #[cfg(windows)]
 type NativeType = OwnedHandle;
@@ -31,6 +34,11 @@ pub struct RawReader<T: AsFd>(pub T);
 #[cfg(any(unix, target_os = "wasi"))]
 impl<T: AsFd> io::Read for RawReader<T> {
     fn read(&mut self, b: &mut [u8]) -> io::Result<usize> {
+        crate::context::check_cancelled();
+        if let Some(control) = crate::context::control() {
+            let file = std::fs::File::from(self.0.as_fd().try_clone_to_owned()?);
+            return control.read(&file, b);
+        }
         rustix::io::read(&self.0, b).map_err(Into::into)
     }
 }
@@ -41,6 +49,11 @@ pub struct RawWriter<T: AsFd>(pub T);
 #[cfg(any(unix, target_os = "wasi"))]
 impl<T: AsFd> io::Write for RawWriter<T> {
     fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+        crate::context::check_cancelled();
+        if let Some(control) = crate::context::control() {
+            let file = std::fs::File::from(self.0.as_fd().try_clone_to_owned()?);
+            return control.write(&file, b);
+        }
         rustix::io::write(&self.0, b).map_err(Into::into)
     }
     fn flush(&mut self) -> io::Result<()> {

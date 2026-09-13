@@ -504,7 +504,9 @@ The command-service library exposes its generated types to runner and command
 programs. There are no separate Rust protocol or manifest crates.
 
 Each consuming crate's `build.rs` owns Rust contract generation as part of the
-normal Cargo build. A developer does not run a separate generation command first.
+normal Cargo build. Bun and installed workspace dependencies are prerequisites;
+`bun install --frozen-lockfile` prepares them before `cargo build`. A developer
+does not run a separate generation command first.
 The build script may invoke a JS/TS generator; its implementation language does
 not change Cargo's ownership of this build step.
 
@@ -515,7 +517,13 @@ they are not written into the source tree or committed to the repository.
 Rust validates received values directly with Rust code or native validation
 tools. Generated structure types alone do not establish that value constraints
 have been checked. Fixed contract validation does not use a separately generated
-JSON Schema document or convert decoded values to JSON for schema validation.
+JSON Schema document or convert decoded values to JSON for schema validation. Generated
+field deserializers enforce literals, enum membership, ranges, string and array
+constraints, record keys and required versus optional/null values. Unsupported
+Zod constructs or refinements fail generation. A native package's operation
+array declares the supported uniqueness constraint in its Zod metadata.
+Runtime command argument schemas remain JSON Schema values supplied by command
+definitions and are validated by the command dispatcher.
 
 ```text
 Authoritative Zod schemas in packages/

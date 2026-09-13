@@ -143,6 +143,8 @@ pub struct CreateOptions<SE: extensions::ShellExtensions = extensions::DefaultSh
     /// are assigned *after* inherited or well-known variables are set (when applicable).
     #[builder(field)]
     pub vars: HashMap<String, ShellVariable>,
+    /// Execution ownership supplied by an embedding host.
+    pub execution_host: Option<std::sync::Arc<dyn crate::execution_host::ExecutionHost>>,
     /// Error behavior implementation.
     #[builder(default)]
     pub error_formatter: SE::ErrorFormatter,
@@ -232,6 +234,7 @@ pub struct CreateOptions<SE: extensions::ShellExtensions = extensions::DefaultSh
 impl<SE: extensions::ShellExtensions> Default for Shell<SE> {
     fn default() -> Self {
         Self {
+            execution_host: None,
             error_formatter: SE::ErrorFormatter::default(),
             traps: traps::TrapHandlerConfig::default(),
             open_files: openfiles::OpenFiles::default(),

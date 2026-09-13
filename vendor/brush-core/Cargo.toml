@@ -138,8 +138,6 @@ features = ["unstable"]
 [dependencies.tempfile]
 version = "3.27.0"
 
-[target.'cfg(windows)'.dependencies.demi-native-path]
-path = "../../packages/native-path"
 
 [target."cfg(any(unix, windows))".dependencies.hostname]
 version = "0.4.2"

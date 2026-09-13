@@ -126,7 +126,7 @@ impl ExecutionParameters {
         shell: &Shell<impl extensions::ShellExtensions>,
         fd: ShellFd,
     ) -> Option<openfiles::OpenFile> {
-        match self.open_files.fd_entry(fd) {
+        let file = match self.open_files.fd_entry(fd) {
             openfiles::OpenFileEntry::Open(f) => Some(f.clone()),
             openfiles::OpenFileEntry::NotPresent => None,
             openfiles::OpenFileEntry::NotSpecified => {
@@ -134,7 +134,14 @@ impl ExecutionParameters {
                 // to what's represented in the shell's open files.
                 shell.persistent_open_files().try_fd(fd).cloned()
             }
-        }
+        }?;
+        Some(if let Some(host) = shell.execution_host() {
+            file.controlled(host.file_control()).unwrap_or_else(|_| {
+                crate::ioutils::FailingReaderWriter::new("failed to scope shell descriptor").into()
+            })
+        } else {
+            file
+        })
     }
 
     /// Sets the given file descriptor to the provided open file.
@@ -207,6 +214,7 @@ impl Execute for ast::Program {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
+        shell.check_execution()?;
         let mut result = ExecutionResult::success();
 
         for command in &self.complete_commands {
@@ -222,6 +230,7 @@ impl Execute for ast::Program {
                 }
             }
 
+            shell.check_execution()?;
             // Update status
             shell.set_last_exit_status(result.exit_code.into());
 
@@ -242,6 +251,7 @@ impl Execute for ast::CompoundList {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
+        shell.check_execution()?;
         let mut result = ExecutionResult::success();
 
         for ast::CompoundListItem(ao_list, sep) in &self.0 {
@@ -290,10 +300,14 @@ fn spawn_async_ao_list_in_task<'a, SE: extensions::ShellExtensions>(
         cloned_params.set_fd(openfiles::OpenFiles::STDIN_FD, null);
     }
 
-    let join_handle = tokio::spawn(async move {
-        cloned_ao_list
-            .execute(&mut cloned_shell, &cloned_params)
-            .await
+    let guard = cloned_shell.execution_guard();
+    let join_handle = tokio::task::spawn_blocking(move || {
+        let _guard = guard;
+        tokio::runtime::Handle::current().block_on(async move {
+            cloned_ao_list
+                .execute(&mut cloned_shell, &cloned_params)
+                .await
+        })
     });
 
     shell.jobs_mut().add_as_current(jobs::Job::new(
@@ -310,6 +324,7 @@ impl Execute for ast::AndOrList {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
+        shell.check_execution()?;
         let has_operators = !self.additional.is_empty();
 
         // For the first command, suppress errexit if there are more commands after it
@@ -366,6 +381,7 @@ impl Execute for ast::Pipeline {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
+        shell.check_execution()?;
         // Capture current timing if so requested.
         let stopwatch = self
             .timed
@@ -621,7 +637,9 @@ impl<SE: extensions::ShellExtensions> ExecuteInPipeline<SE> for ast::Command {
         {
             // Compound pipeline stages must run concurrently with their consumers.
             let command = self.clone();
+            let guard = target.execution_guard();
             let task = tokio::task::spawn_blocking(move || {
+                let _guard = guard;
                 tokio::runtime::Handle::current().block_on(async move {
                     let context = PipelineExecutionContext {
                         shell: commands::ShellForCommand::ParentShell(&mut target),
@@ -694,6 +712,7 @@ impl Execute for ast::CompoundCommand {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
+        shell.check_execution()?;
         match self {
             Self::BraceGroup(ast::BraceGroupCommand { list, .. }) => {
                 list.execute(shell, params).await
@@ -740,6 +759,7 @@ impl Execute for ast::CoprocessCommand {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
+        shell.check_execution()?;
         if shell.options().do_not_execute_commands {
             return Ok(ExecutionResult::success());
         }
@@ -781,18 +801,22 @@ impl Execute for ast::CoprocessCommand {
             .set_fd(OpenFiles::STDOUT_FD, stdout_writer.into());
 
         let body = self.body.clone();
-        let join_handle = tokio::spawn(async move {
-            let pipeline_context = PipelineExecutionContext {
-                shell: commands::ShellForCommand::ParentShell(&mut child_shell),
-                process_group_id: None,
-            };
-            let spawn_result = body
-                .execute_in_pipeline(pipeline_context, child_params)
-                .await?;
-            match spawn_result.wait().await? {
-                ExecutionWaitResult::Completed(result) => Ok(result),
-                ExecutionWaitResult::Stopped(_) => Ok(ExecutionResult::stopped()),
-            }
+        let guard = child_shell.execution_guard();
+        let join_handle = tokio::task::spawn_blocking(move || {
+            let _guard = guard;
+            tokio::runtime::Handle::current().block_on(async move {
+                let pipeline_context = PipelineExecutionContext {
+                    shell: commands::ShellForCommand::ParentShell(&mut child_shell),
+                    process_group_id: None,
+                };
+                let spawn_result = body
+                    .execute_in_pipeline(pipeline_context, child_params)
+                    .await?;
+                match spawn_result.wait().await? {
+                    ExecutionWaitResult::Completed(result) => Ok(result),
+                    ExecutionWaitResult::Stopped(_) => Ok(ExecutionResult::stopped()),
+                }
+            })
         });
 
         let job = shell.jobs_mut().add_as_current(jobs::Job::new(
@@ -825,6 +849,7 @@ impl Execute for ast::ForClauseCommand {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
+        shell.check_execution()?;
         let mut result = ExecutionResult::success();
 
         // If we were given explicit words to iterate over, then expand them all, with splitting
@@ -896,6 +921,7 @@ impl Execute for ast::CaseClauseCommand {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
+        shell.check_execution()?;
         // N.B. One would think it makes sense to trace the expanded value being switched
         // on, but that's not it.
         if shell.options().print_commands_and_arguments {
@@ -963,6 +989,7 @@ impl Execute for ast::IfClauseCommand {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
+        shell.check_execution()?;
         // Execute condition with errexit suppressed
         let mut condition_params = params.clone();
         condition_params.suppress_errexit = true;
@@ -1016,6 +1043,7 @@ impl Execute for (WhileOrUntil, &ast::WhileOrUntilClauseCommand) {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
+        shell.check_execution()?;
         let is_while = match self.0 {
             WhileOrUntil::While => true,
             WhileOrUntil::Until => false,
@@ -1074,6 +1102,7 @@ impl Execute for ast::ArithmeticCommand {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
+        shell.check_execution()?;
         let value = self.expr.eval(shell, params, true).await?;
         let result = if value != 0 {
             ExecutionResult::success()
@@ -1094,6 +1123,7 @@ impl Execute for ast::ArithmeticForClauseCommand {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
+        shell.check_execution()?;
         let mut result = ExecutionResult::success();
         if let Some(initializer) = &self.initializer {
             initializer.eval(shell, params, true).await?;
@@ -1137,6 +1167,7 @@ impl Execute for ast::FunctionDefinition {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         _params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
+        shell.check_execution()?;
         let func_name = self.fname.value.clone();
 
         // In POSIX mode, function names can't shadow special builtins.
@@ -1957,12 +1988,16 @@ fn setup_process_substitution(
     // Asynchronously spawn off the subshell; we intentionally don't block on its
     // completion.
     let subshell_cmd = subshell_cmd.to_owned();
-    tokio::spawn(async move {
-        // Intentionally ignore the result of the subshell command.
-        let _ = subshell_cmd
-            .list
-            .execute(&mut subshell, &child_params)
-            .await;
+    let guard = subshell.execution_guard();
+    tokio::task::spawn_blocking(move || {
+        let _guard = guard;
+        tokio::runtime::Handle::current().block_on(async move {
+            // Intentionally ignore the result of the subshell command.
+            let _ = subshell_cmd
+                .list
+                .execute(&mut subshell, &child_params)
+                .await;
+        })
     });
 
     // Starting at 63 (a.k.a. 64-1)--and decrementing--look for an

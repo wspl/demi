@@ -23,9 +23,9 @@ use memchr::memchr;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::OsStr;
-use uucore::context::io::{self, IsTerminal, Read};
 use std::path::PathBuf;
 use std::rc::Rc;
+use uucore::context::io::{self, IsTerminal, Read};
 use uucore::display::Quotable;
 use uucore::error::{FromIo, UResult, set_exit_code};
 
@@ -664,6 +664,7 @@ fn process_file(
 
         // Loop over script commands.
         while let Some(command_rc) = current.take() {
+            uucore::context::check_cancelled();
             let mut command = command_rc.borrow_mut();
 
             if !applies(&mut command, reader, &mut pattern, context)? {
@@ -990,8 +991,8 @@ pub fn process_all_files(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uucore::context::io::{Read, Seek, SeekFrom};
     use tempfile::tempfile;
+    use uucore::context::io::{Read, Seek, SeekFrom};
 
     #[test]
     fn test_readable_ascii_byte_named_escapes() {

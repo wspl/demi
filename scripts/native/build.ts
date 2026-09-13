@@ -41,7 +41,7 @@ for (const target of targets) {
   const macos = target.includes('apple')
   const args = [windows ? 'xwin' : 'zigbuild', ...(windows ? ['build'] : []),
     '--release', '--locked', '--target', target,
-    '-p', 'demi-runner', '-p', 'demi-builtin-package']
+    '-p', 'demi-runner', '-p', 'demi-commands']
   const commonEnv: Record<string, string> = {
     XWIN_SDK_VERSION: WINDOWS_SDK_VERSION,
     XWIN_CRT_VERSION: WINDOWS_CRT_VERSION,

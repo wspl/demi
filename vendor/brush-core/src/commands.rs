@@ -353,6 +353,7 @@ impl<'a, SE: extensions::ShellExtensions> SimpleCommand<'a, SE> {
         reason = "these unwrap calls should not panic"
     )]
     pub async fn execute(mut self) -> Result<ExecutionSpawnResult, error::Error> {
+        self.shell.check_execution()?;
         // First see if it's the name of a builtin.
         let builtin = self.shell.builtins().get(&self.command_name).cloned();
 
@@ -452,7 +453,9 @@ impl<'a, SE: extensions::ShellExtensions> SimpleCommand<'a, SE> {
         args: Vec<CommandArg>,
     ) -> ExecutionSpawnResult {
         let last_arg = Self::take_last_arg(&args);
+        let guard = shell.execution_guard();
         let join_handle = tokio::task::spawn_blocking(move || {
+            let _guard = guard;
             let cmd_context = ExecutionContext {
                 shell: &mut shell,
                 command_name,
@@ -505,7 +508,9 @@ impl<'a, SE: extensions::ShellExtensions> SimpleCommand<'a, SE> {
         if let ShellForCommand::OwnedShell { mut target, .. } = self.shell {
             // Start the function before waiting so later pipeline readers can start.
             // A blocking task also keeps synchronous shell builtins off reactor threads.
+            let guard = target.execution_guard();
             let task = tokio::task::spawn_blocking(move || {
+                let _guard = guard;
                 tokio::runtime::Handle::current().block_on(async move {
                     let context = ExecutionContext {
                         shell: &mut target,
@@ -649,6 +654,10 @@ pub(crate) fn execute_external_command(
             .map(|a| a.to_string_lossy().to_string())
             .join(" ")
     );
+
+    if let Some(host) = context.shell.execution_host() {
+        return Ok(ExecutionSpawnResult::StartedProcess(host.spawn(cmd)?));
+    }
 
     match sys::process::spawn(cmd) {
         Ok(child) => {
@@ -794,7 +803,11 @@ pub(crate) async fn invoke_command_in_subshell_and_get_output(
 
     let mut async_reader = sys::async_pipe::AsyncPipeReader::new(reader)?;
 
-    let cmd_join_handle = tokio::spawn(run_substitution_command(subshell, params, s));
+    let guard = subshell.execution_guard();
+    let cmd_join_handle = tokio::task::spawn_blocking(move || {
+        let _guard = guard;
+        tokio::runtime::Handle::current().block_on(run_substitution_command(subshell, params, s))
+    });
 
     let output_str = async_reader.read_to_string().await?;
 

@@ -5,16 +5,16 @@
 
 // spell-checker:ignore (ToDO) tailable untailable stdlib kqueue Uncategorized unwatch
 
-use uucore::context::FileKindExt as _;
-use uucore::context::PathExt as _;
 use crate::args::{FollowMode, Settings};
 use crate::follow::files::{FileHandling, PathData};
 use crate::paths::{Input, InputKind, MetadataExtTail, PathExtTail};
 use crate::{platform, text};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher, WatcherKind};
-use uucore::context::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, channel};
+use uucore::context::FileKindExt as _;
+use uucore::context::PathExt as _;
+use uucore::context::io::BufRead;
 use uucore::display::Quotable;
 use uucore::error::{UResult, USimpleError, set_exit_code};
 #[cfg(target_os = "linux")]
@@ -29,6 +29,24 @@ pub struct WatcherRx {
 }
 
 impl WatcherRx {
+    fn receive(
+        &self,
+        timeout: std::time::Duration,
+    ) -> Result<Result<notify::Event, notify::Error>, mpsc::RecvTimeoutError> {
+        let started = std::time::Instant::now();
+        loop {
+            uucore::context::check_cancelled();
+            let remaining = timeout.saturating_sub(started.elapsed());
+            match self
+                .receiver
+                .recv_timeout(remaining.min(std::time::Duration::from_millis(25)))
+            {
+                Err(mpsc::RecvTimeoutError::Timeout) if started.elapsed() < timeout => {}
+                result => return result,
+            }
+        }
+    }
+
     fn new(
         watcher: Box<dyn Watcher>,
         receiver: Receiver<Result<notify::Event, notify::Error>>,
@@ -275,7 +293,9 @@ impl Observer {
                         if path.is_tailable() {
                             // Add existing regular files to `Watcher` (InotifyWatcher).
                             watcher_rx.watch_with_parent(&path)?;
-                        } else if let Some(active_parent) = path.parent().filter(|p| p.context_is_dir()) {
+                        } else if let Some(active_parent) =
+                            path.parent().filter(|p| p.context_is_dir())
+                        {
                             // If `path` is not a tailable file, add its parent to `Watcher`.
                             watcher_rx.watch(active_parent, RecursiveMode::NonRecursive)?;
                             // Add symlinks to orphans for retry polling (target may not exist)
@@ -551,8 +571,7 @@ pub fn follow(mut observer: Observer, settings: &Settings) -> UResult<()> {
             .watcher_rx
             .as_mut()
             .unwrap()
-            .receiver
-            .recv_timeout(settings.sleep_sec);
+            .receive(settings.sleep_sec);
 
         if rx_result.is_ok() {
             timeout_counter = 0;

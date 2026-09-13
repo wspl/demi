@@ -5,7 +5,7 @@ use futures::FutureExt;
 use crate::{error, sys};
 
 /// A waitable future that will yield the results of a child process's execution.
-pub(crate) type WaitableChildProcess = std::pin::Pin<
+pub type WaitableChildProcess = std::pin::Pin<
     Box<dyn futures::Future<Output = Result<std::process::Output, std::io::Error>> + Send + Sync>,
 >;
 
@@ -30,6 +30,15 @@ impl ChildProcess {
             exec_future: Box::pin(child.wait_with_output()),
             pid,
             pgid,
+        }
+    }
+
+    /// Use a child whose lifetime is retained by the embedding execution host.
+    pub fn managed(pid: i32, future: WaitableChildProcess) -> Self {
+        Self {
+            exec_future: future,
+            pid: Some(pid),
+            pgid: Some(pid),
         }
     }
 
