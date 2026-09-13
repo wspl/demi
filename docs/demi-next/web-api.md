@@ -269,6 +269,9 @@ poll includes changes made during a read. Chat continues using agent frames.
 `{ path, home, entries }`. Each entry has name, isDirectory, isSymbolicLink, byte
 size and ISO modifiedAt. Metadata comes through the existing runner filesystem;
 entries disappearing during the listing are omitted, other errors are returned.
+Metadata requests await each reply to avoid overrunning the runner transport.
+These device routes serve device selection and remote attachment references;
+the conversation work panel uses the conversation routes below.
 
 Send and steer content may contain `{ type: "remote_file", deviceId, path }`, where
 path is absolute. The backend validates ownership and current connectivity for
@@ -280,9 +283,22 @@ read produces the existing host-command error; the reference is not a byte snaps
 
 ## File text and working tree changes
 
-`GET /api/devices/:id/fs/file?path=...` returns `{ path, text }` for a text file
-on a connected device. A file over 4 MiB answers 413 `file_too_large`; one that
-is not UTF-8 text answers 415 `not_text`. The file view reads through this route.
+The work panel uses `GET /api/conversations/:id/fs?path=...` to list a directory
+as `{ path, home, entries }`, with the same entry shape as device browsing.
+Omitting `path` selects the conversation's execution directory. `POST` to the
+same route with `{ path }` creates a directory recursively and returns `{ path }`
+with status 201. `GET /api/conversations/:id/fs/file?path=...` returns
+`{ path, text }`. Paths follow the Host's filesystem rules; the execution directory
+is a starting directory, not a permission boundary. Missing paths answer 404,
+and permission failures answer 403.
+
+All three operations use [conversation Host access](sessions-and-targets.md#host-operations),
+including Cloud wake and the file gate. Archived conversations answer 409
+`conversation_archived`. A paired device without a live runner answers 409
+`device_offline`; a Cloud that cannot wake answers 503 with the lifecycle's code.
+A file over 4 MiB answers 413 `file_too_large`; one that is not UTF-8 text answers
+415 `not_text`. The device picker can read a connected device's text through
+`GET /api/devices/:id/fs/file?path=...` with the same text limits.
 
 `GET /api/conversations/:id/changes` lists the uncommitted changes of the
 conversation's execution directory as `{ root, repository, head, files,
