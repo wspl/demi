@@ -52,8 +52,11 @@ async function browse(deviceId: string, cwd?: string | null) {
   if (locked.value) {
     return
   }
-  if (deviceId === 'cloud') {
-    await conversations.switchTarget(props.conversation.id, { kind: 'cloud' })
+  if (deviceId === 'cloud' || resources.deviceById(deviceId)?.kind === 'managed') {
+    await conversations.switchTarget(props.conversation.id, {
+      kind: 'cloud',
+      ...(cwd ? { path: cwd } : {}),
+    })
     return
   }
   directory.value?.browse(deviceId, cwd)
