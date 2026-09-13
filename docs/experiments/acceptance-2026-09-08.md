@@ -113,7 +113,7 @@ and report independent PATCH/batch outcomes. Device browsing includes home and
 file metadata; remote references preserve device identity and use existing host
 commands. Conditional `/api/state` snapshots support page reconciliation, and an
 optional built-web directory supports deep navigation alongside API/WS routes.
-Responsible modules and request contracts are in [backend.md](backend.md).
+Responsible modules and request contracts are in [backend.md](../demi-next/backend.md).
 
 Validation uses scripted providers, fake email delivery, mocked vendor responses
 and local runner fixtures; no real-model tests were run. Backend suite: 128 passed,

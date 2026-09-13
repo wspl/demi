@@ -71,14 +71,18 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         };
         let stop = CancellationToken::new();
         let _guard = stop.clone().drop_guard();
-        let running = tokio::spawn(mode::run(options, stop));
-        let (socket, _) = listener.accept().await.unwrap();
+        let mut running = tokio::spawn(mode::run(options, stop));
+        let (socket, _) = tokio::select! {
+            accepted = listener.accept() => accepted.unwrap(),
+            result = &mut running => panic!("runner exited before backend connection: {result:?}"),
+        };
         let mut socket = tokio_tungstenite::accept_async(socket).await.unwrap();
         assert!(matches!(
             receive(&mut socket).await,
             Reply::Hello { protocol: 10.0 }
         ));
         send(&mut socket, json!({"type":"hello_ok", "deviceId":"device"})).await;
+        eprintln!("mode test: runner connected");
         let body = json!({"roots": {"fixture": {"tree": {
             "name":"fixture", "summary":"Remote declaration", "kind":"rpc", "stdinField":"body",
             "input":{"type":"object", "properties":{"body":{"type":"string"}}, "required":["body"]}
@@ -123,6 +127,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
                 .unwrap()
                 .contains("fixture: Remote declaration")
         );
+        eprintln!("mode test: alias job completed");
         let state = Arc::new(RunnerState::open(state_dir.clone()).await.unwrap());
         let active = state.active().await.unwrap();
         assert!(state.lock().is_err());
@@ -146,6 +151,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         .await
         .unwrap();
         assert_eq!(completion.exit_code, 0);
+        eprintln!("mode test: drain acknowledged");
         running.await.unwrap().unwrap();
         assert!(!state_dir.join("active.json").exists());
         state.lock().unwrap().release().unwrap();
