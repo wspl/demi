@@ -17,7 +17,7 @@ interface Bar {
   addTab: () => void
   closeTab: (id: string) => void
   tabIds: () => string[]
-  activeId: () => string
+  activeId: () => string | null
   reset: () => void
 }
 const bar = ref<Bar | null>(null)
@@ -133,7 +133,7 @@ const count = computed(() => ids().length)
   <div class="flex flex-col gap-3">
     <div
       ref="frame"
-      class="gallery-frame max-w-full overflow-hidden bg-surface-base"
+      class="gallery-frame gallery-frame-base max-w-full overflow-hidden"
       :style="{ width: props.width }"
     >
       <GalleryTabBar ref="bar" />
