@@ -123,12 +123,11 @@ dependencies = [
 [[package]]
 name = "argmax"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0144c58b55af0133ec3963ce5e4d07aad866e3bbcfdcddbf4590dbd7ad6ff557"
 dependencies = [
  "libc",
  "nix 0.30.1",
  "once_cell",
+ "uucore 0.11.0",
 ]
 
 [[package]]
@@ -319,7 +318,6 @@ dependencies = [
  "clap",
  "color-print",
  "command-fds",
- "demi-native-path",
  "fancy-regex 0.17.0",
  "futures",
  "getrandom 0.4.3",
@@ -856,13 +854,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-builtin-package"
+name = "demi-command-service"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "demi-command-runtime",
+ "futures-util",
+ "h2",
+ "http",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_json_canonicalizer",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
+name = "demi-commands"
+version = "0.1.0"
+dependencies = [
+ "bytes",
  "demi-command-service",
- "demi-native-path",
  "demi-runner",
  "futures-util",
  "regex",
@@ -875,77 +890,37 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-command-loader"
+name = "demi-runner"
 version = "0.1.0"
 dependencies = [
- "demi-command-protocol",
- "jsonschema",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "demi-command-protocol"
-version = "0.1.0"
-dependencies = [
+ "brush-builtins",
+ "brush-core",
  "bytes",
- "jsonschema",
- "serde",
- "serde_json",
- "serde_json_canonicalizer",
- "sha2",
- "thiserror",
-]
-
-[[package]]
-name = "demi-command-runtime"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "demi-command-protocol",
- "demi-command-service",
- "futures-util",
- "process-wrap",
- "reqwest",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "demi-command-service"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "demi-command-protocol",
- "futures-util",
- "h2",
- "http",
- "serde_json",
- "thiserror",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "demi-native-path"
-version = "0.1.0"
-
-[[package]]
-name = "demi-native-utils"
-version = "0.1.0"
-dependencies = [
  "chrono",
+ "demi-command-service",
  "diffutils",
+ "filetime",
  "findutils",
+ "futures-util",
  "jaq",
+ "jsonschema",
+ "libc",
+ "process-wrap",
+ "regex",
+ "reqwest",
  "ripgrep",
+ "rmp-serde",
  "sed",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "sha2",
  "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "url",
  "uu_basename",
  "uu_cat",
  "uu_chmod",
@@ -981,52 +956,8 @@ dependencies = [
  "uu_uniq",
  "uu_wc",
  "uucore 0.11.0",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "demi-runner"
-version = "0.1.0"
-dependencies = [
- "brush-builtins",
- "brush-core",
- "bytes",
- "demi-command-loader",
- "demi-command-protocol",
- "demi-command-runtime",
- "demi-command-service",
- "demi-native-path",
- "demi-native-utils",
- "demi-runner-protocol",
- "filetime",
- "futures-util",
- "jsonschema",
- "libc",
- "process-wrap",
- "reqwest",
- "rmp-serde",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
  "uuid",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "demi-runner-protocol"
-version = "0.1.0"
-dependencies = [
- "jsonschema",
- "rmp-serde",
- "serde",
- "serde_bytes",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]
@@ -2355,12 +2286,11 @@ dependencies = [
 [[package]]
 name = "jaq-core"
 version = "3.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f72ba7158fe9fc1bc4baace1b71e6d0d3d27c6839dd87dc1f233dd408f5dd85b"
 dependencies = [
  "dyn-clone",
  "once_cell",
  "typed-arena",
+ "uucore 0.11.0",
 ]
 
 [[package]]
@@ -4839,7 +4769,7 @@ dependencies = [
  "bigdecimal",
  "bstr",
  "clap",
- "demi-native-path",
+ "command-fds",
  "dunce",
  "fluent",
  "fluent-syntax",
@@ -4857,6 +4787,7 @@ dependencies = [
  "nix 0.31.3",
  "num-traits",
  "os_display",
+ "process-wrap",
  "procfs",
  "rustc-hash",
  "rustix",

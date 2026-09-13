@@ -68,7 +68,6 @@
       "version": "0.24.0",
       "dependencies": {
         "@demicodes/agent": "workspace:^",
-        "@demicodes/command-protocol": "workspace:^",
         "@demicodes/core": "workspace:^",
         "@demicodes/shell": "workspace:^",
         "@demicodes/utils": "workspace:^",

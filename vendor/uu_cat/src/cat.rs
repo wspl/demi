@@ -12,13 +12,13 @@ use crate::platform::is_safe_overwrite;
 use clap::{Arg, ArgAction, Command};
 use memchr::memchr2;
 use std::ffi::OsString;
-use uucore::context::fs::{File, metadata};
-use uucore::context::io::{self, BufWriter, ErrorKind, IsTerminal, Read, Write};
 #[cfg(any(unix, target_os = "wasi"))]
 use std::os::fd::AsFd;
 #[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
 use thiserror::Error;
+use uucore::context::fs::{File, metadata};
+use uucore::context::io::{self, BufWriter, ErrorKind, IsTerminal, Read, Write};
 use uucore::display::Quotable;
 use uucore::error::{UResult, strip_errno};
 use uucore::translate;
@@ -490,7 +490,7 @@ fn print_unbuffered<R: FdReadable>(
     stdout: io::Stdout,
 ) -> CatResult<()> {
     #[cfg(any(unix, target_os = "wasi"))]
-    let mut stdout = uucore::io::RawWriter(stdout); // use raw syscall to remove buffering
+    let mut stdout = stdout; // Invocation stdout already writes without global buffering.
     #[cfg(not(any(unix, target_os = "wasi")))]
     let mut stdout = stdout.lock();
     let mut buf = [0; 1024 * 64];

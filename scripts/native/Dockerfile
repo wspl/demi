@@ -1,4 +1,5 @@
 FROM rust:1.98.1-slim-bookworm
+COPY --from=oven/bun:1.3.14 /usr/local/bin/bun /usr/local/bin/bun
 RUN apt-get update && apt-get install -y --no-install-recommends \
     clang lld llvm cmake pkg-config python3-pip ca-certificates git xz-utils \
     && rm -rf /var/lib/apt/lists/*
