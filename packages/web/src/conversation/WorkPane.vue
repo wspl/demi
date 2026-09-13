@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import type { ChangeMode } from '@demicodes/web-ui/files/changes'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import { fileSourceFor } from '../devices/files'
+import { fileSource } from '../api/files'
 import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
 import { useConversations } from './store'
@@ -11,7 +11,7 @@ import { useWorkPanel } from './work'
 
 /**
  * The work panel beside one conversation: its tabs from the work store, and
- * the workspace from the conversation's execution target, the device's
+ * the workspace from the conversation's execution target, the Host's
  * files and its working tree. The Change tab's Uncommitted list follows the
  * conversation: it is taken when the tab shows, listed again after each of
  * the conversation's tool calls finishes while it shows (marked stale
@@ -39,7 +39,7 @@ const workspace = computed(() => {
     return undefined
   }
   return {
-    source: fileSourceFor(device),
+    source: fileSource(`/conversations/${encodeURIComponent(props.conversationId)}/fs`, device),
     root: execution.path,
     // The Cloud's own session directory has no name worth showing; it is the workspace.
     name: execution.directory === null ? 'Workspace' : undefined,
