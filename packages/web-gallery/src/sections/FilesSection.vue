@@ -153,6 +153,8 @@ const folderKey = ref(0)
 // Open file: the composer's remote attachment, opening inside a project.
 const fileHostId = ref('mac')
 const fileHost = computed(() => hosts.find((host) => host.id === fileHostId.value)!)
+const narrowHostId = ref(hosts[0]!.id)
+const narrowHost = computed(() => hosts.find((host) => host.id === narrowHostId.value)!)
 const fileChosen = ref<string | null>(null)
 const fileKey = ref(0)
 
@@ -480,16 +482,19 @@ onMounted(() => {
 
       <GallerySection
         title="Narrow"
-        note="At a phone width the path takes its own row under the toolbar, the places become a menu at the toolbar's right, Forward and the date column go, and the address bar folds."
+        note="At a phone width the device and nav keep the toolbar's left, the places become a menu at its right, the path takes its own row under it, Forward and the date column go, and the address bar folds."
       >
         <GalleryDialogFrame class="max-w-[22rem]">
           <FileBrowserDialog
             :is-open="true"
             :overlay-store="appOverlayStore"
             mode="directory"
-            :source="hosts[0]!.source"
-            initial-path="/Users/zan/Projects/a project with a very long directory name that will not fit in the address bar/src"
-            :places="hosts[0]!.places"
+            :source="narrowHost.source"
+            :initial-path="narrowHostId === 'mac' ? '/Users/zan/Projects/a project with a very long directory name that will not fit in the address bar/src' : undefined"
+            :places="narrowHost.places"
+            :hosts="hostOptions"
+            :host-id="narrowHostId"
+            @update:host-id="narrowHostId = $event"
           />
         </GalleryDialogFrame>
       </GallerySection>
