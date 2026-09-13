@@ -361,16 +361,6 @@ export function toShellToolResult(
 /** Character budget for a shell view's render window (tail-biased). */
 export const SHELL_VIEW_MAX_CHARS = 32_768
 
-/** One file a command changed in the working tree, with its line counts. */
-export interface ShellFileChange {
-  path: string
-  kind: 'added' | 'modified' | 'deleted' | 'renamed'
-  /** The path before a rename. */
-  from?: string
-  added: number
-  removed: number
-}
-
 /** Bounded output and retained file metadata for the browser; never embeds file contents. */
 export interface ShellToolView {
   kind: 'shell'

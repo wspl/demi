@@ -1,5 +1,4 @@
-import type { ShellFileChange } from '@demicodes/agent'
-import type { CallEditSelection, ChangeMode } from '../files/changes'
+import type { CallEditSelection, ChangeFile, ChangeMode } from '../files/changes'
 import { baseName } from '../files/paths'
 
 /**
@@ -54,7 +53,7 @@ export function changeWorkTab(id: string, mode: ChangeMode): WorkTab {
 }
 
 /** Conversation paths come from the picked file; only the working tree holds a list selection. */
-export function changeTabPath(tab: ChangeWorkTab, mode = tab.mode, files?: readonly ShellFileChange[]): string | null {
+export function changeTabPath(tab: ChangeWorkTab, mode = tab.mode, files?: readonly ChangeFile[]): string | null {
   if (mode === 'conversation') {
     return tab.call?.file.path ?? null
   }

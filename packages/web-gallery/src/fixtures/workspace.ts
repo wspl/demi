@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import type { ShellFileChange } from '@demicodes/agent'
+import type { ChangeFile } from '@demicodes/web-ui/files/changes'
 import type { ChangeSetSource } from '@demicodes/web-ui/files/changes'
 import { createMemoryFileSource, dir, textFile, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserSource } from '@demicodes/web-ui/files/types'
@@ -97,9 +97,9 @@ const packageJson = `{
 `
 
 const pillsVue = `<script setup lang="ts">
-import type { ShellFileChange } from '../block-helpers'
+import type { ChangeFile } from '../../files/changes'
 
-defineProps<{ files: ShellFileChange[] }>()
+defineProps<{ files: ChangeFile[] }>()
 </script>
 
 <template>
@@ -357,7 +357,7 @@ const authTestBefore = authTest
 const readmeBefore = readme.replace('bun run dev\n', 'bun run dev\nbun run typecheck\n')
 
 interface ChangedSides {
-  kind: ShellFileChange['kind']
+  kind: ChangeFile['kind']
   from?: string
   original: string
   modified: string
@@ -396,9 +396,9 @@ const changeSides: Record<string, ChangedSides> = {
   'package.json': { kind: 'modified', original: packageJson.replace('"typecheck": "tsgo --noEmit"', '"typecheck": "tsc --noEmit"'), modified: packageJson },
 }
 
-const changedFiles: ShellFileChange[] = Object.entries(changeSides).map(([path, sides]) => {
+const changedFiles: ChangeFile[] = Object.entries(changeSides).map(([path, sides]) => {
   const counts = lineCounts(sides.original, sides.modified)
-  const change: ShellFileChange = { path, kind: sides.kind, ...counts }
+  const change: ChangeFile = { path, kind: sides.kind, ...counts }
   if (sides.from) {
     change.from = sides.from
   }
