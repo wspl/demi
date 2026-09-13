@@ -1,25 +1,29 @@
 # Edit tracking
 
-A shell job reports the files it created or modified, each with its diff, so
-the conversation can show what one tool call edited. The runner learns this
-from the commands themselves as they run, not from the filesystem afterwards:
-every in-process file write passes through a layer the runner owns, and that
-layer takes notes. This is why the shell runs in process and why the utilities
-are forked to open files through one context.
+A shell job reports the files it created or modified, so the conversation can
+show what one tool call edited: the list under the call, and each file's diff
+on request. The runner learns this from the commands themselves as they run,
+not from the filesystem afterwards: every in-process file write passes through
+a layer the runner owns, and that layer takes notes. This is why the shell runs
+in process and why the utilities are forked to open files through one context.
 
 Edit tracking has one consumer: the file pills under a shell call in the
 conversation, and the work panel's change view in Conversation mode that a
 pill opens to show what that call changed. Nothing else reads it. The model
 never receives it; the working tree view ([Runner](runner.md#working-tree))
 answers a different question, "what is uncommitted?", for the whole directory.
-The two share the file entry shape and nothing else.
+The two share the file entry shape and the diff view and nothing else.
+
+The list travels with the transcript block. The file contents behind the diff
+do not: they live in the conversation's change store, described below, and the
+browser fetches them when a file is opened.
 
 ## Scope
 
 | Recorded | Not recorded |
 | --- | --- |
 | A file a brush redirection opens for writing (`>`, `>>`, `<>`, `exec 3>f`). | Anything an external child process does: git, python, node, user-installed tools. |
-| A file an embedded utility opens for writing, creates, writes whole, copies to, or renames over (`sed -i`, `tee`, `cp`, `sort -o`). | Deletions, renames as moves, directories, permissions, ownership, times. |
+| A file an embedded utility opens for writing, writes whole, or renames over (`sed -i`, `tee`, `sort -o`, `uniq` with an output file). | Copies and hard links (`cp`), deletions, renames as moves, directories, permissions, ownership, times. |
 | Every in-process part of the job: subshells, functions, background tasks, process substitutions. | Reads, and the empty file `mktemp` creates. |
 
 An entry is `added` when the path did not exist at the job's first write to it,
@@ -27,33 +31,30 @@ An entry is `added` when the path did not exist at the job's first write to it,
 first write is not reported: `touch`, a write of identical content, a temporary
 file removed before exit.
 
-The limits keep tracking cheap and bounded whatever a script does:
-
 | Limit | Value | Beyond it |
 | --- | --- | --- |
-| File size, before or after | 8 MiB | The entry keeps its path and kind; counts are 0 and 0 and it has no diff. Binary content is treated the same. |
-| Diff size, per file | 256 KiB | The entry keeps its counts and has no diff. |
-| Diff size, per job | 1 MiB | Entries past the total keep their counts and have no diff. |
-| Bytes copied per job | 64 MiB | Later paths are recorded with their kind only: no counts, no diff. |
+| File size, before or after | 8 MiB | The entry keeps its path and kind; counts are 0 and 0 and it has no contents. Binary content is treated the same. |
+| Bytes copied per job | 64 MiB | Later paths are recorded with their kind only. |
 | Recorded paths per job | 500 | Later writes go unrecorded and the report says `filesTruncated`. |
 
 ## How a job records
 
 ```text
-sed -i 's/a/b/' src/main.rs                 # inside job J, cwd /work
+sed -i 's/a/b/' src/main.rs                 # inside job J
 
 utility ──open for write──▶ context::fs ──write notice──▶ Scope J
                                                           │ first notice for this path:
-                                                          │   copy current bytes → J/changes/0
+                                                          │   copy current bytes → J/changes/0.original
                                                           │   (or note: did not exist)
                                                           ▼
                                                      open proceeds, sed writes, renames
 job exits ─────────────────────────────────────────▶ Scope J
                                                       for each recorded path:
-                                                        read current bytes, diff against J/changes/0
-                                                        → kind, added, removed, unified diff
-                                                      delete J/changes
-                                                      job_exit.files = [{path: "src/main.rs", kind: "modified", diff: "@@ ...", ...}]
+                                                        copy current bytes → J/changes/0.modified
+                                                        count lines added and removed
+                                                      job_exit.files = [{path, kind, added, removed,
+                                                                         original: "J/changes/0.original",
+                                                                         modified: "J/changes/0.modified"}]
 ```
 
 One job owns one `Scope`, the object the runner hands to brush as its execution
@@ -61,24 +62,23 @@ host and to the utilities as their execution control. Both ask the scope to
 resolve paths against the invocation's cwd; both now also send it a write
 notice with the resolved path before any open that can change a file's content:
 an open with write, append, truncate, create, or create-new set; a whole-file
-write; a copy, a rename, or a hard link, for their destination. A utility that
-writes through a temporary file and renames it over the target notifies for the
-target, so `sed -i` reports `src/main.rs`, not its temporary name. Read-only
-opens send nothing.
+write; a rename, for its destination. A utility that writes through a temporary
+file and renames it over the target notifies for the target, so `sed -i`
+reports `src/main.rs`, not its temporary name. Read-only opens send nothing.
 
 On the first notice for a path the scope copies the file's current bytes into
 the job's directory, or notes that the path does not exist, before the open
 proceeds. Later notices for the same path are counted and nothing more. The
 order matters: a truncating open that ran first would leave nothing to copy.
 
-When the job exits, however it ended, the scope reads each recorded path's
-current bytes, diffs them against the copy line by line with the same algorithm
-the working tree uses, renders the hunks as a unified diff with three lines of
-context, and reports the entries in `job_exit`. The copies are deleted with the
-report; nothing about an edit stays on the target. Recording never fails the
-command: a copy that cannot be taken, a path that disappeared, or a diff that
-cannot run leaves that entry with counts 0 and 0 and no diff, and the command's
-own result stands.
+When the job exits, however it ended, the scope copies each recorded path's
+current bytes beside the first copy, counts the lines added and removed between
+the two with the algorithm the working tree uses, and reports the entries in
+`job_exit`. The copies stay in the job's directory with its retained output,
+under that directory's lifetime ([Pipes and output](runner.md#pipes-and-output)).
+Recording never fails the command: a copy that cannot be taken or a path that
+disappeared leaves that entry with counts 0 and 0 and no contents, and the
+command's own result stands.
 
 ## The report
 
@@ -89,48 +89,76 @@ write, and `filesTruncated`:
 | --- | --- |
 | `path` | Absolute, as the target names it. A persistent shell keeps its cwd across jobs, so the job's directory is not the workspace root; the browser shows the path relative to the workspace root when under it, absolute otherwise, with `/` separators. |
 | `kind` | `added` or `modified`. |
-| `added`, `removed` | Lines added and removed; 0 and 0 when there is no diff. |
-| `diff` | The hunks as a unified diff, without the file header. Absent under the limits above or for binary content. |
+| `added`, `removed` | Lines added and removed; 0 and 0 when there are no contents. |
+| `original`, `modified` | The two copies on the target, as paths; `original` is absent for an added file. Both absent when the contents were not kept. |
 
 The entry shape is the working tree's ([Runner](runner.md#working-tree))
-without `deleted`, `renamed`, and `from`, plus `diff`.
+without `deleted`, `renamed`, and `from`.
+
+## The change store
+
+When a command's exit reaches the backend, the backend reads each entry's
+copies from the target and writes them into the conversation's change store,
+then hands the tool its status with the list. The read is part of completing
+the command inside the agent's own host session, the same way the command's
+retained output is read back; it is not an operation on the host from outside
+the agent. A copy that cannot be read or stored leaves its entry in the list
+without contents; the list is never lost over the contents.
+
+The change store is one namespace of the object store that also holds blobs
+([Storage](storage.md#attachment-and-transcript-media)): a directory locally,
+S3 in deployment. Its objects are bound to the conversation, not addressed by
+content:
+
+```text
+changes/<conversationId>/<commandId>/<n>.original
+changes/<conversationId>/<commandId>/<n>.modified
+```
+
+`n` is the entry's index in the command's list. The objects belong to the
+conversation's owner and live as long as the conversation; an archived
+conversation keeps them. They are written before the block that lists them is
+checkpointed, under the blob rule that a committed block never points at
+unpublished bytes.
+
+The transcript block's `ShellToolView.files` carries the list only:
+`path`, `kind`, `added`, `removed`, and `kept`, true when both contents are in
+the store.
+
+`GET /api/conversations/:id/commands/:commandId/changes/file?path=...` returns
+`{ original, modified }` for one entry from the store, `original` empty for an
+added file; 404 `not_found` when the command has no such entry or its contents
+were not kept. No host is involved.
 
 ## Delivery to the conversation
 
-The host records `files` on the command's exit status, and the shell tool puts
-them in its `ShellToolView.files` for the rendering layer
-([Tool rendering](../tool-rendering-spec.md)). The view is stored with the
-block, so a call's edits remain readable, diffs included, after the runner, the
-job, the target, or the backend is gone, and reading them never touches the
-host.
-
-The shell block shows the entries as file pills under the call. Picking a pill
-opens the work panel's change view in Conversation mode on that call, with the
-picked file selected: the tree lists that call's files, and the selected file
-shows its hunks. An entry without a diff shows why (binary, or over the
-limits). Conversation mode never lists anything on its own and never refreshes:
-its content is one call's report, and picking a pill of another call replaces
-it.
+The shell block shows the entries as file pills under the call, from the block's
+view ([Tool rendering](../tool-rendering-spec.md)). Picking a pill opens the
+work panel's change view in Conversation mode on that call, with the picked
+file selected: the tree lists that call's files, and the selected file's two
+sides, fetched through the route above, show in the same diff editor the
+Uncommitted mode uses. An entry that is not `kept` shows why in place of the
+diff. Conversation mode never lists anything on its own and never refreshes:
+its content is one call's list, and picking a pill of another call replaces it.
 
 ## Crates and packages to change
 
 | Where | Change |
 | --- | --- |
 | `vendor/brush-core` | The execution host trait gains the write notice; the shell's file opening sends it for every write-capable option set. |
-| `vendor/uucore` | The execution control trait gains the write notice; `context::fs` sends it from creating and write-capable opens, whole-file writes, and the destination of copy, rename, and hard link; `safe_copy::create_dest_restrictive`, which opens `cp`'s destination through `rustix` on Linux, sends it too. A helper persists a temporary file over a target with the notice. |
+| `vendor/uucore` | The execution control trait gains the write notice; `context::fs` sends it from creating and write-capable opens, whole-file writes, and the destination of a rename. A helper persists a temporary file over a target with the notice. |
 | `vendor/sed` | In-place editing persists through that helper. |
-| `vendor/uu_cp` | The macOS copy clones the destination with `clonefile(2)` outside any file open; it sends the notice first. |
-| `crates/runner` | `Scope` implements both notices, keeps the copies in the job's directory, diffs at exit, and reports; the line diff moves out of the working tree module to be shared; `job_exit` gains the fields. |
+| `crates/runner` | `Scope` implements both notices, keeps the copies in the job's directory, counts lines at exit, and reports; the line counting moves out of the working tree module to be shared; `job_exit` gains the fields. |
 | `packages/runner-protocol` | `job_exit` schema and the generated Rust bindings. |
-| `packages/shell`, `packages/host-remote` | The command's exit status carries `files`. |
-| `packages/agent` | `ShellFileChange` gains `diff`; the shell tool view carries `files`. |
-| `packages/web-ui` | The pill opens the change view; Conversation mode renders hunks from a report instead of reading sides. |
-| `packages/web`, `packages/web-gallery` | Product wiring and specimens. |
+| `packages/shell`, `packages/host-remote` | The command's exit status carries the entries with their copy paths. |
+| `packages/backend` | The change store; the shell environment wrapper that moves copies into it and hands the tool the list; the route. |
+| `packages/agent` | The shell tool view carries the list with `kept`. |
+| `packages/web-ui` | The pill opens the change view on its call; Conversation mode is one call's list with a `read` that the host supplies. |
+| `packages/web`, `packages/web-gallery` | The product's `read` through the route; specimens. |
 
-The other vendored utilities need no change: `mv`, `tee`, `sort`, `touch`,
-and `uniq` open through `context::fs`; `sort` and `tac` use anonymous
-temporary files; `ripgrep`, `jaq`, `findutils`, and `diffutils` do not write
-files.
+The other vendored utilities need no change: `tee`, `sort`, `touch`, and
+`uniq` open through `context::fs`; `sort` and `tac` use anonymous temporary
+files; `ripgrep`, `jaq`, `findutils`, and `diffutils` do not write files.
 
 ## Rationale
 
@@ -140,13 +168,15 @@ concurrent calls. Notices from the write path are exact for everything that
 runs in process and free of scanning. External processes are outside that path
 by nature; their edits still appear in the working tree view, unattributed.
 
-The report carries the diff rather than references to copies on the target
-because the conversation is read long after the job: on another device, after
-a Cloud reset, after the runner is replaced. A diff of bounded size travels with
-the block; copies on the target would need a lifetime, a route, and a host that
-is up.
+The list is in the block because it is small and is read every time the
+conversation is shown. The contents are not, because a transcript is loaded
+whole and a file is up to 8 MiB: they are read only when a file is opened, so
+they live in a store that is fetched by entry. They are bound to the
+conversation rather than content-addressed because they are the conversation's
+history and go with it, and because two sides of one edit are only meaningful
+together.
 
 Only creations and modifications are reported because the conversation shows
-what the model wrote, not the state of the directory. A move is a deletion the
-view would not show and a creation it does show; reporting the destination as
-`added` says what the reader needs.
+what the model wrote, not the state of the directory. Copies are left out
+because `cp` reaches the disk outside the shared context on macOS and Linux,
+and a copied file is not an edit the reader is looking for.
