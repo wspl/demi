@@ -1,7 +1,6 @@
 import { reactive } from 'vue'
 import { defineStore } from 'pinia'
-import type { ShellEditsView } from '@demicodes/agent'
-import type { ChangeMode, ReadCallChange } from '@demicodes/web-ui/files/changes'
+import type { CallEditSelection, ChangeMode, ReadCallChange } from '@demicodes/web-ui/files/changes'
 import {
   changeWorkTab,
   closeWorkTabs,
@@ -99,8 +98,8 @@ export const useWorkPanel = defineStore('work-panel', () => {
     state.tabs = showChangeInTab(state.tabs, id, mode, path, selection)
   }
 
-  function selectEdit(state: WorkState, call: ShellEditsView, path: string): void {
-    const next = showCallEdit(state.tabs, call, path, newId)
+  function selectEdit(state: WorkState, selection: CallEditSelection): void {
+    const next = showCallEdit(state.tabs, selection, newId)
     state.tabs = next.tabs
     state.activeId = next.activeId
     state.open = true

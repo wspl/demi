@@ -10,6 +10,7 @@ import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
 import { useConversations } from './store'
 import { useResources } from '../state/resources'
 import { useWorkPanel } from './work'
+import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 
 const store = useConversations()
@@ -64,6 +65,13 @@ function saveScroll(id: string, state: PersistedScrollState | null): void {
   }
 }
 
+const selectEdit: EditSelectionHandler = (selection) => {
+  const current = conversation.value
+  if (current) {
+    work.selectEdit(work.stateFor(current.id), selection)
+  }
+}
+
 async function fork(request: MessageForkRequest): Promise<void> {
   const sourceId = conversation.value?.id
   if (!sourceId) {
@@ -82,7 +90,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :conversation="conversation"
     :has-provider="hasProvider"
     :fork="fork"
-    :select-edit="(call, path) => work.selectEdit(work.stateFor(conversation.id), call, path)"
+    :select-edit="selectEdit"
     :pending-submission="
       conversation.pendingSend
         ? {

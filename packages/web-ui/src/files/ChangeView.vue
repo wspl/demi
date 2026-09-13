@@ -14,8 +14,8 @@ import { changeAbsolutePath, changeDisplayPath, emptyChangeSetText, type ChangeM
 import { TREE_WIDTH } from './file-view'
 
 /**
- * One working-tree file or one retained segment of a call. The shared tree,
- * segment control and Back/Forward events use the selection held by the host.
+ * One working-tree file or one retained segment of a call. The working-tree
+ * sidebar, segment control and Back/Forward events use the selection held by the host.
  * A missing retained pair leaves the editor area empty.
  */
 const props = defineProps<{
@@ -48,15 +48,18 @@ const modeOptions: readonly SegmentedOption<ChangeMode>[] = [
   { value: 'conversation', label: 'Conversation' },
 ]
 
-const source = computed(() => props.changes[mode.value])
-const selectedChange = computed(
-  () => source.value.files.find((file) => file.path === selected.value) ?? null,
-)
-const segments = computed(() => source.value.segments?.(selected.value ?? '') ?? [])
-const displayPath = computed(() => changeDisplayPath(selected.value ?? '', props.root))
-
-const emptyText = computed(() => emptyChangeSetText(source.value, mode.value))
-const idleText = computed(() => (source.value.files.length > 0 ? 'Select a changed file.' : emptyText.value))
+const workingTree = computed(() => props.changes.uncommitted)
+const call = computed(() => mode.value === 'conversation' ? props.changes.conversation : null)
+const selectedChange = computed(() => mode.value === 'conversation'
+  ? call.value?.file ?? null
+  : workingTree.value.files.find((file) => file.path === selected.value) ?? null)
+const segments = computed(() => call.value?.file.edits ?? [])
+const displayPath = computed(() => changeDisplayPath(selectedChange.value?.path ?? '', props.root))
+const treeShown = computed(() => mode.value === 'uncommitted' && tree.value)
+const emptyText = computed(() => emptyChangeSetText(workingTree.value))
+const idleText = computed(() => mode.value === 'conversation'
+  ? 'Click a changed file in the conversation to see its diff here.'
+  : workingTree.value.files.length > 0 ? 'Select a changed file.' : emptyText.value)
 
 const sides = ref<{ original: string; modified: string } | null>(null)
 const state = ref<'idle' | 'loading' | 'ready' | 'failed' | 'unavailable'>('idle')
@@ -65,8 +68,8 @@ let controller: AbortController | null = null
 
 async function read(): Promise<void> {
   controller?.abort()
-  const path = selected.value
-  if (path === null) {
+  const path = selectedChange.value?.path
+  if (path === undefined) {
     state.value = 'idle'
     sides.value = null
     return
@@ -81,7 +84,9 @@ async function read(): Promise<void> {
   state.value = 'loading'
   failure.value = null
   try {
-    const result = await source.value.read(path, current.signal, edit.value)
+    const result = call.value
+      ? await call.value.read(edit.value, current.signal)
+      : await workingTree.value.read(path, current.signal)
     if (current.signal.aborted) {
       return
     }
@@ -96,7 +101,11 @@ async function read(): Promise<void> {
   }
 }
 
-watch(() => [source.value, selected.value, edit.value], read, { immediate: true })
+watch(
+  () => [mode.value === 'conversation' ? call.value : workingTree.value, selectedChange.value, edit.value],
+  read,
+  { immediate: true },
+)
 
 onBeforeUnmount(() => {
   controller?.abort()
@@ -139,7 +148,7 @@ onBeforeUnmount(() => {
             @click="selectedChange && emit('open', selectedChange.path)"
           />
         </Tooltip>
-        <Tooltip :content="tree ? 'Hide changed files' : 'Show changed files'" class="shrink-0">
+        <Tooltip v-if="mode === 'uncommitted'" :content="tree ? 'Hide changed files' : 'Show changed files'" class="shrink-0">
           <IconButton
             :icon="FolderTree"
             variant="ghost"
@@ -155,7 +164,7 @@ onBeforeUnmount(() => {
         <!-- A diff is built for one pair of texts: a new file is a new editor. -->
         <DiffEditor
           v-if="state === 'ready' && sides && selectedChange"
-          :key="`${source.identity ?? mode}:${selectedChange.path}:${edit}`"
+          :key="`${call?.commandId ?? mode}:${selectedChange.path}:${edit}`"
           :host="appEditorHost"
           :original="sides.original"
           :modified="sides.modified"
@@ -174,7 +183,7 @@ onBeforeUnmount(() => {
           @action="read"
         />
       </div>
-      <template v-if="tree">
+      <template v-if="treeShown">
         <ResizeHandle
           v-model="treeWidth"
           side="end"
@@ -186,7 +195,7 @@ onBeforeUnmount(() => {
         <ChangeTree
           class="border-l border-line"
           :style="{ flex: `0 0 ${treeWidth}px`, width: `${treeWidth}px` }"
-          :source="source"
+          :source="workingTree"
           :root="root"
           :root-name="rootName"
           :selected="selected"

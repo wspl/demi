@@ -176,15 +176,16 @@ file/segment or its contents were not kept. No host is involved.
 The shell block shows the entries as file pills under the call, from the block's
 view ([Tool rendering](../tool-rendering-spec.md)). Picking a pill opens the
 work panel's change view in Conversation mode on that call, with the picked
-file selected: the tree lists that call's files, and the selected file's two
-sides, fetched through the route above, show in the same diff editor the
-Uncommitted mode uses. If the file has several edit segments, a shared control
-selects one in order, initially the first. The selection identifies the command,
-file and segment, so opening another call for the same path replaces its diff.
+file selected. This mode receives only that file's metadata, command ID and
+edit segments, not the call's file list. Its two sides, fetched through the
+route above, show in the same diff editor the Uncommitted mode uses. If the file
+has several edit segments, a shared control selects one in order, initially the
+first. The selection identifies the command, file and segment, so opening another call for the same path replaces its diff.
 An edit that is not `kept` has no diff; the interface silently omits the diff
-without a message or explanation. Its file remains in the list.
-Conversation mode never lists anything on its own and never refreshes:
-its content is one call's list, and picking a pill of another call replaces it.
+without a message or explanation. Its file pill remains under the call.
+Conversation mode has no file sidebar, list source or refresh operation. Picking
+another pill replaces the selected edit; Back and Forward revisit selections.
+Only Uncommitted mode lists files and offers a changed-file tree.
 
 ## Responsibilities
 
@@ -197,7 +198,7 @@ its content is one call's list, and picking a pill of another call replaces it.
 | `packages/runner-protocol`, `packages/shell`, `packages/host-remote` | Carry the report through command completion. |
 | `packages/backend` | Publish snapshots before tool completion, retain conversation history, authorize reads and serve individual edit segments. |
 | `packages/agent` | Carry the small file/segment list in the shell tool view, exclusively for the user. |
-| `packages/web-ui` | Shared file selection, call-specific change tree, segment selection and diff behavior. |
+| `packages/web-ui` | Shared file selection, segment selection and diff behavior. |
 | `packages/web`, `packages/web-gallery` | Product data adapters and matching specimens. |
 
 ## Rationale

@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
 import type { ShellFileChange } from '@demicodes/agent'
-import type { ChangeSetSource, ChangeSources } from '@demicodes/web-ui/files/changes'
+import type { ChangeSetSource } from '@demicodes/web-ui/files/changes'
 import { createMemoryFileSource, dir, textFile, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserSource } from '@demicodes/web-ui/files/types'
 
@@ -405,9 +405,6 @@ const changedFiles: ShellFileChange[] = Object.entries(changeSides).map(([path, 
   return change
 })
 
-/** The files the conversation's shell calls touched and the reader picked from their rows. */
-const CONVERSATION_PICKS = ['src/auth/cookie.ts', 'src/auth/session.ts', 'tests/login/auth.test.ts']
-
 /** How a fixture change set presents its listing, beyond the files themselves. */
 export interface GalleryChangeListing {
   /** The list was cut short at the host's limit. */
@@ -442,9 +439,9 @@ export function createGalleryChangeSet(latencyMs: number, listing: GalleryChange
   return source
 }
 
-function createGalleryChanges(latencyMs: number, paths?: readonly string[]): ChangeSetSource {
+function createGalleryChanges(latencyMs: number): ChangeSetSource {
   return {
-    files: paths ? changedFiles.filter((file) => paths.includes(file.path)) : changedFiles,
+    files: changedFiles,
     async read(path, signal) {
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(resolve, latencyMs)
@@ -462,7 +459,7 @@ function createGalleryChanges(latencyMs: number, paths?: readonly string[]): Cha
   }
 }
 
-export function createGalleryWorkspace(latencyMs = 200): { source: FileBrowserSource; root: string; changes: ChangeSources } {
+export function createGalleryWorkspace(latencyMs = 200): { source: FileBrowserSource; root: string; changes: ChangeSetSource } {
   const root = tree()
   // The workspace sits under the home directory the laptop fixtures use.
   const home = dir({ Projects: dir({ demi: root }) })
@@ -472,9 +469,6 @@ export function createGalleryWorkspace(latencyMs = 200): { source: FileBrowserSo
     root: dir({ Users: dir({ zan: home }) }),
     latencyMs,
   })
-  const changes: ChangeSources = {
-    conversation: createGalleryChanges(latencyMs, CONVERSATION_PICKS),
-    uncommitted: createGalleryChangeSet(latencyMs),
-  }
+  const changes = createGalleryChangeSet(latencyMs)
   return { source, root: WORKSPACE_ROOT, changes }
 }

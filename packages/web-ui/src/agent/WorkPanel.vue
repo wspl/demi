@@ -16,13 +16,13 @@ import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from '../files/FileIcon.vue'
 import ChangeView from '../files/ChangeView.vue'
 import FileView from '../files/FileView.vue'
-import { callChangeSet, emptyChangeSet, changeModeToOpen, type ReadCallChange, type ChangeMode, type ChangeSources } from '../files/changes'
+import { callChangeSource, emptyChangeSet, type ReadCallChange, type ChangeMode, type ChangeSetSource, type ChangeSources } from '../files/changes'
 import { joinPath, normalizePath } from '../files/paths'
 import type { FileBrowserSource } from '../files/types'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
 import { tabsToClose, type TabCloseScope } from './tab-close'
-import { findChangeWorkTab, workTabTitle, type ChangeWorkTab, type WorkTab } from './work-panel'
+import { findChangeWorkTab, changeTabPath, workTabTitle, type ChangeWorkTab, type WorkTab } from './work-panel'
 
 /**
  * The work panel: the app frame's right pane, where the reader keeps files
@@ -45,9 +45,9 @@ import { findChangeWorkTab, workTabTitle, type ChangeWorkTab, type WorkTab } fro
  * and on the file the tab holds; a mode switch or a pick in its tree is
  * asked for with `showChange`, and the host steps the tab (see
  * `showChangeInTab`), so Back and Forward walk those steps. A new change tab
- * opens on what was picked from the conversation, if anything, else on the
- * uncommitted changes. Whether the trees show is one choice for the panel,
- * not per tab. Without a workspace the content pane is a placeholder.
+ * starts on the uncommitted changes; picking a file pill opens its retained
+ * edit in Conversation mode. Only the file view and Uncommitted have trees.
+ * Retained edits stay readable without a workspace.
  */
 const props = defineProps<{
   tabs: readonly WorkTab[]
@@ -55,7 +55,7 @@ const props = defineProps<{
   readCallChange?: ReadCallChange
   historyRoot?: string
   /** `name` stands in for the root directory's name wherever the views name the workspace. */
-  workspace?: { source: FileBrowserSource; root: string; name?: string; changes?: ChangeSources }
+  workspace?: { source: FileBrowserSource; root: string; name?: string; changes?: ChangeSetSource }
 }>()
 const emit = defineEmits<{
   select: [id: string]
@@ -77,21 +77,16 @@ const treeOpen = ref(true)
 const changes = computed<ChangeSources>(() => {
   const call = active.value?.kind === 'change' ? active.value.call : null
   return {
-    uncommitted: props.workspace?.changes?.uncommitted ?? emptyChangeSet,
+    uncommitted: props.workspace?.changes ?? emptyChangeSet,
     conversation: call && props.readCallChange
-      ? callChangeSet(call, props.readCallChange)
-      : props.workspace?.changes?.conversation ?? emptyChangeSet,
+      ? callChangeSource(call, props.readCallChange)
+      : null,
   }
 })
 
 /** The file the change tab shows in its mode: the one it holds, else the first there is. */
 function changeSelection(tab: ChangeWorkTab): string | null {
-  const held = tab.selected[tab.mode]
-  const files = changes.value[tab.mode].files ?? []
-  if (held !== null && files.some((file) => file.path === held)) {
-    return held
-  }
-  return files[0]?.path ?? null
+  return changeTabPath(tab, tab.mode, changes.value.uncommitted.files)
 }
 
 function absolutePath(path: string): string {
@@ -167,8 +162,7 @@ function add(kind: WorkTab['kind']): void {
     emit('select', open.id)
     return
   }
-  const mode = props.workspace?.changes ? changeModeToOpen(props.workspace.changes) : 'uncommitted'
-  emit('add', 'change', mode)
+  emit('add', 'change', 'uncommitted')
 }
 </script>
 
@@ -260,7 +254,7 @@ function add(kind: WorkTab['kind']): void {
           :root-name="workspace?.name"
           :can-back="active.back.length > 0"
           :can-forward="active.forward.length > 0"
-          @update:mode="emit('showChange', active.id, $event, active.selected[$event])"
+          @update:mode="emit('showChange', active.id, $event, changeTabPath(active, $event))"
           @update:edit="emit('showChange', active.id, active.mode, changeSelection(active), { call: active.call, edit: $event })"
           @update:selected="emit('showChange', active.id, active.mode, $event)"
           @back="emit('back', active.id)"

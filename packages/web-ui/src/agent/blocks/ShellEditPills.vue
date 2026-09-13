@@ -9,6 +9,14 @@ import FileChangePills from './FileChangePills.vue'
 const props = defineProps<{ block: ToolCallBlock }>()
 const call = computed(() => shellEditsView(props.block))
 const select = useEditSelection()
+
+function pick(path: string): void {
+  const current = call.value
+  const file = current?.files.find((entry) => entry.path === path)
+  if (current && file) {
+    select?.({ commandId: current.commandId, file })
+  }
+}
 </script>
 
 <template>
@@ -17,6 +25,6 @@ const select = useEditSelection()
     class="py-1"
     :style="{ paddingLeft: `${ICON_PX.in28 + 8}px` }"
     :files="call.files"
-    @select="select?.(call, $event)"
+    @select="pick"
   />
 </template>

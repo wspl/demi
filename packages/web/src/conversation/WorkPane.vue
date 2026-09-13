@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import type { ChangeMode } from '@demicodes/web-ui/files/changes'
-import { emptyChangeSet } from '@demicodes/web-ui/files/changes'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { fileSourceFor } from '../devices/files'
 import { useResources } from '../state/resources'
@@ -44,7 +43,7 @@ const workspace = computed(() => {
     root: execution.path,
     // The Cloud's own session directory has no name worth showing; it is the workspace.
     name: execution.directory === null ? 'Workspace' : undefined,
-    changes: { uncommitted: state.value.changes, conversation: emptyChangeSet },
+    changes: state.value.changes,
   }
 })
 

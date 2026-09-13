@@ -9,12 +9,11 @@ import ToolShellBlock from '@demicodes/web-ui/agent/blocks/ToolShellBlock.vue'
 import { parseToolInput } from '@demicodes/web-ui/agent/block-helpers'
 import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activity-slot'
-import type { ShellEditsView } from '@demicodes/agent/client'
 import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { changeWorkTab, closeWorkTabs, fileWorkTab, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
-import { emptyChangeSet, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
+import { changeWorkTab, changeTabPath, closeWorkTabs, fileWorkTab, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import { callChangeSource, type CallEditSelection, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryChangeSet, createGalleryWorkspace } from '../fixtures/workspace'
@@ -165,8 +164,8 @@ function useWorkTabs(activeId: string | null) {
   function forward(id: string) {
     tabs.value = goForwardInTab(tabs.value, id)
   }
-  function selectEdit(call: ShellEditsView, path: string) {
-    const next = showCallEdit(tabs.value, call, path, () => `w${nextId++}`)
+  function selectEdit(selection: CallEditSelection) {
+    const next = showCallEdit(tabs.value, selection, () => `w${nextId++}`)
     tabs.value = next.tabs
     active.value = next.activeId
   }
@@ -181,25 +180,23 @@ const fileViewTree = ref(true)
 const changeViewTree = ref(true)
 /** One change tab on its own, stepped the way the panel steps the host's: for the Change view specimens. */
 function useChangeTab(mode: ChangeMode, path: string | null, changes: ChangeSources) {
-  const tabs = ref<WorkTab[]>(showChangeInTab([changeWorkTab('c', mode)], 'c', mode, path))
+  const tabs = ref<WorkTab[]>(showChangeInTab([changeWorkTab('c', mode)], 'c', mode, path, { call: changes.conversation, edit: 0 }))
   const tab = computed(() => findChangeWorkTab(tabs.value)!)
   /** The file the tab holds in its mode, else the first there is. */
-  const selected = computed(() => {
-    const held = tab.value.selected[tab.value.mode]
-    const files = changes[tab.value.mode].files
-    if (held !== null && files.some((file) => file.path === held)) {
-      return held
-    }
-    return files[0]?.path ?? null
-  })
+  const selected = computed(() => changeTabPath(tab.value, tab.value.mode, changes.uncommitted.files))
   function show(mode: ChangeMode, path: string | null) {
     tabs.value = showChangeInTab(tabs.value, 'c', mode, path)
   }
   return {
     tab,
     selected,
-    changes,
-    setMode: (mode: ChangeMode) => show(mode, tab.value.selected[mode]),
+    changes: computed<ChangeSources>(() => ({
+      uncommitted: changes.uncommitted,
+      conversation: tab.value.call && changes.conversation
+        ? { ...tab.value.call, read: changes.conversation.read }
+        : null,
+    })),
+    setMode: (mode: ChangeMode) => show(mode, changeTabPath(tab.value, mode)),
     select: (path: string | null) => show(tab.value.mode, path),
     back: () => (tabs.value = goBackInTab(tabs.value, 'c')),
     forward: () => (tabs.value = goForwardInTab(tabs.value, 'c')),
@@ -237,15 +234,21 @@ async function readCallChange(commandId: string, path: string, edit: number) {
     modified: `// ${path}\nconst cookie = '${edit === 0 ? 'session' : 'session-v2'}' // ${commandId}\n`,
   }
 }
-const changeUncommitted = useChangeTab('uncommitted', 'src/auth/cookie.ts', workspace.changes)
-const changePicked = useChangeTab('conversation', 'src/auth/cookie.ts', workspace.changes)
-const changeEmpty = useChangeTab('conversation', null, { conversation: emptyChangeSet, uncommitted: workspace.changes.uncommitted })
+const changeUncommitted = useChangeTab('uncommitted', 'src/auth/cookie.ts', { uncommitted: workspace.changes, conversation: null })
+const changePicked = useChangeTab('conversation', 'src/auth/cookie.ts', {
+  uncommitted: workspace.changes,
+  conversation: callChangeSource({
+    commandId: 'gallery-cookie-edit',
+    file: { path: 'src/auth/cookie.ts', kind: 'modified', added: 1, removed: 1, edits: [{ kept: true }] },
+  }, readCallChange),
+})
+const changeEmpty = useChangeTab('conversation', null, { conversation: null, uncommitted: workspace.changes })
 const changeNoRepository = useChangeTab('uncommitted', null, {
-  conversation: emptyChangeSet,
+  conversation: null,
   uncommitted: createGalleryChangeSet(200, { unavailable: 'no-repository' }),
 })
 const changeStale = useChangeTab('uncommitted', 'src/auth/cookie.ts', {
-  conversation: emptyChangeSet,
+  conversation: null,
   uncommitted: createGalleryChangeSet(200, { truncated: true, failure: 'The device is offline.' }),
 })
 const emptyTabs: WorkTab[] = []
@@ -1565,7 +1568,7 @@ function abortTerminal(id: string) {
                 :conversation="session"
                 has-provider
                 :aside-open="panelAsideOpen"
-                :select-edit="(call, path) => { panelWork.selectEdit(call, path); panelAsideOpen = true }"
+                :select-edit="(selection) => { panelWork.selectEdit(selection); panelAsideOpen = true }"
                 @open-aside="panelAsideOpen = true"
                 @retry="sessionFlow.resume()"
                 @abort-subagents="abortAgents"
@@ -1664,7 +1667,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Change view"
-        note="Diffs from one of two sources, the switch in the header picks. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation lists the files of the picked call. Each file shows its retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Either way the header names the file shown with its counts. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself and hides the tree; the tree's caption lists the changes again, its control turning while the list is on its way. A new change tab opens on Conversation when something was picked, else on Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted the view also says when the workspace is no repository, keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
+        note="Diffs from one of two sources, the switch in the header picks. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation shows only the file picked under a shell call, without a file tree or a list source. It shows that file’s retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Either way the header names the file shown with its counts. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself. Only Uncommitted offers a tree toggle; its tree's caption lists the changes again, its control turning while the list is on its way. Picking a file opens Conversation; a new Change tab otherwise starts on Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted the view also says when the workspace is no repository, keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
       >
         <GallerySpecimen
           v-for="specimen in [
@@ -1684,7 +1687,7 @@ function abortTerminal(id: string) {
               v-model:tree="changeViewTree"
               :mode="specimen.work.tab.value.mode"
               :selected="specimen.work.selected.value"
-              :changes="specimen.work.changes"
+              :changes="specimen.work.changes.value"
               :root="workspace.root"
               :root-name="specimen.rootName"
               :can-back="specimen.work.tab.value.back.length > 0"
@@ -1703,7 +1706,7 @@ function abortTerminal(id: string) {
       <ChatSession
         :conversation="session"
         has-provider
-        :select-edit="(call, path) => { panelWork.selectEdit(call, path); panelAsideOpen = true; view = 'panel' }"
+        :select-edit="(selection) => { panelWork.selectEdit(selection); panelAsideOpen = true; view = 'panel' }"
         :edit-version="editVersion"
         v-model:message-edit="messageEdit"
         @retry="sessionFlow.resume()"
