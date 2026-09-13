@@ -44,8 +44,10 @@ options and command storage. The factory validates bindings before starting jobs
 Neither core agent initialization nor model/provider settings select storage
 vendors or native implementation packages.
 
-`coding-agent/commands/file/package.ts` validates the native release descriptor
-used by its command bindings. The Rust package’s resident `demi-commands` executable implements Demi’s native file read/create/edit/patch
+`coding-agent` declares logical package and operation ids. The backend resolves
+them against its runtime release catalog and sends exact package descriptors to
+the runner. The command tree does not depend on a compiled-in release JSON file.
+The Rust package's resident `demi-commands` executable implements Demi's native file read/create/edit/patch
 operations. Additional packages implement the same independent service contract.
 All native Demi implementations belong in this package; standard shell utilities
 belong in `native-utils`, and application-state callbacks remain with their owners.

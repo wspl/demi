@@ -8,6 +8,13 @@ and Windows cross-compilation. Host platform execution is a separate CI gate.
 
 `rust-toolchain.toml` and `scripts/native/Dockerfile` pin the build tools.
 
+Cargo runs contract generation through each consuming crate's `build.rs`.
+Generated Rust types and validation code go into `OUT_DIR` and are included by
+the crate; there is no manual source-generation prerequisite or committed
+generated contract. A build script may invoke JS/TS tooling. The definition
+format and validation mechanism remain open in
+[the runtime design](demi-next/native-runtime.md#contract-generation-and-validation).
+
 The Dockerfile installs the Linux build tools. Supply an Apple SDK directory;
 the script validates its SDK metadata before building. `ring` chooses `clang`
 on Windows arm64, so the build explicitly selects the MSVC driver dialect and
@@ -33,10 +40,11 @@ bun --conditions development scripts/native/release-runner.ts \
   --artifacts .cache/native-target --output .cache/releases/runners
 ```
 
-The command package directory contains `descriptor.json` and six target
-subdirectories. The script also updates the application binding descriptor in
-`packages/coding-agent/src/commands/file/release.json` to identify those exact bytes. A version
-is immutable: choose a new package version when publishing different artifacts.
+The command package directory contains its runtime release descriptor and six
+target subdirectories. The backend loads deployed releases and supplies the
+selected descriptors and artifact locations to runners. Publishing does not
+write a release catalog into application source. A version is immutable: choose
+a new package version when publishing different artifacts.
 
 Runner packaging creates a hash-named directory containing `manifest.json` and
 six executables, then atomically advances the top-level manifest. Both packagers

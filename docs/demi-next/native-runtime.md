@@ -1,6 +1,7 @@
 # Native runner and command services
 
-Status: implementation contract.
+Status: design contract. The open decisions under "Contract generation and
+validation" require discussion before implementation.
 
 ## Confirmed direction
 
@@ -218,7 +219,7 @@ Public composition API:
 
 ```ts
 const shellEnvironment = createRemoteShellEnvironmentFactory({
-  packages: [demiPackage, customPackage],
+  packages: runtimePackageCatalog,
   resolveArtifact,
 });
 
@@ -230,10 +231,13 @@ const server = new AgentServer({
 });
 ```
 
-`demiPackage` provides all Demi builtin command implementations in one resident
+The backend supplies `runtimePackageCatalog` from its deployed releases at
+runtime. Command declarations do not import a compiled-in release descriptor.
+
+The Demi builtin package provides all Demi command implementations in one resident
 executable per target platform. It is not limited to file commands. These Demi
 commands are distinct from the shell and standard utility builtins embedded in
-the runner. `customPackage` illustrates an optional SDK developer implementation.
+the runner. The runtime catalog may also contain SDK developer implementations.
 
 The execution adapter owns the package catalog and artifact resolution. The
 factory validates declared native bindings against that catalog before making a
@@ -246,13 +250,14 @@ The same catalog may serve multiple node/Host environments; each invocation stil
 carries its own execution context and authorized command manifest.
 
 `AgentHarness.commands` continues to own command names, help, argument schemas
-and callback handlers. A native leaf refers to an immutable package and operation:
+and callback handlers. A native leaf declares a logical package id and operation;
+the execution adapter resolves the exact release from its runtime catalog:
 
 ```ts
 {
   name: 'patch',
   kind: 'native',
-  binding: { package: demiPackage.id, operation: 'file.patch' },
+  binding: { package: 'demi.builtin', operation: 'file.patch' },
   // Existing help, input/output schemas, positionals and stdinField go here.
 }
 ```
@@ -466,10 +471,57 @@ processing continues while output waits for capacity. A cancellation deadline
 violation produces a fatal service error requiring process retirement; aborting
 an async task does not prove that non-cooperative native work has stopped.
 
+## Contract generation and validation
+
+This section covers the fixed messages between the TypeScript backend and Rust
+runner, the command manifest structure, and native package descriptor structure.
+Runtime command argument definitions are a separate concern.
+
+Each consuming crate's `build.rs` owns Rust contract generation as part of the
+normal Cargo build. A developer does not run a separate generation command first.
+The build script may invoke a JS/TS generator; its implementation language does
+not change Cargo's ownership of this build step.
+
+Generated Rust types and validation code are written to that crate's `OUT_DIR`
+and included by the crate with `include!`. Generated files are build artifacts:
+they are not written into the source tree or committed to the repository.
+
+Rust validates received values directly with Rust code or native validation
+tools. Generated structure types alone do not establish that value constraints
+have been checked. Fixed contract validation does not use a separately generated
+JSON Schema document or convert decoded values to JSON for schema validation.
+
+```text
+Shared contract definitions (source format remains open)
+    |
+    v
+Consuming crate's build.rs
+    |  may invoke a JS/TS generator
+    v
+OUT_DIR: Rust types and validation code
+    |
+    v
+include! -> compiled crate -> input validation
+```
+
+### Open decisions
+
+- The authoritative definition format for backend/runner messages, manifest
+  structure and package descriptors. The build rules above do not select Zod,
+  Rust declarations or another format as that source.
+- The Rust validation mechanism and how generation represents constraints such
+  as ranges, lengths, allowed values and relationships between fields. No
+  validation library or custom validation framework is selected here.
+- The representation and validation of command-specific arguments supplied at
+  runtime by the server. These are not fixed protocol types that can all be
+  compiled into the runner; their design requires a separate discussion.
+
+Implementation of contract generation and validation depends on resolving these
+open decisions.
+
 ## Configuration boundaries
 
-TypeScript package and manifest contracts generate Rust values and validation
-schemas. Protocol limits are fixed SDK constants. Object-store adapters belong to
+Protocol limits are fixed SDK constants. Object-store adapters belong to
 backend deployment assembly. The service SDK supplies cancellable platform stdio;
 Windows runner releases use static CRT linkage.
 
