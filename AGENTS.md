@@ -16,6 +16,7 @@
 - Write separate steps on separate lines. Do not squeeze several assignments, branches, or cleanup actions into one line. A helper function should have a clear job; moving a complicated block into a vaguely named helper does not simplify it.
 - Before committing, reread the complete functions you changed, not just the added lines. Check for repeated conditions, duplicate or unused values, ignored errors, and code in the wrong package. Fix those problems before calling the work complete, even when tests pass.
 - When a batch of changes is ready for acceptance, restart every locally running process that serves it on the new code before reporting (the backend on port 3271 and the web front end); do not hand the restart to the user. Restart once per batch, after the whole batch is complete, not after every edit.
+- When a batch changes the runner (its wire protocol, its binary, or the native commands it serves), the batch also carries every runtime that runs it: rebuild the runner release for all targets and publish it into the local release directory, restart the paired device's runner on the new release, rebuild the Cloud guest image with the new runner, restart the machine manager so it pins the new base, and reset the Cloud so it boots on that base. A device or the Cloud left on the old runner is an incomplete batch, not a note for the user.
 - Commit completed checkpoints with Conventional Commit subjects and push after each commit.
 
 # Writing and Communication
