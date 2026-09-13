@@ -14,9 +14,8 @@ import type { ConversationStores } from '../storage/conversation-store'
 import type { ProviderVault } from '../vault/providers'
 import type { SubscriptionLoginFlows } from '../vault/subscription-login'
 import type { UserBlobStores } from '../storage/user-blobs'
-import type { Host } from '@demicodes/shell'
+import type { RemoteHost } from '@demicodes/host-remote'
 import type { ManagedHosts } from '../managed/lifecycle'
-import type { WorkingTreeAccess } from '../conversation/target'
 import type { LoginLimiter } from '../auth/login-limiter'
 import type { WebSessions } from '../auth/sessions'
 import { authenticate } from './authenticate'
@@ -74,10 +73,9 @@ export function createApp(options: {
   blobs: UserBlobStores
   withHost: <T>(
     conversationId: string,
-    operation: (host: Host) => Promise<T>,
+    operation: (host: RemoteHost) => Promise<T>,
     signal?: AbortSignal
   ) => Promise<T>
-  workingTree: (conversationId: string) => Promise<WorkingTreeAccess | null>
   managedHosts: ManagedHosts | null
   createCloudWorkspace: ((
     userId: string,
@@ -201,7 +199,6 @@ export function createApp(options: {
       conversationStores: options.conversationStores,
       withHost: options.withHost,
       registry: options.runnerRegistry,
-      workingTree: options.workingTree,
     }),
   )
 
