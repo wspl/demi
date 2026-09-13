@@ -583,6 +583,10 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`.
 - Owns: the Vue SPA application frame, route navigation, product state and backend request handlers. Vue 3 + TypeScript + Vite, vue-router, Pinia and Tailwind 4.
 - Public boundary: `bun run web:dev` and `bun run web:build`; no published library API.
+- Build order: the root `bun run build` finishes library builds before invoking
+  `web:build`. Vite consumes `web-ui` source and the libraries' published entry
+  points, including `@demicodes/agent/client`; those library artifacts must exist
+  before the product bundle starts.
 - Layout: `main.ts` is the only composition root (app, router, account-scoped stores); `App.vue` is the application frame; `conversation/` owns chat state and
   containers; `targets/` owns environment selection; `settings/` owns settings
   containers; `auth/` owns cookie-session state and entry containers; `api/` owns
