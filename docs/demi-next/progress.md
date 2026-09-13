@@ -44,8 +44,10 @@ wake, and external reset with home retained. The fixture used the repository ker
 and an Ubuntu base image containing the new runner. The toolchain scenario verified
 rustup installation followed by `cargo` in the next job, and nvm installation
 followed by its Node executable in the next job. Both complete scenarios passed
-with the native pipeline fixes. The historical direct/jailer results do not substitute for new native
-jailer execution evidence.
+with the native pipeline fixes. The new native runner also passed the complete
+persistence/reset scenario under jailer with its TAP owned by the configured
+slot UID: 10 assertions, including three separate VM starts. Direct and jailer
+tests used scripted providers without real model calls.
 
 [Synthetic transport measurements](../native-transport-measurements.md) record
 release-build latency, throughput, slow-output isolation, cancellation through
