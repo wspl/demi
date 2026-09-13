@@ -316,7 +316,7 @@ function edited(text: string, seed: number): string {
         : [`Added in this change (${seed}): paragraph ${i} covers the new step.`]
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!
-    // Edits far enough apart that the unchanged stretches between them fold.
+    // Edits far enough apart that the unchanged stretches between them would fold, were folding on.
     if (i % 41 === 5) {
       out.push(/\+ \d+$/.test(line) ? line.replace(/\+ \d+$/, `+ ${seed * 10}`) : `${line} (revised)`)
       continue
