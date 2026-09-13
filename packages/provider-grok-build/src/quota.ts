@@ -1,8 +1,9 @@
-import { isRecord, stringOrNull } from '@demicodes/utils'
+import { z } from 'zod'
 import {
   clampUsedPercent,
   createProviderQuota,
   numberHeader,
+  reportedStringSchema,
   severityFromUsedPercent,
   usedPercentFromRatio,
   type ProviderQuota,
@@ -17,6 +18,47 @@ import {
   resolveGrokClientVersion,
 } from './headers'
 import type { GrokBuildFetch } from './provider'
+
+/**
+ * The cli-chat-proxy quota payloads, as the quota surface reads them. Quota is
+ * a display surface: a field the vendor spells in a shape Demi does not know
+ * is dropped, and the rest of the snapshot still renders.
+ */
+const creditAmountSchema = z
+  .union([
+    z.number().finite(),
+    z.looseObject({ val: z.number().finite() }).transform((money) => money.val),
+  ])
+  .nullable()
+  .catch(null)
+
+const grokBillingSchema = z
+  .looseObject({
+    config: z
+      .looseObject({
+        creditUsagePercent: z.number().optional().catch(undefined),
+        currentPeriod: z
+          .looseObject({ type: reportedStringSchema, end: reportedStringSchema })
+          .optional()
+          .catch(undefined),
+        billingPeriodEnd: reportedStringSchema,
+        monthlyLimit: creditAmountSchema,
+        used: creditAmountSchema,
+        onDemandCap: creditAmountSchema,
+      })
+      .optional()
+      .catch(undefined),
+  })
+  .catch({})
+
+const grokUserSchema = z
+  .looseObject({
+    subscriptionTier: reportedStringSchema,
+    email: reportedStringSchema,
+  })
+  .catch({})
+
+const WEEKLY_PERIOD = 'USAGE_PERIOD_TYPE_WEEKLY'
 
 export interface GrokBuildQuotaOptions {
   providerId?: string
@@ -89,22 +131,17 @@ export function mapGrokQuotaProbe(
   billing: unknown,
   auth?: Pick<GrokResolvedAuth, 'email'>,
 ): ProviderQuotaProbeResult {
-  const userRecord = isRecord(user) ? user : {}
-  const billingRecord = isRecord(billing) ? billing : {}
-  const config = isRecord(billingRecord.config) ? billingRecord.config : {}
+  const account = grokUserSchema.parse(user)
+  const config = grokBillingSchema.parse(billing).config
 
-  const period = isRecord(config.currentPeriod) ? config.currentPeriod : null
-  const isWeekly = stringOrNull(period?.type) === 'USAGE_PERIOD_TYPE_WEEKLY'
-  const resetsAt = stringOrNull(period?.end)
-    ?? stringOrNull(config.billingPeriodEnd)
-  const monthlyLimit = moneyVal(config.monthlyLimit)
-  const used = moneyVal(config.used)
-  const onDemandCap = moneyVal(config.onDemandCap)
-  const usedPercent = clampUsedPercent(config.creditUsagePercent)
-    ?? usedPercentFromRatio(
-    used,
-    monthlyLimit
-  )
+  const period = config?.currentPeriod
+  const isWeekly = period?.type === WEEKLY_PERIOD
+  const resetsAt = period?.end ?? config?.billingPeriodEnd ?? null
+  const monthlyLimit = config?.monthlyLimit ?? null
+  const used = config?.used ?? null
+  const onDemandCap = config?.onDemandCap ?? null
+  const usedPercent = clampUsedPercent(config?.creditUsagePercent)
+    ?? usedPercentFromRatio(used, monthlyLimit)
 
   const windows: ProviderQuotaWindow[] = [
     {
@@ -131,10 +168,10 @@ export function mapGrokQuotaProbe(
     })
   }
 
-  const tier = stringOrNull(userRecord.subscriptionTier)
+  const tier = account.subscriptionTier
   return {
     plan: tier ? { id: tier, label: tier, raw: tier } : null,
-    accountLabel: auth?.email ?? stringOrNull(userRecord.email),
+    accountLabel: auth?.email ?? account.email ?? null,
     windows,
     raw: { user, billing },
   }
@@ -212,12 +249,3 @@ async function fetchJson(
   }
   return response.json()
 }
-
-function moneyVal(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value))
-    return value
-  if (isRecord(value) && typeof value.val === 'number'
-    && Number.isFinite(value.val)) return value.val
-  return null
-}
-
