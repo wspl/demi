@@ -1,8 +1,9 @@
 import type { HostFileSystem } from '@demicodes/shell'
+import { EDIT_FILE_BYTES } from '@demicodes/command-protocol'
 import { decodeUtf8Strict, errorCode } from '@demicodes/utils'
 
-/** The most a file route sends as text (`web-api.md` § File text and working tree changes). */
-export const TEXT_FILE_MAX_BYTES = 4 * 1024 * 1024
+/** How far into a file a NUL byte marks it binary; git's probe, and the runner's. */
+const BINARY_PROBE_BYTES = 8_000
 
 export class TextFileRefused extends Error {
   readonly code: 'file_too_large' | 'not_text'
@@ -14,10 +15,19 @@ export class TextFileRefused extends Error {
   }
 }
 
-/** UTF-8 text from bytes; `TextFileRefused` beyond the size limit or for other encodings. */
+/**
+ * The text of a file the product shows or retains: a browsed file, a working
+ * tree side, a retained edit snapshot. One limit for all of them, the
+ * runner's `EDIT_FILE_BYTES` (`web-api.md` § File text and working tree
+ * changes). A NUL byte is valid UTF-8 but marks a binary file: the same
+ * probe git and the runner's line counting use (`file_diff.rs`), so a file
+ * the runner counted lines for is one the browser shows, and no other.
+ */
 export function textOf(bytes: Uint8Array): string {
-  if (bytes.byteLength > TEXT_FILE_MAX_BYTES)
+  if (bytes.byteLength > EDIT_FILE_BYTES)
     throw new TextFileRefused('file_too_large')
+  if (bytes.subarray(0, BINARY_PROBE_BYTES).includes(0))
+    throw new TextFileRefused('not_text')
   const text = decodeUtf8Strict(bytes)
   if (text === null)
     throw new TextFileRefused('not_text')
@@ -27,7 +37,7 @@ export function textOf(bytes: Uint8Array): string {
 /** One file of the device as text, under the same limits as `textOf`. */
 export async function readTextFile(fs: HostFileSystem, path: string): Promise<string> {
   const stat = await fs.stat(path)
-  if (stat.size > TEXT_FILE_MAX_BYTES)
+  if (stat.size > EDIT_FILE_BYTES)
     throw new TextFileRefused('file_too_large')
   return textOf(await fs.readFile(path))
 }

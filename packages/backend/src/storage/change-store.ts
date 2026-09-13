@@ -1,9 +1,8 @@
 import { shellToolViewSchema } from '@demicodes/agent'
 import type { Block } from '@demicodes/core'
-import { decodeUtf8Strict } from '@demicodes/utils'
-import { EDIT_FILE_BYTES } from '@demicodes/command-protocol'
 import type { JobExitMessage } from '@demicodes/runner-protocol'
 import type { Host, ShellEditedFile } from '@demicodes/shell'
+import { textOf } from '../runner/file-browser'
 import type { ChangeObjects } from './change-objects'
 
 /** Conversation-owned historical file contents, published before their block. */
@@ -25,8 +24,10 @@ export class ChangeStore {
           try {
             const original = edit.original ? await host.fs.readFile(edit.original) : new Uint8Array()
             const modified = await host.fs.readFile(edit.modified)
-            text(modified)
-            text(original)
+            // Both sides must be text the browser can show; a side that is not
+            // leaves the segment without contents.
+            textOf(modified)
+            textOf(original)
             await this.objects.put(key(conversationId, commandId, fileIndex, editIndex, 'original'), original)
             await this.objects.put(key(conversationId, commandId, fileIndex, editIndex, 'modified'), modified)
             kept = true
@@ -92,7 +93,7 @@ export class ChangeStore {
     if (!original || !modified) {
       return null
     }
-    return { original: text(original), modified: text(modified) }
+    return { original: textOf(original), modified: textOf(modified) }
   }
 }
 
@@ -101,15 +102,4 @@ function key(conversation: string, command: string, file: number, edit: number, 
     throw new Error('Invalid edit history identity')
   }
   return `changes/${conversation}/${command}/${file}/${edit}.${side}`
-}
-
-function text(bytes: Uint8Array): string {
-  if (bytes.byteLength > EDIT_FILE_BYTES || bytes.includes(0)) {
-    throw new Error('Invalid text snapshot')
-  }
-  const decoded = decodeUtf8Strict(bytes)
-  if (decoded === null) {
-    throw new Error('Invalid UTF-8 snapshot')
-  }
-  return decoded
 }
