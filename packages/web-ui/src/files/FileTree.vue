@@ -13,8 +13,9 @@ import { baseName, isHiddenName, joinPath, normalizePath, parentPath } from './p
  * folds or unfolds it, a click on a file asks the host to open it. The
  * selected file's ancestors unfold on their own so it is always in view.
  * The workspace's name heads the tree as a plain caption and stays pinned;
- * under it pin the directories enclosing the selected file, each once its
- * own row scrolls out above, so the selected file's path stays in sight.
+ * under it pin the directories enclosing the selected file, each while its
+ * own row has scrolled out above and its contents have not, so the selected
+ * file's path stays in sight through its directories and goes past them.
  * A pinned directory scrolls its own row to the top. Loads in flight are
  * dropped when the tree goes away.
  */
@@ -155,6 +156,7 @@ function rowState(row: Row): { open: boolean; loading: boolean; failure: FileBro
 const scrollArea = ref<InstanceType<typeof ScrollArea> | null>(null)
 const rowEls = new Map<string, HTMLElement>()
 const stickyPaths = ref<string[]>([])
+const stickyOffset = ref(0)
 const stickyRows = computed(() => {
   const byPath = new Map(rows.value.map((row) => [row.path, row]))
   return stickyPaths.value.flatMap((path) => {
@@ -178,13 +180,15 @@ function updateSticky(): void {
   if (!viewport) {
     return
   }
-  stickyPaths.value = stickyTreeRows(
+  const stack = stickyTreeRows(
     rows.value,
     (path) => rowEls.get(path)?.offsetTop,
     viewport.scrollTop,
     TREE_ROW_PX,
     props.selected ? normalizePath(props.selected) : null,
   )
+  stickyPaths.value = stack.paths
+  stickyOffset.value = stack.offset
 }
 
 /** A pinned directory takes the top of the view, under the caption. */
@@ -216,7 +220,10 @@ function activate(row: Row): void {
 <template>
   <ScrollArea ref="scrollArea" class="h-full min-h-0" viewport-class="p-1" @scroll="updateSticky">
     <!-- The pinned stack: the caption, then the selected file's directories that have scrolled out above. -->
-    <div class="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col gap-px bg-surface-editor p-1 pb-0">
+    <div
+      class="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col gap-px bg-surface-editor p-1 pb-0"
+      :style="{ transform: `translateY(${stickyOffset}px)` }"
+    >
       <div
         class="flex h-7 shrink-0 select-none items-center px-2 text-chrome font-medium text-fg-muted"
         :title="root"
