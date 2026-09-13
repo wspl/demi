@@ -55,8 +55,8 @@ const workspaceName = computed(() => folder.value.path.split('/').filter(Boolean
 const mainHost = computed<HostMenuMainHost>(() => {
   const device = devices.find((candidate) => candidate.id === folder.value.deviceId)
   return device
-    ? { id: device.id, name: device.name, kind: 'device' }
-    : { id: 'cloud', name: 'Cloud', kind: 'cloud' }
+    ? { id: device.id, name: device.name, kind: 'device', online: device.online }
+    : { id: 'cloud', name: 'Cloud', kind: 'cloud', online: true }
 })
 const attachedHosts = ref<HostDeviceOption[]>([])
 const locked = computed(() => session.phase !== 'idle' || session.archived)
