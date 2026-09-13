@@ -22,7 +22,7 @@ export interface ChangeSetSource {
  */
 export type ChangeMode = 'conversation' | 'uncommitted'
 
-export const CHANGE_MODES: readonly ChangeMode[] = ['conversation', 'uncommitted']
+export const CHANGE_MODES: readonly ChangeMode[] = ['uncommitted', 'conversation']
 
 /** A change set per mode; the change view switches between them. */
 export type ChangeSources = Record<ChangeMode, ChangeSetSource>

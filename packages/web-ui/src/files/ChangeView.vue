@@ -10,7 +10,7 @@ import ResizeHandle from '../ui/ResizeHandle.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import ChangeTree from './ChangeTree.vue'
-import { changeTotals, type ChangeMode, type ChangeSources } from './changes'
+import { type ChangeMode, type ChangeSources } from './changes'
 import { TREE_WIDTH } from './file-view'
 import { FileBrowserError } from './types'
 import { joinPath } from './paths'
@@ -20,9 +20,10 @@ import { joinPath } from './paths'
  * picks between: files picked from the conversation, each a snapshot around
  * one tool call, or the workspace's uncommitted changes. Uncommitted shows
  * the diff of the selected file beside the tree of changed files, with
- * their kinds and line counts, and sums them up in the header; Conversation
- * is one picked file at a time, named in the header with its counts, no
- * tree. Back and Forward walk what the view has shown, across modes; the
+ * their kinds and line counts, the files and lines summed up in the tree's
+ * caption; Conversation is one picked file at a time, no tree. Either way
+ * the header names the file shown, with its counts. Back and Forward walk
+ * what the view has shown, across modes; the
  * host keeps that history (`showChangeInTab`) along with the mode, the
  * selected file, and the tree's visibility and width. The header also holds
  * the control that opens the selected file itself (not a deleted one) and,
@@ -51,15 +52,14 @@ const tree = defineModel<boolean>('tree', { default: true })
 const treeWidth = defineModel<number>('treeWidth', { default: TREE_WIDTH.default })
 
 const modeOptions: readonly SegmentedOption<ChangeMode>[] = [
-  { value: 'conversation', label: 'Conversation' },
   { value: 'uncommitted', label: 'Uncommitted' },
+  { value: 'conversation', label: 'Conversation' },
 ]
 
 const source = computed(() => props.changes[mode.value])
 const selectedChange = computed(
   () => source.value.files.find((file) => file.path === selected.value) ?? null,
 )
-const totals = computed(() => changeTotals(source.value.files))
 const treeShown = computed(() => mode.value === 'uncommitted' && tree.value)
 
 const idleText = computed(() => {
@@ -124,22 +124,13 @@ onBeforeUnmount(() => {
         </Tooltip>
       </div>
       <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1" />
-      <!-- What is shown, summed up: the working tree's files and lines, or the picked file and its lines. -->
-      <span class="ml-auto flex min-w-0 items-center gap-1 pl-2 text-chrome text-fg-muted">
-        <template v-if="mode === 'uncommitted' && source.files.length > 0">
-          <span class="truncate">{{ source.files.length }} {{ source.files.length === 1 ? 'file' : 'files' }} changed</span>
-          <span class="shrink-0 font-mono text-[11px] tabular-nums">
-            <span v-if="totals.added > 0" class="text-on-success">+{{ totals.added }}</span>
-            <span v-if="totals.removed > 0" class="ml-1 text-on-danger">−{{ totals.removed }}</span>
-          </span>
-        </template>
-        <template v-else-if="mode === 'conversation' && selectedChange">
-          <span class="truncate font-mono text-[11px]" :class="selectedChange.kind === 'deleted' ? 'line-through' : ''" :title="selectedChange.path">{{ selectedChange.path }}</span>
-          <span class="shrink-0 font-mono text-[11px] tabular-nums">
-            <span v-if="selectedChange.added > 0" class="text-on-success">+{{ selectedChange.added }}</span>
-            <span v-if="selectedChange.removed > 0" class="ml-1 text-on-danger">−{{ selectedChange.removed }}</span>
-          </span>
-        </template>
+      <!-- The file shown, with its lines added and removed. -->
+      <span v-if="selectedChange" class="ml-auto flex min-w-0 items-center gap-1 pl-2 font-mono text-[11px] text-fg-muted">
+        <span class="truncate" :class="selectedChange.kind === 'deleted' ? 'line-through' : ''" :title="selectedChange.path">{{ selectedChange.path }}</span>
+        <span class="shrink-0 tabular-nums">
+          <span v-if="selectedChange.added > 0" class="text-on-success">+{{ selectedChange.added }}</span>
+          <span v-if="selectedChange.removed > 0" class="ml-1 text-on-danger">−{{ selectedChange.removed }}</span>
+        </span>
       </span>
       <Tooltip content="Open file" class="shrink-0">
         <IconButton
