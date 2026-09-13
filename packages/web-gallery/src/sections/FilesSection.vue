@@ -262,7 +262,7 @@ const pinnedPast = ref<TreeHandle | null>(null)
 async function scrollPinnedSpecimens() {
   await nextTick()
   await new Promise((resolve) => setTimeout(resolve, 50))
-  // Path pinned: the selected file's directories all scrolled out above it.
+  // Path pinned: the directories down to oauth all scrolled out above it.
   pinnedTwo.value?.scrollToRow(`${TREE_ROOT}/src/auth/providers/oauth`)
   // Leaving: github's last row half under the stack, so the deepest pinned row slides.
   pinnedLeaving.value?.scrollToRow(`${TREE_ROOT}/src/auth/providers/oauth/github`)
@@ -355,7 +355,7 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Pinned path"
-        note="The workspace name always heads the tree. Under it pin the directories enclosing the selected file, each once its own row scrolls out above and until its last row has too; the deepest slides out under the ones above. Other unfolded directories never pin. Scroll each tree to move through the states."
+        note="The workspace name always heads the tree. Under it pin the directories the rows at the top sit in, each once its own row scrolls out above and until its last row has too; the deepest slides out under the ones above. A closed directory never pins. Scroll each tree to move through the states."
       >
         <div class="flex flex-wrap gap-6">
           <GallerySpecimen variant="at the top">
@@ -373,7 +373,7 @@ onMounted(() => {
               <FileTree ref="pinnedLeaving" :source="rowsSource()" :root="TREE_ROOT" :selected="TREE_SELECTED" />
             </div>
           </GallerySpecimen>
-          <GallerySpecimen variant="past the file">
+          <GallerySpecimen variant="past, at a closed directory">
             <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
               <FileTree ref="pinnedPast" :source="rowsSource()" :root="TREE_ROOT" :selected="TREE_SELECTED" />
             </div>

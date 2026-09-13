@@ -26,31 +26,31 @@ export interface StickyTreeStack {
 }
 
 /**
- * The directory rows to pin at the top for a viewport scrolled to `scrollTop`:
- * the directories that enclose the selected file, each pinned while its own
- * row has scrolled under the stack above it and its last row has not, so the
- * selected file's path stays in sight while the tree scrolls through that
- * directory and goes once the directory is past. Other unfolded directories
- * never pin. As the deepest pinned directory's last row scrolls under the
- * stack, the stack rides up with it instead of vanishing.
+ * The directory rows to pin at the top for a viewport scrolled to `scrollTop`.
+ * Level by level, the row under the stack's next slot names the chain of
+ * directories it sits in (itself included when it is an open directory with
+ * rows under it); the chain's directory for that level pins while its own
+ * row has scrolled under the slot and its last row has not, so a directory's
+ * name stays in sight while the tree scrolls through it and goes once it is
+ * past. A row outside the pinned chain ends the stack. As the deepest pinned
+ * directory's last row scrolls under the stack, the stack rides up with it
+ * instead of vanishing.
  */
 export function stickyTreeRows(
   rows: readonly TreeRow[],
   rowTop: (path: string) => number | undefined,
   scrollTop: number,
   captionPx: number,
-  selected: string | null,
 ): StickyTreeStack {
   const byPath = new Map(rows.map((row) => [row.path, row]))
-  const selectedRow = selected === null ? undefined : byPath.get(selected)
-  if (!selectedRow) {
-    return { paths: [], offset: 0 }
-  }
-  const ancestors: string[] = []
-  let parent = selectedRow.parent
-  while (parent !== null) {
-    ancestors.unshift(parent)
-    parent = byPath.get(parent)?.parent ?? null
+  const chainOf = (row: TreeRow): string[] => {
+    const chain = [row.path]
+    let parent = row.parent
+    while (parent !== null) {
+      chain.unshift(parent)
+      parent = byPath.get(parent)?.parent ?? null
+    }
+    return chain
   }
   const isInside = (row: TreeRow, dir: string): boolean => {
     let up = row.parent
@@ -66,17 +66,33 @@ export function stickyTreeRows(
     const last = rows.findLast((row) => isInside(row, dir))
     return last ? (rowTop(last.path) ?? 0) + TREE_ROW_PX : 0
   }
+  /** The row under `y`: the first one whose bottom is below it. */
+  const rowAt = (y: number): TreeRow | undefined =>
+    rows.find((row) => {
+      const top = rowTop(row.path)
+      return top !== undefined && top + TREE_ROW_PX > y
+    })
   const paths: string[] = []
   let offset = 0
-  for (const [level, path] of ancestors.entries()) {
-    const top = rowTop(path)
+  for (let level = 0; ; level++) {
     const slotTop = scrollTop + captionPx + level * TREE_ROW_PITCH_PX
+    const anchor = rowAt(slotTop)
+    if (!anchor) {
+      break
+    }
+    const chain = chainOf(anchor)
+    // The row under the slot belongs elsewhere than the pinned directories: they end here.
+    if (chain.length <= level || paths.some((path, index) => chain[index] !== path)) {
+      break
+    }
+    const path = chain[level]!
+    const top = rowTop(path)
     // Still below its slot: no pin here, nor for the directories inside it. At the
     // slot exactly, the pinned copy sits where the row is, so the swap shows nothing.
     if (top === undefined || top > slotTop) {
       break
     }
-    // Its whole subtree is above the slot: the directory is past.
+    // Nothing of it below the slot (a file, a closed or empty directory): the directory is past.
     const bottom = lastBottom(path)
     if (bottom <= slotTop) {
       break

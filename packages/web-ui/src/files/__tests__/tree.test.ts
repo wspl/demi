@@ -12,17 +12,10 @@ const rows: TreeRow[] = [
 ]
 const caption = 28
 const top = (path: string) => caption + rows.findIndex((row) => row.path === path) * TREE_ROW_PITCH_PX
-const selected = '/w/src/auth/cookie.ts'
-const paths = (scrollTop: number, file: string | null = selected) =>
-  stickyTreeRows(rows, top, scrollTop, caption, file).paths
+const paths = (scrollTop: number) => stickyTreeRows(rows, top, scrollTop, caption).paths
 
 describe('sticky tree rows', () => {
-  test('nothing pins without a selected file', () => {
-    expect(paths(2 * TREE_ROW_PITCH_PX, null)).toEqual([])
-    expect(paths(2 * TREE_ROW_PITCH_PX, '/w/none')).toEqual([])
-  })
-
-  test("a selected file's directories pin as their rows reach the stack", () => {
+  test('the directories under the top pin as their rows reach the stack', () => {
     // At the top, src's row lies exactly in the first slot and auth's in the second: pinned
     // copies over the rows themselves, so the swap shows nothing.
     expect(paths(0)).toEqual(['/w/src', '/w/src/auth'])
@@ -39,13 +32,17 @@ describe('sticky tree rows', () => {
 
   test('the stack rides up with the deepest directory as it leaves', () => {
     // src alone, its last row index.ts ending 11px above the stack bottom.
-    const stack = stickyTreeRows(rows, top, 4 * TREE_ROW_PITCH_PX + 10, caption, selected)
+    const stack = stickyTreeRows(rows, top, 4 * TREE_ROW_PITCH_PX + 10, caption)
     expect(stack.paths).toEqual(['/w/src'])
     expect(stack.offset).toBe(TREE_ROW_PX - TREE_ROW_PITCH_PX - 10)
   })
 
-  test('other unfolded directories never pin', () => {
-    expect(paths(3 * TREE_ROW_PITCH_PX, '/w/src/index.ts')).toEqual(['/w/src'])
-    expect(paths(1, '/w/tests')).toEqual([])
+  test('a closed directory at the top never pins', () => {
+    // tests, closed, holds the first slot: nothing under it to keep in sight.
+    expect(paths(5 * TREE_ROW_PITCH_PX + 1)).toEqual([])
+  })
+
+  test('nothing pins past the last row', () => {
+    expect(paths(10 * TREE_ROW_PITCH_PX)).toEqual([])
   })
 })
