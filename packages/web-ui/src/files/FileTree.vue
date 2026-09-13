@@ -203,10 +203,21 @@ function scrollToRow(path: string): void {
   }
 }
 
+/** Moves the tree by `px`, for a host that sets up a scrolled state. */
+function scrollBy(px: number): void {
+  const viewport = scrollArea.value?.el
+  if (viewport) {
+    viewport.scrollTop += px
+    updateSticky()
+  }
+}
+
 onMounted(updateSticky)
 watch([rows, () => props.selected], () => {
   void nextTick(updateSticky)
 })
+
+defineExpose({ scrollToRow, scrollBy })
 
 const rootListing = computed(() => listings.get(normalizePath(props.root)) ?? null)
 const rootName = computed(() => baseName(props.root) || '/')
