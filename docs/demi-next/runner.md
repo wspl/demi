@@ -8,10 +8,10 @@ service contract is in [native-runtime.md](native-runtime.md); declarations are 
 
 ## Connection and identity
 
-`runner/src/mode.rs` owns a registration’s connection, jobs and command contexts.
-`connection.rs` establishes the outbound WebSocket and validates MessagePack
-messages against the generated runner-protocol contract. A connected user device
-pairs with the backend, persists its device token in private installation state,
+`crates/runner/src/connection/` owns the registration's outbound WebSocket and
+validates MessagePack messages using bindings generated from the TypeScript
+runner-protocol package. Runner owns the associated jobs and command contexts.
+A connected user device pairs with the backend, persists its device token in private installation state,
 and reconnects using that token. A managed guest receives its token at boot and
 keeps it in temporary state. The backend owns pairing policy and user ownership.
 
@@ -39,9 +39,9 @@ so callers cannot substitute another job’s attribution.
 
 Brush executes inside the resident runner process. Shell jobs own their cwd,
 environment, IO and execution state; a shell job does not launch another runner
-process. `shell.rs` registers embedded standard utilities from `native-utils`
-and declared command roots as builtins. Declared builtins call the runner's
-dispatcher directly. External programs such as git, Python and Node remain child
+process. `crates/runner/src/shell/` registers and adapts embedded standard
+utilities and registers declared command roots as builtins. Declared builtins
+call the runner's dispatcher directly. External programs such as git, Python and Node remain child
 processes. An external program calling a declared command uses the forwarding
 executable and local endpoint described in `command-client.md`.
 
@@ -93,8 +93,10 @@ remain bytes through local HTTP/2 and backend HTTP pipe transfers.
 `pipes.rs` owns cancellable direct HTTP transfers. Backend `runner/pipes.ts` owns
 the broker’s rendezvous and lifetime. EOF ends input; cancellation aborts work.
 Live input is chunked and demand-driven. A command that does not read stdin does
-not consume the next pipeline or interactive input. `rpc.rs` forwards callbacks
-and owns their running hints; `native.rs` routes resident service invocations.
+not consume the next pipeline or interactive input. The commands module forwards
+callbacks, owns their running hints and routes resident service invocations.
+It also owns artifact downloads, verification, caching and service processes;
+the shared command-service library supplies communication only.
 
 ## Managed guests
 

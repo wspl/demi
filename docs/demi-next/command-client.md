@@ -14,11 +14,12 @@ entry paths use the same command definitions and execution-context lifetime.
 
 ## Transport and lifetime
 
-`runner/src/local.rs` creates an owner-restricted Unix domain socket on macOS and
+The runner creates an owner-restricted Unix domain socket on macOS and
 Linux, or a local Windows named pipe restricted to the current account. Each client
 opens a direct HTTP/2 connection and one invocation stream. The shared framing,
-flow control and completion contract belongs to `command-protocol` and
-`command-service`; see [native-runtime.md](native-runtime.md).
+flow control and completion implementation belongs to `crates/command-service`,
+with authoritative Zod definitions in `packages/command-protocol`; see
+[native-runtime.md](native-runtime.md).
 
 The raw CLI request carries root, argv and context. The runner authenticates the
 context and validates the pinned declaration before constructing a native service
