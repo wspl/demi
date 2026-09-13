@@ -16,6 +16,11 @@ import { resolveExecutionTarget } from '../conversation/execution-target'
 import type { ConversationStores } from '../storage/conversation-store'
 import { ForkRefused, type ConversationForks } from '../conversation/fork'
 
+/** `?archived=true|false`; nothing else, and nothing else spelled. */
+const archivedQuerySchema = z
+  .stringbool({ truthy: ['true'], falsy: ['false'], case: 'sensitive' })
+  .optional()
+
 const attachBodySchema = z.object({ deviceId: z.string().min(1) })
 const renameHostBodySchema = z.object({ name: z.string().trim().min(1).max(64) })
 
@@ -47,10 +52,7 @@ export function conversationRoutes(options: {
   }
 
   app.get('/', async (c) => {
-    const parsed = z
-      .enum(['true', 'false'])
-      .optional()
-      .safeParse(c.req.query('archived'))
+    const parsed = archivedQuerySchema.safeParse(c.req.query('archived'))
     if (!parsed.success) {
       return c.json(
         {
@@ -60,7 +62,7 @@ export function conversationRoutes(options: {
         400,
       )
     }
-    const archived = parsed.data === 'true'
+    const archived = parsed.data ?? false
     const conversations = await control.listConversations(c.get('user').id, {
       archived,
     })

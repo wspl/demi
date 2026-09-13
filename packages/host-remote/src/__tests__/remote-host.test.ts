@@ -94,6 +94,32 @@ test(
 )
 
 test(
+  'an fs reply is read as the operation the caller asked for, not the one it names',
+  async () => {
+    const remote = new RemoteHost({
+      defaultCwd: '/w',
+      identity: { uid: 0, gid: 0, hostname: 'test', homeDir: '/w' },
+      store: memoryHostStore(),
+    })
+    const sent: BackendToRunnerMessage[] = []
+    remote.attach((message) => sent.push(message))
+    const stat = remote.fs.stat('/w/file')
+    const call = sent.find((message) => message.type === 'fs_stat')
+    expect(call).toBeDefined()
+    // A `readlink` result is well formed for the op the reply names itself and
+    // is not the file stat this caller is waiting for.
+    remote.handleMessage({
+      type: 'fs_ok',
+      id: call!.id,
+      op: 'readlink',
+      result: '/w/elsewhere',
+    })
+    expect(await stat.then(() => null, (error: unknown) => error))
+      .toBeInstanceOf(Error)
+  }
+)
+
+test(
   'remote spawn streams output, accepts stdin, and reports exit',
   async () => {
     const { dir, remote } = await connectedPair()

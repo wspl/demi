@@ -1,5 +1,5 @@
 import { browseDirectory } from '../runner/file-browser'
-import { errorCode, errorMessage } from '@demicodes/utils'
+import { errorCode, errorMessage, isAbsolutePath } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import type { AuthEnv } from '../auth/identity'
@@ -7,7 +7,17 @@ import type { RunnerRegistry } from '../runner/registry'
 import type { ControlService } from '../storage/control'
 
 const claimBodySchema = z.object({ code: z.string().min(1) })
-const createDirectoryBodySchema = z.object({ path: z.string().min(1) })
+
+/**
+ * A directory on the device, named the way the device names it: absolute, so
+ * the meaning never depends on where the runner happens to stand.
+ */
+const devicePathSchema = z
+  .string()
+  .min(1)
+  .refine(isAbsolutePath, 'path must be absolute')
+
+const createDirectoryBodySchema = z.object({ path: devicePathSchema })
 
 /**
  * `/api/devices` — the device registry surface: list, claim, revoke, directory
@@ -88,10 +98,18 @@ export function deviceRoutes(options: {
     if (!outcome.ok)
       return c.json(outcome.error, outcome.status)
     const home = registry.deviceIdentity(c.req.param('id'))?.homeDir ?? null
-    const path = c.req.query('path') ?? home
+    const requested = devicePathSchema
+      .optional()
+      .safeParse(c.req.query('path'))
+    if (!requested.success)
+      return c.json({
+        code: 'invalid_query',
+        message: 'path must be an absolute path on the device'
+      }, 400)
+    const path = requested.data ?? home
     if (!path)
       return c.json({
-        code: 'invalid_body',
+        code: 'invalid_query',
         message: 'Missing path query parameter'
       }, 400)
     try {

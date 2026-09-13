@@ -163,6 +163,21 @@ test(
       )
     )
       .toThrow('direct or jailer')
+    // An empty or zero count is not a count: coercion alone would read both as 0.
+    expect(
+      () => firecrackerConfigFromEnv(
+        { ...base, [MANAGED_ENV.slots]: '0' },
+        '/data'
+      )
+    )
+      .toThrow(MANAGED_ENV.slots)
+    expect(
+      () => firecrackerConfigFromEnv(
+        { ...base, [MANAGED_ENV.memMib]: '' },
+        '/data'
+      )
+    )
+      .toThrow(MANAGED_ENV.memMib)
   }
 )
 

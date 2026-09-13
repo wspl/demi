@@ -1,5 +1,6 @@
 import type { BlobStore } from '@demicodes/agent'
 import { Hono } from 'hono'
+import { z } from 'zod'
 import type { AuthEnv } from '../auth/identity'
 
 /**
@@ -8,7 +9,7 @@ import type { AuthEnv } from '../auth/identity'
  * anything else — text/html above all — leaves as an opaque download and
  * nothing a blob holds ever runs in this origin.
  */
-const INLINE_MEDIA_TYPES = new Set([
+const inlineMediaTypeSchema = z.enum([
   'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif',
   'video/mp4', 'video/webm', 'video/quicktime',
   'audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/wav', 'audio/webm',
@@ -33,11 +34,9 @@ export function blobRoutes(
     const bytes = await options.blobsFor(c.get('user').id).get(sha256)
     if (!bytes)
       return c.json({ code: 'not_found', message: 'No such blob' }, 404)
-    const requested = c.req.query('type')?.toLowerCase()
-    const inline = requested !== undefined &&
-      INLINE_MEDIA_TYPES.has(requested)
-      ? requested
-      : null
+    // Anything the list does not name leaves as an opaque download.
+    const requested = inlineMediaTypeSchema.safeParse(c.req.query('type'))
+    const inline = requested.success ? requested.data : null
     return new Response(bytes, {
       status: 200,
       headers: {

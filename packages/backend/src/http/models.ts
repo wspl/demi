@@ -8,6 +8,11 @@ import {
 } from '../llm/model-availability'
 import { providerOwner } from '../vault/scope'
 
+/** `?refresh=true|false`; nothing else, and nothing else spelled. */
+const refreshQuerySchema = z
+  .stringbool({ truthy: ['true'], falsy: ['false'], case: 'sensitive' })
+  .optional()
+
 /**
  * `/api/models` — the aggregated catalog of the caller's provider scope,
  * grouped by provider, independent of conversation execution targets.
@@ -18,9 +23,7 @@ export function modelRoutes(options: {
 }): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>()
   app.get('/', async (c) => {
-    const parsed = z.enum(['true', 'false'])
-      .optional()
-      .safeParse(c.req.query('refresh'))
+    const parsed = refreshQuerySchema.safeParse(c.req.query('refresh'))
     if (!parsed.success)
       return c.json({
         code: 'invalid_query',
@@ -28,7 +31,7 @@ export function modelRoutes(options: {
       }, 400)
     const providers = await options.assembly.catalog(
       providerOwner(options.mode, c.get('user').id),
-      parsed.data === 'true'
+      parsed.data ?? false
     )
     return c.json({ providers: providers.map(provider => ({
         ...provider,
