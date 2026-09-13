@@ -62,3 +62,5 @@ pub use shell::{
 };
 pub use sourceinfo::SourceInfo;
 pub use variables::{ShellValue, ShellVariable};
+
+pub mod execution_host;

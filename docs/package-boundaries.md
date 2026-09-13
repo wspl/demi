@@ -152,7 +152,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/coding-agent`
 
 - Status: implemented.
-- Production deps: `@demicodes/agent`, `@demicodes/command-protocol`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
+- Production deps: `@demicodes/agent`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: coding harness, coding prompt, coding commands (the `demi` root: every subcommand is a noun domain group — `file` as `runtime` modules written against the ABI and `todo` as `rpc` built in, product groups like the backend's `host` composed in). A `reference` block reaches the model as its path; the model reads the file with tools.
 - Public boundary: harness and coding command construction based on Host and Command contracts.
 - Must not: instantiate AgentSession, AgentServer, a shell environment, concrete providers, or a Host implementation.
@@ -433,7 +433,7 @@ utils -> none
 provider -> core, utils
 shell -> command-protocol, utils
 agent -> core, provider, shell, utils
-coding-agent -> agent, command-protocol, core, shell, utils
+coding-agent -> agent, core, shell, utils
 provider-claude-code -> core, provider, utils
 provider-codex -> core, provider, utils
 provider-openai-api -> core, provider, utils

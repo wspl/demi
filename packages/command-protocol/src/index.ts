@@ -24,7 +24,7 @@ export const nativePackageSchema = z.object({
   protocolVersion: z.literal(NATIVE_PROTOCOL_VERSION),
   operations: z.array(z.string().min(1)).min(1)
     .refine(operations => new Set(operations).size === operations.length,
-      'Operation ids must be unique'),
+      'Operation ids must be unique').meta({ uniqueItems: true }),
   targets: z.record(nativeTargetSchema, nativeArtifactSchema),
 }).strict()
 
@@ -70,3 +70,32 @@ export async function contentDigest(value: unknown): Promise<string> {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
   return Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('')
 }
+
+
+export const MAX_METADATA_BYTES = 256 * 1024
+export const MAX_RECORD_BYTES = 64 * 1024
+export const MAX_INVOCATIONS = 32
+export const INFO_PATH = '/v1/info'
+export const INVOKE_PATH = '/v1/invoke'
+export const SHUTDOWN_PATH = '/v1/shutdown'
+
+export const commandArgsSchema = z.record(z.string(), z.unknown())
+export const serviceInfoSchema = z.object({
+  protocolVersion: z.number().int().nonnegative(),
+  operations: z.array(z.string()),
+}).strict()
+export const invocationSchema = z.object({
+  operation: z.string().min(1),
+  invocationId: z.string().min(1),
+  args: commandArgsSchema,
+  cwd: z.string().min(1).regex(/^[^\0]*$/),
+  env: z.record(z.string().min(1).regex(/^[^\0=]+$/), z.string().regex(/^[^\0]*$/)),
+}).strict()
+export const commandErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+}).strict()
+export const completionSchema = z.object({
+  exitCode: z.number().int().min(0).max(255),
+  error: commandErrorSchema.optional(),
+}).strict()

@@ -6,9 +6,9 @@
 // spell-checker:ignore nopipe
 
 use std::ffi::OsString;
+use std::path::PathBuf;
 use uucore::context::fs::OpenOptions;
 use uucore::context::io::{self, Error, ErrorKind, Write};
-use std::path::PathBuf;
 use uucore::display::Quotable;
 use uucore::error::{UResult, strip_errno};
 use uucore::{show_error, translate};
@@ -141,12 +141,8 @@ impl MultiWriter {
     /// Copies all bytes from the input buffer to the output buffer
     /// without buffering which is POSIX requirement.
     pub fn copy_unbuffered(&mut self) -> Result<(), ()> {
-        #[cfg(not(any(unix, target_os = "wasi")))]
         use io::Read as _;
         const BUF_SIZE: usize = 32 * 1024;
-        #[cfg(any(unix, target_os = "wasi"))]
-        let input = io::stdin();
-        #[cfg(not(any(unix, target_os = "wasi")))]
         let mut input = io::stdin();
         #[cfg(any(target_os = "linux", target_os = "android"))]
         macro_rules! splice_or_detach {
@@ -194,17 +190,8 @@ impl MultiWriter {
             }
         }
 
-        #[cfg(any(unix, target_os = "wasi"))]
-        let mut buf = [std::mem::MaybeUninit::<u8>::uninit(); BUF_SIZE];
-        // todo: avoid cost by 0-fill keeping throughput
-        #[cfg(not(any(unix, target_os = "wasi")))]
         let mut buf = [0u8; BUF_SIZE];
         loop {
-            #[cfg(any(unix, target_os = "wasi"))]
-            let res = rustix::io::read(&input, &mut buf)
-                .map(|f| f.0)
-                .map_err(Error::from);
-            #[cfg(not(any(unix, target_os = "wasi")))]
             let res = input.read(&mut buf).map(|n| &buf[..n]);
             match res {
                 Ok([]) => return Ok(()), // end of file

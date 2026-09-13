@@ -1,0 +1,47 @@
+//! Embedding hooks for job ownership and cancellable machine IO.
+
+use std::{any::Any, fs::File, io, process::Command, sync::Arc};
+
+use crate::{openfiles::OpenFile, processes::ChildProcess};
+
+/// IO behavior supplied by the embedding execution owner.
+pub trait FileControl: Send + Sync {
+    /// Read without outliving the owning execution.
+    fn read(&self, file: &File, buffer: &mut [u8]) -> io::Result<usize>;
+    /// Write without outliving the owning execution.
+    fn write(&self, file: &File, buffer: &[u8]) -> io::Result<usize>;
+}
+
+/// Ownership hooks shared by a shell and every cloned subshell.
+pub trait ExecutionHost: Any + Send + Sync {
+    /// Reject further execution after cancellation.
+    fn check(&self) -> io::Result<()>;
+    /// Track work until its guard is dropped, including detached interpreter tasks.
+    fn task_guard(&self) -> Box<dyn Send + Sync>;
+    /// Scope a shell descriptor's reads and writes.
+    fn file_control(&self) -> Arc<dyn FileControl>;
+    /// Spawn and retain ownership of an external child.
+    fn spawn(&self, command: Command) -> io::Result<ChildProcess>;
+    /// Resolve shell-specific path conventions against an explicit cwd.
+    fn resolve_path(&self, path: &std::path::Path, cwd: &std::path::Path) -> std::path::PathBuf;
+}
+
+impl OpenFile {
+    /// Attach the embedding owner's IO behavior to a native file or pipe.
+    pub fn controlled(self, control: Arc<dyn FileControl>) -> io::Result<Self> {
+        let file = match self {
+            Self::Controlled { .. } | Self::Stream(_) => return Ok(self),
+            Self::File(file) => file,
+            #[cfg(unix)]
+            other => {
+                let descriptor = other.try_clone_to_owned().map_err(io::Error::other)?;
+                descriptor.into()
+            }
+            #[cfg(windows)]
+            other => other.into_file()?,
+            #[cfg(not(any(unix, windows)))]
+            other => return Ok(other),
+        };
+        Ok(Self::Controlled { file, control })
+    }
+}

@@ -39,6 +39,13 @@ pub enum OpenFile {
     Stderr(std::io::Stderr),
     /// A file open for reading or writing.
     File(std::fs::File),
+    /// A native file with embedding-owned cancellation and IO behavior.
+    Controlled {
+        /// Underlying OS file; child programs inherit this handle.
+        file: std::fs::File,
+        /// Per-execution IO control.
+        control: std::sync::Arc<dyn crate::execution_host::FileControl>,
+    },
     /// A read end of a pipe.
     PipeReader(std::io::PipeReader),
     /// A write end of a pipe.
@@ -57,7 +64,7 @@ impl serde::Serialize for OpenFile {
             Self::Stdin(_) => serializer.serialize_str("stdin"),
             Self::Stdout(_) => serializer.serialize_str("stdout"),
             Self::Stderr(_) => serializer.serialize_str("stderr"),
-            Self::File(_) => serializer.serialize_str("file"),
+            Self::File(_) | Self::Controlled { .. } => serializer.serialize_str("file"),
             Self::PipeReader(_) => serializer.serialize_str("pipe_reader"),
             Self::PipeWriter(_) => serializer.serialize_str("pipe_writer"),
             Self::Stream(_) => serializer.serialize_str("stream"),
@@ -109,7 +116,7 @@ impl std::fmt::Display for OpenFile {
             Self::Stdin(_) => write!(f, "stdin"),
             Self::Stdout(_) => write!(f, "stdout"),
             Self::Stderr(_) => write!(f, "stderr"),
-            Self::File(_) => write!(f, "file"),
+            Self::File(_) | Self::Controlled { .. } => write!(f, "file"),
             Self::PipeReader(_) => write!(f, "pipe reader"),
             Self::PipeWriter(_) => write!(f, "pipe writer"),
             Self::Stream(_) => write!(f, "stream"),
@@ -118,6 +125,22 @@ impl std::fmt::Display for OpenFile {
 }
 
 impl OpenFile {
+    /// Convert a Windows descriptor into its owned file handle.
+    #[cfg(windows)]
+    pub fn into_file(self) -> std::io::Result<std::fs::File> {
+        use std::os::windows::io::{AsHandle, OwnedHandle};
+        let handle = match self {
+            Self::File(file) | Self::Controlled { file, .. } => return Ok(file),
+            Self::PipeReader(reader) => OwnedHandle::from(reader),
+            Self::PipeWriter(writer) => OwnedHandle::from(writer),
+            Self::Stdin(file) => file.as_handle().try_clone_to_owned()?,
+            Self::Stdout(file) => file.as_handle().try_clone_to_owned()?,
+            Self::Stderr(file) => file.as_handle().try_clone_to_owned()?,
+            Self::Stream(_) => return Err(std::io::Error::other("stream has no OS handle")),
+        };
+        Ok(handle.into())
+    }
+
     /// Tries to duplicate the open file.
     pub fn try_clone(&self) -> Result<Self, std::io::Error> {
         let result = match self {
@@ -125,6 +148,10 @@ impl OpenFile {
             Self::Stdout(_) => std::io::stdout().into(),
             Self::Stderr(_) => std::io::stderr().into(),
             Self::File(f) => f.try_clone()?.into(),
+            Self::Controlled { file, control } => Self::Controlled {
+                file: file.try_clone()?,
+                control: control.clone(),
+            },
             Self::PipeReader(f) => f.try_clone()?.into(),
             Self::PipeWriter(f) => f.try_clone()?.into(),
             Self::Stream(s) => Self::Stream(s.clone_box()),
@@ -142,7 +169,7 @@ impl OpenFile {
             Self::Stdin(f) => Ok(f.as_fd().try_clone_to_owned()?),
             Self::Stdout(f) => Ok(f.as_fd().try_clone_to_owned()?),
             Self::Stderr(f) => Ok(f.as_fd().try_clone_to_owned()?),
-            Self::File(f) => Ok(f.into()),
+            Self::File(f) | Self::Controlled { file: f, .. } => Ok(f.into()),
             Self::PipeReader(r) => Ok(std::os::fd::OwnedFd::from(r)),
             Self::PipeWriter(w) => Ok(std::os::fd::OwnedFd::from(w)),
             Self::Stream(s) => s.try_clone_to_owned(),
@@ -162,7 +189,7 @@ impl OpenFile {
             Self::Stdin(f) => Ok(f.as_fd()),
             Self::Stdout(f) => Ok(f.as_fd()),
             Self::Stderr(f) => Ok(f.as_fd()),
-            Self::File(f) => Ok(f.as_fd()),
+            Self::File(f) | Self::Controlled { file: f, .. } => Ok(f.as_fd()),
             Self::PipeReader(r) => Ok(r.as_fd()),
             Self::PipeWriter(w) => Ok(w.as_fd()),
             Self::Stream(s) => s.try_borrow_as_fd(),
@@ -172,7 +199,9 @@ impl OpenFile {
     pub(crate) fn is_dir(&self) -> bool {
         match self {
             Self::Stdin(_) | Self::Stdout(_) | Self::Stderr(_) => false,
-            Self::File(file) => file.metadata().is_ok_and(|m| m.is_dir()),
+            Self::File(file) | Self::Controlled { file, .. } => {
+                file.metadata().is_ok_and(|m| m.is_dir())
+            }
             Self::PipeReader(_) | Self::PipeWriter(_) | Self::Stream(_) => false,
         }
     }
@@ -183,7 +212,7 @@ impl OpenFile {
             Self::Stdin(f) => f.is_terminal(),
             Self::Stdout(f) => f.is_terminal(),
             Self::Stderr(f) => f.is_terminal(),
-            Self::File(f) => f.is_terminal(),
+            Self::File(f) | Self::Controlled { file: f, .. } => f.is_terminal(),
             Self::PipeReader(_) | Self::PipeWriter(_) | Self::Stream(_) => false,
         }
     }
@@ -234,7 +263,7 @@ impl From<OpenFile> for Stdio {
             OpenFile::Stdin(_) => Self::inherit(),
             OpenFile::Stdout(_) => Self::inherit(),
             OpenFile::Stderr(_) => Self::inherit(),
-            OpenFile::File(f) => f.into(),
+            OpenFile::File(f) | OpenFile::Controlled { file: f, .. } => f.into(),
             OpenFile::PipeReader(f) => f.into(),
             OpenFile::PipeWriter(f) => f.into(),
             // NOTE: Custom streams cannot be converted to `Stdio`; we do our best here
@@ -255,6 +284,7 @@ impl std::io::Read for OpenFile {
                 error::ErrorKind::OpenFileNotReadable("stderr"),
             )),
             Self::File(f) => f.read(buf),
+            Self::Controlled { file, control } => control.read(file, buf),
             Self::PipeReader(reader) => reader.read(buf),
             Self::PipeWriter(_) => Err(std::io::Error::other(
                 error::ErrorKind::OpenFileNotReadable("pipe writer"),
@@ -273,6 +303,7 @@ impl std::io::Write for OpenFile {
             Self::Stdout(f) => f.write(buf),
             Self::Stderr(f) => f.write(buf),
             Self::File(f) => f.write(buf),
+            Self::Controlled { file, control } => control.write(file, buf),
             Self::PipeReader(_) => Err(std::io::Error::other(
                 error::ErrorKind::OpenFileNotWritable("pipe reader"),
             )),
@@ -286,7 +317,7 @@ impl std::io::Write for OpenFile {
             Self::Stdin(_) => Ok(()),
             Self::Stdout(f) => f.flush(),
             Self::Stderr(f) => f.flush(),
-            Self::File(f) => f.flush(),
+            Self::File(f) | Self::Controlled { file: f, .. } => f.flush(),
             Self::PipeReader(_) => Ok(()),
             Self::PipeWriter(writer) => writer.flush(),
             Self::Stream(s) => s.flush(),

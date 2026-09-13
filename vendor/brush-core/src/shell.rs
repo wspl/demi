@@ -57,6 +57,10 @@ pub use state::ShellState;
 ///   `DefaultShellExtensions`, which provide standard behavior.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Shell<SE: extensions::ShellExtensions = extensions::DefaultShellExtensions> {
+    /// Execution ownership supplied by an embedding host.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    execution_host: Option<Arc<dyn crate::execution_host::ExecutionHost>>,
+
     /// Injected error behavior.
     #[cfg_attr(feature = "serde", serde(skip, default = "default_error_formatter"))]
     error_formatter: SE::ErrorFormatter,
@@ -148,6 +152,7 @@ pub struct Shell<SE: extensions::ShellExtensions = extensions::DefaultShellExten
 impl<SE: extensions::ShellExtensions> Clone for Shell<SE> {
     fn clone(&self) -> Self {
         Self {
+            execution_host: self.execution_host.clone(),
             error_formatter: self.error_formatter.clone(),
             traps: self.traps.clone(),
             open_files: self.open_files.clone(),
@@ -199,6 +204,24 @@ impl<SE: extensions::ShellExtensions> AsMut<Self> for Shell<SE> {
 }
 
 impl<SE: extensions::ShellExtensions> Shell<SE> {
+    /// Returns the owner shared by this shell and its subshells.
+    pub fn execution_host(&self) -> Option<&Arc<dyn crate::execution_host::ExecutionHost>> {
+        self.execution_host.as_ref()
+    }
+
+    /// Checks cancellation before interpreting more shell work.
+    pub fn check_execution(&self) -> Result<(), error::Error> {
+        if let Some(host) = &self.execution_host {
+            host.check()?;
+        }
+        Ok(())
+    }
+
+    /// Keeps an asynchronous interpreter task owned until it returns.
+    pub fn execution_guard(&self) -> Option<Box<dyn Send + Sync>> {
+        self.execution_host.as_ref().map(|host| host.task_guard())
+    }
+
     /// Returns a new shell instance created with the given options.
     /// Does *not* load any configuration files (e.g., bashrc).
     ///
@@ -211,6 +234,7 @@ impl<SE: extensions::ShellExtensions> Shell<SE> {
 
         // Instantiate the shell with some defaults.
         let mut shell = Self {
+            execution_host: options.execution_host,
             error_formatter: options.error_formatter,
             open_files: openfiles::OpenFiles::new(),
             options: runtime_options,
