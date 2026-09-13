@@ -39,7 +39,10 @@ const workspace = computed(() => {
     return undefined
   }
   return {
-    source: fileSource(`/conversations/${encodeURIComponent(props.conversationId)}/fs`, device),
+    source: fileSource({
+      directory: `/conversations/${encodeURIComponent(props.conversationId)}/fs`,
+      text: `/conversations/${encodeURIComponent(props.conversationId)}/fs/file`,
+    }, device),
     root: execution.path,
     // The Cloud's own session directory has no name worth showing; it is the workspace.
     name: execution.directory === null ? 'Workspace' : undefined,

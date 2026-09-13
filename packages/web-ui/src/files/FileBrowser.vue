@@ -389,13 +389,13 @@ defineExpose({
                       ? 'success'
                       : 'muted'
                 "
-                :indicator-label="host.online ? 'Online' : 'Offline'"
+                :indicator-label="host.online ? 'Online' : host.canWake ? 'Stopped' : 'Offline'"
                 :note="
                   host.id !== CLOUD_HOST_ID && !host.online
-                    ? 'offline'
+                    ? host.canWake ? 'stopped' : 'offline'
                     : undefined
                 "
-                :disabled="host.id !== CLOUD_HOST_ID && !host.online"
+                :disabled="host.id !== CLOUD_HOST_ID && !host.online && !host.canWake"
                 disabled-reason="This device is offline."
                 :label="host.label"
                 choice

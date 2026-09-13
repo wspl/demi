@@ -330,7 +330,7 @@ export type CatalogModel = z.infer<typeof catalogModelSchema>
 export type ConfiguredModel = z.infer<typeof configuredModelSchema>
 export type VendorCatalog = z.infer<typeof vendorCatalogSchema>
 
-/** One text file of a device, as `GET /devices/:id/fs/file` returns it. */
+/** One text file of the conversation Host, as `GET /conversations/:id/fs/file` returns it. */
 export const fileTextSchema = z.object({ path: z.string(), text: z.string() })
 
 const changeFileSchema = z.object({

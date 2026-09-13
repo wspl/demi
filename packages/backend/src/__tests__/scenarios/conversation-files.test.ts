@@ -79,3 +79,65 @@ test('conversation files boot Cloud, wake it after idle, and follow a target swi
     await world.close()
   }
 }, 45_000)
+
+
+test('attachment browsing admits only bound hosts and wakes an attached Cloud', async () => {
+  const fake = new FakeProvisioner()
+  const world = await World.create({
+    runners: ['paired', 'unattached'],
+    managedHosts: {
+      provisioner: fake,
+      config: {
+        idleMs: 500,
+        sweepMs: 50,
+        checkpointIntervalMs: 60_000,
+        bootTimeoutMs: 15_000,
+      },
+    },
+  })
+  try {
+    const conversation = await world.conversation('cloud')
+    const base = `/api/conversations/${conversation.id}`
+    const cloudDirectory = await world.api<{ path: string }>(`${base}/fs`)
+    const cloud = await world.api<{ device: { id: string } }>('/api/cloud')
+    const deviceId = cloud.device.id
+    await writeFile(join(cloudDirectory.path, 'cloud-note.txt'), 'preserved')
+    const cloudEndpoint = `${base}/hosts/${deviceId}/fs`
+    const main = await world.api<{ path: string }>(cloudEndpoint)
+    expect(main.path).toBe(cloudDirectory.path)
+    const paired = world.device('paired')
+    const unbound = await world.backend.session.fetch(`${base}/hosts/${world.device('unattached').deviceId}/fs`)
+    expect(unbound.status).toBe(404)
+    expect(await unbound.json()).toMatchObject({ code: 'host_not_attached' })
+    await conversation.switchTo('runner:paired')
+    await waitFor(
+      () => fake.calls.includes(`hibernate:${deviceId}`) && !fake.running(deviceId),
+      () => fake.calls.join(','),
+      { timeoutMs: 10_000 },
+    )
+    const attached = await world.api<{ path: string; entries: Array<{ name: string }> }>(cloudEndpoint)
+    expect(attached.path).toBe(cloudDirectory.path)
+    expect(attached.entries.some((entry) => entry.name === 'cloud-note.txt')).toBe(true)
+    expect(fake.calls.filter((call) => call === `wake:${deviceId}`)).toHaveLength(2)
+    await world.api(cloudEndpoint, { path: join(cloudDirectory.path, 'from-picker') })
+    const created = await world.api<{ entries: Array<{ name: string }> }>(cloudEndpoint)
+    expect(created.entries.some((entry) => entry.name === 'from-picker')).toBe(true)
+
+    const oldRead = await world.backend.session.fetch(`/api/devices/${paired.deviceId}/fs/file?path=${encodeURIComponent(paired.home)}`)
+    expect(oldRead.status).toBe(404)
+    const cloudBypass = await world.backend.session.fetch(`/api/devices/${deviceId}/fs`)
+    expect(cloudBypass.status).toBe(404)
+    await world.api(`${base}/hosts/${deviceId}`, undefined, 'DELETE')
+    const detached = await world.backend.session.fetch(cloudEndpoint)
+    expect(detached.status).toBe(404)
+    expect(await detached.json()).toMatchObject({ code: 'host_not_attached' })
+    const current = await world.api<{ path: string }>(`${base}/hosts/${paired.deviceId}/fs`)
+    expect(current.path).toBe(paired.home)
+    await world.api(base, { archived: true }, 'PATCH')
+    const archived = await world.backend.session.fetch(`${base}/hosts/${paired.deviceId}/fs`)
+    expect(archived.status).toBe(409)
+    expect(await archived.json()).toMatchObject({ code: 'conversation_archived' })
+  } finally {
+    await world.close()
+  }
+}, 45_000)

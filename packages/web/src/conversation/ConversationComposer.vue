@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { Cloud } from '@lucide/vue'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { reportError } from '@demicodes/web-ui/infra/errors'
@@ -15,7 +16,8 @@ import { composerModel, intentThinkingConfig } from '@demicodes/web-ui/agent/mod
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
-import { fileSourceFor, placesFor } from '../devices/files'
+import { placesFor } from '../devices/files'
+import { fileSource } from '../api/files'
 import type { Conversation } from '../state/types'
 
 const props = defineProps<{ conversation: Conversation }>()
@@ -65,7 +67,7 @@ const execution = computed(() => executionFor(props.conversation))
 const remoteHosts = computed(() => {
   const main = execution.value
   const hosts = [
-    ...(main.kind === 'device' && main.deviceId
+    ...(main.deviceId
       ? [
           {
             id: main.deviceId,
@@ -76,7 +78,7 @@ const remoteHosts = computed(() => {
       : []),
     ...props.conversation.attachedHosts
       .filter((host) =>
-        resources.devices.some((device) => device.id === host.deviceId),
+        resources.deviceById(host.deviceId) !== null,
       )
       .map((host) => ({
         id: host.deviceId,
@@ -85,8 +87,7 @@ const remoteHosts = computed(() => {
       })),
   ]
   return hosts.map((host) => {
-    const device =
-      resources.devices.find((device) => device.id === host.id) ?? null
+    const device = resources.deviceById(host.id)
     const cwd =
       host.id === main.deviceId
         ? main.path
@@ -95,7 +96,11 @@ const remoteHosts = computed(() => {
           )?.cwd
     return {
       ...host,
-      source: fileSourceFor(device),
+      canWake: device?.kind === 'managed',
+      icon: device?.kind === 'managed' ? Cloud : undefined,
+      source: fileSource({
+        directory: `/conversations/${encodeURIComponent(props.conversation.id)}/hosts/${encodeURIComponent(host.id)}/fs`,
+      }, device),
       places: placesFor(device, resources.projects),
       cwd: cwd ?? undefined,
     }

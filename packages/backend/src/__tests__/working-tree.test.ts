@@ -105,9 +105,9 @@ test(
     const escaping = await api(backend, `/api/conversations/${conversation.id}/changes/file?path=../x`)
     expect(escaping.status).toBe(400)
 
-    const text = await api(backend, `/api/devices/${device.id}/fs/file?path=${encodeURIComponent(join(runnerDir, 'a.txt'))}`)
+    const text = await api(backend, `/api/conversations/${conversation.id}/fs/file?path=${encodeURIComponent(join(runnerDir, 'a.txt'))}`)
     expect(await text.json()).toEqual({ path: join(runnerDir, 'a.txt'), text: '1\n2\n3\n' })
-    const missing = await api(backend, `/api/devices/${device.id}/fs/file?path=${encodeURIComponent(join(runnerDir, 'nope'))}`)
+    const missing = await api(backend, `/api/conversations/${conversation.id}/fs/file?path=${encodeURIComponent(join(runnerDir, 'nope'))}`)
     expect(missing.status).toBe(404)
 
     // Offline: the routes say so rather than waking anything.
