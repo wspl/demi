@@ -1,7 +1,7 @@
 import { inject, provide, type InjectionKey } from 'vue'
-import type { ShellEditsView } from '@demicodes/agent/client'
+import type { CallEditSelection } from '../files/changes'
 
-export type EditSelectionHandler = (call: ShellEditsView, path: string) => void
+export type EditSelectionHandler = (selection: CallEditSelection) => void
 const editSelectionKey: InjectionKey<EditSelectionHandler> = Symbol('edit-selection')
 
 export function provideEditSelection(handler: EditSelectionHandler): void {
