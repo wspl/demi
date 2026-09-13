@@ -3,6 +3,8 @@ import { expect, test } from 'bun:test'
 import { runnerShellFactory } from '@demicodes/backend/testing'
 
 import { deferred, waitFor } from '@demicodes/utils'
+import type { z } from 'zod'
+import { clientFrameSchema, serverFrameSchema } from '../protocol/schemas'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
 import { LocalHost } from '@demicodes/host-remote/testing'
@@ -48,7 +50,7 @@ test(
     const client = createWebSocketClientTransport(clientSocket)
     const server = createWebSocketServerTransport(serverSocket)
 
-    const serverFrame = nextFrame<ClientFrame>(server)
+    const serverFrame = nextFrame(server, clientFrameSchema)
     client.send({
       type: 'send',
       messageId: 'ws-send-1',
@@ -62,11 +64,11 @@ test(
       metadata: { tenantId: 'tenant-a', sequence: 1n },
     })
 
-    const clientFrame = nextFrame<ServerFrame>(client)
+    const clientFrame = nextFrame(client, serverFrameSchema)
     server.send({ type: 'phase', phase: 'running' })
     expect(await clientFrame).toEqual({ type: 'phase', phase: 'running' })
 
-    const serverBinaryFrame = nextFrame<ClientFrame>(server)
+    const serverBinaryFrame = nextFrame(server, clientFrameSchema)
     client.send({
       type: 'send',
       messageId: 'ws-send-2',
@@ -90,7 +92,7 @@ test(
     expect(sentContent.source.data).toBeInstanceOf(Uint8Array)
     expect([...sentContent.source.data]).toEqual([4, 5, 6])
 
-    const clientSnapshotFrame = nextFrame<ServerFrame>(client)
+    const clientSnapshotFrame = nextFrame(client, serverFrameSchema)
     server.send({
       type: 'transcript_reset',
       epoch: 'test-epoch',
@@ -232,12 +234,13 @@ test(
 )
 
 function nextFrame<T>(
-  transport: { onFrame(handler: (frame: T) => void): () => void }
+  transport: { onFrame(handler: (frame: unknown) => void): () => void },
+  schema: z.ZodType<T>,
 ): Promise<T> {
   return new Promise((resolve) => {
     const unsubscribe = transport.onFrame((frame) => {
       unsubscribe()
-      resolve(frame)
+      resolve(schema.parse(frame))
     })
   })
 }

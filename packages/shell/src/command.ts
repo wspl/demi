@@ -167,10 +167,19 @@ export interface CommandIO {
 export interface CommandStorage {
   /** Preserve the original history binding while restricting an invocation's lifetime. */
   withSignal(signal: AbortSignal): CommandStorage
-  readJson<T>(key: string): Promise<T | null>
+  /**
+   * The stored value, or `null` when the key holds nothing. Stored values are
+   * data from outside this process: the reader validates them with its own
+   * schema before using them.
+   */
+  readJson(key: string): Promise<unknown>
   writeJson<T>(key: string, value: T): Promise<void>
-  /** Atomically replace a key from a detached value; the callback performs no IO. */
-  updateJson<T>(key: string, update: (current: T | null) => T): Promise<T>
+  /**
+   * Atomically replace a key from a detached value; the callback performs no
+   * IO. The callback receives the stored value as `unknown` and decides its
+   * type; the result is what the callback returned, detached.
+   */
+  updateJson<T>(key: string, update: (current: unknown) => T): Promise<T>
   delete(key: string): Promise<void>
   list(prefix: string): Promise<string[]>
 }

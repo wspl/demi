@@ -6,6 +6,7 @@ import {
   type ServerFrame
 } from '@demicodes/agent'
 import { ActivityGate, deferred, waitFor } from '@demicodes/utils'
+import { clientFrameSchema, serverFrameSchema } from '@demicodes/agent'
 import { conversationScopedTransport } from '../conversation/scoped-transport'
 import { LocalControlService, type ControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
@@ -40,10 +41,10 @@ async function fixture(
   const received: ClientFrame[] = []
   const replies: ServerFrame[] = []
   scoped.onFrame((frame) => {
-    received.push(frame)
+    received.push(clientFrameSchema.parse(frame))
   })
   pair.client.onFrame((frame) => {
-    replies.push(frame)
+    replies.push(serverFrameSchema.parse(frame))
   })
   cleanup.push(() => {
     scoped.close();
@@ -303,7 +304,7 @@ test(
     })
     const replies: ServerFrame[] = []
     pair.client.onFrame(frame => {
-      replies.push(frame)
+      replies.push(serverFrameSchema.parse(frame))
     })
     scoped.onFrame(async () => {
       entered.resolve()

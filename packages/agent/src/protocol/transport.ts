@@ -1,17 +1,22 @@
 import type { ClientFrame, ServerFrame } from './frames'
 
-export interface AgentTransport<SendFrame, ReceiveFrame> {
+/**
+ * A transport carries frames; it does not vouch for them. What arrives is
+ * handed over as `unknown`, and the endpoint that receives it (the server
+ * binding, the client) validates it against its frame schema.
+ */
+export interface AgentTransport<SendFrame> {
   send(frame: SendFrame): void
   /**
    * Async completion lets transport adapters hold admission until frame
    * handling finishes.
    */
-  onFrame(handler: (frame: ReceiveFrame) => void | Promise<void>): () => void
+  onFrame(handler: (frame: unknown) => void | Promise<void>): () => void
   close(): void
 }
 
-export type AgentClientTransport = AgentTransport<ClientFrame, ServerFrame>
-export type AgentServerTransport = AgentTransport<ServerFrame, ClientFrame>
+export type AgentClientTransport = AgentTransport<ClientFrame>
+export type AgentServerTransport = AgentTransport<ServerFrame>
 
 export interface InProcessTransportPair {
   client: AgentClientTransport
@@ -19,20 +24,19 @@ export interface InProcessTransportPair {
 }
 
 export function createInProcessTransportPair(): InProcessTransportPair {
-  const clientEndpoint = new InProcessEndpoint<ClientFrame, ServerFrame>()
-  const serverEndpoint = new InProcessEndpoint<ServerFrame, ClientFrame>()
+  const clientEndpoint = new InProcessEndpoint<ClientFrame>()
+  const serverEndpoint = new InProcessEndpoint<ServerFrame>()
   clientEndpoint.connect(serverEndpoint)
   serverEndpoint.connect(clientEndpoint)
   return { client: clientEndpoint, server: serverEndpoint }
 }
 
-class InProcessEndpoint<SendFrame, ReceiveFrame>
-  implements AgentTransport<SendFrame, ReceiveFrame> {
-  private peer: InProcessEndpoint<ReceiveFrame, SendFrame> | null = null
-  private readonly handlers = new Set<(frame: ReceiveFrame) => void>()
+class InProcessEndpoint<SendFrame> implements AgentTransport<SendFrame> {
+  private peer: InProcessEndpoint<unknown> | null = null
+  private readonly handlers = new Set<(frame: unknown) => void>()
   private closed = false
 
-  connect(peer: InProcessEndpoint<ReceiveFrame, SendFrame>): void {
+  connect(peer: InProcessEndpoint<unknown>): void {
     this.peer = peer
   }
 
@@ -44,7 +48,7 @@ class InProcessEndpoint<SendFrame, ReceiveFrame>
     this.peer.receive(frame)
   }
 
-  onFrame(handler: (frame: ReceiveFrame) => void | Promise<void>): () => void {
+  onFrame(handler: (frame: unknown) => void | Promise<void>): () => void {
     this.handlers.add(handler)
     return () => {
       this.handlers.delete(handler)
@@ -56,7 +60,7 @@ class InProcessEndpoint<SendFrame, ReceiveFrame>
     this.handlers.clear()
   }
 
-  private receive(frame: ReceiveFrame): void {
+  private receive(frame: unknown): void {
     if (this.closed)
       return
     queueMicrotask(() => {
