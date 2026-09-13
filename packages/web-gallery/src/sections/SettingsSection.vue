@@ -34,6 +34,10 @@ const anatomy: [string, string][] = [
     'Theme, tone, accent and text size apply as they change. There is no saving indicator. Change email, change password, provider login and Cloud reset are explicit operations with their own phases, not a settings save.'
   ],
   [
+    'Cloud',
+    'Cloud shows its shared-environment description and storage limits, without a connection or lifecycle status. Reset progress and errors belong to the reset dialog.'
+  ],
+  [
     'Providers',
     'A bare rail of providers beside the selected one, with no surface of its own. Every supported subscription is always listed and dotted green once signed in, red when broken; an API key is dotted only while it needs attention. An API-key entry edits its endpoint, key and models on the page; a subscription entry manages accounts. Adding a provider, signing in, and adding or editing a model open dialogs.'
   ],

@@ -165,7 +165,7 @@ function itemLabel(id: string, list: {
 
       <GallerySection
         title="Menu"
-        note="Actions, choices, submenus, tall, and filter. Enabled choices use normal text; being unselected does not dim them. Disabled rows keep their status dot and explain why they cannot be chosen. Devices show online status dots; Cloud never shows a status dot."
+        note="Actions, choices, submenus, tall, and filter. Enabled choices use normal text; being unselected does not dim them. Disabled rows keep their status dot and explain why they cannot be chosen. Paired devices show online status. Cloud shows no connection or lifecycle status and remains selectable while asleep; operations wake it automatically."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="actions">
