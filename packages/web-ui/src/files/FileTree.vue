@@ -1,23 +1,20 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import CornerDot from '../ui/CornerDot.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
-import ScrollArea from '../ui/ScrollArea.vue'
-import FileTreeRow from './FileTreeRow.vue'
-import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, type FileTreeRow as Row } from './file-tree'
+import Tree from './Tree.vue'
+import type { TreeRow } from './tree'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource } from './types'
 import { baseName, isHiddenName, joinPath, normalizePath, parentPath } from './paths'
 
 /**
- * A directory tree over a `FileBrowserSource`, rooted at `root`. Directories
- * list when first opened and keep their listing; a click on a directory
- * folds or unfolds it, a click on a file asks the host to open it. The
- * selected file's ancestors unfold on their own so it is always in view.
- * The workspace's name heads the tree as a plain caption and stays pinned;
- * under it pin the directories enclosing the selected file, each while its
- * own row has scrolled out above and its contents have not, so the selected
- * file's path stays in sight through its directories and goes past them.
- * A pinned directory scrolls its own row to the top. Loads in flight are
- * dropped when the tree goes away.
+ * A directory tree over a `FileBrowserSource`, rooted at `root`, on a
+ * `Tree`. Directories list when first opened and keep their listing; a
+ * click on a directory folds or unfolds it, a click on a file asks the host
+ * to open it. The selected file's ancestors unfold on their own so it is
+ * always in view. A directory being listed spins at its row's end; one that
+ * could not be listed wears a red dot on its icon and tells why on hover.
+ * Loads in flight are dropped when the tree goes away.
  */
 const props = defineProps<{
   source: Pick<FileBrowserSource, 'list'>
@@ -124,8 +121,8 @@ onBeforeUnmount(() => {
   controller.abort()
 })
 
-const rows = computed<Row[]>(() => {
-  const out: Row[] = []
+const rows = computed<TreeRow[]>(() => {
+  const out: TreeRow[] = []
   const walk = (dir: string, depth: number, parent: string | null): void => {
     const entry = listings.get(dir)
     if (!entry?.open) {
@@ -133,8 +130,9 @@ const rows = computed<Row[]>(() => {
     }
     for (const item of entry.entries) {
       const path = joinPath(dir, item.name)
-      out.push({ path, name: item.name, isDirectory: item.isDirectory, depth, parent })
-      if (item.isDirectory) {
+      const open = item.isDirectory && listings.get(path)?.open === true
+      out.push({ path, name: item.name, isDirectory: item.isDirectory, depth, parent, open })
+      if (open) {
         walk(path, depth + 1, path)
       }
     }
@@ -143,162 +141,80 @@ const rows = computed<Row[]>(() => {
   return out
 })
 
-function rowState(row: Row): { open: boolean; loading: boolean; failure: FileBrowserFailure | null } {
-  const entry = row.isDirectory ? listings.get(row.path) : undefined
-  return {
-    open: entry?.open === true,
-    loading: entry?.loading === true,
-    failure: entry?.failure ?? null,
-  }
-}
-
-// The pinned stack: measured from the rows' positions on every scroll and layout.
-// Its first slot starts under the viewport padding, the caption and one gap,
-// exactly where the first row starts, so a row and its pinned copy coincide.
-const STACK_TOP_PX = 4 + TREE_ROW_PX + 1
-const scrollArea = ref<InstanceType<typeof ScrollArea> | null>(null)
-const rowEls = new Map<string, HTMLElement>()
-const stickyPaths = ref<string[]>([])
-const stickyOffset = ref(0)
-// The selected row loses its fill once any of it is under the stack: a sliver
-// of highlight at the stack's edge would read as a line.
-const selectedUnderStack = ref(false)
-const stickyRows = computed(() => {
-  const byPath = new Map(rows.value.map((row) => [row.path, row]))
-  return stickyPaths.value.flatMap((path) => {
-    const row = byPath.get(path)
-    return row ? [row] : []
-  })
-})
-
-function bindRow(path: string, el: unknown): void {
-  if (el instanceof HTMLElement) {
-    rowEls.set(path, el)
-  } else if (el && typeof el === 'object' && '$el' in el && el.$el instanceof HTMLElement) {
-    rowEls.set(path, el.$el)
-  } else {
-    rowEls.delete(path)
-  }
-}
-
-function updateSticky(): void {
-  const viewport = scrollArea.value?.el
-  if (!viewport) {
-    return
-  }
-  const stack = stickyTreeRows(
-    rows.value,
-    (path) => rowEls.get(path)?.offsetTop,
-    viewport.scrollTop,
-    STACK_TOP_PX,
-    props.selected ? normalizePath(props.selected) : null,
-  )
-  stickyPaths.value = stack.paths
-  stickyOffset.value = stack.offset
-  const stackBottom = viewport.scrollTop + STACK_TOP_PX + stack.paths.length * TREE_ROW_PITCH_PX + stack.offset
-  const selectedTop = props.selected ? rowEls.get(normalizePath(props.selected))?.offsetTop : undefined
-  selectedUnderStack.value = selectedTop !== undefined && selectedTop < stackBottom
-}
-
-/** A pinned directory takes the top of the view, under the caption. */
-function scrollToRow(path: string): void {
-  const viewport = scrollArea.value?.el
-  const el = rowEls.get(path)
-  if (viewport && el) {
-    viewport.scrollTop = el.offsetTop - STACK_TOP_PX
-  }
-}
-
-/** Moves the tree by `px`, for a host that sets up a scrolled state. */
-function scrollBy(px: number): void {
-  const viewport = scrollArea.value?.el
-  if (viewport) {
-    viewport.scrollTop += px
-    updateSticky()
-  }
-}
-
-onMounted(updateSticky)
-watch([rows, () => props.selected], () => {
-  void nextTick(updateSticky)
-})
-
-defineExpose({ scrollToRow, scrollBy })
-
+const selectedPath = computed(() => (props.selected ? normalizePath(props.selected) : null))
 const rootListing = computed(() => listings.get(normalizePath(props.root)) ?? null)
 const rootName = computed(() => baseName(props.root) || '/')
 
-function activate(row: Row): void {
+function failureOf(row: TreeRow): FileBrowserFailure | null {
+  return row.isDirectory ? (listings.get(row.path)?.failure ?? null) : null
+}
+
+function isLoading(row: TreeRow): boolean {
+  return row.isDirectory && listings.get(row.path)?.loading === true
+}
+
+/** Why the directory could not be listed, for the whole row's tooltip and its dot. */
+function failureText(row: TreeRow): string {
+  const failure = failureOf(row)
+  if (!failure) {
+    return ''
+  }
+  const heading = failure.kind === 'permission' ? 'No access' : 'Unavailable'
+  return failure.message ? `${heading}: ${failure.message}` : heading
+}
+
+function activate(row: TreeRow): void {
   if (row.isDirectory) {
     toggle(row.path)
   } else {
     emit('open', row.path)
   }
 }
+
+// The generic `Tree` has no instance type to name; its exposed surface is spelled out.
+const tree = ref<{ scrollToRow(path: string): void; scrollBy(px: number): void } | null>(null)
+
+defineExpose({
+  scrollToRow: (path: string) => tree.value?.scrollToRow(path),
+  scrollBy: (px: number) => tree.value?.scrollBy(px),
+})
 </script>
 
 <template>
-  <!-- The tree paints its own surface, the editor's, so the pinned stack matches it wherever it sits. -->
-  <ScrollArea ref="scrollArea" class="h-full min-h-0 bg-surface-editor" viewport-class="p-1" @scroll="updateSticky">
-    <!-- The pinned stack: the caption stays put; the selected file's directories under it
-         slide up beneath the caption as the tree scrolls past them. -->
-    <!-- Above the rows (whose transformed chevrons would otherwise paint through), below the
-         scroll area's thumb; `isolate` keeps the caption's layering inside. The surface covers
-         the padding too, so nothing shows through the gaps, and the stack takes the pointer, so
-         the rows it covers get no hover or click through it. -->
-    <div class="absolute inset-x-0 top-0 isolate z-[1] flex flex-col bg-surface-editor p-1 pb-0">
-      <div
-        class="relative z-10 flex h-7 shrink-0 select-none items-center bg-surface-editor px-2 text-chrome font-medium text-fg-muted"
-        :title="root"
-      >
-        <span class="truncate">{{ rootName }}</span>
-      </div>
-      <!-- Each pinned row in its own clip; only the deepest slides up as its
-           directory leaves, its clip shrinking with it, while the rows above stay. -->
-      <div class="flex flex-col gap-px bg-surface-editor pt-px">
-        <div
-          v-for="(row, index) in stickyRows"
-          :key="row.path"
-          class="overflow-hidden"
-          :style="{ height: `${index === stickyRows.length - 1 ? Math.max(0, TREE_ROW_PX + stickyOffset) : TREE_ROW_PX}px` }"
-        >
-          <FileTreeRow
-            :style="index === stickyRows.length - 1 ? { transform: `translateY(${stickyOffset}px)` } : undefined"
-            :row="row"
-            :selected="row.path === selected"
-            v-bind="rowState(row)"
-            @activate="scrollToRow(row.path)"
-          />
-        </div>
-      </div>
-      <!-- A soft fall-off in the surface's own hue below the stack, so it reads as sitting above the rows. -->
-      <div class="pointer-events-none absolute inset-x-0 top-full h-2 bg-linear-to-b from-surface-editor to-transparent" />
-    </div>
-    <!-- The caption's room plus one gap; the pinned copy above covers it. -->
-    <div class="h-[29px] shrink-0" aria-hidden="true" />
-    <div role="tree" :aria-label="rootName" class="flex min-h-full flex-col gap-px">
-      <FileTreeRow
-        v-for="row in rows"
-        :key="row.path"
-        :ref="(el) => bindRow(row.path, el)"
-        :row="row"
-        :selected="row.path === selected && !selectedUnderStack"
-        v-bind="rowState(row)"
-        @activate="activate(row)"
+  <Tree
+    ref="tree"
+    :rows="rows"
+    :caption="rootName"
+    :caption-title="root"
+    :selected="selectedPath"
+    :tooltip="failureText"
+    @activate="activate"
+  >
+    <template #mark="{ row }">
+      <CornerDot v-if="failureOf(row)" tone="danger" size="xs" ring="editor" :label="failureText(row)" />
+    </template>
+    <template #trailing="{ row }">
+      <IndeterminateSpinner
+        v-if="isLoading(row)"
+        class="ml-auto shrink-0 text-fg-faint"
+        :size="12"
+        :stroke-width="1.5"
       />
+    </template>
+    <template #empty>
       <div
-        v-if="rootListing?.loading && rows.length === 0"
+        v-if="rootListing?.loading"
         class="flex flex-1 select-none items-center justify-center py-10 text-fg-subtle"
       >
         <IndeterminateSpinner :size="16" />
       </div>
       <div
-        v-else-if="rootListing?.failure && rows.length === 0"
+        v-else-if="rootListing?.failure"
         class="flex flex-1 select-none flex-col items-center justify-center gap-1 px-4 py-10 text-center text-[13px] text-fg-subtle"
       >
         <span>Could not list the workspace.</span>
         <span class="text-[11px] text-fg-faint">{{ rootListing.failure.message }}</span>
       </div>
-    </div>
-  </ScrollArea>
+    </template>
+  </Tree>
 </template>

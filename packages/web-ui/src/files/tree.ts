@@ -1,15 +1,21 @@
-/** Layout of a file tree's rows: the caption and every row are this tall, with a 1px gap. */
+/** Layout of a tree's rows: the caption and every row are this tall, with a 1px gap. */
 export const TREE_ROW_PX = 28
 export const TREE_ROW_PITCH_PX = TREE_ROW_PX + 1
 
-/** One row of the tree as laid out: a file or directory at a depth, under a parent. */
-export interface FileTreeRow {
+/**
+ * One row of a tree as laid out: a file or directory at a depth, under a
+ * parent. Paths are keys, absolute or relative alike; a directory's rows
+ * follow it while it is open.
+ */
+export interface TreeRow {
   path: string
   name: string
   isDirectory: boolean
   depth: number
   /** The directory row above it, or null under the root. */
   parent: string | null
+  /** Whether a directory shows its rows; false for a file. */
+  open: boolean
 }
 
 /** What to pin: the directory rows, and how far up the stack rides as the deepest one leaves. */
@@ -29,7 +35,7 @@ export interface StickyTreeStack {
  * stack, the stack rides up with it instead of vanishing.
  */
 export function stickyTreeRows(
-  rows: readonly FileTreeRow[],
+  rows: readonly TreeRow[],
   rowTop: (path: string) => number | undefined,
   scrollTop: number,
   captionPx: number,
@@ -46,7 +52,7 @@ export function stickyTreeRows(
     ancestors.unshift(parent)
     parent = byPath.get(parent)?.parent ?? null
   }
-  const isInside = (row: FileTreeRow, dir: string): boolean => {
+  const isInside = (row: TreeRow, dir: string): boolean => {
     let up = row.parent
     while (up !== null) {
       if (up === dir) {

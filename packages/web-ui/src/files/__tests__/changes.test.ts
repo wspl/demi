@@ -16,7 +16,7 @@ describe('change set', () => {
 
   test('rows are a tree, directories first, sorted, files at the root last', () => {
     const rows = changeTreeRows(files, new Set())
-    expect(rows.map((row) => `${row.kind === 'directory' ? 'd' : 'f'}${row.depth}:${row.path}`)).toEqual([
+    expect(rows.map((row) => `${row.isDirectory ? 'd' : 'f'}${row.depth}:${row.path}`)).toEqual([
       'd0:src',
       'd1:src/auth',
       'f2:src/auth/cookie.ts',
@@ -26,8 +26,15 @@ describe('change set', () => {
     ])
   })
 
-  test('a folded directory keeps its row and hides what is under it', () => {
+  test('rows know their parent directory, and files carry their change', () => {
+    const rows = changeTreeRows(files, new Set())
+    expect(rows.map((row) => row.parent)).toEqual([null, 'src', 'src/auth', 'src/auth', 'src/auth', null])
+    expect(rows[2]!.change).toBe(files[0]!)
+    expect(rows[0]!.change).toBeNull()
+  })
+
+  test('a folded directory keeps its row, closed, and hides what is under it', () => {
     const rows = changeTreeRows(files, new Set(['src/auth']))
-    expect(rows.map((row) => row.path)).toEqual(['src', 'src/auth', 'README.md'])
+    expect(rows.map((row) => `${row.path}${row.open ? '+' : ''}`)).toEqual(['src+', 'src/auth', 'README.md'])
   })
 })
