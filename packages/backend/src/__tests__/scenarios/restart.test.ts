@@ -87,7 +87,7 @@ test(
       undefined,
       { timeoutMs: 10_000 }
     )
-    // The verdict (`progress.md`): closing the backend aborts the turn — the job
+    // Closing the backend aborts the turn — the job
     // is killed on the runner, the tool call is settled as an error, and the
     // turn closes with an abort block. Nothing dangles.
     const cut = driver.transcript().slice(begin.blocks).map(

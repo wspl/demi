@@ -12,17 +12,17 @@
     }
   },
   "dependencies": {
-    "@demicodes/demi-package": "workspace:^",
     "@demicodes/agent": "workspace:^",
     "@demicodes/core": "workspace:^",
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^",
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "@demicodes/command-protocol": "workspace:^"
   },
   "devDependencies": {
     "@demicodes/provider": "workspace:^",
-    "@demicodes/runner": "workspace:^",
-    "@demicodes/backend": "workspace:^"
+    "@demicodes/backend": "workspace:^",
+    "@demicodes/host-remote": "workspace:^"
   },
   "license": "Apache-2.0",
   "main": "./dist/index.mjs",

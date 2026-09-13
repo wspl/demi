@@ -83,11 +83,10 @@ is the security boundary. See [managed-hosts.md](managed-hosts.md).
 ## Build and checks
 
 `scripts/native/build.ts` builds runner and command-package executables for the
-six target triples. `runner/runtime/release.ts` verifies all bytes, creates an
+six target triples. `scripts/native/release-runner.ts` verifies all bytes, creates an
 immutable hash-named release and atomically advances its manifest.
 
 Rust integration tests cover Host IO, jobs, local endpoints, dispatch, streaming,
 connection lifetime and shell behavior. TypeScript tests start the actual Rust
-runner through `runner/testing`; `LocalHost` is a test-only Node fixture. Provider
-integration tests use mock upstreams. Platform runtime evidence and remaining
-acceptance work belong in [progress.md](progress.md).
+runner through `host-remote/testing`; `LocalHost` is a test-only Node fixture. Provider
+integration tests use mock upstreams. The native CI workflow executes the same tests on each supported platform.

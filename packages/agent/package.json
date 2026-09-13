@@ -54,7 +54,7 @@
   "homepage": "https://github.com/wspl/demi/tree/main/packages/agent#readme",
   "bugs": "https://github.com/wspl/demi/issues",
   "devDependencies": {
-    "@demicodes/runner": "workspace:^",
-    "@demicodes/backend": "workspace:^"
+    "@demicodes/backend": "workspace:^",
+    "@demicodes/host-remote": "workspace:^"
   }
 }

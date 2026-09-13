@@ -12,7 +12,7 @@ import {
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { runnerShell } from '@demicodes/backend/testing'
 
-import { LocalHost } from '@demicodes/runner/testing'
+import { LocalHost } from '@demicodes/host-remote/testing'
 import { FileCodexAuthStore } from '../auth'
 import { CodexProvider } from '../provider'
 

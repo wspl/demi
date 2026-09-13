@@ -4,7 +4,7 @@ import { StubProvider, events } from '@demicodes/provider/testing'
 import type { AgentHarness } from '@demicodes/agent'
 import { runnerShellFactory } from '@demicodes/backend/testing'
 
-import { LocalHost } from '@demicodes/runner/testing'
+import { LocalHost } from '@demicodes/host-remote/testing'
 import { AgentServer } from '../index'
 import { createStdioServerTransport } from '../protocol/stdio-transport'
 

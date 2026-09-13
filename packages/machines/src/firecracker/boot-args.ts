@@ -1,6 +1,6 @@
 // The kernel command line of a guest (`managed-hosts.md` § Joining): the
 // kernel's own parameters, then the `demi.*` parameters the runner's init
-// reads (`packages/runner/src/init/cmdline.ts`).
+// reads (`packages/runner/src/init/linux.rs`).
 import type { Slot } from './slots'
 
 export interface GuestBootArgs {

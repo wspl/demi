@@ -1,4 +1,4 @@
-import { nativePackageFixture } from '@demicodes/demi-package/testing'
+import { nativePackageFixture } from '@demicodes/host-remote/testing'
 // A development backend for the web front end: a fresh data directory, the
 // master account set up, and one scripted provider whose model echoes the
 // message back. A message containing "fail" ends its turn with a provider

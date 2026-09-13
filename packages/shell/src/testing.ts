@@ -3,7 +3,7 @@ import type { CommandStorage } from './command'
 // `@demicodes/shell/testing` entrypoint, never imported by runtime code:
 // the in-memory store and the conformance suite, runtime-neutral so the
 // suite runs on txiki.js too. The Node Host tests run it against is
-// `LocalHost` under `@demicodes/runner/testing`.
+// `LocalHost` under `@demicodes/host-remote/testing`.
 import type { Host, HostSpawnHandle, HostStore } from './host'
 import {
   collectBytes,
