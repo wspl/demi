@@ -2,6 +2,7 @@
 // Provisioning), from `DEMI_MANAGED_*` in production. None set ⇒ no
 // managed hosts.
 import { join } from 'node:path'
+import { z } from 'zod'
 
 export type LaunchMode =
 /** The backend spawns `firecracker` itself, unprivileged. */
@@ -72,6 +73,73 @@ export const DEFAULTS = {
   uidBase: 20000,
 }
 
+/** A count or a size: a whole number above zero, spelled in decimal. */
+const positiveInteger = z.coerce.number().int().positive()
+
+/** Everything both launch modes read. */
+const managedCommon = {
+  [MANAGED_ENV.firecracker]: z.string().min(1),
+  [MANAGED_ENV.kernel]: z.string().min(1),
+  [MANAGED_ENV.rootfs]: z.string().min(1),
+  [MANAGED_ENV.vcpus]: positiveInteger.default(DEFAULTS.vcpus),
+  [MANAGED_ENV.memMib]: positiveInteger.default(DEFAULTS.memMib),
+  [MANAGED_ENV.systemMib]: positiveInteger.default(DEFAULTS.systemMib),
+  [MANAGED_ENV.homeMib]: positiveInteger.default(DEFAULTS.homeMib),
+  [MANAGED_ENV.subnet]: z.string().min(1).default(DEFAULTS.subnet),
+  [MANAGED_ENV.slots]: positiveInteger.default(DEFAULTS.slots),
+  [MANAGED_ENV.dns]: z
+    .string()
+    .default(DEFAULTS.dns.join(','))
+    .transform((value) => value.split(',').filter((entry) => entry.length > 0)),
+} as const
+
+/**
+ * The `DEMI_MANAGED_*` variables, with `DEMI_MANAGED_LAUNCH` deciding which
+ * ones apply: the jailer needs its binary, its helper and a uid range that
+ * direct spawning has no use for.
+ */
+const managedEnvSchema = z.discriminatedUnion(
+  MANAGED_ENV.launch,
+  [
+    z.object({
+      [MANAGED_ENV.launch]: z.literal('direct').default('direct'),
+      ...managedCommon,
+    }),
+    z.object({
+      [MANAGED_ENV.launch]: z.literal('jailer'),
+      [MANAGED_ENV.jailer]: z.string().min(1),
+      [MANAGED_ENV.helper]: z.string().min(1),
+      [MANAGED_ENV.chrootBase]: z.string().min(1).default(DEFAULTS.chrootBase),
+      [MANAGED_ENV.uidBase]: positiveInteger.default(DEFAULTS.uidBase),
+      ...managedCommon,
+    }),
+  ],
+  `${MANAGED_ENV.launch} must be direct or jailer`,
+)
+
+type ManagedEnv = z.infer<typeof managedEnvSchema>
+
+// TypeScript narrows a union through an element access only when the key is a
+// const of literal type, so the discriminator's name gets one.
+const LAUNCH = MANAGED_ENV.launch
+
+/** The launch mode as its own variables describe it. */
+function launchModeOf(env: ManagedEnv): LaunchMode {
+  if (env[LAUNCH] === 'direct') {
+    return { mode: 'direct' }
+  }
+  const uidBase = env[MANAGED_ENV.uidBase]
+  return {
+    mode: 'jailer',
+    jailer: env[MANAGED_ENV.jailer],
+    helper: env[MANAGED_ENV.helper],
+    chrootBase: env[MANAGED_ENV.chrootBase],
+    uidBase,
+    // One uid and one gid per slot, numbered from the same base.
+    gidBase: uidBase,
+  }
+}
+
 /**
  * The configuration the environment describes, or null when
  * `DEMI_MANAGED_FIRECRACKER` is unset.
@@ -80,65 +148,23 @@ export function firecrackerConfigFromEnv(
   env: Record<string, string | undefined>,
   dataDir: string,
 ): FirecrackerConfig | null {
-  const firecracker = env[MANAGED_ENV.firecracker]
-  if (!firecracker) {
+  if (!env[MANAGED_ENV.firecracker]) {
     return null
   }
-  const required = (name: keyof typeof MANAGED_ENV): string => {
-    const value = env[MANAGED_ENV[name]]
-    if (!value) {
-      throw new Error(
-        `${MANAGED_ENV[name]} is required when ${MANAGED_ENV.firecracker} is set`
-      )
-    }
-    return value
-  }
-  const integer = (name: keyof typeof MANAGED_ENV, fallback: number): number => {
-    const value = env[MANAGED_ENV[name]]
-    if (value === undefined) {
-      return fallback
-    }
-    const parsed = Number(value)
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-      throw new Error(
-        `${MANAGED_ENV[name]} must be a positive integer, got ${value}`
-      )
-    }
-    return parsed
-  }
-  const mode = env[MANAGED_ENV.launch] ?? 'direct'
-  let launch: LaunchMode
-  if (mode === 'direct') {
-    launch = { mode: 'direct' }
-  } else if (mode === 'jailer') {
-    const uidBase = integer('uidBase', DEFAULTS.uidBase)
-    launch = {
-      mode: 'jailer',
-      jailer: required('jailer'),
-      helper: required('helper'),
-      chrootBase: env[MANAGED_ENV.chrootBase] ?? DEFAULTS.chrootBase,
-      uidBase,
-      gidBase: uidBase,
-    }
-  } else {
-    throw new Error(
-      `${MANAGED_ENV.launch} must be direct or jailer, got ${mode}`
-    )
-  }
+  const managed = managedEnvSchema.parse(env)
   return {
-    firecracker,
-    launch,
-    kernel: required('kernel'),
-    rootfs: required('rootfs'),
-    vcpus: integer('vcpus', DEFAULTS.vcpus),
-    memMib: integer('memMib', DEFAULTS.memMib),
-    systemMib: integer('systemMib', DEFAULTS.systemMib),
-    homeMib: integer('homeMib', DEFAULTS.homeMib),
-    subnet: env[MANAGED_ENV.subnet] ?? DEFAULTS.subnet,
-    slots: integer('slots', DEFAULTS.slots),
+    firecracker: managed[MANAGED_ENV.firecracker],
+    launch: launchModeOf(managed),
+    kernel: managed[MANAGED_ENV.kernel],
+    rootfs: managed[MANAGED_ENV.rootfs],
+    vcpus: managed[MANAGED_ENV.vcpus],
+    memMib: managed[MANAGED_ENV.memMib],
+    systemMib: managed[MANAGED_ENV.systemMib],
+    homeMib: managed[MANAGED_ENV.homeMib],
+    subnet: managed[MANAGED_ENV.subnet],
+    slots: managed[MANAGED_ENV.slots],
     tapPrefix: DEFAULTS.tapPrefix,
-    dns: (env[MANAGED_ENV.dns] ?? DEFAULTS.dns.join(',')).split(',')
-      .filter(entry => entry.length > 0),
+    dns: managed[MANAGED_ENV.dns],
     runDir: join(dataDir, 'firecracker'),
     imagesDir: join(dataDir, 'machines'),
   }

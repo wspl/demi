@@ -10,12 +10,18 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
+import { z } from 'zod'
 import { defineProvider, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
 import { createBackend } from './backend'
 import { SESSION_COOKIE } from './http/cookies'
 
 const DEV_USER = { email: 'dev@example.test', password: 'dev-pass-1234' }
+
+/** The one thing the dev backend reads from the environment. */
+const devEnvSchema = z.object({
+  DEMI_BACKEND_PORT: z.coerce.number().int().min(1).max(65535).default(3299),
+})
 
 function lastUserText(request: InferenceRequest): string {
   const item = [...request.items].reverse().find((entry) => entry.type === 'user_message')
@@ -45,7 +51,7 @@ const echoProvider: AgentProvider = {
 }
 
 async function main(): Promise<void> {
-  const port = Number(process.env.DEMI_BACKEND_PORT ?? 3299)
+  const { DEMI_BACKEND_PORT: port } = devEnvSchema.parse(process.env)
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-dev-backend-'))
   const backend = await createBackend({
     nativeCommands: await nativePackageFixture(),

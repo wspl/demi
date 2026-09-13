@@ -1,11 +1,17 @@
 import { parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
+import { z } from 'zod'
 import type { Block, QueuedMessage } from '@demicodes/core'
 import {
+  blockSchema,
   completedChildrenCarriedBy,
+  editReceiptSchema,
   emptyCommandState,
   externalizeBlockMedia,
+  metadataSchema,
+  modelSelectionSchema,
+  pendingInternalSteerSchema,
   rehydrateBlockMedia,
-  type AgentMetadata,
+  userContentBlockSchema,
   type AgentNodeClose,
   type AgentNodeClosePhase,
   type AgentNodeRecord,
@@ -23,6 +29,26 @@ import { readCommandState, writeCommandState } from './command-state'
  * them.
  */
 type NodeState = Omit<AgentSessionCheckpoint<unknown>, 'transcript' | 'commandState'>
+
+/**
+ * `nodes.state_json` as this store wrote it. A row that no longer answers this
+ * description is corrupt: reading throws rather than filling in what is
+ * missing.
+ */
+const nodeStateSchema: z.ZodType<NodeState> = z.object({
+  state: z.unknown(),
+  phase: z.enum(['idle', 'running', 'compacting']),
+  queue: z.array(z.object({
+    id: z.string(),
+    text: z.string(),
+    content: z.array(userContentBlockSchema),
+  })),
+  pendingInternalSteers: z.array(pendingInternalSteerSchema).optional(),
+  cwd: z.string(),
+  model: modelSelectionSchema,
+  harnessName: z.string(),
+  edits: z.array(editReceiptSchema).optional(),
+})
 
 interface NodeRow {
   id: string
@@ -58,7 +84,7 @@ export function sqliteAgentTreeStore(
     profileName: row.profile_name,
     metadata: row.metadata_json === null
       ? null
-      : parsePortableJson<AgentMetadata>(row.metadata_json),
+      : metadataSchema.parse(parsePortableJson(row.metadata_json)),
     spawnedAt: row.spawned_at,
     canSpawnSubagents: row.can_spawn === 1,
     closedPhase: row.closed_phase,
@@ -216,7 +242,7 @@ export function sqliteAgentTreeStore(
         )
         if (!row)
           throw new Error(`no node "${id}" to reopen`)
-        const state = parsePortableJson<NodeState>(row.state_json)
+        const state = nodeStateSchema.parse(parsePortableJson(row.state_json))
         db.run(
           'UPDATE nodes SET metadata_json = ?, spawned_at = ?, closed_phase = NULL, closed_at = NULL, result = NULL, failure = NULL, delivered = 0, state_json = ? WHERE id = ?',
           [
@@ -264,7 +290,9 @@ export function readNode(
     [id, row.block_count]
   )
   return {
-    state: parsePortableJson<NodeState>(row.state_json),
-    blocks: rows.map((block) => parsePortableJson<Block>(block.block_json))
+    state: nodeStateSchema.parse(parsePortableJson(row.state_json)),
+    blocks: rows.map(
+      (block) => blockSchema.parse(parsePortableJson(block.block_json))
+    )
   }
 }

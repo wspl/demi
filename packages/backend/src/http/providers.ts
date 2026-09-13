@@ -36,7 +36,7 @@ const createProviderBodySchema = z.union([
     vendorId: z.string().min(1),
     label: z.string().min(1),
     apiKey: z.string().min(1),
-    baseUrl: z.string().url().optional(),
+    baseUrl: z.url().optional(),
     models: configuredModelsSchema.optional(),
   }),
   z.strictObject({
@@ -44,7 +44,7 @@ const createProviderBodySchema = z.union([
     label: z.string().min(1),
     apiKey: z.string().min(1),
     wireApi: z.enum(['responses', 'chat-completions']).optional(),
-    baseUrl: z.string().url().optional(),
+    baseUrl: z.url().optional(),
     models: configuredModelsSchema.optional(),
   }),
 ])
@@ -56,7 +56,7 @@ const createProviderBodySchema = z.union([
 const patchProviderBodySchema = z.strictObject({
   label: z.string().min(1).optional(),
   apiKey: z.string().min(1).optional(),
-  baseUrl: z.string().url().nullable().optional(),
+  baseUrl: z.url().nullable().optional(),
   models: configuredModelsSchema.nullable().optional(),
 })
 

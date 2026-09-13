@@ -41,7 +41,7 @@ test(
     const packed = encryptJson(secret, value)
     expect(packed.startsWith('v1:')).toBe(true)
     expect(packed).not.toContain('sk-test-123')
-    expect(decryptJson<typeof value>(secret, packed)).toEqual(value)
+    expect(decryptJson(secret, packed)).toEqual(value)
     // Fresh IV every call.
     expect(encryptJson(secret, value)).not.toBe(packed)
 

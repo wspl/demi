@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { z } from 'zod'
 import type { ModelSelection } from '@demicodes/core'
 import { openSqliteDatabase } from '../storage/database'
 import {
@@ -84,19 +85,19 @@ test(
       when: new Date('2026-08-31T00:00:00Z'),
       count: 42n,
     })
-    const value = await store.readJson<{
-      bytes: Uint8Array;
-      when: Date;
-      count: bigint
-    }>('agent-sessions/s1/state.json')
-    expect(value?.bytes).toBeInstanceOf(Uint8Array)
-    expect([...(value?.bytes ?? [])]).toEqual([1, 2, 3])
-    expect(value?.when).toBeInstanceOf(Date)
-    expect(value?.count).toBe(42n)
+    // The reader names the shape it expects; the store hands back `unknown`.
+    const value = z.object({
+      bytes: z.instanceof(Uint8Array),
+      when: z.date(),
+      count: z.bigint(),
+    }).parse(await store.readJson('agent-sessions/s1/state.json'))
+    expect([...value.bytes]).toEqual([1, 2, 3])
+    expect(value.when).toEqual(new Date('2026-08-31T00:00:00Z'))
+    expect(value.count).toBe(42n)
 
     // Overwrite is a single upsert.
     await store.writeJson('agent-sessions/s1/state.json', { v: 2 })
-    expect(await store.readJson<{ v: number }>('agent-sessions/s1/state.json'))
+    expect(await store.readJson('agent-sessions/s1/state.json'))
       .toEqual({ v: 2 })
 
     await store.writeJson('agent-sessions/s2/state.json', { v: 1 })

@@ -1,6 +1,7 @@
 import type { RemoteCommandCatalog } from '@demicodes/host-remote'
 import { abortable, errorMessage, noop } from '@demicodes/utils'
 import {
+  defineCommand,
   type Command,
   type CommandGroup,
   type CommandIO,
@@ -135,7 +136,7 @@ function listCommand(deps: HostCommandDeps, conversationId: string): Command {
 }
 
 function shellCommand(deps: HostCommandDeps, conversationId: string): Command {
-  return {
+  return defineCommand({
     name: 'shell',
     summary:
     'Run a shell string in another host\'s bash: `demi host shell --host <name|id> <script>`. The script starts where the last shell on that host ended (its home before one ran) with this command\'s stdin and stdout, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci "tar c -C /work ." | tar x`, `tar c . | demi host shell --host ci "tar x -C /work"`). stderr and the exit code pass through.',
@@ -147,8 +148,8 @@ function shellCommand(deps: HostCommandDeps, conversationId: string): Command {
     positionals: ['script'],
     kind: 'rpc',
     run: async (ctx) => {
-      const wanted = ctx.parsed.values.host as string
-      const script = ctx.parsed.values.script as string
+      const wanted = ctx.parsed.values.host
+      const script = ctx.parsed.values.script
       if (script.trim() === '') {
         await ctx.io.stderr(
           'usage: demi host shell --host <name|id> <script>\n'
@@ -171,7 +172,7 @@ function shellCommand(deps: HostCommandDeps, conversationId: string): Command {
         return { exitCode: 1 }
       }
     },
-  }
+  })
 }
 
 function currentCommand(

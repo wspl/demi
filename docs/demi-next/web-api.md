@@ -27,13 +27,23 @@ Partial conversation mutations use the explicit outcomes described below.
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
 | Usage | `GET /usage` for the caller; `GET /usage/instance` for admins in shared mode |
-| Devices | `GET /devices`, `POST /devices/claim { code }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=...`, `POST /devices/:id/fs { path }` |
+| Devices | `GET /devices`, `POST /devices/claim { code }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=<absolute>`, `POST /devices/:id/fs { path }` |
 | Workspaces | `GET/POST /workspaces`, `PATCH /workspaces/:id { name }`, `DELETE /workspaces/:id` |
 | Cloud | `GET /cloud`, `POST /cloud/reset { operationId }` |
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
 | Attached hosts | `GET /conversations/:id/hosts`, `POST .../hosts { deviceId }`, `PATCH .../hosts/:deviceId { name }`, `DELETE .../hosts/:deviceId` |
 | Runner transport | `WS /runner`; device-authenticated `PUT/GET /pipes/:id` for source/sink streams |
 | Public installation | `GET /install.sh`, `GET /install.ps1`, `GET /runner-artifacts/:release/:target/:file` (root paths, outside `/api`) |
+
+### Query parameters
+
+A boolean query parameter (`archived`, `refresh`) is spelled exactly `true` or
+`false`; omitted means false, and anything else — `1`, `TRUE`, an empty value —
+returns 400 `invalid_query` rather than being read as one of them. A directory
+in `GET /devices/:id/fs?path=` must be absolute on that device; omitted, the
+listing starts at the device's home directory. `GET /blobs/:sha256?type=` is not
+validated the same way: the parameter asks for a media type to render in place,
+and a type outside the inline list simply leaves the blob as a download.
 
 ## Conversation creation and Fork
 
@@ -74,7 +84,9 @@ Changes follow [Sessions and targets](sessions-and-targets.md).
 ## Uploads and media
 
 `POST /attachments` accepts a nonempty raw request body with its media type in
-`Content-Type`; multipart uploads are rejected. The maximum body is 25 MiB.
+`Content-Type`. The header must name one `type/subtype`, and `multipart/*` — a
+form envelope rather than a file's bytes — is rejected. The maximum body is
+25 MiB.
 It returns `{ attachment }` with metadata and a reference ID. Uploading alone
 stores a backend blob; sending `{ type: "upload", ref, fileName }` in a send/steer
 frame resolves that upload and writes it to the selected Host's Demi attachment

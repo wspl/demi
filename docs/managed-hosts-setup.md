@@ -19,6 +19,18 @@ before starting the manager.
 The backend needs `DEMI_MACHINES_SOCKET` and `DEMI_BACKEND_PUBLIC_URL`, the
 URL guests dial.
 
+Both processes read their environment once at startup and refuse to start on a
+value they cannot use, naming the variable. `DEMI_MANAGED_FIRECRACKER` decides
+whether managed hosts are configured at all: unset, the manager runs without
+them and the rest of `DEMI_MANAGED_*` is ignored; set, every required variable
+above must be present. `DEMI_MANAGED_LAUNCH` accepts only `direct` or `jailer`,
+and `jailer` additionally requires `DEMI_MANAGED_JAILER` and
+`DEMI_MANAGED_HELPER`. Every count and size — vCPUs, the MiB sizes, slots and
+`DEMI_MANAGED_UID_BASE` — must be a whole number above zero. On the backend
+side, `DEMI_BACKEND_PORT` must be a port number, `DEMI_INSTANCE_MODE` must be
+`shared` or `isolated`, and `DEMI_BACKEND_PUBLIC_URL` must be a URL and is
+required whenever `DEMI_MACHINES_SOCKET` is set.
+
 ## Install jailer mode on Linux
 
 Run these steps on the Linux host that runs the manager. The examples use the

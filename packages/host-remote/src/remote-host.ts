@@ -16,6 +16,7 @@ import type {
 } from '@demicodes/shell'
 import { createLogicalHostCwd } from '@demicodes/shell'
 import { createId, deferred, errorMessage, type Deferred } from '@demicodes/utils'
+import { fsOps } from '@demicodes/runner-protocol'
 import type {
   BackendToRunnerMessage,
   FsOp,
@@ -328,7 +329,12 @@ export class RemoteHost implements Host {
     this.send(message)
   }
 
-  /** One `fs_<op>` request, answered by `fs_ok` or `fs_error` under its id. */
+  /**
+   * One `fs_<op>` request, answered by `fs_ok` or `fs_error` under its id. The
+   * reply is checked against the schema of the operation this caller asked
+   * for, not the `op` the reply names itself: only the local one says what
+   * shape the caller is waiting for.
+   */
   private async call<Op extends FsOp>(
     op: Op,
     params: FsParams<Op>
@@ -343,7 +349,10 @@ export class RemoteHost implements Host {
       this.send(
         { type: `fs_${op}`, id, ...definedFields(params) } as BackendToRunnerMessage
       )
-      return (await pending.promise) as FsResult<Op>
+      // TypeScript widens `fsOps[op].result` to every operation's result
+      // schema; the value is the one `op` named. Same step as
+      // `MachineClient.call`.
+      return fsOps[op].result.parse(await pending.promise) as FsResult<Op>
     } catch (error) {
       this.pendingCalls.delete(id)
       throw error

@@ -106,7 +106,7 @@ export class ProviderVault {
       ownerUserId: record.ownerUserId,
       label: record.label,
       config: providerConfigSchema.parse(
-        decryptJson<unknown>(this.secret, record.config)
+        decryptJson(this.secret, record.config)
       ),
       createdAt: record.createdAt,
     }

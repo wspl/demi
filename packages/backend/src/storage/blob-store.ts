@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createId } from '@demicodes/utils'
+import { createId, isFileNotFoundError } from '@demicodes/utils'
 import type { BlobStore } from '@demicodes/agent'
 
 /**
@@ -41,7 +41,7 @@ export class DirBlobStore implements BlobStore {
     try {
       return new Uint8Array(await readFile(join(this.root, sha256)))
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+      if (isFileNotFoundError(error))
         return null
       throw error
     }
