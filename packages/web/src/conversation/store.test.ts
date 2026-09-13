@@ -6,7 +6,8 @@ import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
-import { productStateSchema, type BackendConversation } from '../api/contracts'
+import { usePreferences } from '../state/preferences'
+import { productStateSchema, type BackendConversation, type Preferences } from '../api/contracts'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 
 const realFetch = globalThis.fetch
@@ -40,6 +41,7 @@ let requests: {
   body: unknown
 }[]
 let pinia: ReturnType<typeof createPinia>
+let savedPreferences: Preferences
 
 function record(id: string): BackendConversation {
   return {
@@ -70,10 +72,7 @@ function snapshot() {
       createdAt: '2026-09-09T00:00:00.000Z',
     },
     mode: 'shared',
-    preferences: {
-      appearance: {},
-      shortcuts: {},
-    },
+    preferences: savedPreferences,
     devices: [],
     workspaces: [],
     providers: [],
@@ -86,6 +85,7 @@ beforeEach(async () => {
   pinia = createPinia()
   setActivePinia(pinia)
   records = [record('first'), record('second')]
+  savedPreferences = { appearance: {}, shortcuts: {} }
   rejectCreate = false
   rejectFork = false
   requests = []
@@ -98,6 +98,10 @@ beforeEach(async () => {
     })
     if (path === '/api/state') {
       return Response.json(snapshot())
+    }
+    if (path === '/api/settings/preferences') {
+      savedPreferences = { ...savedPreferences, ...body }
+      return Response.json({ preferences: savedPreferences })
     }
     if (path.startsWith('/api/models')) {
       return Response.json({ providers: [] })
@@ -186,9 +190,76 @@ beforeEach(async () => {
 
 afterEach(() => {
   useConversations().stopAll()
+  usePreferences().stop()
   useProduct().stop()
   disposePinia(pinia)
   globalThis.fetch = realFetch
+})
+
+test('an empty draft saves the complete last choice and new conversations restore it after reload', async () => {
+  let store = useConversations()
+  const id = store.create()
+  const draft = store.items.find((item) => item.id === id)!
+  await store.selectModel(draft, 'account', 'chosen-model')
+  store.setThinking(draft, { type: 'effort', effort: 'high', summary: null })
+  store.setTier(draft, 'priority')
+  const chosen = { ...draft.model }
+  const nextId = store.create('project')
+  expect(store.items.find((item) => item.id === nextId)!.model).toEqual(chosen)
+  expect(store.items.find((item) => item.id === 'first')!.model.modelId).toBe('')
+  await usePreferences().flush()
+  expect(savedPreferences.lastModel).toEqual(chosen)
+  expect(requests.some((request) => request.path === '/api/conversations')).toBe(false)
+
+  store.stopAll()
+  usePreferences().stop()
+  useProduct().stop()
+  disposePinia(pinia)
+  pinia = createPinia()
+  setActivePinia(pinia)
+  store = useConversations()
+  await useProduct().start()
+  await nextTick()
+  const restoredId = store.create()
+  const restored = store.items.find((item) => item.id === restoredId)!
+  expect(restored.model).toEqual(chosen)
+  await store.selectModel(restored, 'account', 'another-model')
+  await usePreferences().flush()
+  expect(savedPreferences.lastModel).toEqual({
+    providerId: 'account', modelId: 'another-model',
+    thinkingEffort: null, serviceTierId: null,
+  })
+  expect(draft.model).toEqual(chosen)
+})
+
+test('a completed earlier preference write cannot discard a newer model selection', async () => {
+  const preferences = usePreferences()
+  const started = deferred<void>()
+  const release = deferred<void>()
+  const fetch = globalThis.fetch
+  let held = false
+  globalThis.fetch = (async (input, init) => {
+    const response = await fetch(input, init)
+    if (String(input) === '/api/settings/preferences' && !held) {
+      held = true
+      started.resolve()
+      await release.promise
+    }
+    return response
+  }) as typeof fetch
+  const first = {
+    providerId: 'account', modelId: 'first-model',
+    thinkingEffort: 'high', serviceTierId: 'priority',
+  }
+  const latest = { ...first, modelId: 'latest-model', thinkingEffort: 'low' }
+  preferences.update({ lastModel: first }, true)
+  await started.promise
+  preferences.update({ lastModel: latest }, true)
+  expect(preferences.lastModel).toEqual(latest)
+  release.resolve()
+  await preferences.flush()
+  expect(preferences.lastModel).toEqual(latest)
+  expect(savedPreferences.lastModel).toEqual(latest)
 })
 
 test('sidebar stays active until the last running child closes after its parent finishes', () => {

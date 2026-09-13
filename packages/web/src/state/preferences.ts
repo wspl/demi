@@ -32,6 +32,10 @@ export const usePreferences = defineStore('preferences', () => {
   let timer: ReturnType<typeof setTimeout> | null = null
   let controller = new AbortController()
 
+  const lastModel = computed(() =>
+    pending.value.lastModel ?? product.snapshot?.preferences.lastModel,
+  )
+
   const appearance = computed(() => ({
     theme: 'system' as const,
     tone: 'ink' as const,
@@ -55,8 +59,10 @@ export const usePreferences = defineStore('preferences', () => {
     }),
   )
 
-  function update(patch: PreferencesPatch): void {
+  function update(patch: PreferencesPatch, immediate = false): void {
     pending.value = {
+      ...pending.value,
+      ...patch,
       appearance: {
         ...pending.value.appearance,
         ...patch.appearance,
@@ -68,6 +74,11 @@ export const usePreferences = defineStore('preferences', () => {
     }
     if (timer !== null) {
       clearTimeout(timer)
+      timer = null
+    }
+    if (immediate) {
+      void flush()
+      return
     }
     timer = setTimeout(() => {
       timer = null
@@ -82,18 +93,21 @@ export const usePreferences = defineStore('preferences', () => {
         return
       }
       const patch = {
+        ...(pending.value.lastModel ? { lastModel: pending.value.lastModel } : {}),
         appearance: { ...pending.value.appearance },
         shortcuts: { ...pending.value.shortcuts },
       }
       if (
         !Object.keys(patch.appearance).length &&
-        !Object.keys(patch.shortcuts).length
+        !Object.keys(patch.shortcuts).length &&
+        !patch.lastModel
       ) {
         return
       }
       try {
         const response = await apiRequest('/settings/preferences', {
           method: 'PATCH',
+          keepalive: true,
           ...jsonBody(patch),
           signal: current.signal,
         })
@@ -105,6 +119,9 @@ export const usePreferences = defineStore('preferences', () => {
         }
       } finally {
         if (!current.signal.aborted) {
+          if (pending.value.lastModel === patch.lastModel) {
+            delete pending.value.lastModel
+          }
           for (const field of ['appearance', 'shortcuts'] as const) {
             const queued = pending.value[field] as Record<string, unknown>
             for (const [key, value] of Object.entries(patch[field])) {
@@ -129,6 +146,7 @@ export const usePreferences = defineStore('preferences', () => {
   }
 
   return {
+    lastModel,
     appearance,
     keys,
     update,

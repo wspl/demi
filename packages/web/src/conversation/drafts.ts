@@ -3,18 +3,13 @@ import { conversationRecordSchema, hostsSchema } from '../api/contracts'
 import { editRequestSchema } from '@demicodes/web-ui/transport/protocol'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { displayedUserContentSchema } from '../api/transcript'
+import { modelIntentSchema } from '@demicodes/web-ui/agent/model-selection'
 
 const messageEditSchema: z.ZodType<MessageEditState> = z.object({
   phase: z.enum(['editing', 'sending', 'uncertain']),
   request: editRequestSchema.extend({ content: z.array(displayedUserContentSchema) }),
 })
 
-const modelSchema = z.object({
-  providerId: z.string(),
-  modelId: z.string(),
-  thinkingEffort: z.string().nullable(),
-  serviceTierId: z.string().nullable(),
-})
 /** The attachment id the backend returned for the upload. */
 const uploadSchema = z.object({ id: z.string() })
 const fileSchema = z.object({
@@ -58,7 +53,7 @@ export const draftSchema = z.object({
     })
     .nullable(),
   text: z.string(),
-  model: modelSchema,
+  model: modelIntentSchema,
   files: z.array(z.union([fileSchema, remoteSchema])),
   scroll: z
     .object({

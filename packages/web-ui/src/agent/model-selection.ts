@@ -1,4 +1,36 @@
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
+import { z } from 'zod'
+import type { ThinkingConfig } from '@demicodes/core'
+
+export const modelIntentSchema = z.object({
+  providerId: z.string(),
+  modelId: z.string(),
+  thinkingEffort: z.string().nullable(),
+  serviceTierId: z.string().nullable(),
+})
+
+export type ModelIntent = z.infer<typeof modelIntentSchema>
+
+/** Each conversation owns its choice; later preference changes cannot alter it. */
+export function initialModelIntent(previous?: ModelIntent): ModelIntent {
+  return previous ? { ...previous } : {
+    providerId: '',
+    modelId: '',
+    thinkingEffort: null,
+    serviceTierId: null,
+  }
+}
+
+export function intentThinkingConfig(intent: ModelIntent): ThinkingConfig | undefined {
+  const effort = intent.thinkingEffort
+  if (effort === null) {
+    return undefined
+  }
+  if (effort === 'disabled') {
+    return { type: 'disabled' }
+  }
+  return { type: 'effort', effort, summary: null }
+}
 
 export interface SelectedModel {
   providerId: string

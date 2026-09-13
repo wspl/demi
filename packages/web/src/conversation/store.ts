@@ -10,7 +10,7 @@ import { reportError } from '@demicodes/web-ui/infra/errors'
 import { loadEditContent } from '../api/message-editing'
 import { forkConversation } from '../api/message-fork'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
-import { composerModel } from '@demicodes/web-ui/agent/model-selection'
+import { composerModel, initialModelIntent } from '@demicodes/web-ui/agent/model-selection'
 import { thinkingConfigToEffort } from '@demicodes/web-ui/agent/reasoning'
 import { hasAcceptedSubmission } from '@demicodes/web-ui/agent/submission'
 import {
@@ -38,6 +38,7 @@ import {
 import { createConversationUploads } from './uploads'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
+import { usePreferences } from '../state/preferences'
 import { useSession } from '../auth/session'
 import type { Conversation } from '../state/types'
 import { applyConversationEvent, updateLiveStatus } from './activity'
@@ -52,6 +53,7 @@ import {
 
 export const useConversations = defineStore('conversations', () => {
   const product = useProduct()
+  const preferences = usePreferences()
   const resources = useResources()
   const session = useSession()
   const items = ref<Conversation[]>([])
@@ -787,6 +789,7 @@ export const useConversations = defineStore('conversations', () => {
       status: 'idle',
     })
     conversation.persistence = 'draft'
+    conversation.model = initialModelIntent(preferences.lastModel)
     conversation.load = 'ready'
     restored.add(conversation.id)
     items.value.unshift(conversation)
@@ -1057,6 +1060,7 @@ export const useConversations = defineStore('conversations', () => {
         serviceTierId: null,
       }
       saveDrafts()
+      rememberModel(conversation)
       return
     }
     const signal = lifetime.signal
@@ -1078,6 +1082,7 @@ export const useConversations = defineStore('conversations', () => {
           thinkingEffort: null,
           serviceTierId: null,
         }
+        rememberModel(conversation)
         const runtime = cache.get(conversation.id)?.runtime
         if (runtime) {
           await runtime.setModel()
@@ -1090,6 +1095,21 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  function rememberModel(conversation: Conversation): void {
+    const pick = composerModel(
+      resources.providerInfosFor(conversation.id),
+      resources.modelsFor(),
+      conversation.model.providerId,
+      conversation.model.modelId,
+    )
+    if (!pick.providerId || !pick.modelId) {
+      return
+    }
+    conversation.model.providerId = pick.providerId
+    conversation.model.modelId = pick.modelId
+    preferences.update({ lastModel: { ...conversation.model } }, true)
+  }
+
   function setThinking(
     conversation: Conversation,
     thinking: ThinkingConfig | null,
@@ -1100,11 +1120,13 @@ export const useConversations = defineStore('conversations', () => {
         : thinking?.type === 'disabled'
           ? 'disabled'
           : null
+    rememberModel(conversation)
     void cache.get(conversation.id)?.runtime?.setModel().catch((error) => report('Could not change the model', error))
   }
 
   function setTier(conversation: Conversation, tier: string | null): void {
     conversation.model.serviceTierId = tier
+    rememberModel(conversation)
     void cache.get(conversation.id)?.runtime?.setModel().catch((error) => report('Could not change the model', error))
   }
 

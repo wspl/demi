@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { ModelInfo, ProviderInfo } from '../../transport/protocol'
-import { availableProviders, composerModel, resolveSelectedModel } from '../model-selection'
+import { availableProviders, composerModel, initialModelIntent, intentThinkingConfig, resolveSelectedModel } from '../model-selection'
 
 function model(id: string): ModelInfo {
   return {
@@ -26,6 +26,20 @@ const models: Record<string, ModelInfo[]> = {
   openai: [model('gpt'), model('gpt-mini')],
   anthropic: [model('sonnet')],
 }
+
+test('new conversations keep independent complete choices including unavailable models', () => {
+  const saved = {
+    providerId: 'offline', modelId: 'o1',
+    thinkingEffort: 'high', serviceTierId: 'priority',
+  }
+  const first = initialModelIntent(saved)
+  expect(composerModel(providers, models, first.providerId, first.modelId).kind).toBe('unavailable')
+  expect(intentThinkingConfig(first)).toEqual({ type: 'effort', effort: 'high', summary: null })
+  first.thinkingEffort = 'disabled'
+  expect(intentThinkingConfig(first)).toEqual({ type: 'disabled' })
+  expect(initialModelIntent(saved)).toEqual(saved)
+  expect(intentThinkingConfig(initialModelIntent())).toBeUndefined()
+})
 
 test('usable providers are available and carry at least one model', () => {
   expect(availableProviders(providers, models).map((provider) => provider.id)).toEqual(

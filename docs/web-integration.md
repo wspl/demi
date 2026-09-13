@@ -85,10 +85,13 @@ agent protocol.
 | Transcript, queue and pending steers | Backend agent session; reconnect restores the current session snapshot. Pending-steer recovery after process restart is outside this change. |
 | Pins, ordering, read revisions and archive state | Backend conversation/sidebar APIs. A batch keeps successful changes and reports only failures. |
 | Appearance and keyboard shortcuts | Backend per-field preference API. Local pending changes are overlaid until the write and refresh finish. |
+| Last selected provider, model, thinking effort and service tier | Backend user preferences (`lastModel`). `state/preferences.ts` writes each explicit selection immediately and overlays pending writes. New conversations copy this value; changing it never modifies another conversation. |
 | Local conversation metadata, draft text, message edits, unconfirmed sends, file bytes, scroll state and last model | Per-user IndexedDB records in `conversation/drafts.ts`. Binary previews are recreated, and unfinished uploads restart. Empty unsent drafts are not stored. |
 | Project folds, recent projects, hidden providers/models | Per-user browser storage in `state/local.ts`. Hiding affects selection menus, not a running task. |
 
-New conversations select the first available model. An explicit previous choice
+New conversations inherit the user's last selected model, thinking effort and
+service tier, including choices made in an empty unsent draft. With no saved
+choice they select the first available model. An explicit previous choice
 that becomes unavailable stays selected with a warning; the product does not
 silently switch it. With no usable model, the composer offers configuration only
 to users with permission. Catalog selections carry full model metadata, thinking
