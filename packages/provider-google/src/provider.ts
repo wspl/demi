@@ -1,13 +1,11 @@
 import { attachmentTag } from '@demicodes/core'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
+import { z } from 'zod'
 import {
   isAbortError,
   isRecord,
-  normalizeBaseUrl,
-  numberOrZero,
-  parseJsonObject,
-  stringOrNull
+  normalizeBaseUrl
 } from '@demicodes/utils'
 import { zeroUsage } from '@demicodes/core'
 import type {
@@ -21,6 +19,9 @@ import {
   httpRequestFailedEvent,
   normalizeErrorCode,
   providerErrorFromUnknown,
+  readServerSentEvents,
+  reportedStringSchema,
+  tokenCountSchema,
   withProviderId,
   type AgentProvider,
   type InferenceItem,
@@ -28,6 +29,7 @@ import {
   type Provider,
   type ProviderEvent,
   type ProviderModelList,
+  type ServerSentEvent,
   type ToolDefinition,
 } from '@demicodes/provider'
 import {
@@ -610,6 +612,52 @@ function toolToGoogleFunctionDeclaration(
 
 // ── response stream ─────────────────────────────────────────────────
 
+/** The token counts a chunk's `usageMetadata` reports. */
+const googleUsageMetadataSchema = z.looseObject({
+  promptTokenCount: tokenCountSchema,
+  candidatesTokenCount: tokenCountSchema,
+  thoughtsTokenCount: tokenCountSchema,
+  cachedContentTokenCount: tokenCountSchema,
+})
+type GoogleUsageMetadata = z.infer<typeof googleUsageMetadataSchema>
+
+/**
+ * One part of a candidate's content. Gemini parts carry no type tag — their
+ * shape is what tells them apart — so this is a single object schema rather
+ * than the tagged union a tagged wire format gets.
+ */
+const googleResponsePartSchema = z.looseObject({
+  text: z.string().optional(),
+  thought: z.boolean().optional(),
+  thoughtSignature: z.string().optional(),
+  functionCall: z.looseObject({
+    name: z.string().min(1),
+    args: z.unknown().optional(),
+    id: z.string().optional(),
+  }).optional(),
+})
+
+const googleCandidateSchema = z.looseObject({
+  content: z.looseObject({
+    parts: z.array(googleResponsePartSchema).optional(),
+  }).optional(),
+})
+
+/**
+ * One `GenerateContentResponse` of the streamed body. Every field is optional
+ * — a chunk carries candidates, usage, an error, or a mix — but a field that
+ * is present has to hold what it claims: `candidates` that is not an array is
+ * the vendor breaking the contract, not a chunk with nothing in it.
+ */
+const googleStreamChunkSchema = z.looseObject({
+  candidates: z.array(googleCandidateSchema).optional(),
+  usageMetadata: googleUsageMetadataSchema.optional(),
+  error: z.looseObject({
+    status: reportedStringSchema,
+    message: reportedStringSchema,
+  }).optional(),
+})
+
 export async function* mapGoogleContentStream(
   events: AsyncIterable<ServerSentEvent>,
   signal?: AbortSignal,
@@ -617,95 +665,75 @@ export async function* mapGoogleContentStream(
   let usage = zeroUsage()
   let thinkingOpen = false
 
-  for await (const event of events) {
+  for await (const frame of events) {
     if (signal?.aborted) {
       yield { type: 'abort' }
       return
     }
-    for (const data of event.data) {
-      const value = parseJsonObject(data)
-      if (!value)
-        continue
+    const chunk = googleStreamChunkSchema.parse(JSON.parse(frame.data))
 
-      if (isRecord(value.error)) {
-        const message = stringOrNull(value.error.message)
-          ?? 'Google API stream error'
-        yield {
-          type: 'error',
-          message,
-          code: normalizeErrorCode(stringOrNull(value.error.status), message)
-        }
-        return
+    if (chunk.error) {
+      const message = chunk.error.message ?? 'Google API stream error'
+      yield {
+        type: 'error',
+        message,
+        code: normalizeErrorCode(chunk.error.status ?? null, message),
       }
+      return
+    }
 
-      if (isRecord(value.usageMetadata))
-        usage = googleUsage(value.usageMetadata)
+    if (chunk.usageMetadata)
+      usage = googleUsage(chunk.usageMetadata)
 
-      const candidates = Array.isArray(value.candidates) ? value.candidates : []
-      for (const candidate of candidates) {
-        if (!isRecord(candidate))
-          continue
-        const content = isRecord(candidate.content) ? candidate.content : null
-        const parts = content && Array.isArray(content.parts)
-          ? content.parts
-          : []
-        for (const part of parts) {
-          if (!isRecord(part))
-            continue
-
-          const functionCall = isRecord(part.functionCall)
-            ? part.functionCall
-            : null
-          if (functionCall) {
-            const signature = stringOrNull(part.thoughtSignature)
-            if (signature) {
-              // Park the signature on a thinking item so it survives into the
-              // transcript directly in front of this call (see
-              // inferenceItemsToGoogleContents). Tagged because a transcript is
-              // provider-agnostic while a signature is not: a conversation that
-              // started on another provider carries signatures in that
-              // provider's own format, and replaying one of those verbatim
-              // fails the request outright.
-              if (!thinkingOpen)
-                yield { type: 'thinking_start' }
-              thinkingOpen = true
-              yield {
-                type: 'thinking_signature',
-                signature: `${SIGNATURE_TAG}${signature}`
-              }
-            }
-            yield {
-              type: 'tool_call_requested',
-              toolUseId: stringOrNull(functionCall.id)
-                ?? `${stringOrNull(functionCall.name) ?? 'tool'}_${nextFallbackToolId()}`,
-              toolName: stringOrNull(functionCall.name) ?? '',
-              input: functionCall.args ?? {},
-            }
-            thinkingOpen = false
-            continue
-          }
-
-          const text = stringOrNull(part.text)
-          if (part.thought === true) {
-            if (!thinkingOpen) {
+    for (const candidate of chunk.candidates ?? []) {
+      for (const part of candidate.content?.parts ?? []) {
+        const functionCall = part.functionCall
+        if (functionCall) {
+          if (part.thoughtSignature) {
+            // Park the signature on a thinking item so it survives into the
+            // transcript directly in front of this call (see
+            // inferenceItemsToGoogleContents). Tagged because a transcript is
+            // provider-agnostic while a signature is not: a conversation that
+            // started on another provider carries signatures in that
+            // provider's own format, and replaying one of those verbatim
+            // fails the request outright.
+            if (!thinkingOpen)
               yield { type: 'thinking_start' }
-              thinkingOpen = true
-            }
-            if (text)
-              yield { type: 'thinking_delta', text }
-            continue
-          }
-
-          const signature = stringOrNull(part.thoughtSignature)
-          if (signature && thinkingOpen)
+            thinkingOpen = true
             yield {
               type: 'thinking_signature',
-              signature: `${SIGNATURE_TAG}${signature}`
+              signature: `${SIGNATURE_TAG}${part.thoughtSignature}`,
             }
-          if (text) {
-            thinkingOpen = false
-            yield { type: 'text_delta', text }
           }
+          yield {
+            type: 'tool_call_requested',
+            toolUseId: functionCall.id
+              ?? `${functionCall.name}_${nextFallbackToolId()}`,
+            toolName: functionCall.name,
+            input: functionCall.args ?? {},
+          }
+          thinkingOpen = false
+          continue
+        }
+
+        if (part.thought === true) {
+          if (!thinkingOpen) {
+            yield { type: 'thinking_start' }
+            thinkingOpen = true
+          }
+          if (part.text)
+            yield { type: 'thinking_delta', text: part.text }
+          continue
+        }
+
+        if (part.thoughtSignature && thinkingOpen)
+          yield {
+            type: 'thinking_signature',
+            signature: `${SIGNATURE_TAG}${part.thoughtSignature}`,
+          }
+        if (part.text) {
+          thinkingOpen = false
+          yield { type: 'text_delta', text: part.text }
         }
       }
     }
@@ -729,78 +757,17 @@ function nextFallbackToolId(): string {
  * alongside `candidatesTokenCount`); both are output tokens, so the agent's
  * context estimate has to count them together.
  */
-function googleUsage(usageMetadata: Record<string, unknown>): TokenUsage {
+function googleUsage(usageMetadata: GoogleUsageMetadata): TokenUsage {
   return {
-    inputTokens: numberOrZero(usageMetadata.promptTokenCount),
-    outputTokens: numberOrZero(usageMetadata.candidatesTokenCount) + numberOrZero(usageMetadata.thoughtsTokenCount),
-    cacheReadTokens: numberOrZero(usageMetadata.cachedContentTokenCount),
+    inputTokens: usageMetadata.promptTokenCount ?? 0,
+    outputTokens: (usageMetadata.candidatesTokenCount ?? 0)
+      + (usageMetadata.thoughtsTokenCount ?? 0),
+    cacheReadTokens: usageMetadata.cachedContentTokenCount ?? 0,
     cacheWriteTokens: 0,
   }
 }
 
 // ── transport ───────────────────────────────────────────────────────
-
-export interface ServerSentEvent {
-  event: string | null
-  data: string[]
-}
-
-export async function* readServerSentEvents(
-  body: ReadableStream<Uint8Array> | null,
-  signal?: AbortSignal,
-): AsyncIterable<ServerSentEvent> {
-  if (!body)
-    return
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let eventName: string | null = null
-  let data: string[] = []
-
-  const flush = function* (): Iterable<ServerSentEvent> {
-    if (data.length === 0)
-      return
-    yield { event: eventName, data }
-    eventName = null
-    data = []
-  }
-
-  try {
-    while (true) {
-      if (signal?.aborted)
-        return
-      const { value, done } = await reader.read()
-      if (done)
-        break
-      buffer += decoder.decode(value, { stream: true })
-      let newline = buffer.indexOf('\n')
-      while (newline !== -1) {
-        const raw = buffer.slice(0, newline)
-        buffer = buffer.slice(newline + 1)
-        const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-        if (line === '') {
-          yield* flush()
-        } else if (line.startsWith('event:')) {
-          eventName = line.slice('event:'.length).trim()
-        } else if (line.startsWith('data:')) {
-          data.push(line.slice('data:'.length).trimStart())
-        }
-        newline = buffer.indexOf('\n')
-      }
-    }
-    buffer += decoder.decode()
-    if (buffer) {
-      const line = buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer
-      if (line.startsWith('data:')) data.push(line.slice('data:'.length)
-        .trimStart())
-      else if (line.startsWith('event:'))
-        eventName = line.slice('event:'.length).trim()
-    }
-    yield* flush()
-  } finally {
-    reader.releaseLock()
-  }
-}
 
 function googleStreamUrl(baseUrl: string, modelId: string): string {
   const normalized = normalizeBaseUrl(baseUrl)
