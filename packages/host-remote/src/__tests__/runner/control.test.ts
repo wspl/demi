@@ -9,7 +9,7 @@ import {
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { waitFor } from '@demicodes/utils'
-import { startRunner } from '../testing'
+import { startRunner } from '../../testing'
 
 const wire = createRunnerWire(msgpackCodec)
 

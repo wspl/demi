@@ -15,7 +15,7 @@ import {
   type ShellEnvironment
 } from '@demicodes/shell'
 import { runnerShell, runnerShellFactory } from '@demicodes/backend/testing'
-import { LocalHost } from '@demicodes/runner/testing'
+import { LocalHost } from '@demicodes/host-remote/testing'
 import { createCodingAgentHarness } from '../index'
 
 const model: ModelSelection = {

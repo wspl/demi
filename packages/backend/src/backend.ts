@@ -63,7 +63,7 @@ export interface BackendOptions {
   /** Exact native package catalog and deployment-owned artifact resolution. */
   nativeCommands: RemoteShellEnvironmentFactoryOptions
   /**
-   * Directory produced by runner/runtime/release.ts; exposes paired
+   * Directory produced by scripts/native/release-runner.ts; exposes paired
    * client/runner downloads.
    */
   runnerReleaseDir?: string

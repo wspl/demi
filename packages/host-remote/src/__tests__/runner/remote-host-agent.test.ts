@@ -10,7 +10,7 @@ import {
   type AgentHarness,
   type ClientSessionEvent
 } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/runner/testing'
+import { LocalHost } from '@demicodes/host-remote/testing'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
@@ -21,7 +21,7 @@ import {
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
-import { startRunner } from '../testing'
+import { startRunner } from '../../testing'
 
 // M1 acceptance on the txiki.js runner: a bare AgentServer executing on a real
 // runner process over a real WebSocket — commands run as jobs in the

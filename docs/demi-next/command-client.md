@@ -35,4 +35,4 @@ before publishing an executable, and use installation locks for upgrades.
 
 Local endpoint, fragmented/binary IO, input demand, stale context and cancellation
 tests live under `runner/tests` and `command-service/tests`. Cross-compilation and
-native target execution are separate acceptance results in [progress.md](progress.md).
+native target execution are separate checks in the native CI workflow.

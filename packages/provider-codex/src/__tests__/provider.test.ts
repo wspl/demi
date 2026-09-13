@@ -15,7 +15,7 @@ import {
 } from '@demicodes/provider'
 import { runnerShell } from '@demicodes/backend/testing'
 
-import { LocalHost } from '@demicodes/runner/testing'
+import { LocalHost } from '@demicodes/host-remote/testing'
 import { StaticCodexAuthStore, type CodexResolvedAuth } from '../auth'
 import {
   CodexProvider,

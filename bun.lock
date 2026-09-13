@@ -26,7 +26,7 @@
       },
       "devDependencies": {
         "@demicodes/backend": "workspace:^",
-        "@demicodes/runner": "workspace:^",
+        "@demicodes/host-remote": "workspace:^",
       },
     },
     "packages/backend": {
@@ -43,7 +43,6 @@
         "@demicodes/command-loader": "workspace:^",
         "@demicodes/command-protocol": "workspace:^",
         "@demicodes/core": "workspace:^",
-        "@demicodes/demi-package": "workspace:^",
         "@demicodes/host-remote": "workspace:^",
         "@demicodes/machines": "workspace:^",
         "@demicodes/provider": "workspace:^",
@@ -61,7 +60,6 @@
         "zod": "^4.0.0",
       },
       "devDependencies": {
-        "@demicodes/runner": "workspace:^",
         "@types/ali-oss": "^6.23.3",
       },
     },
@@ -70,16 +68,16 @@
       "version": "0.24.0",
       "dependencies": {
         "@demicodes/agent": "workspace:^",
+        "@demicodes/command-protocol": "workspace:^",
         "@demicodes/core": "workspace:^",
-        "@demicodes/demi-package": "workspace:^",
         "@demicodes/shell": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "zod": "^4.0.0",
       },
       "devDependencies": {
         "@demicodes/backend": "workspace:^",
+        "@demicodes/host-remote": "workspace:^",
         "@demicodes/provider": "workspace:^",
-        "@demicodes/runner": "workspace:^",
       },
     },
     "packages/command-loader": {
@@ -92,7 +90,7 @@
         "zod": "^4.0.0",
       },
       "devDependencies": {
-        "@demicodes/runner": "workspace:^",
+        "@demicodes/host-remote": "workspace:^",
       },
     },
     "packages/command-protocol": {
@@ -106,13 +104,6 @@
       "name": "@demicodes/core",
       "version": "0.24.0",
     },
-    "packages/demi-package": {
-      "name": "@demicodes/demi-package",
-      "version": "0.1.0",
-      "dependencies": {
-        "@demicodes/command-protocol": "workspace:^",
-      },
-    },
     "packages/host-remote": {
       "name": "@demicodes/host-remote",
       "version": "0.20.0",
@@ -124,7 +115,9 @@
         "@demicodes/utils": "workspace:^",
       },
       "devDependencies": {
-        "@demicodes/runner": "workspace:^",
+        "@demicodes/agent": "workspace:^",
+        "@demicodes/core": "workspace:^",
+        "@demicodes/provider": "workspace:^",
       },
     },
     "packages/machines": {
@@ -167,7 +160,7 @@
       "devDependencies": {
         "@demicodes/agent": "workspace:^",
         "@demicodes/backend": "workspace:^",
-        "@demicodes/runner": "workspace:^",
+        "@demicodes/host-remote": "workspace:^",
         "@demicodes/shell": "workspace:^",
       },
     },
@@ -183,7 +176,7 @@
       "devDependencies": {
         "@demicodes/agent": "workspace:^",
         "@demicodes/backend": "workspace:^",
-        "@demicodes/runner": "workspace:^",
+        "@demicodes/host-remote": "workspace:^",
         "@demicodes/shell": "workspace:^",
       },
     },
@@ -214,23 +207,6 @@
         "@demicodes/utils": "workspace:^",
       },
     },
-    "packages/runner": {
-      "name": "@demicodes/runner",
-      "version": "0.20.0",
-      "dependencies": {
-        "@demicodes/command-loader": "workspace:^",
-        "@demicodes/runner-protocol": "workspace:^",
-        "@demicodes/shell": "workspace:^",
-        "@demicodes/utils": "workspace:^",
-      },
-      "devDependencies": {
-        "@demicodes/agent": "workspace:^",
-        "@demicodes/coding-agent": "workspace:^",
-        "@demicodes/core": "workspace:^",
-        "@demicodes/host-remote": "workspace:^",
-        "@demicodes/provider": "workspace:^",
-      },
-    },
     "packages/runner-protocol": {
       "name": "@demicodes/runner-protocol",
       "version": "0.20.0",
@@ -251,7 +227,7 @@
         "zod": "^4.0.0",
       },
       "devDependencies": {
-        "@demicodes/runner": "workspace:^",
+        "@demicodes/host-remote": "workspace:^",
       },
     },
     "packages/utils": {
@@ -434,8 +410,6 @@
 
     "@demicodes/core": ["@demicodes/core@workspace:packages/core"],
 
-    "@demicodes/demi-package": ["@demicodes/demi-package@workspace:packages/demi-package"],
-
     "@demicodes/host-remote": ["@demicodes/host-remote@workspace:packages/host-remote"],
 
     "@demicodes/machines": ["@demicodes/machines@workspace:packages/machines"],
@@ -453,8 +427,6 @@
     "@demicodes/provider-grok-build": ["@demicodes/provider-grok-build@workspace:packages/provider-grok-build"],
 
     "@demicodes/provider-openai-api": ["@demicodes/provider-openai-api@workspace:packages/provider-openai-api"],
-
-    "@demicodes/runner": ["@demicodes/runner@workspace:packages/runner"],
 
     "@demicodes/runner-protocol": ["@demicodes/runner-protocol@workspace:packages/runner-protocol"],
 

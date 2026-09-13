@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { fileHostStore } from '../index'
-import { LocalHost } from '@demicodes/runner/testing'
+import { LocalHost } from '@demicodes/host-remote/testing'
 
 const storeAt = (root: string) => fileHostStore(
   new LocalHost(root, { storeRoot: root }).fs,

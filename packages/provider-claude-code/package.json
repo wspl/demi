@@ -19,8 +19,8 @@
   "devDependencies": {
     "@demicodes/agent": "workspace:^",
     "@demicodes/shell": "workspace:^",
-    "@demicodes/runner": "workspace:^",
-    "@demicodes/backend": "workspace:^"
+    "@demicodes/backend": "workspace:^",
+    "@demicodes/host-remote": "workspace:^"
   },
   "license": "Apache-2.0",
   "main": "./dist/index.mjs",

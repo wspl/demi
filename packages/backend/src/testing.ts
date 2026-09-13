@@ -1,4 +1,4 @@
-import { nativePackageFixture } from '@demicodes/demi-package/testing'
+import { nativePackageFixture } from '@demicodes/host-remote/testing'
 // Integration fixtures use the production registry, pipes, packed runner and shell.
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -7,7 +7,7 @@ import { Hono } from 'hono'
 import { createBunWebSocket } from 'hono/bun'
 import { buildManifest, inProcessRpc } from '@demicodes/command-loader'
 import { RemoteShellEnvironment } from '@demicodes/host-remote'
-import { startRunner } from '@demicodes/runner/testing'
+import { startRunner } from '@demicodes/host-remote/testing'
 import {
   type CommandStorage,
   type CommandRegistry,
