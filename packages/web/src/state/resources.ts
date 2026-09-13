@@ -175,12 +175,6 @@ export const useResources = defineStore('resources', () => {
       local.value.sidebarWidth = width
     },
   })
-  const asideOpen = computed({
-    get: () => local.value.asideOpen ?? false,
-    set: (open: boolean) => {
-      local.value.asideOpen = open
-    },
-  })
   const asideWidth = computed({
     get: () => local.value.asideWidth ?? ASIDE_WIDTH.default,
     set: (width: number) => {
@@ -284,7 +278,6 @@ export const useResources = defineStore('resources', () => {
     pairingOpen,
     sidebarOpen,
     sidebarWidth,
-    asideOpen,
     asideWidth,
     deviceById,
     recentProjectIds,
