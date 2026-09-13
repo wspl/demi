@@ -357,54 +357,55 @@ defineExpose({
     <!-- One row at width: device, nav, path, icons. Narrow: the path takes a row of its own
          under the toolbar, whose left holds the device and nav and whose right the icons. -->
     <div class="flex shrink-0 flex-wrap items-center gap-2 py-2 pl-2 pr-3">
-      <!-- The device sits in the rail's column with the rail's own inset; the path beside it starts at that device's root. -->
-      <Dropdown
-        v-if="hosts.length"
-        :overlay-store="appOverlayStore"
-        variant="field"
-        fill
-        trigger-label="Device"
-        class="w-40 shrink-0"
-      >
-        <template #trigger>
-          <component
-            :is="currentHost ? hostIcon(currentHost) : hostIcon({ id: '' })"
-            :size="ICON_PX.in28"
-            class="shrink-0 text-fg-muted"
-          />
-          <span class="min-w-0 flex-1 truncate">{{
-            currentHost?.label ?? 'Device'
-          }}</span>
-        </template>
-        <template #content="{ triggerWidth }">
-          <Menu :style="{ minWidth: `${triggerWidth}px` }">
-            <MenuItem
-              v-for="host in hosts"
-              :key="host.id"
-              :icon="hostIcon(host)"
-              :indicator="
-                host.id === CLOUD_HOST_ID
-                  ? undefined
-                  : host.online
-                    ? 'success'
-                    : 'muted'
-              "
-              :indicator-label="host.online ? 'Online' : 'Offline'"
-              :note="
-                host.id !== CLOUD_HOST_ID && !host.online
-                  ? 'offline'
-                  : undefined
-              "
-              :disabled="host.id !== CLOUD_HOST_ID && !host.online"
-              disabled-reason="This device is offline."
-              :label="host.label"
-              choice
-              :is-selected="host.id === hostId"
-              @select="emit('update:hostId', host.id)"
+      <!-- The device sits in the rail's column with the rail's own inset; the path beside it
+           starts at that device's root. The column sets the width; the dropdown fills it. -->
+      <div v-if="hosts.length" class="w-40 shrink-0">
+        <Dropdown
+          :overlay-store="appOverlayStore"
+          variant="field"
+          fill
+          trigger-label="Device"
+        >
+          <template #trigger>
+            <component
+              :is="currentHost ? hostIcon(currentHost) : hostIcon({ id: '' })"
+              :size="ICON_PX.in28"
+              class="shrink-0 text-fg-muted"
             />
-          </Menu>
-        </template>
-      </Dropdown>
+            <span class="min-w-0 flex-1 truncate">{{
+              currentHost?.label ?? 'Device'
+            }}</span>
+          </template>
+          <template #content="{ triggerWidth }">
+            <Menu :style="{ minWidth: `${triggerWidth}px` }">
+              <MenuItem
+                v-for="host in hosts"
+                :key="host.id"
+                :icon="hostIcon(host)"
+                :indicator="
+                  host.id === CLOUD_HOST_ID
+                    ? undefined
+                    : host.online
+                      ? 'success'
+                      : 'muted'
+                "
+                :indicator-label="host.online ? 'Online' : 'Offline'"
+                :note="
+                  host.id !== CLOUD_HOST_ID && !host.online
+                    ? 'offline'
+                    : undefined
+                "
+                :disabled="host.id !== CLOUD_HOST_ID && !host.online"
+                disabled-reason="This device is offline."
+                :label="host.label"
+                choice
+                :is-selected="host.id === hostId"
+                @select="emit('update:hostId', host.id)"
+              />
+            </Menu>
+          </template>
+        </Dropdown>
+      </div>
       <div class="flex shrink-0 items-center">
         <Tooltip content="Back">
           <IconButton
