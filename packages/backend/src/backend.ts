@@ -419,7 +419,6 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     upgradeWebSocket,
     blobs,
     withHost: (id, operation, signal) => targets.withHost(id, operation, signal),
-    workingTree: (id) => targets.workingTree(id),
     managedHosts,
     createCloudWorkspace: managedHosts
       ? (userId, name) => createCloudWorkspace({

@@ -287,9 +287,12 @@ is not UTF-8 text answers 415 `not_text`. The file view reads through this route
 `GET /api/conversations/:id/changes` lists the uncommitted changes of the
 conversation's execution directory as `{ root, repository, head, files,
 truncated, watched }`, the runner's reply ([Runner](runner.md#working-tree))
-plus `root`, the directory the paths are relative to. The request never wakes a
-machine: an offline device or a stopped Cloud answers 409 `device_offline`. The
-runner's `busy` answers 503 `changes_busy` and its timeout 504
+plus `root`, the directory the paths are relative to. The request reaches the
+host the way every conversation file operation does
+([Sessions and targets](sessions-and-targets.md#host-operations)): a stopped
+Cloud wakes for it, a paired device without a live runner answers 409
+`device_offline`, and a Cloud that cannot wake answers 503 with the lifecycle's
+code. The runner's `busy` answers 503 `changes_busy` and its timeout 504
 `changes_timeout`; the browser then keeps its previous list and says the
 refresh failed.
 
