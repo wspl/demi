@@ -31,6 +31,7 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
     };
     request.validate()?;
     let invocation = Invocation {
+        edits: None,
         operation: "raw".into(),
         invocation_id: uuid::Uuid::new_v4().simple().to_string(),
         args: serde_json::to_value(request).map_err(io::Error::other)?,
@@ -55,6 +56,7 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
 async fn manage(state: RunnerState, action: &str) -> io::Result<u8> {
     let active = state.active().await?;
     let request = Invocation {
+        edits: None,
         operation: "manage".into(),
         invocation_id: uuid::Uuid::new_v4().simple().to_string(),
         args: serde_json::json!({"secret": active.secret, "action": action}),

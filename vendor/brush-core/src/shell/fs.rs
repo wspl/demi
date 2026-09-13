@@ -185,6 +185,7 @@ impl<SE: crate::extensions::ShellExtensions> crate::Shell<SE> {
     pub(crate) fn open_file(
         &self,
         options: &std::fs::OpenOptions,
+        writing: bool,
         path: impl AsRef<Path>,
         params: &ExecutionParameters,
     ) -> Result<openfiles::OpenFile, std::io::Error> {
@@ -210,6 +211,10 @@ impl<SE: crate::extensions::ShellExtensions> crate::Shell<SE> {
             return open_file.try_clone();
         }
 
+        if let Some(host) = self.execution_host() {
+            let file = host.open_file(&path_to_open, options, writing)?;
+            return openfiles::OpenFile::from(file).controlled(host.file_control());
+        }
         Ok(options.open(path_to_open)?.into())
     }
 

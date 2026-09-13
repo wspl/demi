@@ -155,7 +155,7 @@ async function deviceFsFor(
   registry: RunnerRegistry
 ) {
   const device = await control.getDevice(deviceId)
-  if (!device || device.userId !== userId) {
+  if (!device || device.userId !== userId || device.kind !== 'user') {
     return {
       ok: false as const,
       status: 404 as const,

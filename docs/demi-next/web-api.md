@@ -23,6 +23,8 @@ Partial conversation mutations use the explicit outcomes described below.
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }` |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories; `WS /conversations/:id/stream` carries agent frames |
+| Conversation files | `GET/POST /conversations/:id/fs`, `GET /conversations/:id/fs/file?path=...`, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
+| Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...` |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
@@ -255,7 +257,9 @@ beforeId: string | null }`; null appends. Conversation moves stay within the sam
 project and pin partition. [Storage](storage.md) owns persistent ordering. Activity timestamps never reorder rows.
 
 `GET /api/conversations?archived=true|false` includes `status`, `revision`,
-`readRevision` and `unread`. Status is running/compacting from the live agent tree,
+`readRevision`, `unread`, and `cwd`, the directory the conversation's work
+runs in, resolved the same way for a device directory, a workspace, and the
+Cloud, so the browser never derives it. Status is running/compacting from the live agent tree,
 otherwise completed/error/stopped from its latest terminal block, or idle.
 An unfinished checkpoint without a live session is interrupted. Checkpoint output
 changes advance a persisted revision; user input alone does not. A browser sends
@@ -263,8 +267,9 @@ changes advance a persisted revision; user input alone does not. A browser sends
 Acknowledgements only move forward, and revisions beyond current output are refused.
 
 `sync/product-state.ts` assembles `GET /api/state`: current user, mode, preferences,
-projects, active and archived conversation summaries, devices, public provider
-status and Cloud state. It never starts Cloud or runs inference. Responses use a
+projects, active and archived conversation summaries, devices (the paired ones
+and the user's Cloud device, which the file and working-tree routes address
+alike), public provider status and Cloud state. It never starts Cloud or runs inference. Responses use a
 private ETag; `If-None-Match` returns 304 when unchanged. Browsers revalidate
 on open, reconnect and a polling interval. This is a reconstructible snapshot,
 not an atomic transaction across the control and conversation databases; a later
@@ -277,6 +282,10 @@ poll includes changes made during a read. Chat continues using agent frames.
 `{ path, home, entries }`. Each entry has name, isDirectory, isSymbolicLink, byte
 size and ISO modifiedAt. Metadata comes through the existing runner filesystem;
 entries disappearing during the listing are omitted, other errors are returned.
+Metadata requests await each reply to avoid overrunning the runner transport.
+These device routes serve paired-device target selection only;
+the work panel and remote attachment picker use the conversation routes below.
+Managed devices are not accepted by the device directory routes.
 
 Send and steer content may contain `{ type: "remote_file", deviceId, path }`, where
 path is absolute. The backend validates ownership and current connectivity for
@@ -285,6 +294,58 @@ devices through the existing host mechanism, then supplies text preserving the
 device identity and a shell-quoted `demi host shell --host` read command. The agent
 reads the file's contents at execution time. Revocation or disconnect before that
 read produces the existing host-command error; the reference is not a byte snapshot.
+
+## File text and working tree changes
+
+The work panel uses `GET /api/conversations/:id/fs?path=...` to list a directory
+as `{ path, home, entries }`, with the same entry shape as device browsing.
+Omitting `path` selects the conversation's execution directory. `POST` to the
+same route with `{ path }` creates a directory recursively and returns `{ path }`
+with status 201. `GET /api/conversations/:id/fs/file?path=...` returns
+`{ path, text }`. Paths follow the Host's filesystem rules; the execution directory
+is a starting directory, not a permission boundary. Missing paths answer 404,
+and permission failures answer 403.
+
+All three operations use [conversation Host access](sessions-and-targets.md#host-operations),
+including Cloud wake and the file gate. Archived conversations answer 409
+`conversation_archived`. A paired device without a live runner answers 409
+`device_offline`; a Cloud that cannot wake answers 503 with the lifecycle's code.
+A file over 4 MiB answers 413 `file_too_large`; one that is not UTF-8 text answers
+415 `not_text`.
+
+The remote attachment picker lists and creates directories through
+`GET/POST /api/conversations/:id/hosts/:deviceId/fs`, with the same directory
+contract. The device must be the conversation's main or an attached host,
+otherwise the request answers 404 `host_not_attached`. Omitting `path` lists
+that Host's starting directory. These routes use the same Host access as the
+work panel, including waking an attached Cloud. They do not read file contents;
+the selected path becomes a remote reference when the message is sent.
+
+`GET /api/conversations/:id/changes` lists the uncommitted changes of the
+conversation's execution directory as `{ root, repository, head, files,
+truncated, watched }`, the runner's reply ([Runner](runner.md#working-tree))
+plus `root`, the directory the paths are relative to. The request reaches the
+host the way every conversation file operation does
+([Sessions and targets](sessions-and-targets.md#host-operations)): a stopped
+Cloud wakes for it, a paired device without a live runner answers 409
+`device_offline`, and a Cloud that cannot wake answers 503 with the lifecycle's
+code. The runner's `busy` answers 503 `changes_busy` and its timeout 504
+`changes_timeout`; the browser then keeps its previous list and says the
+refresh failed.
+
+`GET /api/conversations/:id/changes/file?path=...` returns `{ original,
+modified }` for one changed file: `original` as the last commit has it (empty
+for an added file), `modified` as the working tree has it (empty for a deleted
+one), under the text limits of the file route.
+
+`GET /api/conversations/:id/commands/:commandId/changes/file?path=...&edit=0` returns
+the same shape for one retained edit segment of a tool call, from the conversation's change
+store, without touching the host ([Edit tracking](edit-tracking.md#the-change-store)).
+
+The browser lists the working tree again when its change view is shown, after each of the
+conversation's tool calls finishes while it shows (a call that finishes while
+the view is away marks the list stale for its next showing), when the page
+becomes visible again, and on its Refresh control. It never polls while idle.
 
 ## Serving the browser build
 

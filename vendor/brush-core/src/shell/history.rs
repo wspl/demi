@@ -16,7 +16,7 @@ impl<SE: crate::extensions::ShellExtensions> crate::Shell<SE> {
         options.read(true);
 
         let mut history_file =
-            self.open_file(&options, history_path, &self.default_exec_params())?;
+            self.open_file(&options, false, history_path, &self.default_exec_params())?;
 
         // Check on the file's size.
         if let openfiles::OpenFile::File(file) = &mut history_file {

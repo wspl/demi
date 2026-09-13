@@ -114,6 +114,7 @@ impl Fixture {
     }
     fn request(&self, id: String, argv: Vec<String>) -> Invocation {
         Invocation {
+            edits: None,
             operation: "raw".into(),
             invocation_id: "invocation".into(),
             args: serde_json::to_value(RawCommand {

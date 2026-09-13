@@ -27,6 +27,8 @@ const props = defineProps<{
   source: FileBrowserSource
   /** The workspace: the tree's root and the first crumb. */
   root: string
+  /** What the first crumb and the tree's caption say in place of the root directory's name. */
+  rootName?: string
   /** The file, by absolute path. */
   path: string
   /** Whether the host has a file to go back or forward to in this view. */
@@ -104,6 +106,7 @@ onBeforeUnmount(() => {
         mode="browse"
         :path="path"
         :root="root"
+        :root-name="rootName"
         :source="source"
         leaf="file"
         :editable="false"
@@ -154,6 +157,7 @@ onBeforeUnmount(() => {
           :style="{ flex: `0 0 ${treeWidth}px`, width: `${treeWidth}px` }"
           :source="source"
           :root="root"
+        :root-name="rootName"
           :selected="path"
           @open="emit('open', $event)"
         />

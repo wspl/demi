@@ -1,6 +1,6 @@
 /**
  * Contracts of the file browser. A host maps its own directory source (the Web API's
- * device fs, a prototype's in-memory tree) onto these; the browser owns navigation,
+ * file endpoints, a prototype's in-memory tree) onto these; the browser owns navigation,
  * selection and presentation and never knows where the entries come from.
  *
  * Paths are POSIX: `/` separates segments and `/` is the root. A source for another
@@ -70,6 +70,8 @@ export interface FileBrowserHost {
   id: string
   label: string
   online: boolean
+  /** A stopped host can be selected when its source wakes it on access. */
+  canWake?: boolean
   icon?: Component
 }
 

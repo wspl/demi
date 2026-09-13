@@ -2,7 +2,6 @@
 // tool-progress channel rendered into typed frame payloads (tools are
 // arbitrary, so their progress is a real validation boundary).
 import { safeJsonStringify } from '@demicodes/utils'
-import { z } from 'zod'
 import type {
   Block,
   ProviderErrorDiagnostics,
@@ -10,8 +9,8 @@ import type {
 } from '@demicodes/core'
 import type { ShellCommandStatusLike } from '../protocol/frames'
 import { shellCommandStatusSchema } from '../protocol/schemas'
+import { shellToolViewSchema } from '../client/shell-view'
 import { ProviderStreamError } from '../session/provider-stream-error'
-import type { ShellToolView } from '../tools'
 
 export function progressToOutput(progress: unknown): ToolResultContentBlock[] {
   return [{ type: 'text', text: progressToText(progress) }]
@@ -28,34 +27,6 @@ function progressToText(progress: unknown): string {
     return `[Function ${progress.name || 'anonymous'}]`
   return safeJsonStringify(progress) ?? String(progress)
 }
-
-/**
- * The `view` a shell tool call stores on its block. `shellToolView` in
- * `../tools` produces it; a transcript is storage, so every reader — this
- * replay, the terminal list, the change list — validates it against this one
- * declaration, and a view from another tool is simply not one.
- */
-export const shellToolViewSchema: z.ZodType<ShellToolView> = z.object({
-  kind: z.literal('shell'),
-  status: z.enum(['running', 'exited', 'aborted']),
-  shellId: z.string(),
-  commandId: z.string(),
-  exitCode: z.number().optional(),
-  runningMs: z.number(),
-  idleMs: z.number(),
-  chunks: z.array(z.object({
-    stream: z.enum(['stdout', 'stderr']),
-    text: z.string(),
-  })),
-  viewTruncated: z.boolean(),
-  files: z.array(z.object({
-    path: z.string().min(1),
-    kind: z.enum(['added', 'modified', 'deleted', 'renamed']),
-    from: z.string().optional(),
-    added: z.number(),
-    removed: z.number(),
-  })).optional(),
-})
 
 /**
  * The commands a transcript last saw running. The stored view is history:
