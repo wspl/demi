@@ -30,7 +30,8 @@ Persistent history is governed by `Block`:
 - `status` is `executing | completed | error`.
 - `streamingOutput` / `output` is the tool's output text or media blocks.
 - `view` may carry bounded UI enhancement data such as a `ShellToolView` (`chunks`,
-  `commandId`, status counters). The render layer may use it to enrich the display, but
+  `commandId`, status counters, the `files` a call edited per
+  `docs/demi-next/edit-tracking.md`). The render layer may use it to enrich the display, but
   must not treat it as more than the model's own view: what the model saw is what the
   browser shows (`docs/demi-next/runner.md` § Jobs and the tee).
 
