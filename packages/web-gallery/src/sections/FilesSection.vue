@@ -326,7 +326,7 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Loading and failures"
-        note="A workspace still listing shows a spinner in place of rows; a directory still listing keeps its chevron and spins at the row's end. A directory that refuses says No access, one that fails Unavailable, both with the reason as tooltip. A workspace that cannot be listed says so."
+        note="A workspace still listing shows a spinner in place of rows; a directory still listing keeps its chevron and spins at the row's end. A directory that could not be listed wears a red dot on its icon, the reason as tooltip. A workspace that cannot be listed says so."
       >
         <div class="flex flex-wrap gap-6">
           <GallerySpecimen variant="workspace listing">

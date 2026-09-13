@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
+import CornerDot from '../../ui/CornerDot.vue'
 import type { ShellFileChange } from '../block-helpers'
 
 /**
@@ -94,10 +95,7 @@ watch([() => props.files, expanded], () => { void measure() })
     >
       <span class="relative inline-flex shrink-0">
         <FileIcon :name="baseName(file.path)" :is-directory="false" :size="14" />
-        <span
-          v-if="file.kind === 'added'"
-          class="absolute -right-px -top-px size-1 rounded-full bg-on-success ring-1 ring-[var(--btn-bg)]"
-        />
+        <CornerDot v-if="file.kind === 'added'" tone="success" size="xs" ring="button" />
       </span>
       <!-- Name and counts use different fonts and sizes: align them on the baseline, not the box. -->
       <span class="inline-flex min-w-0 items-baseline gap-1.5">

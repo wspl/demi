@@ -2,6 +2,7 @@
 import { ChevronRight } from '@lucide/vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import { ICON_PX } from '../ui/icon-metrics'
+import CornerDot from '../ui/CornerDot.vue'
 import FileIcon from './FileIcon.vue'
 import type { FileTreeRow } from './file-tree'
 import type { FileBrowserFailure } from './types'
@@ -40,7 +41,17 @@ defineEmits<{
         :class="open ? 'rotate-90' : ''"
       />
     </span>
-    <FileIcon :name="row.name" :is-directory="row.isDirectory" />
+    <!-- A directory that could not be listed wears a red dot; the reason is the tooltip. -->
+    <span class="relative inline-flex shrink-0" :title="failure?.message">
+      <FileIcon :name="row.name" :is-directory="row.isDirectory" />
+      <CornerDot
+        v-if="failure"
+        tone="danger"
+        size="xs"
+        ring="editor"
+        :label="failure.kind === 'permission' ? 'No access' : 'Unavailable'"
+      />
+    </span>
     <span class="truncate">{{ row.name }}</span>
     <!-- A listing in flight: a thin spinner at the row's end, the chevron untouched. -->
     <IndeterminateSpinner
@@ -49,11 +60,5 @@ defineEmits<{
       :size="12"
       :stroke-width="1.5"
     />
-    <span
-      v-else-if="failure"
-      class="ml-auto truncate pl-2 text-[11px] text-fg-faint"
-      :title="failure.message"
-      >{{ failure.kind === 'permission' ? 'No access' : 'Unavailable' }}</span
-    >
   </div>
 </template>
