@@ -56,12 +56,17 @@ For example, `(sleep 2; echo done) & echo started` emits `started`, remains runn
 then emits `done`. Tool timeout returns a handle; it does not stop the job.
 Background tasks are job-owned. Brush does not expose their OS PIDs through `$!`.
 
-Cancellation stops job-owned shell work and releases its IO and external child
-processes. It must not terminate the resident runner or unrelated jobs. Native
-builtins must use invocation-local state and IO rather than process-global cwd,
-environment or exit. The concrete cancellation mechanism requires design review
-under this in-process model. The runner continues serving control requests while
-a job produces output or waits for input.
+The runner owns cancellation of the whole job, including background work,
+command invocations, IO and external children. Brush and embedded utilities
+cooperate with cancellation inside the runner process. Cancelling one job must
+preserve the runner and unrelated jobs. Native builtins use invocation-local
+state and IO rather than process-global cwd, environment or exit.
+
+A cancellation request is not proof that execution stopped. Job completion waits
+for local work and resource cleanup; unconfirmed remote execution is reported as
+an unknown outcome. Cancellation does not undo completed side effects. The runner
+continues serving control requests while a job produces output, waits for input
+or is being cancelled.
 
 ## Command lifetime
 
@@ -73,9 +78,10 @@ command-update broadcast across running shells.
 Builtin bindings and external forwarding use the same execution context.
 Releasing that context releases its bindings and references to command services.
 Brush may be forked to provide the necessary registration and removal APIs.
-Network disconnection alone does not establish that the host program restarted
-or changed its command set. How the runner recognizes host-program lifetime and
-handles outstanding work across reconnects remains to be discussed.
+Connection loss invalidates its execution contexts and cancels their work.
+Reconnection creates fresh contexts; it does not resume streams or replay
+commands. A network reconnect does not change the host program's command set.
+Restarting the host program establishes a new lifetime with its startup catalog.
 
 ## Pipes and output
 

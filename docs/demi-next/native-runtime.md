@@ -389,9 +389,9 @@ Verified executable bytes already establish the artifact identity; the service
 need not embed its own executable hash, which would be circular.
 
 The server or SDK agent host program fixes its command definitions and package
-catalog at startup. The set changes only when that program restarts. This is
-distinct from a temporary network disconnect; recognition of host restart and
-the treatment of outstanding work across reconnects remain open decisions.
+catalog at startup. The set changes only when that program restarts. Connection
+loss and reconnection follow the
+[runner lifetime contract](runner.md#command-lifetime).
 
 Spawn is single-flight within the instance scope. The service stays resident for
 reuse while live execution contexts or invocations need it. Each active command
@@ -603,9 +603,8 @@ external descendants without terminating the runner or unrelated jobs.
 Brush's internal asynchronous tasks do not expose operating-system process IDs
 through `$!`. Tests that kill an external command client identify its actual PID
 from that child process; ordinary shell job cancellation uses the runner's job
-handle. External child processes require job-scoped cleanup. Cancellation of
-in-process brush and utility work requires a concrete design; terminating the
-runner is not a job-cancellation mechanism.
+handle. Job cancellation and resource cleanup follow the
+[runner shell-job contract](runner.md#shell-jobs).
 
 Raw `Host.process.spawn` calls use only their supplied environment. A caller can
 set `inheritEnv: true` to extend the device process environment; an explicitly
