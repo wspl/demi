@@ -1,31 +1,63 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { PanelLeft } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import { clampSize } from '../ui/resize-handle'
-import { SIDEBAR_WIDTH } from './sidebar-width'
+import { ASIDE_WIDTH, SIDEBAR_WIDTH } from './sidebar-width'
 
 /**
- * The app frame: the sidebar, the divider that sizes it, and the main pane.
- * The host keeps the width (v-model) and hears `resizeEnd` when a size has
- * settled, which is the moment to persist it. Below the medium breakpoint the
- * sidebar is an overlay at the same width and the divider is gone.
+ * The app frame: the sidebar, the main pane, and the work panel (aside) on
+ * the right, with a divider sizing each side pane. The host keeps both widths
+ * (v-model) and hears `resizeEnd` / `asideResizeEnd` when a size has settled,
+ * which is the moment to persist it. The aside is only there while
+ * `asideOpen` is true and the host gave the slot.
+ *
+ * Below the medium breakpoint each side pane is an overlay at the same width
+ * with no divider, and only one of them is open at a time: opening one closes
+ * the other, and the scrim closes whichever is open.
  */
 withDefaults(defineProps<{ label?: string }>(), { label: 'Demi' })
-const emit = defineEmits<{ resizeEnd: [width: number] }>()
+const emit = defineEmits<{
+  resizeEnd: [width: number]
+  asideResizeEnd: [width: number]
+}>()
 const open = defineModel<boolean>('open', { default: false })
 const width = defineModel<number>('width', { default: SIDEBAR_WIDTH.default })
+const asideOpen = defineModel<boolean>('asideOpen', { default: false })
+const asideWidth = defineModel<number>('asideWidth', { default: ASIDE_WIDTH.default })
 // A stored width outside today's bounds is shown at the bound, not rewritten.
 const shownWidth = computed(() => clampSize(width.value, SIDEBAR_WIDTH))
+const shownAsideWidth = computed(() => clampSize(asideWidth.value, ASIDE_WIDTH))
+
+function isNarrow(): boolean {
+  return window.matchMedia('(max-width: 767px)').matches
+}
+
+// On a narrow screen the two overlays never stack: the newly opened one wins.
+watch(open, (value) => {
+  if (value && isNarrow()) {
+    asideOpen.value = false
+  }
+})
+watch(asideOpen, (value) => {
+  if (value && isNarrow()) {
+    open.value = false
+  }
+})
+
+function closeOverlays(): void {
+  open.value = false
+  asideOpen.value = false
+}
 </script>
 
 <template>
   <div class="flex h-full bg-surface-base text-fg">
     <div
-      v-if="open"
+      v-if="open || asideOpen"
       class="fixed inset-0 z-30 bg-black/50 md:hidden"
-      @click="open = false"
+      @click="closeOverlays"
     />
     <div
       class="h-full shrink-0"
@@ -55,6 +87,24 @@ const shownWidth = computed(() => clampSize(width.value, SIDEBAR_WIDTH))
       </div>
       <slot />
     </main>
+    <template v-if="asideOpen && $slots.aside">
+      <ResizeHandle
+        v-model="asideWidth"
+        class="hidden md:block"
+        side="end"
+        :min="ASIDE_WIDTH.min"
+        :max="ASIDE_WIDTH.max"
+        :default-value="ASIDE_WIDTH.default"
+        label="Work panel width"
+        @commit="emit('asideResizeEnd', $event)"
+      />
+      <div
+        class="fixed inset-y-0 right-0 z-40 h-full max-w-full shrink-0 md:static"
+        :style="{ width: `${shownAsideWidth}px` }"
+      >
+        <slot name="aside" />
+      </div>
+    </template>
     <slot name="dialogs" />
   </div>
 </template>
