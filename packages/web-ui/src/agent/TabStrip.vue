@@ -2,19 +2,28 @@
 import { computed, onBeforeUnmount, onMounted, ref, type ComponentPublicInstance } from 'vue'
 import {
   TAB_TRANSITION,
+  TAB_WIDTH_MS,
   afterEnterTab,
   afterLeaveTab,
   beforeEnterTab,
   beforeLeaveTab,
   enterTab,
   leaveTab,
+  settledTabBounds,
 } from './tab-strip'
+
+/** The edge fades' width; a revealed tab is scrolled clear of them. */
+const FADE_PX = 24
 
 /**
  * The row every tab bar uses. Tabs are all one width; when they outgrow the
  * row the strip scrolls with no scrollbar and fades out at whichever edge
- * has more behind it, and the active tab is scrolled into view when it
- * changes. Close and insert collapse or grow from the current width.
+ * has more behind it. Whenever the active tab changes, or a tab enters, the
+ * strip scrolls until that tab shows whole and clear of the fades. The
+ * scroll is the strip's own, timed and eased like the tab motion, and aimed
+ * at the settled layout: a tab on its way out takes no room and a tab on its
+ * way in its full width, so one motion lands the tab where it ends up. Close
+ * and insert collapse or grow from the current width.
  * The host passes its `TabItem`s as children and sizes the strip in its row.
  * The `trailing` slot (a New tab control) follows the last tab while the
  * tabs fit, and stays at the strip's right edge once they scroll.
@@ -46,6 +55,32 @@ const moreBefore = ref(false)
 const moreAfter = ref(false)
 let resizeObserver: ResizeObserver | null = null
 let mutationObserver: MutationObserver | null = null
+let scrollFrame: number | null = null
+
+function cancelScroll(): void {
+  if (scrollFrame !== null) {
+    cancelAnimationFrame(scrollFrame)
+    scrollFrame = null
+  }
+}
+
+// The same length and ease-out as the tab width motion, so the two read as one.
+function scrollStripTo(strip: HTMLElement, target: number): void {
+  cancelScroll()
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    strip.scrollLeft = target
+    return
+  }
+  const start = strip.scrollLeft
+  const startedAt = performance.now()
+  const step = (now: number): void => {
+    const progress = Math.min(1, (now - startedAt) / TAB_WIDTH_MS)
+    const eased = 1 - (1 - progress) ** 3
+    strip.scrollLeft = start + (target - start) * eased
+    scrollFrame = progress < 1 ? requestAnimationFrame(step) : null
+  }
+  scrollFrame = requestAnimationFrame(step)
+}
 
 function bindEl(instance: Element | ComponentPublicInstance | null): void {
   el.value =
@@ -70,15 +105,27 @@ function revealActive(): void {
   const strip = el.value
   const active = strip?.querySelector<HTMLElement>('[aria-selected="true"]')
   if (strip && active) {
-    const left = active.offsetLeft
-    const right = left + active.offsetWidth
-    if (left < strip.scrollLeft) {
-      strip.scrollLeft = left
-    } else if (right > strip.scrollLeft + strip.clientWidth) {
-      strip.scrollLeft = right - strip.clientWidth
+    const { left, right } = settledTabBounds(strip, active)
+    const viewLeft = strip.scrollLeft
+    const viewRight = viewLeft + strip.clientWidth
+    if (left - FADE_PX < viewLeft) {
+      scrollStripTo(strip, Math.max(0, left - FADE_PX))
+    } else if (right + FADE_PX > viewRight) {
+      scrollStripTo(strip, right + FADE_PX - strip.clientWidth)
     }
   }
   updateEdges()
+}
+
+// The strip's extent settles only after the motion; reveal again then.
+function onAfterEnter(el: Element): void {
+  afterEnterTab(el)
+  revealActive()
+}
+
+function onAfterLeave(el: Element): void {
+  afterLeaveTab(el)
+  revealActive()
 }
 
 onMounted(() => {
@@ -102,6 +149,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   mutationObserver?.disconnect()
+  cancelScroll()
 })
 
 defineExpose({ el })
@@ -119,12 +167,12 @@ defineExpose({ el })
       @scroll.passive="updateEdges"
       @before-enter="beforeEnterTab"
       @enter="enterTab"
-      @after-enter="afterEnterTab"
-      @enter-cancelled="afterEnterTab"
+      @after-enter="onAfterEnter"
+      @enter-cancelled="onAfterEnter"
       @before-leave="beforeLeaveTab"
       @leave="leaveTab"
-      @after-leave="afterLeaveTab"
-      @leave-cancelled="afterLeaveTab"
+      @after-leave="onAfterLeave"
+      @leave-cancelled="onAfterLeave"
     >
       <slot />
     </TransitionGroup>
