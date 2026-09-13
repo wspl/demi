@@ -119,15 +119,15 @@ function connect() {
             :label="host.name"
             :indicator="host.kind === 'cloud' ? undefined : host.online ? 'success' : 'muted'"
             :indicator-label="host.online ? 'Online' : 'Offline'"
-            :note="host.online ? undefined : 'offline'"
+            :note="host.kind === 'device' && !host.online ? 'offline' : undefined"
             has-submenu
           >
             <template #submenu>
               <Menu>
                 <MenuItem
                   label="Use as main environment…"
-                  :icon="Monitor"
-                  :disabled="mainLocked || !host.online"
+                  :icon="host.kind === 'cloud' ? Cloud : Monitor"
+                  :disabled="mainLocked || (host.kind === 'device' && !host.online)"
                   @select="selectMain(host.id)"
                 />
 
