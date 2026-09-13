@@ -13,7 +13,8 @@ import { baseName, isHiddenName, joinPath, normalizePath, parentPath } from './p
  * list when first opened and keep their listing; a click on a directory
  * folds or unfolds it, a click on a file asks the host to open it. The
  * selected file's ancestors unfold on their own so it is always in view.
- * Loads in flight are dropped when the tree goes away.
+ * The workspace's name heads the tree as a plain caption. Loads in flight
+ * are dropped when the tree goes away.
  */
 const props = defineProps<{
   source: Pick<FileBrowserSource, 'list'>
@@ -167,6 +168,13 @@ function activate(row: Row): void {
 
 <template>
   <ScrollArea class="h-full min-h-0" viewport-class="p-1">
+    <!-- The workspace's name heads the tree: a caption, not a row. -->
+    <div
+      class="flex h-7 shrink-0 select-none items-center px-2 text-chrome font-medium text-fg-muted"
+      :title="root"
+    >
+      <span class="truncate">{{ rootName }}</span>
+    </div>
     <div role="tree" :aria-label="rootName" class="flex min-h-full flex-col gap-px">
       <div
         v-for="row in rows"
