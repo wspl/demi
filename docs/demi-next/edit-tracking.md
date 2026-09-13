@@ -7,10 +7,12 @@ every in-process file write passes through a layer the runner owns, and that
 layer takes notes. This is why the shell runs in process and why the utilities
 are forked to open files through one context.
 
-Edit tracking answers "what did this call edit?" for one tool call, for the
-reader of the conversation. The model never receives it. The working tree view
-([Runner](runner.md#working-tree)) answers "what is uncommitted?" for the whole
-directory. They share the file entry shape and nothing else.
+Edit tracking has one consumer: the file pills under a shell call in the
+conversation, and the work panel's change view in Conversation mode that a
+pill opens to show what that call changed. Nothing else reads it. The model
+never receives it; the working tree view ([Runner](runner.md#working-tree))
+answers a different question, "what is uncommitted?", for the whole directory.
+The two share the file entry shape and nothing else.
 
 ## Scope
 
@@ -102,10 +104,12 @@ job, the target, or the backend is gone, and reading them never touches the
 host.
 
 The shell block shows the entries as file pills under the call. Picking a pill
-opens the work panel's change view in Conversation mode on that call: the tree
-lists that call's files, and a selected file shows its hunks. An entry without
-a diff shows why (binary, or over the limits). Conversation mode never lists
-anything on its own and never refreshes: its content is one call's report.
+opens the work panel's change view in Conversation mode on that call, with the
+picked file selected: the tree lists that call's files, and the selected file
+shows its hunks. An entry without a diff shows why (binary, or over the
+limits). Conversation mode never lists anything on its own and never refreshes:
+its content is one call's report, and picking a pill of another call replaces
+it.
 
 ## Crates and packages to change
 
