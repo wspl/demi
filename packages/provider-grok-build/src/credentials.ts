@@ -8,13 +8,15 @@ import type {
   ProviderCredentialsCapability,
   ProviderQuota,
 } from '@demicodes/provider'
-import { errorMessage, isRecord, nonEmptyString } from '@demicodes/utils'
+import { errorMessage, nonEmptyString } from '@demicodes/utils'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   FileGrokAuthStore,
   GrokAuthError,
   defaultGrokHome,
+  grokAuthEntrySchema,
+  parseGrokAuthDotJson,
   selectAuthEntry,
   type FileGrokAuthStoreOptions,
   type GrokAuthDotJson,
@@ -154,30 +156,13 @@ export function createGrokBuildCredentials(
     }
   }
 
-  const importFromAuthJsonText = async (
-    text: string,
+  /** Every entry of an auth.json that carries an access token. */
+  const importEntries = async (
+    file: GrokAuthDotJson,
     source: string
   ): Promise<ProviderCredentialInfo[]> => {
-    let file: GrokAuthDotJson
-    try {
-      file = JSON.parse(text) as GrokAuthDotJson
-    } catch {
-      throw new GrokAuthError(
-        'auth_invalid',
-        'Grok auth material is not valid JSON'
-      )
-    }
-    if (!isRecord(file))
-      throw new GrokAuthError(
-        'auth_invalid',
-        'Grok auth material is not an object'
-      )
-
     const imported: ProviderCredentialInfo[] = []
-    for (const [entryKey, value] of Object.entries(file)) {
-      if (!isRecord(value))
-        continue
-      const entry = value as GrokAuthEntry
+    for (const [entryKey, entry] of Object.entries(file)) {
       if (!nonEmptyString(entry.key))
         continue
       imported.push(await importEntry(entryKey, entry, source))
@@ -230,8 +215,9 @@ export function createGrokBuildCredentials(
       // Import all entries, then activate the vendor-preferred one. Entries are
       // upserted by identityKey (= map entry key), so the preferred entry is
       // found deterministically by that key — no label/detail guessing.
-      const all = await importFromAuthJsonText(text, `vendor:${authFile}`)
-      const preferred = selectAuthEntry(JSON.parse(text) as GrokAuthDotJson)
+      const file = parseGrokAuthDotJson(text, `Grok auth file ${authFile}`)
+      const all = await importEntries(file, `vendor:${authFile}`)
+      const preferred = selectAuthEntry(file)
       if (preferred) {
         const byKey = (await pool.listMeta()).find((m) => m.identityKey === preferred.entryKey)
         if (byKey) {
@@ -249,24 +235,26 @@ export function createGrokBuildCredentials(
     },
     add: async (input: ProviderCredentialAddInput) => {
       if (typeof input.authJsonText === 'string') {
-        const all = await importFromAuthJsonText(
+        const file = parseGrokAuthDotJson(
           input.authJsonText,
-          'add:authJsonText'
+          'Grok auth material'
         )
+        const all = await importEntries(file, 'add:authJsonText')
         return all[0]!
       }
       if (typeof input.authFile === 'string') {
         const text = await readFile(input.authFile, 'utf8')
-        const all = await importFromAuthJsonText(
+        const file = parseGrokAuthDotJson(
           text,
-          `add:authFile:${input.authFile}`
+          `Grok auth file ${input.authFile}`
         )
+        const all = await importEntries(file, `add:authFile:${input.authFile}`)
         return all[0]!
       }
-      if (typeof input.entryKey === 'string' && isRecord(input.entry)) {
+      if (typeof input.entryKey === 'string' && input.entry !== undefined) {
         return importEntry(
           input.entryKey,
-          input.entry as GrokAuthEntry,
+          grokAuthEntrySchema.parse(input.entry),
           'add:entry'
         )
       }

@@ -1,4 +1,5 @@
-import { isRecord, nonEmptyString } from '@demicodes/utils'
+import { nonEmptyString } from '@demicodes/utils'
+import { z } from 'zod'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { InferenceRequest } from '@demicodes/provider'
@@ -71,16 +72,22 @@ export function resolveGrokClientVersion(
   return fromFile ?? DEFAULT_GROK_CLIENT_VERSION
 }
 
+/**
+ * The Grok CLI's own version file. It only labels Demi's requests, so a file
+ * that does not state a version reads as absent and the pinned default applies.
+ */
+const grokCliVersionFileSchema = z.looseObject({
+  version: z.string().min(1).optional().catch(undefined),
+})
+
 function readGrokCliVersion(grokHome: string): string | null {
+  let file: unknown
   try {
-    const parsed = JSON.parse(readFileSync(
-      join(grokHome, 'version.json'),
-      'utf8'
-    )) as unknown
-    if (!isRecord(parsed))
-      return null
-    return nonEmptyString(parsed.version) ?? null
+    file = JSON.parse(readFileSync(join(grokHome, 'version.json'), 'utf8'))
   } catch {
+    // No Grok CLI installed, or a version.json that is not JSON at all.
     return null
   }
+  const decoded = grokCliVersionFileSchema.safeParse(file)
+  return decoded.success ? decoded.data.version ?? null : null
 }

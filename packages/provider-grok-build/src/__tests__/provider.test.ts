@@ -7,14 +7,12 @@ import {
   type ProviderSelection
 } from '@demicodes/provider'
 import { StaticGrokAuthStore, type GrokResolvedAuth } from '../auth'
-import {
-  buildGrokChatCompletionsBody,
-  mapGrokChatCompletionStream,
-  readServerSentEvents,
-  type ServerSentEvent
-} from '../chat'
+import { buildGrokChatCompletionsBody } from '../chat'
 import { modelListFromGrokModelsPayload } from '../models'
-import { createGrokBuildProvider } from '../provider'
+import {
+  createGrokBuildProvider,
+  parseGrokBuildProviderConfig
+} from '../provider'
 
 const staticAuth: GrokResolvedAuth = {
   accessToken: 'session-token',
@@ -251,98 +249,75 @@ test('chat body degrades video blocks to text instead of image_url', () => {
   })
 })
 
-test('chat stream maps reasoning_content and tool calls', async () => {
-  const events = await collect(
-    mapGrokChatCompletionStream(
-      (async function* (): AsyncIterable<ServerSentEvent> {
-        yield {
-          event: null,
-          data: JSON.stringify({
-            choices: [{
-              delta: { reasoning_content: 'think', role: 'assistant' }
-            }],
-          }),
-        }
-        yield {
-          event: null,
-          data: JSON.stringify({
-            choices: [
-              {
-                delta: {
-                  tool_calls: [{
-                    index: 0,
-                    id: 'c1',
-                    function: { name: 'shell_exec', arguments: '{"cmd"' }
-                  }],
-                },
-              },
-            ],
-          }),
-        }
-        yield {
-          event: null,
-          data: JSON.stringify({
-            choices: [
-              {
-                delta: {
-                  tool_calls: [{ index: 0, function: { arguments: ':"ls"}' } }]
-                },
-                finish_reason: 'tool_calls',
-              },
-            ],
-          }),
-        }
-        yield { event: null, data: '[DONE]' }
-      })(),
-    ),
-  )
-
-  expect(events).toEqual([
-    { type: 'thinking_start' },
-    { type: 'thinking_delta', text: 'think' },
-    {
-      type: 'tool_call_requested',
-      toolUseId: 'c1',
-      toolName: 'shell_exec',
-      input: { cmd: 'ls' }
-    },
-    { type: 'response', usage: zeroUsage() },
-  ])
-})
-
+// The SSE framing and the Chat Completions mapper belong to
+// `@demicodes/provider` and are tested there; what this provider owns is
+// feeding them the response body of its own request.
 test(
-  'readServerSentEvents joins multi-line data fields per the SSE spec',
+  'the provider maps its stream with the shared Chat Completions mapper',
   async () => {
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(
-          new TextEncoder().encode(
-            'data: {"choices":\ndata: [{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n'
-          ),
-        )
-        controller.close()
+    const chunks = [
+      { choices: [{ delta: { reasoning_content: 'think' } }] },
+      {
+        choices: [{
+          delta: {
+            tool_calls: [{
+              index: 0,
+              id: 'c1',
+              function: { name: 'shell_exec', arguments: '{"cmd"' },
+            }],
+          },
+        }],
       },
+      {
+        choices: [{
+          delta: {
+            tool_calls: [{ index: 0, function: { arguments: ':"ls"}' } }]
+          },
+          finish_reason: 'tool_calls',
+        }],
+      },
+    ]
+    const body = [
+      ...chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`),
+      'data: [DONE]\n\n',
+    ]
+    const provider = createGrokBuildProvider({
+      authStore: new StaticGrokAuthStore(staticAuth),
+      fetch: async () => sseResponse(body)(),
     })
-    const events: ServerSentEvent[] = []
-    for await (const event of readServerSentEvents(stream)) events.push(event)
-    expect(events).toEqual([
-      { event: null, data: '{"choices":\n[{"delta":{"content":"hi"}}]}' },
-      { event: null, data: '[DONE]' },
-    ])
-
-    const mapped = await collect(
-      mapGrokChatCompletionStream(
-        (async function* (): AsyncIterable<ServerSentEvent> {
-          for (const event of events) yield event
-        })(),
-      ),
+    const runtime = await providerRuntime(
+      provider,
+      selection('grok-build', 'grok-4.5')
     )
-    expect(mapped).toEqual([
-      { type: 'text_delta', text: 'hi' },
+    const events = await collect(runtime.run(request({ modelId: 'grok-4.5' })))
+
+    expect(events).toEqual([
+      { type: 'thinking_start' },
+      { type: 'thinking_delta', text: 'think' },
+      {
+        type: 'tool_call_requested',
+        toolUseId: 'c1',
+        toolName: 'shell_exec',
+        input: { cmd: 'ls' }
+      },
       { type: 'response', usage: zeroUsage() },
     ])
   }
 )
+
+test('a malformed Grok model catalog is a protocol error', () => {
+  expect(() => modelListFromGrokModelsPayload(
+    { data: [{ id: 'frontier', context_window: 'wide' }] },
+    'grok-build',
+  )).toThrow()
+})
+
+test('provider config rejects a misspelled key', () => {
+  expect(parseGrokBuildProviderConfig({ grokHome: '/tmp/grok' }))
+    .toEqual({ grokHome: '/tmp/grok' })
+  expect(() => parseGrokBuildProviderConfig({ grokHom: '/tmp/grok' }))
+    .toThrow()
+})
 
 test('model catalog maps Grok /v1/models payload', () => {
   const catalog = modelListFromGrokModelsPayload(

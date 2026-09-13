@@ -1,20 +1,15 @@
+/**
+ * The Grok Build request body: Demi's inference request as the vendor's
+ * chat-completions surface expects it. The response side is the standard
+ * Chat Completions stream, which `@demicodes/provider` decodes and maps.
+ */
 import { attachmentTag } from '@demicodes/core'
-import {
-  isRecord,
-  numberOrZero,
-  parseJsonObject,
-  parseJsonOrString,
-  stringOrNull
-} from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
-import { zeroUsage } from '@demicodes/core'
 import type { UserContentBlock } from '@demicodes/core'
 import {
-  normalizeErrorCode,
   toolResultContentToText,
   type InferenceItem,
   type InferenceRequest,
-  type ProviderEvent,
   type ToolDefinition
 } from '@demicodes/provider'
 
@@ -80,14 +75,6 @@ export interface GrokChatToolCall {
   }
 }
 
-export interface ServerSentEvent {
-  event: string | null
-  /**
-   * Event payload: multi-line `data:` fields joined with '\n' per the SSE spec.
-   */
-  data: string
-}
-
 export function buildGrokChatCompletionsBody(
   request: InferenceRequest
 ): GrokChatCompletionsRequestBody {
@@ -105,138 +92,6 @@ export function buildGrokChatCompletionsBody(
   if (reasoningEffort)
     body.reasoning_effort = reasoningEffort
   return body
-}
-
-export async function* mapGrokChatCompletionStream(
-  events: AsyncIterable<ServerSentEvent>,
-  signal?: AbortSignal,
-): AsyncIterable<ProviderEvent> {
-  const toolCalls = new Map<number, MutableToolCall>()
-  let thinkingStarted = false
-  let usage = zeroUsage()
-
-  for await (const event of events) {
-    if (signal?.aborted) {
-      yield { type: 'abort' }
-      return
-    }
-    const data = event.data
-    if (data === '[DONE]') {
-      yield* flushToolCalls(toolCalls)
-      yield { type: 'response', usage }
-      return
-    }
-    const chunk = parseJsonObject(data)
-    if (!chunk)
-      continue
-    const error = isRecord(chunk.error) ? chunk.error : null
-    if (error) {
-      const message = stringOrNull(error.message) ?? 'Grok Build stream error'
-      yield {
-        type: 'error',
-        message,
-        code: normalizeErrorCode(
-          stringOrNull(error.code) ?? stringOrNull(error.type),
-          message
-        ),
-      }
-      return
-    }
-    if (isRecord(chunk.usage))
-      usage = grokUsage(chunk.usage)
-    const choices = Array.isArray(chunk.choices) ? chunk.choices : []
-    for (const choice of choices) {
-      if (!isRecord(choice))
-        continue
-      const delta = isRecord(choice.delta) ? choice.delta : null
-      if (delta) {
-        const reasoning = stringOrNull(delta.reasoning_content)
-        if (reasoning) {
-          if (!thinkingStarted) {
-            thinkingStarted = true
-            yield { type: 'thinking_start' }
-          }
-          yield { type: 'thinking_delta', text: reasoning }
-        }
-        const content = stringOrNull(delta.content)
-        if (content)
-          yield { type: 'text_delta', text: content }
-        if (Array.isArray(delta.tool_calls))
-          collectToolCalls(
-            delta.tool_calls,
-            toolCalls
-          )
-      }
-      if (choice.finish_reason === 'tool_calls')
-        yield* flushToolCalls(toolCalls)
-    }
-  }
-
-  yield* flushToolCalls(toolCalls)
-  yield { type: 'response', usage }
-}
-
-export async function* readServerSentEvents(
-  body: ReadableStream<Uint8Array> | null,
-  signal?: AbortSignal,
-): AsyncIterable<ServerSentEvent> {
-  if (!body)
-    return
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let eventName: string | null = null
-  let dataLines: string[] = []
-
-  const flush = function* (): Iterable<ServerSentEvent> {
-    if (dataLines.length === 0)
-      return
-    yield { event: eventName, data: dataLines.join('\n') }
-    eventName = null
-    dataLines = []
-  }
-
-  try {
-    while (true) {
-      if (signal?.aborted)
-        return
-      const { value, done } = await reader.read()
-      if (done)
-        break
-      buffer += decoder.decode(value, { stream: true })
-      let newline = buffer.indexOf('\n')
-      while (newline !== -1) {
-        const raw = buffer.slice(0, newline)
-        buffer = buffer.slice(newline + 1)
-        const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-        if (line === '') {
-          yield* flush()
-        } else if (line.startsWith('event:')) {
-          eventName = line.slice('event:'.length).trim()
-        } else if (line.startsWith('data:')) {
-          dataLines.push(line.slice('data:'.length).trimStart())
-        }
-        newline = buffer.indexOf('\n')
-      }
-    }
-    buffer += decoder.decode()
-    if (buffer) {
-      const line = buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer
-      if (line.startsWith('data:')) dataLines.push(line.slice('data:'.length)
-        .trimStart())
-      else if (line.startsWith('event:'))
-        eventName = line.slice('event:'.length).trim()
-    }
-    yield* flush()
-  } finally {
-    reader.releaseLock()
-  }
-}
-
-interface MutableToolCall {
-  id: string
-  name: string
-  arguments: string
 }
 
 function inferenceItemsToMessages(
@@ -365,45 +220,6 @@ function toolToGrokTool(tool: ToolDefinition): GrokChatTool {
   }
 }
 
-function collectToolCalls(
-  values: unknown[],
-  toolCalls: Map<number, MutableToolCall>
-): void {
-  for (const value of values) {
-    if (!isRecord(value))
-      continue
-    const index = typeof value.index === 'number' ? value.index : toolCalls.size
-    const existing = toolCalls.get(index) ?? { id: '', name: '', arguments: '' }
-    const fn = isRecord(value.function) ? value.function : null
-    const id = stringOrNull(value.id)
-    if (id)
-      existing.id = id
-    const name = stringOrNull(fn?.name)
-    if (name)
-      existing.name = name
-    const delta = stringOrNull(fn?.arguments)
-    if (delta)
-      existing.arguments += delta
-    toolCalls.set(index, existing)
-  }
-}
-
-function* flushToolCalls(
-  toolCalls: Map<number, MutableToolCall>
-): Iterable<ProviderEvent> {
-  for (const [index, call] of [...toolCalls.entries()].sort(([a], [b]) => a - b)) {
-    if (!call.name)
-      continue
-    yield {
-      type: 'tool_call_requested',
-      toolUseId: call.id || `tool_call_${index}`,
-      toolName: call.name,
-      input: parseJsonOrString(call.arguments || '{}'),
-    }
-  }
-  toolCalls.clear()
-}
-
 function thinkingToReasoningEffort(
   request: InferenceRequest
 ): string | undefined {
@@ -415,21 +231,4 @@ function thinkingToReasoningEffort(
 
 function stringifyToolArguments(input: unknown): string {
   return typeof input === 'string' ? input : JSON.stringify(input ?? {})
-}
-
-function grokUsage(usage: Record<string, unknown>) {
-  const inputTokens = numberOrZero(usage.prompt_tokens)
-  const outputTokens = numberOrZero(usage.completion_tokens)
-  const promptDetails = isRecord(usage.prompt_tokens_details)
-    ? usage.prompt_tokens_details
-    : null
-  const cachedTokens = promptDetails
-    ? numberOrZero(promptDetails.cached_tokens)
-    : 0
-  return {
-    inputTokens: Math.max(0, inputTokens - cachedTokens),
-    outputTokens,
-    cacheReadTokens: cachedTokens,
-    cacheWriteTokens: 0,
-  }
 }
