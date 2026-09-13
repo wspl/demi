@@ -6,7 +6,7 @@ import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import SidebarAccount from '@demicodes/web-ui/sidebar/SidebarAccount.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
-import type { HostDeviceOption, HostMenuMainHost } from '@demicodes/web-ui/hosts/types'
+import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
 import { gallerySubagents } from '../fixtures/subagents'
@@ -52,13 +52,13 @@ const recentDirectories = computed(() => {
   }))
 })
 const workspaceName = computed(() => folder.value.path.split('/').filter(Boolean).at(-1) ?? null)
-const mainHost = computed<HostMenuMainHost>(() => {
+const mainHost = computed<HostMenuHost>(() => {
   const device = devices.find((candidate) => candidate.id === folder.value.deviceId)
   return device
     ? { id: device.id, name: device.name, kind: 'device', online: device.online }
     : { id: 'cloud', name: 'Cloud', kind: 'cloud', online: true }
 })
-const attachedHosts = ref<HostDeviceOption[]>([])
+const attachedHosts = ref<HostMenuHost[]>([])
 const locked = computed(() => session.phase !== 'idle' || session.archived)
 async function selectFolder(deviceId: string, path: string): Promise<boolean> {
   folder.value = {
@@ -82,7 +82,7 @@ function switchMain(id: string): void {
 function attach(id: string): void {
   const device = devices.find((candidate) => candidate.id === id)
   if (device && !attachedHosts.value.some((host) => host.id === id)) {
-    attachedHosts.value = [...attachedHosts.value, device]
+    attachedHosts.value = [...attachedHosts.value, { ...device, kind: 'device' }]
   }
 }
 function detach(id: string): void {
