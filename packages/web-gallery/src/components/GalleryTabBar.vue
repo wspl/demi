@@ -55,16 +55,20 @@ function createTab(
   }
 }
 
-const tabs = ref<GalleryTab[]>([
-  createTab('tab-1', 'Login test', 'done', 'anthropic', true),
-  createTab('tab-2', 'Queued follow-up', 'active', 'openai'),
-  createTab('tab-3', 'Cookie header', 'error', 'codex'),
-  createTab('tab-4', 'Idle draft', 'idle', 'anthropic'),
-  createTab('tab-5', 'Aborted run', 'aborted', 'openai'),
-  createTab('tab-6', 'Unread result', 'done', 'codex', false),
-  createTab('tab-7', 'Auth helper', 'done', 'anthropic', true),
-  createTab('tab-8', 'Session cookie', 'idle', 'openai'),
-])
+function fixtureTabs(): GalleryTab[] {
+  return [
+    createTab('tab-1', 'Login test', 'done', 'anthropic', true),
+    createTab('tab-2', 'Queued follow-up', 'active', 'openai'),
+    createTab('tab-3', 'Cookie header', 'error', 'codex'),
+    createTab('tab-4', 'Idle draft', 'idle', 'anthropic'),
+    createTab('tab-5', 'Aborted run', 'aborted', 'openai'),
+    createTab('tab-6', 'Unread result', 'done', 'codex', false),
+    createTab('tab-7', 'Auth helper', 'done', 'anthropic', true),
+    createTab('tab-8', 'Session cookie', 'idle', 'openai'),
+  ]
+}
+
+const tabs = ref<GalleryTab[]>(fixtureTabs())
 
 const activeTabId = ref('tab-1')
 const renamingTabId = ref<string | null>(null)
@@ -120,7 +124,18 @@ function tabIds(): string[] {
   return tabs.value.map((entry) => entry.tab.id)
 }
 
-defineExpose({ selectTab, addTab, tabIds })
+function activeId(): string {
+  return activeTabId.value
+}
+
+/** Back to the fixtures, ids continuing past them so no key repeats. */
+function reset(): void {
+  tabs.value = fixtureTabs()
+  activeTabId.value = 'tab-1'
+  renamingTabId.value = null
+}
+
+defineExpose({ selectTab, addTab, closeTab, tabIds, activeId, reset })
 
 function beginRename(id: string): void {
   const entry = tabs.value.find((item) => item.tab.id === id)

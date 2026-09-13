@@ -78,6 +78,7 @@ import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import GalleryTabBar from '../components/GalleryTabBar.vue'
+import GalleryTabBarDrive from '../components/GalleryTabBarDrive.vue'
 import { useGalleryView } from '../gallery-views'
 
 const { view } = useGalleryView()
@@ -147,14 +148,6 @@ function useWorkTabs(activeId: string | null) {
     active.value = activeId
   }
   return { tabs, active, close, add, reset }
-}
-const narrowBar = ref<{ selectTab: (id: string) => void; addTab: () => void; tabIds: () => string[] } | null>(null)
-function selectMiddleTab() {
-  const ids = narrowBar.value?.tabIds() ?? []
-  const id = ids[Math.floor(ids.length / 2)]
-  if (id) {
-    narrowBar.value?.selectTab(id)
-  }
 }
 const panelWork = useWorkTabs('w2')
 const exhibitWork = useWorkTabs('w1')
@@ -497,20 +490,15 @@ function abortTerminal(id: string) {
         <GalleryTabBar />
       </GallerySection>
       <GallerySection
-        title="Overflow"
-        note="The same bar in a narrow frame. Tabs keep their width and the strip scrolls without a scrollbar, fading at whichever edge has more. Selecting a tab that is cut off, or adding one, scrolls smoothly until it shows whole and clear of the fade; closing tabs scrolls back when the end comes into reach. Use the controls or the tabs themselves."
+        title="Motion"
+        note="Every motion the strip owns, in a narrow frame that overflows and one at the pane width. A tab opens by growing from nothing and closes by collapsing, while the New tab control follows the last tab until they scroll and then holds the right edge. Selecting or opening a tab that is cut off scrolls, with the same timing as the tab, until it shows whole and clear of the fade; closing scrolls back when the end comes into reach. Play all runs through the cases; the tabs, their close controls and their menus work too."
       >
-        <GallerySpecimen variant="narrow · live">
-          <div class="gallery-frame w-[32rem] overflow-hidden bg-surface-base">
-            <GalleryTabBar ref="narrowBar" />
-          </div>
+        <GallerySpecimen variant="narrow · overflows" wide>
+          <GalleryTabBarDrive width="32rem" />
         </GallerySpecimen>
-        <div class="flex flex-wrap gap-2">
-          <Button size="sm" @click="narrowBar?.selectTab(narrowBar.tabIds()[0]!)">Select first</Button>
-          <Button size="sm" @click="narrowBar?.selectTab(narrowBar.tabIds().at(-1)!)">Select last</Button>
-          <Button size="sm" @click="selectMiddleTab">Select middle</Button>
-          <Button size="sm" @click="narrowBar?.addTab()">New tab</Button>
-        </div>
+        <GallerySpecimen variant="wide · pane width" wide>
+          <GalleryTabBarDrive />
+        </GallerySpecimen>
       </GallerySection>
     </template>
 
