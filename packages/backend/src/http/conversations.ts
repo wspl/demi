@@ -41,6 +41,7 @@ export function conversationRoutes(options: {
   workingTree: (conversationId: string) => Promise<WorkingTreeAccess | null>
 }): Hono<AuthEnv> {
   const { control, conversationStores, withHost, registry, workingTree } = options
+  const summaryDeps = { stores: conversationStores, server: options.agentServer, control, registry }
   const app = new Hono<AuthEnv>()
 
   // The caller's conversation, or null: another user's answers like a missing one.
@@ -70,9 +71,9 @@ export function conversationRoutes(options: {
       archived,
     })
     return c.json({
-      conversations: conversations.map((conversation) =>
-        conversationSummary(conversation, conversationStores, options.agentServer),
-      ),
+      conversations: await Promise.all(conversations.map((conversation) =>
+        conversationSummary(conversation, summaryDeps),
+      )),
     })
   })
 
@@ -111,7 +112,7 @@ export function conversationRoutes(options: {
       const result = await options.forks.create(
         c.get('user').id, c.req.param('id'), parsed.data.id, parsed.data.blockId,
       )
-      return c.json({ conversation: conversationSummary(result.conversation, conversationStores, options.agentServer), model: result.model },
+      return c.json({ conversation: await conversationSummary(result.conversation, summaryDeps), model: result.model },
         result.created ? 201 : 200)
     } catch (error) {
       if (error instanceof ForkRefused) {

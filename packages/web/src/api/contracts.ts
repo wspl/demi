@@ -82,6 +82,8 @@ export const conversationRecordSchema = z.object({
   updatedAt: z.string(),
 })
 export const conversationSummarySchema = conversationRecordSchema.extend({
+  /** The directory the conversation's work runs in, resolved by the backend for every kind of target. */
+  cwd: z.string(),
   status: z.enum([
     'running',
     'compacting',

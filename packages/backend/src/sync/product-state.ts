@@ -30,17 +30,21 @@ export class ProductState {
 
   async read(user: User) {
     const { control, stores, server, registry, vault, assembly, managed, mode } = this.deps
-    const [active, archived, workspaces, devices, preferences, entries, cloud] = await Promise.all(
+    const [active, archived, workspaces, paired, managedDevice, preferences, entries, cloud] = await Promise.all(
       [
         control.listConversations(user.id),
         control.listConversations(user.id, { archived: true }),
         control.listWorkspaces(user.id),
         control.listDevices(user.id),
+        control.getManagedDevice(user.id),
         control.getUserPreferences(user.id),
         vault.list({ ownerUserId: providerOwner(mode, user.id) }),
         managed?.status(user.id) ?? null,
       ]
     )
+    // The user's Cloud is a device like the paired ones for everything that
+    // reads files or the working tree; only pairing and revocation tell them apart.
+    const devices = managedDevice ? [...paired, managedDevice] : paired
     const providers = await Promise.all(entries.map(async entry => {
       try {
         const resolved = await assembly.providerFor(entry.id)
@@ -65,9 +69,9 @@ export class ProductState {
       preferences,
       workspaces,
       providers,
-      conversations: [...active, ...archived].map(
-        conversation => conversationSummary(conversation, stores, server)
-      ),
+      conversations: await Promise.all([...active, ...archived].map(
+        conversation => conversationSummary(conversation, { stores, server, control, registry })
+      )),
       devices: devices.map(device => ({
         ...device,
         online: registry.deviceOnline(device.id),

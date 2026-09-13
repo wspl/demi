@@ -22,7 +22,10 @@ export function executionFor(conversation: Conversation) {
     deviceId,
     kind,
     name: kind === 'cloud' ? 'Cloud' : (device?.name ?? 'Unavailable device'),
-    path: target.kind === 'device' ? target.path : (workspace?.path ?? null),
+    /** Where the work runs: the backend's resolved directory, for every kind of target. */
+    path: conversation.cwd,
+    /** The directory the reader chose; null while the Cloud runs in its own session directory. */
+    directory: target.kind === 'device' ? target.path : (workspace?.path ?? null),
     workspaceName: workspace?.name ?? null,
     online:
       kind === 'cloud'
