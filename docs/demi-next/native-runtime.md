@@ -72,7 +72,7 @@ application instead. The native service never receives raw CLI requests.
 Related contracts define the surrounding behavior:
 
 - [Command declarations](commands.md): CLI parsing and manifest semantics.
-- [Local forwarding](command-client.md): external clients and endpoint access.
+- [Local forwarding](commands.md#external-command-clients): external clients and endpoint access.
 - [Runner jobs](runner.md#shell-jobs): brush, profiles, and whole-job cleanup.
 - [Package boundaries](../package-boundaries.md#source-organization): source module ownership.
 
@@ -349,7 +349,7 @@ succeeds or the process is faulty.
 
 Local forwarding reuses framing, demand, and completion rules but has a distinct
 raw CLI metadata schema. Its authentication and disconnect behavior remain in
-[the local client contract](command-client.md#transport-and-lifetime).
+[the local client contract](commands.md#external-command-clients).
 
 ## Publish a complete release
 
