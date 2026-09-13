@@ -112,7 +112,7 @@ async fn job_joins_background_tasks_and_preserves_foreground_exit_status() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn login_profiles_apply_per_job_without_replacing_owned_context_or_cwd() {
     let root = tempfile::tempdir().unwrap();
-    let root = root.path().canonicalize().unwrap();
+    let root = root.path().to_owned();
     std::fs::create_dir(root.join("elsewhere")).unwrap();
     let aliases = root.join("aliases");
     let tools = root.join("tools");
@@ -141,10 +141,58 @@ async fn login_profiles_apply_per_job_without_replacing_owned_context_or_cwd() {
         .unwrap();
         assert_eq!(result.code, 0);
         assert_eq!(result.cwd, root);
-        let expected_path = std::env::join_paths([&aliases, &tools]).unwrap();
-        assert_eq!(
-            std::fs::read_to_string(output.path()).unwrap(),
-            format!("{value}\nowned\n{}\n", expected_path.to_string_lossy())
-        );
+        let output = std::fs::read_to_string(output.path()).unwrap();
+        let mut lines = output.lines();
+        assert_eq!(lines.next(), Some(value));
+        assert_eq!(lines.next(), Some("owned"));
+        let paths = std::env::split_paths(lines.next().unwrap()).collect::<Vec<_>>();
+        assert_eq!(paths, [aliases.clone(), tools.clone()]);
+        assert_eq!(lines.next(), None);
     }
+}
+
+#[cfg(windows)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn windows_drive_paths_work_for_cd_redirection_utilities_and_executables() {
+    fn drive_path(path: &Path) -> String {
+        let native = path.to_string_lossy().replace('\\', "/");
+        assert_eq!(&native[1..3], ":/");
+        format!("/{}/{}", &native[..1], &native[3..])
+    }
+
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join("sub")).unwrap();
+    std::fs::write(
+        root.path().join("child.json"),
+        serde_json::to_vec(&demi_runner::tasks::ShellJob {
+            login: false,
+            live: false,
+            script: "printf external".into(),
+            cwd_file: root.path().join("child-cwd"),
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    let output = tempfile::NamedTempFile::new().unwrap();
+    let mut opts = options(root.path(), output.reopen().unwrap());
+    opts.env = BTreeMap::from([
+        ("HOME".into(), root.path().to_string_lossy().into_owned()),
+        ("DRIVE_ROOT".into(), drive_path(root.path())),
+        (
+            "DRIVE_EXE".into(),
+            drive_path(Path::new(env!("CARGO_BIN_EXE_demi-runner"))),
+        ),
+    ]);
+    let result = execute(
+        "printf discarded > /dev/null && printf discarded &> /dev/null && printf payload > \"$DRIVE_ROOT/file\" && cd \"$DRIVE_ROOT/sub\" && cat \"$DRIVE_ROOT/file\" && \"$DRIVE_EXE\" shell-job \"$HOME/child.json\"",
+        opts,
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.code, 0);
+    assert_eq!(result.cwd, root.path().join("sub"));
+    assert_eq!(
+        std::fs::read_to_string(output.path()).unwrap(),
+        "payloadexternal"
+    );
 }

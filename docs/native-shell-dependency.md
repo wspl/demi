@@ -13,6 +13,10 @@ The runner owns these adaptations:
 - Here-documents and here-strings use anonymous temporary files. Preparing a
   redirection does not depend on pipe capacity or platform pipe-size limits.
   Closing the descriptor releases the temporary file.
+- Windows shell paths use `demi-native-path`, the same resolver as file commands
+  and native utilities. For example, `/c/project` and `C:/project` refer to the
+  same directory for `cd`, redirection, and explicit executable paths. External
+  program arguments are passed unchanged for the program to interpret.
 
 `packages/runner/tests/tasks.rs` verifies function and compound pipelines,
 command substitution, and expanded here-documents with output larger than an OS

@@ -35,7 +35,7 @@ afterEach(async () => {
 
 async function waitClosed(seen: ClientSessionEvent[], count = 1): Promise<void> {
   await waitFor(() => seen.filter(event => event.type === 'subagent'
-    && event.event === 'closed').length === count)
+    && event.event === 'closed').length === count, undefined, { timeoutMs: 5_000 })
 }
 
 type TurnScript = ConstructorParameters<typeof StubProvider>[0][number]
@@ -175,11 +175,11 @@ function spawnCall(
   script: string,
   timeoutMs: number
 ): ReturnType<typeof events.toolCall> {
-  // Give real command processes time to publish the child id before the scripted parent continues.
+  // The scripted parent consumes the creation id, so observe the spawn command to completion.
   return events.toolCall(
     toolUseId,
     'shell_exec',
-    { script, timeoutMs: Math.max(timeoutMs, 200) }
+    { script, timeoutMs: Math.max(timeoutMs, 10_000) }
   )
 }
 
@@ -436,10 +436,7 @@ test(
         ],
         'outer task': [
           [
-            events.toolCall('c1', 'shell_exec', {
-              script: "demi agent spawn <<< 'inner task' --description inner",
-              timeoutMs: 50,
-            }),
+            spawnCall('c1', "demi agent spawn <<< 'inner task' --description inner", 50),
           ],
           [events.text('inner dispatched'), events.response()],
           (request) => {
@@ -2196,10 +2193,13 @@ test('spawn succeeds while the child runs; cancelling the invoking shell does no
     scripts: {
       root: [
         [
-          spawnCall(
+          events.toolCall(
             'spawn',
-            "demi agent spawn --request-id independent <<< 'independent task' && echo creation-succeeded; probe hold 5000",
-            200,
+            'shell_exec',
+            {
+              script: "demi agent spawn --request-id independent <<< 'independent task' && echo creation-succeeded; probe hold 5000",
+              timeoutMs: 200,
+            },
           ),
         ],
         (request) => {

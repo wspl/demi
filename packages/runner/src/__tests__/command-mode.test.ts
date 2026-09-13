@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { expect, test } from 'bun:test'
 import { mkdtemp, readFile, writeFile, realpath, copyFile, rm } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildManifest, type Manifest } from '@demicodes/command-loader'
@@ -114,6 +114,12 @@ test(
         script: 'printf "%s\\n%s\\n" "$DEMI_RUNNER_ENDPOINT" "$DEMI_CONTEXT_ID" > context; sleep 30',
         timeoutMs: 50
       })
+      await waitFor(
+        () => existsSync(join(a.home, 'context'))
+          && readFileSync(join(a.home, 'context'), 'utf8').split('\n').length === 3,
+        undefined,
+        { timeoutMs: 5_000 }
+      )
       const [endpoint, context] = (await readFile(
         join(a.home, 'context'),
         'utf8'

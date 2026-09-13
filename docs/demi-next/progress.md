@@ -7,7 +7,8 @@ acceptance of a newly built runner.
 
 ## Verified locally
 
-- The Rust workspace tests pass on macOS arm64, including protocol framing,
+- All 66 Rust workspace tests pass on macOS arm64 and a native Linux arm64
+  container with an init process to reap orphaned test descendants, including protocol framing,
   resident service concurrency, cancellation, verified artifacts, file commands,
   runner connections, local forwarding, shell pipelines and Host IO.
 - TypeScript and all three frontend typechecks pass. The final application suite
@@ -30,12 +31,20 @@ binaries are inspected for ELF interpreter/dynamic-library dependencies. Windows
 builds use static CRT. A workflow definition is not a passed execution result;
 record the workflow run and exact commit when results are available.
 
+Workflow run `34730295303` on commit `c03d8e52` passed the complete Linux x64
+and both macOS architecture jobs. Windows exposed path-representation assertions and a
+runner lifecycle timeout; Linux arm64 exposed integration timeouts while hashing
+large debug executables. Those gates require a new run after their corrections.
+The Intel Mac release passed 17 Host, file-command and installer tests under
+Rosetta on the local arm64 Mac; this is translated execution.
+
 The native Linux arm64 runner passed the real Firecracker scenario for guest
 startup, uid 1000 file/job identity, persistent system/home across shutdown and
 wake, and external reset with home retained. The fixture used the repository kernel
 and an Ubuntu base image containing the new runner. The toolchain scenario verified
-rustup installation followed by `cargo` in the next job; nvm acceptance is still
-running. The historical direct/jailer results do not substitute for new native
+rustup installation followed by `cargo` in the next job, and nvm installation
+followed by its Node executable in the next job. Both complete scenarios passed
+with the native pipeline fixes. The historical direct/jailer results do not substitute for new native
 jailer execution evidence.
 
 [Synthetic transport measurements](../native-transport-measurements.md) record

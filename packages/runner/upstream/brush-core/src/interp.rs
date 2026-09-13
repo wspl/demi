@@ -1677,8 +1677,7 @@ pub(crate) async fn setup_redirect(
                         return Err(error::ErrorKind::InvalidRedirection.into());
                     }
 
-                    let expanded_file_path: PathBuf =
-                        shell.absolute_path(Path::new(expanded_fields.remove(0).as_str()));
+                    let expanded_file_path = PathBuf::from(expanded_fields.remove(0));
 
                     let default_fd_if_unspecified = get_default_fd_for_redirect_kind(kind);
                     match kind {
@@ -1692,7 +1691,7 @@ pub(crate) async fn setup_redirect(
                             {
                                 // First check to see if the path points to an existing regular
                                 // file.
-                                if !expanded_file_path.is_file() {
+                                if !shell.absolute_path(&expanded_file_path).is_file() {
                                     options.create(true);
                                 } else {
                                     options.create_new(true);
@@ -1893,8 +1892,6 @@ fn setup_redirect_output_and_error_to(
     file_path: &str,
     append: bool,
 ) -> Result<(), error::Error> {
-    let abs_file_path: PathBuf = shell.absolute_path(Path::new(file_path));
-
     let mut file_options = std::fs::File::options();
     file_options
         .create(true)
@@ -1903,12 +1900,9 @@ fn setup_redirect_output_and_error_to(
         .append(append);
 
     let stdout_file = shell
-        .open_file(&file_options, &abs_file_path, params)
+        .open_file(&file_options, Path::new(file_path), params)
         .map_err(|err| {
-            error::ErrorKind::RedirectionFailure(
-                abs_file_path.to_string_lossy().to_string(),
-                err.to_string(),
-            )
+            error::ErrorKind::RedirectionFailure(file_path.to_owned(), err.to_string())
         })?;
 
     let stderr_file = stdout_file.try_clone()?;

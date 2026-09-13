@@ -80,12 +80,8 @@ async fn shell_job_keeps_full_logs_but_only_sends_head_and_tail_views() {
             } => {
                 assert_eq!(exit_code, Some(0.0), "{signal:?}");
                 assert_eq!(
-                    cwd.unwrap(),
-                    root.path()
-                        .join("child")
-                        .canonicalize()
-                        .unwrap()
-                        .to_string_lossy()
+                    std::fs::canonicalize(cwd.unwrap()).unwrap(),
+                    root.path().join("child").canonicalize().unwrap()
                 );
                 let output = output.unwrap();
                 assert_eq!(stdout.len(), 32768);
@@ -174,14 +170,19 @@ async fn cancellation_terminates_a_blocking_native_builtin() {
     table
         .signal(TaskKind::Job, "job", "SIGKILL".into())
         .unwrap();
-    let message = tokio::time::timeout(Duration::from_secs(3), receiver.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(matches!(
-        rmp_serde::from_slice::<Reply>(&message.into_bytes()).unwrap(),
-        Reply::Exit { .. }
-    ));
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while let Some(message) = receiver.recv().await {
+            if matches!(
+                rmp_serde::from_slice::<Reply>(&message.into_bytes()).unwrap(),
+                Reply::Exit { .. }
+            ) {
+                return;
+            }
+        }
+        panic!("task closed without an exit reply");
+    })
+    .await
+    .unwrap();
     table.close().await;
     assert_eq!(table.count(), 0);
 }

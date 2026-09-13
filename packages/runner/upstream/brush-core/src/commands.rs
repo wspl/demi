@@ -413,7 +413,7 @@ impl<'a, SE: extensions::ShellExtensions> SimpleCommand<'a, SE> {
                 Err(ErrorKind::CommandNotFound(self.command_name).into())
             }
         } else {
-            let command_name = PathBuf::from(self.command_name.clone());
+            let command_name = self.shell.absolute_path(&self.command_name);
             self.execute_via_external(command_name.as_path())
         }
     }
