@@ -46,6 +46,8 @@ export interface FileBrowserSource {
   list(path: string, signal?: AbortSignal): Promise<FileBrowserEntry[]>
   /** Absent when the source cannot create directories; the browser then offers no New folder. */
   createDirectory?(path: string, signal?: AbortSignal): Promise<void>
+  /** Reads one file as text. Absent when the source cannot read files; a file view then has nothing to show. */
+  read?(path: string, signal?: AbortSignal): Promise<string>
 }
 
 /** A shortcut in the sidebar: a home, a recent workspace, a pinned directory. */

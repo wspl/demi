@@ -12,6 +12,8 @@ import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activit
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import { closeWorkTabs, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import FileView from '@demicodes/web-ui/files/FileView.vue'
+import { createGalleryWorkspace } from '../fixtures/workspace'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import { ASIDE_WIDTH, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
@@ -136,19 +138,34 @@ function useWorkTabs(activeId: string | null) {
     active.value = next.activeId
   }
   function add(kind: WorkTab['kind']) {
+    if (kind === 'file') {
+      open('src/auth/session.ts')
+      return
+    }
     const id = `w${nextId++}`
-    tabs.value = [
-      ...tabs.value,
-      kind === 'file' ? { id, kind, path: 'src/auth/session.ts' } : { id, kind },
-    ]
+    tabs.value = [...tabs.value, { id, kind }]
+    active.value = id
+  }
+  /** A file by workspace path: its open tab if there is one, else a new tab. */
+  function open(path: string) {
+    const existing = tabs.value.find((tab) => tab.kind === 'file' && tab.path === path)
+    if (existing) {
+      active.value = existing.id
+      return
+    }
+    const id = `w${nextId++}`
+    tabs.value = [...tabs.value, { id, kind: 'file', path }]
     active.value = id
   }
   function reset() {
     tabs.value = workTabs()
     active.value = activeId
   }
-  return { tabs, active, close, add, reset }
+  return { tabs, active, close, add, open, reset }
 }
+const workspace = createGalleryWorkspace()
+const fileViewTree = ref(true)
+const fileViewPath = ref(`${workspace.root}/src/auth/cookie.ts`)
 const panelWork = useWorkTabs('w2')
 const exhibitWork = useWorkTabs('w1')
 const emptyTabs: WorkTab[] = []
@@ -1484,9 +1501,11 @@ function abortTerminal(id: string) {
                 <WorkPanel
                   :tabs="panelWork.tabs.value"
                   :active-id="panelWork.active.value"
+                  :workspace="workspace"
                   @select="(id) => (panelWork.active.value = id)"
                   @close-tabs="panelWork.close"
                   @add="panelWork.add"
+                  @open="panelWork.open"
                   @close="panelAsideOpen = false"
                 />
               </template>
@@ -1500,7 +1519,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="The panel alone. A file tab carries the file's icon; the one Change tab a diff mark. New tab follows the last tab until they scroll, then stays at the right. Right-click a tab for its menu; a file tab also copies its path. The content pane is a placeholder until file and change views exist."
+        note="The panel alone. A file tab carries the file's icon; the one Change tab a diff mark. New tab follows the last tab until they scroll, then stays at the right. Right-click a tab for its menu; a file tab also copies its path. A file tab reads its file from the workspace; the Change tab is a placeholder until the change view exists."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
@@ -1509,9 +1528,11 @@ function abortTerminal(id: string) {
                 class="w-full"
                 :tabs="exhibitWork.tabs.value"
                 :active-id="exhibitWork.active.value"
+                :workspace="workspace"
                 @select="(id) => (exhibitWork.active.value = id)"
                 @close-tabs="exhibitWork.close"
                 @add="exhibitWork.add"
+                @open="exhibitWork.open"
                 @close="exhibitWork.close(exhibitWork.tabs.value.map((tab) => tab.id))"
               />
             </div>
@@ -1522,6 +1543,23 @@ function abortTerminal(id: string) {
             </div>
           </GallerySpecimen>
         </div>
+      </GallerySection>
+      <GallerySection
+        title="File view"
+        note="A file of the workspace: the path as crumbs from the workspace root, the highlighted text, and the workspace tree beside it with the file selected. The control at the end of the crumb row hides and shows the tree; a click on another file in the tree opens it here. Reads carry the fixture's latency, so the text and each directory show their loading state first."
+      >
+        <GallerySpecimen variant="cookie.ts · live" wide>
+          <div class="gallery-frame flex h-[28rem] overflow-hidden">
+            <FileView
+              class="w-full"
+              v-model:tree="fileViewTree"
+              :source="workspace.source"
+              :root="workspace.root"
+              :path="fileViewPath"
+              @open="fileViewPath = $event"
+            />
+          </div>
+        </GallerySpecimen>
       </GallerySection>
     </template>
 

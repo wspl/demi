@@ -14,6 +14,9 @@ import MenuItem from '../ui/MenuItem.vue'
 import Popover from '../ui/Popover.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from '../files/FileIcon.vue'
+import FileView from '../files/FileView.vue'
+import { joinPath, normalizePath } from '../files/paths'
+import type { FileBrowserSource } from '../files/types'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
 import { tabsToClose, type TabCloseScope } from './tab-close'
@@ -29,21 +32,41 @@ import { changeWorkTab, workTabTitle, type WorkTab } from './work-panel'
  *
  * A tab's menu closes it, the others, or one side of it; a file tab also
  * copies its path. There is one change tab at most: asking for it again
- * selects the open one. The content pane is a placeholder until file and
- * change views exist.
+ * selects the open one.
+ *
+ * A file tab shows its file through `workspace`: the source it reads from
+ * and the root its paths are relative to. The file view's tree shows the
+ * workspace; a file chosen there is asked for with `open`. Whether the tree
+ * shows is one choice for the panel, not per tab. Without a workspace, and
+ * for the change tab, the content pane is a placeholder.
  */
 const props = defineProps<{
   tabs: readonly WorkTab[]
   activeId: string | null
+  workspace?: { source: FileBrowserSource; root: string }
 }>()
 const emit = defineEmits<{
   select: [id: string]
   closeTabs: [ids: string[]]
   /** New tab, of the chosen kind; the host decides what it opens. */
   add: [kind: WorkTab['kind']]
+  /** A file from the tree, by its path relative to the workspace root. */
+  open: [path: string]
   /** The fold control: put the whole panel away. */
   close: []
 }>()
+
+const treeOpen = ref(true)
+
+function absolutePath(path: string): string {
+  return joinPath(props.workspace?.root ?? '/', path)
+}
+
+function openFromTree(path: string): void {
+  const root = normalizePath(props.workspace?.root ?? '/')
+  const relative = path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
+  emit('open', relative)
+}
 const active = computed(
   () => props.tabs.find((tab) => tab.id === props.activeId) ?? null,
 )
@@ -171,7 +194,17 @@ function add(kind: WorkTab['kind']): void {
     </div>
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <slot :tab="active">
+        <!-- One view across file tabs, so the tree keeps what it has unfolded. -->
+        <FileView
+          v-if="active?.kind === 'file' && workspace"
+          v-model:tree="treeOpen"
+          :source="workspace.source"
+          :root="workspace.root"
+          :path="absolutePath(active.path)"
+          @open="openFromTree"
+        />
         <div
+          v-else
           class="flex flex-1 select-none flex-col items-center justify-center gap-1 text-[13px] text-fg-faint"
         >
           <template v-if="active?.kind === 'file'">

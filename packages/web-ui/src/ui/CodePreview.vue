@@ -19,7 +19,7 @@ const html = computed(() => {
 
 <template>
   <div
-    class="code-preview markdown-body h-full overflow-y-auto bg-surface-editor p-4 text-conversation select-text"
+    class="code-preview markdown-body h-full overflow-auto bg-surface-editor p-4 text-conversation select-text"
     v-html="html"
   />
 </template>

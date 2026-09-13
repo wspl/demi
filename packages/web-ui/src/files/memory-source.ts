@@ -16,6 +16,8 @@ export interface MemoryFile {
   kind: 'file'
   size: number
   modifiedAt: string
+  /** What `read` returns; a file without it reads as empty. */
+  content?: string
 }
 
 export interface MemoryDirectory {
@@ -46,8 +48,15 @@ export function dir(
   return { kind: 'directory', children, ...extra }
 }
 
-export function file(size: number, modifiedAt: string): MemoryFile {
-  return { kind: 'file', size, modifiedAt }
+export function file(size: number, modifiedAt: string, content?: string): MemoryFile {
+  return content === undefined
+    ? { kind: 'file', size, modifiedAt }
+    : { kind: 'file', size, modifiedAt, content }
+}
+
+/** A file whose size is its text's length. */
+export function textFile(content: string, modifiedAt: string): MemoryFile {
+  return { kind: 'file', size: content.length, modifiedAt, content }
 }
 
 export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBrowserSource & {
@@ -107,6 +116,15 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
           },
       )
       return entries
+    },
+    async read(path, signal) {
+      await wait(signal)
+      if (options.offline)
+        throw new FileBrowserError('offline')
+      const node = lookup(path)
+      if (!node || node.kind !== 'file')
+        throw new FileBrowserError('not-found', `No such file: ${normalizePath(path)}`)
+      return node.content ?? ''
     },
     async createDirectory(path) {
       await wait()
