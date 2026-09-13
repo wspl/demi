@@ -319,6 +319,7 @@ dependencies = [
  "clap",
  "color-print",
  "command-fds",
+ "demi-native-path",
  "fancy-regex 0.17.0",
  "futures",
  "getrandom 0.4.3",
