@@ -82,3 +82,83 @@ buttons use the theme's regular button fill, which can be translucent in dark mo
 that fill is not suitable for controls over scrolling content. The session's
 Scroll to bottom button uses the solid variant. Gallery `/control-layout` shows
 it on all four surfaces, and Session States exercises it over a transcript.
+
+## Product appearance
+
+The product uses Regular density, Medium radius and Hairline shadows; those are
+fixed. Tone (Ink or Warm), accent, the theme and the transcript text size are the
+user's to choose on the General settings page.
+`web-ui/theme/productAppearance.ts` defines the fixed axes and the catalogs of
+tones and accents; `web-ui/styles/product-appearance.css` owns every token they
+need in light and dark. The web composition root applies the axes and the gallery
+exposes the same Demi preset, plus further tones for its own paradigms.
+
+## Scroll regions and outlines
+
+A scroll region clips both axes: `overflow-y: auto` makes `overflow-x` non-visible
+too, so anything a child draws outside its box, such as a `ring` (a box-shadow), a
+focus ring, or a corner badge, is cut off when the child sits flush with the
+region's edge. Rules:
+
+- Every scroll region carries horizontal padding of at least the widest outline
+  drawn inside it. Where the layout wants the content flush, pair the padding with
+  a matching negative margin (`-mx-1 px-1`) so the region grows instead of the
+  content shrinking.
+- Never fix a clipped outline on the child; fix the region.
+- Product scroll regions are `ScrollArea`s: the native bar is hidden and a thumb is
+  drawn over the content at the right edge, so the bar takes no room and the
+  content keeps symmetric padding whether or not it overflows. Padding for rings
+  goes on the viewport (`viewportClass`); the region itself is a `min-h-0` flex
+  item. The thumb shows on hover or while scrolling and can be dragged.
+- The gallery audits this: `demiAuditClipping()` in the browser console, and
+  automatically after each gallery navigation in development, lists every
+  outlined element that a scroll region would clip.
+
+## Control size families
+
+Controls use aligned height families; each component exposes its applicable sizes: 36px
+(`Button` lg, `TextInput` lg), 28px (`Button` md, `IconButton` md, `TextInput`
+md, `Segmented` md, `Dropdown` md), 24px (`sm`) and 20px (`xs` buttons). A
+surface picks one family per kind of control and keeps to it: all of its text
+inputs one height, all of its buttons another. Isolated page forms (sign-in)
+use 36px for both the fields and the submit button. In settings cards text
+inputs are 28px, since a line of text wants that room, and buttons, icon
+buttons, segmented and dropdown controls are 24px, since a bordered 28px icon
+button reads heavy in a row. Two buttons of different heights in one card, or
+two inputs, is a mistake. Chrome outside the cards (a dialog's search, the
+narrow back row) stays at 28px, and a rail caption's action or a hover action
+inside a 32px list row uses 20px. A bare input (no frame in any state) is the
+exception: its hit area stretches to the row's content box, 28px in a compact
+row and 32px in a regular one, so the value is easy to click into.
+
+The gallery audits this: `demiAuditControlSizes()` in the browser console, and
+automatically after each gallery navigation in development, lists every settings
+card whose inputs or buttons mix families.
+
+## Color transitions and `transparent`
+
+Color transitions should retain their target hue while fading. For native
+scrollbar thumbs, write the hidden color as the thumb's own hue at zero alpha,
+`rgb(from <color> r g b / 0)`. Do not use the `transparent` keyword or a zero-percent
+color mix for that hidden thumb, since interpolation from transparent black can
+produce an unwanted dark midpoint. Verify new animated properties in the gallery
+in light and dark modes rather than assuming the same interpolation behavior.
+
+## Menus and typography
+
+`MenuGroup` owns section headings; `MenuItem` owns labels, right-aligned metadata
+in its `value` field, and status indicators. Metadata uses subtle foreground and
+16px separation from the label. Model, host, project, and gallery menus share
+these contracts.
+
+Floating menus size to content with a 160px minimum, or 192px with search, and a
+384px maximum capped by the viewport minus 32px. Labels truncate at the cap.
+Shortcut space is reserved only for actual shortcuts. Conversation history uses
+320px to fit titles and timestamps; embedded file and target lists fill their
+panel. Other menus do not assign arbitrary fixed widths.
+
+Interface text uses normal weight and macOS grayscale antialiasing. The shared
+sign-in page places 36px fields and its submit button on the base surface, beside
+a wide introduction area on the session surface. That area hides below tablet
+width. Product theme options are defined above; gallery-only appearance controls
+do not add settings to the product.
