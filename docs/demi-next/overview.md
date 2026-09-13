@@ -130,7 +130,8 @@ implementation.
 | What does a device runner own? | [Runner](runner.md) |
 | How do external programs call declared commands? | [External command clients](commands.md#external-command-clients) |
 | How is Cloud provisioned and reset? | [Managed hosts](managed-hosts.md) |
-| How does the web application fit together? | [Web application](web-prototype.md) |
+| How does the web application fit together? | [Web application](web-application.md) |
+| How do transcript, dock, and inspection panels behave? | [Session interface](session-interface.md) |
 | How does a user pair a device? | [Device pairing](device-pairing-ui.md) |
 | What does the host menu show and permit? | [Host menu](host-menu.md) |
 | How are sidebar items ordered? | [Sidebar ordering](sidebar-order.md) |

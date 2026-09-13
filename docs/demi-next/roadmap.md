@@ -60,7 +60,7 @@ semantics, then complete backend integration. `web-ui` owns reusable interaction
 `web` supplies application state/handlers and `web-gallery` supplies specimens.
 A browser walkthrough must cover empty, loading, success, error and recovery
 states. Prototype fixtures are not production authorization or persistence.
-See `product.md`, `web-prototype.md` and `web-gallery-sync.md`.
+See `product.md`, `web-application.md` and `web-gallery-sync.md`.
 
 ## Deferred decisions
 
