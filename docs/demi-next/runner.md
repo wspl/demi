@@ -37,11 +37,13 @@ so callers cannot substitute another job’s attribution.
 
 ## Shell jobs
 
-`tasks.rs` starts a fresh runner process in `shell-job` mode. `shell.rs` creates a
-brush shell with explicit cwd, environment and IO, and registers embedded standard
-utilities from `native-utils`. External programs such as git, Python and Node
-resolve on the device. Declared command roots use aliases to the runner executable
-and dispatch through its local HTTP/2 endpoint.
+Brush executes inside the resident runner process. Shell jobs own their cwd,
+environment, IO and execution state; a shell job does not launch another runner
+process. `shell.rs` registers embedded standard utilities from `native-utils`
+and declared command roots as builtins. Declared builtins call the runner's
+dispatcher directly. External programs such as git, Python and Node remain child
+processes. An external program calling a declared command uses the forwarding
+executable and local endpoint described in `command-client.md`.
 
 The job’s foreground exit status and final cwd are reported to the backend.
 Subsequent jobs start a fresh login shell at that cwd. Brush loads the system
@@ -54,10 +56,26 @@ For example, `(sleep 2; echo done) & echo started` emits `started`, remains runn
 then emits `done`. Tool timeout returns a handle; it does not stop the job.
 Background tasks are job-owned. Brush does not expose their OS PIDs through `$!`.
 
-Cancellation terminates the entire job process tree through Unix process groups
-or Windows Job Objects. Connection loss closes jobs, callback contexts, transfers
-and resident services. The runner continues serving control requests while a job
-produces output or waits for input.
+Cancellation stops job-owned shell work and releases its IO and external child
+processes. It must not terminate the resident runner or unrelated jobs. Native
+builtins must use invocation-local state and IO rather than process-global cwd,
+environment or exit. The concrete cancellation mechanism requires design review
+under this in-process model. The runner continues serving control requests while
+a job produces output or waits for input.
+
+## Command lifetime
+
+The server or SDK agent host program determines its command definitions and
+implementation catalog at startup. They remain fixed during that program's
+lifetime; changing them requires restarting that program. There is no live
+command-update broadcast across running shells.
+
+Builtin bindings and external forwarding use the same execution context.
+Releasing that context releases its bindings and references to command services.
+Brush may be forked to provide the necessary registration and removal APIs.
+Network disconnection alone does not establish that the host program restarted
+or changed its command set. How the runner recognizes host-program lifetime and
+handles outstanding work across reconnects remains to be discussed.
 
 ## Pipes and output
 

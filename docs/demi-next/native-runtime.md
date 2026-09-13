@@ -147,14 +147,16 @@ Agent host (Demi product or programming SDK application)
   |
   | authenticated MessagePack WebSocket and HTTP byte pipes
   v
-Native runner on execution target -- one runner executable
+Resident runner process on execution target
   |-- job lifecycle, input/output, cancellation
-  |-- embedded brush shell
+  |-- brush execution inside this same process
   |     |-- shell/core utilities -> builtins
   |     |-- git/python/node -----> system executables
   |     `-- declared command ---> command dispatcher
   |                                |-- callback -> agent host
   |                                `-- native binding
+  |-- local forwarding endpoint <- external command client process
+  |                                -> same command dispatcher
   |-- artifact cache and resident-service lifecycle
   |                                      |
   |                              reused HTTP/2 connection
@@ -203,9 +205,11 @@ runner to the selected destination. stdin EOF is independent of cancellation.
 Retain execution-context validation and local endpoint access controls. Validate
 blocked output, idle terminal input, disconnects and cancellation on all platforms.
 
-The embedded shell resolves declared roots to these aliases. The executable
-contains forwarding and dispatch code; native Demi algorithms live only in the
-independently distributed `demi-commands` service.
+The embedded shell resolves declared roots to builtins that call the dispatcher
+inside the resident runner process. External programs resolve those roots to
+executable aliases and use local forwarding. The executable contains forwarding
+and dispatch code; native Demi algorithms live only in the independently
+distributed `demi-commands` service.
 
 ## Initialization and responsibility boundaries
 
@@ -384,11 +388,16 @@ missing operations or version disagreement fail service startup explicitly.
 Verified executable bytes already establish the artifact identity; the service
 need not embed its own executable hash, which would be circular.
 
+The server or SDK agent host program fixes its command definitions and package
+catalog at startup. The set changes only when that program restarts. This is
+distinct from a temporary network disconnect; recognition of host restart and
+the treatment of outstanding work across reconnects remain open decisions.
+
 Spawn is single-flight within the instance scope. The service stays resident for
-reuse until runner shutdown, explicit retirement or failure. Each active command
-is bound to its manifest/package snapshot. When a catalog is replaced, new calls
-use the new snapshot, old calls keep their binding, and an old service retires
-after no live manifest references or calls need it. Close through an application
+reuse while live execution contexts or invocations need it. Each active command
+uses its context's package binding. Context disposal releases builtin and
+forwarding bindings and service references. A service with no remaining owners
+can retire. There is no runtime catalog hot-update mechanism. Close through an application
 shutdown request, drain streams, close stdin to deliver EOF, and reap the child;
 a bounded shutdown deadline permits terminating the whole retiring service.
 
@@ -579,7 +588,8 @@ job aliases name that executable, and their basename selects the declared root.
 
 ### Shell job lifetime
 
-`runner/src/shell.rs` creates a fresh brush login shell for each job. It loads
+`runner/src/shell.rs` executes brush within the resident runner process, with
+job-owned shell state and IO. It loads
 login profiles, then restores the runner-owned context, command alias precedence
 and requested cwd before executing the script. The job waits for
 its asynchronous shell tasks before reporting completion, and preserves the
@@ -587,13 +597,15 @@ foreground script's exit status. For example, `(sleep 2; echo done) & echo start
 emits `started` immediately, remains a running job during the sleep, then emits
 `done` and exits. A tool timeout returns that running job's handle; `shell_status`
 and `shell_abort` continue to control it. Background tasks belong to this job and
-do not become detached services. Cancellation and connection loss terminate the
-job process and its descendants.
+do not become detached services. Cancellation stops that job's shell work and
+external descendants without terminating the runner or unrelated jobs.
 
 Brush's internal asynchronous tasks do not expose operating-system process IDs
 through `$!`. Tests that kill an external command client identify its actual PID
 from that child process; ordinary shell job cancellation uses the runner's job
-handle. Unix process groups and Windows Job Objects provide process-tree cleanup.
+handle. External child processes require job-scoped cleanup. Cancellation of
+in-process brush and utility work requires a concrete design; terminating the
+runner is not a job-cancellation mechanism.
 
 Raw `Host.process.spawn` calls use only their supplied environment. A caller can
 set `inheritEnv: true` to extend the device process environment; an explicitly
