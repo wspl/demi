@@ -33,9 +33,8 @@ defineEmits<{
   >
     <!-- Directories fold on a chevron; files keep its width so names line up. -->
     <span class="flex size-4 shrink-0 items-center justify-center text-fg-faint">
-      <IndeterminateSpinner v-if="loading" :size="12" />
       <ChevronRight
-        v-else-if="row.isDirectory"
+        v-if="row.isDirectory"
         :size="ICON_PX.in20"
         class="transition-transform duration-150"
         :class="open ? 'rotate-90' : ''"
@@ -43,8 +42,15 @@ defineEmits<{
     </span>
     <FileIcon :name="row.name" :is-directory="row.isDirectory" />
     <span class="truncate">{{ row.name }}</span>
+    <!-- A listing in flight: a thin spinner at the row's end, the chevron untouched. -->
+    <IndeterminateSpinner
+      v-if="loading"
+      class="ml-auto shrink-0 text-fg-faint"
+      :size="12"
+      :stroke-width="1.5"
+    />
     <span
-      v-if="failure"
+      v-else-if="failure"
       class="ml-auto truncate pl-2 text-[11px] text-fg-faint"
       :title="failure.message"
       >{{ failure.kind === 'permission' ? 'No access' : 'Unavailable' }}</span
