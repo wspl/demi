@@ -8,7 +8,7 @@ It contains no native command implementations.
 
 ## Transport and lifetime
 
-`runner/rust/local.rs` creates an owner-restricted Unix domain socket on macOS and
+`runner/src/local.rs` creates an owner-restricted Unix domain socket on macOS and
 Linux, or a local Windows named pipe restricted to the current account. Each client
 opens a direct HTTP/2 connection and one invocation stream. The shared framing,
 flow control and completion contract belongs to `command-protocol` and

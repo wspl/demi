@@ -78,7 +78,7 @@ loss or missing completion is a failure. Cancellation stops the invocation and
 releases its input, output, callback resources and running hint. One cancelled
 native invocation does not terminate unrelated calls in the shared service.
 
-File algorithms live in `demi-package/rust`, not the runner or command loader.
+File algorithms live in `demi-package/src`, not the runner or command loader.
 They receive per-call cwd and cancellation, and do not change global process
 state. Native package installation, flow-control limits, service retirement and
 six-target release rules are defined in [native-runtime.md](native-runtime.md).
