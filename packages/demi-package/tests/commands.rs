@@ -12,7 +12,7 @@ async fn call(
     operation: &str,
     args: serde_json::Value,
 ) -> (Completion, Vec<u8>, Vec<u8>) {
-    let (mut input, mut output) = client
+    let (_input, mut output) = client
         .invoke(&Invocation {
             operation: operation.into(),
             invocation_id: operation.into(),
@@ -22,7 +22,8 @@ async fn call(
         })
         .await
         .unwrap();
-    input.end().unwrap();
+    // File operations never request stdin and may finish before invoke returns.
+    // Keep the request handle alive without sending unsolicited input or EOF.
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
     let mut completion = None;
