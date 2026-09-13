@@ -62,7 +62,9 @@ It returns 409 `device_in_use` while workspaces point at that device. Successful
 revocation closes its connection and removes its conversation attachments.
 Pairing accepts a live code and returns the claimed device; expired/unknown codes
 return 404 and excessive attempts 429. The installation routes contain no
-credential and do not grant device access. See [Device pairing](device-pairing-ui.md).
+credential and do not grant device access. The runner receives a pending code;
+the signed-in browser claims it through
+`POST /api/devices/claim`. Device tokens are delivered only to the runner.
 
 Attached-host responses contain device identity, name, cwd, online state, and
 attachment time. A conversation's main device cannot also be attached. Names are
@@ -238,8 +240,7 @@ it does not wait for an entire inference turn.
 
 `POST /api/sidebar/reorder` takes `{ kind: "conversation" | "workspace", id,
 beforeId: string | null }`; null appends. Conversation moves stay within the same
-project and pin partition. Storage owns persistent ordering; see
-[sidebar ordering](sidebar-order.md). Activity timestamps never reorder rows.
+project and pin partition. [Storage](storage.md) owns persistent ordering. Activity timestamps never reorder rows.
 
 `GET /api/conversations?archived=true|false` includes `status`, `revision`,
 `readRevision` and `unread`. Status is running/compacting from the live agent tree,
