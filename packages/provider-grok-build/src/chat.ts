@@ -7,6 +7,8 @@ import { attachmentTag } from '@demicodes/core'
 import { Buffer } from 'node:buffer'
 import type { UserContentBlock } from '@demicodes/core'
 import {
+  stringifyToolArguments,
+  thinkingToReasoningEffort,
   toolResultContentToText,
   type InferenceItem,
   type InferenceRequest,
@@ -218,17 +220,4 @@ function toolToGrokTool(tool: ToolDefinition): GrokChatTool {
       parameters: tool.inputSchema,
     },
   }
-}
-
-function thinkingToReasoningEffort(
-  request: InferenceRequest
-): string | undefined {
-  const thinking = request.thinking
-  if (!thinking || thinking.type === 'disabled' || thinking.type === 'budget')
-    return undefined
-  return thinking.effort
-}
-
-function stringifyToolArguments(input: unknown): string {
-  return typeof input === 'string' ? input : JSON.stringify(input ?? {})
 }

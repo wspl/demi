@@ -20,7 +20,7 @@ import {
   writeFile
 } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
 import type { ProviderCredentialInfo } from './types'
 
@@ -330,3 +330,19 @@ export class CredentialPoolError extends Error {
   }
 }
 
+/**
+ * Writes `value` as pretty-printed JSON that no reader ever sees half-written:
+ * the bytes land in a sibling temporary file, readable by the owner only, and
+ * the rename that publishes them is atomic. Used for the vendor `auth.json`
+ * files a provider owns outside the pool.
+ */
+export async function writeJsonFileAtomic(
+  path: string,
+  value: unknown
+): Promise<void> {
+  await mkdir(dirname(path), { recursive: true })
+  const temp = `${path}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`
+  await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+  await chmod(temp, 0o600)
+  await rename(temp, path)
+}

@@ -13,8 +13,10 @@ import {
   providerErrorFromUnknown,
   readServerSentEvents,
   responsesReasoningItemSchema,
+  stringifyToolArguments,
+  thinkingToReasoningEffort,
   toolResultContentToText,
-  withProviderId,
+  withCatalogProviderId,
   type AgentProvider,
   type InferenceItem,
   type InferenceRequest,
@@ -262,7 +264,7 @@ export function createOpenAIApiProvider(
         options.models,
         { providerId: id, defaultModelId: options.defaultModelId ?? null }
       )
-      : withProviderId(openAIApiDefaultModels(id), id)
+      : withCatalogProviderId(openAIApiDefaultModels(id), id)
   const runtimeOptions: OpenAIApiRuntimeOptions = {
     baseUrl,
     apiKey,
@@ -913,17 +915,4 @@ function openAIResponsesUrl(baseUrl: string): string {
   return normalized.endsWith('/responses')
     ? normalized
     : `${normalized}/responses`
-}
-
-function thinkingToReasoningEffort(
-  request: InferenceRequest
-): string | undefined {
-  const thinking = request.thinking
-  if (!thinking || thinking.type === 'disabled' || thinking.type === 'budget')
-    return undefined
-  return thinking.effort
-}
-
-function stringifyToolArguments(input: unknown): string {
-  return typeof input === 'string' ? input : JSON.stringify(input ?? {})
 }

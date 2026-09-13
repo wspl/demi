@@ -23,7 +23,7 @@ import {
   reportedStringSchema,
   taggedUnion,
   tokenCountSchema,
-  withProviderId,
+  withCatalogProviderId,
   type AgentProvider,
   type InferenceItem,
   type InferenceRequest,
@@ -198,7 +198,7 @@ export function createAnthropicApiProvider(
         options.models,
         { providerId: id, defaultModelId: options.defaultModelId ?? null }
       )
-      : withProviderId(anthropicApiDefaultModels(id), id)
+      : withCatalogProviderId(anthropicApiDefaultModels(id), id)
   const runtimeOptions: AnthropicApiRuntimeOptions = {
     baseUrl,
     apiKey,

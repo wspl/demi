@@ -113,7 +113,7 @@ export function stringifyPortableJson(value: unknown, space?: number): string {
  * Parses JSON produced by `stringifyPortableJson`, reviving marked
  * `Uint8Array`, `bigint`, and `Date` values.
  */
-export function parsePortableJson<T>(text: string): T {
+export function parsePortableJson(text: string): unknown {
   return JSON.parse(text, (_key, nested) => {
     if (isEncodedUint8Array(nested)) {
       return base64ToBytes(nested.base64)
@@ -125,7 +125,7 @@ export function parsePortableJson<T>(text: string): T {
       return new Date(nested.iso)
     }
     return nested
-  }) as T
+  })
 }
 
 function isEncodedUint8Array(value: unknown): value is { base64: string } {
