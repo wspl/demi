@@ -49,6 +49,38 @@ test(
   }
 )
 
+test(
+  'the declared input schema and the invocation agree on what is accepted',
+  async () => {
+    const tools = createStandardAgentTools({
+      environment: { exec: async () => shellSnapshot('done\n') } as unknown as ShellEnvironment,
+      scheduleYield: () => ({ output: [{ type: 'text', text: 'scheduled' }] }),
+    })
+    const shellExec = tools.find((tool) => tool.name === 'shell_exec')
+    if (!shellExec)
+      throw new Error('missing shell_exec')
+    const schema = shellExec.inputSchema as {
+      properties: Record<string, { type?: string }>
+      additionalProperties?: boolean
+    }
+
+    // Declared to the model: an integer window, a string shellId, no extras.
+    expect(schema.properties.timeoutMs?.type).toBe('integer')
+    expect(schema.properties.shellId?.type).toBe('string')
+    expect(schema.additionalProperties).toBe(false)
+    // The same three refusals at runtime, which used to differ per case.
+    for (const input of [
+      { script: 'true', timeoutMs: 1, shellId: 42 },
+      { script: 'true', timeoutMs: 1, maxOutputBytes: 10 },
+      { script: 'true', timeoutMs: 1.5 },
+    ]) {
+      expect(shellExec.invoke(toolContext(), input)).rejects.toThrow(
+        /shell_exec input is invalid/
+      )
+    }
+  }
+)
+
 test('shell preview budget follows the 800k context threshold', () => {
   expect(shellPreviewBudgetTokens(0)).toBe(10_000)
   expect(shellPreviewBudgetTokens(799_999)).toBe(10_000)

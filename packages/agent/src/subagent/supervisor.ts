@@ -1213,16 +1213,25 @@ function trimToolRecords(tools: ChildToolRecord[]): void {
   }
 }
 
+/**
+ * The title a tool declares for its own call. Tool input is model output, so
+ * anything that is not the declared shape falls back to the tool name.
+ */
+const titledToolInputSchema = z.looseObject({ description: z.string() })
+
 function toolCallTitle(block: Extract<Block, { type: 'tool_call' }>): string {
+  let raw: unknown
   try {
-    const input = JSON.parse(block.input) as Record<string, unknown>
-    if (typeof input.description === 'string' && input.description.trim()) {
-      return input.description.trim()
-    }
+    raw = JSON.parse(block.input)
   } catch {
-    // Fall through to the tool name.
+    return block.toolName
   }
-  return block.toolName
+  const input = titledToolInputSchema.safeParse(raw)
+  if (!input.success) {
+    return block.toolName
+  }
+  const description = input.data.description.trim()
+  return description.length > 0 ? description : block.toolName
 }
 
 function lastAssistantText(blocks: Block[]): string {
