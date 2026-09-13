@@ -1,3 +1,4 @@
+import { reactive } from 'vue'
 import type { ShellFileChange } from '@demicodes/agent'
 import type { ChangeSetSource, ChangeSources } from '@demicodes/web-ui/files/changes'
 import { createMemoryFileSource, dir, textFile, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
@@ -407,6 +408,40 @@ const changedFiles: ShellFileChange[] = Object.entries(changeSides).map(([path, 
 /** The files the conversation's shell calls touched and the reader picked from their rows. */
 const CONVERSATION_PICKS = ['src/auth/cookie.ts', 'src/auth/session.ts', 'tests/login/auth.test.ts']
 
+/** How a fixture change set presents its listing, beyond the files themselves. */
+export interface GalleryChangeListing {
+  /** The list was cut short at the host's limit. */
+  truncated?: boolean
+  /** The last listing failed with these words; the files are the last good list. */
+  failure?: string
+  /** The workspace is not a git repository: no files at all. */
+  unavailable?: 'no-repository'
+}
+
+/**
+ * A change set the way the product's working tree presents one: reactive,
+ * with a Refresh that shows as in flight for a moment, and the listing state
+ * the specimen asks for.
+ */
+export function createGalleryChangeSet(latencyMs: number, listing: GalleryChangeListing = {}): ChangeSetSource {
+  const fixed = createGalleryChanges(latencyMs)
+  const source: ChangeSetSource = reactive({
+    files: listing.unavailable ? [] : fixed.files,
+    truncated: listing.truncated ?? false,
+    unavailable: listing.unavailable ?? null,
+    refreshing: false,
+    failure: listing.failure ?? null,
+    refresh() {
+      source.refreshing = true
+      setTimeout(() => {
+        source.refreshing = false
+      }, latencyMs * 4)
+    },
+    read: fixed.read,
+  })
+  return source
+}
+
 function createGalleryChanges(latencyMs: number, paths?: readonly string[]): ChangeSetSource {
   return {
     files: paths ? changedFiles.filter((file) => paths.includes(file.path)) : changedFiles,
@@ -439,7 +474,7 @@ export function createGalleryWorkspace(latencyMs = 200): { source: FileBrowserSo
   })
   const changes: ChangeSources = {
     conversation: createGalleryChanges(latencyMs, CONVERSATION_PICKS),
-    uncommitted: createGalleryChanges(latencyMs),
+    uncommitted: createGalleryChangeSet(latencyMs),
   }
   return { source, root: WORKSPACE_ROOT, changes }
 }
