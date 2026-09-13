@@ -1,5 +1,6 @@
 import type { ShellFileChange } from '@demicodes/agent'
 import { baseName } from './paths'
+import type { TreeRow } from './tree'
 
 /**
  * The changes a conversation made to its workspace, as the change view
@@ -25,10 +26,10 @@ export function changeTotals(files: readonly ShellFileChange[]): { added: number
   return { added, removed }
 }
 
-/** One row of the change tree: a directory on the way to changed files, or a changed file. */
-export type ChangeTreeRow =
-  | { kind: 'directory'; path: string; name: string; depth: number }
-  | { kind: 'file'; path: string; name: string; depth: number; change: ShellFileChange }
+/** One row of the change tree: a directory on the way to changed files (no change), or a changed file. */
+export interface ChangeTreeRow extends TreeRow {
+  change: ShellFileChange | null
+}
 
 /**
  * The changed files as a tree, directories first at every level and sorted
@@ -55,18 +56,19 @@ export function changeTreeRows(files: readonly ShellFileChange[], folded: Readon
     node.files.push(file)
   }
   const rows: ChangeTreeRow[] = []
-  const walk = (node: Node, prefix: string, depth: number): void => {
+  const walk = (node: Node, prefix: string, depth: number, parent: string | null): void => {
     for (const name of [...node.dirs.keys()].sort((a, b) => a.localeCompare(b))) {
       const path = prefix ? `${prefix}/${name}` : name
-      rows.push({ kind: 'directory', path, name, depth })
-      if (!folded.has(path)) {
-        walk(node.dirs.get(name)!, path, depth + 1)
+      const open = !folded.has(path)
+      rows.push({ path, name, isDirectory: true, depth, parent, open, change: null })
+      if (open) {
+        walk(node.dirs.get(name)!, path, depth + 1, path)
       }
     }
     for (const change of [...node.files].sort((a, b) => baseName(a.path).localeCompare(baseName(b.path)))) {
-      rows.push({ kind: 'file', path: change.path, name: baseName(change.path), depth, change })
+      rows.push({ path: change.path, name: baseName(change.path), isDirectory: false, depth, parent, open: false, change })
     }
   }
-  walk(root, '', 0)
+  walk(root, '', 0, null)
   return rows
 }
