@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { RefreshCw } from '@lucide/vue'
 import CornerDot from '../ui/CornerDot.vue'
+import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
+import Tooltip from '../ui/Tooltip.vue'
 import Tree from './Tree.vue'
 import type { TreeRow } from './tree'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource } from './types'
@@ -14,7 +17,8 @@ import { baseName, isHiddenName, joinPath, normalizePath, parentPath } from './p
  * to open it. The selected file's ancestors unfold on their own so it is
  * always in view. A directory being listed spins at its row's end; one that
  * could not be listed wears a red dot on its icon and tells why on hover.
- * Loads in flight are dropped when the tree goes away.
+ * The control at the caption's end lists every open directory again, turning
+ * while they load. Loads in flight are dropped when the tree goes away.
  */
 const props = defineProps<{
   source: Pick<FileBrowserSource, 'list'>
@@ -60,9 +64,10 @@ function sortEntries(entries: FileBrowserEntry[]): FileBrowserEntry[] {
   })
 }
 
-async function load(path: string): Promise<void> {
+/** Lists a directory once; `again` lists it anew, its rows staying until the new ones land. */
+async function load(path: string, again = false): Promise<void> {
   const entry = listing(path)
-  if (entry.loading || entry.entries.length > 0) {
+  if (entry.loading || (entry.entries.length > 0 && !again)) {
     return
   }
   entry.loading = true
@@ -85,6 +90,27 @@ function open(path: string): void {
   const entry = listing(path)
   entry.open = true
   void load(path)
+}
+
+const refreshing = ref(false)
+
+/** Lists every open directory again, the root included; the folds and rows stay until the new listings land. */
+async function refresh(): Promise<void> {
+  if (refreshing.value) {
+    return
+  }
+  refreshing.value = true
+  const reloads: Promise<void>[] = []
+  for (const [path, entry] of listings) {
+    if (entry.open) {
+      reloads.push(load(path, true))
+    }
+  }
+  try {
+    await Promise.all(reloads)
+  } finally {
+    refreshing.value = false
+  }
 }
 
 function toggle(path: string): void {
@@ -190,6 +216,18 @@ defineExpose({
     :tooltip="failureText"
     @activate="activate"
   >
+    <template #captionTrailing>
+      <Tooltip content="Refresh" class="ml-2 shrink-0">
+        <IconButton
+          :icon="RefreshCw"
+          size="xs"
+          variant="ghost"
+          aria-label="Refresh"
+          :spinning="refreshing"
+          @click="refresh"
+        />
+      </Tooltip>
+    </template>
     <template #mark="{ row }">
       <CornerDot v-if="failureOf(row)" tone="danger" size="xs" ring="editor" :label="failureText(row)" />
     </template>

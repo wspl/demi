@@ -10,7 +10,7 @@ import ResizeHandle from '../ui/ResizeHandle.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import ChangeTree from './ChangeTree.vue'
-import { type ChangeMode, type ChangeSources } from './changes'
+import { emptyChangeSetText, type ChangeMode, type ChangeSources } from './changes'
 import { TREE_WIDTH } from './file-view'
 import { FileBrowserError } from './types'
 import { joinPath } from './paths'
@@ -27,7 +27,9 @@ import { joinPath } from './paths'
  * host keeps that history (`showChangeInTab`) along with the mode, the
  * selected file, and the tree's visibility and width. The header also holds
  * the control that opens the selected file itself (not a deleted one) and,
- * under Uncommitted, the one that shows and hides the tree.
+ * under Uncommitted, the one that shows and hides the tree; the tree's own
+ * caption lists the changes again. With nothing to list, the view says why:
+ * nothing changed, no repository, or a listing that failed.
  */
 const props = defineProps<{
   changes: ChangeSources
@@ -62,14 +64,8 @@ const selectedChange = computed(
 )
 const treeShown = computed(() => mode.value === 'uncommitted' && tree.value)
 
-const idleText = computed(() => {
-  if (source.value.files.length > 0) {
-    return 'Select a changed file.'
-  }
-  return mode.value === 'conversation'
-    ? 'Click a changed file in the conversation to see its diff here.'
-    : 'The working tree matches the last commit.'
-})
+const emptyText = computed(() => emptyChangeSetText(source.value, mode.value))
+const idleText = computed(() => (source.value.files.length > 0 ? 'Select a changed file.' : emptyText.value))
 
 const sides = ref<{ original: string; modified: string } | null>(null)
 const state = ref<'idle' | 'loading' | 'ready' | 'failed'>('idle')
@@ -123,33 +119,35 @@ onBeforeUnmount(() => {
           <IconButton :icon="ArrowRight" variant="ghost" aria-label="Forward" :disabled="!canForward" @click="emit('forward')" />
         </Tooltip>
       </div>
-      <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1" />
-      <!-- The file shown, with its lines added and removed. -->
-      <span v-if="selectedChange" class="ml-auto flex min-w-0 items-center gap-1 pl-2 font-mono text-[11px] text-fg-muted">
-        <span class="truncate" :class="selectedChange.kind === 'deleted' ? 'line-through' : ''" :title="selectedChange.path">{{ selectedChange.path }}</span>
-        <span class="shrink-0 tabular-nums">
-          <span v-if="selectedChange.added > 0" class="text-on-success">+{{ selectedChange.added }}</span>
-          <span v-if="selectedChange.removed > 0" class="ml-1 text-on-danger">−{{ selectedChange.removed }}</span>
+      <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1 shrink-0" />
+      <!-- The right side, whether or not a file is shown: its name and counts, then the controls. -->
+      <div class="ml-auto flex min-w-0 items-center gap-1">
+        <span v-if="selectedChange" class="flex min-w-0 items-center gap-1 pl-2 font-mono text-[11px] text-fg-muted">
+          <span class="truncate" :class="selectedChange.kind === 'deleted' ? 'line-through' : ''" :title="selectedChange.path">{{ selectedChange.path }}</span>
+          <span class="shrink-0 tabular-nums">
+            <span v-if="selectedChange.added > 0" class="text-on-success">+{{ selectedChange.added }}</span>
+            <span v-if="selectedChange.removed > 0" class="ml-1 text-on-danger">−{{ selectedChange.removed }}</span>
+          </span>
         </span>
-      </span>
-      <Tooltip content="Open file" class="shrink-0">
-        <IconButton
-          :icon="FileOutput"
-          variant="ghost"
-          aria-label="Open file"
-          :disabled="!selectedChange || selectedChange.kind === 'deleted'"
-          @click="selectedChange && emit('open', selectedChange.path)"
-        />
-      </Tooltip>
-      <Tooltip v-if="mode === 'uncommitted'" :content="tree ? 'Hide changed files' : 'Show changed files'" class="shrink-0">
-        <IconButton
-          :icon="FolderTree"
-          variant="ghost"
-          :pressed="tree"
-          :aria-label="tree ? 'Hide changed files' : 'Show changed files'"
-          @click="tree = !tree"
-        />
-      </Tooltip>
+        <Tooltip content="Open file" class="shrink-0">
+          <IconButton
+            :icon="FileOutput"
+            variant="ghost"
+            aria-label="Open file"
+            :disabled="!selectedChange || selectedChange.kind === 'deleted'"
+            @click="selectedChange && emit('open', selectedChange.path)"
+          />
+        </Tooltip>
+        <Tooltip v-if="mode === 'uncommitted'" :content="tree ? 'Hide changed files' : 'Show changed files'" class="shrink-0">
+          <IconButton
+            :icon="FolderTree"
+            variant="ghost"
+            :pressed="tree"
+            :aria-label="tree ? 'Hide changed files' : 'Show changed files'"
+            @click="tree = !tree"
+          />
+        </Tooltip>
+      </div>
     </div>
     <div class="flex min-h-0 flex-1 border-t border-line">
       <div class="relative min-w-0 flex-1">
@@ -187,10 +185,10 @@ onBeforeUnmount(() => {
         <ChangeTree
           class="border-l border-line"
           :style="{ flex: `0 0 ${treeWidth}px`, width: `${treeWidth}px` }"
-          :files="source.files"
+          :source="source"
           :root="root"
           :selected="selected"
-          empty-text="No uncommitted changes"
+          :empty-text="emptyText"
           @select="selected = $event"
         />
       </template>

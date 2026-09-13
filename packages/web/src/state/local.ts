@@ -7,6 +7,9 @@ const localStateSchema = z.object({
   foldedProjects: z.array(z.string()),
   /** The sidebar's width in px; absent until the reader resizes it. */
   sidebarWidth: z.number().int().optional(),
+  /** Whether the work panel is open, and its width in px; absent until the reader changes them. */
+  asideOpen: z.boolean().optional(),
+  asideWidth: z.number().int().optional(),
 })
 export type LocalState = z.infer<typeof localStateSchema>
 

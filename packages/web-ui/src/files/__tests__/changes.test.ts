@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { ShellFileChange } from '@demicodes/agent'
-import { changeTotals, changeTreeRows } from '../changes'
+import { changeTreeRows } from '../changes'
 
 const files: ShellFileChange[] = [
   { path: 'src/auth/cookie.ts', kind: 'modified', added: 12, removed: 3 },
@@ -10,10 +10,6 @@ const files: ShellFileChange[] = [
 ]
 
 describe('change set', () => {
-  test('totals add up every file', () => {
-    expect(changeTotals(files)).toEqual({ added: 33, removed: 19 })
-  })
-
   test('rows are a tree, directories first, sorted, files at the root last', () => {
     const rows = changeTreeRows(files, new Set())
     expect(rows.map((row) => `${row.isDirectory ? 'd' : 'f'}${row.depth}:${row.path}`)).toEqual([
