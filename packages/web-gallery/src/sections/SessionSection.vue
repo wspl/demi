@@ -10,6 +10,12 @@ import { parseToolInput } from '@demicodes/web-ui/agent/block-helpers'
 import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activity-slot'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
+import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
+import { nextActiveWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
+import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
+import { ASIDE_WIDTH, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
+import { demoAccount, demoConversations, demoProjects } from '../sidebar/sidebar-data'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
 import ModelMenu from '@demicodes/web-ui/agent/ModelMenu.vue'
@@ -103,6 +109,42 @@ watch(
   },
   { immediate: true },
 )
+// The Panel view: the whole app frame, with the work panel open beside the session.
+const panelSidebarWidth = ref<number>(SIDEBAR_WIDTH.default)
+const panelAsideWidth = ref<number>(ASIDE_WIDTH.default)
+const panelAsideOpen = ref(true)
+const panelProjects = ref(demoProjects())
+const panelConversations = ref(demoConversations())
+const panelActiveConversationId = ref<string | null>('c-login')
+function workTabs(): WorkTab[] {
+  return [
+    { id: 'w1', kind: 'file', path: 'src/auth/cookie.ts' },
+    { id: 'w2', kind: 'diff', path: 'src/auth/cookie.ts' },
+    { id: 'w3', kind: 'diff', path: 'tests/login/auth.test.ts' },
+    { id: 'w4', kind: 'file', path: 'packages/web-ui/src/agent/blocks/FileChangePills.vue' },
+  ]
+}
+const panelTabs = ref(workTabs())
+const panelActiveTabId = ref<string | null>('w2')
+function closeWorkTab(id: string) {
+  if (panelActiveTabId.value === id) {
+    panelActiveTabId.value = nextActiveWorkTab(panelTabs.value, id)
+  }
+  panelTabs.value = panelTabs.value.filter((tab) => tab.id !== id)
+}
+function resetWorkTabs() {
+  panelTabs.value = workTabs()
+  panelActiveTabId.value = 'w2'
+}
+const exhibitTabs = ref(workTabs())
+const exhibitActiveTabId = ref<string | null>('w1')
+function closeExhibitTab(id: string) {
+  if (exhibitActiveTabId.value === id) {
+    exhibitActiveTabId.value = nextActiveWorkTab(exhibitTabs.value, id)
+  }
+  exhibitTabs.value = exhibitTabs.value.filter((tab) => tab.id !== id)
+}
+const emptyTabs: WorkTab[] = []
 let nextQueue = 3
 let nextSent = 1
 
@@ -1367,6 +1409,96 @@ function abortTerminal(id: string) {
                 :kind="missingKind"
                 @create="missingKind = 'empty'"
               />
+            </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+    </template>
+
+    <template v-if="view === 'panel'">
+      <GallerySection
+        title="The frame"
+        note="The app frame with the work panel open on the right: the sidebar, the session, and the panel are siblings, each side pane behind its own divider. The header's panel control opens and closes it; drag or double-click the divider on its left; Show tabs restores the ones you closed."
+      >
+        <GallerySpecimen variant="frame · live" wide>
+          <div class="gallery-frame flex h-[44rem] w-full overflow-hidden">
+            <SidebarLayout
+              v-model:width="panelSidebarWidth"
+              v-model:aside-open="panelAsideOpen"
+              v-model:aside-width="panelAsideWidth"
+              class="w-full"
+            >
+              <template #sidebar>
+                <AppSidebar
+                  :account="demoAccount"
+                  :projects="panelProjects"
+                  :conversations="panelConversations"
+                  :active-id="panelActiveConversationId"
+                  @select="(id) => (panelActiveConversationId = id)"
+                />
+              </template>
+              <ChatSession
+                :conversation="session"
+                has-provider
+                :aside-open="panelAsideOpen"
+                @toggle-aside="panelAsideOpen = !panelAsideOpen"
+                @retry="sessionFlow.resume()"
+                @abort-subagents="abortAgents"
+                @abort-subagent="abortAgent"
+                @abort-terminal="abortTerminal"
+                @remove-queued="removeQueued"
+                @send-queued="sendNow"
+                @remove-pending-steer="deletePendingSteer"
+                @interrupt-pending-steer="interruptPendingSteer"
+              >
+                <template #composer>
+                  <GalleryComposer
+                    placeholder="Ask Demi about the failing login test…"
+                    :conversation-id="session.id"
+                    :running="session.phase === 'running'"
+                    @send="sessionFlow.turn"
+                    @queue="queueDraft"
+                    @stop="sessionFlow.stop"
+                  />
+                </template>
+              </ChatSession>
+              <template #aside>
+                <WorkPanel
+                  :tabs="panelTabs"
+                  :active-id="panelActiveTabId"
+                  @select="(id) => (panelActiveTabId = id)"
+                  @close-tab="closeWorkTab"
+                  @close="panelAsideOpen = false"
+                />
+              </template>
+            </SidebarLayout>
+          </div>
+        </GallerySpecimen>
+        <div class="flex gap-2">
+          <Button size="sm" @click="resetWorkTabs">Show tabs</Button>
+          <span class="self-center font-mono text-[11px] text-fg-faint">panel {{ panelAsideWidth }}px · {{ ASIDE_WIDTH.min }}–{{ ASIDE_WIDTH.max }}</span>
+        </div>
+      </GallerySection>
+      <GallerySection
+        title="Work panel"
+        note="The panel alone. A file tab carries the file's icon; a diff tab adds a compare mark. The active tab keeps its close control; the rest show it on hover. The content pane is a placeholder until file and diff views exist."
+      >
+        <div class="grid gap-6 md:grid-cols-2">
+          <GallerySpecimen variant="tabs" wide>
+            <div class="gallery-frame flex h-[24rem] overflow-hidden bg-surface-base pt-2">
+              <WorkPanel
+                class="w-full"
+                :tabs="exhibitTabs"
+                :active-id="exhibitActiveTabId"
+                @select="(id) => (exhibitActiveTabId = id)"
+                @close-tab="closeExhibitTab"
+                @close="exhibitTabs = []"
+              />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="empty" wide>
+            <div class="gallery-frame flex h-[24rem] overflow-hidden bg-surface-base pt-2">
+              <WorkPanel class="w-full" :tabs="emptyTabs" :active-id="null" />
             </div>
           </GallerySpecimen>
         </div>

@@ -4,3 +4,10 @@ export const SIDEBAR_WIDTH = {
   max: 420,
   default: 256,
 } as const
+
+/** The work panel's width in px: what it opens at, and how far its divider lets it go. */
+export const ASIDE_WIDTH = {
+  min: 280,
+  max: 720,
+  default: 400,
+} as const

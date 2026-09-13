@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Archive, Play } from '@lucide/vue'
+import { Archive, PanelRight, PanelRightClose, Play } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/agent/client'
 import { beginMessageEdit, lastEditableUserMessageId, type MessageEditState } from './message-editing'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
@@ -30,9 +30,12 @@ const props = defineProps<{
   editVersion?: TranscriptVersion | null
   messageEdit?: MessageEditState | null
   fork?: MessageForkHandler
+  /** Whether the app frame's work panel is open; absent when the host has none. */
+  asideOpen?: boolean
 }>()
 const emit = defineEmits<{
   archive: []
+  toggleAside: []
   retry: []
   retryLoad: []
   retrySubmission: []
@@ -121,9 +124,24 @@ watch(() => props.conversation.id, close)
         </Tooltip>
       </div>
       <div
-        class="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1"
+        class="col-span-2 row-start-2 flex min-w-0 items-center gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1"
       >
-        <slot name="workspace" />
+        <div class="min-w-0 flex-1">
+          <slot name="workspace" />
+        </div>
+        <Tooltip
+          v-if="asideOpen !== undefined"
+          :content="asideOpen ? 'Close panel' : 'Open panel'"
+          class="shrink-0"
+        >
+          <IconButton
+            :icon="asideOpen ? PanelRightClose : PanelRight"
+            variant="ghost"
+            :aria-label="asideOpen ? 'Close panel' : 'Open panel'"
+            :aria-pressed="asideOpen"
+            @click="emit('toggleAside')"
+          />
+        </Tooltip>
       </div>
     </header>
     <div class="relative min-h-0 flex-1 overflow-hidden">

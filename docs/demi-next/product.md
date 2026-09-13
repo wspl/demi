@@ -199,6 +199,10 @@ Layout and information architecture:
   display/switch and the conversation-level operations (compact, abort,
   retry, …). The model picker lives at the input area — web-ui's existing
   design.
+- A work panel on the right, a sibling of the sidebar and the chat area,
+  where files and diffs open in tabs beside the conversation. The frame owns
+  whether it is open and how wide it is; its tabs belong to the conversation
+  on screen. See `web-prototype.md` for its behavior.
 - The conversation list is **grouped by workspace**: the first group is
   conversations without a workspace, then one group per
   workspace, plus an archived view.
