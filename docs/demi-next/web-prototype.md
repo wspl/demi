@@ -48,8 +48,8 @@ interaction and layout belong to `web-ui`.
 panel (`WorkPanel`) on the right, each side pane behind its own divider with
 its own width bounds (`SIDEBAR_WIDTH`, `ASIDE_WIDTH`). The frame keeps whether
 the panel is open and how wide it is; the host persists the width like the
-sidebar's. The panel control in the session header opens and closes it;
-the panel's own fold control closes it. Below the medium breakpoint each side
+sidebar's. The panel control in the session header shows only while the
+panel is closed and opens it; the panel's own fold control closes it. Below the medium breakpoint each side
 pane is an overlay and only one is open at a time: opening one closes the
 other, and the scrim closes whichever is open. The panel continues the
 session's raised sheet behind a hairline divider, with its tab row at the
