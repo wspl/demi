@@ -8,8 +8,12 @@ export interface StickyOverlayDom {
   setReservedHeight(height: number): void
 }
 
+/**
+ * The overlay lives inside the editor (`host`, the positioned `.cm-editor`),
+ * placed relative to it, so it follows the editor wherever the page scrolls
+ * or moves it; on the body it stayed where it was last measured.
+ */
 export function createStickyOverlayDom(host: HTMLElement): StickyOverlayDom {
-  const doc = host.ownerDocument
   const rowsHost = document.createElement('div')
   rowsHost.className = 'cm-stickyHeadersRows'
   rowsHost.style.display = 'flex'
@@ -44,7 +48,7 @@ export function createStickyOverlayDom(host: HTMLElement): StickyOverlayDom {
   root.style.contain = 'layout paint style'
   root.style.backgroundColor = 'transparent'
   root.append(topPad, rowsHost)
-  doc.body.append(root)
+  host.append(root)
 
   return {
     root,
