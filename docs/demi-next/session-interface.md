@@ -174,8 +174,8 @@ so that explanation remains available.
 
 A dialog opened from settings stacks above it. Escape and scrim close only the
 top dialog; closing the shell closes its stack. Dialog instances stay mounted and
-use open state so leave transitions run. The workspace dialog resets its form
-when reopened. Device pairing can open above that form or from the application
+use open state so leave transitions run. The new-project dialog initializes its form on opening unless it retains
+a submitted operation or its failure. Device pairing can open above that form or from the application
 root, using the same shared dialog.
 
 The account header and rail show the display name without secondary text; the
