@@ -141,10 +141,11 @@ defineExpose({
     >
       <slot />
     </div>
+    <!-- Above anything the content pins over itself (a sticky header): the thumb is always on top. -->
     <div
       v-show="overflowing"
       ref="track"
-      class="absolute inset-y-0.5 right-0.5 w-1.5"
+      class="absolute inset-y-0.5 right-0.5 z-[2] w-1.5"
       @pointerdown="onTrackDown"
     >
       <div

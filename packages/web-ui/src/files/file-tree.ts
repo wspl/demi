@@ -65,8 +65,9 @@ export function stickyTreeRows(
   for (const [level, path] of ancestors.entries()) {
     const top = rowTop(path)
     const slotTop = scrollTop + captionPx + level * TREE_ROW_PITCH_PX
-    // Not yet under the stack: no pin here, nor for the directories inside it.
-    if (top === undefined || top >= slotTop) {
+    // Still below its slot: no pin here, nor for the directories inside it. At the
+    // slot exactly, the pinned copy sits where the row is, so the swap shows nothing.
+    if (top === undefined || top > slotTop) {
       break
     }
     // Its whole subtree is above the slot: the directory is past.

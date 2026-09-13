@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import FileTreeRow from './FileTreeRow.vue'
-import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, type FileTreeRow as Row } from './file-tree'
+import { TREE_ROW_PX, stickyTreeRows, type FileTreeRow as Row } from './file-tree'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource } from './types'
 import { baseName, isHiddenName, joinPath, normalizePath, parentPath } from './paths'
 
@@ -153,6 +153,9 @@ function rowState(row: Row): { open: boolean; loading: boolean; failure: FileBro
 }
 
 // The pinned stack: measured from the rows' positions on every scroll and layout.
+// Its first slot starts under the viewport padding, the caption and one gap,
+// exactly where the first row starts, so a row and its pinned copy coincide.
+const STACK_TOP_PX = 4 + TREE_ROW_PX + 1
 const scrollArea = ref<InstanceType<typeof ScrollArea> | null>(null)
 const rowEls = new Map<string, HTMLElement>()
 const stickyPaths = ref<string[]>([])
@@ -184,7 +187,7 @@ function updateSticky(): void {
     rows.value,
     (path) => rowEls.get(path)?.offsetTop,
     viewport.scrollTop,
-    TREE_ROW_PX,
+    STACK_TOP_PX,
     props.selected ? normalizePath(props.selected) : null,
   )
   stickyPaths.value = stack.paths
@@ -196,7 +199,7 @@ function scrollToRow(path: string): void {
   const viewport = scrollArea.value?.el
   const el = rowEls.get(path)
   if (viewport && el) {
-    viewport.scrollTop = el.offsetTop - TREE_ROW_PITCH_PX
+    viewport.scrollTop = el.offsetTop - STACK_TOP_PX
   }
 }
 
@@ -221,19 +224,28 @@ function activate(row: Row): void {
   <ScrollArea ref="scrollArea" class="h-full min-h-0" viewport-class="p-1" @scroll="updateSticky">
     <!-- The pinned stack: the caption stays put; the selected file's directories under it
          slide up beneath the caption as the tree scrolls past them. -->
-    <div class="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col p-1 pb-0">
+    <!-- Above the rows (whose transformed chevrons would otherwise paint through), below the
+         scroll area's thumb; `isolate` keeps the caption's layering inside. The surface covers
+         the padding too, so nothing shows through the gaps. -->
+    <div class="pointer-events-none absolute inset-x-0 top-0 isolate z-[1] flex flex-col bg-surface-editor p-1 pb-0">
       <div
         class="relative z-10 flex h-7 shrink-0 select-none items-center bg-surface-editor px-2 text-chrome font-medium text-fg-muted"
         :title="root"
       >
         <span class="truncate">{{ rootName }}</span>
       </div>
-      <div class="overflow-hidden">
-        <div class="flex flex-col gap-px bg-surface-editor pt-px" :style="{ transform: `translateY(${stickyOffset}px)` }">
+      <!-- Each pinned row in its own clip; only the deepest slides up as its
+           directory leaves, its clip shrinking with it, while the rows above stay. -->
+      <div class="flex flex-col gap-px bg-surface-editor pt-px">
+        <div
+          v-for="(row, index) in stickyRows"
+          :key="row.path"
+          class="overflow-hidden"
+          :style="{ height: `${index === stickyRows.length - 1 ? Math.max(0, TREE_ROW_PX + stickyOffset) : TREE_ROW_PX}px` }"
+        >
           <FileTreeRow
-            v-for="row in stickyRows"
-            :key="row.path"
             class="pointer-events-auto"
+            :style="index === stickyRows.length - 1 ? { transform: `translateY(${stickyOffset}px)` } : undefined"
             :row="row"
             :selected="row.path === selected"
             v-bind="rowState(row)"
@@ -242,8 +254,8 @@ function activate(row: Row): void {
         </div>
       </div>
     </div>
-    <!-- The caption's room; the pinned copy above covers it. -->
-    <div class="h-7 shrink-0" aria-hidden="true" />
+    <!-- The caption's room plus one gap; the pinned copy above covers it. -->
+    <div class="h-[29px] shrink-0" aria-hidden="true" />
     <div role="tree" :aria-label="rootName" class="flex min-h-full flex-col gap-px">
       <FileTreeRow
         v-for="row in rows"
