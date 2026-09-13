@@ -133,7 +133,7 @@ realization inside the runner:
 | Where | Role | Runs in |
 |---|---|---|
 | `@demicodes/host-remote` | the Host of every user host and managed host as the backend sees it: each call forwarded over the runner wire | the backend |
-| `packages/runner/rust` | filesystem, process and shell-job execution requested through `host-remote` | native Rust runner |
+| `packages/runner/src` | filesystem, process and shell-job execution requested through `host-remote` | native Rust runner |
 
 The wire between the last two is `@demicodes/runner-protocol`, which both
 ends depend on.

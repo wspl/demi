@@ -8,7 +8,7 @@ service contract is in [native-runtime.md](native-runtime.md); declarations are 
 
 ## Connection and identity
 
-`runner/rust/mode.rs` owns a registration’s connection, jobs and command contexts.
+`runner/src/mode.rs` owns a registration’s connection, jobs and command contexts.
 `connection.rs` establishes the outbound WebSocket and validates MessagePack
 messages against the generated runner-protocol contract. A connected user device
 pairs with the backend, persists its device token in private installation state,
