@@ -55,7 +55,7 @@ export function stickyHeadersExtension(editorHost: EditorHost): Extension {
     view: EditorView
     constructor(view: EditorView) {
       this.view = view
-      this.overlay = createStickyOverlayDom(this.view.dom.parentElement ?? this.view.dom)
+      this.overlay = createStickyOverlayDom(this.view.dom)
       this.headers = createStickyHeaderViews(this.view, this.overlay.rowsHost, editorHost)
       this.view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true })
       this.scheduleSync()
@@ -150,6 +150,7 @@ export function stickyHeadersExtension(editorHost: EditorHost): Extension {
           const lineNumbers = view.dom.querySelector<HTMLElement>('.cm-lineNumbers')
           const foldGutter = view.dom.querySelector<HTMLElement>('.cm-foldGutter')
           const scrollerRect = view.scrollDOM.getBoundingClientRect()
+          const editorRect = view.dom.getBoundingClientRect()
 
           return {
             items,
@@ -159,8 +160,8 @@ export function stickyHeadersExtension(editorHost: EditorHost): Extension {
               fold: foldGutter?.getBoundingClientRect().width ?? 0,
             },
             frame: {
-              top: scrollerRect.top,
-              left: scrollerRect.left,
+              top: scrollerRect.top - editorRect.top,
+              left: scrollerRect.left - editorRect.left,
               width: scrollerRect.width,
               paddingTop: contentPaddingTop,
             },
