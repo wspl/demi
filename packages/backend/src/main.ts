@@ -1,3 +1,4 @@
+import { loadChangeObjects } from './storage/change-config'
 import { loadNativeArtifacts } from './runner/artifacts/config'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -34,7 +35,14 @@ async function main(): Promise<void> {
     process.off('SIGINT', abortPublication)
     process.off('SIGTERM', abortPublication)
   })
+  const changeStore = process.env.DEMI_CHANGE_STORE_CONFIG
+    ? await loadChangeObjects(process.env.DEMI_CHANGE_STORE_CONFIG).catch(error => {
+        nativeCommands.close()
+        throw error
+      })
+    : undefined
   const backend = await createBackend({
+    changeObjects: changeStore?.objects,
     nativeCommands,
     dataDir,
     webDirectory: process.env.DEMI_WEB_DIRECTORY,
@@ -46,6 +54,7 @@ async function main(): Promise<void> {
       : {}),
   }).catch(error => {
     nativeCommands.close()
+    changeStore?.close()
     throw error
   })
   console.log(
@@ -58,7 +67,10 @@ async function main(): Promise<void> {
   )
 
   const shutdown = () => {
-    void backend.close().finally(() => nativeCommands.close()).then(() => process.exit(0))
+    void backend.close().finally(() => {
+      nativeCommands.close()
+      changeStore?.close()
+    }).then(() => process.exit(0))
   }
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)

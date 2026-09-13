@@ -4,6 +4,9 @@ use std::{any::Any, fs::File, io, process::Command, sync::Arc};
 
 use crate::{openfiles::OpenFile, processes::ChildProcess};
 
+/// Completion of a redirected output stream owned by the embedding host.
+pub type OutputCompletion = std::pin::Pin<Box<dyn std::future::Future<Output = io::Result<()>> + Send + Sync>>;
+
 /// IO behavior supplied by the embedding execution owner.
 pub trait FileControl: Send + Sync {
     /// Read without outliving the owning execution.
@@ -14,6 +17,15 @@ pub trait FileControl: Send + Sync {
 
 /// Ownership hooks shared by a shell and every cloned subshell.
 pub trait ExecutionHost: Any + Send + Sync {
+    /// Open a path through the embedding owner's file-operation boundary.
+    fn open_file(&self, path: &std::path::Path, options: &std::fs::OpenOptions, writing: bool) -> io::Result<File> {
+        let _ = writing;
+        options.open(path)
+    }
+    /// Keep redirected external output on the owner's controlled write path.
+    fn external_output(&self, file: File) -> io::Result<(File, Option<OutputCompletion>)> {
+        Ok((file, None))
+    }
     /// Reject further execution after cancellation.
     fn check(&self) -> io::Result<()>;
     /// Track work until its guard is dropped, including detached interpreter tasks.

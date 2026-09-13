@@ -1,6 +1,7 @@
 import { isRecord } from '@demicodes/utils'
 import type { Block, TokenUsage } from '@demicodes/core'
 import type { ShellFileChange } from '@demicodes/agent'
+import { shellEditsViewSchema, type ShellEditsView } from '@demicodes/agent/client'
 import { Allow, parse } from 'partial-json'
 import { shouldParsePartialToolInput } from './tool-rendering'
 
@@ -80,30 +81,16 @@ export function parseToolInput(raw: string): Record<string, unknown> {
 
 export type { ShellFileChange }
 
-/** The files a shell call changed, from its view; malformed entries are dropped. */
+/** The validated file list retained with this shell command. */
+export function shellEditsView(block: ToolCallBlock): ShellEditsView | null {
+  if (!isRecord(block.view) || block.view['files'] === undefined) {
+    return null
+  }
+  return shellEditsViewSchema.parse(block.view)
+}
+
 export function shellFileChanges(block: ToolCallBlock): ShellFileChange[] {
-  const view = block.view
-  if (!isRecord(view) || !Array.isArray(view['files']))
-    return []
-  return view['files'].flatMap((entry): ShellFileChange[] => {
-    if (!isRecord(entry))
-      return []
-    const path = entry['path']
-    const kind = entry['kind']
-    const added = entry['added']
-    const removed = entry['removed']
-    const from = entry['from']
-    if (typeof path !== 'string' || path.length === 0)
-      return []
-    if (kind !== 'added' && kind !== 'modified' && kind !== 'deleted' && kind !== 'renamed')
-      return []
-    if (typeof added !== 'number' || typeof removed !== 'number')
-      return []
-    const change: ShellFileChange = { path, kind, added, removed }
-    if (typeof from === 'string')
-      change.from = from
-    return [change]
-  })
+  return shellEditsView(block)?.files ?? []
 }
 
 function outputChunks(view: unknown): ShellTerminalOutputChunk[] {

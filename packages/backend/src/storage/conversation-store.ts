@@ -4,6 +4,7 @@ import { parsePortableJson } from '@demicodes/utils'
 import type { Block } from '@demicodes/core'
 import type { HostStore } from '@demicodes/shell'
 import type { AgentTreeStore, BlobStore } from '@demicodes/agent'
+import { shellEditsViewSchema } from '@demicodes/agent'
 import { openSqliteDatabase, type SqlDatabase, type SqlParams } from './database'
 import { DbHostStore } from './host-store'
 import { CONVERSATION_MIGRATIONS, migrate } from './migrations'
@@ -83,6 +84,24 @@ export class ConversationStores {
    */
   transcriptBlocks(conversationId: string): Block[] {
     return readNode(this.db(conversationId), conversationId)?.blocks ?? []
+  }
+
+  /** Find the call's persisted list across the root and its subagents. */
+  commandFiles(conversationId: string, commandId: string) {
+    const row = this.db(conversationId).get<{ block_json: string }>(
+      `SELECT block_json FROM blocks
+       WHERE json_extract(block_json, '$.type') = 'tool_call'
+         AND json_extract(block_json, '$.view.kind') = 'shell'
+         AND json_extract(block_json, '$.view.commandId') = ?
+         AND json_type(block_json, '$.view.files') = 'array'
+       LIMIT 1`,
+      [commandId],
+    )
+    if (!row) {
+      return null
+    }
+    const block = z.object({ view: shellEditsViewSchema }).parse(parsePortableJson(row.block_json))
+    return block.view.files
   }
 
   /** All descendant histories, retaining blob references for the browser. */

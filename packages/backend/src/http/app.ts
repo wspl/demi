@@ -11,6 +11,7 @@ import type { RunnerRegistry } from '../runner/registry'
 import type { PipeBroker } from '../runner/pipes'
 import type { ControlService, WorkspaceRecord } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
+import type { ChangeStore } from '../storage/change-store'
 import type { ProviderVault } from '../vault/providers'
 import type { SubscriptionLoginFlows } from '../vault/subscription-login'
 import type { UserBlobStores } from '../storage/user-blobs'
@@ -60,6 +61,7 @@ export function createApp(options: {
   admitFrame: (id: string) => (() => void) | null
   control: ControlService
   conversationStores: ConversationStores
+  changes: ChangeStore
   vault: ProviderVault
   assembly: ProviderAssembly
   vendors: VendorCatalog
@@ -197,6 +199,7 @@ export function createApp(options: {
       agentServer: options.agentServer,
       control: options.control,
       conversationStores: options.conversationStores,
+      changes: options.changes,
       withHost: options.withHost,
       registry: options.runnerRegistry,
     }),

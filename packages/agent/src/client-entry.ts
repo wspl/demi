@@ -36,3 +36,5 @@ export { isEditableUserMessage } from './transcript/user-message'
 export { applyTranscriptPatches } from './transcript/patch'
 
 export { agentMessageSchema } from './protocol/agent-message'
+export { shellEditedFileSchema, shellEditsViewSchema, type ShellEditsView } from './client/shell-edits'
+export type { ShellEditedFile } from '@demicodes/shell'

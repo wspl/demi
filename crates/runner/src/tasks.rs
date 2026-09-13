@@ -300,8 +300,19 @@ impl TaskTable {
                 );
                 env.insert("TEMP".into(), scratch.path().to_string_lossy().into_owned());
                 env.insert("DEMI_JOB_ID".into(), id.clone());
+                let edit_context = demi_command_service::protocol::EditContext {
+                    directory: path.join("changes").to_string_lossy().into_owned(),
+                    lock: self.output_dir.join("edits.lock").to_string_lossy().into_owned(),
+                };
+                let recorder = match demi_command_service::edits::Recorder::new(edit_context.clone()) {
+                    Ok(recorder) => Some(recorder),
+                    Err(error) => {
+                        eprintln!("edit recording failed: {error}");
+                        None
+                    }
+                };
                 let logs = Logs::new(path).await?;
-                job = Some((logs, scratch));
+                job = Some((logs, scratch, recorder.clone()));
                 let commands = match (
                     &self.dispatcher,
                     env.get(crate::commands::command_client::CONTEXT_ENV),
@@ -315,7 +326,12 @@ impl TaskTable {
                         return Err(io::Error::other("shell command dispatcher is unavailable"));
                     }
                 };
-                let scope = crate::shell::scope::Scope::new(cancel.child_token(), commands);
+                if let Some(commands) = &commands {
+                    commands.execution.edits.set(edit_context)
+                        .map_err(|_| io::Error::other("job recording context was already set"))?;
+                }
+                let mut scope = crate::shell::scope::Scope::new(cancel.child_token(), commands);
+                scope.edits = recorder;
                 let child =
                     crate::shell::job::Job::start(script, spec.cwd, env, stdin.is_none(), scope)?;
                 (Execution::shell(child), stdin, stdout)
@@ -412,7 +428,7 @@ impl TaskTable {
                         OutputStream::Stdout => "stdout",
                         OutputStream::Stderr => "stderr",
                     };
-                    let bytes = if let Some((logs, _)) = job.as_mut() {
+                    let bytes = if let Some((logs, _, _)) = job.as_mut() {
                         logs.write(chunk.stream, &chunk.bytes).await?
                     } else {
                         chunk.bytes.clone()
@@ -464,9 +480,12 @@ impl TaskTable {
         }
         let error = failure.or(exit.error);
         match job {
-            Some((logs, scratch)) => {
+            Some((logs, scratch, recorder)) => {
                 let output = logs.finish().await?;
                 scratch.close()?;
+                let (files, files_truncated) = tokio::task::spawn_blocking(move || {
+                    crate::shell::edit_report::finish(recorder.as_ref())
+                }).await.map_err(io::Error::other)?;
                 wire::job_exit(
                     id,
                     exit.code.map(f64::from),
@@ -474,6 +493,8 @@ impl TaskTable {
                     None,
                     cwd,
                     Some(output),
+                    files,
+                    files_truncated,
                 )
                 .map_err(io::Error::other)
             }
@@ -571,6 +592,8 @@ fn failure(kind: TaskKind, id: String, error: String) -> Result<wire::Outbound, 
             }),
             None,
             None,
+            Vec::new(),
+            false,
         ),
         TaskKind::Spawn => wire::spawn_exit(
             id,

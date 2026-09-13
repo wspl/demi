@@ -1,0 +1,22 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import { ICON_PX } from '../../ui/icon-metrics'
+import type { ToolCallBlock } from '../block-types'
+import { shellEditsView } from '../block-helpers'
+import { useEditSelection } from '../edit-selection'
+import FileChangePills from './FileChangePills.vue'
+
+const props = defineProps<{ block: ToolCallBlock }>()
+const call = computed(() => shellEditsView(props.block))
+const select = useEditSelection()
+</script>
+
+<template>
+  <FileChangePills
+    v-if="call && call.files.length > 0"
+    class="py-1"
+    :style="{ paddingLeft: `${ICON_PX.in28 + 8}px` }"
+    :files="call.files"
+    @select="select?.(call, $event)"
+  />
+</template>

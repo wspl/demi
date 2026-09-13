@@ -145,10 +145,12 @@ export const editingShellTool = toolCall({
     description: 'Rename the cookie in the login test',
   }),
   view: {
+    kind: 'shell',
+    commandId: 'cmd-edit',
     chunks: [{ stream: 'stdout', text: 'bun test v1.2\n 3 pass\n 0 fail\n' }],
     files: [
-      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 12, removed: 3 },
-      { path: 'packages/web/src/cookie.ts', kind: 'modified', added: 1, removed: 1 },
+      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 12, removed: 3, edits: [{ kept: true }] },
+      { path: 'packages/web/src/cookie.ts', kind: 'modified', added: 1, removed: 1, edits: [{ kept: true }] },
     ],
   },
 })
@@ -156,7 +158,7 @@ export const editingShellTool = toolCall({
 function fileChangeCase(
   id: string,
   description: string,
-  files: unknown[],
+  files: { path: string; kind: 'added' | 'modified'; added: number; removed: number; edits?: { kept: boolean }[] }[],
   status: ToolCallBlock['status'] = 'completed',
 ): ToolCallBlock {
   return toolCall({
@@ -164,7 +166,8 @@ function fileChangeCase(
     toolName: 'shell_exec',
     status,
     input: JSON.stringify({ script: `demi-edit ${id}`, description }),
-    view: { chunks: [{ stream: 'stdout', text: 'done\n' }], files },
+    view: { kind: 'shell', commandId: `cmd-${id}`, chunks: [{ stream: 'stdout', text: 'done\n' }],
+      files: files.map(file => ({ ...file, edits: file.edits ?? [{ kept: true }] })) },
   })
 }
 
@@ -173,7 +176,7 @@ export const fileChangeCases: { variant: string, block: ToolCallBlock }[] = [
   {
     variant: 'one edit',
     block: fileChangeCase('one', 'Fix the cookie assertion', [
-      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 1, removed: 1 },
+      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 1, removed: 1, edits: [{ kept: true }] },
     ]),
   },
   {
@@ -189,24 +192,23 @@ export const fileChangeCases: { variant: string, block: ToolCallBlock }[] = [
     ]),
   },
   {
-    variant: 'deleted',
-    block: fileChangeCase('deleted', 'Remove the old cookie module', [
-      { path: 'packages/web/src/sid.ts', kind: 'deleted', added: 0, removed: 18 },
+    variant: 'contents unavailable',
+    block: fileChangeCase('unavailable', 'Update the binary asset', [
+      { path: 'assets/logo.png', kind: 'modified', added: 0, removed: 0, edits: [{ kept: false }] },
     ]),
   },
   {
-    variant: 'renamed',
-    block: fileChangeCase('renamed', 'Rename signin to login', [
-      { path: 'packages/web/src/login.ts', kind: 'renamed', from: 'packages/web/src/signin.ts', added: 2, removed: 2 },
+    variant: 'two edits to one file',
+    block: fileChangeCase('segments', 'Update the cookie across interleaved writes', [
+      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 2, removed: 2, edits: [{ kept: true }, { kept: true }] },
     ]),
   },
   {
     variant: 'a few, mixed',
     block: fileChangeCase('mixed', 'Move the cookie name into one module', [
-      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 12, removed: 3 },
+      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 12, removed: 3, edits: [{ kept: true }] },
       { path: 'packages/web/src/session.ts', kind: 'added', added: 40, removed: 0 },
-      { path: 'packages/web/src/sid.ts', kind: 'deleted', added: 0, removed: 18 },
-      { path: 'packages/web/package.json', kind: 'modified', added: 1, removed: 1 },
+      { path: 'packages/web/package.json', kind: 'modified', added: 1, removed: 1, edits: [{ kept: true }] },
     ]),
   },
   {
@@ -276,8 +278,8 @@ export function changesDemoBlocks(): Block[] {
     shellTool as Block,
     caseBlock('one edit'),
     caseBlock('new file'),
-    caseBlock('deleted'),
-    caseBlock('renamed'),
+    caseBlock('contents unavailable'),
+    caseBlock('two edits to one file'),
     text('changes-text-1', 150_000, 'The helper now writes `session`. Sweeping the widgets next; each one reads the cookie name from a prop.'),
     caseBlock('more than three rows'),
     caseBlock('a few, mixed'),
