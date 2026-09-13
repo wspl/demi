@@ -124,7 +124,13 @@ export async function authStatusFromKey(
 }
 
 /**
- * Parses a Retry-After header (delta-seconds or HTTP-date) into milliseconds.
+ * Parses a Retry-After header into milliseconds.
+ *
+ * RFC 9110 gives the header two spellings — delta-seconds (`120`) and an
+ * HTTP-date (`Wed, 21 Oct 2015 07:28:00 GMT`) — and a receiver must accept
+ * both. Which one arrived is decided by whether it parses as a number, so the
+ * conversion is the parse; there is no shape to validate against a schema.
+ * An unparseable header yields undefined: the caller then uses its own backoff.
  */
 export function retryAfterMsFromHeader(value: string | null): number | undefined {
   if (!value)
@@ -138,7 +144,14 @@ export function retryAfterMsFromHeader(value: string | null): number | undefined
   return undefined
 }
 
-/** Reads a header as a finite number, or null when absent/blank/non-numeric. */
+/**
+ * Reads a header as a finite number, or null when absent/blank/non-numeric.
+ *
+ * Headers are text with no declared type, so the numeric ones (rate-limit
+ * counters and windows) are read the same way `retryAfterMsFromHeader` reads
+ * its delta-seconds: a vendor that omits one or sends a word means "no value",
+ * not a protocol error.
+ */
 export function numberHeader(headers: Headers, name: string): number | null {
   const raw = headers.get(name)
   if (raw == null || raw === '')

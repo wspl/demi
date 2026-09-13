@@ -2,7 +2,12 @@
  * Demi multi-credential pool on disk:
  * <stateDir>/credentials/<providerKey>/{active,entries/<id>/{meta.json,secret}}
  */
-import { errorCode, isRecord, nonEmptyString } from '@demicodes/utils'
+import {
+  errorCode,
+  errorMessage,
+  isFileNotFoundError,
+  nonEmptyString
+} from '@demicodes/utils'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   chmod,
@@ -16,19 +21,25 @@ import {
 } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { z } from 'zod'
 import type { ProviderCredentialInfo } from './types'
 
-export interface CredentialEntryMeta {
-  id: string
-  label: string
-  detail?: string | null
-  updatedAt: string
-  source?: string | null
+/**
+ * An entry's `meta.json`, as this pool writes it. The pool owns the file, so a
+ * file that does not match is corrupt state, not an older shape to repair.
+ */
+export const credentialEntryMetaSchema = z.looseObject({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  detail: z.string().min(1).nullable().optional(),
+  updatedAt: z.iso.datetime(),
+  source: z.string().min(1).nullable().optional(),
   /**
    * Stable account key for upsert on re-import (email, accountId, entryKey, …).
    */
-  identityKey?: string | null
-}
+  identityKey: z.string().min(1).nullable().optional(),
+})
+export type CredentialEntryMeta = z.infer<typeof credentialEntryMetaSchema>
 
 export interface FileCredentialPoolOptions {
   /** Demi state root ($DEMI_HOME / ~/.demi). */
@@ -63,6 +74,15 @@ export function credentialIdFromIdentity(
 
 export function newCredentialId(): string {
   return `cred-${randomUUID().replace(/-/g, '').slice(0, 16)}`
+}
+
+/**
+ * Reports whether a read failed because the pool holds nothing there: the file
+ * is absent (`ENOENT`), or the path Demi expected to be an entry directory is
+ * a plain file (`ENOTDIR`, e.g. a `.DS_Store` beside the entries).
+ */
+function isMissingEntryError(error: unknown): boolean {
+  return isFileNotFoundError(error) || errorCode(error) === 'ENOTDIR'
 }
 
 export class FileCredentialPool {
@@ -109,7 +129,9 @@ export class FileCredentialPool {
     let names: string[]
     try {
       names = await readdir(this.entriesDir())
-    } catch {
+    } catch (error) {
+      if (!isMissingEntryError(error))
+        throw error
       return []
     }
     const out: CredentialEntryMeta[] = []
@@ -122,38 +144,53 @@ export class FileCredentialPool {
     return out
   }
 
+  /**
+   * The entry's metadata, or null when there is no such entry. A `meta.json`
+   * that exists but does not match the schema is corrupt pool state: it raises
+   * `credential_invalid` rather than being read past with substituted values.
+   */
   async readMeta(id: string): Promise<CredentialEntryMeta | null> {
+    let text: string
     try {
-      const raw = JSON.parse(await readFile(this.metaPath(id), 'utf8')) as unknown
-      if (!isRecord(raw))
-        return null
-      const entryId = nonEmptyString(raw.id) ?? id
-      const label = nonEmptyString(raw.label)
-      if (!label)
-        return null
-      return {
-        id: entryId,
-        label,
-        detail: nonEmptyString(raw.detail) ?? null,
-        updatedAt: nonEmptyString(raw.updatedAt) ?? new Date(0).toISOString(),
-        source: nonEmptyString(raw.source) ?? null,
-        identityKey: nonEmptyString(raw.identityKey) ?? null,
-      }
-    } catch {
+      text = await readFile(this.metaPath(id), 'utf8')
+    } catch (error) {
+      if (!isMissingEntryError(error))
+        throw error
       return null
     }
+    let value: unknown
+    try {
+      value = JSON.parse(text)
+    } catch (error) {
+      throw new CredentialPoolError(
+        'credential_invalid',
+        `Credential "${id}" metadata is not JSON: ${errorMessage(error)}`
+      )
+    }
+    const parsed = credentialEntryMetaSchema.safeParse(value)
+    if (!parsed.success) {
+      const issues = z.prettifyError(parsed.error)
+      throw new CredentialPoolError(
+        'credential_invalid',
+        `Credential "${id}" metadata is invalid: ${issues}`
+      )
+    }
+    return parsed.data
   }
 
   async getActiveId(): Promise<string | null> {
+    let id: string
     try {
-      const id = (await readFile(this.activePath(), 'utf8')).trim()
-      if (!id)
-        return null
-      const meta = await this.readMeta(id)
-      return meta ? id : null
-    } catch {
+      id = (await readFile(this.activePath(), 'utf8')).trim()
+    } catch (error) {
+      if (!isFileNotFoundError(error))
+        throw error
       return null
     }
+    if (!id)
+      return null
+    // The pointer can name an entry that was removed: that is not corruption.
+    return (await this.readMeta(id)) ? id : null
   }
 
   async setActiveId(id: string): Promise<void> {
