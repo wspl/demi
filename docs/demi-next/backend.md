@@ -33,7 +33,7 @@ changes.
 |---|---|---|
 | `http` | Public routes, validation, authentication gates, WebSocket upgrade, browser assets | [Web API](web-api.md) |
 | `auth` | Accounts, password verification, sessions, login lockout, email-change delivery | [Product](product.md) |
-| `conversation` | Agent-tree hosting, history/Fork, summaries, target resolution, frame and file admission | [Sessions and targets](sessions-and-targets.md) |
+| `conversation` | Agent-tree hosting, history/Fork, summaries, target resolution, the one host entry for operations outside the agent, frame and file admission | [Sessions and targets](sessions-and-targets.md) |
 | Command assembly | Coding-agent roots plus the product's `host` group, manifests, incoming RPC dispatch | [Commands](commands.md) |
 | `llm`, `vault`, `usage` | Provider assembly, credential scope, model discovery, inference admission and accounting | [Providers](providers-and-vault.md) |
 | `runner` | Device pairing, live connection registry, remote Host handles, command relay, pipe broker | [Runner](runner.md) |

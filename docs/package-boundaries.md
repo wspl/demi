@@ -309,7 +309,9 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `crates/command-service` (Rust library)
 
 - Owns: generated command wire/package types and validation, incremental framing,
-  HTTP/2 client and server, bounded invocation IO and handler cancellation.
+  HTTP/2 client and server, bounded invocation IO and handler cancellation, and
+  the shared invocation edit recorder (`edits`): bounded file snapshots and a
+  schema-validated journal coordinated across processes by an OS file lock.
 - Independent boundary: the runner and independently distributed command programs
   use the same communication SDK. Third-party command authors depend on this
   library without depending on runner or Demi command implementations.

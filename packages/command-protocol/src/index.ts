@@ -80,6 +80,37 @@ export const INVOKE_PATH = '/v1/invoke'
 export const SHUTDOWN_PATH = '/v1/shutdown'
 
 export const commandArgsSchema = z.record(z.string(), z.unknown())
+export const EDIT_FILE_BYTES = 8 * 1024 * 1024
+export const EDIT_JOB_BYTES = 64 * 1024 * 1024
+export const EDIT_JOB_FILES = 500
+export const EDIT_JOB_SEGMENTS = 1000
+
+const editPathSchema = z.string().min(1).regex(/^[^\0]*$/)
+/** Runner-owned file interface shared with the invoked native command. */
+export const editContextSchema = z.object({
+  directory: editPathSchema,
+  lock: editPathSchema,
+}).strict()
+export const editCopiesSchema = z.object({
+  original: editPathSchema.optional(),
+  modified: editPathSchema.optional(),
+}).strict()
+export const editFileSchema = z.object({
+  path: editPathSchema,
+  kind: z.enum(['added', 'modified']),
+  edits: z.array(editCopiesSchema).max(EDIT_JOB_SEGMENTS),
+}).strict()
+export const editJournalSchema = z.object({
+  files: z.array(editFileSchema).max(EDIT_JOB_FILES),
+  bytesCopied: z.number().int().min(0).max(EDIT_JOB_BYTES),
+  nextSegment: z.number().int().min(0).max(EDIT_JOB_SEGMENTS),
+  filesTruncated: z.boolean(),
+}).strict()
+export type EditContext = z.infer<typeof editContextSchema>
+export type EditCopies = z.infer<typeof editCopiesSchema>
+export type EditFile = z.infer<typeof editFileSchema>
+export type EditJournal = z.infer<typeof editJournalSchema>
+
 export const serviceInfoSchema = z.object({
   protocolVersion: z.number().int().nonnegative(),
   operations: z.array(z.string()),
@@ -90,6 +121,7 @@ export const invocationSchema = z.object({
   args: commandArgsSchema,
   cwd: z.string().min(1).regex(/^[^\0]*$/),
   env: z.record(z.string().min(1).regex(/^[^\0=]+$/), z.string().regex(/^[^\0]*$/)),
+  edits: editContextSchema.optional(),
 }).strict()
 export const commandErrorSchema = z.object({
   code: z.string(),

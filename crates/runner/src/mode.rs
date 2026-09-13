@@ -273,6 +273,7 @@ impl Runtime {
                 error,
             } => volumes.grown(&id, &volume, bytes, error)?,
             message if message.fs_request_id().is_some() => host.handle_filesystem(message)?,
+            message if message.git_request_id().is_some() => host.handle_git(message)?,
             message => {
                 let started = matches!(message, Inbound::JobStart { .. } | Inbound::Spawn { .. });
                 let setup = async {
@@ -318,7 +319,7 @@ impl Runtime {
                     });
                     let reply = match message {
                         Inbound::JobStart { job_id, .. } => {
-                            wire::job_exit(job_id, None, reason, failure, None, None)
+                            wire::job_exit(job_id, None, reason, failure, None, None, Vec::new(), false)
                         }
                         Inbound::Spawn { spawn_id, .. } => {
                             wire::spawn_exit(spawn_id, None, reason, failure)

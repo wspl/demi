@@ -1,5 +1,6 @@
-import type { Host } from '@demicodes/shell'
-import { errorMessage } from '@demicodes/utils'
+import type { ConversationHostAccess } from '../conversation/target'
+import { RemoteGitError, type RemoteHost } from '@demicodes/host-remote'
+import { errorCode, errorMessage } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import type { AuthEnv } from '../auth/identity'
@@ -14,13 +15,26 @@ import { type ControlService } from '../storage/control'
 import type { RunnerRegistry } from '../runner/registry'
 import { resolveExecutionTarget } from '../conversation/execution-target'
 import type { ConversationStores } from '../storage/conversation-store'
+import type { ChangeStore } from '../storage/change-store'
 import { ForkRefused, type ConversationForks } from '../conversation/fork'
+import { HostAccessRefused } from '../conversation/target'
+import { ManagedHostError } from '../managed/lifecycle'
+import { TextFileRefused, browseDirectory, readTextFile, textOf } from '../runner/file-browser'
 
 /** `?archived=true|false`; nothing else, and nothing else spelled. */
 const archivedQuerySchema = z
   .stringbool({ truthy: ['true'], falsy: ['false'], case: 'sensitive' })
   .optional()
 
+const filePathSchema = z.object({ path: z.string().min(1) })
+const directoryQuerySchema = filePathSchema.partial()
+/** `?path=` relative to the working tree: no leading slash, no `..` segment. */
+const relativePathQuerySchema = z.object({
+  path: z.string().min(1).refine(
+    (path) => !path.startsWith('/') && !path.split('/').includes('..'),
+    'Expected a relative path',
+  ),
+})
 const attachBodySchema = z.object({ deviceId: z.string().min(1) })
 const renameHostBodySchema = z.object({ name: z.string().trim().min(1).max(64) })
 
@@ -32,15 +46,13 @@ export function conversationRoutes(options: {
   agentServer: AgentServer
   control: ControlService
   conversationStores: ConversationStores
-  withHost: <T>(
-    conversationId: string,
-    operation: (host: Host) => Promise<T>,
-    signal?: AbortSignal,
-  ) => Promise<T>
+  changes: ChangeStore
+  withHost: ConversationHostAccess
   /** Whether a device has a live runner socket, for the host list. */
   registry: RunnerRegistry
 }): Hono<AuthEnv> {
   const { control, conversationStores, withHost, registry } = options
+  const summaryDeps = { stores: conversationStores, server: options.agentServer, control, registry }
   const app = new Hono<AuthEnv>()
 
   // The caller's conversation, or null: another user's answers like a missing one.
@@ -50,6 +62,27 @@ export function conversationRoutes(options: {
       ? conversation
       : null
   }
+
+  app.get('/:id/commands/:commandId/changes/file', async (c) => {
+    const conversation = await own(c)
+    if (!conversation) {
+      return c.json({ code: 'not_found', message: 'No such conversation' }, 404)
+    }
+    const query = z.object({
+      path: z.string().min(1),
+      edit: z.string().regex(/^(0|[1-9][0-9]*)$/).transform(Number).pipe(z.number().int().nonnegative()),
+    }).safeParse(c.req.query())
+    if (!query.success) {
+      return c.json({ code: 'invalid_query', message: 'Expected a file path and edit index' }, 400)
+    }
+    const command = c.req.param('commandId')
+    const files = conversationStores.commandFiles(conversation.id, command)
+    const sides = files && await options.changes.read(conversation.id, command, files, query.data.path, query.data.edit)
+    if (!sides) {
+      return c.json({ code: 'not_found', message: 'No retained edit' }, 404)
+    }
+    return c.json(sides)
+  })
 
   app.get('/', async (c) => {
     const parsed = archivedQuerySchema.safeParse(c.req.query('archived'))
@@ -67,9 +100,9 @@ export function conversationRoutes(options: {
       archived,
     })
     return c.json({
-      conversations: conversations.map((conversation) =>
-        conversationSummary(conversation, conversationStores, options.agentServer),
-      ),
+      conversations: await Promise.all(conversations.map((conversation) =>
+        conversationSummary(conversation, summaryDeps),
+      )),
     })
   })
 
@@ -108,7 +141,7 @@ export function conversationRoutes(options: {
       const result = await options.forks.create(
         c.get('user').id, c.req.param('id'), parsed.data.id, parsed.data.blockId,
       )
-      return c.json({ conversation: conversationSummary(result.conversation, conversationStores, options.agentServer), model: result.model },
+      return c.json({ conversation: await conversationSummary(result.conversation, summaryDeps), model: result.model },
         result.created ? 201 : 200)
     } catch (error) {
       if (error instanceof ForkRefused) {
@@ -412,9 +445,95 @@ export function conversationRoutes(options: {
     return c.body(null, 204)
   })
 
-  // Workspace file drop: bytes land in the execution target's working
-  // directory over the ordinary Host fs — filesystem data, not conversation
-  // data. The returned path is what the client inserts as a text reference.
+  // Browser reads and working-tree queries share conversation Host admission.
+  const withConversationHost = async (
+    c: Context<AuthEnv>,
+    operation: (host: RemoteHost, root: string) => Promise<Response>,
+  ): Promise<Response> => {
+    const conversation = await own(c)
+    if (!conversation) {
+      return c.json(
+        {
+          code: 'conversation_not_found',
+          message: 'No such conversation',
+        },
+        404,
+      )
+    }
+    try {
+      return await withHost(
+        conversation.id,
+        (host) => operation(host, host.defaultCwd),
+        { signal: c.req.raw.signal, deviceId: c.req.param('deviceId') },
+      )
+    } catch (error) {
+      return hostOperationError(c, error)
+    }
+  }
+
+  app.on('GET', ['/:id/fs', '/:id/hosts/:deviceId/fs'], async (c) => {
+    const query = directoryQuerySchema.safeParse(c.req.query())
+    if (!query.success) {
+      return c.json({ code: 'invalid_query', message: 'Expected a nonempty path' }, 400)
+    }
+    return withConversationHost(c, async (host, root) => {
+      const path = query.data.path ?? root
+      const entries = await browseDirectory(host.fs, path)
+      return c.json({ path, home: host.identity.homeDir, entries })
+    })
+  })
+
+  app.on('POST', ['/:id/fs', '/:id/hosts/:deviceId/fs'], async (c) => {
+    const body = filePathSchema.safeParse(await c.req.json().catch(() => null))
+    if (!body.success) {
+      return c.json({ code: 'invalid_body', message: 'Expected { path: string }' }, 400)
+    }
+    return withConversationHost(c, async (host) => {
+      await host.fs.mkdir(body.data.path, { recursive: true })
+      return c.json({ path: body.data.path }, 201)
+    })
+  })
+
+  app.get('/:id/fs/file', async (c) => {
+    const query = filePathSchema.safeParse(c.req.query())
+    if (!query.success) {
+      return c.json({ code: 'invalid_query', message: 'Expected a path query parameter' }, 400)
+    }
+    return withConversationHost(c, async (host) => {
+      const path = query.data.path
+      const text = await readTextFile(host.fs, path)
+      return c.json({ path, text })
+    })
+  })
+
+  app.get('/:id/changes', (c) =>
+    withConversationHost(c, async (host, root) => {
+      const changes = await host.git.changes(root)
+      return c.json({ root, ...changes })
+    }),
+  )
+
+  app.get('/:id/changes/file', async (c) => {
+    const query = relativePathQuerySchema.safeParse(c.req.query())
+    if (!query.success) {
+      return c.json({ code: 'invalid_query', message: 'Expected a relative path query parameter' }, 400)
+    }
+    return withConversationHost(c, async (host, root) => {
+      const path = query.data.path
+      const original = await host.git.show(root, path).then(textOf, (error: unknown) => {
+        if (error instanceof RemoteGitError && error.code === 'ENOENT')
+          return ''
+        throw error
+      })
+      const modified = await readTextFile(host.fs, `${root}/${path}`).catch((error: unknown) => {
+        if (errorCode(error) === 'ENOENT')
+          return ''
+        throw error
+      })
+      return c.json({ original, modified })
+    })
+  })
+
   app.get('/:id/transcript', async (c) => {
     const conversation = await own(c)
     if (!conversation) {
@@ -433,4 +552,36 @@ export function conversationRoutes(options: {
   })
 
   return app
+}
+
+function hostOperationError(c: Context<AuthEnv>, error: unknown): Response {
+  if (error instanceof HostAccessRefused) {
+    return c.json({ code: error.code, message: error.message }, error.code === 'host_not_attached' ? 404 : 409)
+  }
+  const code = errorCode(error)
+  if (code === 'ENOENT')
+    return c.json({ code: 'fs_error', message: errorMessage(error) }, 404)
+  if (code === 'EACCES' || code === 'EPERM')
+    return c.json({ code: 'fs_error', message: errorMessage(error) }, 403)
+  if (code === 'ERUNNEROFFLINE')
+    return c.json({ code: 'device_offline', message: 'The execution device is offline' }, 409)
+  if (error instanceof ManagedHostError)
+    return c.json({ code: error.code, message: error.message }, 503)
+  if (error instanceof TextFileRefused)
+    return c.json({ code: error.code, message: error.message }, error.code === 'file_too_large' ? 413 : 415)
+  if (error instanceof RemoteGitError) {
+    switch (error.code) {
+      case 'busy':
+        return c.json({ code: 'changes_busy', message: error.message }, 503)
+      case 'timeout':
+        return c.json({ code: 'changes_timeout', message: error.message }, 504)
+      case 'not_repository':
+        return c.json({ code: 'not_repository', message: error.message }, 409)
+      case 'too_large':
+        return c.json({ code: 'file_too_large', message: error.message }, 413)
+      default:
+        return c.json({ code: 'changes_failed', message: error.message }, 500)
+    }
+  }
+  return c.json({ code: 'host_operation_failed', message: errorMessage(error) }, 500)
 }

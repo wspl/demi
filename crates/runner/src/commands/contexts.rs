@@ -6,7 +6,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     io,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -18,6 +18,7 @@ pub struct ExecutionContext {
     pub shell_id: String,
     pub manifest: Arc<Manifest>,
     pub cancel: CancellationToken,
+    pub edits: OnceLock<demi_command_service::protocol::EditContext>,
     aliases: tempfile::TempDir,
 }
 
@@ -150,6 +151,7 @@ impl Contexts {
             shell_id: env.get("DEMI_SHELL_ID").cloned().unwrap_or_default(),
             manifest,
             cancel: CancellationToken::new(),
+            edits: OnceLock::new(),
             aliases,
         });
         let mut state = self.state.lock().unwrap();

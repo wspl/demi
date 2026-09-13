@@ -1,11 +1,12 @@
 //! One shell job owns interpreter work, utilities, IO and external children.
 
 use std::{
+    collections::HashMap,
     fs::File,
     io::{self, Read, Write},
     path::{Path, PathBuf},
     process::Command,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -33,6 +34,8 @@ pub struct Scope {
     pub cancellation: CancellationToken,
     pub tasks: TaskTracker,
     pub commands: Option<CommandContext>,
+    pub edits: Option<demi_command_service::edits::Recorder>,
+    files: Arc<Mutex<HashMap<FileIdentity, PathBuf>>>,
 }
 
 impl Scope {
@@ -41,6 +44,8 @@ impl Scope {
             cancellation,
             tasks: TaskTracker::new(),
             commands,
+            edits: None,
+            files: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -58,6 +63,10 @@ impl Scope {
         self.tasks.wait().await;
     }
 
+    pub fn with_cancellation(&self, cancellation: CancellationToken) -> Self {
+        Self { cancellation, ..self.clone() }
+    }
+
     pub fn read(&self, file: &File, buffer: &mut [u8]) -> io::Result<usize> {
         if buffer.is_empty() {
             return Ok(0);
@@ -69,6 +78,10 @@ impl Scope {
     }
 
     pub fn write(&self, file: &File, buffer: &[u8]) -> io::Result<usize> {
+        self.write_with_tracking(file, buffer, true)
+    }
+
+    fn write_with_tracking(&self, file: &File, buffer: &[u8], tracking: bool) -> io::Result<usize> {
         if buffer.is_empty() {
             return Ok(0);
         }
@@ -76,7 +89,45 @@ impl Scope {
         // Bound pipe writes so cancellation remains observable under backpressure.
         #[cfg(windows)]
         let _operation = self.interruptible_io()?;
+        if tracking && let (Some(edits), Some(path)) = (&self.edits, self.file_path(file)) {
+            return edits.record(&path, || (&*file).write(buffer));
+        }
         (&*file).write(&buffer[..buffer.len().min(512)])
+    }
+
+    fn open_file(&self, path: &Path, options: &std::fs::OpenOptions, writing: bool) -> io::Result<File> {
+        self.check()?;
+        let file = match (&self.edits, writing) {
+            (Some(edits), true) => edits.record(path, || options.open(path))?,
+            _ => options.open(path)?,
+        };
+        if writing && self.edits.is_some() && file.metadata().is_ok_and(|metadata| metadata.is_file())
+            && let Ok(identity) = file_identity(&file)
+        {
+            let mut files = self.files.lock().unwrap();
+            files.retain(|_, previous| previous != path);
+            if files.len() < demi_command_service::protocol::EDIT_JOB_FILES {
+                files.insert(identity, path.to_owned());
+            }
+        }
+        Ok(file)
+    }
+
+    fn file_path(&self, file: &File) -> Option<PathBuf> {
+        let identity = file_identity(file).ok()?;
+        let path = self.files.lock().unwrap().get(&identity).cloned()?;
+        // A rename can replace the path while the old descriptor remains open.
+        let current = File::open(&path).ok()?;
+        (file_identity(&current).ok()? == identity).then_some(path)
+    }
+
+    fn edit(&self, path: &Path) -> Option<Box<dyn Send>> {
+        if std::fs::metadata(path).is_ok_and(|metadata| !metadata.is_file()) {
+            return None;
+        }
+        let mut recording = self.edits.as_ref()?.begin()?;
+        recording.track(path);
+        Some(Box::new(recording))
     }
 
     #[cfg(unix)]
@@ -205,6 +256,40 @@ impl FileControl for Scope {
 }
 
 impl ExecutionHost for Scope {
+    fn open_file(&self, path: &Path, options: &std::fs::OpenOptions, writing: bool) -> io::Result<File> {
+        self.open_file(path, options, writing)
+    }
+
+    fn external_output(&self, file: File) -> io::Result<(File, Option<brush_core::execution_host::OutputCompletion>)> {
+        if self.file_path(&file).is_none() {
+            return Ok((file, None));
+        }
+        let (reader, writer) = super::job::pipe()?;
+        let scope = self.clone();
+        let completion = self.tasks.spawn_blocking(move || {
+            let result = (|| -> io::Result<()> {
+                let mut buffer = vec![0; 64 * 1024];
+                loop {
+                    let count = scope.read(&reader, &mut buffer)?;
+                    if count == 0 {
+                        return Ok(());
+                    }
+                    let mut bytes = &buffer[..count];
+                    while !bytes.is_empty() {
+                        let count = scope.write(&file, bytes)?;
+                        if count == 0 {
+                            return Err(io::ErrorKind::WriteZero.into());
+                        }
+                        bytes = &bytes[count..];
+                    }
+                }
+            })();
+            result
+        });
+        Ok((writer, Some(Box::pin(async move {
+            completion.await.map_err(io::Error::other)?
+        }))))
+    }
     fn check(&self) -> io::Result<()> {
         self.check()
     }
@@ -292,6 +377,18 @@ pub fn resolve_path(path: &Path, cwd: &Path) -> PathBuf {
 }
 
 impl uucore::context::Control for Scope {
+    fn open(&self, path: &Path, options: &std::fs::OpenOptions, writing: bool) -> io::Result<File> {
+        self.open_file(path, options, writing && tracked_utility())
+    }
+    fn edit(&self, path: &Path) -> Option<Box<dyn Send>> {
+        tracked_utility().then(|| self.edit(path)).flatten()
+    }
+    fn edit_file(&self, file: &File) -> Option<Box<dyn Send>> {
+        if !tracked_utility() {
+            return None;
+        }
+        self.edit(&self.file_path(file)?)
+    }
     fn check(&self) -> io::Result<()> {
         self.check()
     }
@@ -299,7 +396,7 @@ impl uucore::context::Control for Scope {
         self.read(file, bytes)
     }
     fn write(&self, file: &File, bytes: &[u8]) -> io::Result<usize> {
-        self.write(file, bytes)
+        self.write_with_tracking(file, bytes, tracked_utility())
     }
     fn sleep(&self, duration: Duration) -> io::Result<()> {
         self.sleep(duration)
@@ -310,4 +407,32 @@ impl uucore::context::Control for Scope {
     fn task_guard(&self) -> Box<dyn Send + Sync> {
         Box::new(self.tasks.token())
     }
+}
+
+fn tracked_utility() -> bool {
+    !matches!(uucore::context::utility_name(), Some("cp" | "mv" | "mktemp" | "touch"))
+}
+
+#[derive(Eq, Hash, PartialEq)]
+struct FileIdentity(u64, u64);
+
+#[cfg(unix)]
+fn file_identity(file: &File) -> io::Result<FileIdentity> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = file.metadata()?;
+    Ok(FileIdentity(metadata.dev(), metadata.ino()))
+}
+
+#[cfg(windows)]
+fn file_identity(file: &File) -> io::Result<FileIdentity> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle};
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(FileIdentity(
+        u64::from(info.dwVolumeSerialNumber),
+        (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
+    ))
 }

@@ -119,6 +119,7 @@ export const useConversations = defineStore('conversations', () => {
       | 'revision'
       | 'readRevision'
       | 'unread'
+      | 'cwd'
       | 'createdAt'
       | 'updatedAt'
     >,
@@ -132,6 +133,7 @@ export const useConversations = defineStore('conversations', () => {
       projectId:
         record.target.kind === 'workspace' ? record.target.workspaceId : null,
       contextVersion: record.contextVersion,
+      cwd: record.cwd,
       revision: record.revision,
       readRevision: record.readRevision,
       unread: record.unread,
@@ -140,12 +142,12 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  function newConversation(record: BackendConversation): Conversation {
+  /** A local draft has no backend record yet, so no resolved `cwd`; the first send brings it. */
+  function newConversation(record: Omit<BackendConversation, 'cwd'> & { cwd?: string }): Conversation {
     return {
-      ...metadata(record),
+      ...metadata({ ...record, cwd: record.cwd ?? '' }),
       persistence: 'synced',
       status: summaryStatus(record.status),
-      cwd: '/',
       blocks: [],
       phase: 'idle',
       queue: [],

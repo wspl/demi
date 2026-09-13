@@ -6,7 +6,7 @@
 // hand-written types; their validators carry a `z.ZodType<T>` annotation so
 // drift is a compile error.
 import { z } from 'zod'
-import { artifactDigestSchema, artifactLocationSchema, nativeTargetSchema } from '@demicodes/command-protocol'
+import { artifactDigestSchema, artifactLocationSchema, nativeTargetSchema, editFileSchema, EDIT_JOB_FILES } from '@demicodes/command-protocol'
 import type {
   HostDirent,
   HostFileStat,
@@ -18,6 +18,11 @@ import type {
 // generic; the wire carries plain Uint8Array views.
 export const bytesSchema = z.custom<Uint8Array>((value) => value instanceof Uint8Array)
 const cwd = z.string().optional()
+
+export const jobFileChangeSchema = editFileSchema.extend({
+  added: z.number().int().nonnegative(),
+  removed: z.number().int().nonnegative(),
+}).strict()
 
 const hostIdentitySchema: z.ZodType<HostIdentity> = z.strictObject({
   uid: z.number(),
@@ -193,6 +198,93 @@ const fsOkMessageSchema = z.union(
   FS_OPS.map(fsOkSchema) as unknown as [z.ZodType<FsOkMessage>, ...z.ZodType<FsOkMessage>[]]
 )
 
+/** One changed file of a working tree; the shape `ShellFileChange` in `@demicodes/agent` carries. */
+export const gitChangeSchema = z.strictObject({
+  path: z.string(),
+  kind: z.enum(['added', 'modified', 'deleted', 'renamed']),
+  /** The path before a rename. */
+  from: z.string().optional(),
+  added: z.number().int().nonnegative(),
+  removed: z.number().int().nonnegative(),
+})
+export type GitChange = z.infer<typeof gitChangeSchema>
+
+/**
+ * The working-tree requests the runner answers in process (`runner.md`
+ * § Working tree): `git_<op>` requests, `git_ok { id, op, result }` /
+ * `git_error { id, code, message }` replies, in the shape of the `fsOps`
+ * table. `root` is the directory the request is about; `path` is relative
+ * to it.
+ */
+export const gitOps = {
+  changes: {
+    params: z.strictObject({ root: z.string() }),
+    result: z.strictObject({
+      repository: z.boolean(),
+      head: z.string().nullable(),
+      files: z.array(gitChangeSchema),
+      truncated: z.boolean(),
+      watched: z.boolean(),
+    }),
+  },
+  show: {
+    params: z.strictObject({ root: z.string(), path: z.string() }),
+    result: bytesSchema,
+  },
+} as const
+
+export type GitOp = keyof typeof gitOps
+export const GIT_OPS = Object.keys(gitOps) as GitOp[]
+export type GitParams<Op extends GitOp> = z.infer<(typeof gitOps)[Op]['params']>
+export type GitResult<Op extends GitOp> = z.infer<(typeof gitOps)[Op]['result']>
+export type GitChanges = GitResult<'changes'>
+
+export type GitCallMessage = { [Op in GitOp]: {
+  type: `git_${Op}`;
+  id: string
+} & GitParams<Op> }[GitOp]
+export type GitOkMessage = { [Op in GitOp]: {
+  type: 'git_ok';
+  id: string;
+  op: Op;
+  result: GitResult<Op>
+} }[GitOp]
+
+function gitCallSchema<Op extends GitOp>(op: Op) {
+  return z.strictObject({ type: z.literal(`git_${op}`), id: z.string() })
+    .extend(gitOps[op].params.shape)
+}
+
+function gitOkSchema<Op extends GitOp>(op: Op) {
+  return z.strictObject({
+    type: z.literal('git_ok'),
+    id: z.string(),
+    op: z.literal(op),
+    result: gitOps[op].result
+  })
+}
+
+const gitCallMessageSchema = z.union(
+  GIT_OPS.map(gitCallSchema) as unknown as [z.ZodType<GitCallMessage>, ...z.ZodType<GitCallMessage>[]]
+)
+const gitOkMessageSchema = z.union(
+  GIT_OPS.map(gitOkSchema) as unknown as [z.ZodType<GitOkMessage>, ...z.ZodType<GitOkMessage>[]]
+)
+
+/**
+ * Why a working-tree request failed: the runner's own outcomes, or an
+ * errno-style code from the repository's files (`ENOENT` for a path the last
+ * commit does not have).
+ */
+export type GitErrorCode =
+  | 'not_repository'
+  | 'busy'
+  | 'timeout'
+  | 'too_large'
+  | 'cancelled'
+  | 'internal'
+  | (string & {})
+
 const runnerInfoSchema = z.strictObject({
   name: z.string(),
   platform: z.string(),
@@ -277,6 +369,14 @@ export const runnerToBackendMessageSchema = z.union([
     code: z.string().optional(),
     message: z.string()
   }),
+  gitOkMessageSchema,
+  /** A failed working-tree call; `code` is a `GitErrorCode`. */
+  z.strictObject({
+    type: z.literal('git_error'),
+    id: z.string(),
+    code: z.string(),
+    message: z.string()
+  }),
   z.strictObject({
     type: z.literal('spawn_output'),
     spawnId: z.string(),
@@ -318,6 +418,8 @@ export const runnerToBackendMessageSchema = z.union([
      */
     cwd: z.string().optional(),
     output: jobOutputSchema.optional(),
+    files: z.array(jobFileChangeSchema).max(EDIT_JOB_FILES),
+    filesTruncated: z.boolean(),
   }),
   /**
    * An `rpc` command invoked on the target. `stdin` says whether the process
@@ -487,4 +589,5 @@ export const backendToRunnerMessageSchema = z.union([
     }).strict(),
   ]),
   fsCallMessageSchema,
+  gitCallMessageSchema,
 ])
