@@ -1,38 +1,91 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, provide, ref, watch } from 'vue'
 import { ChevronRight, Ellipsis } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
+import { appOverlayStore } from '../overlay/appOverlay'
+import Popover from '../ui/Popover.vue'
 import TextInput from '../ui/TextInput.vue'
+import { menuRootKey } from '../ui/menu-context'
+import DirectoryMenu from './DirectoryMenu.vue'
 import FileIcon from './FileIcon.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { landmarkIcon } from './file-icons'
-import { normalizePath, pathSegments } from './paths'
+import { normalizePath, parentPath, pathSegments } from './paths'
 import type { FileBrowserSource } from './types'
 
 /**
- * The path as crumbs, each its folder glyph and a jump; a click on the bar's free
- * space turns it into a text field with the full path, the way the Windows address
- * bar edits. A bar with a `root` starts its crumbs there, the way a file view shows
- * a path inside its workspace; `leaf` says what the last crumb is, so a file shows
- * its file glyph.
+ * The path as crumbs, each its folder glyph, in one of two modes. `navigate`
+ * (a file dialog): a crumb jumps there, and a click on the bar's free space
+ * turns it into a text field with the full path, the way the Windows address
+ * bar edits. `browse` (a file view): a crumb opens a menu of what lies beside
+ * it, directories unfolding into their own, so another file is a pick away;
+ * nothing edits. A bar with a `root` starts its crumbs there, the way a file
+ * view shows a path inside its workspace; `leaf` says what the last crumb is,
+ * so a file shows its file glyph.
  */
 const props = withDefaults(
   defineProps<{
     path: string
-    /** Where the root and the home are, for their glyphs. */
-    source: Pick<FileBrowserSource, 'platform' | 'home'>
+    /** Where the root and the home are, for their glyphs; `browse` also lists through it. */
+    source: Pick<FileBrowserSource, 'platform' | 'home'> & Partial<Pick<FileBrowserSource, 'list'>>
+    mode?: 'navigate' | 'browse'
     /** The first crumb; the ancestors above it are not shown. */
     root?: string
     leaf?: 'directory' | 'file'
     /** False for a bar that only shows: no text field on a click. */
     editable?: boolean
   }>(),
-  { root: undefined, leaf: 'directory', editable: true },
+  { mode: 'navigate', root: undefined, leaf: 'directory', editable: true },
 )
 
 const emit = defineEmits<{
   navigate: [path: string]
+  /** `browse`: a file picked from a crumb's menu. */
+  open: [path: string]
 }>()
+
+// `browse`: the crumb whose menu is open, and what that menu lists: the root
+// crumb its own entries, any other the entries beside it.
+const crumbEls = new Map<string, HTMLElement>()
+const menuCrumb = ref<{ path: string; el: HTMLElement } | null>(null)
+const menuDirectory = computed(() => {
+  const crumb = menuCrumb.value
+  if (!crumb) {
+    return null
+  }
+  return crumb.path === crumbs.value[0]?.path ? crumb.path : parentPath(crumb.path)
+})
+
+function bindCrumb(path: string, el: unknown): void {
+  if (el instanceof HTMLElement) {
+    crumbEls.set(path, el)
+  } else {
+    crumbEls.delete(path)
+  }
+}
+
+function onCrumbClick(path: string): void {
+  if (props.mode === 'navigate') {
+    emit('navigate', path)
+    return
+  }
+  const el = crumbEls.get(path)
+  if (!el) {
+    return
+  }
+  menuCrumb.value = menuCrumb.value?.path === path ? null : { path, el }
+}
+
+function closeMenu(): void {
+  menuCrumb.value = null
+}
+
+function pick(path: string): void {
+  closeMenu()
+  emit('open', path)
+}
+
+provide(menuRootKey, { dismiss: closeMenu })
 
 const editing = ref(false)
 const draft = ref('')
@@ -91,6 +144,7 @@ function onKeydown(event: KeyboardEvent) {
 
 watch(() => props.path, () => {
   editing.value = false
+  closeMenu()
 })
 </script>
 
@@ -127,13 +181,17 @@ watch(() => props.path, () => {
       </span>
       <span
         v-else
-        role="link"
+        :ref="(el) => bindCrumb(crumb.path, el)"
+        :role="mode === 'browse' ? 'button' : 'link'"
+        :aria-expanded="mode === 'browse' ? menuCrumb?.path === crumb.path : undefined"
         class="flex h-5 min-w-0 shrink items-center gap-1 rounded px-1 text-chrome transition-colors duration-200 ease-out"
         :class="[
-          index === shown.length - 1 ? 'max-w-[60%] shrink-0 text-fg-emphasis' : 'text-fg-muted hover:bg-hover hover:text-fg',
+          index === shown.length - 1 ? 'max-w-[60%] shrink-0 text-fg-emphasis' : 'text-fg-muted',
+          index === shown.length - 1 && mode === 'navigate' ? '' : 'hover:bg-hover hover:text-fg',
+          menuCrumb?.path === crumb.path ? 'bg-hover text-fg' : '',
           index === 0 ? 'shrink-0' : '',
         ]"
-        @click="emit('navigate', crumb.path)"
+        @click="onCrumbClick(crumb.path)"
       >
         <!-- The root and the home wear their landmark glyphs; every crumb has the same shape. -->
         <FileIcon
@@ -146,4 +204,22 @@ watch(() => props.path, () => {
     </template>
     <span class="h-full min-w-4 flex-1" @click="startEdit" />
   </div>
+  <Popover
+    v-if="mode === 'browse' && source.list"
+    :overlay-store="appOverlayStore"
+    :is-open="menuCrumb !== null"
+    :anchor-el="menuCrumb?.el ?? null"
+    :ignore-els="menuCrumb ? [menuCrumb.el] : []"
+    placement="bottom-start"
+    :offset="4"
+    @close="closeMenu"
+  >
+    <DirectoryMenu
+      v-if="menuDirectory !== null"
+      :source="{ list: source.list }"
+      :path="menuDirectory"
+      :current="menuCrumb?.path"
+      @pick="pick"
+    />
+  </Popover>
 </template>
