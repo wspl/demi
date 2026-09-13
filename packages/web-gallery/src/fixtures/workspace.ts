@@ -242,31 +242,83 @@ function lineCounts(original: string, modified: string): { added: number; remove
   return { added: b.length - common, removed: a.length - common }
 }
 
-/** A generated source file of `lines` numbered statements, so a diff has room for several hunks. */
+/** A generated file of about `lines` lines in the language its extension names, so a diff has room for several hunks. */
 function generated(path: string, lines: number, seed = 1): string {
-  const name = path.slice(path.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '')
-  const out = [`// ${path}`, '', `export const ${name.replace(/[^a-zA-Z0-9]/g, '_')}Version = ${seed}`, '']
-  for (let i = 1; i <= lines; i++) {
-    if (i % 12 === 1) {
-      out.push(`export function step${i}(input: number): number {`)
+  const name = path.slice(path.lastIndexOf('/') + 1)
+  const ext = name.slice(name.lastIndexOf('.') + 1)
+  const ident = name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9]/g, '_')
+  const script = (): string[] => {
+    const out = [`export const ${ident}Version = ${seed}`, '']
+    for (let i = 1; i <= lines; i++) {
+      if (i % 12 === 1) {
+        out.push(`export function step${i}(input: number): number {`)
+      }
+      out.push(`  const value${i} = input * ${i} + ${seed}`)
+      if (i % 12 === 0 || i === lines) {
+        out.push(`  return value${i}`, '}', '')
+      }
     }
-    out.push(`  const value${i} = input * ${i} + ${seed}`)
-    if (i % 12 === 0 || i === lines) {
-      out.push(`  return value${i}`, '}', '')
-    }
+    return out
   }
-  return out.join('\n') + '\n'
+  switch (ext) {
+    case 'vue': {
+      const items = Array.from({ length: Math.ceil(lines / 6) }, (_, i) => `    <li :key="${i}">Item ${i + 1} of ${seed}</li>`)
+      return [
+        '<script setup lang="ts">',
+        `// ${path}`,
+        ...script().map((line) => line),
+        '</script>',
+        '',
+        '<template>',
+        '  <ul class="flex flex-col gap-1">',
+        ...items,
+        '  </ul>',
+        '</template>',
+        '',
+      ].join('\n')
+    }
+    case 'md': {
+      const out = [`# ${ident}`, '']
+      for (let i = 1; i <= lines; i++) {
+        if (i % 8 === 1) {
+          out.push(`## Section ${i}`, '')
+        }
+        out.push(`Paragraph ${i} of the design, revision ${seed}. It explains step ${i} and why it holds.`)
+        if (i % 8 === 0) {
+          out.push('', '```ts', `const step${i} = ${seed}`, '```', '')
+        }
+      }
+      return out.join('\n') + '\n'
+    }
+    case 'yml': {
+      const out = [`name: ${ident}`, 'on:', '  push:', '    branches: [main]', 'jobs:', '  build:', '    runs-on: ubuntu-latest', '    steps:']
+      for (let i = 1; i <= lines; i++) {
+        out.push(`      - name: Step ${i}`, `        run: bun run step${i} -- --seed ${seed} + ${i}`)
+      }
+      return out.join('\n') + '\n'
+    }
+    default:
+      return [`// ${path}`, '', ...script()].join('\n') + '\n'
+  }
 }
 
 /** `text` with a few edits spread through it: lines changed, a block added, a block removed. */
 function edited(text: string, seed: number): string {
   const lines = text.split('\n')
   const out: string[] = []
+  // The inserted block in the file's own idiom: a comment and a statement, a paragraph, or a step.
+  const code = /^\s*(const|export|return|import) /m.test(text)
+  const inserted = (i: number): string[] =>
+    code
+      ? [`  // added in this change (${seed})`, `  const extra${i} = value${i - 1} ?? 0`]
+      : text.startsWith('name:')
+        ? [`      - name: Added step (${seed})`, `        run: bun run extra${i}`]
+        : [`Added in this change (${seed}): paragraph ${i} covers the new step.`]
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!
     // Edits far enough apart that the unchanged stretches between them fold.
     if (i % 41 === 5) {
-      out.push(line.replace(/\+ \d+$/, `+ ${seed * 10}`))
+      out.push(/\+ \d+$/.test(line) ? line.replace(/\+ \d+$/, `+ ${seed * 10}`) : `${line} (revised)`)
       continue
     }
     if (i % 61 === 17) {
@@ -274,7 +326,7 @@ function edited(text: string, seed: number): string {
     }
     out.push(line)
     if (i % 53 === 9) {
-      out.push(`  // added in this change (${seed})`, `  const extra${i} = value${i - 1} ?? 0`)
+      out.push(...inserted(i))
     }
   }
   return out.join('\n')
