@@ -42,6 +42,8 @@ const workspace = computed(() => {
   return {
     source: fileSourceFor(device),
     root: execution.path,
+    // The Cloud's own session directory has no name worth showing; it is the workspace.
+    name: execution.directory === null ? 'Workspace' : undefined,
     changes: { uncommitted: state.value.changes, conversation: emptyChangeSet },
   }
 })
