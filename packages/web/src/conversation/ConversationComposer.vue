@@ -10,9 +10,8 @@ import {
   composerRemoteAttachment,
   remoteAttachmentError,
 } from '@demicodes/web-ui/agent/message-input/attachments'
-import type { ThinkingConfig } from '@demicodes/core'
 import { executionFor } from '../targets/execution'
-import { composerModel } from '@demicodes/web-ui/agent/model-selection'
+import { composerModel, intentThinkingConfig } from '@demicodes/web-ui/agent/model-selection'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
@@ -43,20 +42,7 @@ function removeFile(id: string) {
   store.removeFile(props.conversation, id)
 }
 
-const thinking = computed<ThinkingConfig | undefined>(() => {
-  const effort = props.conversation.model.thinkingEffort
-  if (effort === null) {
-    return undefined
-  }
-  if (effort === 'disabled') {
-    return { type: 'disabled' }
-  }
-  return {
-    type: 'effort',
-    effort,
-    summary: null,
-  }
-})
+const thinking = computed(() => intentThinkingConfig(props.conversation.model))
 const usage = computed(
   () =>
     props.conversation.blocks.findLast((block) => block.type === 'response')

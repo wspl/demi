@@ -65,7 +65,10 @@ selection, timestamps, archived flag.
   view lists them and any can be restored. No user data is deleted in v1.
 - **Titles**: default is the first user message plus manual rename.
 - **New conversation is one click**: immediately typeable — target defaults
-  to the user's Cloud, model defaults to the user's last-used selection.
+  to the user's Cloud. The model, thinking effort and service tier default to
+  the user's last explicit selection, stored in backend user preferences even
+  when the choice was made in an empty unsent draft. Existing conversations
+  keep their own selections.
 - **Message-level operations: everything Demi implements gets exposed** —
   mid-turn steering, the message queue, abort, retry, resume, manual
   compaction, mid-conversation provider/model switch, interactive stdin to

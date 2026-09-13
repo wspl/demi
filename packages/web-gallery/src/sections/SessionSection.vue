@@ -35,6 +35,7 @@ import GalleryTranscriptEntrance from '../components/GalleryTranscriptEntrance.v
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
 import GalleryAssistantMessages from '../components/GalleryAssistantMessages.vue'
+import GalleryModelPreference from '../components/GalleryModelPreference.vue'
 import { submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
 import type { ThinkingConfig, UserContentBlock } from '@demicodes/core'
@@ -679,9 +680,12 @@ function abortTerminal(id: string) {
 
       <GallerySection
         title="ModelSelector"
-        note="The model dropdown aligns to the trigger’s right edge, extending to the left."
+        note="The model dropdown aligns to the trigger’s right edge, extending to the left. A new conversation inherits the saved model, reasoning and Fast Mode; the product adapter persists this preference to the backend."
       >
         <div class="specimen-stack">
+          <GallerySpecimen variant="new conversation · saved choice">
+            <GalleryModelPreference />
+          </GallerySpecimen>
           <GallerySpecimen variant="chip">
             <ModelSelector
               :providers="demoProviders"
