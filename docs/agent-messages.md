@@ -192,7 +192,9 @@ Use scripted providers and isolated storage/runner fixtures, never real models.
 - `session/session.ts` owns admission, steering, hidden continuation actions,
   abort retention, and checkpoint flushes. `session/steer-queue.ts` owns the
   ordered pending records. Human pending-steer snapshots exclude agent input.
-- `protocol/agent-message.ts` validates admitted and restored envelopes;
+- `protocol/agent-message.ts` declares the envelope schema, and
+  `protocol/schemas.ts` builds the restored-envelope
+  (`pendingInternalSteerSchema`) and transcript-block schemas on top of it;
   `transcript/agent-message.ts` supplies the provider source wrapper.
 - `subagent/supervisor.ts` supplies sender identity and completion timestamps,
   prevents closing with unread input, and observes terminal action failures.

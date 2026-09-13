@@ -1,15 +1,11 @@
-import { asRecord, asString, sliceHead } from '@demicodes/utils'
+import { bytesToBase64, sliceHead } from '@demicodes/utils'
+import { z } from 'zod'
 import type {
   ShellEnvironment,
-  ShellAbortInput,
   ShellCommandStatus,
-  ShellExecInput,
   ShellOutputChunk,
-  ShellStatusInput,
-  ShellWriteInput,
   ShellStreamView,
 } from '@demicodes/shell'
-import { bytesToBase64 } from '@demicodes/utils'
 import {
   modelAcceptsMediaType,
   sniffModelMediaType,
@@ -32,6 +28,80 @@ const LARGE_CONTEXT_THRESHOLD_TOKENS = 800_000
 const APPROX_CHARS_PER_TOKEN = 4
 const TOOL_DESCRIPTION_FIELD =
   'Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.'
+
+// ── tool inputs ─────────────────────────────────────────────────────
+//
+// One zod declaration per tool serves both purposes: the JSON Schema the model
+// is given and the check the invocation runs. A second, hand-written parser is
+// what let the two drift apart — `shellId: 42` was rejected by the declared
+// schema and silently ignored by the parser.
+
+const toolDescriptionField = z.string().optional().describe(
+  TOOL_DESCRIPTION_FIELD
+)
+
+/** An observation or wakeup window. Whole milliseconds; a fraction is refused. */
+const delayMs = z.number().int().min(1).max(MAX_DELAY_MS)
+
+const shellExecInputSchema = z.strictObject({
+  script: z.string(),
+  description: toolDescriptionField,
+  shellId: z.string().optional(),
+  timeoutMs: delayMs,
+})
+
+const shellStatusInputSchema = z.strictObject({
+  commandId: z.string(),
+  description: toolDescriptionField,
+})
+
+const shellWriteInputSchema = z.strictObject({
+  commandId: z.string(),
+  description: toolDescriptionField,
+  stdin: z.string().min(
+    1,
+    'stdin must not be empty; use shell_status to poll'
+  ),
+})
+
+const shellAbortInputSchema = z.strictObject({
+  commandId: z.string(),
+  description: toolDescriptionField,
+})
+
+const yieldInputSchema = z.strictObject({
+  description: toolDescriptionField,
+  durationMs: delayMs,
+})
+
+/**
+ * The model-facing JSON Schema for a tool input. A provider embeds the object
+ * in its own request document, where the dialect declaration `z.toJSONSchema`
+ * puts at the root has no meaning, so it is dropped.
+ */
+function toolInputSchema(schema: z.ZodType): Record<string, unknown> {
+  const jsonSchema = z.toJSONSchema(schema)
+  delete jsonSchema.$schema
+  return jsonSchema
+}
+
+/**
+ * Validates one tool call's input against the schema the model was given. The
+ * message names every offending field, so a retry has something to act on.
+ */
+function parseToolInput<Schema extends z.ZodType>(
+  toolName: string,
+  schema: Schema,
+  input: unknown,
+): z.infer<Schema> {
+  const parsed = schema.safeParse(input)
+  if (!parsed.success) {
+    throw new Error(
+      `${toolName} input is invalid:\n${z.prettifyError(parsed.error)}`
+    )
+  }
+  return parsed.data
+}
 
 interface ShellExecRepeatState {
   script: string
@@ -72,22 +142,9 @@ export function createStandardAgentTools<State = unknown>(
       name: 'shell_exec',
       description:
         'Start a shell script and observe it for up to timeoutMs. timeoutMs is an observation window, not a kill deadline: at timeoutMs the command keeps running and a command handle (commandId) is returned. Completed short output is returned directly. shell_exec never ends the turn or schedules a wakeup on its own.',
-      inputSchema: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['script', 'timeoutMs'],
-        properties: {
-          script: { type: 'string' },
-          description: {
-            type: 'string',
-            description: TOOL_DESCRIPTION_FIELD,
-          },
-          shellId: { type: 'string' },
-          timeoutMs: { type: 'number', minimum: 1, maximum: MAX_DELAY_MS },
-        },
-      },
+      inputSchema: toolInputSchema(shellExecInputSchema),
       invoke: async (ctx, input) => {
-        const parsed = parseShellExecInput(input)
+        const parsed = parseToolInput('shell_exec', shellExecInputSchema, input)
         const environment = await resolveEnvironment(
           options.environment,
           ctx,
@@ -101,7 +158,9 @@ export function createStandardAgentTools<State = unknown>(
         if (repeatGuard)
           return repeatGuard
         const result = await environment.exec({
-          ...parsed,
+          script: parsed.script,
+          shellId: parsed.shellId,
+          timeoutMs: parsed.timeoutMs,
           agentSessionId: ctx.agentSessionId,
           signal: ctx.signal,
         })
@@ -118,26 +177,21 @@ export function createStandardAgentTools<State = unknown>(
       name: 'shell_status',
       description:
         'Read a running command handle status and any new budgeted output preview. Does not wait or write stdin.',
-      inputSchema: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['commandId'],
-        properties: {
-          commandId: { type: 'string' },
-          description: {
-            type: 'string',
-            description: TOOL_DESCRIPTION_FIELD,
-          },
-        },
-      },
+      inputSchema: toolInputSchema(shellStatusInputSchema),
       invoke: async (ctx, input) => {
-        const parsed = parseShellStatusInput(input)
+        const parsed = parseToolInput(
+          'shell_status',
+          shellStatusInputSchema,
+          input
+        )
         const environment = await resolveEnvironment(
           options.environment,
           ctx,
           { commandId: parsed.commandId }
         )
-        const result = await environment.status(parsed)
+        const result = await environment.status({
+          commandId: parsed.commandId
+        })
         ctx.emitProgress(result)
         return finishShellToolResult(
           environment,
@@ -151,27 +205,23 @@ export function createStandardAgentTools<State = unknown>(
       name: 'shell_write',
       description:
         'Write non-empty stdin to a running foreground command and return status with new budgeted output preview. Include a newline for line-oriented prompts.',
-      inputSchema: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['commandId', 'stdin'],
-        properties: {
-          commandId: { type: 'string' },
-          description: {
-            type: 'string',
-            description: TOOL_DESCRIPTION_FIELD,
-          },
-          stdin: { type: 'string' },
-        },
-      },
+      inputSchema: toolInputSchema(shellWriteInputSchema),
       invoke: async (ctx, input) => {
-        const parsed = parseShellWriteInput(input)
+        const parsed = parseToolInput(
+          'shell_write',
+          shellWriteInputSchema,
+          input
+        )
         const environment = await resolveEnvironment(
           options.environment,
           ctx,
           { commandId: parsed.commandId }
         )
-        const result = await environment.write({ ...parsed, signal: ctx.signal })
+        const result = await environment.write({
+          commandId: parsed.commandId,
+          stdin: parsed.stdin,
+          signal: ctx.signal,
+        })
         ctx.emitProgress(result)
         return finishShellToolResult(
           environment,
@@ -185,26 +235,21 @@ export function createStandardAgentTools<State = unknown>(
       name: 'shell_abort',
       description:
         'Stop a running foreground command by commandId.',
-      inputSchema: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['commandId'],
-        properties: {
-          commandId: { type: 'string' },
-          description: {
-            type: 'string',
-            description: TOOL_DESCRIPTION_FIELD,
-          },
-        },
-      },
+      inputSchema: toolInputSchema(shellAbortInputSchema),
       invoke: async (ctx, input) => {
-        const parsed = parseShellAbortInput(input)
+        const parsed = parseToolInput(
+          'shell_abort',
+          shellAbortInputSchema,
+          input
+        )
         const environment = await resolveEnvironment(
           options.environment,
           ctx,
           { commandId: parsed.commandId }
         )
-        const result = await environment.abort(parsed)
+        const result = await environment.abort({
+          commandId: parsed.commandId
+        })
         ctx.emitProgress(result)
         return {
           ...(await finishShellToolResult(
@@ -221,21 +266,10 @@ export function createStandardAgentTools<State = unknown>(
       name: 'yield',
       description:
         'End this turn and schedule a one-shot wakeup. Does not touch shell commands.',
-      inputSchema: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['durationMs'],
-        properties: {
-          description: {
-            type: 'string',
-            description: TOOL_DESCRIPTION_FIELD,
-          },
-          durationMs: { type: 'number', minimum: 1, maximum: MAX_DELAY_MS },
-        },
-      },
+      inputSchema: toolInputSchema(yieldInputSchema),
       invoke: (ctx, input) => options.scheduleYield(
         ctx,
-        parseYieldDuration(input)
+        parseToolInput('yield', yieldInputSchema, input).durationMs,
       ),
     },
   ]
@@ -461,62 +495,6 @@ function binaryStreamVerdict(
     },
     note: `Attached stdout as ${media.mediaType} (${binary.totalBytes} bytes).`,
   }
-}
-
-function parseShellExecInput(input: unknown): ShellExecInput {
-  const record = asRecord(input, 'agent tool input must be an object')
-  if (typeof record.script !== 'string')
-    throw new Error('shell_exec requires string field "script"')
-  return {
-    script: record.script,
-    shellId: asString(record.shellId),
-    timeoutMs: requiredDelay(record.timeoutMs, 'shell_exec field "timeoutMs"'),
-  }
-}
-
-function parseShellStatusInput(input: unknown): ShellStatusInput {
-  const record = asRecord(input, 'agent tool input must be an object')
-  if (typeof record.commandId !== 'string')
-    throw new Error('shell_status requires string field "commandId"')
-  return {
-    commandId: record.commandId,
-  }
-}
-
-function parseShellWriteInput(input: unknown): ShellWriteInput {
-  const record = asRecord(input, 'agent tool input must be an object')
-  if (typeof record.commandId !== 'string')
-    throw new Error('shell_write requires string field "commandId"')
-  if (typeof record.stdin !== 'string')
-    throw new Error('shell_write requires string field "stdin"')
-  if (record.stdin.length === 0)
-    throw new Error(
-      'shell_write field "stdin" must not be empty; use shell_status to poll'
-    )
-  return {
-    commandId: record.commandId,
-    stdin: record.stdin,
-  }
-}
-
-function parseShellAbortInput(input: unknown): ShellAbortInput {
-  const record = asRecord(input, 'agent tool input must be an object')
-  if (typeof record.commandId !== 'string')
-    throw new Error('shell_abort requires string field "commandId"')
-  return { commandId: record.commandId }
-}
-
-function parseYieldDuration(input: unknown): number {
-  const record = asRecord(input, 'agent tool input must be an object')
-  return requiredDelay(record.durationMs, 'yield field "durationMs"')
-}
-
-function requiredDelay(value: unknown, label: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 1
-    || value > MAX_DELAY_MS) {
-    throw new Error(`${label} must be between 1 and ${MAX_DELAY_MS}`)
-  }
-  return Math.floor(value)
 }
 
 function repeatedShellExecResult(
