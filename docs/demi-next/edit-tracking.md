@@ -28,8 +28,9 @@ browser fetches them when a file is opened.
 
 An entry is `added` when the path did not exist at the job's first write to it,
 `modified` otherwise. A path whose bytes are the same at exit as before the
-first write is not reported: `touch`, a write of identical content, a temporary
-file removed before exit.
+first write is not reported: `touch`, a write of identical content. A path that
+does not exist at exit is not reported either, whether it existed before the
+job or was created during it.
 
 | Limit | Value | Beyond it |
 | --- | --- | --- |
@@ -73,14 +74,14 @@ the job's directory, or notes that the path does not exist, before the open
 proceeds. Later notices for the same path are counted and nothing more. The
 order matters: a truncating open that ran first would leave nothing to copy.
 
-When the job exits, however it ended, the scope copies each recorded path's
-current bytes beside the first copy, counts the lines added and removed between
+When the job exits, however it ended, the scope copies each recorded path that
+still exists beside the first copy, counts the lines added and removed between
 the two with the algorithm the working tree uses, and reports the entries in
 `job_exit`. The copies stay in the job's directory with its retained output,
 under that directory's lifetime ([Pipes and output](runner.md#pipes-and-output)).
-Recording never fails the command: a copy that cannot be taken or a path that
-disappeared leaves that entry with counts 0 and 0 and no contents, and the
-command's own result stands.
+Recording never fails the command: a copy that cannot be taken for a remaining
+path leaves that entry with counts 0 and 0 and no contents, and the command's
+own result stands.
 
 ## The report
 
@@ -139,8 +140,9 @@ view ([Tool rendering](../tool-rendering-spec.md)). Picking a pill opens the
 work panel's change view in Conversation mode on that call, with the picked
 file selected: the tree lists that call's files, and the selected file's two
 sides, fetched through the route above, show in the same diff editor the
-Uncommitted mode uses. An entry that is not `kept` shows why in place of the
-diff. Conversation mode never lists anything on its own and never refreshes:
+Uncommitted mode uses. An entry that is not `kept` remains in the list but has
+no diff; the interface silently omits the diff without a message or explanation.
+Conversation mode never lists anything on its own and never refreshes:
 its content is one call's list, and picking a pill of another call replaces it.
 
 ## Crates and packages to change
