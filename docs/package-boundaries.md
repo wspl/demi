@@ -295,8 +295,16 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `packages/runner` (Rust executable)
 
 - Owns: the `demi-runner` executable, one outbound backend WebSocket per registration, pairing/reconnection, filesystem and process RPC, shell jobs, local command forwarding and installation state.
-- `src/main.rs` selects runner administration, local command forwarding, isolated shell jobs or Linux guest initialization. Command aliases point to this same executable.
-- `src/shell.rs` embeds brush and native utilities. Each job runs in its own process, with per-job cwd/environment and output files. Unix process groups and Windows Job Objects release descendants on cancellation.
+- `src/main.rs` selects runner administration, external command forwarding or
+  Linux guest initialization. Command aliases point to this same executable.
+- `src/shell.rs` runs brush and native utility builtins inside the resident runner
+  process. Jobs own their cwd, environment and IO; they do not start separate
+  runner processes. Declared command builtins call the dispatcher directly.
+  External programs remain child processes, and their command calls use the
+  forwarding executable. Cancelling one job must preserve the runner and other jobs.
+- Command definitions and the implementation catalog are fixed for the lifetime
+  of the server or SDK agent host program. Context disposal owns binding cleanup;
+  command changes are not live updates during that program's execution.
 - The root `vendor/brush-core` provides concurrent function/compound pipeline
   stages and temporary-file here-documents.
 - `src/dispatch.rs` validates declarations and arguments. `rpc.rs` forwards application callbacks; `native.rs` shares resident services by artifact digest. The runner does not link `demi-package` implementations.

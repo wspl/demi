@@ -6,6 +6,12 @@ parsing and validated dispatch. The client forwards raw argv, cwd, environment a
 a live execution context, then streams stdin, stdout, stderr and completion.
 It contains no native command implementations.
 
+The embedded brush shell calls the same dispatcher through registered builtins
+inside the resident runner process. It does not launch a forwarding executable
+or use the local IPC endpoint for these calls. The executable remains available
+for callers outside brush, including scripts, `xargs` and subprocesses. Both
+entry paths use the same command definitions and execution-context lifetime.
+
 ## Transport and lifetime
 
 `runner/src/local.rs` creates an owner-restricted Unix domain socket on macOS and
