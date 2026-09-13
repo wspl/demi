@@ -4,18 +4,21 @@ import { FolderTree } from '@lucide/vue'
 import CodePreview from '../ui/CodePreview.vue'
 import IconButton from '../ui/IconButton.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
+import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { getLanguageFromPath } from '../markdown/highlight'
 import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
 import FileTree from './FileTree.vue'
+import { TREE_WIDTH } from './file-view'
 import { FileBrowserError, type FileBrowserSource } from './types'
 
 /**
  * One file of a workspace, read through its source: the path as crumbs from
  * the workspace root, the highlighted text, and beside it the workspace tree
  * with the file selected. The control at the end of the crumb row shows and
- * hides the tree; the host keeps that choice (v-model) so it holds across
- * files. A click on another file in the tree asks the host to open it.
+ * hides the tree, and the divider before the tree sizes it; the host keeps
+ * both (v-model) so they hold across files. A click on another file in the
+ * tree asks the host to open it.
  */
 const props = defineProps<{
   source: FileBrowserSource
@@ -30,6 +33,8 @@ const emit = defineEmits<{
 }>()
 
 const tree = defineModel<boolean>('tree', { default: true })
+
+const treeWidth = defineModel<number>('treeWidth', { default: TREE_WIDTH.default })
 
 const text = ref('')
 const state = ref<'loading' | 'ready' | 'failed'>('loading')
@@ -109,14 +114,24 @@ const lang = computed(() => getLanguageFromPath(props.path))
           @action="read"
         />
       </div>
-      <FileTree
-        v-if="tree"
-        class="w-48 shrink-0 border-l border-line"
-        :source="source"
-        :root="root"
-        :selected="path"
-        @open="emit('open', $event)"
-      />
+      <template v-if="tree">
+        <ResizeHandle
+          v-model="treeWidth"
+          side="end"
+          :min="TREE_WIDTH.min"
+          :max="TREE_WIDTH.max"
+          :default-value="TREE_WIDTH.default"
+          label="File tree width"
+        />
+        <FileTree
+          class="shrink-0 border-l border-line bg-surface"
+          :style="{ width: `${treeWidth}px` }"
+          :source="source"
+          :root="root"
+          :selected="path"
+          @open="emit('open', $event)"
+        />
+      </template>
     </div>
   </div>
 </template>
