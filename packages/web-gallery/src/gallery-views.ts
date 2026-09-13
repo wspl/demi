@@ -102,6 +102,10 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
       label: 'Session',
     },
     {
+      value: 'panel',
+      label: 'Panel',
+    },
+    {
       value: 'windows',
       label: 'Windows',
     },
