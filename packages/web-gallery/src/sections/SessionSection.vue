@@ -1485,7 +1485,7 @@ function abortTerminal(id: string) {
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
-            <div class="gallery-frame flex h-[24rem] overflow-hidden bg-surface-base pt-2">
+            <div class="gallery-frame flex h-[24rem] overflow-hidden">
               <WorkPanel
                 class="w-full"
                 :tabs="exhibitTabs"
@@ -1497,7 +1497,7 @@ function abortTerminal(id: string) {
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="empty" wide>
-            <div class="gallery-frame flex h-[24rem] overflow-hidden bg-surface-base pt-2">
+            <div class="gallery-frame flex h-[24rem] overflow-hidden">
               <WorkPanel class="w-full" :tabs="emptyTabs" :active-id="null" />
             </div>
           </GallerySpecimen>

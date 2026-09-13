@@ -47,13 +47,13 @@ interaction and layout belong to `web-ui`.
 `SidebarLayout` is the whole frame: the sidebar, the session, and the work
 panel (`WorkPanel`) on the right, each side pane behind its own divider with
 its own width bounds (`SIDEBAR_WIDTH`, `ASIDE_WIDTH`). The frame keeps whether
-the panel is open and how wide it is, and the product persists the width like
-the sidebar's. The panel control in the session header opens and closes it;
+the panel is open and how wide it is; the host persists the width like the
+sidebar's. The panel control in the session header opens and closes it;
 the panel's own fold control closes it. Below the medium breakpoint each side
 pane is an overlay and only one is open at a time: opening one closes the
-other, and the scrim closes whichever is open. The panel is a raised pane like
-the session's, rounded at the top-left, with its tab row at the height of the
-session header so the two panes line up across the divider. Tabs are the
+other, and the scrim closes whichever is open. The panel continues the
+session's raised sheet behind a hairline divider, with its tab row at the
+height of the session header; the divider is the resize handle. Tabs are the
 files and diffs open for the conversation on screen, kept per conversation by
 the host; a file tab carries the file's icon, a diff tab adds a compare mark,
 and the tab's tooltip is the path. The active tab keeps its close control and
@@ -61,7 +61,7 @@ the others show it on hover; closing the active tab activates the one before
 it. The Panel view of the Session gallery shows the frame with the panel open
 and the panel alone. The content pane is a placeholder: file and diff views,
 and what opens a tab (a changed-file pill, a file browser entry), are not
-designed yet, so the product panel opens to its empty state.
+designed yet. The product does not mount the panel until they are.
 The session dock's Agents chip counts running children only and is hidden when
 that count is zero. Finished children never contribute to its count. The chip opens `SubagentPanel` the same way Running opens
 the terminal window: a second click on the chip closes it. The window sits over

@@ -10,10 +10,10 @@ import { workTabTitle, type WorkTab } from './work-panel'
 
 /**
  * The work panel: the app frame's right pane, where the reader keeps files
- * and diffs open beside the conversation. A raised pane like the session's,
- * with the tab row where the session has its header, so the two panes line
- * up across the divider. The host owns the tabs and which one is active; the
- * panel only shows them.
+ * and diffs open beside the conversation. It continues the session's raised
+ * sheet behind a hairline divider, with the tab row at the height of the
+ * session header. The host owns the tabs and which one is active; the panel
+ * only shows them.
  *
  * The content pane is a placeholder until file and diff views exist.
  */
@@ -33,7 +33,7 @@ const active = computed(
 </script>
 
 <template>
-  <aside class="flex h-full min-w-0 flex-col overflow-hidden rounded-tl-xl bg-surface text-fg">
+  <aside class="flex h-full min-w-0 flex-col overflow-hidden border-l border-line bg-surface text-fg">
     <div class="flex h-11 shrink-0 items-center gap-1 px-2">
       <TabStrip
         class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto"
