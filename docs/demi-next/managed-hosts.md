@@ -227,6 +227,19 @@ pivoting root, then mounts home separately. `/run` and `/tmp` are tmpfs.
 Runner sockets, active job state, manifest cache and command output use
 `/run/demi`; the backend republishes command modules after connection.
 
+The guest-image pipeline embeds the Linux runner at `/demi-runner` and links
+`/usr/bin/demi-runner` to it. A runner deployment includes rebuilding or updating
+the configured rootfs and restarting the machine manager so it pins that image.
+The operator also checks each existing machine's committed `baseVersion`;
+restarting a machine boots that version, which may differ from the newly shipped
+base. Acceptance checks the executable hash of the guest's PID 1 after boot and
+again after hibernate/wake, then exercises jobs and native commands in the guest.
+
+Native command artifact locations are interpreted on the execution target.
+A local development deployment using file locations must install the Linux
+command artifact at that path inside the guest. The runner verifies its size
+and digest against the package descriptor before starting the service.
+
 System-level installs, including `sudo apt install`, survive shutdown and wake.
 User-level tools and configuration in home also persist. `/tmp` and processes
 do not. Growth and quotas apply independently to system and home volumes;

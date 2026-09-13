@@ -538,23 +538,19 @@ OUT_DIR: Rust types and validation code
 include! -> compiled crate -> input validation
 ```
 
-### Open decisions
-
-- The Rust validation mechanism and how generation represents constraints such
-  as ranges, lengths, allowed values and relationships between fields. No
-  validation library or custom validation framework is selected here.
-- The representation and validation of command-specific arguments supplied at
-  runtime by the server. These are not fixed protocol types that can all be
-  compiled into the runner; their design requires a separate discussion.
-
-Implementation of contract generation and validation depends on resolving these
-open decisions.
-
 ## Configuration boundaries
 
 Protocol limits are fixed SDK constants. Object-store adapters belong to
 backend deployment assembly. The service SDK supplies cancellable platform stdio;
 Windows runner releases use static CRT linkage.
+
+Deployment covers paired runner processes, native command packages and managed
+guest images. The guest-image pipeline consumes the Linux runner executable;
+the machine manager pins the configured kernel and rootfs by content hash.
+Release acceptance verifies the runner actually booted by each configured
+execution surface and resolves native command artifacts on that target. The
+managed-image lifecycle and its verification are defined in
+[`managed-hosts.md`](managed-hosts.md#images).
 
 ## Backend deployment configuration
 
