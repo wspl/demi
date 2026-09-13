@@ -1,7 +1,7 @@
 /**
  * The request side of the OpenAI wire formats, shared by every adapter that
- * builds one: Chat Completions and Responses spell these two fields the same
- * way, so they are stated once here.
+ * builds one: Chat Completions and Responses spell this field the same way,
+ * so it is stated once here.
  */
 import type { InferenceRequest } from './types'
 
@@ -17,9 +17,4 @@ export function thinkingToReasoningEffort(
   if (!thinking || thinking.type === 'disabled' || thinking.type === 'budget')
     return undefined
   return thinking.effort
-}
-
-/** Tool-call arguments as the wire spells them: a JSON string. */
-export function stringifyToolArguments(input: unknown): string {
-  return typeof input === 'string' ? input : JSON.stringify(input ?? {})
 }

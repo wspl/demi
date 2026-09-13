@@ -4,7 +4,8 @@ import {
   stringifyPortableJson,
   sliceHead,
   sliceTail,
-  toWellFormedText
+  toWellFormedText,
+  stringifyToolInput
 } from '@demicodes/utils'
 import type {
   AgentMessage,
@@ -787,10 +788,6 @@ function findPendingToolCallIndex(
       && block.toolUseId === toolUseId) return index
   }
   return null
-}
-
-function stringifyToolInput(input: unknown): string {
-  return typeof input === 'string' ? input : safeStringify(input, 'null')
 }
 
 function parseToolInput(input: string): unknown {

@@ -335,12 +335,14 @@ test('TranscriptLog safely stores non-JSON tool inputs', () => {
     events.toolCall('tool-2', 'shell_exec', circular)
   )
 
+  // A call without input is a call with an empty object: tool inputs are
+  // objects, and that is what a renderer and a replay can both read.
   expect(transcript.blocks[0]).toMatchObject({
     type: 'tool_call',
-    input: 'null'
+    input: '{}'
   })
   expect(transcript.collectInferenceItems()).toMatchObject([
-    { type: 'tool_use', input: null },
+    { type: 'tool_use', input: {} },
     { type: 'tool_use', input: { id: '1', self: '[Circular]' } },
   ])
 })

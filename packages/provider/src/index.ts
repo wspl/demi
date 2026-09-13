@@ -91,7 +91,6 @@ export {
 } from './responses-stream'
 export { mapChatCompletionsStream } from './chat-completions-stream'
 export {
-  stringifyToolArguments,
   thinkingToReasoningEffort,
 } from './openai-request'
 export {

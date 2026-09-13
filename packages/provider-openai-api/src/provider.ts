@@ -1,5 +1,9 @@
 import { attachmentTag } from '@demicodes/core'
-import { isAbortError, normalizeBaseUrl } from '@demicodes/utils'
+import {
+  isAbortError,
+  normalizeBaseUrl,
+  stringifyToolInput
+} from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 import type { ToolResultContentBlock, UserContentBlock } from '@demicodes/core'
@@ -13,7 +17,6 @@ import {
   providerErrorFromUnknown,
   readServerSentEvents,
   responsesReasoningItemSchema,
-  stringifyToolArguments,
   thinkingToReasoningEffort,
   toolResultContentToText,
   withCatalogProviderId,
@@ -599,7 +602,7 @@ function inferenceItemsToOpenAIMessages(
           type: 'function',
           function: {
             name: item.toolName,
-            arguments: stringifyToolArguments(item.input)
+            arguments: stringifyToolInput(item.input)
           },
         })
         break
@@ -748,7 +751,7 @@ function inferenceItemToOpenAIResponseInput(
           id: itemId,
           call_id: callId,
           name: item.toolName,
-          arguments: stringifyToolArguments(item.input),
+          arguments: stringifyToolInput(item.input),
         },
       ]
     }
