@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { LocalHost } from '@demicodes/runner/testing'
@@ -7,26 +7,21 @@ import { emptyByteStream } from '@demicodes/utils'
 import { buildManifest } from '../manifest/build'
 import { createLoader } from '../loader/loader'
 import { directorySource, writeManifestDirectory } from '../loader/source'
-import { testRoots, transpile } from './fixtures'
+import { testRoots, testPackage, testNative } from './fixtures'
 
-// A manifest kept as files, modules imported by path: the route txiki.js takes on
-// a target, proven here under Bun with the same loader.
 test(
-  'directorySource: the manifest is read back from files and runtime modules import by path',
+  'directorySource: the declaration manifest is read back and invokes an explicit adapter',
   async () => {
     const root = await mkdtemp(join(tmpdir(), 'demi-manifest-dir-'))
+    try {
     const host = new LocalHost(root, { storeRoot: join(root, 'store') })
-    const manifest = await buildManifest(testRoots(), { transpile })
+    const manifest = await buildManifest(testRoots(), { packages: [testPackage] })
     const dir = join(root, 'commands', manifest.hash)
     await writeManifestDirectory(manifest, dir, host.fs)
 
-    expect(await host.fs.readdir(join(dir, 'modules'))).toEqual(
-      Object.keys(manifest.modules).map((
-        hash
-      ) => `${hash}.mjs`).sort()
-    )
+    expect(await host.fs.readdir(dir)).toEqual(['manifest.json'])
     const source = directorySource(dir, host.fs)
-    const loader = await createLoader({ source, host })
+    const loader = await createLoader({ source, host, native: testNative(host) })
     expect(loader.manifest).toEqual(manifest)
 
     await host.fs.writeFile(
@@ -53,5 +48,6 @@ test(
     expect(
       new TextDecoder().decode(await host.fs.readFile(join(root, 'out.txt')))
     ).toBe('LOWER')
+    } finally { await rm(root, { recursive: true, force: true }) }
   }
 )

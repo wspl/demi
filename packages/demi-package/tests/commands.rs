@@ -1,5 +1,3 @@
-#![cfg(unix)]
-
 use std::{collections::BTreeMap, process::Stdio, time::Duration};
 
 use demi_command_service::{
@@ -33,6 +31,7 @@ async fn call(
             Record::Stdout(bytes) => stdout.extend_from_slice(&bytes),
             Record::Stderr(bytes) => stderr.extend_from_slice(&bytes),
             Record::Completion(value) => completion = Some(value),
+            Record::InputPull => panic!("file operation must not read raw stdin"),
         }
     }
     (completion.unwrap(), stdout, stderr)

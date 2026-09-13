@@ -1,3 +1,4 @@
+import { nativePackageFixture } from '@demicodes/demi-package/testing'
 import {
   createBackend,
   type Backend,
@@ -32,10 +33,11 @@ export interface TestBackend extends Backend {
  * directory, logged in over a reopened one.
  */
 export async function openBackend(
-  options: Omit<BackendOptions, 'mode'> & { mode?: BackendOptions['mode'] }
+  options: Omit<BackendOptions, 'mode' | 'nativeCommands'> & { mode?: BackendOptions['mode']; nativeCommands?: BackendOptions['nativeCommands'] }
 ): Promise<TestBackend> {
   const backend = await createBackend({
     mode: 'shared',
+    nativeCommands: await nativePackageFixture(),
     modelsDev: { fetch: modelsDevFetch() },
     ...options
   })

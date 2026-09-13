@@ -1,5 +1,5 @@
 import { memoryAgentStores } from '../testing'
-import { mkdtemp, mkdir } from 'node:fs/promises'
+import { mkdtemp, mkdir, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
@@ -38,7 +38,7 @@ const selection = { providerId: 'stub', model }
 test(
   'switching Host between turns injects a context block and keeps one continuous transcript',
   async () => {
-    const root = await mkdtemp(join(tmpdir(), 'demi-host-switch-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'demi-host-switch-')))
     const pathA = join(root, 'target-a')
     const pathB = join(root, 'target-b')
     await Promise.all([mkdir(pathA), mkdir(pathB)])

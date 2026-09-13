@@ -12,6 +12,7 @@
     }
   },
   "dependencies": {
+    "@demicodes/demi-package": "workspace:^",
     "@demicodes/agent": "workspace:^",
     "@demicodes/core": "workspace:^",
     "@demicodes/shell": "workspace:^",

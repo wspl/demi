@@ -5,12 +5,12 @@ Status: target acceptance contract; completion requires evidence in `progress.md
 ## Composition under test
 
 ```text
-Web API → backend → agent → RemoteShellEnvironment → packed txiki.js runner
+Web API → backend → agent → RemoteShellEnvironment → native Rust runner
                                                       → real bash → JS commands
         ← model-visible result, persisted transcript, ledger and blob references
 ```
 
-The suite uses scripted providers, temporary backend data and real packed txiki.js
+The suite uses scripted providers, temporary backend data and real native Rust
 runners over sockets. A fake managed provisioner drives lifecycle transitions
 using those runners; disk/VM guarantees require a separate Linux/KVM smoke.
 No test calls a real model. Package-level suites separately cover schemas, native

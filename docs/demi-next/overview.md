@@ -18,7 +18,7 @@
 | `product.md` | instance mode, users, conversations, attachments, provider management, web UI |
 | `sessions-and-targets.md` | a conversation's execution target: Cloud, paired devices, workspaces, switching, attached hosts |
 | `commands.md` | the command system: root commands (`demi` built in, library users add their own), `rpc` and `runtime` kinds, the command ABI, manifest, loader |
-| `txiki.md` | txiki.js: the runtime under the runner and every root command on a target |
+| `native-runtime.md` | Rust runner, embedded shell, resident command services and artifact distribution |
 | `runner.md` | the runner program: handshake, Host RPC, jobs, tee, the local relay |
 | `managed-hosts.md` | Firecracker provisioning, images, system/home persistence, reset, lifecycle, security |
 | `providers-and-vault.md` | the LLM module, credential vault, usage accounting, Claude Code |
@@ -68,11 +68,10 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
   their native endpoints (`providers-and-vault.md`).
 - Backend ↔ runner: Demi's runner protocol — a remote form of the `Host`
   contract (filesystem ops, process spawn with streamed stdio) plus the job
-  and output messages (`runner.md`). Both ends are TypeScript: the backend
-  on Bun, the runner as JS on txiki.js (`txiki.md`).
+  and output messages (`runner.md`). The backend runs TypeScript on Bun and the runner runs Rust. Shared schemas generate the Rust wire contract.
 - Target ↔ backend for root commands (`demi` and any library-defined
-  root): a root command on a target is txiki.js plus the loader;
-  `runtime` commands run on the target, `rpc` commands travel to the
+  root): a root command uses the runner’s local HTTP/2 dispatcher;
+  `native` commands run in resident target-side executables, `rpc` commands travel to the
   backend as typed messages through the runner's socket (`commands.md`).
 - The one special case is the **Claude Code provider**: its transport is the
   CLI, which must run on a real machine. The provider runs in the backend
@@ -134,7 +133,7 @@ realization inside the runner:
 | Where | Role | Runs in |
 |---|---|---|
 | `@demicodes/host-remote` | the Host of every user host and managed host as the backend sees it: each call forwarded over the runner wire | the backend |
-| `@demicodes/runner`, `machine/` | the machine itself — files and real processes over txiki.js's primitives — performing what `host-remote` asked; never held by the agent | the runner, on txiki.js |
+| `packages/runner/rust` | filesystem, process and shell-job execution requested through `host-remote` | native Rust runner |
 
 The wire between the last two is `@demicodes/runner-protocol`, which both
 ends depend on.
@@ -145,14 +144,15 @@ ends depend on.
   hosting, LLM module, vault, accounting, runner management, managed hosts,
   the command manifest — that scales by running more copies plus one
   control-plane process. `backend.md`, `storage.md`.
-- **txiki.js** (`vendor/txiki.js`, C/C++ fork): a small QuickJS runtime binary
-  providing IO primitives, an event loop and the byte-level paths; the native runtime layer. `txiki.md`.
-- **Runner** (`@demicodes/runner`, JS on txiki.js): the program on every
-  execution target — one outbound socket, Host RPC, the job table, the tee,
-  the local relay for root commands. `runner.md`.
-- **Command loader** (`@demicodes/command-loader`, pure JS): serves the
-  command manifest wherever commands run — inside the runner, inside
-  txiki.js in command mode and inside third-party embedders. `commands.md`.
+- **Runner** (`packages/runner`, Rust): one executable for execution targets,
+  embedded brush shell jobs, standard utilities, Host RPC and local command
+  forwarding. `runner.md`.
+- **Command loader** (`packages/command-loader`, TypeScript and generated Rust
+  contract): validates declarations and binds commands to application callbacks
+  or independently distributed native packages. `commands.md`.
+- **Command services** (`command-protocol`, `command-service`, `command-runtime`):
+  bounded HTTP/2 streaming, verified artifact installation and resident executable
+  lifetime. `native-runtime.md`.
 - **Managed hosts**: Firecracker microVMs the backend provisions on demand,
   persisting a pinned base plus a writable system layer and home. `managed-hosts.md`.
 - **Web frontend** (`@demicodes/web`): the product SPA over

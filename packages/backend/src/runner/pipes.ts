@@ -305,7 +305,7 @@ export class PipeBroker {
     const reader = (await pipe.body.promise).getReader()
     pipe.cancelBody = (error) => {
       // The failed pipe already carries the error for its readers and writer.
-      void reader.cancel(error).catch(noop).finally(() => reader.releaseLock())
+      void reader.cancel(error).catch(noop).finally(() => releaseFinishedReader(reader))
     }
     let ended = false
     try {
@@ -328,7 +328,7 @@ export class PipeBroker {
         // An intentional early return is a successful in-process drain.
         await reader.cancel().catch(noop)
       }
-      reader.releaseLock()
+      releaseFinishedReader(reader)
     }
   }
 
@@ -403,7 +403,7 @@ export class PipeBroker {
         pipe.cancelBody = (error) => {
           controller.error(error)
           // Preserve the pipe's first failure even if cancellation fails.
-          void reader.cancel(error).catch(noop).finally(() => reader.releaseLock())
+          void reader.cancel(error).catch(noop).finally(() => releaseFinishedReader(reader))
         }
       },
       pull: async (controller) => {
@@ -417,10 +417,10 @@ export class PipeBroker {
         if (!this.pipes.has(id))
           return
         if (next.done) {
-          controller.close()
-          reader.releaseLock()
+          releaseFinishedReader(reader)
           this.finish(id)
           pipe.drained.resolve()
+          controller.close()
           return
         }
         controller.enqueue(next.value)
@@ -466,4 +466,15 @@ export function withRelayedPipes(
 export function relayedPipesOf(io: CommandIO): RelayedPipes | null {
   return (io as CommandIO & { [RELAYED_PIPES]?: RelayedPipes })[RELAYED_PIPES] ??
     null
+}
+
+/** A settled, single-use source is discarded after its reader is released. */
+function releaseFinishedReader(reader: { releaseLock(): void }): void {
+  try {
+    reader.releaseLock()
+  } catch {
+    // EOF or awaited cancellation has already ended the source and every read.
+    // A native stream can throw while releasing its closed source. The lock is
+    // never reused, so this cleanup failure cannot change transfer completion.
+  }
 }

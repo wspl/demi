@@ -6,7 +6,7 @@ import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { FileCredentialPool } from '@demicodes/provider/credentials-pool'
-import { startTxikiRunner } from '@demicodes/runner/testing'
+import { startRunner } from '@demicodes/runner/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
@@ -124,7 +124,7 @@ chain(
     })
 
     // Pair the runner.
-    const runner = await startTxikiRunner({
+    const runner = await startRunner({
       backendUrl: backend.url,
       stateDir,
       home: runnerDir,

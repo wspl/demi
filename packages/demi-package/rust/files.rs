@@ -14,12 +14,7 @@ pub fn resolve_path(cwd: &str, path: &str) -> Result<PathBuf, String> {
     if path.is_empty() || path.contains('\0') {
         return Err("File path must be nonempty and contain no NUL byte".into());
     }
-    let path = Path::new(path);
-    Ok(if path.is_absolute() {
-        path.to_owned()
-    } else {
-        Path::new(cwd).join(path)
-    })
+    Ok(demi_native_path::resolve(path, cwd))
 }
 
 pub fn check_cancelled(cancellation: &CancellationToken) -> Result<(), String> {
@@ -117,8 +112,11 @@ fn edit(request: &Invocation, cancellation: &CancellationToken) -> Result<String
     }
     let args: Args =
         serde_json::from_value(request.args.clone()).map_err(|error| error.to_string())?;
-    if args.old.is_empty() || args.occurrence == Some(0) || args.context == Some(0) {
-        return Err("Old text must be nonempty; occurrence and context must be positive".into());
+    if args.old.is_empty() {
+        return Err("Old text must not be empty".into());
+    }
+    if args.occurrence == Some(0) || args.context == Some(0) {
+        return Err("Occurrence and context must be positive".into());
     }
     let path = resolve_path(&request.cwd, &args.path)?;
     let content = fs::read_to_string(&path).map_err(|error| error.to_string())?;
@@ -146,7 +144,20 @@ fn edit(request: &Invocation, cancellation: &CancellationToken) -> Result<String
         ranked.sort_unstable();
         let &(distance, index) = ranked.first().ok_or("No match found")?;
         if ranked.get(1).is_some_and(|next| next.0 == distance) {
-            return Err(format!("Context line {context} is ambiguous"));
+            let candidates = matches
+                .iter()
+                .enumerate()
+                .map(|(occurrence, &index)| {
+                    let line = content[..index]
+                        .bytes()
+                        .filter(|byte| *byte == b'\n')
+                        .count()
+                        + 1;
+                    format!("occurrence {} at line {line}", occurrence + 1)
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(format!("Context line {context} is ambiguous: {candidates}"));
         }
         index
     } else {

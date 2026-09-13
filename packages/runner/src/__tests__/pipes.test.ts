@@ -8,7 +8,7 @@ import {
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { deferred, waitFor } from '@demicodes/utils'
-import { startTxikiRunner } from '../testing'
+import { startRunner } from '../testing'
 
 // The runner's ends of pipes (`runner.md` § Pipes): a job started with
 // `stdin` GETs the origin-relative URL with its device token into the job's
@@ -76,7 +76,7 @@ test(
       },
     })
 
-    const runner = await startTxikiRunner({
+    const runner = await startRunner({
       backendUrl: `http://localhost:${server.port}`,
       stateDir,
       home: runnerDir
@@ -164,7 +164,7 @@ test(
       type: 'pipe_done',
       pipeId: 'gone',
       ok: false,
-      error: 'pipe refused (404): no such pipe'
+      error: 'pipe refused (404 Not Found): no such pipe'
     })
     expect(exitOf('j2')?.exitCode).toBe(0)
     expect(exitOf('j2')?.output?.stdoutBytes).toBe(2_000_000)

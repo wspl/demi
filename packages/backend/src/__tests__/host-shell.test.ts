@@ -12,7 +12,7 @@ import {
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import type { RunnerProtocolMessage } from '@demicodes/runner-protocol'
-import { startTxikiRunner } from '@demicodes/runner/testing'
+import { startRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
 import { FakeProvisioner } from './scenarios/fake-provisioner'
 import { openBackend, type TestBackend } from './session'
@@ -101,7 +101,7 @@ function lastExited(
 async function pairDevice(backend: TestBackend, name: string) {
   const home = await mkdtemp(join(tmpdir(), `demi-hs-${name}-`))
   const stateDir = await mkdtemp(join(tmpdir(), `demi-hs-${name}-state-`))
-  const runner = await startTxikiRunner(
+  const runner = await startRunner(
     { backendUrl: backend.url, stateDir, home, name }
   )
   await waitFor(
@@ -143,9 +143,7 @@ test(
       port: 0,
       runner: {
         pingIntervalMs: 0,
-        trace: (deviceId, direction, message) => void frames.push(
-          { deviceId, direction, message }
-        )
+        trace: (deviceId, direction, message) => void frames.push({ deviceId, direction, message })
       },
       providerTypes: {
         stub: {
@@ -272,7 +270,7 @@ test(
     }
     {
       const { of, types } = audit(before)
-      expect(types(a.deviceId, 'out')).toEqual(new Set(['job_start']))
+      expect(types(a.deviceId, 'out')).toEqual(new Set(['manifest', 'job_start']))
       expect(types(a.deviceId, 'in'))
         .toEqual(new Set(['job_output', 'job_exit', 'pipe_done']))
       expect(types(b.deviceId, 'out').has('rpc_pipes')).toBe(true)
@@ -314,7 +312,7 @@ test(
     )
     {
       const { of, types } = audit(beforePush)
-      expect(types(a.deviceId, 'out')).toEqual(new Set(['job_start']))
+      expect(types(a.deviceId, 'out')).toEqual(new Set(['manifest', 'job_start']))
       expect(types(a.deviceId, 'in'))
         .toEqual(new Set(['job_exit', 'pipe_done']))
       const pipes = of(b.deviceId, 'out').find((m) => m.type === 'rpc_pipes')
@@ -434,7 +432,7 @@ test(
           ? 'head -c 20000000 /dev/zero | demi host shell --host alpha \'printf "ready\\n" >&2; sleep 30\''
           : 'demi host shell --host alpha \'printf "ready\\n" >&2; read line; printf "got:%s\\n" "$line"; sleep 30\''
         if (caller === 'device-child-kill')
-          script = 'head -c 20000000 /dev/zero | demi host shell --host alpha \'printf "ready\\n" >&2; sleep 30\' & child=$!; sleep 1; kill -KILL "$child"; wait "$child"; sleep 30'
+          script = `sh -c 'head -c 20000000 /dev/zero | demi host shell --host alpha "printf ready >&2; sleep 30" & child=$!; sleep 1; kill -KILL "$child"; wait "$child"; sleep 30'`
         const { conversation } = await (await api(
           backend,
           '/api/conversations',
@@ -503,12 +501,11 @@ test(
           if (caller === 'device' || caller === 'cloud') {
             await client.shellWrite(commandId, 'hello\n')
             await waitFor(
-              () => since().some(
+              () => since().filter(
                 (frame) => frame.deviceId === a.deviceId &&
                   frame.message.type === 'job_output' &&
-                  frame.message.stream === 'stdout' &&
-                  textOf(frame.message).includes('got:hello')
-              ),
+                  frame.message.stream === 'stdout'
+              ).map(frame => textOf(frame.message)).join('').includes('got:hello'),
               () => `${caller}: ${JSON.stringify(since().map((frame) => ({ device: frame.deviceId, dir: frame.direction, type: frame.message.type, text: textOf(frame.message) })))}`,
               { timeoutMs: 5_000 }
             )

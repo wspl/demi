@@ -4,6 +4,7 @@ use demi_command_protocol::{Completion, MAX_RECORD_BYTES, ProtocolError, Record,
 #[test]
 fn decodes_every_fragmentation_boundary_and_preserves_binary() {
     let expected = vec![
+        Record::InputPull,
         Record::Stdout(Bytes::from_static(&[0, 255, 13, 10])),
         Record::Stderr(Bytes::from_static(b"diagnostic")),
         Record::Completion(Completion {
@@ -64,4 +65,15 @@ fn requires_completion_and_rejects_trailing_records() {
         decoder.decode(&mut completion.clone()),
         Err(ProtocolError::AfterCompletion)
     ));
+}
+
+#[test]
+fn rejects_invalid_completion_exit_codes_at_the_wire_boundary() {
+    for code in [-1, 256] {
+        let payload = format!("{{\"exitCode\":{code}}}");
+        let mut record = vec![3];
+        record.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+        record.extend_from_slice(payload.as_bytes());
+        assert!(RecordDecoder::default().decode(&mut record.into()).is_err());
+    }
 }

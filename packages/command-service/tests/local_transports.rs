@@ -5,9 +5,8 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_service::protocol::{Completion, Invocation, Record, RecordDecoder};
-use demi_command_service::{Handler, InvocationContext, ServiceError, serve};
-use http::Request;
+use demi_command_service::protocol::{Completion, Invocation, Record};
+use demi_command_service::{Client, Handler, InvocationContext, ServiceError, serve};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::{UnixStream, unix::pipe},
@@ -43,67 +42,41 @@ where
 {
     tokio::time::timeout(Duration::from_secs(5), async move {
         let server = tokio::spawn(serve(server_io, Arc::new(Echo)));
-        let (mut client, connection) = h2::client::handshake(client_io).await.unwrap();
+        let (client, connection) = Client::connect(client_io).await.unwrap();
         let driver = tokio::spawn(connection);
-        let request = Request::post("https://demi/v1/invoke").body(()).unwrap();
-        let (response, mut input) = client.send_request(request, false).unwrap();
-        input
-            .send_data(
-                Invocation {
-                    operation: "echo".into(),
-                    invocation_id: "transport".into(),
-                    args: serde_json::json!({}),
-                    cwd: "/tmp".into(),
-                    env: BTreeMap::new(),
-                }
-                .encode()
-                .unwrap(),
-                false,
-            )
+        let (mut input, mut output) = client
+            .invoke(&Invocation {
+                operation: "echo".into(),
+                invocation_id: "transport".into(),
+                args: serde_json::json!({}),
+                cwd: "/tmp".into(),
+                env: BTreeMap::new(),
+            })
+            .await
             .unwrap();
-        let mut body = response.await.unwrap().into_body();
+        assert_eq!(output.next().await.unwrap(), Some(Record::InputPull));
         input
-            .send_data(Bytes::from_static(b"live\0\xff"), false)
+            .write(Bytes::from_static(b"live\0\xff"))
+            .await
             .unwrap();
-        let mut decoder = RecordDecoder::default();
-        let mut records = Vec::new();
-        while records.is_empty() {
-            let mut bytes = body.data().await.unwrap().unwrap();
-            let length = bytes.len();
-            while !bytes.is_empty() {
-                if let Some(record) = decoder.decode(&mut bytes).unwrap() {
-                    records.push(record);
-                }
-            }
-            body.flow_control().release_capacity(length).unwrap();
-        }
         // The response arrives before stdin EOF, proving full duplex live input.
-        assert_eq!(records, [Record::Stdout(Bytes::from_static(b"live\0\xff"))]);
-        input.send_data(Bytes::new(), true).unwrap();
-        while let Some(bytes) = body.data().await {
-            let mut bytes = bytes.unwrap();
-            let length = bytes.len();
-            while !bytes.is_empty() {
-                if let Some(record) = decoder.decode(&mut bytes).unwrap() {
-                    records.push(record);
-                }
-            }
-            body.flow_control().release_capacity(length).unwrap();
-        }
-        decoder.finish().unwrap();
         assert_eq!(
-            records.last(),
-            Some(&Record::Completion(Completion {
+            output.next().await.unwrap(),
+            Some(Record::Stdout(Bytes::from_static(b"live\0\xff")))
+        );
+        assert_eq!(output.next().await.unwrap(), Some(Record::InputPull));
+        input.end().unwrap();
+        assert_eq!(
+            output.next().await.unwrap(),
+            Some(Record::Completion(Completion {
                 exit_code: 0,
                 error: None
             }))
         );
-        drop(body);
+        assert_eq!(output.next().await.unwrap(), None);
         drop(input);
-        let shutdown = Request::post("https://demi/v1/shutdown").body(()).unwrap();
-        let (response, shutdown_input) = client.send_request(shutdown, true).unwrap();
-        assert_eq!(response.await.unwrap().status(), 200);
-        drop(shutdown_input);
+        drop(output);
+        client.shutdown().await.unwrap();
         server.await.unwrap().unwrap();
         drop(client);
         driver.await.unwrap().unwrap();

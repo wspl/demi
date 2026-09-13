@@ -2,8 +2,6 @@ import { ModelCatalogCache } from './llm/model-catalog-cache'
 import { join } from 'node:path'
 import {
   AgentServer,
-  injectSubagentCommand,
-  subagentCommandShape,
   type ShellEnvironmentFactory
 } from '@demicodes/agent'
 import {
@@ -13,16 +11,15 @@ import {
 import {
   buildManifest,
   inProcessRpc,
-  type Manifest
 } from '@demicodes/command-loader'
-import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
+import { createRemoteShellEnvironmentFactory, type RemoteShellEnvironmentFactoryOptions } from '@demicodes/host-remote'
 import {
   type Command,
   type CommandIO,
   type CommandRegistry
 } from '@demicodes/shell'
 import { toBytes } from '@demicodes/utils'
-import type { Host, ShellEnvironment } from '@demicodes/shell'
+import type { Host } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
 import type { InstanceMode } from './auth/identity'
 import { EmailChanges, type AccountMailSender } from './auth/email-change'
@@ -30,7 +27,6 @@ import { LoginLimiter, type LoginLimiterOptions } from './auth/login-limiter'
 import { ownerFitsMode } from './vault/scope'
 import { WebSessions, type WebSessionsOptions } from './auth/sessions'
 import { switchAnnouncementPreamble } from './conversation/switch-announcement'
-import { transpileCommandModule } from './conversation/command-manifest'
 import { ProductState } from './sync/product-state'
 import { ConversationUpdates } from './conversation/updates'
 import { ConversationForks } from './conversation/fork'
@@ -64,6 +60,8 @@ import { openSqliteDatabase } from './storage/database'
 import { CONTROL_MIGRATIONS, migrate } from './storage/migrations'
 
 export interface BackendOptions {
+  /** Exact native package catalog and deployment-owned artifact resolution. */
+  nativeCommands: RemoteShellEnvironmentFactoryOptions
   /**
    * Directory produced by runner/runtime/release.ts; exposes paired
    * client/runner downloads.
@@ -129,6 +127,7 @@ export interface Backend {
  * surface.
  */
 export async function createBackend(options: BackendOptions): Promise<Backend> {
+  const createShellEnvironment = createRemoteShellEnvironmentFactory(options.nativeCommands)
   const controlDb = openSqliteDatabase(join(options.dataDir, 'control.sqlite'))
   migrate(controlDb, CONTROL_MIGRATIONS)
   const control: ControlService = new LocalControlService(controlDb)
@@ -157,7 +156,6 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   // rpc command a runner relays runs as the session the job's environment
   // names — a conversation or a subagent — against the tree and the Host its
   // shell was built with.
-  let manifest: Promise<Manifest> | null = null
   const sessionCommands = new Map<string, {
     rootSessionId: string;
     commands: CommandRegistry
@@ -173,18 +171,6 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         throw new Error('this backend provisions no machines')
       await managedHosts.growVolume(deviceId, volume, bytes)
     },
-    manifest: () =>
-    (manifest ??= (async () => {
-      const profiles = (await harness.agents?.(
-        { state: harness.initialState(), cwd: CLOUD_HOME }
-      )) ??
-        []
-      const roots = injectSubagentCommand(
-        commandsFor(''),
-        subagentCommandShape(profiles.map((profile) => profile.name))
-      )
-      return buildManifest(roots, { transpile: transpileCommandModule })
-    })()),
     rpc: async (call, io, execution) => {
       const shell = sessionCommands.get(call.agentSessionId)
       if (!shell || shell.rootSessionId !== execution.conversationId)
@@ -332,6 +318,15 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   })
 
   const hostCommandDeps = {
+    catalogFor: async (agentSessionId: string) => {
+      const session = sessionCommands.get(agentSessionId)
+      if (!session)
+        throw new Error(`No command catalog for session ${agentSessionId}`)
+      return {
+        manifest: await buildManifest(session.commands.list(), { packages: options.nativeCommands.packages }),
+        resolveArtifact: options.nativeCommands.resolveArtifact,
+      }
+    },
     control,
     registry: runnerRegistry,
     pipes,
@@ -360,18 +355,12 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     context: switchAnnouncementPreamble(control, runnerRegistry),
   })
 
-  const shellEnvironmentFor = (ctx: Parameters<ShellEnvironmentFactory>[0]): ShellEnvironment => {
+  const shellEnvironmentFor: ShellEnvironmentFactory = ctx => {
     sessionCommands.set(ctx.agentSessionId, {
       rootSessionId: ctx.rootSessionId,
       commands: ctx.commands
     })
-    if (!(ctx.host instanceof RemoteHost))
-      throw new Error('The backend requires a runner Host')
-    return new RemoteShellEnvironment({
-      ...ctx.shell,
-      host: ctx.host,
-      commandStorage: ctx.commandStorage,
-    })
+    return createShellEnvironment(ctx)
   }
 
   const agentServer = new AgentServer({

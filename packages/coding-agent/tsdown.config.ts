@@ -1,4 +1,3 @@
-import { commandModulesAsText } from '@demicodes/command-loader/build'
 import { defineConfig } from 'tsdown'
 
 export default defineConfig({
@@ -6,5 +5,4 @@ export default defineConfig({
   format: ['esm'],
   dts: true,
   clean: true,
-  plugins: [commandModulesAsText()],
 })

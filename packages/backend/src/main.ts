@@ -1,3 +1,4 @@
+import { loadNativeArtifacts } from './runner/artifacts/config'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -22,7 +23,19 @@ async function main(): Promise<void> {
     throw new Error(
       'DEMI_BACKEND_PUBLIC_URL is required with managed hosts: the URL guests dial'
     )
+  const nativeConfig = process.env.DEMI_NATIVE_CONFIG
+  if (!nativeConfig)
+    throw new Error('DEMI_NATIVE_CONFIG must name the native release and object storage configuration')
+  const publishing = new AbortController()
+  const abortPublication = () => publishing.abort()
+  process.once('SIGINT', abortPublication)
+  process.once('SIGTERM', abortPublication)
+  const nativeCommands = await loadNativeArtifacts(nativeConfig, publishing.signal).finally(() => {
+    process.off('SIGINT', abortPublication)
+    process.off('SIGTERM', abortPublication)
+  })
   const backend = await createBackend({
+    nativeCommands,
     dataDir,
     webDirectory: process.env.DEMI_WEB_DIRECTORY,
     port,
@@ -31,6 +44,9 @@ async function main(): Promise<void> {
     ...(machinesSocket
       ? { managedHosts: { provisioner: new RemoteProvisioner({ socketPath: machinesSocket }) } }
       : {}),
+  }).catch(error => {
+    nativeCommands.close()
+    throw error
   })
   console.log(
     `demi-backend listening on ${backend.url} (data: ${dataDir}, ${mode} mode)`
@@ -42,7 +58,7 @@ async function main(): Promise<void> {
   )
 
   const shutdown = () => {
-    void backend.close().then(() => process.exit(0))
+    void backend.close().finally(() => nativeCommands.close()).then(() => process.exit(0))
   }
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)

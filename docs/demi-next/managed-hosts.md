@@ -82,7 +82,7 @@ Two launch modes are supported:
   API socket.
 
 The guest pipeline builds a minimal Linux kernel and a read-only developer
-rootfs containing bash, coreutils, compilers and the packed txiki.js runner.
+rootfs containing bash, coreutils, compilers and the native Rust runner.
 The manager requires Linux with `/dev/kvm`; filesystem persistence does not
 require keeping a VM running. The install script prepares the tap pool,
 forwarding and nftables policy. The backend URL is reachable; other private and
@@ -378,7 +378,7 @@ to the persistent disks, and authenticates directly. A managed runner without a
 token is rejected; it never enters device pairing. Each token has one live
 connection. User ownership is checked on every control-plane operation.
 
-The same TypeScript runner on txiki.js serves paired devices and Cloud. On Cloud
+The same Rust runner serves paired devices and Cloud. On Cloud
 it is PID 1, mounts filesystems, configures networking, reaps children and runs
 filesystem operations and jobs as uid 1000 (`demi`, `/home/demi`, passwordless sudo). The VM, not that uid,
 is the user security boundary. Backend lifecycle remains reachable if the guest

@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test'
 import {
   isCommandGroup,
   renderCommandHelp,
-  runtimeModule,
   type Command
 } from '@demicodes/shell'
 import { z } from 'zod'
@@ -12,7 +11,7 @@ import {
   parseManifest,
   treeFromManifest
 } from '../index'
-import { COPY_MODULE, testRoots, transpile } from './fixtures'
+import { testPackage, testRoots } from './fixtures'
 
 describe('buildManifest', () => {
   test('contradictory input sources fail both at build and after reconstruction', async () => {
@@ -26,8 +25,8 @@ describe('buildManifest', () => {
     }
     await expect(buildManifest([
       { ...root, positionals: ['text'] },
-    ], { transpile })).rejects.toThrow('multiple input sources')
-    const manifest = await buildManifest([root], { transpile })
+    ], { packages: [testPackage] })).rejects.toThrow('multiple input sources')
+    const manifest = await buildManifest([root], { packages: [testPackage] })
     const tree = manifest.roots.note!.tree
     if (isManifestGroup(tree))
       throw new Error('expected leaf')
@@ -39,46 +38,38 @@ describe('buildManifest', () => {
   test(
     'hashes are a function of content: two builds of the same trees agree',
     async () => {
-      const a = await buildManifest(testRoots(), { transpile })
-      const b = await buildManifest(testRoots(), { transpile })
+      const a = await buildManifest(testRoots(), { packages: [testPackage] })
+      const b = await buildManifest(testRoots(), { packages: [testPackage] })
       expect(a).toEqual(b)
-      expect(Object.keys(a.modules)).toHaveLength(2)
+      expect(Object.keys(a.packages)).toHaveLength(1)
       expect(a.hash).toMatch(/^[0-9a-f]{64}$/)
     }
   )
 
   test(
-    'a different module is a different manifest hash; a comment-only change is not',
+    'a different native descriptor changes the manifest hash',
     async () => {
-      const a = await buildManifest(testRoots(), { transpile })
-      const roots = testRoots()
-      const scout = roots[0]!
-      if (!isCommandGroup(scout))
-        throw new Error('fixture')
-      const copy = scout.subcommands[0]!
-      if (isCommandGroup(copy) || copy.kind !== 'runtime')
-        throw new Error('fixture')
-      copy.module = runtimeModule(`${COPY_MODULE}\n// a comment transpiles away\n`)
-      expect((await buildManifest(roots, { transpile })).hash).toBe(a.hash)
-      copy.module = runtimeModule(COPY_MODULE.replace('copied', 'duplicated'))
-      expect((await buildManifest(roots, { transpile })).hash).not.toBe(a.hash)
+      const a = await buildManifest(testRoots(), { packages: [testPackage] })
+      const changed = { ...testPackage, version: 'other' }
+      expect((await buildManifest(testRoots(), { packages: [changed] })).hash).not.toBe(a.hash)
     }
   )
 
   test(
     'the tree carries kinds, help, positionals and JSON Schema',
     async () => {
-      const manifest = await buildManifest(testRoots(), { transpile })
+      const manifest = await buildManifest(testRoots(), { packages: [testPackage] })
       const root = manifest.roots.scout!.tree
       if (!isManifestGroup(root))
         throw new Error('root')
       const copy = root.subcommands[0]!
       if (isManifestGroup(copy))
         throw new Error('copy')
-      expect(copy.kind).toBe('runtime')
+      expect(copy.kind).toBe('native')
       expect(copy.positionals).toEqual(['from', 'to'])
-      expect(copy.module).toBeDefined()
-      expect(manifest.modules[copy.module!]).toContain('export default')
+      if (copy.kind !== 'native') throw new Error('fixture')
+      expect(copy.binding.package).toBe(testPackage.id)
+      expect(manifest.packages[copy.binding.descriptorHash]).toEqual(testPackage)
       const input = copy.input as {
         properties: Record<string, Record<string, unknown>>;
         required: string[]
@@ -103,19 +94,19 @@ describe('buildManifest', () => {
 
   test('duplicate roots are refused', async () => {
     await expect(
-      buildManifest([...testRoots(), ...testRoots()], { transpile })
+      buildManifest([...testRoots(), ...testRoots()], { packages: [testPackage] })
     ).rejects.toThrow('duplicate root')
   })
 
   test('the manifest survives JSON and parses back', async () => {
-    const manifest = await buildManifest(testRoots(), { transpile })
+    const manifest = await buildManifest(testRoots(), { packages: [testPackage] })
     expect(parseManifest(JSON.parse(JSON.stringify(manifest))))
       .toEqual(manifest)
     expect(() => parseManifest({ hash: 'x' })).toThrow()
   })
 
   test(
-    'rpc and runtime running hints survive the wire and affect the manifest hash',
+    'rpc and native running hints survive the wire and affect the manifest hash',
     async () => {
       const roots: Command[] = [{
         name: 'rpc',
@@ -125,13 +116,13 @@ describe('buildManifest', () => {
         run: () => ({ exitCode: 0 })
       },
         {
-          name: 'runtime',
-          summary: 'Runtime.',
-          kind: 'runtime',
-          runningHint: 'runtime hint',
-          module: runtimeModule('export default async () => ({ exitCode: 0 })')
+          name: 'native',
+          summary: 'Native.',
+          kind: 'native',
+          runningHint: 'native hint',
+          binding: { package: testPackage.id, operation: 'echo' }
         }]
-      const manifest = await buildManifest(roots, { transpile })
+      const manifest = await buildManifest(roots, { packages: [testPackage] })
       const rebuilt = treeFromManifest(
         parseManifest(JSON.parse(JSON.stringify(manifest))),
         undefined
@@ -141,14 +132,14 @@ describe('buildManifest', () => {
       ).toEqual(
         [
           'rpc hint',
-          'runtime hint'
+          'native hint'
         ]
       )
       const leaf = roots[0]!
       if (isCommandGroup(leaf))
         throw new Error('fixture')
       leaf.runningHint = 'changed hint'
-      expect((await buildManifest(roots, { transpile })).hash)
+      expect((await buildManifest(roots, { packages: [testPackage] })).hash)
         .not.toBe(manifest.hash)
     }
   )
@@ -159,7 +150,7 @@ describe('treeFromManifest', () => {
     'help rendered from the reconstructed tree equals help from the declared tree',
     async () => {
       const declared = testRoots()
-      const manifest = await buildManifest(declared, { transpile })
+      const manifest = await buildManifest(declared, { packages: [testPackage] })
       const rebuilt = treeFromManifest(manifest, undefined)
       expect(rebuilt.map((root) => renderCommandHelp(root))).toEqual(
         declared.map((
@@ -170,7 +161,7 @@ describe('treeFromManifest', () => {
   )
 
   test('input schemas validate as declared after the round trip', async () => {
-    const manifest = await buildManifest(testRoots(), { transpile })
+    const manifest = await buildManifest(testRoots(), { packages: [testPackage] })
     const [root] = treeFromManifest(manifest, undefined)
     if (!root || !isCommandGroup(root))
       throw new Error('root')

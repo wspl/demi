@@ -1,0 +1,6 @@
+{
+  "id": "demi.builtin",
+  "version": "0.1.0",
+  "protocolVersion": 1,
+  "operations": ["file.read", "file.create", "file.edit", "file.patch"]
+}

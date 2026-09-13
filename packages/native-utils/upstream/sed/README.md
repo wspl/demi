@@ -1,0 +1,152 @@
+[![Crates.io](https://img.shields.io/crates/v/sed.svg)](https://crates.io/crates/sed)
+[![Discord](https://img.shields.io/badge/discord-join-7289DA.svg?logo=discord&longCache=true&style=flat)](https://discord.gg/wQVJbvJ)
+[![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/uutils/sed/blob/main/LICENSE)
+[![dependency status](https://deps.rs/repo/github/uutils/sed/status.svg)](https://deps.rs/repo/github/uutils/sed)
+
+[![CodeCov](https://codecov.io/gh/uutils/sed/branch/main/graph/badge.svg)](https://codecov.io/gh/uutils/sed)
+
+# sed
+
+Rust reimplementation of the [sed utility](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/sed.html)
+with some [GNU sed](https://www.gnu.org/software/sed/manual/sed.html),
+[FreeBSD sed](https://man.freebsd.org/cgi/man.cgi?sed(1)),
+and other extensions.
+
+## Status
+
+At this state _sed_ implements all [POSIX features](https://pubs.opengroup.org/onlinepubs/9799919799/)
+and can run correctly the two complex scripts of its integration tests:
+[hanoi.sed](https://github.com/uutils/sed/blob/main/tests/fixtures/sed/script/hanoi.sed) (solves the Towers of Hanoi puzzle) and
+[math.sed](https://github.com/uutils/sed/blob/main/tests/fixtures/sed/script/math.sed)  (implements an arbitrary precision integer math calculator).
+
+The performance of this Rust implementation is now better than the GNU and FreeBSD implementations for most benchmarked cases.
+
+Further work aims to:
+* Adjust buffering on terminal output to match current implementations,
+* Implement more GNU extensions,
+* Improve performance where possible.
+
+## Installation and Use
+
+We provide a Linux x86_64 binary archive from the main branch at
+https://github.com/uutils/sed/releases/tag/latest-commit .
+
+For other platforms, ensure you have Rust installed on your system. You can install Rust through [rustup](https://rustup.rs/).
+
+Clone the repository and build the project using Cargo:
+
+```bash
+git clone https://github.com/uutils/sed.git
+cd sed
+cargo build --release
+cargo run --release
+```
+
+The binary is named `sed` in `target/release/sed`.
+
+You can also try *sed* on the web
+through the [uutils Playground](https://uutils.org//playground/)
+by clicking on the `Load sed` button.
+
+## Testing
+
+### GNU sed Compatibility Testing
+
+Test compatibility against GNU sed by running the upstream testsuite shell scripts
+with a lightweight gnulib test-framework shim:
+
+```bash
+# Clone GNU sed testsuite (one time setup)
+git clone https://github.com/mirror/sed.git ../gnu.sed
+
+# Run compatibility tests
+./util/run-gnu-testsuite.sh
+
+# Verbose mode shows failure details
+./util/run-gnu-testsuite.sh -v
+
+# Generate JSON results for CI
+./util/run-gnu-testsuite.sh --json-output results.json
+```
+
+The harness executes each `.sh` test from the GNU sed testsuite directly, injecting
+our Rust sed binary via `PATH` and providing shim implementations of the gnulib test
+framework functions (`compare_`, `returns_`, `skip_`, etc.).
+
+### Unit Tests
+
+```bash
+cargo test
+```
+
+## Extensions and incompatibilities
+### Supported GNU extensions
+* Command-line arguments can be specified in long (`--`) form.
+* Spaces can precede a regular expression modifier.
+* `I` can be used in as a synonym for the `i` (case insensitive) substitution
+  flag.
+* `M` and `m` substitution flags allow multi-line matching.
+* In addition to `\n`, other escape sequences (octal, hex, C) are supported
+  in the strings of the `y` command.
+  Under POSIX these yield undefined behavior.
+* The `a`, `c`, and `i` commands do not require an initial backslash,
+  allow text to appear on the same line, and support escape sequences
+  in the specified text.
+* The `a`, `i`, `=`, `l`, `q` and `r` commands support address range as an extension to POSIX.
+* The substitution command replacement group `\0` is a synonym for &.
+* A `Q` command (optionally followed by an exit code) quits immediately.
+* The `q` command can be optionally followed by an exit code.
+* The `l` command can be optionally followed by the output width.
+* The `--follow-symlinks` option for in-place editing.
+* The `--sandbox` option that limits potentially destructive commands.
+* Address 0 can be used to specify an address range that is already
+  active on line 1 and can finish with the specified regular expression.
+* Address steps can be specified in the form of start~step and start,~step
+  ranges.
+* Address 0 can be used in the `r` command to prepend a file.
+
+### Supported BSD and GNU extensions
+* The second address in a range can be specified as a relative address with +N.
+* In-place editing of file with the `-i` flag.
+
+### New extensions
+* Unicode characters can be specified in regular expression pattern, replacement
+  and transliteration sequences using `\uXXXX` or `\UXXXXXXXX` sequences.
+* The `l` command lists Unicode characters using the `\uXXXX` and `\UXXXXXXXX`
+  sequences.
+
+### Incompatibilities
+* Similarly to GNU _sed_, input is processed as raw bytes or as valid UTF-8
+  (this includes 7-bit ASCII) based on the locale as specified by the
+  `LC_ALL`, `LC_CTYPE`, and `LANG` environment variables,
+  with the default being byte processing.
+  However, in contrast with GNU _sed_, other locales (e.g. ISO-8859-1)
+  are not supported. If the input is in another code page or encoding
+  and requires locale-specific processing (e.g. ignore/map case,
+  character classes), consider converting it through UTF-8 to ensure
+  the correct handling of locale-specific regular expressions.
+  This _sed_ program can also handle arbitrary byte sequences
+  if no part of the input requires treating it as a Rust String.
+* Back-references aren't supported when input is processed as bytes
+  (`LC_ALL=C`).
+* The command will report an error and fail if duplicate labels are found
+  in the script.
+  This matches the BSD behavior. The GNU version accepts duplicate labels.
+* The last line (`$`) address is interpreted as the last non-empty line of
+  the last file.  If files specified in subsequent arguments until the last
+  one are empty, then the last line condition will never be triggered.
+  This behavior is consistent with the
+  [original implementation](https://github.com/dspinellis/unix-history-repo/blob/Research-V7/usr/src/cmd/sed/sed1.c#L665).
+* Labels are parsed for alphanumeric characters. The BSD version parses them
+  until the end of the line, preventing ; to be used as a separator.
+
+## GNU test suite compatibility
+
+Below is the evolution of how many GNU tests uutils passes.
+
+![Evolution over time](https://github.com/uutils/sed-tracking/blob/main/gnu-results.svg?raw=true)
+
+
+## License
+
+sed is licensed under the MIT License - see the `LICENSE` file for details

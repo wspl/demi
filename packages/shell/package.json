@@ -17,6 +17,7 @@
     }
   },
   "dependencies": {
+    "@demicodes/command-protocol": "workspace:^",
     "@demicodes/utils": "workspace:^",
     "zod": "^4.0.0"
   },

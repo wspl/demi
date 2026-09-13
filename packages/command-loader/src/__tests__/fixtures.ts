@@ -1,36 +1,36 @@
 import { memoryCommandStorage as memoryStorage } from '@demicodes/shell/testing'
 import {
-  runtimeModule,
   type Command,
-  type CommandStorage
+  type Host,
+  type NativeExecutor
 } from '@demicodes/shell'
 import { z } from 'zod'
 
-/**
- * Test roots: a `runtime` leaf, an `rpc` leaf that reads storage, and a group.
- */
+import { nativePackageSchema, NATIVE_TARGETS } from '@demicodes/command-protocol'
 
-export const COPY_MODULE = `import type { CommandContext, CommandResult } from '@demicodes/shell'
+export const testPackage = nativePackageSchema.parse({
+  id: 'fixture.commands', version: 'test', protocolVersion: 1,
+  operations: ['copy', 'echo'],
+  targets: Object.fromEntries(NATIVE_TARGETS.map(target => [target, { sha256: '0'.repeat(64), size: 1 }])),
+})
 
-interface Args { from: string; to: string; upper?: boolean }
-
-export default async function copy(ctx: CommandContext<Args>): Promise<CommandResult> {
-  let bytes = await ctx.fs.readFile(ctx.args.from, { cwd: ctx.cwd })
-  if (ctx.args.upper) bytes = new TextEncoder().encode(new TextDecoder().decode(bytes).toUpperCase())
-  await ctx.fs.writeFile(ctx.args.to, bytes, { cwd: ctx.cwd })
-  await ctx.stdout(\`copied \${ctx.args.from} -> \${ctx.args.to} in \${ctx.cwd}\\n\`)
-  return { exitCode: 0 }
+/** Explicit fake executor checks the loader's adapter boundary; no code is loaded. */
+export function testNative(host: Host): NativeExecutor {
+  return async context => {
+    if (context.binding.operation === 'copy') {
+      let bytes = await host.fs.readFile(String(context.args.from), { cwd: context.cwd })
+      if (context.args.upper)
+        bytes = new TextEncoder().encode(new TextDecoder().decode(bytes).toUpperCase())
+      await host.fs.writeFile(String(context.args.to), bytes, { cwd: context.cwd })
+      await context.stdout(`copied ${context.args.from} -> ${context.args.to} in ${context.cwd}\n`)
+      return { exitCode: 0 }
+    }
+    for await (const chunk of context.stdin)
+      await context.stdout(chunk)
+    await context.stderr(`env HOME=${context.env.HOME ?? ''}\n`)
+    return { exitCode: Number(context.args.code ?? 0) }
+  }
 }
-`
-
-export const ECHO_STDIN_MODULE = `import type { CommandContext, CommandResult } from '@demicodes/shell'
-
-export default async function echo(ctx: CommandContext): Promise<CommandResult> {
-  for await (const chunk of ctx.stdin) await ctx.stdout(chunk)
-  await ctx.stderr(\`env HOME=\${ctx.env.HOME ?? ''}\\n\`)
-  return { exitCode: Number(ctx.args.code ?? 0) }
-}
-`
 
 export function testRoots(): Command[] {
   return [
@@ -40,8 +40,8 @@ export function testRoots(): Command[] {
       subcommands: [
         {
           name: 'copy',
-          kind: 'runtime',
-          module: runtimeModule(COPY_MODULE),
+          kind: 'native',
+          binding: { package: testPackage.id, operation: 'copy' },
           summary: 'Copy a file.',
           input: {
             from: z.string().describe('Source path'),
@@ -52,8 +52,8 @@ export function testRoots(): Command[] {
         },
         {
           name: 'echo',
-          kind: 'runtime',
-          module: runtimeModule(ECHO_STDIN_MODULE),
+          kind: 'native',
+          binding: { package: testPackage.id, operation: 'echo' },
           summary: 'Echo stdin.',
           input: { code: z.number().int().optional().describe('Exit code') },
         },
@@ -85,10 +85,5 @@ export function testRoots(): Command[] {
   ]
 }
 
-
-export function transpile(source: string): string {
-  return new Bun.Transpiler({ loader: 'ts', target: 'browser' })
-    .transformSync(source)
-}
 
 export { memoryStorage }

@@ -1,5 +1,5 @@
 import { memoryAgentStores } from '../testing'
-import { mkdtemp, mkdir } from 'node:fs/promises'
+import { mkdtemp, mkdir, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
@@ -32,7 +32,7 @@ const model: ModelSelection = {
 const selection = { providerId: 'stub', model }
 
 async function createHosts() {
-  const root = await mkdtemp(join(tmpdir(), 'demi-host-routing-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'demi-host-routing-')))
   const base = join(root, 'base')
   const alice = join(root, 'alice')
   const bob = join(root, 'bob')

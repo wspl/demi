@@ -68,7 +68,7 @@ class LocalHostProcess implements HostProcess {
     const cwd = params.cwd ?? this.defaultCwd
     const child = spawn(params.command, params.args ?? [], {
       cwd,
-      ...(params.env ? { env: definedEnv(params.env) } : {}),
+      ...(params.env ? { env: definedEnv(params.inheritEnv ? { ...process.env, ...params.env } : params.env) } : {}),
       detached: params.killProcessGroup === true,
       stdio: ['pipe', 'pipe', 'pipe'],
     })

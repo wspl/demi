@@ -3,7 +3,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { startTxikiRunner } from '@demicodes/runner/testing'
+import { startRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
 import {
   login,
@@ -88,7 +88,7 @@ test(
     const bob = await createUser(backend, 'bob@example.test')
 
     // Alice's world: a device, a workspace on it, a conversation with an attached host, an attachment.
-    const runner = await startTxikiRunner({
+    const runner = await startRunner({
       backendUrl: backend.url,
       stateDir,
       home,
@@ -294,7 +294,7 @@ test(
       { timeoutMs: 5_000 }
     )
     await runner.stop()
-    const again = await startTxikiRunner({
+    const again = await startRunner({
       backendUrl: backend.url,
       stateDir: await mkdtemp(join(tmpdir(), 'demi-isolation-state2-')),
       home,

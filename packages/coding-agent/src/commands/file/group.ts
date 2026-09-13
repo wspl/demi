@@ -1,11 +1,8 @@
-import { runtimeModule, type CommandGroup } from '@demicodes/shell'
+import { demiPackage } from '@demicodes/demi-package'
+import { type CommandGroup } from '@demicodes/shell'
 import { z } from 'zod'
-import createModule from './create.command' with { type: 'text' }
-import editModule from './edit.command' with { type: 'text' }
-import patchModule from './patch.command' with { type: 'text' }
-import readModule from './read.command' with { type: 'text' }
 
-/** The `demi file` group: every leaf is a `runtime` module over `ctx.fs`. */
+/** The `demi file` group: every leaf binds an operation in the Demi native package. */
 export function createFileGroup(): CommandGroup {
   return {
     name: 'file',
@@ -13,8 +10,8 @@ export function createFileGroup(): CommandGroup {
     subcommands: [
       {
         name: 'read',
-        kind: 'runtime',
-        module: runtimeModule(readModule),
+        kind: 'native',
+        binding: { package: demiPackage.id, operation: 'file.read' },
         summary:
           'Read a file. Text files print as text; image and video files are shown to you as viewable media. Output is the raw file bytes, so it also pipes cleanly into other commands (e.g. ffmpeg).',
         successOutput:
@@ -27,8 +24,8 @@ export function createFileGroup(): CommandGroup {
       },
       {
         name: 'create',
-        kind: 'runtime',
-        module: runtimeModule(createModule),
+        kind: 'native',
+        binding: { package: demiPackage.id, operation: 'file.create' },
         summary: 'Create a new file. Fails if the file exists.',
         successOutput: 'writes "Created <path>" to stdout',
         failureOutput: 'writes the reason to stderr and exits non-zero without overwriting existing files',
@@ -42,8 +39,8 @@ export function createFileGroup(): CommandGroup {
       },
       {
         name: 'edit',
-        kind: 'runtime',
-        module: runtimeModule(editModule),
+        kind: 'native',
+        binding: { package: demiPackage.id, operation: 'file.edit' },
         summary: 'Replace exact text in an existing file.',
         successOutput: 'writes "Edited <path>" to stdout',
         failureOutput: 'writes no-match, ambiguous-match, or write errors to stderr and exits non-zero without partial writes',
@@ -60,8 +57,8 @@ export function createFileGroup(): CommandGroup {
       },
       {
         name: 'patch',
-        kind: 'runtime',
-        module: runtimeModule(patchModule),
+        kind: 'native',
+        binding: { package: demiPackage.id, operation: 'file.patch' },
         summary: 'Apply a unified diff patch to one or more files.',
         successOutput: 'writes "Patched <n> file(s)" to stdout',
         failureOutput: 'writes parse, validation, or write errors to stderr and exits non-zero after rolling back partial writes when possible',

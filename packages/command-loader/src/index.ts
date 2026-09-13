@@ -1,12 +1,12 @@
 export {
   buildManifest,
-  sha256,
   type BuildManifestOptions
 } from './manifest/build'
 export {
   isManifestGroup,
   manifestSchema,
   parseManifest,
+  verifyManifest,
   type Manifest,
   type ManifestGroup,
   type ManifestLeaf,

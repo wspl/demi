@@ -18,11 +18,6 @@
       "types": "./dist/codec.d.mts",
       "import": "./dist/codec.mjs"
     },
-    "./local": {
-      "development": "./src/local.ts",
-      "types": "./dist/local.d.mts",
-      "import": "./dist/local.mjs"
-    },
     "./release": {
       "development": "./src/release.ts",
       "types": "./dist/release.d.mts",
@@ -36,6 +31,7 @@
     "build": "tsdown"
   },
   "dependencies": {
+    "@demicodes/command-protocol": "workspace:^",
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^",
     "@msgpack/msgpack": "^3.1.3",

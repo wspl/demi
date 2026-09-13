@@ -1,3 +1,4 @@
+import { nativeBindingSchema, type NativeBinding } from '@demicodes/command-protocol'
 import {
   asError,
   collectBytes,
@@ -10,12 +11,10 @@ import {
 } from '@demicodes/utils'
 import type { z } from 'zod'
 import {
-  loadCommandModule,
-  type CommandModule,
   type CommandResult,
   type CommandWriter,
   type DispatchIO,
-  type RuntimeModule
+  type NativeExecutor
 } from './command-abi'
 import type { Host } from './host'
 
@@ -29,7 +28,7 @@ export interface CommandOutputSpec {
  * The command tree (`docs/demi-next/commands.md`). Group nodes navigate,
  * leaf nodes execute: a group has subcommands and nothing else; a leaf has
  * a kind, its input and output specs, and either a backend handler
- * (`rpc`) or a module (`runtime`).
+ * (`rpc`) or a native package binding (`native`).
  */
 export type Command = CommandGroup | CommandLeaf
 
@@ -39,9 +38,9 @@ export interface CommandGroup {
   subcommands: Command[]
 }
 
-export type CommandKind = 'rpc' | 'runtime'
+export type CommandKind = 'rpc' | 'native'
 
-export type CommandLeaf = RpcCommand | RuntimeCommand
+export type CommandLeaf = RpcCommand | NativeCommand
 
 interface CommandLeafBase {
   name: string
@@ -78,11 +77,11 @@ export interface RpcCommand extends CommandLeafBase {
 }
 
 /**
- * A leaf whose implementation is a module run wherever the command is invoked.
+ * A leaf whose implementation runs in a native service on the execution target.
  */
-export interface RuntimeCommand extends CommandLeafBase {
-  kind: 'runtime'
-  module: RuntimeModule
+export interface NativeCommand extends CommandLeafBase {
+  kind: 'native'
+  binding: NativeBinding
 }
 
 export function isCommandGroup(command: Command): command is CommandGroup {
@@ -165,12 +164,8 @@ export interface CommandExecutionContext {
   signal?: AbortSignal
   /** Stdin written after the command started, for `rpc` handlers that steer. */
   stdinStream?: AsyncIterable<Uint8Array>
-  /**
-   * How a `runtime` module's text becomes its function. Absent, the text is
-   * imported through a `blob:` URL; an embedder whose runtime imports only
-   * files (txiki.js) supplies the import from its module cache.
-   */
-  loadModule?: (module: RuntimeModule) => Promise<CommandModule>
+  /** The execution adapter for native package operations. */
+  native?: NativeExecutor
   onRunningHint?: DispatchIO['onRunningHint']
 }
 
@@ -381,8 +376,7 @@ export function resolveCommand(root: Command, path: string[]): Command {
 
 /**
  * Runs one invocation of a root command: help for a group or `--help`,
- * otherwise the leaf — an `rpc` handler in this process, or a `runtime`
- * module loaded from its text against the Host's filesystem.
+ * otherwise the leaf through an application RPC handler or an injected native executor.
  */
 export async function runRegisteredCommand(
   root: Command,
@@ -435,11 +429,11 @@ export async function runRegisteredCommand(
         stdinStream,
       })
     } else {
-      const run = await (ctx.loadModule ?? loadCommandModule)(node.module)
-      throwIfAborted(signal)
-      result = await run({
+      if (!ctx.native)
+        throw new Error(`"${displayPath}" requires a native command executor`)
+      result = await ctx.native({
+        binding: node.binding,
         args: parsed.values,
-        fs: ctx.host.fs,
         cwd: ctx.cwd,
         env: ctx.env,
         stdin: consumed ? stdinStream : concatByteStreams(stdin, stdinStream),
@@ -563,11 +557,8 @@ export function validateCommandTree(command: Command, path: string): void {
   if (command.kind === 'rpc' && typeof command.run !== 'function') {
     throw new Error(`CommandRegistry: rpc leaf "${path}" has no run()`)
   }
-  if (command.kind === 'runtime' && typeof command.module !== 'string') {
-    throw new Error(
-      `CommandRegistry: runtime leaf "${path}" has no module text`
-    )
-  }
+  if (command.kind === 'native')
+    nativeBindingSchema.parse(command.binding)
   const input = command.input ?? {}
   for (const field of Object.keys(input)) {
     if (!COMMAND_NAME_PATTERN.test(field))

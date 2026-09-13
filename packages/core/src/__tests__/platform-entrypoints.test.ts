@@ -786,7 +786,7 @@ async function listProductionSourceFiles(): Promise<string[]> {
   return files.flat()
 }
 
-// The workspaces are the packages; vendor/txiki.js is a C/C++ submodule.
+// JavaScript workspaces declare the application package dependency graph.
 async function readWorkspacePackages(
   root: PackageManifest
 ): Promise<Map<string, WorkspacePackage>> {

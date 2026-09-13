@@ -1,6 +1,5 @@
 import { withoutUndefined } from '@demicodes/utils'
 import {
-  runtimeModule,
   validateCommandTree,
   type Command,
   type CommandInputSpec,
@@ -15,13 +14,7 @@ import {
 } from '../manifest/schema'
 import type { RpcTransport } from './rpc'
 
-/**
- * The manifest as command trees again: JSON Schema back to zod (path marks
- * and descriptions included), a `runtime` leaf carrying its transpiled
- * module, an `rpc` leaf whose handler forwards to the transport. The
- * shell's parser, help renderer and runner then serve every embedder from
- * this one tree shape.
- */
+/** Reconstructs declarations and application RPC forwarding from a manifest. */
 export function treeFromManifest(
   manifest: Manifest,
   rpc: RpcTransport | undefined
@@ -30,7 +23,6 @@ export function treeFromManifest(
     const command = commandFromNode(
       root,
       tree,
-      manifest.modules,
       rpc
     )
     validateCommandTree(command, root)
@@ -41,7 +33,6 @@ export function treeFromManifest(
 function commandFromNode(
   root: string,
   node: ManifestNode,
-  modules: Record<string, string>,
   rpc: RpcTransport | undefined
 ): Command {
   if (isManifestGroup(node)) {
@@ -51,18 +42,16 @@ function commandFromNode(
       subcommands: node.subcommands.map((child) => commandFromNode(
         root,
         child,
-        modules,
         rpc
       ))
     }
   }
-  return leafFromNode(root, node, modules, rpc)
+  return leafFromNode(root, node, rpc)
 }
 
 function leafFromNode(
   root: string,
   node: ManifestLeaf,
-  modules: Record<string, string>,
   rpc: RpcTransport | undefined
 ): CommandLeaf {
   const base = {
@@ -86,13 +75,12 @@ function leafFromNode(
       }
     } : {}),
   }
-  if (node.kind === 'runtime') {
-    const javascript = node.module === undefined
-      ? undefined
-      : modules[node.module]
-    if (javascript === undefined)
-      throw new Error(`manifest: runtime leaf "${node.name}" has no module`)
-    return { ...base, kind: 'runtime', module: runtimeModule(javascript) }
+  if (node.kind === 'native') {
+    return {
+      ...base,
+      kind: 'native',
+      binding: { package: node.binding.package, operation: node.binding.operation },
+    }
   }
   return {
     ...base,

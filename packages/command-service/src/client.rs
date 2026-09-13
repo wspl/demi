@@ -3,8 +3,8 @@ use http::{Method, Request};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::protocol::{
-    INFO_PATH, INVOKE_PATH, Invocation, MAX_METADATA_BYTES, ProtocolError, Record, RecordDecoder,
-    SHUTDOWN_PATH, ServiceInfo, VERSION,
+    INFO_PATH, INVOKE_PATH, Invocation, MAX_INVOCATIONS, MAX_METADATA_BYTES, MAX_RECORD_BYTES,
+    ProtocolError, Record, RecordDecoder, SHUTDOWN_PATH, ServiceInfo, VERSION,
 };
 use crate::{ServiceError, stream::send_bytes};
 
@@ -21,7 +21,8 @@ impl Client {
     {
         let (sender, connection) = h2::client::Builder::new()
             .max_header_list_size(16 * 1024)
-            .initial_window_size(64 * 1024)
+            .initial_window_size(MAX_RECORD_BYTES as u32)
+            .initial_connection_window_size((MAX_RECORD_BYTES * MAX_INVOCATIONS) as u32)
             .handshake(io)
             .await?;
         Ok((Self { sender }, connection))
@@ -105,7 +106,7 @@ pub struct CommandInput {
 
 impl CommandInput {
     pub async fn write(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
-        send_bytes(&mut self.stream, bytes).await
+        send_bytes(&mut self.stream, crate::protocol::encode_input(bytes)?).await
     }
     pub fn end(&mut self) -> Result<(), ServiceError> {
         self.stream.send_data(Bytes::new(), true)?;

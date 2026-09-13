@@ -1,53 +1,39 @@
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, test } from 'bun:test'
-import { LocalHost } from '@demicodes/runner/testing'
+import { afterEach, expect, test } from 'bun:test'
+import { connectTestRunner } from '@demicodes/runner/testing'
 import {
-  createRunnerWire,
   type BackendToRunnerMessage,
-  type RunnerToBackendMessage
 } from '@demicodes/runner-protocol'
-import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
-import { HostRpcServer } from '@demicodes/runner/serve'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { RemoteHost } from '../index'
 import { deferred } from '@demicodes/utils'
 
-const wire = createRunnerWire(msgpackCodec)
+const cleanup: (() => Promise<void>)[] = []
+afterEach(async () => {
+  for (const close of cleanup.splice(0).reverse()) await close()
+})
 
-/**
- * RemoteHost and HostRpcServer joined directly (encoded through the codec both
- * ways).
- */
-async function connectedPair(spawnReady?: Promise<void>) {
+async function connectedPair(outgoingGate?: Promise<void>) {
   const dir = await mkdtemp(join(tmpdir(), 'demi-runner-proto-'))
-  const local = new LocalHost(dir)
+  cleanup.push(() => rm(dir, { recursive: true, force: true }))
   const remote = new RemoteHost({
     defaultCwd: dir,
     identity: { uid: 501, gid: 20, hostname: 'test', homeDir: '/' },
     store: memoryHostStore(),
   })
-  const served = spawnReady ? {
-    fs: local.fs,
-    process: {
-      ...local.process,
-      spawn: async (params: Parameters<typeof local.process.spawn>[0]) => {
-        await spawnReady;
-        return local.process.spawn(params)
-      }
-    }
-  } : local
-  const server = new HostRpcServer(
-    served,
-    (message: RunnerToBackendMessage) => {
-      remote.handleMessage(wire.decodeRunnerToBackend(wire.encode(message)))
-    }
-  )
-  remote.attach((message: BackendToRunnerMessage) => {
-    void server.handleMessage(wire.decodeBackendToRunner(wire.encode(message)))
-  })
-  return { dir, remote, server }
+  const connect = async () => {
+    const server = await connectTestRunner({
+      home: dir, outgoingGate,
+      onHello: send => remote.attach(send),
+      onMessage: message => remote.handleMessage(message),
+      onClose: () => remote.detach(),
+    })
+    cleanup.push(server.close)
+    return server
+  }
+  return { dir, remote, server: await connect(), reconnect: connect }
 }
 
 test(
@@ -153,7 +139,7 @@ test(
 test(
   'detach fails pending calls and kills in-flight spawn views; reattach resumes',
   async () => {
-    const { dir, remote, server } = await connectedPair()
+    const { dir, remote, server, reconnect } = await connectedPair()
 
     const running = await remote.process.spawn!({
       command: '/bin/sleep',
@@ -176,13 +162,7 @@ test(
     expect((await offlineSpawn.wait()).spawnError?.kind).toBe('other')
 
     // Reattach: the same Host object serves again.
-    const server2 = new HostRpcServer(
-      new LocalHost(dir),
-      (message) => remote.handleMessage(message)
-    )
-    remote.attach((message) => {
-      void server2.handleMessage(message)
-    })
+    await reconnect()
     await remote.fs.writeFile(
       join(dir, 'back.txt'),
       new TextEncoder().encode('online')
@@ -195,6 +175,7 @@ test(
 
 test('logical cwd and identity are backend-local', async () => {
   const { dir, remote } = await connectedPair()
+  await remote.fs.mkdir(join(dir, 'sub'))
   const cwd = await remote.process.openCwd(dir)
   await cwd.chdir('sub')
   expect(cwd.path).toBe(join(dir, 'sub'))

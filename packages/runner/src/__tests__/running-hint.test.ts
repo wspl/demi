@@ -9,34 +9,32 @@ import {
   type RunnerToBackendMessage
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
-import { runtimeModule, type Command } from '@demicodes/shell'
+import { type Command } from '@demicodes/shell'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
-import { startTxikiRunner, type TxikiRunner } from '../testing'
+import { startRunner, nativeCommandFixture, type Runner } from '../testing'
 
 const wire = createRunnerWire(msgpackCodec)
-const module = runtimeModule(
-  'export default async function(ctx) { for await (const chunk of ctx.stdin) { await ctx.stdout(chunk); return { exitCode: 0 } } return { exitCode: 0 } }'
-)
 
 test(
-  'a live txiki.js runner reports actual runtime and rpc leaf hints and clears them between shell statements',
+  'a native runner reports actual native and rpc leaf hints and clears them between shell statements',
   async () => {
     const home = await mkdtemp(join(tmpdir(), 'demi-hints-home-'))
     const stateDir = await mkdtemp(join(tmpdir(), 'demi-hints-state-'))
+    const native = await nativeCommandFixture()
     const roots: Command[] = [{ name: 'attend', summary: 'Hint probes.', subcommands: [
       {
-        name: 'runtime',
+        name: 'native',
         summary: 'Wait for stdin locally.',
-        kind: 'runtime',
-        module,
-        runningHint: 'runtime: do not poll'
+        kind: 'native',
+        binding: { package: native.descriptor.id, operation: 'first' },
+        runningHint: 'native: do not poll'
       },
       {
         name: 'plain',
         summary: 'Wait without a hint.',
-        kind: 'runtime',
-        module
+        kind: 'native',
+        binding: { package: native.descriptor.id, operation: 'first' }
       },
       {
         name: 'rpc',
@@ -46,21 +44,13 @@ test(
         run: () => ({ exitCode: 0 })
       },
     ] }]
-    const manifest = await buildManifest(
-      roots,
-      {
-        transpile: (source) => new Bun.Transpiler({
-          loader: 'ts',
-          target: 'browser'
-        }).transformSync(source)
-      }
-    )
+    const manifest = await buildManifest(roots, { packages: [native.descriptor] })
     const host = new RemoteHost({
       defaultCwd: home,
       identity: { uid: 1, gid: 1, hostname: 'test', homeDir: home },
       store: memoryHostStore()
     })
-    const shell = new RemoteShellEnvironment({ host })
+    const shell = new RemoteShellEnvironment({ host, commands: { manifest, resolveArtifact: native.resolveArtifact } })
     const inbound: RunnerToBackendMessage[] = []
     const calls = new Map<string, {
       stream: ReadableStream<Uint8Array>;
@@ -98,10 +88,16 @@ test(
             ws.send(wire.encode({ type: 'manifest', manifest }))
           } else if (message.type === 'rpc_call') {
             let close = () => {}
+            let phase: 'open' | 'closed' = 'open'
             const stream = new ReadableStream<Uint8Array>({
               start(controller) {
-                close = () => controller.close()
-              }
+                close = () => {
+                  if (phase === 'closed') return
+                  phase = 'closed'
+                  controller.close()
+                }
+              },
+              cancel() { phase = 'closed' },
             })
             calls.set(message.callId, { stream, close })
             ws.send(wire.encode({
@@ -112,6 +108,7 @@ test(
                 url: `/api/pipes/${message.callId}`
               }
             }))
+            ws.send(wire.encode({ type: 'rpc_stdin_pull', callId: message.callId }))
           } else if (message.type === 'rpc_stdin'
             || message.type === 'rpc_cancel') {
             const call = calls.get(message.callId)
@@ -132,21 +129,14 @@ test(
         },
       },
     })
-    let runner: TxikiRunner | undefined
+    let runner: Runner | undefined
     try {
-      runner = await startTxikiRunner({
+      runner = await startRunner({
         backendUrl: `http://localhost:${server.port}`,
         stateDir,
         home
       })
-      await waitFor(
-        () => runner!.log.some(
-          (line) => line.includes(`manifest ${manifest.hash.slice(0, 12)} installed`)
-        ),
-        () => runner!.log.join('\n'),
-        { timeoutMs: 10_000 }
-      )
-      for (const leaf of ['runtime', 'rpc']) {
+      for (const leaf of ['native', 'rpc']) {
         const before = inbound.length
         const started = await shell.exec({
           script: `attend ${leaf}; sleep 30`,
@@ -209,10 +199,10 @@ test(
         { timeoutMs: 10_000 }
       )
 
-      // Kill only the native client: its hint must end by socket EOF while bash stays alive.
+      // Kill only the native client: its hint must end by socket EOF while the shell stays alive.
       const killedBefore = inbound.length
       const child = await shell.exec({
-        script: 'attend runtime <&199 & child=$!; echo "$child" > child.pid; wait "$child"; sleep 30',
+        script: `exec 9<&0; sh -c 'echo $$ > child.pid; exec attend native' <&9 & wait; sleep 30`,
         timeoutMs: 100
       })
       await waitFor(
@@ -255,8 +245,8 @@ test(
 
       const withoutHint = inbound.length
       for (const script of [
-        'attend runtime --help',
-        'attend runtime --unknown',
+        'attend native --help',
+        'attend native --unknown',
         'attend'
       ]) {
         expect((await shell.exec({ script, timeoutMs: 10_000 })).status)

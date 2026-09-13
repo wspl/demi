@@ -1,2 +1,0 @@
-#!/bin/sh
-exec "${ZIG:-zig}" cc -target "${DEMI_ZIG_TARGET:?target required}" "$@"

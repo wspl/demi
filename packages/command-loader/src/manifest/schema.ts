@@ -1,32 +1,34 @@
+import {
+  artifactDigestSchema,
+  contentDigest,
+  nativeBindingSchema,
+  nativePackageSchema,
+} from '@demicodes/command-protocol'
 import { z } from 'zod'
 
-/**
- * The manifest (`docs/demi-next/commands.md` § The manifest): every root's
- * tree with JSON Schema in place of zod, and one transpiled module per
- * `runtime` leaf under the hash of its text. It crosses process
- * boundaries (runner socket, HTTP, a cache directory), so it is parsed
- * with this schema on the way in.
- */
-
+const commandName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
 const jsonSchema = z.record(z.string(), z.unknown())
-
-const manifestLeafSchema = z.object({
-  name: z.string(),
+const leafFields = {
+  name: commandName,
   summary: z.string(),
-  kind: z.enum(['rpc', 'runtime']),
   successOutput: z.string().optional(),
   failureOutput: z.string().optional(),
   runningHint: z.string().optional(),
-  /** JSON Schema of an object whose properties are the leaf's input fields. */
   input: jsonSchema.optional(),
-  positionals: z.array(z.string()).optional(),
-  stdinField: z.string().optional(),
-  restField: z.string().optional(),
-  output: z.object({ json: jsonSchema.optional() }).optional(),
-  /** The module hash of a `runtime` leaf. */
-  module: z.string().optional(),
-})
+  positionals: z.array(commandName).optional(),
+  stdinField: commandName.optional(),
+  restField: commandName.optional(),
+  output: z.object({ json: jsonSchema.optional() }).strict().optional(),
+}
 
+export const manifestLeafSchema = z.discriminatedUnion('kind', [
+  z.object({ ...leafFields, kind: z.literal('rpc') }).strict(),
+  z.object({
+    ...leafFields,
+    kind: z.literal('native'),
+    binding: nativeBindingSchema.extend({ descriptorHash: artifactDigestSchema }),
+  }).strict(),
+])
 export type ManifestLeaf = z.infer<typeof manifestLeafSchema>
 
 export interface ManifestGroup {
@@ -34,26 +36,24 @@ export interface ManifestGroup {
   summary: string
   subcommands: ManifestNode[]
 }
-
 export type ManifestNode = ManifestGroup | ManifestLeaf
 
-const manifestNodeSchema: z.ZodType<ManifestNode> = z.lazy(() =>
+export const manifestNodeSchema: z.ZodType<ManifestNode> = z.lazy(() =>
   z.union([
     z.object({
-      name: z.string(),
+      name: commandName,
       summary: z.string(),
-      subcommands: z.array(manifestNodeSchema)
-    }),
+      subcommands: z.array(manifestNodeSchema).min(1),
+    }).strict(),
     manifestLeafSchema,
   ]),
 )
 
 export const manifestSchema = z.object({
-  hash: z.string(),
-  roots: z.record(z.string(), z.object({ tree: manifestNodeSchema })),
-  modules: z.record(z.string(), z.string()),
-})
-
+  hash: artifactDigestSchema,
+  roots: z.record(commandName, z.object({ tree: manifestNodeSchema }).strict()),
+  packages: z.record(artifactDigestSchema, nativePackageSchema),
+}).strict()
 export type Manifest = z.infer<typeof manifestSchema>
 
 export function isManifestGroup(node: ManifestNode): node is ManifestGroup {
@@ -61,5 +61,46 @@ export function isManifestGroup(node: ManifestNode): node is ManifestGroup {
 }
 
 export function parseManifest(data: unknown): Manifest {
-  return manifestSchema.parse(data)
+  const manifest = manifestSchema.parse(data)
+  const ids = new Set<string>()
+  for (const descriptor of Object.values(manifest.packages)) {
+    if (ids.has(descriptor.id))
+      throw new Error(`Manifest contains duplicate package id: ${descriptor.id}`)
+    ids.add(descriptor.id)
+  }
+  const visit = (node: ManifestNode): void => {
+    if (isManifestGroup(node)) {
+      const names = new Set<string>()
+      for (const child of node.subcommands) {
+        if (names.has(child.name))
+          throw new Error(`Duplicate manifest subcommand: ${child.name}`)
+        names.add(child.name)
+        visit(child)
+      }
+    } else if (node.kind === 'native') {
+      const descriptor = manifest.packages[node.binding.descriptorHash]
+      if (!descriptor || descriptor.id !== node.binding.package
+        || !descriptor.operations.includes(node.binding.operation))
+        throw new Error(`Unresolved native binding: ${node.name}`)
+    }
+  }
+  for (const [name, { tree }] of Object.entries(manifest.roots)) {
+    if (name !== tree.name)
+      throw new Error(`Manifest root name disagrees with tree: ${name}`)
+    visit(tree)
+  }
+  return manifest
+}
+
+/** Verifies exact identities after structural validation at a transport boundary. */
+export async function verifyManifest(data: unknown): Promise<Manifest> {
+  const manifest = parseManifest(data)
+  for (const [hash, descriptor] of Object.entries(manifest.packages)) {
+    if (await contentDigest(descriptor) !== hash)
+      throw new Error(`Native package descriptor hash mismatch: ${descriptor.id}`)
+  }
+  const { hash, ...body } = manifest
+  if (await contentDigest(body) !== hash)
+    throw new Error('Command manifest hash mismatch')
+  return manifest
 }

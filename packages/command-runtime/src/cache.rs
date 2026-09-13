@@ -31,7 +31,10 @@ pub enum RuntimeError {
 
 pub enum ArtifactSource {
     Local(PathBuf),
-    Https(String),
+    Https {
+        url: String,
+        expires_at: Option<std::time::SystemTime>,
+    },
 }
 
 /// Resolves only an artifact authorized by the calling registration's catalog.
@@ -109,7 +112,7 @@ impl ArtifactCache {
         }
         let mut receiver = {
             let mut state = self.state.lock().await;
-            if state.closed {
+            if state.closed || self.cancel.is_cancelled() {
                 return Err(Arc::new(RuntimeError::Cancelled));
             }
             if let Some(flight) = state.flights.get(&artifact.sha256) {
@@ -157,10 +160,14 @@ impl ArtifactCache {
         }
     }
 
-    pub async fn shutdown(&self) {
-        self.state.lock().await.closed = true;
+    pub fn cancel(&self) {
         self.cancel.cancel();
         self.tasks.close();
+    }
+
+    pub async fn shutdown(&self) {
+        self.state.lock().await.closed = true;
+        self.cancel();
         self.tasks.wait().await;
     }
 
@@ -183,47 +190,71 @@ impl ArtifactCache {
             .await?;
         let mut hash = Sha256::new();
         let mut size = 0u64;
-        match resolver.resolve(artifact, &self.cancel).await? {
-            ArtifactSource::Local(path) => {
-                let mut input = tokio::fs::File::open(path).await?;
-                let mut buffer = vec![0; 64 * 1024];
-                loop {
-                    let count = input.read(&mut buffer).await?;
-                    if count == 0 {
-                        break;
+        let mut refreshed = false;
+        loop {
+            match resolver.resolve(artifact, &self.cancel).await? {
+                ArtifactSource::Local(path) => {
+                    let mut input = tokio::fs::File::open(path).await?;
+                    let mut buffer = vec![0; 64 * 1024];
+                    loop {
+                        let count = input.read(&mut buffer).await?;
+                        if count == 0 {
+                            break;
+                        }
+                        write_chunk(
+                            &mut output,
+                            &mut hash,
+                            &mut size,
+                            artifact.size,
+                            &buffer[..count],
+                        )
+                        .await?;
                     }
-                    write_chunk(
-                        &mut output,
-                        &mut hash,
-                        &mut size,
-                        artifact.size,
-                        &buffer[..count],
-                    )
-                    .await?;
+                }
+                ArtifactSource::Https { url, expires_at } => {
+                    if expires_at.is_some_and(|expires| expires <= std::time::SystemTime::now()) {
+                        if refreshed {
+                            return Err(RuntimeError::Artifact(
+                                "artifact resolver returned an expired URL".into(),
+                            ));
+                        }
+                        refreshed = true;
+                        continue;
+                    }
+                    let response = self
+                        .http
+                        .get(url)
+                        .send()
+                        .await
+                        .map_err(|error| RuntimeError::Artifact(error.to_string()))?;
+                    if !refreshed
+                        && response.status() == reqwest::StatusCode::FORBIDDEN
+                        && expires_at.is_some_and(|expires| expires <= std::time::SystemTime::now())
+                    {
+                        refreshed = true;
+                        continue;
+                    }
+                    let response = response
+                        .error_for_status()
+                        .map_err(|error| RuntimeError::Artifact(error.to_string()))?;
+                    if response
+                        .content_length()
+                        .is_some_and(|size| size != artifact.size)
+                    {
+                        return Err(RuntimeError::Artifact(
+                            "artifact Content-Length mismatch".into(),
+                        ));
+                    }
+                    let mut stream = response.bytes_stream();
+                    while let Some(chunk) = stream.next().await {
+                        let chunk =
+                            chunk.map_err(|error| RuntimeError::Artifact(error.to_string()))?;
+                        write_chunk(&mut output, &mut hash, &mut size, artifact.size, &chunk)
+                            .await?;
+                    }
                 }
             }
-            ArtifactSource::Https(url) => {
-                let response = self
-                    .http
-                    .get(url)
-                    .send()
-                    .await
-                    .and_then(reqwest::Response::error_for_status)
-                    .map_err(|error| RuntimeError::Artifact(error.to_string()))?;
-                if response
-                    .content_length()
-                    .is_some_and(|size| size != artifact.size)
-                {
-                    return Err(RuntimeError::Artifact(
-                        "artifact Content-Length mismatch".into(),
-                    ));
-                }
-                let mut stream = response.bytes_stream();
-                while let Some(chunk) = stream.next().await {
-                    let chunk = chunk.map_err(|error| RuntimeError::Artifact(error.to_string()))?;
-                    write_chunk(&mut output, &mut hash, &mut size, artifact.size, &chunk).await?;
-                }
-            }
+            break;
         }
         check_digest(hash, size, artifact)?;
         output.sync_all().await?;

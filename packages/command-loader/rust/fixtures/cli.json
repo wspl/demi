@@ -1,0 +1,235 @@
+{
+  "manifest": {
+    "hash": "0cf18d78aae679a7d2e1af76e21e2f1d4c27a7e3a56ad6394a87b5b6229b0235",
+    "roots": {
+      "fixture": {
+        "tree": {
+          "name": "fixture",
+          "summary": "CLI fixture.",
+          "subcommands": [
+            {
+              "name": "read",
+              "summary": "Read a native file.",
+              "input": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "File path"
+                  },
+                  "count": {
+                    "default": 2,
+                    "description": "Count",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "upper": {
+                    "description": "Uppercase",
+                    "type": "boolean"
+                  },
+                  "tag": {
+                    "description": "Tags",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "body": {
+                    "type": "string",
+                    "description": "Text body"
+                  },
+                  "args": {
+                    "description": "Forwarded arguments",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "path",
+                  "body"
+                ]
+              },
+              "positionals": [
+                "path"
+              ],
+              "stdinField": "body",
+              "restField": "args",
+              "output": {
+                "json": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "kind": "native",
+              "binding": {
+                "package": "demicodes.fixture",
+                "operation": "file.read",
+                "descriptorHash": "7d320ed041df0a3277ce2946c2893522cac021e30c3876dc2cb58ac29bfbe636"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "packages": {
+      "7d320ed041df0a3277ce2946c2893522cac021e30c3876dc2cb58ac29bfbe636": {
+        "id": "demicodes.fixture",
+        "version": "test-α-😀",
+        "protocolVersion": 1,
+        "operations": [
+          "file.read",
+          "fixture.echo"
+        ],
+        "targets": {
+          "aarch64-apple-darwin": {
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "size": 12345
+          },
+          "x86_64-apple-darwin": {
+            "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "size": 12346
+          },
+          "aarch64-unknown-linux-musl": {
+            "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+            "size": 12347
+          },
+          "x86_64-unknown-linux-musl": {
+            "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+            "size": 12348
+          },
+          "aarch64-pc-windows-msvc": {
+            "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+            "size": 12349
+          },
+          "x86_64-pc-windows-msvc": {
+            "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+            "size": 12350
+          }
+        }
+      }
+    }
+  },
+  "help": "fixture: CLI fixture.\n\nSubcommands:\n  fixture read — Read a native file.\n\nfixture read: Read a native file.\n\nUsage:\n\n  fixture read <path> [--count <count>] [--upper [true|false]] [--tag <tag>] [--json] [-- <args>...] <<'EOF'\n  <body>\n  EOF\n    Success output: raw text by default; machine-readable JSON when --json is passed\n    Parameters:\n      <path> (required) - File path\n      --count <count> (optional) - Count\n      --upper [true|false] (optional) - Uppercase\n      --tag <tag> (optional, repeatable) - Tags\n      -- <args>... (optional) - Forwarded arguments\n    Stdin body: body - Text body\n    --json: emits machine-readable JSON for this command",
+  "cases": [
+    {
+      "argv": [],
+      "stdin": "",
+      "parsed": {
+        "path": [
+          "fixture"
+        ],
+        "help": true,
+        "values": {},
+        "json": false
+      }
+    },
+    {
+      "argv": [
+        "read",
+        "--help"
+      ],
+      "stdin": "",
+      "parsed": {
+        "path": [
+          "fixture",
+          "read"
+        ],
+        "help": true,
+        "values": {},
+        "json": false
+      }
+    },
+    {
+      "argv": [
+        "read",
+        "some file",
+        "--count",
+        "3",
+        "--tag",
+        "one",
+        "--tag=two",
+        "--upper",
+        "--json",
+        "--",
+        "--help",
+        "-x"
+      ],
+      "stdin": "body\n",
+      "parsed": {
+        "path": [
+          "fixture",
+          "read"
+        ],
+        "help": false,
+        "values": {
+          "path": "some file",
+          "count": 3,
+          "upper": true,
+          "tag": [
+            "one",
+            "two"
+          ],
+          "body": "body\n",
+          "args": [
+            "--help",
+            "-x"
+          ]
+        },
+        "json": true
+      }
+    },
+    {
+      "argv": [
+        "read",
+        "--",
+        "--file"
+      ],
+      "stdin": "literal",
+      "invalid": true
+    },
+    {
+      "argv": [
+        "read",
+        "file",
+        "--count",
+        "2.5"
+      ],
+      "stdin": "",
+      "invalid": true
+    },
+    {
+      "argv": [
+        "read",
+        "file",
+        "--body=bad"
+      ],
+      "stdin": "",
+      "invalid": true
+    },
+    {
+      "argv": [
+        "read",
+        "file",
+        "--count",
+        "1",
+        "--count",
+        "2"
+      ],
+      "stdin": "",
+      "invalid": true
+    }
+  ]
+}

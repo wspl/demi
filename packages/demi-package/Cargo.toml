@@ -23,6 +23,10 @@ tempfile = "3"
 regex = "1"
 
 [dev-dependencies]
+demi-runner = { path = "../runner" }
 demi-command-runtime = { path = "../command-runtime" }
 sha2 = "0.10"
 futures-util.workspace = true
+
+[dependencies.demi-native-path]
+path = "../native-path"

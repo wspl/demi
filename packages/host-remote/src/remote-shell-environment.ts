@@ -1,3 +1,4 @@
+import type { RemoteCommandCatalog } from './shell-environment-factory'
 import {
   DEFAULT_BINARY_LIMIT_BYTES,
   DEFAULT_OUTPUT_LIMIT_BYTES,
@@ -29,6 +30,7 @@ import type { RemoteHost, RemoteJob, RemoteJobExit } from './remote-host'
 
 export interface RemoteShellEnvironmentOptions extends ShellEnvironmentOptions {
   host: RemoteHost
+  commands?: RemoteCommandCatalog
   commandStorage?: (signal?: AbortSignal) => CommandStorage
 }
 
@@ -79,9 +81,11 @@ export class RemoteShellEnvironment implements ShellEnvironment {
   private readonly commandsById = new Map<string, ShellCommandRecord>()
   private readonly runningById = new Map<string, RunningJob>()
 
+  private readonly commands: RemoteCommandCatalog | undefined
   private readonly commandStorage: RemoteShellEnvironmentOptions['commandStorage']
 
   constructor(options: RemoteShellEnvironmentOptions) {
+    this.commands = options.commands
     this.commandStorage = options.commandStorage
     this.host = options.host
     this.shellIdFactory = options.shellIdFactory
@@ -212,6 +216,7 @@ export class RemoteShellEnvironment implements ShellEnvironment {
       script,
       cwd: shell.cwd,
       env: { ...shell.env, PWD: shell.cwd },
+      commands: this.commands,
       commandStorage: this.commandStorage?.(callerSignal)
     })
     const record = createCommandRecord({

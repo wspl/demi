@@ -8,12 +8,12 @@ import {
   rm
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, dirname } from 'node:path'
+import { join } from 'node:path'
 import { createHash } from 'node:crypto'
-import { packedRunner } from '@demicodes/runner/testing'
+import { runnerBinary } from '@demicodes/runner/testing'
 import { runnerInstallRoutes, type RunnerRelease } from '../http/runner-install'
 import { RUNNER_PROTOCOL_VERSION } from '@demicodes/runner-protocol'
-import { LOCAL } from '@demicodes/runner-protocol/local'
+import { NATIVE_PROTOCOL_VERSION, NATIVE_TARGETS } from '@demicodes/command-protocol'
 
 const sha = (data: Uint8Array | string) => createHash('sha256')
   .update(data)
@@ -24,7 +24,7 @@ async function run(
   extra: Record<string, string> = {}
 ) {
   const child = Bun.spawn(args, {
-    env: { ...process.env, HOME: home, ...extra },
+    env: { ...process.env, HOME: home, USERPROFILE: home, ...extra },
     stdout: 'pipe',
     stderr: 'pipe'
   })
@@ -39,24 +39,30 @@ test(
   'installer keeps backend registrations separate, reuses a release, and drains only its own upgrade',
   async () => {
     const work = await mkdtemp(join(tmpdir(), 'demi-install-test-'))
-    const home = join(work, 'home'), artifacts = join(work, 'artifacts')
+    const home = join(work, 'home')
+    const artifacts = join(work, 'artifacts')
+    const windows = process.platform === 'win32'
+    const executable = windows ? 'demi-runner.exe' : 'demi-runner'
+    const extension = windows ? 'ps1' : 'sh'
+    const launchScript = (script: string, args: string[] = []) => windows
+      ? ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, ...args]
+      : ['sh', script, ...args]
     await mkdir(home)
-    const runner = await packedRunner(), client = join(dirname(runner), 'demi')
-    const platform = `${process.platform === 'darwin' ? 'macos' : 'linux'}-${process.arch === 'arm64' ? 'arm64' : 'x64'}` as keyof RunnerRelease['targets']
-    const hashes = {
-      runner: sha(await readFile(runner)),
-      client: sha(await readFile(client))
-    }
+    const runner = await runnerBinary()
+    const platform = `${process.arch === 'arm64' ? 'aarch64' : 'x86_64'}-${windows ? 'pc-windows-msvc' : process.platform === 'darwin' ? 'apple-darwin' : 'unknown-linux-musl'}` as keyof RunnerRelease['targets']
+    const bytes = await readFile(runner)
+    const artifact = { sha256: sha(bytes), size: bytes.length }
     async function publish(name: string) {
-      const release = sha(name), target = join(artifacts, release, platform)
+      const release = sha(name)
+      const target = join(artifacts, release, platform)
       await mkdir(target, { recursive: true })
-      await copyFile(runner, join(target, 'demi-runner'));
-      await copyFile(client, join(target, 'demi'))
+      await copyFile(runner, join(target, executable))
       const manifest = JSON.stringify({
         release,
         wire: RUNNER_PROTOCOL_VERSION,
-        local: LOCAL.version,
-        targets: { [platform]: hashes }
+        commandProtocol: NATIVE_PROTOCOL_VERSION,
+        // Test-only catalog: only the current host executable is served.
+        targets: Object.fromEntries(NATIVE_TARGETS.map(target => [target, artifact]))
       })
       await writeFile(join(artifacts, release, 'manifest.json'), manifest)
       await writeFile(join(artifacts, 'manifest.json'), manifest)
@@ -64,9 +70,8 @@ test(
     }
     const initial = await publish('initial')
     const app = runnerInstallRoutes({ directory: artifacts })
-    const a = Bun.serve({ port: 0, fetch: app.fetch }), b = Bun.serve(
-      { port: 0, fetch: app.fetch }
-    )
+    const a = Bun.serve({ port: 0, fetch: app.fetch })
+    const b = Bun.serve({ port: 0, fetch: app.fetch })
     const state = (port: number) => join(
       home,
       '.demi/instances',
@@ -76,35 +81,38 @@ test(
       await readFile(join(state(port), 'active.json'), 'utf8')
     )
     async function install(port: number, extra: Record<string, string> = {}) {
-      const script = join(work, `install-${port}.sh`)
+      const script = join(work, `install-${port}.${extension}`)
       await writeFile(
         script,
-        await (await fetch(`http://localhost:${port}/install.sh`)).text()
+        await (await fetch(`http://localhost:${port}/install.${extension}`)).text()
       )
-      const result = await run(['sh', script], home, extra)
+      const result = await run(launchScript(script), home, extra)
       if (result.code)
         throw new Error(JSON.stringify(result))
       return result
     }
     try {
-      await install(a.port!);
+      const windowsInstaller = await fetch(`http://localhost:${a.port}/install.ps1`)
+      expect(windowsInstaller.status).toBe(200)
+      expect(await windowsInstaller.text()).toContain('aarch64-pc-windows-msvc')
+      await install(a.port!)
       await install(b.port!)
-      const firstA = await active(a.port!), firstB = await active(b.port!)
+      const firstA = await active(a.port!)
+      const firstB = await active(b.port!)
       expect(firstA.endpoint).not.toBe(firstB.endpoint)
       expect(firstA.release).toBe(initial)
       expect((await install(a.port!)).out).toContain('already running')
       expect((await active(a.port!)).endpoint).toBe(firstA.endpoint)
-      const collision = await run([
-        'sh',
-        join(work, `install-${b.port}.sh`)
-      ], home, { DEMI_INSTALLATION_ID: sha(`http://localhost:${a.port}/`) })
+      const collision = await run(launchScript(
+        join(work, `install-${b.port}.${extension}`)
+      ), home, { DEMI_INSTALLATION_ID: sha(`http://localhost:${a.port}/`) })
       expect(collision.code).toBe(1)
       expect(collision.err).toContain('another backend')
       const upgraded = await publish('upgraded')
       await install(a.port!)
       expect(
         (await fetch(
-          `http://localhost:${a.port}/runner-artifacts/${initial}/${platform}/demi`
+          `http://localhost:${a.port}/runner-artifacts/${initial}/${platform}/${executable}`
         )).status
       )
         .toBe(200)
@@ -112,9 +120,15 @@ test(
       expect((await active(a.port!)).endpoint).not.toBe(firstA.endpoint)
       expect((await active(b.port!)).endpoint).toBe(firstB.endpoint)
     } finally {
-      for (const port of [a.port!, b.port!])
-        await run([join(state(port), 'run'), 'drain'], home).catch(() => {})
-      a.stop(true);
+      for (const port of [a.port!, b.port!]) {
+        // A failed installation may not have produced its launcher; teardown
+        // still stops the HTTP fixtures and removes their temporary directory.
+        const command = windows
+          ? launchScript(join(state(port), 'run.ps1'), ['-Action', 'drain'])
+          : [join(state(port), 'run'), 'drain']
+        await run(command, home).catch(() => {})
+      }
+      a.stop(true)
       b.stop(true)
       await rm(work, { recursive: true, force: true })
     }

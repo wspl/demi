@@ -21,7 +21,7 @@ import {
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
-import { startTxikiRunner } from '../testing'
+import { startRunner } from '../testing'
 
 // M1 acceptance on the txiki.js runner: a bare AgentServer executing on a real
 // runner process over a real WebSocket — commands run as jobs in the
@@ -100,7 +100,7 @@ test(
       },
     })
 
-    const runner = await startTxikiRunner({
+    const runner = await startRunner({
       backendUrl: `ws://localhost:${server.port}`,
       stateDir,
       home: runnerDir,

@@ -5,7 +5,7 @@ import {
   releaseTarget,
   runnerReleaseSchema,
 } from '@demicodes/runner-protocol/release'
-import { shellInstaller } from '../runner/installer'
+import { powershellInstaller, shellInstaller } from '../runner/installer'
 
 export type { RunnerRelease } from '@demicodes/runner-protocol/release'
 
@@ -36,8 +36,14 @@ export function runnerInstallRoutes(options?: RunnerInstallationOptions): Hono {
     })
   })
 
-  app.get('/install.ps1', context => {
-    return context.text('A Windows runner release is not available yet.\n', 503)
+  app.get('/install.ps1', async context => {
+    if (!options) return context.text('Runner releases are not configured on this backend.\n', 503)
+    const release = runnerReleaseSchema.parse(await Bun.file(join(options.directory, 'manifest.json')).json())
+    const backendUrl = options.backendUrl ?? new URL(context.req.url).origin
+    return context.body(powershellInstaller(backendUrl, release), 200, {
+      'content-type': 'text/plain; charset=utf-8',
+      'cache-control': 'no-store',
+    })
   })
 
   app.get('/runner-artifacts/:release/:target/:file', async context => {
@@ -51,7 +57,7 @@ export function runnerInstallRoutes(options?: RunnerInstallationOptions): Hono {
     const name = context.req.param('file')
     if (!requestedRelease.success ||
       !platform.success ||
-      !['demi', 'demi-runner'].includes(name)) {
+      name !== (platform.data?.includes('windows') ? 'demi-runner.exe' : 'demi-runner')) {
       return context.notFound()
     }
 

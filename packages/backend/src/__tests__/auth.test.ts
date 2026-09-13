@@ -1,3 +1,4 @@
+import { nativePackageFixture } from '@demicodes/demi-package/testing'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,7 +21,7 @@ test(
   'setup creates the master once and signs it in; every other route wants the cookie',
   async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'demi-auth-setup-'))
-    const backend = await createBackend({ dataDir, port: 0, mode: 'shared' })
+    const backend = await createBackend({ dataDir, port: 0, mode: 'shared', nativeCommands: await nativePackageFixture() })
 
     expect(await (await fetch(`${backend.url}/api/setup`)).json())
       .toEqual({ needed: true })

@@ -9,11 +9,6 @@
       "development": "./src/testing.ts",
       "types": "./dist/testing.d.mts",
       "import": "./dist/testing.mjs"
-    },
-    "./serve": {
-      "development": "./src/serve/index.ts",
-      "types": "./dist/serve/index.d.mts",
-      "import": "./dist/serve/index.mjs"
     }
   },
   "files": [

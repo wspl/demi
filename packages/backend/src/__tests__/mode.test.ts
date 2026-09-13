@@ -1,3 +1,4 @@
+import { nativePackageFixture } from '@demicodes/demi-package/testing'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -184,6 +185,7 @@ test(
 
     // The mode is fixed once providers are configured.
     await expect(createBackend({
+      nativeCommands: await nativePackageFixture(),
       ...stubOptions(dataDir, 'isolated'),
       mode: 'isolated'
     })).rejects.toThrow('configured under the other instance mode')

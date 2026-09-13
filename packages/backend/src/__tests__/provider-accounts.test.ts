@@ -99,7 +99,7 @@ test(
         }>
       }
       expect(catalog.providers[0]?.availability).toMatchObject(
-        { available: false, reason: 'execution' }
+        { available: true, reason: null }
       )
       expect(
         JSON.stringify(

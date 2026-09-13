@@ -24,22 +24,12 @@ turns any machine into an execution target. The design is recorded under
 
 ## Architecture
 
-Packages depend strictly downward (enforced by a boundary test):
-
-```
-utils, core            shared helpers + data types (zero deps)
-provider               abstract inference contract          -> core, utils
-shell                  Host contract + command system       -> utils
-agent                  session runtime + protocol           -> core, provider, shell, utils
-coding-agent           coding harness + the demi root       -> agent, core, shell, utils
-provider-*             concrete providers                   -> core, provider, utils
-command-loader         manifest + loader                    -> shell, utils
-runner-protocol        the runner wire                      -> shell, utils
-host-remote            the backend's Host over a runner     -> runner-protocol, shell, utils
-runner                 the machine-side program (txiki.js)    -> command-loader, runner-protocol, shell, utils
-backend                the product server (leaf)
-web-ui, web-gallery    the browser UI library and component gallery
-```
+Package responsibilities and allowed dependencies are defined in
+[package boundaries](docs/package-boundaries.md) and enforced by boundary tests.
+The backend and agent SDK run TypeScript. Execution targets run a native Rust
+runner with an embedded shell and standard utilities. Agent commands select
+application callbacks or independently distributed resident native services.
+See [native execution](docs/demi-next/native-runtime.md).
 
 Notable design records outside `docs/demi-next/`:
 
@@ -52,7 +42,6 @@ Notable design records outside `docs/demi-next/`:
 ## Development
 
 ```sh
-git submodule update --init --recursive
 bun install
 bun run typecheck      # type-check all packages
 bun run typecheck:web  # type-check the Vue UI packages
@@ -61,10 +50,11 @@ bun run build          # build every library package to dist/ (tsdown)
 bun run llms           # regenerate llms-full.txt from the docs
 ```
 
-The forked txiki.js runtime is pinned under `vendor/txiki.js`
-([runtime design](docs/demi-next/txiki.md)). Tests build it through
-`@demicodes/runner/testing`; install CMake and a C/C++ compiler first.
-Static Linux cross builds also require Zig.
+Install Rust through rustup (the repository pins its toolchain), a C/C++ compiler
+and CMake. Tests build the native runner automatically and use scripted providers.
+`cargo test --workspace` runs the Rust protocol, service and runner tests.
+Six-target release commands and SDK requirements are in
+[native builds](docs/native-builds.md).
 
 Workspaces resolve `@demicodes/*` from source in dev/test (the `development` export
 condition); a build is only needed to publish.
