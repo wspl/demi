@@ -24,7 +24,7 @@
 - Prefer diagrams for structures, relationships, and flows; use ASCII diagrams when practical. Prefer concrete examples over abstract descriptions.
 - Explain responsibilities, boundaries, observable behavior, and design rationale. Leave implementation details that code can express clearly to code.
 - Distinguish verified facts, suspected problems, proposals, and open decisions.
-- Use Google Technical Writing for expression. Use Diátaxis, arc42, and C4 as optional aids to clarity and completeness, not as mandatory directories, sections, or deliverables.
+- Follow the [Google Developer Documentation Style Guide](https://developers.google.com/style). Use Diátaxis, arc42, and C4 as optional aids to clarity and completeness, not as mandatory directories, sections, or deliverables.
 
 # Design Documentation
 
