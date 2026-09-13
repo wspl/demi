@@ -130,9 +130,10 @@ onBeforeUnmount(() => {
           :default-value="TREE_WIDTH.default"
           label="File tree width"
         />
+        <!-- The tree's width is the divider's; flex must not grow or shrink it. -->
         <FileTree
-          class="shrink-0 border-l border-line bg-surface"
-          :style="{ width: `${treeWidth}px` }"
+          class="border-l border-line bg-surface-editor"
+          :style="{ flex: `0 0 ${treeWidth}px`, width: `${treeWidth}px` }"
           :source="source"
           :root="root"
           :selected="path"
