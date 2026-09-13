@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { NATIVE_TARGETS, type NativeArtifact } from '@demicodes/command-protocol'
 
@@ -45,8 +45,10 @@ export async function publishReleaseDirectory(
     try {
       await rename(stage, directory)
     } catch (error) {
-      if (!(error instanceof Error && 'code' in error
-        && ['EEXIST', 'ENOTEMPTY'].includes(String(error.code))))
+      // Windows reports an existing destination as EPERM. Reuse depends on
+      // the complete immutable directory, not the platform's rename code.
+      const destination = await stat(directory).catch(() => null)
+      if (!destination?.isDirectory())
         throw error
       if (await readFile(join(directory, metadataName), 'utf8') !== metadata)
         throw new Error('Immutable release directory contains different metadata')
