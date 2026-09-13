@@ -1,11 +1,25 @@
 import type { ShellEditedFile } from '@demicodes/agent/client'
-import type { ShellFileChange } from '@demicodes/agent'
 import { baseName, joinPath } from './paths'
 import type { TreeRow } from './tree'
 
+/**
+ * One changed file as the change view lists it: its path, how it changed,
+ * and its line counts. A working-tree listing has every kind; a call's
+ * retained edit (`ShellEditedFile`) is one of these with `added` or
+ * `modified` only.
+ */
+export interface ChangeFile {
+  path: string
+  kind: 'added' | 'modified' | 'deleted' | 'renamed'
+  /** The path before a rename. */
+  from?: string
+  added: number
+  removed: number
+}
+
 /** The workspace's uncommitted files and their current differences from HEAD. */
 export interface ChangeSetSource {
-  files: readonly ShellFileChange[]
+  files: readonly ChangeFile[]
   /** The list stopped at the host's limit; there are more changed files than it holds. */
   truncated?: boolean
   /** Why there is nothing to list, when the reason is not that nothing changed. */
@@ -87,7 +101,7 @@ export const emptyChangeSet: ChangeSetSource = {
 
 /** One row of the change tree: a directory on the way to changed files (no change), or a changed file. */
 export interface ChangeTreeRow extends TreeRow {
-  change: ShellFileChange | null
+  change: ChangeFile | null
 }
 
 /**
@@ -95,10 +109,10 @@ export interface ChangeTreeRow extends TreeRow {
  * by name, with the directories in `folded` closed: their rows stay, what is
  * under them does not.
  */
-export function changeTreeRows(files: readonly ShellFileChange[], folded: ReadonlySet<string>): ChangeTreeRow[] {
+export function changeTreeRows(files: readonly ChangeFile[], folded: ReadonlySet<string>): ChangeTreeRow[] {
   interface Node {
     dirs: Map<string, Node>
-    files: ShellFileChange[]
+    files: ChangeFile[]
   }
   const root: Node = { dirs: new Map(), files: [] }
   for (const file of files) {
