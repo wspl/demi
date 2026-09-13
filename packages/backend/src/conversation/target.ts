@@ -1,5 +1,4 @@
-import type { RemoteGit } from '@demicodes/host-remote'
-import type { Host, HostFileSystem } from '@demicodes/shell'
+import type { RemoteHost } from '@demicodes/host-remote'
 import { ActivityGate } from '@demicodes/utils'
 import type { ManagedHosts } from '../managed/lifecycle'
 import type { RunnerRegistry } from '../runner/registry'
@@ -33,13 +32,6 @@ export type SwitchTargetResult = {
     'conflict'
 }
 
-/** A conversation's execution directory on its live runner, for the working-tree routes. */
-export interface WorkingTreeAccess {
-  root: string
-  git: RemoteGit
-  fs: HostFileSystem
-}
-
 export class ConversationTargets {
   private readonly fileActivity = new Map<string, ActivityGate>()
   constructor(private readonly deps: ConversationTargetsDeps) {}
@@ -53,9 +45,22 @@ export class ConversationTargets {
     return gate
   }
 
+  /**
+   * The one way to reach a conversation's execution host from outside the
+   * agent: every operation that touches the host on the conversation's
+   * behalf (writing an attachment, listing the working tree, reading a
+   * file) runs through here, whatever the target is. It resolves the target
+   * as the agent does, refuses an archived conversation, wakes a stopped
+   * Cloud and holds it for the operation, and takes the conversation's file
+   * gate so the operation excludes an archive or a target switch. A paired
+   * device without a live runner fails inside the operation as the runner's
+   * offline error. Nothing reaches the host around this method; a caller
+   * that wants "the host, but without one of these steps" is asking for a
+   * different design, not a shortcut.
+   */
   async withHost<T>(
     id: string,
-    operation: (host: Host) => Promise<T>,
+    operation: (host: RemoteHost) => Promise<T>,
     signal?: AbortSignal
   ): Promise<T> {
     const release = await this.files(id).enter(signal)
@@ -88,7 +93,7 @@ export class ConversationTargets {
     )
   }
 
-  async hostFor(id: string): Promise<Host> {
+  async hostFor(id: string): Promise<RemoteHost> {
     const { control, registry, managedHosts, stores } = this.deps
     const conversation = await control.getConversation(id)
     if (!conversation)
@@ -116,24 +121,6 @@ export class ConversationTargets {
     if (target.kind === 'cloud')
       await host.fs.mkdir(path, { recursive: true })
     return host
-  }
-
-  /**
-   * The execution directory and the runner facets that read it; `null`
-   * while the device has no live runner. Never wakes a machine, unlike
-   * `withHost`.
-   */
-  async workingTree(id: string): Promise<WorkingTreeAccess | null> {
-    const { registry, stores } = this.deps
-    const target = await this.resolve(id)
-    if (!target.deviceId || !registry.deviceOnline(target.deviceId))
-      return null
-    const host = registry.hostFor(
-      { deviceId: target.deviceId, path: target.path },
-      id,
-      stores.hostStore(id)
-    )
-    return { root: target.path, git: host.git, fs: host.fs }
   }
 
   async switch(
