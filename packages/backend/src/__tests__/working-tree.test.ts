@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { startRunner } from '@demicodes/host-remote/testing'
-import { waitFor } from '@demicodes/utils'
+import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
 import { openBackend, type TestBackend } from './session'
@@ -112,13 +112,17 @@ test(
 
     // Offline: the routes say so rather than waking anything.
     await runner.stop()
-    await waitFor(async () => {
+    let offline = false
+    for (let tries = 0; tries < 100 && !offline; tries += 1) {
       const rows = (await (await api(backend, '/api/devices')).json()) as { devices: Array<{ online: boolean }> }
-      return rows.devices[0]?.online === false
-    })
-    const offline = await api(backend, `/api/conversations/${conversation.id}/changes`)
-    expect(offline.status).toBe(409)
-    expect(((await offline.json()) as { code: string }).code).toBe('device_offline')
+      offline = rows.devices[0]?.online === false
+      if (!offline)
+        await delay(20)
+    }
+    expect(offline).toBe(true)
+    const refused = await api(backend, `/api/conversations/${conversation.id}/changes`)
+    expect(refused.status).toBe(409)
+    expect(((await refused.json()) as { code: string }).code).toBe('device_offline')
 
     await backend.close()
   },

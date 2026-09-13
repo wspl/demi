@@ -90,7 +90,7 @@ async function selectFolder(deviceId: string, path: string): Promise<boolean> {
   <WorkspaceDirectoryMenu
     ref="directory"
     :overlay-store="appOverlayStore"
-    :path="execution.path"
+    :path="execution.directory"
     :workspace-name="execution.workspaceName"
     :selected-project-id="project?.id"
     :device-id="execution.deviceId"

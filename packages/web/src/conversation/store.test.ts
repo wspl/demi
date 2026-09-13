@@ -52,6 +52,7 @@ function record(id: string): BackendConversation {
     readRevision: 0,
     revision: 0,
     unread: false,
+    cwd: `/home/demi/sessions/${id}`,
     target: { kind: 'cloud' },
     contextVersion: 0,
     providerId: null,
