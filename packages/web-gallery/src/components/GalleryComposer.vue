@@ -22,7 +22,7 @@ import {
 import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
 import { demoUsage } from '../fixtures/blocks'
 import { demoModels, demoProviders } from '../fixtures/catalog'
-import { createGalleryFileHosts } from '../fixtures/files'
+import { createGalleryRemoteFileHosts } from '../fixtures/files'
 
 const props = withDefaults(
   defineProps<{
@@ -125,7 +125,7 @@ function addFiles(files: File[]) {
   }
 }
 
-const remoteHosts = createGalleryFileHosts()
+const remoteHosts = createGalleryRemoteFileHosts()
 const remotePicker = ref<InstanceType<typeof RemoteFilePicker>>()
 function attachRemote(file: { host: string; path: string }) {
   const error = remoteAttachmentError(file.path, file.host, attached.value)

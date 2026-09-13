@@ -23,12 +23,13 @@ Partial conversation mutations use the explicit outcomes described below.
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }` |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories; `WS /conversations/:id/stream` carries agent frames |
+| Conversation files | `GET/POST /conversations/:id/fs`, `GET /conversations/:id/fs/file?path=...`, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...` |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
 | Usage | `GET /usage` for the caller; `GET /usage/instance` for admins in shared mode |
-| Devices | `GET /devices`, `POST /devices/claim { code }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=...`, `POST /devices/:id/fs { path }`, `GET /devices/:id/fs/file?path=...` |
+| Devices | `GET /devices`, `POST /devices/claim { code }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=...`, `POST /devices/:id/fs { path }` |
 | Workspaces | `GET/POST /workspaces`, `PATCH /workspaces/:id { name }`, `DELETE /workspaces/:id` |
 | Cloud | `GET /cloud`, `POST /cloud/reset { operationId }` |
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
@@ -270,8 +271,9 @@ poll includes changes made during a read. Chat continues using agent frames.
 size and ISO modifiedAt. Metadata comes through the existing runner filesystem;
 entries disappearing during the listing are omitted, other errors are returned.
 Metadata requests await each reply to avoid overrunning the runner transport.
-These device routes serve device selection and remote attachment references;
-the conversation work panel uses the conversation routes below.
+These device routes serve paired-device target selection only;
+the work panel and remote attachment picker use the conversation routes below.
+Managed devices are not accepted by the device directory routes.
 
 Send and steer content may contain `{ type: "remote_file", deviceId, path }`, where
 path is absolute. The backend validates ownership and current connectivity for
@@ -297,8 +299,15 @@ including Cloud wake and the file gate. Archived conversations answer 409
 `conversation_archived`. A paired device without a live runner answers 409
 `device_offline`; a Cloud that cannot wake answers 503 with the lifecycle's code.
 A file over 4 MiB answers 413 `file_too_large`; one that is not UTF-8 text answers
-415 `not_text`. The device picker can read a connected device's text through
-`GET /api/devices/:id/fs/file?path=...` with the same text limits.
+415 `not_text`.
+
+The remote attachment picker lists and creates directories through
+`GET/POST /api/conversations/:id/hosts/:deviceId/fs`, with the same directory
+contract. The device must be the conversation's main or an attached host,
+otherwise the request answers 404 `host_not_attached`. Omitting `path` lists
+that Host's starting directory. These routes use the same Host access as the
+work panel, including waking an attached Cloud. They do not read file contents;
+the selected path becomes a remote reference when the message is sent.
 
 `GET /api/conversations/:id/changes` lists the uncommitted changes of the
 conversation's execution directory as `{ root, repository, head, files,

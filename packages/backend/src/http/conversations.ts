@@ -1,3 +1,4 @@
+import type { ConversationHostAccess } from '../conversation/target'
 import { RemoteGitError, type RemoteHost } from '@demicodes/host-remote'
 import { errorCode, errorMessage } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
@@ -16,6 +17,7 @@ import { resolveExecutionTarget } from '../conversation/execution-target'
 import type { ConversationStores } from '../storage/conversation-store'
 import type { ChangeStore } from '../storage/change-store'
 import { ForkRefused, type ConversationForks } from '../conversation/fork'
+import { HostAccessRefused } from '../conversation/target'
 import { ManagedHostError } from '../managed/lifecycle'
 import { TextFileRefused, browseDirectory, readTextFile, textOf } from '../runner/file-browser'
 
@@ -33,11 +35,7 @@ export function conversationRoutes(options: {
   control: ControlService
   conversationStores: ConversationStores
   changes: ChangeStore
-  withHost: <T>(
-    conversationId: string,
-    operation: (host: RemoteHost) => Promise<T>,
-    signal?: AbortSignal,
-  ) => Promise<T>
+  withHost: ConversationHostAccess
   /** Whether a device has a live runner socket, for the host list. */
   registry: RunnerRegistry
 }): Hono<AuthEnv> {
@@ -453,21 +451,18 @@ export function conversationRoutes(options: {
         404,
       )
     }
-    if (conversation.archived) {
-      return c.json({ code: 'conversation_archived', message: 'Conversation is archived' }, 409)
-    }
     try {
       return await withHost(
         conversation.id,
         (host) => operation(host, host.defaultCwd),
-        c.req.raw.signal,
+        { signal: c.req.raw.signal, deviceId: c.req.param('deviceId') },
       )
     } catch (error) {
       return hostOperationError(c, error)
     }
   }
 
-  app.get('/:id/fs', async (c) => {
+  app.on('GET', ['/:id/fs', '/:id/hosts/:deviceId/fs'], async (c) => {
     const query = directoryQuerySchema.safeParse(c.req.query())
     if (!query.success) {
       return c.json({ code: 'invalid_query', message: 'Expected a nonempty path' }, 400)
@@ -479,7 +474,7 @@ export function conversationRoutes(options: {
     })
   })
 
-  app.post('/:id/fs', async (c) => {
+  app.on('POST', ['/:id/fs', '/:id/hosts/:deviceId/fs'], async (c) => {
     const body = filePathSchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) {
       return c.json({ code: 'invalid_body', message: 'Expected { path: string }' }, 400)
@@ -556,6 +551,9 @@ export function conversationRoutes(options: {
 }
 
 function hostOperationError(c: Context<AuthEnv>, error: unknown): Response {
+  if (error instanceof HostAccessRefused) {
+    return c.json({ code: error.code, message: error.message }, error.code === 'host_not_attached' ? 404 : 409)
+  }
   const code = errorCode(error)
   if (code === 'ENOENT')
     return c.json({ code: 'fs_error', message: errorMessage(error) }, 404)

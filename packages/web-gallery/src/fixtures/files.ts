@@ -1,3 +1,4 @@
+import { Cloud } from '@lucide/vue'
 import { createMemoryFileSource, dir, file, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserHost, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
 
@@ -252,4 +253,25 @@ export const cloudHost: FileBrowserHost = {
   id: 'cloud',
   label: 'Cloud',
   online: true
+}
+
+/** A conversation can also browse an attached Cloud while it is stopped. */
+export function createGalleryRemoteFileHosts(latencyMs = 250): GalleryFileHost[] {
+  return [
+    ...createGalleryFileHosts(latencyMs),
+    {
+      id: 'managed-device',
+      label: 'Cloud',
+      online: false,
+      canWake: true,
+      icon: Cloud,
+      source: createMemoryFileSource({
+        platform: 'linux',
+        home: '/home/build',
+        root: buildBoxTree(),
+        latencyMs,
+      }),
+      places: [{ label: 'Quick access', places: [{ path: '/home/build', label: 'Home' }] }],
+    },
+  ]
 }

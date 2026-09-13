@@ -22,10 +22,11 @@ const sources = new Map<string, FileBrowserSource>()
 
 /** The shared browser handles paths and selection; this adapter handles HTTP. */
 export function fileSource(
-  endpoint: string | null,
+  endpoints: { directory: string | null; text?: string },
   device: Pick<Device, 'platform' | 'home'> | null,
 ): FileBrowserSource {
-  const key = JSON.stringify([endpoint, device?.platform, device?.home])
+  const { directory: endpoint, text: textEndpoint } = endpoints
+  const key = JSON.stringify([endpoint, textEndpoint, device?.platform, device?.home])
   const cached = sources.get(key)
   if (cached) {
     return cached
@@ -66,10 +67,14 @@ export function fileSource(
               browserError(error)
             }
           },
+        }
+      : {}),
+    ...(textEndpoint
+      ? {
           async read(path: string, signal?: AbortSignal) {
             try {
               const response = await apiRequest(
-                `${endpoint}/file?${new URLSearchParams({ path })}`,
+                `${textEndpoint}?${new URLSearchParams({ path })}`,
                 { signal },
               )
               return (await readResponse(response, fileTextSchema)).text
