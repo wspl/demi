@@ -23,15 +23,22 @@ async function run(
   home: string,
   extra: Record<string, string> = {}
 ) {
+  const logs = await mkdtemp(join(home, '.installer-output-'))
+  const stdout = join(logs, 'stdout')
+  const stderr = join(logs, 'stderr')
+  // Detached Windows children may inherit pipe handles. The installer exit,
+  // not EOF on a descendant's inherited handle, defines invocation completion.
+  // The fixture removes these logs after draining all detached runners.
   const child = Bun.spawn(args, {
     env: { ...process.env, HOME: home, USERPROFILE: home, ...extra },
-    stdout: 'pipe',
-    stderr: 'pipe'
+    stdout: Bun.file(stdout),
+    stderr: Bun.file(stderr),
+    timeout: 60_000,
   })
-  const [out, err, code] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited
+  const code = await child.exited
+  const [out, err] = await Promise.all([
+    readFile(stdout, 'utf8'),
+    readFile(stderr, 'utf8'),
   ])
   return { code, out, err }
 }
@@ -133,5 +140,5 @@ test(
       await rm(work, { recursive: true, force: true })
     }
   },
-  60_000
+  180_000
 )
