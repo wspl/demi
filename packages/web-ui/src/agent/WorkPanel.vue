@@ -36,8 +36,10 @@ import { changeWorkTab, workTabTitle, type WorkTab } from './work-panel'
  *
  * A file tab shows its file through `workspace`: the source it reads from
  * and the root its paths are relative to. The file view's tree shows the
- * workspace; a file chosen there is asked for with `open`. Whether the tree
- * shows is one choice for the panel, not per tab. Without a workspace, and
+ * workspace; a file chosen there, or in a crumb's menu, is asked for with
+ * `open`, and the host shows it in the active tab in place (see
+ * `showFileInTab`), so Back and Forward walk that tab's files. Whether the
+ * tree shows is one choice for the panel, not per tab. Without a workspace, and
  * for the change tab, the content pane is a placeholder.
  */
 const props = defineProps<{
@@ -50,8 +52,11 @@ const emit = defineEmits<{
   closeTabs: [ids: string[]]
   /** New tab, of the chosen kind; the host decides what it opens. */
   add: [kind: WorkTab['kind']]
-  /** A file from the tree, by its path relative to the workspace root. */
+  /** A file from the tree or a crumb menu, by its path relative to the workspace root: show it in the active tab. */
   open: [path: string]
+  /** The active file tab's Back and Forward. */
+  back: [id: string]
+  forward: [id: string]
   /** The fold control: put the whole panel away. */
   close: []
 }>()
@@ -201,7 +206,11 @@ function add(kind: WorkTab['kind']): void {
           :source="workspace.source"
           :root="workspace.root"
           :path="absolutePath(active.path)"
+          :can-back="active.back.length > 0"
+          :can-forward="active.forward.length > 0"
           @open="openFromTree"
+          @back="emit('back', active.id)"
+          @forward="emit('forward', active.id)"
         />
         <div
           v-else

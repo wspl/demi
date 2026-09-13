@@ -11,7 +11,7 @@ import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activity-slot'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { closeWorkTabs, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import { closeWorkTabs, fileWorkTab, goBackInTab, goForwardInTab, showFileInTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryWorkspace } from '../fixtures/workspace'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
@@ -121,10 +121,10 @@ const panelConversations = ref(demoConversations())
 const panelActiveConversationId = ref<string | null>('c-login')
 function workTabs(): WorkTab[] {
   return [
-    { id: 'w1', kind: 'file', path: 'src/auth/cookie.ts' },
+    fileWorkTab('w1', 'src/auth/cookie.ts'),
     { id: 'w2', kind: 'change' },
-    { id: 'w3', kind: 'file', path: 'tests/login/auth.test.ts' },
-    { id: 'w4', kind: 'file', path: 'packages/web-ui/src/agent/blocks/FileChangePills.vue' },
+    fileWorkTab('w3', 'tests/login/auth.test.ts'),
+    fileWorkTab('w4', 'packages/web-ui/src/agent/blocks/FileChangePills.vue'),
   ]
 }
 /** A work panel's tabs and active tab, with the closes and adds the panel asks for. */
@@ -146,26 +146,48 @@ function useWorkTabs(activeId: string | null) {
     tabs.value = [...tabs.value, { id, kind }]
     active.value = id
   }
-  /** A file by workspace path: its open tab if there is one, else a new tab. */
+  /** A file by workspace path, shown in the active tab in place. */
   function open(path: string) {
-    const existing = tabs.value.find((tab) => tab.kind === 'file' && tab.path === path)
-    if (existing) {
-      active.value = existing.id
-      return
-    }
-    const id = `w${nextId++}`
-    tabs.value = [...tabs.value, { id, kind: 'file', path }]
-    active.value = id
+    const next = showFileInTab(tabs.value, active.value, path, () => `w${nextId++}`)
+    tabs.value = next.tabs
+    active.value = next.activeId
+  }
+  function back(id: string) {
+    tabs.value = goBackInTab(tabs.value, id)
+  }
+  function forward(id: string) {
+    tabs.value = goForwardInTab(tabs.value, id)
   }
   function reset() {
     tabs.value = workTabs()
     active.value = activeId
   }
-  return { tabs, active, close, add, open, reset }
+  return { tabs, active, close, add, open, back, forward, reset }
 }
 const workspace = createGalleryWorkspace()
 const fileViewTree = ref(true)
 const fileViewPath = ref(`${workspace.root}/src/auth/cookie.ts`)
+const fileViewBack = ref<string[]>([])
+const fileViewForward = ref<string[]>([])
+function showInFileView(path: string) {
+  fileViewBack.value = [...fileViewBack.value, fileViewPath.value]
+  fileViewForward.value = []
+  fileViewPath.value = path
+}
+function fileViewGoBack() {
+  const previous = fileViewBack.value.at(-1)
+  if (previous === undefined) return
+  fileViewBack.value = fileViewBack.value.slice(0, -1)
+  fileViewForward.value = [...fileViewForward.value, fileViewPath.value]
+  fileViewPath.value = previous
+}
+function fileViewGoForward() {
+  const next = fileViewForward.value.at(-1)
+  if (next === undefined) return
+  fileViewForward.value = fileViewForward.value.slice(0, -1)
+  fileViewBack.value = [...fileViewBack.value, fileViewPath.value]
+  fileViewPath.value = next
+}
 const panelWork = useWorkTabs('w2')
 const exhibitWork = useWorkTabs('w1')
 const emptyTabs: WorkTab[] = []
@@ -1506,6 +1528,8 @@ function abortTerminal(id: string) {
                   @close-tabs="panelWork.close"
                   @add="panelWork.add"
                   @open="panelWork.open"
+                  @back="panelWork.back"
+                  @forward="panelWork.forward"
                   @close="panelAsideOpen = false"
                 />
               </template>
@@ -1519,7 +1543,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="The panel alone. A file tab carries the file's icon; the one Change tab a diff mark. New tab follows the last tab until they scroll, then stays at the right. Right-click a tab for its menu; a file tab also copies its path. A file tab reads its file from the workspace; the Change tab is a placeholder until the change view exists."
+        note="The panel alone. A file tab carries the file's icon; the one Change tab a diff mark. New tab follows the last tab until they scroll, then stays at the right. Right-click a tab for its menu; a file tab also copies its path. A file tab reads its file from the workspace, and a file chosen in its tree or crumbs takes the tab's place instead of opening another; the Change tab is a placeholder until the change view exists."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
@@ -1533,6 +1557,8 @@ function abortTerminal(id: string) {
                 @close-tabs="exhibitWork.close"
                 @add="exhibitWork.add"
                 @open="exhibitWork.open"
+                @back="exhibitWork.back"
+                @forward="exhibitWork.forward"
                 @close="exhibitWork.close(exhibitWork.tabs.value.map((tab) => tab.id))"
               />
             </div>
@@ -1546,7 +1572,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="File view"
-        note="A file of the workspace: the path as crumbs from the workspace root, the highlighted text, and the workspace tree beside it with the file selected. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, or clicked in the tree, opens here. The control at the end of the crumb row hides and shows the tree. Reads carry the fixture's latency, so the text and each directory show their loading state first."
+        note="A file of the workspace: the path as crumbs from the workspace root, the highlighted text, and the workspace tree beside it with the file selected. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, or clicked in the tree, replaces the one shown, and Back and Forward before the crumbs walk the files shown. The control at the end of the crumb row hides and shows the tree. Reads carry the fixture's latency, so the text and each directory show their loading state first."
       >
         <GallerySpecimen variant="cookie.ts · live" wide>
           <div class="gallery-frame flex h-[28rem] overflow-hidden">
@@ -1556,7 +1582,11 @@ function abortTerminal(id: string) {
               :source="workspace.source"
               :root="workspace.root"
               :path="fileViewPath"
-              @open="fileViewPath = $event"
+              :can-back="fileViewBack.length > 0"
+              :can-forward="fileViewForward.length > 0"
+              @open="showInFileView"
+              @back="fileViewGoBack"
+              @forward="fileViewGoForward"
             />
           </div>
         </GallerySpecimen>
