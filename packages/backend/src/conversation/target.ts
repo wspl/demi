@@ -1,4 +1,5 @@
 import type { RemoteHost } from '@demicodes/host-remote'
+import { reachableHosts } from './hosts'
 import { ActivityGate } from '@demicodes/utils'
 import type { ManagedHosts } from '../managed/lifecycle'
 import type { RunnerRegistry } from '../runner/registry'
@@ -32,6 +33,14 @@ export type SwitchTargetResult = {
     'conflict'
 }
 
+export class HostAccessRefused extends Error {
+  constructor(readonly code: 'conversation_archived' | 'host_not_attached', message: string) {
+    super(message)
+  }
+}
+
+export type ConversationHostAccess = ConversationTargets['withHost']
+
 export class ConversationTargets {
   private readonly fileActivity = new Map<string, ActivityGate>()
   constructor(private readonly deps: ConversationTargetsDeps) {}
@@ -46,7 +55,7 @@ export class ConversationTargets {
   }
 
   /**
-   * The one way to reach a conversation's execution host from outside the
+   * The one way to reach a conversation's main or attached host from outside the
    * agent: every operation that touches the host on the conversation's
    * behalf (writing an attachment, listing the working tree, reading a
    * file) runs through here, whatever the target is. It resolves the target
@@ -61,15 +70,16 @@ export class ConversationTargets {
   async withHost<T>(
     id: string,
     operation: (host: RemoteHost) => Promise<T>,
-    signal?: AbortSignal
+    options: { signal?: AbortSignal; deviceId?: string } = {},
   ): Promise<T> {
+    const { signal, deviceId: selectedDeviceId } = options
     const release = await this.files(id).enter(signal)
     let releaseMachine: (() => void) | undefined
     try {
       if ((await this.deps.control.getConversation(id))?.archived)
-        throw new Error('Conversation is archived')
-      const host = await this.hostFor(id)
-      const deviceId = (await this.resolve(id)).deviceId
+        throw new HostAccessRefused('conversation_archived', 'Conversation is archived')
+      const host = await this.hostFor(id, selectedDeviceId)
+      const deviceId = selectedDeviceId ?? (await this.resolve(id)).deviceId
       const device = deviceId
         ? await this.deps.control.getDevice(deviceId)
         : null
@@ -93,15 +103,23 @@ export class ConversationTargets {
     )
   }
 
-  async hostFor(id: string): Promise<RemoteHost> {
+  async hostFor(id: string, selectedDeviceId?: string): Promise<RemoteHost> {
     const { control, registry, managedHosts, stores } = this.deps
     const conversation = await control.getConversation(id)
     if (!conversation)
       throw new Error(`No conversation ${id}`)
     const target = await this.resolve(id)
-    const device = target.kind === 'cloud'
-      ? await control.getOrCreateCloudDevice(conversation.userId)
-      : await control.getDevice(target.deviceId)
+    const selected = selectedDeviceId === undefined
+      ? undefined
+      : (await reachableHosts(this.deps, id)).find((host) => host.deviceId === selectedDeviceId)
+    if (selectedDeviceId !== undefined && !selected) {
+      throw new HostAccessRefused('host_not_attached', 'No such host in this conversation')
+    }
+    const device = selected
+      ? await control.getDevice(selected.deviceId)
+      : target.kind === 'cloud'
+        ? await control.getOrCreateCloudDevice(conversation.userId)
+        : await control.getDevice(target.deviceId)
     if (!device || device.userId !== conversation.userId)
       throw new Error('Device not owned by this user')
     if (device.kind === 'managed') {
@@ -109,16 +127,18 @@ export class ConversationTargets {
         throw new Error('Cloud is not configured')
       await managedHosts.ensureRunning(device)
     }
-    const path = target.kind === 'cloud'
-      ? (conversation.target.kind === 'cloud' ? conversation.target.path : undefined)
-        ?? cloudSessionDirectory(id, registry.deviceIdentity(device.id)?.homeDir)
-      : target.path
+    const path = selected?.role === 'attached'
+      ? selected.path || registry.deviceIdentity(device.id)?.homeDir || ''
+      : target.kind === 'cloud'
+        ? (conversation.target.kind === 'cloud' ? conversation.target.path : undefined)
+          ?? cloudSessionDirectory(id, registry.deviceIdentity(device.id)?.homeDir)
+        : target.path
     const host = registry.hostFor(
       { deviceId: device.id, path },
       id,
       stores.hostStore(id)
     )
-    if (target.kind === 'cloud')
+    if (selected?.role !== 'attached' && target.kind === 'cloud')
       await host.fs.mkdir(path, { recursive: true })
     return host
   }

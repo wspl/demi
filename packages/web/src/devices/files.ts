@@ -7,7 +7,9 @@ import { fileSource } from '../api/files'
 import type { Device, Project } from '../state/types'
 
 export function fileSourceFor(device: Device | null): FileBrowserSource {
-  return fileSource(device ? `/devices/${encodeURIComponent(device.id)}/fs` : null, device)
+  return fileSource({
+    directory: device ? `/devices/${encodeURIComponent(device.id)}/fs` : null,
+  }, device)
 }
 
 export function placesFor(

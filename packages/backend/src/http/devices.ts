@@ -1,4 +1,4 @@
-import { TextFileRefused, browseDirectory, readTextFile } from '../runner/file-browser'
+import { browseDirectory } from '../runner/file-browser'
 import { errorCode, errorMessage } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
@@ -102,31 +102,6 @@ export function deviceRoutes(options: {
     }
   })
 
-  app.get('/:id/fs/file', async (c) => {
-    const outcome = await deviceFsFor(
-      c.req.param('id'),
-      c.get('user').id,
-      control,
-      registry
-    )
-    if (!outcome.ok)
-      return c.json(outcome.error, outcome.status)
-    const path = c.req.query('path')
-    if (!path)
-      return c.json({
-        code: 'invalid_body',
-        message: 'Missing path query parameter'
-      }, 400)
-    try {
-      const text = await readTextFile(outcome.fs, path)
-      return c.json({ path, text })
-    } catch (error) {
-      if (error instanceof TextFileRefused)
-        return c.json({ code: error.code, message: error.message }, error.code === 'file_too_large' ? 413 : 415)
-      return fsError(c, error)
-    }
-  })
-
   app.post('/:id/fs', async (c) => {
     const outcome = await deviceFsFor(
       c.req.param('id'),
@@ -162,7 +137,7 @@ async function deviceFsFor(
   registry: RunnerRegistry
 ) {
   const device = await control.getDevice(deviceId)
-  if (!device || device.userId !== userId) {
+  if (!device || device.userId !== userId || device.kind !== 'user') {
     return {
       ok: false as const,
       status: 404 as const,
