@@ -148,6 +148,14 @@ function useWorkTabs(activeId: string | null) {
   }
   return { tabs, active, close, add, reset }
 }
+const narrowBar = ref<{ selectTab: (id: string) => void; addTab: () => void; tabIds: () => string[] } | null>(null)
+function selectMiddleTab() {
+  const ids = narrowBar.value?.tabIds() ?? []
+  const id = ids[Math.floor(ids.length / 2)]
+  if (id) {
+    narrowBar.value?.selectTab(id)
+  }
+}
 const panelWork = useWorkTabs('w2')
 const exhibitWork = useWorkTabs('w1')
 const emptyTabs: WorkTab[] = []
@@ -487,6 +495,22 @@ function abortTerminal(id: string) {
         note="Session tabs and the conversation list."
       >
         <GalleryTabBar />
+      </GallerySection>
+      <GallerySection
+        title="Overflow"
+        note="The same bar in a narrow frame. Tabs keep their width and the strip scrolls without a scrollbar, fading at whichever edge has more. Selecting a tab that is cut off, or adding one, scrolls smoothly until it shows whole and clear of the fade; closing tabs scrolls back when the end comes into reach. Use the controls or the tabs themselves."
+      >
+        <GallerySpecimen variant="narrow · live">
+          <div class="gallery-frame w-[32rem] overflow-hidden bg-surface-base">
+            <GalleryTabBar ref="narrowBar" />
+          </div>
+        </GallerySpecimen>
+        <div class="flex flex-wrap gap-2">
+          <Button size="sm" @click="narrowBar?.selectTab(narrowBar.tabIds()[0]!)">Select first</Button>
+          <Button size="sm" @click="narrowBar?.selectTab(narrowBar.tabIds().at(-1)!)">Select last</Button>
+          <Button size="sm" @click="selectMiddleTab">Select middle</Button>
+          <Button size="sm" @click="narrowBar?.addTab()">New tab</Button>
+        </div>
       </GallerySection>
     </template>
 

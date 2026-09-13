@@ -69,7 +69,8 @@ const tabs = ref<GalleryTab[]>([
 const activeTabId = ref('tab-1')
 const renamingTabId = ref<string | null>(null)
 const renameValue = ref('')
-const nextTab = ref(4)
+// Past the fixture ids: a repeated key would break the strip's diff and motion.
+const nextTab = ref(tabs.value.length + 1)
 
 const contextOpen = ref(false)
 const contextX = ref(0)
@@ -113,6 +114,13 @@ function addTab(): void {
   tabs.value.push(createTab(id, 'Untitled', 'done', 'anthropic'))
   activeTabId.value = id
 }
+
+/** The ids in strip order, for a specimen that drives the bar from outside. */
+function tabIds(): string[] {
+  return tabs.value.map((entry) => entry.tab.id)
+}
+
+defineExpose({ selectTab, addTab, tabIds })
 
 function beginRename(id: string): void {
   const entry = tabs.value.find((item) => item.tab.id === id)
