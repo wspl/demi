@@ -1,16 +1,12 @@
 import { attachmentTag } from '@demicodes/core'
 import {
   isAbortError,
-  isRecord,
   normalizeBaseUrl,
-  numberOrNull,
-  numberOrZero,
-  parseJsonObject,
-  parseJsonOrString,
-  stringOrNull
+  parseJsonOrString
 } from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
+import { z } from 'zod'
 import { zeroUsage } from '@demicodes/core'
 import type {
   TokenUsage,
@@ -20,11 +16,13 @@ import type {
 import {
   authStatusFromKey,
   defineProvider,
-  httpErrorCode,
   httpRequestFailedEvent,
   normalizeErrorCode,
   providerErrorFromUnknown,
-  redactSecretText,
+  readServerSentEvents,
+  reportedStringSchema,
+  taggedUnion,
+  tokenCountSchema,
   withProviderId,
   type AgentProvider,
   type InferenceItem,
@@ -32,6 +30,7 @@ import {
   type Provider,
   type ProviderEvent,
   type ProviderModelList,
+  type ServerSentEvent,
   type ToolDefinition,
 } from '@demicodes/provider'
 import {
@@ -362,6 +361,98 @@ export function thinkingBudgetTokens(
   return Math.max(MIN_THINKING_BUDGET_TOKENS, Math.min(requested, cap))
 }
 
+// ── response stream ─────────────────────────────────────────────────
+
+/**
+ * Token counts as the Messages API reports them: `message_start` carries the
+ * input side, `message_delta` the output side.
+ */
+const anthropicUsageSchema = z.looseObject({
+  input_tokens: tokenCountSchema,
+  output_tokens: tokenCountSchema,
+  cache_read_input_tokens: tokenCountSchema,
+  cache_creation_input_tokens: tokenCountSchema,
+})
+type AnthropicUsage = z.infer<typeof anthropicUsageSchema>
+
+/** The error object an `error` event nests under `error`. */
+const anthropicErrorSchema = z.looseObject({
+  type: reportedStringSchema,
+  message: reportedStringSchema,
+})
+
+/** The content blocks Demi maps; any other block type decodes to null. */
+const anthropicContentBlockSchema = taggedUnion({
+  text: z.looseObject({
+    type: z.literal('text'),
+    text: z.string(),
+  }),
+  thinking: z.looseObject({ type: z.literal('thinking') }),
+  tool_use: z.looseObject({
+    type: z.literal('tool_use'),
+    id: z.string().min(1),
+    name: z.string().min(1),
+    input: z.unknown().optional(),
+  }),
+})
+
+/** The block deltas Demi maps; any other delta type decodes to null. */
+const anthropicBlockDeltaSchema = taggedUnion({
+  text_delta: z.looseObject({
+    type: z.literal('text_delta'),
+    text: z.string(),
+  }),
+  thinking_delta: z.looseObject({
+    type: z.literal('thinking_delta'),
+    thinking: z.string(),
+  }),
+  signature_delta: z.looseObject({
+    type: z.literal('signature_delta'),
+    signature: z.string(),
+  }),
+  input_json_delta: z.looseObject({
+    type: z.literal('input_json_delta'),
+    partial_json: z.string(),
+  }),
+})
+
+/**
+ * The Messages API stream events Demi maps; any other event type (`ping`, or
+ * whatever the vendor adds next) decodes to null and is ignored. `index` ties
+ * a block's start, deltas and stop together, so a block event without one is
+ * a protocol error rather than a silent write to block 0.
+ */
+const anthropicStreamEventSchema = taggedUnion({
+  message_start: z.looseObject({
+    type: z.literal('message_start'),
+    message: z.looseObject({ usage: anthropicUsageSchema.optional() }),
+  }),
+  content_block_start: z.looseObject({
+    type: z.literal('content_block_start'),
+    index: z.number().int(),
+    content_block: anthropicContentBlockSchema,
+  }),
+  content_block_delta: z.looseObject({
+    type: z.literal('content_block_delta'),
+    index: z.number().int(),
+    delta: anthropicBlockDeltaSchema,
+  }),
+  content_block_stop: z.looseObject({
+    type: z.literal('content_block_stop'),
+    index: z.number().int(),
+  }),
+  message_delta: z.looseObject({
+    type: z.literal('message_delta'),
+    usage: anthropicUsageSchema.optional(),
+  }),
+  message_stop: z.looseObject({ type: z.literal('message_stop') }),
+  error: z.looseObject({
+    type: z.literal('error'),
+    message: reportedStringSchema,
+    error: anthropicErrorSchema.optional(),
+  }),
+})
+
 export async function* mapAnthropicMessageStream(
   events: AsyncIterable<ServerSentEvent>,
   signal?: AbortSignal,
@@ -369,88 +460,80 @@ export async function* mapAnthropicMessageStream(
   const toolBlocks = new Map<number, AnthropicToolBlock>()
   let usage = zeroUsage()
 
-  for await (const event of events) {
+  for await (const frame of events) {
     if (signal?.aborted) {
       yield { type: 'abort' }
       return
     }
-    for (const data of event.data) {
-      const value = parseJsonObject(data)
-      if (!value)
-        continue
-      const type = stringOrNull(value.type) ?? event.event
+    const event = anthropicStreamEventSchema.parse(JSON.parse(frame.data))
+    if (!event)
+      continue
 
-      if (type === 'error') {
-        const error = isRecord(value.error) ? value.error : value
-        const message = stringOrNull(error.message)
+    switch (event.type) {
+      case 'error': {
+        // The failure rides in a nested `error` object whose `type` is the
+        // vendor's error class. A payload without that object leaves only the
+        // event's own tag to classify by.
+        const message = event.error?.message
+          ?? event.message
           ?? 'Anthropic API stream error'
         yield {
           type: 'error',
           message,
-          code: normalizeErrorCode(stringOrNull(error.type), message)
+          code: normalizeErrorCode(event.error?.type ?? event.type, message),
         }
         return
       }
 
-      if (type === 'message_start') {
-        const message = isRecord(value.message) ? value.message : null
-        const messageUsage = message && isRecord(message.usage)
-          ? message.usage
-          : null
-        if (messageUsage)
-          usage = mergeAnthropicUsage(usage, messageUsage)
-        continue
-      }
+      case 'message_start':
+        usage = mergeAnthropicUsage(usage, event.message.usage)
+        break
 
-      if (type === 'content_block_start') {
-        const index = numberOrNull(value.index) ?? 0
-        const block = isRecord(value.content_block) ? value.content_block : null
-        if (block?.type === 'tool_use') {
-          toolBlocks.set(index, {
-            id: stringOrNull(block.id) ?? `tool_use_${index}`,
-            name: stringOrNull(block.name) ?? '',
+      case 'content_block_start': {
+        const block = event.content_block
+        if (!block)
+          break
+        if (block.type === 'tool_use') {
+          toolBlocks.set(event.index, {
+            id: block.id,
+            name: block.name,
             initialInput: block.input,
             inputJson: '',
           })
-        } else if (block?.type === 'thinking') {
+        } else if (block.type === 'thinking') {
           yield { type: 'thinking_start' }
-        } else if (block?.type === 'text') {
-          const text = stringOrNull(block.text)
-          if (text)
-            yield { type: 'text_delta', text }
+        } else if (block.text) {
+          // A text block usually opens empty and fills through deltas.
+          yield { type: 'text_delta', text: block.text }
         }
-        continue
+        break
       }
 
-      if (type === 'content_block_delta') {
-        const index = numberOrNull(value.index) ?? 0
-        const delta = isRecord(value.delta) ? value.delta : null
+      case 'content_block_delta': {
+        const delta = event.delta
         if (!delta)
-          continue
+          break
         if (delta.type === 'text_delta') {
-          const text = stringOrNull(delta.text)
-          if (text)
-            yield { type: 'text_delta', text }
+          if (delta.text)
+            yield { type: 'text_delta', text: delta.text }
         } else if (delta.type === 'thinking_delta') {
-          const text = stringOrNull(delta.thinking)
-          if (text)
-            yield { type: 'thinking_delta', text }
+          if (delta.thinking)
+            yield { type: 'thinking_delta', text: delta.thinking }
         } else if (delta.type === 'signature_delta') {
-          const signature = stringOrNull(delta.signature)
-          if (signature)
-            yield { type: 'thinking_signature', signature }
+          if (delta.signature)
+            yield { type: 'thinking_signature', signature: delta.signature }
         } else if (delta.type === 'input_json_delta') {
-          const block = toolBlocks.get(index)
+          // A tool call's input arrives as JSON text, one piece per delta.
+          const block = toolBlocks.get(event.index)
           if (block)
-            block.inputJson += stringOrNull(delta.partial_json) ?? ''
+            block.inputJson += delta.partial_json
         }
-        continue
+        break
       }
 
-      if (type === 'content_block_stop') {
-        const index = numberOrNull(value.index) ?? 0
-        const block = toolBlocks.get(index)
-        if (block && block.name) {
+      case 'content_block_stop': {
+        const block = toolBlocks.get(event.index)
+        if (block) {
           yield {
             type: 'tool_call_requested',
             toolUseId: block.id,
@@ -460,21 +543,17 @@ export async function* mapAnthropicMessageStream(
               : block.initialInput ?? {},
           }
         }
-        toolBlocks.delete(index)
-        continue
+        toolBlocks.delete(event.index)
+        break
       }
 
-      if (type === 'message_delta') {
-        const deltaUsage = isRecord(value.usage) ? value.usage : null
-        if (deltaUsage)
-          usage = mergeAnthropicUsage(usage, deltaUsage)
-        continue
-      }
+      case 'message_delta':
+        usage = mergeAnthropicUsage(usage, event.usage)
+        break
 
-      if (type === 'message_stop') {
+      case 'message_stop':
         yield { type: 'response', usage }
         return
-      }
     }
   }
 
@@ -615,68 +694,6 @@ function toolToAnthropicTool(tool: ToolDefinition): AnthropicTool {
   }
 }
 
-export interface ServerSentEvent {
-  event: string | null
-  data: string[]
-}
-
-export async function* readServerSentEvents(
-  body: ReadableStream<Uint8Array> | null,
-  signal?: AbortSignal,
-): AsyncIterable<ServerSentEvent> {
-  if (!body)
-    return
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let eventName: string | null = null
-  let data: string[] = []
-
-  const flush = function* (): Iterable<ServerSentEvent> {
-    if (data.length === 0)
-      return
-    yield { event: eventName, data }
-    eventName = null
-    data = []
-  }
-
-  try {
-    while (true) {
-      if (signal?.aborted)
-        return
-      const { value, done } = await reader.read()
-      if (done)
-        break
-      buffer += decoder.decode(value, { stream: true })
-      let newline = buffer.indexOf('\n')
-      while (newline !== -1) {
-        const raw = buffer.slice(0, newline)
-        buffer = buffer.slice(newline + 1)
-        const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-        if (line === '') {
-          yield* flush()
-        } else if (line.startsWith('event:')) {
-          eventName = line.slice('event:'.length).trim()
-        } else if (line.startsWith('data:')) {
-          data.push(line.slice('data:'.length).trimStart())
-        }
-        newline = buffer.indexOf('\n')
-      }
-    }
-    buffer += decoder.decode()
-    if (buffer) {
-      const line = buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer
-      if (line.startsWith('data:')) data.push(line.slice('data:'.length)
-        .trimStart())
-      else if (line.startsWith('event:'))
-        eventName = line.slice('event:'.length).trim()
-    }
-    yield* flush()
-  } finally {
-    reader.releaseLock()
-  }
-}
-
 function anthropicMessagesUrl(baseUrl: string): string {
   const normalized = normalizeBaseUrl(baseUrl)
   return normalized.endsWith('/messages')
@@ -684,19 +701,24 @@ function anthropicMessagesUrl(baseUrl: string): string {
     : `${normalized}/messages`
 }
 
+/**
+ * Folds one event's counts into the running total. A stream reports each count
+ * once — the input side on `message_start`, the output side on `message_delta`
+ * — and repeats the others as zero or omits them, so a count that is absent or
+ * zero leaves the running total alone.
+ */
 function mergeAnthropicUsage(
   current: TokenUsage,
-  usage: Record<string, unknown>
+  usage: AnthropicUsage | undefined
 ): TokenUsage {
-  const inputTokens = numberOrZero(usage.input_tokens)
-  const outputTokens = numberOrZero(usage.output_tokens)
-  const cacheReadTokens = numberOrZero(usage.cache_read_input_tokens)
-  const cacheWriteTokens = numberOrZero(usage.cache_creation_input_tokens)
+  if (!usage)
+    return current
   return {
-    inputTokens: inputTokens || current.inputTokens,
-    outputTokens: outputTokens || current.outputTokens,
-    cacheReadTokens: cacheReadTokens || current.cacheReadTokens,
-    cacheWriteTokens: cacheWriteTokens || current.cacheWriteTokens,
+    inputTokens: usage.input_tokens || current.inputTokens,
+    outputTokens: usage.output_tokens || current.outputTokens,
+    cacheReadTokens: usage.cache_read_input_tokens || current.cacheReadTokens,
+    cacheWriteTokens:
+      usage.cache_creation_input_tokens || current.cacheWriteTokens,
   }
 }
 
