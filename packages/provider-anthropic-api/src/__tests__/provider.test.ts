@@ -3,13 +3,13 @@ import {
   providerRuntime,
   type InferenceRequest,
   type ProviderEvent,
-  type ProviderSelection
+  type ProviderSelection,
+  type ServerSentEvent
 } from '@demicodes/provider'
 import {
   buildAnthropicMessagesBody,
   createAnthropicApiProvider,
   mapAnthropicMessageStream,
-  type ServerSentEvent,
 } from '../provider'
 
 test(
@@ -347,6 +347,51 @@ test(
   }
 )
 
+test(
+  'a content_block_delta without an index is a protocol error',
+  async () => {
+    const stream = mapAnthropicMessageStream(eventsFromData([
+      {
+        event: 'content_block_delta',
+        data: {
+          type: 'content_block_delta',
+          delta: { type: 'text_delta', text: 'hello' }
+        },
+      },
+    ]))
+
+    await expect(collect(stream)).rejects.toThrow(/index/)
+  }
+)
+
+test(
+  'event types this adapter does not map are ignored, malformed known ones are not',
+  async () => {
+    const events = await collect(mapAnthropicMessageStream(eventsFromData([
+      { event: 'ping', data: { type: 'ping' } },
+      {
+        event: 'message_flavour',
+        data: { type: 'message_flavour', flavour: 'new' }
+      },
+      { event: 'message_stop', data: { type: 'message_stop' } },
+    ])))
+
+    expect(events).toEqual([{ type: 'response', usage: zeroUsage() }])
+
+    const malformed = mapAnthropicMessageStream(eventsFromData([
+      {
+        event: 'content_block_start',
+        data: {
+          type: 'content_block_start',
+          index: 0,
+          content_block: { type: 'text', text: 42 },
+        },
+      },
+    ]))
+    await expect(collect(malformed)).rejects.toThrow(/text/)
+  }
+)
+
 interface CapturedRequest {
   url: string
   headers: Headers
@@ -423,7 +468,7 @@ async function* eventsFromData(values: Array<{
 }>): AsyncIterable<ServerSentEvent> {
   for (const value of values) yield {
     event: value.event,
-    data: [JSON.stringify(value.data)]
+    data: JSON.stringify(value.data)
   }
 }
 

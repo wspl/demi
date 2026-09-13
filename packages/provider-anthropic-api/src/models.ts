@@ -1,4 +1,15 @@
+import { z } from 'zod'
 import type { ProviderModel, ProviderModelList } from '@demicodes/provider'
+
+/**
+ * The token limits a catalog entry must state: whole positive counts, with no
+ * output limit spelled as null. Everything else about a model is descriptive,
+ * so only these two carry a constraint worth checking.
+ */
+const modelLimitsSchema = z.object({
+  contextWindow: z.number().int().positive(),
+  outputLimit: z.number().int().positive().nullable().optional(),
+})
 
 export interface AnthropicApiModelOptions {
   id: string
@@ -98,34 +109,31 @@ export function modelListFromAnthropicApiModels(
 ): ProviderModelList {
   const sourceFetchedAt = options.sourceFetchedAt ?? new Date().toISOString()
   const stale = options.stale === true
-  const mapped = models.map((model): ProviderModel => ({
-    providerId: options.providerId,
-    id: model.id,
-    displayName: model.displayName ?? model.id,
-    description: model.description,
-    contextWindow: positiveInteger(
-      model.contextWindow,
-      `models[${model.id}].contextWindow`
-    ),
-    outputLimit: model.outputLimit == null ? null : positiveInteger(
-      model.outputLimit,
-      `models[${model.id}].outputLimit`
-    ),
-    supportsTools: model.supportsTools ?? null,
-    supportsAttachments: model.supportsAttachments ?? null,
-    supportsReasoning: model.supportsReasoning ?? null,
-    supportedThinkingEfforts: model.supportedThinkingEfforts
-      ? [...model.supportedThinkingEfforts]
-      : null,
-    defaultThinkingEffort: model.defaultThinkingEffort ?? null,
-    canDisableThinking: model.canDisableThinking ?? null,
-    serviceTiers: model.serviceTiers ? model.serviceTiers.map((tier) => ({
-      ...tier
-    })) : model.serviceTiers,
-    defaultServiceTierId: model.defaultServiceTierId ?? null,
-    sourceFetchedAt,
-    stale,
-  }))
+  const mapped = models.map((model): ProviderModel => {
+    const limits = modelLimitsSchema.parse(model)
+    return {
+      providerId: options.providerId,
+      id: model.id,
+      displayName: model.displayName ?? model.id,
+      description: model.description,
+      contextWindow: limits.contextWindow,
+      outputLimit: limits.outputLimit ?? null,
+      supportsTools: model.supportsTools ?? null,
+      supportsAttachments: model.supportsAttachments ?? null,
+      supportsReasoning: model.supportsReasoning ?? null,
+      supportedThinkingEfforts: model.supportedThinkingEfforts
+        ? [...model.supportedThinkingEfforts]
+        : null,
+      defaultThinkingEffort: model.defaultThinkingEffort ?? null,
+      canDisableThinking: model.canDisableThinking ?? null,
+      serviceTiers: model.serviceTiers ? model.serviceTiers.map((tier) => ({
+        ...tier
+      })) : model.serviceTiers,
+      defaultServiceTierId: model.defaultServiceTierId ?? null,
+      sourceFetchedAt,
+      stale,
+    }
+  })
   return {
     providerId: options.providerId,
     models: mapped,
@@ -138,10 +146,4 @@ export function modelListFromAnthropicApiModels(
     sourceFetchedAt,
     stale,
   }
-}
-
-function positiveInteger(value: number, field: string): number {
-  if (!Number.isInteger(value) || value <= 0)
-    throw new Error(`${field} must be a positive integer`)
-  return value
 }

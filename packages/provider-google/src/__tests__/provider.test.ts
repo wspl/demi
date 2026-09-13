@@ -4,14 +4,14 @@ import {
   providerRuntime,
   type InferenceRequest,
   type ProviderEvent,
-  type ProviderSelection
+  type ProviderSelection,
+  type ServerSentEvent
 } from '@demicodes/provider'
 import {
   buildGoogleGenerateContentBody,
   createGoogleProvider,
   inferenceItemsToGoogleContents,
   mapGoogleContentStream,
-  type ServerSentEvent,
 } from '../provider'
 
 test(
@@ -414,6 +414,28 @@ test(
   }
 )
 
+test(
+  'a chunk whose candidates is not an array is a protocol error',
+  async () => {
+    const stream = mapGoogleContentStream(streamOf([
+      { candidates: { content: { parts: [{ text: 'hello' }] } } },
+    ]))
+
+    await expect(collect(stream)).rejects.toThrow(/candidates/)
+  }
+)
+
+test(
+  'a token count the API sends as text is a protocol error, not a zero',
+  async () => {
+    const stream = mapGoogleContentStream(streamOf([
+      { usageMetadata: { promptTokenCount: '10' } },
+    ]))
+
+    await expect(collect(stream)).rejects.toThrow(/promptTokenCount/)
+  }
+)
+
 // ── helpers ─────────────────────────────────────────────────────────
 
 interface CapturedRequest {
@@ -489,7 +511,7 @@ async function* streamOf(
 ): AsyncIterable<ServerSentEvent> {
   for (const value of values) yield {
     event: null,
-    data: [JSON.stringify(value)]
+    data: JSON.stringify(value)
   }
 }
 
