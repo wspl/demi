@@ -82,8 +82,14 @@ meaning and atomicity rather than duplicating every SQL column.
 Conversation and workspace `sort_order` represent explicit user ordering;
 activity timestamps do not reorder them. A read acknowledgement advances
 `read_revision` with `MAX`, so an old browser cannot move it backward. The
-conversation module refuses a revision beyond current output. See
-[Sidebar ordering](sidebar-order.md) for ordering partitions and mutations.
+conversation module refuses a revision beyond current output.
+
+Projects retain their explicit order; conversations are ordered within their
+project and pin partition. New projects append and new conversations enter at the
+front. Rename, archive/restore, and target changes retain sort positions, with ID
+as the stable tie-breaker. Reorder writes one partition atomically and rejects
+archived rows or cross-partition targets. [Web API](web-api.md) owns the request
+contract.
 
 ## Conversation state and transactions
 

@@ -75,16 +75,16 @@ explicit replacement. With no saved choice, the first available model is used.
 
 The first send creates the backend record. The default title comes from the
 first user message and can be renamed. Draft persistence and confirmation of
-uncertain sends belong to [Web integration](web-application.md). Choosing a
+uncertain sends belong to [Web architecture](web-application.md). Choosing a
 project or device directory affects subsequent execution; target-switch admission
 and context announcements are defined in
 [Sessions and targets](sessions-and-targets.md).
 
 Conversations can be archived and restored, but not deleted. Archiving is refused
 while root or child work or conflicting operations are active. Archived history
-remains readable; sending and metadata changes require restore. Sidebar groups,
-pinning, multi-selection, and persistent ordering follow
-[Sidebar ordering](sidebar-order.md).
+remains readable; sending and metadata changes require restore. Persistent ordering
+is independent of activity; its storage rules belong to
+[Storage](storage.md#control-records).
 
 The conversation interface exposes steering, queued messages, stop, Retry/Resume,
 manual compaction, model switching, message editing, Fork, and child/terminal
@@ -162,37 +162,18 @@ preference and does not stop existing work. Provider protocol, credential,
 catalog, and quota details have their authoritative home in
 [Providers](providers-and-vault.md).
 
-## Browser surfaces
+## Browser scope
 
-The application uses a conversation sidebar and chat pane, with a right work
-panel where enabled. The conversation header contains its title, host, and
-working directory controls. Model, thinking, and service-tier selection belong
-at the composer. Host attachment and target switching are distinct actions;
-[Host menu](host-menu.md) defines that interaction.
+The browser provides conversations, account settings, provider management,
+devices, and Cloud controls. Administrative account management and usage have
+backend APIs; their dedicated browser pages are deferred. Notifications, MCP,
+Skills, data/privacy actions, language switching, and account deletion are also
+deferred.
 
-Settings opens as a dialog from the account menu rather than a separate route.
-Nested forms stack on it; Escape and scrim dismissal act on the top dialog.
-The current functional sections are General, Account, Models & providers
-(permission-dependent), Devices, Archived, and Keyboard. General saves appearance;
-Account handles identity changes; Devices includes pairing and Cloud controls.
-
-Notifications, MCP servers, Skills, and Data & privacy remain visible but disabled
-with the shared development-state tooltip. Language and account deletion are
-also deferred. Administrative account management and usage have backend APIs;
-their dedicated browser pages are not implemented. This does not change the
-account and usage authorization rules above.
-
-The interface is responsive, with side panes becoming overlays at narrow widths.
 The selected scope excludes public sharing, collaboration, search, offline mode,
-PWA behavior, push notifications, and localization; copy is English.
-
-`web-ui` owns every reusable behavior and component. `web` supplies product data,
-state, routing, and API handlers; `web-gallery` supplies specimens of the same
-components. Both surfaces must exercise UI changes in the same checkpoint.
-The browser is a Vue SPA built by Vite, using vue-router and Pinia. Deployment
-and browser integration are defined in [Backend](backend.md) and
-[Web application](web-application.md); shared session behavior is documented
-in [Session interface](session-interface.md).
+PWA behavior, push notifications, and localization. Technology and package
+responsibilities belong to [Web architecture](web-application.md). Components,
+layout, and interaction examples are maintained in the gallery.
 
 ## Cloud settings
 

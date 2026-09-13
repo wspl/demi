@@ -131,11 +131,6 @@ implementation.
 | How do external programs call declared commands? | [External command clients](commands.md#external-command-clients) |
 | How is Cloud provisioned and reset? | [Managed hosts](managed-hosts.md) |
 | How does the web application fit together? | [Web application](web-application.md) |
-| How do transcript, dock, and inspection panels behave? | [Session interface](session-interface.md) |
-| How does a user pair a device? | [Device pairing](device-pairing-ui.md) |
-| What does the host menu show and permit? | [Host menu](host-menu.md) |
-| How are sidebar items ordered? | [Sidebar ordering](sidebar-order.md) |
-| How do product and gallery share UI behavior? | [Web/gallery synchronization](web-gallery-sync.md) |
 | Which end-to-end cases must hold? | [Scenarios](scenarios.md) |
 | What is the delivery plan? | [Roadmap](roadmap.md) |
 
