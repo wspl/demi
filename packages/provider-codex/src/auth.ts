@@ -6,15 +6,7 @@ import {
   nonEmptyString
 } from '@demicodes/utils'
 import { z } from 'zod'
-import {
-  chmod,
-  mkdir,
-  open,
-  readFile,
-  rename,
-  rm,
-  writeFile
-} from 'node:fs/promises'
+import { mkdir, open, readFile, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
@@ -22,6 +14,7 @@ import {
   reportedStringSchema,
   type ProviderAuthState
 } from '@demicodes/provider'
+import { writeJsonFileAtomic } from '@demicodes/provider/credentials-pool'
 
 export const CODEX_AUTH_MODES = [
   'apiKey',
@@ -296,7 +289,7 @@ export class FileCodexAuthStore implements CodexAuthStore {
         tokens: nextTokens,
         last_refresh: this.now().toISOString(),
       }
-      await writeAuthJsonAtomic(this.authFile, nextAuth)
+      await writeJsonFileAtomic(this.authFile, nextAuth)
       return resolveChatGptAuthFromFile(nextAuth, this.authFile)
     })
   }
@@ -593,17 +586,6 @@ function resolveAgentIdentity(
     isFedrampAccount: value?.chatgpt_account_is_fedramp === true,
     authFile,
   }
-}
-
-async function writeAuthJsonAtomic(
-  authFile: string,
-  auth: CodexAuthDotJson
-): Promise<void> {
-  await mkdir(dirname(authFile), { recursive: true })
-  const temp = `${authFile}.${process.pid}.${Date.now()}.tmp`
-  await writeFile(temp, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 })
-  await chmod(temp, 0o600)
-  await rename(temp, authFile)
 }
 
 function expiresWithin(

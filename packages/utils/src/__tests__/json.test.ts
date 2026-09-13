@@ -40,59 +40,44 @@ describe('portable JSON codec', () => {
       two: new Uint8Array([254, 253]),
     })
 
-    const decoded = parsePortableJson<{
-      metadata: { count: bigint }
-      bytes: Uint8Array
-      empty: Uint8Array
-      one: Uint8Array
-      two: Uint8Array
-    }>(encoded)
-
-    expect(decoded.metadata.count).toBe(42n)
-    expect(decoded.bytes).toBeInstanceOf(Uint8Array)
-    expect([...decoded.bytes]).toEqual([1, 2, 3])
-    expect([...decoded.empty]).toEqual([])
-    expect([...decoded.one]).toEqual([255])
-    expect([...decoded.two]).toEqual([254, 253])
+    // toEqual distinguishes a Uint8Array from a plain array, so this also
+    // asserts that the markers revived into typed arrays.
+    expect(parsePortableJson(encoded)).toEqual({
+      metadata: { count: 42n },
+      bytes: new Uint8Array([1, 2, 3]),
+      empty: new Uint8Array(),
+      one: new Uint8Array([255]),
+      two: new Uint8Array([254, 253]),
+    })
   })
 
   it(
     'round-trips Date values, including nested, top-level, and in arrays',
     () => {
       const date = new Date('2026-08-31T12:34:56.789Z')
-      const decoded = parsePortableJson<{
-        at: Date;
-        list: Date[]
-      }>(
+      // toEqual distinguishes a Date from its ISO string, so this also
+      // asserts that the markers revived into Date values.
+      expect(parsePortableJson(
         stringifyPortableJson({ at: date, list: [date] }),
-      )
-      expect(decoded.at).toBeInstanceOf(Date)
-      expect(decoded.at.toISOString()).toBe(date.toISOString())
-      expect(decoded.list[0]).toBeInstanceOf(Date)
+      )).toEqual({ at: date, list: [date] })
 
-      const top = parsePortableJson<Date>(stringifyPortableJson(date))
-      expect(top).toBeInstanceOf(Date)
-      expect(top.getTime()).toBe(date.getTime())
+      expect(parsePortableJson(stringifyPortableJson(date))).toEqual(date)
 
       // A plain ISO string stays a string — only marked Dates revive.
-      expect(parsePortableJson<{ s: string }>(stringifyPortableJson({
+      expect(parsePortableJson(stringifyPortableJson({
         s: date.toISOString()
-      })).s).toBe(
-        date.toISOString(),
-      )
+      }))).toEqual({ s: date.toISOString() })
     }
   )
 
   it('round-trips Buffer as Uint8Array despite Buffer.toJSON', () => {
-    const decoded = parsePortableJson<{ bytes: Uint8Array }>(
+    expect(parsePortableJson(
       stringifyPortableJson({ bytes: Buffer.from([9, 8, 7]) }),
-    )
-    expect(decoded.bytes).toBeInstanceOf(Uint8Array)
-    expect([...decoded.bytes]).toEqual([9, 8, 7])
+    )).toEqual({ bytes: new Uint8Array([9, 8, 7]) })
   })
 
   it('parses plain JSON without markers unchanged', () => {
-    expect(parsePortableJson<{ a: number[] }>('{"a":[1,2]}')).toEqual({
+    expect(parsePortableJson('{"a":[1,2]}')).toEqual({
       a: [1, 2]
     })
   })

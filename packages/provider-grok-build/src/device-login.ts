@@ -2,6 +2,11 @@
 // loopback PKCE); the request contract matches the official Grok CLI: frozen
 // OAuth2 scopes, referrer=grok-build, client version/surface headers, id_token
 // + access-token principal peek, then cli-chat-proxy GET /user enrichment.
+import {
+  decodeJsonResponse,
+  lifetimeSecondsSchema,
+  pollIntervalSecondsSchema,
+} from '@demicodes/provider'
 import { delay } from '@demicodes/utils'
 import { z } from 'zod'
 import {
@@ -21,7 +26,6 @@ const GROK_CLI_CLIENT_ID = 'b1a00492-073a-47ea-816f-4c329264a828'
 const GROK_LOGIN_SCOPE =
   'openid profile email offline_access grok-cli:access api:access conversations:read conversations:write workspaces:read workspaces:write'
 const GROK_LOGIN_REFERRER = 'grok-build'
-const GROK_LOGIN_FALLBACK_INTERVAL_S = 5
 const GROK_LOGIN_MIN_EXPIRES_S = 10 * 60
 const TEAM_PRINCIPAL = 'Team'
 const ORGANIZATION_PRINCIPAL = 'Organization'
@@ -79,45 +83,15 @@ async function postForm(
   })
 }
 
-/** Decodes one login response; `what` names the step in the failure. */
-async function decodeJsonBody<T>(
-  response: Response,
-  schema: z.ZodType<T>,
-  what: string,
-): Promise<T> {
-  const body: unknown = await response.json().catch(() => null)
-  const decoded = schema.safeParse(body)
-  if (!decoded.success) {
-    throw new GrokAuthError(
-      'auth_invalid',
-      `${what} response is malformed: ${z.prettifyError(decoded.error)}`
-    )
-  }
-  return decoded.data
+/** Reports a malformed login response; `what` names the step that failed. */
+function malformedGrokResponse(
+  what: string
+): (problem: string) => GrokAuthError {
+  return (problem) => new GrokAuthError(
+    'auth_invalid',
+    `${what} response is malformed: ${problem}`
+  )
 }
-
-/**
- * A duration in seconds as the OAuth server states it: RFC 8628 says a number,
- * some deployments send the digits as a string.
- */
-const oauthSecondsSchema = z.union([
-  z.number(),
-  z.string().trim().regex(/^\d+(\.\d+)?$/).transform(Number),
-])
-
-/**
- * How long to wait between polls. Anything unusable means "no preference",
- * which is the fallback rather than a failed login.
- */
-const pollIntervalSecondsSchema = oauthSecondsSchema
-  .refine((seconds) => Number.isFinite(seconds) && seconds >= 0)
-  .catch(GROK_LOGIN_FALLBACK_INTERVAL_S)
-
-/** A device-code or token lifetime; an unusable one reads as absent. */
-const lifetimeSecondsSchema = oauthSecondsSchema
-  .refine((seconds) => Number.isFinite(seconds) && seconds > 0)
-  .optional()
-  .catch(undefined)
 
 /** The one-time code the user types: letters, digits and dashes only. */
 const userCodeSchema = z
@@ -236,10 +210,10 @@ async function requestDeviceCode(
       `Grok device code request failed with HTTP ${response.status}`
     )
   }
-  const body = await decodeJsonBody(
+  const body = await decodeJsonResponse(
     response,
     deviceCodeResponseSchema,
-    'Grok device code'
+    malformedGrokResponse('Grok device code')
   )
   const lifetimeSeconds = Math.max(
     body.expiresInSeconds ?? 0,
@@ -291,11 +265,15 @@ async function pollForTokens(
       signal,
     )
     if (response.ok)
-      return decodeJsonBody(response, deviceTokensSchema, 'Grok device token')
-    const { error } = await decodeJsonBody(
+      return decodeJsonResponse(
+        response,
+        deviceTokensSchema,
+        malformedGrokResponse('Grok device token')
+      )
+    const { error } = await decodeJsonResponse(
       response,
       deviceTokenErrorSchema,
-      'Grok device token'
+      malformedGrokResponse('Grok device token')
     )
     if (error === 'slow_down') {
       intervalSeconds += 5

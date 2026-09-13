@@ -3,7 +3,11 @@ import { z } from 'zod'
 import { parsePortableJson } from '@demicodes/utils'
 import type { Block } from '@demicodes/core'
 import type { HostStore } from '@demicodes/shell'
-import type { AgentTreeStore, BlobStore } from '@demicodes/agent'
+import {
+  sessionPhaseSchema,
+  type AgentTreeStore,
+  type BlobStore,
+} from '@demicodes/agent'
 import { openSqliteDatabase, type SqlDatabase, type SqlParams } from './database'
 import { DbHostStore } from './host-store'
 import { CONVERSATION_MIGRATIONS, migrate } from './migrations'
@@ -117,7 +121,7 @@ export class ConversationStores {
     ])
     const phase = node
       ? z
-          .object({ phase: z.enum(['idle', 'running', 'compacting']) })
+          .object({ phase: sessionPhaseSchema })
           .parse(parsePortableJson(node.state_json)).phase
       : 'idle'
     const terminal = db.get<{ block_json: string }>(

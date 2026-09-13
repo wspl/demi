@@ -66,10 +66,9 @@ export function findLanguage(filename: string): ResolvedLanguage | null {
   if (direct) return { load: direct.load }
 
   const override = filenameOverrides[basename]
-  const descriptions = languages as unknown as readonly LanguageDescription[]
   const description = override
-    ? LanguageDescription.matchLanguageName(descriptions, override)
-    : LanguageDescription.matchFilename(descriptions, basename)
+    ? LanguageDescription.matchLanguageName(languages, override)
+    : LanguageDescription.matchFilename(languages, basename)
 
   if (!description) return null
 

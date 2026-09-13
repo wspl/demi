@@ -513,13 +513,13 @@ export const transcriptPatchSchema = z.discriminatedUnion('op', [
 
 // ── the server frames (single source of truth for ServerFrame) ──────
 
-const sessionPhaseSchema: z.ZodType<SessionPhase> = z.enum([
+export const sessionPhaseSchema: z.ZodType<SessionPhase> = z.enum([
   'idle',
   'running',
   'compacting',
 ])
 
-const queuedMessageSchema: z.ZodType<QueuedMessage> = z.object({
+export const queuedMessageSchema: z.ZodType<QueuedMessage> = z.object({
   id: z.string(),
   text: z.string(),
   content: z.array(userContentBlockSchema),

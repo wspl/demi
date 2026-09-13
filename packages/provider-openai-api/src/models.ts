@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { modelLimitsSchema } from '@demicodes/provider'
 import type { ProviderModel, ProviderModelList } from '@demicodes/provider'
 
 const serviceTierSchema = z.object({
@@ -10,14 +11,12 @@ const serviceTierSchema = z.object({
 
 /**
  * One model of an OpenAI-compatible endpoint, as its configuration states it.
- * A window or limit is a count of tokens, so it is a positive integer.
+ * The token limits come from the shared `modelLimitsSchema`.
  */
-export const openAIApiModelOptionsSchema = z.object({
+export const openAIApiModelOptionsSchema = modelLimitsSchema.extend({
   id: z.string().min(1),
   displayName: z.string().min(1).optional(),
   description: z.string().optional(),
-  contextWindow: z.number().int().positive(),
-  outputLimit: z.number().int().positive().nullish(),
   supportsTools: z.boolean().nullish(),
   supportsAttachments: z.boolean().nullish(),
   supportsReasoning: z.boolean().nullish(),

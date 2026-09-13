@@ -11,15 +11,23 @@ import type {
 import { VIDEO_FILE_EXTENSIONS } from '@demicodes/core'
 import type { ProviderModel, ProviderModelList } from './types'
 
+/** Stamps `providerId` onto one catalog model. */
+export function withModelProviderId(
+  model: ProviderModel,
+  providerId: string
+): ProviderModel {
+  return model.providerId === providerId ? model : { ...model, providerId }
+}
+
 /** Stamps `providerId` onto a model catalog and every model in it. */
-export function withProviderId(
+export function withCatalogProviderId(
   list: ProviderModelList,
   providerId: string
 ): ProviderModelList {
   return {
     ...list,
     providerId,
-    models: list.models.map((model) => ({ ...model, providerId })),
+    models: list.models.map((model) => withModelProviderId(model, providerId)),
   }
 }
 

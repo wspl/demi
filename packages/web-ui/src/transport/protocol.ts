@@ -1,7 +1,6 @@
-import type { ProviderSelection } from '@demicodes/agent/client'
-
-// Control-plane protocol. Decoupled from @demicodes/provider so the component library stays
-// portable: hosts map their own catalogs onto these DTOs.
+// The model catalog as the components read it. Decoupled from
+// @demicodes/provider so the component library stays portable: hosts map their
+// own catalogs onto these DTOs.
 
 export interface ProviderInfo {
   id: string
@@ -41,37 +40,6 @@ export interface PrepareSessionParams {
   thinkingEffort?: string | null
   serviceTierId?: string | null
 }
-
-export interface WorkspaceInfo {
-  cwd: string
-}
-
-export interface ControlApi {
-  listProviders(): Promise<ProviderInfo[]>
-  listModels(params: { providerId: string }): Promise<ModelInfo[]>
-  prepareSession(params: PrepareSessionParams): Promise<ProviderSelection>
-  defaultWorkspace(): Promise<WorkspaceInfo>
-}
-
-export type ControlMethod = keyof ControlApi
-
-export interface ControlRequest {
-  id: number
-  method: ControlMethod
-  params: unknown
-}
-
-export type ControlResponse =
-  | {
-    id: number;
-    ok: true;
-    result: unknown
-  }
-  | {
-    id: number;
-    ok: false;
-    error: string
-  }
 
 // The agent owns the session contract; an embedder reads it through here so it
 // never has to describe a frame, a block or a tool view a second time.

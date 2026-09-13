@@ -442,6 +442,7 @@ test(
       'stringOrNull',
       'nonEmptyString',
       'numberOrNull',
+      'decodeJwtPayload',
     ]
     const sharedHelpers = [
       ...utilsHelperNames.map((name) => ({
@@ -458,6 +459,12 @@ test(
         home: 'packages/provider/',
         pkg: '@demicodes/provider'
       },
+      // The SSE frame reader is shared by every streaming provider; its home is @demicodes/provider.
+      {
+        name: 'readServerSentEvents',
+        home: 'packages/provider/',
+        pkg: '@demicodes/provider'
+      },
     ]
     const files = await listProductionSourceFiles()
     const violations: string[] = []
@@ -468,9 +475,10 @@ test(
       for (const { name, home, pkg } of sharedHelpers) {
         if (relativePath.startsWith(home))
           continue // the canonical definition lives here
-        // Match a function or class definition (not local variables that happen to share the name).
+        // Match a function (including a generator) or class definition, not local variables that
+        // happen to share the name.
         const definition = new RegExp(
-          `\\b(?:export\\s+)?(?:async\\s+)?function ${name}\\b|\\b(?:export\\s+)?(?:abstract\\s+)?class ${name}\\b`
+          `\\b(?:export\\s+)?(?:async\\s+)?function\\s*\\*?\\s*${name}\\b|\\b(?:export\\s+)?(?:abstract\\s+)?class ${name}\\b`
         )
         if (definition.test(source))
           violations.push(

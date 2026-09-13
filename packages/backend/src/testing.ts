@@ -188,7 +188,7 @@ export function runnerShellFactory(ctx: {
   })
 }
 
-import { type Command } from '@demicodes/shell'
+import { defineCommand, type Command } from '@demicodes/shell'
 import { delay, utf8Lines } from '@demicodes/utils'
 import { z } from 'zod'
 
@@ -197,15 +197,14 @@ export function probeCommand(): Command {
     name: 'probe',
     summary: 'Test probes: hold for a while, or echo the first line of the live stdin.',
     subcommands: [
-      {
+      defineCommand({
         name: 'hold',
         summary: 'Wait `ms` milliseconds (aborted with the command).',
         input: { ms: z.coerce.number() },
         positionals: ['ms'],
         kind: 'rpc',
         run: async ({ parsed, signal }) => {
-          const ms = parsed.values.ms as number
-          const held = delay(ms)
+          const held = delay(parsed.values.ms)
           const aborted = new Promise<'aborted'>(
             (resolve) => signal.addEventListener(
               'abort',
@@ -218,15 +217,15 @@ export function probeCommand(): Command {
             aborted
           ])) === 'aborted' ? { exitCode: 130 } : { exitCode: 0 }
         },
-      },
-      {
+      }),
+      defineCommand({
         name: 'stdin',
         summary: 'Print the first line written to the running command (`--delay` waits before printing).',
         input: { delay: z.coerce.number().optional() },
         kind: 'rpc',
         run: async ({ parsed, stdinStream, io }) => {
           for await (const line of utf8Lines(stdinStream)) {
-            const wait = parsed.values.delay as number | undefined
+            const wait = parsed.values.delay
             if (wait)
               await delay(wait)
             await io.stdout(line)
@@ -234,7 +233,7 @@ export function probeCommand(): Command {
           }
           return { exitCode: 1 }
         },
-      },
+      }),
     ],
   }
 }

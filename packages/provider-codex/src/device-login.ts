@@ -2,6 +2,10 @@
 // request a user code, let the user confirm at {issuer}/codex/device from any browser on any
 // device, poll until the server issues an authorization code with server-generated PKCE, then
 // run the standard authorization_code exchange. No vendor CLI and no host-side browser involved.
+import {
+  decodeJsonResponse,
+  pollIntervalSecondsSchema,
+} from '@demicodes/provider'
 import { delay } from '@demicodes/utils'
 import { z } from 'zod'
 import {
@@ -14,7 +18,6 @@ import {
 
 const DEVICE_LOGIN_ISSUER = 'https://auth.openai.com'
 const DEVICE_LOGIN_MAX_WAIT_MS = 15 * 60 * 1000
-const DEVICE_LOGIN_FALLBACK_INTERVAL_S = 5
 
 export interface CodexDeviceLoginPending {
   verificationUrl: string
@@ -29,19 +32,6 @@ export interface CodexDeviceLoginOptions {
   fetch?: typeof fetch
   issuer?: string
 }
-
-/**
- * How long to wait between polls, in seconds. The server sends a number, some
- * deployments send it as a digit string; anything else means "no preference",
- * which is the fallback rather than a failed login.
- */
-const pollIntervalSecondsSchema = z
-  .union([
-    z.number(),
-    z.string().trim().regex(/^\d+(\.\d+)?$/).transform(Number),
-  ])
-  .refine((seconds) => Number.isFinite(seconds) && seconds >= 0)
-  .catch(DEVICE_LOGIN_FALLBACK_INTERVAL_S)
 
 /** The device-code request's answer: what to show the user and how to poll. */
 const deviceUserCodeSchema = z
@@ -108,21 +98,14 @@ async function postJson(
   })
 }
 
-/** Decodes one login response; `what` names the step in the failure. */
-async function decodeJsonBody<T>(
-  response: Response,
-  schema: z.ZodType<T>,
-  what: string,
-): Promise<T> {
-  const body: unknown = await response.json().catch(() => null)
-  const decoded = schema.safeParse(body)
-  if (!decoded.success) {
-    throw new CodexAuthError(
-      'auth_login_failed',
-      `${what} response is malformed: ${z.prettifyError(decoded.error)}`
-    )
-  }
-  return decoded.data
+/** Reports a malformed login response; `what` names the step that failed. */
+function malformedCodexResponse(
+  what: string
+): (problem: string) => CodexAuthError {
+  return (problem) => new CodexAuthError(
+    'auth_login_failed',
+    `${what} response is malformed: ${problem}`
+  )
 }
 
 async function requestUserCode(
@@ -149,7 +132,11 @@ async function requestUserCode(
       `Device code request failed with HTTP ${response.status}`
     )
   }
-  return decodeJsonBody(response, deviceUserCodeSchema, 'Device code')
+  return decodeJsonResponse(
+    response,
+    deviceUserCodeSchema,
+    malformedCodexResponse('Device code')
+  )
 }
 
 async function pollForAuthorization(
@@ -168,10 +155,10 @@ async function pollForAuthorization(
       signal,
     )
     if (response.ok) {
-      return decodeJsonBody(
+      return decodeJsonResponse(
         response,
         deviceAuthorizationSchema,
-        'Device authorization'
+        malformedCodexResponse('Device authorization')
       )
     }
     // 403/404 mean "user has not confirmed yet"; anything else is terminal.
@@ -217,7 +204,11 @@ async function exchangeAuthorizationCode(
       `Device-code token exchange failed with HTTP ${response.status}`
     )
   }
-  return decodeJsonBody(response, exchangedTokensSchema, 'Token exchange')
+  return decodeJsonResponse(
+    response,
+    exchangedTokensSchema,
+    malformedCodexResponse('Token exchange')
+  )
 }
 
 /** Runs the full device-code flow and returns vendor-shaped auth material. */

@@ -1,9 +1,9 @@
+import { withModelProviderId } from './model-selection'
 import type {
   AgentProvider,
   ModelPolicy,
   Provider,
   ProviderFactoryDefinition,
-  ProviderModel,
   ProviderModelList,
   ProviderRuntimeFactory,
   ProviderSelection,
@@ -49,7 +49,7 @@ export function applyModelPolicy(
   const models = list.models
     .filter((model) => (!include || include.has(model.id))
       && (!exclude || !exclude.has(model.id)))
-    .map((model) => withProviderId(model, providerId))
+    .map((model) => withModelProviderId(model, providerId))
 
   const defaultModelId =
     policy?.default && models.some((model) => model.id === policy.default)
@@ -65,8 +65,4 @@ export function applyModelPolicy(
     models,
     defaultModelId,
   }
-}
-
-function withProviderId(model: ProviderModel, providerId: string): ProviderModel {
-  return model.providerId === providerId ? model : { ...model, providerId }
 }

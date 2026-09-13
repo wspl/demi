@@ -9,11 +9,9 @@ import { z } from 'zod'
 import {
   open,
   readFile,
-  rename,
   rm,
   writeFile,
   mkdir,
-  chmod,
   stat
 } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -24,6 +22,7 @@ import {
   reportedStringSchema,
   type ProviderAuthState
 } from '@demicodes/provider'
+import { writeJsonFileAtomic } from '@demicodes/provider/credentials-pool'
 
 /**
  * One credential entry as written by the Grok CLI (`~/.grok/auth.json`).
@@ -303,7 +302,7 @@ export class FileGrokAuthStore implements GrokAuthStore {
         ...(expiresAt ? { expires_at: expiresAt.toISOString() } : {}),
       }
       const nextFile: GrokAuthDotJson = { ...latest, [entryKey]: nextEntry }
-      await writeAuthJsonAtomic(this.authFile, nextFile)
+      await writeJsonFileAtomic(this.authFile, nextFile)
 
       return resolvedAuthFromEntry(nextEntry, accessToken, {
         refreshToken: nonEmptyString(nextEntry.refresh_token) ?? null,
@@ -603,17 +602,6 @@ function expiresWithin(
   skewMs: number
 ): boolean {
   return expiresAt !== null && expiresAt.getTime() - now.getTime() <= skewMs
-}
-
-async function writeAuthJsonAtomic(
-  authFile: string,
-  auth: GrokAuthDotJson
-): Promise<void> {
-  await mkdir(dirname(authFile), { recursive: true })
-  const temp = `${authFile}.${process.pid}.${Date.now()}.tmp`
-  await writeFile(temp, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 })
-  await chmod(temp, 0o600)
-  await rename(temp, authFile)
 }
 
 /**

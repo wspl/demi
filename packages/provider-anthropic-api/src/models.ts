@@ -1,15 +1,5 @@
-import { z } from 'zod'
+import { modelLimitsSchema } from '@demicodes/provider'
 import type { ProviderModel, ProviderModelList } from '@demicodes/provider'
-
-/**
- * The token limits a catalog entry must state: whole positive counts, with no
- * output limit spelled as null. Everything else about a model is descriptive,
- * so only these two carry a constraint worth checking.
- */
-const modelLimitsSchema = z.object({
-  contextWindow: z.number().int().positive(),
-  outputLimit: z.number().int().positive().nullable().optional(),
-})
 
 export interface AnthropicApiModelOptions {
   id: string

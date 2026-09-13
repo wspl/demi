@@ -22,7 +22,7 @@ import {
   readServerSentEvents,
   reportedStringSchema,
   tokenCountSchema,
-  withProviderId,
+  withCatalogProviderId,
   type AgentProvider,
   type InferenceItem,
   type InferenceRequest,
@@ -200,7 +200,7 @@ export function createGoogleProvider(
         options.models,
         { providerId: id, defaultModelId: options.defaultModelId ?? null }
       )
-      : withProviderId(googleDefaultModels(id), id)
+      : withCatalogProviderId(googleDefaultModels(id), id)
   const runtimeOptions: GoogleRuntimeOptions = {
     baseUrl,
     apiKey,
