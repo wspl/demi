@@ -51,7 +51,7 @@ const emit = defineEmits<{
   'update:messageEdit': [state: MessageEditState | null]
   saveScroll: [id: string, state: PersistedScrollState | null]
 }>()
-provideEditSelection((call, path) => props.selectEdit?.(call, path))
+provideEditSelection((selection) => props.selectEdit?.(selection))
 const surface = ref<{ dockHeight: number }>()
 // Recovery (Retry on the tail error record, Resume after an abort) needs a
 // provider and a conversation that is neither archived nor being edited.
