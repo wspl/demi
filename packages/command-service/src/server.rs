@@ -13,12 +13,11 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
 use crate::protocol::{
-    Completion, INFO_PATH, INVOKE_PATH, Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Record,
-    SHUTDOWN_PATH, ServiceInfo, VERSION,
+    CommandError, Completion, INFO_PATH, INVOKE_PATH, Invocation, MAX_INVOCATIONS,
+    MAX_METADATA_BYTES, MAX_RECORD_BYTES, Record, SHUTDOWN_PATH, ServiceInfo, VERSION,
 };
 use crate::{Input, ServiceError, stream::send_bytes};
 
-const MAX_INVOCATIONS: usize = 32;
 const OUTPUT_QUEUE_RECORDS: usize = 4;
 const METADATA_TIMEOUT: Duration = Duration::from_secs(10);
 const CANCEL_TIMEOUT: Duration = Duration::from_secs(5);
@@ -47,6 +46,14 @@ pub struct Output {
 }
 
 impl Output {
+    pub(crate) async fn pull(&self) -> Result<(), ServiceError> {
+        tokio::select! {
+            biased;
+            _ = self.cancellation.cancelled() => Err(ServiceError::Cancelled),
+            result = self.sender.send(Record::InputPull) => result.map_err(|_| ServiceError::Cancelled),
+        }
+    }
+
     pub async fn stdout(&self, bytes: Bytes) -> Result<(), ServiceError> {
         self.write(bytes, Record::Stdout).await
     }
@@ -81,6 +88,18 @@ pub async fn serve<T>(io: T, handler: Arc<dyn Handler>) -> Result<(), ServiceErr
 where
     T: AsyncRead + AsyncWrite + Unpin,
 {
+    serve_cancellable(io, handler, CancellationToken::new()).await
+}
+
+/// Stops accepting requests on owner cancellation, then cancels and joins handlers.
+pub async fn serve_cancellable<T>(
+    io: T,
+    handler: Arc<dyn Handler>,
+    owner: CancellationToken,
+) -> Result<(), ServiceError>
+where
+    T: AsyncRead + AsyncWrite + Unpin,
+{
     let operations = handler.operations();
     let unique: HashSet<_> = operations.iter().collect();
     if operations.is_empty()
@@ -102,16 +121,18 @@ where
         .max_header_list_size(16 * 1024)
         .initial_window_size(MAX_RECORD_BYTES as u32)
         .initial_connection_window_size((MAX_RECORD_BYTES * MAX_INVOCATIONS) as u32);
-    let mut connection = tokio::time::timeout(METADATA_TIMEOUT, builder.handshake(io))
-        .await
-        .map_err(|_| ServiceError::HandshakeTimeout)??;
-    let cancellation = CancellationToken::new();
+    let mut connection = tokio::select! {
+        _ = owner.cancelled() => return Err(ServiceError::Cancelled),
+        result = tokio::time::timeout(METADATA_TIMEOUT, builder.handshake(io)) => result.map_err(|_| ServiceError::HandshakeTimeout)??,
+    };
+    let cancellation = owner.child_token();
     let mut tasks = JoinSet::new();
     let mut draining = false;
     let _cancel_on_drop = cancellation.drop_guard_ref();
     let mut outcome = async {
         loop {
             tokio::select! {
+                _ = owner.cancelled() => break Ok(()),
                 incoming = connection.accept() => {
                     let (request, mut response) = match incoming {
                         Some(Ok(pair)) => pair,
@@ -214,6 +235,7 @@ async fn invoke(
         sender,
         cancellation: cancellation.clone(),
     };
+    input.set_output(output.clone());
     let context = InvocationContext {
         request: invocation,
         input,
@@ -269,7 +291,18 @@ async fn invoke(
         }
         return outcome.and(Err(ServiceError::Cancelled));
     };
-    let completion = completion.map_err(|error| ServiceError::Handler(error.to_string()))??;
+    let completion = match completion {
+        Ok(Ok(completion)) => completion,
+        Ok(Err(ServiceError::Cancelled)) => return Err(ServiceError::Cancelled),
+        Ok(Err(error)) => Completion {
+            exit_code: 1,
+            error: Some(CommandError {
+                code: "command_failed".into(),
+                message: error.to_string(),
+            }),
+        },
+        Err(error) => return Err(ServiceError::Handler(error.to_string())),
+    };
     let encoded = Record::Completion(completion).encode()?;
     send_bytes(&mut stream, encoded).await?;
     stream.send_data(Bytes::new(), true)?;

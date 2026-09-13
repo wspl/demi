@@ -54,7 +54,13 @@ pub fn apply(cwd: &str, diff: &str, cancellation: &CancellationToken) -> Result<
             .map_err(|error| error.to_string())?;
         let original = std::str::from_utf8(before.as_deref().unwrap_or_default())
             .map_err(|error| error.to_string())?;
-        let updated = apply_hunks(original, &patch.hunks, cancellation)?;
+        let label = patch
+            .old
+            .as_deref()
+            .or(patch.new.as_deref())
+            .ok_or("Patch has no file path")?;
+        let updated = apply_hunks(original, &patch.hunks, cancellation)
+            .map_err(|error| format!("Patch does not apply to {label}: {error}"))?;
         if new_path.is_none() && !updated.is_empty() {
             return Err("Delete patch leaves file content".into());
         }
@@ -104,8 +110,17 @@ pub fn apply(cwd: &str, diff: &str, cancellation: &CancellationToken) -> Result<
             return Err("Patch changes the same path more than once".into());
         }
     }
+    commit_changes(&changes, cancellation, write_change)?;
+    Ok(format!("Patched {} file(s)\n", patches.len()))
+}
+
+fn commit_changes(
+    changes: &[Change],
+    cancellation: &CancellationToken,
+    mut write: impl FnMut(&Change) -> Result<(), String>,
+) -> Result<(), String> {
     for (index, change) in changes.iter().enumerate() {
-        let result = check_cancelled(cancellation).and_then(|()| write_change(change));
+        let result = check_cancelled(cancellation).and_then(|()| write(change));
         if let Err(mut error) = result {
             for change in changes[..index].iter().rev() {
                 if let Err(rollback) = restore(change) {
@@ -115,7 +130,7 @@ pub fn apply(cwd: &str, diff: &str, cancellation: &CancellationToken) -> Result<
             return Err(error);
         }
     }
-    Ok(format!("Patched {} file(s)\n", patches.len()))
+    Ok(())
 }
 
 fn write_change(change: &Change) -> Result<(), String> {
@@ -295,4 +310,38 @@ fn parse_path(value: &str) -> Option<String> {
             .unwrap_or(&value)
             .into(),
     )
+}
+
+#[cfg(test)]
+mod transaction_tests {
+    use super::*;
+
+    #[test]
+    fn later_write_failure_restores_earlier_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let changes: Vec<_> = ["first", "second"]
+            .into_iter()
+            .map(|name| {
+                let path = directory.path().join(name);
+                let bytes = format!("{name}\n").into_bytes();
+                fs::write(&path, &bytes).unwrap();
+                let permissions = Some(fs::metadata(&path).unwrap().permissions());
+                Change {
+                    path,
+                    before: Some(bytes),
+                    after: Some(b"changed\n".to_vec()),
+                    permissions,
+                }
+            })
+            .collect();
+        let result = commit_changes(&changes, &CancellationToken::new(), |change| {
+            if change.path.file_name().unwrap() == "second" {
+                return Err("simulated write failure".into());
+            }
+            write_change(change)
+        });
+        assert_eq!(result.unwrap_err(), "simulated write failure");
+        assert_eq!(fs::read(&changes[0].path).unwrap(), b"first\n");
+        assert_eq!(fs::read(&changes[1].path).unwrap(), b"second\n");
+    }
 }

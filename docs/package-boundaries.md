@@ -47,9 +47,9 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/shell`
 
 - Status: implemented.
-- Production deps: `@demicodes/utils`.
-- Owns three contracts and nothing that implements them. **The Host contract** (`host.ts`): `defaultCwd`, `identity`, `fs`, `process` (`openCwd`, `spawn`), `store`; `fileHostStore` (a `HostStore` as JSON files on any `HostFileSystem`). **The command system** (`command.ts`, `command-abi.ts`, `reserved-names.ts`, `shell-quote.ts`): command specs and kinds, the command ABI (`CommandContext`, `CommandResult`, `DispatchIO`, `runtimeModule`, `importCommandModule`), `CommandRegistry` with the one reserved-name table, the atomic `CommandStorage` interface. **The shell-environment contract** (`shell-environment.ts`, `command-records.ts`): `ShellEnvironment` behind the `shell_*` tools, the command record, the model's status view (each stream's delta since the last view, its tail, and the output path when the target keeps one). The production shell is `RemoteShellEnvironment` in `host-remote`, over real runner jobs.
-- Entries: the root runs on every runtime (Bun, txiki.js; the runner bundles it). `testing` supplies in-memory Host and command stores and the Host conformance suite (`hostConformanceCases`, run by every Host implementation; including process cases), runtime-neutral so the suite runs on txiki.js. No entry imports Node.
+- Production deps: `@demicodes/command-protocol`, `@demicodes/utils`.
+- Owns three contracts and nothing that implements them. **The Host contract** (`host.ts`): `defaultCwd`, `identity`, `fs`, `process` (`openCwd`, `spawn`), `store`; `fileHostStore` (a `HostStore` as JSON files on any `HostFileSystem`). **The command system** (`command.ts`, `command-abi.ts`, `reserved-names.ts`, `shell-quote.ts`): command specs and kinds, the command invocation ABI (`CommandResult`, `DispatchIO`, `NativeInvocation`, `NativeExecutor`), `CommandRegistry` with the one reserved-name table, the atomic `CommandStorage` interface. **The shell-environment contract** (`shell-environment.ts`, `command-records.ts`): `ShellEnvironment` behind the `shell_*` tools, the command record, the model's status view (each stream's delta since the last view, its tail, and the output path when the target keeps one). The production shell is `RemoteShellEnvironment` in `host-remote`, over real runner jobs.
+- Entries: the root is platform-neutral TypeScript for application embedders. `testing` supplies in-memory Host and command stores and the Host conformance suite. No entry imports Node. Native leaves bind a package id and operation; an injected native executor owns execution. RPC leaves call application handlers.
 - `Host.defaultCwd` is a default working-directory helper only. It is not a sandbox, workspace boundary, permission boundary, or access-control source.
 - Runtime file operations go through `Host.fs`; `Host.fs` is a system-level file access facet whose allowed paths are decided by the Host backend policy, not by `defaultCwd`.
 - True external process execution goes through `Host.process.spawn`.
@@ -85,7 +85,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/coding-agent`
 
 - Status: implemented.
-- Production deps: `@demicodes/agent`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
+- Production deps: `@demicodes/agent`, `@demicodes/core`, `@demicodes/demi-package`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: coding harness, coding prompt, coding commands (the `demi` root: every subcommand is a noun domain group — `file` as `runtime` modules written against the ABI and `todo` as `rpc` built in, product groups like the backend's `host` composed in). A `reference` block reaches the model as its path; the model reads the file with tools.
 - Public boundary: harness and coding command construction based on Host and Command contracts.
 - Must not: instantiate AgentSession, AgentServer, a shell environment, concrete providers, or a Host implementation.
@@ -194,38 +194,31 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/command-loader`
 
-- Status: target API contract; JS manifest/loader architecture retained (`docs/demi-next/commands.md`).
-- Production deps: `@demicodes/shell`, `@demicodes/utils`.
-- Owns: the manifest types, the manifest sources (`inMemorySource`; `directorySource` with the `writeManifestDirectory` layout), the loader (`createLoader` → `dispatch(root, argv, io)`: tree resolution, group help, argument parsing and validation, running a `runtime` module from its text or from the source's module file, forwarding an `rpc` invocation).
-- Public boundary: `buildManifest`, `parseManifest` and the `Manifest` types, `createLoader` / `inMemorySource` / `directorySource` / `writeManifestDirectory`, `inProcessRpc` and the `RpcTransport` types, `treeFromManifest` from root; the `commandModulesAsText` build plugin (a `*.command.ts` file served as its text at build time) under `build`, Node-only.
-- Pure JS with no runtime dependency: the same package runs in the backend, in the txiki.js runner and in tests. `buildManifest` takes the transpiler as a parameter (the backend passes Bun's); the package never transpiles on its own.
-- Must not: know the backend, the runner or any Host implementation (all injected), spawn processes, or hold a command definition of its own.
+- Status: accepted native manifest contract; acceptance is tracked separately.
+- Production deps: `@demicodes/command-protocol`, `@demicodes/shell`, `@demicodes/utils`.
+- Owns: strict manifest schemas, canonical manifest identities, package catalog validation, declaration serialization, manifest sources, and TypeScript dispatch for embedders through injected RPC/native executors. Manifests pin complete package descriptors and exact operation bindings; they contain no implementation source or artifact location.
+- Public boundary: `buildManifest`, `parseManifest`, manifest types, `createLoader`, manifest sources, `inProcessRpc`, RPC transport types and `treeFromManifest`.
+- Must not: know the backend, spawn processes, resolve object-store credentials, hold command definitions, transpile source or load downloaded code. The native runner consumes generated Rust manifest values and implements its CLI dispatch in Rust.
 
 ### `@demicodes/runner-protocol`
 
 - Status: implemented (the final wire: MessagePack frames, per-op fs messages, jobs, the rpc relay, the manifest push, transfers).
-- Production deps: `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
-- Owns: the backend runner wire and native-client local IPC contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` shared by Bun and txiki.js), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
-- Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`; strict local metadata schemas, binary framing and generated-C-header facts under `local`; matched-release schemas under `release`. Both ends of the wire depend on this package; it depends on neither end.
+- Production deps: `@demicodes/command-protocol`, `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
+- Owns: the backend runner wire and generated Rust validation contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` used by Bun; Rust uses the generated contract and rmp-serde), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
+- Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`; six-target runner release schemas under `release`. Both ends of the wire depend on this package; it depends on neither end.
 - Must not: contain network IO, a Host implementation, a shell environment, the job table, credentials, claim policy, device registry, or conversation state.
 
 ### `@demicodes/host-remote`
 
 - Status: implemented (M9).
-- Production deps: `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`.
+- Production deps: `@demicodes/command-loader`, `@demicodes/command-protocol`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the backend's end of a runner — `RemoteHost`, a `Host` over a connection with a jobs facet (stable object across reconnects, logical cwd fallback, injected store), and `RemoteShellEnvironment`, the `ShellEnvironment` of a real host over jobs (the model's view as the record, the working directory carried between execs). The production Host and shell the backend injects into the agent.
-- Public boundary: `RemoteHost`, `RemoteShellEnvironment` and their option types from root.
+- Public boundary: `RemoteHost`, `RemoteShellEnvironment`, `createRemoteShellEnvironmentFactory` and their option types from root. The factory validates a package catalog and serializes each context's declarations. Each job pins its manifest; artifact location requests are admitted only for a matching active job, manifest and target artifact. The injected resolver supplies a location, and job completion cancels outstanding resolutions.
 - Must not: contain network IO (the wire is an injected send/handle pair), credentials, the device registry, or conversation state. `Host.store` never crosses the wire.
-
-### `vendor/txiki.js` (C/C++ submodule, not a workspace package)
-
-- Owns: the QuickJS-ng runtime, Web APIs, native filesystem/process/socket APIs, Linux PID 1 orphan reaping, privilege drop, file leases and interruptible workers, and the CMake target that links an embedded bytecode entry.
-- Dependency: pinned fork and recursive dependencies; the runner consumes its declarations rather than redeclaring the runtime API.
-- Demi builds: `packages/runner/runtime` owns native build flags, cross toolchains and application bundling inputs. Native runtime code stays in the fork.
 
 ### `packages/guest-image` (not a workspace package)
 
-- Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` and native client as `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
+- Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` with a command alias at `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
 
 ### `@demicodes/command-protocol` / `packages/command-protocol` (TypeScript and Rust)
 
@@ -262,9 +255,9 @@ Test code may depend upward for integration coverage. Production code must not.
 - Must not: select backend storage vendors, construct command trees or implement
   command operations.
 
-### `packages/demi-package` (Rust executable and library)
+### `@demicodes/demi-package` / `packages/demi-package` (TypeScript and Rust)
 
-- Owns: the `demi-commands` resident service and native Demi command operations.
+- Owns: the `demiPackage` descriptor exported to application assembly, the six-target release bundle builder, the `demi-commands` resident service and native Demi command operations. TypeScript depends on `@demicodes/command-protocol` for the descriptor contract.
   File operations receive invocation cwd, arguments and cancellation through the
   command-service handler contract. Mutations serialize planning and application;
   each replacement publishes atomically, and multi-file patches roll back earlier
@@ -274,30 +267,26 @@ Test code may depend upward for integration coverage. Production code must not.
 - Must not: host a runner connection, define the agent's command tree, or store
   conversation state.
 
-### `packages/command-client` (native executable)
+### `packages/native-path` (Rust crate)
 
-- Status: implemented for macOS/Linux; see `docs/demi-next/command-client.md` for Windows acceptance gaps.
-- Owns: a standalone `demi` C executable with statically linked libuv; endpoint discovery, raw invocation/context transport, byte streams, cancellation and exit status. Its executable is separate from `demi-runner`.
-- Depends on: libuv and the local IPC contract owned by `@demicodes/runner-protocol`; no JS engine or TypeScript runtime packages. Cross-language protocol fixtures must verify both endpoints.
-- Must not: parse business command arguments, cache manifests, execute command scripts, hold backend credentials or duplicate command schemas.
-- Target deployment boundary: one runner process per local backend registration, with an installation-owned matched client/runner release, credentials, manifest cache and endpoint. Multiple backend registrations may run on the same device; upgrades do not affect other installations. Jobs inherit the owning client PATH plus exact endpoint and live context.
-- Target runner responsibility: host `@demicodes/command-loader`, cache manifests, parse/validate/dispatch invocations, schedule local runtime modules and forward backend RPC. Definitions remain in their owning command packages. Platform endpoint names and access controls follow `docs/demi-next/command-client.md`.
+- Owns: cross-platform absolute path and lexical path normalization used by native filesystem commands and the runner.
+- Must not: access the filesystem, change cwd or know command declarations.
 
-### `@demicodes/runner`
+### `packages/native-utils` (Rust crate)
 
-- Status: implemented on txiki.js with a separate native client. `src/entry.ts` handles runner startup, PID 1 boot and installation management; `runtime/bundle.ts` embeds the worker source; `runtime/build.ts` links the runner; `runtime/release.ts` creates matched client/runner releases.
-- Production deps: `@demicodes/command-loader`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; txiki.js globals and Web APIs, declared by the pinned fork's `types/src` and used through `src/machine/`.
-- Owns: one outbound backend WebSocket per installation, reconnect and pairing; private installation state (`runner.json`, device token, OS lock, `active.json`, manifest cache, output and Host store); the target Host, teed shell jobs and brokered transfers; native-client IPC validation and command-loader dispatch. Each job/spawn receives an opaque live context, the exact random endpoint and a manifest-specific client PATH. Runtime leaves run in isolated interruptible workers; RPC leaves use authenticated backend transport. Managed guests keep state under `/run/demi` and the token in memory.
-- Public boundary: the packed `demi-runner` binary; `packedRunner`, `startTxikiRunner`, `txikiBinary` and `bundleForTxiki` under `@demicodes/runner/testing` for Bun tests that need a runner process or run JS on txiki.js; `LocalHost` and `nodeFileSystem` in the test-only `runner/testing/` directory provide real Node filesystem/process fixtures; `HostRpcServer` and `JobTable` under `@demicodes/runner/serve` for tests that join the runner's end to a `RemoteHost` without a socket.
-- Layout (directories mirror the runner's modules):
-  - `machine/` — this machine as the runner sees it: the `Host` contract over txiki.js's primitives (`fs`, `process`, `cwd`, `stdio`), the teed spawn and tail reads for jobs, the WebSocket, Unix-socket and HTTP links, the codec re-export, the process itself (`argv`, `env`, `exit`, `onSignal`, `fdNode`). Accepted by the Host conformance suite on txiki.js. Internal to the runner: the agent never holds it — a machine is reached through `@demicodes/host-remote`.
-  - `serve/` — the runner's end of the protocol: `HostRpcServer` (the `fs_*` and spawn messages over the machine layer) and `JobTable` (jobs over the teed spawn: the `EXIT` trap prelude, the stdin duplicate, the view budget, the job environment names).
-  - `relay/` — local IPC server and authenticated backend calls. The local frame contract belongs to `runner-protocol/local`; the C client is a separate native package.
-  - `commands/` — live execution contexts, worker dispatch and worker entry; no command definitions.
-  - `init/` — PID 1 on a managed guest: the kernel command line as the guest's configuration, the boot as a plan of rootfs commands (kernel filesystems, persistent system overlay over the pinned base, separate home, network and `/run/demi` temporary state), per-volume usage, sync and growth. Pure over injected spawn and read, so Bun tests cover it without a kernel; `boot.ts` binds it to the machine layer.
-  - `testing/` — Node-only filesystem and process fixtures; imported only through the testing entry.
-  - `runner-mode.ts`, `entry.ts`, `management.ts`, `manifest-cache.ts`, `state.ts`, `transfers.ts` — runner startup/administration, manifest storage and machine-local state.
-- Must not: hold credentials other than the backend-issued device token, store any conversation or transcript state, or import `@demicodes/agent`, `@demicodes/coding-agent`, provider packages, or Node in production code.
+- Owns: embedded standard utilities for brush. Its pinned upstream utility sources route cwd, environment and byte IO through an invocation context. `upstream/` records the upstream versions and targeted adaptations.
+- Must not: implement agent-specific commands or change process-global cwd/environment during a utility invocation.
+
+### `@demicodes/runner` / `packages/runner` (Rust executable and TypeScript test adapter)
+
+- Owns: the `demi-runner` executable, one outbound backend WebSocket per registration, pairing/reconnection, filesystem and process RPC, shell jobs, local command forwarding and installation state.
+- `rust/main.rs` selects runner administration, local command forwarding, isolated shell jobs or Linux guest initialization. Command aliases point to this same executable.
+- `rust/shell.rs` embeds brush and native utilities. Each job runs in its own process, with per-job cwd/environment and output files. Unix process groups and Windows Job Objects release descendants on cancellation.
+- `rust/dispatch.rs` validates declarations and arguments. `rpc.rs` forwards application callbacks; `native.rs` shares resident services by artifact digest. The runner does not link `demi-package` implementations.
+- `rust/local.rs`, `command_client.rs` and `stdio.rs` own owner-restricted local HTTP/2 transport, input demand and byte streaming. Unix uses domain sockets; Windows uses named pipes.
+- `rust/state.rs`, `management.rs` and `mode.rs` own registration locks, private state, draining and backend connection lifetime. `init.rs` and `volumes.rs` own Linux PID 1 boot and volume operations. Managed state lives under `/run/demi`.
+- Public boundary: the executable; `runnerBinary`, `startRunner`, `connectTestRunner`, `LocalHost` and `nodeFileSystem` under the test-only TypeScript entry. `scripts/native/build.ts` builds six native targets; `runtime/release.ts` verifies and packages them.
+- Must not: hold provider credentials as configuration, own transcripts, import agent/provider implementations, execute downloaded JavaScript or contain native command algorithms.
 
 ### `@demicodes/web-ui`
 
@@ -359,9 +348,9 @@ The canonical production source graph contains every Demi package and must stay 
 core -> none
 utils -> none
 provider -> core, utils
-shell -> utils
+shell -> command-protocol, utils
 agent -> core, provider, shell, utils
-coding-agent -> agent, core, shell, utils
+coding-agent -> agent, core, demi-package, shell, utils
 provider-claude-code -> core, provider, utils
 provider-codex -> core, provider, utils
 provider-openai-api -> core, provider, utils
@@ -369,12 +358,13 @@ provider-anthropic-api -> core, provider, utils
 provider-grok-build -> core, provider, utils
 provider-google -> core, provider, utils
 command-protocol -> none
-command-loader -> shell, utils
-runner-protocol -> shell, utils
+demi-package -> command-protocol
+command-loader -> command-protocol, shell, utils
+runner-protocol -> command-protocol, shell, utils
 machines -> utils
-host-remote -> runner-protocol, shell, utils
+host-remote -> command-loader, command-protocol, runner-protocol, shell, utils
 runner -> command-loader, runner-protocol, shell, utils
-backend -> agent, coding-agent, command-loader, core, host-remote, machines, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
+backend -> agent, coding-agent, command-loader, command-protocol, core, demi-package, host-remote, machines, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
 web-ui -> agent, core, utils
 web-gallery -> web-ui, core, utils
 web -> web-ui, core, utils
@@ -423,7 +413,7 @@ module.
 - Platform-neutral package roots must not statically pull Node-only adapters, concrete providers, UI code, or test helpers into their import closure.
 - Public roots expose stable package contracts only; internal parser, transport, protocol, local adapter, auth-store, stream, and test helpers stay behind implementation files unless a package registry entry explicitly says otherwise.
 - Any workspace package imported by production source must be declared in `dependencies`, not hidden in `devDependencies` or transitive packages.
-- Runtime-specific code (Node, txiki.js) lives behind an entry or directory named for it (the runner's `machine/`), never in a platform-neutral root.
+- Runtime-specific code (Node or native Rust) lives behind an explicit platform entry or crate, never in a platform-neutral root.
 - Do not keep compatibility shims when a package split moves an implementation to its final package.
 
 ## Verification

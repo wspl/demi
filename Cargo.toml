@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["packages/command-protocol", "packages/command-service", "packages/command-runtime", "packages/runner-protocol", "packages/demi-package"]
+exclude = ["packages/native-utils/upstream/*"]
+members = ["packages/native-path", "packages/command-protocol", "packages/command-loader", "packages/command-service", "packages/command-runtime", "packages/runner-protocol", "packages/runner", "packages/native-utils", "packages/demi-package"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,11 +15,62 @@ futures-util = "0.3"
 h2 = "0.4"
 http = "1"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
+process-wrap = { version = "10", default-features = false, features = ["tokio1", "process-group", "job-object", "kill-on-drop"] }
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 
 [profile.release]
 lto = "thin"
 strip = true
+
+[patch.crates-io]
+uucore = { path = "packages/native-utils/upstream/uucore" }
+uu_cat = { path = "packages/native-utils/upstream/uu_cat" }
+uucore_procs = { path = "packages/native-utils/upstream/uucore_procs" }
+uu_head = { path = "packages/native-utils/upstream/uu_head" }
+uu_tail = { path = "packages/native-utils/upstream/uu_tail" }
+uu_wc = { path = "packages/native-utils/upstream/uu_wc" }
+uu_ls = { path = "packages/native-utils/upstream/uu_ls" }
+uu_cp = { path = "packages/native-utils/upstream/uu_cp" }
+uu_mv = { path = "packages/native-utils/upstream/uu_mv" }
+uu_rm = { path = "packages/native-utils/upstream/uu_rm" }
+uu_mkdir = { path = "packages/native-utils/upstream/uu_mkdir" }
+uu_rmdir = { path = "packages/native-utils/upstream/uu_rmdir" }
+uu_touch = { path = "packages/native-utils/upstream/uu_touch" }
+uu_tee = { path = "packages/native-utils/upstream/uu_tee" }
+uu_sort = { path = "packages/native-utils/upstream/uu_sort" }
+uu_uniq = { path = "packages/native-utils/upstream/uu_uniq" }
+uu_cut = { path = "packages/native-utils/upstream/uu_cut" }
+uu_tr = { path = "packages/native-utils/upstream/uu_tr" }
+uu_paste = { path = "packages/native-utils/upstream/uu_paste" }
+uu_nl = { path = "packages/native-utils/upstream/uu_nl" }
+uu_tac = { path = "packages/native-utils/upstream/uu_tac" }
+uu_basename = { path = "packages/native-utils/upstream/uu_basename" }
+uu_dirname = { path = "packages/native-utils/upstream/uu_dirname" }
+uu_realpath = { path = "packages/native-utils/upstream/uu_realpath" }
+uu_env = { path = "packages/native-utils/upstream/uu_env" }
+uu_seq = { path = "packages/native-utils/upstream/uu_seq" }
+uu_date = { path = "packages/native-utils/upstream/uu_date" }
+uu_sleep = { path = "packages/native-utils/upstream/uu_sleep" }
+uu_mktemp = { path = "packages/native-utils/upstream/uu_mktemp" }
+uu_stat = { path = "packages/native-utils/upstream/uu_stat" }
+uu_du = { path = "packages/native-utils/upstream/uu_du" }
+uu_df = { path = "packages/native-utils/upstream/uu_df" }
+uu_od = { path = "packages/native-utils/upstream/uu_od" }
+uu_chmod = { path = "packages/native-utils/upstream/uu_chmod" }
+uu_chown = { path = "packages/native-utils/upstream/uu_chown" }
+
+uu_grep = { path = "packages/native-utils/upstream/uu_grep" }
+sed = { path = "packages/native-utils/upstream/sed" }
+findutils = { path = "packages/native-utils/upstream/findutils" }
+diffutils = { path = "packages/native-utils/upstream/diffutils" }
+
+jaq-std = { path = "packages/native-utils/upstream/jaq-std" }
+
+ignore = { path = "packages/native-utils/upstream/ignore" }
+grep-cli = { path = "packages/native-utils/upstream/grep-cli" }
+
+jaq = { path = "packages/native-utils/upstream/jaq" }
+ripgrep = { path = "packages/native-utils/upstream/ripgrep" }

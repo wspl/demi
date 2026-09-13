@@ -13,7 +13,6 @@ import {
   type CommandIO,
   type CommandStorage,
   type Host,
-  type RuntimeModule,
 } from '../index'
 import { RESERVED_COMMAND_NAMES } from '../reserved-names'
 
@@ -512,12 +511,12 @@ test(
     ).toThrow('has no run()')
     expect(() =>
       registry.register({
-        name: 'noModule',
+        name: 'noBinding',
         summary: 'x',
-        kind: 'runtime',
-        module: undefined as unknown as RuntimeModule
+        kind: 'native',
+        binding: undefined as unknown as { package: string; operation: string }
       }),
-    ).toThrow('has no module text')
+    ).toThrow()
     expect(() =>
       registry.register({
         name: 'dangling',

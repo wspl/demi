@@ -1,3 +1,4 @@
+import { nativePackageFixture } from '@demicodes/demi-package/testing'
 // A development backend for the web front end: a fresh data directory, the
 // master account set up, and one scripted provider whose model echoes the
 // message back. A message containing "fail" ends its turn with a provider
@@ -47,6 +48,7 @@ async function main(): Promise<void> {
   const port = Number(process.env.DEMI_BACKEND_PORT ?? 3299)
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-dev-backend-'))
   const backend = await createBackend({
+    nativeCommands: await nativePackageFixture(),
     dataDir,
     port,
     mode: 'shared',

@@ -21,6 +21,8 @@
     "build": "tsdown"
   },
   "dependencies": {
+    "@demicodes/command-protocol": "workspace:^",
+    "@demicodes/command-loader": "workspace:^",
     "@demicodes/runner-protocol": "workspace:^",
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^"

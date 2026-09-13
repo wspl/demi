@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -9,7 +9,7 @@ import {
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { waitFor } from '@demicodes/utils'
-import { startTxikiRunner } from '../testing'
+import { startRunner } from '../testing'
 
 const wire = createRunnerWire(msgpackCodec)
 
@@ -38,7 +38,7 @@ test(
         }
       } },
     })
-    const runner = await startTxikiRunner({
+    const runner = await startRunner({
       backendUrl: `http://localhost:${server.port}`,
       home,
       stateDir,
@@ -63,8 +63,8 @@ test(
           () => received.slice(start)
             .some((message) => message.type === `${kind}_output`)
         )
-        const bytes = new Uint8Array(256 * 1024)
-        send(kind === 'job' ? { type: 'job_stdin', jobId: kind, bytes } : {
+        const bytes = new Uint8Array(64 * 1024)
+        for (let chunk = 0; chunk < 4; chunk += 1) send(kind === 'job' ? { type: 'job_stdin', jobId: kind, bytes } : {
           type: 'spawn_stdin',
           spawnId: kind,
           bytes
@@ -125,6 +125,8 @@ test(
     } finally {
       await runner.stop()
       server.stop(true)
+      await rm(home, { recursive: true, force: true })
+      await rm(stateDir, { recursive: true, force: true })
     }
   },
   15_000

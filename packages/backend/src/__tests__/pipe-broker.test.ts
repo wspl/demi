@@ -1,3 +1,4 @@
+import { connect } from 'node:net'
 import { expect, test } from 'bun:test'
 import { Hono } from 'hono'
 import { bytesStream, collectBytes, delay, encodeUtf8 } from '@demicodes/utils'
@@ -439,5 +440,35 @@ test('failure releases a process reader even while its consumer is paused at a c
   } finally {
     await consumer.return?.()
     broker.close()
+  }
+})
+
+
+test('an empty chunked upload settles both HTTP ends', async () => {
+  const broker = new PipeBroker({ timeoutMs: 2_000 })
+  const { url, stop } = serve(broker)
+  const pipe = broker.open({ deviceId: 'a' }, { deviceId: 'b' })
+  const endpoint = new URL(url)
+  const socket = connect(Number(endpoint.port), endpoint.hostname)
+  const uploaded = new Promise<string>((resolve, reject) => {
+    let response = ''
+    socket.on('connect', () => socket.write(
+      `PUT ${pipe.url} HTTP/1.1\r\nHost: ${endpoint.host}\r\nAuthorization: Bearer ${tokens.a}\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n0\r\n\r\n`
+    ))
+    socket.on('data', bytes => { response += bytes.toString() })
+    socket.on('error', reject)
+    socket.on('end', () => resolve(response))
+    socket.setTimeout(2_000, () => socket.destroy(new Error('Empty upload did not settle')))
+  })
+  try {
+    const download = await fetch(`${url}${pipe.url}`, { headers: bearer('b') })
+    expect(download.status).toBe(200)
+    expect(await download.text()).toBe('')
+    expect(await uploaded).toContain('200 OK')
+    await pipe.done
+  } finally {
+    socket.destroy()
+    broker.close()
+    stop()
   }
 })

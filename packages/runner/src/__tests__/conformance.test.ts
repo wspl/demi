@@ -1,35 +1,35 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, realpath } from 'node:fs/promises'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { bundleForTxiki, txikiBinary } from '../testing'
+import { RemoteHost } from '@demicodes/host-remote'
+import { hostConformanceCases, memoryHostStore } from '@demicodes/shell/testing'
+import { connectTestRunner } from '../testing'
 
-// The machine layer runs only on txiki.js, so its conformance run does too: the
-// suite from @demicodes/shell/testing is bundled with the Host and run on
-// the bare binary.
-test(
-  'the machine layer passes the Host conformance suite on txiki.js',
-  async () => {
-    const work = await realpath(await mkdtemp(join(tmpdir(), 'demi-machine-')))
-    const bundle = join(work, 'conformance.mjs')
-    await bundleForTxiki(
-      join(import.meta.dir, 'conformance', 'main.ts'),
-      bundle
-    )
-    const root = join(work, 'root')
-    await Bun.$`mkdir -p ${root}`
-    const run = Bun.spawnSync([txikiBinary(), 'run', bundle], {
-      env: {
-        PATH: process.env.PATH ?? '/usr/bin:/bin',
-        HOME: work,
-        HOST_CONFORMANCE_ROOT: root
-      },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const report = `${run.stdout.toString()}${run.stderr.toString()}`
-    expect(report, report).not.toContain('FAIL')
-    expect(run.exitCode, report).toBe(0)
-  },
-  120_000
-)
+test('the Rust runner passes the Host conformance suite over its actual wire', async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'demi-conformance-')))
+  const host = new RemoteHost({
+    defaultCwd: root,
+    identity: { uid: 0, gid: 0, hostname: 'test', homeDir: root },
+    store: memoryHostStore(),
+  })
+  const connection = await connectTestRunner({
+    home: root,
+    onHello: (send, hello) => host.attach(send, hello.runner.identity),
+    onMessage: message => host.handleMessage(message),
+    onClose: () => host.detach(),
+  })
+  try {
+    for (const check of hostConformanceCases({ host, root, path: process.env.PATH })) {
+      try {
+        await check.run()
+      } catch (error) {
+        throw new Error(check.name, { cause: error })
+      }
+    }
+    expect(host.online).toBe(true)
+  } finally {
+    await connection.close()
+    await rm(root, { recursive: true, force: true })
+  }
+}, 120_000)

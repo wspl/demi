@@ -1,112 +1,75 @@
 import {
+  contentDigest,
+  nativePackageSchema,
+  type NativePackage,
+} from '@demicodes/command-protocol'
+import {
   isCommandGroup,
   validateCommandTree,
   type Command,
-  type CommandLeaf
+  type CommandLeaf,
 } from '@demicodes/shell'
 import { z } from 'zod'
-import type { Manifest, ManifestLeaf, ManifestNode } from './schema'
+import { parseManifest, type Manifest, type ManifestLeaf, type ManifestNode } from './schema'
 
 export interface BuildManifestOptions {
-  /**
-   * Turns a module's TypeScript text into JavaScript; the backend supplies
-   * Bun's transpiler.
-   */
-  transpile: (source: string) => string | Promise<string>
+  packages: readonly NativePackage[]
 }
 
-/**
- * Builds the manifest from assembled root trees: zod becomes JSON Schema,
- * each `runtime` leaf's module text is transpiled and stored under the
- * hash of the result, and the manifest hash covers everything.
- */
+/** Serializes declarations and exact native package bindings without implementation code. */
 export async function buildManifest(
   roots: readonly Command[],
-  options: BuildManifestOptions
+  options: BuildManifestOptions,
 ): Promise<Manifest> {
-  const modules: Record<string, string> = {}
-  const moduleHashes = new Map<string, string>()
-  const hashModule = async (source: string): Promise<string> => {
-    let hash = moduleHashes.get(source)
-    if (hash)
-      return hash
-    const javascript = await options.transpile(source)
-    hash = await sha256(javascript)
-    moduleHashes.set(source, hash)
-    modules[hash] = javascript
-    return hash
+  const packages: Manifest['packages'] = {}
+  const byId = new Map<string, string>()
+  for (const value of options.packages) {
+    const descriptor = nativePackageSchema.parse(value)
+    if (byId.has(descriptor.id))
+      throw new Error(`Duplicate native package id: ${descriptor.id}`)
+    const hash = await contentDigest(descriptor)
+    packages[hash] = descriptor
+    byId.set(descriptor.id, hash)
   }
-
   const manifestRoots: Manifest['roots'] = {}
   for (const root of roots) {
     if (manifestRoots[root.name])
       throw new Error(`buildManifest: duplicate root "${root.name}"`)
     validateCommandTree(root, root.name)
-    manifestRoots[root.name] = { tree: await manifestNode(root, hashModule) }
+    manifestRoots[root.name] = { tree: manifestNode(root, byId) }
   }
-  const body = { roots: manifestRoots, modules }
-  return { hash: await sha256(JSON.stringify(body)), ...body }
+  const body = { roots: manifestRoots, packages }
+  return parseManifest({ hash: await contentDigest(body), ...body })
 }
 
-async function manifestNode(
-  command: Command,
-  hashModule: (source: string) => Promise<string>
-): Promise<ManifestNode> {
+function manifestNode(command: Command, packages: ReadonlyMap<string, string>): ManifestNode {
   if (isCommandGroup(command)) {
-    const subcommands: ManifestNode[] = []
-    for (const child of command.subcommands) subcommands.push(
-      await manifestNode(
-        child,
-        hashModule
-      )
-    )
-    return { name: command.name, summary: command.summary, subcommands }
+    return {
+      name: command.name,
+      summary: command.summary,
+      subcommands: command.subcommands.map(child => manifestNode(child, packages)),
+    }
   }
-  return manifestLeaf(
-    command,
-    command.kind === 'runtime' ? await hashModule(command.module) : undefined
-  )
+  return manifestLeaf(command, packages)
 }
 
-function manifestLeaf(
-  leaf: CommandLeaf,
-  module: string | undefined
-): ManifestLeaf {
-  const node: ManifestLeaf = {
+function manifestLeaf(leaf: CommandLeaf, packages: ReadonlyMap<string, string>): ManifestLeaf {
+  const common = {
     name: leaf.name,
     summary: leaf.summary,
-    kind: leaf.kind
+    ...(leaf.successOutput !== undefined ? { successOutput: leaf.successOutput } : {}),
+    ...(leaf.failureOutput !== undefined ? { failureOutput: leaf.failureOutput } : {}),
+    ...(leaf.runningHint !== undefined ? { runningHint: leaf.runningHint } : {}),
+    ...(leaf.input ? { input: z.toJSONSchema(z.object(leaf.input), { io: 'input' }) } : {}),
+    ...(leaf.positionals ? { positionals: [...leaf.positionals] } : {}),
+    ...(leaf.stdinField !== undefined ? { stdinField: leaf.stdinField } : {}),
+    ...(leaf.restField !== undefined ? { restField: leaf.restField } : {}),
+    ...(leaf.output?.json ? { output: { json: z.toJSONSchema(leaf.output.json) } } : {}),
   }
-  if (leaf.successOutput !== undefined)
-    node.successOutput = leaf.successOutput
-  if (leaf.failureOutput !== undefined)
-    node.failureOutput = leaf.failureOutput
-  if (leaf.runningHint !== undefined)
-    node.runningHint = leaf.runningHint
-  if (leaf.input)
-    node.input = z.toJSONSchema(z.object(leaf.input))
-  if (leaf.positionals)
-    node.positionals = [...leaf.positionals]
-  if (leaf.stdinField !== undefined)
-    node.stdinField = leaf.stdinField
-  if (leaf.restField !== undefined)
-    node.restField = leaf.restField
-  if (leaf.output?.json)
-    node.output = {
-      json: z.toJSONSchema(leaf.output.json)
-    }
-  if (module !== undefined)
-    node.module = module
-  return node
-}
-
-export async function sha256(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(text)
-  )
-  return Array.from(
-    new Uint8Array(digest),
-    (byte) => byte.toString(16).padStart(2, '0')
-  ).join('')
+  if (leaf.kind === 'rpc')
+    return { ...common, kind: 'rpc' }
+  const descriptorHash = packages.get(leaf.binding.package)
+  if (!descriptorHash)
+    throw new Error(`Native package is not configured: ${leaf.binding.package}`)
+  return { ...common, kind: 'native', binding: { ...leaf.binding, descriptorHash } }
 }

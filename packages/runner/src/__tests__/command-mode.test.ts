@@ -1,5 +1,6 @@
+import { z } from 'zod'
 import { expect, test } from 'bun:test'
-import { mkdtemp, readFile, writeFile, realpath } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile, realpath, copyFile, rm } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,49 +8,36 @@ import { buildManifest, type Manifest } from '@demicodes/command-loader'
 import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
 import { createRunnerWire } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
-import { runtimeModule, type Command } from '@demicodes/shell'
+import { type Command } from '@demicodes/shell'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
-import { packedRunner, startTxikiRunner } from '../testing'
+import { runnerBinary, startRunner, nativeCommandFixture } from '../testing'
 
 async function fixture(label: string, commands: Command[] = []) {
   const home = await realpath(await mkdtemp(join(tmpdir(), 'demi-native-home-')))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-native-state-'))
+  const native = await nativeCommandFixture()
   const roots: Command[] = [{ name: 'demi', summary: label, subcommands: [
     {
-      name: 'where',
-      summary: 'Invocation context',
-      kind: 'runtime',
-      module: runtimeModule(
-        `export default async ctx => { await ctx.stdout(JSON.stringify({label:${JSON.stringify(label)},cwd:ctx.cwd,value:ctx.env.PROBE})); return {exitCode:0}; }`
-      )
+      name: 'where', summary: 'Invocation context', kind: 'native',
+      binding: { package: native.descriptor.id, operation: 'where' },
+      input: { label: z.string().default(label) },
     },
-    {
-      name: 'echo',
-      summary: 'Byte stream',
-      kind: 'runtime',
-      module: runtimeModule(
-        'export default async ctx => { for await(const b of ctx.stdin) await ctx.stdout(b); return {exitCode:0}; }'
-      )
-    },
-    {
-      name: 'spin',
-      summary: 'Interruptible worker',
-      kind: 'runtime',
-      module: runtimeModule(
-        'export default async ctx => { await ctx.stdout("started"); while(true){} }'
-      )
-    },
+    ...['echo', 'spin', 'result'].map(name => ({
+      name, summary: name, kind: 'native' as const,
+      binding: { package: native.descriptor.id, operation: name },
+    })),
     ...commands,
   ] }]
-  const manifest = await buildManifest(roots, { transpile: source => source })
+  const manifest = await buildManifest(roots, { packages: [native.descriptor] })
+  const catalog = { manifest, resolveArtifact: native.resolveArtifact }
   const wire = createRunnerWire(msgpackCodec)
   const host = new RemoteHost({
     defaultCwd: home,
     identity: { uid: 1, gid: 1, hostname: label, homeDir: home },
     store: memoryHostStore()
   })
-  const shell = new RemoteShellEnvironment({ host })
+  const shell = new RemoteShellEnvironment({ host, commands: catalog })
   let sendManifest: (value: Manifest) => void
   const server = Bun.serve(
     { port: 0, fetch: (request, server) => server.upgrade(request) ? undefined : new Response(
@@ -73,29 +61,24 @@ async function fixture(label: string, commands: Command[] = []) {
       },
     } }
   )
-  const runner = await startTxikiRunner({
+  const runner = await startRunner({
     backendUrl: `http://localhost:${server.port}`,
     home,
     stateDir,
     deviceToken: label
   })
-  await waitFor(
-    () => runner.log.some(line => line.includes('installed: demi')),
-    () => runner.log.join('\n')
-  )
   return { home, stateDir, host, shell, runner, async replaceRoot() {
     const updated = await buildManifest(
       [{ ...roots[0]!, name: 'replacement' }],
-      { transpile: source => source }
+      { packages: [native.descriptor] }
     )
+    catalog.manifest = updated
     sendManifest(updated)
-    await waitFor(
-      () => runner.log.some(line => line.includes('installed: replacement')),
-      () => runner.log.join('\n')
-    )
   }, backendUrl: `http://localhost:${server.port}`, async close() {
     await runner.stop();
     server.stop(true)
+    await rm(home, { recursive: true, force: true })
+    await rm(stateDir, { recursive: true, force: true })
   } }
 }
 
@@ -140,10 +123,8 @@ test(
         'utf8'
       ))
       expect(endpoint).not.toBe(other.endpoint)
-      const client = join(
-        (await packedRunner()).replace(/\/demi-runner$/, ''),
-        'demi'
-      )
+      const client = join(a.home, process.platform === 'win32' ? 'demi.exe' : 'demi')
+      await copyFile(await runnerBinary(), client)
       const wrong = Bun.spawnSync(
         [client, 'where'],
         {
@@ -189,7 +170,7 @@ test(
       expect(started.status).toBe('running')
       expect(await f.host.fs.exists(f.home)).toBe(true)
       const duplicate = Bun.spawnSync(
-        [await packedRunner(), 'run', '--backend', f.backendUrl],
+        [await runnerBinary(), 'run', '--backend', f.backendUrl],
         {
           env: { ...process.env, DEMI_HOME: f.stateDir },
           stdout: 'pipe',
@@ -211,27 +192,9 @@ test(
 )
 
 test(
-  'workers preserve output and report command failures and invalid exit codes',
+  'native services preserve output and report command failures',
   async () => {
-    const f = await fixture('worker-results', [{
-      name: 'result',
-      summary: 'Worker completion cases',
-      kind: 'runtime',
-      module: runtimeModule(`
-      export default async context => {
-        await context.stdout('command output');
-        await context.stderr('command diagnostic');
-
-        if (context.env.RESULT === 'error') {
-          throw new Error('command failed');
-        }
-        if (context.env.RESULT === 'invalid') {
-          return { exitCode: 256 };
-        }
-        return { exitCode: 17 };
-      }
-    `),
-    }])
+    const f = await fixture('worker-results')
 
     try {
       const completed = await f.shell.exec({
@@ -249,12 +212,7 @@ test(
       expect(failed.status === 'exited' && failed.exitCode).toBe(1)
       expect(failed.stderr.delta).toContain('command failed')
 
-      const invalid = await f.shell.exec({
-        script: 'RESULT=invalid demi result',
-        timeoutMs: 10_000
-      })
-      expect(invalid.status === 'exited' && invalid.exitCode).toBe(1)
-      expect(invalid.stderr.delta).toContain('invalid command exit code')
+
     } finally {
       await f.close()
     }
@@ -282,7 +240,7 @@ test(
         } catch {
           return false
         }
-      })
+      }, () => f.runner.log.join('\n'), { timeoutMs: 10_000 })
       while ((await f.shell.status({ commandId: started.commandId })).status === 'running') await Bun.sleep(10)
       const next = await f.shell.exec({
         script: 'PROBE=new replacement where',

@@ -181,6 +181,9 @@
                 "type": "string"
               }
             },
+            "inheritEnv": {
+              "type": "boolean"
+            },
             "killProcessGroup": {
               "type": "boolean"
             }
@@ -264,6 +267,10 @@
             },
             "jobId": {
               "type": "string"
+            },
+            "manifestHash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
             },
             "script": {
               "type": "string"
@@ -390,6 +397,23 @@
           "properties": {
             "type": {
               "type": "string",
+              "const": "rpc_stdin_pull"
+            },
+            "callId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "callId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
               "const": "rpc_pipes"
             },
             "callId": {
@@ -494,6 +518,61 @@
           "required": [
             "type",
             "manifest"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "artifact_location"
+            },
+            "id": {
+              "type": "string"
+            },
+            "location": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "expiresAt": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "error": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
           ],
           "additionalProperties": false
         }

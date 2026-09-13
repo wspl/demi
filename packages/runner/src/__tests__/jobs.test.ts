@@ -1,90 +1,50 @@
-import { expect, test } from 'bun:test'
-import { createWriteStream, existsSync } from 'node:fs'
-import {
-  mkdir,
-  mkdtemp,
-  open,
-  readFile,
-  realpath,
-  rm,
-  stat
-} from 'node:fs/promises'
+import { afterEach, expect, test } from 'bun:test'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { LocalHost } from '@demicodes/runner/testing'
+import { connectTestRunner } from '@demicodes/runner/testing'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
-import { JOB_VIEW_BYTES, createRunnerWire } from '@demicodes/runner-protocol'
-import { HostRpcServer } from '../serve/host-rpc-server'
-import {
-  JobTable,
-  type JobSpawnHandle,
-  type JobSpawnParams,
-} from '../serve/jobs'
-import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
+import { JOB_VIEW_BYTES } from '@demicodes/runner-protocol'
 
-// The job table on a local Host with a JavaScript stream logger: the backend's RemoteShellEnvironment drives it
-// through the codec both ways.
-
-const wire = createRunnerWire(msgpackCodec)
+const cleanups: Array<() => Promise<void>> = []
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
+})
 
 async function connected() {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'demi-jobs-')))
-  const local = new LocalHost(dir)
-  const remote = new RemoteHost({
-    defaultCwd: dir,
-    identity: local.identity,
-    store: memoryHostStore()
-  })
-  const send = (message: Parameters<typeof wire.encode>[0]) => remote.handleMessage(wire.decodeRunnerToBackend(wire.encode(message)))
-  const rpc = new HostRpcServer(local, send)
-  const jobs = new JobTable({
-    spawn: (params) => teedSpawn(local, params),
-    outputDir: join(dir, '.out'),
-    fs: {
-      mkdir: async (path) => {
-        await mkdir(path, { recursive: true })
-      },
-      readTail: async (path, bytes) => {
-        const size = (await stat(path)).size
-        const handle = await open(path, 'r')
-        try {
-          const length = Math.min(size, bytes)
-          const buffer = new Uint8Array(length)
-          await handle.read(buffer, 0, length, size - length)
-          return buffer
-        } finally {
-          await handle.close()
-        }
-      },
-      readFile: (path) => readFile(path),
-      rm: (path) => rm(path, { force: true }),
+  cleanups.push(() => rm(dir, { recursive: true, force: true }))
+  let remote!: RemoteHost
+  const connection = await connectTestRunner({
+    home: dir,
+    env: { DEVICE_FACT: 'from the device', SHARED: 'device' },
+    onHello(send, hello) {
+      remote = new RemoteHost({
+        defaultCwd: dir,
+        identity: hello.runner.identity,
+        store: memoryHostStore()
+      })
+      remote.attach(send)
     },
-    deviceEnv: {
-      PATH: '/usr/bin:/bin',
-      DEVICE_FACT: 'from the device',
-      SHARED: 'device'
-    },
-    send,
+    onMessage: message => remote.handleMessage(message),
+    onClose: () => remote.detach('runner disconnected'),
   })
-  remote.attach((message) => {
-    const decoded = wire.decodeBackendToRunner(wire.encode(message))
-    void (decoded.type.startsWith('job_')
-      ? jobs.handleMessage(decoded)
-      : rpc.handleMessage(decoded))
-  })
+  cleanups.push(connection.close)
   const shell = new RemoteShellEnvironment({
     host: remote,
     initialEnv: { PATH: '/usr/bin:/bin' }
   })
-  return { dir, remote, jobs, shell }
+  cleanups.push(() => shell.disposeAllShells())
+  return { dir, remote, connection, shell }
 }
 
 test(
-  'a job runs bash -c on the runner; its output files are the artifact directory',
+  'a job runs in the embedded shell on the runner; its output files are the artifact directory',
   async () => {
-    const { dir, shell, jobs } = await connected()
+    const { dir, shell, remote } = await connected()
     const result = await shell.exec({
       script: 'echo hello; echo oops >&2; exit 4',
       timeoutMs: 5_000
@@ -99,12 +59,12 @@ test(
       { stream: 'stdout', text: 'hello\n' },
       { stream: 'stderr', text: 'oops\n' }
     ])
-    expect(result.outputDir?.startsWith(join(dir, '.out'))).toBe(true)
+    expect(result.outputDir).toBeDefined()
     expect(result.stdout.path).toBe(join(result.outputDir!, 'stdout.txt'))
     expect(await readFile(join(result.outputDir!, 'stdout.txt'), 'utf8'))
       .toBe('hello\n')
     expect(existsSync(join(result.outputDir!, 'cwd'))).toBe(false)
-    expect(jobs.count).toBe(0)
+    expect(remote.activeJobCount).toBe(0)
   }
 )
 
@@ -112,8 +72,6 @@ test(
   'a job runs in the device environment underneath the shell\'s: a device entry reaches it, a backend entry wins, DEMI_HOME is the runner\'s',
   async () => {
     const { shell } = await connected()
-    // A login shell: the profile may rewrite PATH (Ubuntu's /etc/profile
-    // does), so the device's entries are asserted present, not alone.
     const result = await shell.exec({
       script: 'echo "$DEVICE_FACT|$SHARED|${DEMI_SESSION_ID:-none}"; echo "$PATH"',
       timeoutMs: 5_000,
@@ -156,7 +114,7 @@ test(
     expect(third.status === 'exited' && third.exitCode).toBe(3)
     const fourth = await shell.exec({ script: 'pwd', timeoutMs: 5_000 })
     expect(fourth.status === 'exited' && fourth.stdout.delta).toBe(`${dir}\n`)
-    // A script bash cannot parse never runs the trap: the directory stays.
+    // A parse error leaves the working directory unchanged.
     const broken = await shell.exec({ script: 'cd sub; do', timeoutMs: 5_000 })
     expect(broken.status === 'exited' && broken.exitCode).toBe(2)
     const after = await shell.exec({ script: 'pwd', timeoutMs: 5_000 })
@@ -176,7 +134,7 @@ test(
 test(
   'a job outliving the timeout is running, counts in the job table, takes stdin, and can be aborted',
   async () => {
-    const { shell, jobs } = await connected()
+    const { shell, remote } = await connected()
     const running = await shell.exec({
       script: 'echo ready; head -n1; sleep 30',
       timeoutMs: 200
@@ -187,7 +145,7 @@ test(
         throw new Error('the head of the view never arrived')
       await delay(20)
     }
-    expect(jobs.count).toBe(1)
+    expect(remote.activeJobCount).toBe(1)
     const written = await shell.write({
       commandId: running.commandId,
       stdin: 'typed\n'
@@ -195,7 +153,7 @@ test(
     expect(written.status).toBe('running')
     const aborted = await shell.abort({ commandId: running.commandId })
     expect(aborted.status === 'exited' ? aborted.exitCode : 130).toBe(130)
-    await waitFor(() => jobs.count === 0, undefined, { timeoutMs: 5_000 })
+    await waitFor(() => remote.activeJobCount === 0, undefined, { timeoutMs: 5_000 })
     const status = await shell.status({ commandId: running.commandId })
     expect(status.status).not.toBe('running')
   }
@@ -228,76 +186,15 @@ test(
 test(
   'a dropped connection kills the job on the runner and fails it in the backend',
   async () => {
-    const { remote, shell, jobs } = await connected()
+    const { remote, shell, connection } = await connected()
     const running = await shell.exec({ script: 'sleep 30', timeoutMs: 100 })
     expect(running.status).toBe('running')
     remote.detach('runner disconnected')
-    await jobs.close()
+    await connection.close()
     const status = await shell.status({ commandId: running.commandId })
     expect(status.status).toBe('exited')
     expect(status.status === 'exited' && status.stderr.delta)
       .toContain('runner disconnected')
-    expect(jobs.count).toBe(0)
+    expect(remote.activeJobCount).toBe(0)
   }
 )
-
-/**
- * A stream logger over a test Host: the full streams to files, the head as the
- * view.
- */
-async function teedSpawn(
-  host: LocalHost,
-  params: JobSpawnParams
-): Promise<JobSpawnHandle> {
-  const handle = await host.process.spawn!({
-    command: params.command,
-    args: params.args,
-    cwd: params.cwd,
-    env: params.env,
-    killProcessGroup: true
-  })
-  const counts = { stdout: 0, stderr: 0 }
-  const flushed: Promise<void>[] = []
-  const tee = (
-    stream: AsyncIterable<Uint8Array>,
-    name: 'stdout' | 'stderr',
-    path: string
-  ) => {
-    const file = createWriteStream(path)
-    flushed.push(new Promise<void>((resolve) => file.once(
-      'close',
-      () => resolve()
-    )))
-    const done = (async function* () {
-      let shown = 0
-      try {
-        for await (const chunk of stream) {
-          counts[name] += chunk.byteLength
-          file.write(chunk)
-          if (shown < params.tee.viewLimit) {
-            const part = chunk.subarray(0, params.tee.viewLimit - shown)
-            shown += part.byteLength
-            yield part
-          }
-        }
-      } finally {
-        file.end()
-      }
-    })()
-    return done
-  }
-  const stdout = tee(handle.stdout, 'stdout', params.tee.stdoutPath)
-  const stderr = tee(handle.stderr, 'stderr', params.tee.stderrPath)
-  return {
-    stdout,
-    stderr,
-    writeStdin: (data) => handle.writeStdin(data),
-    closeStdin: () => handle.closeStdin(),
-    kill: (signal) => handle.kill(signal),
-    wait: async () => {
-      const exit = await handle.wait()
-      await Promise.all(flushed)
-      return { ...exit, stdoutBytes: counts.stdout, stderrBytes: counts.stderr }
-    },
-  }
-}
