@@ -7,13 +7,13 @@ import { attachmentTag } from '@demicodes/core'
 import { Buffer } from 'node:buffer'
 import type { UserContentBlock } from '@demicodes/core'
 import {
-  stringifyToolArguments,
   thinkingToReasoningEffort,
   toolResultContentToText,
   type InferenceItem,
   type InferenceRequest,
   type ToolDefinition
 } from '@demicodes/provider'
+import { stringifyToolInput } from '@demicodes/utils'
 
 export interface GrokChatCompletionsRequestBody {
   model: string
@@ -146,7 +146,7 @@ function inferenceItemsToMessages(
           type: 'function',
           function: {
             name: item.toolName,
-            arguments: stringifyToolArguments(item.input)
+            arguments: stringifyToolInput(item.input)
           },
         })
         break

@@ -142,3 +142,14 @@ function isEncodedDate(value: unknown): value is { iso: string } {
   return isRecord(value) && value[DATE_MARKER] === true
     && typeof value.iso === 'string'
 }
+
+/**
+ * A tool call's input as the JSON text a transcript stores and a vendor
+ * request carries. A string is already that text; anything else is
+ * stringified, and a value that cannot be (a cycle) reads as an empty object.
+ */
+export function stringifyToolInput(input: unknown): string {
+  if (typeof input === 'string')
+    return input
+  return safeJsonStringify(input ?? {}) ?? '{}'
+}
