@@ -58,9 +58,11 @@ job exits ───────────────────────�
 ```
 
 One job owns one `Scope`, the object the runner hands to brush as its execution
-host and to the utilities as their execution control. Both ask the scope to
-resolve paths against the invocation's cwd; both now also send it a write
-notice with the resolved path before any open that can change a file's content:
+host and to the utilities as their execution control. The notice is the only
+point that knows a write is happening; the scope and everything after it work
+on paths alone. Both brush and the utilities ask the scope to resolve paths
+against the invocation's cwd; both also send it a write notice with the
+resolved path before any open that can change a file's content:
 an open with write, append, truncate, create, or create-new set; a whole-file
 write; a rename, for its destination. A utility that writes through a temporary
 file and renames it over the target notifies for the target, so `sed -i`
@@ -79,19 +81,6 @@ under that directory's lifetime ([Pipes and output](runner.md#pipes-and-output))
 Recording never fails the command: a copy that cannot be taken or a path that
 disappeared leaves that entry with counts 0 and 0 and no contents, and the
 command's own result stands.
-
-## Extending the scope
-
-Everything after the notice is path-based and knows nothing about which
-command wrote: the scope, the copies, the counts, the report, the store, the
-view. Bringing a new kind of write into scope is therefore one thing: send the
-notice with the destination path at the place its bytes reach the disk, before
-they do. Nothing downstream changes.
-
-For `cp` that is three notices: `context::fs::copy` and `hard_link` for their
-destination, `uucore::safe_copy::create_dest_restrictive` (the Linux copy opens
-its destination there, through `rustix`), and the macOS copy before it calls
-`clonefile(2)`. A copied file then reports as `added` like any other.
 
 ## The report
 
@@ -190,6 +179,4 @@ history and go with it, and because two sides of one edit are only meaningful
 together.
 
 Only creations and modifications are reported because the conversation shows
-what the model wrote, not the state of the directory. Copies are left out for
-now because a copied file is not an edit the reader is looking for; the section
-above says what it takes to add them.
+what the model wrote, not the state of the directory.
