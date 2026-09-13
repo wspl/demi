@@ -1,8 +1,11 @@
-import { isAbortError, isRecord, normalizeBaseUrl } from '@demicodes/utils'
+import { isAbortError, normalizeBaseUrl } from '@demicodes/utils'
+import { z } from 'zod'
 import {
   defineProvider,
   httpRequestFailedEvent,
+  mapChatCompletionsStream,
   providerErrorFromUnknown,
+  readServerSentEvents,
   type AgentProvider,
   type InferenceRequest,
   type Provider,
@@ -16,11 +19,7 @@ import {
   type GrokAuthStore,
   type GrokResolvedAuth,
 } from './auth'
-import {
-  buildGrokChatCompletionsBody,
-  mapGrokChatCompletionStream,
-  readServerSentEvents
-} from './chat'
+import { buildGrokChatCompletionsBody } from './chat'
 import {
   createGrokBuildCredentials,
   openGrokCredentialPool,
@@ -30,10 +29,25 @@ import { DEFAULT_GROK_BUILD_BASE_URL, buildGrokBuildHeaders } from './headers'
 import { listGrokBuildModels } from './models'
 import { createGrokBuildQuota } from './quota'
 
+const GROK_VENDOR_LABEL = 'Grok Build'
+
 export type GrokBuildFetch = (
   input: string | URL | Request,
   init?: RequestInit
 ) => Promise<Response>
+
+/**
+ * The Grok Build provider's configuration, as a config file states it. Unknown
+ * keys are rejected: a misspelled key would otherwise be silently ignored.
+ */
+export const grokBuildProviderConfigSchema = z.strictObject({
+  grokHome: z.string().optional(),
+  baseUrl: z.string().optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+})
+
+export type GrokBuildProviderConfig =
+  z.infer<typeof grokBuildProviderConfigSchema>
 
 export interface GrokBuildProviderOptions {
   id?: string
@@ -135,14 +149,15 @@ export class GrokBuildProvider implements AgentProvider {
           yield await httpRequestFailedEvent(
             response,
             accessToken,
-            'Grok Build'
+            GROK_VENDOR_LABEL
           )
           return
         }
 
-        yield* mapGrokChatCompletionStream(
+        yield* mapChatCompletionsStream(
           readServerSentEvents(response.body, request.cancel),
-          request.cancel
+          GROK_VENDOR_LABEL,
+          request.cancel,
         )
         return
       } catch (error) {
@@ -230,44 +245,8 @@ export function createGrokBuildProvider(
 
 export function parseGrokBuildProviderConfig(
   config: unknown
-): Pick<GrokBuildProviderOptions, 'grokHome' | 'baseUrl' | 'headers'> {
-  if (config === undefined || config === null)
-    return {}
-  if (!isRecord(config))
-    throw new Error('Grok Build provider config must be an object')
-  const parsed: Pick<GrokBuildProviderOptions, 'grokHome'
-    | 'baseUrl'
-    | 'headers'> = {}
-  if (config.grokHome !== undefined) {
-    if (typeof config.grokHome !== 'string')
-      throw new Error(
-        'Grok Build provider config field "grokHome" must be a string'
-      )
-    parsed.grokHome = config.grokHome
-  }
-  if (config.baseUrl !== undefined) {
-    if (typeof config.baseUrl !== 'string')
-      throw new Error(
-        'Grok Build provider config field "baseUrl" must be a string'
-      )
-    parsed.baseUrl = config.baseUrl
-  }
-  if (config.headers !== undefined) {
-    if (!isRecord(config.headers))
-      throw new Error(
-        'Grok Build provider config field "headers" must be an object'
-      )
-    const headers: Record<string, string> = {}
-    for (const [key, value] of Object.entries(config.headers)) {
-      if (typeof value !== 'string')
-        throw new Error(
-          `Grok Build provider config headers.${key} must be a string`
-        )
-      headers[key] = value
-    }
-    parsed.headers = headers
-  }
-  return parsed
+): GrokBuildProviderConfig {
+  return grokBuildProviderConfigSchema.parse(config ?? {})
 }
 
 function chatCompletionsUrl(baseUrl: string): string {
