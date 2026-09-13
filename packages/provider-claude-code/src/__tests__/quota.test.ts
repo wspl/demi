@@ -168,3 +168,26 @@ class FakeClaudeTransport implements ClaudeTransport, AsyncIterator<unknown> {
     return ''
   }
 }
+
+test('a malformed limit entry is dropped, the rest of the snapshot renders', () => {
+  const snap = mapClaudeUsagePayload({
+    five_hour: { utilization: 10, resets_at: '2026-07-09T09:00:00.000Z' },
+    seven_day: { utilization: 'lots' },
+    limits: [
+      { percent: 50 },
+      { kind: 'weekly_scoped', percent: 80, severity: 'sideways' },
+    ],
+  })
+  expect(snap.windows.map((w) => w.id)).toEqual([
+    'five_hour',
+    'limit:weekly_scoped'
+  ])
+  expect(snap.windows[0]?.usedPercent).toBe(10)
+  // An unknown severity falls back to the one the percentage implies.
+  expect(snap.windows[1]?.severity).toBe('warning')
+})
+
+test('a usage payload that is not an object yields no windows', () => {
+  expect(mapClaudeUsagePayload('nope').windows).toEqual([])
+  expect(observeClaudeStreamBody({ type: 'result' })).toBeNull()
+})

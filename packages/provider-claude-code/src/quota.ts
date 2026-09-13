@@ -1,4 +1,4 @@
-import { isRecord, stringOrNull } from '@demicodes/utils'
+import { z } from 'zod'
 import {
   clampUsedPercent,
   createProviderQuota,
@@ -27,6 +27,47 @@ export interface ClaudeCodeQuotaOptions {
 
 const DEFAULT_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
 const DEFAULT_OAUTH_BETA = 'oauth-2025-04-20'
+
+/**
+ * The usage payload's fields, as the API and the CLI's `rate_limits`
+ * envelopes report them. Quota is a display surface: a malformed window or
+ * limit entry is dropped, and the rest of the snapshot still renders.
+ */
+const resetsAtSchema = z.union([z.string(), z.number()]).optional()
+  .catch(undefined)
+
+const usageWindowSchema = z.looseObject({
+  utilization: z.number().optional(),
+  used_percentage: z.number().optional(),
+  resets_at: resetsAtSchema,
+}).optional().catch(undefined)
+
+const usageLimitSchema = z.looseObject({
+  kind: z.string().min(1),
+  percent: z.number().optional(),
+  severity: z.enum(['normal', 'warning', 'critical']).optional()
+    .catch(undefined),
+  resets_at: resetsAtSchema,
+  scope: z.looseObject({
+    model: z.looseObject({ display_name: z.string().optional() }).optional(),
+  }).optional().catch(undefined),
+}).optional().catch(undefined)
+type ClaudeUsageWindow = NonNullable<z.infer<typeof usageWindowSchema>>
+
+const usagePayloadSchema = z.looseObject({
+  five_hour: usageWindowSchema,
+  seven_day: usageWindowSchema,
+  seven_day_sonnet: usageWindowSchema,
+  seven_day_opus: usageWindowSchema,
+  limits: z.array(usageLimitSchema).optional().catch(undefined),
+})
+
+/** The CLI stream envelopes that embed a usage payload as `rate_limits`. */
+const quotaEnvelopeSchema = z.looseObject({
+  rate_limits: z.unknown().optional(),
+  message: z.looseObject({ rate_limits: z.unknown().optional() })
+    .optional().catch(undefined),
+})
 
 /**
  * Active probe: GET /api/oauth/usage (Claude.ai consumer plan windows).
@@ -89,14 +130,12 @@ export function createClaudeCodeQuota(
 export function observeClaudeStreamBody(
   body: unknown
 ): ProviderQuotaProbeResult | null {
-  if (!isRecord(body))
+  const envelope = quotaEnvelopeSchema.safeParse(body)
+  if (!envelope.success)
     return null
-  const rateLimits = isRecord(body.rate_limits)
-    ? body.rate_limits
-    : isRecord(body.message) && isRecord(body.message.rate_limits)
-      ? body.message.rate_limits
-      : null
-  if (!rateLimits)
+  const rateLimits = envelope.data.rate_limits
+    ?? envelope.data.message?.rate_limits
+  if (rateLimits === undefined)
     return null
   // Reuse payload mapper shape: five_hour / seven_day on the rate_limits object.
   const partial = mapClaudeUsagePayload(rateLimits)
@@ -110,7 +149,8 @@ export function mapClaudeUsagePayload(
   payload: unknown,
   access?: ClaudeCodeOAuthAccess | null,
 ): ProviderQuotaProbeResult {
-  const record = isRecord(payload) ? payload : {}
+  const parsed = usagePayloadSchema.safeParse(payload)
+  const record = parsed.success ? parsed.data : {}
   const windows: ProviderQuotaWindow[] = []
 
   pushWindow(windows, 'five_hour', '5h session', record.five_hour)
@@ -118,39 +158,25 @@ export function mapClaudeUsagePayload(
   pushWindow(windows, 'seven_day_sonnet', '7d Sonnet', record.seven_day_sonnet)
   pushWindow(windows, 'seven_day_opus', '7d Opus', record.seven_day_opus)
 
-  if (Array.isArray(record.limits)) {
-    for (const item of record.limits) {
-      if (!isRecord(item))
-        continue
-      const kind = typeof item.kind === 'string' ? item.kind : null
-      if (!kind)
-        continue
-      // Prefer dedicated five_hour/seven_day objects when present.
-      if (kind === 'session' || kind === 'weekly_all')
-        continue
-      const percent = clampUsedPercent(typeof item.percent === 'number'
-        ? item.percent
-        : null)
-      const scopeLabel =
-        isRecord(item.scope) && isRecord(item.scope.model)
-          && typeof item.scope.model.display_name === 'string'
-          ? item.scope.model.display_name
-          : undefined
-      windows.push({
-        id: `limit:${kind}${scopeLabel ? `:${scopeLabel}` : ''}`,
-        label: scopeLabel ? `${kind} (${scopeLabel})` : kind,
-        usedPercent: percent,
-        unit: 'percent',
-        resetsAt: unixSecondsToIso(item.resets_at)
-          ?? stringOrNull(item.resets_at),
-        severity:
-          item.severity === 'critical' || item.severity === 'warning'
-            || item.severity === 'normal'
-            ? item.severity
-            : severityFromUsedPercent(percent),
-        scope: scopeLabel ? { kind: 'model', label: scopeLabel } : { kind },
-      })
-    }
+  for (const item of record.limits ?? []) {
+    if (!item)
+      continue
+    // Prefer dedicated five_hour/seven_day objects when present.
+    if (item.kind === 'session' || item.kind === 'weekly_all')
+      continue
+    const percent = clampUsedPercent(item.percent ?? null)
+    const scopeLabel = item.scope?.model?.display_name
+    windows.push({
+      id: `limit:${item.kind}${scopeLabel ? `:${scopeLabel}` : ''}`,
+      label: scopeLabel ? `${item.kind} (${scopeLabel})` : item.kind,
+      usedPercent: percent,
+      unit: 'percent',
+      resetsAt: resetsAtIso(item.resets_at),
+      severity: item.severity ?? severityFromUsedPercent(percent),
+      scope: scopeLabel
+        ? { kind: 'model', label: scopeLabel }
+        : { kind: item.kind },
+    })
   }
 
   const planId = access?.subscriptionType ?? null
@@ -207,24 +233,28 @@ function pushWindow(
   windows: ProviderQuotaWindow[],
   id: string,
   label: string,
-  value: unknown,
+  window: ClaudeUsageWindow | undefined,
 ): void {
-  if (!isRecord(value))
+  if (!window)
     return
   const usedPercent = clampUsedPercent(
-    typeof value.utilization === 'number'
-      ? value.utilization
-      : typeof value.used_percentage
-        === 'number' ? value.used_percentage : null,
+    window.utilization ?? window.used_percentage ?? null
   )
   windows.push({
     id,
     label,
     usedPercent,
     unit: 'percent',
-    resetsAt: unixSecondsToIso(value.resets_at)
-      ?? stringOrNull(value.resets_at),
+    resetsAt: resetsAtIso(window.resets_at),
     severity: severityFromUsedPercent(usedPercent),
   })
+}
+
+/**
+ * A reset time as ISO-8601. The API reports either unix seconds or a date
+ * string; a string that is neither is reported back as it arrived.
+ */
+function resetsAtIso(value: string | number | undefined): string | null {
+  return unixSecondsToIso(value) ?? (typeof value === 'string' ? value : null)
 }
 

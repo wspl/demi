@@ -1,5 +1,6 @@
-import { abortable, isRecord } from '@demicodes/utils'
+import { abortable } from '@demicodes/utils'
 import { randomUUID } from 'node:crypto'
+import { z } from 'zod'
 import type { ToolResultContentBlock } from '@demicodes/core'
 import {
   applyModelPolicy,
@@ -30,8 +31,10 @@ import { listClaudeCodeModels } from './models'
 import { injectableCliToken } from './oauth'
 import {
   controlRequestToToolCall,
+  decodeClaudeStdoutMessage,
   mapClaudeStdoutMessage,
-  type ClaudeControlRequest
+  type ClaudeControlRequest,
+  type ClaudeStdoutMessage
 } from './output'
 import { createClaudeCodeQuota } from './quota'
 import type { ClaudeSpawn } from './spawn'
@@ -85,9 +88,12 @@ export interface ClaudeCodeRuntimeOptions {
   env?: Record<string, string>
 }
 
-export interface ClaudeCodeProviderConfig {
-  claudePath?: string
-}
+/** The provider config a workspace file may carry; unknown keys are rejected. */
+export const claudeCodeProviderConfigSchema = z.strictObject({
+  claudePath: z.string().optional(),
+})
+export type ClaudeCodeProviderConfig =
+  z.infer<typeof claudeCodeProviderConfigSchema>
 
 interface ActiveClaudeRun {
   observeQuota: ProviderQuotaObserver | undefined
@@ -223,14 +229,11 @@ export class ClaudeCodeProvider implements AgentProvider {
 
         const raw = next.value
         this.observeQuotaFromMessage(raw, observeQuota)
-        const ignoreAssistantContent = active.hasStreamed && isMessageType(
-          raw,
-          'assistant'
-        )
-        const mapped = mapClaudeStdoutMessage(raw, {
-          ignoreAssistantContent,
+        const message = decodeClaudeStdoutMessage(raw)
+        const mapped = mapClaudeStdoutMessage(message, {
+          ignoreAssistantContent: active.hasStreamed,
         })
-        if (isMessageType(raw, 'stream_event'))
+        if (message?.type === 'stream_event')
           active.hasStreamed = true
         if (mapped.controlRequest) {
           const handled = await this.handleControlRequest(
@@ -274,7 +277,7 @@ export class ClaudeCodeProvider implements AgentProvider {
             }
             yield event
           }
-          if (isStreamMessageStop(raw)
+          if (isStreamMessageStop(message)
             && active.collectingSdkToolCalls.size > 0) {
             active.pendingSdkToolCalls = [...active.collectingSdkToolCalls.values()]
             active.collectingSdkToolCalls.clear()
@@ -570,10 +573,10 @@ export class ClaudeCodeProvider implements AgentProvider {
         )
       }
       this.observeQuotaFromMessage(next.value, active.observeQuota)
-      const mapped = mapClaudeStdoutMessage(next.value, {
-        ignoreAssistantContent: true,
-        ignoreAssistantToolUse: true,
-      })
+      const mapped = mapClaudeStdoutMessage(
+        decodeClaudeStdoutMessage(next.value),
+        { ignoreAssistantContent: true, ignoreAssistantToolUse: true },
+      )
       if (mapped.controlRequest) {
         const handled = await this.handleControlRequest(
           active,
@@ -669,7 +672,8 @@ export class ClaudeCodeProvider implements AgentProvider {
         throw new Error(
           'Claude Code exited before SDK MCP initialization completed'
         )
-      if (isControlResponseFor(next.value, requestId))
+      const message = decodeClaudeStdoutMessage(next.value)
+      if (isControlResponseFor(message, requestId))
         return
       active.bufferedMessages.push(next.value)
     }
@@ -804,20 +808,7 @@ export function createClaudeCodeProvider(
 export function parseClaudeCodeProviderConfig(
   config: unknown
 ): ClaudeCodeProviderConfig {
-  if (config === undefined || config === null)
-    return {}
-  if (!isRecord(config))
-    throw new Error('Claude Code provider config must be an object')
-
-  const parsed: ClaudeCodeProviderConfig = {}
-  if (config.claudePath !== undefined) {
-    if (typeof config.claudePath !== 'string')
-      throw new Error(
-        'Claude Code provider config field "claudePath" must be a string'
-      )
-    parsed.claudePath = config.claudePath
-  }
-  return parsed
+  return claudeCodeProviderConfigSchema.parse(config ?? {})
 }
 
 function isToolCallRequested(
@@ -826,11 +817,15 @@ function isToolCallRequested(
   return event.type === 'tool_call_requested'
 }
 
-function isControlResponseFor(value: unknown, requestId: string): boolean {
-  if (!isRecord(value) || value.type !== 'control_response'
-    || !isRecord(value.response)) return false
-  return value.response.request_id === requestId
-    && value.response.subtype === 'success'
+/** True when this message is the CLI's success answer to `requestId`. */
+function isControlResponseFor(
+  message: ClaudeStdoutMessage | null,
+  requestId: string
+): boolean {
+  if (message?.type !== 'control_response')
+    return false
+  return message.response?.request_id === requestId
+    && message.response.subtype === 'success'
 }
 
 
@@ -856,17 +851,10 @@ function toolResultContentToMcp(
   })
 }
 
-function isMessageType(value: unknown, type: string): boolean {
-  return isRecord(value) && value.type === type
-}
-
-function isStreamMessageStop(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    value.type === 'stream_event' &&
-    isRecord(value.event) &&
-    value.event.type === 'message_stop'
-  )
+/** The CLI closes a streamed turn — and its batch of tool calls — with this. */
+function isStreamMessageStop(message: ClaudeStdoutMessage | null): boolean {
+  return message?.type === 'stream_event'
+    && message.event?.type === 'message_stop'
 }
 
 function thinkingSignature(request: InferenceRequest): string {

@@ -4,7 +4,19 @@ import {
   inputMessagesToJsonl,
   requestToInputMessages
 } from '../jsonl'
-import { mapClaudeStdoutMessage } from '../output'
+import {
+  decodeClaudeStdoutMessage,
+  mapClaudeStdoutMessage,
+  type ClaudeOutputMapOptions,
+} from '../output'
+
+/** Decodes one raw stdout line and maps it, the way the provider does. */
+function mapStdoutLine(
+  line: unknown,
+  options: ClaudeOutputMapOptions = {}
+) {
+  return mapClaudeStdoutMessage(decodeClaudeStdoutMessage(line), options)
+}
 
 test(
   'requestToInputMessages converts inference items to stream-json input messages',
@@ -378,7 +390,7 @@ test(
   'mapClaudeStdoutMessage maps assistant content, stream deltas, tool calls, and usage',
   () => {
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'assistant',
         message: {
           content: [
@@ -403,7 +415,7 @@ test(
     ])
 
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'stream_event',
         event: {
           type: 'content_block_delta',
@@ -413,7 +425,7 @@ test(
     ).toEqual([{ type: 'text_delta', text: 'delta' }])
 
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'stream_event',
         event: {
           type: 'message_delta',
@@ -423,7 +435,7 @@ test(
     ).toEqual([])
 
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'result',
         usage: {
           input_tokens: 2,
@@ -453,7 +465,7 @@ test(
     // result.usage totals every API call of the turn; iterations[] carries the
     // per-call usage and the last entry is the final request's real usage.
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'result',
         usage: {
           input_tokens: 30,
@@ -493,7 +505,7 @@ test(
 
     // Empty or malformed iterations fall back to the top-level usage.
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'result',
         usage: {
           input_tokens: 1,
@@ -519,7 +531,7 @@ test(
   'mapClaudeStdoutMessage handles empty content and thinking boundary events',
   () => {
     expect(
-      mapClaudeStdoutMessage({ type: 'assistant', message: { content: [] } })
+      mapStdoutLine({ type: 'assistant', message: { content: [] } })
     ).toEqual(
       {
         events: [],
@@ -527,7 +539,7 @@ test(
       }
     )
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'assistant',
         message: {
           content: [
@@ -544,7 +556,7 @@ test(
       { type: 'redacted_thinking', data: '' },
     ])
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'stream_event',
         event: {
           type: 'content_block_delta',
@@ -559,7 +571,7 @@ test(
   'mapClaudeStdoutMessage preserves provider error codes and result error text',
   () => {
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'error',
         message: 'context window exceeded',
         code: 'context_length_exceeded',
@@ -570,7 +582,7 @@ test(
       code: 'context_length_exceeded'
     }])
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'error',
         message: 'rate limited, try later',
       }).events,
@@ -580,7 +592,7 @@ test(
       code: 'rate_limit'
     }])
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'error',
         message: 'authentication expired',
         code: 'auth_expired',
@@ -591,7 +603,7 @@ test(
       code: 'auth_expired'
     }])
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'result',
         is_error: true,
         result: 'context window exceeded',
@@ -603,7 +615,7 @@ test(
       code: 'context_length_exceeded'
     })
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'result',
         is_error: true,
         result: 'authentication failed',
@@ -615,7 +627,7 @@ test(
     })
 
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'result',
         is_error: true,
         result: 'rate limited',
@@ -653,7 +665,7 @@ test(
   'mapClaudeStdoutMessage rejects malformed assistant tool_use blocks',
   () => {
     expect(
-      mapClaudeStdoutMessage({
+      mapStdoutLine({
         type: 'assistant',
         message: {
           content: [
@@ -680,3 +692,53 @@ test(
     ])
   }
 )
+
+test(
+  'decodeClaudeStdoutMessage rejects a malformed payload of a type Demi reads',
+  () => {
+    // A text delta whose text is an object used to render as "[object Object]".
+    expect(() =>
+      mapStdoutLine({
+        type: 'stream_event',
+        event: {
+          type: 'content_block_delta',
+          delta: { type: 'text_delta', text: { value: 'hi' } },
+        },
+      })).toThrow(/text/)
+    expect(() =>
+      mapStdoutLine({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: { value: 'hi' } }] },
+      })).toThrow(/text/)
+    // A line that carries no type tag is not a message Demi can route.
+    expect(() => mapStdoutLine({ result: 'ok' })).toThrow(/type/)
+  }
+)
+
+test('a message type Demi does not read is ignored, not an error', () => {
+  expect(mapStdoutLine({ type: 'system', subtype: 'init', tools: 3 }))
+    .toEqual({ events: [], terminal: false })
+  expect(
+    mapStdoutLine({
+      type: 'stream_event',
+      event: { type: 'message_start', message: { content: [] } }
+    }).events,
+  ).toEqual([])
+  expect(
+    mapStdoutLine({
+      type: 'assistant',
+      message: {
+        content: [{ type: 'server_tool_use' }, { type: 'text', text: 'kept' }]
+      },
+    }).events,
+  ).toEqual([{ type: 'text_delta', text: 'kept' }])
+})
+
+test('an error message with a malformed message field still reports', () => {
+  expect(mapStdoutLine({ type: 'error', message: { detail: 'boom' } }).events)
+    .toEqual([{
+      type: 'error',
+      message: 'Claude Code error',
+      code: null
+    }])
+})
