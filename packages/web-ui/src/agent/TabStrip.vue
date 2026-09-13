@@ -23,7 +23,9 @@ const FADE_PX = 24
  * scroll is the strip's own, timed and eased like the tab motion, and aimed
  * at the settled layout: a tab on its way out takes no room and a tab on its
  * way in its full width, so one motion lands the tab where it ends up. Close
- * and insert collapse or grow from the current width.
+ * and insert collapse or grow from the current width. The wheel scrolls the
+ * strip along its axis, so a vertical wheel over the tabs moves them
+ * sideways instead of the page.
  * The host passes its `TabItem`s as children and sizes the strip in its row.
  * The `trailing` slot (a New tab control) follows the last tab while the
  * tabs fit, and stays at the strip's right edge once they scroll.
@@ -117,6 +119,24 @@ function revealActive(): void {
   updateEdges()
 }
 
+// A wheel over the tabs moves them, whichever axis it turns on; the page
+// keeps the event only when the strip has nothing to scroll that way.
+function onWheel(event: WheelEvent): void {
+  const strip = el.value
+  if (!strip || strip.scrollWidth <= strip.clientWidth) {
+    return
+  }
+  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+  const max = strip.scrollWidth - strip.clientWidth
+  const atEdge = delta < 0 ? strip.scrollLeft <= 0 : strip.scrollLeft >= max
+  if (atEdge) {
+    return
+  }
+  event.preventDefault()
+  cancelScroll()
+  strip.scrollLeft += delta
+}
+
 // The strip's extent settles only after the motion; reveal again then.
 function onAfterEnter(el: Element): void {
   afterEnterTab(el)
@@ -165,6 +185,7 @@ defineExpose({ el })
       class="flex items-center gap-0.5 overflow-x-auto [scrollbar-width:none]"
       role="tablist"
       @scroll.passive="updateEdges"
+      @wheel="onWheel"
       @before-enter="beforeEnterTab"
       @enter="enterTab"
       @after-enter="onAfterEnter"
