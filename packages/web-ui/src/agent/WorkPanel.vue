@@ -88,10 +88,10 @@ watch(
             :key="tab.id"
             role="tab"
             :aria-selected="tab.id === activeId"
-            class="group relative flex h-7 w-36 shrink-0 cursor-default select-none items-center overflow-hidden rounded-md pl-1.5 pr-7 text-chrome"
+            class="group relative flex h-7 w-36 shrink-0 cursor-default select-none items-center overflow-hidden rounded-md pl-1.5 pr-7 text-chrome after:absolute after:right-0 after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line last:after:hidden hover:after:hidden has-[+[aria-selected=true]]:after:hidden"
             :class="
               tab.id === activeId
-                ? 'bg-surface-base text-fg-emphasis'
+                ? 'bg-surface-base text-fg-emphasis after:hidden'
                 : 'text-fg-subtle hover:bg-hover hover:text-fg-body'
             "
             @pointerdown="emit('select', tab.id)"

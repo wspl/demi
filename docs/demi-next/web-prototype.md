@@ -58,7 +58,9 @@ files and diffs open for the conversation on screen, kept per conversation by
 the host; a file tab carries the file's icon, a diff tab adds a compare mark,
 and the tab's tooltip is the path. Tabs are all one width; when they outgrow
 the row the strip scrolls without a scrollbar and fades out at whichever edge
-has more behind it, and the active tab is scrolled into view. The active tab
+has more behind it, and the active tab is scrolled into view. A faint short
+line separates neighbouring tabs; it goes where a tab is active or hovered.
+The active tab
 keeps its close control and the others show it on hover; closing the active
 tab activates the one before it. The Panel view of the Session gallery shows the frame with the panel open
 and the panel alone. The content pane is a placeholder: file and diff views,
