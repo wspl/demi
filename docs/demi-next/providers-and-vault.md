@@ -1,147 +1,191 @@
-# Demi Next: Providers, Vault and Accounting
+# Demi Next: Providers, Credentials, and Usage
 
-| | |
+The backend owns provider configuration, credential access, model discovery,
+and inference admission. Provider packages own vendor protocols, credential
+refresh, and response parsing. A conversation selects a provider entry and model;
+it does not own a copy of the provider's credentials.
+
+HTTP inference runs in the backend. A provider that requires a process runs its
+transport on the conversation's execution target. This distinction determines
+where credentials must be available:
+
+```text
+Backend                                  External service / target
++----------------------------------+
+| Provider entry -> credential     |
+|                  resolution     |
+|                       |          |
+| Session runtime ------+----------+----> vendor HTTP API
+|                       |          |
+|                       +----------+----> runner -> Claude Code CLI
+|                                  |      token in process environment
+| Usage observer -> control store  |                |
++----------------------------------+                +--> vendor API
+```
+
+For example, an OpenAI API conversation can infer without waking Cloud. A Claude
+Code conversation needs an available execution target with the CLI installed;
+its next inference starts the CLI there using the backend's selected account.
+
+## Provider entries and model discovery
+
+A **family** identifies the provider implementation and credential mechanism.
+A **vendor** identifies an API service whose protocol a family can speak.
+Multiple API-key entries can use the same family with different keys, endpoints,
+or model configurations.
+
+| Family | Credentials | Transport |
+|---|---|---|
+| `anthropic` | API key | Anthropic HTTP API |
+| `openai` | API key | Responses or Chat Completions |
+| `google` | API key | Google HTTP API |
+| `codex` | Subscription account | Provider-owned network transport |
+| `grok-build` | Subscription account | Provider-owned network transport |
+| `claude-code` | Imported setup token | CLI on the execution target |
+
+An API-key entry stores its family, key, optional endpoint, optional wire
+protocol, optional vendor ID, and optional typed model configuration. These are
+user configuration: changing the upstream catalog does not overwrite them.
+A subscription entry identifies its family and has a private credential pool.
+Each owner scope has at most one subscription entry per family; that entry can
+contain multiple accounts with one explicitly selected account.
+
+The backend offers vendors from models.dev whose `npm` field maps to a supported
+protocol:
+
+| models.dev client package | Family and protocol |
 |---|---|
-| Date | 2026-09-08 |
-| Status | Target architecture contract |
-| Scope | The LLM module, the credential vault, usage accounting, and the Claude Code special case |
+| `@ai-sdk/openai-compatible` | `openai`, Chat Completions |
+| `@ai-sdk/openai` | `openai`, Responses |
+| `@ai-sdk/anthropic` | `anthropic` |
+| `@ai-sdk/google` | `google` |
 
-## LLM module
+Other mappings are not offered. `github-copilot` is excluded because its
+credential scheme is not the API-key scheme of these families. Vendor-specific
+request requirements belong to the backend's vendor policy and provider adapter;
+for example, DeepSeek Chat Completions preserves reasoning content when replaying
+prior thinking and tool exchanges.
 
-The provider runtimes (`createAnthropicApiProvider`, `createCodexProvider`,
-…) are instantiated **inside the backend** with vault credentials at their
-native endpoints. The assembly caches public providers by entry identity
-and its current configuration and label; each session owns an independent
-runtime. The backend never proxies or rewrites model
-traffic. The module exposes the aggregated model catalog (live, never
-stored) and quota surfaces to the web UI.
+Model metadata comes from the entry's configured list when present, otherwise
+its selected vendor's catalog, otherwise the provider's own model directory.
+An unavailable selected vendor does not silently select a different source.
+The backend persists fetched directories per provider entry and combines them
+with current authentication and runtime health. Cache freshness, refresh,
+invalidation, and frontend reuse are defined in
+[Model catalog caching](../model-catalog-cache.md). Model metadata is not proof
+that the selected execution target can run a process provider.
 
-**Families and vendors.** The runtime families are the registered
-provider types — six factories, each declaring how it is credentialed:
-`anthropic`, `openai` (with a `wireApi` choice, Responses or Chat
-Completions), `google` by API key; `claude-code`, `codex`, `grok-build` by
-subscription login, of which a scope holds at most one entry each. The
-vendors are models.dev's: the backend reads `https://models.dev/api.json`
-through the provider kit's models.dev client (a day of freshness, etag
-revalidation, the last copy served stale on failure) and offers every
-vendor whose `npm` tag — the client package that catalog is written for,
-its only protocol tag — names a protocol one of our families speaks:
+## Inference admission and runtime ownership
 
-```
-models.dev npm tag              our family / protocol
-@ai-sdk/openai-compatible  →    openai, chat-completions
-@ai-sdk/openai             →    openai, responses
-@ai-sdk/anthropic          →    anthropic
-@ai-sdk/google             →    google
-anything else              →    not offered (no runtime speaks it)
-github-copilot             →    not offered (needs its own auth scheme)
-```
+[Instance mode](product.md#instance-mode-shared-vs-isolated) determines provider scope: shared
+instances use instance-owned entries; isolated instances use user-owned entries.
+The backend checks scope and resolves the current provider entry at each
+inference boundary. A missing, deleted, or inaccessible entry refuses the request
+before taking a rate-limit slot. A subscription provider also requires a
+configured account.
 
-An API-key entry records its family, key, endpoint, protocol, the vendor
-id it came from and an optional typed model list; its catalog is the typed
-list if any, else the vendor's models.dev list, else the runtime's own
-(the packages' static lists, which stay for the local products). Vendor
-endpoints and model lists are never stored.
+Each session owns its inference runtime. It reuses that runtime while the
+provider snapshot, selected model, and required execution Host remain the same.
+Editing configuration or the label, switching model, or changing a process
+provider's Host creates a replacement runtime and disposes the previous one.
+Rebuilding uses the current request's model, thinking setting, and service tier.
+An already running request can finish with its original runtime.
 
-Vendor request policy is selected alongside the runtime: DeepSeek Chat
-Completions replays prior reasoning content so thinking/tool exchanges
-retain the fields its endpoint requires.
+The assembly checks freshly read configuration and label before reusing a
+provider object. A lookup that completes after an edit cannot make subsequent
+requests permanently reuse an old snapshot. Account changes invalidate the
+provider and its model directory.
 
-Every inference resolves the provider from the current user's scope and
-vault before rate-limit accounting. A missing or deleted entry refuses
-the request. Each session reuses its runtime while the provider snapshot,
-selected model and, for process providers, execution Host stay the same;
-configuration edits, a model switch or a Host switch recreate that
-runtime. Rebuilds use the current request's model, thinking and service
-tier. A request already running may finish with its original runtime.
-Each spawn also resolves the current Host at invocation time. Provider
-cache lookups compare the freshly read configuration and label, so an
-older lookup completing after an edit cannot leave later requests using
-its snapshot. A provider declares an **execution-requirement
-capability flag** when inference needs a process on the selected target. The
-backend obtains or wakes Cloud before starting that provider, or reports an
-unavailable paired device. This is gated by the flag, never by provider names.
+Process admission uses the provider's `requiresProcessCapableHost` capability,
+not its name. The backend obtains or wakes Cloud, or refuses an unavailable
+paired device, before inference. Each spawn resolves the current target again.
+Target ownership and switching are defined in
+[Sessions and execution targets](sessions-and-targets.md).
 
 ## Credential vault
 
-BYOK keys and subscription OAuth tokens, the providers' device-login flows,
-token refresh — including the hard-coded auth endpoints
-(`auth.openai.com`, `auth.x.ai`, `console.anthropic.com`), only ever called
-from here.
+`backend/vault` owns product scope, encrypted provider configuration, account
+operations, and login lifetime. Provider packages own authentication protocols,
+refresh, and credential-pool formats. The backend invokes those packages; it
+necessarily handles plaintext credentials in memory to make authenticated
+requests.
 
-Each provider package owns its credential machinery; the vault is three
-authStore implementations plus one `HostStore` implementation, all inside
-`@demicodes/backend`:
+API-key configuration in the control store is encrypted with the instance
+secret. Subscription credentials live in private per-provider pool directories;
+these files have filesystem access protection and are not covered by the
+configuration column's encryption. The storage boundary is described in
+[Storage](storage.md). Public provider responses expose configuration metadata
+and account status, not token material.
 
-- Every subscription provider creator accepts `authStore?:` — a two-method
-  interface (`status()` + `resolveAuth`/`resolveAccess`) with refresh and
-  persistence as implementation concerns; injection takes precedence over
-  the file/pool stores. API-key providers take resolver functions.
-- Device-login flows return token material without persisting
-  (`runCodexDeviceLogin(): CodexAuthDotJson`); the vault stores the return
-  value. A login publishes its completed credential pool into its final
-  provider directory before inserting the provider row. Storage atomically
-  enforces one subscription entry per owner scope and family, including
-  the shared owner scope. Concurrent losing logins fail with a scope conflict
-  and remove only their own unpublished pool; observers never see a row
-  whose credentials are still in a pending directory.
-- `providers.config` is encrypted at rest with the instance secret
-  (`storage.md`). The backend never touches credential bytes beyond naming
-  where a provider's pool lives.
-- The file-based implementations (`File*AuthStore`,
-  `@demicodes/provider/credentials-pool`, the `~/.demi` layout) stay for the
-  local products and the runner's machine-local state; no migration or
-  compatibility layer.
+Codex and Grok Build use cancellable device-login flows. Claude Code uses setup-token
+import through the provider account API. Creating a subscription entry
+publishes credentials in this order:
 
-Verified facts the design rests on: every HTTP provider runtime accepts
-`baseUrl` + extra headers and its full endpoint surface follows `baseUrl`;
-auth-plane endpoints are hard-coded and vault-only; Codex's WS transport is
-a scheme swap on the same host/path and its auth relies on Bun's
-`WebSocket(url, {headers})`; `x-codex-*` quota rides on inference response
-headers observed firsthand by the runtime.
+1. Authenticate or import into a private temporary pool.
+2. Move the completed pool to the final provider directory.
+3. Insert the provider row, subject to the owner-and-family uniqueness rule.
+4. Expose the completed provider to callers.
 
-## Usage accounting
+A concurrent login that loses the uniqueness check removes only its own
+unpublished pool. Readers never observe a newly inserted row pointing to the
+pending directory. Failed or cancelled flows remove unpublished credentials.
+Device login expires after ten minutes; backend shutdown cancels and drains
+active flows. Logging into an existing entry reserves that provider operation
+until completion or failure.
 
-A ledger aggregated from the `TokenUsage` the LLM module observes
-firsthand (`user × conversation × provider × model`), one raw row per
-provider request, aggregation at query time; enforcement (rate limits,
-over-quota refusal) at the inference entry points. There is no trust gap:
-runners never self-report usage.
+Selecting an account is explicit. Removing the active account is refused: select
+another account first, or delete the provider. Account changes invalidate the
+provider's model and quota snapshots. Framework file stores remain available to
+local framework consumers; they are not a second product configuration source.
+See [Provider credentials](../provider-global-credentials.md) for the shared
+credential contract.
 
-## Claude Code: the special case, contained
+## Claude Code execution boundary
 
-The Claude Code provider's transport is the CLI, which must run on a real
-machine. The provider runs in the backend like every other provider and
-spawns its CLI on the conversation's runner through the ordinary `spawn`,
-speaking stream-json over the spawned process's stdio.
+The Claude Code provider remains a backend component. It uses the Host process
+interface to start the CLI on the conversation's runner and exchanges stream-json
+on stdin and stdout. The provider resolves the selected vault account and sends
+its token as `CLAUDE_CODE_OAUTH_TOKEN` in the spawn environment. The runner and CLI
+therefore receive this credential. A device selected for this transport must be
+trusted with that account's token.
 
-- `packages/provider-claude-code` runs the whole credential path itself:
-  its auth store resolves and refreshes the OAuth token from the
-  provider's vault pool and injects it as `CLAUDE_CODE_OAUTH_TOKEN` into
-  the spawned CLI's env. The backend contributes two public factory
-  options: **injectable spawn** (a `Host.process`-shaped function targeting
-  the conversation's runner) and `stateDir` (the provider's vault
-  directory). The CLI's Anthropic traffic goes directly upstream with that
-  token — no base-URL override, no proxying. The CLI consumes zero
-  device-local state: any device with the binary behaves identically, and
-  the runner is never given a credential.
-- Verified with local mocks (CLI 2.1.220): the CLI adopts the env token in
-  its `Authorization` header; its Messages traffic is one request class
-  (`POST /v1/messages?beta=true`); the public `env` overlay option
-  (`ANTHROPIC_BASE_URL`) remains a test tool for pointing a CLI at a mock
-  upstream.
-- Transcript replay needs no CLI-side state (`--no-session-persistence`,
-  plain-message replay), so target switching works for Claude Code
-  conversations like any other; the next turn cold-starts a CLI on the new
-  target.
-- The `/api/oauth/usage` quota probe and OAuth refresh run in the backend
-  through the provider's own auth store; the models.dev catalog fetch runs
-  in the backend.
-- The remaining hard-wired filesystem touches are covered: the transport's
-  `statSync`/`child_process.spawn` by the injectable spawn; the tmpdir wire
-  log disabled in the backend (`DEMI_CLAUDE_WIRE_LOG=0`).
+The CLI sends its inference traffic directly to the vendor. Demi does not add
+an inference proxy or remote-inference RPC. OAuth refresh and quota probes remain
+backend-side provider operations. The runner does not need a copy of the
+backend's credential pool.
 
-Explicitly **not** part of this design, each unnecessary once sessions live
-in the backend: per-provider proxy-mode `baseUrl`/headers options, any
-"external auth" provider mode, a normalized remote-inference RPC, or
-credentials of any kind on a runner.
+The provider supplies transcript replay and disables CLI session persistence.
+Switching targets starts the next transport on the new target with the
+backend-owned transcript. This removes dependence on a previous CLI session;
+it does not promise identical behavior across different CLI installations or
+inherited machine environments.
+
+## Usage and quota
+
+The backend meters provider `response` events and attributes reported token usage
+to user, conversation, provider entry, and model. The ledger stores raw usage
+records; query-time aggregation produces product totals. HTTP provider usage
+comes from the vendor response. Claude Code usage comes from the CLI's
+stream-json output over the runner connection, so its accuracy also depends on
+the selected machine and CLI. It is not an independently verified billing record.
+
+Admission applies the product's per-user request rate limit before starting
+inference. Vendor quota is a separate snapshot supplied by the provider's quota
+API; it can be observed during inference or obtained by an explicit probe.
+Some probes make an inference request and have a cost. The quota contract and
+account invalidation rules are defined in [Provider quota](../provider-quota.md).
+A displayed quota snapshot is not itself a product token-budget enforcement rule.
+
+## Implementation limits
+
+The current request limiter is an in-memory, per-backend sliding window with a
+default of 120 requests per user per minute. It is not a distributed limiter or
+a token-budget implementation. Distributed admission and over-budget policy
+remain implementation work if the product requires those guarantees.
+
+`backend/llm/assembly.ts` currently appends usage asynchronously and ignores
+storage failures. The metering wrapper records provider response events, but
+requests that never produce such an event do not create a usage row. The current
+ledger can therefore lose records; it does not satisfy a guarantee of one durable
+row for every attempted provider request. Reliable accounting needs an explicit
+failure and durability policy before it can support billing or strict budgets.
