@@ -1,6 +1,183 @@
-import { isRecord, stringOrNull } from '@demicodes/utils'
+/**
+ * The Claude Code CLI's stdout stream-json protocol, as Demi reads it: one
+ * schema for the message types Demi maps, and a pure mapping from a decoded
+ * message to provider events.
+ *
+ * A message, content block, stream event or delta of a type Demi does not read
+ * decodes to `null` and is skipped, so a CLI release that adds one does not
+ * break a run. A type Demi does read whose payload is malformed is a protocol
+ * error naming the offending field.
+ */
+import { z } from 'zod'
+import {
+  normalizeErrorCode,
+  reportedStringSchema,
+  taggedUnion,
+  tokenCountSchema,
+  type ProviderEvent
+} from '@demicodes/provider'
 import type { TokenUsage } from '@demicodes/core'
-import type { ProviderEvent } from '@demicodes/provider'
+
+/**
+ * The token counts a `result` message carries, in the API's snake_case
+ * spelling and in the camelCase spelling of Demi's own `TokenUsage`.
+ */
+const usageCountsSchema = z.looseObject({
+  input_tokens: tokenCountSchema,
+  output_tokens: tokenCountSchema,
+  cache_read_input_tokens: tokenCountSchema,
+  cache_creation_input_tokens: tokenCountSchema,
+  inputTokens: tokenCountSchema,
+  outputTokens: tokenCountSchema,
+  cacheReadTokens: tokenCountSchema,
+  cacheWriteTokens: tokenCountSchema,
+})
+type ClaudeUsageCounts = z.infer<typeof usageCountsSchema>
+
+/**
+ * `result.usage` sums every API call the CLI made within the turn (the initial
+ * call plus one per tool result), while `iterations` lists those calls
+ * individually.
+ */
+const resultUsageSchema = usageCountsSchema.extend({
+  iterations: z.array(usageCountsSchema).optional(),
+})
+
+/** The arguments an MCP `tools/call` request carries. */
+const mcpParamsSchema = z.looseObject({
+  name: z.string().optional(),
+  arguments: z.unknown().optional(),
+  input: z.unknown().optional(),
+  _meta: z.looseObject({
+    'claudecode/toolUseId': z.string().min(1).optional(),
+  }).optional(),
+})
+export type ClaudeMcpParams = z.infer<typeof mcpParamsSchema>
+
+/** The JSON-RPC request an SDK-MCP `control_request` wraps. */
+const mcpMessageSchema = z.looseObject({
+  id: z.union([z.string(), z.number()]).nullish(),
+  method: z.string().optional(),
+  params: mcpParamsSchema.optional(),
+})
+
+/**
+ * A `control_request` in either protocol: the SDK-MCP one wraps a JSON-RPC
+ * message the response must quote `request_id` back to, the legacy one *is*
+ * the JSON-RPC request.
+ */
+const controlRequestSchema = z.looseObject({
+  type: z.literal('control_request'),
+  request_id: z.string().optional(),
+  request: z.looseObject({
+    subtype: z.string().optional(),
+    server_name: z.string().optional(),
+    message: mcpMessageSchema.optional(),
+  }).optional(),
+  id: z.union([z.string(), z.number()]).nullish(),
+  method: z.string().optional(),
+  params: mcpParamsSchema.optional(),
+})
+
+/** One block of an assistant message's content. */
+const contentBlockSchema = taggedUnion({
+  text: z.looseObject({
+    type: z.literal('text'),
+    text: z.string().default(''),
+  }),
+  thinking: z.looseObject({
+    type: z.literal('thinking'),
+    thinking: z.string().optional(),
+    text: z.string().optional(),
+    signature: z.string().optional(),
+  }),
+  redacted_thinking: z.looseObject({
+    type: z.literal('redacted_thinking'),
+    data: z.string().default(''),
+  }),
+  tool_use: z.looseObject({
+    type: z.literal('tool_use'),
+    id: z.union([z.string(), z.number()]).nullish(),
+    name: z.string().optional(),
+    input: z.unknown().optional(),
+  }),
+})
+type ClaudeContentBlock = NonNullable<z.infer<typeof contentBlockSchema>>
+type ClaudeToolUseBlock = Extract<ClaudeContentBlock, { type: 'tool_use' }>
+
+/** One increment of a streamed content block. */
+const streamDeltaSchema = taggedUnion({
+  text_delta: z.looseObject({
+    type: z.literal('text_delta'),
+    text: z.string().default(''),
+  }),
+  thinking_delta: z.looseObject({
+    type: z.literal('thinking_delta'),
+    thinking: z.string().default(''),
+  }),
+  signature_delta: z.looseObject({
+    type: z.literal('signature_delta'),
+    signature: z.string().default(''),
+  }),
+})
+
+/**
+ * The streaming events Demi reads. `message_stop` maps to no event, but it
+ * closes the turn's batch of tool calls, so the provider needs to see it.
+ */
+const streamEventSchema = taggedUnion({
+  content_block_start: z.looseObject({
+    type: z.literal('content_block_start'),
+    content_block: contentBlockSchema.optional(),
+  }),
+  content_block_delta: z.looseObject({
+    type: z.literal('content_block_delta'),
+    delta: streamDeltaSchema.optional(),
+  }),
+  message_stop: z.looseObject({ type: z.literal('message_stop') }),
+})
+type ClaudeStreamEvent = NonNullable<z.infer<typeof streamEventSchema>>
+
+/** One line of the CLI's stdout stream. */
+export const claudeStdoutMessageSchema = taggedUnion({
+  assistant: z.looseObject({
+    type: z.literal('assistant'),
+    message: z.looseObject({
+      content: z.array(contentBlockSchema).optional(),
+    }).optional(),
+  }),
+  stream_event: z.looseObject({
+    type: z.literal('stream_event'),
+    event: streamEventSchema.optional(),
+  }),
+  control_request: controlRequestSchema,
+  control_response: z.looseObject({
+    type: z.literal('control_response'),
+    response: z.looseObject({
+      subtype: z.string().optional(),
+      request_id: z.string().optional(),
+    }).optional(),
+  }),
+  result: z.looseObject({
+    type: z.literal('result'),
+    is_error: z.boolean().optional(),
+    // Error prose the CLI reports; a malformed one reads as absent so the
+    // failure still surfaces as an error instead of as a protocol fault.
+    result: reportedStringSchema,
+    errors: z.array(reportedStringSchema).optional().catch(undefined),
+    usage: resultUsageSchema.optional(),
+  }),
+  error: z.looseObject({
+    type: z.literal('error'),
+    message: reportedStringSchema,
+    code: reportedStringSchema,
+  }),
+})
+export type ClaudeStdoutMessage =
+  NonNullable<z.infer<typeof claudeStdoutMessageSchema>>
+type ClaudeControlRequestMessage =
+  Extract<ClaudeStdoutMessage, { type: 'control_request' }>
+type ClaudeResultMessage = Extract<ClaudeStdoutMessage, { type: 'result' }>
 
 export interface OutputMapping {
   events: ProviderEvent[]
@@ -15,7 +192,7 @@ export interface ClaudeControlRequest {
   id: string | number
   toolUseId?: string
   method: string
-  params?: unknown
+  params?: ClaudeMcpParams
 }
 
 export interface ClaudeOutputMapOptions {
@@ -23,54 +200,51 @@ export interface ClaudeOutputMapOptions {
   ignoreAssistantToolUse?: boolean
 }
 
+/**
+ * Decodes one stdout line. Returns null for a message type Demi does not read;
+ * throws when a type it reads arrives malformed.
+ */
+export function decodeClaudeStdoutMessage(
+  line: unknown
+): ClaudeStdoutMessage | null {
+  return claudeStdoutMessageSchema.parse(line)
+}
+
 export function mapClaudeStdoutMessage(
-  message: unknown,
+  message: ClaudeStdoutMessage | null,
   options: ClaudeOutputMapOptions = {}
 ): OutputMapping {
-  const events: ProviderEvent[] = []
-  if (!isRecord(message))
-    return { events, terminal: false }
+  if (!message)
+    return { events: [], terminal: false }
 
-  if (message.type === 'assistant' && isRecord(message.message)) {
-    events.push(...mapContentArray(
-      (message.message as { content?: unknown }).content,
-      options
-    ))
-  }
-
-  if (message.type === 'stream_event' && isRecord(message.event)) {
-    events.push(...mapStreamEvent(message.event))
-  }
-
-  if (message.type === 'control_request') {
-    const request = parseControlRequest(message)
-    if (request)
-      return { events, controlRequest: request, terminal: false }
-  }
-
-  if (message.type === 'result') {
-    if (message.is_error === true) {
-      const errorMessage = resultErrorMessage(message)
-      events.push({
-        type: 'error',
-        message: errorMessage,
-        code: classifyProviderError(errorMessage)
-      })
+  switch (message.type) {
+    case 'assistant':
+      return {
+        events: mapContentBlocks(message.message?.content ?? [], options),
+        terminal: false,
+      }
+    case 'stream_event':
+      return { events: mapStreamEvent(message.event), terminal: false }
+    case 'control_request': {
+      const controlRequest = mapControlRequest(message)
+      if (!controlRequest)
+        return { events: [], terminal: false }
+      return { events: [], controlRequest, terminal: false }
     }
-    events.push({ type: 'response', usage: mapResultUsage(message.usage) })
-    return { events, terminal: true }
+    case 'result':
+      return { events: mapResult(message), terminal: true }
+    case 'error':
+      return {
+        events: [errorEvent(
+          message.message ?? 'Claude Code error',
+          message.code
+        )],
+        terminal: false,
+      }
+    case 'control_response':
+      // Answers a request Demi sent; the caller matches it by request id.
+      return { events: [], terminal: false }
   }
-
-  if (message.type === 'error') {
-    const errorMessage = String(message.message ?? 'Claude Code error')
-    events.push({
-      type: 'error',
-      message: errorMessage,
-      code: stringOrNull(message.code) ?? classifyProviderError(errorMessage)
-    })
-  }
-
-  return { events, terminal: false }
 }
 
 export function controlRequestToToolCall(
@@ -78,243 +252,180 @@ export function controlRequestToToolCall(
 ): ProviderEvent | null {
   if (request.method !== 'tools/call')
     return null
-  if (!isRecord(request.params))
-    return null
-  const name = typeof request.params.name === 'string'
-    ? request.params.name
-    : null
-  if (!name)
+  const params = request.params
+  if (!params?.name)
     return null
   return {
     type: 'tool_call_requested',
     toolUseId: request.toolUseId ?? String(request.id),
-    toolName: stripMcpToolPrefix(name),
-    input: request.params.arguments ?? request.params.input ?? {},
+    toolName: stripMcpToolPrefix(params.name),
+    input: params.arguments ?? params.input ?? {},
   }
 }
 
-function mapContentArray(
-  content: unknown,
-  options: ClaudeOutputMapOptions
+function mapContentBlocks(
+  content: Array<ClaudeContentBlock | null>,
+  options: ClaudeOutputMapOptions,
 ): ProviderEvent[] {
-  if (!Array.isArray(content))
-    return []
   const events: ProviderEvent[] = []
   for (const block of content) {
-    if (!isRecord(block))
+    if (!block)
       continue
-    if (block.type === 'text' && !options.ignoreAssistantContent) {
-      events.push({ type: 'text_delta', text: String(block.text ?? '') })
-    } else if (block.type === 'thinking' && !options.ignoreAssistantContent) {
-      events.push({ type: 'thinking_start' })
-      events.push({
-        type: 'thinking_delta',
-        text: String(block.thinking ?? block.text ?? '')
-      })
-      if (typeof block.signature === 'string')
-        events.push({
-          type: 'thinking_signature',
-          signature: block.signature
-        })
-    } else if (block.type === 'redacted_thinking'
-      && !options.ignoreAssistantContent) {
-      events.push({ type: 'redacted_thinking', data: String(block.data ?? '') })
-    } else if (block.type === 'tool_use' && !options.ignoreAssistantToolUse) {
-      events.push(mapToolUseBlock(block))
+    if (block.type === 'tool_use') {
+      if (!options.ignoreAssistantToolUse)
+        events.push(toolUseEvent(block))
+      continue
     }
+    if (options.ignoreAssistantContent)
+      continue
+    if (block.type === 'text') {
+      events.push({ type: 'text_delta', text: block.text })
+      continue
+    }
+    if (block.type === 'redacted_thinking') {
+      events.push({ type: 'redacted_thinking', data: block.data })
+      continue
+    }
+    // The only block type left is `thinking`.
+    events.push({ type: 'thinking_start' })
+    events.push({
+      type: 'thinking_delta',
+      text: block.thinking ?? block.text ?? ''
+    })
+    if (block.signature !== undefined)
+      events.push({ type: 'thinking_signature', signature: block.signature })
   }
   return events
 }
 
-function mapToolUseBlock(block: Record<string, unknown>): ProviderEvent {
-  const id = typeof block.id === 'string' || typeof block.id === 'number'
-    ? String(block.id)
-    : null
-  const name = typeof block.name === 'string' && block.name.length > 0
-    ? block.name
-    : null
-  if (!id || !name) {
+function toolUseEvent(block: ClaudeToolUseBlock): ProviderEvent {
+  if (block.id == null || !block.name) {
     return {
       type: 'error',
       message: 'Invalid tool_use block from Claude Code',
-      code: null
+      code: null,
     }
   }
   return {
     type: 'tool_call_requested',
-    toolUseId: id,
-    toolName: stripMcpToolPrefix(name),
+    toolUseId: String(block.id),
+    toolName: stripMcpToolPrefix(block.name),
     input: block.input ?? {},
   }
 }
 
-function mapStreamEvent(event: Record<string, unknown>): ProviderEvent[] {
-  if (event.type === 'content_block_start' && isRecord(event.content_block)) {
+function mapStreamEvent(
+  event: ClaudeStreamEvent | null | undefined
+): ProviderEvent[] {
+  if (!event)
+    return []
+
+  if (event.type === 'content_block_start') {
     const block = event.content_block
-    if (block.type === 'thinking')
+    if (block?.type === 'thinking')
       return [{ type: 'thinking_start' }]
-    if (block.type === 'text' && typeof block.text === 'string')
-      return [{
-        type: 'text_delta',
-        text: block.text
-      }]
+    if (block?.type === 'text')
+      return [{ type: 'text_delta', text: block.text }]
+    return []
   }
 
-  if (event.type === 'content_block_delta' && isRecord(event.delta)) {
+  if (event.type === 'content_block_delta') {
     const delta = event.delta
-    if (delta.type === 'text_delta')
-      return [{
-        type: 'text_delta',
-        text: String(delta.text ?? '')
-      }]
-    if (delta.type === 'thinking_delta')
-      return [{
-        type: 'thinking_delta',
-        text: String(delta.thinking ?? '')
-      }]
-    if (delta.type === 'signature_delta')
-      return [{
-        type: 'thinking_signature',
-        signature: String(delta.signature ?? '')
-      }]
+    if (delta?.type === 'text_delta')
+      return [{ type: 'text_delta', text: delta.text }]
+    if (delta?.type === 'thinking_delta')
+      return [{ type: 'thinking_delta', text: delta.thinking }]
+    if (delta?.type === 'signature_delta')
+      return [{ type: 'thinking_signature', signature: delta.signature }]
+    return []
   }
 
   return []
 }
 
-function parseControlRequest(
-  message: Record<string, unknown>
+function mapControlRequest(
+  message: ClaudeControlRequestMessage
 ): ClaudeControlRequest | null {
-  if (typeof message.request_id === 'string' && isRecord(message.request)) {
-    const request = message.request
+  const request = message.request
+  if (message.request_id !== undefined && request !== undefined) {
     if (request.subtype !== 'mcp_message')
       return null
     if (request.server_name !== 'main')
       return null
-    if (!isRecord(request.message))
-      return null
     const inner = request.message
-    const id = typeof inner.id === 'string' || typeof inner.id === 'number'
-      ? inner.id
-      : 0
-    const method = typeof inner.method === 'string' ? inner.method : undefined
-    if (!method)
+    if (!inner?.method)
       return null
     return {
       protocol: 'sdk-mcp',
       outerRequestId: message.request_id,
       serverName: request.server_name,
-      id,
-      toolUseId: sdkMcpToolUseId(inner.params),
-      method,
+      id: inner.id ?? 0,
+      toolUseId: inner.params?._meta?.['claudecode/toolUseId'],
+      method: inner.method,
       params: inner.params,
     }
   }
 
-  const id = typeof message.id === 'string' || typeof message.id === 'number'
-    ? message.id
-    : undefined
-  const method = typeof message.method === 'string' ? message.method : undefined
-  if (id === undefined || !method)
+  if (message.id == null || !message.method)
     return null
-  return { protocol: 'legacy', id, method, params: message.params }
-}
-
-function sdkMcpToolUseId(params: unknown): string | undefined {
-  if (!isRecord(params) || !isRecord(params._meta))
-    return undefined
-  const value = params._meta['claudecode/toolUseId']
-  return typeof value === 'string' && value.length > 0 ? value : undefined
-}
-
-/**
- * Usage for the response event from a `result` message. The top-level
- * `result.usage` sums every API call the CLI made within the turn (initial call
- * plus one per tool result), so its input/cache counts can exceed the context
- * window itself and must not be reported as request usage. `usage.iterations`
- * lists the per-call usage; the last entry is the final request — the one the
- * response contract requires.
- */
-function mapResultUsage(usage: unknown): TokenUsage {
-  if (isRecord(usage) && Array.isArray(usage.iterations)) {
-    const last = usage.iterations[usage.iterations.length - 1]
-    if (isRecord(last))
-      return mapUsage(last)
-  }
-  return mapUsage(usage)
-}
-
-function mapUsage(usage: unknown): TokenUsage {
-  if (!isRecord(usage)) {
-    return {
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0
-    }
-  }
   return {
-    inputTokens: numberValue(usage.input_tokens ?? usage.inputTokens),
-    outputTokens: numberValue(usage.output_tokens ?? usage.outputTokens),
-    cacheReadTokens: numberValue(usage.cache_read_input_tokens
-      ?? usage.cacheReadTokens),
-    cacheWriteTokens: numberValue(usage.cache_creation_input_tokens
-      ?? usage.cacheWriteTokens),
+    protocol: 'legacy',
+    id: message.id,
+    method: message.method,
+    params: message.params,
   }
 }
 
-function numberValue(value: unknown): number {
-  return typeof value === 'number' ? value : 0
+function mapResult(message: ClaudeResultMessage): ProviderEvent[] {
+  const events: ProviderEvent[] = []
+  if (message.is_error === true)
+    events.push(errorEvent(resultErrorMessage(message)))
+  events.push({ type: 'response', usage: resultUsage(message.usage) })
+  return events
 }
 
-function resultErrorMessage(message: Record<string, unknown>): string {
+function resultErrorMessage(message: ClaudeResultMessage): string {
   const parts: string[] = []
-  if (typeof message.result === 'string' && message.result.trim())
-    parts.push(message.result.trim())
-  if (Array.isArray(message.errors)) {
-    for (const error of message.errors) {
-      const text = String(error).trim()
-      if (text)
-        parts.push(text)
-    }
+  const result = message.result?.trim()
+  if (result)
+    parts.push(result)
+  for (const error of message.errors ?? []) {
+    const text = error?.trim()
+    if (text)
+      parts.push(text)
   }
   return parts.join('\n') || 'Claude Code returned an error'
 }
 
-function classifyProviderError(message: string): string | null {
-  const lower = message.toLowerCase()
-  if (
-    lower.includes('context_length_exceeded') ||
-    lower.includes('context window') ||
-    lower.includes('context length') ||
-    lower.includes('maximum context') ||
-    lower.includes('input is too long')
-  ) {
-    return 'context_length_exceeded'
+/**
+ * The usage of the turn's *final* API request, which is what the response
+ * contract requires: the last `iterations` entry when the CLI reported them,
+ * and otherwise the top-level counts.
+ */
+function resultUsage(
+  usage: z.infer<typeof resultUsageSchema> | undefined
+): TokenUsage {
+  const iterations = usage?.iterations ?? []
+  return tokenUsage(iterations[iterations.length - 1] ?? usage)
+}
+
+function tokenUsage(counts: ClaudeUsageCounts | undefined): TokenUsage {
+  return {
+    inputTokens: counts?.input_tokens ?? counts?.inputTokens ?? 0,
+    outputTokens: counts?.output_tokens ?? counts?.outputTokens ?? 0,
+    cacheReadTokens: counts?.cache_read_input_tokens
+      ?? counts?.cacheReadTokens ?? 0,
+    cacheWriteTokens: counts?.cache_creation_input_tokens
+      ?? counts?.cacheWriteTokens ?? 0,
   }
-  if (
-    lower.includes('rate_limit') ||
-    lower.includes('rate limit') ||
-    lower.includes('rate-limit') ||
-    lower.includes('rate limited') ||
-    lower.includes('too many requests') ||
-    /\b429\b/.test(lower)
-  ) {
-    return 'rate_limit'
+}
+
+function errorEvent(message: string, code?: string): ProviderEvent {
+  return {
+    type: 'error',
+    message,
+    code: normalizeErrorCode(code ?? null, message),
   }
-  if (
-    lower.includes('auth_expired') ||
-    lower.includes('auth expired') ||
-    lower.includes('authentication expired') ||
-    lower.includes('auth failed') ||
-    lower.includes('authentication failed') ||
-    lower.includes('not logged in') ||
-    lower.includes('login required') ||
-    lower.includes('unauthorized')
-  ) {
-    return 'auth_expired'
-  }
-  return null
 }
 
 function stripMcpToolPrefix(name: string): string {

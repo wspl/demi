@@ -38,5 +38,8 @@ export {
   runClaudeCodeLogin,
   refreshClaudeCodeSecret,
   type ClaudeCodeLoginOptions,
-  type ClaudeCodeOAuthSecret,
 } from './login'
+export {
+  claudeCodeOAuthSecretSchema,
+  type ClaudeCodeOAuthSecret
+} from './secret'

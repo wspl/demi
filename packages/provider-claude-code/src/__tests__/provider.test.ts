@@ -79,16 +79,20 @@ test(
   async () => {
     const injectedFactory = fakeFactory(new FakeClaudeTransport([]))
     expect(
-      parseClaudeCodeProviderConfig({
-        claudePath: '/usr/local/bin/claude',
-        transportFactory: injectedFactory,
-      }),
+      parseClaudeCodeProviderConfig({ claudePath: '/usr/local/bin/claude' })
     ).toEqual({ claudePath: '/usr/local/bin/claude' })
     expect(parseClaudeCodeProviderConfig(undefined)).toEqual({})
     expect(parseClaudeCodeProviderConfig(null)).toEqual({})
-    expect(() => parseClaudeCodeProviderConfig(1)).toThrow('must be an object')
+    expect(() => parseClaudeCodeProviderConfig(1)).toThrow('expected object')
     expect(() => parseClaudeCodeProviderConfig({ claudePath: 1 }))
       .toThrow('claudePath')
+    // A key the config cannot carry across the wire is a configuration error,
+    // not something to drop silently.
+    expect(() =>
+      parseClaudeCodeProviderConfig({
+        claudePath: '/usr/local/bin/claude',
+        transportFactory: injectedFactory,
+      })).toThrow('transportFactory')
 
     const provider = await providerRuntime(createClaudeCodeProvider({
       transportFactory: injectedFactory,

@@ -8,18 +8,16 @@ import type {
   ProviderCredentialsCapability,
   ProviderQuota,
 } from '@demicodes/provider'
-import { errorMessage, isRecord, nonEmptyString } from '@demicodes/utils'
+import { errorMessage, nonEmptyString } from '@demicodes/utils'
 import { createHash } from 'node:crypto'
+import { z } from 'zod'
 import {
   ClaudeCodeAuthError,
   FileClaudeCodeAuthStore,
   type ClaudeCodeAuthStore,
 } from './auth'
-import {
-  refreshClaudeCodeSecret,
-  runClaudeCodeLogin,
-  type ClaudeCodeOAuthSecret
-} from './login'
+import { refreshClaudeCodeSecret, runClaudeCodeLogin } from './login'
+import type { ClaudeCodeOAuthSecret } from './secret'
 import {
   FileCredentialPool,
   credentialIdFromIdentity,
@@ -44,7 +42,7 @@ export class PoolAwareClaudeCodeAuthStore implements ClaudeCodeAuthStore {
     if (activeId) {
       return new FileClaudeCodeAuthStore({
         oauthFile: this.pool.secretPath(activeId),
-        refresh: (secret) => refreshClaudeCodeSecret(secret as ClaudeCodeOAuthSecret),
+        refresh: refreshClaudeCodeSecret,
       })
     }
     return new FileClaudeCodeAuthStore()
@@ -59,6 +57,31 @@ export function openClaudeCodeCredentialPool(
     providerKey: 'claude-code',
     secretFileName: 'oauth.json',
   })
+}
+
+/**
+ * The material `credentials.add` accepts, given directly or under `oauth`.
+ */
+const credentialMaterialSchema = z.looseObject({
+  accessToken: z.string().min(1),
+  subscriptionType: z.string().min(1).optional(),
+  rateLimitTier: z.string().min(1).optional(),
+})
+type CredentialMaterial = z.infer<typeof credentialMaterialSchema>
+
+const nestedCredentialMaterialSchema = z.looseObject({
+  oauth: credentialMaterialSchema,
+})
+
+function accessFromMaterial(
+  material: CredentialMaterial
+): ClaudeCodeOAuthAccess {
+  return {
+    accessToken: material.accessToken,
+    source: 'static',
+    subscriptionType: material.subscriptionType ?? null,
+    rateLimitTier: material.rateLimitTier ?? null,
+  }
 }
 
 export function createClaudeCodeCredentials(
@@ -223,37 +246,16 @@ export function createClaudeCodeCredentials(
       return importAccess(access, 'vendor:default')
     },
     add: async (input: ProviderCredentialAddInput) => {
-      if (typeof input.accessToken === 'string') {
+      const direct = credentialMaterialSchema.safeParse(input)
+      if (direct.success) {
         return importAccess(
-          {
-            accessToken: input.accessToken,
-            source: 'static',
-            subscriptionType: typeof input.subscriptionType === 'string'
-              ? input.subscriptionType
-              : null,
-            rateLimitTier: typeof input.rateLimitTier === 'string'
-              ? input.rateLimitTier
-              : null,
-          },
-          'add:accessToken',
+          accessFromMaterial(direct.data),
+          'add:accessToken'
         )
       }
-      if (isRecord(input.oauth)
-        && typeof input.oauth.accessToken === 'string') {
-        const oauth = input.oauth
-        return importAccess(
-          {
-            accessToken: oauth.accessToken as string,
-            source: 'static',
-            subscriptionType: typeof oauth.subscriptionType === 'string'
-              ? oauth.subscriptionType
-              : null,
-            rateLimitTier: typeof oauth.rateLimitTier === 'string'
-              ? oauth.rateLimitTier
-              : null,
-          },
-          'add:oauth',
-        )
+      const nested = nestedCredentialMaterialSchema.safeParse(input)
+      if (nested.success) {
+        return importAccess(accessFromMaterial(nested.data.oauth), 'add:oauth')
       }
       throw new Error(
         'Claude credentials.add expects accessToken or oauth.accessToken'
