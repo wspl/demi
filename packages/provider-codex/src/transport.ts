@@ -1,6 +1,12 @@
-import { isRecord, parseJsonObject } from '@demicodes/utils'
+import { parseJsonObject } from '@demicodes/utils'
+import { z } from 'zod'
+import {
+  decodeResponsesEvent,
+  reportedStringSchema,
+  responsesErrorSchema,
+  type ResponsesEvent
+} from '@demicodes/provider'
 import { parseSseResponseStream } from './sse'
-import type { CodexResponseStreamEvent } from './responses'
 import type { CodexTransportMode } from './types'
 
 export interface CodexTransportRequest {
@@ -25,7 +31,7 @@ export interface CodexTransportRequest {
 export interface CodexResponsesTransport {
   stream(
     request: CodexTransportRequest
-  ): AsyncIterable<CodexResponseStreamEvent>
+  ): AsyncIterable<ResponsesEvent>
 }
 
 export interface FetchCodexResponsesTransportOptions {
@@ -41,7 +47,7 @@ export class FetchCodexResponsesTransport implements CodexResponsesTransport {
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<CodexResponseStreamEvent> {
+  ): AsyncIterable<ResponsesEvent> {
     const headerTimeout = createAbortTimeout(
       request.headerTimeoutMs,
       'Codex SSE response headers timed out'
@@ -100,7 +106,7 @@ export class WebSocketCodexResponsesTransport
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<CodexResponseStreamEvent> {
+  ): AsyncIterable<ResponsesEvent> {
     const socket = await connectWebSocket(
       this.WebSocketCtor,
       request.websocketUrl,
@@ -108,7 +114,7 @@ export class WebSocketCodexResponsesTransport
       request.signal,
       request.websocketConnectTimeoutMs,
     )
-    const queue: Array<CodexResponseStreamEvent | Error | null> = []
+    const queue: Array<ResponsesEvent | Error | null> = []
     const waiters: Array<() => void> = []
     let idleTimer: ReturnType<typeof setTimeout> | null = null
     let finished = false
@@ -116,7 +122,7 @@ export class WebSocketCodexResponsesTransport
     const wake = (): void => {
       for (const waiter of waiters.splice(0)) waiter()
     }
-    const push = (value: CodexResponseStreamEvent | Error | null): void => {
+    const push = (value: ResponsesEvent | Error | null): void => {
       queue.push(value)
       wake()
     }
@@ -209,7 +215,7 @@ export class AutoCodexResponsesTransport implements CodexResponsesTransport {
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<CodexResponseStreamEvent> {
+  ): AsyncIterable<ResponsesEvent> {
     let started = false
     try {
       for await (const event of this.websocket.stream(request)) {
@@ -223,6 +229,22 @@ export class AutoCodexResponsesTransport implements CodexResponsesTransport {
     }
     yield* this.sse.stream(request)
   }
+}
+
+/**
+ * The body of a failed Responses request, as far as Demi reports it: a body it
+ * cannot read leaves the HTTP status to speak for the failure.
+ */
+const codexHttpErrorBodySchema = z.looseObject({
+  error: responsesErrorSchema.optional().catch(undefined),
+  request_id: reportedStringSchema,
+})
+
+export type CodexHttpErrorBody = z.infer<typeof codexHttpErrorBodySchema>
+
+export function decodeCodexHttpErrorBody(responseText: string): CodexHttpErrorBody {
+  const body = codexHttpErrorBodySchema.safeParse(parseJsonObject(responseText))
+  return body.success ? body.data : {}
 }
 
 export class CodexHttpError extends Error {
@@ -396,7 +418,7 @@ function connectWebSocket(
   })
 }
 
-function parseWebSocketMessage(data: unknown): CodexResponseStreamEvent | null {
+function parseWebSocketMessage(data: unknown): ResponsesEvent | null {
   if (typeof data === 'string')
     return parseWebSocketJson(data)
   if (data instanceof ArrayBuffer)
@@ -406,24 +428,31 @@ function parseWebSocketMessage(data: unknown): CodexResponseStreamEvent | null {
   return null
 }
 
-function parseWebSocketJson(text: string): CodexResponseStreamEvent | null {
-  const parsed = JSON.parse(text) as CodexResponseStreamEvent | {
-    type?: string;
-    event?: CodexResponseStreamEvent;
-    response?: unknown
-  }
-  if (parsed.type === 'response.done') {
-    return {
+/**
+ * The envelope the Codex WebSocket backend wraps a Responses event in: a
+ * completed response arrives as `response.done` with the response beside it,
+ * and other events arrive nested under `event`.
+ */
+const webSocketEnvelopeSchema = z.looseObject({
+  type: z.string().optional(),
+  event: z.looseObject({}).optional(),
+  response: z.unknown().optional(),
+})
+
+function parseWebSocketJson(text: string): ResponsesEvent | null {
+  const envelope = webSocketEnvelopeSchema.parse(JSON.parse(text))
+  if (envelope.type === 'response.done') {
+    return decodeResponsesEvent({
       type: 'response.completed',
-      response: parsed.response as CodexResponseStreamEvent['response']
-    }
+      response: envelope.response,
+    })
   }
-  if ('event' in parsed && isRecord(parsed.event))
-    return parsed.event as CodexResponseStreamEvent
-  return parsed as CodexResponseStreamEvent
+  if (envelope.event)
+    return decodeResponsesEvent(envelope.event)
+  return decodeResponsesEvent(envelope)
 }
 
-function isTerminalResponseEvent(event: CodexResponseStreamEvent): boolean {
+function isTerminalResponseEvent(event: ResponsesEvent): boolean {
   return event.type === 'response.completed' || event.type === 'response.failed'
     || event.type === 'response.incomplete'
     || event.type === 'error'
@@ -442,11 +471,8 @@ function codexHttpErrorMessage(
   statusText: string,
   responseText: string
 ): string {
-  const body = parseJsonObject(responseText)
-  const error = isRecord(body?.error) ? body.error : null
-  return typeof error?.message === 'string'
-    ? error.message
-    : responseText || statusText || `HTTP ${status}`
+  const body = decodeCodexHttpErrorBody(responseText)
+  return body.error?.message ?? (responseText || statusText || `HTTP ${status}`)
 }
 
 function defaultWebSocketConstructor(): WebSocketConstructorLike | null {

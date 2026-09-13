@@ -1,9 +1,10 @@
-import { isRecord, parseJsonObject, stringOrNull } from '@demicodes/utils'
+import { z } from 'zod'
 import {
   applyModelPolicy,
   clampPromptCacheKey,
   defineProvider,
   httpErrorCode,
+  mapResponsesEvents,
   normalizeErrorCode,
   retryAfterMsFromHeader,
   type AgentProvider,
@@ -28,30 +29,34 @@ import {
 } from './credentials'
 import { listCodexModels } from './models'
 import { createCodexQuota } from './quota'
-import {
-  buildCodexResponsesRequestBody,
-  mapCodexResponseEvents
-} from './responses'
+import { buildCodexResponsesRequestBody } from './responses'
 import {
   CodexHttpError,
   codexResponsesUrl,
   codexWebSocketUrl,
   createCodexTransport,
+  decodeCodexHttpErrorBody,
   type CodexResponsesTransport,
 } from './transport'
-import type { CodexTransportMode } from './types'
+import { CODEX_TRANSPORT_MODES } from './types'
 
-export interface CodexProviderConfig {
-  codexHome?: string
-  baseUrl?: string
-  transport?: CodexTransportMode
-  headers?: Record<string, string>
-  userAgent?: string
-  headerTimeoutMs?: number
-  websocketConnectTimeoutMs?: number
-  streamIdleTimeoutMs?: number
-  clientVersion?: string
-}
+/**
+ * The Codex provider's configuration, as a config file states it. Unknown keys
+ * are rejected: a misspelled key would otherwise be silently ignored.
+ */
+export const codexProviderConfigSchema = z.strictObject({
+  codexHome: z.string().optional(),
+  baseUrl: z.string().optional(),
+  transport: z.enum(CODEX_TRANSPORT_MODES).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  userAgent: z.string().optional(),
+  headerTimeoutMs: z.number().finite().optional(),
+  websocketConnectTimeoutMs: z.number().finite().optional(),
+  streamIdleTimeoutMs: z.number().finite().optional(),
+  clientVersion: z.string().optional(),
+})
+
+export type CodexProviderConfig = z.infer<typeof codexProviderConfigSchema>
 
 export interface CodexProviderOptions extends CodexProviderConfig {
   id?: string
@@ -77,6 +82,8 @@ export interface CodexRuntimeOptions extends CodexProviderConfig {
   quota?: ProviderQuota
 }
 
+/** Names Codex in the errors the shared Responses mapper reports. */
+const CODEX_VENDOR_LABEL = 'Codex'
 const DEFAULT_CHATGPT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api'
 const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1'
 const DEFAULT_SSE_HEADER_TIMEOUT_MS = 20_000
@@ -148,7 +155,7 @@ export class CodexProvider implements AgentProvider {
             )
           },
         })
-        yield* mapCodexResponseEvents(stream)
+        yield* mapResponsesEvents(stream, CODEX_VENDOR_LABEL)
         return
       } catch (error) {
         if (error instanceof CodexHttpError) {
@@ -166,7 +173,7 @@ export class CodexProvider implements AgentProvider {
           forceRefresh = true
           continue
         }
-        yield providerErrorFromUnknown(error)
+        yield codexErrorEvent(error)
         return
       }
     }
@@ -260,63 +267,7 @@ export function createCodexProvider(
 }
 
 export function parseCodexProviderConfig(config: unknown): CodexProviderConfig {
-  if (config === undefined || config === null)
-    return {}
-  if (!isRecord(config))
-    throw new Error('Codex provider config must be an object')
-
-  const parsed: CodexProviderConfig = {}
-  if (config.codexHome !== undefined)
-    parsed.codexHome = expectString(
-      config.codexHome,
-      'codexHome'
-    )
-  if (config.baseUrl !== undefined)
-    parsed.baseUrl = expectString(
-      config.baseUrl,
-      'baseUrl'
-    )
-  if (config.transport !== undefined) {
-    if (config.transport !== 'auto' && config.transport !== 'sse'
-      && config.transport !== 'websocket') {
-      throw new Error(
-        'Codex provider config field "transport" must be auto, sse, or websocket'
-      )
-    }
-    parsed.transport = config.transport
-  }
-  if (config.headers !== undefined)
-    parsed.headers = expectStringRecord(
-      config.headers,
-      'headers'
-    )
-  if (config.userAgent !== undefined)
-    parsed.userAgent = expectString(
-      config.userAgent,
-      'userAgent'
-    )
-  if (config.headerTimeoutMs !== undefined)
-    parsed.headerTimeoutMs = expectNumber(
-    config.headerTimeoutMs,
-    'headerTimeoutMs'
-  )
-  if (config.websocketConnectTimeoutMs !== undefined) {
-    parsed.websocketConnectTimeoutMs = expectNumber(
-      config.websocketConnectTimeoutMs,
-      'websocketConnectTimeoutMs'
-    )
-  }
-  if (config.streamIdleTimeoutMs !== undefined)
-    parsed.streamIdleTimeoutMs = expectNumber(
-    config.streamIdleTimeoutMs,
-    'streamIdleTimeoutMs'
-  )
-  if (config.clientVersion !== undefined)
-    parsed.clientVersion = expectString(
-      config.clientVersion,
-      'clientVersion'
-    )
-  return parsed
+  return codexProviderConfigSchema.parse(config ?? {})
 }
 
 export function buildCodexHeaders(
@@ -374,7 +325,12 @@ function openAiResponsesUrl(baseUrl: string): string {
     : `${normalized}/responses`
 }
 
-function providerErrorFromUnknown(error: unknown): ProviderEvent {
+/**
+ * A Codex failure as a provider error: auth and HTTP failures keep their code
+ * and diagnostics, anything else is reported as a transport failure. Secrets
+ * are redacted on every path.
+ */
+function codexErrorEvent(error: unknown): ProviderEvent {
   if (error instanceof CodexAuthError)
     return {
       type: 'error',
@@ -382,12 +338,10 @@ function providerErrorFromUnknown(error: unknown): ProviderEvent {
       code: error.code
     }
   if (error instanceof CodexHttpError) {
-    const body = parseJsonObject(error.responseText)
-    const bodyError = isRecord(body?.error) ? body.error : null
-    const providerCode = stringOrNull(bodyError?.code)
-      ?? stringOrNull(bodyError?.type)
+    const body = decodeCodexHttpErrorBody(error.responseText)
+    const providerCode = body.error?.code ?? body.error?.type
     const providerRequestId = error.headers.get('x-request-id')
-      ?? stringOrNull(body?.request_id)
+      ?? body.request_id
     const retryAfterMs = retryAfterMsFromHeader(error.headers.get('retry-after'))
     return {
       type: 'error',
@@ -409,38 +363,6 @@ function providerErrorFromUnknown(error: unknown): ProviderEvent {
     code: normalizeErrorCode(null, message),
     diagnostics: { source: 'transport' },
   }
-}
-
-function expectString(value: unknown, field: string): string {
-  if (typeof value !== 'string')
-    throw new Error(`Codex provider config field "${field}" must be a string`)
-  return value
-}
-
-function expectNumber(value: unknown, field: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(
-      `Codex provider config field "${field}" must be a finite number`
-    )
-  }
-  return value
-}
-
-function expectStringRecord(
-  value: unknown,
-  field: string
-): Record<string, string> {
-  if (!isRecord(value))
-    throw new Error(`Codex provider config field "${field}" must be an object`)
-  const out: Record<string, string> = {}
-  for (const [key, nested] of Object.entries(value)) {
-    if (typeof nested !== 'string')
-      throw new Error(
-        `Codex provider config field "${field}.${key}" must be a string`
-      )
-    out[key] = nested
-  }
-  return out
 }
 
 function defaultUserAgent(): string {

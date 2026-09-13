@@ -1,23 +1,12 @@
 import { attachmentTag } from '@demicodes/core'
-import {
-  isRecord,
-  numberOrZero,
-  parseJsonOrString,
-  shortHash,
-  stringOrNull
-} from '@demicodes/utils'
+import { shortHash } from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
-import type {
-  TokenUsage,
-  ToolResultContentBlock,
-  UserContentBlock
-} from '@demicodes/core'
+import type { ToolResultContentBlock, UserContentBlock } from '@demicodes/core'
 import {
   clampPromptCacheKey,
-  normalizeErrorCode,
+  responsesReasoningItemSchema,
   type InferenceItem,
   type InferenceRequest,
-  type ProviderEvent,
   type ToolDefinition
 } from '@demicodes/provider'
 
@@ -108,95 +97,6 @@ export interface CodexResponseTool {
   strict: null
 }
 
-export interface CodexResponseStreamEvent {
-  type?: string
-  response?: CodexResponseCompleted | CodexResponseFailed
-  item?: CodexResponseOutputItem
-  delta?: string
-  arguments?: string
-  item_id?: string
-  call_id?: string
-  summary_index?: number
-  content_index?: number
-  code?: string
-  message?: string
-  [key: string]: unknown
-}
-
-export type CodexResponseOutputItem =
-  | CodexReasoningItem
-  | CodexMessageItem
-  | CodexFunctionCallItem
-  | Record<string, unknown>
-
-export interface CodexReasoningItem {
-  type: 'reasoning'
-  id?: string
-  summary?: Array<{
-    type?: string;
-    text: string
-  }>
-  content?: Array<{
-    type?: string;
-    text: string
-  }>
-  encrypted_content?: string
-}
-
-export interface CodexMessageItem {
-  type: 'message'
-  id?: string
-  role?: string
-  content?: Array<{
-    type: 'output_text';
-    text: string
-  } | {
-    type: 'refusal';
-    refusal: string
-  }>
-  status?: string
-  phase?: string
-}
-
-export interface CodexFunctionCallItem {
-  type: 'function_call'
-  id?: string
-  call_id?: string
-  name?: string
-  arguments?: string
-}
-
-export interface CodexResponseCompleted {
-  id?: string
-  status?: string
-  end_turn?: boolean
-  usage?: {
-    input_tokens?: number
-    output_tokens?: number
-    total_tokens?: number
-    input_tokens_details?: { cached_tokens?: number }
-  }
-  [key: string]: unknown
-}
-
-export interface CodexResponseFailed {
-  error?: {
-    code?: string;
-    type?: string;
-    message?: string
-  }
-  incomplete_details?: { reason?: string }
-  [key: string]: unknown
-}
-
-interface StreamState {
-  currentReasoning: CodexReasoningItem | null
-  currentFunctionCall: CodexFunctionCallItem | null
-  functionArguments: Map<string, string>
-  reasoningDeltaSeen: boolean
-  textDeltaSeen: boolean
-}
-
 export function buildCodexResponsesRequestBody(
   request: InferenceRequest
 ): CodexResponsesRequestBody {
@@ -224,153 +124,6 @@ export function buildCodexResponsesRequestBody(
   return body
 }
 
-export async function* mapCodexResponseEvents(
-  events: AsyncIterable<CodexResponseStreamEvent>
-): AsyncIterable<ProviderEvent> {
-  const state: StreamState = {
-    currentReasoning: null,
-    currentFunctionCall: null,
-    functionArguments: new Map(),
-    reasoningDeltaSeen: false,
-    textDeltaSeen: false,
-  }
-
-  for await (const event of events) {
-    yield* mapCodexResponseEvent(event, state)
-  }
-}
-
-export function* mapCodexResponseEvent(
-  event: CodexResponseStreamEvent,
-  state: StreamState = newStreamState()
-): Iterable<ProviderEvent> {
-  switch (event.type) {
-    case 'response.output_item.added': {
-      const item = event.item
-      if (isReasoningItem(item)) {
-        state.currentReasoning = item
-        yield { type: 'thinking_start' }
-      } else if (isFunctionCallItem(item)) {
-        state.currentFunctionCall = item
-        if (item.id)
-          state.functionArguments.set(item.id, item.arguments ?? '')
-      }
-      return
-    }
-    case 'response.reasoning_summary_text.delta':
-    case 'response.reasoning_text.delta':
-      if (typeof event.delta === 'string') {
-        state.reasoningDeltaSeen = true
-        yield { type: 'thinking_delta', text: event.delta }
-      }
-      return
-    case 'response.output_text.delta':
-      if (typeof event.delta === 'string') {
-        state.textDeltaSeen = true
-        yield { type: 'text_delta', text: event.delta }
-      }
-      return
-    case 'response.function_call_arguments.delta': {
-      const key = event.item_id ?? state.currentFunctionCall?.id
-      if (key && typeof event.delta === 'string') {
-        state.functionArguments.set(
-          key,
-          `${state.functionArguments.get(key) ?? ''}${event.delta}`
-        )
-      }
-      return
-    }
-    case 'response.function_call_arguments.done': {
-      const key = event.item_id ?? state.currentFunctionCall?.id
-      if (key && typeof event.arguments === 'string')
-        state.functionArguments.set(
-        key,
-        event.arguments
-      )
-      return
-    }
-    case 'response.output_item.done': {
-      const item = event.item
-      if (isReasoningItem(item)) {
-        if (!state.reasoningDeltaSeen) {
-          const text = reasoningText(item)
-          if (text)
-            yield { type: 'thinking_delta', text }
-        }
-        yield { type: 'thinking_signature', signature: JSON.stringify(item) }
-        if (state.currentReasoning === item)
-          state.currentReasoning = null
-        state.reasoningDeltaSeen = false
-      } else if (isMessageItem(item)) {
-        // Only emit the full message text on done when no streaming delta arrived
-        // (non-streaming fallback); otherwise the deltas already carried the whole
-        // text and emitting again would duplicate it. Mirrors the reasoning path.
-        if (!state.textDeltaSeen) {
-          const text = messageText(item)
-          if (text)
-            yield { type: 'text_delta', text }
-        }
-        state.textDeltaSeen = false
-      } else if (isFunctionCallItem(item)) {
-        const itemId = item.id ?? event.item_id
-        const callId = item.call_id ?? event.call_id
-        if (itemId && callId && item.name) {
-          const rawArgs = state.functionArguments.get(itemId) ?? item.arguments
-            ?? '{}'
-          yield {
-            type: 'tool_call_requested',
-            toolUseId: `${callId}|${itemId}`,
-            toolName: item.name,
-            input: parseJsonOrString(rawArgs),
-          }
-        }
-        if (itemId)
-          state.functionArguments.delete(itemId)
-        if (state.currentFunctionCall === item)
-          state.currentFunctionCall = null
-      }
-      return
-    }
-    case 'response.completed':
-      yield { type: 'response', usage: usageFromResponse(event.response) }
-      return
-    case 'response.failed':
-      yield errorEventFromFailedResponse(event.response)
-      return
-    case 'response.incomplete':
-      yield {
-        type: 'error',
-        message: `Incomplete response returned, reason: ${incompleteReason(event.response)}`,
-        code: incompleteReason(event.response) === 'max_output_tokens'
-          ? 'context_length_exceeded'
-          : 'incomplete',
-      }
-      return
-    case 'error': {
-      // Over the WebSocket transport the backend nests request failures as
-      // {type:'error', error:{type, message, code}, status} instead of the
-      // flat SSE shape, so read both before falling back to the generic text.
-      const nested = isRecord(event.error) ? event.error : null
-      const message = event.message ?? stringOrNull(nested?.message)
-        ?? 'Codex stream error'
-      const rawCode = event.code ?? stringOrNull(nested?.code)
-        ?? stringOrNull(nested?.type)
-      const providerRequestId = providerRequestIdFrom(nested, message)
-      yield {
-        type: 'error',
-        message,
-        code: normalizeErrorCode(rawCode, message),
-        diagnostics: {
-          source: 'stream',
-          ...(rawCode ? { providerCode: rawCode } : {}),
-          ...(providerRequestId ? { providerRequestId } : {}),
-        },
-      }
-      return
-    }
-  }
-}
-
 export function splitCodexToolUseId(
   toolUseId: string
 ): {
@@ -379,22 +132,6 @@ export function splitCodexToolUseId(
 } {
   const [callId, itemId] = toolUseId.split('|', 2)
   return { callId, itemId }
-}
-
-export function usageFromResponse(response: unknown): TokenUsage {
-  const usage = isRecord(response) && isRecord(response.usage)
-    ? response.usage
-    : {}
-  const inputTokens = numberOrZero(usage.input_tokens)
-  const cachedTokens = isRecord(usage.input_tokens_details)
-    ? numberOrZero(usage.input_tokens_details.cached_tokens)
-    : 0
-  return {
-    inputTokens: Math.max(0, inputTokens - cachedTokens),
-    outputTokens: numberOrZero(usage.output_tokens),
-    cacheReadTokens: cachedTokens,
-    cacheWriteTokens: 0,
-  }
 }
 
 function inferenceItemToResponsesInput(
@@ -537,101 +274,27 @@ function thinkingToReasoning(
   }
 }
 
+/**
+ * The reasoning item a thinking block carries as its signature, ready to be
+ * replayed. Demi wrote the signature from a decoded reasoning item, so a
+ * signature that is not one belongs to another provider's transcript: the item
+ * is dropped rather than sent to the vendor as an unreadable input.
+ */
 function parseReasoningSignature(
   signature: string | null
 ): CodexResponseInputItem | null {
   if (!signature)
     return null
+  let value: unknown
   try {
-    const parsed = JSON.parse(signature)
-    return isReasoningItem(parsed) ? parsed : null
+    value = JSON.parse(signature)
   } catch {
     return null
   }
+  const item = responsesReasoningItemSchema.safeParse(value)
+  return item.success ? item.data : null
 }
 
 function stringifyArguments(input: unknown): string {
   return typeof input === 'string' ? input : JSON.stringify(input ?? {})
-}
-
-
-function messageText(item: CodexMessageItem): string {
-  return (
-    item.content
-      ?.map((part) => (part.type === 'output_text'
-        ? part.text
-        : part.type === 'refusal' ? part.refusal : ''))
-      .join('') ?? ''
-  )
-}
-
-function reasoningText(item: CodexReasoningItem): string {
-  const summary = item.summary?.map((part) => part.text).join('\n\n') ?? ''
-  const content = item.content?.map((part) => part.text).join('\n\n') ?? ''
-  return summary || content
-}
-
-function errorEventFromFailedResponse(response: unknown): ProviderEvent {
-  const error = isRecord(response) && isRecord(response.error)
-    ? response.error
-    : null
-  const message = stringOrNull(error?.message) ?? 'Codex response failed'
-  const rawCode = stringOrNull(error?.code) ?? stringOrNull(error?.type)
-  const providerRequestId = providerRequestIdFrom(error, message)
-  const providerResponseId = isRecord(response)
-    ? stringOrNull(response.id)
-    : null
-  return {
-    type: 'error',
-    message,
-    code: normalizeErrorCode(rawCode, message),
-    diagnostics: {
-      source: 'stream',
-      ...(rawCode ? { providerCode: rawCode } : {}),
-      ...(providerRequestId ? { providerRequestId } : {}),
-      ...(providerResponseId ? { providerResponseId } : {}),
-    },
-  }
-}
-
-function providerRequestIdFrom(
-  value: Record<string, unknown> | null,
-  message: string
-): string | null {
-  const explicit = stringOrNull(value?.request_id)
-    ?? stringOrNull(value?.requestId)
-  if (explicit)
-    return explicit
-  return message.match(/request ID ([A-Za-z0-9-]+)/i)?.[1] ?? null
-}
-
-function incompleteReason(response: unknown): string {
-  if (isRecord(response) && isRecord(response.incomplete_details)
-    && typeof response.incomplete_details.reason === 'string') {
-    return response.incomplete_details.reason
-  }
-  return 'unknown'
-}
-
-
-function newStreamState(): StreamState {
-  return {
-    currentReasoning: null,
-    currentFunctionCall: null,
-    functionArguments: new Map(),
-    reasoningDeltaSeen: false,
-    textDeltaSeen: false,
-  }
-}
-
-function isReasoningItem(item: unknown): item is CodexReasoningItem {
-  return isRecord(item) && item.type === 'reasoning'
-}
-
-function isMessageItem(item: unknown): item is CodexMessageItem {
-  return isRecord(item) && item.type === 'message'
-}
-
-function isFunctionCallItem(item: unknown): item is CodexFunctionCallItem {
-  return isRecord(item) && item.type === 'function_call'
 }
