@@ -166,7 +166,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/provider-claude-code`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`, `zod`.
 - Owns: Claude Code provider transport, JSONL/MCP mapping (including preservation of model-emitted parallel tool batches across the sequential SDK-MCP callback channel; see `docs/tool-call-concurrency.md`), model catalog mapping, provider event mapping, OAuth usage quota probe (`/api/oauth/usage`), active OAuth resolution injected into the CLI env at spawn, device-config isolation for injected-spawn runs (`CLAUDE_CONFIG_DIR` pinned inside the workspace artifacts dir — a managed device's CLI consumes zero device-local settings), provider glue over the shared credential pool (`@demicodes/provider/credentials-pool`; see `docs/provider-global-credentials.md`), and provider-specific tests.
 - Public boundary: `createClaudeCodeProvider`, model catalog function, quota helpers, and public option types from root.
 - Secret boundary: OAuth tokens and pool secret files stay inside the provider creator/auth resolver and must not cross AgentClient/Web browser-visible frames.
@@ -186,7 +186,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/provider-openai-api`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`, `zod`.
 - Owns: official OpenAI Responses API request mapping, explicit Chat Completions wire option for OpenAI-compatible endpoints, SSE event mapping including observed compatible reasoning delta extensions such as `choices[].delta.reasoning_content`, opt-in Chat Completions replay of thinking as `reasoning_content` (`request.passBackReasoningContent`, required for DeepSeek-style thinking + tool loops), official OpenAI API defaults, endpoint/env/api-key resolution, compatible endpoint options, model metadata mapping mirrored from Codex-visible defaults unless caller-supplied models replace it, and provider-specific tests.
 - Public boundary: `createOpenAIApiProvider`, default model catalog function, and public option/model types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.openai.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `OPENAI`. `wireApi` defaults to `responses`; compatible endpoints can pass `wireApi: 'chat-completions'`.
@@ -197,7 +197,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/provider-anthropic-api`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`, `zod`.
 - Owns: Anthropic Messages API request mapping, event-stream mapping, official Anthropic API defaults, endpoint/env/api-key resolution, compatible endpoint options, model metadata mapping mirrored from Claude Code defaults unless caller-supplied models replace it, and provider-specific tests.
 - Public boundary: `createAnthropicApiProvider`, default model catalog function, and public option/model types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.anthropic.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `ANTHROPIC`. `baseUrl` must already include the API version prefix (typically `/v1`); the provider only appends `/messages` (or leaves the URL alone when it already ends with `/messages`). Claude Code / Kimi-style roots such as `https://api.kimi.com/coding/` are not drop-in values — pass `…/coding/v1` instead.
@@ -208,7 +208,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/provider-grok-build`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`, `zod`.
 - Owns: Grok Build CLI OAuth session reuse (`~/.grok/auth.json`), native RFC 8628 device login against auth.x.ai using the official frozen OAuth2 scopes, OIDC token refresh, cli-chat-proxy Chat Completions transport, model catalog mapping from `/v1/models`, billing/subscription quota probe (`/v1/billing?format=credits`, `/v1/user?include=subscription`), demi credential pool for global multi-credential switch, provider event mapping, and provider-specific tests.
 - Public boundary: `createGrokBuildProvider`, auth status helper, model catalog function, quota helpers, and public option types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `https://cli-chat-proxy.grok.com/v1`. Auth is the Grok CLI OAuth session or native device login against `https://auth.x.ai` (no API-key product path).
@@ -219,7 +219,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/provider-google`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`, `zod`.
 - Owns: Google Gemini `generateContent` API request mapping (native wire, not OpenAI-compatible), SSE event mapping including thought summaries / thought signatures / thinking token counts, tool-returned media as inline parts (including video), official Gemini API defaults, endpoint/env/api-key resolution, model metadata mapping, and provider-specific tests.
 - Public boundary: `createGoogleProvider`, default model catalog function, and public option/model types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://generativelanguage.googleapis.com/v1beta`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `GOOGLE`.
@@ -370,11 +370,11 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented; published to npm as a source-form package (no build step — `.vue`/`.ts`
   source exports compiled by the consumer's bundler, which must handle Vue SFC + TypeScript).
-- Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`.
+- Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`, `zod`.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
   Input surfaces, the assembled ChatSession page, the message editor and its
   draft/submission lifecycle (`agent/message-editing.ts`, `SessionComposer.vue`, and the inert `MessageEditRegion.vue`), sidebar layout, workspace and
-  remote-file selection flows, shared UI primitives, markdown/theme, the conversation/tab store, shared sidebar presentation and list interaction, the sign-in page (`auth/EmailLoginPage`: email and password on the left, a wide empty intro on the right, over a host-reported phase), the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), the reusable device pairing dialog and lifecycle (`devices/`, driven by a host-provided claim adapter), and a
+  remote-file selection flows, shared UI primitives, markdown/theme, shared sidebar presentation and list interaction, the sign-in page (`auth/EmailLoginPage`: email and password on the left, a wide empty intro on the right, over a host-reported phase), the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), the reusable device pairing dialog and lifecycle (`devices/`, driven by a host-provided claim adapter), and a
   transport-agnostic control-client interface. Consumes an injected `AgentClient`.
 - Public boundary: source-path exports (`./*`) consumed by web hosts; third parties embed it
   by supplying an `AgentClient` and a control client. External products consume the published

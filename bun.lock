@@ -146,6 +146,7 @@
         "@demicodes/core": "workspace:^",
         "@demicodes/provider": "workspace:^",
         "@demicodes/utils": "workspace:^",
+        "zod": "^4.0.0",
       },
     },
     "packages/provider-claude-code": {
@@ -155,6 +156,7 @@
         "@demicodes/core": "workspace:^",
         "@demicodes/provider": "workspace:^",
         "@demicodes/utils": "workspace:^",
+        "zod": "^4.0.0",
       },
       "devDependencies": {
         "@demicodes/agent": "workspace:^",
@@ -186,6 +188,7 @@
         "@demicodes/core": "workspace:^",
         "@demicodes/provider": "workspace:^",
         "@demicodes/utils": "workspace:^",
+        "zod": "^4.0.0",
       },
     },
     "packages/provider-grok-build": {
@@ -195,6 +198,7 @@
         "@demicodes/core": "workspace:^",
         "@demicodes/provider": "workspace:^",
         "@demicodes/utils": "workspace:^",
+        "zod": "^4.0.0",
       },
     },
     "packages/provider-openai-api": {
@@ -204,6 +208,7 @@
         "@demicodes/core": "workspace:^",
         "@demicodes/provider": "workspace:^",
         "@demicodes/utils": "workspace:^",
+        "zod": "^4.0.0",
       },
     },
     "packages/runner-protocol": {
@@ -321,6 +326,7 @@
         "pathe": "^2.0.3",
         "shiki": "^4.2.0",
         "vue": "^3.5.38",
+        "zod": "^4.0.0",
       },
       "devDependencies": {
         "@vue/tsconfig": "^0.9.1",
