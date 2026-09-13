@@ -13,6 +13,12 @@ const uiOptions = useAgentUiOptions()
 
 const DRAG_TRANSITION = 'transform 120ms ease'
 
+/**
+ * One tab of a `TabStrip`. One width for every tab; a faint line sits in the
+ * gap after the tab and fades out while the tab or its neighbour is active or
+ * hovered. The root stays a single element with no top-level comment: a
+ * fragment root would keep the strip's enter and leave transitions off it.
+ */
 const props = withDefaults(
   defineProps<{
     tab: Pick<ConversationState, 'id' | 'title'>
@@ -87,10 +93,6 @@ const tabStyle = computed(() => {
 </script>
 
 <template>
-  <!--
-    One width for every tab. A faint line sits in the gap after the tab and
-    fades out while the tab or its neighbour is active or hovered.
-  -->
   <span
     role="tab"
     :aria-selected="isActive"
