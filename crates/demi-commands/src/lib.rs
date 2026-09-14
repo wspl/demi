@@ -1,5 +1,7 @@
 //! Execution-target implementations for Demi builtin commands.
 
+pub mod browser;
+
 mod files;
 mod patch;
 
