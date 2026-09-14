@@ -18,6 +18,7 @@
     "packages/backend",
     "packages/machines",
     "packages/command-loader",
+    "packages/browser-protocol",
     "packages/command-protocol",
     "packages/runner-protocol",
     "packages/host-remote",

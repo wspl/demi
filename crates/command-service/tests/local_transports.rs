@@ -46,6 +46,9 @@ where
         let driver = tokio::spawn(connection);
         let (mut input, mut output) = client
             .invoke(&Invocation {
+                caller: None,
+                resource: None,
+                json: None,
                 edits: None,
                 operation: "echo".into(),
                 invocation_id: "transport".into(),

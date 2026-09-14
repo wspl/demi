@@ -7,6 +7,7 @@ use crate::{
     commands::dispatch::Dispatcher,
     commands::local::Server,
     commands::native::{self, Services},
+    commands::resources::Resources,
     commands::rpc::Calls,
     connection::Connection,
     host::HostServer,
@@ -36,6 +37,7 @@ struct Runtime {
     token: Arc<RwLock<Option<String>>>,
     contexts: Contexts,
     services: Arc<Services>,
+    resources: Arc<Resources>,
     artifacts: Arc<Artifacts>,
     calls: Arc<Calls>,
     management: Arc<Management>,
@@ -79,6 +81,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
     .await
     .map_err(io::Error::other)?;
     let artifacts = Artifacts::new(contexts.clone(), native::target().into());
+    let resources = Resources::new(services.clone());
     let pipes = PipeClient::new(&options.backend, token.clone())?;
     let calls = Calls::new(pipes.clone());
     let secret = uuid::Uuid::new_v4().simple().to_string();
@@ -108,6 +111,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
         token,
         contexts,
         services,
+        resources,
         artifacts,
         calls,
         management,
@@ -121,6 +125,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
     runtime.contexts.close();
     runtime.calls.detach();
     runtime.artifacts.detach();
+    runtime.resources.detach().await;
     runtime.services.close().await;
     let closed = runtime.server.close().await;
     let released = lease.release();
@@ -178,9 +183,20 @@ impl Runtime {
         self.calls
             .attach(connection.control.clone(), connection.cancellation());
         self.artifacts.attach(connection.control.clone());
+        self.resources
+            .attach(connection.control.clone(), connection.cancellation());
         let result = async {
-            let hello = wire::hello(wire::VERSION as f64, self.token.read().await.clone(), self.options.runner.clone()).map_err(io::Error::other)?;
-            connection.control.send(hello).await.map_err(io::Error::other)?;
+            let hello = wire::hello(
+                wire::VERSION as f64,
+                self.token.read().await.clone(),
+                self.options.runner.clone(),
+            )
+            .map_err(io::Error::other)?;
+            connection
+                .control
+                .send(hello)
+                .await
+                .map_err(io::Error::other)?;
             let mut volume_tick = tokio::time::interval(Duration::from_secs(60));
             volume_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
@@ -196,7 +212,9 @@ impl Runtime {
                         continue;
                     },
                     _ = self.contexts.changed() => {
-                        self.services.retain(&self.contexts.retained_artifacts(native::target())).await;
+                        let mut retained = self.contexts.retained_artifacts(native::target());
+                        retained.extend(self.resources.digests());
+                        self.services.retain(&retained).await;
                         continue;
                     },
                     message = connection.input.recv() => match message {
@@ -206,15 +224,24 @@ impl Runtime {
                 };
                 match message {
                     Inbound::HelloOk { device_id } => {
-                        self.state.write_config(&RunnerConfig { backend_url: self.options.backend.clone(), device_id: Some(device_id) }).await?;
+                        self.state
+                            .write_config(&RunnerConfig {
+                                backend_url: self.options.backend.clone(),
+                                device_id: Some(device_id),
+                            })
+                            .await?;
                         self.management.set_phase(Phase::Online);
                         eprintln!("demi-runner: online");
                     }
-                    Inbound::ClaimPending { claim_token } if self.management.phase() != Phase::Online => {
+                    Inbound::ClaimPending { claim_token }
+                        if self.management.phase() != Phase::Online =>
+                    {
                         self.management.set_phase(Phase::ClaimPending);
                         eprintln!("demi-runner: pairing code: {claim_token}");
                     }
-                    Inbound::Claimed { device_token } if self.management.phase() != Phase::Online => {
+                    Inbound::Claimed { device_token }
+                        if self.management.phase() != Phase::Online =>
+                    {
                         self.state.write_token(&device_token).await?;
                         *self.token.write().await = Some(device_token);
                         self.management.set_phase(Phase::Online);
@@ -222,22 +249,39 @@ impl Runtime {
                     }
                     Inbound::HelloError { code, reason } => {
                         eprintln!("demi-runner: registration refused ({code}): {reason}");
-                        if code == "already_connected" { return Ok(End::Disconnected); }
+                        if code == "already_connected" {
+                            return Ok(End::Disconnected);
+                        }
                         self.management.set_phase(Phase::Rejected);
                         return Ok(End::Rejected);
                     }
                     Inbound::Ping {} => {
-                        connection.control.send(wire::pong(host.tasks.job_count() as u64).map_err(io::Error::other)?).await.map_err(io::Error::other)?;
+                        connection
+                            .control
+                            .send(
+                                wire::pong(host.tasks.job_count() as u64)
+                                    .map_err(io::Error::other)?,
+                            )
+                            .await
+                            .map_err(io::Error::other)?;
                     }
-                    message if self.management.phase() == Phase::Online => self.message(message, &host, &connection, &volumes).await?,
-                    _ => return Err(io::Error::other("backend work arrived before authentication")),
+                    message if self.management.phase() == Phase::Online => {
+                        self.message(message, &host, &connection, &volumes).await?
+                    }
+                    _ => {
+                        return Err(io::Error::other(
+                            "backend work arrived before authentication",
+                        ));
+                    }
                 }
             }
-        }.await;
+        }
+        .await;
         self.contexts.close();
         self.calls.detach();
         self.artifacts.detach();
         tokio::join!(host.close(), volumes.close());
+        self.resources.detach().await;
         self.management.detach();
         let closed = connection.close().await;
         match (result, closed) {
@@ -257,6 +301,12 @@ impl Runtime {
             return Ok(());
         }
         match message {
+            message @ (Inbound::ResourceAcquire { .. }
+            | Inbound::ResourceRelease { .. }
+            | Inbound::ResourceStatus { .. }
+            | Inbound::ResourceCancel { .. }) => {
+                self.resources.handle(message).map_err(io::Error::other)?;
+            }
             Inbound::Manifest { manifest } => {
                 self.contexts.install(manifest).await?;
             }
@@ -289,11 +339,23 @@ impl Runtime {
                         job_id,
                         manifest_hash: Some(hash),
                         env,
+                        resources,
                         ..
                     } = &message
                     {
                         let (context, lifetime) =
                             self.contexts.create(job_id.clone(), hash, env).await?;
+                        let bindings = self
+                            .resources
+                            .bindings(
+                                resources.as_deref().unwrap_or_default(),
+                                &context.manifest.packages,
+                            )
+                            .map_err(io::Error::other)?;
+                        context
+                            .resources
+                            .set(bindings)
+                            .map_err(|_| io::Error::other("job resources already bound"))?;
                         let path = env.get("PATH").or_else(|| self.options.env.get("PATH"));
                         environment.extend(context.environment(
                             self.server.endpoint(),
@@ -318,9 +380,16 @@ impl Runtime {
                         detail: None,
                     });
                     let reply = match message {
-                        Inbound::JobStart { job_id, .. } => {
-                            wire::job_exit(job_id, None, reason, failure, None, None, Vec::new(), false)
-                        }
+                        Inbound::JobStart { job_id, .. } => wire::job_exit(
+                            job_id,
+                            None,
+                            reason,
+                            failure,
+                            None,
+                            None,
+                            Vec::new(),
+                            false,
+                        ),
                         Inbound::Spawn { spawn_id, .. } => {
                             wire::spawn_exit(spawn_id, None, reason, failure)
                         }

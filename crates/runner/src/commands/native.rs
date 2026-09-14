@@ -14,7 +14,7 @@ use std::{
 use tokio::sync::{Mutex, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-type Ready = Result<Arc<Client>, Arc<RuntimeError>>;
+pub(super) type Ready = Result<Arc<Client>, Arc<RuntimeError>>;
 struct Slot {
     ready: watch::Sender<Option<Ready>>,
     stop: CancellationToken,
@@ -32,6 +32,35 @@ pub struct Services {
 }
 
 impl Services {
+    /// Resource owners observe the same service slot that publishes acquisition.
+    pub(super) async fn observe(&self, digest: &str) -> Option<watch::Receiver<Option<Ready>>> {
+        self.slots
+            .lock()
+            .await
+            .get(digest)
+            .map(|slot| slot.ready.subscribe())
+    }
+
+    /// Faulted resource cleanup retires its entire service before returning.
+    pub(super) async fn retire(&self, digest: &str) {
+        let receiver = {
+            let slots = self.slots.lock().await;
+            slots.get(digest).map(|slot| {
+                slot.stop.cancel();
+                slot.ready.subscribe()
+            })
+        };
+        if let Some(mut receiver) = receiver {
+            loop {
+                if matches!(&*receiver.borrow_and_update(), Some(Err(_))) {
+                    break;
+                }
+                if receiver.changed().await.is_err() {
+                    break;
+                }
+            }
+        }
+    }
     pub async fn new(
         directory: PathBuf,
         target: String,
@@ -180,32 +209,4 @@ impl Drop for Services {
     }
 }
 
-pub fn target() -> &'static str {
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    return "aarch64-apple-darwin";
-    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    return "x86_64-apple-darwin";
-    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-    return "aarch64-unknown-linux-musl";
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    return "x86_64-unknown-linux-musl";
-    #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
-    return "aarch64-pc-windows-msvc";
-    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-    return "x86_64-pc-windows-msvc";
-    #[cfg(not(any(
-        all(
-            target_os = "macos",
-            any(target_arch = "aarch64", target_arch = "x86_64")
-        ),
-        all(
-            target_os = "linux",
-            any(target_arch = "aarch64", target_arch = "x86_64")
-        ),
-        all(
-            target_os = "windows",
-            any(target_arch = "aarch64", target_arch = "x86_64")
-        )
-    )))]
-    compile_error!("unsupported runner target");
-}
+pub use demi_command_service::protocol::host_target as target;

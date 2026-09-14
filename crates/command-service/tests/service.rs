@@ -55,6 +55,9 @@ impl Handler for Fixture {
 
 fn invocation(operation: &str) -> Bytes {
     Invocation {
+        caller: None,
+        resource: None,
+        json: None,
         edits: None,
         operation: operation.into(),
         invocation_id: operation.into(),
@@ -186,6 +189,9 @@ async fn sdk_client_keeps_other_calls_live_while_one_output_is_blocked() {
         let (client, connection) = Client::connect(client_io).await.unwrap();
         let driver = tokio::spawn(connection);
         let request = |operation: &str| Invocation {
+            caller: None,
+            resource: None,
+            json: None,
             edits: None,
             operation: operation.into(),
             invocation_id: operation.into(),

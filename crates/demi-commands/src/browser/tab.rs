@@ -11,7 +11,7 @@ use chromiumoxide::{
             input::{
                 DispatchMouseEventParams, DispatchMouseEventType, InsertTextParams, MouseButton,
             },
-            page::{CaptureScreenshotFormat, CaptureScreenshotParams},
+            page::{CaptureScreenshotFormat, EventJavascriptDialogOpening},
             target::{CloseTargetParams, EventTargetDestroyed},
         },
         js_protocol::runtime::{CallArgument, CallFunctionOnParams},
@@ -19,25 +19,76 @@ use chromiumoxide::{
 };
 use futures_util::StreamExt;
 use serde_json::{Value, json};
-use tokio::sync::Mutex;
-use tokio_util::sync::CancellationToken;
+use tokio::sync::{Mutex, watch};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
     BrowserError, Result, evaluation,
+    observation::{Observation, References},
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
+    protocol::BrowserCreatedBy,
+    protocol::BrowserTarget,
 };
 
-#[derive(Default)]
 pub(super) struct TabState {
-    operations: Mutex<()>,
+    pub operations: Mutex<References>,
+    pub dialog: watch::Sender<Option<Arc<EventJavascriptDialogOpening>>>,
+    pub deferred_release: Mutex<Option<DispatchMouseEventParams>>,
+}
+
+impl TabState {
+    pub(super) async fn observe(
+        page: &Page,
+        ended: CancellationToken,
+        tasks: &TaskTracker,
+        failure: watch::Sender<Option<String>>,
+    ) -> Result<Arc<Self>> {
+        // Headless dialogs are closed only by this controller. Handling clears
+        // the exact opening incarnation, so a subsequent prompt cannot be erased
+        // by a delayed close event delivered through a separate event stream.
+        let mut opening = page
+            .event_listener::<EventJavascriptDialogOpening>()
+            .await?;
+        let state = Arc::new(Self {
+            operations: Mutex::new(References::default()),
+            dialog: watch::channel(None).0,
+            deferred_release: Mutex::new(None),
+        });
+        let observed = state.clone();
+        tasks.spawn(async move {
+            loop {
+                let event = tokio::select! {
+                    biased;
+                    _ = ended.cancelled() => break,
+                    event = opening.next() => event.map(|event| event.map(Some)),
+                };
+                match event {
+                    Some(Ok(dialog)) => {
+                        observed.dialog.send_replace(dialog);
+                    }
+                    Some(Err(error)) => {
+                        failure.send_replace(Some(format!(
+                            "browser dialog observation failed: {error}"
+                        )));
+                        ended.cancel();
+                        break;
+                    }
+                    None => break,
+                }
+            }
+        });
+        Ok(state)
+    }
 }
 
 #[derive(Clone)]
 pub struct BrowserTab {
-    page: Page,
+    pub(super) page: Page,
     browser: Weak<Mutex<Browser>>,
-    ended: CancellationToken,
-    state: Arc<TabState>,
+    pub(super) ended: CancellationToken,
+    pub(super) state: Arc<TabState>,
+    generation: Arc<str>,
+    pub(super) created_by: BrowserCreatedBy,
 }
 
 impl BrowserTab {
@@ -46,18 +97,26 @@ impl BrowserTab {
         browser: Weak<Mutex<Browser>>,
         ended: CancellationToken,
         state: Arc<TabState>,
+        generation: Arc<str>,
+        created_by: BrowserCreatedBy,
     ) -> Self {
         Self {
             page,
             browser,
             ended,
             state,
+            generation,
+            created_by,
         }
     }
 
     /// Transport identity only; the conversation registry will issue public tab IDs.
     pub fn target_id(&self) -> &str {
         self.page.target_id().as_ref()
+    }
+
+    pub(super) fn id(&self) -> String {
+        format!("{}-{}", self.generation, self.target_id())
     }
 
     pub async fn read_only(
@@ -81,6 +140,15 @@ impl BrowserTab {
         cancellation: &CancellationToken,
         timeout: Duration,
     ) -> Result<Vec<u8>> {
+        self.capture(false, cancellation, timeout).await
+    }
+
+    pub(super) async fn capture(
+        &self,
+        full_page: bool,
+        cancellation: &CancellationToken,
+        timeout: Duration,
+    ) -> Result<Vec<u8>> {
         let _guard = self
             .state
             .operations
@@ -91,8 +159,9 @@ impl BrowserTab {
                 Ok(self
                     .page
                     .screenshot(
-                        CaptureScreenshotParams::builder()
+                        chromiumoxide::page::ScreenshotParams::builder()
                             .format(CaptureScreenshotFormat::Png)
+                            .full_page(full_page)
                             .build(),
                     )
                     .await?)
@@ -106,14 +175,19 @@ impl BrowserTab {
         cancellation: &CancellationToken,
         timeout: Duration,
     ) -> Result<()> {
-        let _guard = self
+        let mut references = self
             .state
             .operations
             .try_lock()
             .map_err(|_| BrowserError::Busy)?;
         let operation = Operation::new(&self.ended, cancellation, timeout);
-        let (_, point) = self.ready_element(selector, false, &operation).await?;
-        self.click_at(point, &operation).await
+        let target = serde_json::from_value(json!({ "css": selector }))
+            .map_err(|error| BrowserError::Configuration(error.to_string()))?;
+        let (_, point) = self
+            .ready_element(&target, &mut references, false, &operation)
+            .await?;
+        self.click_at(point, MouseButton::Left, 1, 0, &operation)
+            .await
     }
 
     pub async fn fill_css(
@@ -123,14 +197,29 @@ impl BrowserTab {
         cancellation: &CancellationToken,
         timeout: Duration,
     ) -> Result<()> {
-        let _guard = self
+        let mut references = self
             .state
             .operations
             .try_lock()
             .map_err(|_| BrowserError::Busy)?;
         let operation = Operation::new(&self.ended, cancellation, timeout);
-        let (element, point) = self.ready_element(selector, true, &operation).await?;
-        self.click_at(point, &operation).await?;
+        let target = serde_json::from_value(json!({ "css": selector }))
+            .map_err(|error| BrowserError::Configuration(error.to_string()))?;
+        self.fill(&target, &mut references, text, &operation).await
+    }
+
+    pub(super) async fn fill(
+        &self,
+        target: &BrowserTarget,
+        references: &mut References,
+        text: &str,
+        operation: &Operation<'_>,
+    ) -> Result<()> {
+        let (element, point) = self
+            .ready_element(target, references, true, operation)
+            .await?;
+        self.click_at(point, MouseButton::Left, 1, 0, &operation)
+            .await?;
         operation
             .run(async {
                 // The library types text but has no replace-selection operation.
@@ -179,16 +268,18 @@ impl BrowserTab {
     }
 
     /// Resolve afresh while waiting; ambiguity is never an implicit first match.
-    async fn ready_element(
+    pub(super) async fn ready_element(
         &self,
-        selector: &str,
+        target: &BrowserTarget,
+        references: &mut References,
         editable: bool,
         operation: &Operation<'_>,
     ) -> Result<(Element, Point)> {
         operation
             .run(async {
                 loop {
-                    let mut matches = self.page.find_elements(selector).await?;
+                    let observation = Observation::capture(&self.page, references).await?;
+                    let mut matches = observation.resolve(&self.page, target, references).await?;
                     if matches.len() > 1 {
                         return Err(BrowserError::Ambiguous(matches.len()));
                     }
@@ -248,11 +339,63 @@ impl BrowserTab {
     }
 
     /// Complete or release input at the point approved by the browser action checks.
-    async fn click_at(&self, point: Point, operation: &Operation<'_>) -> Result<()> {
+    pub(super) async fn click_at(
+        &self,
+        point: Point,
+        button: MouseButton,
+        count: i64,
+        modifiers: i64,
+        operation: &Operation<'_>,
+    ) -> Result<()> {
+        let mut dialog = self.state.dialog.subscribe();
+        let click = async {
+            if button == MouseButton::Left && modifiers == 0 {
+                self.page
+                    .click_with(
+                        point,
+                        chromiumoxide::types::ClickOptions::builder()
+                            .click_count(count)
+                            .build(),
+                    )
+                    .await?;
+            } else {
+                // The library click API supports only left-button clicks without modifiers.
+                let event = DispatchMouseEventParams::builder()
+                    .x(point.x)
+                    .y(point.y)
+                    .button(button.clone())
+                    .click_count(count)
+                    .modifiers(modifiers);
+                self.page.move_mouse(point).await?;
+                self.page
+                    .execute(
+                        event
+                            .clone()
+                            .r#type(DispatchMouseEventType::MousePressed)
+                            .build()
+                            .map_err(BrowserError::Configuration)?,
+                    )
+                    .await?;
+                self.page
+                    .execute(
+                        event
+                            .r#type(DispatchMouseEventType::MouseReleased)
+                            .build()
+                            .map_err(BrowserError::Configuration)?,
+                    )
+                    .await?;
+            }
+            Ok(())
+        };
         let result = operation
             .run(async {
-                self.page.click(point).await?;
-                Ok(())
+                tokio::select! {
+                    result = click => result,
+                    opened = dialog.wait_for(|dialog| dialog.is_some()) => {
+                        opened.map_err(|_| BrowserError::Closed)?;
+                        Err(BrowserError::DialogBlocked)
+                    },
+                }
             })
             .await;
         if result.is_ok() || self.ended.is_cancelled() {
@@ -260,12 +403,19 @@ impl BrowserTab {
         }
         let release = DispatchMouseEventParams::builder()
             .r#type(DispatchMouseEventType::MouseReleased)
-            .button(MouseButton::Left)
+            .button(button)
             .x(point.x)
             .y(point.y)
-            .click_count(1)
+            .click_count(count)
+            .modifiers(0)
             .build()
             .map_err(BrowserError::Configuration)?;
+        if self.state.dialog.borrow().is_some() {
+            // Chrome can pause before acknowledging mouse-down or mouse-up. The
+            // retained tab owns the required release until the dialog is handled.
+            *self.state.deferred_release.lock().await = Some(release);
+            return Err(BrowserError::DialogBlocked);
+        }
         let cleanup = tokio::time::timeout(CONTROL_TIMEOUT, self.page.execute(release))
             .await
             .map_err(|_| BrowserError::Timeout)

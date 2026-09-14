@@ -6,7 +6,11 @@
 // hand-written types; their validators carry a `z.ZodType<T>` annotation so
 // drift is a compile error.
 import { z } from 'zod'
-import { artifactDigestSchema, artifactLocationSchema, nativeTargetSchema, editFileSchema, EDIT_JOB_FILES } from '@demicodes/command-protocol'
+import {
+  artifactDigestSchema, artifactLocationSchema, nativeTargetSchema,
+  nativePackageSchema, nativeResourceGrantSchema, nativeResourceStatusSchema,
+  editFileSchema, EDIT_JOB_FILES
+} from '@demicodes/command-protocol'
 import type {
   HostDirent,
   HostFileStat,
@@ -289,6 +293,7 @@ const runnerInfoSchema = z.strictObject({
   name: z.string(),
   platform: z.string(),
   version: z.string(),
+  nativeTarget: nativeTargetSchema.optional(),
   /**
    * Read synchronously at shell creation, so it must arrive before any Host
    * use.
@@ -325,6 +330,17 @@ const jobOutputSchema = z.strictObject({
 })
 
 export const runnerToBackendMessageSchema = z.union([
+  z.strictObject({
+    type: z.literal('resource_result'),
+    id: z.string(),
+    result: z.union([nativeResourceGrantSchema, nativeResourceStatusSchema, z.null()]),
+    error: z.string().optional(),
+  }),
+  z.strictObject({
+    type: z.literal('resource_lost'),
+    grantId: z.string(),
+    reason: z.string(),
+  }),
   z.strictObject({
     type: z.literal('artifact_resolve'),
     id: z.string(),
@@ -476,6 +492,25 @@ export const helloErrorCodeSchema = z.enum([
 
 export const backendToRunnerMessageSchema = z.union([
   z.discriminatedUnion('type', [
+    z.strictObject({
+      type: z.literal('resource_acquire'),
+      id: z.string(),
+      owner: z.string().min(1).max(256),
+      kind: z.string().min(1).max(128),
+      descriptor: nativePackageSchema,
+      location: artifactLocationSchema,
+    }),
+    z.strictObject({
+      type: z.literal('resource_release'),
+      id: z.string(),
+      grantId: z.string().min(1).max(128),
+    }),
+    z.strictObject({
+      type: z.literal('resource_status'),
+      id: z.string(),
+      grantId: z.string().min(1).max(128),
+    }),
+    z.strictObject({ type: z.literal('resource_cancel'), id: z.string() }),
     z.strictObject({ type: z.literal('hello_ok'), deviceId: z.string() }),
     z.strictObject({ type: z.literal('claim_pending'), claimToken: z.string() }),
     z.strictObject({ type: z.literal('claimed'), deviceToken: z.string() }),
@@ -531,6 +566,7 @@ export const backendToRunnerMessageSchema = z.union([
       type: z.literal('job_start'),
       jobId: z.string(),
       manifestHash: artifactDigestSchema.optional(),
+      resources: z.array(z.string().min(1).max(128)).max(16).optional(),
       script: z.string(),
       cwd: z.string(),
       env: z.record(z.string(), z.string()),

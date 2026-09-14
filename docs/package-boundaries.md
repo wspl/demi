@@ -152,11 +152,11 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/coding-agent`
 
-- Planned browser scope: declare `demi browser` commands and help using schemas
-  from the planned `@demicodes/browser-protocol` dependency; algorithms remain
+- Browser scope: declare `demi browser` commands and help using schemas
+  from the `@demicodes/browser-protocol` dependency; algorithms remain
   native. See [Browser commands](demi-next/browser.md#command-contract).
 - Status: implemented.
-- Production deps: `@demicodes/agent`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
+- Production deps: `@demicodes/agent`, `@demicodes/browser-protocol`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: coding harness, coding prompt, coding commands (the `demi` root: every subcommand is a noun domain group — `file` as `runtime` modules written against the ABI and `todo` as `rpc` built in, product groups like the backend's `host` composed in). A `reference` block reaches the model as its path; the model reads the file with tools.
 - Public boundary: harness and coding command construction based on Host and Command contracts.
 - Must not: instantiate AgentSession, AgentServer, a shell environment, concrete providers, or a Host implementation.
@@ -233,14 +233,14 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/backend`
 
-- Planned lifecycle scope: `lifecycle/` owns shared resource admission, startup
+- Lifecycle scope: `lifecycle/` owns shared resource admission, startup
   joining, idle scheduling, dependency retirement and coordinator disposal. It
   consumes injected policy/operation adapters and reuses `ActivityGate`; it does
   not import the domain modules that register those adapters. See
   [Resource lifecycle coordination](demi-next/resource-lifecycle.md).
-- Planned browser scope: `conversation/` owns resource grants, main-Host binding,
-  access admission and product adapters. Add the planned `@demicodes/browser-protocol`
-  dependency for validation. It publishes Host registry/control
+- Browser scope: `conversation/` owns resource grants, main-Host binding,
+  access admission and product adapters. Use `@demicodes/browser-protocol`
+  for validation. It publishes Host registry/control
   state without a second browser inventory. All Host IO uses conversation Host
   access, including transition cleanup.
 - Status: target contract.
@@ -263,7 +263,7 @@ Test code may depend upward for integration coverage. Production code must not.
   - `llm/` — the provider runtime assembled per provider entry (the family registry with each family's credential kind, the vendor catalog over models.dev, the model catalog, the Test button) and the metering wrap at the inference entry.
   - `vault/` — instance secret, credential crypto, the typed provider vault over the control plane, and the provider scope (whose providers a caller works with under the instance mode).
   - `usage/` — enforcement (the provider-request rate limiter); the ledger rows live on the `ControlService`.
-  - `lifecycle/` (planned) — shared coordinator for resource use, idle deadlines, startup and retirement admission, dependency cleanup ordering and shutdown. It replaces domain-specific idle sweeps; domain adapters supply actual resource state and policy.
+  - `lifecycle/` — shared coordinator for resource use, idle deadlines, startup and retirement admission, dependency cleanup ordering and shutdown. It replaces domain-specific idle sweeps; domain adapters supply actual resource state and policy.
   - `managed/` — one managed device per user, Cloud policy and its lifecycle adapter, allocation/wake, paired system/home checkpointing, volume growth, external system reset, Cloud project directory creation. Every VM and disk operation goes to the `ManagedHostProvisioner` it is given; the backend never spawns a hypervisor or an image tool itself.
   - New modules get sibling directories — never new files at the root.
 
@@ -289,7 +289,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/runner-protocol`
 
-- Planned retained-resource scope: authoritative backend/runner grant acquisition,
+- Retained-resource scope: authoritative backend/runner grant acquisition,
   binding, invocation/subscription, release and loss schemas; no browser policy.
 - Status: implemented (the final wire: MessagePack frames, per-op fs messages, jobs, the rpc relay, the manifest push, transfers).
 - Production deps: `@demicodes/command-protocol`, `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
@@ -299,7 +299,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/host-remote`
 
-- Planned retained-resource scope: expose the generic authenticated resource
+- Retained-resource scope: expose the generic authenticated resource
   adapter over injected transport; conversation ownership stays in the backend.
   This extends artifact resolution admission to authenticated pending acquisitions
   and live grants pinned to the exact artifact, with cancellation on release.
@@ -317,9 +317,9 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` with a command alias at `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
 
-### `@demicodes/browser-protocol` (planned)
+### `@demicodes/browser-protocol`
 
-- Status: design only; the package and dependent manifest changes are not implemented.
+- Status: implemented schemas and generated native bindings.
 - Production deps: no first-party packages; external: Zod.
 - Owns: browser operation arguments/results, tab state, observations,
   and resource event payloads.
@@ -334,7 +334,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/command-protocol`
 
-- Planned retained-resource scope: authoritative native resource lifecycle and
+- Retained-resource scope: authoritative native resource lifecycle and
   scoped invocation/event wire schemas, following
   [Native runtime](demi-next/native-runtime.md#retained-resources).
 - Owns: authoritative Zod command-service wire and native package descriptor
@@ -347,7 +347,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `crates/command-service` (Rust library)
 
-- Planned retained-resource scope: generated lifecycle types, scoped dispatch,
+- Retained-resource scope: generated lifecycle types, scoped dispatch,
   cancellation and bounded event transport; no tab, cookie or input policy.
 - Owns: generated command wire/package types and validation, incremental framing,
   HTTP/2 client and server, bounded invocation IO and handler cancellation, and
@@ -357,6 +357,7 @@ Test code may depend upward for integration coverage. Production code must not.
   use the same communication SDK. Third-party command authors depend on this
   library without depending on runner or Demi command implementations.
 - `build.rs` consumes the Zod definitions in `packages/command-protocol`.
+  `src/integrity.rs` owns streaming artifact verification reused by installers;
   `src/protocol.rs` includes generated types and owns framing; `client.rs` and
   `server.rs` own the two transport roles.
 - Depends on: Tokio, tokio-util, h2, http, futures-util, bytes, serde, serde_json,
@@ -388,7 +389,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `crates/runner` (Rust executable)
 
-- Planned retained-resource scope: `commands/` owns authenticated grants, trusted
+- Retained-resource scope: `commands/` owns authenticated grants, trusted
   job association and retained service references; it routes browser operations
   without implementing them.
 - Owns: the `demi-runner` execution host, backend registration and connection,

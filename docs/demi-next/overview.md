@@ -124,10 +124,10 @@ implementation.
 | Where is data stored? | [Storage](storage.md) |
 | How are providers, credentials, and usage managed? | [Providers and vault](providers-and-vault.md) |
 | Where does a conversation execute? | [Sessions and targets](sessions-and-targets.md) |
-| How do browsers and Cloud share startup, idle reclamation, and cleanup? | [Resource lifecycle coordination](resource-lifecycle.md) (design; integration pending) |
+| How do browsers and Cloud share startup, idle reclamation, and cleanup? | [Resource lifecycle coordination](resource-lifecycle.md) |
 | How are concurrent operations admitted? | [Execution coordination](sessions-and-targets.md#coordinate-shared-cloud-activity) |
 | How are commands declared and dispatched? | [Commands](commands.md) |
-| How does the agent operate browser tabs on its conversation Host? | [Conversation browser](browser.md) (design; not implemented) |
+| How does the agent operate browser tabs on its conversation Host? | [Conversation browser](browser.md) |
 | How are native commands installed and executed? | [Native runtime](native-runtime.md) |
 | What does a device runner own? | [Runner](runner.md) |
 | What did a tool call edit? | [Edit tracking](edit-tracking.md) |

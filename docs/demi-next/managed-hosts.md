@@ -9,8 +9,8 @@ This document defines provisioning, disk persistence, and reset. Target selectio
 and shared-device admission follow the
 [conversation execution contract](sessions-and-targets.md). Installation commands
 and environment settings are in [managed-host setup](../managed-hosts-setup.md).
-[Resource lifecycle coordination](resource-lifecycle.md) defines the planned
-shared scheduling/admission mechanism; this document owns Cloud policy and
+[Resource lifecycle coordination](resource-lifecycle.md) defines the shared
+scheduling/admission mechanism; this document owns Cloud policy and
 VM/disk outcomes.
 
 ## Provisioning
@@ -84,7 +84,9 @@ home, including any broken `.bashrc`; it cannot promise to repair that state.
 
 The image build selects Ubuntu 26.04 with a minimal package base. The Rust runner
 is `/demi-runner`, also linked as `/usr/bin/demi-runner`, and runs guest
-initialization as PID 1. Jobs run as `demi`, UID 1000, with passwordless sudo.
+initialization as PID 1. It mounts temporary storage and POSIX shared memory at
+`/tmp` and `/dev/shm`; both disappear when the guest stops. Jobs run as `demi`,
+UID 1000, with passwordless sudo.
 The VM is the isolation boundary.
 
 Preinstalled tools are system packages or standalone binaries. The exact package
@@ -166,10 +168,11 @@ Crash-loop protection stops repeated automatic boots while leaving reset availab
 Checkpoint timing remains Cloud policy and uses shared maintenance admission;
 a checkpoint preserves the browser's live process and is not a browser retirement.
 
-The shared coordinator integration is planned, not implemented. Cloud currently
-owns its idle bookkeeping and sweep. Its implementation checkpoint moves that
-mechanism to the common owner instead of adding another independent browser loop;
-VM state, reset journals, disk recovery, and Cloud-specific deadlines remain here.
+The shared coordinator owns idle intervals and scheduling for each machine
+independently. Device and agent-tree activity notifications reset demand intervals;
+periodic eligibility checks cover durable conversation bindings. Checkpoint and
+hard-cap schedules remain Cloud policy and use the same coordinator clock. VM
+state, reset journals and disk recovery remain in the managed adapter.
 
 Guest resource limits are per user; the backend also caps total active machines.
 Current configuration defaults are:

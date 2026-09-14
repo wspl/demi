@@ -1,4 +1,5 @@
 import type { RemoteCommandCatalog } from './shell-environment-factory'
+import type { NativeResourceGrant } from '@demicodes/command-protocol'
 import {
   DEFAULT_BINARY_LIMIT_BYTES,
   DEFAULT_OUTPUT_LIMIT_BYTES,
@@ -24,6 +25,7 @@ import {
   concatBytes,
   decodeUtf8,
   delay,
+  errorMessage,
   toBytes
 } from '@demicodes/utils'
 import type { RemoteHost, RemoteJob, RemoteJobExit } from './remote-host'
@@ -34,6 +36,8 @@ export interface RemoteShellEnvironmentOptions extends ShellEnvironmentOptions {
   commandStorage?: (signal?: AbortSignal) => CommandStorage
   /** Publish edit snapshots before exposing the command as completed. */
   retainEdits?: (commandId: string, files: RemoteJobExit['files']) => Promise<ShellEditedFile[]>
+  /** Hold the application's Host admission through job startup, output and edit publication. */
+  runJob?: <T>(signal: AbortSignal, operation: (resources: readonly NativeResourceGrant[]) => Promise<T>) => Promise<T>
 }
 
 interface RemoteShell {
@@ -48,7 +52,8 @@ interface RemoteShell {
 
 interface RunningJob {
   record: ShellCommandRecord
-  job: RemoteJob
+  job?: RemoteJob
+  cancellation: AbortController
   settled: Promise<void>
   /**
    * Set by `abort`: the exit that follows is the kill, not the command's own
@@ -86,11 +91,13 @@ export class RemoteShellEnvironment implements ShellEnvironment {
   private readonly commands: RemoteCommandCatalog | undefined
   private readonly commandStorage: RemoteShellEnvironmentOptions['commandStorage']
   private readonly retainEdits: RemoteShellEnvironmentOptions['retainEdits']
+  private readonly runJob: RemoteShellEnvironmentOptions['runJob']
 
   constructor(options: RemoteShellEnvironmentOptions) {
     this.commands = options.commands
     this.commandStorage = options.commandStorage
     this.retainEdits = options.retainEdits
+    this.runJob = options.runJob
     this.host = options.host
     this.shellIdFactory = options.shellIdFactory
       ?? (() => globalThis.crypto.randomUUID())
@@ -145,6 +152,8 @@ export class RemoteShellEnvironment implements ShellEnvironment {
       throw new Error(
         'shell_write field "stdin" must not be empty; use shell_status to poll'
       )
+    if (!running.job)
+      throw new Error(`Command "${record.id}" is still acquiring its Host`)
     await running.job.writeStdin(data)
     return this.view(record)
   }
@@ -155,10 +164,11 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     if (record.status !== 'running' || !running)
       return this.view(record)
     running.aborted = true
-    await running.job.kill('SIGTERM')
+    running.cancellation.abort(new Error('Shell command aborted'))
+    await running.job?.kill('SIGTERM')
     await settledOrElapsed(running.settled, ABORT_GRACE_MS)
     if (record.status === 'running') {
-      await running.job.kill('SIGKILL')
+      await running.job?.kill('SIGKILL')
       await settledOrElapsed(running.settled, ABORT_GRACE_MS)
     }
     if (record.status === 'running')
@@ -205,13 +215,10 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     callerSignal: AbortSignal | undefined
   ): RunningJob {
     const id = this.commandIdFactory()
-    const job = this.host.startJob({
-      script,
-      cwd: shell.cwd,
-      env: { ...shell.env, PWD: shell.cwd },
-      commands: this.commands,
-      commandStorage: this.commandStorage?.(callerSignal)
-    })
+    const cancellation = new AbortController()
+    const signal = callerSignal
+      ? AbortSignal.any([callerSignal, cancellation.signal])
+      : cancellation.signal
     const record = createCommandRecord({
       id,
       shellId: shell.id,
@@ -219,39 +226,59 @@ export class RemoteShellEnvironment implements ShellEnvironment {
       script,
       outputLimitBytes: this.defaultOutputLimitBytes,
     })
+    const running: RunningJob = { record, cancellation, settled: Promise.resolve() }
+    // Reserve the shell synchronously, before admitted startup can suspend.
+    shell.foreground = running
     this.commandsById.set(id, record)
-    const running: RunningJob = { record, job, settled: Promise.resolve() }
-    const head = { stdout: [] as Uint8Array[], stderr: [] as Uint8Array[] }
-    const decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() }
-    const ingest = async () => {
-      for await (const chunk of job.output) {
-        head[chunk.stream].push(chunk.chunk)
-        const text = decoders[chunk.stream].decode(
-          chunk.chunk,
-          { stream: true }
-        )
-        if (chunk.stream === 'stdout') record.stdout += text
-        else record.stderr += text
-        appendRecordOutput(record, chunk.stream, text)
-        record.lastOutputAt = Date.now()
+    this.runningById.set(id, running)
+    const onAbort = () => {
+      void running.job?.kill('SIGTERM').catch(error => {
+        // The exit/connection result remains authoritative; a failed send is diagnostic.
+        console.error('Could not interrupt runner job', error)
+      })
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    const execute = async (resources: readonly NativeResourceGrant[]) => {
+      signal.throwIfAborted()
+      const job = this.host.startJob({
+        script,
+        cwd: shell.cwd,
+        env: { ...shell.env, PWD: shell.cwd },
+        commands: this.commands,
+        commandStorage: this.commandStorage?.(signal),
+        resources,
+      })
+      running.job = job
+      const head: { stdout: Uint8Array[]; stderr: Uint8Array[] } = { stdout: [], stderr: [] }
+      const decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() }
+      const ingest = async () => {
+        for await (const chunk of job.output) {
+          head[chunk.stream].push(chunk.chunk)
+          const text = decoders[chunk.stream].decode(chunk.chunk, { stream: true })
+          if (chunk.stream === 'stdout') record.stdout += text
+          else record.stderr += text
+          appendRecordOutput(record, chunk.stream, text)
+          record.lastOutputAt = Date.now()
+        }
       }
+      const [, exit] = await Promise.all([ingest(), job.wait()])
+      await this.finish(shell, running, exit, head)
     }
-    const onAbort = () => void job.kill('SIGTERM')
-    if (callerSignal?.aborted) {
-      onAbort()
-    } else {
-      callerSignal?.addEventListener('abort', onAbort, { once: true })
-    }
-    running.settled = Promise.all([ingest(), job.wait()])
-      .then(([, exit]) => this.finish(shell, running, exit, head))
+    running.settled = (this.runJob ? this.runJob(signal, execute) : execute([]))
+      .catch(error => {
+        if (signal.aborted) {
+          this.markAborted(running)
+        } else {
+          settleExited(record, 127, record.stdout, `${record.stderr}${errorMessage(error)}\n`, undefined)
+        }
+      })
       .finally(() => {
-        callerSignal?.removeEventListener('abort', onAbort)
+        signal.removeEventListener('abort', onAbort)
+        cancellation.abort(new Error('Runner job settled'))
         this.runningById.delete(id)
         if (shell.foreground === running)
           shell.foreground = undefined
       })
-    shell.foreground = running
-    this.runningById.set(id, running)
     return running
   }
 
@@ -375,7 +402,7 @@ export class RemoteShellEnvironment implements ShellEnvironment {
   }
 
   private view(record: ShellCommandRecord): ShellCommandStatus {
-    record.runningHint = this.runningById.get(record.id)?.job.runningHint
+    record.runningHint = this.runningById.get(record.id)?.job?.runningHint
     return commandStatusView(record, this.defaultOutputLimitBytes)
   }
 

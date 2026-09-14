@@ -35,7 +35,7 @@ async fn concurrent_acquisition_shares_service_and_checks_every_descriptor() {
         // Test-only descriptor: only this host's executable is launched.
         let package = PackageDescriptor::parse(serde_json::json!({
             "id":"demicodes.fixture", "version":"test", "protocolVersion":1,
-            "operations":["file.create", "file.read", "file.edit", "file.patch"],
+            "operations":demi_command_service::Handler::operations(&demi_commands::DemiCommands::default()),
             "targets":TARGETS.iter().map(|target| (target.to_string(), serde_json::to_value(&artifact).unwrap())).collect::<BTreeMap<_, _>>()
         })).unwrap();
         let pool = Services::new(directory.path().join("cache"), native::target().into(), directory.path().into(), BTreeMap::new()).await.unwrap();

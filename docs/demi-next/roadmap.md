@@ -28,11 +28,11 @@ Contracts and package boundaries
 | Backend and storage | Scripted turns persist and recover; metadata, journal, blobs, and command state respect ownership boundaries | [Backend](backend.md), [Storage](storage.md) |
 | Providers | Configured entries, accounts, model catalogs, and reported usage work through scripted endpoints without credential disclosure | [Providers](providers-and-vault.md) |
 | Devices and targets | Claim/reconnect/revoke and target exchange preserve attribution, context, and execution-tree admission | [Sessions and targets](sessions-and-targets.md) |
-| Resource lifecycle (planned) | Cloud and browser adapters share admission, idle scheduling and ordered cleanup; no cleanup wake, idle extension, gate deadlock or orphan resources | [Resource lifecycle coordination](resource-lifecycle.md#integration-and-acceptance) |
+| Resource lifecycle | Cloud and browser adapters share admission, idle scheduling and ordered cleanup; no cleanup wake, idle extension, gate deadlock or orphan resources | [Resource lifecycle coordination](resource-lifecycle.md#integration-and-acceptance) |
 | Personal Cloud | One user has one machine; disk generations survive ordinary wake; external reset retains home and serializes recovery | [Managed hosts](managed-hosts.md) |
 | Accounts and product | Authentication, roles, provider mode, and resource isolation hold across every exposed operation | [Product](product.md), [Web API](web-api.md) |
 | Browser | Shared UI has real product adapters and gallery examples; backend persistence and authorization are verified through the product | [Web architecture](web-application.md) |
-| Browser automation (planned) | Conversation-owned browser, shell commands, observations, screenshots and lifecycle satisfy their contracts on paired devices and Cloud; workpanel display is deferred | [Conversation browser](browser.md#acceptance) |
+| Browser automation | Conversation-owned browser, shell commands, observations, screenshots and lifecycle satisfy their contracts on paired devices and Cloud; workpanel display is deferred | [Conversation browser](browser.md#acceptance) |
 | Packaging | Published artifacts install and start; shipped images boot in direct and jailer Linux/KVM modes | [Native builds](../native-builds.md), [Cloud setup](../managed-hosts-setup.md) |
 | Distributed deployment | Ownership loss fences old writers before reassignment; metadata and disk generations recover consistently | [Backend](backend.md), [Storage](storage.md) |
 

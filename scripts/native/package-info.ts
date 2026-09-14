@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
 import { nativePackageSchema, NATIVE_PROTOCOL_VERSION } from '@demicodes/command-protocol'
+import { browserOperations } from '../../packages/browser-protocol/src/index'
 
 const metadataSchema = z.object({
   package: z.object({
@@ -20,6 +21,7 @@ export async function readDemiPackageInfo() {
   const workspace = workspaceSchema.parse(Bun.TOML.parse(workspaceText))
   return infoSchema.parse({
     ...manifest.package.metadata.demi,
+    operations: [...manifest.package.metadata.demi.operations, ...Object.keys(browserOperations).map(name => `browser.${name}`)],
     version: workspace.workspace.package.version,
     protocolVersion: NATIVE_PROTOCOL_VERSION,
   })

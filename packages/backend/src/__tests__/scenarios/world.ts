@@ -27,6 +27,8 @@ import { Driver, type Target } from './driver'
 export interface WorldOptions {
   /** A packaged release for acceptance on real managed guests. */
   nativeCommands?: BackendOptions['nativeCommands']
+  /** Browser idle-deadline test policy. */
+  browser?: BackendOptions['browser']
   /** Runner names; each becomes a device and a workspace. */
   runners?: string[]
   /**
@@ -137,6 +139,7 @@ export class World {
   ): Promise<TestBackend> {
     return openBackend({
       dataDir,
+      browser: options.browser,
       ...(options.nativeCommands ? { nativeCommands: options.nativeCommands } : {}),
       port: options.port ?? 0,
       runner: {

@@ -17,13 +17,14 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/protocol.rs"));
 }
 pub use generated::{
-    EditContext, EditCopies, EditFile, EditJournal,
-    EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS,
-    CommandError, Completion, INFO_PATH, INVOKE_PATH, Invocation, MAX_INVOCATIONS,
-    MAX_METADATA_BYTES, MAX_RECORD_BYTES, PackageDescriptor,
-    PackageDescriptorTargetsValue as PackageArtifact, SHUTDOWN_PATH, ServiceInfo, TARGETS, VERSION,
+    ArtifactLocation, CommandError, Completion, EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES,
+    EDIT_JOB_SEGMENTS, EditContext, EditCopies, EditFile, EditJournal, INFO_PATH, INVOKE_PATH,
+    Invocation, MAX_INVOCATIONS, MAX_METADATA_BYTES, MAX_RECORD_BYTES, NativeResourceGrant,
+    NativeResourceScope, NativeResourceStatus, PackageDescriptor,
+    PackageDescriptorTargetsValue as PackageArtifact, RESOURCE_PATH, SHUTDOWN_PATH, ServiceInfo,
+    TARGETS, VERSION,
 };
-pub use package::{canonical_digest, target_artifact};
+pub use package::{canonical_digest, host_target, target_artifact};
 
 impl EditContext {
     pub fn validate(&self) -> Result<(), String> {

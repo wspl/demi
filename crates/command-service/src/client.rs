@@ -4,7 +4,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::protocol::{
     INFO_PATH, INVOKE_PATH, Invocation, MAX_INVOCATIONS, MAX_METADATA_BYTES, MAX_RECORD_BYTES,
-    ProtocolError, Record, RecordDecoder, SHUTDOWN_PATH, ServiceInfo, VERSION,
+    ProtocolError, RESOURCE_PATH, Record, RecordDecoder, SHUTDOWN_PATH, ServiceInfo, VERSION,
 };
 use crate::{ServiceError, stream::send_bytes};
 
@@ -61,10 +61,25 @@ impl Client {
         &self,
         invocation: &Invocation,
     ) -> Result<(CommandInput, CommandOutput), ServiceError> {
+        self.invoke_at(INVOKE_PATH, invocation).await
+    }
+
+    /// Resource lifecycle uses the same bounded IO and cancellation as commands.
+    pub async fn resource(
+        &self,
+        invocation: &Invocation,
+    ) -> Result<(CommandInput, CommandOutput), ServiceError> {
+        self.invoke_at(RESOURCE_PATH, invocation).await
+    }
+
+    async fn invoke_at(
+        &self,
+        path: &str,
+        invocation: &Invocation,
+    ) -> Result<(CommandInput, CommandOutput), ServiceError> {
         let metadata = invocation.encode()?;
         let mut sender = self.sender.clone().ready().await?;
-        let (response, mut input) =
-            sender.send_request(request(Method::POST, INVOKE_PATH), false)?;
+        let (response, mut input) = sender.send_request(request(Method::POST, path), false)?;
         send_bytes(&mut input, metadata).await?;
         let response = response.await?;
         if !response.status().is_success() {

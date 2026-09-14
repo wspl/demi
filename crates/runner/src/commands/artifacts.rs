@@ -2,18 +2,19 @@
 
 use crate::commands::cache::{ArtifactResolver, ArtifactSource, RuntimeError};
 use crate::commands::contexts::Contexts;
-use crate::connection::wire::{self as wire, ArtifactLocationLocation};
+use crate::connection::wire;
+use demi_command_service::protocol::ArtifactLocation;
 use demi_command_service::protocol::PackageArtifact;
 use futures_util::future::BoxFuture;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
-    time::{Duration, UNIX_EPOCH},
+    time::Duration,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
-type Location = Result<ArtifactLocationLocation, String>;
+type Location = Result<ArtifactLocation, String>;
 struct Connection {
     output: mpsc::Sender<wire::Outbound>,
     stop: CancellationToken,
@@ -64,12 +65,7 @@ impl Artifacts {
         }
         state.pending.clear();
     }
-    pub fn reply(
-        &self,
-        id: &str,
-        location: Option<ArtifactLocationLocation>,
-        error: Option<String>,
-    ) {
+    pub fn reply(&self, id: &str, location: Option<ArtifactLocation>, error: Option<String>) {
         let Some(sender) = self.state.lock().unwrap().pending.remove(id) else {
             return;
         };
@@ -132,46 +128,7 @@ impl Artifacts {
                     receiver.await.map_err(|_| RuntimeError::Cancelled)?.map_err(RuntimeError::Artifact)
                 }) => result.map_err(|_| RuntimeError::Deadline("artifact location"))??,
             };
-            return match location {
-                ArtifactLocationLocation::Variant0(location) => {
-                    let url = reqwest::Url::parse(&location.url)
-                        .map_err(|error| RuntimeError::Artifact(error.to_string()))?;
-                    if url.scheme() != "https"
-                        || !url.username().is_empty()
-                        || url.password().is_some()
-                    {
-                        return Err(RuntimeError::Artifact(
-                            "artifact downloads require an HTTPS URL without credentials".into(),
-                        ));
-                    }
-                    let expires_at = location
-                        .expires_at
-                        .map(|millis| {
-                            u64::try_from(millis)
-                                .ok()
-                                .and_then(|millis| {
-                                    UNIX_EPOCH.checked_add(Duration::from_millis(millis))
-                                })
-                                .ok_or_else(|| {
-                                    RuntimeError::Artifact("invalid artifact URL expiry".into())
-                                })
-                        })
-                        .transpose()?;
-                    Ok(ArtifactSource::Https {
-                        url: url.into(),
-                        expires_at,
-                    })
-                }
-                ArtifactLocationLocation::Variant1(location) => {
-                    let path = std::path::PathBuf::from(location.path);
-                    if !path.is_absolute() {
-                        return Err(RuntimeError::Artifact(
-                            "local artifact path must be absolute".into(),
-                        ));
-                    }
-                    Ok(ArtifactSource::Local(path))
-                }
-            };
+            return ArtifactSource::from_location(location);
         }
     }
 }

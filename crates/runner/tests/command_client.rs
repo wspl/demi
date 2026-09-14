@@ -68,6 +68,9 @@ impl AsyncRead for NeverRead {
 
 fn invocation(operation: &str) -> Invocation {
     Invocation {
+        caller: None,
+        resource: None,
+        json: None,
         edits: None,
         operation: operation.into(),
         invocation_id: operation.into(),

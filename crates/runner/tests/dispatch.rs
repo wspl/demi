@@ -114,6 +114,9 @@ impl Fixture {
     }
     fn request(&self, id: String, argv: Vec<String>) -> Invocation {
         Invocation {
+            caller: None,
+            resource: None,
+            json: None,
             edits: None,
             operation: "raw".into(),
             invocation_id: "invocation".into(),

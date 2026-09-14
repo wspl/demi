@@ -15,19 +15,39 @@ use tokio::{io::AsyncReadExt, sync::Mutex};
 #[derive(Default)]
 pub struct DemiCommands {
     mutations: Arc<Mutex<()>>,
+    browsers: Arc<browser::Resources>,
 }
 
 impl Handler for DemiCommands {
+    fn resource(
+        &self,
+        context: InvocationContext,
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+        let browsers = self.browsers.clone();
+        Box::pin(async move { browsers.resource(context).await })
+    }
+
+    fn close(&self) -> Pin<Box<dyn Future<Output = Result<(), ServiceError>> + Send>> {
+        let browsers = self.browsers.clone();
+        Box::pin(async move { browsers.close().await })
+    }
+
     fn operations(&self) -> Vec<String> {
         ["file.read", "file.create", "file.edit", "file.patch"]
+            .into_iter()
+            .chain(browser::OPERATIONS.iter().copied())
             .map(String::from)
-            .to_vec()
+            .collect()
     }
 
     fn invoke(
         &self,
         context: InvocationContext,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+        if context.request.operation.starts_with("browser.") {
+            let browsers = self.browsers.clone();
+            return Box::pin(async move { browsers.invoke(context).await });
+        }
         let mutations = self.mutations.clone();
         Box::pin(async move {
             let result = if context.request.operation == "file.read" {

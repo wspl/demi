@@ -126,6 +126,30 @@ impl Dispatcher {
                     .await
                     .map_err(handler)?;
                 let request = Invocation {
+                    caller: (!context.agent_session_id.is_empty())
+                        .then(|| context.agent_session_id.clone()),
+                    resource: binding
+                        .resource
+                        .as_ref()
+                        .map(|kind| {
+                            context
+                                .resources
+                                .get()
+                                .and_then(|grants| {
+                                    grants.iter().find(|grant| {
+                                        grant.scope.kind == *kind
+                                            && grant.descriptor_hash == binding.descriptor_hash
+                                    })
+                                })
+                                .map(|grant| grant.scope.clone())
+                                .ok_or_else(|| {
+                                    handler(
+                                        "wrong_host: no conversation resource is bound to this job",
+                                    )
+                                })
+                        })
+                        .transpose()?,
+                    json: Some(parsed.json),
                     edits: context.edits.get().cloned(),
                     operation: binding.operation.clone(),
                     invocation_id: invocation.request.invocation_id,
