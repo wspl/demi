@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-exclude = ["vendor/*"]
+exclude = ["vendor/*", "vendor/chromiumoxide"]
 members = ["crates/runner", "crates/command-service", "crates/demi-commands"]
 
 [workspace.package]
@@ -26,6 +26,7 @@ lto = "thin"
 strip = true
 
 [patch.crates-io]
+chromiumoxide = { path = "vendor/chromiumoxide" }
 jaq-core = { path = "vendor/jaq-core" }
 argmax = { path = "vendor/argmax" }
 brush-core = { path = "vendor/brush-core" }

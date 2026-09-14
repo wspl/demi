@@ -49,6 +49,7 @@ crates/
     ├── Cargo.toml
     └── src/
         ├── main.rs            # Resident service entry point
+        ├── browser/           # Native browser driver and resource ownership
         ├── files.rs           # Demi file operations
         └── patch.rs           # Demi patch implementation
 
@@ -366,10 +367,12 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `crates/demi-commands` (Rust executable)
 
-- Planned browser scope: `browser/` owns browser/driver integration, the canonical
+- Browser scope: `browser/` owns browser/driver integration, the canonical
   tab registry, input arbitration, observations, command operations and resource
   cleanup. Browser business schemas come from `browser-protocol` and are generated
   by this crate's build for native consumers; no second Rust schema authority.
+  The native driver primitives exist; command and conversation integration follow
+  the [browser implementation boundary](demi-next/browser.md#deferred-decisions-and-implementation-status).
 - Owns: the independently released `demi-commands` resident program and all native
   Demi command implementations, including file read/create/edit/patch.
   `coding-agent` owns the TypeScript declarations; backend supplies the runtime
