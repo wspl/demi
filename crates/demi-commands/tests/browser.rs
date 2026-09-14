@@ -16,7 +16,7 @@ use demi_commands::browser::{
     BrowserEnvironment, BrowserError, BrowserTab, LaunchOptions, Result, with_browser,
 };
 use serde_json::json;
-use tokio::sync::{Mutex, watch};
+use tokio::sync::Mutex;
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 const DEADLINE: Duration = Duration::from_secs(5);
@@ -206,27 +206,6 @@ async fn exercise_browser(
     assert!(matches!(waiting, Err(BrowserError::Timeout)));
     assert!(matches!(busy, Err(BrowserError::Busy)));
 
-    let (sender, mut receiver) = watch::channel(None);
-    let view_tab = tab.clone();
-    let view_live = live.clone();
-    let (capture, viewing) = tokio::join!(tab.frames(&live, sender), async move {
-        for _ in 0..3 {
-            tokio::time::timeout(DEADLINE, receiver.changed())
-                .await
-                .map_err(|_| BrowserError::Timeout)?
-                .map_err(|_| BrowserError::Closed)?;
-            assert!(receiver.borrow().is_some());
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-        assert_eq!(
-            view_tab.read_only("1 + 1", &view_live, DEADLINE).await?,
-            json!(2)
-        );
-        drop(receiver);
-        Ok::<_, BrowserError>(())
-    },);
-    capture?;
-    viewing?;
     tab.close(&live, DEADLINE).await?;
     assert!(
         !browser

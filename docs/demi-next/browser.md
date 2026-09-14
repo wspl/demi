@@ -14,60 +14,37 @@ startup, idle scheduling, and retirement follow
 
 ## Reading map
 
-- [Purpose](#purpose): agent verification and an interactive streamed workpanel.
+- [Purpose](#purpose): browser automation for agents on the conversation Host.
 - [Ownership](#ownership): conversation binding, tabs, concurrency, and lifetime.
 - [Idle reclamation](#idle-reclamation): browser activity and the ten-minute policy.
-- [Control](#control-and-interruption): Managed and Free modes, pause, and resume.
+- [Cancellation](#cancellation): stop invocation work and release held input.
 - [Execution](#execution): browser distribution, command dispatch, and retained resources.
 - [Command contract](#command-contract): inputs, text, JSON, media, and failure.
 - [Observation](#observation): page trees, references, locators, and coordinates.
 - [Command reference](#command-reference): commands, example output, and result fields.
 - [Bash workflows](#bash-workflows): consecutive actions and conditional scripts.
-- [Workpanel stream](#workpanel-stream): canonical tabs, frames, input, and reconnects.
 - [Acceptance](#acceptance): implementation responsibilities, checks, and prerequisites.
 
 ## Purpose
 
-An agent starts an application at `http://localhost:3000` on Cloud and opens
-its login page. The new tab immediately appears in that conversation's
-workpanel. Chrome for Testing runs on Cloud; the workpanel displays its frames
-and sends user input back to that same tab. The agent's `tabs` command lists
-exactly the browser tabs available in the workpanel.
+An agent starts an application at `http://localhost:3000` on Cloud, opens its
+login page with `demi browser open`, fills the form, and checks the result using
+page observations or an explicit screenshot. Chrome for Testing runs on that
+conversation's Host; the commands operate the same pages and browser storage
+across shell jobs and agent turns.
 
 ```text
-Conversation on Demi
-  +-- Agent: demi browser commands ----+
-  |                                   |
-  +-- Workpanel browser tabs           v
-        | input                  Host browser ---> Application :3000
-        +---------------------------> |
-        <--------- frame stream ------+
+Agent -> demi browser commands -> Host browser -> Application :3000
+      <- text, JSON, screenshots <-
 ```
 
-There is one executing page per tab. Agent actions and user actions affect the
-same DOM, navigation history, scroll position, storage, and application state.
-The design covers this streamed Host browser only. Local page execution and
-application proxying are outside its scope.
+The current scope is browser automation for agents. Workpanel does not display
+these tabs. There is no live picture or video stream, user browser-input surface,
+or Managed/Free mode. Visible browser interaction is deferred to a separate
+future design; this contract does not prescribe its capture or transport scheme.
+Explicit screenshots continue through the existing command media contract.
 
-The user chooses how input is shared:
-
-| Mode | Agent | User |
-| --- | --- | --- |
-| Managed | Operates the browser exclusively | Watches; can switch to Free mode |
-| Free | Can operate until user input pauses its browser actions | Can interact at any time |
-
-Managed mode is the initial state of a newly acquired browser controller. In Free mode,
-the first accepted user input pauses agent browser actions before the input is
-delivered. The user explicitly resumes agent browser actions after finishing.
-Switching modes and resuming are product controls; the agent cannot grant itself
-exclusive access or dismiss a user pause. The complete control contract is in
-[Control and interruption](#control-and-interruption).
-
-Closing the Demi page ends its stream without aborting the agent. Streaming
-latency affects what the user sees and the round trip of user input. Consecutive
-agent actions execute on the Host without a client round trip.
-
-This design uses Codex's observable, programmable browser tools and readable
+The design uses Codex's observable, programmable browser tools and readable
 feedback as a capability reference. It does not copy proprietary implementations,
 protocols, or prompts, or embed another browser-use agent. Dependencies must not
 require AGPL licensing.
@@ -120,117 +97,46 @@ A tab ID is an opaque handle. Examples use `tab-1`; actual IDs are never reused
 across browser generations. An old ID must never refer to a newly created tab.
 A display index is not an authorization token.
 
-The Host browser driver owns one canonical live tab registry. The backend
-publishes its snapshot and ordered changes to the conversation. The workpanel
-projects this registry; `demi browser tabs` reads the same registry. All top-level
-pages appear, including tabs opened by the user, agents, sites, and temporary
-content operations. There are no hidden automation-only tabs. File and change
-workpanel tabs are other resource types and do not appear in `browser tabs`.
+The Host browser driver owns one canonical live tab registry; `demi browser tabs`
+reads it. All top-level pages appear, including pages opened by agents, sites,
+and temporary content operations. Root and child agents share this registry.
+Commands always name a tab explicitly; there is no globally selected tab.
 
-The tab ID is also the browser workpanel item's resource ID. The web application
-may retain local selection and panel visibility; it must not maintain another
-browser tab inventory or use local workpanel IDs as browser handles. Reloading
-Demi obtains the current registry snapshot. Selecting a tab affects the viewer's
-subscription only; agent commands always name a tab explicitly.
-
-Root and child agents share the registry. Creation metadata is a discriminated
-value: `agent` with node ID, `user`, `page` with opener tab ID, or `temporary`
-with invoking node ID. This is diagnostic metadata, not authorization. An iframe
-remains part of its top-level tab. A site-created top-level tab is registered
-before it can be operated; the triggering action reports observed `openedTabs`.
-Later popups appear through registry updates and subsequent `tabs` calls.
+Creation metadata is a discriminated value: `agent` with node ID, `page` with
+opener tab ID, or `temporary` with invoking node ID. This is diagnostic metadata,
+not authorization. An iframe remains part of its top-level tab. A site-created
+top-level tab is registered before it can be operated; the triggering action
+reports observed `openedTabs`. Later popups appear in subsequent `tabs` calls.
 
 Only one agent command executes against a tab at a time. Its operation lock
 covers targeting, input, associated waits, and result collection. Conflicting
 agent calls return `tab_busy`, without queuing a click for an unknown later page.
-Different tabs may progress in parallel. Frame capture does not take this lock.
-User input in Free mode follows the preemption rule below, not `tab_busy`.
+Different tabs may progress in parallel.
 
 A shell script is not a transaction. Another agent can act between commands.
 Agents needing independent sequences should use separate tabs; shared browser
 storage still means those tabs can affect the same login.
 
-### Control and interruption
+### Cancellation
 
-Control applies to the entire conversation browser, including root and child
-agents and every browser tab. A user typing into tab A must not leave an agent
-submitting a related form in tab B. The Host browser controller serializes mode
-changes, input admission, and action dispatch. It stores one state plus a
-monotonic control revision; displayed mode and paused status derive from it.
+Cancelling a command or agent turn stops its further browser dispatches, waits,
+and blocking debug facilities, and releases held keys/buttons. Await bounded
+cleanup before reporting cancellation complete. Browser state and nonblocking
+observations such as buffered logs remain available. Cancellation does not undo
+submitted forms or page JavaScript and does not close unrelated tabs.
 
-| State | Agent page-changing commands | User page input |
-| --- | --- | --- |
-| `managed` | Allowed | Rejected with `managed_mode` |
-| `free` | Allowed | Atomically changes state to `free_paused`, then delivers input |
-| `free_paused` | Rejected with `browser_paused` | Allowed |
-
-The user can select Free from Managed, select Managed from either Free state,
-or resume from `free_paused` to `free`. Each transition advances the revision.
-Selecting Managed is an explicit user decision to return exclusive operation
-to agents. Merely waiting, disconnecting, reconnecting, or receiving another
-agent call never resumes browser actions. State lasts for the live controller;
-a replacement resource starts Managed and is shown as a new environment.
-The user can change mode before opening the first tab; lazy browser startup
-preserves that choice.
-
-Page-changing operations include open/close, navigation, pointer and keyboard
-input, form actions, dialog replies, upload/download triggers, clipboard writes,
-viewport changes, content fetch, WebMCP calls, and CDP send. Classify CDP send
-conservatively even for a nominally observational method. Inspect/find/read,
-screenshots/probe, history/info/tabs, logs/events, read-only eval, waits,
-capabilities, CDP target discovery, WebMCP discovery, dialog inspection, clipboard
-reads, content read/export and asset extraction may observe while paused. Export adapters must
-be observational to qualify. Observation can race user changes and cannot claim
-a frozen page. Writing an observation to a Host file does not operate the page.
-
-When input arrives in Free mode:
-
-1. Validate the viewer, resource generation, relevant tab/viewport, and input.
-   Selecting a workpanel tab or subscribing is not page input. Pointer movement,
-   wheel, keys, composition, and browser toolbar actions are input.
-2. Advance the control revision and enter `free_paused` before dispatching input.
-   Stop new agent page changes on every tab; cancel current agent browser calls
-   and their waits. Release held agent keys/buttons and blocking debug sessions.
-3. Fence all previous agent dispatches and await their bounded cancellation
-   acknowledgement. Then deliver the user's input. If stopping fails, report
-   `browser_unavailable` and retire the faulty environment; never run both input
-   owners concurrently. A frame may show effects already completed by an agent.
-4. Notify all workpanel viewers and affected agent nodes. The interrupted command
-   fails with `user_interrupted` and known action progress. The notification
-   tells the agent to wait for explicit resume before new page changes.
-
-A shell invocation receives its browser control revision from trusted execution
-context, even when its first browser command is later in the script. Every
-page-changing command verifies that revision at admission and immediately before
-input delivery. Old shell jobs cannot acquire a new revision by retrying. After
-resume, an old script still fails `stale_control`; the agent must start a new
-shell call and observe the current page before continuing. State-change notices
-use existing per-node execution-context updates and steering/yield wakeup machinery. Resume informs affected nodes without
-replaying a tool call or creating a second agent scheduler. Cancellation or a
-mode transition invalidates outstanding dispatch tokens. It does not undo a
-submitted form, undo page JavaScript, or stop arbitrary non-browser shell work.
-
-Mode transitions also cancel/fence in-flight browser calls before acknowledgement,
-so switching to Managed cannot leave a user key held down. Cancelling an agent
-turn releases input and blocking debug facilities owned by that turn. Browser
-state and nonblocking observations such as buffered logs remain available.
 Commands rejected before dispatch use `details.action: not_started`; completed
 or uncertain effects keep their actual progress. No automatic replay occurs.
-
-Control is a Demi input arbitration rule. Browser page scripts continue running,
-and someone with unrestricted shell access could operate a different browser.
-It is not an operating-system security boundary against the conversation owner.
 
 ### Lifetime
 
 The conversation's retained native resource owns the browser controller. A
-browser-capable job binds that resource and obtains its control revision before
-shell execution; binding alone does not launch the browser. User opening uses
-the same resource. The browser process and its storage form the lazily created
-environment.
+browser-capable job binds that resource before shell execution; binding alone
+does not launch the browser. The browser process and its storage form the lazily
+created environment.
 
-The environment outlives individual commands, shell jobs, agent turns, and
-viewing connections. Its internal lifecycle uses one state:
+The environment outlives individual commands, shell jobs, and agent turns.
+Its internal lifecycle uses one state:
 `absent | starting | ready | closing`. It does not also store contradictory
 `running` and `finished` flags.
 
@@ -238,13 +144,13 @@ viewing connections. Its internal lifecycle uses one state:
 | --- | --- |
 | First `open` | Join concurrent environment startup; create a distinct tab for each successful caller |
 | Command, shell job, or agent turn completes | Release invocation resources; retain the environment and tabs |
-| User closes the workpanel or Demi page | Remove that viewer and release its held input; stop capture after the last viewer leaves; retain control state and continue permitted agent work |
+| User closes the Demi page | Retain the environment; closing the web client does not cancel agent work |
 | Command or agent turn is cancelled | Stop current invocation work and temporary waits; retain completed page effects and other tabs |
 | `close <tab>` | Close that tab and release its commands, references, and debugging state |
 | Last tab closes | Retire the browser resource after the closing invocation completes; stop Chrome for Testing, remove its profile and release its grant; the next `open` starts fresh |
 | Browser idle deadline expires | Retire through the shared coordinator under the policy below |
 | Main Host or main directory changes | Release the old environment through the target transition; do not copy tabs, cookies, or debugging connections |
-| Conversation is archived | End the environment and all viewing/input access; restoring the conversation starts fresh on demand |
+| Conversation is archived | End the environment and its operation access; restoring the conversation starts fresh on demand |
 | Conversation is forked | Do not inherit the live browser or handles; IDs in copied history are historical text |
 | Chrome for Testing crashes, runner connection ends, backend restarts, or Cloud stops/resets | Invalidate the environment and fail affected calls; never replay page actions |
 
@@ -252,13 +158,12 @@ The native controller reports last-tab closure and fences further page actions.
 The backend coordinator releases its retained grant after the closing invocation
 has delivered its result and released its operation lease; cleanup must not wait
 for the invocation that requested it while that invocation waits for cleanup.
-Closing the last tab invalidates old action revisions, including later commands
+Closing the last tab invalidates its resource scope, including later commands
 in the same shell call. Opening again requires a new call and a new controller.
 
 A controller bound before the first open can have no tabs or browser process.
-It follows the same idle policy, preserving an explicit user mode selection
-before the first tab opens. First creation from an empty controller does not
-change the revision captured when its job bound the resource.
+It follows the same idle policy. The first open lazily creates its browser
+process without changing the resource scope bound to the job.
 
 Browser profiles and live page state are not restored across process lifetime
 boundaries. Explicit output files survive according to their Host location.
@@ -277,9 +182,8 @@ interval only while a live browser resource has all of these properties:
 
 - Its entire owning conversation's agent tree is idle, including children and
   work already admitted by tree lifecycle coordination.
-- No browser command, user input, upload/download operation, or browser startup
-  is in progress. Observational commands also count as use.
-- No viewer has an active browser frame subscription.
+- No browser command, upload/download operation, or browser startup is in
+  progress. Observational commands also count as use.
 
 New activity cancels the interval. When all conditions hold again, begin a fresh
 full interval. Tabs, cookies, retained grants, and backend metadata subscriptions
@@ -291,16 +195,15 @@ binding; explicit last-tab closure still retires immediately as specified above.
 
 At expiry, the shared coordinator reserves admission and rechecks eligibility
 before releasing the native browser resource. The grant, process, temporary
-profile, tab/reference handles, input state, and capture resources end together.
+profile, tab/reference handles, and held input end together.
 The backend retains the conversation and its historical outputs, not a live
-browser controller. Notify product observers that the browser was reclaimed for
-inactivity; it is not an unexplained stream failure. The next user/agent open
-creates a fresh controller in Managed mode with new tabs and browser storage.
+browser controller. Report retirement to its owner as inactivity. The next agent
+open creates a fresh controller with new tabs and browser storage.
 
 [Resource lifecycle coordination](resource-lifecycle.md) owns timer cancellation,
 new-demand races, shared startup, failure handling, and parent cleanup ordering.
 Browser activity participates in Host admission through the existing operation
-or viewing lease. Retained idle browser state does not keep Cloud awake.
+lease. Retained idle browser state does not keep Cloud awake.
 Cloud's own retirement can end it earlier under the
 [Cloud policy](managed-hosts.md#lifecycle-and-capacity). Browser retirement does
 not power down a paired device or independently decide to stop Cloud.
@@ -356,10 +259,9 @@ was enabled or unobstructed.
 The dependency is maintained under `vendor/chromiumoxide` following the package
 boundary rules. Its event subscriptions use bounded buffers and explicitly report
 lost events. A slow listener must not stop control requests from progressing.
-Loss of registry or control events invalidates the affected observation and must
-be reconciled before further operations; log consumers report truncation. Frame
-consumers retain the newest frame rather than replaying a backlog. CDP messages
-also have a finite transport size limit. An oversized message fails the connection
+Loss of registry events invalidates the affected observation and must be
+reconciled before further operations; log consumers report truncation. CDP
+messages also have a finite transport size limit. An oversized message fails the connection
 and enters normal browser-loss cleanup.
 
 Read-only eval uses Chrome's enforced side-effect checking. The driver rejects
@@ -430,7 +332,7 @@ For a browser resource:
 A retained grant is resource ownership, not an active Host operation. It does
 not permanently hold the conversation file gate or Cloud activity lease.
 
-Backend operations for viewing, input, and browser resources enter through
+Backend operations for browser resources enter through
 `ConversationTargets.withHost`. Its scope covers actual Host IO. Keeping an
 old Host object is not permission to bypass this entry on later requests.
 Cloud and paired devices use the same contract.
@@ -440,7 +342,7 @@ Cloud and paired devices use the same contract.
 ### Inputs
 
 The root is `demi browser`. There are no agent commands to manage browser
-sessions, processes, stream subscriptions, or control-mode changes.
+sessions or processes.
 
 Every tab operation takes an explicit `<tab>`. Only `open`, `tabs`,
 `content fetch`, and generated help operate without an existing tab. Actions
@@ -709,14 +611,13 @@ Title: Sign in
 $ demi browser tabs
 Tab     Title     Created by   URL
 tab-1   Sign in   agent root   http://localhost:3000/login
-tab-2   Admin     user         http://localhost:3000/admin
+tab-2   Admin     agent child  http://localhost:3000/admin
 
 $ demi browser info tab-1
 Tab: tab-1 · Sign in
 URL: http://localhost:3000/login
 Viewport: 1280 × 720 CSS px
 Dialog: none
-Control: Managed (revision 4)
 
 $ demi browser goto tab-1 http://localhost:3000/products
 Navigated to http://localhost:3000/products.
@@ -1172,9 +1073,9 @@ Publish the allowed tab/child method set with the capability schema.
 Read-only eval and CDP have different contracts: authorized tab debugging can
 change page state, such as installing a breakpoint. Do not report such a command
 as read-only inspection. Domain subscriptions, breakpoints, and explicit debug
-pauses are scoped to the invoking agent turn and tab. Control interruption or
-turn cancellation removes breakpoints, releases debug pauses/interceptions, and
-closes the owning debug connection before user input proceeds. Nonblocking
+pauses are scoped to the invoking agent turn and tab. Turn cancellation removes
+breakpoints, releases debug pauses/interceptions, and closes the owning debug
+connection before cancellation cleanup completes. Nonblocking
 subscriptions can last until explicitly removed or the tab is released.
 Cancelling a temporary event wait removes only that wait. Interception and other facilities
 that can block the page must release blocked requests when their owning debug
@@ -1216,15 +1117,12 @@ Failures: 0
 
 Content read/fetch supports text, html, and dom. DOM uses the same observation
 implementation, not another extractor. Fetch uses temporary tabs in the same
-conversation environment, registers the batch in the workpanel before navigation,
-and returns results in input URL order. Keep the batch tabs until result
-collection ends so closing one cannot tear down the environment mid-fetch. Pages execute
-scripts and share login state; this is not a side-effect-free HTTP fetch.
-Temporary tabs normally close on success, failure, and cancellation. If user
-input interrupts a fetch, its live temporary tabs become ordinary tabs before
-the input is delivered. Cleanup must not close the page the user is operating;
-the error reports those retained tab IDs. Explicit user closure cancels the
-corresponding fetch item and reports `tab_not_found`.
+conversation environment, registers the batch before navigation, and returns
+results in input URL order. Keep the batch tabs until result collection ends so
+closing one cannot tear down the environment mid-fetch. Pages execute scripts
+and share login state; this is not a side-effect-free HTTP fetch. Temporary tabs
+close on success, failure, and cancellation. Explicit closure by another agent
+cancels the corresponding fetch item and reports `tab_not_found`.
 
 Assets list inventories currently observed resources and inline SVGs. Export
 uses that inventory, selecting either repeated `--id` or repeated
@@ -1307,7 +1205,7 @@ field with a different meaning or type.
 
 | Command | Successful result fields |
 | --- | --- |
-| open, info | `tab, url, title, viewport`; info adds `control: {state, revision}` and can include `dialog` |
+| open, info | `tab, url, title, viewport`; info can include `dialog` |
 | tabs | `tabs: [{id, title, url, createdBy}], truncated` |
 | goto, back, forward, reload | `tab, url, title` |
 | history | `entries: [{index, url, title, current}], truncated` |
@@ -1382,27 +1280,6 @@ The last failure has this JSON representation on stderr:
 }
 ```
 
-After user input interrupts a Free-mode workflow, the browser remains available
-for observation, while a new page-changing call reports the pause:
-
-```text
-$ demi browser info tab-1
-Tab: tab-1 · Sign in
-URL: http://localhost:3000/login
-Viewport: 1280 × 720 CSS px
-Dialog: none
-Control: Free — agent actions paused by user input (revision 5)
-
-$ demi browser click tab-1 --ref e3
-Error: browser_paused
-The user is operating this conversation's browser. Wait for the user to resume agent actions.
-Action: not_started.
-```
-
-An already-running call instead returns `user_interrupted`. If both conditions
-apply to a subsequent old-script command, report `browser_paused` while paused
-and `stale_control` after resume. Neither result authorizes an automatic retry.
-
 Messages explain the situation; scripts inspect code and typed details:
 
 | Code | Meaning |
@@ -1411,9 +1288,6 @@ Messages explain the situation; scripts inspect code and typed details:
 | `wrong_host` | Invocation is not on the current main Host |
 | `tab_not_found` | Missing, closed, or inaccessible tab |
 | `tab_busy` | Another agent command owns the tab operation lock |
-| `browser_paused` | User input paused agent page changes; explicit user resume is required |
-| `user_interrupted` | User input cancelled this browser call; action progress is retained |
-| `stale_control` | This shell call belongs to an earlier control revision; never replay its actions |
 | `stale_ref`, `stale_cursor`, `stale_inventory`, `stale_tools` | Expired object or generation |
 | `target_not_found`, `ambiguous_target`, `not_actionable` | Missing, non-unique, or unready target |
 | `timeout` | Deadline expired; details report known action progress |
@@ -1532,124 +1406,6 @@ cleanup failures. Then read `/tmp/mobile.png` separately with `demi file read`
 to inspect the image. Browser commands do not add another batch language or a
 persistent JavaScript REPL; Bash already composes their operations.
 
-## Workpanel stream
-
-### Product and Host boundary
-
-The workpanel contains a browser resource type alongside files and changes.
-Browser items project the canonical tab registry described in [Ownership](#one-tab-registry).
-User open, close, back, forward, reload, and address navigation invoke the same
-Host browser operations and use the same IDs as agent commands. In Managed
-mode those user operations are disabled and rejected server-side. Switching mode,
-selecting a tab, hiding the panel, and disconnecting remain available.
-
-Demi authenticates the user and conversation on every subscription and control
-request. Backend adapters enter through `ConversationTargets.withHost`; runner
-carries authenticated resource scope to the native controller. The client gets
-neither a raw CDP socket nor credentials to another conversation. The browser
-renders and executes page scripts on the Host. The Demi page decodes frames and
-captures input; it does not execute the remote page's HTML or JavaScript.
-
-The Host controller is authoritative for registry and live control state.
-Grant-scoped registry/control notifications are emitted over the existing runner
-connection. The backend maintains their reconstructible product projection;
-watching that projection does not open a long-lived Host operation or hold a use
-lease. Snapshot repair is a short `withHost` operation. After resource loss or
-retirement, publish the ended generation without waking a replacement browser.
-Frame subscriptions are distinct from these metadata notifications.
-Snapshots include browser generation and event revision. Registry/control
-changes form an ordered stream; a gap requires a fresh snapshot. Stale updates
-cannot resurrect a closed tab or overwrite a newer mode. The backend forwards
-validated state and correlates requests without maintaining an independent tab
-or control-state authority. Native control transitions must be acknowledged
-before the product reports success.
-
-### Frames and flow control
-
-A selected tab has a frame subscription. Each frame carries browser generation,
-tab ID, increasing frame sequence, capture time, viewport revision, CSS viewport
-dimensions, encoded image dimensions, and encoding. Readiness, tab closure,
-environment loss, and errors are explicit messages. Initial compressed image
-frames are sufficient; the transport choice must preserve this contract.
-
-Capture once per watched tab and fan out. Each viewer has at most one pending
-frame, replaced by a newer frame when it falls behind. Viewing must not block
-agent commands or input. Stop capture and release buffers when the last viewer
-leaves. Reconnection displays current state, not a frame backlog. The last image
-may remain only with a disconnected indication; it cannot accept input.
-
-Hiding or unmounting the browser surface unsubscribes from its frame stream.
-Selecting another tab unsubscribes from the old frame stream and releases that
-viewer's held input before subscribing to the new one. Tab closure releases its
-capture and input resources and removes it from all registry projections.
-Frontend unmount, WebSocket loss, authentication loss, and subscription failure
-share cleanup. Browser generation loss invalidates subscriptions instead of
-silently redirecting them to a replacement page. Streaming is not recorded to
-disk by default; explicit screenshots have their own output contract.
-
-### Input protocol and arbitration
-
-A viewer connection has an authenticated identity and monotonically increasing
-input sequence. Page-input events supply generation, tab, viewport revision,
-observed frame sequence, current control revision, and their typed payload.
-Browser toolbar requests supply resource generation and control revision; only
-operations on an existing tab carry a tab ID. In particular, opening the first
-tab needs no old tab or frame. Mode requests address the controller directly.
-Duplicate or out-of-order sequences are rejected, not replayed. An acknowledgement reports
-the input sequence, resulting control revision, and `delivered | rejected`;
-connection loss before acknowledgement leaves delivery unknown.
-
-Pointer coordinates map the displayed image rectangle to viewport CSS pixels,
-excluding letterboxing. Bounds, finite coordinates, button/key enums, modifier
-sets, wheel units, and payload lengths are schema-validated. A stale viewport
-revision returns `stale_viewport`; wait for a matching frame instead of guessing
-a new coordinate. Old frames within the same viewport can still show stale
-content, so delivery acknowledgement is not proof of an application outcome.
-
-The input protocol covers pointer move/down/up, wheel, key down/up, composition
-start/cancel, and committed IME text. Composition stays local until commitment;
-deliver its text once and suppress duplicate key/text events. Tab, Escape, navigation shortcuts, and
-clipboard operations must have explicit routing in the shared browser component.
-Do not capture global user shortcuts outside the focused browser surface. The
-browser clipboard belongs to the Host environment; transferring local clipboard
-text requires an explicit user copy/paste action and the local browser's APIs.
-Native file pickers on the Host cannot appear in the user's local browser:
-workpanel file selection uploads through conversation Host access, then supplies
-those Host paths to the existing chooser operation. User downloads stream the
-completed Host file through the same authorized file access. JavaScript dialogs
-are exposed as structured state and use the same dialog operations as commands.
-All these page-affecting actions obey Managed/Free arbitration.
-
-In Free mode, input first executes the interruption transition described above.
-After the pause is acknowledged, queued events from that viewer carry the new
-revision. Keep at most 256 events and 256 KiB per viewer pending acknowledgement;
-coalesce unsent pointer moves and wheel deltas only when no intervening button,
-key, or composition event changes their meaning. On overflow, stop input, release
-held keys/buttons, and report `input_overflow`; never silently drop a key-up.
-
-Multiple windows can watch concurrently. Within Free mode only one viewer can
-hold a pointer gesture or key/composition sequence at a time. The first accepted
-down/composition-start acquires this short input lease; competing viewers receive
-`input_busy`. Release after all held input ends, focus loss, mode change,
-disconnect, or a 5-second interval without an owner event. Renew using owner
-input/heartbeat only. Timeout sends release events and drops that viewer's queued
-input. Stateless toolbar and wheel actions are serialized by the same controller.
-Any viewer can request a mode change; its expected control revision must match
-or it receives a conflict and current state. A disconnect releases input, but
-leaves `free_paused` paused. There is no unattended automatic resume.
-
-The workpanel exposes current mode, paused state, connection status, and failed
-input without implying that a click succeeded in the application. Visual design,
-keyboard affordances, and interaction specimens live in the gallery. Implement
-shared behavior once in `web-ui`, with product adapters and gallery fixtures in
-the same checkpoint, following [Web architecture](web-application.md).
-
-Observer cancellation and target/archive transitions follow
-[Host operations](sessions-and-targets.md#host-operations). A stream holds activity
-only for its admitted lifetime; an idle retained browser resource holds no
-permanent Cloud activity lease. Idle eligibility follows
-[Idle reclamation](#idle-reclamation).
-
 ## Acceptance
 
 ### Implementation ownership
@@ -1667,8 +1423,6 @@ permanent Cloud activity lease. Idle eligibility follows
   and CDP handling.
 - `command-service`: generic invocation/resource protocol, not page or cookie
   semantics.
-- `web-ui`: shared browser tab, stream, and input behavior; `web` and
-  `web-gallery` provide real adapters and fixtures respectively.
 
 A library adopted for locating or acting must also cover the adjacent waiting,
 introspection, and error handling it provides. Reuse one observation/targeting
@@ -1683,13 +1437,13 @@ and isolated storage. Never run tests that call real models.
 1. Run `open → inspect → fill → click → inspect` on paired devices and Cloud;
    verify localhost, files, and screenshots belong to the correct Host.
 2. Retain tabs and login state across shell jobs, agent turns, and user Web
-   disconnect while the environment is live. Stop capture without viewers.
+   disconnect while the environment is live.
 3. Reject cross-conversation tab/ref/grant use. Isolate browser storage. Return
    wrong_host for browser calls from an attached Host.
 4. Verify target changes, archive, Fork, sleep/reset, disconnect, and crashes.
    Old handles never identify replacement pages.
 5. Concurrent calls on one tab report busy; separate tabs progress independently.
-   Temporary fetch tabs are visible and cleaned up; user-interrupted pages are retained.
+   Temporary fetch tabs appear in `tabs` and are cleaned up.
 6. Cover multilingual names, containers, frames, local DOM replacement, navigation,
    duplicate matches, obstruction, disabled controls, and Canvas coordinates.
 7. Immediate navigation, downloads, choosers, and dialogs cannot lose events,
@@ -1704,18 +1458,11 @@ and isolated storage. Never run tests that call real models.
     pipefail, empty matches, and business failure separately.
 12. Read-only eval rejects DOM/storage/network side effects. Validate CDP scope,
     child targets, cursors, method admission, and cleanup.
-13. Slow viewers neither block actions nor build queues. Passive streams can be
-    cancelled for transitions. Verify shared components in product and gallery.
-14. Verify Managed rejects user input; Free user input pauses all agent tabs,
-    interrupts waits, releases held input/debug blockers, and fences old scripts
-    through resume. Cover IME, clipboard, chooser/download, scaling, slow viewers,
-    multi-window input, stale revisions, disconnect, and input overflow. Verify
-    user-, agent-, site-, and fetch-created tabs match the workpanel registry.
-15. Verify the browser idle policy and cross-resource races in
+13. Verify the browser idle policy and cross-resource races in
     [Lifecycle acceptance](resource-lifecycle.md#integration-and-acceptance):
-    viewers and active children prevent idle cleanup; metadata-only watchers do
+    active children prevent idle cleanup; metadata-only watchers do
     not; cleanup on paired and Cloud Hosts releases the native grant and profile.
-16. Deliver native changes to every required build target, paired device, and
+14. Deliver native changes to every required build target, paired device, and
     Cloud guest. Verify Chrome for Testing provisioning on every platform
     offering the feature; success on the development Mac is insufficient.
 
@@ -1723,14 +1470,14 @@ and isolated storage. Never run tests that call real models.
 
 The native driver foundation implements scoped Chrome ownership, bounded CDP
 events, per-tab operation exclusion, CSS actionability waiting, text filling,
-read-only evaluation, screenshots, and frame capture. These are internal Rust
+read-only evaluation, and screenshots. These are internal Rust
 primitives, not declared agent commands or a public transport. The installer must
 supply a verified Chrome executable before production use.
 
 Conversation grants, the canonical public tab registry, semantic references and
-locators, command declarations, workpanel transport, input arbitration, idle
-reclamation, and retained-resource integration are not implemented. Native
-primitives do not establish paired-device or Cloud product acceptance.
+locators, command declarations, idle reclamation, and retained-resource
+integration are not implemented. Native primitives do not establish paired-device
+or Cloud product acceptance.
 The checks above are acceptance requirements, not completed results.
 
 Resolve these prerequisites before implementing their dependent behavior:
@@ -1741,7 +1488,6 @@ Resolve these prerequisites before implementing their dependent behavior:
 | Browser delivery | Chrome for Testing is selected; choose the first version pin and implement installation, verification, updates, and reclamation under the distribution contract above | Runtime delivery |
 | Lifecycle integration | Implement the shared coordinator and its Cloud/browser adapters under the lifecycle contract | Idle and dependent-resource reclamation |
 | Retained-resource wire | Add trusted grant acquisition, job association, release, and cleanup acknowledgement to the native/runner schemas | Continuity across shell jobs |
-| Stream transport | Select frame encoding/carriage and specify the validated registry, control, frame, input and acknowledgement wire records with the limits above | Interactive workpanel |
 | Optional adapters | Select and validate any page tools or site-specific exports included in the release | Corresponding capabilities |
 
 These are implementation prerequisites, not runtime choices for the agent.

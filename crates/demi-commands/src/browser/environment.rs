@@ -7,9 +7,7 @@ use std::{
 };
 
 use chromiumoxide::{
-    Browser, BrowserConfig,
-    cdp::browser_protocol::target::{CreateTargetParams, TargetId},
-    handler::viewport::Viewport,
+    Browser, BrowserConfig, cdp::browser_protocol::target::TargetId, handler::viewport::Viewport,
 };
 use futures_util::StreamExt;
 use tokio::sync::Mutex;
@@ -121,13 +119,7 @@ impl BrowserEnvironment {
                     .ok_or(BrowserError::Closed)?
                     .lock()
                     .await
-                    .new_page(
-                        CreateTargetParams::builder()
-                            .url(url)
-                            .new_window(true)
-                            .build()
-                            .map_err(BrowserError::Configuration)?,
-                    )
+                    .new_page(url)
                     .await?;
                 Ok(self.tab(page).await)
             })

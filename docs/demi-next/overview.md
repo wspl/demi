@@ -127,7 +127,7 @@ implementation.
 | How do browsers and Cloud share startup, idle reclamation, and cleanup? | [Resource lifecycle coordination](resource-lifecycle.md) (design; integration pending) |
 | How are concurrent operations admitted? | [Execution coordination](sessions-and-targets.md#coordinate-shared-cloud-activity) |
 | How are commands declared and dispatched? | [Commands](commands.md) |
-| How do the agent and user operate the same workpanel browser tabs? | [Conversation browser](browser.md) (design; not implemented) |
+| How does the agent operate browser tabs on its conversation Host? | [Conversation browser](browser.md) (design; not implemented) |
 | How are native commands installed and executed? | [Native runtime](native-runtime.md) |
 | What does a device runner own? | [Runner](runner.md) |
 | What did a tool call edit? | [Edit tracking](edit-tracking.md) |

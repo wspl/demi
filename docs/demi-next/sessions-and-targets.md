@@ -151,13 +151,10 @@ conversation grants.
 Planned extension for [resource lifecycle coordination](resource-lifecycle.md)
 and the [conversation browser](browser.md); not implemented.
 
-A browser frame subscription is a Host operation for its entire admitted
-lifetime. It holds normal file admission and device demand, responds to
-cancellation, and releases both before acknowledging completion. Registry and
-control notifications are grant-scoped events on the existing runner connection;
-receiving and projecting them is not another Host operation. Product observers
-of that metadata hold no activity lease. A requested fresh native snapshot still
-enters through `withHost` and releases admission when its read completes.
+Browser resource lifecycle notifications are grant-scoped events on the existing
+runner connection; receiving them is not another Host operation. Observers of
+that metadata hold no activity lease. A requested fresh native snapshot enters
+through `withHost` and releases admission when its read completes.
 
 Ordinary access acquires conversation and device admission before Host IO. If a
 resource transition wins between target resolution and admission, release the

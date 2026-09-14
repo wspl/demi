@@ -11,11 +11,7 @@ use chromiumoxide::{
             input::{
                 DispatchMouseEventParams, DispatchMouseEventType, InsertTextParams, MouseButton,
             },
-            page::{
-                CaptureScreenshotFormat, CaptureScreenshotParams, EventScreencastFrame,
-                ScreencastFrameAckParams, StartScreencastFormat, StartScreencastParams,
-                StopScreencastParams,
-            },
+            page::{CaptureScreenshotFormat, CaptureScreenshotParams},
             target::{CloseTargetParams, EventTargetDestroyed},
         },
         js_protocol::runtime::{CallArgument, CallFunctionOnParams},
@@ -23,7 +19,7 @@ use chromiumoxide::{
 };
 use futures_util::StreamExt;
 use serde_json::{Value, json};
-use tokio::sync::{Mutex, watch};
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use super::{
@@ -34,7 +30,6 @@ use super::{
 #[derive(Default)]
 pub(super) struct TabState {
     operations: Mutex<()>,
-    capture: Mutex<()>,
 }
 
 #[derive(Clone)]
@@ -181,77 +176,6 @@ impl BrowserTab {
                 Err(BrowserError::Closed)
             })
             .await
-    }
-
-    /// Publish only the newest frame. The capture ends when its final receiver leaves.
-    pub async fn frames(
-        &self,
-        cancellation: &CancellationToken,
-        output: watch::Sender<Option<Arc<EventScreencastFrame>>>,
-    ) -> Result<()> {
-        let _capture = self
-            .state
-            .capture
-            .try_lock()
-            .map_err(|_| BrowserError::Busy)?;
-        let mut events = Operation::new(&self.ended, cancellation, CONTROL_TIMEOUT)
-            .run(async {
-                Ok(self
-                    .page
-                    .event_listener_with_capacity::<EventScreencastFrame>(2)
-                    .await?)
-            })
-            .await?;
-        let start = Operation::new(&self.ended, cancellation, CONTROL_TIMEOUT)
-            .run(async {
-                self.page
-                    .execute(
-                        StartScreencastParams::builder()
-                            .format(StartScreencastFormat::Jpeg)
-                            .quality(80)
-                            .build(),
-                    )
-                    .await?;
-                Ok(())
-            })
-            .await;
-        let result = match start {
-            Err(error) => Err(error),
-            Ok(()) => loop {
-                tokio::select! {
-                    biased;
-                    _ = self.ended.cancelled() => break Err(BrowserError::Closed),
-                    _ = cancellation.cancelled() => break Ok(()),
-                    _ = output.closed() => break Ok(()),
-                    event = events.next() => {
-                        let frame = match event {
-                            Some(Ok(frame)) => frame,
-                            Some(Err(error)) => break Err(error.into()),
-                            None => break Err(BrowserError::Closed),
-                        };
-                        let acknowledgement = self.page.execute(ScreencastFrameAckParams::new(frame.session_id));
-                        let result = Operation::new(&self.ended, cancellation, CONTROL_TIMEOUT)
-                            .run(async { acknowledgement.await?; Ok(()) }).await;
-                        if let Err(error) = result { break Err(error); }
-                        output.send_replace(Some(frame));
-                    }
-                }
-            },
-        };
-        drop(events);
-        if self.ended.is_cancelled() {
-            // The resource owner closes Chrome; this path must not restart capture.
-            return result;
-        }
-        let cleanup = tokio::time::timeout(
-            CONTROL_TIMEOUT,
-            self.page.execute(StopScreencastParams::default()),
-        )
-        .await;
-        let cleanup = cleanup
-            .map_err(|_| BrowserError::Timeout)
-            .and_then(|result| result.map(|_| ()).map_err(BrowserError::from));
-        after_cleanup(result, cleanup)
     }
 
     /// Resolve afresh while waiting; ambiguity is never an implicit first match.

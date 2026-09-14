@@ -144,8 +144,8 @@ can reference Cloud before any VM exists.
 
 Idle reclamation requires the configured idle window, no admitted device demand,
 no relevant active agent trees, and no running jobs. Evaluate activity across all
-conversations using this device. Browser commands and live frame viewers count
-through their Host operation leases; idle browser grants, attachments, and
+conversations using this device. Browser commands count through their Host
+operation leases; idle browser grants, attachments, and
 backend metadata observers do not. Cleanup and checkpoints are maintenance:
 they serialize against conflicting transitions without restarting the idle clock.
 
