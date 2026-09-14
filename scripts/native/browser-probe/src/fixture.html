@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8">
+  <title>Browser driver probe</title>
+  <style>
+    body { font: 20px sans-serif; }
+    button, input { margin: 10px; padding: 15px; }
+    #wrap { position: relative; width: 300px; }
+    #overlay { position: absolute; inset: 0; background: #eee8; }
+    #pulse { width: 80px; height: 30px; animation: pulse 0.1s infinite alternate; }
+    @keyframes pulse { to { background: red; } }
+  </style>
+  <label for="email">电子邮件</label>
+  <input id="email">
+  <button id="normal" aria-label="提交订单" onclick="window.normalClicks++">Submit</button>
+  <div id="wrap">
+    <button id="covered" onclick="window.coveredClicks++">Covered</button>
+    <div id="overlay" onclick="window.overlayClicks++"></div>
+  </div>
+  <button id="disabled" disabled onclick="window.disabledClicks++">Disabled</button>
+  <button class="duplicate">Duplicate</button>
+  <button class="duplicate">Duplicate</button>
+  <div id="shadow"></div>
+  <div id="pulse"></div>
+  <script>
+    window.normalClicks = 0;
+    window.coveredClicks = 0;
+    window.overlayClicks = 0;
+    window.disabledClicks = 0;
+    window.sideEffects = 0;
+    Object.defineProperty(window, 'evil', {
+      get() {
+        window.sideEffects++;
+        return 42;
+      }
+    });
+    document.querySelector('#shadow').attachShadow({mode: 'open'}).innerHTML =
+      '<button aria-label="影子按钮">Shadow</button>';
+  </script>
+</html>
