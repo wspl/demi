@@ -50,7 +50,8 @@
     "ali-oss": "^6.23.0",
     "hono": "^4.13.5",
     "zod": "^4.0.0",
-    "@demicodes/command-protocol": "workspace:^"
+    "@demicodes/command-protocol": "workspace:^",
+    "@demicodes/browser-protocol": "workspace:^"
   },
   "devDependencies": {
     "@types/ali-oss": "^6.23.3"

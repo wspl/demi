@@ -512,6 +512,16 @@ impl Page {
         Element::from_nodes(&self.inner, &node_ids).await
     }
 
+    /// Resolve an observed DOM identity without repeating a selector query.
+    pub async fn element_from_backend_node(&self, backend_node_id: BackendNodeId) -> Result<Element> {
+        self.get_document().await?;
+        let response = self.execute(PushNodesByBackendIdsToFrontendParams::new(vec![backend_node_id])).await?;
+        let node_id = response.node_ids.first().copied()
+            .filter(|id| *id != NodeId::new(0))
+            .ok_or_else(|| CdpError::msg("Observed DOM node is no longer attached"))?;
+        Element::new(Arc::clone(&self.inner), node_id).await
+    }
+
     /// Returns the first element in the document which matches the given xpath
     /// selector.
     ///

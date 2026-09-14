@@ -31,6 +31,9 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
     };
     request.validate()?;
     let invocation = Invocation {
+        caller: None,
+        resource: None,
+        json: None,
         edits: None,
         operation: "raw".into(),
         invocation_id: uuid::Uuid::new_v4().simple().to_string(),
@@ -56,6 +59,9 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
 async fn manage(state: RunnerState, action: &str) -> io::Result<u8> {
     let active = state.active().await?;
     let request = Invocation {
+        caller: None,
+        resource: None,
+        json: None,
         edits: None,
         operation: "manage".into(),
         invocation_id: uuid::Uuid::new_v4().simple().to_string(),
@@ -137,6 +143,7 @@ async fn runner(args: Vec<String>) -> io::Result<u8> {
     };
     let identity = identity(home)?;
     let runner = demi_runner::connection::wire::HelloRunner {
+        native_target: Some(demi_runner::commands::native::target().into()),
         name: env
             .get("DEMI_RUNNER_NAME")
             .cloned()

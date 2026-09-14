@@ -2,11 +2,13 @@ import type { RemoteHost } from '@demicodes/host-remote'
 import { reachableHosts } from './hosts'
 import { ActivityGate } from '@demicodes/utils'
 import type { ManagedHosts } from '../managed/lifecycle'
+import type { LifecycleCleanup, LifecycleCoordinator } from '../lifecycle/coordinator'
 import type { RunnerRegistry } from '../runner/registry'
 import type {
   ControlService,
   ConversationTargetPointer,
-  ExecutionTarget
+  ExecutionTarget,
+  DeviceRecord,
 } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 import {
@@ -20,6 +22,8 @@ export interface ConversationTargetsDeps {
   managedHosts: ManagedHosts | null
   stores: ConversationStores
   reserveTree: (conversationId: string) => (() => void) | null
+  lifecycle?: LifecycleCoordinator
+  retireBrowser?: (id: string, fileReservation: () => void) => Promise<void>
 }
 export type SwitchTargetResult = {
   outcome:
@@ -41,6 +45,12 @@ export class HostAccessRefused extends Error {
 
 export type ConversationHostAccess = ConversationTargets['withHost']
 
+interface HostSelection {
+  device: DeviceRecord
+  path: string
+  prepareDirectory: boolean
+}
+
 export class ConversationTargets {
   private readonly fileActivity = new Map<string, ActivityGate>()
   constructor(private readonly deps: ConversationTargetsDeps) {}
@@ -52,6 +62,12 @@ export class ConversationTargets {
       this.fileActivity.set(id, gate)
     }
     return gate
+  }
+
+  async retireBrowser(id: string, fileReservation: () => void): Promise<void> {
+    if (!this.files(id).holdsReservation(fileReservation))
+      throw new Error('Browser retirement requires the conversation reservation')
+    await this.deps.retireBrowser?.(id, fileReservation)
   }
 
   /**
@@ -70,25 +86,56 @@ export class ConversationTargets {
   async withHost<T>(
     id: string,
     operation: (host: RemoteHost) => Promise<T>,
-    options: { signal?: AbortSignal; deviceId?: string } = {},
+    options: { signal?: AbortSignal; deviceId?: string; cleanup?: LifecycleCleanup } = {},
   ): Promise<T> {
-    const { signal, deviceId: selectedDeviceId } = options
-    const release = await this.files(id).enter(signal)
-    let releaseMachine: (() => void) | undefined
+    const { signal, deviceId: selectedDeviceId, cleanup } = options
+    if (cleanup) {
+      if (cleanup.conversationId !== id || !this.deps.lifecycle?.ownsCleanup(cleanup)
+        || !this.files(id).holdsReservation(cleanup.fileReservation))
+        throw new Error('Invalid lifecycle Host cleanup authority')
+      if (!cleanup.host.resourceLive(cleanup.grant))
+        throw new Error('Lifecycle Host generation has ended')
+      const selected = await this.select(id, undefined, false)
+      const host = this.deps.registry.hostFor({ deviceId: selected.device.id, path: selected.path }, id, this.deps.stores.hostStore(id))
+      if (host !== cleanup.host)
+        throw new Error('Lifecycle Host binding has changed')
+      const releaseMachine = selected.device.kind === 'managed'
+        ? this.deps.managedHosts!.maintenance(selected.device.id, cleanup.deviceReservation)
+        : undefined
+      try {
+        if (!host.resourceLive(cleanup.grant))
+          throw new Error('Lifecycle Host generation has ended')
+        return await operation(host)
+      } finally {
+        releaseMachine?.()
+      }
+    }
+    let machine: { deviceId: string; release: () => void } | undefined
     try {
-      if ((await this.deps.control.getConversation(id))?.archived)
-        throw new HostAccessRefused('conversation_archived', 'Conversation is archived')
-      const host = await this.hostFor(id, selectedDeviceId)
-      const deviceId = selectedDeviceId ?? (await this.resolve(id)).deviceId
-      const device = deviceId
-        ? await this.deps.control.getDevice(deviceId)
-        : null
-      if (device?.kind === 'managed')
-        releaseMachine = await this.deps.managedHosts!.enter(device, signal)
-      return await operation(host)
+      while (true) {
+        const releaseFiles = await this.files(id).enter(signal)
+        let selected: HostSelection
+        try {
+          selected = await this.select(id, selectedDeviceId, true)
+          if (selected.device.kind !== 'managed' || machine?.deviceId === selected.device.id) {
+            if (selected.device.kind !== 'managed') {
+              machine?.release()
+              machine = undefined
+            }
+            return await operation(await this.openHost(id, selected))
+          }
+        } finally {
+          releaseFiles()
+        }
+        // Waiting for a device transition holds no conversation file reservation.
+        // Recheck archive, ownership and target selection after admission succeeds.
+        machine?.release()
+        machine = undefined
+        const release = await this.deps.managedHosts!.enter(selected.device, signal)
+        machine = { deviceId: selected.device.id, release }
+      }
     } finally {
-      releaseMachine?.()
-      release()
+      machine?.release()
     }
   }
 
@@ -104,42 +151,45 @@ export class ConversationTargets {
   }
 
   async hostFor(id: string, selectedDeviceId?: string): Promise<RemoteHost> {
-    const { control, registry, managedHosts, stores } = this.deps
+    return this.withHost(id, async host => host, { deviceId: selectedDeviceId })
+  }
+
+  /** Resolve the authorized Host binding without waiting for any device transition. */
+  private async select(id: string, selectedDeviceId: string | undefined, allocate: boolean): Promise<HostSelection> {
+    const { control, registry, managedHosts } = this.deps
     const conversation = await control.getConversation(id)
-    if (!conversation)
-      throw new Error(`No conversation ${id}`)
+    if (!conversation) throw new Error(`No conversation ${id}`)
+    if (conversation.archived)
+      throw new HostAccessRefused('conversation_archived', 'Conversation is archived')
     const target = await this.resolve(id)
     const selected = selectedDeviceId === undefined
       ? undefined
-      : (await reachableHosts(this.deps, id)).find((host) => host.deviceId === selectedDeviceId)
-    if (selectedDeviceId !== undefined && !selected) {
+      : (await reachableHosts(this.deps, id)).find(host => host.deviceId === selectedDeviceId)
+    if (selectedDeviceId !== undefined && !selected)
       throw new HostAccessRefused('host_not_attached', 'No such host in this conversation')
-    }
     const device = selected
       ? await control.getDevice(selected.deviceId)
       : target.kind === 'cloud'
-        ? await control.getOrCreateCloudDevice(conversation.userId)
+        ? allocate ? await control.getOrCreateCloudDevice(conversation.userId) : await control.getManagedDevice(conversation.userId)
         : await control.getDevice(target.deviceId)
     if (!device || device.userId !== conversation.userId)
       throw new Error('Device not owned by this user')
-    if (device.kind === 'managed') {
-      if (!managedHosts)
-        throw new Error('Cloud is not configured')
-      await managedHosts.ensureRunning(device)
-    }
+    if (device.kind === 'managed' && !managedHosts)
+      throw new Error('Cloud is not configured')
     const path = selected?.role === 'attached'
       ? selected.path || registry.deviceIdentity(device.id)?.homeDir || ''
       : target.kind === 'cloud'
         ? (conversation.target.kind === 'cloud' ? conversation.target.path : undefined)
           ?? cloudSessionDirectory(id, registry.deviceIdentity(device.id)?.homeDir)
         : target.path
-    const host = registry.hostFor(
-      { deviceId: device.id, path },
-      id,
-      stores.hostStore(id)
-    )
-    if (selected?.role !== 'attached' && target.kind === 'cloud')
-      await host.fs.mkdir(path, { recursive: true })
+    return { device, path, prepareDirectory: selected?.role !== 'attached' && target.kind === 'cloud' }
+  }
+
+  /** Host preparation occurs only after ordinary demand has obtained device admission. */
+  private async openHost(id: string, selected: HostSelection): Promise<RemoteHost> {
+    const host = this.deps.registry.hostFor({ deviceId: selected.device.id, path: selected.path }, id, this.deps.stores.hostStore(id))
+    if (selected.prepareDirectory)
+      await host.fs.mkdir(selected.path, { recursive: true })
     return host
   }
 
@@ -189,6 +239,7 @@ export class ConversationTargets {
         { ...conversation, target: to }
       )
       const deviceId = from.deviceId
+      await this.retireBrowser(id, releaseFiles)
       const won = await control.switchConversationTarget(
         id,
         conversation.target,

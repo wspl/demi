@@ -147,6 +147,7 @@ export class ConversationUpdates {
       )
     }
     try {
+      await this.deps.targets.retireBrowser(id, releaseFiles)
       await this.deps.control.setConversationArchived(id, archived)
     } finally {
       releaseFiles()

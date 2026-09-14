@@ -69,7 +69,7 @@ when the root is idle and the child is waiting for a provider.
 The backend performs one protected transition:
 
 1. Validate the destination and user ownership.
-2. Reserve the idle tree. For the planned browser resource, stop new observer
+2. Reserve the idle tree. For a retained browser resource, stop new observer
    admission and drain its passive subscriptions as specified below.
 3. Reserve conversation file admission and release resources bound to the old
    selection through the reserved Host access described below.
@@ -148,8 +148,8 @@ conversation grants.
 
 ### Lifecycle access and passive subscriptions
 
-Planned extension for [resource lifecycle coordination](resource-lifecycle.md)
-and the [conversation browser](browser.md); not implemented.
+Cleanup admission for [resource lifecycle coordination](resource-lifecycle.md)
+and the [conversation browser](browser.md).
 
 Browser resource lifecycle notifications are grant-scoped events on the existing
 runner connection; receiving them is not another Host operation. Observers of
@@ -265,7 +265,7 @@ The agent owns tree admission and per-node context persistence. Backend
 `conversation/` owns target transitions; `runner/` owns authenticated callback
 routing; `lifecycle/` owns shared resource admission and scheduling, while
 `managed/` owns Cloud policy and machine transitions. The lifecycle integration
-is planned; see [Resource lifecycle coordination](resource-lifecycle.md). The Host
+uses the shared coordinator; see [Resource lifecycle coordination](resource-lifecycle.md). The Host
 adapter carries live execution facts without knowing user policy. [Package boundaries](../package-boundaries.md)
 defines their dependencies.
 

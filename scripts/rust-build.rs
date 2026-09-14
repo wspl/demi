@@ -13,6 +13,7 @@ fn generate_contracts(target: &str) {
         "scripts/generate-contracts.ts",
         "packages/runner-protocol/src",
         "packages/command-protocol/src",
+        "packages/browser-protocol/src",
         "packages/command-loader/src/manifest",
         "packages/shell/src",
         "packages/utils/src",

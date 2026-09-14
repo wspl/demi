@@ -14,10 +14,11 @@ test(
     )
     try {
       const driver = await world.conversation('cloud')
-      await driver.turn({ model: [
+      const written = await driver.turn({ model: [
           model.shell('write', 'echo retained > note'),
           model.say('written')
         ] })
+      expect(written.received[0]).toContain('exitCode: 0')
       const before = await world.api<{ device: { id: string } }>('/api/cloud')
       const operationId = crypto.randomUUID()
       const requests = await Promise.all(
@@ -79,10 +80,11 @@ test(
     )
     try {
       const driver = await world.conversation('cloud')
-      await driver.turn({ model: [
+      const written = await driver.turn({ model: [
           model.shell('write', 'printf retained > note'),
           model.say('written')
         ] })
+      expect(written.received[0]).toContain('exitCode: 0')
       const operationId = crypto.randomUUID()
       const waitForPhase = async (phase: ManagedOperation['phase']) => {
         const deadline = Date.now() + 15_000

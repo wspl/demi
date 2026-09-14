@@ -1,8 +1,10 @@
 import type { CommandGroup } from '@demicodes/shell'
 import { createFileGroup } from './commands/file/group'
+import { createBrowserGroup } from './commands/browser/group'
 import { createTodoCommand } from './todo-command'
 
 export interface DemiCommandOptions {
+  browser?: boolean
   /**
    * Product-contributed subcommand groups (e.g. the backend's `host` group).
    */
@@ -24,6 +26,7 @@ export function createDemiCommand(
     subcommands: [
       createFileGroup(),
       createTodoCommand(),
+      ...(options.browser ? [createBrowserGroup()] : []),
       ...(options.extraSubcommands ?? [])
     ],
   }
