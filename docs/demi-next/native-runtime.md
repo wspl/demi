@@ -255,7 +255,7 @@ the runner or shared SDK.
 | Invocation cancelled | Cancel its handler and release its resources. Preserve unrelated calls and the connection. |
 | Handler exceeds cancellation grace | Report a service fault and retire the process. |
 | Service crashes or corrupts the protocol | Fail affected invocations. Do not automatically replay potentially completed side effects. |
-| Execution context is disposed | Release its bindings and service references. Live contexts or invocations keep their service owned. |
+| Execution context is disposed | Release its bindings and service references. Live contexts, invocations, or retained resources keep their service owned. |
 | No service owners remain | Request shutdown, drain the service, close its transports, and reap the child. |
 
 The runner allows **6 seconds** for the shutdown request and process exit.
@@ -273,6 +273,59 @@ The runner must report that failure rather than claim isolated cancellation.
 
 Changing the startup catalog creates new pinned bindings, not an in-place
 replacement of an executable serving an existing context.
+
+## Retained resources
+
+Planned extension; not implemented. A native operation can create a live resource
+that must survive the shell job that created it. For example, a conversation's
+browser must keep its tabs between agent turns. An explicit resource owner keeps
+the resident service alive; no fake long-running invocation is required.
+
+The embedding application acquires an opaque grant through its normal Host
+access. Acquisition pins the runner connection generation, execution security
+context, package artifact, resource kind, and application owner scope. The runner
+validates the catalog and resolves the artifact using the same installation path
+as invocations. Concurrent requests for the same owner/kind/artifact share one
+acquisition; different owners receive isolated resource identities. A grant is
+never accepted from shell arguments or forwarded environment variables.
+
+The protocol must carry these distinct operations and acknowledgements:
+
+| Operation | Contract |
+| --- | --- |
+| Acquire | Accept authenticated owner scope, resource kind and pinned package identity; return a grant and generation after initialization succeeds |
+| Bind job | Associate a live job with authorized grants; supply trusted resource context to each native invocation |
+| Invoke/subscribe | Address a grant through the authenticated Host adapter; carry validated operation input, cancellation and bounded output/events |
+| Release | Stop admission, cancel resource calls/subscriptions, release resource state and acknowledge completion; repeated release of the same retired grant is harmless |
+| Lost | Report an ended connection, failed service or retired generation; invalidate every affected handle without replay |
+
+The native package owns the resource's domain state and cleanup. Runner and the
+shared SDK own grant routing, service references, cancellation and transport.
+Resource input and events use authoritative schemas; browser data does not
+become generic SDK business logic. Product operations may use this authenticated
+resource path without manufacturing a shell job. Both paths address the same
+native owner and operation implementation.
+
+Retained references are independent of invocation and shell-context references.
+Disposing one shell context does not release another owner's resource. A release
+acknowledgement means subscriptions ended, child processes were reaped, and
+resource-owned temporary files were removed. Cancellation and shutdown use the
+existing protocol grace limits; failed cleanup retires the faulty service and
+reports affected resources as lost, rather than claiming successful release.
+
+Runner/backend connection loss releases all grants from that connection.
+Reconnect does not revive old grants. An artifact change creates a new binding;
+a resource stays on its pinned artifact until released, and a mismatching job
+fails explicitly rather than sharing incompatible state. The application must
+release or finish the resource before moving it to a new artifact. Acquisition
+failure leaves no reference or detached child behind.
+
+A retained reference does not hold device activity or an application file gate.
+Actual calls and live subscriptions acquire those through the embedding
+application's Host access. This permits a stopped Cloud to invalidate an idle
+resource without promising page restoration. Conversation policy belongs to
+[Browser ownership](browser.md#ownership); transition admission belongs to
+[Host operations](sessions-and-targets.md#host-operations).
 
 ## Invocation protocol
 
@@ -450,6 +503,7 @@ constraints without a second manually maintained definition.
 | --- | --- |
 | `packages/runner-protocol/src/schemas.ts` — runner messages | `crates/runner/build.rs` |
 | `packages/command-loader/src/manifest/schema.ts` — manifests | `crates/runner/build.rs` |
+| Planned `packages/browser-protocol` — browser business schemas | `crates/demi-commands/build.rs` |
 | `packages/command-protocol/src/index.ts` — native wire and descriptors | `crates/command-service/build.rs` |
 
 Cargo transforms the schema into boundary validation during the build:

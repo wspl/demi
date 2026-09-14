@@ -69,9 +69,13 @@ when the root is idle and the child is waiting for a provider.
 The backend performs one protected transition:
 
 1. Validate the destination and user ownership.
-2. Reserve the idle tree and conversation file admission.
-3. Commit the target and attachment changes against the expected old selection.
-4. Advance the execution-context revision and release both reservations.
+2. Reserve the idle tree. For the planned browser resource, stop new observer
+   admission and drain its passive subscriptions as specified below.
+3. Reserve conversation file admission and release resources bound to the old
+   selection through the reserved Host access described below.
+4. Commit the target and attachment changes against the expected old selection.
+5. Advance the execution-context revision and release all reservations. Reopen
+   observer admission against the resulting selection.
 
 Concurrent changes cannot both replace the same expected selection. The backend
 reports busy or conflict rather than dispatching work against an ambiguous target.
@@ -140,6 +144,44 @@ demi host shell --host ci 'tar c -C /work .' | tar x
 The backend brokers the byte streams. Attachment changes advance execution context
 for each node. Revoking a paired device terminates its connection and removes its
 conversation grants.
+
+### Retained resources and passive subscriptions
+
+Planned extension for the [conversation browser](browser.md); not implemented.
+A browser frame/registry subscription is a Host operation for its entire admitted
+lifetime. It holds normal file admission and device activity, responds to
+cancellation, and releases both before acknowledging completion. There is no
+permanent lease merely because a browser resource exists.
+
+A target/directory change or archive must not wait forever for a workpanel stream.
+After validating the requested transition and reserving the idle tree, the
+backend closes new passive-subscription admission, cancels existing observers,
+and awaits their release. Other in-flight file operations still obey normal busy
+admission; they are not forcibly cancelled by calling them observers.
+
+With observers drained, the transition reserves the conversation file gate.
+It then releases resources on the old main target before committing the selection
+or archive. This cleanup still calls `withHost`, using an internal reservation
+capability issued by that gate. The capability is scoped to this conversation,
+expected old selection, and transition; it lets `withHost` use the already-held
+exclusive reservation rather than acquiring a conflicting shared gate. It does
+not skip ownership, binding, archive checks, Cloud wake/hold, or IO cancellation.
+It cannot be supplied through a request body, shell argument, or environment.
+The transition has not committed yet, so the old binding is still authoritative.
+
+A resource already reported lost has no live Host state to release: revoke its
+local grant and record loss without a new Host call. An unconfirmed cleanup
+failure is not success; fail the transition and report it unless connection or
+service loss has established that the resource generation ended. Cleanup errors
+must not be ignored to force the target commit. If release succeeds but the
+subsequent database commit fails, the old selection remains and its next browser
+open starts fresh; page state cannot be rolled back.
+
+All exits release tree/file reservations and reopen observer admission against
+the actual final selection, unless it is archived. Reconnection requires a new
+subscription and current generation. Never reuse an old Host object outside
+`withHost`, including for cleanup. Detachment and revocation retain their existing
+rules; revocation's connection loss invalidates associated resource grants.
 
 ## Coordinate shared Cloud activity
 
