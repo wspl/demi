@@ -9,12 +9,16 @@ This document defines provisioning, disk persistence, and reset. Target selectio
 and shared-device admission follow the
 [conversation execution contract](sessions-and-targets.md). Installation commands
 and environment settings are in [managed-host setup](../managed-hosts-setup.md).
+[Resource lifecycle coordination](resource-lifecycle.md) defines the planned
+shared scheduling/admission mechanism; this document owns Cloud policy and
+VM/disk outcomes.
 
 ## Provisioning
 
-The backend's managed-host lifecycle owns user policy and admission. The machine
-manager owns VM and disk operations through `ManagedHostProvisioner`: reconcile,
-wake, hibernate, checkpoint, growth, reset, close, and VM-death notifications.
+The backend's managed-host adapter owns Cloud policy and durable transitions;
+the shared backend lifecycle coordinator owns admission and idle scheduling.
+The machine manager owns VM and disk operations through `ManagedHostProvisioner`:
+reconcile, wake, hibernate, checkpoint, growth, reset, close, and VM-death notifications.
 The manager has no conversation or transcript state.
 
 The diagram shows control requests between processes. Each arrow names its
@@ -138,11 +142,34 @@ can reference Cloud before any VM exists.
 | Resetting → running | Replace the system layer, retain home, and boot the reset generation. |
 | Failed boot or save | Expose the failed operation and allow explicit recovery without creating another device. |
 
-Idle reclamation requires the configured idle window, no admitted device work,
-no relevant active agent trees, and no running jobs. An attachment alone is not
-activity. Before terminating an unattended job at the hard lifetime cap, the
-lifecycle reserves admission and rechecks active turns and leases. Crash-loop
-protection stops repeated automatic boots while leaving reset available.
+Idle reclamation requires the configured idle window, no admitted device demand,
+no relevant active agent trees, and no running jobs. Evaluate activity across all
+conversations using this device. Browser commands and live frame viewers count
+through their Host operation leases; idle browser grants, attachments, and
+backend metadata observers do not. Cleanup and checkpoints are maintenance:
+they serialize against conflicting transitions without restarting the idle clock.
+
+The [shared coordinator](resource-lifecycle.md#retiring-dependencies-together)
+retires dependent browser resources before the adapter saves disks and stops the
+VM. If both deadlines are due, one coordinated retirement handles them. This
+does not alter the browser's conversation ownership or the device's user ownership.
+Only new demand may wake a stopped Cloud; a cleanup callback cannot do so.
+
+The hard lifetime cap measures the running device lifetime and permits stopping
+unattended jobs when no relevant agent turn is active. It is separate from idle
+eligibility. Reserve admission and recheck active turns and demand other than the
+cap-eligible jobs. A viewer or admitted interactive operation postpones the cap
+transition. Cancel eligible unattended jobs and await their released leases
+before proceeding with browser retirement and machine shutdown. The cap does
+not authorize dropping a live browser viewer.
+Crash-loop protection stops repeated automatic boots while leaving reset available.
+Checkpoint timing remains Cloud policy and uses shared maintenance admission;
+a checkpoint preserves the browser's live process and is not a browser retirement.
+
+The shared coordinator integration is planned, not implemented. Cloud currently
+owns its idle bookkeeping and sweep. Its implementation checkpoint moves that
+mechanism to the common owner instead of adding another independent browser loop;
+VM state, reset journals, disk recovery, and Cloud-specific deadlines remain here.
 
 Guest resource limits are per user; the backend also caps total active machines.
 Current configuration defaults are:

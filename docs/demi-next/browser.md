@@ -7,12 +7,15 @@ at the end of this document.
 
 This is the authoritative browser design. Command dispatch, Host admission,
 native service ownership, and package boundaries retain their existing owners.
-Browser automation does not introduce another shell or agent loop.
+Browser automation does not introduce another shell or agent loop. Shared
+startup, idle scheduling, and retirement follow
+[Resource lifecycle coordination](resource-lifecycle.md).
 
 ## Reading map
 
 - [Purpose](#purpose): agent verification and an interactive streamed workpanel.
 - [Ownership](#ownership): conversation binding, tabs, concurrency, and lifetime.
+- [Idle reclamation](#idle-reclamation): browser activity and the ten-minute policy.
 - [Control](#control-and-interruption): Managed and Free modes, pause, and resume.
 - [Execution](#execution): browser distribution, command dispatch, and retained resources.
 - [Command contract](#command-contract): inputs, text, JSON, media, and failure.
@@ -237,34 +240,69 @@ viewing connections. Its internal lifecycle uses one state:
 | User closes the workpanel or Demi page | Remove that viewer and release its held input; stop capture after the last viewer leaves; retain control state and continue permitted agent work |
 | Command or agent turn is cancelled | Stop current invocation work and temporary waits; retain completed page effects and other tabs |
 | `close <tab>` | Close that tab and release its commands, references, and debugging state |
-| Last tab closes | Stop Chrome for Testing and remove its profile; advance the control revision and reset to Managed; the next `open` starts fresh |
+| Last tab closes | Retire the browser resource after the closing invocation completes; stop Chrome for Testing, remove its profile and release its grant; the next `open` starts fresh |
+| Browser idle deadline expires | Retire through the shared coordinator under the policy below |
 | Main Host or main directory changes | Release the old environment through the target transition; do not copy tabs, cookies, or debugging connections |
 | Conversation is archived | End the environment and all viewing/input access; restoring the conversation starts fresh on demand |
 | Conversation is forked | Do not inherit the live browser or handles; IDs in copied history are historical text |
 | Chrome for Testing crashes, runner connection ends, backend restarts, or Cloud stops/resets | Invalidate the environment and fail affected calls; never replay page actions |
 
-An empty controller may retain its grant/service reference until the conversation
-runtime is disposed, the target changes, or the runner connection ends. This
-retains no browser process or profile and holds no device activity. Closing the
-last tab invalidates old action revisions, including later commands in the same
-shell call; opening again requires a new call. First creation from an empty
-controller does not change the revision captured when its job bound the resource.
+The native controller reports last-tab closure and fences further page actions.
+The backend coordinator releases its retained grant after the closing invocation
+has delivered its result and released its operation lease; cleanup must not wait
+for the invocation that requested it while that invocation waits for cleanup.
+Closing the last tab invalidates old action revisions, including later commands
+in the same shell call. Opening again requires a new call and a new controller.
+
+A controller bound before the first open can have no tabs or browser process.
+It follows the same idle policy, preserving an explicit user mode selection
+before the first tab opens. First creation from an empty controller does not
+change the revision captured when its job bound the resource.
 
 Browser profiles and live page state are not restored across process lifetime
 boundaries. Explicit output files survive according to their Host location.
 Screenshots already persisted into the transcript follow the existing media
 storage contract.
 
-Idle tabs do not keep Cloud awake indefinitely. Active agent work, browser
-commands, and admitted workpanel stream/input operations participate in device
-activity.
-Without activity, the existing [Cloud idle policy](managed-hosts.md#lifecycle-and-capacity)
-applies. Closing the user's browser must not stop an active agent, but an idle
-browser is not a promise of an indefinitely running VM.
-
 Target changes, archiving, and observer cancellation follow
-[Host operations](sessions-and-targets.md#host-operations). Cleanup must not create
-a second, unauthenticated path to the old Host.
+[Host operations](sessions-and-targets.md#host-operations). Resource retirement
+uses the shared coordinator; cleanup must not create another path to the Host.
+
+### Idle reclamation
+
+The browser idle duration is **10 minutes**, independently configured from Cloud's
+idle duration. This policy applies on both paired devices and Cloud. Start the
+interval only while a live browser resource has all of these properties:
+
+- Its entire owning conversation's agent tree is idle, including children and
+  work already admitted by tree lifecycle coordination.
+- No browser command, user input, upload/download operation, or browser startup
+  is in progress. Observational commands also count as use.
+- No viewer has an active browser frame subscription.
+
+New activity cancels the interval. When all conditions hold again, begin a fresh
+full interval. Tabs, cookies, retained grants, and backend metadata subscriptions
+are retained state, not activity. Merely showing a conversation in the sidebar
+or keeping its chat connected does not prevent browser retirement. A waiting
+agent turn does prevent it; a future scheduled turn that has not been admitted
+does not. The same policy releases a controller that has remained empty since
+binding; explicit last-tab closure still retires immediately as specified above.
+
+At expiry, the shared coordinator reserves admission and rechecks eligibility
+before releasing the native browser resource. The grant, process, temporary
+profile, tab/reference handles, input state, and capture resources end together.
+The backend retains the conversation and its historical outputs, not a live
+browser controller. Notify product observers that the browser was reclaimed for
+inactivity; it is not an unexplained stream failure. The next user/agent open
+creates a fresh controller in Managed mode with new tabs and browser storage.
+
+[Resource lifecycle coordination](resource-lifecycle.md) owns timer cancellation,
+new-demand races, shared startup, failure handling, and parent cleanup ordering.
+Browser activity participates in Host admission through the existing operation
+or viewing lease. Retained idle browser state does not keep Cloud awake.
+Cloud's own retirement can end it earlier under the
+[Cloud policy](managed-hosts.md#lifecycle-and-capacity). Browser retirement does
+not power down a paired device or independently decide to stop Cloud.
 
 ## Execution
 
@@ -1485,6 +1523,12 @@ renders and executes page scripts on the Host. The Demi page decodes frames and
 captures input; it does not execute the remote page's HTML or JavaScript.
 
 The Host controller is authoritative for registry and live control state.
+Grant-scoped registry/control notifications are emitted over the existing runner
+connection. The backend maintains their reconstructible product projection;
+watching that projection does not open a long-lived Host operation or hold a use
+lease. Snapshot repair is a short `withHost` operation. After resource loss or
+retirement, publish the ended generation without waking a replacement browser.
+Frame subscriptions are distinct from these metadata notifications.
 Snapshots include browser generation and event revision. Registry/control
 changes form an ordered stream; a gap requires a fresh snapshot. Stale updates
 cannot resurrect a closed tab or overwrite a newer mode. The backend forwards
@@ -1506,6 +1550,7 @@ agent commands or input. Stop capture and release buffers when the last viewer
 leaves. Reconnection displays current state, not a frame backlog. The last image
 may remain only with a disconnected indication; it cannot accept input.
 
+Hiding or unmounting the browser surface unsubscribes from its frame stream.
 Selecting another tab unsubscribes from the old frame stream and releases that
 viewer's held input before subscribing to the new one. Tab closure releases its
 capture and input resources and removes it from all registry projections.
@@ -1574,7 +1619,8 @@ the same checkpoint, following [Web architecture](web-application.md).
 Observer cancellation and target/archive transitions follow
 [Host operations](sessions-and-targets.md#host-operations). A stream holds activity
 only for its admitted lifetime; an idle retained browser resource holds no
-permanent Cloud activity lease.
+permanent Cloud activity lease. Idle eligibility follows
+[Idle reclamation](#idle-reclamation).
 
 ## Acceptance
 
@@ -1637,14 +1683,19 @@ and isolated storage. Never run tests that call real models.
     through resume. Cover IME, clipboard, chooser/download, scaling, slow viewers,
     multi-window input, stale revisions, disconnect, and input overflow. Verify
     user-, agent-, site-, and fetch-created tabs match the workpanel registry.
-15. Deliver native changes to every required build target, paired device, and
+15. Verify the browser idle policy and cross-resource races in
+    [Lifecycle acceptance](resource-lifecycle.md#integration-and-acceptance):
+    viewers and active children prevent idle cleanup; metadata-only watchers do
+    not; cleanup on paired and Cloud Hosts releases the native grant and profile.
+16. Deliver native changes to every required build target, paired device, and
     Cloud guest. Verify Chrome for Testing provisioning on every platform
     offering the feature; success on the development Mac is insufficient.
 
 ### Deferred decisions and implementation status
 
 This checkpoint delivers design only. Browser commands, browser management,
-streaming, input arbitration, and retained-resource support are not implemented.
+streaming, input arbitration, idle reclamation, and retained-resource support
+are not implemented.
 The checks above are acceptance requirements, not completed results.
 
 Resolve these prerequisites before implementing their dependent behavior:
@@ -1653,6 +1704,7 @@ Resolve these prerequisites before implementing their dependent behavior:
 | --- | --- | --- |
 | Driver | Select a non-AGPL implementation for CDP, semantic targeting, actionability, and enforced read-only evaluation; establish platform support | Native browser commands |
 | Browser delivery | Chrome for Testing is selected; choose the first version pin and implement installation, verification, updates, and reclamation under the distribution contract above | Runtime delivery |
+| Lifecycle integration | Implement the shared coordinator and its Cloud/browser adapters under the lifecycle contract | Idle and dependent-resource reclamation |
 | Retained-resource wire | Add trusted grant acquisition, job association, release, and cleanup acknowledgement to the native/runner schemas | Continuity across shell jobs |
 | Stream transport | Select frame encoding/carriage and specify the validated registry, control, frame, input and acknowledgement wire records with the limits above | Interactive workpanel |
 | Optional adapters | Select and validate any page tools or site-specific exports included in the release | Corresponding capabilities |
