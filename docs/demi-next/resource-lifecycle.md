@@ -76,7 +76,7 @@ This is an in-process contract; exact TypeScript names are implementation detail
 | --- | --- |
 | Identity and availability | Logical owner, actual current incarnation, and domain readiness; no request can substitute another owner or generation |
 | Dependencies | Resolve the current Host binding and its admission scope; register changes under the same transition boundary as target changes |
-| Activity observation | Current policy facts plus ordered changes and an unsubscribe operation; use existing tree/job/stream owners as the source |
+| Activity observation | Current policy facts plus ordered changes and an unsubscribe operation; use existing tree/job/operation owners as the source |
 | Policy and guards | Idle duration, eligible activity predicate, and atomic reservations of the authoritative guards used to admit that work |
 | Other scheduled work | Optional checkpoint or hard-cap candidates derived from domain timestamps; the coordinator schedules them, the domain validates their policy |
 | Start | Start or obtain the resource under admitted demand; return only when its generation is ready, or report partial-start cleanup and failure |
@@ -105,7 +105,7 @@ it keeps browser state and its service owned, but does not keep Cloud active.
 
 | Kind of participation | Prevents conflicting retirement | Resets idle waiting |
 | --- | --- | --- |
-| Demand: user/agent operation, browser viewing, or relevant active work | Yes | Yes |
+| Demand: user/agent operation or relevant active work | Yes | Yes |
 | Retention: idle tabs, a resource grant, or a saved target binding | No | No |
 | Maintenance: admitted cleanup or checkpoint work | Yes, while it runs | No |
 
@@ -116,10 +116,8 @@ instead of mirroring its counts in the coordinator.
 
 A browser operation holds browser admission and the Host admission obtained by
 its containing `withHost` operation or shell job. Reuse that existing Host lease;
-do not enter the parent again just to represent the dependency. A viewer's frame
-subscription is demand for both resources. Releasing one viewer affects only its
-own lease. Holding a browser resource without an operation creates no parent
-lease.
+do not enter the parent again just to represent the dependency. Holding a browser
+resource without an operation creates no parent lease.
 
 Agent-tree and job owners provide their current activity and change notifications.
 They remain authoritative. A relevant active tree can prohibit idle retirement
@@ -129,11 +127,8 @@ as running work. Actual turn/wakeup admission and reservation use the existing
 agent-tree lifecycle contract.
 
 Product metadata observers consume published backend state. They do not keep
-resources alive merely by receiving tab, control, or lifecycle changes. Acquiring
-a fresh Host snapshot is a short demand operation. An open frame subscription is
-viewing even if the page itself is not changing. Clients must unsubscribe when
-the browser surface is no longer displayed; the server counts the actual live
-subscription, not an assumed browser-window visibility state.
+resources alive merely by receiving lifecycle changes. Acquiring a fresh Host
+snapshot is a short demand operation.
 
 ## Idle deadlines
 
@@ -270,17 +265,17 @@ its parent retirement.
 Retiring a browser does not retire its Host or sibling browsers. The Host's own
 policy decides whether it is idle. Conversely, a Cloud retirement may include
 idle browsers whose own idle deadlines have not expired; retaining a browser is
-not a claim that its parent must stay running. An active viewer or browser
-operation prevents ordinary parent idle retirement through its demand lease.
+not a claim that its parent must stay running. An active browser operation
+prevents ordinary parent idle retirement through its demand lease.
 
 A periodic Cloud checkpoint is maintenance, serialized with shutdown/reset by
 the same transition owner. Its maintenance lease can coexist with admitted
-demand; it does not require all jobs or viewers to become idle. It preserves
+demand; it does not require all jobs to become idle. It preserves
 running processes and does not retire browsers merely because execution pauses
 briefly. Reset or shutdown waits for this owned maintenance to establish its
 outcome before operating on the same VM/disks. The checkpoint schedule and
 VM/disk semantics remain Cloud policy. Unattended-job caps are also Cloud policy;
-they are not browser deadlines or a reason to drop an active viewer's lease.
+they are not browser deadlines.
 
 ## Failure, loss, and disposal
 
@@ -315,7 +310,7 @@ must not leave detached retirement tasks.
 The coordinator's admission/transition record is transient. It owns the current
 transition and its scheduling state, not a duplicate `running`/`off` flag.
 Domain availability comes from the adapter's authoritative state. Durable Cloud
-operations remain in the existing store, and tab/control state stays native.
+operations remain in the existing store, and tab state stays native.
 Single-backend authority does not provide distributed worker fencing; that
 remains the [backend deployment contract](backend.md#deployment-and-user-ownership).
 
@@ -349,7 +344,7 @@ verify these races without real models:
 | Browser A becomes idle while browser B or a job uses Cloud | Only A retires; B and the job continue |
 | Paired-device browser reaches its deadline | Browser resources end; the user's computer and runner remain available |
 | New demand encounters parent cleanup needing a conversation gate | Partial admissions are released; no gate cycle or hidden action replay |
-| A stream disconnects or becomes hidden | Its subscription releases demand; metadata observation alone keeps no browser or VM alive |
+| A metadata observer connects or disconnects | Metadata observation alone keeps no browser or VM alive |
 | Checkpoint overlaps an idle deadline | Maintenance completes, then the elapsed idle deadline is rechecked |
 | Target switch, archive, or reset overlaps a timer | One admitted transition with the current binding; a stale timer cannot close its replacement |
 | Child release or Cloud save fails | Error and blocked/recoverable state remain visible; no successful-release claim or timer retry loop |
