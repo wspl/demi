@@ -14,7 +14,7 @@ Browser automation does not introduce another shell or agent loop.
 - [Purpose](#purpose): agent verification and an interactive streamed workpanel.
 - [Ownership](#ownership): conversation binding, tabs, concurrency, and lifetime.
 - [Control](#control-and-interruption): Managed and Free modes, pause, and resume.
-- [Execution](#execution): command dispatch and retained native resources.
+- [Execution](#execution): browser distribution, command dispatch, and retained resources.
 - [Command contract](#command-contract): inputs, text, JSON, media, and failure.
 - [Observation](#observation): page trees, references, locators, and coordinates.
 - [Command reference](#command-reference): commands, example output, and result fields.
@@ -26,16 +26,16 @@ Browser automation does not introduce another shell or agent loop.
 
 An agent starts an application at `http://localhost:3000` on Cloud and opens
 its login page. The new tab immediately appears in that conversation's
-workpanel. Chromium runs on Cloud; the workpanel displays its frames and sends
-user input back to that same tab. The agent's `tabs` command lists exactly the
-browser tabs available in the workpanel.
+workpanel. Chrome for Testing runs on Cloud; the workpanel displays its frames
+and sends user input back to that same tab. The agent's `tabs` command lists
+exactly the browser tabs available in the workpanel.
 
 ```text
 Conversation on Demi
   +-- Agent: demi browser commands ----+
   |                                   |
   +-- Workpanel browser tabs           v
-        | input                  Chromium on Host ---> Application :3000
+        | input                  Host browser ---> Application :3000
         +---------------------------> |
         <--------- frame stream ------+
 ```
@@ -94,7 +94,7 @@ the authenticated execution context. They have no `--conversation`, `--session`,
 variables cannot establish or replace ownership.
 
 `open` starts the environment when necessary. `tabs` returns an empty list when
-Chromium has not started; listing alone does not launch Chromium. This does not
+the browser has not started; listing alone does not launch it. This does not
 change the Host acquisition already performed for the containing shell job.
 A command with an expired tab ID fails rather than opening a replacement page.
 
@@ -166,7 +166,7 @@ Selecting Managed is an explicit user decision to return exclusive operation
 to agents. Merely waiting, disconnecting, reconnecting, or receiving another
 agent call never resumes browser actions. State lasts for the live controller;
 a replacement resource starts Managed and is shown as a new environment.
-The user can change mode before opening the first tab; lazy Chromium startup
+The user can change mode before opening the first tab; lazy browser startup
 preserves that choice.
 
 Page-changing operations include open/close, navigation, pointer and keyboard
@@ -221,8 +221,9 @@ It is not an operating-system security boundary against the conversation owner.
 
 The conversation's retained native resource owns the browser controller. A
 browser-capable job binds that resource and obtains its control revision before
-shell execution; binding alone does not launch Chromium. User opening uses the
-same resource. Chromium and its storage form the lazily created environment.
+shell execution; binding alone does not launch the browser. User opening uses
+the same resource. The browser process and its storage form the lazily created
+environment.
 
 The environment outlives individual commands, shell jobs, agent turns, and
 viewing connections. Its internal lifecycle uses one state:
@@ -236,15 +237,15 @@ viewing connections. Its internal lifecycle uses one state:
 | User closes the workpanel or Demi page | Remove that viewer and release its held input; stop capture after the last viewer leaves; retain control state and continue permitted agent work |
 | Command or agent turn is cancelled | Stop current invocation work and temporary waits; retain completed page effects and other tabs |
 | `close <tab>` | Close that tab and release its commands, references, and debugging state |
-| Last tab closes | Stop Chromium and remove its profile; advance the control revision and reset to Managed; the next `open` starts fresh |
+| Last tab closes | Stop Chrome for Testing and remove its profile; advance the control revision and reset to Managed; the next `open` starts fresh |
 | Main Host or main directory changes | Release the old environment through the target transition; do not copy tabs, cookies, or debugging connections |
 | Conversation is archived | End the environment and all viewing/input access; restoring the conversation starts fresh on demand |
 | Conversation is forked | Do not inherit the live browser or handles; IDs in copied history are historical text |
-| Chromium crashes, runner connection ends, backend restarts, or Cloud stops/resets | Invalidate the environment and fail affected calls; never replay page actions |
+| Chrome for Testing crashes, runner connection ends, backend restarts, or Cloud stops/resets | Invalidate the environment and fail affected calls; never replay page actions |
 
 An empty controller may retain its grant/service reference until the conversation
 runtime is disposed, the target changes, or the runner connection ends. This
-retains no Chromium process or profile and holds no device activity. Closing the
+retains no browser process or profile and holds no device activity. Closing the
 last tab invalidates old action revisions, including later commands in the same
 shell call; opening again requires a new call. First creation from an empty
 controller does not change the revision captured when its job bound the resource.
@@ -267,6 +268,44 @@ a second, unauthenticated path to the old Host.
 
 ## Execution
 
+### Browser distribution
+
+Demi uses **Chrome for Testing**, the Chromium-based Chrome distribution for
+browser automation. The selected download is the `chrome` browser artifact.
+The distribution provides versioned downloads without automatic updates, which
+lets Demi verify and reproduce a browser release across Hosts. See the
+[official distribution description](https://developer.chrome.com/docs/automation-and-testing/chrome-for-testing).
+
+Demi manages this browser installation and its isolated conversation profiles.
+It does not discover an arbitrary Chrome executable on PATH, attach to a user's
+personal browser, or silently substitute a system Chromium installation. Browser
+selection is product configuration, not an agent command option. Chrome for
+Testing supplies the executable; the separately selected native driver uses CDP.
+Choosing this distribution does not require ChromeDriver or select a driver
+library.
+
+A browser release pins a complete version and a per-platform artifact record:
+platform, download location, byte size and SHA-256 established by the Demi release
+pipeline. Resolve official version/download metadata during release preparation;
+Host startup installs the pinned artifact rather than resolving a moving channel
+such as `latest`. Validate downloaded bytes before publishing the installation.
+Paired-device installation and Cloud image preparation consume the same release
+record. Browser and driver/CDP compatibility must pass acceptance together.
+
+Platform availability is checked for the exact selected version against the
+[official artifact matrix](https://github.com/GoogleChromeLabs/chrome-for-testing#supported-platforms).
+A runner build target does not by itself establish browser support. Offer the
+browser capability only on platforms with an available, verified artifact and
+passing native/browser acceptance. A missing artifact reports an unavailable
+capability; it does not trigger an alternative browser or architecture fallback.
+
+Updates are explicit Demi release changes. Existing environments retain their
+browser executable until released; new environments use the selected release.
+Keep an old installation while any environment still uses it, then reclaim it
+through the installer lifecycle. Fixed versions require a maintained update
+process; they are not a promise to keep an old browser indefinitely. The first
+version pin and installer/image implementation remain delivery prerequisites.
+
 ### One command path
 
 Browser commands are ordinary declared `demi` commands:
@@ -281,7 +320,7 @@ Brush on Host -> Declared-command dispatcher
                  Demi native command service
                          |
                          v
-                    Chromium / CDP
+                Chrome for Testing / CDP
                          |
                          v
                stdout / stderr / exit status
@@ -293,12 +332,12 @@ Brush on Host -> Declared-command dispatcher
 Declaration, argument conversion, help, and `--json` follow
 [Commands](commands.md) and [Command help](../command-help.md). Brush builtins call
 the dispatcher directly; external programs use the same root alias. A browser
-action does not launch another Chromium or a new model-tool loop.
+action does not launch another browser process or a new model-tool loop.
 
 Browser algorithms and the driver belong to the native `demi.builtin`
 implementation. Runner owns authenticated scope, processes, and transport.
-Chromium and its driver run on the selected Host. Its debugging connection is
-not exposed directly to the public network or the Demi web app.
+Chrome for Testing and its driver run on the selected Host. The debugging
+connection is not exposed directly to the public network or the Demi web app.
 
 ### Retained resource ownership
 
@@ -318,7 +357,7 @@ For a browser resource:
    cannot choose the grant.
 3. Later calls in the conversation reuse the environment. A shared native
    service still separates environments by grant.
-4. Releasing the owner closes Chromium, removes its temporary profile, and
+4. Releasing the owner closes the browser, removes its temporary profile, and
    releases the retained service reference. Cancelling one invocation does not
    release that owner.
 
@@ -1041,7 +1080,7 @@ Result: {"body":"{\"error\":\"database unavailable\"}","base64Encoded":false}
 
 CDP exposes tab debugging through the
 [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/),
-not another Host access channel. Pin its supported version with the Chromium
+not another Host access channel. Pin its supported version with the browser
 build and validate commands/events against generated protocol schemas. Unknown
 methods, malformed parameters, and malformed replies are not trusted objects.
 
@@ -1441,7 +1480,7 @@ selecting a tab, hiding the panel, and disconnecting remain available.
 Demi authenticates the user and conversation on every subscription and control
 request. Backend adapters enter through `ConversationTargets.withHost`; runner
 carries authenticated resource scope to the native controller. The client gets
-neither a raw CDP socket nor credentials to another conversation. Chromium
+neither a raw CDP socket nor credentials to another conversation. The browser
 renders and executes page scripts on the Host. The Demi page decodes frames and
 captures input; it does not execute the remote page's HTML or JavaScript.
 
@@ -1564,8 +1603,8 @@ business state. Command naming need not mirror every method in a library API.
 
 ### Required checks
 
-Use real Chromium against local page fixtures, scripted providers, and isolated
-storage. Never run tests that call real models.
+Use real Chrome for Testing against local page fixtures, scripted providers,
+and isolated storage. Never run tests that call real models.
 
 1. Run `open → inspect → fill → click → inspect` on paired devices and Cloud;
    verify localhost, files, and screenshots belong to the correct Host.
@@ -1599,12 +1638,12 @@ storage. Never run tests that call real models.
     multi-window input, stale revisions, disconnect, and input overflow. Verify
     user-, agent-, site-, and fetch-created tabs match the workpanel registry.
 15. Deliver native changes to every required build target, paired device, and
-    Cloud guest. Verify Chromium provisioning on every platform offering the
-    feature; success on the development Mac is insufficient.
+    Cloud guest. Verify Chrome for Testing provisioning on every platform
+    offering the feature; success on the development Mac is insufficient.
 
 ### Deferred decisions and implementation status
 
-This checkpoint delivers design only. Browser commands, Chromium management,
+This checkpoint delivers design only. Browser commands, browser management,
 streaming, input arbitration, and retained-resource support are not implemented.
 The checks above are acceptance requirements, not completed results.
 
@@ -1613,7 +1652,7 @@ Resolve these prerequisites before implementing their dependent behavior:
 | Decision | Required outcome | Blocks |
 | --- | --- | --- |
 | Driver | Select a non-AGPL implementation for CDP, semantic targeting, actionability, and enforced read-only evaluation; establish platform support | Native browser commands |
-| Chromium distribution | Define pinned installation, verification, updates, and reclamation on paired devices and Cloud images | Runtime delivery |
+| Browser delivery | Chrome for Testing is selected; choose the first version pin and implement installation, verification, updates, and reclamation under the distribution contract above | Runtime delivery |
 | Retained-resource wire | Add trusted grant acquisition, job association, release, and cleanup acknowledgement to the native/runner schemas | Continuity across shell jobs |
 | Stream transport | Select frame encoding/carriage and specify the validated registry, control, frame, input and acknowledgement wire records with the limits above | Interactive workpanel |
 | Optional adapters | Select and validate any page tools or site-specific exports included in the release | Corresponding capabilities |
