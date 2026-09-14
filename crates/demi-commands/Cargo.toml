@@ -10,6 +10,9 @@ name = "demi-commands"
 path = "src/main.rs"
 
 [dependencies]
+chromiumoxide = "=0.9.1"
+futures-util.workspace = true
+thiserror.workspace = true
 demi-command-service = { path = "../command-service" }
 bytes.workspace = true
 serde.workspace = true
@@ -20,9 +23,9 @@ tempfile = "3"
 regex = "1"
 
 [dev-dependencies]
+axum = "0.8"
 demi-runner = { path = "../runner" }
 sha2 = "0.10"
-futures-util.workspace = true
 
 
 
