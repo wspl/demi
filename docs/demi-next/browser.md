@@ -1,7 +1,8 @@
 # Conversation browser
 
-Status: design only; not implemented. This document defines intended behavior,
-command contracts, and acceptance requirements. Example output is illustrative,
+Status: product capability not yet available. Native driver primitives exist;
+conversation integration remains unimplemented. This document defines intended
+behavior, command contracts, and acceptance requirements. Example output is illustrative,
 not evidence that these commands exist. Implementation prerequisites are recorded
 at the end of this document.
 
@@ -318,9 +319,8 @@ Demi manages this browser installation and its isolated conversation profiles.
 It does not discover an arbitrary Chrome executable on PATH, attach to a user's
 personal browser, or silently substitute a system Chromium installation. Browser
 selection is product configuration, not an agent command option. Chrome for
-Testing supplies the executable; the separately selected native driver uses CDP.
-Choosing this distribution does not require ChromeDriver or select a driver
-library.
+Testing supplies the executable; the native driver uses chromiumoxide over CDP.
+ChromeDriver is not required.
 
 A browser release pins a complete version and a per-platform artifact record:
 platform, download location, byte size and SHA-256 established by the Demi release
@@ -343,6 +343,34 @@ Keep an old installation while any environment still uses it, then reclaim it
 through the installer lifecycle. Fixed versions require a maintained update
 process; they are not a promise to keep an old browser indefinitely. The first
 version pin and installer/image implementation remain delivery prerequisites.
+
+### Native driver
+
+The Rust browser module in `demi-commands` uses chromiumoxide for Chrome process
+integration, typed CDP calls, page handles, and event decoding. Demi owns semantic
+targeting, actionability checks, input ownership, and resource retirement. A
+library helper is used only when its behavior matches the command contract;
+a successful low-level input dispatch is not proof that the requested control
+was enabled or unobstructed.
+
+The dependency is maintained under `vendor/chromiumoxide` following the package
+boundary rules. Its event subscriptions use bounded buffers and explicitly report
+lost events. A slow listener must not stop control requests from progressing.
+Loss of registry or control events invalidates the affected observation and must
+be reconciled before further operations; log consumers report truncation. Frame
+consumers retain the newest frame rather than replaying a backlog. CDP messages
+also have a finite transport size limit. An oversized message fails the connection
+and enters normal browser-loss cleanup.
+
+Read-only eval uses Chrome's enforced side-effect checking. The driver rejects
+unsupported results and never falls back to unrestricted evaluation. Cancellation
+stops further driver steps and releases held input, without claiming to undo
+side effects that Chrome has already executed.
+
+The browser environment owns its Chrome child, event task, and temporary profile.
+Retirement closes Chrome, waits for exit, and joins the event task before removing
+the profile. If graceful closure fails, termination and reaping use the same
+cleanup path. Invocation cancellation does not retire an unrelated tab or owner.
 
 ### One command path
 
@@ -1693,19 +1721,23 @@ and isolated storage. Never run tests that call real models.
 
 ### Deferred decisions and implementation status
 
-This checkpoint delivers design only. Browser commands, browser management,
-streaming, input arbitration, idle reclamation, and retained-resource support
-are not implemented.
+The native driver foundation implements scoped Chrome ownership, bounded CDP
+events, per-tab operation exclusion, CSS actionability waiting, text filling,
+read-only evaluation, screenshots, and frame capture. These are internal Rust
+primitives, not declared agent commands or a public transport. The installer must
+supply a verified Chrome executable before production use.
+
+Conversation grants, the canonical public tab registry, semantic references and
+locators, command declarations, workpanel transport, input arbitration, idle
+reclamation, and retained-resource integration are not implemented. Native
+primitives do not establish paired-device or Cloud product acceptance.
 The checks above are acceptance requirements, not completed results.
-An independent [driver evaluation](browser-driver-validation.md) records local
-chromiumoxide 0.9.1 evidence and remaining selection gates. It is not product
-implementation or paired-device/Cloud acceptance.
 
 Resolve these prerequisites before implementing their dependent behavior:
 
 | Decision | Required outcome | Blocks |
 | --- | --- | --- |
-| Driver | Select a non-AGPL implementation for CDP, semantic targeting, actionability, and enforced read-only evaluation; establish platform support | Native browser commands |
+| Driver integration | chromiumoxide is selected; implement the native driver contract, semantic targeting, actionability, and enforced read-only evaluation; establish platform support | Native browser commands |
 | Browser delivery | Chrome for Testing is selected; choose the first version pin and implement installation, verification, updates, and reclamation under the distribution contract above | Runtime delivery |
 | Lifecycle integration | Implement the shared coordinator and its Cloud/browser adapters under the lifecycle contract | Idle and dependent-resource reclamation |
 | Retained-resource wire | Add trusted grant acquisition, job association, release, and cleanup acknowledgement to the native/runner schemas | Continuity across shell jobs |
