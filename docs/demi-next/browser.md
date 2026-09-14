@@ -1697,6 +1697,9 @@ This checkpoint delivers design only. Browser commands, browser management,
 streaming, input arbitration, idle reclamation, and retained-resource support
 are not implemented.
 The checks above are acceptance requirements, not completed results.
+An independent [driver evaluation](browser-driver-validation.md) records local
+chromiumoxide 0.9.1 evidence and remaining selection gates. It is not product
+implementation or paired-device/Cloud acceptance.
 
 Resolve these prerequisites before implementing their dependent behavior:
 
