@@ -360,7 +360,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `crates/demi-commands` (Rust executable)
 
-- Planned browser scope: `browser/` owns Chromium/driver integration, the canonical
+- Planned browser scope: `browser/` owns browser/driver integration, the canonical
   tab registry, input arbitration, observations, command operations and resource
   cleanup. Browser business schemas come from `browser-protocol` and are generated
   by this crate's build for native consumers; no second Rust schema authority.
