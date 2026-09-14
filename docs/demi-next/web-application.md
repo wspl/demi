@@ -28,11 +28,11 @@ examples. Those details are not duplicated in design documents. This document
 covers only the browser's technology and architectural boundaries.
 
 [Conversation browser](browser.md#workpanel-stream) defines the planned streamed
-Host Chromium surface. Browser workpanel items project the Host's canonical tab
+Host browser surface. Browser workpanel items project the Host's canonical tab
 registry, shared with agent commands; file and change tabs keep their own resource
 contracts. `web-ui` owns reusable streaming and input behavior, while product and
 gallery supply adapters and state. The user application never connects directly
-to Chromium's debugging endpoint. This feature is not yet implemented.
+to the Host browser's debugging endpoint. This feature is not yet implemented.
 
 ## Backend communication
 
