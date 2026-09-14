@@ -321,14 +321,14 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: design only; the package and dependent manifest changes are not implemented.
 - Production deps: no first-party packages; external: Zod.
-- Owns: browser operation arguments/results, tab/control state, observations,
-  resource event payloads and workpanel input/frame acknowledgement schemas.
+- Owns: browser operation arguments/results, tab state, observations,
+  and resource event payloads.
   Generic resource envelopes remain in command-protocol/runner-protocol.
 - Public boundary: platform-neutral schemas and derived types. `coding-agent`
-  uses them to declare CLI commands; backend and web-ui validate browser data;
+  uses them to declare CLI commands; backend validates browser data;
   demi-commands generates native bindings at build time.
-- Independence rationale: native commands and web clients need one browser
-  contract without importing the coding harness into UI or UI into the backend.
+- Independence rationale: native commands, the coding harness, and backend need one
+  browser contract without importing each other's implementations.
 - Must not: implement browser operations, transport, components, Host access,
   process management, or conversation persistence.
 
@@ -368,7 +368,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `crates/demi-commands` (Rust executable)
 
 - Browser scope: `browser/` owns browser/driver integration, the canonical
-  tab registry, input arbitration, observations, command operations and resource
+  tab registry, observations, command operations and resource
   cleanup. Browser business schemas come from `browser-protocol` and are generated
   by this crate's build for native consumers; no second Rust schema authority.
   The native driver primitives exist; command and conversation integration follow
@@ -420,12 +420,6 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/web-ui`
 
-- Planned browser scope: reusable workpanel browser resources, frame display,
-  input capture/arbitration feedback and mode controls over injected adapters.
-  Add the planned `@demicodes/browser-protocol` dependency and re-export its
-  frontend contracts for product/gallery adapters instead of duplicating schemas.
-  Product and gallery consume the same behavior; see
-  [Workpanel stream](demi-next/browser.md#workpanel-stream).
 - Status: implemented; published to npm as a source-form package (no build step — `.vue`/`.ts`
   source exports compiled by the consumer's bundler, which must handle Vue SFC + TypeScript).
 - Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`, `zod`.
