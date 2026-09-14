@@ -151,6 +151,9 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/coding-agent`
 
+- Planned browser scope: declare `demi browser` commands and help using schemas
+  from the planned `@demicodes/browser-protocol` dependency; algorithms remain
+  native. See [Browser commands](demi-next/browser.md#command-contract).
 - Status: implemented.
 - Production deps: `@demicodes/agent`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: coding harness, coding prompt, coding commands (the `demi` root: every subcommand is a noun domain group — `file` as `runtime` modules written against the ABI and `todo` as `rpc` built in, product groups like the backend's `host` composed in). A `reference` block reaches the model as its path; the model reads the file with tools.
@@ -229,6 +232,11 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/backend`
 
+- Planned browser scope: `conversation/` owns resource grants, main-Host binding,
+  access admission and product adapters. Add the planned `@demicodes/browser-protocol`
+  dependency for validation. It publishes Host registry/control
+  state without a second browser inventory. All Host IO uses conversation Host
+  access, including transition cleanup.
 - Status: target contract.
 - Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/machines`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
 - Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, the per-conversation `AgentTreeStore` over node and block rows, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the transfer broker, browse endpoints), the managed-hosts module (one managed device per user over the `ManagedHostProvisioner` contract, reached through `@demicodes/machines`' `RemoteProvisioner` as the machine manager's client; lifecycle/hibernate/reset, the backend-contributed `demi host` subcommand group), the LLM module (per-provider provider assembly, model metadata caching in memory and control.sqlite with TTL and shared refresh, metering wrap), the credential vault (instance secret, GCM-encrypted providers, subscription device-login flows over per-provider provider pools), and usage accounting (ledger + rate limit). The backend accepts explicitly submitted API keys and setup tokens at authenticated write boundaries, passes subscription material to provider-owned credential pools, and never returns secrets or proxies model traffic.
@@ -274,6 +282,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/runner-protocol`
 
+- Planned retained-resource scope: authoritative backend/runner grant acquisition,
+  binding, invocation/subscription, release and loss schemas; no browser policy.
 - Status: implemented (the final wire: MessagePack frames, per-op fs messages, jobs, the rpc relay, the manifest push, transfers).
 - Production deps: `@demicodes/command-protocol`, `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
 - Owns: the authoritative Zod backend runner wire contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` used by Bun; Rust uses the generated contract and rmp-serde), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
@@ -282,6 +292,10 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/host-remote`
 
+- Planned retained-resource scope: expose the generic authenticated resource
+  adapter over injected transport; conversation ownership stays in the backend.
+  This extends artifact resolution admission to authenticated pending acquisitions
+  and live grants pinned to the exact artifact, with cancellation on release.
 - Status: implemented (M9).
 - Production deps: `@demicodes/command-loader`, `@demicodes/command-protocol`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the backend's end of a runner — `RemoteHost`, a `Host` over a connection with a jobs facet (stable object across reconnects, logical cwd fallback, injected store), and `RemoteShellEnvironment`, the `ShellEnvironment` of a real host over jobs (the model's view as the record, the working directory carried between execs). The production Host and shell the backend injects into the agent.
@@ -296,8 +310,26 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` with a command alias at `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
 
+### `@demicodes/browser-protocol` (planned)
+
+- Status: design only; the package and dependent manifest changes are not implemented.
+- Production deps: no first-party packages; external: Zod.
+- Owns: browser operation arguments/results, tab/control state, observations,
+  resource event payloads and workpanel input/frame acknowledgement schemas.
+  Generic resource envelopes remain in command-protocol/runner-protocol.
+- Public boundary: platform-neutral schemas and derived types. `coding-agent`
+  uses them to declare CLI commands; backend and web-ui validate browser data;
+  demi-commands generates native bindings at build time.
+- Independence rationale: native commands and web clients need one browser
+  contract without importing the coding harness into UI or UI into the backend.
+- Must not: implement browser operations, transport, components, Host access,
+  process management, or conversation persistence.
+
 ### `@demicodes/command-protocol`
 
+- Planned retained-resource scope: authoritative native resource lifecycle and
+  scoped invocation/event wire schemas, following
+  [Native runtime](demi-next/native-runtime.md#retained-resources).
 - Owns: authoritative Zod command-service wire and native package descriptor
   schemas, derived TypeScript types, protocol constants and package identities.
   Package identities use canonical JSON and SHA-256.
@@ -308,6 +340,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `crates/command-service` (Rust library)
 
+- Planned retained-resource scope: generated lifecycle types, scoped dispatch,
+  cancellation and bounded event transport; no tab, cookie or input policy.
 - Owns: generated command wire/package types and validation, incremental framing,
   HTTP/2 client and server, bounded invocation IO and handler cancellation, and
   the shared invocation edit recorder (`edits`): bounded file snapshots and a
@@ -326,6 +360,10 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `crates/demi-commands` (Rust executable)
 
+- Planned browser scope: `browser/` owns Chromium/driver integration, the canonical
+  tab registry, input arbitration, observations, command operations and resource
+  cleanup. Browser business schemas come from `browser-protocol` and are generated
+  by this crate's build for native consumers; no second Rust schema authority.
 - Owns: the independently released `demi-commands` resident program and all native
   Demi command implementations, including file read/create/edit/patch.
   `coding-agent` owns the TypeScript declarations; backend supplies the runtime
@@ -341,6 +379,9 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `crates/runner` (Rust executable)
 
+- Planned retained-resource scope: `commands/` owns authenticated grants, trusted
+  job association and retained service references; it routes browser operations
+  without implementing them.
 - Owns: the `demi-runner` execution host, backend registration and connection,
   filesystem/process RPC, shell jobs, local command forwarding and installation.
 - `build.rs` consumes the Zod runner-message and manifest definitions from
@@ -370,6 +411,12 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/web-ui`
 
+- Planned browser scope: reusable workpanel browser resources, frame display,
+  input capture/arbitration feedback and mode controls over injected adapters.
+  Add the planned `@demicodes/browser-protocol` dependency and re-export its
+  frontend contracts for product/gallery adapters instead of duplicating schemas.
+  Product and gallery consume the same behavior; see
+  [Workpanel stream](demi-next/browser.md#workpanel-stream).
 - Status: implemented; published to npm as a source-form package (no build step — `.vue`/`.ts`
   source exports compiled by the consumer's bundler, which must handle Vue SFC + TypeScript).
 - Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`, `zod`.
@@ -455,6 +502,21 @@ web-ui -> agent, core, utils
 web-gallery -> web-ui, core, utils
 web -> web-ui, core, utils
 ```
+
+The planned browser contract adds the following dependencies when implemented;
+these are additions to the graph above, not current manifest contents:
+
+```text
+browser-protocol -> none
+coding-agent -> browser-protocol
+backend -> browser-protocol
+web-ui -> browser-protocol
+```
+
+The browser package's registry and this planned extension define the intended
+boundary together. Its implementation checkpoint must fold these edges into the
+main graph and manifests. Native binding generation consumes browser-protocol
+as a build input and adds no first-party Rust runtime dependency.
 
 First-party Rust production dependencies are:
 
