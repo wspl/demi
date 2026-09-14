@@ -94,6 +94,14 @@ pub fn boot() -> io::Result<Boot> {
         libc::MS_NOSUID | libc::MS_NODEV,
         Some("mode=1777"),
     )?;
+    fs::create_dir_all("/dev/shm")?;
+    mount(
+        "shm",
+        "/dev/shm",
+        "tmpfs",
+        libc::MS_NOSUID | libc::MS_NODEV,
+        Some("mode=1777"),
+    )?;
     if unsafe { libc::sethostname(c"demi".as_ptr().cast(), 4) } != 0 {
         return Err(io::Error::last_os_error());
     }
@@ -127,6 +135,7 @@ pub fn boot() -> io::Result<Boot> {
                 ("LANG".into(), "C".into()),
             ]),
             runner: crate::connection::wire::HelloRunner {
+                native_target: Some(crate::commands::native::target().into()),
                 name: "demi".into(),
                 platform: "linux".into(),
                 version: env!("CARGO_PKG_VERSION").into(),

@@ -1,8 +1,8 @@
 # Resource lifecycle coordination
 
-Status: design only. The shared coordinator and browser idle reclamation are not
-implemented. Existing Cloud lifecycle code and `ActivityGate` provide parts of
-the mechanism; their presence does not establish the contract below.
+The backend coordinator owns the shared idle clock. Cloud and conversation
+browser adapters supply activity, eligibility, reservations, and physical cleanup.
+The integration and acceptance section defines the required race checks.
 
 This document owns the common rules for resource use, idle deadlines, transition
 admission, dependency retirement, and coordinator cleanup. Browser policy belongs
@@ -305,7 +305,8 @@ cancels pending acquisitions, and completes or joins transitions under backend
 shutdown policy. Retire dependents before parents, then dispose adapters. A
 callback arriving afterward cannot register a new resource or reset a timer.
 Backend shutdown completion must await owned cleanup and report failures; it
-must not leave detached retirement tasks.
+must not leave detached retirement tasks. A failed owner cleanup does not skip
+the remaining owners; report the failure after those cleanup attempts finish.
 
 The coordinator's admission/transition record is transient. It owns the current
 transition and its scheduling state, not a duplicate `running`/`off` flag.

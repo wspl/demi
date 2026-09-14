@@ -7,15 +7,21 @@ use std::{
 };
 
 use chromiumoxide::{
-    Browser, BrowserConfig, cdp::browser_protocol::target::TargetId, handler::viewport::Viewport,
+    Browser, BrowserConfig,
+    cdp::browser_protocol::target::{GetTargetInfoParams, TargetId},
+    handler::viewport::Viewport,
 };
 use futures_util::StreamExt;
-use tokio::sync::Mutex;
-use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
+use tokio::sync::{Mutex, watch};
+use tokio_util::{
+    sync::CancellationToken,
+    task::{AbortOnDropHandle, TaskTracker},
+};
 
 use super::{
     BrowserError, BrowserTab, Result,
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
+    protocol::BrowserCreatedBy,
     tab::TabState,
 };
 
@@ -28,7 +34,11 @@ pub struct LaunchOptions {
 pub struct BrowserEnvironment {
     browser: Weak<Mutex<Browser>>,
     ended: CancellationToken,
-    tab_locks: Arc<Mutex<HashMap<TargetId, Weak<TabState>>>>,
+    tabs: Arc<Mutex<HashMap<TargetId, BrowserTab>>>,
+    generation: Arc<str>,
+    failure: watch::Receiver<Option<String>>,
+    report_failure: watch::Sender<Option<String>>,
+    observers: TaskTracker,
 }
 
 /// Own Chrome, its event task and its profile until the retained-resource work ends.
@@ -51,14 +61,23 @@ where
     }
     let profile = tempfile::Builder::new().prefix("demi-browser-").tempdir()?;
     let config = BrowserConfig::builder()
+        .respect_https_errors()
+        .surface_invalid_messages()
         .chrome_executable(options.executable)
         .user_data_dir(profile.path())
         .arg("no-startup-window")
+        // Headless automation has no browser toolbar or omnibox. Avoid their
+        // WebUI renderers and preload work, including Chrome's overhead trial.
+        .arg((
+            "disable-features",
+            "InitialWebUI,WebUIToolbarProcessOverheadExperiment,PreloadTopChromeWebUI,WebUIOmniboxPopup,WebUIOmniboxAimPopup",
+        ))
         .viewport(Viewport {
             width: 1280,
             height: 720,
             ..Viewport::default()
         })
+        .launch_timeout(Duration::from_secs(60))
         .request_timeout(Duration::from_secs(30))
         .build()
         .map_err(BrowserError::Configuration)?;
@@ -68,10 +87,15 @@ where
         result = Browser::launch(config) => result?,
     };
     let browser = Arc::new(Mutex::new(browser));
+    let (failure, failure_state) = watch::channel(None);
     let environment = BrowserEnvironment {
         browser: Arc::downgrade(&browser),
         ended: CancellationToken::new(),
-        tab_locks: Arc::new(Mutex::new(HashMap::new())),
+        tabs: Arc::new(Mutex::new(HashMap::new())),
+        generation: uuid::Uuid::new_v4().simple().to_string().into(),
+        failure: failure_state,
+        report_failure: failure.clone(),
+        observers: TaskTracker::new(),
     };
     let ended = environment.ended.clone();
     let _end_on_drop = ended.clone().drop_guard();
@@ -83,16 +107,32 @@ where
             Ok::<_, chromiumoxide::error::CdpError>(())
         }
         .await;
+        if let Err(error) = &result {
+            let message = match error {
+                chromiumoxide::error::CdpError::InvalidMessage(message, source) => {
+                    let diagnostic =
+                        serde_json::from_str::<chromiumoxide::cdp::CdpEventMessage>(message)
+                            .err()
+                            .map(|error| error.to_string())
+                            .unwrap_or_else(|| source.to_string());
+                    format!("browser protocol decoding failed: {diagnostic}")
+                }
+                _ => format!("browser connection ended: {error}"),
+            };
+            failure.send_replace(Some(message));
+        }
         ended.cancel();
         result
     }));
     let outcome = tokio::select! {
         biased;
         _ = stop.cancelled() => Err(BrowserError::Cancelled),
-        _ = environment.ended.cancelled() => Err(BrowserError::Closed),
+        _ = environment.ended.cancelled() => Err(environment.failure().map(BrowserError::Connection).unwrap_or(BrowserError::Closed)),
         result = work(environment.clone()) => result,
     };
     environment.ended.cancel();
+    environment.observers.close();
+    environment.observers.wait().await;
     let cleanup = match retire_browser(&browser, pump).await {
         Ok(()) => profile.close().map_err(BrowserError::from),
         Err(source) => Err(BrowserError::ProfileRetained {
@@ -104,24 +144,44 @@ where
 }
 
 impl BrowserEnvironment {
+    pub(super) fn failure(&self) -> Option<String> {
+        self.failure.borrow().clone()
+    }
     pub async fn open(
         &self,
         url: &str,
         cancellation: &CancellationToken,
         timeout: Duration,
     ) -> Result<BrowserTab> {
+        self.open_for(url, "native", cancellation, timeout).await
+    }
+
+    pub(super) async fn open_for(
+        &self,
+        url: &str,
+        caller: &str,
+        cancellation: &CancellationToken,
+        timeout: Duration,
+    ) -> Result<BrowserTab> {
         let operation = Operation::new(&self.ended, cancellation, timeout);
         operation
             .run(async {
+                let mut registry = self.tabs.lock().await;
                 let page = self
                     .browser
                     .upgrade()
                     .ok_or(BrowserError::Closed)?
                     .lock()
                     .await
-                    .new_page(url)
+                    .new_page("about:blank")
                     .await?;
-                Ok(self.tab(page).await)
+                let created_by = serde_json::from_value(
+                    serde_json::json!({ "kind": "agent", "nodeId": caller }),
+                )
+                .map_err(|error| BrowserError::Configuration(error.to_string()))?;
+                let tab = self.tab(&mut registry, page, Some(created_by)).await?;
+                tab.page.goto(url).await?;
+                Ok(tab)
             })
             .await
     }
@@ -134,6 +194,7 @@ impl BrowserEnvironment {
         let operation = Operation::new(&self.ended, cancellation, timeout);
         operation
             .run(async {
+                let mut registry = self.tabs.lock().await;
                 let pages = self
                     .browser
                     .upgrade()
@@ -142,28 +203,63 @@ impl BrowserEnvironment {
                     .await
                     .pages()
                     .await?;
+                let live: Vec<_> = pages.iter().map(|page| page.target_id().clone()).collect();
+                registry.retain(|target, _| live.contains(target));
                 let mut tabs = Vec::with_capacity(pages.len());
                 for page in pages {
-                    tabs.push(self.tab(page).await);
+                    tabs.push(self.tab(&mut registry, page, None).await?);
                 }
                 Ok(tabs)
             })
             .await
     }
 
-    /// Share the operation gate for every handle to the same live CDP target.
-    async fn tab(&self, page: chromiumoxide::Page) -> BrowserTab {
-        let mut locks = self.tab_locks.lock().await;
-        locks.retain(|_, lock| lock.strong_count() != 0);
-        let lock = locks
-            .get(page.target_id())
-            .and_then(Weak::upgrade)
-            .unwrap_or_else(|| {
-                let lock = Arc::new(TabState::default());
-                locks.insert(page.target_id().clone(), Arc::downgrade(&lock));
-                lock
-            });
-        BrowserTab::new(page, self.browser.clone(), self.ended.clone(), lock)
+    /// Reconcile pages into the one registry, retaining their operation gates and refs.
+    async fn tab(
+        &self,
+        tabs: &mut HashMap<TargetId, BrowserTab>,
+        page: chromiumoxide::Page,
+        created_by: Option<BrowserCreatedBy>,
+    ) -> Result<BrowserTab> {
+        if let Some(tab) = tabs.get(page.target_id()) {
+            return Ok(tab.clone());
+        }
+        let created_by = match created_by {
+            Some(value) => value,
+            None => {
+                let info = page
+                    .execute(
+                        GetTargetInfoParams::builder()
+                            .target_id(page.target_id().clone())
+                            .build(),
+                    )
+                    .await?
+                    .result
+                    .target_info;
+                let opener = info.opener_id.ok_or_else(|| {
+                    BrowserError::InvalidResult("unregistered browser page has no opener".into())
+                })?;
+                serde_json::from_value(serde_json::json!({ "kind": "page", "opener": format!("{}-{}", self.generation, opener.as_ref()) }))
+                    .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
+            }
+        };
+        let state = TabState::observe(
+            &page,
+            self.ended.clone(),
+            &self.observers,
+            self.report_failure.clone(),
+        )
+        .await?;
+        let tab = BrowserTab::new(
+            page,
+            self.browser.clone(),
+            self.ended.clone(),
+            state,
+            self.generation.clone(),
+            created_by,
+        );
+        tabs.insert(tab.page.target_id().clone(), tab.clone());
+        Ok(tab)
     }
 }
 

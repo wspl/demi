@@ -21,6 +21,7 @@ async fn filesystem_requests_and_kill_remain_available_during_job() {
         host.handle_task(
             &Inbound::JobStart {
                 manifest_hash: None,
+                resources: None,
                 job_id: "live".into(),
                 script: "sleep 60".into(),
                 cwd: root.path().to_string_lossy().into_owned(),
@@ -92,6 +93,7 @@ async fn job_environment_combines_device_request_and_owned_context() {
         host.handle_task(
             &Inbound::JobStart {
                 manifest_hash: None,
+                resources: None,
                 job_id: "env".into(),
                 script: "printf '%s:%s:%s' \"$DEVICE\" \"$OVERRIDE\" \"$CONTEXT\"".into(),
                 cwd: root.path().to_string_lossy().into_owned(),

@@ -74,6 +74,9 @@ pub(super) fn execute(
         let (output, mut records) = Output::channel(cancellation.clone());
         let invocation = commands.dispatcher.invoke(InvocationContext {
             request: Invocation {
+                caller: None,
+                resource: None,
+                json: None,
                 edits: None,
                 operation: "raw".into(),
                 invocation_id: uuid::Uuid::new_v4().simple().to_string(),

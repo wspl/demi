@@ -420,7 +420,7 @@ export class RunnerRegistry {
       this.conversationOfHost.set(host, conversationId)
       const connection = this.connections.get(workspace.deviceId)
       if (connection)
-        host.attach((message) => connection.send(message))
+        host.attach((message) => connection.send(message), undefined, connection.runner?.nativeTarget)
     }
     return host
   }
@@ -829,7 +829,8 @@ export class RunnerRegistry {
       for (const host of deviceHosts.values())
         host.attach(
           (message) => connection.send(message),
-          connection.runner?.identity
+          connection.runner?.identity,
+          connection.runner?.nativeTarget,
         )
     }
     if (this.pingIntervalMs > 0 && connection.pingTimer === null) {

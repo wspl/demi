@@ -1,4 +1,6 @@
 import { ActivityGate, errorMessage, noop, withTimeout } from '@demicodes/utils'
+import { LifecycleCoordinator, type Retirement } from '../lifecycle/coordinator'
+import type { CloudConversationReservation } from './conversations'
 import { generateDeviceToken, hashDeviceToken } from '../runner/claim-codes'
 import type { RunnerRegistry } from '../runner/registry'
 import type {
@@ -41,11 +43,12 @@ export interface ManagedHostsOptions {
   provisioner: ManagedHostProvisioner
   backendUrl: () => string
   turnInFlight: (userId: string) => Promise<boolean>
-  reserveIdle: (userId: string) => Promise<(() => void) | null>
-  interrupt: (userId: string) => Promise<() => void>
+  observeActivity: (userId: string, changed: (demand?: boolean) => void) => () => void
+  reserveConversations: (userId: string, reason: 'idle' | 'reset') => Promise<CloudConversationReservation | null>
   config?: Partial<ManagedHostsConfig>
   log?: (line: string) => void
   now?: () => number
+  lifecycle?: LifecycleCoordinator
 }
 export class ManagedHostError extends Error {
   constructor(
@@ -68,7 +71,8 @@ interface Machine {
   resetOperation: ManagedOperation | null
   deaths: number[]
   startedAt: number
-  idleSince: number | null
+  stopIdle: (() => void) | null
+  stopMaintenance: () => void
   checkpointAt: number
   error: string | null
 }
@@ -82,17 +86,14 @@ export class ManagedHosts {
   private readonly machines = new Map<string, Machine>()
   private readonly now: () => number
   private readonly log: (line: string) => void
-  private readonly timer: ReturnType<typeof setInterval>
-  private sweeping = false
+  private readonly lifecycle: LifecycleCoordinator
   private closed = false
 
   constructor(private readonly options: ManagedHostsOptions) {
     this.config = { ...DEFAULT_MANAGED_HOSTS_CONFIG, ...options.config }
-    this.now = options.now ?? Date.now
+    this.now = options.now ?? (() => performance.now())
     this.log = options.log ?? console.warn
-    this.timer = setInterval(() => {
-      void this.sweep().catch(error => this.log(errorMessage(error)))
-    }, this.config.sweepMs)
+    this.lifecycle = options.lifecycle ?? new LifecycleCoordinator(this.now, this.log)
     options.provisioner.onDeath(id => {
       const machine = this.machines.get(id)
       if (!machine ||
@@ -102,6 +103,8 @@ export class ManagedHosts {
       }
       machine.deaths.push(this.now())
       machine.state = 'off'
+      machine.stopIdle?.()
+      machine.stopIdle = null
       this.options.registry.disconnect(id)
     })
   }
@@ -121,11 +124,14 @@ export class ManagedHosts {
         resetOperation: null,
         deaths: [],
         startedAt: 0,
-        idleSince: null,
+        stopIdle: null,
+        stopMaintenance: noop,
         checkpointAt: 0,
         error: null,
       }
       this.machines.set(device.id, machine)
+      const registered = machine
+      registered.stopMaintenance = this.lifecycle.periodic(this.config.sweepMs, () => this.maintain(registered))
     }
     return machine
   }
@@ -187,6 +193,7 @@ export class ManagedHosts {
     try {
       await this.bootRunner(machine)
       machine.state = 'running'
+      this.trackIdle(machine)
     } catch (error) {
       machine.state = 'off'
       throw error
@@ -213,7 +220,6 @@ export class ManagedHosts {
       const startedAt = this.now()
       machine.startedAt = startedAt
       machine.checkpointAt = startedAt
-      machine.idleSince = null
     } catch (error) {
       // Preserve the original failure if best-effort disk saving also fails.
       await this.options.provisioner
@@ -259,7 +265,24 @@ export class ManagedHosts {
     if (!release) {
       throw new ManagedHostError('unavailable', 'Cloud is changing state')
     }
-    machine.idleSince = null
+    return release
+  }
+
+  /** Borrow a proven device reservation or take non-demand admission without waking it. */
+  maintenance(deviceId: string, reservation?: () => void): () => void {
+    const machine = this.machines.get(deviceId)
+    if (!machine || !this.options.registry.deviceIdentity(deviceId))
+      throw new ManagedHostError('unavailable', 'Cloud generation is unavailable')
+    if (reservation) {
+      if (!machine.activity.holdsReservation(reservation))
+        throw new ManagedHostError('unavailable', 'Cloud cleanup reservation has ended')
+      return noop
+    }
+    if (machine.state !== 'running' || machine.resetTask)
+      throw new ManagedHostError('unavailable', 'Cloud is changing state')
+    const release = machine.activity.tryEnter('maintenance')
+    if (!release)
+      throw new ManagedHostError('unavailable', 'Cloud is changing state')
     return release
   }
 
@@ -268,6 +291,10 @@ export class ManagedHosts {
     if (!machine) {
       return
     }
+    await this.hibernateIdleMachine(machine)
+  }
+
+  private async hibernateReserved(machine: Machine): Promise<void> {
     if (machine.transitionTask) {
       await machine.transitionTask
     }
@@ -421,7 +448,7 @@ export class ManagedHosts {
     operation: ManagedOperation
   ): Promise<void> {
     let releaseMachine: (() => void) | undefined
-    let releaseTrees: (() => void) | undefined
+    let conversations: CloudConversationReservation | null = null
     const recordPhase = async (
       phase: ManagedOperation['phase'],
       error: string | null = null
@@ -439,14 +466,14 @@ export class ManagedHosts {
         await machine.transitionTask.catch(noop)
       }
       machine.state = 'resetting'
-      releaseTrees = await this.options.interrupt(machine.device.userId)
+      conversations = await this.options.reserveConversations(machine.device.userId, 'reset')
+      if (!conversations) throw new Error('Cloud reset could not reserve its conversations')
+      releaseMachine = await machine.activity.reserve(AbortSignal.timeout(30_000))
+      await conversations.retire(releaseMachine)
       await this.options.registry
         .sync(machine.device.id, this.config.syncTimeoutMs)
         .catch(error => this.log(errorMessage(error)))
       this.options.registry.disconnect(machine.device.id)
-      releaseMachine = await machine.activity.reserve(
-        AbortSignal.timeout(30_000)
-      )
 
       await recordPhase('saving')
       await this.options.provisioner.hibernate(machine.device.id)
@@ -467,6 +494,7 @@ export class ManagedHosts {
       await this.bootRunner(machine)
       await recordPhase('ready')
       machine.state = 'running'
+      this.trackIdle(machine)
     } catch (error) {
       // Preserve the original failure if best-effort disk saving also fails.
       await this.options.provisioner
@@ -478,7 +506,7 @@ export class ManagedHosts {
       await recordPhase('failed', machine.error)
     } finally {
       releaseMachine?.()
-      releaseTrees?.()
+      conversations?.release()
     }
   }
 
@@ -515,60 +543,79 @@ export class ManagedHosts {
     }
   }
 
-  async sweep(): Promise<void> {
-    if (this.sweeping || this.closed) {
-      return
-    }
-    this.sweeping = true
-    try {
-      for (const machine of this.machines.values()) {
-        if (machine.state !== 'running' || machine.resetTask) {
-          continue
+  private trackIdle(machine: Machine): void {
+    machine.stopIdle?.()
+    machine.stopIdle = this.lifecycle.idle({
+      idleMs: this.config.idleMs,
+      pollMs: this.config.sweepMs,
+      demand: () => machine.activity.demandActive,
+      eligible: async () => machine.state === 'running' && !machine.resetTask &&
+        !machine.activity.demandActive && !this.options.registry.runningJobs(machine.device.id) &&
+        !await this.options.turnInFlight(machine.device.userId),
+      observe: changed => {
+        const device = machine.activity.subscribe(changed)
+        const conversations = this.options.observeActivity(machine.device.userId, changed)
+        return () => {
+          device()
+          conversations()
         }
-        const now = this.now()
-        const turnInFlight = await this.options.turnInFlight(
-          machine.device.userId
-        )
-        const runningJobs = this.options.registry.runningJobs(machine.device.id)
-        if (turnInFlight || runningJobs || machine.activity.active) {
-          machine.idleSince = null
-        } else {
-          machine.idleSince ??= now
-        }
-        const idleTimeoutReached = machine.idleSince !== null &&
-          now - machine.idleSince >= this.config.idleMs
-        const hardCapReached = !turnInFlight &&
-          now - machine.startedAt >= this.config.hardCapMs
-        if (idleTimeoutReached || hardCapReached) {
-          await this.hibernateIdleMachine(machine)
-        } else if (now - machine.checkpointAt >= this.config.checkpointIntervalMs) {
-          await this.checkpointMachine(machine, now)
-        }
+      },
+      reserve: () => this.reserveRetirement(machine),
+    })
+  }
+
+  private async maintain(machine: Machine): Promise<void> {
+    if (this.closed || machine.state !== 'running' || machine.resetTask || machine.transitionTask) return
+    const now = this.now()
+    if (now - machine.startedAt >= this.config.hardCapMs &&
+      !await this.options.turnInFlight(machine.device.userId)) {
+      await this.hibernateIdleMachine(machine)
+    } else if (now - machine.checkpointAt >= this.config.checkpointIntervalMs) {
+      const release = machine.activity.tryEnter('maintenance')
+      if (!release) return
+      const checkpoint = this.checkpointMachine(machine, now)
+      machine.transitionTask = checkpoint
+      try {
+        await checkpoint
+      } finally {
+        if (machine.transitionTask === checkpoint) machine.transitionTask = null
+        release()
       }
-    } finally {
-      this.sweeping = false
+    }
+  }
+
+  private async reserveRetirement(machine: Machine): Promise<Retirement | null> {
+    const releaseMachine = machine.activity.tryReserve()
+    if (!releaseMachine) return null
+    try {
+      const conversations = await this.options.reserveConversations(machine.device.userId, 'idle')
+      if (!conversations) {
+        releaseMachine()
+        return null
+      }
+      return {
+        run: async () => {
+          await conversations.retire(releaseMachine)
+          await this.hibernateReserved(machine)
+        },
+        release: () => {
+          conversations.release()
+          releaseMachine()
+        },
+      }
+    } catch (error) {
+      releaseMachine()
+      throw error
     }
   }
 
   private async hibernateIdleMachine(machine: Machine): Promise<void> {
-    const releaseMachine = machine.activity.tryReserve()
-    if (!releaseMachine) {
-      return
-    }
-
+    const retirement = await this.reserveRetirement(machine)
+    if (!retirement) return
     try {
-      const releaseTrees = await this.options.reserveIdle(machine.device.userId)
-      if (!releaseTrees) {
-        return
-      }
-
-      try {
-        await this.hibernate(machine.device.id)
-      } finally {
-        releaseTrees()
-      }
+      await retirement.run()
     } finally {
-      releaseMachine()
+      retirement.release()
     }
   }
 
@@ -588,7 +635,11 @@ export class ManagedHosts {
 
   async close(): Promise<void> {
     this.closed = true
-    clearInterval(this.timer)
+    for (const machine of this.machines.values()) {
+      machine.stopIdle?.()
+      machine.stopMaintenance()
+    }
+    if (!this.options.lifecycle) await this.lifecycle.close()
     // Reset failures are already recorded and logged by the reset task owner.
     for (const machine of this.machines.values()) {
       await machine.resetTask?.catch(noop)

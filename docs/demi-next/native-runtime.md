@@ -276,7 +276,7 @@ replacement of an executable serving an existing context.
 
 ## Retained resources
 
-Planned extension; not implemented. A native operation can create a live resource
+A native operation can create a live resource
 that must survive the shell job that created it. For example, a conversation's
 browser must keep its tabs between agent turns. An explicit resource owner keeps
 the resident service alive; no fake long-running invocation is required.
@@ -298,6 +298,23 @@ The protocol must carry these distinct operations and acknowledgements:
 | Invoke/subscribe | Address a grant through the authenticated Host adapter; carry validated operation input, cancellation and bounded output/events |
 | Release | Stop admission, cancel resource calls/subscriptions, release resource state and acknowledge completion; repeated release of the same retired grant is harmless |
 | Lost | Report an ended connection, failed service or retired generation; invalidate every affected handle without replay |
+
+The native service exposes `POST /v1/resource` using the invocation framing,
+bounded output, and cancellation contract below. Its operation is `acquire`,
+`release`, or `status`; its trusted `resource` field contains `{id, kind}`.
+These operations are not declared commands and the local command client cannot
+invoke this endpoint on the native service. Acquire initializes a dormant owner;
+domain startup may remain lazy. Status returns `{state: "ready" | "released"}`.
+Release and service shutdown await domain cleanup. An unknown released ID is
+harmless to release but cannot be invoked or recreated under that same grant.
+
+A native command binding may require a `resource` kind. Authenticated runner
+messages acquire grants against an owner and exact package descriptor, bind
+their IDs to a job, and release them. The runner validates every job binding and
+injects the matching `{id, kind}` into native invocation metadata. Raw argv and
+forwarded environment cannot supply this field. Invocations also carry their
+requested JSON output mode, so native output uses the same declared result
+schema as the dispatcher.
 
 The native package owns the resource's domain state and cleanup. Runner and the
 shared SDK own grant routing, service references, cancellation and transport.
@@ -509,7 +526,7 @@ constraints without a second manually maintained definition.
 | --- | --- |
 | `packages/runner-protocol/src/schemas.ts` — runner messages | `crates/runner/build.rs` |
 | `packages/command-loader/src/manifest/schema.ts` — manifests | `crates/runner/build.rs` |
-| Planned `packages/browser-protocol` — browser business schemas | `crates/demi-commands/build.rs` |
+| `packages/browser-protocol` — browser business schemas | `crates/demi-commands/build.rs` |
 | `packages/command-protocol/src/index.ts` — native wire and descriptors | `crates/command-service/build.rs` |
 
 Cargo transforms the schema into boundary validation during the build:

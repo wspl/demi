@@ -15,10 +15,7 @@ export async function collectReleaseFiles(directory: string, executable: string)
   for (const target of NATIVE_TARGETS) {
     const name = `${executable}${target.includes('windows') ? '.exe' : ''}`
     const source = join(directory, target, 'release', name)
-    const bytes = await readFile(source)
-    if (bytes.length === 0)
-      throw new Error(`Empty native artifact: ${source}`)
-    const artifact = { sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length }
+    const artifact = await fileArtifact(source)
     targets[target] = artifact
     files.push({ source, relativePath: join(target, name), artifact })
   }
@@ -71,8 +68,14 @@ export async function writeReleasePointer(path: string, metadata: string): Promi
 }
 
 async function verifyArtifact(path: string, expected: NativeArtifact): Promise<void> {
-  const bytes = await readFile(path)
-  const sha256 = createHash('sha256').update(bytes).digest('hex')
-  if (bytes.length !== expected.size || sha256 !== expected.sha256)
+  const actual = await fileArtifact(path)
+  if (actual.size !== expected.size || actual.sha256 !== expected.sha256)
     throw new Error(`Native artifact changed or is corrupt: ${path}`)
+}
+
+/** Measure the exact bytes published or installed as a native release artifact. */
+export async function fileArtifact(path: string): Promise<NativeArtifact> {
+  const bytes = await readFile(path)
+  if (bytes.length === 0) throw new Error(`Empty native artifact: ${path}`)
+  return { sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length }
 }

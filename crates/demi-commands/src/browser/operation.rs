@@ -13,14 +13,26 @@ pub type Result<T> = std::result::Result<T, BrowserError>;
 pub enum BrowserError {
     #[error("browser environment is closed")]
     Closed,
+    #[error("{0}")]
+    Connection(String),
     #[error("browser operation was cancelled")]
     Cancelled,
     #[error("browser operation exceeded its deadline")]
     Timeout,
     #[error("another operation owns this browser tab")]
     Busy,
+    #[error(
+        "browser action is blocked by a JavaScript dialog; inspect and handle the dialog before continuing"
+    )]
+    DialogBlocked,
+    #[error("the browser tab has no JavaScript dialog")]
+    DialogNotFound,
+    #[error("this action is not valid for the current JavaScript dialog")]
+    InvalidDialogAction,
     #[error("browser target matched {0} elements; exactly one is required")]
     Ambiguous(usize),
+    #[error("browser node reference is stale or belongs to another tab")]
+    StaleReference,
     #[error("browser result is not representable as JSON: {0}")]
     InvalidResult(String),
     #[error("invalid browser configuration: {0}")]
