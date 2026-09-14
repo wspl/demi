@@ -19,6 +19,7 @@ pub struct ExecutionContext {
     pub manifest: Arc<Manifest>,
     pub cancel: CancellationToken,
     pub edits: OnceLock<demi_command_service::protocol::EditContext>,
+    pub resources: OnceLock<Vec<demi_command_service::protocol::NativeResourceGrant>>,
     aliases: tempfile::TempDir,
 }
 
@@ -152,6 +153,7 @@ impl Contexts {
             manifest,
             cancel: CancellationToken::new(),
             edits: OnceLock::new(),
+            resources: OnceLock::new(),
             aliases,
         });
         let mut state = self.state.lock().unwrap();

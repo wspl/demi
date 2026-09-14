@@ -21,6 +21,7 @@ export interface RemoteShellEnvironmentContext {
   commandStorage(signal?: AbortSignal): CommandStorage
   shell: ShellEnvironmentOptions
   retainEdits?: RemoteShellEnvironmentOptions['retainEdits']
+  runJob?: RemoteShellEnvironmentOptions['runJob']
 }
 
 export function createRemoteShellEnvironmentFactory(options: RemoteShellEnvironmentFactoryOptions) {
@@ -40,6 +41,7 @@ export function createRemoteShellEnvironmentFactory(options: RemoteShellEnvironm
       host: context.host,
       commandStorage: context.commandStorage,
       retainEdits: context.retainEdits,
+      runJob: context.runJob,
       commands: { manifest, resolveArtifact: options.resolveArtifact },
     })
   }

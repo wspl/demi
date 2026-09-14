@@ -114,6 +114,7 @@ export class AgentServer {
   private readonly store: (rootSessionId: string) => AgentTreeStore<unknown>
   private readonly bindings = new Set<AgentTransportBindingImpl>()
   private readonly activities = new Map<string, ActivityGate>()
+  private readonly activityObservers = new Set<(rootSessionId: string, active: boolean) => void>()
   private readonly sessionOwnership = new SessionOwnershipRegistry()
 
   constructor(options: AgentServerOptions) {
@@ -195,11 +196,25 @@ export class AgentServer {
     return this.activity(rootSessionId).active
   }
 
+  observeTreeActivity(rootSessionId: string, changed: () => void): () => void {
+    return this.activity(rootSessionId).subscribe(changed)
+  }
+
+  observeActivity(changed: (rootSessionId: string, active: boolean) => void): () => void {
+    this.activityObservers.add(changed)
+    return () => { this.activityObservers.delete(changed) }
+  }
+
   private activity(rootSessionId: string): ActivityGate {
     let gate = this.activities.get(rootSessionId)
     if (!gate) {
       gate = new ActivityGate();
       this.activities.set(rootSessionId, gate)
+      const activity = gate
+      gate.subscribe(() => {
+        for (const observer of this.activityObservers)
+          observer(rootSessionId, activity.demandActive)
+      })
     }
     return gate
   }

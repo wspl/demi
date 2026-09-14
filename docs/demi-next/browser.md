@@ -1,10 +1,10 @@
 # Conversation browser
 
-Status: product capability not yet available. Native driver primitives exist;
-conversation integration remains unimplemented. This document defines intended
-behavior, command contracts, and acceptance requirements. Example output is illustrative,
-not evidence that these commands exist. Implementation prerequisites are recorded
-at the end of this document.
+The native command path, retained conversation ownership, semantic targeting,
+and idle retirement are implemented. The implementation scope at the end of this
+document identifies the available command families. Other command examples define
+intended extensions; they are not advertised by the current command catalog.
+Platform delivery and acceptance are required before enabling a deployed release.
 
 This is the authoritative browser design. Command dispatch, Host admission,
 native service ownership, and package boundaries retain their existing owners.
@@ -247,7 +247,23 @@ through the installer lifecycle. Fixed versions require a maintained update
 process; they are not a promise to keep an old browser indefinitely. The first
 version pin and installer/image implementation remain delivery prerequisites.
 
+The first release pins Chrome for Testing `153.0.8010.36`. Its release record
+contains official archive URLs, exact sizes and SHA-256 digests for supported
+platforms. The native browser owner installs and verifies that release lazily
+before its first open. Installation is shared across conversation profiles;
+the guest image preinstalls the same verified archive and its Linux system libraries.
+On Unix, the owner first checks the pinned installation under `/opt/demi/browsers`;
+otherwise it installs under the Host user's `.demi/browsers`. Both locations use
+the same receipt and executable integrity checks; an invalid installation fails
+without falling back to another location. An unsupported
+platform fails explicitly rather than using a different browser.
+
 ### Native driver
+
+Chrome runs headlessly. Its browser toolbar, address-bar WebUI, and their preload
+and process-overhead experiments are disabled: these internal interfaces are not
+agent pages and must not consume renderers while an agent opens its application.
+Page rendering and Chrome's sandbox remain enabled.
 
 The Rust browser module in `demi-commands` uses chromiumoxide for Chrome process
 integration, typed CDP calls, page handles, and event decoding. Demi owns semantic
@@ -308,6 +324,19 @@ Chrome for Testing and its driver run on the selected Host. The debugging
 connection is not exposed directly to the public network or the Demi web app.
 
 ### Retained resource ownership
+
+The native resource kind is `browser`. Before starting an agent shell job, the
+backend binds the current conversation's resource through `withHost` and keeps
+the job's Host admission until the job and output cleanup finish. Root and child
+jobs receive the same conversation owner; attached-Host jobs do not receive its
+browser grant. Grant acquisition does not start Chrome or download it. Commands
+declare their required resource kind and runner supplies the trusted binding.
+
+After a job ends, the backend checks the resource status. Explicit last-tab
+closure has already stopped the browser and marks that grant released; the
+backend then drops its retained reference. Later commands in the old job cannot
+restart it. A new shell call may obtain a new resource. Idle and target lifecycle
+retirement use the same release operation and never require a synthetic job.
 
 A native service ordinarily survives only while something owns it. Browser
 continuity between shell jobs therefore requires a conversation-owned retained
@@ -470,15 +499,23 @@ Define these initial protocol defaults once in the browser contract:
 
 | Setting | Default or limit |
 | --- | --- |
-| Ordinary action/read timeout | 10 seconds |
-| Navigation, wait, download, and export timeout | 30 seconds |
-| Explicit `--timeout` | Milliseconds, 1–120000; no indefinite waits |
+| Open, including browser installation/startup and first navigation | 5 minutes |
+| Page actions, reads, navigation, waits, downloads, and exports | 30 seconds |
+| Explicit `--timeout` | Milliseconds, 1–300000; no indefinite waits |
+| Chrome process startup ceiling | 60 seconds; the invoking command can time out earlier |
 | Inline inspect/find/content text | 64 KiB, with explicit truncation |
 | List `--limit` | Default 100, maximum 1000 |
 | One `content fetch` | At most 10 URLs |
 | CDP event buffer per tab | At most 10000 events and 8 MiB, whichever comes first |
 | Console buffer per tab | At most 1000 entries and 1 MiB |
 | Finite text/JSON stdin | At most 1 MiB; binary clipboard input is not text |
+
+A command has one deadline across startup, registry lookup, page work and result
+collection. It does not restart the budget between those steps. On expiry, cancel
+further work and await bounded input and file cleanup before returning the timeout.
+The longer `open` default also covers a cold Host. All later commands use the
+same 30-second default, including clicks that wait for navigation. An explicit
+`--timeout` replaces the default for the whole call.
 
 Text truncation is explicit. Truncated JSON results remain complete valid JSON
 and contain `truncated: true`. If an atomic result cannot be represented within
@@ -1468,30 +1505,29 @@ and isolated storage. Never run tests that call real models.
 
 ### Deferred decisions and implementation status
 
-The native driver foundation implements scoped Chrome ownership, bounded CDP
-events, per-tab operation exclusion, CSS actionability waiting, text filling,
-read-only evaluation, and screenshots. These are internal Rust
-primitives, not declared agent commands or a public transport. The installer must
-supply a verified Chrome executable before production use.
+The current command catalog exposes these families:
 
-Conversation grants, the canonical public tab registry, semantic references and
-locators, command declarations, idle reclamation, and retained-resource
-integration are not implemented. Native primitives do not establish paired-device
-or Cloud product acceptance.
-The checks above are acceptance requirements, not completed results.
+| Family | Available commands |
+| --- | --- |
+| Navigation and ownership | `open`, `tabs`, `info`, `goto`, `back`, `forward`, `reload`, `history`, `close` |
+| Observation | `inspect`, `find`, `read`, `screenshot`, enforced read-only `eval` |
+| Page input | `click`, `move`, `scroll`, `fill`, `type`, `key`, `check`, `select`, `wait` |
+| Viewport and dialogs | `viewport set/reset`, `dialog inspect/accept/dismiss` |
+| Content and capability discovery | `content read`, `capabilities` |
 
-Resolve these prerequisites before implementing their dependent behavior:
+The shared browser schema is the argument/result authority for these declarations
+and their generated native bindings. Help exposes only implemented arguments.
+The broader reference also describes optional extensions, including upload,
+download, clipboard, drag, CDP debugging, page tools, assets, and cross-origin
+frame targeting. Those extensions are not present in the current catalog.
 
-| Decision | Required outcome | Blocks |
-| --- | --- | --- |
-| Driver integration | chromiumoxide is selected; implement the native driver contract, semantic targeting, actionability, and enforced read-only evaluation; establish platform support | Native browser commands |
-| Browser delivery | Chrome for Testing is selected; choose the first version pin and implement installation, verification, updates, and reclamation under the distribution contract above | Runtime delivery |
-| Lifecycle integration | Implement the shared coordinator and its Cloud/browser adapters under the lifecycle contract | Idle and dependent-resource reclamation |
-| Retained-resource wire | Add trusted grant acquisition, job association, release, and cleanup acknowledgement to the native/runner schemas | Continuity across shell jobs |
-| Optional adapters | Select and validate any page tools or site-specific exports included in the release | Corresponding capabilities |
+Chrome for Testing delivery is pinned by the release record. An unsupported Host
+platform fails explicitly. A six-target runner build does not imply that Chrome
+is available on every one of those targets. Platform execution and Cloud-image
+acceptance remain release gates, as specified above.
 
-These are implementation prerequisites, not runtime choices for the agent.
-Features may land in separate checkpoints, but unavailable capabilities must
-not be advertised. Using Codex as a capability reference is not a guarantee
-of parity with every Codex product feature, such as personal browser management
-or locally executing browser tabs.
+Conversation grants, native acquisition and loss messages, job resource bindings,
+shared Cloud/browser idle scheduling, and cleanup through reserved Host access
+are part of the command path. Optional capabilities can land separately, but
+unavailable capabilities must not be advertised. Workpanel display remains out
+of scope.

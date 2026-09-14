@@ -3,61 +3,61 @@ import { abortable, throwIfAborted } from './errors'
 
 /** Concurrent operations with an exclusive, cancellable admission barrier. */
 export class ActivityGate {
-  private readers = 0
-  private reserved = false
+  private readonly leases = new Map<() => void, 'demand' | 'maintenance'>()
+  private reservation: (() => void) | undefined
+  private readonly listeners = new Set<() => void>()
   private changed = deferred<void>()
 
   get active(): boolean {
-    return this.readers > 0
+    return this.leases.size > 0
   }
 
-  async enter(signal?: AbortSignal): Promise<() => void> {
-    while (this.reserved) await this.wait(signal)
+  get demandActive(): boolean {
+    return [...this.leases.values()].includes('demand')
+  }
+
+  /** Observe ordered admission changes without acquiring activity. */
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+
+  /** Verify an existing exclusive reservation before borrowing it for cleanup. */
+  holdsReservation(release: () => void): boolean {
+    return this.reservation === release
+  }
+
+  async enter(signal?: AbortSignal, purpose: 'demand' | 'maintenance' = 'demand'): Promise<() => void> {
+    while (this.reservation) await this.wait(signal)
     if (signal)
       throwIfAborted(signal)
-    this.readers++
-    return this.once(() => {
-      this.readers--;
-      this.notify()
-    })
+    return this.admit(purpose)
   }
 
   /**
    * Admits immediately, or refuses while an exclusive transition owns the gate.
    */
-  tryEnter(): (() => void) | null {
-    if (this.reserved)
+  tryEnter(purpose: 'demand' | 'maintenance' = 'demand'): (() => void) | null {
+    if (this.reservation)
       return null
-    this.readers++
-    return this.once(() => {
-      this.readers--;
-      this.notify()
-    })
+    return this.admit(purpose)
   }
 
   /** Reserves only an idle gate, synchronously with respect to new entrants. */
   tryReserve(): (() => void) | null {
-    if (this.reserved || this.readers > 0)
+    if (this.reservation || this.active)
       return null
-    this.reserved = true
-    return this.once(() => {
-      this.reserved = false;
-      this.notify()
-    })
+    return this.claim()
   }
 
   /** Stops new entrants, then waits for admitted operations to finish. */
   async reserve(signal?: AbortSignal): Promise<() => void> {
-    while (this.reserved) await this.wait(signal)
+    while (this.reservation) await this.wait(signal)
     if (signal)
       throwIfAborted(signal)
-    this.reserved = true
-    const release = this.once(() => {
-      this.reserved = false;
-      this.notify()
-    })
+    const release = this.claim()
     try {
-      while (this.readers > 0) await this.wait(signal)
+      while (this.active) await this.wait(signal)
       return release
     } catch (error) {
       release();
@@ -75,15 +75,34 @@ export class ActivityGate {
     const changed = this.changed
     this.changed = deferred<void>()
     changed.resolve()
-  }
-
-  private once(action: () => void): () => void {
-    let done = false
-    return () => {
-      if (!done) {
-        done = true;
-        action()
+    for (const listener of this.listeners) {
+      try {
+        listener()
+      } catch (error) {
+        // Observers cannot roll back admission or prevent other leases releasing.
+        console.error('Activity observer failed', error)
       }
     }
+  }
+
+  private admit(purpose: 'demand' | 'maintenance'): () => void {
+    const release = () => {
+      if (!this.leases.delete(release)) return
+      this.notify()
+    }
+    this.leases.set(release, purpose)
+    this.notify()
+    return release
+  }
+
+  private claim(): () => void {
+    const release = () => {
+      if (this.reservation !== release) return
+      this.reservation = undefined
+      this.notify()
+    }
+    this.reservation = release
+    this.notify()
+    return release
   }
 }

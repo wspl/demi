@@ -35,6 +35,7 @@ export type NativePackage = z.infer<typeof nativePackageSchema>
 export const nativeBindingSchema = z.object({
   package: nativePackageIdSchema,
   operation: z.string().min(1),
+  resource: z.string().min(1).optional(),
 }).strict()
 export type NativeBinding = z.infer<typeof nativeBindingSchema>
 
@@ -77,7 +78,26 @@ export const MAX_RECORD_BYTES = 64 * 1024
 export const MAX_INVOCATIONS = 32
 export const INFO_PATH = '/v1/info'
 export const INVOKE_PATH = '/v1/invoke'
+export const RESOURCE_PATH = '/v1/resource'
 export const SHUTDOWN_PATH = '/v1/shutdown'
+
+/** Runner-issued scope; external command clients cannot choose it. */
+export const nativeResourceScopeSchema = z.strictObject({
+  id: z.string().min(1).max(128),
+  kind: z.string().min(1).max(128),
+})
+export type NativeResourceScope = z.infer<typeof nativeResourceScopeSchema>
+
+/** A retained service reference pinned to an application owner and package. */
+export const nativeResourceGrantSchema = z.strictObject({
+  scope: nativeResourceScopeSchema,
+  descriptorHash: artifactDigestSchema,
+})
+export type NativeResourceGrant = z.infer<typeof nativeResourceGrantSchema>
+export const nativeResourceStatusSchema = z.strictObject({
+  state: z.enum(['ready', 'released']),
+})
+export type NativeResourceStatus = z.infer<typeof nativeResourceStatusSchema>
 
 export const commandArgsSchema = z.record(z.string(), z.unknown())
 export const EDIT_FILE_BYTES = 8 * 1024 * 1024
@@ -118,10 +138,13 @@ export const serviceInfoSchema = z.object({
 export const invocationSchema = z.object({
   operation: z.string().min(1),
   invocationId: z.string().min(1),
+  caller: z.string().min(1).optional(),
   args: commandArgsSchema,
   cwd: z.string().min(1).regex(/^[^\0]*$/),
   env: z.record(z.string().min(1).regex(/^[^\0=]+$/), z.string().regex(/^[^\0]*$/)),
   edits: editContextSchema.optional(),
+  resource: nativeResourceScopeSchema.optional(),
+  json: z.boolean().optional(),
 }).strict()
 export const commandErrorSchema = z.object({
   code: z.string(),

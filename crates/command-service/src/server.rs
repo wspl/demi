@@ -14,7 +14,8 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::protocol::{
     CommandError, Completion, INFO_PATH, INVOKE_PATH, Invocation, MAX_INVOCATIONS,
-    MAX_METADATA_BYTES, MAX_RECORD_BYTES, Record, SHUTDOWN_PATH, ServiceInfo, VERSION,
+    MAX_METADATA_BYTES, MAX_RECORD_BYTES, RESOURCE_PATH, Record, SHUTDOWN_PATH, ServiceInfo,
+    VERSION,
 };
 use crate::{Input, ServiceError, stream::send_bytes};
 
@@ -37,6 +38,19 @@ pub trait Handler: Send + Sync + 'static {
         &self,
         context: InvocationContext,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>>;
+
+    /// Trusted parent-only lifecycle calls, never declared CLI operations.
+    fn resource(
+        &self,
+        _context: InvocationContext,
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+        Box::pin(async { Err(ServiceError::Handler("resource kind is unsupported".into())) })
+    }
+
+    /// Invocations have stopped before the service releases retained resources.
+    fn close(&self) -> Pin<Box<dyn Future<Output = Result<(), ServiceError>> + Send>> {
+        Box::pin(async { Ok(()) })
+    }
 }
 
 #[derive(Clone)]
@@ -177,10 +191,11 @@ where
                             response.send_response(Response::new(()), true)?;
                             connection.graceful_shutdown();
                         }
-                        (&Method::POST, INVOKE_PATH) if !draining && tasks.len() < MAX_INVOCATIONS => {
+                        (&Method::POST, INVOKE_PATH | RESOURCE_PATH) if !draining && tasks.len() < MAX_INVOCATIONS => {
+                            let resource = request.uri().path() == RESOURCE_PATH;
                             tasks.spawn(invoke(
                                 request, response, handler.clone(), operations.clone(),
-                                cancellation.child_token(),
+                                cancellation.child_token(), resource,
                             ));
                         }
                         _ => {
@@ -210,7 +225,11 @@ where
         }
         // Ordinary invocation errors already fail their individual HTTP/2 streams.
     }
-    outcome
+    match tokio::time::timeout(CANCEL_TIMEOUT, handler.close()).await {
+        Ok(Ok(())) => outcome,
+        Ok(Err(error)) => Err(error),
+        Err(_) => Err(ServiceError::CancellationDeadline),
+    }
 }
 
 fn reject(response: &mut SendResponse<Bytes>, status: StatusCode) -> Result<(), ServiceError> {
@@ -226,6 +245,7 @@ async fn invoke(
     handler: Arc<dyn Handler>,
     operations: Vec<String>,
     cancellation: CancellationToken,
+    resource: bool,
 ) -> Result<(), ServiceError> {
     let _cancel_on_drop = cancellation.drop_guard_ref();
     let mut input = Input::new(request.into_body());
@@ -237,7 +257,16 @@ async fn invoke(
         Ok(Ok(value)) => value,
         _ => return reject(&mut response, StatusCode::BAD_REQUEST),
     };
-    if !operations.contains(&invocation.operation) {
+    if resource {
+        if invocation.resource.is_none()
+            || !matches!(
+                invocation.operation.as_str(),
+                "acquire" | "release" | "status"
+            )
+        {
+            return reject(&mut response, StatusCode::BAD_REQUEST);
+        }
+    } else if !operations.contains(&invocation.operation) {
         return reject(&mut response, StatusCode::NOT_FOUND);
     }
     let mut stream = response.send_response(Response::new(()), false)?;
@@ -249,7 +278,12 @@ async fn invoke(
         output,
         cancellation: cancellation.clone(),
     };
-    let mut task = AbortOnDropHandle::new(tokio::spawn(handler.invoke(context)));
+    let work = if resource {
+        handler.resource(context)
+    } else {
+        handler.invoke(context)
+    };
+    let mut task = AbortOnDropHandle::new(tokio::spawn(work));
     let outcome = loop {
         tokio::select! {
             biased;

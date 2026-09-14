@@ -62,6 +62,9 @@ in_chroot locale-gen en_US.UTF-8 || true
 in_chroot apt-get clean
 rm -rf "$work/var/lib/apt/lists/"*
 
+# Install the same pinned browser archive consumed by paired-device installers.
+bun --conditions development "$here/../../scripts/native/install-browser.ts" "$work" "$arch"
+
 # The guest user, its sudo, its shell.
 in_chroot groupadd -g 1000 demi
 in_chroot useradd -m -u 1000 -g 1000 -s /bin/bash demi

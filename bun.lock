@@ -39,6 +39,7 @@
         "@aws-sdk/client-s3": "^3.1131.0",
         "@aws-sdk/s3-request-presigner": "^3.1131.0",
         "@demicodes/agent": "workspace:^",
+        "@demicodes/browser-protocol": "workspace:^",
         "@demicodes/coding-agent": "workspace:^",
         "@demicodes/command-loader": "workspace:^",
         "@demicodes/command-protocol": "workspace:^",
@@ -63,11 +64,19 @@
         "@types/ali-oss": "^6.23.3",
       },
     },
+    "packages/browser-protocol": {
+      "name": "@demicodes/browser-protocol",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.0.0",
+      },
+    },
     "packages/coding-agent": {
       "name": "@demicodes/coding-agent",
       "version": "0.24.0",
       "dependencies": {
         "@demicodes/agent": "workspace:^",
+        "@demicodes/browser-protocol": "workspace:^",
         "@demicodes/core": "workspace:^",
         "@demicodes/shell": "workspace:^",
         "@demicodes/utils": "workspace:^",
@@ -507,6 +516,8 @@
     "@demicodes/agent": ["@demicodes/agent@workspace:packages/agent"],
 
     "@demicodes/backend": ["@demicodes/backend@workspace:packages/backend"],
+
+    "@demicodes/browser-protocol": ["@demicodes/browser-protocol@workspace:packages/browser-protocol"],
 
     "@demicodes/coding-agent": ["@demicodes/coding-agent@workspace:packages/coding-agent"],
 

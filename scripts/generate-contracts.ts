@@ -4,7 +4,9 @@ import type { z } from 'zod'
 import {
   commandArgsSchema, commandErrorSchema, completionSchema, invocationSchema,
   serviceInfoSchema, nativePackageSchema, NATIVE_TARGETS, NATIVE_PROTOCOL_VERSION,
-  MAX_METADATA_BYTES, MAX_RECORD_BYTES, MAX_INVOCATIONS, INFO_PATH, INVOKE_PATH, SHUTDOWN_PATH,
+  MAX_METADATA_BYTES, MAX_RECORD_BYTES, MAX_INVOCATIONS, INFO_PATH, INVOKE_PATH, RESOURCE_PATH, SHUTDOWN_PATH,
+  nativeResourceScopeSchema, nativeResourceGrantSchema, nativeResourceStatusSchema,
+  artifactLocationSchema,
   editContextSchema, editCopiesSchema, editFileSchema, editJournalSchema,
   EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS,
 } from '../packages/command-protocol/src/index'
@@ -14,6 +16,7 @@ import {
 } from '../packages/runner-protocol/src/schemas'
 import { JOB_VIEW_BYTES, RUNNER_PROTOCOL_VERSION } from '../packages/runner-protocol/src/messages'
 import { RustZodTypes, rustField, rustPascal, rustString } from './rust-zod'
+import { browserOperations, browserTargetSchema, browserNodeSchema, browserCreatedBySchema, browserReleaseSchema, browserInstallationSchema, browserRuntimeConfigSchema, browserDefaultTimeout, BROWSER_DEFAULT_NODES, BROWSER_MAX_NODES, BROWSER_INLINE_BYTES } from '../packages/browser-protocol/src/index'
 
 function flatten(schema: z.core.$ZodType): z.ZodObject[] {
   const def = (schema as z.core.$ZodTypes)._zod.def
@@ -28,7 +31,13 @@ function wire(): string {
   const generator = new RustZodTypes({
     bytes: bytesSchema,
     dateType: 'super::Timestamp',
-    overrides: new Map([[editCopiesSchema, 'demi_command_service::protocol::EditCopies']]),
+    overrides: new Map<z.core.$ZodType, string>([
+      [editCopiesSchema, 'demi_command_service::protocol::EditCopies'],
+      [nativePackageSchema, 'demi_command_service::protocol::PackageDescriptor'],
+      [artifactLocationSchema, 'demi_command_service::protocol::ArtifactLocation'],
+      [nativeResourceGrantSchema, 'demi_command_service::protocol::NativeResourceGrant'],
+      [nativeResourceStatusSchema, 'demi_command_service::protocol::NativeResourceStatus'],
+    ]),
   })
   const schemas = flatten(backendToRunnerMessageSchema)
   const variants = schemas.map(schema => {
@@ -102,6 +111,10 @@ function commandProtocol(): string {
   })
   const types = { EditContext: editContextSchema, EditCopies: editCopiesSchema,
     EditFile: editFileSchema, EditJournal: editJournalSchema,
+    NativeResourceScope: nativeResourceScopeSchema,
+    NativeResourceGrant: nativeResourceGrantSchema,
+    NativeResourceStatus: nativeResourceStatusSchema,
+    ArtifactLocation: artifactLocationSchema,
     PackageDescriptor: nativePackageSchema, ServiceInfo: serviceInfoSchema,
     CommandError: commandErrorSchema, Completion: completionSchema, Invocation: invocationSchema }
   for (const [name, schema] of Object.entries(types))
@@ -123,12 +136,74 @@ function commandProtocol(): string {
     pub const EDIT_JOB_SEGMENTS: u64 = ${EDIT_JOB_SEGMENTS};
     pub const INFO_PATH: &str = ${rustString(INFO_PATH)};
     pub const INVOKE_PATH: &str = ${rustString(INVOKE_PATH)};
+    pub const RESOURCE_PATH: &str = ${rustString(RESOURCE_PATH)};
     pub const SHUTDOWN_PATH: &str = ${rustString(SHUTDOWN_PATH)};`
 }
 
+function browserProtocol(): string {
+  const generator = new RustZodTypes()
+  generator.type(browserTargetSchema, 'BrowserTarget')
+  generator.type(browserNodeSchema, 'BrowserNode')
+  generator.type(browserCreatedBySchema, 'BrowserCreatedBy')
+  generator.type(browserReleaseSchema, 'BrowserRelease')
+  generator.type(browserInstallationSchema, 'BrowserInstallation')
+  generator.type(browserRuntimeConfigSchema, 'BrowserRuntimeConfig')
+  const operations = Object.entries(browserOperations)
+  const variants = operations.map(([name, schemas]) => {
+    const kind = rustPascal(name.replaceAll('.', '_'))
+    generator.type(schemas.input, `${kind}Input`)
+    generator.type(schemas.result, `${kind}Result`)
+    return `${kind}(${generator.type(schemas.input, `${kind}Input`)}),`
+  })
+  return `${generator.finish()}
+    pub enum BrowserCommand { ${variants.join('\n')} }
+    impl BrowserCommand {
+      pub fn parse(operation: &str, args: serde_json::Value) -> Result<Self, serde_json::Error> {
+        match operation {
+          ${operations.map(([name]) => `${rustString(name)} => serde_json::from_value(args).map(Self::${rustPascal(name.replaceAll('.', '_'))}),`).join('\n')}
+          _ => Err(serde::de::Error::custom("unknown browser operation")),
+        }
+      }
+      pub fn timeout(&self) -> std::time::Duration {
+        let value = match self {
+          ${operations.map(([name]) => `Self::${rustPascal(name.replaceAll('.', '_'))}(input) => input.timeout.unwrap_or(${browserDefaultTimeout(name)}),`).join('\n')}
+        };
+        std::time::Duration::from_millis(value)
+      }
+      pub fn tab(&self) -> Option<&str> {
+        match self {
+          ${operations.map(([name, schemas]) => `Self::${rustPascal(name.replaceAll('.', '_'))}(input) => ${'tab' in schemas.input.shape ? 'Some(&input.tab)' : 'None'},`).join('\n')}
+        }
+      }
+      pub fn wait_url(&self) -> Option<&str> {
+        match self {
+          ${operations.filter(([, schemas]) => 'wait-url' in schemas.input.shape).map(([name]) => `Self::${rustPascal(name.replaceAll('.', '_'))}(input) => input.wait_url.as_deref(),`).join('\n')}
+          _ => None,
+        }
+      }
+      pub fn target(&self) -> Option<BrowserTarget> {
+        match self {
+          ${operations.filter(([, schemas]) => 'ref' in schemas.input.shape).map(([name]) => `Self::${rustPascal(name.replaceAll('.', '_'))}(input) => Some(BrowserTarget { ${Object.keys(browserTargetSchema.shape).map(key => `${rustField(key)}: input.${rustField(key)}.clone()`).join(', ')} }),`).join('\n')}
+          _ => None,
+        }
+      }
+    }
+    pub fn validate_result(operation: &str, value: serde_json::Value) -> Result<serde_json::Value, serde_json::Error> {
+      match operation {
+        ${operations.map(([name, schemas]) => `${rustString(name)} => serde_json::to_value(serde_json::from_value::<${generator.type(schemas.result, `${rustPascal(name.replaceAll('.', '_'))}Result`)}>(value)?),`).join('\n')}
+        _ => Err(serde::de::Error::custom("unknown browser operation")),
+      }
+    }
+    pub const DEFAULT_NODES: usize = ${BROWSER_DEFAULT_NODES};
+    pub const MAX_NODES: usize = ${BROWSER_MAX_NODES};
+    pub const INLINE_BYTES: usize = ${BROWSER_INLINE_BYTES};
+    pub const OPERATIONS: &[&str] = &[${operations.map(([name]) => rustString(`browser.${name}`)).join(', ')}];`
+}
+
 const [target, output] = process.argv.slice(2)
-if (!output || !['runner', 'command-service'].includes(target ?? ''))
-  throw new Error('Usage: generate-contracts.ts <runner|command-service> <OUT_DIR>')
-const sources = target === 'runner' ? { wire: wire(), manifest: manifest() } : { protocol: commandProtocol() }
+if (!output || !['runner', 'command-service', 'demi-commands'].includes(target ?? ''))
+  throw new Error('Usage: generate-contracts.ts <runner|command-service|demi-commands> <OUT_DIR>')
+const sources = target === 'runner' ? { wire: wire(), manifest: manifest() }
+  : target === 'demi-commands' ? { browser: browserProtocol() } : { protocol: commandProtocol() }
 for (const [name, source] of Object.entries(sources))
   await writeFile(join(output, `${name}.rs`), `// Generated from authoritative Zod schemas.\n${source}\n`)

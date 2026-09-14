@@ -37,6 +37,53 @@ pub enum ArtifactSource {
     },
 }
 
+impl ArtifactSource {
+    /// Convert a catalog-authorized artifact location into a cache download source.
+    pub fn from_location(
+        location: demi_command_service::protocol::ArtifactLocation,
+    ) -> Result<Self, RuntimeError> {
+        match location {
+            demi_command_service::protocol::ArtifactLocation::Variant0(location) => {
+                let url = reqwest::Url::parse(&location.url)
+                    .map_err(|error| RuntimeError::Artifact(error.to_string()))?;
+                if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some()
+                {
+                    return Err(RuntimeError::Artifact(
+                        "artifact downloads require an HTTPS URL without credentials".into(),
+                    ));
+                }
+                let expires_at = location
+                    .expires_at
+                    .map(|millis| {
+                        u64::try_from(millis)
+                            .ok()
+                            .and_then(|millis| {
+                                std::time::UNIX_EPOCH
+                                    .checked_add(std::time::Duration::from_millis(millis))
+                            })
+                            .ok_or_else(|| {
+                                RuntimeError::Artifact("invalid artifact URL expiry".into())
+                            })
+                    })
+                    .transpose()?;
+                Ok(ArtifactSource::Https {
+                    url: url.into(),
+                    expires_at,
+                })
+            }
+            demi_command_service::protocol::ArtifactLocation::Variant1(location) => {
+                let path = std::path::PathBuf::from(location.path);
+                if !path.is_absolute() {
+                    return Err(RuntimeError::Artifact(
+                        "local artifact path must be absolute".into(),
+                    ));
+                }
+                Ok(ArtifactSource::Local(path))
+            }
+        }
+    }
+}
+
 /// Resolves only an artifact authorized by the calling registration's catalog.
 /// URLs are resolved again for each download attempt and never become cache keys.
 pub trait ArtifactResolver: Send + Sync + 'static {
@@ -300,24 +347,18 @@ async fn verify_file(path: &Path, artifact: &PackageArtifact) -> Result<(), Runt
             "cached artifact size or file type mismatch".into(),
         ));
     }
-    let mut file = tokio::fs::File::open(path).await?;
-    let mut hash = Sha256::new();
-    let mut size = 0;
-    let mut buffer = vec![0; 64 * 1024];
-    loop {
-        let count = file.read(&mut buffer).await?;
-        if count == 0 {
-            break;
-        }
-        hash.update(&buffer[..count]);
-        size += count as u64;
-        if size > artifact.size {
-            return Err(RuntimeError::Artifact(
-                "cached artifact grew during verification".into(),
-            ));
-        }
+    let actual = demi_command_service::integrity::artifact_digest(
+        path,
+        artifact.size,
+        &CancellationToken::new(),
+    )
+    .await?;
+    if actual != *artifact {
+        return Err(RuntimeError::Artifact(
+            "artifact size or SHA-256 mismatch".into(),
+        ));
     }
-    check_digest(hash, size, artifact)
+    Ok(())
 }
 
 fn check_digest(hash: Sha256, size: u64, artifact: &PackageArtifact) -> Result<(), RuntimeError> {

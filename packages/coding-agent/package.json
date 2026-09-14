@@ -16,7 +16,8 @@
     "@demicodes/core": "workspace:^",
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^",
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "@demicodes/browser-protocol": "workspace:^"
   },
   "devDependencies": {
     "@demicodes/provider": "workspace:^",
