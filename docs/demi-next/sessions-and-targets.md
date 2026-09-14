@@ -124,13 +124,14 @@ a device bound as the main or an attached host; omitting the device selects the
 current main host. The binding and ownership are checked after taking the file
 gate and before reaching the Host. An unknown or detached device is refused;
 detaching prevents new access, while an already admitted operation may finish.
-That entry does the same work for every kind of target: it resolves the target as the agent
-does, refuses an archived conversation, wakes a stopped Cloud and holds it for
-the operation, and takes the conversation's file gate so the operation excludes
+For normal demand, that entry does the same work for every kind of target: it
+resolves the target as the agent does, refuses an archived conversation, wakes
+a stopped Cloud and holds it for the operation, and takes the conversation's file gate so the operation excludes
 an archive or a target switch. A paired device without a live runner fails the
-operation with the runner's offline error. There is no second way to a host;
-an operation that must not wake the Cloud, or must not wait for the gate, is a
-change to this rule, decided here, not a bypass in code.
+operation with the runner's offline error. There is no second way to a host.
+Lifecycle cleanup is the explicitly scoped extension below; it still uses this
+entry. Any other change to wake or gate behavior must be decided here, not
+introduced as a bypass in code.
 
 Attached cwd is a starting directory, not a permission boundary. It is updated
 from completed cross-host jobs. Files can be transferred explicitly with ordinary
@@ -145,43 +146,69 @@ The backend brokers the byte streams. Attachment changes advance execution conte
 for each node. Revoking a paired device terminates its connection and removes its
 conversation grants.
 
-### Retained resources and passive subscriptions
+### Lifecycle access and passive subscriptions
 
-Planned extension for the [conversation browser](browser.md); not implemented.
-A browser frame/registry subscription is a Host operation for its entire admitted
-lifetime. It holds normal file admission and device activity, responds to
-cancellation, and releases both before acknowledging completion. There is no
-permanent lease merely because a browser resource exists.
+Planned extension for [resource lifecycle coordination](resource-lifecycle.md)
+and the [conversation browser](browser.md); not implemented.
 
-A target/directory change or archive must not wait forever for a workpanel stream.
-After validating the requested transition and reserving the idle tree, the
-backend closes new passive-subscription admission, cancels existing observers,
-and awaits their release. Other in-flight file operations still obey normal busy
-admission; they are not forcibly cancelled by calling them observers.
+A browser frame subscription is a Host operation for its entire admitted
+lifetime. It holds normal file admission and device demand, responds to
+cancellation, and releases both before acknowledging completion. Registry and
+control notifications are grant-scoped events on the existing runner connection;
+receiving and projecting them is not another Host operation. Product observers
+of that metadata hold no activity lease. A requested fresh native snapshot still
+enters through `withHost` and releases admission when its read completes.
 
-With observers drained, the transition reserves the conversation file gate.
-It then releases resources on the old main target before committing the selection
-or archive. This cleanup still calls `withHost`, using an internal reservation
-capability issued by that gate. The capability is scoped to this conversation,
-expected old selection, and transition; it lets `withHost` use the already-held
-exclusive reservation rather than acquiring a conflicting shared gate. It does
-not skip ownership, binding, archive checks, Cloud wake/hold, or IO cancellation.
-It cannot be supplied through a request body, shell argument, or environment.
-The transition has not committed yet, so the old binding is still authoritative.
+Ordinary access acquires conversation and device admission before Host IO. If a
+resource transition wins between target resolution and admission, release the
+partial gates before waiting outside `withHost`'s acquisition attempt. Recheck
+authorization, archive status, and current binding on re-entry. No caller may
+hold a conversation file gate while waiting for a device transition that needs
+that gate for dependent cleanup. Do not retry after operation dispatch; only the
+unstarted admission attempt may wait and re-enter. Reset/archive/loss preserve
+their explicit refusal semantics.
 
-A resource already reported lost has no live Host state to release: revoke its
-local grant and record loss without a new Host call. An unconfirmed cleanup
-failure is not success; fail the transition and report it unless connection or
-service loss has established that the resource generation ended. Cleanup errors
-must not be ignored to force the target commit. If release succeeds but the
-subsequent database commit fails, the old selection remains and its next browser
-open starts fresh; page state cannot be rolled back.
+The lifecycle coordinator issues an internal cleanup capability after admitting
+a retirement. It identifies the transition, allowed cleanup scope, expected
+resource and Host generations, and any already-held file/device reservations.
+Browser owner bindings still identify the conversation and old target selection.
+The capability is revocable with the transition, cannot escape its callback, and
+cannot come from a request body, shell argument, or environment variable.
 
-All exits release tree/file reservations and reopen observer admission against
-the actual final selection, unless it is archived. Reconnection requires a new
-subscription and current generation. Never reuse an old Host object outside
-`withHost`, including for cleanup. Detachment and revocation retain their existing
-rules; revocation's connection loss invalidates associated resource grants.
+`withHost` accepts this capability only for the transition's resource cleanup.
+It validates ownership, binding and expected generations, borrows the specified
+reservations, and obtains any remaining maintenance admission without waiting
+while holding a conflicting partial set. It never reacquires a gate already held
+by that transition. This is the existing Host-access operation under a proven
+reservation, not a raw Host handle or a second authorization path.
+
+Lifecycle access requires the existing Host generation. It never allocates or
+wakes Cloud, installs a replacement native resource, retries on a newer runner,
+or refreshes demand idle time. If that generation has ended, return its resource
+loss and finish local invalidation; remote teardown/recovery owns physical cleanup.
+A merely unconfirmed release is not success. Domain lifecycle policy determines
+whether to block for recovery or terminate a parent during a forced operation.
+
+A target/directory change or archive validates its request and reserves the idle
+tree, closes new frame-subscription admission, cancels existing viewers, and
+awaits their release. Other file work follows normal busy admission and is not
+silently classified as a passive observer. After reserving conversation file
+admission, release the old browser resource through lifecycle `withHost`, then
+commit the target/archive change. The old binding remains authoritative until
+commit, so normal ownership and archive checks still apply during cleanup.
+
+If cleanup succeeds but the database commit fails, the old selection remains
+and its next browser open starts fresh; page state cannot be rolled back. All
+exits release temporary reservations and reopen subscriptions against the actual
+final selection unless it is archived or blocked by a cleanup failure. A
+reconnection gets a fresh snapshot and validates the current generation.
+
+Cloud retirement/reset uses the same capability for affected conversations'
+browser cleanup while device admission is reserved. The shared coordinator owns
+ordering and sibling isolation; [Cloud policy](managed-hosts.md#lifecycle-and-capacity)
+owns whether work may be interrupted. Device revocation and unexpected loss fence
+associated grants and cancel local operations without using normal Host access
+to revive the device for cleanup.
 
 ## Coordinate shared Cloud activity
 
@@ -193,7 +220,8 @@ Conversation and device admission protect different resources:
 | Conversation files | Target change | Host operations: uploads, the working tree, file text |
 | One Cloud device | Shutdown or reset | Device operations and relevant agent trees across all of its user's conversations |
 
-The managed-host lifecycle reserves device admission before changing the machine.
+The shared lifecycle coordinator reserves device admission before the
+managed-host adapter changes the machine.
 Tree reservations alone cannot protect a Cloud device shared by multiple
 conversations. Normal wake can be joined. Reset rejects new work with a resetting
 status, interrupts device work, and coordinates the durable disk transition in
@@ -238,8 +266,10 @@ the recorded output view.
 
 The agent owns tree admission and per-node context persistence. Backend
 `conversation/` owns target transitions; `runner/` owns authenticated callback
-routing; `managed/` owns device admission. The Host adapter carries live execution
-facts without knowing user policy. [Package boundaries](../package-boundaries.md)
+routing; `lifecycle/` owns shared resource admission and scheduling, while
+`managed/` owns Cloud policy and machine transitions. The lifecycle integration
+is planned; see [Resource lifecycle coordination](resource-lifecycle.md). The Host
+adapter carries live execution facts without knowing user policy. [Package boundaries](../package-boundaries.md)
 defines their dependencies.
 
 Backend scenarios and agent tests must cover child activity during switches,

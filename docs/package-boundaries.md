@@ -232,6 +232,11 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/backend`
 
+- Planned lifecycle scope: `lifecycle/` owns shared resource admission, startup
+  joining, idle scheduling, dependency retirement and coordinator disposal. It
+  consumes injected policy/operation adapters and reuses `ActivityGate`; it does
+  not import the domain modules that register those adapters. See
+  [Resource lifecycle coordination](demi-next/resource-lifecycle.md).
 - Planned browser scope: `conversation/` owns resource grants, main-Host binding,
   access admission and product adapters. Add the planned `@demicodes/browser-protocol`
   dependency for validation. It publishes Host registry/control
@@ -257,7 +262,8 @@ Test code may depend upward for integration coverage. Production code must not.
   - `llm/` — the provider runtime assembled per provider entry (the family registry with each family's credential kind, the vendor catalog over models.dev, the model catalog, the Test button) and the metering wrap at the inference entry.
   - `vault/` — instance secret, credential crypto, the typed provider vault over the control plane, and the provider scope (whose providers a caller works with under the instance mode).
   - `usage/` — enforcement (the provider-request rate limiter); the ledger rows live on the `ControlService`.
-  - `managed/` — one managed device per user, lazy allocation/wake, device-wide admission, idle shutdown, paired system/home checkpointing, volume growth, external system reset, Cloud project directory creation. Every VM and disk operation goes to the `ManagedHostProvisioner` it is given; the backend never spawns a hypervisor or an image tool itself.
+  - `lifecycle/` (planned) — shared coordinator for resource use, idle deadlines, startup and retirement admission, dependency cleanup ordering and shutdown. It replaces domain-specific idle sweeps; domain adapters supply actual resource state and policy.
+  - `managed/` — one managed device per user, Cloud policy and its lifecycle adapter, allocation/wake, paired system/home checkpointing, volume growth, external system reset, Cloud project directory creation. Every VM and disk operation goes to the `ManagedHostProvisioner` it is given; the backend never spawns a hypervisor or an image tool itself.
   - New modules get sibling directories — never new files at the root.
 
 - Execution coordination: authenticated live-job RPC routing, conversation target/file admission and user-device lifecycle admission. Managed operations persist allocation/reset intent and recover it before new work; every conversation using Cloud shares its device-wide operation gate.

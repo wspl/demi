@@ -321,9 +321,15 @@ release or finish the resource before moving it to a new artifact. Acquisition
 failure leaves no reference or detached child behind.
 
 A retained reference does not hold device activity or an application file gate.
-Actual calls and live subscriptions acquire those through the embedding
-application's Host access. This permits a stopped Cloud to invalidate an idle
-resource without promising page restoration. Conversation policy belongs to
+Actual calls and active data subscriptions acquire admission through the embedding
+application's Host access. Grant-scoped lifecycle/domain-state notifications can
+be emitted on the existing connection without a permanent operation lease; they
+cannot initiate Host work. Snapshot repair is an explicit short operation.
+Release calls use the embedding application's admitted lifecycle cleanup scope.
+The backend's [resource coordinator](resource-lifecycle.md) decides when to release;
+runner and the native package execute that release and report its outcome.
+This permits a stopped Cloud to invalidate an idle resource without promising
+page restoration. Conversation policy belongs to
 [Browser ownership](browser.md#ownership); transition admission belongs to
 [Host operations](sessions-and-targets.md#host-operations).
 
