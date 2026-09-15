@@ -41,7 +41,7 @@ Notable design records outside `docs/demi-next/`:
 
 Temporary investigation:
 
-- [Browser behavior and reference implementations](docs/browser-investigation.md) — issue inventory, Playwright/Codex evidence, and pending design decisions
+- [Browser behavior and reference implementations](docs/browser-investigation.md) — issue inventory, Codex/Playwright evidence, and API repair guidance
 
 ## Development
 
