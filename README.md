@@ -39,6 +39,10 @@ Notable design records outside `docs/demi-next/`:
 - [Subagents](docs/subagent.md) — child sessions as `demi agent`, subagent events on the parent `AgentClient`
 - [Provider errors & retries](docs/provider-errors-and-retries.md) — classified failures and resume recovery
 
+Temporary investigation:
+
+- [Browser behavior and reference implementations](docs/browser-investigation.md) — issue inventory, Playwright/Codex evidence, and pending design decisions
+
 ## Development
 
 ```sh
