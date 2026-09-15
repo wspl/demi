@@ -101,9 +101,11 @@ Cloud conversations of the same user already share files and application service
 
 ### One tab registry
 
-A tab ID is an opaque handle. Examples use `tab-1`; actual IDs are never reused
-across browser generations. An old ID must never refer to a newly created tab.
-A display index is not an authorization token.
+A tab ID is an opaque handle. An actual tab ID is `t_` followed by 22
+base64url characters encoding a fresh 128-bit random value; a node reference is
+`e_` with the same encoding. Examples abbreviate them to `tab-1` and `e3` for
+readability. IDs are never reused across browser generations. An old ID must
+never refer to a newly created tab. A display index is not an authorization token.
 
 The Host browser driver owns one canonical live tab registry; `demi browser tabs`
 reads it. All top-level pages appear, including pages opened by agents, sites,
@@ -547,6 +549,15 @@ action. Cancellation cannot undo a submitted form or restore prior page state.
 state, and actionable references. `--view dom` returns a filtered DOM structure,
 not complete HTML source. `content read --format html` explicitly requests HTML.
 
+Each node reports its role, its accessible name, and, when the accessibility
+tree carries one, its current `value` as a separate field; name and value are
+never merged. Boolean states such as `checked`, `disabled`, and `expanded` are
+reported with their actual value, including `false`; a state the tree does not
+carry is omitted rather than reported as false. A password input is marked
+`protected` and never carries a value; the same rule makes `read --property
+value` return `protected_value`. Default text output shows the same states and
+value as the JSON result.
+
 Structural text can lack a reference. Actionable nodes, scope containers, and
 iframes must be referenceable. Inaccessible or unsupported frames are marked,
 not presented as empty pages. Report actual Shadow DOM, cross-origin iframe,
@@ -584,6 +595,14 @@ locator per call:
 | `--css 'main .product'` | Standard CSS selector |
 | `--xy 420,300` | Viewport point; only for supported pointer/media operations |
 
+The three text locators are three different computations. `--role` with
+`--name` matches the accessibility role and the computed accessible name.
+`--label` matches the text of a form control's associated label: a `<label for>`,
+a wrapping `<label>`, or `aria-labelledby`; a labelled control is found through
+its label whatever its role, including native date and file inputs.
+`--text-match` matches the element's visible rendered text; `aria-label`
+contributes to the accessible name, not to visible text.
+
 Name and text matching is case-sensitive substring matching by default;
 `--exact` selects whole-string matching. Explicit `--name-pattern` and
 `--text-pattern` accept regular expressions instead of their literal fields.
@@ -596,9 +615,13 @@ from outermost to innermost. `--nth <n>` selects a zero-based match. All scope
 references must belong to the target tab.
 
 `find` can return multiple matches. `read --all` explicitly reads multiple
-matches. A mutation requires exactly one element unless the command inherently
-sets several values on one element. Ambiguity fails; there is no implicit first
-match.
+matches. A mutation requires one element unless the command inherently sets
+several values on one element. When a locator matches several elements and
+exactly one of them is visible, the action uses that visible element. Every
+other multiple match, whether all hidden or several visible, fails with
+`ambiguous_target`; there is no implicit first match. `--nth` selects
+explicitly among all matches, hidden ones included. A locator with no match
+fails with `target_not_found`, never with ambiguity.
 
 For composed locators, `find <tab> --query` reads a declarative tree from stdin:
 
@@ -628,11 +651,33 @@ query use the same node identity and invalidation rules as inspect.
 
 ### Actionability and coordinates
 
-Before clicking, wait until the element is visible, enabled, and can receive
-input without obstruction. Before filling, also require editability. An absent
-or not-yet-ready semantic target waits until the deadline; an explicitly stale
-reference or ambiguous match fails immediately. There is no implicit force or
-silent fallback from a failed element action to a coordinate action.
+Each action checks the conditions it needs and then acts; it does not apply
+another action's conditions:
+
+| Action | Required element conditions |
+| --- | --- |
+| `click`, `check` | Visible, enabled, a stable bounding box after scrolling into view, and the click point hits the element or one of its descendants |
+| `fill`, `type` | Visible, enabled, editable; no pointer hit test |
+| `key` | Visible, enabled; the element is focused before input |
+| `select` | Enabled; options are matched inside the control |
+| `move`, `scroll` with an element | A bounding box after scrolling into view; no enabled or editable requirement |
+| `--xy` | The point lies inside the current viewport |
+
+Visible means a rendered box with area and a visible computed `visibility`.
+Enabled follows the control and its ancestors, including a disabled `fieldset`
+and `aria-disabled`. Editable means an input or textarea that is not read-only,
+or a contenteditable element. Stable means the bounding box is unchanged across
+two consecutive animation frames within a bounded number of frames. The hit test
+follows the element's shadow roots and frames, so a control inside a shadow root
+is not treated as obstructed by its host; an element that another element
+covers, or whose computed `pointer-events` is `none`, fails with `not_actionable`
+naming the intercepting element once the deadline expires. Conditions are
+rechecked after scrolling and before dispatch.
+
+An absent or not-yet-ready semantic target waits until the deadline. An
+explicitly stale reference, an ambiguous match, or a permanently inapplicable
+element type, such as filling a `<div>`, fails immediately. There is no implicit
+force or silent fallback from a failed element action to a coordinate action.
 
 Coordinates are CSS pixels in the current viewport, with origin at its top left.
 Screenshots report both image pixels and viewport CSS dimensions so callers can
@@ -688,7 +733,18 @@ Closed tab-2.
 `open` returns the tab it created, never another concurrent caller's latest tab.
 Navigation defaults to `domcontentloaded`; `--load commit|domcontentloaded|load`
 changes the completion condition. `back` and `forward` return `history_boundary`
-when no history entry exists. History is local to the named tab.
+before issuing anything when no history entry exists. History is local to the
+named tab.
+
+`open`, `goto`, `reload`, `back`, and `forward` install main-document
+observation before issuing the navigation and report that navigation only. A
+new document completes at the selected load state; redirects remain part of the
+same navigation. A same-document navigation, such as a fragment change,
+completes when its event arrives without waiting for a load state that will
+never fire. A main-document network failure reported by the browser, such as a
+refused connection or a dropped response, fails with `navigation_failed` and
+the browser's reason. An HTTP error status is a received document, not a
+failure; the agent observes the page to judge it.
 
 If `open` creates a tab but navigation times out, the error retains `details.tab`
 so the agent can inspect it. Navigation failures report the current URL and
@@ -820,6 +876,12 @@ repeated `--modifier Alt|Control|ControlOrMeta|Meta|Shift`. A drag requires at
 least two ordered points. Release pressed buttons and modifiers on every exit
 path, including cancellation.
 
+A click dispatches at the point computed after the stability check. Without
+`--wait-url`, it installs a bounded main-document load observation before
+input; when a load starts, it waits for that load within the call deadline.
+Not observing a load is not a failure: a click that navigates nowhere succeeds.
+Whether the page did what the agent intended is a separate observation.
+
 Scroll accepts `--dx` and `--dy`, with at least one nonzero value. An element or
 coordinate can select the scroll origin. Delivered input does not prove the
 page moved: it may already be at a boundary. Observe again when that matters.
@@ -836,10 +898,10 @@ Typed into the focused element.
 $ demi browser type tab-1 --ref e1 --text '.test'
 Typed into textbox "Email" [ref=e1].
 
-$ demi browser key tab-1 Enter
-Pressed Enter.
+$ demi browser key tab-1 --ref e1 --key Enter
+Pressed Enter in [ref=e1].
 
-$ demi browser key tab-1 --ref e1 ControlOrMeta+A
+$ demi browser key tab-1 --ref e1 --key ControlOrMeta+A
 Pressed ControlOrMeta+A in [ref=e1].
 
 $ demi browser check tab-1 --ref e5 --value true
@@ -864,14 +926,44 @@ $ demi browser ax-action tab-1 --ref e8 --action expand
 Performed accessibility action "expand" on [ref=e8].
 ```
 
-Fill replaces the value. Type inserts at the cursor without clearing and emits
-sequential character input. Key combinations are validated; an unknown key name
-is not treated as literal text. Check sets the requested state; an already
-matching state succeeds without toggling it.
+Untargeted `type` and `key`, which act on the current focus, are extensions
+outside the current catalog; the current commands require a target.
+
+Fill handles the control's native type. Text-like inputs, textareas, and
+contenteditable elements are focused, their contents selected, and the text
+inserted as native text input; an empty text deletes the selection instead.
+Date, time, month, week, color, and range inputs receive the value through the
+control's native value setter and fail with `invalid_input` when the browser
+rejects it, for example a malformed date. Number inputs require numeric text.
+Any other element fails immediately as not fillable. Fill does not click the
+control and does not assert that the final value equals the input; page scripts
+may transform or refuse it, and the agent observes the result when it matters.
+
+Type focuses the target without clicking, keeps an existing selection, and emits
+key events for each character in order. If the target is replaced, loses focus,
+or its frame changes while typing, typing stops with `not_actionable` and the
+error reports how many characters were delivered.
+
+Key focuses the target, then presses one key or a `+`-joined combination such
+as `ControlOrMeta+A`. Modifiers are `Alt`, `Control`, `Meta`, `Shift`, and
+`ControlOrMeta`, which maps to Meta on macOS Hosts and Control elsewhere. Key
+names are validated before any input; an unknown name is `invalid_input`, not
+literal text. Every pressed key and modifier is released on every exit path.
+
+Check reads the current state first; an already matching state succeeds without
+a click. Otherwise it clicks the control and reads the state again, failing
+with `not_actionable` when the page prevented the change. Unchecking a radio
+button is `invalid_input`. Native checkboxes and radios and elements with the
+ARIA `checkbox`, `radio`, or `switch` role are supported.
 
 Select accepts one of repeated `--value`, `--option-label`, or `--option-index`,
-not a mixture. `--label` still locates the select element itself.
-Multiple values for a single-select control are invalid. Select-text defaults
+not a mixture. `--label` still locates the select element itself. Options are
+matched in document order: a single-select control takes the first matching
+candidate, and a multi-select control selects every matching candidate. A
+candidate that has not appeared yet is waited for until the deadline; a matching
+disabled option fails with `not_actionable`; a candidate that never appears
+fails with `target_not_found`. The control receives `input` and `change`
+events, and the result lists the values actually selected. Select-text defaults
 to selecting the match; `--cursor before|after` positions a cursor instead.
 `--prefix` and `--suffix` disambiguate repeated text; remaining ambiguity fails.
 
@@ -900,19 +992,28 @@ Navigated to http://localhost:3000/dashboard.
 ```
 
 Wait selects exactly one condition: an element with
-`--state attached|detached|visible|hidden`, `--url`, or `--load`.
-URL patterns define `*` as any string without `/`, `**` as any string, and all
-other characters literally. They are not implicit regular expressions.
+`--state attached|detached|visible|hidden|enabled`, `--url`, or `--load`.
+`--load` is an extension outside the current catalog. URL patterns define `*`
+as any string without `/`, `**` as any string, and all other characters
+literally, including `?`, brackets, and braces. They are not implicit regular
+expressions.
 
-Hidden includes removal within the same document; detached waits for removal.
-If navigation replaces a referenced document, return `stale_ref` rather than
-treating disappearance of the old page as a condition on the new page.
+Element states use the same computations as the actionability conditions.
+`visible` requires a rendered box and visible `visibility`; `hidden` is
+satisfied when no element matches or none is visible, which includes removal
+within the same document; `attached` and `detached` follow node connection;
+`enabled` follows the control and its ancestors. If navigation replaces a
+referenced document, return `stale_ref` rather than treating disappearance of
+the old page as a condition on the new page.
 
-An action's `--wait-url` installs observation before delivering input and waits
-for a matching navigation after that action starts. An already matching URL
-before the action does not satisfy it. Key supports the same option for Enter
-submission. There is no generic `--page-changed`: an animation or clock update
-cannot establish that pagination finished.
+`wait --url` succeeds immediately when the current URL already matches. An
+action's `--wait-url` installs URL observation before delivering input, then
+delivers the input whether or not the URL already matches, and succeeds once
+the URL observed after delivery matches; an already matching URL therefore
+satisfies it. URL changes are observed through navigation events, so a matching
+document that is replaced again quickly is not missed. Key supports the same
+option for Enter submission. There is no generic `--page-changed`: an animation
+or clock update cannot establish that pagination finished.
 
 Element and URL waits work on pages with long-lived WebSockets or polling.
 The initial design does not use network-idle as a business completion signal.
@@ -1255,7 +1356,7 @@ field with a different meaning or type.
 | goto, back, forward, reload | `tab, url, title` |
 | history | `entries: [{index, url, title, current}], truncated` |
 | close | `closed` |
-| inspect | `tab, url, title, view, tree, truncated`; nodes have `ref?, role?, name?, tag?, states?, children?` |
+| inspect | `tab, url, title, view, tree, truncated`; nodes have `ref?, role?, name?, value?, tag?, states?, children?` |
 | find | `matches: [{ref, role?, name?, bounds?}], count, truncated` |
 | read | `value`, or explicit-all `values, truncated`; mutually exclusive |
 | screenshot | `path, mimeType, width, height, viewport`; JSON requires file output |
@@ -1325,19 +1426,31 @@ The last failure has this JSON representation on stderr:
 }
 ```
 
+Every action failure carries `details.action`: `not_started` when the failure
+occurred before input was delivered, such as locating, condition checks, a
+blocking dialog, or invalid input; `completed` when input was delivered and a
+later wait failed; `unknown` when the connection was lost after delivery began.
+A follow-up observation after a completed action, such as reading the current
+URL for the result, does not turn the action into a failure: the result reports
+the action and omits the unavailable field. Each failure keeps its own cause;
+a missing tab, a lost browser, zero matches, several matches, a history
+boundary, an existing output file, and a driver error are never folded into
+one generic code.
+
 Messages explain the situation; scripts inspect code and typed details:
 
 | Code | Meaning |
 | --- | --- |
 | `invalid_input` | Arguments or finite input violate the contract |
 | `wrong_host` | Invocation is not on the current main Host |
-| `tab_not_found` | Missing, closed, or inaccessible tab |
+| `tab_not_found` | Missing, closed, or inaccessible tab; other tabs are unaffected |
 | `tab_busy` | Another agent command owns the tab operation lock |
 | `stale_ref`, `stale_cursor`, `stale_inventory`, `stale_tools` | Expired object or generation |
-| `target_not_found`, `ambiguous_target`, `not_actionable` | Missing, non-unique, or unready target |
+| `target_not_found`, `ambiguous_target`, `not_actionable` | Zero matches, disallowed multiple matches, or a target that did not meet its action's conditions; details name the missing condition or intercepting element |
 | `timeout` | Deadline expired; details report known action progress |
 | `dialog_blocked`, `dialog_not_found`, `invalid_dialog_action` | Blocking or inapplicable dialog state |
 | `history_boundary` | No previous or next navigation entry |
+| `navigation_failed` | The browser reported a main-document network failure for an explicit navigation |
 | `protected_value`, `side_effect_rejected`, `unsupported_result` | Disallowed inspection, side effect, or unrepresentable value |
 | `unsupported_capability`, `cdp_method_denied` | Unsupported or unavailable operation in this scope |
 | `output_exists`, `io_error`, `result_too_large` | File or result-size failure |
