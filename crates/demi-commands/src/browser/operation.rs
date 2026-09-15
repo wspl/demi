@@ -1,4 +1,8 @@
-use std::{future::Future, time::Duration};
+use std::{
+    future::Future,
+    sync::atomic::{AtomicU8, Ordering},
+    time::Duration,
+};
 
 use chromiumoxide::error::CdpError;
 use thiserror::Error;
@@ -15,6 +19,34 @@ pub enum BrowserError {
     Closed,
     #[error("{0}")]
     Connection(String),
+    #[error("browser tab was not found")]
+    TabNotFound,
+    #[error("browser target matched no elements")]
+    TargetNotFound,
+    #[error("element condition failed: {condition}; interceptor: {interceptor:?}")]
+    NotActionable {
+        condition: String,
+        interceptor: Option<String>,
+    },
+    #[error("no navigation entry in that direction")]
+    HistoryBoundary,
+    #[error("main document navigation failed: {0}")]
+    NavigationFailed(String),
+    #[error("output already exists: {0}")]
+    OutputExists(String),
+    #[error("result exceeds the browser output limit")]
+    ResultTooLarge,
+    #[error("browser scope is missing on this Host")]
+    WrongHost,
+    #[error("password values are protected")]
+    ProtectedValue,
+    #[error("browser could not start: {0}")]
+    Unavailable(String),
+    #[error("{source}")]
+    Action {
+        source: Box<BrowserError>,
+        details: serde_json::Value,
+    },
     #[error("browser operation was cancelled")]
     Cancelled,
     #[error("browser operation exceeded its deadline")]
@@ -38,7 +70,7 @@ pub enum BrowserError {
     #[error("invalid browser configuration: {0}")]
     Configuration(String),
     #[error(transparent)]
-    Cdp(#[from] CdpError),
+    Cdp(CdpError),
     #[error(transparent)]
     Events(#[from] chromiumoxide::listeners::EventStreamError),
     #[error(transparent)]
@@ -62,6 +94,7 @@ pub(super) struct Operation<'a> {
     ended: &'a CancellationToken,
     cancelled: &'a CancellationToken,
     deadline: Instant,
+    progress: AtomicU8,
 }
 
 impl<'a> Operation<'a> {
@@ -70,10 +103,55 @@ impl<'a> Operation<'a> {
         cancelled: &'a CancellationToken,
         timeout: Duration,
     ) -> Self {
+        Self::until(ended, cancelled, Instant::now() + timeout)
+    }
+
+    pub fn until(
+        ended: &'a CancellationToken,
+        cancelled: &'a CancellationToken,
+        deadline: Instant,
+    ) -> Self {
         Self {
             ended,
             cancelled,
-            deadline: Instant::now() + timeout,
+            deadline,
+            progress: AtomicU8::new(0),
+        }
+    }
+
+    pub fn begin_input(&self) {
+        self.progress.store(1, Ordering::SeqCst);
+    }
+
+    pub fn input_not_delivered(&self) {
+        self.progress.store(0, Ordering::SeqCst);
+    }
+
+    pub fn complete_input(&self) {
+        self.progress.store(2, Ordering::SeqCst);
+    }
+
+    pub fn failure(&self, error: BrowserError, tab: &str, url: Option<&str>) -> BrowserError {
+        let action = match self.progress.load(Ordering::SeqCst) {
+            0 => "not_started",
+            2 => "completed",
+            _ => "unknown",
+        };
+        let mut details = error.details();
+        if details.get("action").is_none() {
+            details["action"] = serde_json::json!(action);
+        }
+        if details.get("tab").is_none() {
+            details["tab"] = serde_json::json!(tab);
+        }
+        if details.get("url").is_none()
+            && let Some(url) = url
+        {
+            details["url"] = serde_json::json!(url);
+        }
+        BrowserError::Action {
+            source: Box::new(error),
+            details,
         }
     }
 
@@ -97,5 +175,137 @@ pub(super) fn after_cleanup<T>(operation: Result<T>, cleanup: Result<()>) -> Res
             operation: result.err().map(Box::new),
             cleanup: Box::new(cleanup),
         }),
+    }
+}
+
+impl BrowserError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Action { source, .. } => source.code(),
+            Self::Cleanup {
+                operation: Some(error),
+                ..
+            } => error.code(),
+            Self::Cleanup { cleanup, .. } => cleanup.code(),
+            Self::ProfileRetained { source, .. } => source.code(),
+            Self::Closed | Self::Connection(_) => "browser_lost",
+            Self::TabNotFound => "tab_not_found",
+            Self::TargetNotFound => "target_not_found",
+            Self::NotActionable { .. } => "not_actionable",
+            Self::HistoryBoundary => "history_boundary",
+            Self::NavigationFailed(_) => "navigation_failed",
+            Self::OutputExists(_) => "output_exists",
+            Self::ResultTooLarge => "result_too_large",
+            Self::WrongHost => "wrong_host",
+            Self::ProtectedValue => "protected_value",
+            Self::Unavailable(_) => "browser_unavailable",
+            Self::Cancelled => "cancelled",
+            Self::Timeout => "timeout",
+            Self::Busy => "tab_busy",
+            Self::DialogBlocked => "dialog_blocked",
+            Self::DialogNotFound => "dialog_not_found",
+            Self::InvalidDialogAction => "invalid_dialog_action",
+            Self::Ambiguous(_) => "ambiguous_target",
+            Self::StaleReference => "stale_ref",
+            Self::InvalidResult(_) => "unsupported_result",
+            Self::Configuration(_) => "invalid_input",
+            Self::Io(_) => "io_error",
+            Self::Cdp(_) | Self::Events(_) | Self::Task(_) => "driver_error",
+        }
+    }
+
+    pub fn details(&self) -> serde_json::Value {
+        match self {
+            Self::Action { details, .. } => details.clone(),
+            Self::Cleanup {
+                operation: Some(error),
+                ..
+            } => error.details(),
+            Self::NotActionable {
+                condition,
+                interceptor,
+            } => {
+                let mut result = serde_json::json!({"condition": condition});
+                if let Some(interceptor) = interceptor {
+                    result["interceptor"] = serde_json::json!(interceptor);
+                }
+                result
+            }
+            Self::Ambiguous(count) => serde_json::json!({"count": count}),
+            _ => serde_json::json!({}),
+        }
+    }
+}
+
+impl From<CdpError> for BrowserError {
+    fn from(error: CdpError) -> Self {
+        match error {
+            CdpError::Ws(_) | CdpError::ChannelSendError(_) | CdpError::NoResponse => {
+                Self::Connection(error.to_string())
+            }
+            CdpError::Timeout => Self::Timeout,
+            // Chrome provides only a message for a closed target session.
+            CdpError::Chrome(ref error) if error.message == "Session with given id not found." => {
+                Self::TabNotFound
+            }
+            _ => Self::Cdp(error),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn browser_errors_keep_causes_and_input_progress() {
+        for (error, code) in [
+            (BrowserError::TabNotFound, "tab_not_found"),
+            (BrowserError::Closed, "browser_lost"),
+            (BrowserError::TargetNotFound, "target_not_found"),
+            (BrowserError::Ambiguous(2), "ambiguous_target"),
+            (BrowserError::HistoryBoundary, "history_boundary"),
+            (
+                BrowserError::NavigationFailed("ERR_EMPTY_RESPONSE".into()),
+                "navigation_failed",
+            ),
+            (
+                BrowserError::OutputExists("existing.png".into()),
+                "output_exists",
+            ),
+            (
+                BrowserError::Io(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+                "io_error",
+            ),
+            (
+                BrowserError::Configuration("bad key".into()),
+                "invalid_input",
+            ),
+        ] {
+            assert_eq!(error.code(), code);
+        }
+        let ended = CancellationToken::new();
+        let cancelled = CancellationToken::new();
+        let operation = Operation::new(&ended, &cancelled, CONTROL_TIMEOUT);
+        assert_eq!(
+            operation
+                .failure(BrowserError::Timeout, "tab", None)
+                .details()["action"],
+            "not_started"
+        );
+        operation.begin_input();
+        assert_eq!(
+            operation
+                .failure(BrowserError::Closed, "tab", None)
+                .details()["action"],
+            "unknown"
+        );
+        operation.complete_input();
+        assert_eq!(
+            operation
+                .failure(BrowserError::Timeout, "tab", None)
+                .details()["action"],
+            "completed"
+        );
     }
 }

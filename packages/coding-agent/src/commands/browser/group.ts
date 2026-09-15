@@ -1,4 +1,4 @@
-import { browserDefaultTimeout, browserOperations, type BrowserOperation } from '@demicodes/browser-protocol'
+import { BROWSER_MAX_NODES, BROWSER_MAX_TIMEOUT_MS, browserDefaultTimeout, browserOperations, type BrowserOperation } from '@demicodes/browser-protocol'
 import type { CommandGroup, NativeCommand } from '@demicodes/shell'
 
 const summaries: Record<string, string> = {
@@ -11,16 +11,16 @@ const summaries: Record<string, string> = {
   reload: 'Reload a tab.',
   history: 'Read the tab’s navigation history.',
   close: 'Close a tab. Closing the last tab ends this browser; open again in a new shell call.',
-  inspect: 'Read the page’s accessibility hierarchy, names, roles and node references.',
-  find: 'Find nodes by reference, role/name, label, text, test ID or CSS.',
-  read: 'Read a matched element’s text, HTML, value or attribute.',
+  inspect: `Read accessibility names, roles, values, states and references; at most ${BROWSER_MAX_NODES} nodes.`,
+  find: `Find nodes by reference, role/name, associated label, visible text, test ID or CSS; at most ${BROWSER_MAX_NODES} nodes.`,
+  read: 'Read a matched element’s text, HTML, value, attribute or visible/enabled/checked state.',
   screenshot: 'Capture a tab as pure PNG stdout, or save a new PNG file with --output.',
   click: 'Click one actionable element or an explicit viewport coordinate.',
   move: 'Move the pointer to an element or viewport coordinate.',
   scroll: 'Scroll at an element or viewport coordinate.',
   fill: 'Replace an editable element’s contents with text.',
   type: 'Insert text at an editable element’s caret.',
-  key: 'Press a keyboard key on an element.',
+  key: 'Focus the target and press --key with a key name or a + joined combination, such as Space, Enter or ControlOrMeta+A.',
   check: 'Set a checkbox or radio to the requested checked value.',
   select: 'Select native select options by value, label or index.',
   wait: 'Wait for a URL glob or an element state, within a bounded deadline.',
@@ -49,10 +49,10 @@ export function createBrowserGroup(): CommandGroup {
       name: path.at(-1)!,
       kind: 'native',
       binding: { package: 'demi.builtin', operation: `browser.${name}`, resource: 'browser' },
-      summary,
+      summary: `${summary} Default timeout ${browserDefaultTimeout(name)} ms; maximum ${BROWSER_MAX_TIMEOUT_MS} ms.`,
       input: {
         ...schema.input.shape,
-        timeout: schema.input.shape.timeout.describe(`Whole operation deadline in milliseconds; default ${browserDefaultTimeout(name)}.`),
+        timeout: schema.input.shape.timeout.describe(`Whole operation deadline in milliseconds; default ${browserDefaultTimeout(name)}, maximum ${BROWSER_MAX_TIMEOUT_MS}.`),
       },
       positionals: name === 'open' ? ['url'] : name === 'goto' ? ['tab', 'url'] : 'tab' in schema.input.shape ? ['tab'] : [],
       output: { json: schema.result },
