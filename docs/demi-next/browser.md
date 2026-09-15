@@ -47,8 +47,11 @@ Explicit screenshots continue through the existing command media contract.
 The design uses Codex's observable, programmable browser tools and readable
 feedback as the primary reference when correcting browser API behavior. Where
 the current design or Playwright behavior differs, follow the corresponding
-Codex API's verified behavior. Playwright implementation and tests provide
-supplementary references for the affected APIs. Match the operation's purpose:
+Codex API's verified normal behavior. Reproduce and document obvious reference
+defects separately; do not adopt them as the target behavior. Use the API's
+contract and Playwright's normal implementation to resolve those cases.
+Playwright implementation and tests provide supplementary references for the
+affected APIs. Match the operation's purpose:
 an accessibility value setter and a locator click are different operations.
 It does not copy proprietary implementations,
 protocols, or prompts, or embed another browser-use agent. Dependencies must not
