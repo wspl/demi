@@ -627,6 +627,13 @@ other multiple match, whether all hidden or several visible, fails with
 explicitly among all matches, hidden ones included. A locator with no match
 fails with `target_not_found`, never with ambiguity.
 
+Hidden matches exist only where the locator's own computation can see them.
+`--css`, `--label`, `--text-match`, `--placeholder`, and `--test-id` match
+DOM elements whatever their rendering. `--role` with `--name` matches
+accessibility-tree nodes; an element the browser excludes from that tree, such
+as one under `display: none`, has no role or name and is not a role/name match
+at all, so it neither counts toward ambiguity nor toward `--nth`.
+
 For composed locators, `find <tab> --query` reads a declarative tree from stdin:
 
 ```bash
