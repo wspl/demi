@@ -1,3 +1,4 @@
+import type { FrameAdmission } from '../conversation/frame-admission'
 import type { ConversationHostAccess } from '../conversation/target'
 import { webAssetRoutes } from './web-assets'
 import {
@@ -58,7 +59,7 @@ export function createApp(options: {
   productState: ProductState
   conversationUpdates: ConversationUpdates
   conversationForks: ConversationForks
-  admitFrame: (id: string) => (() => void) | null
+  admitFrame: FrameAdmission
   control: ControlService
   conversationStores: ConversationStores
   changes: ChangeStore

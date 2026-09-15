@@ -13,7 +13,7 @@ test('maintenance postpones retirement without restarting its elapsed idle inter
     eligible: () => !gate.demandActive,
     observe: changed => gate.subscribe(changed),
     reserve: () => {
-      const release = gate.tryReserve()
+      const release = gate.tryReserve('idle')
       return release ? { run: async () => { retired.resolve() }, release } : null
     },
   })
@@ -35,7 +35,7 @@ test('new demand resets an idle interval and no admission is reclaimed while act
     eligible: () => !gate.demandActive,
     observe: changed => gate.subscribe(changed),
     reserve: () => {
-      const release = gate.tryReserve()
+      const release = gate.tryReserve('idle')
       return release ? { run: async () => { retirements++ }, release } : null
     },
   })
@@ -89,7 +89,7 @@ test('a failed cleanup releases its gate and backs off instead of retrying in a 
     eligible: () => true,
     observe: changed => gate.subscribe(changed),
     reserve: () => {
-      const release = gate.tryReserve()
+      const release = gate.tryReserve('idle')
       return release ? { run: async () => { throw new Error('release failed') }, release } : null
     },
   })
@@ -119,7 +119,7 @@ test('brief demand while an asynchronous reservation waits starts a fresh idle i
         reserving.resolve()
         await proceed.promise
       }
-      const release = gate.tryReserve()
+      const release = gate.tryReserve('idle')
       return release ? {
         run: async () => {
           retirements++

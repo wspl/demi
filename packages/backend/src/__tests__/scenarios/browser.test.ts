@@ -113,7 +113,15 @@ test.skipIf(process.env.DEMI_BROWSER_IDLE_ACCEPTANCE !== '1')('a retained paired
     expect(opened.received[0]).toContain('exitCode: 0')
     const started = performance.now()
     const deadline = started + idleMs + 60_000
-    while (!world.frames.some(frame => frame.message.type === 'resource_release')) {
+    const deviceId = world.device('browser-idle').deviceId
+    while (!world.frames.some(({ deviceId: respondingDevice, direction, message }) =>
+      respondingDevice === deviceId && direction === 'in' &&
+      message.type === 'resource_result' && message.error === undefined && message.result === null &&
+      world.frames.some(request =>
+        request.deviceId === deviceId && request.direction === 'out' &&
+        request.message.type === 'resource_release' && request.message.id === message.id
+      )
+    )) {
       if (performance.now() > deadline) throw new Error('Idle browser was not reclaimed')
       await Bun.sleep(250)
     }
