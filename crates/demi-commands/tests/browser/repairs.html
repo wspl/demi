@@ -47,6 +47,7 @@
 <button class="ambiguous">Ambiguous</button><button class="ambiguous">Ambiguous</button>
 <button class="all-hidden" style="display:none">Hidden duplicate</button><button class="all-hidden" style="display:none">Hidden duplicate</button>
 <div id="scope"><button>Scoped</button></div><button>Scoped</button>
+<button id="open-popup" onclick="window.open('about:blank')">Open popup</button>
 <button id="no-nav" onclick="window.noNavClicks++">No navigation</button>
 <button id="immediate" onclick="location.href='/destination'">Immediate</button>
 <button id="delayed" onclick="setTimeout(() => location.href='/destination', 100)">Delayed</button>
@@ -74,7 +75,7 @@
 <button id="removable">Removable</button>
 <button id="show-later" onclick="setTimeout(()=>hidden.style.visibility='visible', 100)">Show later</button>
 <button id="enable-later" onclick="setTimeout(()=>document.querySelector('#aria-disabled').parentElement.removeAttribute('aria-disabled'), 100)">Enable later</button>
-<div id="shadow"></div><iframe id="frame" srcdoc="<button id='inside' onclick='this.textContent=&quot;Clicked frame&quot;'>Frame button</button>"></iframe>
+<div id="open-shadow"></div><div id="shadow"></div><iframe id="frame" srcdoc="<label>Frame review label<input type='date'></label><button id='inside' onclick='this.textContent=&quot;Clicked frame&quot;'>Frame button</button>"></iframe>
 <script>
   window.noNavClicks = 0;
   window.namedClicks = 0;
@@ -83,6 +84,17 @@
   window.keys = [];
   document.addEventListener('keydown', event => keys.push({type: event.type, key: event.key, ctrl: event.ctrlKey, meta: event.metaKey}));
   document.addEventListener('keyup', event => keys.push({type: event.type, key: event.key, ctrl: event.ctrlKey, meta: event.metaKey}));
+  const openRoot = document.querySelector('#open-shadow').attachShadow({mode: 'open'});
+  openRoot.innerHTML = '<label>Open shadow label<input type="date"></label><span>Open shadow text</span>';
+  if (location.pathname === '/many') {
+    const unrelated = document.createDocumentFragment();
+    for (let index = 0; index < 5000; index++) {
+      const element = document.createElement('span');
+      element.textContent = `Unrelated text ${index}`;
+      unrelated.append(element);
+    }
+    document.body.append(unrelated);
+  }
   const root = document.querySelector('#shadow').attachShadow({mode: 'closed'});
   root.innerHTML = '<button onclick="this.textContent=\'Shadow clicked\'">Shadow button</button>';
 </script>

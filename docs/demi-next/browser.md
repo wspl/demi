@@ -117,6 +117,8 @@ opener tab ID, or `temporary` with invoking node ID. This is diagnostic metadata
 not authorization. An iframe remains part of its top-level tab. A site-created
 top-level tab is registered before it can be operated; the triggering action
 reports observed `openedTabs`. Later popups appear in subsequent `tabs` calls.
+The driver retains the public ID of each target for the browser generation,
+including closed tabs, so a popup can still report its opener after it closes.
 
 Only one agent command executes against a tab at a time. Its operation lock
 covers targeting, input, associated waits, and result collection. Conflicting
@@ -551,7 +553,9 @@ not complete HTML source. `content read --format html` explicitly requests HTML.
 
 Each node reports its role, its accessible name, and, when the accessibility
 tree carries one, its current `value` as a separate field; name and value are
-never merged. Boolean states such as `checked`, `disabled`, and `expanded` are
+never merged. Values are strings or numbers; other AX value types, including
+booleans, are omitted without failing the observation. Boolean states such as
+`checked`, `disabled`, and `expanded` are
 reported with their actual value, including `false`; a state the tree does not
 carry is omitted rather than reported as false. A password input is marked
 `protected` and never carries a value; the same rule makes `read --property
@@ -933,8 +937,9 @@ outside the current catalog; the current commands require a target.
 Fill handles the control's native type. Text-like inputs, textareas, and
 contenteditable elements are focused, their contents selected, and the text
 inserted as native text input; an empty text deletes the selection instead.
-Date, time, month, week, color, and range inputs receive the value through the
-control's native value setter and fail with `invalid_input` when the browser
+Date, time, datetime-local, month, week, color, and range inputs receive the
+value through the control's native value setter and fail with `invalid_input`
+when the browser
 rejects it, for example a malformed date. Number inputs require numeric text.
 Any other element fails immediately as not fillable. Fill does not click the
 control and does not assert that the final value equals the input; page scripts
@@ -966,8 +971,8 @@ selected by that candidate again. Every supplied candidate must have a match
 for a multi-select. A candidate that has not appeared yet is waited for until
 the deadline; a matching disabled option fails with `not_actionable`; a candidate
 that never appears fails with `target_not_found`. The control receives `input`
-and `change`
-events, and the result lists the values actually selected. Select-text defaults
+and `change` events, and the result lists the values actually selected.
+Select-text defaults
 to selecting the match; `--cursor before|after` positions a cursor instead.
 `--prefix` and `--suffix` disambiguate repeated text; remaining ambiguity fails.
 
@@ -1411,8 +1416,8 @@ Action: not_started.
 $ demi browser click tab-1 --ref e3 --wait-url '**/dashboard' --timeout 5000
 Error: timeout
 The click completed, but the expected navigation was not observed.
-Current URL: http://localhost:3000/login
 Action: completed.
+Current URL: http://localhost:3000/login
 ```
 
 The last failure has this JSON representation on stderr:
@@ -1437,7 +1442,8 @@ blocking dialog, or invalid input; `completed` when input was delivered and a
 later wait failed; `unknown` when the connection was lost after delivery began.
 A follow-up observation after a completed action, such as reading the current
 URL for the result, does not turn the action into a failure: the result reports
-the action and omits unavailable URL, title, or viewport fields. `info` remains
+the action and omits unavailable metadata. Navigation results always include
+the observed URL; title and the open viewport can be omitted. `info` remains
 an explicit metadata read and can fail. Each failure keeps its own cause;
 a missing tab, a lost browser, zero matches, several matches, a history
 boundary, an existing output file, and a driver error are never folded into

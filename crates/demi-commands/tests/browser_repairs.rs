@@ -138,6 +138,7 @@ async fn native_fill_and_text_replacement() {
             .await?;
         for (css, text) in [
             ("#date", "2026-09-28"),
+            ("#datetime", "2026-09-28T14:35"),
             ("#time", "14:35"),
             ("#month", "2026-09"),
             ("#week", "2026-W39"),
@@ -150,6 +151,7 @@ async fn native_fill_and_text_replacement() {
         }
         for (css, text) in [
             ("#date", "2026-13-28"),
+            ("#datetime", "2026-13-28T14:35"),
             ("#number", "not a number"),
             ("#time", "99:99"),
         ] {
@@ -190,16 +192,7 @@ async fn native_fill_and_text_replacement() {
             "not_actionable",
             "not_started",
         );
-        error(
-            command(
-                &tab,
-                "fill",
-                json!({"css": "#datetime", "text": "2026-09-28T14:35"}),
-            )
-            .await,
-            "not_actionable",
-            "not_started",
-        );
+
         error(
             command(
                 &tab,
@@ -1080,4 +1073,68 @@ async fn input_and_animation_probes_clean_up_on_cancellation_and_dialogs() {
         assert_eq!(tab.read_only("Object.getOwnPropertyNames(document.querySelector('#moving')).filter(name => name.startsWith('probe_'))", &CancellationToken::new(), TIMEOUT).await?, json!([]));
         Ok(())
     }).await;
+}
+
+#[tokio::test]
+#[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
+async fn text_locators_scan_large_documents_shadow_roots_and_frames() {
+    with_fixture(|browser, base| async move {
+        let tab = browser
+            .open(&format!("{base}/many"), &CancellationToken::new(), TIMEOUT)
+            .await?;
+        for label in [
+            "Appointment date",
+            "Open shadow label",
+            "Frame review label",
+        ] {
+            let found = command(&tab, "find", json!({"label": label, "exact": true})).await?;
+            assert_eq!(found["count"], 1);
+            command(
+                &tab,
+                "fill",
+                json!({"ref": found["matches"][0]["ref"], "text": "2026-10-01"}),
+            )
+            .await?;
+        }
+        for text in ["Visible words", "Open shadow text", "Frame button"] {
+            let found = command(&tab, "find", json!({"text-match": text, "exact": true})).await?;
+            assert_eq!(found["count"], 1);
+        }
+        let scope =
+            command(&tab, "find", json!({"css": "#open-shadow"})).await?["matches"][0]["ref"]
+                .clone();
+        let scoped = command(
+            &tab,
+            "find",
+            json!({"label": "Open shadow label", "within": scope}),
+        )
+        .await?;
+        assert_eq!(scoped["count"], 1);
+        Ok(())
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
+async fn unregistered_popup_survives_its_opener_closing() {
+    with_fixture(|browser, base| async move {
+        let opener = browser
+            .open(&base, &CancellationToken::new(), TIMEOUT)
+            .await?;
+        // Execute directly on the tab so the environment has not reconciled the popup yet.
+        click(&opener, "#open-popup").await?;
+        opener.close(&CancellationToken::new(), TIMEOUT).await?;
+        let tabs = browser.tabs(&CancellationToken::new(), TIMEOUT).await?;
+        assert_eq!(tabs.len(), 1);
+        assert_ne!(tabs[0].id(), opener.id());
+        assert_eq!(
+            command(&tabs[0], "info", json!({})).await?["url"],
+            "about:blank"
+        );
+        let repeated = browser.tabs(&CancellationToken::new(), TIMEOUT).await?;
+        assert_eq!(repeated[0].id(), tabs[0].id());
+        Ok(())
+    })
+    .await;
 }
