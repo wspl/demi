@@ -1,10 +1,11 @@
 //! Chrome's accessibility tree supplies names, roles, hierarchy and semantic targets.
 
+use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 
 use chromiumoxide::{
-    Element, Page,
+    Page,
     cdp::browser_protocol::{
         accessibility::{AxNode, AxValue, GetFullAxTreeParams, QueryAxTreeParams},
         dom::{BackendNodeId, GetDocumentParams, GetFrameOwnerParams, Node as DomNode},
@@ -15,10 +16,11 @@ use chromiumoxide::{
 
 use super::{
     BrowserError, Result,
+    element::TargetElement,
     protocol::{BrowserNode, BrowserTarget},
 };
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 struct Reference {
     backend: BackendNodeId,
     frame: FrameId,
@@ -26,7 +28,10 @@ struct Reference {
 }
 
 #[derive(Default)]
-pub(super) struct References(HashMap<String, Reference>);
+pub(super) struct References {
+    by_id: HashMap<String, Reference>,
+    by_node: HashMap<Reference, String>,
+}
 
 struct Node {
     ax: AxNode,
@@ -35,11 +40,16 @@ struct Node {
     children: Vec<usize>,
 }
 
+#[derive(Default)]
 pub(super) struct Observation {
     nodes: Vec<Node>,
     order: Vec<(usize, u64)>,
     dom: Vec<(DomNode, FrameId)>,
     loaders: HashMap<FrameId, LoaderId>,
+    dom_index: HashMap<BackendNodeId, usize>,
+    ax_index: HashMap<BackendNodeId, usize>,
+    parents: HashMap<BackendNodeId, BackendNodeId>,
+    documents: Vec<FrameId>,
 }
 
 impl Observation {
@@ -49,6 +59,7 @@ impl Observation {
         let main_frame = tree.frame.id.clone();
         let mut frames = vec![tree];
         let mut nodes = Vec::new();
+        let mut ax_index = HashMap::new();
         let mut roots = HashMap::new();
         let mut owners = Vec::new();
         let mut loaders = HashMap::new();
@@ -88,6 +99,9 @@ impl Observation {
                     .flatten()
                     .filter_map(|id| indices.get(id).copied())
                     .collect();
+                if let Some(backend) = node.backend_dom_node_id {
+                    ax_index.entry(backend).or_insert(nodes.len());
+                }
                 nodes.push(Node {
                     ax: node,
                     frame: frame.id.clone(),
@@ -97,14 +111,13 @@ impl Observation {
             }
             frames.extend(tree.child_frames.unwrap_or_default());
         }
-        refs.0
+        refs.by_id
             .retain(|_, reference| loaders.get(&reference.frame) == Some(&reference.loader));
+        refs.by_node.retain(|_, id| refs.by_id.contains_key(id));
         for (frame, backend) in owners {
             if let (Some(root), Some(owner)) = (
                 roots.get(&frame),
-                nodes
-                    .iter_mut()
-                    .find(|node| node.ax.backend_dom_node_id == Some(backend)),
+                ax_index.get(&backend).map(|index| &mut nodes[*index]),
             ) {
                 owner.children.push(*root);
             }
@@ -131,13 +144,20 @@ impl Observation {
             .result
             .root;
         let mut dom = Vec::new();
-        let mut pending = vec![(document, main_frame)];
-        while let Some((mut node, frame)) = pending.pop() {
+        let mut dom_index = HashMap::new();
+        let mut parents = HashMap::new();
+        let mut documents = Vec::new();
+        let mut pending = vec![(document, main_frame, None)];
+        while let Some((mut node, frame, parent)) = pending.pop() {
+            let backend = node.backend_node_id;
+            if let Some(parent) = parent {
+                parents.insert(backend, parent);
+            }
             if let Some(document) = node.content_document.take() {
                 let child_frame = node.frame_id.clone().ok_or_else(|| {
                     BrowserError::InvalidResult("frame document has no frame ID".into())
                 })?;
-                pending.push((*document, child_frame));
+                pending.push((*document, child_frame, Some(backend)));
             }
             let mut children = node.children.take().unwrap_or_default();
             children.extend(node.shadow_roots.take().unwrap_or_default());
@@ -145,9 +165,10 @@ impl Observation {
                 children
                     .into_iter()
                     .rev()
-                    .map(|child| (child, frame.clone())),
+                    .map(|child| (child, frame.clone(), Some(backend))),
             );
             if node.node_type == 9 {
+                documents.push(frame.clone());
                 // QueryAXTree computes names and roles even for hidden DOM nodes.
                 let computed = page
                     .execute(
@@ -159,15 +180,19 @@ impl Observation {
                     .result
                     .nodes;
                 for ax in computed {
-                    if let Some(existing) = nodes.iter_mut().find(|current| {
-                        current.ax.backend_dom_node_id.is_some()
-                            && current.ax.backend_dom_node_id == ax.backend_dom_node_id
-                    }) {
+                    if let Some(index) = ax
+                        .backend_dom_node_id
+                        .and_then(|backend| ax_index.get(&backend))
+                    {
+                        let existing = &mut nodes[*index];
                         if existing.ax.ignored {
                             existing.ax.role = ax.role;
                             existing.ax.name = ax.name;
                         }
                     } else if let Some(loader) = loaders.get(&frame) {
+                        if let Some(backend) = ax.backend_dom_node_id {
+                            ax_index.insert(backend, nodes.len());
+                        }
                         nodes.push(Node {
                             ax,
                             frame: frame.clone(),
@@ -177,6 +202,7 @@ impl Observation {
                     }
                 }
             }
+            dom_index.insert(backend, dom.len());
             dom.push((node, frame));
         }
         Ok(Self {
@@ -184,6 +210,10 @@ impl Observation {
             order,
             dom,
             loaders,
+            dom_index,
+            ax_index,
+            parents,
+            documents,
         })
     }
 
@@ -235,7 +265,9 @@ impl Observation {
             node.ax
                 .value
                 .as_ref()
-                .and_then(|value| value.value.clone())
+                .and_then(|value| value.value.as_ref())
+                .filter(|value| value.is_string() || value.is_number())
+                .cloned()
                 .map(serde_json::from_value)
                 .transpose()
                 .map_err(|error| BrowserError::InvalidResult(format!("AX value: {error}")))?
@@ -254,9 +286,9 @@ impl Observation {
     /// The native password type is reflected by its case-insensitive DOM attribute.
     /// Both inspect and value reads use this rule before returning any input value.
     pub fn protected(&self, backend: BackendNodeId) -> bool {
-        self.dom.iter().any(|(node, _)| {
-            node.backend_node_id == backend
-                && node.local_name == "input"
+        self.dom_index.get(&backend).is_some_and(|index| {
+            let node = &self.dom[*index].0;
+            node.local_name == "input"
                 && node
                     .attributes
                     .as_deref()
@@ -274,17 +306,14 @@ impl Observation {
         page: &Page,
         target: &BrowserTarget,
         refs: &References,
-    ) -> Result<Vec<Element>> {
+    ) -> Result<Vec<TargetElement>> {
         validate_target(target)?;
         let within = match &target.within {
             Some(reference) => Some(self.reference(reference, refs)?),
             None => None,
         };
         let mut matches = if let Some(reference) = &target.r#ref {
-            vec![
-                page.element_from_backend_node(self.reference(reference, refs)?)
-                    .await?,
-            ]
+            vec![TargetElement::resolve(page, self.reference(reference, refs)?).await?]
         } else if target.css.is_some() || target.placeholder.is_some() || target.test_id.is_some() {
             let selector = match (&target.css, &target.placeholder, &target.test_id) {
                 (Some(css), _, _) => css.clone(),
@@ -300,7 +329,7 @@ impl Observation {
                 ),
                 _ => unreachable!("selector branch checks its alternatives"),
             };
-            match within {
+            let elements = match within {
                 Some(backend) => {
                     page.element_from_backend_node(backend)
                         .await?
@@ -308,7 +337,10 @@ impl Observation {
                         .await?
                 }
                 None => page.find_elements(selector).await?,
-            }
+            };
+            elements.into_iter().map(TargetElement::from).collect()
+        } else if target.label.is_some() || target.text_match.is_some() {
+            self.text_targets(page, target).await?
         } else {
             let mut matches = Vec::new();
             for (dom, _) in &self.dom {
@@ -316,62 +348,114 @@ impl Observation {
                     continue;
                 }
                 let backend = dom.backend_node_id;
-                if target.label.is_some() || target.text_match.is_some() {
-                    let element = page.element_from_backend_node(backend).await?;
-                    let (kind, expected) = if let Some(label) = &target.label {
-                        ("label", label)
-                    } else {
-                        ("text", target.text_match.as_ref().expect("text locator"))
-                    };
-                    let matched: bool = super::element::call(
-                        page,
-                        &element,
-                        include_str!("locator.js"),
-                        vec![
-                            json!(kind),
-                            json!(expected),
-                            json!(target.exact == Some(true)),
-                        ],
-                    )
-                    .await?;
-                    if matched {
-                        matches.push(element);
-                    }
-                } else if let Some(node) = self
-                    .nodes
-                    .iter()
-                    .find(|node| node.ax.backend_dom_node_id == Some(backend))
-                    && target
+                if let Some(index) = self.ax_index.get(&backend) {
+                    let node = &self.nodes[*index];
+                    if target
                         .role
                         .as_ref()
                         .is_none_or(|role| ax_text(&node.ax.role) == role)
-                    && target.name.as_ref().is_none_or(|name| {
-                        text_matches(ax_text(&node.ax.name), name, target.exact == Some(true))
-                    })
-                {
-                    matches.push(page.element_from_backend_node(backend).await?);
+                        && target.name.as_ref().is_none_or(|name| {
+                            text_matches(ax_text(&node.ax.name), name, target.exact == Some(true))
+                        })
+                    {
+                        matches.push(TargetElement::resolve(page, backend).await?);
+                    }
                 }
             }
             matches
         };
         if let Some(container) = within {
-            let container = page.element_from_backend_node(container).await?;
-            let mut scoped = Vec::new();
-            for element in matches {
-                let response = page.evaluate_function(chromiumoxide::cdp::js_protocol::runtime::CallFunctionOnParams::builder()
-                    .object_id(container.remote_object_id.clone())
-                    .function_declaration("function(node) { for (; node; node = node.parentElement || node.getRootNode().host) { if (node === this) return true; } return false; }")
-                    .argument(chromiumoxide::cdp::js_protocol::runtime::CallArgument::builder().object_id(element.remote_object_id.clone()).build())
-                    .return_by_value(true).build().map_err(BrowserError::Configuration)?)
-                    .await?.into_value::<bool>().map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
-                if response {
-                    scoped.push(element);
+            matches.retain(|element| {
+                let mut backend = element.backend_node_id;
+                loop {
+                    if backend == container {
+                        return true;
+                    }
+                    let Some(parent) = self.parents.get(&backend) else {
+                        return false;
+                    };
+                    backend = *parent;
                 }
-            }
-            matches = scoped;
+            });
         }
         if let Some(nth) = target.nth {
             matches = matches.into_iter().nth(nth as usize).into_iter().collect();
+        }
+        Ok(matches)
+    }
+
+    /// Match browser label/rendered-text locators once per captured frame.
+    async fn text_targets(
+        &self,
+        page: &Page,
+        target: &BrowserTarget,
+    ) -> Result<Vec<TargetElement>> {
+        use chromiumoxide::cdp::js_protocol::runtime::{
+            CallArgument, CallFunctionOnParams, DeepSerializedValueType, SerializationOptions,
+            SerializationOptionsSerialization,
+        };
+        let (kind, expected) = match &target.label {
+            Some(label) => ("label", label),
+            None => ("text", target.text_match.as_ref().expect("text locator")),
+        };
+        let mut backends = Vec::new();
+        for frame in &self.documents {
+            let context = page
+                .frame_execution_context(frame.clone())
+                .await?
+                .ok_or(BrowserError::StaleReference)?;
+            let result = page
+                .evaluate_function(
+                    CallFunctionOnParams::builder()
+                        .function_declaration(include_str!("locator.js"))
+                        .execution_context_id(context)
+                        .object_group(super::element::OBJECT_GROUP)
+                        .arguments(
+                            vec![
+                                json!(kind),
+                                json!(expected),
+                                json!(target.exact == Some(true)),
+                            ]
+                            .into_iter()
+                            .map(|value| CallArgument::builder().value(value).build())
+                            .collect::<Vec<_>>(),
+                        )
+                        .serialization_options(
+                            SerializationOptions::builder()
+                                .serialization(SerializationOptionsSerialization::Deep)
+                                .max_depth(2)
+                                .additional_parameters(json!({"maxNodeDepth": 0}))
+                                .build()
+                                .map_err(BrowserError::Configuration)?,
+                        )
+                        .build()
+                        .map_err(BrowserError::Configuration)?,
+                )
+                .await?;
+            let serialized = result
+                .object()
+                .deep_serialized_value
+                .as_ref()
+                .filter(|value| value.r#type == DeepSerializedValueType::Array)
+                .and_then(|value| value.value.as_ref())
+                .ok_or_else(|| {
+                    BrowserError::InvalidResult(
+                        "locator did not return a serialized node array".into(),
+                    )
+                })?;
+            let nodes: Vec<SerializedNode> = serde_json::from_value(serialized.clone())
+                .map_err(|error| BrowserError::InvalidResult(format!("locator nodes: {error}")))?;
+            for SerializedNode::Node { backend_node_id } in nodes {
+                if !self.dom_index.contains_key(&backend_node_id) {
+                    return Err(BrowserError::StaleReference);
+                }
+                backends.push(backend_node_id);
+            }
+        }
+        backends.sort_by_key(|backend| self.dom_index[backend]);
+        let mut matches = Vec::with_capacity(backends.len());
+        for backend in backends {
+            matches.push(TargetElement::resolve(page, backend).await?);
         }
         Ok(matches)
     }
@@ -382,15 +466,17 @@ impl Observation {
         page: &Page,
         target: &BrowserTarget,
         refs: &References,
-    ) -> Result<Vec<Element>> {
+    ) -> Result<Vec<TargetElement>> {
         if let Some(id) = &target.r#ref {
-            let reference = refs.0.get(id).ok_or(BrowserError::StaleReference)?;
+            let reference = refs.by_id.get(id).ok_or(BrowserError::StaleReference)?;
             if self.loaders.get(&reference.frame) != Some(&reference.loader) {
                 return Err(BrowserError::StaleReference);
             }
-            if !self.dom.iter().any(|(node, frame)| {
-                node.backend_node_id == reference.backend && *frame == reference.frame
-            }) {
+            if !self
+                .dom_index
+                .get(&reference.backend)
+                .is_some_and(|index| self.dom[*index].1 == reference.frame)
+            {
                 return Ok(Vec::new());
             }
         }
@@ -399,7 +485,7 @@ impl Observation {
 
     pub fn describe_elements(
         &self,
-        elements: &[Element],
+        elements: &[TargetElement],
         refs: &mut References,
         limit: usize,
     ) -> Result<Vec<BrowserNode>> {
@@ -407,18 +493,15 @@ impl Observation {
             .iter()
             .take(limit)
             .map(|element| {
-                let index = self
-                    .nodes
-                    .iter()
-                    .position(|node| node.ax.backend_dom_node_id == Some(element.backend_node_id));
+                let index = self.ax_index.get(&element.backend_node_id);
                 if let Some(index) = index {
-                    self.describe(index, 0, refs)
+                    self.describe(*index, 0, refs)
                 } else {
-                    let (_, frame) = self
-                        .dom
-                        .iter()
-                        .find(|(node, _)| node.backend_node_id == element.backend_node_id)
+                    let index = self
+                        .dom_index
+                        .get(&element.backend_node_id)
                         .ok_or(BrowserError::StaleReference)?;
+                    let frame = &self.dom[*index].1;
                     let loader = self
                         .loaders
                         .get(frame)
@@ -442,36 +525,47 @@ impl Observation {
     }
 
     fn reference(&self, id: &str, refs: &References) -> Result<BackendNodeId> {
-        let reference = refs.0.get(id).ok_or(BrowserError::StaleReference)?;
+        let reference = refs.by_id.get(id).ok_or(BrowserError::StaleReference)?;
         if self.loaders.get(&reference.frame) != Some(&reference.loader) {
             return Err(BrowserError::StaleReference);
         }
-        self.dom
-            .iter()
-            .find(|(node, frame)| {
-                node.backend_node_id == reference.backend && *frame == reference.frame
-            })
+        self.dom_index
+            .get(&reference.backend)
+            .filter(|index| self.dom[**index].1 == reference.frame)
             .map(|_| reference.backend)
             .ok_or(BrowserError::StaleReference)
     }
 }
 
+// Blink includes additional DOM metadata in deep serialization. Validate the
+// node discriminator and backend identity; the locator does not use that metadata.
+#[derive(Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "lowercase")]
+enum SerializedNode {
+    Node {
+        #[serde(rename = "backendNodeId")]
+        backend_node_id: BackendNodeId,
+    },
+}
+
 impl References {
     pub fn invalidate(&mut self) {
-        self.0.clear();
+        self.by_id.clear();
+        self.by_node.clear();
     }
 
     fn issue(&mut self, reference: Reference) -> Result<String> {
-        if let Some((id, _)) = self.0.iter().find(|(_, current)| **current == reference) {
+        if let Some(id) = self.by_node.get(&reference) {
             return Ok(id.clone());
         }
-        if self.0.len() >= 10_000 {
+        if self.by_id.len() >= 10_000 {
             return Err(BrowserError::Configuration(
                 "browser reference limit reached for this document".into(),
             ));
         }
         let id = super::handles::fresh("e")?;
-        self.0.insert(id.clone(), reference);
+        self.by_id.insert(id.clone(), reference.clone());
+        self.by_node.insert(reference, id.clone());
         Ok(id)
     }
 }
@@ -529,4 +623,43 @@ pub(super) fn has_target_flags(target: &BrowserTarget) -> bool {
         || target.exact.is_some()
         || target.nth.is_some()
         || target.within.is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ax_values_omit_unsupported_types_without_losing_nodes() {
+        for (kind, value, expected) in [
+            ("boolean", json!(false), None),
+            ("valueUndefined", json!(null), None),
+            ("string", json!("input value"), Some(json!("input value"))),
+            ("number", json!(42), Some(json!(42))),
+        ] {
+            let ax = serde_json::from_value(json!({
+                "nodeId": "1", "ignored": false,
+                "role": {"type": "role", "value": "textbox"},
+                "value": {"type": kind, "value": value},
+            }))
+            .unwrap();
+            let observation = Observation {
+                nodes: vec![Node {
+                    ax,
+                    frame: FrameId::new("frame"),
+                    loader: LoaderId::new("loader"),
+                    children: Vec::new(),
+                }],
+                order: vec![(0, 0)],
+                ..Observation::default()
+            };
+            let (nodes, truncated) = observation.tree(&mut References::default(), 100).unwrap();
+            assert!(!truncated);
+            assert_eq!(nodes.len(), 1);
+            assert_eq!(
+                serde_json::to_value(&nodes[0]).unwrap().get("value"),
+                expected.as_ref()
+            );
+        }
+    }
 }
