@@ -11,6 +11,7 @@ mod navigation;
 mod observation;
 mod operation;
 mod output;
+mod process;
 mod protocol;
 mod resources;
 mod select;

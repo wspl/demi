@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     future::Future,
+    io,
     path::PathBuf,
     sync::{Arc, Weak},
     time::Duration,
@@ -21,6 +22,7 @@ use tokio_util::{
 use super::{
     BrowserError, BrowserTab, Result,
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
+    process::ChromeProcess,
     protocol::BrowserCreatedBy,
     tab::TabState,
 };
@@ -90,7 +92,7 @@ where
             "Chrome executable must be absolute".into(),
         ));
     }
-    let profile = tempfile::Builder::new().prefix("demi-browser-").tempdir()?;
+    let mut profile = tempfile::Builder::new().prefix("demi-browser-").tempdir()?;
     let config = BrowserConfig::builder()
         .respect_https_errors()
         .surface_invalid_messages()
@@ -112,10 +114,20 @@ where
         .request_timeout(Duration::from_secs(30))
         .build()
         .map_err(BrowserError::Configuration)?;
-    let (browser, mut handler) = tokio::select! {
+    let mut process = ChromeProcess::new(profile.path());
+    // Only joined retirement may remove a profile once Chrome could be writing.
+    profile.disable_cleanup(true);
+    let launched = tokio::select! {
         biased;
-        _ = stop.cancelled() => return Err(BrowserError::Cancelled),
-        result = Browser::launch(config) => result?,
+        _ = stop.cancelled() => Err(BrowserError::Cancelled),
+        result = Browser::launch_with(config, |command| process.spawn(command)) => result.map_err(BrowserError::from),
+    };
+    let (browser, mut handler) = match launched {
+        Ok(launched) => launched,
+        Err(error) => {
+            let cleanup = remove_profile(profile, process.terminate().await).await;
+            return after_cleanup(Err(error), cleanup);
+        }
     };
     let browser = Arc::new(Mutex::new(browser));
     let (failure, _) = watch::channel(None);
@@ -175,13 +187,8 @@ where
     ended.cancel();
     observers.close();
     observers.wait().await;
-    let cleanup = match retire_browser(&browser, pump).await {
-        Ok(()) => profile.close().map_err(BrowserError::from),
-        Err(source) => Err(BrowserError::ProfileRetained {
-            path: profile.keep(),
-            source: Box::new(source),
-        }),
-    };
+    let retired = retire_browser(&browser, pump, &mut process).await;
+    let cleanup = remove_profile(profile, retired).await;
     after_cleanup(outcome, cleanup)
 }
 
@@ -322,24 +329,32 @@ impl BrowserEnvironment {
 async fn retire_browser(
     browser: &Mutex<Browser>,
     mut pump: AbortOnDropHandle<chromiumoxide::Result<()>>,
+    process: &mut ChromeProcess,
 ) -> Result<()> {
     let mut browser = browser.lock().await;
+    process.observe();
     let graceful = tokio::time::timeout(CONTROL_TIMEOUT, async {
         browser.close().await?;
         browser.wait().await?;
         Ok::<_, BrowserError>(())
     })
     .await;
-    let process = match graceful {
+    let leader = match graceful {
         Ok(Ok(())) => Ok(()),
         _ => {
             // The connection can already be gone; killing the owned child is authoritative.
-            match browser.kill().await {
-                Some(result) => result.map_err(BrowserError::from),
-                None => Err(BrowserError::Closed),
+            match tokio::time::timeout(CONTROL_TIMEOUT, browser.kill()).await {
+                Ok(Some(result)) => result.map_err(BrowserError::from),
+                Ok(None) => Err(BrowserError::Closed),
+                Err(_) => Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "Chrome leader did not exit",
+                )
+                .into()),
             }
         }
     };
+    let group = process.terminate().await;
     let joined = tokio::time::timeout(CONTROL_TIMEOUT, &mut pump).await;
     let task = match joined {
         Ok(result) => result.map_err(BrowserError::from).map(|_| ()),
@@ -354,6 +369,53 @@ async fn retire_browser(
     };
     // A CDP error after requested shutdown is expected; child exit, not the
     // WebSocket closing handshake, establishes resource retirement.
-    process?;
+    leader?;
+    group?;
     task
+}
+
+/// Remove Chrome's profile only after retirement, briefly retrying concurrent directory updates.
+async fn remove_profile(profile: tempfile::TempDir, retired: Result<()>) -> Result<()> {
+    let path = profile.keep();
+    let result = async {
+        retired?;
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(300);
+        loop {
+            match tokio::fs::remove_dir_all(&path).await {
+                Ok(()) => return Ok(()),
+                Err(error)
+                    if error.kind() == io::ErrorKind::DirectoryNotEmpty
+                        && tokio::time::Instant::now() < deadline =>
+                {
+                    tokio::time::sleep_until(
+                        deadline.min(tokio::time::Instant::now() + Duration::from_millis(50)),
+                    )
+                    .await;
+                }
+                Err(error) => return Err(BrowserError::from(error)),
+            }
+        }
+    }
+    .await;
+    result.map_err(|source| BrowserError::ProfileRetained {
+        path,
+        source: Box::new(source),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn failed_process_retirement_retains_the_profile_and_cause() {
+        let profile = tempfile::tempdir().unwrap();
+        let path = profile.path().to_owned();
+        let result = remove_profile(profile, Err(BrowserError::Timeout)).await;
+        assert!(
+            matches!(result, Err(BrowserError::ProfileRetained { source, .. }) if matches!(*source, BrowserError::Timeout))
+        );
+        assert!(path.is_dir());
+        std::fs::remove_dir_all(path).unwrap();
+    }
 }
