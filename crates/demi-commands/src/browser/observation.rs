@@ -1,12 +1,13 @@
 //! Chrome's accessibility tree supplies names, roles, hierarchy and semantic targets.
 
+use serde_json::json;
 use std::collections::HashMap;
 
 use chromiumoxide::{
     Element, Page,
     cdp::browser_protocol::{
-        accessibility::{AxNode, AxValue, GetFullAxTreeParams},
-        dom::{BackendNodeId, GetFrameOwnerParams},
+        accessibility::{AxNode, AxValue, GetFullAxTreeParams, QueryAxTreeParams},
+        dom::{BackendNodeId, GetDocumentParams, GetFrameOwnerParams, Node as DomNode},
         network::LoaderId,
         page::{FrameId, GetFrameTreeParams},
     },
@@ -37,6 +38,8 @@ struct Node {
 pub(super) struct Observation {
     nodes: Vec<Node>,
     order: Vec<(usize, u64)>,
+    dom: Vec<(DomNode, FrameId)>,
+    loaders: HashMap<FrameId, LoaderId>,
 }
 
 impl Observation {
@@ -122,7 +125,66 @@ impl Observation {
                 pending.push((*child, depth + u64::from(visible)));
             }
         }
-        Ok(Self { nodes, order })
+        let document = page
+            .execute(GetDocumentParams::builder().depth(-1).pierce(true).build())
+            .await?
+            .result
+            .root;
+        let mut dom = Vec::new();
+        let mut pending = vec![(document, main_frame)];
+        while let Some((mut node, frame)) = pending.pop() {
+            if let Some(document) = node.content_document.take() {
+                let child_frame = node.frame_id.clone().ok_or_else(|| {
+                    BrowserError::InvalidResult("frame document has no frame ID".into())
+                })?;
+                pending.push((*document, child_frame));
+            }
+            let mut children = node.children.take().unwrap_or_default();
+            children.extend(node.shadow_roots.take().unwrap_or_default());
+            pending.extend(
+                children
+                    .into_iter()
+                    .rev()
+                    .map(|child| (child, frame.clone())),
+            );
+            if node.node_type == 9 {
+                // QueryAXTree computes names and roles even for hidden DOM nodes.
+                let computed = page
+                    .execute(
+                        QueryAxTreeParams::builder()
+                            .backend_node_id(node.backend_node_id)
+                            .build(),
+                    )
+                    .await?
+                    .result
+                    .nodes;
+                for ax in computed {
+                    if let Some(existing) = nodes.iter_mut().find(|current| {
+                        current.ax.backend_dom_node_id.is_some()
+                            && current.ax.backend_dom_node_id == ax.backend_dom_node_id
+                    }) {
+                        if existing.ax.ignored {
+                            existing.ax.role = ax.role;
+                            existing.ax.name = ax.name;
+                        }
+                    } else if let Some(loader) = loaders.get(&frame) {
+                        nodes.push(Node {
+                            ax,
+                            frame: frame.clone(),
+                            loader: loader.clone(),
+                            children: Vec::new(),
+                        });
+                    }
+                }
+            }
+            dom.push((node, frame));
+        }
+        Ok(Self {
+            nodes,
+            order,
+            dom,
+            loaders,
+        })
     }
 
     pub fn tree(&self, refs: &mut References, limit: usize) -> Result<(Vec<BrowserNode>, bool)> {
@@ -145,26 +207,64 @@ impl Observation {
             })?),
             None => None,
         };
-        let states = node
+        let protected = node
+            .ax
+            .backend_dom_node_id
+            .is_some_and(|backend| self.protected(backend));
+        let mut states: Vec<String> = node
             .ax
             .properties
             .iter()
             .flatten()
             .filter_map(|property| match property.value.value.as_ref() {
-                Some(serde_json::Value::Bool(true)) => Some(property.name.as_ref().to_owned()),
-                Some(serde_json::Value::String(value)) if !value.is_empty() && value != "false" => {
+                Some(value @ (serde_json::Value::Bool(_) | serde_json::Value::Number(_))) => {
+                    Some(format!("{}={value}", property.name.as_ref()))
+                }
+                Some(serde_json::Value::String(value)) => {
                     Some(format!("{}={value}", property.name.as_ref()))
                 }
                 _ => None,
             })
             .collect();
+        if protected {
+            states.push("protected".into());
+        }
+        let value = if protected {
+            None
+        } else {
+            node.ax
+                .value
+                .as_ref()
+                .and_then(|value| value.value.clone())
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(|error| BrowserError::InvalidResult(format!("AX value: {error}")))?
+        };
         Ok(BrowserNode {
             r#ref: reference,
             role: ax_text(&node.ax.role).into(),
             name: ax_text(&node.ax.name).into(),
             depth,
             states,
+            value,
             bounds: None,
+        })
+    }
+
+    /// The native password type is reflected by its case-insensitive DOM attribute.
+    /// Both inspect and value reads use this rule before returning any input value.
+    pub fn protected(&self, backend: BackendNodeId) -> bool {
+        self.dom.iter().any(|(node, _)| {
+            node.backend_node_id == backend
+                && node.local_name == "input"
+                && node
+                    .attributes
+                    .as_deref()
+                    .unwrap_or_default()
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .any(|[name, value]| name == "type" && value.eq_ignore_ascii_case("password"))
         })
     }
 
@@ -211,57 +311,90 @@ impl Observation {
             }
         } else {
             let mut matches = Vec::new();
-            for (index, _) in &self.order {
-                let node = &self.nodes[*index];
-                let Some(backend) = node.ax.backend_dom_node_id else {
+            for (dom, _) in &self.dom {
+                if dom.node_type != 1 {
                     continue;
-                };
-                let role = ax_text(&node.ax.role);
-                let name = ax_text(&node.ax.name);
-                let eligible = target.role.as_ref().is_none_or(|expected| role == expected)
-                    && target.name.as_ref().is_none_or(|expected| {
-                        text_matches(name, expected, target.exact == Some(true))
+                }
+                let backend = dom.backend_node_id;
+                if target.label.is_some() || target.text_match.is_some() {
+                    let element = page.element_from_backend_node(backend).await?;
+                    let (kind, expected) = if let Some(label) = &target.label {
+                        ("label", label)
+                    } else {
+                        ("text", target.text_match.as_ref().expect("text locator"))
+                    };
+                    let matched: bool = super::element::call(
+                        page,
+                        &element,
+                        include_str!("locator.js"),
+                        vec![
+                            json!(kind),
+                            json!(expected),
+                            json!(target.exact == Some(true)),
+                        ],
+                    )
+                    .await?;
+                    if matched {
+                        matches.push(element);
+                    }
+                } else if let Some(node) = self
+                    .nodes
+                    .iter()
+                    .find(|node| node.ax.backend_dom_node_id == Some(backend))
+                    && target
+                        .role
+                        .as_ref()
+                        .is_none_or(|role| ax_text(&node.ax.role) == role)
+                    && target.name.as_ref().is_none_or(|name| {
+                        text_matches(ax_text(&node.ax.name), name, target.exact == Some(true))
                     })
-                    && target.label.as_ref().is_none_or(|expected| {
-                        matches!(
-                            role,
-                            "textbox"
-                                | "combobox"
-                                | "checkbox"
-                                | "radio"
-                                | "searchbox"
-                                | "spinbutton"
-                                | "slider"
-                                | "switch"
-                        ) && text_matches(name, expected, target.exact == Some(true))
-                    })
-                    && target.text_match.as_ref().is_none_or(|expected| {
-                        text_matches(name, expected, target.exact == Some(true))
-                    });
-                if eligible {
+                {
                     matches.push(page.element_from_backend_node(backend).await?);
                 }
             }
             matches
         };
         if let Some(container) = within {
-            let mut descendants = Vec::new();
-            let mut pending: Vec<_> = self
-                .nodes
-                .iter()
-                .position(|node| node.ax.backend_dom_node_id == Some(container))
-                .into_iter()
-                .collect();
-            while let Some(index) = pending.pop() {
-                descendants.extend(self.nodes[index].ax.backend_dom_node_id);
-                pending.extend(&self.nodes[index].children);
+            let container = page.element_from_backend_node(container).await?;
+            let mut scoped = Vec::new();
+            for element in matches {
+                let response = page.evaluate_function(chromiumoxide::cdp::js_protocol::runtime::CallFunctionOnParams::builder()
+                    .object_id(container.remote_object_id.clone())
+                    .function_declaration("function(node) { for (; node; node = node.parentElement || node.getRootNode().host) { if (node === this) return true; } return false; }")
+                    .argument(chromiumoxide::cdp::js_protocol::runtime::CallArgument::builder().object_id(element.remote_object_id.clone()).build())
+                    .return_by_value(true).build().map_err(BrowserError::Configuration)?)
+                    .await?.into_value::<bool>().map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
+                if response {
+                    scoped.push(element);
+                }
             }
-            matches.retain(|element| descendants.contains(&element.backend_node_id));
+            matches = scoped;
         }
         if let Some(nth) = target.nth {
             matches = matches.into_iter().nth(nth as usize).into_iter().collect();
         }
         Ok(matches)
+    }
+
+    /// Removal satisfies hidden/detached only inside the reference's original document.
+    pub async fn resolve_wait(
+        &self,
+        page: &Page,
+        target: &BrowserTarget,
+        refs: &References,
+    ) -> Result<Vec<Element>> {
+        if let Some(id) = &target.r#ref {
+            let reference = refs.0.get(id).ok_or(BrowserError::StaleReference)?;
+            if self.loaders.get(&reference.frame) != Some(&reference.loader) {
+                return Err(BrowserError::StaleReference);
+            }
+            if !self.dom.iter().any(|(node, frame)| {
+                node.backend_node_id == reference.backend && *frame == reference.frame
+            }) {
+                return Ok(Vec::new());
+            }
+        }
+        self.resolve(page, target, refs).await
     }
 
     pub fn describe_elements(
@@ -277,25 +410,46 @@ impl Observation {
                 let index = self
                     .nodes
                     .iter()
-                    .position(|node| node.ax.backend_dom_node_id == Some(element.backend_node_id))
-                    .ok_or_else(|| {
-                        BrowserError::InvalidResult(
-                            "matched element is absent from the accessibility tree".into(),
-                        )
-                    })?;
-                self.describe(index, 0, refs)
+                    .position(|node| node.ax.backend_dom_node_id == Some(element.backend_node_id));
+                if let Some(index) = index {
+                    self.describe(index, 0, refs)
+                } else {
+                    let (_, frame) = self
+                        .dom
+                        .iter()
+                        .find(|(node, _)| node.backend_node_id == element.backend_node_id)
+                        .ok_or(BrowserError::StaleReference)?;
+                    let loader = self
+                        .loaders
+                        .get(frame)
+                        .ok_or(BrowserError::StaleReference)?;
+                    Ok(BrowserNode {
+                        r#ref: Some(refs.issue(Reference {
+                            backend: element.backend_node_id,
+                            frame: frame.clone(),
+                            loader: loader.clone(),
+                        })?),
+                        role: String::new(),
+                        name: String::new(),
+                        depth: 0,
+                        states: Vec::new(),
+                        bounds: None,
+                        value: None,
+                    })
+                }
             })
             .collect()
     }
 
     fn reference(&self, id: &str, refs: &References) -> Result<BackendNodeId> {
         let reference = refs.0.get(id).ok_or(BrowserError::StaleReference)?;
-        self.nodes
+        if self.loaders.get(&reference.frame) != Some(&reference.loader) {
+            return Err(BrowserError::StaleReference);
+        }
+        self.dom
             .iter()
-            .find(|node| {
-                node.ax.backend_dom_node_id == Some(reference.backend)
-                    && node.frame == reference.frame
-                    && node.loader == reference.loader
+            .find(|(node, frame)| {
+                node.backend_node_id == reference.backend && *frame == reference.frame
             })
             .map(|_| reference.backend)
             .ok_or(BrowserError::StaleReference)
@@ -303,6 +457,10 @@ impl Observation {
 }
 
 impl References {
+    pub fn invalidate(&mut self) {
+        self.0.clear();
+    }
+
     fn issue(&mut self, reference: Reference) -> Result<String> {
         if let Some((id, _)) = self.0.iter().find(|(_, current)| **current == reference) {
             return Ok(id.clone());
@@ -312,7 +470,7 @@ impl References {
                 "browser reference limit reached for this document".into(),
             ));
         }
-        let id = uuid::Uuid::new_v4().simple().to_string();
+        let id = super::handles::fresh("e")?;
         self.0.insert(id.clone(), reference);
         Ok(id)
     }
@@ -338,7 +496,19 @@ fn text_matches(actual: &str, expected: &str, exact: bool) -> bool {
 
 /// Locator alternatives cannot silently override each other or use modifier-only targets.
 pub(super) fn validate_target(target: &BrowserTarget) -> Result<()> {
-    let count = [
+    let count = locator_count(target);
+    if count != 1 || (target.name.is_some() && target.role.is_none()) {
+        return Err(BrowserError::Configuration(
+            "provide exactly one of ref, role/name, label, placeholder, text-match, test-id or css"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Count only the primary locators in the browser's shared target grammar.
+pub(super) fn locator_count(target: &BrowserTarget) -> usize {
+    [
         target.r#ref.is_some(),
         target.role.is_some(),
         target.label.is_some(),
@@ -349,12 +519,14 @@ pub(super) fn validate_target(target: &BrowserTarget) -> Result<()> {
     ]
     .into_iter()
     .filter(|value| *value)
-    .count();
-    if count != 1 || (target.name.is_some() && target.role.is_none()) {
-        return Err(BrowserError::Configuration(
-            "provide exactly one of ref, role/name, label, placeholder, text-match, test-id or css"
-                .into(),
-        ));
-    }
-    Ok(())
+    .count()
+}
+
+/// URL and coordinate targets cannot silently ignore supplied element flags.
+pub(super) fn has_target_flags(target: &BrowserTarget) -> bool {
+    locator_count(target) > 0
+        || target.name.is_some()
+        || target.exact.is_some()
+        || target.nth.is_some()
+        || target.within.is_some()
 }
