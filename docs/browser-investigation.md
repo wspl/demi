@@ -4,10 +4,13 @@
 
 这是临时调查记录，不是选定设计，也不表示问题已经修复。权威设计仍是
 [Browser](demi-next/browser.md)；包职责见 [Package boundaries](package-boundaries.md)。
-本记录集中保存问题、证据、参考实现和未决项，完成设计取舍后移除或归档。
+本记录集中保存问题、证据、参考实现和后续核查项，完成修复后移除或归档。
+
+修复依据：针对有问题的 API 对照 Codex 和 Playwright 的实现；有冲突时
+优先参考对应 Codex API 的已验证行为。修复在现有架构内进行。
 
 阅读顺序：[问题清单](#问题清单) → [参考实现核查](#参考实现核查) →
-[待决事项](#待决事项)。
+[后续核查与修复](#后续核查与修复)。
 
 ## 证据范围
 
@@ -88,7 +91,7 @@ U 的文档入口是
 | B02、B03：定向按键与组合键 | locator press 先聚焦目标，再解析组合键、按下和释放；支持 ControlOrMeta。page keyboard 则作用于当前焦点 | locator press 聚焦目标；AX pressKey 没有元素参数，作用于当前焦点，使用 xdotool 风格键名 | 定向按键与当前焦点按键是两种明确语义。Demi 不能接受目标后又忽略它；键名也不能混用两套语法 |
 | B04：输入与光标 | type/pressSequentially 聚焦后逐字符输入；已聚焦时保留选择区，原先未聚焦的 input 可重置到开头；键表外字符可退回 insertText | AX typeText 向当前焦点整串 InsertText；locator type 使用粘贴路径；locator pressSequentially 另有逐字符实现，并在过程中检查目标、焦点和 frame | 不能把三个 API 都称为同一种“模拟打字”。撤回“Playwright 总保留原来的光标”和“所有字符都有完整键盘事件”的泛化 |
 | B05：保证勾选状态 | 已符合状态就返回；否则点击后读 checked，未改变则报错；radio 不允许通过 uncheck 取消 | locator check 同样前后检查；AX setValue 对原生 checkbox 直接设值，是另一种操作 | check 必须验证它承诺的 checked 状态。不能拿 AX 直接设值成功证明点击路径正确 |
-| B09：选择选项 | 选择前检查 visible、enabled；选项未出现、不可用时在期限内重试；支持值、标签、索引及多选语义 | locator selectOption 检查 enabled，使用 injected selectOptions，并由适配层重试；该入口没有 P 相同的 visible 检查 | 复用已有选项匹配与状态语义，明确采用哪套前置条件；不要自己把缺失、禁用和定位歧义折成同一句错误 |
+| B09：选择选项 | 选择前检查 visible、enabled；选项未出现、不可用时在期限内重试；支持值、标签、索引及多选语义 | locator selectOption 检查 enabled，使用 injected selectOptions，并由适配层重试；该入口没有 P 相同的 visible 检查 | 优先参考 Codex selectOption 的前置条件、选项匹配和重试；不要自己把缺失、禁用和定位歧义折成同一句错误 |
 
 P 的对应实现：
 [fill、selectOptions 与 focusNode](https://github.com/microsoft/playwright/blob/500c9c822ce7664539a4c8a88810048dfe090c3b/packages/injected/src/injectedScript.ts#L816)、
@@ -130,7 +133,7 @@ P 将文本、标签和 accessible name 分别计算：getByText 使用页面文
 getByLabel 使用控件的标签关系，getByRole 的 name 使用无障碍名称。
 Codex 的 locator 层使用相应 selector 引擎，还处理 frameLocator。
 这直接否定 B10 中用 AX role 白名单代替标签关系、用 accessible name 代替文本
-的做法。应复用选择器语义，而不是继续扩大白名单。
+的做法。应参考对应 Codex 定位 API 的语义修正实现。
 依据：[locator API](https://playwright.dev/docs/api/class-locator)、
 [injected 选择器注册与实现](https://github.com/microsoft/playwright/blob/500c9c822ce7664539a4c8a88810048dfe090c3b/packages/injected/src/injectedScript.ts)、
 [role 与名称计算](https://github.com/microsoft/playwright/blob/500c9c822ce7664539a4c8a88810048dfe090c3b/packages/injected/src/roleUtils.ts)。
@@ -166,7 +169,8 @@ C 的依据：客户端 `expectNavigation`；服务端 `clickPoint`、
   就有这种超时；要保留已发生动作的证据，不能直接自动重放。
 - 不能仅靠普通等待或 Codex expectNavigation 的名字，认定它完整替代了
   Demi `--wait-url`。现有设计已明确要求动作开始后出现匹配导航，动作前已匹配
-  不算成功；单独 wait --url 则检查当前条件。两者不能直接合并。
+  不算成功；单独 wait --url 则检查当前条件。这是已确认的差异，后续优先按
+  Codex 对应 API 调整契约；不因旧设计更严格就自行决定保留。
 
 B14 仍是另一件事：Demi 成功动作后读取 metadata 可能失败。
 这条附带查询应怎样报告，不能与等待本次动作触发的导航混为一谈。
@@ -178,7 +182,8 @@ B15 的断网刷新问题仍成立，参考实现的尽力等待不自动成为 
   带阶段信息的 call log，没有与 Demi 完全相同的三种动作进展协议。
   C 的 `actionError` 在失败时尝试追加匹配元素数量及可见、禁用等诊断；
   诊断本身失败时保留原始错误。U 对不存在的 tab 明确报找不到 tab。
-  应修正 Demi 的错误映射并履行已选定的进展契约；不能声称这套字段是照搬 P。
+  应参考 Codex 修正 Demi 的错误映射与诊断，并同步核对动作进展契约；
+  不能声称现有这套字段是照搬 P。
 - **B17：观察必须传递已有状态。** P 的 ARIA snapshot 包含 checked、disabled
   等状态；C 的 AX 输出包含状态、可设置值信息和层级，并支持差量输出。
   Demi JSON 已有而文本丢弃的 states 应由渲染层修正。成功动作不必全部附上
@@ -250,10 +255,10 @@ H01–H05 属于 Demi 测试控制与实验有效性，浏览器库不能替测�
 客户端接管、模型参数、服务生命周期或目标地址错误。它们继续按问题表处理；
 本轮实验没有重新给模型打分。
 
-### 可复用的部分与仍需决定的边界
+### 逐个 API 的参考范围
 
-成熟实现说明，可靠行为分布在多层，单独发 CDP 输入或复制一个 injected
-函数都不等于拥有完整 Playwright：
+对每个有问题的 API，都要沿对应 Codex 实现检查这些环节，并用 Playwright
+的实现与测试补充理解：
 
 ```text
 调用契约：定位方式、动作含义、错误与显式等待
@@ -265,24 +270,18 @@ H01–H05 属于 Demi 测试控制与实验有效性，浏览器库不能替测�
 浏览器协议：输入事件、frame、导航与生命周期事件
 ```
 
-P 提供这些层的公开实现；C 复用了部分页面算法，并建立自己的动作和浏览器
-适配层。这是“可以参考的结构”，不是“Demi 再手写一套同样逻辑”的理由。
-
-下一轮设计取舍应比较完整复用 Playwright 与保留原生驱动、复用其页面算法
-两条路径。前者涉及 JavaScript 服务端运行时、打包与 Host 生命周期；
-后者仍需自己承担动作协调、导航和取消的正确性，不能称为低成本等价替代。
-当前权威设计要求原生 Rust 命令服务和 chromiumoxide；若选择改变它，必须
-先修改设计与包边界，再实施。现有资料尚不足以选定可直接替换的 Rust 依赖。
+先确定对应操作，再比较行为。例如 Demi 的 check 对照 Codex locator check，
+不能拿 AX setValue 直接修改 checkbox 的结果代替点击路径的参考。
+涉及的设计差异按 Codex 优先处理，并在现有原生服务中修复对应实现。
 
 ### 与现有设计对照后的修复方向
 
 | 情况 | 现有规则与参考行为的差别 | 判断与建议 |
 | --- | --- | --- |
-| 可编辑输入被另一元素遮住，但可以聚焦填写 | [可操作条件](demi-next/browser.md#actionability-and-coordinates) 把 fill 定义为点击条件再加 editable；P fill 不检查鼠标命中 | 这是需要改设计的地方。按动作列条件；稳定、命中用于相应指针动作，填写与键盘各按自己的条件 |
-| 已在 /dashboard，点击后没有导航 | [等待](demi-next/browser.md#waiting) 已规定 --wait-url 不能立即成功；P waitForURL/C expectNavigation 的当前条件可能已满足 | 现有设计比该便利 API 更严格，不是设计未定。建议保留这项语义，按事件实现 B24；普通 click 默认等待到哪一步仍需补清 |
-| 输入框未聚焦，但保留旧选择区 | [输入](demi-next/browser.md#input-and-forms) 说 type 在光标处输入，未交代聚焦是否改变选择区；P 可将未聚焦 input 的插入点重置到开头 | 这是设计缺口。补齐聚焦前后选择区规则，再决定是否直接采用 P；不能一面承诺保留旧光标，一面无条件套用其行为 |
+| 可编辑输入被另一元素遮住，但可以聚焦填写 | [可操作条件](demi-next/browser.md#actionability-and-coordinates) 把 fill 定义为点击条件再加 editable；参考实现按动作区分条件 | 按对应 Codex fill、click、hover、press 的条件分别修正设计与实现 |
+| 已在 /dashboard，点击后没有导航 | [等待](demi-next/browser.md#waiting) 已规定 --wait-url 不能立即成功；C expectNavigation 的当前条件可能已满足 | 按 Codex 对应等待 API 调整这项差异，同时区分普通动作的内部等待与显式条件等待；B24 的修复按调整后的契约验收 |
+| 输入框未聚焦，但保留旧选择区 | [输入](demi-next/browser.md#input-and-forms) 说 type 在光标处输入，未交代聚焦是否改变选择区；P 和 C 的输入路径并不相同 | 对逐字符输入优先参考 C pressSequentially 的聚焦、选择区及中途失焦处理，补齐设计并修复实现 |
 | 勾选被页面阻止、定向按键落到别处、文本观察少了 checked | 现有设计已承诺勾选状态、目标语义和观察状态；实现未兑现 | 直接按现有设计修复，不需要重新讨论是否提供这些基本能力 |
-| 想完整采用 Playwright，但仍要求算法全部留在 Rust 命令程序 | [原生驱动](demi-next/browser.md#native-driver) 和包边界选定 chromiumoxide；P 完整引擎包含 JavaScript 服务端协调 | 这是复用方案与当前架构的冲突。先决定复用层次及其部署责任；不能把“用了页面算法”说成完整复用 |
 
 另外几项只是有意的接口差别：Demi 导航默认 `domcontentloaded`，P 默认
 `load`；短句柄可以与严格的失效检查共存；动作后显式读取观察与不自动附送
@@ -292,17 +291,17 @@ P 提供这些层的公开实现；C 复用了部分页面算法，并建立自�
 `not_started | completed | unknown` 三种，之前误写成四种；
 `--wait-url` 的新导航要求已经选定，之前把它写成尚待明确不准确。
 
-## 待决事项
+## 后续核查与修复
 
-- 选择复用层次，核实依赖、许可和所有 Host 平台的交付代价；不再以原始 CDP
-  调用成功作为动作实现完整的依据。
-- 补清普通动作默认的导航等待边界和附带 metadata 失败的报告方式；
-  `--wait-url` 的新导航要求沿用现有设计，撤回此前直接移除的建议。
-- 选定输入语义：fill、逐字符输入、定向按键、当前焦点按键分别承诺什么；
-  原生控件遵循已验证的浏览器语义，不自行纠正非法值。
+- 按对应 Codex API 逐项核对前置条件、输入方式、等待、诊断与清理；
+  Playwright 提供补充实现和测试参考。有差异时 Codex 优先。
+- 按 Codex 补清普通动作的导航等待、显式 URL 等待及附带 metadata 失败报告，
+  同步调整受影响的旧设计。
+- 按 Codex 对应操作明确 fill、逐字符输入、定向按键、当前焦点按键的行为；
+  原生控件遵循已验证的行为，不自行猜测或修正非法值。
 - 设计更新后，按 B01–B20、B24 对照实现和回归用例；B21 保留单独复现，
   B22、B23 与 H01–H05 分别处理，不混入浏览器算法修复。
 - 撤回独立格式推断、问题控件预测、浏览器专用模型纠偏规则的提案。
 - 不把“搜索没有找到”写成“Codex 没有”；缺乏公开实现证据的行为标为未知。
 - 本轮完成调查文档，运行时代码未修改，没有新增真实模型测试。
-  修复实现及配对设备、Cloud 双端验收留待设计取舍后进行。
+  后续逐项更新设计、修复实现，并在配对设备和 Cloud 验收。
