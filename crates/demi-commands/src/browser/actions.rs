@@ -248,17 +248,31 @@ impl BrowserTab {
                     let mut values = Vec::new();
                     for element in elements.iter().take(MAX_NODES) {
                         let value = match input.property.as_str() {
-                            "text" => json!(element.inner_text().await?.unwrap_or_default()),
-                            "html" => json!(element.outer_html().await?.unwrap_or_default()),
-                            "text-content" => element
-                                .property("textContent")
-                                .await?
-                                .unwrap_or(Value::Null),
-                            "value" => {
-                                if observation.protected(element.backend_node_id) {
+                            "text" | "html" | "text-content" | "value" => {
+                                if input.property == "value"
+                                    && observation.protected(element.backend_node_id)
+                                {
                                     return Err(BrowserError::ProtectedValue);
                                 }
-                                element.property("value").await?.unwrap_or(Value::Null)
+                                let property = match input.property.as_str() {
+                                    "text" => "innerText",
+                                    "html" => "outerHTML",
+                                    "text-content" => "textContent",
+                                    _ => "value",
+                                };
+                                let fallback = if matches!(input.property.as_str(), "text" | "html")
+                                {
+                                    json!("")
+                                } else {
+                                    Value::Null
+                                };
+                                element::call::<Value>(
+                                    &self.page,
+                                    element,
+                                    "function(property, fallback) { return this[property] ?? fallback; }",
+                                    vec![json!(property), fallback],
+                                )
+                                .await?
                             }
                             "visible" | "enabled" | "checked" => {
                                 let state = element::state(&self.page, element, &[], false).await?;
@@ -274,15 +288,13 @@ impl BrowserTab {
                                         "attribute read requires --attribute".into(),
                                     )
                                 })?;
-                                let attributes = element.attributes().await?;
-                                json!(
-                                    attributes
-                                        .as_chunks::<2>()
-                                        .0
-                                        .iter()
-                                        .find(|pair| &pair[0] == attribute)
-                                        .map(|pair| &pair[1])
+                                element::call::<Value>(
+                                    &self.page,
+                                    element,
+                                    "function(name) { return this.getAttribute(name); }",
+                                    vec![json!(attribute)],
                                 )
+                                .await?
                             }
                             _ => unreachable!("read property is schema validated"),
                         };
@@ -327,8 +339,8 @@ impl BrowserTab {
                     }
                     let point = match &input.xy {
                         Some(xy) => operation.run(self.coordinates(xy)).await?,
-                        None => {
-                            self.ready_element(
+                        None => self
+                            .ready_element(
                                 required_target(&target)?,
                                 &mut references,
                                 element::CLICK,
@@ -336,7 +348,7 @@ impl BrowserTab {
                             )
                             .await?
                             .1
-                        }
+                            .point(),
                     };
                     self.click_at(
                         point,
@@ -357,8 +369,8 @@ impl BrowserTab {
                 BrowserCommand::Move(input) => {
                     let point = match &input.xy {
                         Some(xy) => operation.run(self.coordinates(xy)).await?,
-                        None => {
-                            self.ready_element(
+                        None => self
+                            .ready_element(
                                 required_target(&target)?,
                                 &mut references,
                                 element::GEOMETRY,
@@ -366,7 +378,7 @@ impl BrowserTab {
                             )
                             .await?
                             .1
-                        }
+                            .point(),
                     };
                     operation
                         .run(async {
@@ -402,8 +414,8 @@ impl BrowserTab {
                                 y: viewport.client_height as f64 / 2.0,
                             }
                         }
-                        None => {
-                            self.ready_element(
+                        None => self
+                            .ready_element(
                                 required_target(&target)?,
                                 &mut references,
                                 element::GEOMETRY,
@@ -411,7 +423,7 @@ impl BrowserTab {
                             )
                             .await?
                             .1
-                        }
+                            .point(),
                     };
                     operation
                         .run(async {
@@ -467,7 +479,7 @@ impl BrowserTab {
                     .await
                 }
                 BrowserCommand::Check(input) => {
-                    let (element, _) = self
+                    let (_, state) = self
                         .ready_element(
                             required_target(&target)?,
                             &mut references,
@@ -475,11 +487,8 @@ impl BrowserTab {
                             &operation,
                         )
                         .await?;
-                    let state = operation
-                        .run(element::state(&self.page, &element, &[], false))
-                        .await?;
                     if state.needs_check(input.value)? {
-                        let (element, point) = self
+                        let (element, state) = self
                             .ready_element(
                                 required_target(&target)?,
                                 &mut references,
@@ -487,11 +496,8 @@ impl BrowserTab {
                                 &operation,
                             )
                             .await?;
-                        let state = operation
-                            .run(element::state(&self.page, &element, &[], false))
-                            .await?;
                         if state.needs_check(input.value)? {
-                            self.click_at(point, MouseButton::Left, 1, 0, &operation)
+                            self.click_at(state.point(), MouseButton::Left, 1, 0, &operation)
                                 .await?;
                         }
                         let state = operation
@@ -693,6 +699,25 @@ impl BrowserTab {
         } else {
             operation.run(work).await
         };
+        let cleanup = tokio::time::timeout(
+            super::operation::CONTROL_TIMEOUT,
+            self.page.execute(
+                chromiumoxide::cdp::js_protocol::runtime::ReleaseObjectGroupParams::new(
+                    element::OBJECT_GROUP,
+                ),
+            ),
+        )
+        .await
+        .map_err(|_| BrowserError::Timeout)
+        .and_then(|result| result.map(|_| ()).map_err(BrowserError::from));
+        // Destroying the tab or connection already releases its remote objects.
+        let cleanup = match cleanup {
+            Err(BrowserError::Closed | BrowserError::Connection(_) | BrowserError::TabNotFound) => {
+                Ok(())
+            }
+            result => result,
+        };
+        let result = super::operation::after_cleanup(result, cleanup);
         if navigation
             .as_ref()
             .is_some_and(NavigationObservation::document_changed)

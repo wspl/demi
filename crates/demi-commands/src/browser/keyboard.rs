@@ -5,7 +5,6 @@ use super::{
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
 };
 use chromiumoxide::{
-    Element,
     cdp::browser_protocol::input::{DispatchKeyEventParams, DispatchKeyEventType},
     keys::get_key_definition,
 };
@@ -133,7 +132,11 @@ pub(super) fn combination(input: &str) -> Result<Vec<Key>> {
 }
 
 impl BrowserTab {
-    pub(super) async fn focus(&self, target: &Element, operation: &Operation<'_>) -> Result<()> {
+    pub(super) async fn focus(
+        &self,
+        target: &element::TargetElement,
+        operation: &Operation<'_>,
+    ) -> Result<()> {
         let focused: bool = operation
             .run(element::call(
                 &self.page,
@@ -200,7 +203,11 @@ impl BrowserTab {
     }
 
     /// A retained remote object binds typing to the original element and document.
-    async fn typing_focus(&self, target: &Element, operation: &Operation<'_>) -> Result<()> {
+    async fn typing_focus(
+        &self,
+        target: &element::TargetElement,
+        operation: &Operation<'_>,
+    ) -> Result<()> {
         let result: Result<bool> = operation
             .run(element::call(
                 &self.page,
@@ -231,7 +238,7 @@ impl BrowserTab {
 
     pub(super) async fn type_text(
         &self,
-        target: &Element,
+        target: &element::TargetElement,
         text: &str,
         operation: &Operation<'_>,
     ) -> Result<()> {
@@ -242,8 +249,8 @@ impl BrowserTab {
                 self.typing_focus(target, operation).await?;
                 self.press(&[Key::character(character)], operation).await?;
                 delivered += 1;
-                self.typing_focus(target, operation).await?;
             }
+            self.typing_focus(target, operation).await?;
             Ok(())
         }
         .await;

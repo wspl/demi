@@ -15,14 +15,13 @@ async function(conditions, scroll, probe, cancel) {
   const role = element.getAttribute('role');
   const checkable = nativeCheck || ['checkbox', 'radio', 'switch'].includes(role);
   const editType = input || element.localName === 'textarea' || element.isContentEditable;
-  const nativeTypes = ['date', 'time', 'month', 'week', 'color', 'range'];
+  const nativeTypes = ['date', 'time', 'datetime-local', 'month', 'week', 'color', 'range'];
   const fillable = element.isContentEditable || element.localName === 'textarea' ||
     (input && (['text', 'email', 'number', 'password', 'search', 'tel', 'url'].includes(element.type) || nativeTypes.includes(element.type)));
   const result = {
     fillKind: !fillable ? 'none' : input && nativeTypes.includes(element.type) ? 'native' : 'text',
     attached: element.isConnected, visible: false, enabled: false,
-    checked: checkable ? (nativeCheck ? element.checked : element.getAttribute('aria-checked') === 'true') : null,
-    radio: nativeCheck ? element.type === 'radio' : role === 'radio',
+    checked: null, radio: false,
     failed: null, interceptor: null, permanent: false, x: 0, y: 0,
   };
   for (const condition of conditions) {
@@ -69,6 +68,8 @@ async function(conditions, scroll, probe, cancel) {
 
   // Recompute all conditions after scrolling and the animation-frame observation.
   result.attached = element.isConnected;
+  result.checked = checkable ? (nativeCheck ? element.checked : element.getAttribute('aria-checked') === 'true') : null;
+  result.radio = nativeCheck ? element.type === 'radio' : role === 'radio';
   const style = view.getComputedStyle(element);
   result.visible = result.attached && box.width > 0 && box.height > 0 && style.visibility === 'visible';
   result.enabled = result.attached;

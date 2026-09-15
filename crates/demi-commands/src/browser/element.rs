@@ -2,11 +2,55 @@
 
 use super::{BrowserError, Result};
 use chromiumoxide::{
-    Element, Page,
-    cdp::js_protocol::runtime::{CallArgument, CallFunctionOnParams},
+    Page,
+    cdp::{
+        browser_protocol::dom::{BackendNodeId, ResolveNodeParams},
+        js_protocol::runtime::{CallArgument, CallFunctionOnParams, RemoteObjectId},
+    },
 };
 use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Value, json};
+
+// Chromiumoxide's Element constructor is private and resolves an existing backend
+// node through four CDP calls. Browser targets need only these two CDP identities.
+// Resolve the remote object once; the admitted command releases its object group.
+// Public node references remain owned by the existing References registry.
+pub(super) struct TargetElement {
+    pub backend_node_id: BackendNodeId,
+    pub remote_object_id: RemoteObjectId,
+}
+
+pub(super) const OBJECT_GROUP: &str = "demi-browser-command";
+
+impl TargetElement {
+    /// Resolve an observed browser node in one CDP request without another DOM scan.
+    pub async fn resolve(page: &Page, backend_node_id: BackendNodeId) -> Result<Self> {
+        let object = page
+            .execute(
+                ResolveNodeParams::builder()
+                    .backend_node_id(backend_node_id)
+                    .object_group(OBJECT_GROUP)
+                    .build(),
+            )
+            .await?
+            .result
+            .object;
+        let remote_object_id = object.object_id.ok_or(BrowserError::StaleReference)?;
+        Ok(Self {
+            backend_node_id,
+            remote_object_id,
+        })
+    }
+}
+
+impl From<chromiumoxide::Element> for TargetElement {
+    fn from(element: chromiumoxide::Element) -> Self {
+        Self {
+            backend_node_id: element.backend_node_id,
+            remote_object_id: element.remote_object_id,
+        }
+    }
+}
 
 pub(super) const CLICK: &[&str] = &["visible", "enabled", "geometry", "stable", "hit"];
 pub(super) const FILL: &[&str] = &["fillable", "visible", "enabled", "editable"];
@@ -33,6 +77,13 @@ pub(super) struct ElementState {
 }
 
 impl ElementState {
+    pub fn point(&self) -> chromiumoxide::layout::Point {
+        chromiumoxide::layout::Point {
+            x: self.x,
+            y: self.y,
+        }
+    }
+
     /// Reject inapplicable checkbox requests before deciding whether a click is needed.
     pub fn needs_check(&self, desired: bool) -> Result<bool> {
         if self.radio && !desired {
@@ -58,7 +109,7 @@ impl ElementState {
 /// Evaluate a browser element algorithm and validate its returned payload at CDP entry.
 pub(super) async fn call<T: DeserializeOwned>(
     page: &Page,
-    element: &Element,
+    element: &TargetElement,
     script: &str,
     args: Vec<Value>,
 ) -> Result<T> {
@@ -83,7 +134,7 @@ pub(super) async fn call<T: DeserializeOwned>(
 
 pub(super) async fn state(
     page: &Page,
-    element: &Element,
+    element: &TargetElement,
     conditions: &[&str],
     scroll: bool,
 ) -> Result<ElementState> {
@@ -97,7 +148,10 @@ pub(super) async fn state(
 }
 
 /// Single-target browser mutations use the unique visible match when one exists.
-pub(super) async fn single(page: &Page, mut elements: Vec<Element>) -> Result<Option<Element>> {
+pub(super) async fn single(
+    page: &Page,
+    mut elements: Vec<TargetElement>,
+) -> Result<Option<TargetElement>> {
     if elements.len() <= 1 {
         return Ok(elements.pop());
     }
@@ -118,7 +172,7 @@ pub(super) async fn single(page: &Page, mut elements: Vec<Element>) -> Result<Op
 /// Join the browser animation-frame probe's cleanup before returning cancellation.
 pub(super) async fn prepared_state(
     page: &Page,
-    target: &Element,
+    target: &TargetElement,
     conditions: &[&str],
     scroll: bool,
     operation: &super::operation::Operation<'_>,
@@ -167,7 +221,7 @@ pub(super) enum FillKind {
 /// Run a browser form algorithm with access to the one element-state computation.
 pub(super) async fn call_with_states<T: DeserializeOwned>(
     page: &Page,
-    target: &Element,
+    target: &TargetElement,
     script: &str,
     args: Vec<Value>,
 ) -> Result<T> {

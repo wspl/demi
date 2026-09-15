@@ -49,7 +49,7 @@ export function createBrowserGroup(): CommandGroup {
       name: path.at(-1)!,
       kind: 'native',
       binding: { package: 'demi.builtin', operation: `browser.${name}`, resource: 'browser' },
-      summary: `${summary} Default timeout ${browserDefaultTimeout(name)} ms; maximum ${BROWSER_MAX_TIMEOUT_MS} ms.`,
+      summary,
       input: {
         ...schema.input.shape,
         timeout: schema.input.shape.timeout.describe(`Whole operation deadline in milliseconds; default ${browserDefaultTimeout(name)}, maximum ${BROWSER_MAX_TIMEOUT_MS}.`),

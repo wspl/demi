@@ -121,3 +121,73 @@ pub(super) fn render(operation: &str, mut value: Value, json: bool) -> Result<Ve
     }
     Ok(result.into_bytes())
 }
+
+/// Render browser failures with the same progress and details as their JSON form.
+pub(super) fn render_error(code: &str, message: &str, details: &Value) -> String {
+    let action = details["action"].as_str().unwrap_or("not_started");
+    let mut text = format!("Error: {code}\n{message}\nAction: {action}.\n");
+    if let Some(details) = details.as_object() {
+        for (key, value) in details {
+            if key == "action" {
+                continue;
+            }
+            let title = match key.as_str() {
+                "url" => "Current URL".into(),
+                _ => {
+                    let mut characters = key.chars();
+                    characters.next().map_or_else(String::new, |first| {
+                        first.to_uppercase().collect::<String>() + characters.as_str()
+                    })
+                }
+            };
+            let value = match value {
+                Value::String(value) => value.clone(),
+                _ => value.to_string(),
+            };
+            text.push_str(&format!("{title}: {value}\n"));
+        }
+    }
+    text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn text_errors_show_progress_and_individual_details() {
+        let text = render_error(
+            "not_actionable",
+            "The button is covered.",
+            &json!({
+                "action": "not_started", "tab": "t_test", "url": "https://example.test/",
+                "interceptor": "<div id=overlay>", "delivered": 0,
+            }),
+        );
+        assert!(
+            text.starts_with(
+                "Error: not_actionable\nThe button is covered.\nAction: not_started.\n"
+            )
+        );
+        for line in [
+            "Tab: t_test\n",
+            "Current URL: https://example.test/\n",
+            "Interceptor: <div id=overlay>\n",
+            "Delivered: 0\n",
+        ] {
+            assert!(text.contains(line));
+        }
+        assert!(!text.contains("Details:"));
+    }
+
+    #[test]
+    fn navigation_results_require_url_but_allow_missing_metadata() {
+        for operation in ["open", "goto", "reload", "back", "forward"] {
+            assert!(
+                validate_result(operation, json!({"tab": "t_test", "url": "about:blank"})).is_ok()
+            );
+            assert!(validate_result(operation, json!({"tab": "t_test"})).is_err());
+        }
+    }
+}

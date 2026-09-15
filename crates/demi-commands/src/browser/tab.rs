@@ -5,7 +5,7 @@ use std::{
 
 use chromiumoxide::layout::Point;
 use chromiumoxide::{
-    Browser, Element, Page,
+    Browser, Page,
     cdp::browser_protocol::{
         input::{
             DispatchKeyEventParams, DispatchMouseEventParams, DispatchMouseEventType,
@@ -100,16 +100,17 @@ impl BrowserTab {
         browser: Weak<Mutex<Browser>>,
         ended: CancellationToken,
         state: Arc<TabState>,
+        id: Arc<str>,
         created_by: BrowserCreatedBy,
-    ) -> Result<Self> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             page,
             browser,
             ended,
             state,
-            id: super::handles::fresh("t")?.into(),
+            id,
             created_by,
-        })
+        }
     }
 
     /// Transport identity only; the conversation registry will issue public tab IDs.
@@ -185,10 +186,10 @@ impl BrowserTab {
         let operation = Operation::new(&self.ended, cancellation, timeout);
         let target = serde_json::from_value(json!({ "css": selector }))
             .map_err(|error| BrowserError::Configuration(error.to_string()))?;
-        let (_, point) = self
+        let (_, state) = self
             .ready_element(&target, &mut references, element::CLICK, &operation)
             .await?;
-        self.click_at(point, MouseButton::Left, 1, 0, &operation)
+        self.click_at(state.point(), MouseButton::Left, 1, 0, &operation)
             .await
     }
 
@@ -217,52 +218,32 @@ impl BrowserTab {
         text: &str,
         operation: &Operation<'_>,
     ) -> Result<()> {
-        let (target, native) = loop {
-            let (target, _) = self
-                .ready_element(target, references, element::FILL, operation)
-                .await?;
-            let state = operation
-                .run(element::state(&self.page, &target, element::FILL, false))
-                .await?;
-            if state.failed.is_none() {
-                break (target, state.fill_kind == element::FillKind::Native);
-            }
-        };
-        let mode: FillMode = operation
-            .run(element::call(
-                &self.page,
-                &target,
-                include_str!("fill.js"),
-                vec![json!(text), json!(false), json!(native)],
-            ))
+        let (target, state) = self
+            .ready_element(target, references, element::FILL, operation)
             .await?;
-        if mode == FillMode::Invalid {
-            return Err(BrowserError::Configuration(
-                "browser rejected the native input value".into(),
-            ));
-        }
-        operation
+        let native = state.fill_kind == element::FillKind::Native;
+        let mode: FillMode = operation
             .run(async {
-                if mode == FillMode::Native {
+                if native {
                     operation.begin_input();
                 }
-                let applied: FillMode = element::call(
+                let mode = element::call(
                     &self.page,
                     &target,
                     include_str!("fill.js"),
-                    vec![json!(text), json!(true), json!(native)],
+                    vec![json!(text), json!(native)],
                 )
                 .await?;
-                if applied == FillMode::Invalid {
+                if mode == FillMode::Invalid {
                     operation.input_not_delivered();
                     return Err(BrowserError::Configuration(
                         "browser rejected the native input value".into(),
                     ));
                 }
-                if mode == FillMode::Native {
+                if native {
                     operation.complete_input();
                 }
-                Ok(())
+                Ok(mode)
             })
             .await?;
         if mode == FillMode::Text {
@@ -317,7 +298,7 @@ impl BrowserTab {
         references: &mut References,
         conditions: &[&str],
         operation: &Operation<'_>,
-    ) -> Result<(Element, Point)> {
+    ) -> Result<(element::TargetElement, element::ElementState)> {
         let mut last_failure = BrowserError::TargetNotFound;
         loop {
             let attempt = async {
@@ -347,13 +328,7 @@ impl BrowserTab {
                     )
                     .await?;
                     if state.failed.is_none() {
-                        return Ok(Some((
-                            element,
-                            Point {
-                                x: state.x,
-                                y: state.y,
-                            },
-                        )));
+                        return Ok(Some((element, state)));
                     }
                     if state.permanent {
                         return Err(state.failure());

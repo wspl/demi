@@ -25,6 +25,24 @@ use super::{
     tab::TabState,
 };
 
+#[derive(Default)]
+struct TabRegistry {
+    live: HashMap<TargetId, BrowserTab>,
+    public_ids: HashMap<TargetId, Arc<str>>,
+}
+
+impl TabRegistry {
+    /// Retain browser target identities even after their live tab is pruned.
+    fn public_id(&mut self, target: &TargetId) -> Result<Arc<str>> {
+        if let Some(id) = self.public_ids.get(target) {
+            return Ok(id.clone());
+        }
+        let id: Arc<str> = super::handles::fresh("t")?.into();
+        self.public_ids.insert(target.clone(), id.clone());
+        Ok(id)
+    }
+}
+
 /// The caller supplies the installed, verified release executable, never a PATH lookup.
 pub struct LaunchOptions {
     pub executable: PathBuf,
@@ -34,7 +52,7 @@ pub struct LaunchOptions {
 pub struct BrowserEnvironment {
     browser: Weak<Mutex<Browser>>,
     ended: CancellationToken,
-    tabs: Arc<Mutex<HashMap<TargetId, BrowserTab>>>,
+    tabs: Arc<Mutex<TabRegistry>>,
     failure: watch::Receiver<Option<String>>,
     report_failure: watch::Sender<Option<String>>,
     observers: TaskTracker,
@@ -90,7 +108,7 @@ where
     let environment = BrowserEnvironment {
         browser: Arc::downgrade(&browser),
         ended: CancellationToken::new(),
-        tabs: Arc::new(Mutex::new(HashMap::new())),
+        tabs: Arc::new(Mutex::new(TabRegistry::default())),
         failure: failure_state,
         report_failure: failure.clone(),
         observers: TaskTracker::new(),
@@ -223,7 +241,7 @@ impl BrowserEnvironment {
                     .pages()
                     .await?;
                 let live: Vec<_> = pages.iter().map(|page| page.target_id().clone()).collect();
-                registry.retain(|target, _| live.contains(target));
+                registry.live.retain(|target, _| live.contains(target));
                 let mut tabs = Vec::with_capacity(pages.len());
                 for page in pages {
                     tabs.push(self.tab(&mut registry, page, None).await?);
@@ -236,11 +254,11 @@ impl BrowserEnvironment {
     /// Reconcile pages into the one registry, retaining their operation gates and refs.
     async fn tab(
         &self,
-        tabs: &mut HashMap<TargetId, BrowserTab>,
+        tabs: &mut TabRegistry,
         page: chromiumoxide::Page,
         created_by: Option<BrowserCreatedBy>,
     ) -> Result<BrowserTab> {
-        if let Some(tab) = tabs.get(page.target_id()) {
+        if let Some(tab) = tabs.live.get(page.target_id()) {
             return Ok(tab.clone());
         }
         let created_by = match created_by {
@@ -258,10 +276,11 @@ impl BrowserEnvironment {
                 let opener = info.opener_id.ok_or_else(|| {
                     BrowserError::InvalidResult("unregistered browser page has no opener".into())
                 })?;
-                serde_json::from_value(serde_json::json!({ "kind": "page", "opener": tabs.get(&opener).ok_or(BrowserError::TabNotFound)?.id() }))
+                serde_json::from_value(serde_json::json!({ "kind": "page", "opener": tabs.public_id(&opener)?.as_ref() }))
                     .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
             }
         };
+        let id = tabs.public_id(page.target_id())?;
         let state = TabState::observe(
             &page,
             self.ended.clone(),
@@ -274,9 +293,10 @@ impl BrowserEnvironment {
             self.browser.clone(),
             self.ended.clone(),
             state,
+            id,
             created_by,
-        )?;
-        tabs.insert(tab.page.target_id().clone(), tab.clone());
+        );
+        tabs.live.insert(tab.page.target_id().clone(), tab.clone());
         Ok(tab)
     }
 }
