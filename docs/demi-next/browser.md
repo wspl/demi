@@ -45,7 +45,12 @@ future design; this contract does not prescribe its capture or transport scheme.
 Explicit screenshots continue through the existing command media contract.
 
 The design uses Codex's observable, programmable browser tools and readable
-feedback as a capability reference. It does not copy proprietary implementations,
+feedback as the primary reference when correcting browser API behavior. Where
+the current design or Playwright behavior differs, follow the corresponding
+Codex API's verified behavior. Playwright implementation and tests provide
+supplementary references for the affected APIs. Match the operation's purpose:
+an accessibility value setter and a locator click are different operations.
+It does not copy proprietary implementations,
 protocols, or prompts, or embed another browser-use agent. Dependencies must not
 require AGPL licensing.
 
