@@ -59,8 +59,14 @@ impl Command {
     }
 
     pub fn spawn(&mut self) -> std::io::Result<Child> {
-        let inner = self.inner.spawn()?;
-        Ok(Child::new(inner))
+        self.spawn_with(|command| command.spawn())
+    }
+
+    pub fn spawn_with(
+        &mut self,
+        spawn: impl FnOnce(&mut process::Command) -> std::io::Result<process::Child>,
+    ) -> std::io::Result<Child> {
+        Ok(Child::new(spawn(&mut self.inner)?))
     }
 }
 
