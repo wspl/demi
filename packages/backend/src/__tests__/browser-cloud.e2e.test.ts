@@ -46,7 +46,7 @@ printf '%s' "$tab" > browser-tab.txt
 printf retained > browser-marker.txt
 demi browser inspect "$tab"
 demi browser fill "$tab" --label Email --text cloud@example.test
-demi browser click "$tab" --role button --name Continue --wait-url '**/complete*'
+demi browser click "$tab" --role button --name Continue --wait-url '**/complete/*'
 demi browser inspect "$tab"
 demi browser screenshot "$tab" --output cloud-browser.png --json
 test -s cloud-browser.png`), 600000),
