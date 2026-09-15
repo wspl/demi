@@ -211,7 +211,7 @@ impl Resources {
                         &serde_json::json!({ "error": { "code": code, "message": message, "details": details } }),
                     )?
                 } else {
-                    format!("{code}: {message}\nDetails: {details}\n").into_bytes()
+                    super::output::render_error(code, &message, &details).into_bytes()
                 };
                 context.output.stderr(Bytes::from(bytes)).await?;
                 Ok(Completion {

@@ -279,6 +279,19 @@ async fn retained_browser_commands_share_state_and_retire() {
         let failure = serde_json::from_slice::<Value>(&stderr).unwrap();
         assert_eq!(failure["error"]["code"], "invalid_input");
         assert_eq!(failure["error"]["details"]["action"], "not_started");
+        let mut invalid_key = request(
+            "browser.key",
+            json!({"tab": tab, "css": "#email", "key": "not-a-key"}),
+        );
+        invalid_key.json = Some(false);
+        let (completion, _, stderr) = exchange(&client, &invalid_key, false).await;
+        assert_eq!(completion.exit_code, 2);
+        let text = String::from_utf8(stderr).unwrap();
+        assert!(text.starts_with("Error: invalid_input\n"));
+        assert!(text.contains("\nAction: not_started.\n"));
+        assert!(text.contains(&format!("Tab: {tab}\n")));
+        assert!(!text.contains("Details: {"));
+
         let mut inspect = request("browser.inspect", json!({"tab": tab, "limit": 1000}));
         inspect.json = Some(false);
         let (completion, stdout, _) = exchange(&client, &inspect, false).await;
@@ -290,6 +303,18 @@ async fn retained_browser_commands_share_state_and_retire() {
         assert!(!text.contains("fixture-secret"));
         let (completion, _, stderr) = exchange(
             &client,
+            &request("browser.click", json!({"tab": tab, "css": "#popup"})),
+            false,
+        )
+        .await;
+        assert_eq!(
+            completion.exit_code,
+            0,
+            "{}",
+            String::from_utf8_lossy(&stderr)
+        );
+        let (completion, _, stderr) = exchange(
+            &client,
             &request("browser.close", json!({ "tab": tab })),
             false,
         )
@@ -298,6 +323,30 @@ async fn retained_browser_commands_share_state_and_retire() {
             completion.exit_code,
             0,
             "{:?}",
+            String::from_utf8_lossy(&stderr)
+        );
+        let (completion, stdout, stderr) =
+            exchange(&client, &request("browser.tabs", json!({})), false).await;
+        assert_eq!(
+            completion.exit_code,
+            0,
+            "{}",
+            String::from_utf8_lossy(&stderr)
+        );
+        let listed: Value = serde_json::from_slice(&stdout).unwrap();
+        let popup = &listed["tabs"][0];
+        assert_eq!(listed["tabs"].as_array().unwrap().len(), 1);
+        assert_eq!(popup["createdBy"]["opener"], tab);
+        let (completion, _, stderr) = exchange(
+            &client,
+            &request("browser.close", json!({"tab": popup["id"]})),
+            false,
+        )
+        .await;
+        assert_eq!(
+            completion.exit_code,
+            0,
+            "{}",
             String::from_utf8_lossy(&stderr)
         );
         let (completion, stdout, _) = exchange(&client, &request("status", json!({})), true).await;

@@ -56,8 +56,8 @@ export const browserTabSchema = z.strictObject({
   id: z.string(), title: z.string(), url: z.string(), createdBy: browserCreatedBySchema,
 })
 const info = z.strictObject({ tab: z.string(), url: z.string(), title: z.string(), viewport })
-const opened = z.strictObject({ tab: z.string(), url: z.string().optional(), title: z.string().optional(), viewport: viewport.optional() })
-const navigated = z.strictObject({ tab: z.string(), url: z.string().optional(), title: z.string().optional() })
+const opened = z.strictObject({ tab: z.string(), url: z.string(), title: z.string().optional(), viewport: viewport.optional() })
+const navigated = z.strictObject({ tab: z.string(), url: z.string(), title: z.string().optional() })
 const matches = z.strictObject({ matches: z.array(browserNodeSchema), count: z.number().int().min(0), truncated: z.boolean() })
 const action = z.strictObject({
   operation: z.string(), target: z.string().optional(), result: z.unknown(),
