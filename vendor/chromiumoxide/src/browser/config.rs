@@ -368,6 +368,14 @@ impl BrowserConfigBuilder {
 
 impl BrowserConfig {
     pub fn launch(&self) -> io::Result<Child> {
+        self.launch_with(|command| command.spawn())
+    }
+
+    /// Launch with caller-owned process configuration and spawn bookkeeping.
+    pub fn launch_with(
+        &self,
+        spawn: impl FnOnce(&mut tokio::process::Command) -> io::Result<tokio::process::Child>,
+    ) -> io::Result<Child> {
         let mut builder = ArgsBuilder::new();
 
         if self.disable_default_args {
@@ -451,7 +459,7 @@ impl BrowserConfig {
         if let Some(ref envs) = self.process_envs {
             cmd.envs(envs);
         }
-        cmd.stdout(Stdio::null()).stderr(Stdio::piped()).spawn()
+        cmd.stdout(Stdio::null()).stderr(Stdio::piped()).spawn_with(spawn)
     }
 }
 

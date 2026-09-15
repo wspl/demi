@@ -30,6 +30,10 @@ url = "2"
 zip = { version = "6", default-features = false, features = ["deflate"] }
 png = "0.18"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+
 [dev-dependencies]
 axum = "0.8"
 demi-runner = { path = "../runner" }

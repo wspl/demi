@@ -151,12 +151,20 @@ impl Browser {
     /// This fails if no web socket url could be detected from the child
     /// processes stderr for more than the configured `launch_timeout`
     /// (20 seconds by default).
-    pub async fn launch(mut config: BrowserConfig) -> Result<(Self, Handler)> {
+    pub async fn launch(config: BrowserConfig) -> Result<(Self, Handler)> {
+        Self::launch_with(config, |command| command.spawn()).await
+    }
+
+    /// Launch with a spawn hook, retaining the normal CDP initialization and child cleanup.
+    pub async fn launch_with(
+        mut config: BrowserConfig,
+        spawn: impl FnOnce(&mut tokio::process::Command) -> io::Result<tokio::process::Child>,
+    ) -> Result<(Self, Handler)> {
         // Canonalize paths to reduce issues with sandboxing
         config.executable = utils::canonicalize_except_snap(config.executable).await?;
 
         // Launch a new chromium instance
-        let mut child = config.launch()?;
+        let mut child = config.launch_with(spawn)?;
 
         /// Faillible initialization to run once the child process is created.
         ///
