@@ -35,7 +35,6 @@ pub struct BrowserEnvironment {
     browser: Weak<Mutex<Browser>>,
     ended: CancellationToken,
     tabs: Arc<Mutex<HashMap<TargetId, BrowserTab>>>,
-    generation: Arc<str>,
     failure: watch::Receiver<Option<String>>,
     report_failure: watch::Sender<Option<String>>,
     observers: TaskTracker,
@@ -92,7 +91,6 @@ where
         browser: Arc::downgrade(&browser),
         ended: CancellationToken::new(),
         tabs: Arc::new(Mutex::new(HashMap::new())),
-        generation: uuid::Uuid::new_v4().simple().to_string().into(),
         failure: failure_state,
         report_failure: failure.clone(),
         observers: TaskTracker::new(),
@@ -153,18 +151,27 @@ impl BrowserEnvironment {
         cancellation: &CancellationToken,
         timeout: Duration,
     ) -> Result<BrowserTab> {
-        self.open_for(url, "native", cancellation, timeout).await
+        self.open_for(
+            url,
+            "native",
+            "domcontentloaded",
+            cancellation,
+            tokio::time::Instant::now() + timeout,
+        )
+        .await
+        .map(|(tab, _)| tab)
     }
 
     pub(super) async fn open_for(
         &self,
         url: &str,
         caller: &str,
+        load: &str,
         cancellation: &CancellationToken,
-        timeout: Duration,
-    ) -> Result<BrowserTab> {
-        let operation = Operation::new(&self.ended, cancellation, timeout);
-        operation
+        deadline: tokio::time::Instant,
+    ) -> Result<(BrowserTab, String)> {
+        let operation = Operation::until(&self.ended, cancellation, deadline);
+        let tab = operation
             .run(async {
                 let mut registry = self.tabs.lock().await;
                 let page = self
@@ -175,15 +182,27 @@ impl BrowserEnvironment {
                     .await
                     .new_page("about:blank")
                     .await?;
-                let created_by = serde_json::from_value(
-                    serde_json::json!({ "kind": "agent", "nodeId": caller }),
-                )
-                .map_err(|error| BrowserError::Configuration(error.to_string()))?;
-                let tab = self.tab(&mut registry, page, Some(created_by)).await?;
-                tab.page.goto(url).await?;
-                Ok(tab)
+                let created_by =
+                    serde_json::from_value(serde_json::json!({"kind": "agent", "nodeId": caller}))
+                        .map_err(|error| BrowserError::Configuration(error.to_string()))?;
+                self.tab(&mut registry, page, Some(created_by)).await
             })
-            .await
+            .await?;
+        let mut references = tab
+            .state
+            .operations
+            .try_lock()
+            .map_err(|_| BrowserError::Busy)?;
+        let url = tab
+            .navigate(
+                super::navigation::Navigation::Url(url.into()),
+                load,
+                &operation,
+                &mut references,
+            )
+            .await?;
+        drop(references);
+        Ok((tab, url))
     }
 
     pub async fn tabs(
@@ -239,7 +258,7 @@ impl BrowserEnvironment {
                 let opener = info.opener_id.ok_or_else(|| {
                     BrowserError::InvalidResult("unregistered browser page has no opener".into())
                 })?;
-                serde_json::from_value(serde_json::json!({ "kind": "page", "opener": format!("{}-{}", self.generation, opener.as_ref()) }))
+                serde_json::from_value(serde_json::json!({ "kind": "page", "opener": tabs.get(&opener).ok_or(BrowserError::TabNotFound)?.id() }))
                     .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
             }
         };
@@ -255,9 +274,8 @@ impl BrowserEnvironment {
             self.browser.clone(),
             self.ended.clone(),
             state,
-            self.generation.clone(),
             created_by,
-        );
+        )?;
         tabs.insert(tab.page.target_id().clone(), tab.clone());
         Ok(tab)
     }

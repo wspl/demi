@@ -892,6 +892,7 @@ page moved: it may already be at a boundary. Observe again when that matters.
 $ demi browser fill tab-1 --ref e1 --text test@example.com
 Filled textbox "Email" [ref=e1].
 
+# Deferred extension; not in the current command catalog.
 $ demi browser type tab-1 --text hello
 Typed into the focused element.
 
@@ -959,10 +960,13 @@ ARIA `checkbox`, `radio`, or `switch` role are supported.
 Select accepts one of repeated `--value`, `--option-label`, or `--option-index`,
 not a mixture. `--label` still locates the select element itself. Options are
 matched in document order: a single-select control takes the first matching
-candidate, and a multi-select control selects every matching candidate. A
-candidate that has not appeared yet is waited for until the deadline; a matching
-disabled option fails with `not_actionable`; a candidate that never appears
-fails with `target_not_found`. The control receives `input` and `change`
+candidate. A multi-select control consumes each supplied candidate at its first
+matching option in document order; a later option with the same value is not
+selected by that candidate again. Every supplied candidate must have a match
+for a multi-select. A candidate that has not appeared yet is waited for until
+the deadline; a matching disabled option fails with `not_actionable`; a candidate
+that never appears fails with `target_not_found`. The control receives `input`
+and `change`
 events, and the result lists the values actually selected. Select-text defaults
 to selecting the match; `--cursor before|after` positions a cursor instead.
 `--prefix` and `--suffix` disambiguate repeated text; remaining ambiguity fails.
@@ -983,6 +987,7 @@ Element [ref=e51] is hidden.
 $ demi browser wait tab-1 --url '**/dashboard' --timeout 10000
 URL matched: http://localhost:3000/dashboard.
 
+# Deferred extension; not in the current command catalog.
 $ demi browser wait tab-1 --load domcontentloaded
 Load state reached: domcontentloaded.
 
@@ -1432,7 +1437,8 @@ blocking dialog, or invalid input; `completed` when input was delivered and a
 later wait failed; `unknown` when the connection was lost after delivery began.
 A follow-up observation after a completed action, such as reading the current
 URL for the result, does not turn the action into a failure: the result reports
-the action and omits the unavailable field. Each failure keeps its own cause;
+the action and omits unavailable URL, title, or viewport fields. `info` remains
+an explicit metadata read and can fail. Each failure keeps its own cause;
 a missing tab, a lost browser, zero matches, several matches, a history
 boundary, an existing output file, and a driver error are never folded into
 one generic code.
@@ -1455,6 +1461,7 @@ Messages explain the situation; scripts inspect code and typed details:
 | `unsupported_capability`, `cdp_method_denied` | Unsupported or unavailable operation in this scope |
 | `output_exists`, `io_error`, `result_too_large` | File or result-size failure |
 | `partial_failure` | Some batch items failed; details retain item results or manifest |
+| `driver_error` | The browser driver failed without a more specific cause, including an unusable CDP response or an event-stream gap |
 | `browser_unavailable`, `browser_lost` | Environment could not start or an existing one was lost |
 | `cancelled`, `outcome_unknown` | Cancellation or unconfirmed outcome |
 

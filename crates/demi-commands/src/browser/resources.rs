@@ -9,7 +9,7 @@ use tokio_util::sync::{CancellationToken, DropGuard};
 
 use super::{
     BrowserEnvironment, BrowserError, LaunchOptions, Result, installation::Installation,
-    operation::after_cleanup, protocol::BrowserCommand, with_browser,
+    protocol::BrowserCommand, with_browser,
 };
 
 enum CommandOutput {
@@ -17,7 +17,13 @@ enum CommandOutput {
     Png(Vec<u8>),
 }
 
-type Readiness = Option<std::result::Result<BrowserEnvironment, String>>;
+type Readiness = Option<std::result::Result<BrowserEnvironment, EnvironmentFailure>>;
+
+#[derive(Clone)]
+enum EnvironmentFailure {
+    Unavailable(String),
+    Lost(String),
+}
 
 enum State {
     Absent,
@@ -64,7 +70,13 @@ impl Controller {
                 }
                 .await;
                 if let Err(error) = &result {
-                    publish.send_replace(Some(Err(error.to_string())));
+                    let message = error.to_string();
+                    let failure = if publish.borrow().as_ref().is_some_and(|ready| ready.is_ok()) {
+                        EnvironmentFailure::Lost(message)
+                    } else {
+                        EnvironmentFailure::Unavailable(message)
+                    };
+                    publish.send_replace(Some(Err(failure)));
                 }
                 result
             });
@@ -83,7 +95,10 @@ impl Controller {
         drop(state);
         loop {
             if let Some(result) = ready.borrow_and_update().clone() {
-                return result.map(Some).map_err(BrowserError::Configuration);
+                return result.map(Some).map_err(|failure| match failure {
+                    EnvironmentFailure::Unavailable(message) => BrowserError::Unavailable(message),
+                    EnvironmentFailure::Lost(message) => BrowserError::Connection(message),
+                });
             }
             tokio::select! {
                 _ = cancel.cancelled() => return Err(BrowserError::Cancelled),
@@ -115,17 +130,6 @@ impl Controller {
             State::Live { owner, .. } => !owner.is_finished(),
         }
     }
-
-    async fn failure(&self) -> Option<String> {
-        match &*self.state.lock().await {
-            State::Live { ready, .. } => match &*ready.borrow() {
-                Some(Ok(environment)) => environment.failure(),
-                Some(Err(error)) => Some(error.clone()),
-                None => None,
-            },
-            _ => None,
-        }
-    }
 }
 
 #[derive(Default)]
@@ -149,32 +153,36 @@ impl Resources {
                 .map_err(|error| BrowserError::Configuration(error.to_string()))?;
             let cancellation = context.cancellation.child_token();
             let _cancel_on_drop = cancellation.clone().drop_guard();
-            let invocation = self.execute(&context, &command, &cancellation);
+            let deadline = tokio::time::Instant::now() + command.timeout();
+            let invocation = self.execute(&context, &command, &cancellation, deadline);
             tokio::pin!(invocation);
-            match tokio::time::timeout(command.timeout(), invocation.as_mut()).await {
+            match tokio::time::timeout_at(deadline, invocation.as_mut()).await {
                 Ok(result) => result,
                 Err(_) => {
                     // Cancel the active phase, then join its bounded input/file cleanup.
                     // Dropping the invocation here could strand a pressed button.
                     cancellation.cancel();
-                    let cleanup = match invocation.await {
-                        Err(BrowserError::Cancelled | BrowserError::Timeout) => Ok(()),
-                        result => result.map(|_| ()),
-                    };
-                    after_cleanup(Err(BrowserError::Timeout), cleanup)
+                    match invocation.await {
+                        Err(error) if matches!(error.code(), "cancelled" | "timeout") => {
+                            Err(BrowserError::Action {
+                                details: error.details(),
+                                source: Box::new(BrowserError::Timeout),
+                            })
+                        }
+                        result => result,
+                    }
                 }
             }
         }
-        .await;
+        .await
+        .and_then(|value| match value {
+            CommandOutput::Json(value) => {
+                super::output::render(operation, value, context.request.json == Some(true))
+            }
+            CommandOutput::Png(bytes) => Ok(bytes),
+        });
         match result {
-            Ok(value) => {
-                let bytes = match value {
-                    CommandOutput::Json(value) => {
-                        super::output::render(operation, value, context.request.json == Some(true))
-                            .map_err(|error| ServiceError::Handler(error.to_string()))?
-                    }
-                    CommandOutput::Png(bytes) => bytes,
-                };
+            Ok(bytes) => {
                 context.output.stdout(Bytes::from(bytes)).await?;
                 Ok(Completion {
                     exit_code: 0,
@@ -183,36 +191,37 @@ impl Resources {
             }
             Err(BrowserError::Cancelled) => Err(ServiceError::Cancelled),
             Err(error) => {
-                let code = match error {
-                    BrowserError::Busy => "tab_busy",
-                    BrowserError::DialogBlocked => "dialog_blocked",
-                    BrowserError::DialogNotFound => "dialog_not_found",
-                    BrowserError::InvalidDialogAction => "invalid_dialog_action",
-                    BrowserError::StaleReference => "stale_ref",
-                    BrowserError::Closed => "browser_closed",
-                    BrowserError::Timeout => "timeout",
-                    BrowserError::Ambiguous(_) => "ambiguous_target",
-                    BrowserError::Configuration(_) => "invalid_arguments",
-                    _ => "browser_failed",
-                };
-                let message = if let Ok(controller) = self.controller(&context).await {
-                    controller
-                        .failure()
-                        .await
-                        .unwrap_or_else(|| error.to_string())
-                } else {
-                    error.to_string()
-                };
+                let code = error.code();
+                let message = error.to_string();
+                let mut details = error.details();
+                if details.get("action").is_none() {
+                    details["action"] = serde_json::json!("not_started");
+                }
+                if details.get("tab").is_none()
+                    && let Some(tab) = context
+                        .request
+                        .args
+                        .get("tab")
+                        .and_then(serde_json::Value::as_str)
+                {
+                    details["tab"] = serde_json::json!(tab);
+                }
                 let bytes = if context.request.json == Some(true) {
                     serde_json::to_vec(
-                        &serde_json::json!({ "error": { "code": code, "message": message } }),
+                        &serde_json::json!({ "error": { "code": code, "message": message, "details": details } }),
                     )?
                 } else {
-                    format!("{code}: {message:?}\n").into_bytes()
+                    format!("{code}: {message}\nDetails: {details}\n").into_bytes()
                 };
                 context.output.stderr(Bytes::from(bytes)).await?;
                 Ok(Completion {
-                    exit_code: if code == "invalid_arguments" { 2 } else { 1 },
+                    exit_code: if code == "invalid_input" {
+                        2
+                    } else if code == "cancelled" {
+                        130
+                    } else {
+                        1
+                    },
                     error: None,
                 })
             }
@@ -224,6 +233,7 @@ impl Resources {
         context: &InvocationContext,
         command: &BrowserCommand,
         cancellation: &CancellationToken,
+        deadline: tokio::time::Instant,
     ) -> Result<CommandOutput> {
         let controller = self.controller(context).await?;
         let environment = controller
@@ -235,7 +245,7 @@ impl Resources {
                     serde_json::json!({ "tabs": [], "truncated": false }),
                 ));
             }
-            return Err(BrowserError::Closed);
+            return Err(BrowserError::TabNotFound);
         };
         if let BrowserCommand::Open(input) = command {
             let caller = context.request.caller.as_ref().ok_or_else(|| {
@@ -243,13 +253,27 @@ impl Resources {
                     "browser caller is missing from trusted invocation".into(),
                 )
             })?;
-            let tab = environment
-                .open_for(&input.url, caller, cancellation, command.timeout())
+            let (tab, url) = environment
+                .open_for(
+                    &input.url,
+                    caller,
+                    input.load.as_deref().unwrap_or("domcontentloaded"),
+                    cancellation,
+                    deadline,
+                )
                 .await?;
-            return tab
-                .metadata(cancellation, command.timeout())
+            // Navigation completed. Metadata is optional and cannot undo that input.
+            let result = match tab
+                .metadata(
+                    cancellation,
+                    deadline.saturating_duration_since(tokio::time::Instant::now()),
+                )
                 .await
-                .map(CommandOutput::Json);
+            {
+                Ok(metadata) if metadata["url"] == url => metadata,
+                _ => serde_json::json!({"tab": tab.id(), "url": url}),
+            };
+            return Ok(CommandOutput::Json(result));
         }
         let tabs = environment.tabs(cancellation, command.timeout()).await?;
         if matches!(command, BrowserCommand::Tabs(_)) {
@@ -271,7 +295,7 @@ impl Resources {
         let tab = tabs
             .iter()
             .find(|tab| Some(tab.id().as_str()) == command.tab())
-            .ok_or(BrowserError::Closed)?;
+            .ok_or(BrowserError::TabNotFound)?;
         if let BrowserCommand::Screenshot(input) = command {
             if input.output.is_none() && context.request.json == Some(true) {
                 return Err(BrowserError::Configuration(
@@ -314,22 +338,22 @@ impl Resources {
                 serde_json::json!({ "closed": tab.id() }),
             ));
         }
-        let mut result = tab.command(command, cancellation).await?;
-        if let BrowserCommand::ContentRead(input) = command {
-            if let Some(output) = &input.output {
-                let content = result["content"].as_str().ok_or_else(|| {
-                    BrowserError::InvalidResult("content export did not return text".into())
-                })?;
-                let path = super::output::save(
-                    &context.request.cwd,
-                    output,
-                    content.as_bytes().to_vec(),
-                    cancellation,
-                )
-                .await?;
-                result["path"] = serde_json::json!(path);
-                result["content"] = serde_json::json!("");
-            }
+        let mut result = tab.command(command, cancellation, deadline).await?;
+        if let BrowserCommand::ContentRead(input) = command
+            && let Some(output) = &input.output
+        {
+            let content = result["content"].as_str().ok_or_else(|| {
+                BrowserError::InvalidResult("content export did not return text".into())
+            })?;
+            let path = super::output::save(
+                &context.request.cwd,
+                output,
+                content.as_bytes().to_vec(),
+                cancellation,
+            )
+            .await?;
+            result["path"] = serde_json::json!(path);
+            result["content"] = serde_json::json!("");
         }
         Ok(CommandOutput::Json(result))
     }
@@ -341,9 +365,7 @@ impl Resources {
             .resource
             .as_ref()
             .filter(|scope| scope.kind == "browser")
-            .ok_or_else(|| {
-                BrowserError::Configuration("wrong_host: browser scope is missing".into())
-            })?;
+            .ok_or_else(|| BrowserError::WrongHost)?;
         self.controllers
             .lock()
             .await

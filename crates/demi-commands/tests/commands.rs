@@ -237,6 +237,57 @@ async fn retained_browser_commands_share_state_and_retire() {
                 .unwrap()
                 .starts_with(b"\x89PNG\r\n\x1a\n")
         );
+        for (args, code) in [
+            (
+                json!({"tab": tab, "output": "browser.png"}),
+                "output_exists",
+            ),
+            (
+                json!({"tab": tab, "output": "missing-directory/browser.png"}),
+                "io_error",
+            ),
+        ] {
+            let (completion, _, stderr) =
+                exchange(&client, &request("browser.screenshot", args), false).await;
+            assert_eq!(completion.exit_code, 1);
+            assert_eq!(
+                serde_json::from_slice::<Value>(&stderr).unwrap()["error"]["code"],
+                code
+            );
+        }
+        let (completion, _, stderr) = exchange(
+            &client,
+            &request("browser.info", json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAA"})),
+            false,
+        )
+        .await;
+        assert_eq!(completion.exit_code, 1);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&stderr).unwrap()["error"]["code"],
+            "tab_not_found"
+        );
+        let (completion, _, stderr) = exchange(
+            &client,
+            &request(
+                "browser.key",
+                json!({"tab": tab, "css": "#email", "key": "not-a-key"}),
+            ),
+            false,
+        )
+        .await;
+        assert_eq!(completion.exit_code, 2);
+        let failure = serde_json::from_slice::<Value>(&stderr).unwrap();
+        assert_eq!(failure["error"]["code"], "invalid_input");
+        assert_eq!(failure["error"]["details"]["action"], "not_started");
+        let mut inspect = request("browser.inspect", json!({"tab": tab, "limit": 1000}));
+        inspect.json = Some(false);
+        let (completion, stdout, _) = exchange(&client, &inspect, false).await;
+        assert_eq!(completion.exit_code, 0);
+        let text = String::from_utf8(stdout).unwrap();
+        assert!(text.contains("[checked=false]"));
+        assert!(text.contains("[value=\"浏览器@example.test\"]"));
+        assert!(text.contains("[protected]"));
+        assert!(!text.contains("fixture-secret"));
         let (completion, _, stderr) = exchange(
             &client,
             &request("browser.close", json!({ "tab": tab })),

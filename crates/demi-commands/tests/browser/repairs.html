@@ -1,0 +1,88 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Browser behavior corrections</title>
+<style>
+  body { margin: 20px; font: 16px sans-serif; }
+  input, button, select { margin: 4px; }
+  .covered { position: relative; width: 260px; height: 50px; }
+  .overlay { position: absolute; inset: 0; z-index: 2; background: #eee; }
+  #moving { position: relative; animation: move 0.12s infinite alternate linear; }
+  @keyframes move { from { left: 0; } to { left: 200px; } }
+</style>
+<label for="date">Appointment date</label><input id="date" type="date" value="2026-09-15">
+<label>Wrapped date<input id="wrapped" type="date"></label>
+<span id="labelled-text">Related date</span><input id="related" type="date" aria-labelledby="labelled-text">
+<label for="file">File label</label><input id="file" type="file">
+<input id="text" value="hello" aria-label="Text field">
+<textarea id="textarea">hello</textarea><div id="editable" contenteditable="true">hello</div>
+<div id="plain">Not fillable</div>
+<input id="number" type="number"><input id="time" type="time"><input id="month" type="month">
+<input id="week" type="week"><input id="color" type="color"><input id="range" type="range" min="0" max="100">
+<input id="datetime" type="datetime-local"><input id="readonly" readonly value="keep">
+<input id="password" type="password" value="never-print-this-password" aria-label="Password">
+<input id="other" value="elsewhere">
+<input id="key-dialog" onkeydown="if (event.key === 'x') prompt('Key dialog')">
+<label>Unchecked<input id="unchecked" type="checkbox"></label>
+<label>Checked<input id="checked" type="checkbox" checked></label>
+<input id="prevented" type="checkbox" onclick="event.preventDefault()">
+<input id="radio" type="radio" checked>
+<div id="aria-check" role="checkbox" tabindex="0" aria-checked="false" onclick="this.setAttribute('aria-checked', String(this.getAttribute('aria-checked') !== 'true'))">ARIA check</div>
+<div id="aria-switch" role="switch" tabindex="0" aria-checked="false" onclick="this.setAttribute('aria-checked', 'true')">ARIA switch</div>
+<select id="single"><option value="one">First</option><option value="two">Second</option></select>
+<select id="multi" multiple><option value="one">First</option><option value="two">Second</option><option value="one">Duplicate</option></select>
+<select id="late"><option value="old">Old</option></select>
+<button id="add-late" onclick="setTimeout(() => late.add(new Option('Late', 'new')), 1000)">Add late option</button>
+<select id="disabled-option"><option value="one">First</option><option value="bad" disabled>Disabled</option><optgroup disabled><option value="group">Disabled group</option></optgroup></select>
+<select id="hidden-select" style="display:none"><option value="one">First</option><option value="two">Second</option></select>
+<div class="covered"><input id="covered-input"><div id="input-overlay" class="overlay"></div></div>
+<div class="covered"><button id="covered-button">Covered button</button><div id="button-overlay" class="overlay"></div></div>
+<button id="disabled-button" disabled onmouseover="window.hovered = true">Disabled</button>
+<fieldset disabled><input id="fieldset-input"><button id="fieldset-button">Fieldset</button></fieldset>
+<div aria-disabled="true"><input id="aria-disabled"></div>
+<button id="moving">Moving</button>
+<button id="pointer-none" style="pointer-events:none">No pointer</button>
+<button id="hidden" style="visibility:hidden">Hidden visibility</button>
+<button id="named" aria-label="Accessible label" onclick="window.namedClicks++">Visible words</button>
+<button class="fallback" style="display:none">Fallback</button><button class="fallback" onclick="window.fallbackClicks++">Fallback</button>
+<button class="ambiguous">Ambiguous</button><button class="ambiguous">Ambiguous</button>
+<button class="all-hidden" style="display:none">Hidden duplicate</button><button class="all-hidden" style="display:none">Hidden duplicate</button>
+<div id="scope"><button>Scoped</button></div><button>Scoped</button>
+<button id="no-nav" onclick="window.noNavClicks++">No navigation</button>
+<button id="immediate" onclick="location.href='/destination'">Immediate</button>
+<button id="delayed" onclick="setTimeout(() => location.href='/destination', 100)">Delayed</button>
+<button id="transient" onclick="
+  history.pushState({}, '', '/transient');
+  history.replaceState({}, '', '/returned');
+">Transient</button>
+<button id="hash" onclick="location.hash='changed'">Hash</button>
+<button id="stall" onclick="location.href='/stall'">Stalled navigation</button>
+<button id="select-middle" onclick="
+  text.focus();
+  text.setSelectionRange(2, 4);
+">Select middle</button>
+<button id="select-blurred" onclick="
+  text.focus();
+  text.setSelectionRange(2, 4);
+  other.focus();
+">Select middle and blur</button>
+<button id="focus-other" onclick="other.focus()">Focus elsewhere</button>
+<button id="lose-focus" onclick="text.oninput=()=>other.focus()">Lose focus during typing</button>
+<button id="replace-target" onclick="text.oninput=()=>text.replaceWith(text.cloneNode())">Replace while typing</button>
+<button id="prevent-text" onclick="text.onbeforeinput=event=>event.preventDefault()">Prevent input</button>
+<button id="transform-text" onclick="text.oninput=()=>{text.value=text.value.toUpperCase()}">Transform input</button>
+<button id="remove-later" onclick="setTimeout(()=>document.querySelector('#removable').remove(), 100)">Remove later</button>
+<button id="removable">Removable</button>
+<button id="show-later" onclick="setTimeout(()=>hidden.style.visibility='visible', 100)">Show later</button>
+<button id="enable-later" onclick="setTimeout(()=>document.querySelector('#aria-disabled').parentElement.removeAttribute('aria-disabled'), 100)">Enable later</button>
+<div id="shadow"></div><iframe id="frame" srcdoc="<button id='inside' onclick='this.textContent=&quot;Clicked frame&quot;'>Frame button</button>"></iframe>
+<script>
+  window.noNavClicks = 0;
+  window.namedClicks = 0;
+  window.fallbackClicks = 0;
+  window.hovered = false;
+  window.keys = [];
+  document.addEventListener('keydown', event => keys.push({type: event.type, key: event.key, ctrl: event.ctrlKey, meta: event.metaKey}));
+  document.addEventListener('keyup', event => keys.push({type: event.type, key: event.key, ctrl: event.ctrlKey, meta: event.metaKey}));
+  const root = document.querySelector('#shadow').attachShadow({mode: 'closed'});
+  root.innerHTML = '<button onclick="this.textContent=\'Shadow clicked\'">Shadow button</button>';
+</script>

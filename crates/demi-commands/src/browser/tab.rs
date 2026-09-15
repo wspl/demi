@@ -6,15 +6,13 @@ use std::{
 use chromiumoxide::layout::Point;
 use chromiumoxide::{
     Browser, Element, Page,
-    cdp::{
-        browser_protocol::{
-            input::{
-                DispatchMouseEventParams, DispatchMouseEventType, InsertTextParams, MouseButton,
-            },
-            page::{CaptureScreenshotFormat, EventJavascriptDialogOpening},
-            target::{CloseTargetParams, EventTargetDestroyed},
+    cdp::browser_protocol::{
+        input::{
+            DispatchKeyEventParams, DispatchMouseEventParams, DispatchMouseEventType,
+            InsertTextParams, MouseButton,
         },
-        js_protocol::runtime::{CallArgument, CallFunctionOnParams},
+        page::{CaptureScreenshotFormat, EventJavascriptDialogOpening},
+        target::{CloseTargetParams, EventTargetDestroyed},
     },
 };
 use futures_util::StreamExt;
@@ -23,17 +21,22 @@ use tokio::sync::{Mutex, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
-    BrowserError, Result, evaluation,
+    BrowserError, Result, element, evaluation, keyboard,
     observation::{Observation, References},
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
     protocol::BrowserCreatedBy,
     protocol::BrowserTarget,
 };
 
+pub(super) enum InputRelease {
+    Mouse(DispatchMouseEventParams),
+    Key(DispatchKeyEventParams),
+}
+
 pub(super) struct TabState {
     pub operations: Mutex<References>,
     pub dialog: watch::Sender<Option<Arc<EventJavascriptDialogOpening>>>,
-    pub deferred_release: Mutex<Option<DispatchMouseEventParams>>,
+    pub deferred_release: Mutex<Vec<InputRelease>>,
 }
 
 impl TabState {
@@ -52,7 +55,7 @@ impl TabState {
         let state = Arc::new(Self {
             operations: Mutex::new(References::default()),
             dialog: watch::channel(None).0,
-            deferred_release: Mutex::new(None),
+            deferred_release: Mutex::new(Vec::new()),
         });
         let observed = state.clone();
         tasks.spawn(async move {
@@ -87,7 +90,7 @@ pub struct BrowserTab {
     browser: Weak<Mutex<Browser>>,
     pub(super) ended: CancellationToken,
     pub(super) state: Arc<TabState>,
-    generation: Arc<str>,
+    id: Arc<str>,
     pub(super) created_by: BrowserCreatedBy,
 }
 
@@ -97,17 +100,16 @@ impl BrowserTab {
         browser: Weak<Mutex<Browser>>,
         ended: CancellationToken,
         state: Arc<TabState>,
-        generation: Arc<str>,
         created_by: BrowserCreatedBy,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        Ok(Self {
             page,
             browser,
             ended,
             state,
-            generation,
+            id: super::handles::fresh("t")?.into(),
             created_by,
-        }
+        })
     }
 
     /// Transport identity only; the conversation registry will issue public tab IDs.
@@ -115,8 +117,8 @@ impl BrowserTab {
         self.page.target_id().as_ref()
     }
 
-    pub(super) fn id(&self) -> String {
-        format!("{}-{}", self.generation, self.target_id())
+    pub fn id(&self) -> String {
+        self.id.to_string()
     }
 
     pub async fn read_only(
@@ -184,7 +186,7 @@ impl BrowserTab {
         let target = serde_json::from_value(json!({ "css": selector }))
             .map_err(|error| BrowserError::Configuration(error.to_string()))?;
         let (_, point) = self
-            .ready_element(&target, &mut references, false, &operation)
+            .ready_element(&target, &mut references, element::CLICK, &operation)
             .await?;
         self.click_at(point, MouseButton::Left, 1, 0, &operation)
             .await
@@ -215,29 +217,70 @@ impl BrowserTab {
         text: &str,
         operation: &Operation<'_>,
     ) -> Result<()> {
-        let (element, point) = self
-            .ready_element(target, references, true, operation)
+        let (target, native) = loop {
+            let (target, _) = self
+                .ready_element(target, references, element::FILL, operation)
+                .await?;
+            let state = operation
+                .run(element::state(&self.page, &target, element::FILL, false))
+                .await?;
+            if state.failed.is_none() {
+                break (target, state.fill_kind == element::FillKind::Native);
+            }
+        };
+        let mode: FillMode = operation
+            .run(element::call(
+                &self.page,
+                &target,
+                include_str!("fill.js"),
+                vec![json!(text), json!(false), json!(native)],
+            ))
             .await?;
-        self.click_at(point, MouseButton::Left, 1, 0, &operation)
-            .await?;
+        if mode == FillMode::Invalid {
+            return Err(BrowserError::Configuration(
+                "browser rejected the native input value".into(),
+            ));
+        }
         operation
             .run(async {
-                // The library types text but has no replace-selection operation.
-                // Select this editable element's contents, then use native text input.
-                self.page
-                    .evaluate_function(
-                        CallFunctionOnParams::builder()
-                            .object_id(element.remote_object_id.clone())
-                            .function_declaration(include_str!("select-contents.js"))
-                            .await_promise(false)
-                            .build()
-                            .map_err(BrowserError::Configuration)?,
-                    )
-                    .await?;
-                self.page.execute(InsertTextParams::new(text)).await?;
+                if mode == FillMode::Native {
+                    operation.begin_input();
+                }
+                let applied: FillMode = element::call(
+                    &self.page,
+                    &target,
+                    include_str!("fill.js"),
+                    vec![json!(text), json!(true), json!(native)],
+                )
+                .await?;
+                if applied == FillMode::Invalid {
+                    operation.input_not_delivered();
+                    return Err(BrowserError::Configuration(
+                        "browser rejected the native input value".into(),
+                    ));
+                }
+                if mode == FillMode::Native {
+                    operation.complete_input();
+                }
                 Ok(())
             })
-            .await
+            .await?;
+        if mode == FillMode::Text {
+            if text.is_empty() {
+                self.press(&keyboard::combination("Delete")?, operation)
+                    .await?;
+            } else {
+                operation
+                    .run(async {
+                        operation.begin_input();
+                        self.page.execute(InsertTextParams::new(text)).await?;
+                        operation.complete_input();
+                        Ok(())
+                    })
+                    .await?;
+            }
+        }
+        Ok(())
     }
 
     /// A tab owner closes the target without running beforeunload hooks.
@@ -272,67 +315,89 @@ impl BrowserTab {
         &self,
         target: &BrowserTarget,
         references: &mut References,
-        editable: bool,
+        conditions: &[&str],
         operation: &Operation<'_>,
     ) -> Result<(Element, Point)> {
+        let mut last_failure = BrowserError::TargetNotFound;
+        loop {
+            let attempt = async {
+                let observation = operation
+                    .run(Observation::capture(&self.page, references))
+                    .await?;
+                let matches = operation
+                    .run(observation.resolve(&self.page, target, references))
+                    .await?;
+                let selected = operation.run(element::single(&self.page, matches)).await?;
+                if let Some(element) = selected {
+                    last_failure = BrowserError::NotActionable {
+                        condition: if conditions.contains(&"stable") {
+                            "stable"
+                        } else {
+                            "attached"
+                        }
+                        .into(),
+                        interceptor: None,
+                    };
+                    let state = element::prepared_state(
+                        &self.page,
+                        &element,
+                        conditions,
+                        conditions.contains(&"visible") || conditions.contains(&"geometry"),
+                        operation,
+                    )
+                    .await?;
+                    if state.failed.is_none() {
+                        return Ok(Some((
+                            element,
+                            Point {
+                                x: state.x,
+                                y: state.y,
+                            },
+                        )));
+                    }
+                    if state.permanent {
+                        return Err(state.failure());
+                    }
+                    last_failure = state.failure();
+                } else {
+                    last_failure = BrowserError::TargetNotFound;
+                }
+                operation
+                    .run(async {
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        Ok(())
+                    })
+                    .await?;
+                Ok(None)
+            }
+            .await;
+            match attempt {
+                Ok(Some(element)) => return Ok(element),
+                Ok(None) => {}
+                Err(BrowserError::Timeout) => return Err(last_failure),
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    /// A dialog can block acknowledgement of native input; retain cleanup in the tab.
+    pub(super) async fn input<T>(
+        &self,
+        operation: &Operation<'_>,
+        input: impl std::future::Future<Output = Result<T>>,
+    ) -> Result<T> {
+        let mut dialog = self.state.dialog.subscribe();
+        if dialog.borrow().is_some() {
+            return Err(BrowserError::DialogBlocked);
+        }
         operation
             .run(async {
-                loop {
-                    let observation = Observation::capture(&self.page, references).await?;
-                    let mut matches = observation.resolve(&self.page, target, references).await?;
-                    if matches.len() > 1 {
-                        return Err(BrowserError::Ambiguous(matches.len()));
-                    }
-                    if let Some(element) = matches.pop() {
-                        element.scroll_into_view().await?;
-                        match element.clickable_point().await {
-                            Ok(point) => {
-                                if !point.x.is_finite() || !point.y.is_finite() {
-                                    return Err(BrowserError::InvalidResult(
-                                        "non-finite browser coordinates".into(),
-                                    ));
-                                }
-                                let ready = self
-                                    .page
-                                    .evaluate_function(
-                                        CallFunctionOnParams::builder()
-                                            .object_id(element.remote_object_id.clone())
-                                            .function_declaration(include_str!("actionability.js"))
-                                            .arguments(vec![
-                                                CallArgument::builder()
-                                                    .value(json!(point.x))
-                                                    .build(),
-                                                CallArgument::builder()
-                                                    .value(json!(point.y))
-                                                    .build(),
-                                                CallArgument::builder()
-                                                    .value(json!(editable))
-                                                    .build(),
-                                            ])
-                                            .return_by_value(true)
-                                            .build()
-                                            .map_err(BrowserError::Configuration)?,
-                                    )
-                                    .await?
-                                    .into_value::<bool>()
-                                    .map_err(|error| {
-                                        BrowserError::InvalidResult(error.to_string())
-                                    })?;
-                                if ready {
-                                    return Ok((element, point));
-                                }
-                            }
-                            Err(chromiumoxide::error::CdpError::ChromeMessage(message))
-                                if message
-                                    == "Node is either not visible or not an HTMLElement" =>
-                            {
-                                // Upstream has no typed no-quad error. This exact error means
-                                // the element has no clickable area yet; wait within the deadline.
-                            }
-                            Err(error) => return Err(error.into()),
-                        }
-                    }
-                    tokio::time::sleep(Duration::from_millis(50)).await;
+                tokio::select! {
+                    result = input => result,
+                    opened = dialog.wait_for(|dialog| dialog.is_some()) => {
+                        opened.map_err(|_| BrowserError::Closed)?;
+                        Err(BrowserError::DialogBlocked)
+                    },
                 }
             })
             .await
@@ -347,8 +412,8 @@ impl BrowserTab {
         modifiers: i64,
         operation: &Operation<'_>,
     ) -> Result<()> {
-        let mut dialog = self.state.dialog.subscribe();
         let click = async {
+            operation.begin_input();
             if button == MouseButton::Left && modifiers == 0 {
                 self.page
                     .click_with(
@@ -387,17 +452,10 @@ impl BrowserTab {
             }
             Ok(())
         };
-        let result = operation
-            .run(async {
-                tokio::select! {
-                    result = click => result,
-                    opened = dialog.wait_for(|dialog| dialog.is_some()) => {
-                        opened.map_err(|_| BrowserError::Closed)?;
-                        Err(BrowserError::DialogBlocked)
-                    },
-                }
-            })
-            .await;
+        let result = self.input(operation, click).await;
+        if result.is_ok() {
+            operation.complete_input();
+        }
         if result.is_ok() || self.ended.is_cancelled() {
             return result;
         }
@@ -413,7 +471,11 @@ impl BrowserTab {
         if self.state.dialog.borrow().is_some() {
             // Chrome can pause before acknowledging mouse-down or mouse-up. The
             // retained tab owns the required release until the dialog is handled.
-            *self.state.deferred_release.lock().await = Some(release);
+            self.state
+                .deferred_release
+                .lock()
+                .await
+                .push(InputRelease::Mouse(release));
             return Err(BrowserError::DialogBlocked);
         }
         let cleanup = tokio::time::timeout(CONTROL_TIMEOUT, self.page.execute(release))
@@ -422,4 +484,12 @@ impl BrowserTab {
             .and_then(|result| result.map(|_| ()).map_err(BrowserError::from));
         after_cleanup(result, cleanup)
     }
+}
+
+#[derive(serde::Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum FillMode {
+    Invalid,
+    Native,
+    Text,
 }

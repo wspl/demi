@@ -33,9 +33,13 @@ pub(super) async fn save(
         if cancelled.is_cancelled() {
             return Err(BrowserError::Cancelled);
         }
-        temporary
-            .persist_noclobber(&path)
-            .map_err(|error| BrowserError::Io(error.error))?;
+        temporary.persist_noclobber(&path).map_err(|error| {
+            if error.error.kind() == std::io::ErrorKind::AlreadyExists {
+                BrowserError::OutputExists(path.display().to_string())
+            } else {
+                BrowserError::Io(error.error)
+            }
+        })?;
         Ok(path.to_string_lossy().into_owned())
     })
     .await?
@@ -48,13 +52,13 @@ pub(super) fn render(operation: &str, mut value: Value, json: bool) -> Result<Ve
         if bytes.len() <= INLINE_BYTES {
             break;
         }
-        if let Some(content) = value.get("content").and_then(Value::as_str) {
-            if !content.is_empty() {
-                let end = content.floor_char_boundary(content.len() / 2);
-                value["content"] = Value::String(content[..end].into());
-                value["truncated"] = Value::Bool(true);
-                continue;
-            }
+        if let Some(content) = value.get("content").and_then(Value::as_str)
+            && !content.is_empty()
+        {
+            let end = content.floor_char_boundary(content.len() / 2);
+            value["content"] = Value::String(content[..end].into());
+            value["truncated"] = Value::Bool(true);
+            continue;
         }
         let collection = ["tree", "matches", "entries", "tabs", "values"]
             .into_iter()
@@ -66,9 +70,7 @@ pub(super) fn render(operation: &str, mut value: Value, json: bool) -> Result<Ve
                 continue;
             }
         }
-        return Err(BrowserError::InvalidResult(
-            "result_too_large: save or narrow browser output".into(),
-        ));
+        return Err(BrowserError::ResultTooLarge);
     }
     let value = validate_result(operation, value)
         .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
@@ -86,10 +88,19 @@ pub(super) fn render(operation: &str, mut value: Value, json: bool) -> Result<Ve
             let role = node["role"].as_str().unwrap_or("");
             let name = node["name"].as_str().unwrap_or("");
             let reference = node["ref"].as_str().unwrap_or("");
-            text.push_str(&format!(
-                "{}{role:?} {name:?} [ref={reference}]\n",
-                "  ".repeat(depth)
-            ));
+            text.push_str(&format!("{}{role} {name:?}", "  ".repeat(depth)));
+            if !reference.is_empty() {
+                text.push_str(&format!(" [ref={reference}]"));
+            }
+            if let Some(states) = node["states"].as_array() {
+                for state in states.iter().filter_map(Value::as_str) {
+                    text.push_str(&format!(" [{state}]"));
+                }
+            }
+            if let Some(value) = node.get("value") {
+                text.push_str(&format!(" [value={value}]"));
+            }
+            text.push('\n');
         }
         if nodes.is_empty() {
             text.push_str("No matching nodes.\n");
@@ -106,9 +117,7 @@ pub(super) fn render(operation: &str, mut value: Value, json: bool) -> Result<Ve
         result.push('\n');
     }
     if result.len() > INLINE_BYTES {
-        return Err(BrowserError::InvalidResult(
-            "result_too_large: narrow browser output".into(),
-        ));
+        return Err(BrowserError::ResultTooLarge);
     }
     Ok(result.into_bytes())
 }
