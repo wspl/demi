@@ -91,7 +91,9 @@ impl Key {
         event.key = Some(key.into());
         event.code = Some(self.code.clone());
         event.windows_virtual_key_code = Some(self.virtual_code);
-        event.native_virtual_key_code = Some(self.virtual_code);
+        // The vendored table contains Windows virtual codes, not Host-native
+        // scan codes. Let Chrome derive its native code (on macOS 91 means "8",
+        // not Meta, and supplying it can start unintended native key repeats).
         event.modifiers = Some(modifiers);
         if down && modifiers & !8 == 0 {
             event.text = shifted

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use chromiumoxide::{
     Page,
     cdp::browser_protocol::{
-        accessibility::{AxNode, AxValue, GetFullAxTreeParams, QueryAxTreeParams},
+        accessibility::{AxNode, AxValue, GetFullAxTreeParams},
         dom::{BackendNodeId, GetDocumentParams, GetFrameOwnerParams, Node as DomNode},
         network::LoaderId,
         page::{FrameId, GetFrameTreeParams},
@@ -169,38 +169,6 @@ impl Observation {
             );
             if node.node_type == 9 {
                 documents.push(frame.clone());
-                // QueryAXTree computes names and roles even for hidden DOM nodes.
-                let computed = page
-                    .execute(
-                        QueryAxTreeParams::builder()
-                            .backend_node_id(node.backend_node_id)
-                            .build(),
-                    )
-                    .await?
-                    .result
-                    .nodes;
-                for ax in computed {
-                    if let Some(index) = ax
-                        .backend_dom_node_id
-                        .and_then(|backend| ax_index.get(&backend))
-                    {
-                        let existing = &mut nodes[*index];
-                        if existing.ax.ignored {
-                            existing.ax.role = ax.role;
-                            existing.ax.name = ax.name;
-                        }
-                    } else if let Some(loader) = loaders.get(&frame) {
-                        if let Some(backend) = ax.backend_dom_node_id {
-                            ax_index.insert(backend, nodes.len());
-                        }
-                        nodes.push(Node {
-                            ax,
-                            frame: frame.clone(),
-                            loader: loader.clone(),
-                            children: Vec::new(),
-                        });
-                    }
-                }
             }
             dom_index.insert(backend, dom.len());
             dom.push((node, frame));
@@ -350,10 +318,11 @@ impl Observation {
                 let backend = dom.backend_node_id;
                 if let Some(index) = self.ax_index.get(&backend) {
                     let node = &self.nodes[*index];
-                    if target
-                        .role
-                        .as_ref()
-                        .is_none_or(|role| ax_text(&node.ax.role) == role)
+                    if !node.ax.ignored
+                        && target
+                            .role
+                            .as_ref()
+                            .is_none_or(|role| ax_text(&node.ax.role) == role)
                         && target.name.as_ref().is_none_or(|name| {
                             text_matches(ax_text(&node.ax.name), name, target.exact == Some(true))
                         })
@@ -635,7 +604,7 @@ mod tests {
             ("boolean", json!(false), None),
             ("valueUndefined", json!(null), None),
             ("string", json!("input value"), Some(json!("input value"))),
-            ("number", json!(42), Some(json!(42))),
+            ("number", json!(42), Some(json!(42.0))),
         ] {
             let ax = serde_json::from_value(json!({
                 "nodeId": "1", "ignored": false,

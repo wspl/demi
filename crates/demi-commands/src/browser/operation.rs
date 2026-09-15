@@ -159,7 +159,12 @@ impl<'a> Operation<'a> {
         tokio::select! {
             biased;
             _ = self.ended.cancelled() => Err(BrowserError::Closed),
-            _ = self.cancelled.cancelled() => Err(BrowserError::Cancelled),
+            _ = self.cancelled.cancelled() => Err(if Instant::now() >= self.deadline {
+                // The resource controller cancels at this same shared deadline.
+                BrowserError::Timeout
+            } else {
+                BrowserError::Cancelled
+            }),
             result = tokio::time::timeout_at(self.deadline, future) => {
                 result.map_err(|_| BrowserError::Timeout)?
             }
@@ -179,6 +184,24 @@ pub(super) fn after_cleanup<T>(operation: Result<T>, cleanup: Result<()>) -> Res
 }
 
 impl BrowserError {
+    /// Preserve the browser condition that exhausted a shared readiness deadline.
+    pub(super) fn with_deadline_cause(self, cause: BrowserError) -> Self {
+        match self {
+            Self::Cleanup { operation, cleanup } => Self::Cleanup {
+                operation: Some(Box::new(match operation {
+                    Some(error) => error.with_deadline_cause(cause),
+                    None => cause,
+                })),
+                cleanup,
+            },
+            _ => cause,
+        }
+    }
+
+    pub(super) fn is_deadline(&self) -> bool {
+        self.code() == "timeout"
+    }
+
     pub fn code(&self) -> &'static str {
         match self {
             Self::Action { source, .. } => source.code(),
@@ -256,6 +279,40 @@ impl From<CdpError> for BrowserError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deadline_cause_survives_cleanup_wrappers() {
+        let timed_out = after_cleanup::<()>(Err(BrowserError::Timeout), Err(BrowserError::Timeout))
+            .unwrap_err();
+        assert!(timed_out.is_deadline());
+        let failure = timed_out.with_deadline_cause(BrowserError::NotActionable {
+            condition: "hit".into(),
+            interceptor: Some("overlay".into()),
+        });
+        assert_eq!(failure.code(), "not_actionable");
+        assert_eq!(failure.details()["condition"], "hit");
+        assert_eq!(failure.details()["interceptor"], "overlay");
+        assert!(
+            matches!(failure, BrowserError::Cleanup { cleanup, .. } if matches!(*cleanup, BrowserError::Timeout))
+        );
+    }
+
+    #[tokio::test]
+    async fn controller_deadline_cancellation_is_a_timeout() {
+        let ended = CancellationToken::new();
+        let cancelled = CancellationToken::new();
+        cancelled.cancel();
+        let expired = Operation::until(&ended, &cancelled, Instant::now());
+        assert!(matches!(
+            expired.run(std::future::pending::<Result<()>>()).await,
+            Err(BrowserError::Timeout)
+        ));
+        let active = Operation::new(&ended, &cancelled, CONTROL_TIMEOUT);
+        assert!(matches!(
+            active.run(std::future::pending::<Result<()>>()).await,
+            Err(BrowserError::Cancelled)
+        ));
+    }
 
     #[test]
     fn browser_errors_keep_causes_and_input_progress() {

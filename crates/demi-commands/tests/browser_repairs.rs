@@ -109,8 +109,13 @@ async fn command(tab: &BrowserTab, operation: &str, mut args: Value) -> Result<V
     if args.get("timeout").is_none() {
         args["timeout"] = json!(10_000);
     }
-    tab.execute(operation, args, &CancellationToken::new())
-        .await
+    let result = tab
+        .execute(operation, args.clone(), &CancellationToken::new())
+        .await;
+    if let Err(error) = &result {
+        eprintln!("browser {operation} {args}: {error:?}");
+    }
+    result
 }
 
 async fn value(tab: &BrowserTab, css: &str) -> Result<Value> {
@@ -164,7 +169,11 @@ async fn native_fill_and_text_replacement() {
         assert_eq!(value(&tab, "#date").await?, "2026-09-28");
         for css in ["#text", "#textarea", "#editable"] {
             command(&tab, "fill", json!({"css": css, "text": "replacement"})).await?;
-            let property = if css == "#editable" { "text" } else { "value" };
+            let property = if css == "#editable" {
+                "text-content"
+            } else {
+                "value"
+            };
             assert_eq!(
                 command(&tab, "read", json!({"css": css, "property": property})).await?["value"],
                 "replacement"
@@ -271,8 +280,14 @@ async fn targeted_keyboard_preserves_selection_and_stops_on_focus_loss() {
         );
         let events = tab
             .read_only("keys", &CancellationToken::new(), TIMEOUT)
-            .await?;
+            .await
+            .expect("read the keyboard event log expression: keys");
         let events = events.as_array().unwrap();
+        assert_eq!(
+            events.len(),
+            28,
+            "each delivered key has exactly one down/up pair"
+        );
         assert!(events.windows(2).any(|pair| pair[0]["key"] == "X"
             && pair[0]["type"] == "keydown"
             && pair[1]["key"] == "X"
@@ -457,12 +472,17 @@ async fn action_conditions_shadow_hits_and_shared_wait_states() {
                 .unwrap()
                 .contains("button-overlay")
         );
-        for css in ["#fieldset-button", "#pointer-none", "#moving"] {
-            error(
+        for (css, condition) in [
+            ("#fieldset-button", "enabled"),
+            ("#pointer-none", "pointer-events"),
+            ("#moving", "stable"),
+        ] {
+            let failure = error(
                 command(&tab, "click", json!({"css": css, "timeout": 500})).await,
                 "not_actionable",
                 "not_started",
             );
+            assert_eq!(failure.details()["condition"], condition);
         }
         command(&tab, "move", json!({"css": "#disabled-button"})).await?;
         assert_eq!(
@@ -526,14 +546,17 @@ async fn action_conditions_shadow_hits_and_shared_wait_states() {
             .await?["count"],
             1
         );
-        let year = command(
-            &tab,
-            "find",
-            json!({"role": "spinbutton", "name": "Year", "exact": true}),
-        )
-        .await?;
-        let reference = year["matches"][0]["ref"]
-            .as_str()
+        let date =
+            command(&tab, "find", json!({"css": "#date"})).await?["matches"][0]["ref"].clone();
+        let segments = command(&tab, "find", json!({"role": "spinbutton", "within": date})).await?;
+        // Native segment names follow Chrome's locale. The fixture's year is
+        // 2026, while its month/day are 9 and 15, so select that observed value.
+        let reference = segments["matches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["value"].as_f64() == Some(2026.0))
+            .and_then(|node| node["ref"].as_str())
             .expect("native date year reference");
         command(&tab, "click", json!({"ref": reference})).await?;
         error(
@@ -667,15 +690,24 @@ async fn label_text_and_accessible_name_are_distinct_and_ambiguity_is_explicit()
             command(
                 &tab,
                 "find",
-                json!({"role": "button", "name": "Fallback", "exact": true})
+                json!({"role": "button", "name": "AX fallback", "exact": true})
             )
             .await?["count"],
             2
         );
+        assert_eq!(
+            command(
+                &tab,
+                "read",
+                json!({"css": ".ax-fallback", "property": "visible", "all": true})
+            )
+            .await?["values"],
+            json!([false, true])
+        );
         command(
             &tab,
             "click",
-            json!({"role": "button", "name": "Fallback", "exact": true}),
+            json!({"role": "button", "name": "AX fallback", "exact": true}),
         )
         .await?;
         assert_eq!(
@@ -683,14 +715,42 @@ async fn label_text_and_accessible_name_are_distinct_and_ambiguity_is_explicit()
                 .await?,
             1
         );
-        for name in ["Ambiguous", "Hidden duplicate"] {
+        assert_eq!(
+            command(
+                &tab,
+                "find",
+                json!({"role":"button", "name":"Fallback", "exact":true})
+            )
+            .await?["count"],
+            1
+        );
+        assert_eq!(
+            command(
+                &tab,
+                "find",
+                json!({"role":"button", "name":"Fallback", "exact":true, "nth":1})
+            )
+            .await?["count"],
+            0
+        );
+        assert_eq!(
+            command(
+                &tab,
+                "find",
+                json!({"role":"button", "name":"Hidden duplicate", "exact":true})
+            )
+            .await?["count"],
+            0
+        );
+        click(&tab, ".fallback").await?;
+        assert_eq!(
+            tab.read_only("fallbackClicks", &CancellationToken::new(), TIMEOUT)
+                .await?,
+            2
+        );
+        for css in [".ambiguous", ".all-hidden"] {
             error(
-                command(
-                    &tab,
-                    "click",
-                    json!({"role": "button", "name": name, "exact": true}),
-                )
-                .await,
+                command(&tab, "click", json!({"css": css})).await,
                 "ambiguous_target",
                 "not_started",
             );

@@ -30,11 +30,17 @@ impl BrowserTab {
             .into_iter()
             .map(|candidate| candidate.unwrap_or(Value::Null))
             .collect();
-        let mut last_failure = BrowserError::TargetNotFound;
-        let result = async {
+        let mut last_failure = None;
+        let result: Result<Vec<String>> = async {
             loop {
                 let (element, _) = self
-                    .ready_element(target, references, element::SELECT, operation)
+                    .ready_element_with_failure(
+                        target,
+                        references,
+                        element::SELECT,
+                        operation,
+                        &mut last_failure,
+                    )
                     .await?;
                 let mut probe = args.clone();
                 probe.push(json!(false));
@@ -67,14 +73,14 @@ impl BrowserTab {
                     // The algorithm reports missing/disabled before changing selection.
                     operation.input_not_delivered();
                 }
-                last_failure = match selected.status {
+                last_failure = Some(match selected.status {
                     SelectionStatus::Disabled => BrowserError::NotActionable {
                         condition: "enabled select option or control".into(),
                         interceptor: None,
                     },
                     SelectionStatus::Missing => BrowserError::TargetNotFound,
                     SelectionStatus::Ready => unreachable!("ready selections returned above"),
-                };
+                });
                 operation
                     .run(async {
                         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -85,7 +91,10 @@ impl BrowserTab {
         }
         .await;
         match result {
-            Err(BrowserError::Timeout) => Err(last_failure),
+            Err(error) if error.is_deadline() => Err(match last_failure {
+                Some(cause) => error.with_deadline_cause(cause),
+                None => error,
+            }),
             result => result,
         }
     }
