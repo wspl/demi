@@ -133,7 +133,10 @@ async fn exercise_browser(
             .click_css(selector, &live, Duration::from_millis(250))
             .await;
         assert!(
-            matches!(result, Err(BrowserError::Timeout)),
+            matches!(
+                result,
+                Err(BrowserError::NotActionable { .. } | BrowserError::TargetNotFound)
+            ),
             "{selector}: {result:?}"
         );
     }
@@ -203,7 +206,7 @@ async fn exercise_browser(
         tab.click_css("#disabled", &live, Duration::from_millis(100)),
         tab.read_only("1", &live, DEADLINE),
     );
-    assert!(matches!(waiting, Err(BrowserError::Timeout)));
+    assert!(matches!(waiting, Err(BrowserError::NotActionable { .. })));
     assert!(matches!(busy, Err(BrowserError::Busy)));
 
     tab.close(&live, DEADLINE).await?;

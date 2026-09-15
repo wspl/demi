@@ -25,6 +25,7 @@ test.skipIf(process.env.DEMI_BROWSER_ACCEPTANCE !== '1')('AgentServer operates a
       model.shell('browser-open', `set -euo pipefail
 tab=$(demi browser open http://127.0.0.1:${application.port}/ --json | jq -r .tab)
 printf '%s' "$tab" > browser-tab.txt
+printf 'Tab: %s\\n' "$tab"
 demi browser inspect "$tab"
 demi browser fill "$tab" --label Email --text agent@example.test
 demi browser fill "$tab" --label Password --text fixture-password
@@ -34,6 +35,8 @@ demi browser inspect "$tab"`, 120000),
     ] })
     expect(opened.received[0]).toContain('exitCode: 0')
     expect(opened.received[0]).toContain('Signed in')
+    expect(opened.received[0]).toMatch(/t_[A-Za-z0-9_-]{22}/)
+    expect(opened.received[0]).toMatch(/e_[A-Za-z0-9_-]{22}/)
     await driver.detach()
     await driver.attach()
     const retained = await driver.turn({ model: [
@@ -60,7 +63,9 @@ tab=$(cat browser-tab.txt)
 demi browser check "$tab" --label Enabled --value
 demi browser select "$tab" --label Country --option-label Singapore
 demi browser read "$tab" --label Country --property value --json
-demi browser click "$tab" --role heading --name 'Signed in' --wait-url '**/dashboard*' --timeout 250 --json || true
+demi browser click "$tab" --role heading --name 'Signed in' --wait-url '**/dashboard*' --json
+demi browser click "$tab" --role heading --name 'Signed in' --wait-url '**/never' --timeout 700 --json || true
+demi browser info t_AAAAAAAAAAAAAAAAAAAAAA --json || true
 demi browser scroll "$tab" --dy 100
 demi browser content read "$tab" --format html --output page.html --json
 demi browser click "$tab" --role button --name Prompt --json || true
@@ -73,6 +78,8 @@ demi browser read "$tab" --css output --property text --json`, 30000),
     expect(controls.received[0]).toContain('"value":"SG"')
     expect(controls.received[0]).toContain('"code":"timeout"')
     expect(controls.received[0]).toContain('dialog_blocked')
+    expect(controls.received[0]).toContain('"action":"completed"')
+    expect(controls.received[0]).toContain('"code":"tab_not_found"')
     expect(controls.received[0]).toContain('Your name')
     expect(controls.received[0]).toContain('"value":"Agent"')
     const closed = await driver.turn({ model: [
