@@ -297,10 +297,18 @@ unsupported results and never falls back to unrestricted evaluation. Cancellatio
 stops further driver steps and releases held input, without claiming to undo
 side effects that Chrome has already executed.
 
-The browser environment owns its Chrome child, event task, and temporary profile.
-Retirement closes Chrome, waits for exit, and joins the event task before removing
-the profile. If graceful closure fails, termination and reaping use the same
-cleanup path. Invocation cancellation does not retire an unrelated tab or owner.
+The browser environment owns its Chrome process tree, event task, and temporary
+profile. On Unix, Chrome launches in a separate process group and inherits a
+private environment marker identifying its profile owner. Helpers such as
+Crashpad can detach into another session; retirement tracks these by that marker
+as well as the group. Retirement closes Chrome, reaps its main process, terminates
+remaining group members and marked helpers, waits for them to disappear within
+the control timeout, and joins the event task before removing the profile.
+Failed launch, owner cancellation, and failed graceful closure use the same
+termination and reaping path. Profile removal retries only
+“directory not empty” errors for at most 300 ms after process retirement; any
+remaining cleanup failure retains the profile path and reports the failure.
+Invocation cancellation does not retire an unrelated tab or owner.
 
 ### One command path
 
