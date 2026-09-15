@@ -42,12 +42,12 @@ export class CloudConversations {
     for (const id of await this.selected(userId)) {
       const tree = reason === 'reset'
         ? await agents.interruptTree(id)
-        : agents.reserveTreeMutation(id)
+        : agents.reserveTreeMutation(id, 'idle')
       if (!tree) return null
       reservations.defer(tree)
       const file = reason === 'reset'
-        ? await targets.files(id).reserve()
-        : targets.files(id).tryReserve()
+        ? await targets.files(id).reserve('forced')
+        : targets.files(id).tryReserve('idle')
       if (!file) return null
       reservations.defer(file)
       files.set(id, file)

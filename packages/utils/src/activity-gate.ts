@@ -1,12 +1,19 @@
 import { deferred } from './async'
 import { abortable, throwIfAborted } from './errors'
 
+export type ActivityReservationPurpose = 'idle' | 'forced'
+
 /** Concurrent operations with an exclusive, cancellable admission barrier. */
 export class ActivityGate {
   private readonly leases = new Map<() => void, 'demand' | 'maintenance'>()
-  private reservation: (() => void) | undefined
+  private reservation: { release: () => void; purpose: ActivityReservationPurpose } | undefined
   private readonly listeners = new Set<() => void>()
   private changed = deferred<void>()
+
+  /** Idle retirement can be waited through; forced transitions refuse new work. */
+  get reservationPurpose(): ActivityReservationPurpose | undefined {
+    return this.reservation?.purpose
+  }
 
   get active(): boolean {
     return this.leases.size > 0
@@ -24,7 +31,7 @@ export class ActivityGate {
 
   /** Verify an existing exclusive reservation before borrowing it for cleanup. */
   holdsReservation(release: () => void): boolean {
-    return this.reservation === release
+    return this.reservation?.release === release
   }
 
   async enter(signal?: AbortSignal, purpose: 'demand' | 'maintenance' = 'demand'): Promise<() => void> {
@@ -44,18 +51,18 @@ export class ActivityGate {
   }
 
   /** Reserves only an idle gate, synchronously with respect to new entrants. */
-  tryReserve(): (() => void) | null {
+  tryReserve(purpose: ActivityReservationPurpose): (() => void) | null {
     if (this.reservation || this.active)
       return null
-    return this.claim()
+    return this.claim(purpose)
   }
 
   /** Stops new entrants, then waits for admitted operations to finish. */
-  async reserve(signal?: AbortSignal): Promise<() => void> {
+  async reserve(purpose: ActivityReservationPurpose, signal?: AbortSignal): Promise<() => void> {
     while (this.reservation) await this.wait(signal)
     if (signal)
       throwIfAborted(signal)
-    const release = this.claim()
+    const release = this.claim(purpose)
     try {
       while (this.active) await this.wait(signal)
       return release
@@ -95,13 +102,13 @@ export class ActivityGate {
     return release
   }
 
-  private claim(): () => void {
+  private claim(purpose: ActivityReservationPurpose): () => void {
     const release = () => {
-      if (this.reservation !== release) return
+      if (this.reservation?.release !== release) return
       this.reservation = undefined
       this.notify()
     }
-    this.reservation = release
+    this.reservation = { release, purpose }
     this.notify()
     return release
   }

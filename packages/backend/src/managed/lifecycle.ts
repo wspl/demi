@@ -468,7 +468,7 @@ export class ManagedHosts {
       machine.state = 'resetting'
       conversations = await this.options.reserveConversations(machine.device.userId, 'reset')
       if (!conversations) throw new Error('Cloud reset could not reserve its conversations')
-      releaseMachine = await machine.activity.reserve(AbortSignal.timeout(30_000))
+      releaseMachine = await machine.activity.reserve('forced', AbortSignal.timeout(30_000))
       await conversations.retire(releaseMachine)
       await this.options.registry
         .sync(machine.device.id, this.config.syncTimeoutMs)
@@ -585,7 +585,7 @@ export class ManagedHosts {
   }
 
   private async reserveRetirement(machine: Machine): Promise<Retirement | null> {
-    const releaseMachine = machine.activity.tryReserve()
+    const releaseMachine = machine.activity.tryReserve('idle')
     if (!releaseMachine) return null
     try {
       const conversations = await this.options.reserveConversations(machine.device.userId, 'idle')

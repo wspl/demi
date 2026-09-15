@@ -1,3 +1,4 @@
+import type { FrameAdmission } from '../conversation/frame-admission'
 import type { ConversationHostAccess } from '../conversation/target'
 import { RemoteGitError, type RemoteHost } from '@demicodes/host-remote'
 import { errorCode, errorMessage } from '@demicodes/utils'
@@ -40,7 +41,7 @@ const renameHostBodySchema = z.object({ name: z.string().trim().min(1).max(64) }
 
 /** `/api/conversations` REST surface (the live stream is `stream.ts`). */
 export function conversationRoutes(options: {
-  admitFrame: (id: string) => (() => void) | null
+  admitFrame: FrameAdmission
   updates: ConversationUpdates
   forks: ConversationForks
   agentServer: AgentServer
@@ -280,7 +281,7 @@ export function conversationRoutes(options: {
     if (c.req.method === 'GET') {
       return next()
     }
-    const release = options.admitFrame(c.req.param('id') ?? '')
+    const release = await options.admitFrame(c.req.param('id') ?? '', c.req.raw.signal)
     if (!release) {
       return c.json(
         {

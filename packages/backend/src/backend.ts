@@ -13,6 +13,7 @@ import {
   inProcessRpc,
 } from '@demicodes/command-loader'
 import { RemoteHost, createRemoteShellEnvironmentFactory, type RemoteShellEnvironmentFactoryOptions } from '@demicodes/host-remote'
+import { admitConversationFrame } from './conversation/frame-admission'
 import { ConversationBrowsers } from './conversation/browsers'
 import { LifecycleCoordinator } from './lifecycle/coordinator'
 import { CloudConversations } from './managed/conversations'
@@ -313,7 +314,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     lifecycle,
     treeActive: id => agentServer.treeActive(id),
     observeTree: (id, changed) => agentServer.observeTreeActivity(id, changed),
-    reserveTree: id => agentServer.reserveTreeMutation(id),
+    reserveTree: id => agentServer.reserveTreeMutation(id, 'idle'),
   }) : null
   const commandsFor = (agentSessionId: string): Command[] => [
     createDemiCommand(
@@ -394,7 +395,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       targets,
       agentServer
     }),
-    admitFrame: (id) => targets.files(id).tryEnter(),
+    admitFrame: (id, signal) => admitConversationFrame(targets.files(id), signal),
     vault,
     assembly,
     vendors,

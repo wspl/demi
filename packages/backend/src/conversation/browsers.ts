@@ -81,7 +81,7 @@ export class ConversationBrowsers {
 
   async close(): Promise<void> {
     for (const id of [...this.owners.keys()]) {
-      const release = await this.options.targets.files(id).reserve()
+      const release = await this.options.targets.files(id).reserve('forced')
       try {
         await this.retire(id, release)
       } finally {
@@ -111,7 +111,7 @@ export class ConversationBrowsers {
       reserve: () => {
         const tree = this.options.reserveTree(id)
         if (!tree) return null
-        const files = this.options.targets.files(id).tryReserve()
+        const files = this.options.targets.files(id).tryReserve('idle')
         if (!files) {
           tree()
           return null

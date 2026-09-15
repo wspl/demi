@@ -220,7 +220,7 @@ export class ConversationTargets {
     const releaseTree = this.deps.reserveTree(id)
     if (!releaseTree)
       return { outcome: 'turn_in_flight' }
-    const releaseFiles = this.files(id).tryReserve()
+    const releaseFiles = this.files(id).tryReserve('forced')
     if (!releaseFiles) {
       releaseTree()
       return { outcome: 'turn_in_flight' }

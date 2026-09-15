@@ -138,7 +138,7 @@ export class ConversationUpdates {
         'turn_in_flight',
         'A conversation with running work cannot be archived or restored'
       )
-    const releaseFiles = this.deps.targets.files(id).tryReserve()
+    const releaseFiles = this.deps.targets.files(id).tryReserve('forced')
     if (!releaseFiles) {
       releaseTree()
       return refused(

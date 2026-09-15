@@ -1,3 +1,4 @@
+import type { FrameAdmission } from '../conversation/frame-admission'
 import type { ConversationHostAccess } from '../conversation/target'
 import {
   createWebSocketServerTransport,
@@ -27,7 +28,7 @@ import { writeAttachmentToHost } from '../conversation/attachment-refs'
  * logic in `scoped-transport.ts`.
  */
 export function streamRoutes(options: {
-  admitFrame: (id: string) => (() => void) | null
+  admitFrame: FrameAdmission
   assembly: ProviderAssembly
   registry: RunnerRegistry
   control: ControlService
@@ -74,7 +75,7 @@ export function streamRoutes(options: {
                 record,
                 content
               ),
-              admitFrame: () => options.admitFrame(conversation.id),
+              admitFrame: signal => options.admitFrame(conversation.id, signal),
               modelSelection: (providerId, selection) => options.assembly.selection(
                 providerId,
                 selection

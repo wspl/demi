@@ -37,7 +37,7 @@ export interface ConversationTransportOptions {
     conversation: ConversationRecord,
     content: unknown[]
   ) => Promise<unknown[]>
-  admitFrame?: () => (() => void) | null
+  admitFrame?: (signal: AbortSignal) => Promise<(() => void) | null>
   modelSelection?: (
     providerId: string,
     selection: ModelSelection
@@ -75,26 +75,29 @@ export function conversationScopedTransport(
   // puts outbound); one chain per direction keeps delivery in arrival order.
   const deliveries = new SerialQueue()
   const sends = new SerialQueue()
-  let closed = false
+  const closing = new AbortController()
+  const close = () => {
+    closing.abort()
+    inner.close()
+  }
   const reportError = (code: string, message: string) => {
-    if (closed)
+    if (closing.signal.aborted)
       return
     try {
       inner.send({ type: 'error', code, message })
     } catch {
-      closed = true
-      inner.close()
+      close()
     }
   }
   return {
     send: (frame) => {
       void sends.run(async () => {
-        if (closed)
+        if (closing.signal.aborted)
           return
         const outbound = blobs
           ? await externalizeFrameMedia(frame, blobs)
           : frame
-        if (!closed)
+        if (!closing.signal.aborted)
           inner.send(outbound)
       }).catch((error: unknown) => reportError(
         'frame_send_failed',
@@ -102,10 +105,11 @@ export function conversationScopedTransport(
       ))
     },
     onFrame: (handler) => {
-      let subscribed = true
+      const subscription = new AbortController()
+      const signal = AbortSignal.any([closing.signal, subscription.signal])
       const unsubscribe = inner.onFrame((frame) => {
         void deliveries.run(async () => {
-          if (closed || !subscribed)
+          if (signal.aborted)
             return
           const parsed = conversationClientFrameSchema.safeParse(frame)
           if (!parsed.success) {
@@ -115,13 +119,15 @@ export function conversationScopedTransport(
             )
             return
           }
-          const release = options.admitFrame ? options.admitFrame() : () => {}
+          const release = options.admitFrame ? await options.admitFrame(signal) : () => {}
           if (!release)
             throw new FrameRefused(
               'conversation_busy',
               'A conversation operation is still running'
             )
           try {
+            if (signal.aborted)
+              return
             const current = await options.control.getConversation(
               conversation.id
             )
@@ -136,26 +142,25 @@ export function conversationScopedTransport(
               options,
               cwd
             )
-            if (!closed && subscribed)
+            if (!signal.aborted)
               await handler(rewritten)
           } finally {
             release()
           }
         }).catch((error: unknown) => {
+          if (signal.aborted)
+            return
           const parsed = conversationClientFrameSchema.safeParse(frame)
           if (parsed.success && parsed.data.type === 'edit_and_send') {
-            if (!closed) {
-              try {
-                inner.send({
-                  type: 'edit_result',
-                  operationId: parsed.data.request.operationId,
-                  status: 'rejected',
-                  reason: errorMessage(error),
-                })
-              } catch {
-                closed = true
-                inner.close()
-              }
+            try {
+              inner.send({
+                type: 'edit_result',
+                operationId: parsed.data.request.operationId,
+                status: 'rejected',
+                reason: errorMessage(error),
+              })
+            } catch {
+              close()
             }
             return
           }
@@ -166,14 +171,11 @@ export function conversationScopedTransport(
         })
       })
       return () => {
-        subscribed = false
+        subscription.abort()
         unsubscribe()
       }
     },
-    close: () => {
-      closed = true
-      inner.close()
-    },
+    close,
   }
 }
 

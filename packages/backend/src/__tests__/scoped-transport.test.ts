@@ -300,7 +300,7 @@ test(
     const scoped = conversationScopedTransport(pair.server, f.conversation, {
       control: f.control,
       providerAllowed: async () => true,
-      admitFrame: () => gate.tryEnter(),
+      admitFrame: async () => gate.tryEnter(),
     })
     const replies: ServerFrame[] = []
     pair.client.onFrame(frame => {
@@ -314,12 +314,12 @@ test(
     try {
       pair.client.send({ type: 'abort' })
       await entered.promise
-      expect(gate.tryReserve()).toBeNull()
+      expect(gate.tryReserve('forced')).toBeNull()
       finish.resolve()
       await waitFor(() => replies.length === 1)
       expect(replies[0])
         .toMatchObject({ type: 'error', code: 'frame_delivery_failed' })
-      const release = gate.tryReserve()
+      const release = gate.tryReserve('forced')
       expect(release).not.toBeNull()
       release?.()
     } finally {
