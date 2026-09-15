@@ -354,24 +354,41 @@ mod transaction_tests {
             .collect();
         let recorder = demi_command_service::edits::Recorder::new(
             demi_command_service::protocol::EditContext {
-                directory: directory.path().join("changes").to_string_lossy().into_owned(),
-                lock: directory.path().join("edits.lock").to_string_lossy().into_owned(),
+                directory: directory
+                    .path()
+                    .join("changes")
+                    .to_string_lossy()
+                    .into_owned(),
+                lock: directory
+                    .path()
+                    .join("edits.lock")
+                    .to_string_lossy()
+                    .into_owned(),
             },
-        ).unwrap();
+        )
+        .unwrap();
         let mut recording = recorder.begin().unwrap();
         for change in &changes {
             recording.track(&change.path);
         }
-        let result = commit_changes(&changes, &CancellationToken::new(), |change| {
-            if change.path.file_name().unwrap() == "second" {
-                return Err("simulated write failure".into());
-            }
-            write_change(change)
-        }, Some(&mut recording));
+        let result = commit_changes(
+            &changes,
+            &CancellationToken::new(),
+            |change| {
+                if change.path.file_name().unwrap() == "second" {
+                    return Err("simulated write failure".into());
+                }
+                write_change(change)
+            },
+            Some(&mut recording),
+        );
         drop(recording);
         assert!(recorder.report().unwrap().files.is_empty());
         assert_eq!(result.unwrap_err(), "simulated write failure");
-        assert_eq!(fs::read(&changes[0].path).unwrap(), *changes[0].before.as_ref().unwrap());
+        assert_eq!(
+            fs::read(&changes[0].path).unwrap(),
+            *changes[0].before.as_ref().unwrap()
+        );
         assert_eq!(fs::read(&changes[1].path).unwrap(), b"second\n");
     }
 }
