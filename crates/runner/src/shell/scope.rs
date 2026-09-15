@@ -64,7 +64,10 @@ impl Scope {
     }
 
     pub fn with_cancellation(&self, cancellation: CancellationToken) -> Self {
-        Self { cancellation, ..self.clone() }
+        Self {
+            cancellation,
+            ..self.clone()
+        }
     }
 
     pub fn read(&self, file: &File, buffer: &mut [u8]) -> io::Result<usize> {
@@ -95,13 +98,20 @@ impl Scope {
         (&*file).write(&buffer[..buffer.len().min(512)])
     }
 
-    fn open_file(&self, path: &Path, options: &std::fs::OpenOptions, writing: bool) -> io::Result<File> {
+    fn open_file(
+        &self,
+        path: &Path,
+        options: &std::fs::OpenOptions,
+        writing: bool,
+    ) -> io::Result<File> {
         self.check()?;
         let file = match (&self.edits, writing) {
             (Some(edits), true) => edits.record(path, || options.open(path))?,
             _ => options.open(path)?,
         };
-        if writing && self.edits.is_some() && file.metadata().is_ok_and(|metadata| metadata.is_file())
+        if writing
+            && self.edits.is_some()
+            && file.metadata().is_ok_and(|metadata| metadata.is_file())
             && let Ok(identity) = file_identity(&file)
         {
             let mut files = self.files.lock().unwrap();
@@ -256,11 +266,19 @@ impl FileControl for Scope {
 }
 
 impl ExecutionHost for Scope {
-    fn open_file(&self, path: &Path, options: &std::fs::OpenOptions, writing: bool) -> io::Result<File> {
+    fn open_file(
+        &self,
+        path: &Path,
+        options: &std::fs::OpenOptions,
+        writing: bool,
+    ) -> io::Result<File> {
         self.open_file(path, options, writing)
     }
 
-    fn external_output(&self, file: File) -> io::Result<(File, Option<brush_core::execution_host::OutputCompletion>)> {
+    fn external_output(
+        &self,
+        file: File,
+    ) -> io::Result<(File, Option<brush_core::execution_host::OutputCompletion>)> {
         if self.file_path(&file).is_none() {
             return Ok((file, None));
         }
@@ -286,9 +304,12 @@ impl ExecutionHost for Scope {
             })();
             result
         });
-        Ok((writer, Some(Box::pin(async move {
-            completion.await.map_err(io::Error::other)?
-        }))))
+        Ok((
+            writer,
+            Some(Box::pin(async move {
+                completion.await.map_err(io::Error::other)?
+            })),
+        ))
     }
     fn check(&self) -> io::Result<()> {
         self.check()
@@ -410,7 +431,10 @@ impl uucore::context::Control for Scope {
 }
 
 fn tracked_utility() -> bool {
-    !matches!(uucore::context::utility_name(), Some("cp" | "mv" | "mktemp" | "touch"))
+    !matches!(
+        uucore::context::utility_name(),
+        Some("cp" | "mv" | "mktemp" | "touch")
+    )
 }
 
 #[derive(Eq, Hash, PartialEq)]
@@ -426,7 +450,9 @@ fn file_identity(file: &File) -> io::Result<FileIdentity> {
 #[cfg(windows)]
 fn file_identity(file: &File) -> io::Result<FileIdentity> {
     use std::os::windows::io::AsRawHandle;
-    use windows_sys::Win32::Storage::FileSystem::{BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle};
+    use windows_sys::Win32::Storage::FileSystem::{
+        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+    };
     let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
     if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
         return Err(io::Error::last_os_error());

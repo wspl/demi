@@ -302,15 +302,20 @@ impl TaskTable {
                 env.insert("DEMI_JOB_ID".into(), id.clone());
                 let edit_context = demi_command_service::protocol::EditContext {
                     directory: path.join("changes").to_string_lossy().into_owned(),
-                    lock: self.output_dir.join("edits.lock").to_string_lossy().into_owned(),
+                    lock: self
+                        .output_dir
+                        .join("edits.lock")
+                        .to_string_lossy()
+                        .into_owned(),
                 };
-                let recorder = match demi_command_service::edits::Recorder::new(edit_context.clone()) {
-                    Ok(recorder) => Some(recorder),
-                    Err(error) => {
-                        eprintln!("edit recording failed: {error}");
-                        None
-                    }
-                };
+                let recorder =
+                    match demi_command_service::edits::Recorder::new(edit_context.clone()) {
+                        Ok(recorder) => Some(recorder),
+                        Err(error) => {
+                            eprintln!("edit recording failed: {error}");
+                            None
+                        }
+                    };
                 let logs = Logs::new(path).await?;
                 job = Some((logs, scratch, recorder.clone()));
                 let commands = match (
@@ -327,7 +332,10 @@ impl TaskTable {
                     }
                 };
                 if let Some(commands) = &commands {
-                    commands.execution.edits.set(edit_context)
+                    commands
+                        .execution
+                        .edits
+                        .set(edit_context)
                         .map_err(|_| io::Error::other("job recording context was already set"))?;
                 }
                 let mut scope = crate::shell::scope::Scope::new(cancel.child_token(), commands);
@@ -485,7 +493,9 @@ impl TaskTable {
                 scratch.close()?;
                 let (files, files_truncated) = tokio::task::spawn_blocking(move || {
                     crate::shell::edit_report::finish(recorder.as_ref())
-                }).await.map_err(io::Error::other)?;
+                })
+                .await
+                .map_err(io::Error::other)?;
                 wire::job_exit(
                     id,
                     exit.code.map(f64::from),
