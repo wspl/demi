@@ -136,9 +136,13 @@ impl BrowserTab {
                 ));
             }
 
-            match command {
-                BrowserCommand::Info(_) => self.metadata(cancel, command.timeout()).await,
-                BrowserCommand::Goto(input) => {
+            // Each branch has its own heap allocation; large command futures must
+            // not be embedded together on native-service or test-thread stacks.
+            let branch: futures_util::future::BoxFuture<'_, Result<Value>> = match command {
+                BrowserCommand::Info(_) => {
+                    Box::pin(async { self.metadata(cancel, command.timeout()).await })
+                }
+                BrowserCommand::Goto(input) => Box::pin(async {
                     let url = self
                         .navigate(
                             Navigation::Url(input.url.clone()),
@@ -148,8 +152,8 @@ impl BrowserTab {
                         )
                         .await?;
                     Ok(self.completed_navigation(url).await)
-                }
-                BrowserCommand::Reload(input) => {
+                }),
+                BrowserCommand::Reload(input) => Box::pin(async {
                     let url = self
                         .navigate(
                             Navigation::Reload,
@@ -159,8 +163,8 @@ impl BrowserTab {
                         )
                         .await?;
                     Ok(self.completed_navigation(url).await)
-                }
-                BrowserCommand::Back(_) | BrowserCommand::Forward(_) => {
+                }),
+                BrowserCommand::Back(_) | BrowserCommand::Forward(_) => Box::pin(async {
                     let history = operation
                         .run(async {
                             Ok(self
@@ -195,8 +199,8 @@ impl BrowserTab {
                         )
                         .await?;
                     Ok(self.completed_navigation(url).await)
-                }
-                BrowserCommand::History(_) => {
+                }),
+                BrowserCommand::History(_) => Box::pin(async {
                     let history = operation
                         .run(async {
                             Ok(self
@@ -210,8 +214,8 @@ impl BrowserTab {
                     Ok(
                         json!({ "entries": entries, "truncated": history.entries.len() > MAX_NODES }),
                     )
-                }
-                BrowserCommand::Inspect(input) => {
+                }),
+                BrowserCommand::Inspect(input) => Box::pin(async {
                     let observation = Observation::capture(&self.page, &mut references).await?;
                     let (tree, truncated) = observation.tree(
                         &mut references,
@@ -221,8 +225,8 @@ impl BrowserTab {
                     result["tree"] = json!(tree);
                     result["truncated"] = json!(truncated);
                     Ok(result)
-                }
-                BrowserCommand::Find(input) => {
+                }),
+                BrowserCommand::Find(input) => Box::pin(async {
                     let observation = Observation::capture(&self.page, &mut references).await?;
                     let elements = observation
                         .resolve(&self.page, required_target(&target)?, &references)
@@ -233,8 +237,8 @@ impl BrowserTab {
                     Ok(
                         json!({ "matches": matches, "count": elements.len(), "truncated": elements.len() > limit }),
                     )
-                }
-                BrowserCommand::Read(input) => {
+                }),
+                BrowserCommand::Read(input) => Box::pin(async {
                     let observation = Observation::capture(&self.page, &mut references).await?;
                     let elements = observation
                         .resolve(&self.page, required_target(&target)?, &references)
@@ -305,11 +309,13 @@ impl BrowserTab {
                     } else {
                         Ok(json!({ "value": values.remove(0) }))
                     }
-                }
-                BrowserCommand::Eval(input) => Ok(
-                    json!({ "value": evaluation::read_only(&self.page, &input.expression).await? }),
-                ),
-                BrowserCommand::Fill(input) => {
+                }),
+                BrowserCommand::Eval(input) => Box::pin(async {
+                    Ok(
+                        json!({ "value": evaluation::read_only(&self.page, &input.expression).await? }),
+                    )
+                }),
+                BrowserCommand::Fill(input) => Box::pin(async {
                     self.fill(
                         required_target(&target)?,
                         &mut references,
@@ -324,8 +330,8 @@ impl BrowserTab {
                         navigation.as_mut(),
                     )
                     .await
-                }
-                BrowserCommand::Click(input) => {
+                }),
+                BrowserCommand::Click(input) => Box::pin(async {
                     let button = match input.button.as_deref().unwrap_or("left") {
                         "left" => MouseButton::Left,
                         "middle" => MouseButton::Middle,
@@ -365,8 +371,8 @@ impl BrowserTab {
                         navigation.as_mut(),
                     )
                     .await
-                }
-                BrowserCommand::Move(input) => {
+                }),
+                BrowserCommand::Move(input) => Box::pin(async {
                     let point = match &input.xy {
                         Some(xy) => operation.run(self.coordinates(xy)).await?,
                         None => self
@@ -389,8 +395,8 @@ impl BrowserTab {
                         })
                         .await?;
                     self.action_result(&operation, "move", None, None).await
-                }
-                BrowserCommand::Scroll(input) => {
+                }),
+                BrowserCommand::Scroll(input) => Box::pin(async {
                     if input.dx.unwrap_or(0.0) == 0.0 && input.dy.unwrap_or(0.0) == 0.0 {
                         return Err(BrowserError::Configuration(
                             "scroll requires a nonzero dx or dy".into(),
@@ -445,8 +451,8 @@ impl BrowserTab {
                         })
                         .await?;
                     self.action_result(&operation, "scroll", None, None).await
-                }
-                BrowserCommand::Type(input) => {
+                }),
+                BrowserCommand::Type(input) => Box::pin(async {
                     let (element, _) = self
                         .ready_element(
                             required_target(&target)?,
@@ -457,8 +463,8 @@ impl BrowserTab {
                         .await?;
                     self.type_text(&element, &input.text, &operation).await?;
                     self.action_result(&operation, "type", None, None).await
-                }
-                BrowserCommand::Key(input) => {
+                }),
+                BrowserCommand::Key(input) => Box::pin(async {
                     let keys = keyboard::combination(&input.key)?;
                     let (element, _) = self
                         .ready_element(
@@ -477,8 +483,8 @@ impl BrowserTab {
                         navigation.as_mut(),
                     )
                     .await
-                }
-                BrowserCommand::Check(input) => {
+                }),
+                BrowserCommand::Check(input) => Box::pin(async {
                     let (_, state) = self
                         .ready_element(
                             required_target(&target)?,
@@ -511,8 +517,8 @@ impl BrowserTab {
                         }
                     }
                     self.action_result(&operation, "check", None, None).await
-                }
-                BrowserCommand::Select(input) => {
+                }),
+                BrowserCommand::Select(input) => Box::pin(async {
                     let values = self
                         .select_options(
                             required_target(&target)?,
@@ -526,60 +532,62 @@ impl BrowserTab {
                         )
                         .await?;
                     Ok(json!({"operation": "select", "result": values}))
-                }
-                BrowserCommand::DialogInspect(_) => {
+                }),
+                BrowserCommand::DialogInspect(_) => Box::pin(async {
                     let dialog = self.state.dialog.borrow().clone();
                     Ok(json!({ "dialog": dialog.as_ref().map(|dialog| json!({
                         "type": dialog.r#type, "message": dialog.message,
                         "defaultPrompt": dialog.default_prompt.as_deref().unwrap_or_default(),
                     })) }))
-                }
+                }),
                 BrowserCommand::DialogAccept(_) | BrowserCommand::DialogDismiss(_) => {
-                    let dialog = self
-                        .state
-                        .dialog
-                        .borrow()
-                        .clone()
-                        .ok_or(BrowserError::DialogNotFound)?;
-                    if let BrowserCommand::DialogAccept(input) = command
+                    Box::pin(async {
+                        let dialog = self
+                            .state
+                            .dialog
+                            .borrow()
+                            .clone()
+                            .ok_or(BrowserError::DialogNotFound)?;
+                        if let BrowserCommand::DialogAccept(input) = command
                         && (dialog.r#type == chromiumoxide::cdp::browser_protocol::page::DialogType::Alert ||
                             (input.text.is_some() && dialog.r#type != chromiumoxide::cdp::browser_protocol::page::DialogType::Prompt)) {
                             return Err(BrowserError::InvalidDialogAction);
                         }
-                    let mut request = HandleJavaScriptDialogParams::new(matches!(
-                        command,
-                        BrowserCommand::DialogAccept(_)
-                    ));
-                    if let BrowserCommand::DialogAccept(input) = command {
-                        request.prompt_text = input.text.clone();
-                    }
-                    self.page.execute(request).await?;
-                    self.state.dialog.send_if_modified(|current| {
-                        if current
-                            .as_ref()
-                            .is_some_and(|current| std::sync::Arc::ptr_eq(current, &dialog))
-                        {
-                            *current = None;
-                            true
-                        } else {
-                            false
+                        let mut request = HandleJavaScriptDialogParams::new(matches!(
+                            command,
+                            BrowserCommand::DialogAccept(_)
+                        ));
+                        if let BrowserCommand::DialogAccept(input) = command {
+                            request.prompt_text = input.text.clone();
                         }
-                    });
-                    let mut releases = self.state.deferred_release.lock().await;
-                    while self.state.dialog.borrow().is_none() && !releases.is_empty() {
-                        match &releases[0] {
-                            super::tab::InputRelease::Mouse(event) => {
-                                self.page.execute(event.clone()).await?;
+                        self.page.execute(request).await?;
+                        self.state.dialog.send_if_modified(|current| {
+                            if current
+                                .as_ref()
+                                .is_some_and(|current| std::sync::Arc::ptr_eq(current, &dialog))
+                            {
+                                *current = None;
+                                true
+                            } else {
+                                false
                             }
-                            super::tab::InputRelease::Key(event) => {
-                                self.page.execute(event.clone()).await?;
+                        });
+                        let mut releases = self.state.deferred_release.lock().await;
+                        while self.state.dialog.borrow().is_none() && !releases.is_empty() {
+                            match &releases[0] {
+                                super::tab::InputRelease::Mouse(event) => {
+                                    self.page.execute(event.clone()).await?;
+                                }
+                                super::tab::InputRelease::Key(event) => {
+                                    self.page.execute(event.clone()).await?;
+                                }
                             }
+                            releases.remove(0);
                         }
-                        releases.remove(0);
-                    }
-                    Ok(json!({ "handled": true }))
+                        Ok(json!({ "handled": true }))
+                    })
                 }
-                BrowserCommand::Wait(input) => {
+                BrowserCommand::Wait(input) => Box::pin(async {
                     if let Some(url) = &input.url {
                         let mut observation = NavigationObservation::subscribe(&self.page).await?;
                         observation.wait_url(&self.page, url).await?;
@@ -613,8 +621,8 @@ impl BrowserTab {
                     Ok(
                         json!({ "condition": input.url.as_deref().or(input.state.as_deref()).unwrap_or("visible"), "matched": true }),
                     )
-                }
-                BrowserCommand::ViewportSet(input) => {
+                }),
+                BrowserCommand::ViewportSet(input) => Box::pin(async {
                     self.page
                         .execute(SetDeviceMetricsOverrideParams::new(
                             input.width as i64,
@@ -624,14 +632,14 @@ impl BrowserTab {
                         ))
                         .await?;
                     Ok(json!({ "width": input.width, "height": input.height }))
-                }
-                BrowserCommand::ViewportReset(_) => {
+                }),
+                BrowserCommand::ViewportReset(_) => Box::pin(async {
                     self.page
                         .execute(SetDeviceMetricsOverrideParams::new(1280, 720, 1.0, false))
                         .await?;
                     Ok(json!({ "width": 1280, "height": 720 }))
-                }
-                BrowserCommand::ContentRead(input) => {
+                }),
+                BrowserCommand::ContentRead(input) => Box::pin(async {
                     let content = match input.format.as_deref().unwrap_or("text") {
                         "html" => self
                             .page
@@ -664,19 +672,22 @@ impl BrowserTab {
                     result["content"] = json!(&content[..end]);
                     result["truncated"] = json!(truncated);
                     Ok(result)
-                }
-                BrowserCommand::Capabilities(_) => Ok(json!({ "capabilities": [
+                }),
+                BrowserCommand::Capabilities(_) => Box::pin(async {
+                    Ok(json!({ "capabilities": [
                     { "id": "accessibility", "available": true },
                     { "id": "read-only-eval", "available": true },
                     { "id": "cross-origin-frames", "available": false, "reason": "Not yet accepted on all browser platforms" }
-                ] })),
+                ] }))
+                }),
                 BrowserCommand::Open(_)
                 | BrowserCommand::Tabs(_)
                 | BrowserCommand::Close(_)
-                | BrowserCommand::Screenshot(_) => {
+                | BrowserCommand::Screenshot(_) => Box::pin(async {
                     unreachable!("resource-level operation is dispatched before tab actions")
-                }
-            }
+                }),
+            };
+            branch.await
         };
         let result = if matches!(
             command,
@@ -699,23 +710,36 @@ impl BrowserTab {
         } else {
             operation.run(work).await
         };
-        let cleanup = tokio::time::timeout(
-            super::operation::CONTROL_TIMEOUT,
-            self.page.execute(
-                chromiumoxide::cdp::js_protocol::runtime::ReleaseObjectGroupParams::new(
-                    element::OBJECT_GROUP,
+        // Chrome pauses Runtime requests while a dialog is open. Dialog commands
+        // never wait for page-side object cleanup; the next ordinary command
+        // releases the retained group, or context/tab destruction releases it.
+        let cleanup = if self.state.dialog.borrow().is_some()
+            || matches!(
+                command,
+                BrowserCommand::DialogInspect(_)
+                    | BrowserCommand::DialogAccept(_)
+                    | BrowserCommand::DialogDismiss(_)
+            ) {
+            Ok(())
+        } else {
+            let cleanup = tokio::time::timeout(
+                super::operation::CONTROL_TIMEOUT,
+                self.page.execute(
+                    chromiumoxide::cdp::js_protocol::runtime::ReleaseObjectGroupParams::new(
+                        element::OBJECT_GROUP,
+                    ),
                 ),
-            ),
-        )
-        .await
-        .map_err(|_| BrowserError::Timeout)
-        .and_then(|result| result.map(|_| ()).map_err(BrowserError::from));
-        // Destroying the tab or connection already releases its remote objects.
-        let cleanup = match cleanup {
-            Err(BrowserError::Closed | BrowserError::Connection(_) | BrowserError::TabNotFound) => {
-                Ok(())
+            )
+            .await
+            .map_err(|_| BrowserError::Timeout)
+            .and_then(|result| result.map(|_| ()).map_err(BrowserError::from));
+            // Destroying the tab or connection already releases its remote objects.
+            match cleanup {
+                Err(
+                    BrowserError::Closed | BrowserError::Connection(_) | BrowserError::TabNotFound,
+                ) => Ok(()),
+                result => result,
             }
-            result => result,
         };
         let result = super::operation::after_cleanup(result, cleanup);
         if navigation

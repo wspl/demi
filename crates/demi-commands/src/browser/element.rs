@@ -5,7 +5,10 @@ use chromiumoxide::{
     Page,
     cdp::{
         browser_protocol::dom::{BackendNodeId, ResolveNodeParams},
-        js_protocol::runtime::{CallArgument, CallFunctionOnParams, RemoteObjectId},
+        js_protocol::runtime::{
+            CallArgument, CallFunctionOnParams, RemoteObjectId, RemoteObjectSubtype,
+            RemoteObjectType,
+        },
     },
 };
 use serde::{Deserialize, de::DeserializeOwned};
@@ -113,23 +116,39 @@ pub(super) async fn call<T: DeserializeOwned>(
     script: &str,
     args: Vec<Value>,
 ) -> Result<T> {
-    page.evaluate_function(
-        CallFunctionOnParams::builder()
-            .object_id(element.remote_object_id.clone())
-            .function_declaration(script)
-            .arguments(
-                args.into_iter()
-                    .map(|value| CallArgument::builder().value(value).build())
-                    .collect::<Vec<_>>(),
-            )
-            .await_promise(true)
-            .return_by_value(true)
-            .build()
-            .map_err(BrowserError::Configuration)?,
-    )
-    .await?
-    .into_value::<T>()
-    .map_err(|error| BrowserError::InvalidResult(error.to_string()))
+    let result = page
+        .evaluate_function(
+            CallFunctionOnParams::builder()
+                .object_id(element.remote_object_id.clone())
+                .function_declaration(script)
+                .arguments(
+                    args.into_iter()
+                        .map(|value| CallArgument::builder().value(value).build())
+                        .collect::<Vec<_>>(),
+                )
+                .await_promise(true)
+                .return_by_value(true)
+                .build()
+                .map_err(BrowserError::Configuration)?,
+        )
+        .await?;
+    let object = result.object();
+    let value = match &object.value {
+        Some(value) => value.clone(),
+        // Chrome omits value for null/undefined; Chromiumoxide's into_value
+        // rejects that valid response, including animation-probe cancellation.
+        None if object.subtype == Some(RemoteObjectSubtype::Null)
+            || object.r#type == RemoteObjectType::Undefined =>
+        {
+            Value::Null
+        }
+        None => {
+            return Err(BrowserError::InvalidResult(
+                "element call returned no JSON value".into(),
+            ));
+        }
+    };
+    serde_json::from_value(value).map_err(|error| BrowserError::InvalidResult(error.to_string()))
 }
 
 pub(super) async fn state(
@@ -189,7 +208,7 @@ pub(super) async fn prepared_state(
     if result.is_err() && conditions.contains(&"stable") {
         let cleanup = tokio::time::timeout(
             super::operation::CONTROL_TIMEOUT,
-            call::<()>(
+            call::<Option<Value>>(
                 page,
                 target,
                 include_str!("element-state.js"),
@@ -198,7 +217,8 @@ pub(super) async fn prepared_state(
         )
         .await
         .map_err(|_| BrowserError::Timeout)
-        .and_then(std::convert::identity);
+        .and_then(std::convert::identity)
+        .map(|_| ());
         // A destroyed context cannot retain a pending animation callback.
         let cleanup = match cleanup {
             Err(BrowserError::Connection(_) | BrowserError::Closed) => Ok(()),

@@ -8,10 +8,10 @@ use std::{
 
 use chromiumoxide::{
     Browser, BrowserConfig,
-    cdp::browser_protocol::target::{GetTargetInfoParams, TargetId},
+    cdp::browser_protocol::target::{EventTargetCreated, TargetId},
     handler::viewport::Viewport,
 };
-use futures_util::StreamExt;
+use futures_util::{FutureExt, StreamExt};
 use tokio::sync::{Mutex, watch};
 use tokio_util::{
     sync::CancellationToken,
@@ -25,13 +25,28 @@ use super::{
     tab::TabState,
 };
 
-#[derive(Default)]
 struct TabRegistry {
+    created: chromiumoxide::listeners::EventStream<EventTargetCreated>,
+    openers: HashMap<TargetId, TargetId>,
     live: HashMap<TargetId, BrowserTab>,
     public_ids: HashMap<TargetId, Arc<str>>,
 }
 
 impl TabRegistry {
+    /// Consume creation metadata before reconciling live pages, even if an opener closed.
+    fn observe_targets(&mut self) -> Result<()> {
+        while let Some(event) = self.created.next().now_or_never() {
+            let event = event.ok_or(BrowserError::Closed)??;
+            let info = &event.target_info;
+            self.public_id(&info.target_id)?;
+            if let Some(opener) = &info.opener_id {
+                self.public_id(opener)?;
+                self.openers.insert(info.target_id.clone(), opener.clone());
+            }
+        }
+        Ok(())
+    }
+
     /// Retain browser target identities even after their live tab is pruned.
     fn public_id(&mut self, target: &TargetId) -> Result<Arc<str>> {
         if let Some(id) = self.public_ids.get(target) {
@@ -53,7 +68,6 @@ pub struct BrowserEnvironment {
     browser: Weak<Mutex<Browser>>,
     ended: CancellationToken,
     tabs: Arc<Mutex<TabRegistry>>,
-    failure: watch::Receiver<Option<String>>,
     report_failure: watch::Sender<Option<String>>,
     observers: TaskTracker,
 }
@@ -104,17 +118,12 @@ where
         result = Browser::launch(config) => result?,
     };
     let browser = Arc::new(Mutex::new(browser));
-    let (failure, failure_state) = watch::channel(None);
-    let environment = BrowserEnvironment {
-        browser: Arc::downgrade(&browser),
-        ended: CancellationToken::new(),
-        tabs: Arc::new(Mutex::new(TabRegistry::default())),
-        failure: failure_state,
-        report_failure: failure.clone(),
-        observers: TaskTracker::new(),
-    };
-    let ended = environment.ended.clone();
+    let (failure, _) = watch::channel(None);
+    let ended = CancellationToken::new();
+    let observers = TaskTracker::new();
     let _end_on_drop = ended.clone().drop_guard();
+    let pump_ended = ended.clone();
+    let pump_failure = failure.clone();
     let pump = AbortOnDropHandle::new(tokio::spawn(async move {
         let result = async {
             while let Some(event) = handler.next().await {
@@ -135,20 +144,37 @@ where
                 }
                 _ => format!("browser connection ended: {error}"),
             };
-            failure.send_replace(Some(message));
+            pump_failure.send_replace(Some(message));
         }
-        ended.cancel();
+        pump_ended.cancel();
         result
     }));
     let outcome = tokio::select! {
         biased;
         _ = stop.cancelled() => Err(BrowserError::Cancelled),
-        _ = environment.ended.cancelled() => Err(environment.failure().map(BrowserError::Connection).unwrap_or(BrowserError::Closed)),
-        result = work(environment.clone()) => result,
+        _ = ended.cancelled() => Err(failure.borrow().clone().map(BrowserError::Connection).unwrap_or(BrowserError::Closed)),
+        result = async {
+            // Subscribe before any caller can create a target. Chrome may discard
+            // openerId from later TargetInfo responses after the opener closes.
+            let created = browser.lock().await.event_listener::<EventTargetCreated>().await?;
+            let environment = BrowserEnvironment {
+                browser: Arc::downgrade(&browser),
+                ended: ended.clone(),
+                tabs: Arc::new(Mutex::new(TabRegistry {
+                    live: HashMap::new(),
+                    public_ids: HashMap::new(),
+                    openers: HashMap::new(),
+                    created,
+                })),
+                report_failure: failure.clone(),
+                observers: observers.clone(),
+            };
+            work(environment).await
+        } => result,
     };
-    environment.ended.cancel();
-    environment.observers.close();
-    environment.observers.wait().await;
+    ended.cancel();
+    observers.close();
+    observers.wait().await;
     let cleanup = match retire_browser(&browser, pump).await {
         Ok(()) => profile.close().map_err(BrowserError::from),
         Err(source) => Err(BrowserError::ProfileRetained {
@@ -160,9 +186,6 @@ where
 }
 
 impl BrowserEnvironment {
-    pub(super) fn failure(&self) -> Option<String> {
-        self.failure.borrow().clone()
-    }
     pub async fn open(
         &self,
         url: &str,
@@ -258,23 +281,17 @@ impl BrowserEnvironment {
         page: chromiumoxide::Page,
         created_by: Option<BrowserCreatedBy>,
     ) -> Result<BrowserTab> {
+        tabs.observe_targets()?;
         if let Some(tab) = tabs.live.get(page.target_id()) {
             return Ok(tab.clone());
         }
         let created_by = match created_by {
             Some(value) => value,
             None => {
-                let info = page
-                    .execute(
-                        GetTargetInfoParams::builder()
-                            .target_id(page.target_id().clone())
-                            .build(),
+                let opener = tabs.openers.get(page.target_id()).cloned().ok_or_else(|| {
+                    BrowserError::InvalidResult(
+                        "unregistered browser page has no recorded opener".into(),
                     )
-                    .await?
-                    .result
-                    .target_info;
-                let opener = info.opener_id.ok_or_else(|| {
-                    BrowserError::InvalidResult("unregistered browser page has no opener".into())
                 })?;
                 serde_json::from_value(serde_json::json!({ "kind": "page", "opener": tabs.public_id(&opener)?.as_ref() }))
                     .map_err(|error| BrowserError::InvalidResult(error.to_string()))?

@@ -273,19 +273,15 @@ impl FrameManager {
         watcher: &NavigationWatcher,
         frame: &Frame,
     ) -> Option<NavigationOk> {
-        if !self.check_lifecycle(watcher, frame) {
-            return None;
-        }
-        if frame.loader_id == watcher.loader_id && !watcher.same_document_navigation {
-            return None;
-        }
+        // Same-document navigation does not produce a new load lifecycle.
+        // Complete its watcher on the event so it cannot block queued requests.
         if watcher.same_document_navigation {
             return Some(NavigationOk::SameDocumentNavigation(watcher.id));
         }
-        if frame.loader_id != watcher.loader_id {
-            return Some(NavigationOk::NewDocumentNavigation(watcher.id));
+        if !self.check_lifecycle(watcher, frame) || frame.loader_id == watcher.loader_id {
+            return None;
         }
-        None
+        Some(NavigationOk::NewDocumentNavigation(watcher.id))
     }
 
     /// Track the request in the frame

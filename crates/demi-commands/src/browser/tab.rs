@@ -299,7 +299,19 @@ impl BrowserTab {
         conditions: &[&str],
         operation: &Operation<'_>,
     ) -> Result<(element::TargetElement, element::ElementState)> {
-        let mut last_failure = BrowserError::TargetNotFound;
+        self.ready_element_with_failure(target, references, conditions, operation, &mut None)
+            .await
+    }
+
+    /// Nested option waits retain their known failure while refreshing the browser target.
+    pub(super) async fn ready_element_with_failure(
+        &self,
+        target: &BrowserTarget,
+        references: &mut References,
+        conditions: &[&str],
+        operation: &Operation<'_>,
+        last_failure: &mut Option<BrowserError>,
+    ) -> Result<(element::TargetElement, element::ElementState)> {
         loop {
             let attempt = async {
                 let observation = operation
@@ -310,7 +322,7 @@ impl BrowserTab {
                     .await?;
                 let selected = operation.run(element::single(&self.page, matches)).await?;
                 if let Some(element) = selected {
-                    last_failure = BrowserError::NotActionable {
+                    last_failure.get_or_insert_with(|| BrowserError::NotActionable {
                         condition: if conditions.contains(&"stable") {
                             "stable"
                         } else {
@@ -318,7 +330,7 @@ impl BrowserTab {
                         }
                         .into(),
                         interceptor: None,
-                    };
+                    });
                     let state = element::prepared_state(
                         &self.page,
                         &element,
@@ -333,9 +345,7 @@ impl BrowserTab {
                     if state.permanent {
                         return Err(state.failure());
                     }
-                    last_failure = state.failure();
-                } else {
-                    last_failure = BrowserError::TargetNotFound;
+                    *last_failure = Some(state.failure());
                 }
                 operation
                     .run(async {
@@ -349,7 +359,11 @@ impl BrowserTab {
             match attempt {
                 Ok(Some(element)) => return Ok(element),
                 Ok(None) => {}
-                Err(BrowserError::Timeout) => return Err(last_failure),
+                Err(error) if error.is_deadline() => {
+                    return Err(error.with_deadline_cause(
+                        last_failure.take().unwrap_or(BrowserError::TargetNotFound),
+                    ));
+                }
                 Err(error) => return Err(error),
             }
         }
