@@ -140,25 +140,56 @@ impl NetStreams {
 
 /// Resolves the host on the device and connects within 10 seconds, mapping
 /// the failure to the wire's code.
-async fn connect(host: &str, port: u16) -> Result<TcpStream, (&'static str, String)> {
+async fn connect(host: &str, port: u16) -> Result<TcpStream, (NetErrorCode, String)> {
     let connect = async {
         let addrs = tokio::net::lookup_host((host, port))
             .await
-            .map_err(|error| ("resolve_failed", error.to_string()))?
+            .map_err(|error| (NetErrorCode::ResolveFailed, error.to_string()))?
             .collect::<Vec<_>>();
+        if addrs.is_empty() {
+            return Err((
+                NetErrorCode::ResolveFailed,
+                format!("{host}:{port} resolved to no address"),
+            ));
+        }
         TcpStream::connect(addrs.as_slice())
             .await
             .map_err(|error| match error.kind() {
-                io::ErrorKind::ConnectionRefused => ("refused", error.to_string()),
-                _ => ("unreachable", error.to_string()),
+                io::ErrorKind::ConnectionRefused => {
+                    (NetErrorCode::Refused, error.to_string())
+                }
+                _ => (NetErrorCode::Unreachable, error.to_string()),
             })
     };
-    tokio::time::timeout(CONNECT_TIMEOUT, connect).await.unwrap_or_else(|_| {
-        Err((
-            "timeout",
-            format!("connecting to {host}:{port} exceeded 10 seconds"),
-        ))
-    })
+    tokio::time::timeout(CONNECT_TIMEOUT, connect)
+        .await
+        .unwrap_or_else(|_| {
+            Err((
+                NetErrorCode::Timeout,
+                format!("connecting to {host}:{port} exceeded 10 seconds"),
+            ))
+        })
+}
+
+/// The wire's connect-failure codes, spelled once (`netErrorCodeSchema` on
+/// the backend side).
+#[derive(Debug, Clone, Copy)]
+enum NetErrorCode {
+    Refused,
+    Unreachable,
+    ResolveFailed,
+    Timeout,
+}
+
+impl NetErrorCode {
+    fn as_str(self) -> &'static str {
+        match self {
+            NetErrorCode::Refused => "refused",
+            NetErrorCode::Unreachable => "unreachable",
+            NetErrorCode::ResolveFailed => "resolve_failed",
+            NetErrorCode::Timeout => "timeout",
+        }
+    }
 }
 
 async fn pump_input(
@@ -185,11 +216,12 @@ async fn pump_output(
     mut reader: tokio::net::tcp::OwnedReadHalf,
     cancel: &CancellationToken,
 ) -> io::Result<()> {
-    let cancel = cancel.clone();
-    let (sender, receiver) = mpsc::channel::<Bytes>(READ_QUEUE);
+    // Read errors ride the channel as items, so a reset socket fails the
+    // upload instead of ending it like a clean EOF.
+    let (sender, receiver) = mpsc::channel::<io::Result<Bytes>>(READ_QUEUE);
     let reads = CancellationToken::new();
     let read_cancel = reads.clone();
-    tokio::spawn(async move {
+    let reader = tokio::spawn(async move {
         let mut buffer = vec![0u8; 64 * 1024];
         loop {
             tokio::select! {
@@ -197,11 +229,15 @@ async fn pump_output(
                 result = reader.read(&mut buffer) => match result {
                     Ok(0) => break,
                     Ok(count) => {
-                        if sender.send(Bytes::copy_from_slice(&buffer[..count])).await.is_err() {
+                        let chunk = Bytes::copy_from_slice(&buffer[..count]);
+                        if sender.send(Ok(chunk)).await.is_err() {
                             break;
                         }
                     }
-                    Err(_) => break,
+                    Err(error) => {
+                        let _ = sender.send(Err(error)).await;
+                        break;
+                    }
                 },
             }
         }
@@ -213,23 +249,25 @@ async fn pump_output(
             tokio::select! {
                 biased;
                 _ = cancel.cancelled() => None,
-                chunk = receiver.recv() => chunk.map(|chunk| (Ok(chunk), receiver)),
+                chunk = receiver.recv() => chunk.map(|chunk| (chunk, receiver)),
             }
         }
     });
-    let result = pipes.put(url, body, &cancel).await;
+    let result = pipes.put(url, body, cancel).await;
     reads.cancel();
+    // A completed pipe means the read half is released: the socket is closed.
+    let _ = reader.await;
     result
 }
 
 async fn send_net_error(
     output: &mpsc::Sender<wire::Outbound>,
     stream_id: String,
-    code: &'static str,
+    code: NetErrorCode,
     message: String,
     cancel: &CancellationToken,
 ) {
-    match wire::net_error(stream_id, code.to_string(), message) {
+    match wire::net_error(stream_id, code.as_str().to_string(), message) {
         Ok(message) => {
             tokio::select! {
                 _ = cancel.cancelled() => {},
