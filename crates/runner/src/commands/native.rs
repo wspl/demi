@@ -5,11 +5,14 @@ use crate::commands::{
     services::ResidentService,
 };
 use demi_command_service::Client;
-use demi_command_service::protocol::PackageDescriptor;
+use demi_command_service::protocol::{
+    ConversationRequest, ConversationStatus, PackageDescriptor, Record,
+};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
     sync::Arc,
+    time::Duration,
 };
 use tokio::sync::{Mutex, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -32,16 +35,7 @@ pub struct Services {
 }
 
 impl Services {
-    /// Resource owners observe the same service slot that publishes acquisition.
-    pub(super) async fn observe(&self, digest: &str) -> Option<watch::Receiver<Option<Ready>>> {
-        self.slots
-            .lock()
-            .await
-            .get(digest)
-            .map(|slot| slot.ready.subscribe())
-    }
-
-    /// Faulted resource cleanup retires its entire service before returning.
+    /// Failed conversation cleanup retires its entire service before returning.
     pub(super) async fn retire(&self, digest: &str) {
         let receiver = {
             let slots = self.slots.lock().await;
@@ -182,15 +176,95 @@ impl Services {
         }
     }
 
-    /// Call after manifest installation or job release; active snapshots retain their artifacts.
+    /// Ownerless services remain resident only while they hold conversation state.
     pub async fn retain(&self, digests: &HashSet<String>) {
-        self.slots.lock().await.retain(|digest, slot| {
-            if digests.contains(digest) {
-                return true;
+        let candidates: Vec<_> = self
+            .slots
+            .lock()
+            .await
+            .iter()
+            .filter(|(digest, _)| !digests.contains(*digest))
+            .map(|(digest, slot)| (digest.clone(), slot.ready.borrow().clone()))
+            .collect();
+        for (digest, ready) in candidates {
+            let retained = match ready {
+                Some(Ok(client)) => {
+                    let status = conversation(&client, "status", None)
+                        .await
+                        .and_then(|value| {
+                            let status = serde_json::from_value::<ConversationStatus>(value)
+                                .map_err(|error| error.to_string())?;
+                            status.validate().map_err(|error| error.to_string())?;
+                            Ok(status)
+                        });
+                    match status {
+                        Ok(status) => !status.conversations.is_empty(),
+                        Err(error) => {
+                            eprintln!("demi-runner: native status failed: {error}");
+                            false
+                        }
+                    }
+                }
+                _ => false,
+            };
+            if !retained {
+                self.retire(&digest).await;
             }
-            slot.stop.cancel();
-            false
-        });
+        }
+    }
+
+    /// Release joins every resident service without starting or resolving an artifact.
+    pub async fn release_conversation(&self, id: &str) -> Result<(), String> {
+        let residents: Vec<_> = self
+            .slots
+            .lock()
+            .await
+            .iter()
+            .map(|(digest, slot)| (digest.clone(), slot.ready.subscribe()))
+            .collect();
+        let results = futures_util::future::join_all(residents.into_iter().map(
+            |(digest, mut ready)| async move {
+                let client = loop {
+                    if let Some(result) = ready.borrow_and_update().clone() {
+                        break result.map_err(|error| error.to_string());
+                    }
+                    if ready.changed().await.is_err() {
+                        break Err("native service closed".into());
+                    }
+                };
+                let result = match client {
+                    Ok(client) => {
+                        conversation(&client, "release", Some(id))
+                            .await
+                            .and_then(|value| {
+                                if value == serde_json::json!({}) {
+                                    Ok(())
+                                } else {
+                                    Err("invalid conversation release acknowledgement".into())
+                                }
+                            })
+                    }
+                    Err(error) => Err(error),
+                };
+                if result.is_err() {
+                    self.retire(&digest).await;
+                }
+                result
+            },
+        ))
+        .await;
+        let errors: Vec<_> = results.into_iter().filter_map(Result::err).collect();
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
+    }
+
+    /// Connection loss ends all retained state while allowing the runner to reconnect.
+    pub async fn disconnect(&self) {
+        let digests: Vec<_> = self.slots.lock().await.keys().cloned().collect();
+        futures_util::future::join_all(digests.iter().map(|digest| self.retire(digest))).await;
     }
 
     pub async fn close(&self) {
@@ -210,3 +284,51 @@ impl Drop for Services {
 }
 
 pub use demi_command_service::protocol::host_target as target;
+
+/// Validate the bounded JSON response to a native conversation lifecycle operation.
+async fn conversation(
+    client: &Client,
+    operation: &str,
+    id: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let exchange = async {
+        let (_input, mut output) = client
+            .conversation(&ConversationRequest {
+                operation: operation.into(),
+                conversation: id.map(str::to_owned),
+            })
+            .await
+            .map_err(|error| error.to_string())?;
+        let mut bytes = Vec::new();
+        let mut completed = false;
+        while let Some(record) = output.next().await.map_err(|error| error.to_string())? {
+            match record {
+                Record::Stdout(chunk) => {
+                    if bytes.len() + chunk.len() > 1024 * 1024 {
+                        return Err("conversation response exceeds 1 MiB".into());
+                    }
+                    bytes.extend_from_slice(&chunk);
+                }
+                Record::Completion(completion)
+                    if completion.exit_code == 0 && completion.error.is_none() =>
+                {
+                    completed = true
+                }
+                Record::Stderr(chunk) => {
+                    eprintln!("demi-runner: {}", String::from_utf8_lossy(&chunk))
+                }
+                _ => return Err("native conversation operation failed".into()),
+            }
+        }
+        if !completed {
+            return Err("native conversation operation has no completion".into());
+        }
+        serde_json::from_slice(&bytes).map_err(|error| error.to_string())
+    };
+    tokio::time::timeout(
+        Duration::from_secs(if operation == "status" { 5 } else { 360 }),
+        exchange,
+    )
+    .await
+    .map_err(|_| "native conversation operation timed out".to_owned())?
+}

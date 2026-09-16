@@ -103,7 +103,7 @@ test('runner messages round-trip through the MessagePack wire', () => {
   }
   expect(roundTrip(pipes)).toEqual(pipes)
   const job: RunnerProtocolMessage = {
-    type: 'job_start',
+    type: 'job_start', conversation: 'test-conversation', node: 'test-session',
     jobId: 'j1',
     script: 'tar x',
     cwd: '/work',
@@ -174,3 +174,18 @@ test(
     ).toThrow('Malformed')
   }
 )
+
+test('job identity is required and conversation release replaces grants', () => {
+  const job = { type: 'job_start', jobId: 'job', script: 'true', cwd: '/', env: {} }
+  expect(() => wire.decodeBackendToRunner(msgpackCodec.encode(job))).toThrow('Malformed')
+  for (const identity of [{ conversation: '', node: 'node' }, { conversation: 'conversation', node: '' }]) {
+    expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ ...job, ...identity }))).toThrow('Malformed')
+  }
+  const request = { type: 'conversation_release', id: 'request', conversationId: 'conversation' } as const
+  expect(wire.decodeBackendToRunner(wire.encode(request))).toEqual(request)
+  const response = { type: 'conversation_released', id: 'request' } as const
+  expect(wire.decodeRunnerToBackend(wire.encode(response))).toEqual(response)
+  for (const type of ['resource_acquire', 'resource_release', 'resource_status', 'resource_cancel']) {
+    expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ type, id: 'request' }))).toThrow('Malformed')
+  }
+})

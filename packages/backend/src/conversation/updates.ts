@@ -40,6 +40,10 @@ export class ConversationUpdates {
     agentServer: AgentServer
   }) {}
 
+  detachHost(id: string, deviceId: string): Promise<boolean> {
+    return this.deps.targets.detach(id, deviceId)
+  }
+
   async apply(userId: string, id: string, patch: ConversationPatch) {
     const { control } = this.deps
     const initial = await control.getConversation(id)
@@ -138,7 +142,7 @@ export class ConversationUpdates {
         'turn_in_flight',
         'A conversation with running work cannot be archived or restored'
       )
-    const releaseFiles = this.deps.targets.files(id).tryReserve('forced')
+    const releaseFiles = this.deps.targets.files(id).tryReserve()
     if (!releaseFiles) {
       releaseTree()
       return refused(
@@ -147,7 +151,7 @@ export class ConversationUpdates {
       )
     }
     try {
-      await this.deps.targets.retireBrowser(id, releaseFiles)
+      if (archived) await this.deps.targets.releaseConversation(id)
       await this.deps.control.setConversationArchived(id, archived)
     } finally {
       releaseFiles()

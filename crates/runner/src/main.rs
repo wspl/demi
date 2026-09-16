@@ -31,8 +31,8 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
     };
     request.validate()?;
     let invocation = Invocation {
-        caller: None,
-        resource: None,
+        caller: "runner-local".into(),
+        conversation: "runner-local".into(),
         json: None,
         edits: None,
         operation: "raw".into(),
@@ -59,8 +59,8 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
 async fn manage(state: RunnerState, action: &str) -> io::Result<u8> {
     let active = state.active().await?;
     let request = Invocation {
-        caller: None,
-        resource: None,
+        caller: "runner-local".into(),
+        conversation: "runner-local".into(),
         json: None,
         edits: None,
         operation: "manage".into(),

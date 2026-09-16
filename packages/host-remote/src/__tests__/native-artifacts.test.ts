@@ -12,7 +12,7 @@ async function setup(resolveArtifact: Parameters<RemoteHost['startJob']>[0]['com
   const host = new RemoteHost({ defaultCwd: '/work', identity: { uid: 1, gid: 1, hostname: 'fixture', homeDir: '/work' }, store: memoryHostStore() })
   const messages: BackendToRunnerMessage[] = []
   host.attach(message => messages.push(message))
-  host.startJob({ script: 'native', cwd: '/work', env: {}, commands: resolveArtifact })
+  host.startJob({ conversation: 'test-conversation', node: 'test-session', script: 'native', cwd: '/work', env: {}, commands: resolveArtifact })
   const start = messages.find(message => message.type === 'job_start')!
   if (start.type !== 'job_start')
     throw new Error('Missing job start')

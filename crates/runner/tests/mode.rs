@@ -97,7 +97,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         // No stdin EOF is sent: --help must complete without waiting for input.
         send(
             &mut socket,
-            json!({"type":"job_start", "jobId":"job", "manifestHash":hash,
+            json!({"type":"job_start", "jobId":"job", "manifestHash":hash, "conversation":"conversation", "node":"node",
             "script":"fixture --help && printf done", "cwd":home, "env":{}}),
         )
         .await;
@@ -135,8 +135,8 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         let active = state.active().await.unwrap();
         assert!(state.lock().is_err());
         let request = Invocation {
-            caller: None,
-            resource: None,
+            caller: "runner-local".into(),
+            conversation: "runner-local".into(),
             json: None,
             edits: None,
             operation: "manage".into(),
