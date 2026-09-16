@@ -308,6 +308,17 @@ const runnerInfoSchema = z.strictObject({
 const streamSchema = z.enum(['stdout', 'stderr'])
 
 /**
+ * Why a `net_open` stream could not connect (`runner.md` § Network streams).
+ */
+export const netErrorCodeSchema = z.enum([
+  'refused',
+  'unreachable',
+  'resolve_failed',
+  'timeout'
+])
+export type NetErrorCode = z.infer<typeof netErrorCodeSchema>
+
+/**
  * One end of a pipe as the wire names it (`runner.md` § Pipes): the id the
  * runner reports `pipe_done` under, and the origin-relative URL its end
  * `PUT`s to or `GET`s from with its device token.
@@ -479,21 +490,10 @@ export const runnerToBackendMessageSchema = z.union([
   z.strictObject({
     type: z.literal('net_error'),
     streamId: z.string(),
-    code: z.enum(['refused', 'unreachable', 'resolve_failed', 'timeout']),
+    code: netErrorCodeSchema,
     message: z.string()
   }),
 ])
-
-/**
- * Why a `net_open` stream could not connect (`runner.md` § Network streams).
- */
-export const netErrorCodeSchema = z.enum([
-  'refused',
-  'unreachable',
-  'resolve_failed',
-  'timeout'
-])
-export type NetErrorCode = z.infer<typeof netErrorCodeSchema>
 
 /**
  * Why a hello was refused. `already_connected` is the one outcome a runner
