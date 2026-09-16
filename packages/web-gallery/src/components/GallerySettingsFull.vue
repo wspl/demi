@@ -370,7 +370,7 @@ function resetShortcuts() {
     :devices="s.devices"
     :expose-domain="s.exposeDomain"
     :exposes="s.exposes"
-    :cloud-exposes="[]"
+    :cloud-device-id="null"
     :expose-pending-ids="exposePending"
     @renew-expose="renewExpose"
     @remove-expose="removeExpose"
