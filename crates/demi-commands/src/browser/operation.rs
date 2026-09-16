@@ -15,6 +15,8 @@ pub type Result<T> = std::result::Result<T, BrowserError>;
 
 #[derive(Debug, Error)]
 pub enum BrowserError {
+    #[error("unsupported browser capability: {0}")]
+    UnsupportedCapability(String),
     #[error("browser environment is closed")]
     Closed,
     #[error("{0}")]
@@ -220,6 +222,7 @@ impl BrowserError {
             Self::OutputExists(_) => "output_exists",
             Self::ResultTooLarge => "result_too_large",
             Self::WrongHost => "wrong_host",
+            Self::UnsupportedCapability(_) => "unsupported_capability",
             Self::ProtectedValue => "protected_value",
             Self::Unavailable(_) => "browser_unavailable",
             Self::Cancelled => "cancelled",

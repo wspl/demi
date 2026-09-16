@@ -16,7 +16,7 @@ import {
 } from '../packages/runner-protocol/src/schemas'
 import { JOB_VIEW_BYTES, RUNNER_PROTOCOL_VERSION } from '../packages/runner-protocol/src/messages'
 import { RustZodTypes, rustField, rustPascal, rustString } from './rust-zod'
-import { browserOperations, browserTargetSchema, browserNodeSchema, browserCreatedBySchema, browserReleaseSchema, browserInstallationSchema, browserRuntimeConfigSchema, browserDefaultTimeout, BROWSER_DEFAULT_NODES, BROWSER_MAX_NODES, BROWSER_INLINE_BYTES } from '../packages/browser-protocol/src/index'
+import { BROWSER_STDIN_BYTES, BROWSER_FETCH_URLS, BROWSER_CONSOLE_ENTRIES, BROWSER_CONSOLE_BYTES, BROWSER_CDP_EVENTS, BROWSER_CDP_BYTES, browserErrorSchema, browserOperations, browserTargetSchema, browserNodeSchema, browserCreatedBySchema, browserReleaseSchema, browserInstallationSchema, browserRuntimeConfigSchema, browserDefaultTimeout, BROWSER_DEFAULT_NODES, BROWSER_MAX_NODES, BROWSER_INLINE_BYTES } from '../packages/browser-protocol/src/index'
 
 function flatten(schema: z.core.$ZodType): z.ZodObject[] {
   const def = (schema as z.core.$ZodTypes)._zod.def
@@ -142,6 +142,7 @@ function commandProtocol(): string {
 
 function browserProtocol(): string {
   const generator = new RustZodTypes()
+  generator.type(browserErrorSchema, 'BrowserFailure')
   generator.type(browserTargetSchema, 'BrowserTarget')
   generator.type(browserNodeSchema, 'BrowserNode')
   generator.type(browserCreatedBySchema, 'BrowserCreatedBy')
@@ -197,6 +198,12 @@ function browserProtocol(): string {
     pub const DEFAULT_NODES: usize = ${BROWSER_DEFAULT_NODES};
     pub const MAX_NODES: usize = ${BROWSER_MAX_NODES};
     pub const INLINE_BYTES: usize = ${BROWSER_INLINE_BYTES};
+    pub const STDIN_BYTES: usize = ${BROWSER_STDIN_BYTES};
+    pub const FETCH_URLS: usize = ${BROWSER_FETCH_URLS};
+    pub const CONSOLE_ENTRIES: usize = ${BROWSER_CONSOLE_ENTRIES};
+    pub const CONSOLE_BYTES: usize = ${BROWSER_CONSOLE_BYTES};
+    pub const CDP_EVENTS: usize = ${BROWSER_CDP_EVENTS};
+    pub const CDP_BYTES: usize = ${BROWSER_CDP_BYTES};
     pub const OPERATIONS: &[&str] = &[${operations.map(([name]) => rustString(`browser.${name}`)).join(', ')}];`
 }
 
