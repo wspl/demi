@@ -8,6 +8,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     git::GitService,
+    net::NetStreams,
     pipes::PipeClient,
     tasks::{TaskCommand, TaskKind, TaskSpec, TaskTable},
 };
@@ -21,6 +22,7 @@ pub struct HostServer {
     filesystem_capacity: Arc<Semaphore>,
     git: GitService,
     git_capacity: Arc<Semaphore>,
+    net: NetStreams,
     cancel: CancellationToken,
 }
 
@@ -41,16 +43,23 @@ impl HostServer {
         device_env: BTreeMap<String, String>,
         pipes: PipeClient,
     ) -> Self {
+        let cancel = CancellationToken::new();
         Self {
-            tasks: TaskTable::new(output.clone(), dispatcher, output_dir, pipes),
+            tasks: TaskTable::new(
+                output.clone(),
+                dispatcher,
+                output_dir,
+                pipes.clone(),
+            ),
             default_cwd,
             device_env,
+            net: NetStreams::new(output.clone(), pipes, cancel.clone()),
             output,
             filesystem: TaskTracker::new(),
             filesystem_capacity: Arc::new(Semaphore::new(32)),
             git: GitService::default(),
             git_capacity: Arc::new(Semaphore::new(8)),
-            cancel: CancellationToken::new(),
+            cancel,
         }
     }
 
@@ -264,10 +273,16 @@ impl HostServer {
         Ok(())
     }
 
+    /// One network stream request (`runner.md` § Network streams): the
+    /// tracker owns the socket until the connection closes or both pipes end.
+    pub fn handle_net(&self, message: Inbound) -> io::Result<()> {
+        self.net.handle_open(message)
+    }
+
     pub async fn close(&self) {
         self.cancel.cancel();
         self.filesystem.close();
-        tokio::join!(self.tasks.close(), self.filesystem.wait());
+        tokio::join!(self.tasks.close(), self.filesystem.wait(), self.net.close());
     }
 
     fn environment(

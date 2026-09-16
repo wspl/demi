@@ -25,7 +25,7 @@ import {
  * is the hardest component to update, so the backend must be able to tell an
  * incompatible runner apart from a broken one (`hello_error`).
  */
-export const RUNNER_PROTOCOL_VERSION = 14
+export const RUNNER_PROTOCOL_VERSION = 15
 
 /**
  * The view budget per stream of a job: what crosses the wire is the model's
@@ -51,6 +51,7 @@ export type {
   GitOp,
   GitParams,
   GitResult,
+  NetErrorCode,
   PipeRef
 } from './schemas'
 export { FS_OPS, GIT_OPS } from './schemas'

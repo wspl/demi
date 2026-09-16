@@ -3,7 +3,9 @@
 export {
   RemoteHost,
   RemoteGitError,
+  RemoteNetError,
   type RemoteGit,
+  type RemoteNet,
   type RemoteHostOptions,
   type RemoteJob,
   type RemoteJobExit
