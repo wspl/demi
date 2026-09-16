@@ -34,6 +34,9 @@ export const RUNNER_PROTOCOL_VERSION = 13
  */
 export const JOB_VIEW_BYTES = 32 * 1024
 
+/** Maximum live stdin frame payload (`runner.md` § Pipes and output). */
+export const STDIN_CHUNK_BYTES = 64 * 1024
+
 export type {
   FsCallMessage,
   FsOkMessage,

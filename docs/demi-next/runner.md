@@ -176,6 +176,10 @@ cancellation aborts execution. Live input follows
 [explicit command demand](commands.md#deliver-io-and-release-an-invocation), so a
 command that never reads stdin does not consume subsequent interactive input.
 
+Live `spawn_stdin` and `job_stdin` frames carry at most 64 KiB of bytes, matching
+the [native stdin chunk limit](native-runtime.md#request-body-and-input-demand);
+the sender splits larger writes into ordered frames before sending EOF.
+
 ## Managed guests and verification
 
 In a managed guest, the runner performs Linux PID 1 initialization, mounts

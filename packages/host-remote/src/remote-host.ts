@@ -19,7 +19,7 @@ import type {
 } from '@demicodes/shell'
 import { createLogicalHostCwd } from '@demicodes/shell'
 import { createId, deferred, errorMessage, withTimeout, type Deferred } from '@demicodes/utils'
-import { fsOps, gitOps } from '@demicodes/runner-protocol'
+import { fsOps, gitOps, STDIN_CHUNK_BYTES } from '@demicodes/runner-protocol'
 import type {
   BackendToRunnerMessage,
   FsOp,
@@ -582,6 +582,19 @@ function fsError(code: string | undefined, message: string): Error {
   return rebuilt
 }
 
+/** Splits a remote stdin write into ordered, bounded protocol frames. */
+function sendStdin(
+  send: (message: BackendToRunnerMessage) => void,
+  message: Extract<BackendToRunnerMessage, { type: 'spawn_stdin' | 'job_stdin' }>,
+): void {
+  for (let offset = 0; offset < message.bytes.byteLength; offset += STDIN_CHUNK_BYTES) {
+    send({
+      ...message,
+      bytes: message.bytes.subarray(offset, offset + STDIN_CHUNK_BYTES),
+    })
+  }
+}
+
 /**
  * One remote process: buffers the ordered, stream-tagged chunk sequence from
  * the runner and derives the handle's `stdout` / `stderr` / merged `output`
@@ -625,7 +638,7 @@ class RemoteSpawn {
       writeStdin: async (data) => {
         if (this.done)
           return
-        this.send({ type: 'spawn_stdin', spawnId: this.spawnId, bytes: data })
+        sendStdin(this.send, { type: 'spawn_stdin', spawnId: this.spawnId, bytes: data })
       },
       closeStdin: async () => {
         if (this.done)
@@ -735,7 +748,7 @@ class RemoteJobState {
       writeStdin: async (data) => {
         if (this.done)
           return
-        this.send({ type: 'job_stdin', jobId: this.jobId, bytes: data })
+        sendStdin(this.send, { type: 'job_stdin', jobId: this.jobId, bytes: data })
       },
       closeStdin: async () => {
         if (this.done)
