@@ -19,7 +19,7 @@ export function useTimeRemaining(timestamp: MaybeRefOrGetter<string>) {
   return computed(() => dayjs(toValue(timestamp)).diff(now.value))
 }
 
-/** Countdown label for an expose: minutes, then seconds once under a minute. */
+/** Countdown label for an expose: minutes, then seconds once under a minute; never "60 s". */
 export function formatTimeRemaining(remainingMs: number): string {
   if (remainingMs <= 0) {
     return 'Expired'
@@ -27,5 +27,5 @@ export function formatTimeRemaining(remainingMs: number): string {
   const minutes = Math.floor(remainingMs / 60_000)
   return minutes >= 1
     ? `${minutes} min left`
-    : `${Math.ceil(remainingMs / 1000)} s left`
+    : `${Math.floor(remainingMs / 1000)} s left`
 }
