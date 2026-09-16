@@ -77,6 +77,11 @@ uu_chmod = "0.11"
 uu_chown = "0.11"
 uu_stat = "0.11"
 
+# sha2's ARM hardware backend is opt-in; artifact verification must not use
+# its unoptimized software fallback on supported Unix ARM hosts.
+[target.'cfg(all(unix, target_arch = "aarch64"))'.dependencies]
+sha2 = { version = "0.10", features = ["asm"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_Pipes", "Win32_System_IO"] }
 
