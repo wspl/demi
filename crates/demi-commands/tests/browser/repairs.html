@@ -21,6 +21,8 @@
 <input id="datetime" type="datetime-local"><input id="readonly" readonly value="keep">
 <input id="password" type="password" value="never-print-this-password" aria-label="Password">
 <input id="other" value="elsewhere">
+<button id="alert-dialog" onclick="alert('Alert fixture')">Alert</button>
+<button id="confirm-dialog" onclick="confirm('Confirm fixture')">Confirm</button>
 <input id="key-dialog" onkeydown="if (event.key === 'x') prompt('Key dialog')">
 <label>Unchecked<input id="unchecked" type="checkbox"></label>
 <label>Checked<input id="checked" type="checkbox" checked></label>
