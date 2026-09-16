@@ -186,7 +186,7 @@ beforeAll(async () => {
   world = await World.create({
     runners: ['laptop'],
     exposeDomain: 'expose.localhost',
-    expose: { now, sweepMs: 50 },
+    expose: { now, sweepMs: 50, idleTimeoutMs: 2_000 },
     managedHosts: {
       provisioner: fake,
       config: { sweepMs: 100, checkpointIntervalMs: 200 },
@@ -393,6 +393,27 @@ describe('expose acceptance', () => {
       await reader.cancel()
     await admitted.body!.cancel()
   }, 60_000)
+
+  test('the idle rule: a visitor that disappears is torn down after the limit and the slot is released', async () => {
+    const { host } = await pairedExpose()
+    // A held response, first byte read, then the visitor simply stops:
+    // no cancellation, no further reads — the abandoned exchange of the
+    // limits table (`expose.md` § The public relay).
+    const held = await relay(host, '/hold')
+    expect(held.status).toBe(200)
+    const reader = held.body!.getReader()
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe('held\n')
+    // No bytes in either direction past this point: the relay closes the
+    // connection after its idle limit, and both pipe ends report.
+    const before = world.frames.filter(f => f.message.type === 'pipe_done').length
+    await waitFor(
+      () => world.frames.filter(f => f.message.type === 'pipe_done').length >= before + 2,
+      () => 'waiting for the idle teardown to report both pipe ends',
+      { timeoutMs: 8_000 }
+    )
+    // The released slot admits a fresh connection again.
+    expect((await relay(host, '/seen')).status).toBe(200)
+  }, 30_000)
 
   test('9: without DEMI_EXPOSE_DOMAIN, add answers expose_unavailable and the state hides the feature', async () => {
     const bare = await World.create({ runners: ['laptop'] })
