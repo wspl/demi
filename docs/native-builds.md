@@ -68,12 +68,12 @@ download signed HTTPS artifact URLs directly from storage.
 
 ## Validation
 
-`.github/workflows/native.yml` executes the shared Rust suite on all six native
-OS/architecture combinations. Linux jobs use musl and reject an ELF interpreter
-or shared-library dependency. Windows uses static CRT and exercises the
-PowerShell installer; Unix exercises the shell installer. These checks include
-registration separation, release reuse and draining upgrades.
-Each installer and publication fixture runs three times per platform job to
+There is no hosted CI. The shared Rust suite is run on each platform that
+ships a feature as part of release acceptance. Linux builds use musl and reject
+an ELF interpreter or shared-library dependency. Windows uses static CRT and
+exercises the PowerShell installer; Unix exercises the shell installer. These
+checks include registration separation, release reuse and draining upgrades.
+Each installer and publication fixture is run three times per platform to
 exercise repeated process startup and teardown.
 
 `crates/command-service/examples/benchmark.rs` is a standalone synthetic service and
