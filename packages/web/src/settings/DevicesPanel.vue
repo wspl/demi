@@ -9,7 +9,7 @@ import { useDeviceSettings } from './devices'
 const resources = useResources()
 const product = useProduct()
 const settings = useDeviceSettings()
-const { cloud, reset, revoking, exposes, exposeDomain, cloudExposes, exposePending } = storeToRefs(settings)
+const { cloud, reset, revoking, exposes, exposeDomain, exposePending } = storeToRefs(settings)
 const { revoke, resetCloud, renewExpose, removeExpose } = settings
 </script>
 
@@ -28,7 +28,7 @@ const { revoke, resetCloud, renewExpose, removeExpose } = settings
     :claim-device="claimDevice"
     :expose-domain="exposeDomain"
     :exposes="exposes"
-    :cloud-exposes="cloudExposes"
+    :cloud-device-id="product.snapshot?.cloud?.device?.id ?? null"
     :expose-pending-ids="exposePending"
     @renew-expose="renewExpose"
     @remove-expose="removeExpose"
