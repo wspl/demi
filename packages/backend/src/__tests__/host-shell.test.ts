@@ -495,7 +495,9 @@ test(
                 (frame) => frame.deviceId === a.deviceId &&
                   frame.message.type === 'job_output' &&
                   textOf(frame.message).includes('ready')
-              )
+              ),
+              undefined,
+              { timeoutMs: 5_000 }
             )
           }
           if (caller === 'device' || caller === 'cloud') {
@@ -516,6 +518,13 @@ test(
           )!.message
           if (targetJob.type !== 'job_start')
             throw new Error('missing target job')
+          expect(
+            since().some(
+              (frame) => frame.deviceId === a.deviceId &&
+                frame.message.type === 'job_exit' &&
+                frame.message.jobId === targetJob.jobId
+            )
+          ).toBe(false)
           if (caller === 'device-child-kill') {
             await client.shellWrite(commandId, 'kill\n')
             await waitFor(
@@ -545,6 +554,16 @@ test(
             undefined,
             { timeoutMs: 5_000 }
           )
+          expect(
+            since().some(
+              (frame) => frame.deviceId === a.deviceId &&
+                frame.direction === 'out' &&
+                frame.message.type === 'job_kill' &&
+                frame.message.jobId === targetJob.jobId &&
+                frame.message.signal === 'SIGTERM'
+            )
+          ).toBe(true)
+          // Completion reports the signal that requested cancellation.
           expect(
             since().find(
               (frame) => frame.deviceId === a.deviceId &&

@@ -3,7 +3,13 @@
 use super::{ShellOptions, scope::Scope};
 use crate::process::{OutputChunk, OutputStream, ProcessExit, ProcessInput};
 use bytes::Bytes;
-use std::{collections::BTreeMap, fs::File, io, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs::File,
+    io,
+    path::PathBuf,
+    sync::{Arc, OnceLock},
+};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
@@ -12,6 +18,7 @@ pub struct Job {
     pub output: mpsc::Receiver<OutputChunk>,
     exited: watch::Receiver<Option<(ProcessExit, Option<String>)>>,
     cancel: CancellationToken,
+    requested_signal: Arc<OnceLock<String>>,
 }
 
 impl Job {
@@ -39,6 +46,8 @@ impl Job {
         let (finished, exited) = watch::channel(None);
         let cancel = scope.cancellation.clone();
         let owner_cancel = cancel.clone();
+        let requested_signal = Arc::new(OnceLock::<String>::new());
+        let owner_signal = requested_signal.clone();
         scope.cancellation = cancel.child_token();
         let input_scope = Scope::new(cancel.child_token(), None);
         let writer_scope = input_scope.clone();
@@ -148,7 +157,12 @@ impl Job {
             finished.send_replace(Some((
                 ProcessExit {
                     code,
-                    signal: owner_cancel.is_cancelled().then(|| "SIGKILL".into()),
+                    signal: owner_cancel.is_cancelled().then(|| {
+                        owner_signal
+                            .get()
+                            .cloned()
+                            .unwrap_or_else(|| "SIGKILL".into())
+                    }),
                     error: if owner_cancel.is_cancelled() {
                         None
                     } else {
@@ -163,6 +177,7 @@ impl Job {
             output,
             exited,
             cancel,
+            requested_signal,
         })
     }
 
@@ -175,6 +190,9 @@ impl Job {
     pub async fn signal(&self, signal: &str) -> io::Result<()> {
         match signal {
             "SIGINT" | "SIGTERM" | "SIGKILL" | "SIGHUP" | "SIGQUIT" => {
+                if !self.cancel.is_cancelled() {
+                    self.requested_signal.get_or_init(|| signal.into());
+                }
                 self.cancel();
                 Ok(())
             }
