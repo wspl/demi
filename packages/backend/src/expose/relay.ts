@@ -181,6 +181,13 @@ export class ExposeRelay {
     endings: ConnectionEndings
   ): Promise<Response> {
     const request = c.req.raw
+    // A visitor that walks away cancels its request — this Bun silently
+    // retries a slow first attempt on a fresh connection and abandons the
+    // original, whose service answer would otherwise hold the exchange
+    // until the idle limit. The cancellation ends it at once.
+    request.signal.addEventListener('abort', () => endings.end(), { once: true })
+    if (request.signal.aborted)
+      endings.end()
     const url = new URL(request.url)
     const headers: Array<[string, string]> = []
     for (const [name, value] of request.headers) {
