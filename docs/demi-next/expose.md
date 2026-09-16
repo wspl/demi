@@ -120,7 +120,10 @@ For each visitor connection the backend:
    headers, then the request body as it arrives, then the response status,
    headers, and body as they arrive. Bodies are never buffered whole;
    chunked and event-stream responses reach the visitor as the service
-   sends them.
+   sends them. The relay ends the stream's input, which the runner turns
+   into the socket's half-close, only once the response is complete: many
+   servers, Bun's among them, abort a response still streaming when the
+   client's side closes first.
 5. Relays a WebSocket upgrade message by message: the backend accepts the
    visitor's upgrade with its server runtime, performs the client handshake
    with the service over the stream, and passes every text and binary
