@@ -243,7 +243,7 @@ impl BrowserTab {
         references: &mut super::observation::References,
     ) -> Result<String> {
         if let Navigation::Url(url) = &navigation {
-            url::Url::parse(url).map_err(|error| BrowserError::Configuration(error.to_string()))?;
+            validate_url(url)?;
         }
         let mut observation = operation
             .run(NavigationObservation::subscribe(&self.page))
@@ -311,6 +311,59 @@ impl BrowserTab {
     }
 }
 
+/// Wait for the document current at subscription, never for a future navigation.
+pub(super) async fn wait_current_load(page: &Page, load: &str) -> Result<()> {
+    let mut lifecycle = page.event_listener::<EventLifecycleEvent>().await?;
+    let mut navigated = page.event_listener::<EventFrameNavigated>().await?;
+    let frame = page
+        .execute(GetFrameTreeParams {})
+        .await?
+        .result
+        .frame_tree
+        .frame;
+    let ready: String = page
+        .evaluate_expression("document.readyState")
+        .await?
+        .into_value()
+        .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
+    let after = page
+        .execute(GetFrameTreeParams {})
+        .await?
+        .result
+        .frame_tree
+        .frame;
+    if after.loader_id != frame.loader_id {
+        return Err(BrowserError::NavigationFailed(
+            "current document was replaced before its load wait completed".into(),
+        ));
+    }
+    if load == "commit"
+        || ready == "complete"
+        || (load == "domcontentloaded" && ready == "interactive")
+    {
+        return Ok(());
+    }
+    loop {
+        let event = tokio::select! {
+            event = lifecycle.next() => event.ok_or(BrowserError::Closed)??,
+            event = navigated.next() => {
+                let event = event.ok_or(BrowserError::Closed)??;
+                if event.frame.id == frame.id && event.frame.loader_id != frame.loader_id {
+                    return Err(BrowserError::NavigationFailed("current document was replaced before its load wait completed".into()));
+                }
+                continue;
+            }
+        };
+        if event.frame_id == frame.id
+            && event.loader_id == frame.loader_id
+            && (event.name == "load"
+                || (load == "domcontentloaded" && event.name == "DOMContentLoaded"))
+        {
+            return Ok(());
+        }
+    }
+}
+
 /// Compile the browser URL glob; regex escaping owns every literal character.
 fn url_pattern(pattern: &str) -> Result<regex::Regex> {
     let mut expression = String::from("\\A");
@@ -328,6 +381,18 @@ fn url_pattern(pattern: &str) -> Result<regex::Regex> {
     }
     expression.push_str("\\z");
     regex::Regex::new(&expression).map_err(|error| BrowserError::Configuration(error.to_string()))
+}
+
+/// Validate every requested browser URL before a batch can create or navigate tabs.
+pub(super) fn validate_url(url: &str) -> Result<()> {
+    let parsed =
+        url::Url::parse(url).map_err(|error| BrowserError::Configuration(error.to_string()))?;
+    if !matches!(parsed.scheme(), "http" | "https" | "file") && parsed.as_str() != "about:blank" {
+        return Err(BrowserError::Configuration(
+            "navigation accepts http:, https:, file:, or about:blank".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

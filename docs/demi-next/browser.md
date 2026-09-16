@@ -628,7 +628,9 @@ contributes to the accessible name, not to visible text.
 
 Name and text matching is case-sensitive substring matching by default;
 `--exact` selects whole-string matching. Explicit `--name-pattern` and
-`--text-pattern` accept regular expressions instead of their literal fields.
+`--text-pattern` accept ECMAScript regular-expression source (without flags)
+instead of their literal fields. Malformed patterns fail with `invalid_input`
+before matching.
 Do not interpret slash-delimited text as a regex automatically. `--text-match`
 locates an element; `--text` is action payload for fill/type/select-text. These
 fields must never share a flag or be inferred from the presence of another flag.
@@ -1014,7 +1016,10 @@ to selecting the match; `--cursor before|after` positions a cursor instead.
 `--prefix` and `--suffix` disambiguate repeated text; remaining ambiguity fails.
 
 AX actions must be advertised by the observed element. They are not arbitrary
-JavaScript. An unsupported action returns `unsupported_capability`.
+JavaScript. An unsupported action returns `unsupported_capability`. The pinned
+Chrome CDP Accessibility domain exposes neither an action list nor an AX action
+dispatch method. That native driver reports `ax-actions` unavailable and rejects
+`ax-action`; it must not infer actions from roles or substitute DOM clicks.
 
 ### Waiting
 
@@ -1041,6 +1046,7 @@ Wait selects exactly one condition: an element with
 `--state attached|detached|visible|hidden|enabled`, `--url`, or `--load`.
 `--load commit|domcontentloaded|load` waits until the tab's current document
 reaches that state; a document already past it satisfies the wait immediately.
+Replacing that document before the state is reached fails with `navigation_failed`.
 It does not wait for a future navigation. URL patterns define `*`
 as any string without `/`, `**` as any string, and all other characters
 literally, including `?`, brackets, and braces. They are not implicit regular
@@ -1153,7 +1159,9 @@ clipboard. Write reads finite raw stdin, defaulting to UTF-8 text/plain;
 trailing newlines are preserved. Read chooses either `--format text` or
 `--output-dir` for supported MIME entries. Binary input must be validated against
 its declared supported media type and bounded before replacing clipboard data.
-Supported MIME types are `text/plain`, `text/html`, and `image/png`.
+Supported MIME types are `text/plain`, `text/html`, and `image/png`. Text and
+HTML are limited to 1 MiB; PNG input is limited to 16 MiB encoded and 16 million
+decoded pixels, checked before decoding or replacing clipboard data.
 
 Clipboard commands use the tab's Clipboard API with read and write permission
 granted to the environment's browser context, so page copy and paste see the
@@ -1189,7 +1197,10 @@ Viewport reset to default: 1280 × 720 CSS px.
 
 Eval is read-only page inspection. The stdin expression can access document;
 a unique target additionally exposes element, or explicit `--all` exposes
-elements. Results must be JSON-representable. Functions, DOM objects, cycles,
+elements. All bound elements must belong to one frame document; a set spanning
+frame documents fails with `unsupported_capability` and must be narrowed with
+`--frame` or `--within`. Chrome cannot bind remote objects from separate execution
+contexts into one read-only expression. Results must be JSON-representable. Functions, DOM objects, cycles,
 and other unsupported values fail rather than silently losing information.
 The default is a compact JSON representation of the value; `--json` returns
 `{value: ...}`.
@@ -1385,11 +1396,11 @@ when unavailable. Complex capabilities include schemas or an authoritative
 help reference.
 
 WebMCP calls only tools actually published by the current page through the
-Web Model Context API, `navigator.modelContext`. Before page scripts run, the
-driver installs an observer on that API in every document of the tab, so the
-page's own registrations are recorded with their names, descriptions, and
-schemas; list reports those registrations, and call runs the registered tool's
-own function in the page. A browser release that does not expose the API
+Web Model Context API, `document.modelContext`. The driver uses the API's native
+`getTools()` discovery and `executeTool()` execution, and observes `toolchange`
+for declaration invalidation. Discovery follows the API's document and origin
+permissions; the driver does not bypass those permissions or replace the page's
+registration functions. A browser release that does not expose the API
 reports the `webmcp` capability unavailable with that reason. A tool-set
 handle binds the tab, document generation, and declaration version. Validate
 call arguments against that schema. Navigation or a changed tool set returns
@@ -1415,7 +1426,7 @@ field with a different meaning or type.
 | screenshot | `path, mimeType, width, height, viewport`; JSON requires file output |
 | probe | `matches, viewport, path?, truncated` |
 | Pointer/form actions, including `drag`, `select-text`, `ax-action`, and untargeted `type`/`key` | `operation, target?, result`; optional observed `url, openedTabs, dialog` |
-| wait | `condition, matched` |
+| wait | `condition, matched, url?, ref?`; load waits carry neither `url` nor `ref` |
 | dialog inspect | `dialog: null | {type, message}` |
 | dialog accept/dismiss | `type, outcome` |
 | upload | `files, attached` |

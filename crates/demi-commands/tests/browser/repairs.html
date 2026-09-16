@@ -99,3 +99,30 @@
   const root = document.querySelector('#shadow').attachShadow({mode: 'closed'});
   root.innerHTML = '<button onclick="this.textContent=\'Shadow clicked\'">Shadow button</button>';
 </script>
+<section id="catalog">
+  <div class="catalog-row">Order A<button class="catalog-delete">Delete</button></div>
+  <div class="catalog-row">Order B<button class="catalog-delete">Delete</button></div>
+  <p id="repeated-text">first word; second word!</p>
+  <button id="console-burst" onclick="for(let index=0;index<1100;index++) console.log('catalog '+index); console.error('catalog error')">Produce console entries</button>
+  <button id="key-navigate" onclick="location.hash='key-focus'">Navigate by key</button>
+  <button id="toggle-frame" onclick="const frame=document.querySelector('#cross-frame'); frame.style.visibility=frame.style.visibility ? '' : 'hidden'">Toggle frame visibility</button>
+  <button id="replace-frame" onclick="document.querySelector('#frame-status').textContent='Waiting for frame'; const frame=document.querySelector('#cross-frame'); frame.src=frame.src">Replace frame document</button>
+  <span id="frame-status"></span>
+  <button id="focus-document" onclick="document.activeElement.blur()">Focus document</button>
+  <button id="focus-frame" onclick="document.querySelector('#frame').contentDocument.querySelector('input').focus()">Focus frame input</button>
+  <div id="drag-area" style="height:80px;width:240px;background:#ccc" onmousedown="window.dragEvents=[{type:event.type,buttons:event.buttons,shift:event.shiftKey}]" onmousemove="if(event.buttons) window.dragEvents.push({type:event.type,buttons:event.buttons,shift:event.shiftKey})" onmouseup="window.dragEvents.push({type:event.type,buttons:event.buttons,shift:event.shiftKey})">Drag here</div>
+</section>
+<form id="submission" action="/submit" method="get">
+  <label>Submission date<input name="date" type="date" required></label>
+  <label>Confirm each submission<input name="confirm" type="checkbox" required></label>
+  <button id="submit-final">Submit final state</button>
+</form>
+<script>
+  if (location.pathname === '/catalog-frame') {
+    const frame = document.createElement('iframe');
+    frame.id = 'cross-frame';
+    frame.onload = () => document.querySelector('#frame-status').textContent = 'Frame ready';
+    frame.src = `http://localhost:${location.port}/frame-child`;
+    document.querySelector('#catalog').prepend(frame);
+  }
+</script>
