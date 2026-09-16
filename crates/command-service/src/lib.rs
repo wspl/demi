@@ -11,5 +11,7 @@ mod stream;
 pub use stdio::serve_stdio;
 
 pub use client::{Client, CommandInput, CommandOutput};
-pub use server::{Handler, InvocationContext, Output, serve, serve_cancellable};
+pub use server::{
+    ConversationContext, Handler, InvocationContext, Output, serve, serve_cancellable,
+};
 pub use stream::{Input, ServiceError};

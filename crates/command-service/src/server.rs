@@ -13,9 +13,9 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
 use crate::protocol::{
-    CommandError, Completion, INFO_PATH, INVOKE_PATH, Invocation, MAX_INVOCATIONS,
-    MAX_METADATA_BYTES, MAX_RECORD_BYTES, RESOURCE_PATH, Record, SHUTDOWN_PATH, ServiceInfo,
-    VERSION,
+    CONVERSATION_PATH, CommandError, Completion, ConversationRequest, INFO_PATH, INVOKE_PATH,
+    Invocation, MAX_INVOCATIONS, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Record, SHUTDOWN_PATH,
+    ServiceInfo, VERSION,
 };
 use crate::{Input, ServiceError, stream::send_bytes};
 
@@ -30,6 +30,13 @@ pub struct InvocationContext {
     pub cancellation: CancellationToken,
 }
 
+/// Trusted conversation lifecycle metadata has no command stdin or script environment.
+pub struct ConversationContext {
+    pub request: ConversationRequest,
+    pub output: Output,
+    pub cancellation: CancellationToken,
+}
+
 /// Handlers own per-invocation state and must cooperate with cancellation.
 /// Blocking and CPU work must run away from the connection's async worker.
 pub trait Handler: Send + Sync + 'static {
@@ -40,14 +47,25 @@ pub trait Handler: Send + Sync + 'static {
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>>;
 
     /// Trusted parent-only lifecycle calls, never declared CLI operations.
-    fn resource(
+    fn conversation(
         &self,
-        _context: InvocationContext,
+        context: ConversationContext,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
-        Box::pin(async { Err(ServiceError::Handler("resource kind is unsupported".into())) })
+        Box::pin(async move {
+            let body = if context.request.operation == "status" {
+                Bytes::from_static(b"{\"conversations\":[]}")
+            } else {
+                Bytes::from_static(b"{}")
+            };
+            context.output.stdout(body).await?;
+            Ok(Completion {
+                exit_code: 0,
+                error: None,
+            })
+        })
     }
 
-    /// Invocations have stopped before the service releases retained resources.
+    /// Invocations have stopped before the service releases conversation state.
     fn close(&self) -> Pin<Box<dyn Future<Output = Result<(), ServiceError>> + Send>> {
         Box::pin(async { Ok(()) })
     }
@@ -191,11 +209,11 @@ where
                             response.send_response(Response::new(()), true)?;
                             connection.graceful_shutdown();
                         }
-                        (&Method::POST, INVOKE_PATH | RESOURCE_PATH) if !draining && tasks.len() < MAX_INVOCATIONS => {
-                            let resource = request.uri().path() == RESOURCE_PATH;
+                        (&Method::POST, INVOKE_PATH | CONVERSATION_PATH) if !draining && tasks.len() < MAX_INVOCATIONS => {
+                            let conversation = request.uri().path() == CONVERSATION_PATH;
                             tasks.spawn(invoke(
                                 request, response, handler.clone(), operations.clone(),
-                                cancellation.child_token(), resource,
+                                cancellation.child_token(), conversation,
                             ));
                         }
                         _ => {
@@ -209,8 +227,8 @@ where
                     }
                 }
                 finished = tasks.join_next(), if !tasks.is_empty() => {
-                    if matches!(finished, Some(Ok(Err(ServiceError::CancellationDeadline)))) {
-                        break Err(ServiceError::CancellationDeadline);
+                    if let Some(Ok(Err(error @ (ServiceError::CancellationDeadline | ServiceError::ConversationCleanup(_))))) = finished {
+                        break Err(error);
                     }
                     // Invocation failures are represented by stream reset; other calls remain usable.
                 }
@@ -220,8 +238,11 @@ where
     cancellation.cancel();
     drop(connection);
     while let Some(result) = tasks.join_next().await {
-        if matches!(result, Ok(Err(ServiceError::CancellationDeadline))) {
-            outcome = Err(ServiceError::CancellationDeadline);
+        if let Ok(Err(
+            error @ (ServiceError::CancellationDeadline | ServiceError::ConversationCleanup(_)),
+        )) = result
+        {
+            outcome = Err(error);
         }
         // Ordinary invocation errors already fail their individual HTTP/2 streams.
     }
@@ -245,43 +266,56 @@ async fn invoke(
     handler: Arc<dyn Handler>,
     operations: Vec<String>,
     cancellation: CancellationToken,
-    resource: bool,
+    conversation: bool,
 ) -> Result<(), ServiceError> {
     let _cancel_on_drop = cancellation.drop_guard_ref();
     let mut input = Input::new(request.into_body());
+    enum Call {
+        Invocation(Box<Invocation>),
+        Conversation(ConversationRequest),
+    }
+    let metadata = async {
+        if conversation {
+            let request: ConversationRequest = input.metadata().await?;
+            request.validate()?;
+            Ok::<_, ServiceError>(Call::Conversation(request))
+        } else {
+            let request: Invocation = input.metadata().await?;
+            request.validate()?;
+            Ok(Call::Invocation(Box::new(request)))
+        }
+    };
     let metadata = tokio::select! {
         _ = cancellation.cancelled() => return Err(ServiceError::Cancelled),
-        result = tokio::time::timeout(METADATA_TIMEOUT, input.invocation()) => result,
+        result = tokio::time::timeout(METADATA_TIMEOUT, metadata) => result,
     };
-    let invocation = match metadata {
+    let call = match metadata {
         Ok(Ok(value)) => value,
         _ => return reject(&mut response, StatusCode::BAD_REQUEST),
     };
-    if resource {
-        if invocation.resource.is_none()
-            || !matches!(
-                invocation.operation.as_str(),
-                "acquire" | "release" | "status"
-            )
-        {
-            return reject(&mut response, StatusCode::BAD_REQUEST);
-        }
-    } else if !operations.contains(&invocation.operation) {
+    if let Call::Invocation(request) = &call
+        && !operations.contains(&request.operation)
+    {
         return reject(&mut response, StatusCode::NOT_FOUND);
     }
+    let release = matches!(&call, Call::Conversation(request) if request.operation == "release");
     let mut stream = response.send_response(Response::new(()), false)?;
     let (output, mut receiver) = Output::channel(cancellation.clone());
-    input.set_output(output.clone());
-    let context = InvocationContext {
-        request: invocation,
-        input,
-        output,
-        cancellation: cancellation.clone(),
-    };
-    let work = if resource {
-        handler.resource(context)
-    } else {
-        handler.invoke(context)
+    let work = match call {
+        Call::Conversation(request) => handler.conversation(ConversationContext {
+            request,
+            output,
+            cancellation: cancellation.clone(),
+        }),
+        Call::Invocation(request) => {
+            input.set_output(output.clone());
+            handler.invoke(InvocationContext {
+                request: *request,
+                input,
+                output,
+                cancellation: cancellation.clone(),
+            })
+        }
     };
     let mut task = AbortOnDropHandle::new(tokio::spawn(work));
     let outcome = loop {
@@ -320,15 +354,28 @@ async fn invoke(
         cancellation.cancel();
         receiver.close();
         stream.send_reset(Reason::CANCEL);
-        if tokio::time::timeout(CANCEL_TIMEOUT, &mut task)
-            .await
-            .is_err()
-        {
-            task.abort();
-            // Rust cannot stop non-cooperative native code. Report a fatal service
-            // fault so the process owner retires it; do not wait forever or claim
-            // that aborting its async task proves the native work has stopped.
-            return Err(ServiceError::CancellationDeadline);
+        match tokio::time::timeout(CANCEL_TIMEOUT, &mut task).await {
+            Err(_) => {
+                task.abort();
+                // Native work may be non-cooperative; the owner must retire
+                // this process rather than treating task abortion as cleanup.
+                return Err(ServiceError::CancellationDeadline);
+            }
+            Ok(Err(error)) if release => {
+                return Err(ServiceError::ConversationCleanup(error.to_string()));
+            }
+            Ok(Ok(Err(error))) if release && !matches!(error, ServiceError::Cancelled) => {
+                return Err(ServiceError::ConversationCleanup(error.to_string()));
+            }
+            Ok(Ok(Ok(completion))) if release && completion.exit_code != 0 => {
+                return Err(ServiceError::ConversationCleanup(format!(
+                    "release exited with status {}: {:?}",
+                    completion.exit_code, completion.error
+                )));
+            }
+            // A cancelled ordinary invocation has no domain release to finish;
+            // its result cannot be delivered on the reset stream.
+            _ => {}
         }
         return outcome.and(Err(ServiceError::Cancelled));
     };
@@ -342,10 +389,24 @@ async fn invoke(
                 message: error.to_string(),
             }),
         },
+        Err(error) if release => return Err(ServiceError::ConversationCleanup(error.to_string())),
         Err(error) => return Err(ServiceError::Handler(error.to_string())),
     };
+    let cleanup_failure = (release && completion.exit_code != 0).then(|| {
+        format!(
+            "release exited with status {}: {:?}",
+            completion.exit_code, completion.error
+        )
+    });
     let encoded = Record::Completion(completion).encode()?;
-    send_bytes(&mut stream, encoded).await?;
-    stream.send_data(Bytes::new(), true)?;
-    Ok(())
+    let sent = async {
+        send_bytes(&mut stream, encoded).await?;
+        stream.send_data(Bytes::new(), true)?;
+        Ok(())
+    }
+    .await;
+    if let Some(error) = cleanup_failure {
+        return Err(ServiceError::ConversationCleanup(error));
+    }
+    sent
 }
