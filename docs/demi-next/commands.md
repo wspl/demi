@@ -5,11 +5,10 @@ application callback (`rpc`) or a native package operation (`native`). The tree
 defines command names, help, argument schemas, and bindings for both embedded
 shell calls and external command clients.
 
-The planned `demi browser` command family, including readable output, optional
+The `demi browser` command family, including readable output, optional
 JSON, image bytes, targeting, and examples, is specified in
-[Browser automation](browser.md#command-contract). Its browser runtime is not
-implemented; it uses this command contract rather than a separate shell or model
-tool loop.
+[Browser automation](browser.md#command-contract). It uses this command contract
+rather than a separate shell or model tool loop.
 
 ## Declare a command
 
