@@ -262,3 +262,122 @@ test(
   },
   60_000,
 )
+
+test(
+  'net streams: a backend that fails the output pipe mid-upload ends the upload without a peer EOF',
+  async () => {
+    const runnerDir = await mkdtemp(join(tmpdir(), 'demi-net-fail-home-'))
+    const stateDir = await mkdtemp(join(tmpdir(), 'demi-net-fail-state-'))
+
+    // The peer accepts, speaks once, and never EOFs: only the backend's
+    // pipe failure may end the stream (`runner.md` § Network streams: a pipe
+    // failing closes the socket).
+    const spoke = deferred<void>()
+    const peerClosed = deferred<void>()
+    const peer = createServer((socket) => {
+      socket.write('the peer speaks and then holds the connection open\n')
+      spoke.resolve()
+      socket.on('error', () => {})
+      socket.on('close', () => peerClosed.resolve())
+    })
+    await new Promise<void>((resolve) => peer.listen(0, '127.0.0.1', resolve))
+    const peerPort = (peer.address() as AddressInfo).port
+
+    const inbound: RunnerToBackendMessage[] = []
+    let socket: Bun.ServerWebSocket<unknown> | null = null
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request, bunServer) {
+        const url = new URL(request.url)
+        if (url.pathname === '/api/runner')
+          return bunServer.upgrade(request) ? undefined : new Response('no', { status: 400 })
+        if (request.method === 'GET' && url.pathname === '/api/pipes/hold')
+          // Never yields bytes and never ends: the stream stays open.
+          return new Response(new ReadableStream({
+            start() {},
+          }))
+        if (request.method === 'PUT' && url.pathname === '/api/pipes/fail-out') {
+          // The backend fails the pipe while the upload is still streaming:
+          // the answer leaves the request body unread.
+          await Bun.sleep(100)
+          return new Response('pipe failed: visitor connection ended', { status: 409 })
+        }
+        await request.arrayBuffer()
+        return new Response('no such pipe', { status: 404 })
+      },
+      websocket: {
+        message(ws, data) {
+          const message = wire.decodeRunnerToBackend(typeof data === 'string'
+            ? new Uint8Array(0)
+            : new Uint8Array(data))
+          inbound.push(message)
+          if (message.type === 'hello') {
+            socket = ws
+            ws.send(wire.encode({ type: 'claimed', deviceToken: TOKEN }))
+            return
+          }
+          remoteHost.handleMessage(message)
+        },
+        close(ws) {
+          if (socket === ws)
+            socket = null
+        },
+      },
+    })
+
+    const remoteHost = new RemoteHost({
+      defaultCwd: runnerDir,
+      identity: new LocalHost(runnerDir).identity,
+      store: memoryHostStore(),
+    })
+
+    const runner = await startRunner({
+      backendUrl: `http://localhost:${server.port}`,
+      stateDir,
+      home: runnerDir,
+    })
+    try {
+      await waitFor(
+        () => socket !== null,
+        () => runner.log.join('\n'),
+        { timeoutMs: 10_000 }
+      )
+      await waitFor(
+        () => runner.statuses.includes('online'),
+        () => runner.log.join('\n'),
+        { timeoutMs: 10_000 }
+      )
+      remoteHost.attach((outgoing) => socket!.send(wire.encode(outgoing)))
+
+      const doneFor = (pipeId: string) => inbound.find((
+        m
+      ): m is Extract<RunnerToBackendMessage, { type: 'pipe_done' }> => m.type
+        === 'pipe_done'
+        && m.pipeId === pipeId)
+
+      await remoteHost.net.open({
+        host: '127.0.0.1',
+        port: peerPort,
+        input: { id: 'hold-in', url: '/api/pipes/hold' },
+        output: { id: 'fail-out', url: '/api/pipes/fail-out' },
+      })
+      await spoke.promise
+      // The 409 fails the upload without the peer's EOF, the stream cancels,
+      // the socket closes, and both pipe ends report.
+      await waitFor(
+        () => doneFor('hold-in') !== undefined && doneFor('fail-out') !== undefined,
+        () => runner.log.join('\n'),
+        { timeoutMs: 15_000 }
+      )
+      expect(doneFor('fail-out')!.ok).toBe(false)
+      expect(doneFor('fail-out')!.error).toBeDefined()
+      expect(doneFor('hold-in')!.ok).toBe(false)
+      await peerClosed.promise
+    } finally {
+      await runner.stop()
+      server.stop(true)
+      peer.close()
+    }
+  },
+  60_000,
+)
