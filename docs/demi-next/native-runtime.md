@@ -282,6 +282,15 @@ That state belongs to the conversation, and the native package keeps it itself,
 keyed by the conversation identity the runner supplies; there is no separate
 resource handle, acquisition, or grant.
 
+This section is the port through which every such capability attaches, and it
+is deliberately the only one. The runtime provides mechanism, identity and
+release, and no policy: it does not know what a tool holds, why, or for how
+long. The backend provides one policy, the conversation idle rule in
+[Conversation idle and Host resource release](resource-lifecycle.md), and no
+mechanism specific to any tool. A tool that needs more than this port is
+evidence that the port is missing a generic capability, not a reason to give
+that tool a path of its own through the runner or the backend.
+
 Every job the backend starts names its conversation and the invoking agent
 node. The runner places them in the job environment as `DEMI_CONVERSATION_ID`
 and `DEMI_AGENT_NODE_ID`, so external programs can see them, and writes the same

@@ -8,6 +8,20 @@ is the required final package set, not a claim that all workspace manifests have
 already been brought into agreement. Implementation checkpoints must reconcile
 source, manifests and boundary checks with this contract.
 
+## Extension principle
+
+Host capabilities are plugins behind one narrow port, and the port is the whole
+of what the framework knows about them. The runner and the native service SDK
+supply mechanism: the trusted conversation and caller identity on every
+invocation, and the generic conversation release with its status query, defined
+in [Native runtime](demi-next/native-runtime.md#conversation-scoped-state). The
+backend owns one policy, when a conversation is idle. Each tool owns its own
+state and cleanup. Consequently a new conversation-scoped capability is added by
+implementing commands in `demi-commands` and declaring them in `coding-agent`;
+`runner`, `runner-protocol`, `host-remote`, `backend`, and `agent` do not change.
+A proposal that adds a tool-specific message, adapter, or lifecycle hook to any
+of those packages violates this contract and is redesigned at the port instead.
+
 ## Source organization
 
 TypeScript packages live under `packages/`; Rust crates live under `crates/`.
