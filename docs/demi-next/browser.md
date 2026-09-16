@@ -142,11 +142,6 @@ cleanup before reporting cancellation complete. Browser state and nonblocking
 observations such as buffered logs remain available. Cancellation does not undo
 submitted forms or page JavaScript and does not close unrelated tabs.
 
-Turn completion, failure, and cancellation all release the invoking node's
-retained CDP debug connections, including state installed by an already completed
-command. The turn stays active until this cleanup finishes; its next turn cannot
-start earlier. Cancelling only a temporary event wait does not end the turn.
-
 Commands rejected before dispatch use `details.action: not_started`; completed
 or uncertain effects keep their actual progress. No automatic replay occurs.
 
@@ -398,17 +393,6 @@ Backend operations for browser resources enter through
 `ConversationTargets.withHost`. Its scope covers actual Host IO. Keeping an
 old Host object is not permission to bypass this entry on later requests.
 Cloud and paired devices use the same contract.
-
-Before an agent node's turn becomes idle, the backend sends `release_caller` to
-the conversation's existing browser grant through `withHost`, while turn
-admission is still held. The authenticated caller is that node's identity, the
-same identity supplied to its native invocations. Native cleanup calls
-`cdp::cancel_owner` on every live tab and awaits all of those cleanups. This does
-not release the conversation resource, open Chrome, create a replacement grant,
-or manufacture a shell job. With no retained grant there is no Host work; a lost
-generation is invalidated, never retried against a replacement. Other nodes'
-debug connections and the conversation's tabs remain owned. Cleanup failure is
-reported as turn failure and the faulty native service is retired.
 
 ## Command contract
 
@@ -1269,6 +1253,9 @@ $ demi browser cdp send tab-1 Network.getResponseBody <<'JSON'
 JSON
 CDP Network.getResponseBody completed.
 Result: {"body":"{\"error\":\"database unavailable\"}","base64Encoded":false}
+
+$ demi browser cdp detach tab-1
+Detached debugging from tab-1.
 ```
 
 CDP exposes tab debugging through the
@@ -1305,15 +1292,25 @@ protocol.
 
 Read-only eval and CDP have different contracts: authorized tab debugging can
 change page state, such as installing a breakpoint. Do not report such a command
-as read-only inspection. Domain subscriptions, breakpoints, and explicit debug
-pauses are scoped to the invoking agent turn and tab. Turn end or cancellation removes
-breakpoints, releases debug pauses/interceptions, and closes the owning debug
-connection before turn cleanup completes. Nonblocking CDP subscriptions share
-that connection's lifetime. Tab-owned nonblocking observations, such as buffered
-logs, remain until explicitly removed or the tab is released.
-Cancelling a temporary event wait removes only that wait. Interception and other facilities
-that can block the page must release blocked requests when their owning debug
-connection ends.
+as read-only inspection.
+
+Debug state lives in a debugging connection that the browser owns per tab and
+per calling agent node; Chrome discards every domain subscription, breakpoint,
+pause, and interception installed through a connection when that connection
+closes, so the browser tracks connections, not methods. A connection lasts
+until one of three events the browser itself observes: the same caller runs
+`cdp detach <tab>`, the tab closes, or the browser retires. Nothing outside the
+browser signals it; agent turns and shell jobs are not a scope the browser
+knows. Cancelling a `cdp send` or `cdp events` call in flight closes that
+caller's connection; cancelling only the bounded wait of `cdp events` does not.
+Tab-owned observations such as buffered logs are not debug state and remain
+until the tab is released.
+
+A caller that leaves interception or a pause behind blocks the page for every
+caller until it detaches. When a command on that tab times out while another
+caller's connection is open, the timeout error names that caller and the tab in
+its details, so the agent can ask for the detach rather than guess. There is no
+automatic detach on behalf of another caller.
 
 ### Content and assets
 
@@ -1451,6 +1448,7 @@ field with a different meaning or type.
 | viewport set/reset | `width, height` |
 | cdp targets | `targets: [{id, kind, url}], truncated` |
 | cdp send | `method, result` |
+| cdp detach | `detached` |
 | cdp events | `events, cursor, hasMore, truncated` |
 | content read | `url, title, format, content, truncated`, or `url, title, format, path` |
 | content fetch | `pages: [{requestedUrl, url, title, content, error?}], truncated` |
@@ -1726,7 +1724,7 @@ The command catalog is the command reference above:
 | Page input | `click`, `move`, `drag`, `scroll`, `fill`, `type`, `key`, `check`, `select`, `select-text`, `wait` |
 | Files and clipboard | `upload`, `download`, `clipboard write/read` |
 | Viewport and dialogs | `viewport set/reset`, `dialog inspect/accept/dismiss` |
-| Debugging | `cdp targets/send/events` |
+| Debugging | `cdp targets/send/events/detach` |
 | Content and assets | `content read/fetch`, `assets list/export` |
 | Capability discovery | `capabilities`, `webmcp list/call` |
 

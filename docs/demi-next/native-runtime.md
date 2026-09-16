@@ -296,29 +296,17 @@ The protocol must carry these distinct operations and acknowledgements:
 | Acquire | Accept authenticated owner scope, resource kind and pinned package identity; return a grant and generation after initialization succeeds |
 | Bind job | Associate a live job with authorized grants; supply trusted resource context to each native invocation |
 | Invoke/subscribe | Address a grant through the authenticated Host adapter; carry validated operation input, cancellation and bounded output/events |
-| Release caller | Release one authenticated caller's scoped state within a retained grant and acknowledge cleanup; preserve the grant and other callers |
 | Release | Stop admission, cancel resource calls/subscriptions, release resource state and acknowledge completion; repeated release of the same retired grant is harmless |
 | Lost | Report an ended connection, failed service or retired generation; invalidate every affected handle without replay |
 
 The native service exposes `POST /v1/resource` using the invocation framing,
 bounded output, and cancellation contract below. Its operation is `acquire`,
-`release`, `release_caller`, or `status`; its trusted `resource` field contains `{id, kind}`.
+`release`, or `status`; its trusted `resource` field contains `{id, kind}`.
 These operations are not declared commands and the local command client cannot
 invoke this endpoint on the native service. Acquire initializes a dormant owner;
 domain startup may remain lazy. Status returns `{state: "ready" | "released"}`.
 Release and service shutdown await domain cleanup. An unknown released ID is
 harmless to release but cannot be invoked or recreated under that same grant.
-
-`release_caller` additionally requires the trusted `caller` identity used by
-native invocations. The embedding application sends it when that caller's scope
-ends, including cancellation, through its existing Host access. It is not a
-declared command, accepts no caller identity from argv or environment, and needs
-no shell job. Completion acknowledges domain cleanup for that caller; repeating
-it without intervening caller activity is harmless. It never acquires a grant or
-starts a dormant domain resource. The application serializes scope completion
-before admitting the same caller's next scope. Failed cleanup is reported and
-retires the faulty service, invalidating its grants; it is not a successful
-release. Connection loss uses the existing grant-loss contract.
 
 A native command binding may require a `resource` kind. Authenticated runner
 messages acquire grants against an owner and exact package descriptor, bind
