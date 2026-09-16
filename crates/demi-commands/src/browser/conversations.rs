@@ -548,7 +548,7 @@ impl Conversations {
             let mut result = tab
                 .command_admitted(command, cancellation, deadline, &mut references)
                 .await?;
-            let bytes = super::operation::Operation::until(&tab.ended, cancellation, deadline)
+            let bytes = super::operation::Operation::for_tab(tab, cancellation, deadline)
                 .run(tab.screenshot_bytes(false, None))
                 .await?;
             let bytes = super::probe::annotate(bytes, &result)?;

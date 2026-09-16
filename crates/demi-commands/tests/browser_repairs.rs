@@ -1,35 +1,15 @@
 //! Round-one regression specifications. These compile without launching Chrome.
 
-use demi_commands::browser::{
-    BrowserEnvironment, BrowserError, BrowserTab, LaunchOptions, Result, with_browser,
-};
+use demi_commands::browser::{BrowserError, BrowserTab, Result};
 use serde_json::{Value, json};
-use std::{future::Future, path::PathBuf, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 
-#[path = "browser/server.rs"]
-mod browser_server;
+#[path = "browser/fixture.rs"]
+mod browser_fixture;
+use browser_fixture::with_fixture;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Serve deterministic browser fixtures, including failures before HTTP headers.
-async fn with_fixture<F, W>(exercise: F)
-where
-    F: FnOnce(BrowserEnvironment, String) -> W,
-    W: Future<Output = Result<()>>,
-{
-    let executable = PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
-    let server = browser_server::Server::start(include_str!("browser/repairs.html")).await;
-    let base = server.base.clone();
-    let result = with_browser(
-        LaunchOptions { executable },
-        CancellationToken::new(),
-        |browser| exercise(browser, base),
-    )
-    .await;
-    server.close().await;
-    assert!(result.is_ok(), "{result:?}");
-}
 
 /// Invoke the production command parser, tab gate, algorithms and result schema.
 async fn command(tab: &BrowserTab, operation: &str, mut args: Value) -> Result<Value> {
@@ -1302,6 +1282,144 @@ async fn catalog_load_wait_tracks_only_the_current_document() {
             "not_started",
         );
         command(&tab, "wait", json!({"load":"load"})).await?;
+        Ok(())
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; launches a real browser"]
+async fn dialogs_reject_absent_and_inapplicable_actions() {
+    with_fixture(|browser, base| async move {
+        let tab = browser
+            .open(&base, &CancellationToken::new(), TIMEOUT)
+            .await?;
+        assert_eq!(
+            command(&tab, "dialog.inspect", json!({})).await?["dialog"],
+            Value::Null
+        );
+        for operation in ["dialog.accept", "dialog.dismiss"] {
+            error(
+                command(&tab, operation, json!({})).await,
+                "dialog_not_found",
+                "not_started",
+            );
+        }
+        error(
+            command(&tab, "click", json!({"css":"#alert-dialog"})).await,
+            "dialog_blocked",
+            "unknown",
+        );
+        assert_eq!(
+            command(&tab, "dialog.inspect", json!({})).await?["dialog"]["type"],
+            "alert"
+        );
+        error(
+            command(&tab, "dialog.accept", json!({})).await,
+            "invalid_dialog_action",
+            "not_started",
+        );
+        error(
+            command(&tab, "dialog.accept", json!({"text":"not a prompt"})).await,
+            "invalid_dialog_action",
+            "not_started",
+        );
+        assert_eq!(
+            command(&tab, "dialog.dismiss", json!({})).await?,
+            json!({"type":"alert","outcome":"dismissed"})
+        );
+        error(
+            command(&tab, "click", json!({"css":"#confirm-dialog"})).await,
+            "dialog_blocked",
+            "unknown",
+        );
+        error(
+            command(&tab, "dialog.accept", json!({"text":"not a prompt"})).await,
+            "invalid_dialog_action",
+            "not_started",
+        );
+        assert_eq!(
+            command(&tab, "dialog.inspect", json!({})).await?["dialog"]["type"],
+            "confirm"
+        );
+        assert_eq!(
+            command(&tab, "dialog.accept", json!({})).await?,
+            json!({"type":"confirm","outcome":"accepted"})
+        );
+        assert_eq!(
+            command(&tab, "dialog.inspect", json!({})).await?["dialog"],
+            Value::Null
+        );
+        Ok(())
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; launches a real browser"]
+async fn viewport_overrides_are_per_tab_and_survive_screenshots() {
+    with_fixture(|browser, base| async move {
+        let first = browser
+            .open(&base, &CancellationToken::new(), TIMEOUT)
+            .await?;
+        let second = browser
+            .open(&base, &CancellationToken::new(), TIMEOUT)
+            .await?;
+        let default = json!({"width":1280,"height":720});
+        let size = json!({"width":390,"height":844});
+        for tab in [&first, &second] {
+            assert_eq!(command(tab, "info", json!({})).await?["viewport"], default);
+        }
+        assert_eq!(command(&first, "viewport.set", size.clone()).await?, size);
+        for tab in [&first, &second] {
+            let expected = if tab.id() == first.id() {
+                &size
+            } else {
+                &default
+            };
+            assert_eq!(
+                &command(tab, "info", json!({})).await?["viewport"],
+                expected
+            );
+            assert_eq!(
+                &tab.read_only(
+                    "({width: innerWidth, height: innerHeight})",
+                    &CancellationToken::new(),
+                    TIMEOUT
+                )
+                .await?,
+                expected
+            );
+            let bytes = tab.screenshot(&CancellationToken::new(), TIMEOUT).await?;
+            let png = png::Decoder::new(std::io::Cursor::new(bytes))
+                .read_info()
+                .unwrap();
+            assert_eq!(
+                json!({"width":png.info().width,"height":png.info().height}),
+                *expected
+            );
+            assert_eq!(
+                &command(tab, "info", json!({})).await?["viewport"],
+                expected
+            );
+        }
+        let second_size = json!({"width":640,"height":480});
+        assert_eq!(
+            command(&second, "viewport.set", second_size.clone()).await?,
+            second_size
+        );
+        assert_eq!(command(&first, "viewport.reset", json!({})).await?, default);
+        for (tab, expected) in [(&first, &default), (&second, &second_size)] {
+            assert_eq!(
+                &tab.read_only(
+                    "({width: innerWidth, height: innerHeight})",
+                    &CancellationToken::new(),
+                    TIMEOUT
+                )
+                .await?,
+                expected
+            );
+        }
         Ok(())
     })
     .await;

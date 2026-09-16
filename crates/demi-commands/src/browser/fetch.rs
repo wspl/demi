@@ -34,7 +34,7 @@ pub(super) async fn execute(
     let mut truncated = false;
     let collection = async {
         for (tab, requested) in batch.tabs().iter().zip(&input.url) {
-            let operation = Operation::until(&tab.ended, cancel, deadline);
+            let operation = Operation::for_tab(tab, cancel, deadline);
             let item = async {
                 let mut references = tab.state.operations.try_lock().map_err(|_| BrowserError::Busy)?;
                 let url = tab.navigate(Navigation::Url(requested.clone()), "domcontentloaded", &operation, &mut references).await?;

@@ -252,6 +252,21 @@ pub(super) async fn prepared_state(
                 .await?,
         );
     }
+    // Scrolling the target can scroll its ancestors, including an OOPIF's
+    // embedding document. Finish every scroll before observing stability in
+    // those documents; otherwise input can race the parent's compositor update.
+    if scroll {
+        for element in frames.iter().rev().chain(std::iter::once(target)) {
+            operation
+                .run(call::<ElementState>(
+                    &element.page,
+                    element,
+                    include_str!("element-state.js"),
+                    vec![json!([]), json!(true)],
+                ))
+                .await?;
+        }
+    }
     for frame in frames.iter().rev() {
         let mut frame_conditions = vec!["geometry"];
         for condition in ["visible", "enabled", "stable"] {
@@ -259,13 +274,12 @@ pub(super) async fn prepared_state(
                 frame_conditions.push(condition);
             }
         }
-        let state =
-            local_prepared_state(&frame.page, frame, &frame_conditions, scroll, operation).await?;
+        let state = local_prepared_state(&frame.page, frame, &frame_conditions, operation).await?;
         if state.failed.is_some() {
             return Ok(state);
         }
     }
-    let mut state = local_prepared_state(page, target, conditions, scroll, operation).await?;
+    let mut state = local_prepared_state(page, target, conditions, operation).await?;
     if state.failed.is_some() {
         return Ok(state);
     }
@@ -301,7 +315,6 @@ async fn local_prepared_state(
     page: &Page,
     target: &TargetElement,
     conditions: &[&str],
-    scroll: bool,
     operation: &super::operation::Operation<'_>,
 ) -> Result<ElementState> {
     let probe = super::handles::fresh("probe")?;
@@ -310,7 +323,7 @@ async fn local_prepared_state(
             page,
             target,
             include_str!("element-state.js"),
-            vec![json!(conditions), json!(scroll), json!(probe), json!(false)],
+            vec![json!(conditions), json!(false), json!(probe), json!(false)],
         ))
         .await;
     if result.is_err() && conditions.contains(&"stable") {

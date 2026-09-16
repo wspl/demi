@@ -33,6 +33,8 @@ pub enum BrowserError {
     Closed,
     #[error("{0}")]
     Connection(String),
+    #[error("browser input outcome is unknown: {source}")]
+    OutcomeUnknown { source: Box<BrowserError> },
     #[error("browser tab was not found")]
     TabNotFound,
     #[error("browser target matched no elements")]
@@ -107,6 +109,7 @@ pub(super) struct Operation<'a> {
     cancelled: &'a CancellationToken,
     deadline: Instant,
     progress: AtomicU8,
+    connection_failure: Option<&'a tokio::sync::watch::Sender<Option<String>>>,
 }
 
 impl<'a> Operation<'a> {
@@ -128,7 +131,19 @@ impl<'a> Operation<'a> {
             cancelled,
             deadline,
             progress: AtomicU8::new(0),
+            connection_failure: None,
         }
+    }
+
+    /// Retain the browser transport's cause when a tab's lifetime ends mid-command.
+    pub fn for_tab(
+        tab: &'a super::BrowserTab,
+        cancelled: &'a CancellationToken,
+        deadline: Instant,
+    ) -> Self {
+        let mut operation = Self::until(&tab.ended, cancelled, deadline);
+        operation.connection_failure = Some(&tab.state.failure);
+        operation
     }
 
     pub fn begin_input(&self) {
@@ -144,7 +159,15 @@ impl<'a> Operation<'a> {
     }
 
     pub fn failure(&self, error: BrowserError, tab: &str, url: Option<&str>) -> BrowserError {
-        let action = match self.progress.load(Ordering::SeqCst) {
+        let progress = self.progress.load(Ordering::SeqCst);
+        let error = if progress != 0 && error.is_connection_loss() {
+            BrowserError::OutcomeUnknown {
+                source: Box::new(error),
+            }
+        } else {
+            error
+        };
+        let action = match progress {
             0 => "not_started",
             2 => "completed",
             _ => "unknown",
@@ -170,7 +193,10 @@ impl<'a> Operation<'a> {
     pub async fn run<T>(&self, future: impl Future<Output = Result<T>>) -> Result<T> {
         tokio::select! {
             biased;
-            _ = self.ended.cancelled() => Err(BrowserError::Closed),
+            _ = self.ended.cancelled() => Err(self.connection_failure
+                .and_then(|failure| failure.borrow().clone())
+                .map(BrowserError::Connection)
+                .unwrap_or(BrowserError::Closed)),
             _ = self.cancelled.cancelled() => Err(if Instant::now() >= self.deadline {
                 // The conversation controller cancels at this same shared deadline.
                 BrowserError::Timeout
@@ -196,6 +222,22 @@ pub(super) fn after_cleanup<T>(operation: Result<T>, cleanup: Result<()>) -> Res
 }
 
 impl BrowserError {
+    /// Preserve transport loss through browser cleanup and action context wrappers.
+    fn is_connection_loss(&self) -> bool {
+        match self {
+            Self::Connection(_) => true,
+            Self::Action { source, .. } | Self::ProfileRetained { source, .. } => {
+                source.is_connection_loss()
+            }
+            Self::Cleanup {
+                operation: Some(error),
+                ..
+            } => error.is_connection_loss(),
+            Self::Cleanup { cleanup, .. } => cleanup.is_connection_loss(),
+            _ => false,
+        }
+    }
+
     /// Preserve the browser condition that exhausted a shared readiness deadline.
     pub(super) fn with_deadline_cause(self, cause: BrowserError) -> Self {
         match self {
@@ -224,6 +266,7 @@ impl BrowserError {
             Self::Cleanup { cleanup, .. } => cleanup.code(),
             Self::ProfileRetained { source, .. } => source.code(),
             Self::Closed | Self::Connection(_) => "browser_lost",
+            Self::OutcomeUnknown { .. } => "outcome_unknown",
             Self::TabNotFound => "tab_not_found",
             Self::StaleInventory => "stale_inventory",
             Self::StaleTools => "stale_tools",
@@ -258,6 +301,11 @@ impl BrowserError {
     pub fn details(&self) -> serde_json::Value {
         match self {
             Self::Action { details, .. } | Self::PartialFailure { details } => details.clone(),
+            Self::OutcomeUnknown { source } => {
+                let mut details = source.details();
+                details["action"] = serde_json::json!("unknown");
+                details
+            }
             Self::Cleanup {
                 operation: Some(error),
                 ..
@@ -330,6 +378,70 @@ mod tests {
             active.run(std::future::pending::<Result<()>>()).await,
             Err(BrowserError::Cancelled)
         ));
+    }
+
+    #[tokio::test]
+    async fn transport_end_retains_its_cause_while_explicit_close_stays_closed() {
+        let ended = CancellationToken::new();
+        let cancelled = CancellationToken::new();
+        let (failure, _) = tokio::sync::watch::channel(None);
+        let mut operation = Operation::new(&ended, &cancelled, CONTROL_TIMEOUT);
+        operation.connection_failure = Some(&failure);
+        operation.begin_input();
+        ended.cancel();
+        let closed = operation
+            .run(std::future::pending::<Result<()>>())
+            .await
+            .unwrap_err();
+        assert_eq!(
+            operation.failure(closed, "tab", None).code(),
+            "browser_lost"
+        );
+        failure.send_replace(Some("transport ended".into()));
+        let lost = operation
+            .run(std::future::pending::<Result<()>>())
+            .await
+            .unwrap_err();
+        let error = operation.failure(lost, "tab", None);
+        assert_eq!(error.code(), "outcome_unknown");
+        assert_eq!(error.details()["action"], "unknown");
+    }
+
+    #[test]
+    fn connection_loss_after_dispatch_has_an_unknown_outcome() {
+        let ended = CancellationToken::new();
+        let cancelled = CancellationToken::new();
+        let operation = Operation::new(&ended, &cancelled, CONTROL_TIMEOUT);
+        let lost = || BrowserError::Connection("transport disconnected".into());
+        let before = operation.failure(lost(), "tab", Some("https://example.test"));
+        assert_eq!(before.code(), "browser_lost");
+        assert_eq!(before.details()["action"], "not_started");
+        operation.begin_input();
+        for completed in [false, true] {
+            if completed {
+                operation.complete_input();
+            }
+            let cause = after_cleanup::<()>(Err(lost()), Err(BrowserError::Closed)).unwrap_err();
+            let after = operation.failure(cause, "tab", Some("https://example.test"));
+            assert_eq!(after.code(), "outcome_unknown");
+            assert_eq!(
+                after.details(),
+                serde_json::json!({
+                    "action": "unknown", "tab": "tab", "url": "https://example.test"
+                })
+            );
+            assert!(after.to_string().contains("transport disconnected"));
+            assert_eq!(
+                operation.failure(BrowserError::Closed, "tab", None).code(),
+                "browser_lost"
+            );
+            assert_eq!(
+                operation
+                    .failure(BrowserError::Cancelled, "tab", None)
+                    .code(),
+                "cancelled"
+            );
+        }
     }
 
     #[test]

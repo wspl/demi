@@ -62,7 +62,7 @@ impl BrowserTab {
         cancel: &CancellationToken,
         timeout: std::time::Duration,
     ) -> Result<Value> {
-        Operation::new(&self.ended, cancel, timeout)
+        Operation::for_tab(self, cancel, tokio::time::Instant::now() + timeout)
             .run(async {
                 let mut result = self.navigation_result().await?;
                 let viewport = self
@@ -84,7 +84,7 @@ impl BrowserTab {
         cancel: &CancellationToken,
         deadline: tokio::time::Instant,
     ) -> Result<Value> {
-        let operation = Operation::until(&self.ended, cancel, deadline);
+        let operation = Operation::for_tab(self, cancel, deadline);
         let mut references = self
             .state
             .operations
@@ -102,7 +102,7 @@ impl BrowserTab {
         deadline: tokio::time::Instant,
         references: &mut super::observation::References,
     ) -> Result<Value> {
-        let operation = Operation::until(&self.ended, cancel, deadline);
+        let operation = Operation::for_tab(self, cancel, deadline);
         let target = command.target();
         if !matches!(
             command,

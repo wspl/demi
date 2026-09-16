@@ -42,7 +42,7 @@ pub(super) async fn execute(
     let BrowserCommand::Download(input) = command else {
         unreachable!("download dispatch accepts only download");
     };
-    let operation = Operation::until(&tab.ended, cancel, deadline);
+    let operation = Operation::for_tab(tab, cancel, deadline);
     let mut references = tab
         .state
         .operations

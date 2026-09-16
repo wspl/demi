@@ -62,7 +62,7 @@ pub(super) async fn execute(
     deadline: tokio::time::Instant,
 ) -> Result<Value> {
     let tab = tab.ok_or(BrowserError::TabNotFound)?;
-    let operation = Operation::until(&tab.ended, cancel, deadline);
+    let operation = Operation::for_tab(tab, cancel, deadline);
     let capability = operation.run(capability(&tab.page)).await?;
     if capability["available"] != true {
         return Err(BrowserError::UnsupportedCapability(
