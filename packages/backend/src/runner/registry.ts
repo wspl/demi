@@ -608,6 +608,8 @@ export class RunnerRegistry {
         connection.send({ type: 'artifact_location', id: message.id, error: 'No matching active job on this device' })
       return
     }
+    // The device access Host claims its own replies (`net_opened` among them).
+    this.deviceHosts.get(connection.deviceId)?.handleMessage(message)
     if (!deviceHosts)
       return
     for (const host of deviceHosts.values())
