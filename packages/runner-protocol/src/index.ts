@@ -1,6 +1,7 @@
 export {
   RUNNER_PROTOCOL_VERSION,
   JOB_VIEW_BYTES,
+  STDIN_CHUNK_BYTES,
   FS_OPS,
   GIT_OPS,
   createRunnerWire,
