@@ -82,13 +82,13 @@ beforeEach(async () => {
       if (expose) {
         expose.expiresAt = new Date(Date.now() + 60 * 60_000).toISOString()
       }
-      return Response.json(expose)
+      return Response.json({ expose })
     }
     if (path.startsWith('/api/exposes/') && init?.method === 'DELETE') {
       const id = path.split('/')[3]!
       removals.push(id)
       state.exposes = state.exposes.filter((entry) => entry.id !== id)
-      return Response.json({})
+      return new Response(null, { status: 204 })
     }
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch
