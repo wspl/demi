@@ -201,11 +201,13 @@ export class ExposeRelay {
       serializeRequestHead(request.method, url.pathname + url.search, headers)
     )
     // The exchange's completion is the request's true end: the input pipe
-    // ends here (EOF half-closes the service socket) once the response is
-    // fully parsed, never while it may still be streaming.
+    // ends (EOF half-closes the service socket), and the teardown closes
+    // the output side too — a service that keeps its connection open would
+    // otherwise leave the runner holding a socket and an unreported pipe
+    // until the idle limit. The response is already fully relayed here.
     const settleExchange = () => {
       stream.writer.end()
-      endings.settle()
+      endings.end()
     }
     const response = new Promise<Response>((resolve, reject) => {
       // The body is delivered only from inside the stream's own pulls: this
