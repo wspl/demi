@@ -42,6 +42,22 @@ pub(super) struct State {
     events: Option<Arc<Events>>,
 }
 
+impl State {
+    /// Name other nodes whose debugging connections are still open on this tab.
+    pub(super) fn other_callers(&self, caller: Option<&str>) -> Vec<String> {
+        let mut callers: Vec<_> = self
+            .connections
+            .iter()
+            .filter(|(owner, connection)| {
+                Some(owner.as_str()) != caller && !connection.task.is_finished()
+            })
+            .map(|(owner, _)| owner.clone())
+            .collect();
+        callers.sort();
+        callers
+    }
+}
+
 struct DebugConnection {
     handle: DebugHandle,
     task: AbortOnDropHandle<Result<()>>,
@@ -117,6 +133,10 @@ pub(super) async fn execute(
         .caller
         .as_deref()
         .ok_or_else(|| BrowserError::Configuration("CDP requires a trusted caller".into()))?;
+    if matches!(command, BrowserCommand::CdpDetach(_)) {
+        cancel_owner(tab, owner).await?;
+        return Ok(json!({"detached":tab.id()}));
+    }
     let mut state = tab.state.cdp.lock().await;
     let parameters = if let BrowserCommand::CdpSend(input) = command {
         admit(&input.method)?;
@@ -279,12 +299,21 @@ pub(super) async fn execute(
                     .await
                 {
                     Ok(()) => {}
+                    Err(error) if context.cancellation.is_cancelled() => {
+                        return super::operation::after_cleanup(
+                            Err(error),
+                            cancel_owner(tab, owner).await,
+                        );
+                    }
                     Err(BrowserError::Timeout) => return Ok(result),
+                    Err(BrowserError::Cancelled) if tokio::time::Instant::now() >= deadline => {
+                        return Ok(result);
+                    }
                     Err(error) => return Err(error),
                 }
             }
         }
-        _ => unreachable!("CDP dispatch accepts only targets/send/events"),
+        _ => unreachable!("CDP detach was handled before targets/send/events"),
     }
 }
 

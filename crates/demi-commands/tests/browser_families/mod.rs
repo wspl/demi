@@ -16,6 +16,7 @@ pub struct BrowserFixture {
     service: Arc<DemiCommands>,
     pub root: Arc<tempfile::TempDir>,
     scope: NativeResourceScope,
+    pub caller: String,
 }
 
 impl BrowserFixture {
@@ -47,7 +48,7 @@ impl BrowserFixture {
             request: Invocation {
                 operation: operation.into(),
                 invocation_id: uuid::Uuid::new_v4().to_string(),
-                caller: Some("browser-family-test".into()),
+                caller: Some(self.caller.clone()),
                 resource: Some(self.scope.clone()),
                 json: Some(true),
                 edits: None,
@@ -123,6 +124,7 @@ where
     let fixture = BrowserFixture {
         service: Arc::new(DemiCommands::default()),
         root: Arc::new(tempfile::tempdir().unwrap()),
+        caller: "browser-family-test".into(),
         scope: NativeResourceScope {
             id: uuid::Uuid::new_v4().to_string(),
             kind: "browser".into(),

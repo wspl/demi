@@ -1309,7 +1309,8 @@ until the tab is released.
 A caller that leaves interception or a pause behind blocks the page for every
 caller until it detaches. When a command on that tab times out while another
 caller's connection is open, the timeout error names that caller and the tab in
-its details, so the agent can ask for the detach rather than guess. There is no
+`details.tab` and `details.debuggingCallers` (an array of calling node IDs), so the
+agent can ask for the detach rather than guess. There is no
 automatic detach on behalf of another caller.
 
 ### Content and assets

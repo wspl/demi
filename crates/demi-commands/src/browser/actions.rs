@@ -793,6 +793,7 @@ impl BrowserTab {
                 | BrowserCommand::ClipboardRead(_)
                 | BrowserCommand::ClipboardWrite(_)
                 | BrowserCommand::CdpTargets(_)
+                | BrowserCommand::CdpDetach(_)
                 | BrowserCommand::CdpSend(_)
                 | BrowserCommand::CdpEvents(_)
                 | BrowserCommand::ContentFetch(_)

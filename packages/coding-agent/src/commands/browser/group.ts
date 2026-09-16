@@ -23,6 +23,7 @@ const summaries: Record<string, string> = {
   'clipboard.read': 'Read clipboard text or export supported MIME entries to Host files.',
   logs: 'Read console entries without clearing them; use the returned cursor to continue.',
   'cdp.targets': 'List this tab and its debuggable child targets.',
+  'cdp.detach': 'Close your debugging connection to this tab, releasing its pauses, breakpoints and interceptions.',
   'cdp.send': 'Send a scoped CDP method with a JSON parameter object from stdin.',
   'cdp.events': 'Read buffered CDP events or wait for events after a cursor.',
   'content.fetch': 'Read up to ten URLs in temporary tabs sharing this browser’s login state.',

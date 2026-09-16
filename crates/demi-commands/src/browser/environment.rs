@@ -354,6 +354,22 @@ impl BrowserEnvironment {
         Ok(batch)
     }
 
+    /// Snapshot another caller's debug ownership without issuing browser commands.
+    pub(super) async fn debugging_callers(&self, id: &str, caller: Option<&str>) -> Vec<String> {
+        let tab = self
+            .tabs
+            .lock()
+            .await
+            .live
+            .values()
+            .find(|tab| tab.id() == id && !tab.ended.is_cancelled())
+            .cloned();
+        match tab {
+            Some(tab) => tab.state.cdp.lock().await.other_callers(caller),
+            None => Vec::new(),
+        }
+    }
+
     pub async fn tabs(
         &self,
         cancellation: &CancellationToken,
