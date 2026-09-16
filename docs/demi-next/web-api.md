@@ -118,15 +118,15 @@ API even when the guest is offline or broken. Lifecycle behavior is defined in
 
 ## Exposes
 
-An expose response carries `id`, `deviceId`, `address`, `url`, `createdAt`
-and `expiresAt`. `GET /api/exposes` lists the caller's exposes, soonest
-expiry first. `POST /api/exposes` takes `{ deviceId, address }` for a
-caller-owned, connected device and returns 201 with the record; a device
-that is offline or a stopped Cloud answers 409 `device_offline`, and an
-instance without an expose domain answers 409 `expose_unavailable`.
+An expose record carries `id`, `deviceId`, `address`, `url`, `createdAt`
+and `expiresAt`. `GET /api/exposes` returns `{ exposes }`, the caller's
+exposes soonest expiry first. `POST /api/exposes` takes `{ deviceId, address }`
+for a caller-owned, connected device and returns 201 with `{ expose }`; a
+device that is offline or a stopped Cloud answers 409 `device_offline`, and
+an instance without an expose domain answers 409 `expose_unavailable`.
 `POST /api/exposes/:id/renew` sets the expiry to one hour from now and
-returns the record. `DELETE /api/exposes/:id` destroys it and ends its
-connections. An expose the caller does not own, or one that has expired,
+returns `{ expose }`. `DELETE /api/exposes/:id` destroys it, ends its
+connections, and returns 204. An expose the caller does not own, or one that has expired,
 answers 404 `expose_not_found`. The `GET /api/state` snapshot includes the
 same list and `exposeDomain`, null when the feature is unavailable.
 
