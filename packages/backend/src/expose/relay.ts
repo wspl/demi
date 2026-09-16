@@ -456,17 +456,24 @@ class BodyQueue {
   }
 }
 
-/** Every write through the pipe writer awaits its backpressure (`expose.md`). */
+/** Every write through the pipe writer awaits its backpressure (`expose.md`),
+ * and concurrent writes are serialized: the channel behind the writer loses
+ * whichever of two overlapping pushes loses the race. */
 class TouchingWriter {
+  private chain: Promise<void> = Promise.resolve()
+
   constructor(
     private readonly writer: PipeWriter,
     private readonly idle: IdleWatch
   ) {}
 
-  async write(chunk: Uint8Array): Promise<void> {
-    this.idle.touch()
-    await this.writer.write(chunk)
-    this.idle.touch()
+  write(chunk: Uint8Array): Promise<void> {
+    this.chain = this.chain.then(async () => {
+      this.idle.touch()
+      await this.writer.write(chunk)
+      this.idle.touch()
+    })
+    return this.chain
   }
 }
 
