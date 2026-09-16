@@ -409,6 +409,9 @@ export class World {
           return n + (m.stdin ? 1 : 0) + 1
         if (m.type === 'job_start')
           return n + (m.stdin ? 1 : 0) + (m.stdout ? 1 : 0)
+        // A relayed network stream names its two pipes on the wire too.
+        if (m.type === 'net_open')
+          return n + 2
         return n
       }, 0)
       const reported = () => count('in', 'pipe_done')

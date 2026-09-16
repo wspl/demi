@@ -160,10 +160,11 @@ function startFixture() {
       },
       message(ws, message) {
         ws.send(message)
+        // Only the literal "finish" message asks for the service-side close;
+        // everything before it (text and binary) must echo undisturbed.
         const data = ws.data
-        const code = Number(data.get('close'))
-        if (code)
-          ws.close(code, data.get('reason') ?? '')
+        if (message === 'finish' && data.get('close'))
+          ws.close(Number(data.get('close')), data.get('reason') ?? '')
       },
       close(_ws, code, reason) {
         lastClose = { code, reason: reason ?? '' }
