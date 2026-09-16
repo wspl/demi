@@ -178,7 +178,7 @@ test(
         'session',
         memoryHostStore()
       )
-      host.startJob({
+      host.startJob({ conversation: 'session', node: 'session',
         script: 'demi host shell',
         cwd: '/',
         env: {
@@ -285,7 +285,7 @@ test(
         'root',
         memoryHostStore()
       )
-      host.startJob({
+      host.startJob({ conversation: 'root', node: 'child',
         script: 'demi todo list',
         cwd: '/',
         env: {

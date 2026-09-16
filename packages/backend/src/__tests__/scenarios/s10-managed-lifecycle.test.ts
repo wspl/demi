@@ -8,10 +8,11 @@ test(
   'concurrent Cloud first use joins one boot; idle saves once and the next command wakes it',
   async () => {
     const fake = new FakeProvisioner()
-    const world = await World.create({ managedHosts: {
+    const world = await World.create({
+      lifecycle: { idleMs: 250 },
+      managedHosts: {
         provisioner: fake,
         config: {
-          idleMs: 250,
           sweepMs: 50,
           checkpointIntervalMs: 60_000,
           bootTimeoutMs: 15_000

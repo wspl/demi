@@ -2,7 +2,7 @@ import type { RemoteHost } from '@demicodes/host-remote'
 import { reachableHosts } from './hosts'
 import { ActivityGate } from '@demicodes/utils'
 import type { ManagedHosts } from '../managed/lifecycle'
-import type { LifecycleCleanup, LifecycleCoordinator } from '../lifecycle/coordinator'
+import type { ConversationLifecycle } from '../lifecycle/conversations'
 import type { RunnerRegistry } from '../runner/registry'
 import type {
   ControlService,
@@ -22,8 +22,7 @@ export interface ConversationTargetsDeps {
   managedHosts: ManagedHosts | null
   stores: ConversationStores
   reserveTree: (conversationId: string) => (() => void) | null
-  lifecycle?: LifecycleCoordinator
-  retireBrowser?: (id: string, fileReservation: () => void) => Promise<void>
+  lifecycle?: ConversationLifecycle
 }
 export type SwitchTargetResult = {
   outcome:
@@ -53,6 +52,8 @@ interface HostSelection {
 
 export class ConversationTargets {
   private readonly fileActivity = new Map<string, ActivityGate>()
+  private readonly activityObservers = new Set<(id: string, active: boolean) => void>()
+  private readonly subscriptions = new DisposableStack()
   constructor(private readonly deps: ConversationTargetsDeps) {}
 
   files(id: string): ActivityGate {
@@ -60,14 +61,47 @@ export class ConversationTargets {
     if (!gate) {
       gate = new ActivityGate()
       this.fileActivity.set(id, gate)
+      const observed = gate
+      this.subscriptions.defer(gate.subscribe(() => {
+        for (const changed of this.activityObservers) changed(id, observed.demandActive)
+      }))
     }
     return gate
   }
 
-  async retireBrowser(id: string, fileReservation: () => void): Promise<void> {
-    if (!this.files(id).holdsReservation(fileReservation))
-      throw new Error('Browser retirement requires the conversation reservation')
-    await this.deps.retireBrowser?.(id, fileReservation)
+  observeActivity(changed: (id: string, active: boolean) => void): () => void {
+    this.activityObservers.add(changed)
+    return () => { this.activityObservers.delete(changed) }
+  }
+
+  async releaseConversation(id: string, deviceId?: string): Promise<void> {
+    await this.deps.lifecycle?.release(id, deviceId)
+  }
+
+  async detach(id: string, deviceId: string): Promise<boolean> {
+    const tree = this.deps.reserveTree(id)
+    if (!tree) return false
+    const file = this.files(id).tryReserve()
+    if (!file) {
+      tree()
+      return false
+    }
+    try {
+      const attached = await this.deps.control.listAttachedHosts(id)
+      if (attached.some(host => host.deviceId === deviceId)) {
+        await this.releaseConversation(id, deviceId)
+        await this.deps.control.detachHost(id, deviceId)
+      }
+      return true
+    } finally {
+      file()
+      tree()
+    }
+  }
+
+  close(): void {
+    this.subscriptions.dispose()
+    this.activityObservers.clear()
   }
 
   /**
@@ -79,36 +113,34 @@ export class ConversationTargets {
    * Cloud and holds it for the operation, and takes the conversation's file
    * gate so the operation excludes an archive or a target switch. A paired
    * device without a live runner fails inside the operation as the runner's
-   * offline error. Nothing reaches the host around this method; a caller
-   * that wants "the host, but without one of these steps" is asking for a
-   * different design, not a shortcut.
+   * offline error. Nothing reaches the host around this method.
+   * Lifecycle access instead skips offline and Cloud devices, takes no file
+   * gate, and neither prepares directories nor wakes a machine.
    */
   async withHost<T>(
     id: string,
     operation: (host: RemoteHost) => Promise<T>,
-    options: { signal?: AbortSignal; deviceId?: string; cleanup?: LifecycleCleanup } = {},
-  ): Promise<T> {
-    const { signal, deviceId: selectedDeviceId, cleanup } = options
-    if (cleanup) {
-      if (cleanup.conversationId !== id || !this.deps.lifecycle?.ownsCleanup(cleanup)
-        || !this.files(id).holdsReservation(cleanup.fileReservation))
-        throw new Error('Invalid lifecycle Host cleanup authority')
-      if (!cleanup.host.resourceLive(cleanup.grant))
-        throw new Error('Lifecycle Host generation has ended')
-      const selected = await this.select(id, undefined, false)
+    options: { lifecycle: true; deviceId?: string },
+  ): Promise<T | undefined>
+  async withHost<T>(
+    id: string,
+    operation: (host: RemoteHost) => Promise<T>,
+    options?: { signal?: AbortSignal; deviceId?: string },
+  ): Promise<T>
+  async withHost<T>(
+    id: string,
+    operation: (host: RemoteHost) => Promise<T>,
+    options: { signal?: AbortSignal; deviceId?: string; lifecycle?: boolean } = {},
+  ): Promise<T | undefined> {
+    const { signal, deviceId: selectedDeviceId } = options
+    if (options.lifecycle) {
+      const target = await this.resolve(id)
+      if (!selectedDeviceId && !target.deviceId) return
+      const selected = await this.select(id, selectedDeviceId, false)
+      if (selected.device.kind === 'managed') return
+      if (!this.deps.registry.deviceOnline(selected.device.id)) return
       const host = this.deps.registry.hostFor({ deviceId: selected.device.id, path: selected.path }, id, this.deps.stores.hostStore(id))
-      if (host !== cleanup.host)
-        throw new Error('Lifecycle Host binding has changed')
-      const releaseMachine = selected.device.kind === 'managed'
-        ? this.deps.managedHosts!.maintenance(selected.device.id, cleanup.deviceReservation)
-        : undefined
-      try {
-        if (!host.resourceLive(cleanup.grant))
-          throw new Error('Lifecycle Host generation has ended')
-        return await operation(host)
-      } finally {
-        releaseMachine?.()
-      }
+      return await operation(host)
     }
     let machine: { deviceId: string; release: () => void } | undefined
     try {
@@ -122,7 +154,9 @@ export class ConversationTargets {
               machine?.release()
               machine = undefined
             }
-            return await operation(await this.openHost(id, selected))
+            const host = await this.openHost(id, selected)
+            this.deps.lifecycle?.track(id)
+            return await operation(host)
           }
         } finally {
           releaseFiles()
@@ -220,7 +254,7 @@ export class ConversationTargets {
     const releaseTree = this.deps.reserveTree(id)
     if (!releaseTree)
       return { outcome: 'turn_in_flight' }
-    const releaseFiles = this.files(id).tryReserve('forced')
+    const releaseFiles = this.files(id).tryReserve()
     if (!releaseFiles) {
       releaseTree()
       return { outcome: 'turn_in_flight' }
@@ -239,7 +273,7 @@ export class ConversationTargets {
         { ...conversation, target: to }
       )
       const deviceId = from.deviceId
-      await this.retireBrowser(id, releaseFiles)
+      if (deviceId && deviceId !== destination.deviceId) await this.releaseConversation(id, deviceId)
       const won = await control.switchConversationTarget(
         id,
         conversation.target,
@@ -250,6 +284,9 @@ export class ConversationTargets {
           arrivingDeviceId: destination.deviceId,
         }
       )
+      if (won) {
+        this.deps.lifecycle?.reset(id)
+      }
       return { outcome: won ? 'switched' : 'conflict' }
     } finally {
       releaseFiles()

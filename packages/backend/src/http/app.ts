@@ -1,4 +1,4 @@
-import type { FrameAdmission } from '../conversation/frame-admission'
+import type { FrameAdmission } from './stream'
 import type { ConversationHostAccess } from '../conversation/target'
 import { webAssetRoutes } from './web-assets'
 import {

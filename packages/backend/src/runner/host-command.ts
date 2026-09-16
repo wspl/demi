@@ -5,8 +5,7 @@ import {
   type Command,
   type CommandGroup,
   type CommandIO,
-  type CommandRunContext,
-  type HostStore
+  type CommandRunContext
 } from '@demicodes/shell'
 import { z } from 'zod'
 import { reachableHosts, type ReachableHost } from '../conversation/hosts'
@@ -14,20 +13,14 @@ import { resolveExecutionTarget } from '../conversation/execution-target'
 import type { RunnerRegistry } from '../runner/registry'
 import { relayedPipesOf, type Pipe, type PipeBroker } from '../runner/pipes'
 import type { ControlService } from '../storage/control'
-import type { ManagedHosts } from '../managed/lifecycle'
+import type { ConversationHostAccess } from '../conversation/target'
 
 export interface HostCommandDeps {
   catalogFor(agentSessionId: string): Promise<RemoteCommandCatalog>
   control: ControlService
   registry: RunnerRegistry
   pipes: PipeBroker
-  /**
-   * Wakes a hibernated managed host on `shell --host`
-   * (`sessions-and-targets.md` § Attached hosts); null when the backend
-   * provisions none.
-   */
-  managedHosts: ManagedHosts | null
-  hostStoreFor: (conversationId: string) => HostStore
+  withHost: ConversationHostAccess
 }
 
 /**
@@ -173,23 +166,12 @@ async function runOnHost(
   script: string,
   ctx: Pick<CommandRunContext, 'io' | 'stdin' | 'env' | 'stdinStream' | 'signal' | 'storage'>,
 ): Promise<{ exitCode: number }> {
-  const device = await deps.control.getDevice(target.deviceId)
-  const release = device?.kind === 'managed' &&
-    deps.managedHosts
-    ? await deps.managedHosts.enter(device, ctx.signal)
-    : noop
-  try {
-    if (ctx.signal.aborted)
-      return { exitCode: 130 }
-    if (!deps.registry.deviceOnline(target.deviceId)) {
+  return deps.withHost(conversationId, async host => {
+    if (ctx.signal.aborted) return { exitCode: 130 }
+    if (!host.online) {
       await ctx.io.stderr(`host shell: host ${target.deviceId} is offline\n`)
       return { exitCode: 1 }
     }
-    const host = deps.registry.hostFor(
-      target,
-      conversationId,
-      deps.hostStoreFor(conversationId)
-    )
     const env: Record<string, string> = { DEMI_SESSION_ID: ctx.env.DEMI_SESSION_ID ??
         conversationId }
     if (ctx.env.DEMI_SHELL_ID)
@@ -197,6 +179,8 @@ async function runOnHost(
     const commands = await deps.catalogFor(env.DEMI_SESSION_ID!)
     const { stdin, stdout } = attachEnds(ctx.io, target.deviceId)
     const job = host.startJob({
+      conversation: conversationId,
+      node: env.DEMI_SESSION_ID!,
       commands,
       script,
       cwd: target.path,
@@ -270,9 +254,7 @@ async function runOnHost(
       return { exitCode: 127 }
     }
     return { exitCode: ctx.signal.aborted ? 130 : exit.exitCode ?? 1 }
-  } finally {
-    release()
-  }
+  }, { signal: ctx.signal, deviceId: target.deviceId })
 }
 
 /** Attaches the authenticated calling job's pipes to the destination device. */

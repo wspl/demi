@@ -219,7 +219,7 @@ export class ChildSupervisor<State = unknown> {
 
   /** Refuses edits while a child can still deliver work to the parent. */
   async reserveEdit(): Promise<ExternalMutationReservation> {
-    const release = this.lifecycle.tryReserve('forced')
+    const release = this.lifecycle.tryReserve()
     if (!release) {
       throw new Error('Cannot edit while a child lifecycle operation is in progress')
     }
