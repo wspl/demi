@@ -83,8 +83,12 @@ pub(super) fn render(operation: &str, mut value: Value, json: bool) -> Result<Ve
         .and_then(Value::as_array)
     {
         let mut text = String::new();
-        for node in nodes {
-            let depth = node["depth"].as_u64().unwrap_or(0).min(64) as usize;
+        let mut pending: Vec<_> = nodes.iter().rev().map(|node| (node, 0_usize)).collect();
+        while let Some((node, depth)) = pending.pop() {
+            if let Some(children) = node["children"].as_array() {
+                pending.extend(children.iter().rev().map(|child| (child, depth + 1)));
+            }
+            let depth = depth.min(64);
             let role = node["role"].as_str().unwrap_or("");
             let name = node["name"].as_str().unwrap_or("");
             let reference = node["ref"].as_str().unwrap_or("");
@@ -179,6 +183,24 @@ mod tests {
             assert!(text.contains(line));
         }
         assert!(!text.contains("Details:"));
+    }
+
+    #[test]
+    fn inspect_text_renders_nested_states_and_values() {
+        let value = json!({
+            "tab": "t_test", "url": "about:blank", "title": "", "view": "accessibility",
+            "tree": [{"role": "main", "children": [{"role": "checkbox", "name": "Confirm", "states": ["checked=false"], "value": "hello"}]}],
+            "truncated": false,
+        });
+        let text = String::from_utf8(render("inspect", value.clone(), false).unwrap()).unwrap();
+        assert!(text.contains("main "));
+        assert!(text.contains("  checkbox \"Confirm\" [checked=false] [value=\"hello\"]"));
+        let structured: Value =
+            serde_json::from_slice(&render("inspect", value, true).unwrap()).unwrap();
+        assert_eq!(
+            structured["tree"][0]["children"][0]["states"][0],
+            "checked=false"
+        );
     }
 
     #[test]
