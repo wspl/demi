@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -337,8 +337,8 @@ test(
     await client.send([{ type: 'text', text: 'move around over there' }])
     const moved = lastExited(shellEvents)
     expect(moved?.exitCode).toBe(0)
-    // `pwd` and the recorded directory are the resolved path (`/private/var` on macOS).
-    const sub = join(realpathSync(a.home), 'sub')
+    // Embedded Brush carries its logical cwd into the next job and host listing.
+    const sub = join(a.home, 'sub')
     expect(moved?.stdout.delta).toContain(`${sub}\n${sub}\n`)
     expect(moved?.stdout.delta)
       .toContain(`alpha  ${a.deviceId}  online  ${sub}  (attached)`)
