@@ -50,8 +50,6 @@ pub enum BrowserError {
     OutputExists(String),
     #[error("result exceeds the browser output limit")]
     ResultTooLarge,
-    #[error("browser scope is missing on this Host")]
-    WrongHost,
     #[error("password values are protected")]
     ProtectedValue,
     #[error("browser could not start: {0}")]
@@ -174,7 +172,7 @@ impl<'a> Operation<'a> {
             biased;
             _ = self.ended.cancelled() => Err(BrowserError::Closed),
             _ = self.cancelled.cancelled() => Err(if Instant::now() >= self.deadline {
-                // The resource controller cancels at this same shared deadline.
+                // The conversation controller cancels at this same shared deadline.
                 BrowserError::Timeout
             } else {
                 BrowserError::Cancelled
@@ -239,7 +237,6 @@ impl BrowserError {
             Self::NavigationFailed(_) => "navigation_failed",
             Self::OutputExists(_) => "output_exists",
             Self::ResultTooLarge => "result_too_large",
-            Self::WrongHost => "wrong_host",
             Self::UnsupportedCapability(_) => "unsupported_capability",
             Self::ProtectedValue => "protected_value",
             Self::Unavailable(_) => "browser_unavailable",

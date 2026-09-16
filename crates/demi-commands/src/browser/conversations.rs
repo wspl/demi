@@ -3,9 +3,14 @@
 use std::{collections::HashMap, sync::Arc};
 
 use bytes::Bytes;
-use demi_command_service::{InvocationContext, ServiceError, protocol::Completion};
+use demi_command_service::{
+    ConversationContext, InvocationContext, ServiceError, protocol::Completion,
+};
 use tokio::sync::{Mutex, watch};
-use tokio_util::sync::{CancellationToken, DropGuard};
+use tokio_util::{
+    sync::{CancellationToken, DropGuard},
+    task::TaskTracker,
+};
 
 use super::{
     BrowserEnvironment, BrowserError, LaunchOptions, Result, installation::Installation,
@@ -39,6 +44,8 @@ enum State {
 pub(super) struct Controller {
     state: Mutex<State>,
     installation: Arc<Installation>,
+    cancellation: CancellationToken,
+    commands: TaskTracker,
 }
 
 impl Controller {
@@ -49,6 +56,9 @@ impl Controller {
         cancel: &CancellationToken,
     ) -> Result<Option<BrowserEnvironment>> {
         let mut state = self.state.lock().await;
+        if cancel.is_cancelled() {
+            return Err(BrowserError::Cancelled);
+        }
         if matches!(*state, State::Absent) && start {
             let stop = CancellationToken::new();
             let owner_stop = stop.clone();
@@ -108,8 +118,22 @@ impl Controller {
     }
 
     /// Fence new operations before awaiting the browser's joined retirement.
-    pub async fn release(&self) -> Result<()> {
+    async fn retire(&self, next: State, expected: Option<&BrowserEnvironment>) -> Result<()> {
         let mut state = self.state.lock().await;
+        if let Some(expected) = expected {
+            let matches = match &*state {
+                State::Live { ready, .. } => ready.borrow().as_ref().is_some_and(|result| {
+                    result
+                        .as_ref()
+                        .is_ok_and(|environment| environment.browser.ptr_eq(&expected.browser))
+                }),
+                _ => false,
+            };
+            // A delayed last-tab close must not retire a newly opened generation.
+            if !matches {
+                return Ok(());
+            }
+        }
         let previous = std::mem::replace(&mut *state, State::Released);
         // Keep the gate until retirement finishes: concurrent release acknowledgements
         // must not claim that Chrome has exited while the first caller is still waiting.
@@ -120,6 +144,7 @@ impl Controller {
                 Err(error) => return Err(error),
             }
         }
+        *state = next;
         Ok(())
     }
 
@@ -131,15 +156,14 @@ impl Controller {
                 .await?
                 .is_empty()
         {
-            self.release().await?;
+            self.retire(State::Absent, Some(environment)).await?;
         }
         Ok(())
     }
 
     async fn live(&self) -> bool {
         match &*self.state.lock().await {
-            State::Absent => true,
-            State::Released => false,
+            State::Absent | State::Released => false,
             State::Live { owner, .. } => !owner.is_finished(),
         }
     }
@@ -162,14 +186,55 @@ impl Controller {
 }
 
 #[derive(Default)]
-pub(crate) struct Resources {
+pub(crate) struct Conversations {
     controllers: Mutex<HashMap<String, Arc<Controller>>>,
     installation: Arc<Installation>,
 }
 
-impl Resources {
+impl Conversations {
     pub async fn invoke(
         &self,
+        context: InvocationContext,
+    ) -> std::result::Result<Completion, ServiceError> {
+        // Registration and the release fence share the map lock: release can never
+        // miss an admitted command, and a fenced controller admits no new work.
+        let (controller, _command) = {
+            let mut controllers = self.controllers.lock().await;
+            let controller = controllers
+                .entry(context.request.conversation.clone())
+                .or_insert_with(|| {
+                    Arc::new(Controller {
+                        state: Mutex::new(State::Absent),
+                        installation: self.installation.clone(),
+                        cancellation: CancellationToken::new(),
+                        commands: TaskTracker::new(),
+                    })
+                })
+                .clone();
+            if controller.cancellation.is_cancelled() {
+                return Err(ServiceError::Cancelled);
+            }
+            let command = controller.commands.token();
+            (controller, command)
+        };
+        let cancellation = context.cancellation.clone();
+        let work = self.invoke_admitted(&controller, context);
+        tokio::pin!(work);
+        tokio::select! {
+            biased;
+            _ = controller.cancellation.cancelled() => {
+                // Cancel the invocation token, including stdin and blocked output,
+                // and join its cleanup before dropping the admission token.
+                cancellation.cancel();
+                work.await
+            }
+            result = &mut work => result,
+        }
+    }
+
+    async fn invoke_admitted(
+        &self,
+        controller: &Controller,
         mut context: InvocationContext,
     ) -> std::result::Result<Completion, ServiceError> {
         let operation = context
@@ -184,7 +249,8 @@ impl Resources {
             let cancellation = context.cancellation.child_token();
             let _cancel_on_drop = cancellation.clone().drop_guard();
             let deadline = tokio::time::Instant::now() + command.timeout();
-            let invocation = self.execute(&mut context, &command, &cancellation, deadline);
+            let invocation =
+                self.execute(controller, &mut context, &command, &cancellation, deadline);
             tokio::pin!(invocation);
             match tokio::time::timeout_at(deadline, invocation.as_mut()).await {
                 Ok(result) => result,
@@ -236,14 +302,11 @@ impl Resources {
                 {
                     details["tab"] = serde_json::json!(tab);
                 }
-                // Retirement may remove the controller while a timeout is reported;
-                // an absent resource has no live debugging owners to diagnose.
                 if code == "timeout"
                     && let Some(tab) = details["tab"].as_str()
-                    && let Ok(controller) = self.controller(&context).await
                 {
                     let callers = controller
-                        .debugging_callers(tab, context.request.caller.as_deref())
+                        .debugging_callers(tab, Some(&context.request.caller))
                         .await;
                     if !callers.is_empty() {
                         details["debuggingCallers"] = serde_json::json!(callers);
@@ -273,12 +336,12 @@ impl Resources {
 
     async fn execute(
         &self,
+        controller: &Controller,
         context: &mut InvocationContext,
         command: &BrowserCommand,
         cancellation: &CancellationToken,
         deadline: tokio::time::Instant,
     ) -> Result<CommandOutput> {
-        let controller = self.controller(context).await?;
         let environment = controller
             .environment(
                 matches!(
@@ -297,15 +360,10 @@ impl Resources {
             return Err(BrowserError::TabNotFound);
         };
         if let BrowserCommand::Open(input) = command {
-            let caller = context.request.caller.as_ref().ok_or_else(|| {
-                BrowserError::Configuration(
-                    "browser caller is missing from trusted invocation".into(),
-                )
-            })?;
             let (tab, url) = environment
                 .open_for(
                     &input.url,
-                    caller,
+                    &context.request.caller,
                     input.load.as_deref().unwrap_or("domcontentloaded"),
                     cancellation,
                     deadline,
@@ -532,62 +590,65 @@ impl Resources {
         Ok(CommandOutput::Json(result))
     }
 
-    /// Resolve only the trusted scope supplied by runner, never a command argument.
-    pub(super) async fn controller(&self, context: &InvocationContext) -> Result<Arc<Controller>> {
-        let scope = context
-            .request
-            .resource
-            .as_ref()
-            .filter(|scope| scope.kind == "browser")
-            .ok_or_else(|| BrowserError::WrongHost)?;
-        self.controllers
-            .lock()
-            .await
-            .get(&scope.id)
-            .cloned()
-            .ok_or(BrowserError::Closed)
-    }
-
-    pub async fn resource(
+    /// Release only the trusted conversation selected by the parent service port.
+    pub async fn conversation(
         &self,
-        context: InvocationContext,
+        context: ConversationContext,
     ) -> std::result::Result<Completion, ServiceError> {
-        let scope = context
-            .request
-            .resource
-            .as_ref()
-            .filter(|scope| scope.kind == "browser")
-            .ok_or_else(|| ServiceError::Handler("unsupported resource kind".into()))?;
-        let controller = {
-            let mut controllers = self.controllers.lock().await;
-            if context.request.operation == "acquire" {
-                controllers.entry(scope.id.clone()).or_insert_with(|| {
-                    Arc::new(Controller {
-                        state: Mutex::new(State::Absent),
-                        installation: self.installation.clone(),
-                    })
-                });
+        let output = match context.request.operation.as_str() {
+            "status" => {
+                let controllers: Vec<_> = self
+                    .controllers
+                    .lock()
+                    .await
+                    .iter()
+                    .map(|(id, controller)| (id.clone(), controller.clone()))
+                    .collect();
+                let mut conversations = Vec::new();
+                for (id, controller) in controllers {
+                    if controller.live().await {
+                        conversations.push(id);
+                    }
+                }
+                conversations.sort();
+                serde_json::json!({"conversations": conversations})
             }
-            controllers.get(&scope.id).cloned()
-        };
-        let live = match context.request.operation.as_str() {
-            "acquire" | "status" => match controller {
-                Some(controller) => controller.live().await,
-                None => false,
-            },
             "release" => {
-                if let Some(controller) = controller {
+                let conversation = context.request.conversation.as_ref().ok_or_else(|| {
+                    ServiceError::Handler("release requires a conversation".into())
+                })?;
+                let controller = {
+                    let controllers = self.controllers.lock().await;
+                    let controller = controllers.get(conversation).cloned();
+                    if let Some(controller) = &controller {
+                        controller.cancellation.cancel();
+                        controller.commands.close();
+                    }
                     controller
-                        .release()
+                };
+                if let Some(controller) = controller {
+                    // Once fenced, finish release even if the requester goes away.
+                    controller.commands.wait().await;
+                    controller
+                        .retire(State::Released, None)
                         .await
                         .map_err(|error| ServiceError::Handler(error.to_string()))?;
-                    self.controllers.lock().await.remove(&scope.id);
+                    let mut controllers = self.controllers.lock().await;
+                    if controllers
+                        .get(conversation)
+                        .is_some_and(|current| Arc::ptr_eq(current, &controller))
+                    {
+                        controllers.remove(conversation);
+                    }
                 }
-                false
+                serde_json::json!({})
             }
-            _ => return Err(ServiceError::Handler("unknown resource operation".into())),
+            _ => {
+                return Err(ServiceError::Handler(
+                    "unknown conversation operation".into(),
+                ));
+            }
         };
-        let output = serde_json::json!({ "state": if live { "ready" } else { "released" } });
         context
             .output
             .stdout(Bytes::from(serde_json::to_vec(&output)?))
@@ -602,7 +663,10 @@ impl Resources {
         let controllers = std::mem::take(&mut *self.controllers.lock().await);
         let mut failure = None;
         for controller in controllers.into_values() {
-            if let Err(error) = controller.release().await {
+            controller.cancellation.cancel();
+            controller.commands.close();
+            controller.commands.wait().await;
+            if let Err(error) = controller.retire(State::Released, None).await {
                 failure.get_or_insert(error);
             }
         }
