@@ -280,14 +280,18 @@ export class ExposeRelay {
     let pending: Uint8Array = new Uint8Array(0)
     for (;;) {
       const chunk = await nextChunk()
-      if (chunk === null)
-        throw new Error('no handshake answer')
+      if (chunk === null) {
+        endings.end()
+        return badGateway('unreachable')
+      }
       pending = concat(pending, chunk)
       const headEnd = indexOfAscii(pending, '\r\n\r\n')
       if (headEnd !== -1) {
         const head = ascii(pending.subarray(0, headEnd))
-        if (!/^HTTP\/1\.[01] 101/.test(head))
+        if (!/^HTTP\/1\.[01] 101/.test(head)) {
+          endings.end()
           return badGateway('refused')
+        }
         pending = pending.subarray(headEnd + 4)
         break
       }
@@ -308,7 +312,14 @@ export class ExposeRelay {
       else
         endings.end()
     }
+    // The service may already be sending while the visitor's upgrade is still
+    // completing; frames wait for `onOpen`, then flush in order.
+    const early: ServerFrame[] = []
     const deliver = (frame: ServerFrame) => {
+      if (client === null && frame.kind !== 'close') {
+        early.push(frame)
+        return
+      }
       if (frame.kind === 'message') {
         client?.send(frame.opcode === WS_TEXT
           ? new TextDecoder().decode(frame.data)
@@ -351,6 +362,8 @@ export class ExposeRelay {
     const upgraded = await this.deps.upgradeWebSocket(() => ({
       onOpen(_event, ws) {
         client = ws
+        for (const frame of early.splice(0))
+          deliver(frame)
       },
       onMessage(event) {
         const data = event.data
