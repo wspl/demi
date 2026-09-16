@@ -223,6 +223,31 @@ function restoreArchived(id: string) {
 
 function revokeDevice(id: string) {
   s.value.devices = s.value.devices.filter((d) => d.id !== id)
+  s.value.exposes = s.value.exposes.filter((expose) => expose.deviceId !== id)
+}
+
+// Exposes: renew moves the expiry one hour out; remove drops the row at once.
+const exposePending = ref<string[]>([])
+function renewExpose(id: string) {
+  const expose = s.value.exposes.find((entry) => entry.id === id)
+  if (!expose || exposePending.value.includes(id))
+    return
+  exposePending.value.push(id)
+  window.setTimeout(() => {
+    expose.expiresAt = new Date(Date.now() + 60 * 60_000).toISOString()
+    exposePending.value = exposePending.value.filter((entry) => entry !== id)
+  }, 600)
+}
+
+function removeExpose(id: string) {
+  const expose = s.value.exposes.find((entry) => entry.id === id)
+  if (!expose || exposePending.value.includes(id))
+    return
+  exposePending.value.push(id)
+  window.setTimeout(() => {
+    s.value.exposes = s.value.exposes.filter((entry) => entry.id !== id)
+    exposePending.value = exposePending.value.filter((entry) => entry !== id)
+  }, 600)
 }
 
 async function claimDevice(_code: string) {
@@ -343,6 +368,12 @@ function resetShortcuts() {
     :reset-error="reset.status === 'failed' ? reset.message : null"
     @reset-cloud="resetCloud"
     :devices="s.devices"
+    :expose-domain="s.exposeDomain"
+    :exposes="s.exposes"
+    :cloud-exposes="[]"
+    :expose-pending-ids="exposePending"
+    @renew-expose="renewExpose"
+    @remove-expose="removeExpose"
     :overlay-store="appOverlayStore"
     :installation="demoDeviceInstallation"
     :claim-device="claimDevice"

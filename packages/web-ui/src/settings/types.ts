@@ -35,6 +35,20 @@ export interface SettingsDevice {
   seen?: string
 }
 
+/**
+ * An expose as the devices page lists it: a public URL that reaches a service
+ * on the device for the time left on it.
+ */
+export interface SettingsExpose {
+  id: string
+  deviceId: string
+  /** The `host:port` the traffic reaches on the device. */
+  address: string
+  url: string
+  /** ISO moment the expose is destroyed; the URL stops working then. */
+  expiresAt: string
+}
+
 /** An archived conversation as the Archived page lists it. */
 export interface SettingsArchivedConversation {
   id: string
