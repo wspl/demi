@@ -12,6 +12,7 @@ pub mod host;
 pub mod init;
 pub mod management;
 pub mod mode;
+pub mod net;
 pub mod shell;
 pub mod stdio;
 pub mod tasks;
