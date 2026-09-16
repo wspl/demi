@@ -143,7 +143,8 @@ interface RunnerConnection {
   closed: boolean
   helloStarted: boolean
   send(message: BackendToRunnerMessage): void
-  close(): void
+  /** Ends the socket; the reason is logged once, for operations. */
+  close(reason: string): void
   runner: RunnerInfo | null
   /** Set once the connection is authenticated (claimed or token hello). */
   deviceId: string | null
@@ -248,7 +249,9 @@ export class RunnerRegistry {
         // A racing close drops the frame; the close event owns cleanup.
         }
       },
-      close: () => {
+      close: (reason: string) => {
+        if (!connection.closed)
+          this.log(`disconnecting ${connection.deviceId ?? 'unclaimed runner'}: ${reason}`)
         this.handleSocketClose(connection)
         io.close()
       },
@@ -271,9 +274,9 @@ export class RunnerRegistry {
         let message: RunnerToBackendMessage
         try {
           message = wire.decodeRunnerToBackend(frame)
-        } catch {
+        } catch (error) {
           // A malformed frame is a connection-level error, never ignored.
-          connection.close()
+          connection.close(`malformed frame: ${errorMessage(error)}`)
           return
         }
         void this.handleMessage(connection, message)
@@ -325,7 +328,7 @@ export class RunnerRegistry {
         code: 'revoked',
         reason: 'device revoked'
       })
-      connection.close()
+      connection.close('device revoked')
     }
   }
 
@@ -438,7 +441,7 @@ export class RunnerRegistry {
     if (!connection)
       return
     this.handleSocketClose(connection)
-    connection.close()
+    connection.close('registry disconnect')
   }
 
   /**
@@ -516,9 +519,9 @@ export class RunnerRegistry {
     for (const waiter of this.onlineWaiters.values())
       waiter.reject(new Error('registry closed'))
     this.onlineWaiters.clear()
-    for (const connection of [...this.sockets]) {
-      connection.close()
-    }
+    for (const connection of [...this.sockets])
+      connection.close('registry closing')
+
     this.pendingClaims.clear()
     this.connections.clear()
     for (const deviceHosts of this.hosts.values()) {
@@ -673,7 +676,7 @@ export class RunnerRegistry {
   ): Promise<void> {
     const { type: _type, ...call } = message
     if (connection.rpcCalls.has(call.callId)) {
-      connection.close()
+      connection.close(`duplicate rpc call ${call.callId}`)
       return
     }
     const live = new LiveInput(() => connection.send({ type: 'rpc_stdin_pull', callId: call.callId }))
@@ -772,7 +775,7 @@ export class RunnerRegistry {
         `runner hello refused (${code}): ${reason} [${message.runner.name}, ${message.runner.platform}]`
       )
       connection.send({ type: 'hello_error', code, reason })
-      connection.close()
+      connection.close(`hello refused (${code})`)
     }
     if (message.protocol !== RUNNER_PROTOCOL_VERSION) {
       refuse(
@@ -881,7 +884,7 @@ export class RunnerRegistry {
         if (connection.livenessPaused)
           return
         if (connection.pongPending) {
-          connection.close()
+          connection.close('liveness: ping unanswered')
           return
         }
         connection.pongPending = true
