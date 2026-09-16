@@ -159,6 +159,7 @@ export const browserOperations = {
   'dialog.accept': { input: z.strictObject({ tab, text: text.optional(), timeout }), result: dialogOutcome },
   'dialog.dismiss': { input: z.strictObject({ tab, timeout }), result: dialogOutcome },
   'cdp.targets': { input: z.strictObject({ tab, ...pageList, timeout }), result: z.strictObject({ targets: z.array(z.strictObject({ id: z.string(), kind: z.string(), url: z.string() })), truncated: z.boolean() }) },
+  'cdp.detach': { input: z.strictObject({ tab, timeout }), result: z.strictObject({ detached: z.string() }) },
   'cdp.send': { input: z.strictObject({ tab, method: locator, params: text, target: locator.optional(), timeout }), result: z.strictObject({ method: z.string(), result: z.unknown() }) },
   'cdp.events': { input: z.strictObject({ tab, method: z.array(locator).optional(), after: cursor, limit: bounded, target: locator.optional(), timeout }), result: z.strictObject({ events: z.array(cdpEvent), cursor: z.string(), hasMore: z.boolean(), truncated: z.boolean() }) },
   'content.read': { input: z.strictObject({ tab, format: contentFormat.optional(), ...fileOptions, timeout }), result: z.union([z.strictObject({ url: z.string(), title: z.string(), format: contentFormat, content: z.string(), truncated: z.boolean() }), z.strictObject({ url: z.string(), title: z.string(), format: contentFormat, path: z.string() })]) },
