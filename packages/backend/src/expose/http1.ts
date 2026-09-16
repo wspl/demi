@@ -57,6 +57,10 @@ export class HttpResponseParser {
         this.remaining = Number(length)
         if (Number.isNaN(this.remaining))
           return this.fail('invalid content-length')
+      } else if (head.status === 204 || head.status === 304) {
+        // These statuses never carry a body, whatever the headers claim.
+        this.mode = 'length'
+        this.remaining = 0
       } else
         this.mode = 'eof'
       this.onHead(head)
