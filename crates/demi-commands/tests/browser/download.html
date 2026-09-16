@@ -1,0 +1,6 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Download fixture</title>
+<a id="instant" download="../../suggested.txt" href="data:text/plain,download%20fixture%0A">Save text</a>
+<button id="delayed" onclick="setTimeout(() => document.querySelector('#instant').click(), 300)">Delayed save</button>
+<img id="media" style="display:block;width:100px;height:100px" src="asset.svg">
