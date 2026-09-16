@@ -3,8 +3,9 @@ use http::{Method, Request};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::protocol::{
-    INFO_PATH, INVOKE_PATH, Invocation, MAX_INVOCATIONS, MAX_METADATA_BYTES, MAX_RECORD_BYTES,
-    ProtocolError, RESOURCE_PATH, Record, RecordDecoder, SHUTDOWN_PATH, ServiceInfo, VERSION,
+    CONVERSATION_PATH, ConversationRequest, INFO_PATH, INVOKE_PATH, Invocation, MAX_INVOCATIONS,
+    MAX_METADATA_BYTES, MAX_RECORD_BYTES, ProtocolError, Record, RecordDecoder, SHUTDOWN_PATH,
+    ServiceInfo, VERSION,
 };
 use crate::{ServiceError, stream::send_bytes};
 
@@ -61,26 +62,29 @@ impl Client {
         &self,
         invocation: &Invocation,
     ) -> Result<(CommandInput, CommandOutput), ServiceError> {
-        self.invoke_at(INVOKE_PATH, invocation).await
+        self.invoke_at(INVOKE_PATH, invocation.encode()?).await
     }
 
-    /// Resource lifecycle uses the same bounded IO and cancellation as commands.
-    pub async fn resource(
+    /// Conversation lifecycle has a finite metadata-only body, already ended on return.
+    /// The returned input handle is retained only to cancel the response stream.
+    pub async fn conversation(
         &self,
-        invocation: &Invocation,
+        request: &ConversationRequest,
     ) -> Result<(CommandInput, CommandOutput), ServiceError> {
-        self.invoke_at(RESOURCE_PATH, invocation).await
+        self.invoke_at(CONVERSATION_PATH, request.encode()?).await
     }
 
     async fn invoke_at(
         &self,
         path: &str,
-        invocation: &Invocation,
+        metadata: Bytes,
     ) -> Result<(CommandInput, CommandOutput), ServiceError> {
-        let metadata = invocation.encode()?;
         let mut sender = self.sender.clone().ready().await?;
         let (response, mut input) = sender.send_request(request(Method::POST, path), false)?;
         send_bytes(&mut input, metadata).await?;
+        if path == CONVERSATION_PATH {
+            input.send_data(Bytes::new(), true)?;
+        }
         let response = response.await?;
         if !response.status().is_success() {
             input.send_reset(h2::Reason::CANCEL);
