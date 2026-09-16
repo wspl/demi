@@ -29,6 +29,8 @@ beforeEach(async () => {
     workspaces: [],
     conversations: [],
     cloud: null,
+    exposes: [],
+    exposeDomain: null,
     providers: [
       {
         id: 'configured',

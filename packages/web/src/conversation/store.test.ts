@@ -79,6 +79,8 @@ function snapshot() {
     providers: [],
     conversations: records,
     cloud: null,
+    exposes: [],
+    exposeDomain: null,
   })
 }
 
