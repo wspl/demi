@@ -44,11 +44,13 @@ against new activity releases its reservation and recomputes from current facts.
 
 The conversation release is one generic runner message,
 `conversation_release {conversationId}`, sent through the conversation's host
-access to the device the conversation is bound to. The backend sends it when:
+access to a device the conversation is bound to, main or attached. The backend
+sends it to:
 
-- the conversation's idle window expires on a paired device;
-- the conversation's main target moves away from that device;
-- the conversation is archived.
+- every connected paired device of the conversation when its idle window expires;
+- a device the conversation stops using: the old main device on a target switch,
+  an attached device when it is detached;
+- every connected paired device of the conversation when it is archived.
 
 The runner forwards the release to every resident native service on that device
 as the generic [conversation release operation](native-runtime.md#conversation-scoped-state);
