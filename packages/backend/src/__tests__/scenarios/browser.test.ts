@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { z } from 'zod'
-import { BROWSER_IDLE_MS } from '@demicodes/browser-protocol'
+import { CONVERSATION_IDLE_MS } from '../../lifecycle/coordinator'
+import { waitFor } from '@demicodes/utils'
 import { model } from './driver'
 import { World } from './world'
 
@@ -92,18 +93,17 @@ demi browser read "$tab" --css output --property text --json`, 30000),
       model.say('Fresh controller has no tabs'),
     ] })
     expect(empty.received[0]).toContain('"tabs":[]')
-    expect(world.frames.some(frame => frame.message.type === 'resource_acquire')).toBe(true)
-    expect(world.frames.some(frame => frame.message.type === 'job_start' && frame.message.resources?.length === 1)).toBe(true)
+    expect(world.frames.some(frame => frame.message.type === 'job_start' && frame.message.conversation === driver.id && frame.message.node === driver.id)).toBe(true)
   } finally {
     await world.close()
     application.stop(true)
   }
 }, 180000)
 
-test.skipIf(process.env.DEMI_BROWSER_IDLE_ACCEPTANCE !== '1')('a retained paired browser is retired after the real ten-minute idle window', async () => {
+test.skipIf(process.env.DEMI_BROWSER_ACCEPTANCE !== '1')('a retained paired browser is retired after one hour of conversation inactivity', async () => {
   const application = Bun.serve({ port: 0, fetch: () => new Response('<h1>Idle browser</h1>', { headers: { 'content-type': 'text/html' } }) })
-  const idleMs = z.coerce.number().int().positive().parse(process.env.DEMI_BROWSER_IDLE_TEST_MS ?? BROWSER_IDLE_MS)
-  const world = await World.create({ runners: ['browser-idle'], managedHosts: null, browser: { idleMs } })
+  let now = 0
+  const world = await World.create({ runners: ['browser-idle'], managedHosts: null, lifecycle: { now: () => now, pollMs: 10 } })
   try {
     const driver = await world.conversation('runner:browser-idle')
     const opened = await driver.turn({ model: [
@@ -111,21 +111,32 @@ test.skipIf(process.env.DEMI_BROWSER_IDLE_ACCEPTANCE !== '1')('a retained paired
       model.say('Browser is ready to become idle'),
     ] })
     expect(opened.received[0]).toContain('exitCode: 0')
-    const started = performance.now()
-    const deadline = started + idleMs + 60_000
-    const deviceId = world.device('browser-idle').deviceId
-    while (!world.frames.some(({ deviceId: respondingDevice, direction, message }) =>
-      respondingDevice === deviceId && direction === 'in' &&
-      message.type === 'resource_result' && message.error === undefined && message.result === null &&
-      world.frames.some(request =>
-        request.deviceId === deviceId && request.direction === 'out' &&
-        request.message.type === 'resource_release' && request.message.id === message.id
-      )
-    )) {
-      if (performance.now() > deadline) throw new Error('Idle browser was not reclaimed')
-      await Bun.sleep(250)
+    // The process tree identifies this fixture's Chrome without a browser-specific backend API.
+    const processSnapshot = async () => {
+      const child = Bun.spawn(['ps', '-axo', 'pid=,ppid=,command='], { stdout: 'pipe' })
+      const output = await new Response(child.stdout).text()
+      expect(await child.exited).toBe(0)
+      return output.split('\n').flatMap(line => {
+        const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line)
+        return match ? [{ pid: Number(match[1]), parent: Number(match[2]), command: match[3]! }] : []
+      })
     }
-    expect(performance.now() - started).toBeGreaterThanOrEqual(idleMs * 0.9)
+    const snapshot = await processSnapshot()
+    const service = snapshot.find(row => row.command.includes(world.device('browser-idle').stateDir) && row.command.includes('--command-service'))
+    expect(service).toBeDefined()
+    const chrome = snapshot.find(row => row.parent === service?.pid && row.command.includes('--user-data-dir='))
+    const profile = /--user-data-dir=([^\s]+)/.exec(chrome?.command ?? '')?.[1]
+    if (!profile) throw new Error('Fixture Chrome profile is missing')
+    expect(profile).toContain('demi-browser-')
+    expect(existsSync(profile)).toBe(true)
+    await Bun.sleep(30)
+    now = CONVERSATION_IDLE_MS - 1
+    await Bun.sleep(30)
+    expect(world.frames.some(frame => frame.message.type === 'conversation_release')).toBe(false)
+    now++
+    await waitFor(() => world.frames.some(frame => frame.message.type === 'conversation_released' && !frame.message.error))
+    expect(existsSync(profile)).toBe(false)
+    expect((await processSnapshot()).some(row => row.command.includes(`--user-data-dir=${profile}`))).toBe(false)
     const next = await driver.turn({ model: [
       model.shell('idle-tabs', 'demi browser tabs --json', 30000),
       model.say('Browser was reclaimed without stopping the paired runner'),
@@ -138,4 +149,35 @@ test.skipIf(process.env.DEMI_BROWSER_IDLE_ACCEPTANCE !== '1')('a retained paired
     await world.close()
     application.stop(true)
   }
-}, 13 * 60_000)
+}, 180_000)
+
+test.skipIf(process.env.DEMI_BROWSER_ACCEPTANCE !== '1')('switch and archive release browser environments on main and attached Hosts', async () => {
+  const world = await World.create({ runners: ['one', 'two'], managedHosts: null })
+  try {
+    const driver = await world.conversation('runner:one')
+    const opened = await driver.turn({ model: [
+      model.shell('first-browser', 'demi browser open about:blank --json', 120_000),
+      model.say('opened'),
+    ] })
+    expect(opened.received[0]).toContain('exitCode: 0')
+    await driver.switchTo('runner:two')
+    const afterSwitch = await driver.turn({ model: [
+      model.shell('two-browsers', `set -e
+demi host shell --host one 'demi browser tabs --json; demi browser open about:blank --json'
+demi browser open about:blank --json`, 120_000),
+      model.say('independent environments'),
+    ] })
+    expect(afterSwitch.received[0]).toContain('exitCode: 0')
+    expect(afterSwitch.received[0]).toContain('"tabs":[]')
+    await world.api(`/api/conversations/${driver.id}`, { archived: true }, 'PATCH')
+    await world.api(`/api/conversations/${driver.id}`, { archived: false }, 'PATCH')
+    const afterArchive = await driver.turn({ model: [
+      model.shell('released-browsers', `demi browser tabs --json; demi host shell --host one 'demi browser tabs --json'`, 30_000),
+      model.say('both released'),
+    ] })
+    expect(afterArchive.received[0]).toContain('exitCode: 0')
+    expect(afterArchive.received[0]?.match(/"tabs":\[\]/g)).toHaveLength(2)
+  } finally {
+    await world.close()
+  }
+}, 180_000)

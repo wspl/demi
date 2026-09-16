@@ -1,6 +1,4 @@
 import { errorMessage } from '@demicodes/utils'
-import type { RemoteHost } from '@demicodes/host-remote'
-import type { NativeResourceGrant } from '@demicodes/command-protocol'
 
 export interface Retirement {
   run(): Promise<void>
@@ -23,19 +21,12 @@ interface Scheduled {
   transition?: Promise<void>
 }
 
-export interface LifecycleCleanup {
-  readonly conversationId: string
-  readonly host: RemoteHost
-  readonly grant: NativeResourceGrant
-  readonly fileReservation: () => void
-  readonly deviceReservation?: () => void
-}
+export const CONVERSATION_IDLE_MS = 60 * 60_000
 
-/** One backend clock schedules independent Cloud maintenance and browser retirement. */
+/** One backend clock schedules conversation retirement and Cloud maintenance. */
 export class LifecycleCoordinator {
   private readonly scheduled = new Set<Scheduled>()
   private readonly transitions = new Set<Promise<void>>()
-  private readonly cleanups = new WeakSet<LifecycleCleanup>()
   private timer: ReturnType<typeof setTimeout> | undefined
   private closed = false
 
@@ -118,21 +109,6 @@ export class LifecycleCoordinator {
     }
     const remove = this.add(entry)
     return remove
-  }
-
-  /** Cleanup authority exists only inside this admitted transition's callback. */
-  async cleanup<T>(scope: LifecycleCleanup, operation: (scope: LifecycleCleanup) => Promise<T>): Promise<T> {
-    const capability = Object.freeze({ ...scope })
-    this.cleanups.add(capability)
-    try {
-      return await operation(capability)
-    } finally {
-      this.cleanups.delete(capability)
-    }
-  }
-
-  ownsCleanup(scope: LifecycleCleanup): boolean {
-    return this.cleanups.has(scope)
   }
 
   async close(): Promise<void> {

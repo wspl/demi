@@ -258,6 +258,12 @@ test(
     // beta's stdout pipe too.
     const audit = (from: number) => {
       const turn = frames.slice(from)
+      for (const { message } of turn) {
+        if (message.type === 'job_start') {
+          expect(message.conversation).toBe(conversation.id)
+          expect(message.node).toBe(conversation.id)
+        }
+      }
       const of = (deviceId: string, direction: 'in' | 'out') => turn.filter(
         (f) => f.deviceId === deviceId &&
           f.direction === direction
@@ -477,29 +483,15 @@ test(
           const textOf = (message: RunnerProtocolMessage) => message.type === 'job_output'
             ? new TextDecoder().decode(message.bytes)
             : ''
-          if (onDevice) {
-            await waitFor(
-              () => since().some(
-                (frame) => frame.deviceId === b.deviceId &&
-                  frame.direction === 'in' &&
-                  frame.message.type === 'job_output' &&
-                  frame.message.stream === 'stderr' &&
-                  textOf(frame.message).includes('ready')
-              ),
-              undefined,
-              { timeoutMs: 5_000 }
-            )
-          } else {
-            await waitFor(
-              () => since().some(
-                (frame) => frame.deviceId === a.deviceId &&
-                  frame.message.type === 'job_output' &&
-                  textOf(frame.message).includes('ready')
-              ),
-              undefined,
-              { timeoutMs: 5_000 }
-            )
-          }
+          // Stream boundaries are arbitrary: a single word can span wire frames.
+          await waitFor(
+            () => since().filter(frame => frame.deviceId === (onDevice ? b.deviceId : a.deviceId)
+              && frame.direction === 'in' && frame.message.type === 'job_output'
+              && frame.message.stream === 'stderr')
+              .map(frame => textOf(frame.message)).join('').includes('ready'),
+            () => JSON.stringify(since().map(frame => ({ device: frame.deviceId, type: frame.message.type, text: textOf(frame.message) }))),
+            { timeoutMs: 5_000 }
+          )
           if (caller === 'device' || caller === 'cloud') {
             await client.shellWrite(commandId, 'hello\n')
             await waitFor(
@@ -533,7 +525,7 @@ test(
                   frame.message.type === 'job_exit' &&
                   frame.message.jobId === targetJob.jobId
               ),
-              undefined,
+              () => JSON.stringify(since().map(frame => ({ device: frame.deviceId, type: frame.message.type, text: textOf(frame.message) }))),
               { timeoutMs: 5_000 }
             )
             expect(

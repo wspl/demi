@@ -8,12 +8,13 @@ import { RemoteProvisioner } from '@demicodes/machines'
 import { delay } from '@demicodes/utils'
 import { World } from './scenarios/world'
 import { model } from './scenarios/driver'
+import { CONVERSATION_IDLE_MS } from '../lifecycle/coordinator'
 import type { ManagedOperation } from '../storage/control'
 
 const applicationUrl = new URL('http://127.0.0.1:8123/')
 const acceptance = process.env.DEMI_BROWSER_CLOUD_E2E === '1' ? test : test.skip
 
-acceptance('Agent browser runs in real Cloud, retires before reset/idle shutdown, and wakes with preserved files', async () => {
+acceptance('Agent browser runs in real Cloud, ends with reset/idle shutdown, and wakes with preserved files', async () => {
   const configuration = z.object({
     DEMI_BROWSER_PACKAGE: z.string().min(1),
     DEMI_BROWSER_RUNNER: z.string().min(1),
@@ -27,6 +28,7 @@ acceptance('Agent browser runs in real Cloud, retires before reset/idle shutdown
     .update(await readFile(configuration.DEMI_BROWSER_RUNNER))
     .digest('hex')
   const publicUrl = new URL(configuration.DEMI_BROWSER_CLOUD_PUBLIC)
+  let now = 0
   const world = await World.create({
     port: Number(publicUrl.port), publicUrl: publicUrl.origin,
     nativeCommands: {
@@ -38,9 +40,10 @@ acceptance('Agent browser runs in real Cloud, retires before reset/idle shutdown
         return { path: `/opt/demi/artifacts/${artifact.sha256}/demi-commands` }
       },
     },
+    lifecycle: { now: () => now },
     managedHosts: {
       provisioner: new RemoteProvisioner({ socketPath: configuration.DEMI_BROWSER_CLOUD_SOCKET }),
-      config: { idleMs: 1000, sweepMs: 50 },
+      config: { sweepMs: 50 },
     },
   })
   try {
@@ -73,7 +76,7 @@ test -s cloud-browser.png`), 600000),
       await delay(100)
     }
     expect(reset.operation.id).toBeTruthy()
-    expect(world.frames.some(frame => frame.message.type === 'resource_release')).toBe(true)
+    expect(world.frames.some(frame => frame.message.type === 'conversation_release')).toBe(false)
     const afterReset = await driver.turn({ model: [
       model.shell('cloud-browser-reset', withCloudApplication(`set -euxo pipefail
 cat browser-marker.txt
@@ -85,12 +88,14 @@ demi browser open '${applicationUrl.href}' --json`), 360000),
     expect(afterReset.received[0]).toContain('retained')
     expect(afterReset.received[0]).toContain('"tabs":[]')
     console.info('Cloud reset preserved files and retired browser tabs')
+    await delay(100)
+    now += CONVERSATION_IDLE_MS
     const idleDeadline = performance.now() + 60_000
     while ((await world.api<{ state: string }>('/api/cloud')).state !== 'off') {
       if (performance.now() > idleDeadline) throw new Error('Cloud idle shutdown did not complete')
       await delay(100)
     }
-    expect(world.frames.filter(frame => frame.message.type === 'resource_release').length).toBeGreaterThanOrEqual(2)
+    expect(world.frames.some(frame => frame.message.type === 'conversation_release')).toBe(false)
     const woken = await driver.turn({ model: [
       model.shell('cloud-browser-wake', 'set -e; sudo -n sha256sum /proc/1/exe; cat browser-marker.txt; demi browser tabs --json', 30000),
       model.say('Cloud woke without reviving expired browser tabs'),
