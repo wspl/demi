@@ -133,6 +133,16 @@ Lifecycle cleanup is the explicitly scoped extension below; it still uses this
 entry. Any other change to wake or gate behavior must be decided here, not
 introduced as a bypass in code.
 
+One kind of access reaches a device without a conversation: the public relay
+of a [Host expose](expose.md#the-public-relay), whose traffic comes from
+anonymous visitors and belongs to the user's device, not to any
+conversation. It uses device access: the registry's Host for a device the
+expose's owner owns, admitted only while the device is connected. It takes
+no file gate, because it touches no conversation files, and never wakes a
+stopped Cloud, because a stop has already destroyed the device's exposes.
+Device access exists for that one caller; anything on a conversation's
+behalf still goes through `withHost`.
+
 Attached cwd is a starting directory, not a permission boundary. It is updated
 from completed cross-host jobs. Files can be transferred explicitly with ordinary
 shell pipelines:
