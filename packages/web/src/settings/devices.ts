@@ -33,12 +33,6 @@ export const useDeviceSettings = defineStore('device-settings', () => {
   )
   const exposes = computed(() => product.snapshot?.exposes ?? [])
   const exposeDomain = computed(() => product.snapshot?.exposeDomain ?? null)
-  const cloudExposes = computed(() => {
-    const cloudDeviceId = product.snapshot?.cloud?.device?.id
-    return cloudDeviceId
-      ? exposes.value.filter((expose) => expose.deviceId === cloudDeviceId)
-      : []
-  })
 
   /** Shared body of renew and remove: one request per expose, then a fresh snapshot. */
   async function exposeWrite(
@@ -149,7 +143,6 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     resetCloud,
     exposes,
     exposeDomain,
-    cloudExposes,
     exposePending,
     renewExpose: renewExposeAction,
     removeExpose: removeExposeAction,

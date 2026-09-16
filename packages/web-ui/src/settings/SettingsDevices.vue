@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import AsyncRegion from '../ui/AsyncRegion.vue'
 import CloudSettings from '../cloud/CloudSettings.vue'
 import type { CloudState } from '../cloud/types'
@@ -30,8 +31,8 @@ const props = defineProps<{
   exposeDomain: string | null
   /** Every expose of the user, as the snapshot lists them, soonest expiry first. */
   exposes: SettingsExpose[]
-  /** The Cloud device's exposes; the host knows its device id. */
-  cloudExposes: SettingsExpose[]
+  /** The Cloud device's id, when the snapshot has one; its exposes filter like any device's. */
+  cloudDeviceId: string | null
   /** Expose ids with a renew or remove request in flight. */
   exposePendingIds?: string[]
 }>()
@@ -44,6 +45,11 @@ const emit = defineEmits<{
 }>()
 const { isOpen, phase, open, close, submit } = useDevicePairing(
   (code, signal) => props.claimDevice(code, signal),
+)
+const cloudExposes = computed(() =>
+  props.cloudDeviceId === null
+    ? []
+    : props.exposes.filter((expose) => expose.deviceId === props.cloudDeviceId),
 )
 </script>
 

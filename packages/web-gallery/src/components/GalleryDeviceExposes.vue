@@ -71,7 +71,7 @@ async function claimDevice() {
         :claim-device="claimDevice"
         expose-domain="expose.demi.example"
         :exposes="live"
-        :cloud-exposes="[]"
+        :cloud-device-id="null"
         :expose-pending-ids="pending"
         @renew-expose="renew"
         @remove-expose="remove"
@@ -86,7 +86,7 @@ async function claimDevice() {
         :claim-device="claimDevice"
         expose-domain="expose.demi.example"
         :exposes="empty"
-        :cloud-exposes="[]"
+        :cloud-device-id="null"
       />
     </div>
     <div class="rounded-lg border border-line bg-surface">
@@ -98,7 +98,7 @@ async function claimDevice() {
         :claim-device="claimDevice"
         :expose-domain="null"
         :exposes="[]"
-        :cloud-exposes="[]"
+        :cloud-device-id="null"
       />
     </div>
   </div>
