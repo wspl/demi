@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   createRunnerWire,
+  STDIN_CHUNK_BYTES,
   type BackendToRunnerMessage,
   type RunnerToBackendMessage
 } from '@demicodes/runner-protocol'
@@ -63,7 +64,7 @@ test(
           () => received.slice(start)
             .some((message) => message.type === `${kind}_output`)
         )
-        const bytes = new Uint8Array(64 * 1024)
+        const bytes = new Uint8Array(STDIN_CHUNK_BYTES)
         for (let chunk = 0; chunk < 4; chunk += 1) send(kind === 'job' ? { type: 'job_stdin', jobId: kind, bytes } : {
           type: 'spawn_stdin',
           spawnId: kind,

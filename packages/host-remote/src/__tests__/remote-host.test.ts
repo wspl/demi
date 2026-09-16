@@ -4,11 +4,12 @@ import { join } from 'node:path'
 import { afterEach, expect, test } from 'bun:test'
 import { connectTestRunner } from '@demicodes/host-remote/testing'
 import {
+  STDIN_CHUNK_BYTES,
   type BackendToRunnerMessage,
 } from '@demicodes/runner-protocol'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { RemoteGitError, RemoteHost } from '../index'
-import { deferred } from '@demicodes/utils'
+import { collectBytes, concatBytes, deferred } from '@demicodes/utils'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -278,6 +279,58 @@ test(
   }
 )
 
+
+test(
+  'process and shell stdin writes use bounded frames and preserve bytes before EOF',
+  async () => {
+    const remote = new RemoteHost({
+      defaultCwd: '/work',
+      identity: { uid: 501, gid: 20, hostname: 'test', homeDir: '/work' },
+      store: memoryHostStore(),
+    })
+    const messages: BackendToRunnerMessage[] = []
+    remote.attach(message => messages.push(message))
+    try {
+      const process = await remote.process.spawn({ command: 'cat' })
+      const job = remote.startJob({ script: 'cat', cwd: '/work', env: {} })
+      for (const handle of [process, job]) {
+        for (const size of [0, STDIN_CHUNK_BYTES, STDIN_CHUNK_BYTES + 1]) {
+          messages.length = 0
+          const bytes = Uint8Array.from({ length: size }, (_, index) => index % 256)
+          await handle.writeStdin(bytes)
+          const frames = messages.filter(
+            message => message.type === 'spawn_stdin' || message.type === 'job_stdin'
+          )
+          expect(frames).toHaveLength(Math.ceil(size / STDIN_CHUNK_BYTES))
+          expect(frames.every(frame => frame.bytes.byteLength <= STDIN_CHUNK_BYTES)).toBe(true)
+          expect(concatBytes(frames.map(frame => frame.bytes))).toEqual(bytes)
+          expect(messages).toHaveLength(frames.length)
+        }
+        await handle.closeStdin()
+        expect(messages.at(-1)?.type).toBe(handle === process ? 'spawn_stdin_end' : 'job_stdin_end')
+      }
+    } finally {
+      remote.detach()
+    }
+  }
+)
+
+test(
+  'a 65,537-byte stdin write reaches cat without disconnecting the runner',
+  async () => {
+    const { remote } = await connectedPair()
+    const bytes = Uint8Array.from(
+      { length: STDIN_CHUNK_BYTES + 1 },
+      (_, index) => index % 256,
+    )
+    const cat = await remote.process.spawn({ command: '/bin/cat' })
+    await cat.writeStdin(bytes)
+    await cat.closeStdin()
+    expect(await collectBytes(cat.stdout)).toEqual(bytes)
+    expect((await cat.wait()).exitCode).toBe(0)
+    expect(await remote.fs.exists(remote.defaultCwd)).toBe(true)
+  }
+)
 
 test(
   'stdin and cancellation sent during native process startup reach the new process',
