@@ -25,6 +25,7 @@ interface Options {
 export class RustZodTypes {
   readonly declarations = new Map<string, string>()
   private readonly names = new Map<z.core.$ZodType, string>()
+  private readonly activeObjects = new Set<z.core.$ZodType>()
   private readonly deserializers: string[] = []
   private readonly patterns = new Map<string, string>()
 
@@ -56,10 +57,10 @@ export class RustZodTypes {
     }).join('\n')
   }
 
-  type(schema: z.core.$ZodType, name: string): string {
+  type(schema: z.core.$ZodType, name: string, indirect = false): string {
     const known = this.options.overrides?.get(schema) ?? this.names.get(schema)
     if (known)
-      return known
+      return !indirect && this.activeObjects.has(schema) ? `Box<${known}>` : known
     const def = (schema as z.core.$ZodTypes)._zod.def
     const derive = '#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]'
     switch (def.type) {
@@ -91,9 +92,9 @@ export class RustZodTypes {
           : typeof first === 'boolean' ? 'bool' : 'String'
       }
       case 'optional':
-      case 'nullable': return `Option<${this.type(def.innerType, name)}>`
-      case 'array': return `Vec<${this.type(def.element, `${name}Item`)}>`
-      case 'record': return `std::collections::BTreeMap<String, ${this.type(def.valueType, `${name}Value`)}>`
+      case 'nullable': return `Option<${this.type(def.innerType, name, indirect)}>`
+      case 'array': return `Vec<${this.type(def.element, `${name}Item`, true)}>`
+      case 'record': return `std::collections::BTreeMap<String, ${this.type(def.valueType, `${name}Value`, true)}>`
       case 'lazy': {
         this.names.set(schema, name)
         const resolved = def.getter()
@@ -103,7 +104,9 @@ export class RustZodTypes {
       }
       case 'object': {
         this.names.set(schema, name)
+        this.activeObjects.add(schema)
         const fields = this.fields(schema as z.ZodObject, name)
+        this.activeObjects.delete(schema)
         this.declarations.set(name, `${derive}\n#[serde(deny_unknown_fields)]\npub struct ${name} {\n${fields}\n}`)
         return name
       }

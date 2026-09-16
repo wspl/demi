@@ -11,7 +11,7 @@ use chromiumoxide::{
             DispatchKeyEventParams, DispatchMouseEventParams, DispatchMouseEventType,
             InsertTextParams, MouseButton,
         },
-        page::{CaptureScreenshotFormat, EventJavascriptDialogOpening},
+        page::EventJavascriptDialogOpening,
         target::{CloseTargetParams, EventTargetDestroyed},
     },
 };
@@ -23,7 +23,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use super::{
     BrowserError, Result, element, evaluation, keyboard,
     observation::{Observation, References},
-    operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
+    operation::{CONTROL_TIMEOUT, Operation},
     protocol::BrowserCreatedBy,
     protocol::BrowserTarget,
 };
@@ -35,6 +35,10 @@ pub(super) enum InputRelease {
 
 pub(super) struct TabState {
     pub operations: Mutex<References>,
+    pub assets: Mutex<super::assets::State>,
+    pub cdp: Mutex<super::cdp::State>,
+    pub webmcp: Mutex<super::webmcp::State>,
+    pub console: Arc<Mutex<super::logs::Console>>,
     pub dialog: watch::Sender<Option<Arc<EventJavascriptDialogOpening>>>,
     pub deferred_release: Mutex<Vec<InputRelease>>,
 }
@@ -53,7 +57,11 @@ impl TabState {
             .event_listener::<EventJavascriptDialogOpening>()
             .await?;
         let state = Arc::new(Self {
+            console: super::logs::observe(page, ended.clone(), tasks).await?,
             operations: Mutex::new(References::default()),
+            assets: Mutex::new(super::assets::State::default()),
+            cdp: Mutex::new(super::cdp::State::default()),
+            webmcp: Mutex::new(super::webmcp::State::default()),
             dialog: watch::channel(None).0,
             deferred_release: Mutex::new(Vec::new()),
         });
@@ -89,6 +97,7 @@ pub struct BrowserTab {
     pub(super) page: Page,
     browser: Weak<Mutex<Browser>>,
     pub(super) ended: CancellationToken,
+    environment_ended: CancellationToken,
     pub(super) state: Arc<TabState>,
     id: Arc<str>,
     pub(super) created_by: BrowserCreatedBy,
@@ -99,6 +108,7 @@ impl BrowserTab {
         page: Page,
         browser: Weak<Mutex<Browser>>,
         ended: CancellationToken,
+        environment_ended: CancellationToken,
         state: Arc<TabState>,
         id: Arc<str>,
         created_by: BrowserCreatedBy,
@@ -107,9 +117,46 @@ impl BrowserTab {
             page,
             browser,
             ended,
+            environment_ended,
             state,
             id,
             created_by,
+        }
+    }
+
+    /// Release command-owned browser objects without blocking on an open dialog.
+    pub(super) async fn release_objects(&self) -> Result<()> {
+        // Chrome cannot answer Runtime commands while a dialog is open. The next
+        // ordinary command releases the group; context destruction also releases it.
+        if self.state.dialog.borrow().is_some() || self.ended.is_cancelled() {
+            return Ok(());
+        }
+        let cleanup = tokio::time::timeout(CONTROL_TIMEOUT, async {
+            let snapshot = super::frames::capture(&self.page).await?;
+            let mut released = std::collections::HashSet::new();
+            for document in snapshot.frames {
+                if released.insert(document.page.target_id().clone()) {
+                    document
+                        .page
+                        .execute(
+                            chromiumoxide::cdp::js_protocol::runtime::ReleaseObjectGroupParams::new(
+                                element::OBJECT_GROUP,
+                            ),
+                        )
+                        .await?;
+                }
+            }
+            Ok::<_, BrowserError>(())
+        })
+        .await
+        .map_err(|_| BrowserError::Timeout)
+        .and_then(std::convert::identity);
+        // A destroyed tab or connection no longer retains remote objects.
+        match cleanup {
+            Err(BrowserError::Closed | BrowserError::Connection(_) | BrowserError::TabNotFound) => {
+                Ok(())
+            }
+            result => result,
         }
     }
 
@@ -143,12 +190,13 @@ impl BrowserTab {
         cancellation: &CancellationToken,
         timeout: Duration,
     ) -> Result<Vec<u8>> {
-        self.capture(false, cancellation, timeout).await
+        self.capture(false, None, cancellation, timeout).await
     }
 
     pub(super) async fn capture(
         &self,
         full_page: bool,
+        clip: Option<&str>,
         cancellation: &CancellationToken,
         timeout: Duration,
     ) -> Result<Vec<u8>> {
@@ -158,17 +206,7 @@ impl BrowserTab {
             .try_lock()
             .map_err(|_| BrowserError::Busy)?;
         Operation::new(&self.ended, cancellation, timeout)
-            .run(async {
-                Ok(self
-                    .page
-                    .screenshot(
-                        chromiumoxide::page::ScreenshotParams::builder()
-                            .format(CaptureScreenshotFormat::Png)
-                            .full_page(full_page)
-                            .build(),
-                    )
-                    .await?)
-            })
+            .run(self.screenshot_bytes(full_page, clip))
             .await
     }
 
@@ -266,16 +304,26 @@ impl BrowserTab {
 
     /// A tab owner closes the target without running beforeunload hooks.
     pub async fn close(&self, cancellation: &CancellationToken, timeout: Duration) -> Result<()> {
-        let _guard = self
-            .state
-            .operations
-            .try_lock()
-            .map_err(|_| BrowserError::Busy)?;
-        Operation::new(&self.ended, cancellation, timeout)
+        self.ended.cancel();
+        let cleanup = super::cdp::release(self).await;
+        let closed = Operation::new(&self.environment_ended, cancellation, timeout)
             .run(async {
                 let browser = self.browser.upgrade().ok_or(BrowserError::Closed)?;
                 let browser = browser.lock().await;
                 let mut events = browser.event_listener::<EventTargetDestroyed>().await?;
+                let targets = browser
+                    .execute(
+                        chromiumoxide::cdp::browser_protocol::target::GetTargetsParams::default(),
+                    )
+                    .await?
+                    .result
+                    .target_infos;
+                if !targets
+                    .iter()
+                    .any(|target| target.target_id == *self.page.target_id())
+                {
+                    return Err(BrowserError::TabNotFound);
+                }
                 browser
                     .execute(CloseTargetParams::new(self.page.target_id().clone()))
                     .await?;
@@ -288,7 +336,8 @@ impl BrowserTab {
                 }
                 Err(BrowserError::Closed)
             })
-            .await
+            .await;
+        super::operation::after_cleanup(closed, cleanup)
     }
 
     /// Resolve afresh while waiting; ambiguity is never an implicit first match.
@@ -457,21 +506,7 @@ impl BrowserTab {
             .modifiers(0)
             .build()
             .map_err(BrowserError::Configuration)?;
-        if self.state.dialog.borrow().is_some() {
-            // Chrome can pause before acknowledging mouse-down or mouse-up. The
-            // retained tab owns the required release until the dialog is handled.
-            self.state
-                .deferred_release
-                .lock()
-                .await
-                .push(InputRelease::Mouse(release));
-            return Err(BrowserError::DialogBlocked);
-        }
-        let cleanup = tokio::time::timeout(CONTROL_TIMEOUT, self.page.execute(release))
-            .await
-            .map_err(|_| BrowserError::Timeout)
-            .and_then(|result| result.map(|_| ()).map_err(BrowserError::from));
-        after_cleanup(result, cleanup)
+        self.release_mouse(result, release).await
     }
 }
 

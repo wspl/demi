@@ -19,6 +19,8 @@ use serde_json::{Value, json};
 // Resolve the remote object once; the admitted command releases its object group.
 // Public node references remain owned by the existing References registry.
 pub(super) struct TargetElement {
+    pub page: Page,
+    pub frame_chain: Vec<(Page, BackendNodeId)>,
     pub backend_node_id: BackendNodeId,
     pub remote_object_id: RemoteObjectId,
 }
@@ -40,18 +42,22 @@ impl TargetElement {
             .object;
         let remote_object_id = object.object_id.ok_or(BrowserError::StaleReference)?;
         Ok(Self {
+            page: page.clone(),
+            frame_chain: Vec::new(),
             backend_node_id,
             remote_object_id,
         })
     }
 }
 
-impl From<chromiumoxide::Element> for TargetElement {
-    fn from(element: chromiumoxide::Element) -> Self {
-        Self {
-            backend_node_id: element.backend_node_id,
-            remote_object_id: element.remote_object_id,
-        }
+impl TargetElement {
+    pub fn identity(
+        &self,
+    ) -> (
+        chromiumoxide::cdp::browser_protocol::target::TargetId,
+        BackendNodeId,
+    ) {
+        (self.page.target_id().clone(), self.backend_node_id)
     }
 }
 
@@ -116,7 +122,28 @@ pub(super) async fn call<T: DeserializeOwned>(
     script: &str,
     args: Vec<Value>,
 ) -> Result<T> {
-    let result = page
+    call_with_gesture(page, element, script, args, false).await
+}
+
+/// Invoke a browser chooser control with Chrome's explicit user-gesture flag.
+pub(super) async fn call_with_user_gesture<T: DeserializeOwned>(
+    page: &Page,
+    element: &TargetElement,
+    script: &str,
+    args: Vec<Value>,
+) -> Result<T> {
+    call_with_gesture(page, element, script, args, true).await
+}
+
+async fn call_with_gesture<T: DeserializeOwned>(
+    _page: &Page,
+    element: &TargetElement,
+    script: &str,
+    args: Vec<Value>,
+    user_gesture: bool,
+) -> Result<T> {
+    let result = element
+        .page
         .evaluate_function(
             CallFunctionOnParams::builder()
                 .object_id(element.remote_object_id.clone())
@@ -127,6 +154,7 @@ pub(super) async fn call<T: DeserializeOwned>(
                         .collect::<Vec<_>>(),
                 )
                 .await_promise(true)
+                .user_gesture(user_gesture)
                 .return_by_value(true)
                 .build()
                 .map_err(BrowserError::Configuration)?,
@@ -157,13 +185,33 @@ pub(super) async fn state(
     conditions: &[&str],
     scroll: bool,
 ) -> Result<ElementState> {
-    call(
+    let mut result: ElementState = call(
         page,
         element,
         include_str!("element-state.js"),
         vec![json!(conditions), json!(scroll)],
     )
-    .await
+    .await?;
+    for (page, backend) in &element.frame_chain {
+        let frame = TargetElement::resolve(page, *backend).await?;
+        let state: ElementState = call(
+            page,
+            &frame,
+            include_str!("element-state.js"),
+            vec![json!([]), json!(false)],
+        )
+        .await?;
+        result.visible &= state.visible;
+        result.enabled &= state.enabled;
+    }
+    if result.failed.is_none() {
+        if conditions.contains(&"visible") && !result.visible {
+            result.failed = Some("visible".into());
+        } else if conditions.contains(&"enabled") && !result.enabled {
+            result.failed = Some("enabled".into());
+        }
+    }
+    Ok(result)
 }
 
 /// Single-target browser mutations use the unique visible match when one exists.
@@ -188,8 +236,68 @@ pub(super) async fn single(
     }
 }
 
-/// Join the browser animation-frame probe's cleanup before returning cancellation.
+/// Scroll and hit-test each browser frame boundary using its own CDP session.
 pub(super) async fn prepared_state(
+    page: &Page,
+    target: &TargetElement,
+    conditions: &[&str],
+    scroll: bool,
+    operation: &super::operation::Operation<'_>,
+) -> Result<ElementState> {
+    let mut frames = Vec::new();
+    for (page, backend) in &target.frame_chain {
+        frames.push(
+            operation
+                .run(TargetElement::resolve(page, *backend))
+                .await?,
+        );
+    }
+    for frame in frames.iter().rev() {
+        let mut frame_conditions = vec!["geometry"];
+        for condition in ["visible", "enabled", "stable"] {
+            if conditions.contains(&condition) {
+                frame_conditions.push(condition);
+            }
+        }
+        let state =
+            local_prepared_state(&frame.page, frame, &frame_conditions, scroll, operation).await?;
+        if state.failed.is_some() {
+            return Ok(state);
+        }
+    }
+    let mut state = local_prepared_state(page, target, conditions, scroll, operation).await?;
+    if state.failed.is_some() {
+        return Ok(state);
+    }
+    for frame in &frames {
+        let offset = operation.run(frame_offset(frame)).await?;
+        state.x += offset[0];
+        state.y += offset[1];
+        if conditions.contains(&"hit") {
+            let hit: ElementState = operation
+                .run(call(
+                    &frame.page,
+                    frame,
+                    include_str!("element-state.js"),
+                    vec![
+                        json!(["visible", "geometry", "hit"]),
+                        json!(false),
+                        Value::Null,
+                        json!(false),
+                        json!([state.x, state.y]),
+                    ],
+                ))
+                .await?;
+            if hit.failed.is_some() {
+                return Ok(hit);
+            }
+        }
+    }
+    Ok(state)
+}
+
+/// Join the browser animation-frame probe's cleanup before returning cancellation.
+async fn local_prepared_state(
     page: &Page,
     target: &TargetElement,
     conditions: &[&str],
@@ -251,4 +359,9 @@ pub(super) async fn call_with_states<T: DeserializeOwned>(
         script
     );
     call(page, target, &script, args).await
+}
+
+/// Translate a browser child document's coordinates through its embedding element.
+pub(super) async fn frame_offset(frame: &TargetElement) -> Result<[f64; 2]> {
+    call(&frame.page, frame, "function() { const box = this.getBoundingClientRect(); return [box.left + this.clientLeft, box.top + this.clientTop]; }", vec![]).await
 }
