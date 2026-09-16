@@ -143,6 +143,22 @@ impl Controller {
             State::Live { owner, .. } => !owner.is_finished(),
         }
     }
+
+    /// Inspect retained debug owners without starting or querying Chrome after a timeout.
+    async fn debugging_callers(&self, tab: &str, caller: Option<&str>) -> Vec<String> {
+        let environment = match &*self.state.lock().await {
+            State::Live { ready, .. } => ready
+                .borrow()
+                .as_ref()
+                .and_then(|result| result.as_ref().ok())
+                .cloned(),
+            _ => None,
+        };
+        match environment {
+            Some(environment) => environment.debugging_callers(tab, caller).await,
+            None => Vec::new(),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -219,6 +235,19 @@ impl Resources {
                         .and_then(serde_json::Value::as_str)
                 {
                     details["tab"] = serde_json::json!(tab);
+                }
+                // Retirement may remove the controller while a timeout is reported;
+                // an absent resource has no live debugging owners to diagnose.
+                if code == "timeout"
+                    && let Some(tab) = details["tab"].as_str()
+                    && let Ok(controller) = self.controller(&context).await
+                {
+                    let callers = controller
+                        .debugging_callers(tab, context.request.caller.as_deref())
+                        .await;
+                    if !callers.is_empty() {
+                        details["debuggingCallers"] = serde_json::json!(callers);
+                    }
                 }
                 let bytes = if context.request.json == Some(true) {
                     serde_json::to_vec(
@@ -360,6 +389,7 @@ impl Resources {
                         )))
                     }
                     BrowserCommand::CdpTargets(_)
+                    | BrowserCommand::CdpDetach(_)
                     | BrowserCommand::CdpSend(_)
                     | BrowserCommand::CdpEvents(_) => Some(Box::pin(super::cdp::execute(
                         context,

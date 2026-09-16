@@ -1,4 +1,6 @@
 mod browser_families;
+#[path = "browser/server.rs"]
+mod browser_server;
 use browser_families::with_browser_fixture;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
@@ -42,23 +44,28 @@ async fn cdp_validates_methods_scopes_children_and_preserves_event_cursors() {
 
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
-async fn cdp_wait_cancellation_retains_subscriptions_and_send_cancellation_releases_pause() {
+async fn cdp_wait_expiry_retains_subscriptions_and_invocation_cancellation_releases_connections() {
     with_browser_fixture(|fixture| async move {
         let tab = fixture.open("cdp.html").await;
         fixture.call("browser.cdp.send", json!({"tab":tab,"method":"Runtime.enable","params":"{}"})).await;
         let before = fixture.call("browser.cdp.events", json!({"tab":tab})).await;
-        let cancel = CancellationToken::new();
-        let wait_cancel = cancel.clone();
-        let waiting = fixture.clone();
-        let request = json!({"tab":tab,"after":before["cursor"],"method":["Runtime.consoleAPICalled"],"timeout":30000});
-        let task = tokio::spawn(async move { waiting.result("browser.cdp.events", request, wait_cancel).await });
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        cancel.cancel();
-        let (_, error) = task.await.unwrap();
-        assert_eq!(error["error"]["code"], "cancelled", "{error}");
+        let empty = fixture.call("browser.cdp.events", json!({"tab":tab,"after":before["cursor"],"method":["Runtime.consoleAPICalled"],"timeout":100})).await;
+        assert_eq!(empty["events"], json!([]));
         fixture.call("browser.cdp.send", json!({"tab":tab,"method":"Runtime.evaluate","params":"{\"expression\":\"console.log('retained')\"}"})).await;
         let events = fixture.call("browser.cdp.events", json!({"tab":tab,"after":before["cursor"],"method":["Runtime.consoleAPICalled"]})).await;
         assert_eq!(events["events"].as_array().unwrap().len(), 1);
+        let cancel = CancellationToken::new();
+        let wait_cancel = cancel.clone();
+        let waiting = fixture.clone();
+        let request = json!({"tab":tab,"after":events["cursor"],"method":["Runtime.consoleAPICalled"],"timeout":30000});
+        let task = tokio::spawn(async move { waiting.result("browser.cdp.events", request, wait_cancel).await });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!task.is_finished());
+        cancel.cancel();
+        let (_, error) = task.await.unwrap();
+        assert_eq!(error["error"]["code"], "cancelled", "{error}");
+        let (_, stale) = fixture.result("browser.cdp.events", json!({"tab":tab,"after":before["cursor"]}), CancellationToken::new()).await;
+        assert_eq!(stale["error"]["code"], "stale_cursor", "{stale}");
         fixture.call("browser.cdp.send", json!({"tab":tab,"method":"Debugger.enable","params":"{}"})).await;
         fixture.call("browser.cdp.send", json!({"tab":tab,"method":"Fetch.enable","params":"{}"})).await;
         let cancel = CancellationToken::new();
@@ -67,6 +74,7 @@ async fn cdp_wait_cancellation_retains_subscriptions_and_send_cancellation_relea
         let request = json!({"tab":tab,"method":"Runtime.evaluate","params":"{\"expression\":\"debugger; 42\",\"returnByValue\":true}","timeout":30000});
         let task = tokio::spawn(async move { debugging.result("browser.cdp.send", request, call_cancel).await });
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        assert!(!task.is_finished());
         cancel.cancel();
         let (_, error) = task.await.unwrap();
         assert_eq!(error["error"]["code"], "cancelled", "{error}");
@@ -113,6 +121,62 @@ async fn cdp_eviction_marks_truncation_and_worker_handles_expire() {
         fixture.call("browser.goto", json!({"tab":tab,"url":"about:blank"})).await;
         let targets = fixture.call("browser.cdp.targets", json!({"tab":tab})).await;
         assert_eq!(targets["targets"][0]["url"], "about:blank");
+        fixture
+    }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn cdp_detach_releases_only_its_caller_and_timeouts_identify_other_debug_owners() {
+    let server = browser_server::Server::start("<!doctype html><title>Unblocked</title>").await;
+    let url = server.base.clone();
+    with_browser_fixture(|mut first| async move {
+        first.caller = "caller-one".into();
+        let mut second = first.clone();
+        second.caller = "caller-two".into();
+        let tab = first.open("cdp.html").await;
+        first.call("browser.cdp.send", json!({"tab":tab,"method":"Fetch.enable","params":"{}"})).await;
+        second.call("browser.cdp.send", json!({"tab":tab,"method":"Runtime.enable","params":"{}"})).await;
+        let before = second.call("browser.cdp.events", json!({"tab":tab})).await;
+        let (_, timeout) = second.result("browser.goto", json!({"tab":tab,"url":url,"timeout":300}), CancellationToken::new()).await;
+        assert_eq!(timeout["error"]["code"], "timeout", "{timeout}");
+        assert_eq!(timeout["error"]["details"]["tab"], tab);
+        assert_eq!(timeout["error"]["details"]["debuggingCallers"], json!(["caller-one"]));
+        let detached = first.call("browser.cdp.detach", json!({"tab":tab})).await;
+        assert_eq!(detached["detached"], tab);
+        assert_eq!(first.call("browser.cdp.detach", json!({"tab":tab})).await, detached);
+        second.call("browser.goto", json!({"tab":tab,"url":url,"timeout":3000})).await;
+        second.call("browser.cdp.send", json!({"tab":tab,"method":"Runtime.evaluate","params":"{\"expression\":\"console.log('still subscribed')\"}"})).await;
+        let events = second.call("browser.cdp.events", json!({"tab":tab,"after":before["cursor"],"method":["Runtime.consoleAPICalled"]})).await;
+        assert_eq!(events["events"].as_array().unwrap().len(), 1);
+        // A timeout with no other owner does not accuse the invoking connection.
+        let (_, timeout) = second.result("browser.goto", json!({"tab":tab,"url":format!("{url}/stall"),"timeout":300}), CancellationToken::new()).await;
+        assert_eq!(timeout["error"]["code"], "timeout", "{timeout}");
+        assert!(timeout["error"]["details"].get("debuggingCallers").is_none());
+        first
+    }).await;
+    server.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn tab_close_joins_paused_debug_connections_and_preserves_other_tabs() {
+    with_browser_fixture(|fixture| async move {
+        let tab = fixture.open("cdp.html").await;
+        let other = fixture.open("cdp.html").await;
+        fixture.call("browser.cdp.send", json!({"tab":tab,"method":"Debugger.enable","params":"{}"})).await;
+        let debugging = fixture.clone();
+        let request = json!({"tab":tab,"method":"Runtime.evaluate","params":"{\"expression\":\"debugger; 42\"}","timeout":30000});
+        let task = tokio::spawn(async move { debugging.result("browser.cdp.send", request, CancellationToken::new()).await });
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        assert!(!task.is_finished());
+        fixture.call("browser.close", json!({"tab":tab})).await;
+        let (code, error) = task.await.unwrap();
+        assert_ne!(code, 0);
+        assert!(matches!(error["error"]["code"].as_str(), Some("browser_lost" | "tab_not_found")), "{error}");
+        let (_, error) = fixture.result("browser.cdp.detach", json!({"tab":tab}), CancellationToken::new()).await;
+        assert_eq!(error["error"]["code"], "tab_not_found");
+        fixture.call("browser.goto", json!({"tab":other,"url":"about:blank"})).await;
         fixture
     }).await;
 }
