@@ -34,6 +34,7 @@ pub(super) enum InputRelease {
 }
 
 pub(super) struct TabState {
+    pub failure: watch::Sender<Option<String>>,
     pub operations: Mutex<References>,
     pub assets: Mutex<super::assets::State>,
     pub cdp: Mutex<super::cdp::State>,
@@ -57,6 +58,7 @@ impl TabState {
             .event_listener::<EventJavascriptDialogOpening>()
             .await?;
         let state = Arc::new(Self {
+            failure: failure.clone(),
             console: super::logs::observe(page, ended.clone(), tasks).await?,
             operations: Mutex::new(References::default()),
             assets: Mutex::new(super::assets::State::default()),
@@ -180,7 +182,7 @@ impl BrowserTab {
             .operations
             .try_lock()
             .map_err(|_| BrowserError::Busy)?;
-        Operation::new(&self.ended, cancellation, timeout)
+        Operation::for_tab(self, cancellation, tokio::time::Instant::now() + timeout)
             .run(evaluation::read_only(&self.page, expression))
             .await
     }
@@ -205,7 +207,7 @@ impl BrowserTab {
             .operations
             .try_lock()
             .map_err(|_| BrowserError::Busy)?;
-        Operation::new(&self.ended, cancellation, timeout)
+        Operation::for_tab(self, cancellation, tokio::time::Instant::now() + timeout)
             .run(self.screenshot_bytes(full_page, clip))
             .await
     }
@@ -221,7 +223,8 @@ impl BrowserTab {
             .operations
             .try_lock()
             .map_err(|_| BrowserError::Busy)?;
-        let operation = Operation::new(&self.ended, cancellation, timeout);
+        let operation =
+            Operation::for_tab(self, cancellation, tokio::time::Instant::now() + timeout);
         let target = serde_json::from_value(json!({ "css": selector }))
             .map_err(|error| BrowserError::Configuration(error.to_string()))?;
         let (_, state) = self
@@ -243,7 +246,8 @@ impl BrowserTab {
             .operations
             .try_lock()
             .map_err(|_| BrowserError::Busy)?;
-        let operation = Operation::new(&self.ended, cancellation, timeout);
+        let operation =
+            Operation::for_tab(self, cancellation, tokio::time::Instant::now() + timeout);
         let target = serde_json::from_value(json!({ "css": selector }))
             .map_err(|error| BrowserError::Configuration(error.to_string()))?;
         self.fill(&target, &mut references, text, &operation).await

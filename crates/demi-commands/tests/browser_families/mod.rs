@@ -150,13 +150,17 @@ where
         conversation: uuid::Uuid::new_v4().to_string(),
         env: BTreeMap::new(),
     };
-    assert_eq!(
-        fixture.lifecycle("status").await,
-        json!({"conversations": []})
-    );
-    let result = std::panic::AssertUnwindSafe(exercise(fixture.clone()))
-        .catch_unwind()
-        .await;
+    // Catch both construction and polling of the exercise, including the initial
+    // service assertions, before joining retirement and resuming the same panic.
+    let result = std::panic::AssertUnwindSafe(async {
+        assert_eq!(
+            fixture.lifecycle("status").await,
+            json!({"conversations": []})
+        );
+        exercise(fixture.clone()).await
+    })
+    .catch_unwind()
+    .await;
     fixture
         .service
         .close()
