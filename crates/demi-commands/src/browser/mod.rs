@@ -1,6 +1,5 @@
 //! Native browser primitives. Command exposure requires trusted retained-resource scope.
 
-mod accessibility;
 mod actions;
 mod assets;
 mod cdp;

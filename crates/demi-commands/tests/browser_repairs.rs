@@ -1270,7 +1270,6 @@ async fn catalog_probe_and_server_recorded_native_form_state() {
         let ordinary=command(&tab,"probe",json!({"xy":xy,"include-non-interactable":true})).await?;
         assert!(ordinary["matches"].as_array().unwrap().len()>probe["matches"].as_array().unwrap().len());
         error(command(&tab,"probe",json!({"xy":"-1,0"})).await,"invalid_input","not_started");
-        error(command(&tab,"ax-action",json!({"css":"#named","action":"expand"})).await,"unsupported_capability","not_started");
         for date in ["2026-10-01","2026-10-02"] {
             assert_eq!(command(&tab,"read",json!({"css":"[name=confirm]","property":"checked"})).await?["value"],false);
             command(&tab,"fill",json!({"label":"Submission date","text":date})).await?;
