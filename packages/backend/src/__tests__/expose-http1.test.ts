@@ -57,6 +57,20 @@ describe('HttpResponseParser', () => {
     expect(seen.done).toBe(1)
   })
 
+  test('chunked body fed byte-by-byte across many feeds terminates', () => {
+    const seen = collect()
+    const stream = encode(
+      'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n' +
+      '5\r\nhello\r\n' +
+      '10000\r\n' + 'x'.repeat(0x10000) + '\r\n' +
+      '0\r\n\r\n'
+    )
+    for (let i = 0; i < stream.length; i += 7919)
+      seen.parser.feed(stream.subarray(i, Math.min(i + 7919, stream.length)))
+    expect(seen.text()).toBe('hello' + 'x'.repeat(0x10000))
+    expect(seen.done).toBe(1)
+  })
+
   test('chunked body with extensions and trailers', () => {
     const seen = collect()
     seen.parser.feed(encode(

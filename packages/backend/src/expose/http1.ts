@@ -104,17 +104,23 @@ export class HttpResponseParser {
         const lineEnd = indexOf(this.buffer, CRLF_BYTES)
         if (lineEnd === -1)
           return
-        const size = Number(
-          latin1(this.buffer.subarray(0, lineEnd)).split(';')[0]
+        // Chunk sizes are hex ("10000" is 64 KiB, not ten thousand).
+        const size = parseInt(
+          latin1(this.buffer.subarray(0, lineEnd)).split(';')[0],
+          16
         )
         if (!Number.isInteger(size) || size < 0)
           return this.fail('invalid chunk size')
-        if (this.buffer.length < lineEnd + 2 + size + 2)
-          return
-        const chunk = this.buffer.subarray(lineEnd + 2, lineEnd + 2 + size)
-        this.buffer = this.buffer.subarray(lineEnd + 2 + size + 2)
         if (size === 0) {
-          // Trailer headers precede the final CRLF; drop until the empty line.
+          // The terminator: an empty line, with optional trailer headers
+          // before it. Only the size line is consumed so far.
+          this.buffer = this.buffer.subarray(lineEnd + 2)
+          if (this.buffer.length >= 2 &&
+            this.buffer[0] === 13 && this.buffer[1] === 10) {
+            this.buffer = this.buffer.subarray(2)
+            this.finish()
+            return
+          }
           const trailerEnd = indexOf(this.buffer, HEAD_END)
           if (trailerEnd === -1)
             return
@@ -122,6 +128,10 @@ export class HttpResponseParser {
           this.finish()
           return
         }
+        if (this.buffer.length < lineEnd + 2 + size + 2)
+          return
+        const chunk = this.buffer.subarray(lineEnd + 2, lineEnd + 2 + size)
+        this.buffer = this.buffer.subarray(lineEnd + 2 + size + 2)
         this.onBody(chunk)
       }
     } else if (this.mode === 'eof') {
