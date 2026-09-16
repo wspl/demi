@@ -58,6 +58,9 @@ export interface WorldOptions {
    * it.
    */
   providerRequestsPerMinute?: number
+  /** The expose domain and timing controls (`expose.md`). */
+  exposeDomain?: string
+  expose?: BackendOptions['expose']
 }
 
 export interface Device {
@@ -163,6 +166,8 @@ export class World {
       ...(options.providerRequestsPerMinute
         ? { usage: { providerRequestsPerMinute: options.providerRequestsPerMinute } }
         : {}),
+      ...(options.exposeDomain ? { exposeDomain: options.exposeDomain } : {}),
+      ...(options.expose ? { expose: options.expose } : {}),
     })
   }
 
