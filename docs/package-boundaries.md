@@ -233,16 +233,13 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/backend`
 
-- Lifecycle scope: `lifecycle/` owns shared resource admission, startup
-  joining, idle scheduling, dependency retirement and coordinator disposal. It
-  consumes injected policy/operation adapters and reuses `ActivityGate`; it does
-  not import the domain modules that register those adapters. See
-  [Resource lifecycle coordination](demi-next/resource-lifecycle.md).
-- Browser scope: `conversation/` owns resource grants, main-Host binding,
-  access admission and product adapters. Use `@demicodes/browser-protocol`
-  for validation. It publishes Host registry/control
-  state without a second browser inventory. All Host IO uses conversation Host
-  access, including transition cleanup.
+- Lifecycle scope: `lifecycle/` owns the conversation idle clock, Cloud idle
+  scheduling and the conversation release, reusing `ActivityGate`; it does not
+  import the domain modules that supply activity. See
+  [Conversation idle and Host resource release](demi-next/resource-lifecycle.md).
+- Browser scope: the backend has no browser module. It names the conversation
+  and invoking node on every job it starts and sends the generic conversation
+  release; browser state lives in the native package.
 - Status: target contract.
 - Production deps: `@demicodes/agent`, `@demicodes/browser-protocol`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/command-protocol`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/machines`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
 - Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, the per-conversation `AgentTreeStore` over node and block rows, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the transfer broker, browse endpoints), the managed-hosts module (one managed device per user over the `ManagedHostProvisioner` contract, reached through `@demicodes/machines`' `RemoteProvisioner` as the machine manager's client; lifecycle/hibernate/reset, the backend-contributed `demi host` subcommand group), the LLM module (per-provider provider assembly, model metadata caching in memory and control.sqlite with TTL and shared refresh, metering wrap), the credential vault (instance secret, GCM-encrypted providers, subscription device-login flows over per-provider provider pools), and usage accounting (ledger + rate limit). The backend accepts explicitly submitted API keys and setup tokens at authenticated write boundaries, passes subscription material to provider-owned credential pools, and never returns secrets or proxies model traffic.
@@ -263,7 +260,7 @@ Test code may depend upward for integration coverage. Production code must not.
   - `llm/` — the provider runtime assembled per provider entry (the family registry with each family's credential kind, the vendor catalog over models.dev, the model catalog, the Test button) and the metering wrap at the inference entry.
   - `vault/` — instance secret, credential crypto, the typed provider vault over the control plane, and the provider scope (whose providers a caller works with under the instance mode).
   - `usage/` — enforcement (the provider-request rate limiter); the ledger rows live on the `ControlService`.
-  - `lifecycle/` — shared coordinator for resource use, idle deadlines, startup and retirement admission, dependency cleanup ordering and shutdown. It replaces domain-specific idle sweeps; domain adapters supply actual resource state and policy.
+  - `lifecycle/` — the conversation idle clock (one window for Cloud stop and conversation release), retirement admission and shutdown. Domain modules supply activity facts; there is no domain-specific idle sweep.
   - `managed/` — one managed device per user, Cloud policy and its lifecycle adapter, allocation/wake, paired system/home checkpointing, volume growth, external system reset, Cloud project directory creation. Every VM and disk operation goes to the `ManagedHostProvisioner` it is given; the backend never spawns a hypervisor or an image tool itself.
   - New modules get sibling directories — never new files at the root.
 
@@ -289,8 +286,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/runner-protocol`
 
-- Retained-resource scope: authoritative backend/runner grant acquisition,
-  binding, invocation/subscription, release and loss schemas; no browser policy.
+- Conversation scope: jobs carry the conversation and invoking node identity;
+  `conversation_release` is the one generic release message; no browser policy.
 - Status: implemented (the final wire: MessagePack frames, per-op fs messages, jobs, the rpc relay, the manifest push, transfers).
 - Production deps: `@demicodes/command-protocol`, `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
 - Owns: the authoritative Zod backend runner wire contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` used by Bun; Rust uses the generated contract and rmp-serde), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
@@ -299,10 +296,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/host-remote`
 
-- Retained-resource scope: expose the generic authenticated resource
-  adapter over injected transport; conversation ownership stays in the backend.
-  This extends artifact resolution admission to authenticated pending acquisitions
-  and live grants pinned to the exact artifact, with cancellation on release.
+- Conversation scope: pass the conversation and invoking node identity with
+  each job and forward the conversation release; no browser knowledge.
 - Status: implemented (M9).
 - Production deps: `@demicodes/command-loader`, `@demicodes/command-protocol`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the backend's end of a runner — `RemoteHost`, a `Host` over a connection with a jobs facet (stable object across reconnects, logical cwd fallback, injected store), and `RemoteShellEnvironment`, the `ShellEnvironment` of a real host over jobs (the model's view as the record, the working directory carried between execs). The production Host and shell the backend injects into the agent.
@@ -389,9 +384,10 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `crates/runner` (Rust executable)
 
-- Retained-resource scope: `commands/` owns authenticated grants, trusted
-  job association and retained service references; it routes browser operations
-  without implementing them.
+- Conversation scope: `commands/` writes the trusted conversation and caller
+  identity into every native invocation, keeps a service resident while it holds
+  conversation state, and forwards the conversation release; it implements no
+  browser operation.
 - Owns: the `demi-runner` execution host, backend registration and connection,
   filesystem/process RPC, shell jobs, local command forwarding and installation.
 - `build.rs` consumes the Zod runner-message and manifest definitions from
