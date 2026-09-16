@@ -1,10 +1,10 @@
 # Conversation browser
 
-The native command path, retained conversation ownership, semantic targeting,
-and idle retirement are implemented. The implementation scope at the end of this
-document identifies the available command families. Other command examples define
-intended extensions; they are not advertised by the current command catalog.
-Platform delivery and acceptance are required before enabling a deployed release.
+Every command in the command reference belongs to the `demi browser` catalog.
+The reference is not split into a shipped core and later extensions; a
+capability that a platform or page cannot provide is reported unavailable with
+its reason rather than omitted from the design. Platform delivery and
+acceptance are required before enabling a deployed release.
 
 This is the authoritative browser design. Command dispatch, Host admission,
 native service ownership, and package boundaries retain their existing owners.
@@ -117,8 +117,13 @@ opener tab ID, or `temporary` with invoking node ID. This is diagnostic metadata
 not authorization. An iframe remains part of its top-level tab. A site-created
 top-level tab is registered before it can be operated; the triggering action
 reports observed `openedTabs`. Later popups appear in subsequent `tabs` calls.
-The driver retains the public ID of each target for the browser generation,
-including closed tabs, so a popup can still report its opener after it closes.
+The driver retains the public ID of each top-level page for the browser
+generation, including closed tabs, so a popup can still report its opener after
+it closes. Only top-level pages receive tab IDs; iframe and worker targets are
+reached through `cdp targets`. The registry follows target events through a
+bounded buffer. When that buffer overflows, the driver reconciles the registry
+from the browser's current target list before serving the next command; a lost
+event costs one reconciliation, never a failed `tabs` call.
 
 Only one agent command executes against a tab at a time. Its operation lock
 covers targeting, input, associated waits, and result collection. Conflicting
@@ -301,9 +306,12 @@ The browser environment owns its Chrome process tree, event task, and temporary
 profile. On Unix, Chrome launches in a separate process group and inherits a
 private environment marker identifying its profile owner. Helpers such as
 Crashpad can detach into another session; retirement tracks these by that marker
-as well as the group. Retirement closes Chrome, reaps its main process, terminates
-remaining group members and marked helpers, waits for them to disappear within
-the control timeout, and joins the event task before removing the profile.
+as well as the group. The marker is read only from processes whose executable
+lies inside the Chrome for Testing installation, so retirement never reads the
+environment of every process on the Host. Retirement closes Chrome, reaps its
+main process, terminates remaining group members and marked helpers, waits for
+them to disappear within the control timeout, and joins the event task before
+removing the profile.
 Failed launch, owner cancellation, and failed graceful closure use the same
 termination and reaping path. Profile removal retries only
 “directory not empty” errors for at most 300 ms after process retirement; any
@@ -410,7 +418,7 @@ an `--expression` option. Help is resolved before any stdin read.
 Validate CLI input, JSON bodies, Host files, CDP replies and events, and
 page-provided tool schemas/results at entry. Types derive from schemas; casts
 and silent repairs do not validate data. Browser arguments, results and event payloads have one schema authority in the
-planned `browser-protocol` package. Command declarations consume those schemas;
+`browser-protocol` package. Command declarations consume those schemas;
 native builds generate Rust contracts from them. Backend and UI consume the same
 platform-neutral schemas without importing the coding harness, following
 [Package boundaries](../package-boundaries.md).
@@ -679,8 +687,13 @@ another action's conditions:
 | `fill`, `type` | Visible, enabled, editable; no pointer hit test |
 | `key` | Visible, enabled; the element is focused before input |
 | `select` | Enabled; options are matched inside the control |
+| `select-text` | Visible; the element renders the requested text |
+| `upload` | Enabled; the element is a file input or a control that opens a file chooser |
+| `download` | The conditions of `click` |
+| `ax-action` | The observed node advertises the action |
 | `move`, `scroll` with an element | A bounding box after scrolling into view; no enabled or editable requirement |
-| `--xy` | The point lies inside the current viewport |
+| `type`, `key` without a target | None; input goes to the tab's current focus |
+| `--xy`, `drag --point` | Every point lies inside the current viewport |
 
 Visible means a rendered box with area and a visible computed `visibility`.
 Enabled follows the control and its ancestors, including a disabled `fieldset`
@@ -819,8 +832,9 @@ $ demi browser read tab-1 --css '.product' --property text --all
 
 Inspect's `--within` and `--frame` narrow observation scope. Find accepts
 `--offset` and `--limit`. Read requires either
-`--property text|text-content|value|visible|enabled|checked` or
-`--attribute <name>`. `text` is rendered text; `text-content` is raw text content.
+`--property text|text-content|html|value|visible|enabled|checked` or
+`--attribute <name>`. `text` is rendered text; `text-content` is raw text
+content; `html` is the element's outer HTML.
 A missing attribute returns null. Reading a protected input's value fails with
 `protected_value`. Multiple matches require `--all` or an explicit `--nth`.
 
@@ -911,9 +925,11 @@ page moved: it may already be at a boundary. Observe again when that matters.
 $ demi browser fill tab-1 --ref e1 --text test@example.com
 Filled textbox "Email" [ref=e1].
 
-# Deferred extension; not in the current command catalog.
 $ demi browser type tab-1 --text hello
-Typed into the focused element.
+Typed into textbox "Email" [ref=e1].
+
+$ demi browser key tab-1 --key Escape
+Pressed Escape in the focused element.
 
 $ demi browser type tab-1 --ref e1 --text '.test'
 Typed into textbox "Email" [ref=e1].
@@ -946,8 +962,11 @@ $ demi browser ax-action tab-1 --ref e8 --action expand
 Performed accessibility action "expand" on [ref=e8].
 ```
 
-Untargeted `type` and `key`, which act on the current focus, are extensions
-outside the current catalog; the current commands require a target.
+Without a target, `type` and `key` deliver input to the tab's current focus,
+following focus into frames, without changing it and without checking element
+conditions: this is the keyboard, not an element action. The result names the
+focused element when the accessibility tree has a node for it and otherwise
+reports the document. Untargeted `key` still supports `--wait-url`.
 
 Fill handles the control's native type. Text-like inputs, textareas, and
 contenteditable elements are focused, their contents selected, and the text
@@ -1007,7 +1026,6 @@ Element [ref=e51] is hidden.
 $ demi browser wait tab-1 --url '**/dashboard' --timeout 10000
 URL matched: http://localhost:3000/dashboard.
 
-# Deferred extension; not in the current command catalog.
 $ demi browser wait tab-1 --load domcontentloaded
 Load state reached: domcontentloaded.
 
@@ -1018,7 +1036,9 @@ Navigated to http://localhost:3000/dashboard.
 
 Wait selects exactly one condition: an element with
 `--state attached|detached|visible|hidden|enabled`, `--url`, or `--load`.
-`--load` is an extension outside the current catalog. URL patterns define `*`
+`--load commit|domcontentloaded|load` waits until the tab's current document
+reaches that state; a document already past it satisfies the wait immediately.
+It does not wait for a future navigation. URL patterns define `*`
 as any string without `/`, `**` as any string, and all other characters
 literally, including `?`, brackets, and braces. They are not implicit regular
 expressions.
@@ -1130,6 +1150,15 @@ clipboard. Write reads finite raw stdin, defaulting to UTF-8 text/plain;
 trailing newlines are preserved. Read chooses either `--format text` or
 `--output-dir` for supported MIME entries. Binary input must be validated against
 its declared supported media type and bounded before replacing clipboard data.
+Supported MIME types are `text/plain`, `text/html`, and `image/png`.
+
+Clipboard commands use the tab's Clipboard API with read and write permission
+granted to the environment's browser context, so page copy and paste see the
+same data. Whether a platform's headless Chrome keeps its own clipboard or
+routes it to the Host user's system clipboard is verified per platform in
+acceptance; on a platform where it reaches the system clipboard, the
+`clipboard` capability is unavailable with that reason and the commands fail
+with `unsupported_capability`.
 
 ### Evaluation, console, and viewport
 
@@ -1239,7 +1268,14 @@ A returned child target can be selected with `--target` for an iframe or worker
 belonging to the tab. Caller-supplied external sessions, browser-wide process
 control, profile/file-path reconfiguration, and Target operations that create,
 close, or move contexts are unavailable. They cannot bypass tab ownership.
-Publish the allowed tab/child method set with the capability schema.
+
+Method admission is by domain and method, checked before the send. The
+`Target`, `Browser`, `SystemInfo`, `Tethering`, and `HeadlessExperimental`
+domains, and the methods `Page.close`, `Page.crash`, and
+`Page.setDownloadBehavior`, return `cdp_method_denied`; every other method of
+the pinned protocol version is allowed on the tab or a child target. The
+capability schema publishes this rule as the denied list, not as a copy of the
+protocol.
 
 Read-only eval and CDP have different contracts: authorized tab debugging can
 change page state, such as installing a breakpoint. Do not report such a command
@@ -1302,23 +1338,6 @@ Do not navigate to resource URLs as a substitute for asset acquisition.
 The manifest records saved files and failures. Partial failure preserves
 completed files and returns `partial_failure` with the manifest, exit code 1.
 
-Site-specific document and transcript export is optional. An adapter must pass
-acceptance before advertising
-`content export <tab> --format <advertised-format> --output <path>`:
-
-```text
-$ demi browser content export tab-1 --format docx --output /tmp/document.docx
-Content exported: /tmp/document.docx
-Format: docx
-
-$ demi browser content export tab-1 --format transcript --output /tmp/transcript.txt
-Content exported: /tmp/transcript.txt
-Format: transcript
-```
-
-An unavailable adapter fails explicitly. Printing a page or renaming HTML is
-not a substitute for a supported document format.
-
 ### Capabilities and WebMCP
 
 ```text
@@ -1332,7 +1351,7 @@ Available:
   page-assets
   webmcp
 Unavailable:
-  gsuite-export — no adapter installed
+  clipboard — headless Chrome shares the Host user's clipboard on this platform
 
 $ demi browser click --help
 Usage: demi browser click <tab> [options]
@@ -1362,7 +1381,13 @@ merely installed command names. Each has a stable ID, availability, and reason
 when unavailable. Complex capabilities include schemas or an authoritative
 help reference.
 
-WebMCP calls only tools actually published by the current page. A tool-set
+WebMCP calls only tools actually published by the current page through the
+Web Model Context API, `navigator.modelContext`. Before page scripts run, the
+driver installs an observer on that API in every document of the tab, so the
+page's own registrations are recorded with their names, descriptions, and
+schemas; list reports those registrations, and call runs the registered tool's
+own function in the page. A browser release that does not expose the API
+reports the `webmcp` capability unavailable with that reason. A tool-set
 handle binds the tab, document generation, and declaration version. Validate
 call arguments against that schema. Navigation or a changed tool set returns
 `stale_tools`; list again instead of silently calling a replacement tool with
@@ -1386,7 +1411,7 @@ field with a different meaning or type.
 | read | `value`, or explicit-all `values, truncated`; mutually exclusive |
 | screenshot | `path, mimeType, width, height, viewport`; JSON requires file output |
 | probe | `matches, viewport, path?, truncated` |
-| Pointer/form actions | `operation, target?, result`; optional observed `url, openedTabs, dialog` |
+| Pointer/form actions, including `drag`, `select-text`, `ax-action`, and untargeted `type`/`key` | `operation, target?, result`; optional observed `url, openedTabs, dialog` |
 | wait | `condition, matched` |
 | dialog inspect | `dialog: null | {type, message}` |
 | dialog accept/dismiss | `type, outcome` |
@@ -1402,7 +1427,6 @@ field with a different meaning or type.
 | cdp events | `events, cursor, hasMore, truncated` |
 | content read | `url, title, format, content, truncated`, or `url, title, format, path` |
 | content fetch | `pages: [{requestedUrl, url, title, content, error?}], truncated` |
-| content export | `path, format, mimeType` |
 | assets list | `inventory, assets, inlineSvgs, truncated` |
 | assets export | `directory, manifest, files` |
 | capabilities | `capabilities: [{id, available, reason?, schema?}]` |
@@ -1621,7 +1645,9 @@ Use real Chrome for Testing against local page fixtures, scripted providers,
 and isolated storage. Never run tests that call real models.
 
 1. Run `open → inspect → fill → click → inspect` on paired devices and Cloud;
-   verify localhost, files, and screenshots belong to the correct Host.
+   verify localhost, files, and screenshots belong to the correct Host. Check
+   fixture reachability from each Host before the run and record an
+   environment failure separately from a browser result.
 2. Retain tabs and login state across shell jobs, agent turns, and user Web
    disconnect while the environment is live.
 3. Reject cross-conversation tab/ref/grant use. Isolate browser storage. Return
@@ -1632,6 +1658,9 @@ and isolated storage. Never run tests that call real models.
    Temporary fetch tabs appear in `tabs` and are cleaned up.
 6. Cover multilingual names, containers, frames, local DOM replacement, navigation,
    duplicate matches, obstruction, disabled controls, and Canvas coordinates.
+   Fixtures include native date inputs and a confirmation checkbox that must
+   be checked again on every submission; the fixture server records the final
+   submitted state and acceptance reads it there.
 7. Immediate navigation, downloads, choosers, and dialogs cannot lose events,
    repeat side effects, or deadlock on the operation lock.
 8. Cancellation releases waits, blocked IO, partial downloads, and input state
@@ -1643,7 +1672,9 @@ and isolated storage. Never run tests that call real models.
 11. Run workflow fixtures through the embedded brush and jq, checking error exits,
     pipefail, empty matches, and business failure separately.
 12. Read-only eval rejects DOM/storage/network side effects. Validate CDP scope,
-    child targets, cursors, method admission, and cleanup.
+    child targets, cursors, method admission, and cleanup. Verify per platform
+    whether the headless clipboard is isolated from the Host user's clipboard
+    and that the `clipboard` capability reports the result.
 13. Verify the browser idle policy and cross-resource races in
     [Lifecycle acceptance](resource-lifecycle.md#integration-and-acceptance):
     active children prevent idle cleanup; metadata-only watchers do
@@ -1651,24 +1682,29 @@ and isolated storage. Never run tests that call real models.
 14. Deliver native changes to every required build target, paired device, and
     Cloud guest. Verify Chrome for Testing provisioning on every platform
     offering the feature; success on the development Mac is insufficient.
+    Paired-device acceptance runs on both a macOS and a Linux runner. Cloud
+    acceptance checks the guest PID 1 runner hash after boot and after wake,
+    as [Managed hosts](managed-hosts.md#the-shipped-base) requires.
+15. Retirement leaves no Chrome process, helper, or profile directory behind,
+    on the development Mac, a Linux paired device, and the Cloud guest.
 
-### Deferred decisions and implementation status
+### Implementation status
 
-The current command catalog exposes these families:
+The command catalog is the command reference above:
 
-| Family | Available commands |
+| Family | Commands |
 | --- | --- |
 | Navigation and ownership | `open`, `tabs`, `info`, `goto`, `back`, `forward`, `reload`, `history`, `close` |
-| Observation | `inspect`, `find`, `read`, `screenshot`, enforced read-only `eval` |
-| Page input | `click`, `move`, `scroll`, `fill`, `type`, `key`, `check`, `select`, `wait` |
+| Observation | `inspect`, `find` including `--query`, `read`, `screenshot`, `probe`, enforced read-only `eval`, `logs` |
+| Page input | `click`, `move`, `drag`, `scroll`, `fill`, `type`, `key`, `check`, `select`, `select-text`, `ax-action`, `wait` |
+| Files and clipboard | `upload`, `download`, `clipboard write/read` |
 | Viewport and dialogs | `viewport set/reset`, `dialog inspect/accept/dismiss` |
-| Content and capability discovery | `content read`, `capabilities` |
+| Debugging | `cdp targets/send/events` |
+| Content and assets | `content read/fetch`, `assets list/export` |
+| Capability discovery | `capabilities`, `webmcp list/call` |
 
 The shared browser schema is the argument/result authority for these declarations
-and their generated native bindings. Help exposes only implemented arguments.
-The broader reference also describes optional extensions, including upload,
-download, clipboard, drag, CDP debugging, page tools, assets, and cross-origin
-frame targeting. Those extensions are not present in the current catalog.
+and their generated native bindings. Help exposes only declared arguments.
 
 Chrome for Testing delivery is pinned by the release record. An unsupported Host
 platform fails explicitly. A six-target runner build does not imply that Chrome
@@ -1677,6 +1713,6 @@ acceptance remain release gates, as specified above.
 
 Conversation grants, native acquisition and loss messages, job resource bindings,
 shared Cloud/browser idle scheduling, and cleanup through reserved Host access
-are part of the command path. Optional capabilities can land separately, but
-unavailable capabilities must not be advertised. Workpanel display remains out
-of scope.
+are part of the command path. A capability the driver, platform, or page
+cannot provide is reported unavailable with its reason and never advertised.
+Workpanel display remains out of scope.

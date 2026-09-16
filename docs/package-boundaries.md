@@ -372,8 +372,8 @@ Test code may depend upward for integration coverage. Production code must not.
   tab registry, observations, command operations and resource
   cleanup. Browser business schemas come from `browser-protocol` and are generated
   by this crate's build for native consumers; no second Rust schema authority.
-  The native driver primitives exist; command and conversation integration follow
-  the [browser implementation boundary](demi-next/browser.md#deferred-decisions-and-implementation-status).
+  The command catalog and its ownership follow the
+  [browser implementation status](demi-next/browser.md#implementation-status).
 - Owns: the independently released `demi-commands` resident program and all native
   Demi command implementations, including file read/create/edit/patch.
   `coding-agent` owns the TypeScript declarations; backend supplies the runtime
