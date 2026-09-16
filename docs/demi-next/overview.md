@@ -124,7 +124,7 @@ implementation.
 | Where is data stored? | [Storage](storage.md) |
 | How are providers, credentials, and usage managed? | [Providers and vault](providers-and-vault.md) |
 | Where does a conversation execute? | [Sessions and targets](sessions-and-targets.md) |
-| How do browsers and Cloud share startup, idle reclamation, and cleanup? | [Resource lifecycle coordination](resource-lifecycle.md) |
+| When does an idle conversation release what it uses on a Host? | [Conversation idle and Host resource release](resource-lifecycle.md) |
 | How are concurrent operations admitted? | [Execution coordination](sessions-and-targets.md#coordinate-shared-cloud-activity) |
 | How are commands declared and dispatched? | [Commands](commands.md) |
 | How does the agent operate browser tabs on its conversation Host? | [Conversation browser](browser.md) |

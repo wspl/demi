@@ -255,7 +255,7 @@ the runner or shared SDK.
 | Invocation cancelled | Cancel its handler and release its resources. Preserve unrelated calls and the connection. |
 | Handler exceeds cancellation grace | Report a service fault and retire the process. |
 | Service crashes or corrupts the protocol | Fail affected invocations. Do not automatically replay potentially completed side effects. |
-| Execution context is disposed | Release its bindings and service references. Live contexts, invocations, or retained resources keep their service owned. |
+| Execution context is disposed | Release its bindings and service references. Live contexts, invocations, or held conversation state keep their service owned. |
 | No service owners remain | Request shutdown, drain the service, close its transports, and reap the child. |
 
 The runner allows **6 seconds** for the shutdown request and process exit.
@@ -274,81 +274,40 @@ The runner must report that failure rather than claim isolated cancellation.
 Changing the startup catalog creates new pinned bindings, not an in-place
 replacement of an executable serving an existing context.
 
-## Retained resources
+## Conversation-scoped state
 
-A native operation can create a live resource
-that must survive the shell job that created it. For example, a conversation's
-browser must keep its tabs between agent turns. An explicit resource owner keeps
-the resident service alive; no fake long-running invocation is required.
+A native operation can keep state that must survive the shell job that created
+it. The conversation browser keeps its tabs between shell jobs and agent turns.
+That state belongs to the conversation, and the native package keeps it itself,
+keyed by the conversation identity the runner supplies; there is no separate
+resource handle, acquisition, or grant.
 
-The embedding application acquires an opaque grant through its normal Host
-access. Acquisition pins the runner connection generation, execution security
-context, package artifact, resource kind, and application owner scope. The runner
-validates the catalog and resolves the artifact using the same installation path
-as invocations. Concurrent requests for the same owner/kind/artifact share one
-acquisition; different owners receive isolated resource identities. A grant is
-never accepted from shell arguments or forwarded environment variables.
+Every job the backend starts names its conversation and the invoking agent
+node. The runner places them in the job environment as `DEMI_CONVERSATION_ID`
+and `DEMI_AGENT_NODE_ID`, so external programs can see them, and writes the same
+values into the `conversation` and `caller` fields of every native invocation
+record it builds. Native handlers use the invocation fields. A value written into
+the shell environment by a script never reaches those fields, so it cannot
+select another conversation's state.
 
-The protocol must carry these distinct operations and acknowledgements:
+Calls from every conversation on a device share one resident service per
+artifact and security context. The service separates state by conversation.
+A service that holds conversation state stays resident: before retiring a
+service with no remaining context owners, the runner asks it whether it still
+holds any conversation, and keeps it when it does.
 
-| Operation | Contract |
-| --- | --- |
-| Acquire | Accept authenticated owner scope, resource kind and pinned package identity; return a grant and generation after initialization succeeds |
-| Bind job | Associate a live job with authorized grants; supply trusted resource context to each native invocation |
-| Invoke/subscribe | Address a grant through the authenticated Host adapter; carry validated operation input, cancellation and bounded output/events |
-| Release | Stop admission, cancel resource calls/subscriptions, release resource state and acknowledge completion; repeated release of the same retired grant is harmless |
-| Lost | Report an ended connection, failed service or retired generation; invalidate every affected handle without replay |
-
-The native service exposes `POST /v1/resource` using the invocation framing,
-bounded output, and cancellation contract below. Its operation is `acquire`,
-`release`, or `status`; its trusted `resource` field contains `{id, kind}`.
-These operations are not declared commands and the local command client cannot
-invoke this endpoint on the native service. Acquire initializes a dormant owner;
-domain startup may remain lazy. Status returns `{state: "ready" | "released"}`.
-Release and service shutdown await domain cleanup. An unknown released ID is
-harmless to release but cannot be invoked or recreated under that same grant.
-
-A native command binding may require a `resource` kind. Authenticated runner
-messages acquire grants against an owner and exact package descriptor, bind
-their IDs to a job, and release them. The runner validates every job binding and
-injects the matching `{id, kind}` into native invocation metadata. Raw argv and
-forwarded environment cannot supply this field. Invocations also carry their
-requested JSON output mode, so native output uses the same declared result
-schema as the dispatcher.
-
-The native package owns the resource's domain state and cleanup. Runner and the
-shared SDK own grant routing, service references, cancellation and transport.
-Resource input and events use authoritative schemas; browser data does not
-become generic SDK business logic. Product operations may use this authenticated
-resource path without manufacturing a shell job. Both paths address the same
-native owner and operation implementation.
-
-Retained references are independent of invocation and shell-context references.
-Disposing one shell context does not release another owner's resource. A release
-acknowledgement means subscriptions ended, child processes were reaped, and
-resource-owned temporary files were removed. Cancellation and shutdown use the
-existing protocol grace limits; failed cleanup retires the faulty service and
-reports affected resources as lost, rather than claiming successful release.
-
-Runner/backend connection loss releases all grants from that connection.
-Reconnect does not revive old grants. An artifact change creates a new binding;
-a resource stays on its pinned artifact until released, and a mismatching job
-fails explicitly rather than sharing incompatible state. The application must
-release or finish the resource before moving it to a new artifact. Acquisition
-failure leaves no reference or detached child behind.
-
-A retained reference does not hold device activity or an application file gate.
-Actual calls and active data subscriptions acquire admission through the embedding
-application's Host access. Grant-scoped lifecycle/domain-state notifications can
-be emitted on the existing connection without a permanent operation lease; they
-cannot initiate Host work. Snapshot repair is an explicit short operation.
-Release calls use the embedding application's admitted lifecycle cleanup scope.
-The backend's [resource coordinator](resource-lifecycle.md) decides when to release;
-runner and the native package execute that release and report its outcome.
-This permits a stopped Cloud to invalidate an idle resource without promising
-page restoration. Conversation policy belongs to
-[Browser ownership](browser.md#ownership); transition admission belongs to
-[Host operations](sessions-and-targets.md#host-operations).
+The service exposes `POST /v1/conversation` with the invocation framing and
+cancellation contract below. Its operation is `release` or `status`, and its
+trusted `conversation` field names the conversation; the local command client
+cannot invoke it. `status` returns the conversations the service holds.
+`release` ends everything the service holds for that conversation, awaits the
+domain cleanup, and acknowledges; an unknown conversation is harmless to
+release. The runner sends `release` when the backend sends the generic
+`conversation_release` message for that conversation, and service shutdown
+releases every held conversation. Failed cleanup retires the faulty service and
+reports it, rather than claiming a successful release. Which events lead the
+backend to send a release is defined in
+[Conversation idle and Host resource release](resource-lifecycle.md).
 
 ## Invocation protocol
 

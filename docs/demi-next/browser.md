@@ -8,17 +8,18 @@ acceptance are required before enabling a deployed release.
 
 This is the authoritative browser design. Command dispatch, Host admission,
 native service ownership, and package boundaries retain their existing owners.
-Browser automation does not introduce another shell or agent loop. Shared
-startup, idle scheduling, and retirement follow
-[Resource lifecycle coordination](resource-lifecycle.md).
+Browser automation does not introduce another shell or agent loop, and it does
+not reach into the agent framework: the browser keeps its own state per
+conversation and ends it when the conversation is released, as
+[Conversation idle and Host resource release](resource-lifecycle.md) defines.
 
 ## Reading map
 
 - [Purpose](#purpose): browser automation for agents on the conversation Host.
 - [Ownership](#ownership): conversation binding, tabs, concurrency, and lifetime.
-- [Idle reclamation](#idle-reclamation): browser activity and the ten-minute policy.
+- [Release](#release): the conversation release ends the browser; the browser has no timer.
 - [Cancellation](#cancellation): stop invocation work and release held input.
-- [Execution](#execution): browser distribution, command dispatch, and retained resources.
+- [Execution](#execution): browser distribution, command dispatch, and conversation-scoped state.
 - [Command contract](#command-contract): inputs, text, JSON, media, and failure.
 - [Observation](#observation): page trees, references, locators, and coordinates.
 - [Command reference](#command-reference): commands, example output, and result fields.
@@ -77,15 +78,17 @@ Conversation
         +-- child
 ```
 
-Commands obtain the conversation, invoking agent node, and execution Host from
-the authenticated execution context. They have no `--conversation`, `--session`,
-`--profile`, `--cdp-url`, or browser-process argument. Caller-writable environment
-variables cannot establish or replace ownership.
+Commands obtain the conversation and invoking agent node from the
+`conversation` and `caller` fields of the native invocation record, which the
+runner fills from the job the backend started; the same values are visible to
+scripts as `DEMI_CONVERSATION_ID` and `DEMI_AGENT_NODE_ID`, but a script that
+changes those variables changes nothing the browser reads. Commands have no
+`--conversation`, `--session`, `--profile`, `--cdp-url`, or browser-process
+argument.
 
 `open` starts the environment when necessary. `tabs` returns an empty list when
-the browser has not started; listing alone does not launch it. This does not
-change the Host acquisition already performed for the containing shell job.
-A command with an expired tab ID fails rather than opening a replacement page.
+the browser has not started; listing alone does not launch it. A command with
+an expired tab ID fails rather than opening a replacement page.
 
 The environment belongs to the main Host. Browser commands invoked from a shell
 on an attached Host return `wrong_host`; they do not silently dispatch elsewhere.
@@ -136,8 +139,9 @@ storage still means those tabs can affect the same login.
 
 ### Cancellation
 
-Cancelling a command or agent turn stops its further browser dispatches, waits,
-and blocking debug facilities, and releases held keys/buttons. Await bounded
+Cancelling a command stops its further browser dispatches, waits, and
+blocking debug facilities, and releases held keys/buttons; cancelling an agent
+turn reaches the browser only as the cancellation of its running command. Await bounded
 cleanup before reporting cancellation complete. Browser state and nonblocking
 observations such as buffered logs remain available. Cancellation does not undo
 submitted forms or page JavaScript and does not close unrelated tabs.
@@ -147,10 +151,10 @@ or uncertain effects keep their actual progress. No automatic replay occurs.
 
 ### Lifetime
 
-The conversation's retained native resource owns the browser controller. A
-browser-capable job binds that resource before shell execution; binding alone
-does not launch the browser. The browser process and its storage form the lazily
-created environment.
+The native browser service owns one environment per conversation, keyed by
+the conversation identity of the invocation. The browser process and its
+storage form the lazily created environment; nothing outside the native
+service holds a handle to it.
 
 The environment outlives individual commands, shell jobs, and agent turns.
 Its internal lifecycle uses one state:
@@ -164,66 +168,36 @@ Its internal lifecycle uses one state:
 | User closes the Demi page | Retain the environment; closing the web client does not cancel agent work |
 | Command or agent turn is cancelled | Stop current invocation work and temporary waits; retain completed page effects and other tabs |
 | `close <tab>` | Close that tab and release its commands, references, and debugging state |
-| Last tab closes | Retire the browser resource after the closing invocation completes; stop Chrome for Testing, remove its profile and release its grant; the next `open` starts fresh |
-| Browser idle deadline expires | Retire through the shared coordinator under the policy below |
-| Main Host or main directory changes | Release the old environment through the target transition; do not copy tabs, cookies, or debugging connections |
-| Conversation is archived | End the environment and its operation access; restoring the conversation starts fresh on demand |
+| Last tab closes | Retire the environment after the closing invocation completes; stop Chrome for Testing and remove its profile; the next `open` starts fresh |
+| Conversation release arrives | Retire the environment the same way; the backend sends it when the conversation has been idle for the idle window, moves to another Host, or is archived |
+| Main Host or main directory changes | The old device receives the conversation release; nothing is copied to the new Host |
+| Conversation is archived | The device receives the conversation release; restoring the conversation starts fresh on demand |
 | Conversation is forked | Do not inherit the live browser or handles; IDs in copied history are historical text |
 | Chrome for Testing crashes, runner connection ends, backend restarts, or Cloud stops/resets | Invalidate the environment and fail affected calls; never replay page actions |
 
-The native controller reports last-tab closure and fences further page actions.
-The backend coordinator releases its retained grant after the closing invocation
-has delivered its result and released its operation lease; cleanup must not wait
-for the invocation that requested it while that invocation waits for cleanup.
-Closing the last tab invalidates its resource scope, including later commands
-in the same shell call. Opening again requires a new call and a new controller.
+The native service fences further page actions once last-tab closure begins,
+including later commands in the same shell call; opening again requires a new
+call. Browser profiles and live page state are not restored across process
+lifetime boundaries. Explicit output files survive according to their Host
+location. Screenshots already persisted into the transcript follow the existing
+media storage contract.
 
-A controller bound before the first open can have no tabs or browser process.
-It follows the same idle policy. The first open lazily creates its browser
-process without changing the resource scope bound to the job.
+### Release
 
-Browser profiles and live page state are not restored across process lifetime
-boundaries. Explicit output files survive according to their Host location.
-Screenshots already persisted into the transcript follow the existing media
-storage contract.
+The browser has no idle timer and no notion of agent activity. It ends a
+conversation's environment on exactly two signals it sees itself: the last tab
+closing, and the conversation release the runner forwards. The backend decides
+when to send that release from the one conversation idle rule, one hour of no
+agent activity, or from a target change or archive; an open tab, a page that is
+still loading, or a running download never postpones it. On Cloud the release
+is not sent: an idle machine stops, and the browser ends with it.
 
-Target changes, archiving, and observer cancellation follow
-[Host operations](sessions-and-targets.md#host-operations). Resource retirement
-uses the shared coordinator; cleanup must not create another path to the Host.
-
-### Idle reclamation
-
-The browser idle duration is **10 minutes**, independently configured from Cloud's
-idle duration. This policy applies on both paired devices and Cloud. Start the
-interval only while a live browser resource has all of these properties:
-
-- Its entire owning conversation's agent tree is idle, including children and
-  work already admitted by tree lifecycle coordination.
-- No browser command, upload/download operation, or browser startup is in
-  progress. Observational commands also count as use.
-
-New activity cancels the interval. When all conditions hold again, begin a fresh
-full interval. Tabs, cookies, retained grants, and backend metadata subscriptions
-are retained state, not activity. Merely showing a conversation in the sidebar
-or keeping its chat connected does not prevent browser retirement. A waiting
-agent turn does prevent it; a future scheduled turn that has not been admitted
-does not. The same policy releases a controller that has remained empty since
-binding; explicit last-tab closure still retires immediately as specified above.
-
-At expiry, the shared coordinator reserves admission and rechecks eligibility
-before releasing the native browser resource. The grant, process, temporary
-profile, tab/reference handles, and held input end together.
-The backend retains the conversation and its historical outputs, not a live
-browser controller. Report retirement to its owner as inactivity. The next agent
-open creates a fresh controller with new tabs and browser storage.
-
-[Resource lifecycle coordination](resource-lifecycle.md) owns timer cancellation,
-new-demand races, shared startup, failure handling, and parent cleanup ordering.
-Browser activity participates in Host admission through the existing operation
-lease. Retained idle browser state does not keep Cloud awake.
-Cloud's own retirement can end it earlier under the
-[Cloud policy](managed-hosts.md#lifecycle-and-capacity). Browser retirement does
-not power down a paired device or independently decide to stop Cloud.
+Retirement stops Chrome for Testing, terminates its process tree, removes the
+temporary profile, and invalidates every tab, reference, and debugging handle
+together. A release that arrives while a command is running on that
+conversation cancels the command like any invocation cancellation, then retires.
+Repeating a release is harmless. The next `open` creates a fresh environment
+with new tabs and browser storage.
 
 ## Execution
 
@@ -351,48 +325,14 @@ implementation. Runner owns authenticated scope, processes, and transport.
 Chrome for Testing and its driver run on the selected Host. The debugging
 connection is not exposed directly to the public network or the Demi web app.
 
-### Retained resource ownership
+### Conversation-scoped state
 
-The native resource kind is `browser`. Before starting an agent shell job, the
-backend binds the current conversation's resource through `withHost` and keeps
-the job's Host admission until the job and output cleanup finish. Root and child
-jobs receive the same conversation owner; attached-Host jobs do not receive its
-browser grant. Grant acquisition does not start Chrome or download it. Commands
-declare their required resource kind and runner supplies the trusted binding.
-
-After a job ends, the backend checks the resource status. Explicit last-tab
-closure has already stopped the browser and marks that grant released; the
-backend then drops its retained reference. Later commands in the old job cannot
-restart it. A new shell call may obtain a new resource. Idle and target lifecycle
-retirement use the same release operation and never require a synthetic job.
-
-A native service ordinarily survives only while something owns it. Browser
-continuity between shell jobs therefore requires a conversation-owned retained
-resource, not a sleeping fake command or an unmanaged detached child process.
-The generic extension is defined in
-[Native runtime](native-runtime.md#retained-resources).
-
-For a browser resource:
-
-1. The backend obtains an opaque resource grant through conversation Host access.
-   It binds the current main Host, runner connection generation, and exact native
-   artifact selected by the runtime catalog.
-2. Runner maps authenticated jobs to that grant and supplies trusted resource
-   scope to native invocations. CLI arguments and forwarded environment values
-   cannot choose the grant.
-3. Later calls in the conversation reuse the environment. A shared native
-   service still separates environments by grant.
-4. Releasing the owner closes the browser, removes its temporary profile, and
-   releases the retained service reference. Cancelling one invocation does not
-   release that owner.
-
-A retained grant is resource ownership, not an active Host operation. It does
-not permanently hold the conversation file gate or Cloud activity lease.
-
-Backend operations for browser resources enter through
-`ConversationTargets.withHost`. Its scope covers actual Host IO. Keeping an
-old Host object is not permission to bypass this entry on later requests.
-Cloud and paired devices use the same contract.
+The browser is [conversation-scoped state](native-runtime.md#conversation-scoped-state)
+of the native service. The runner keeps the service resident while it holds any
+conversation's browser, forwards the conversation release to it, and writes the
+trusted conversation and caller identity into every invocation. The backend
+starts jobs and sends releases; it holds no browser handle, grant, or tab
+inventory. Cloud and paired devices use the same contract.
 
 ## Command contract
 
@@ -1651,14 +1591,14 @@ persistent JavaScript REPL; Bash already composes their operations.
 - `browser-protocol`: shared browser schemas and derived types.
 - `coding-agent`: declared commands using those schemas and generated help;
   assemble available commands through injected capabilities.
-- `backend/conversation`: browser owner, main-Host binding, admission, and product
-  adapters.
-- `runner` and `host-remote`: generic retained resources, trusted invocation
-  scope, cancellation, and transport; no webpage algorithms.
-- `demi-commands`: driver, page observation, actions, output rendering, assets,
-  and CDP handling.
-- `command-service`: generic invocation/resource protocol, not page or cookie
-  semantics.
+- `backend`: names the conversation and invoking node on every job and sends
+  the generic conversation release; no browser module.
+- `runner` and `host-remote`: trusted invocation identity, service residency,
+  the release forward, cancellation, and transport; no webpage algorithms.
+- `demi-commands`: driver, per-conversation environments, page observation,
+  actions, output rendering, assets, and CDP handling.
+- `command-service`: generic invocation and conversation protocol, not page or
+  cookie semantics.
 
 A library adopted for locating or acting must also cover the adjacent waiting,
 introspection, and error handling it provides. Reuse one observation/targeting
@@ -1676,8 +1616,9 @@ and isolated storage. Never run tests that call real models.
    environment failure separately from a browser result.
 2. Retain tabs and login state across shell jobs, agent turns, and user Web
    disconnect while the environment is live.
-3. Reject cross-conversation tab/ref/grant use. Isolate browser storage. Return
-   wrong_host for browser calls from an attached Host.
+3. Reject cross-conversation tab/ref use, including a script that rewrites
+   `DEMI_CONVERSATION_ID`. Isolate browser storage. Return wrong_host for
+   browser calls from an attached Host.
 4. Verify target changes, archive, Fork, sleep/reset, disconnect, and crashes.
    Old handles never identify replacement pages.
 5. Concurrent calls on one tab report busy; separate tabs progress independently.
@@ -1701,10 +1642,11 @@ and isolated storage. Never run tests that call real models.
     child targets, cursors, method admission, and cleanup. Verify per platform
     whether the headless clipboard is isolated from the Host user's clipboard
     and that the `clipboard` capability reports the result.
-13. Verify the browser idle policy and cross-resource races in
-    [Lifecycle acceptance](resource-lifecycle.md#integration-and-acceptance):
-    active children prevent idle cleanup; metadata-only watchers do
-    not; cleanup on paired and Cloud Hosts releases the native grant and profile.
+13. Verify the [conversation release](resource-lifecycle.md#acceptance): an
+    idle conversation's release on a paired device ends Chrome and its profile
+    while the device stays available; a Cloud stop ends it with the machine; a
+    running job or waiting child turn defers it; a target change or archive
+    releases the old device.
 14. Deliver native changes to every required build target, paired device, and
     Cloud guest. Verify Chrome for Testing provisioning on every platform
     offering the feature; success on the development Mac is insufficient.
@@ -1737,8 +1679,7 @@ platform fails explicitly. A six-target runner build does not imply that Chrome
 is available on every one of those targets. Platform execution and Cloud-image
 acceptance remain release gates, as specified above.
 
-Conversation grants, native acquisition and loss messages, job resource bindings,
-shared Cloud/browser idle scheduling, and cleanup through reserved Host access
-are part of the command path. A capability the driver, platform, or page
+Job conversation identity, service residency, and the conversation release are
+part of the command path. A capability the driver, platform, or page
 cannot provide is reported unavailable with its reason and never advertised.
 Workpanel display remains out of scope.
