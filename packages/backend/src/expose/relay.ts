@@ -111,14 +111,22 @@ export class ExposeRelay {
       release()
     }
     const endings: ConnectionEndings = { end: stop(true), settle: stop(false) }
-    try {
-      stream = await this.openStream(record, host.net)
-      idle = new IdleWatch(this.deps.idleTimeoutMs ?? IDLE_TIMEOUT_MS, () => {
+    const idleOf = () => new IdleWatch(
+      this.deps.idleTimeoutMs ?? IDLE_TIMEOUT_MS,
+      () => {
         controller.abort(new Error('relay connection idle'))
         endings.end()
-      })
-      if (c.req.header('upgrade')?.toLowerCase() === 'websocket')
-        return await this.relayWebSocket(c, record, stream, idle, endings)
+      }
+    )
+    // A WebSocket upgrades its visitor first (`expose.md` § The public relay
+    // step 5): the service's handshake follows, and the visitor's early
+    // frames wait for it. Upgrading late leaves those frames buffered in the
+    // HTTP context, which segfaults this Bun at the upgrade.
+    if (c.req.header('upgrade')?.toLowerCase() === 'websocket')
+      return await this.relayWebSocket(c, record, host.net, idleOf, endings)
+    try {
+      stream = await this.openStream(record, host.net)
+      idle = idleOf()
       return await this.relayHttp(c, record, stream, idle, endings)
     } catch (error) {
       endings.end()
@@ -266,13 +274,88 @@ export class ExposeRelay {
   /** Step 5: the WebSocket upgrade, relayed message by message. */
   private async relayWebSocket(
     c: Context,
-    record: { address: string },
-    stream: RelayStream,
-    idle: IdleWatch,
+    record: { deviceId: string; address: string },
+    net: RemoteNet,
+    idleOf: () => IdleWatch,
     endings: ConnectionEndings
   ): Promise<Response> {
+    // The visitor is upgraded first (`expose.md` § The public relay step 5);
+    // the service's 101 follows. Frames the visitor sends before it wait.
+    let writer: TouchingWriter | null = null
+    let stream: RelayStream | null = null
+    let client: {
+      send(data: string | ArrayBuffer | Uint8Array): void
+      close(code: number, reason: string): void
+    } | null = null
+    const earlyVisitorFrames: Uint8Array[] = []
+    let earlyVisitorClose: { code: number; reason: string } | null = null
+    let serviceReady = false
+    let closed = false
+    let flushEarlyServiceFrames: (() => void) | null = null
+    const finish = (code: number, reason: string, graceful: boolean) => {
+      if (closed)
+        return
+      closed = true
+      client?.close(code, reason)
+      if (graceful)
+        endings.settle()
+      else
+        endings.end()
+    }
+    const upgraded = await this.deps.upgradeWebSocket(() => ({
+      onOpen(_event, ws) {
+        client = ws
+        flushEarlyServiceFrames?.()
+      },
+      onMessage(event) {
+        const data = event.data
+        const frame = encodeClientFrame(
+          typeof data === 'string' ? WS_TEXT : WS_BINARY,
+          typeof data === 'string'
+            ? new TextEncoder().encode(data)
+            : new Uint8Array(data as ArrayBuffer)
+        )
+        if (serviceReady && writer !== null)
+          void writer.write(frame).catch(() => finish(1006, '', false))
+        else if (!closed)
+          earlyVisitorFrames.push(frame)
+      },
+      onClose(event) {
+        const code = 'code' in event && typeof event.code === 'number'
+          ? event.code
+          : 1000
+        const reason = 'reason' in event && typeof event.reason === 'string'
+          ? event.reason
+          : ''
+        if (!serviceReady) {
+          earlyVisitorClose = { code, reason }
+          return
+        }
+        if (writer !== null && stream !== null) {
+          const ended = stream
+          void writer
+            .write(encodeClientFrame(WS_CLOSE, encodeClosePayload(code, reason)))
+            .then(() => ended.writer.end())
+            .catch(() => {})
+        }
+        // The visitor is gone: its close frame was forwarded, and holding
+        // the stream open waits for a service EOF that may never come (a
+        // server that keeps its side of the connection open). The teardown
+        // closes the runner's socket, which reports both pipe ends.
+        finish(code, reason, false)
+      },
+    }))(c, async () => {})
+    if (!upgraded)
+      return badGateway('refused')
     const url = new URL(c.req.url)
-    const writer = new TouchingWriter(stream.writer, idle)
+    try {
+      stream = await this.openStream(record, net)
+    } catch (error) {
+      finish(1011, error instanceof RemoteNetError ? error.code : 'unreachable', false)
+      return upgraded
+    }
+    const idle = idleOf()
+    writer = new TouchingWriter(stream.writer, idle)
     await writer.write(
       wsHandshake(url.pathname + url.search, record.address, wsKey())
     )
@@ -284,46 +367,43 @@ export class ExposeRelay {
       return next.done ? null : next.value
     }
     let pending: Uint8Array = new Uint8Array(0)
+    let handshake: string | null = null
     for (;;) {
       const chunk = await nextChunk()
-      if (chunk === null) {
-        endings.end()
-        return badGateway('unreachable')
-      }
+      if (chunk === null)
+        break
       pending = concat(pending, chunk)
       const headEnd = indexOfAscii(pending, '\r\n\r\n')
       if (headEnd !== -1) {
-        const head = ascii(pending.subarray(0, headEnd))
-        if (!/^HTTP\/1\.[01] 101/.test(head)) {
-          endings.end()
-          return badGateway('refused')
-        }
+        handshake = ascii(pending.subarray(0, headEnd))
         pending = pending.subarray(headEnd + 4)
         break
       }
     }
-    const parser = new WsFrameParser()
-    let client: {
-      send(data: string | ArrayBuffer | Uint8Array): void
-      close(code: number, reason: string): void
-    } | null = null
-    let closed = false
-    const finish = (code: number, reason: string, graceful: boolean) => {
-      if (closed)
-        return
-      closed = true
-      client?.close(code, reason)
-      if (graceful)
-        endings.settle()
-      else
-        endings.end()
+    if (handshake === null || !/^HTTP\/1\.[01] 101/.test(handshake)) {
+      finish(1011, 'refused', false)
+      return upgraded
     }
-    // The service may already be sending while the visitor's upgrade is still
-    // completing; frames wait for `onOpen`, then flush in order.
-    const early: ServerFrame[] = []
+    // The service speaks: flush the visitor's early frames, in order.
+    serviceReady = true
+    for (const frame of earlyVisitorFrames.splice(0))
+      void writer.write(frame).catch(() => finish(1006, '', false))
+    if (earlyVisitorClose !== null) {
+      const { code, reason } = earlyVisitorClose
+      void writer
+        .write(encodeClientFrame(WS_CLOSE, encodeClosePayload(code, reason)))
+        .then(() => stream.writer.end())
+        .catch(() => {})
+      finish(code, reason, false)
+      return upgraded
+    }
+    const parser = new WsFrameParser()
+    // The service may already be sending while the visitor's own upgrade is
+    // still completing; frames wait for `client`, then flush in order.
+    const earlyServiceFrames: ServerFrame[] = []
     const deliver = (frame: ServerFrame) => {
       if (client === null && frame.kind !== 'close') {
-        early.push(frame)
+        earlyServiceFrames.push(frame)
         return
       }
       if (frame.kind === 'message') {
@@ -333,16 +413,16 @@ export class ExposeRelay {
         idle.touch()
       } else if (frame.kind === 'close') {
         // The close handshake: answer the service's close, then EOF.
-        void writer
+        void writer!
           .write(encodeClientFrame(WS_CLOSE, encodeClosePayload(
             frame.code === 1005 ? 1000 : frame.code,
             frame.reason
           )))
-          .then(() => stream.writer.end())
+          .then(() => stream!.writer.end())
           .catch(() => {})
         finish(frame.code === 1005 ? 1000 : frame.code, frame.reason, true)
       } else if (frame.kind === 'ping') {
-        void writer.write(encodeClientFrame(WS_PONG, frame.data))
+        void writer!.write(encodeClientFrame(WS_PONG, frame.data))
           .catch(() => {})
       }
     }
@@ -363,40 +443,14 @@ export class ExposeRelay {
       }
       finish(1006, '', false)
     })()
-    // The server runtime offers no socket after the upgrade, so the frames
-    // are re-emitted through the instance's own WebSocket upgrade helper.
-    const upgraded = await this.deps.upgradeWebSocket(() => ({
-      onOpen(_event, ws) {
-        client = ws
-        for (const frame of early.splice(0))
-          deliver(frame)
-      },
-      onMessage(event) {
-        const data = event.data
-        const payload = typeof data === 'string'
-          ? new TextEncoder().encode(data)
-          : new Uint8Array(data as ArrayBuffer)
-        const frame = encodeClientFrame(
-          typeof data === 'string' ? WS_TEXT : WS_BINARY,
-          payload
-        )
-        void writer.write(frame).catch(() => finish(1006, '', false))
-      },
-      onClose(event) {
-        const code = 'code' in event && typeof event.code === 'number'
-          ? event.code
-          : 1000
-        const reason = 'reason' in event && typeof event.reason === 'string'
-          ? event.reason
-          : ''
-        void writer
-          .write(encodeClientFrame(WS_CLOSE, encodeClosePayload(code, reason)))
-          .then(() => stream.writer.end())
-          .catch(() => {})
-        finish(code, reason, true)
-      },
-    }))(c, async () => {})
-    return upgraded ?? badGateway('refused')
+    const flushWhenOpen = () => {
+      for (const frame of earlyServiceFrames.splice(0))
+        deliver(frame)
+    }
+    flushEarlyServiceFrames = flushWhenOpen
+    if (client !== null)
+      flushWhenOpen()
+    return upgraded
   }
 }
 
