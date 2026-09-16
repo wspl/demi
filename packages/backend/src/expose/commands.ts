@@ -63,10 +63,6 @@ function addCommand(
         )
         return { exitCode: 1 }
       }
-      if (!deps.registry.deviceOnline(target.deviceId)) {
-        await io.stderr(`expose add: host ${target.name} is offline\n`)
-        return { exitCode: 1 }
-      }
       const device = await deps.control.getDevice(target.deviceId)
       let record: ExposeRecord
       try {
