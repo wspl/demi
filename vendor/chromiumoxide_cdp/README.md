@@ -134,3 +134,15 @@ Licensed under either of these:
 - [chromedp](https://github.com/chromedp/chromedp)
 - [rust-headless-chrome](https://github.com/atroche/rust-headless-chrome) which the launch config, `KeyDefinition` and typing support among others is taken from.
 - [puppeteer](https://github.com/puppeteer/puppeteer)
+
+### Demi's pinned protocol generation
+
+The checked-in PDL owns both Rust bindings and `pdl/protocol.json`, the raw CDP
+command validation catalog. Regenerate both with:
+
+```sh
+cargo run --manifest-path vendor/chromiumoxide_cdp/tools/generate/Cargo.toml -- vendor/chromiumoxide_cdp
+```
+
+The two explicitly retained deprecated methods are the library's network
+emulation primitive and the browser contract's context-scoped permission grant.

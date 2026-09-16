@@ -7,10 +7,19 @@ pub struct Session {
     id: SessionId,
     /// The identifier of the target this session is attached to.
     target_id: TargetId,
+    parent: Option<SessionId>,
 }
 impl Session {
-    pub fn new(id: SessionId, target_id: TargetId) -> Self {
-        Self { id, target_id }
+    pub fn new(id: SessionId, target_id: TargetId, parent: Option<SessionId>) -> Self {
+        Self {
+            id,
+            target_id,
+            parent,
+        }
+    }
+
+    pub fn parent(&self) -> Option<&SessionId> {
+        self.parent.as_ref()
     }
 
     pub fn session_id(&self) -> &SessionId {

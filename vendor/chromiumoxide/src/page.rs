@@ -310,7 +310,8 @@ impl Page {
     /// # }
     /// ```
     pub async fn event_listener<T: IntoEventKind>(&self) -> Result<EventStream<T>> {
-        self.event_listener_with_capacity(DEFAULT_EVENT_CAPACITY).await
+        self.event_listener_with_capacity(DEFAULT_EVENT_CAPACITY)
+            .await
     }
 
     /// Subscribe with bounded retention. Handle `EventStreamError::Lagged` before
@@ -388,6 +389,17 @@ impl Page {
     /// The identifier of the `Session` target of this page is attached to
     pub fn opener_id(&self) -> &Option<TargetId> {
         self.inner.opener_id()
+    }
+
+    /// Return an attached target's page handle, including out-of-process frames.
+    pub async fn related_page(&self, target: TargetId) -> Result<Option<Page>> {
+        let (tx, rx) = oneshot_channel();
+        self.inner
+            .sender()
+            .clone()
+            .send(TargetMessage::RelatedPage(target, tx))
+            .await?;
+        Ok(rx.await?)
     }
 
     /// Returns the name of the frame
@@ -513,10 +525,20 @@ impl Page {
     }
 
     /// Resolve an observed DOM identity without repeating a selector query.
-    pub async fn element_from_backend_node(&self, backend_node_id: BackendNodeId) -> Result<Element> {
+    pub async fn element_from_backend_node(
+        &self,
+        backend_node_id: BackendNodeId,
+    ) -> Result<Element> {
         self.get_document().await?;
-        let response = self.execute(PushNodesByBackendIdsToFrontendParams::new(vec![backend_node_id])).await?;
-        let node_id = response.node_ids.first().copied()
+        let response = self
+            .execute(PushNodesByBackendIdsToFrontendParams::new(vec![
+                backend_node_id,
+            ]))
+            .await?;
+        let node_id = response
+            .node_ids
+            .first()
+            .copied()
             .filter(|id| *id != NodeId::new(0))
             .ok_or_else(|| CdpError::msg("Observed DOM node is no longer attached"))?;
         Element::new(Arc::clone(&self.inner), node_id).await

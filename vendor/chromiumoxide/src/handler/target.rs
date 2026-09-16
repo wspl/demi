@@ -124,7 +124,12 @@ impl Target {
     }
 
     pub fn set_session_id(&mut self, id: SessionId) {
-        self.session_id = Some(id)
+        self.session_id = Some(id);
+        if matches!(self.init_state, TargetInit::AttachToTarget) {
+            self.init_state = TargetInit::InitializingFrame(FrameManager::init_commands(
+                self.config.request_timeout,
+            ));
+        }
     }
 
     pub fn session_id(&self) -> Option<&SessionId> {
@@ -216,7 +221,13 @@ impl Target {
                     .result
                     .and_then(|val| GetFrameTreeParams::response_from_value(val).ok())
                 {
-                    self.frame_manager.on_frame_tree(resp.frame_tree);
+                    let mut tree = resp.frame_tree;
+                    // An OOPIF is the root of its own session even though CDP keeps
+                    // its embedding frame's parentId in the wire representation.
+                    if self.r#type == TargetType::Iframe {
+                        tree.frame.parent_id = None;
+                    }
+                    self.frame_manager.on_frame_tree(tree);
                 }
             }
             // requests originated from the network manager all return an empty response, hence they
@@ -233,7 +244,17 @@ impl Target {
                 .frame_manager
                 .on_frame_attached(ev.frame_id.clone(), Some(ev.parent_frame_id.clone())),
             CdpEvent::PageFrameDetached(ev) => self.frame_manager.on_frame_detached(ev),
-            CdpEvent::PageFrameNavigated(ev) => self.frame_manager.on_frame_navigated(&ev.frame),
+            CdpEvent::PageFrameNavigated(ev) => {
+                if self.r#type == TargetType::Iframe
+                    && ev.frame.id.as_ref() == self.info.target_id.as_ref()
+                {
+                    let mut root = ev.frame.clone();
+                    root.parent_id = None;
+                    self.frame_manager.on_frame_navigated(&root);
+                } else {
+                    self.frame_manager.on_frame_navigated(&ev.frame);
+                }
+            }
             CdpEvent::PageNavigatedWithinDocument(ev) => {
                 self.frame_manager.on_frame_navigated_within_document(ev)
             }
@@ -320,8 +341,14 @@ impl Target {
 
     /// Advance that target's state
     pub(crate) fn poll(&mut self, cx: &mut Context<'_>, now: Instant) -> Option<TargetEvent> {
-        if !self.is_page() {
-            // can only poll pages
+        if !self.is_page() && self.r#type != TargetType::Iframe {
+            // Workers do not expose the Page domain.
+            return None;
+        }
+        // Child renderers are auto-attached through their parent session. A
+        // second browser-level attachment would duplicate runtime events and
+        // replace the session whose ancestry identifies the owning tab.
+        if self.r#type == TargetType::Iframe && self.session_id.is_none() {
             return None;
         }
         match &mut self.init_state {
@@ -433,6 +460,10 @@ impl Target {
             if let Some(handle) = self.page.as_mut() {
                 while let Poll::Ready(Some(msg)) = Pin::new(&mut handle.rx).poll_next(cx) {
                     match msg {
+                        TargetMessage::RelatedPage(target, tx) => {
+                            self.queued_events
+                                .push_back(TargetEvent::RelatedPage(target, tx));
+                        }
                         TargetMessage::Command(cmd) => {
                             self.queued_events.push_back(TargetEvent::Command(cmd));
                         }
@@ -619,6 +650,7 @@ impl Default for TargetConfig {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TargetType {
     Page,
+    Iframe,
     BackgroundPage,
     ServiceWorker,
     SharedWorker,
@@ -632,6 +664,7 @@ impl TargetType {
     pub fn new(ty: &str) -> Self {
         match ty {
             "page" => TargetType::Page,
+            "iframe" => TargetType::Iframe,
             "background_page" => TargetType::BackgroundPage,
             "service_worker" => TargetType::ServiceWorker,
             "shared_worker" => TargetType::SharedWorker,
@@ -673,6 +706,7 @@ impl TargetType {
 
 #[derive(Debug)]
 pub(crate) enum TargetEvent {
+    RelatedPage(TargetId, Sender<Option<Page>>),
     /// An internal request
     Request(Request),
     /// An internal navigation request
@@ -761,6 +795,8 @@ pub struct GetParent {
 
 #[derive(Debug)]
 pub enum TargetMessage {
+    /// Resolve another attached target through the same browser handler.
+    RelatedPage(TargetId, Sender<Option<Page>>),
     /// Execute a command within the session of this target
     Command(CommandMessage),
     /// Return the main frame of this target's page
