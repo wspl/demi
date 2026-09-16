@@ -28,7 +28,7 @@ pub(super) async fn execute(
     let BrowserCommand::Upload(input) = command else {
         unreachable!("upload dispatch accepts only upload");
     };
-    let operation = Operation::until(&tab.ended, cancel, deadline);
+    let operation = Operation::for_tab(tab, cancel, deadline);
     let mut references = tab
         .state
         .operations

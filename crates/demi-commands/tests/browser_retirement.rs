@@ -255,6 +255,27 @@ async fn chrome_process_tree_and_profile_retire_together() {
 
 mod browser_families;
 
+/// Wait until a concurrent browser command holds this fixture tab's admission.
+async fn wait_until_busy(fixture: &browser_families::BrowserFixture, tab: &str) {
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let (_, result) = fixture
+                .result(
+                    "browser.info",
+                    serde_json::json!({"tab": tab}),
+                    CancellationToken::new(),
+                )
+                .await;
+            if result["error"]["code"] == "tab_busy" {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
 /// Locate the test service's browser profiles without exposing diagnostic product APIs.
 fn chrome_profiles() -> std::collections::BTreeMap<i32, PathBuf> {
     let mut system = System::new();
@@ -322,24 +343,7 @@ async fn conversation_release_cancels_only_its_commands_and_retires_its_profile(
         );
         tokio::pin!(waiting);
         let release = async {
-            // tab_busy proves the wait owns its operation lock before release begins.
-            tokio::time::timeout(Duration::from_secs(5), async {
-                loop {
-                    let (_, result) = first
-                        .result(
-                            "browser.info",
-                            json!({"tab": first_tab}),
-                            CancellationToken::new(),
-                        )
-                        .await;
-                    if result["error"]["code"] == "tab_busy" {
-                        break;
-                    }
-                    tokio::time::sleep(Duration::from_millis(10)).await;
-                }
-            })
-            .await
-            .unwrap();
+            wait_until_busy(&first, &first_tab).await;
             assert_eq!(first.lifecycle("release").await, json!({}));
         };
         let ((code, error), ()) = tokio::join!(&mut waiting, release);
@@ -425,6 +429,112 @@ async fn browser_uses_trusted_conversation_and_caller_despite_script_environment
             .await;
         assert_eq!(error["error"]["code"], "tab_not_found");
         first
+    })
+    .await;
+}
+
+#[path = "browser/fixture.rs"]
+mod browser_fixture;
+
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; verifies joined retirement after failed assertions"]
+async fn fixture_assertions_retire_chrome_and_profiles_before_resuming_panic() {
+    use futures_util::FutureExt;
+    use std::{collections::BTreeMap, panic::AssertUnwindSafe, sync::Mutex};
+    for harness in ["direct", "service"] {
+        let recorded = Mutex::new(None::<(BTreeMap<i32, PathBuf>, HashSet<i32>)>);
+        let fail = || {
+            let profiles = chrome_profiles();
+            assert_eq!(profiles.len(), 1);
+            let snapshot = processes();
+            let mut owned: HashSet<_> = profiles.keys().copied().collect();
+            loop {
+                let count = owned.len();
+                for process in &snapshot {
+                    if owned.contains(&process.parent) || profiles.contains_key(&process.group) {
+                        owned.insert(process.pid);
+                    }
+                }
+                if count == owned.len() {
+                    break;
+                }
+            }
+            assert!(
+                owned.len() > profiles.len(),
+                "Chrome helpers were not captured"
+            );
+            *recorded.lock().unwrap() = Some((profiles, owned));
+            assert_eq!("actual", "expected", "deliberate fixture assertion");
+        };
+        let result = if harness == "direct" {
+            AssertUnwindSafe(browser_fixture::with_fixture(|browser, base| async move {
+                browser
+                    .open(&base, &CancellationToken::new(), Duration::from_secs(10))
+                    .await?;
+                fail();
+                Ok(())
+            }))
+            .catch_unwind()
+            .await
+        } else {
+            AssertUnwindSafe(browser_families::with_browser_fixture(
+                |fixture| async move {
+                    fixture.open("repairs.html").await;
+                    fail();
+                    fixture
+                },
+            ))
+            .catch_unwind()
+            .await
+        };
+        let panic = result.expect_err("the harness must resume the assertion panic");
+        assert!(
+            panic
+                .downcast_ref::<String>()
+                .unwrap()
+                .contains("deliberate fixture assertion")
+        );
+        let (profiles, owned) = recorded.into_inner().unwrap().unwrap();
+        assert!(
+            !processes()
+                .iter()
+                .any(|process| owned.contains(&process.pid)),
+            "{harness} left a Chrome process or helper"
+        );
+        for profile in profiles.values() {
+            assert!(
+                !profile.exists(),
+                "{harness} retained {}",
+                profile.display()
+            );
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; verifies the last-tab closing outcome"]
+async fn last_tab_close_fails_its_running_command_as_browser_lost() {
+    use serde_json::json;
+    browser_families::with_browser_fixture(|fixture| async move {
+        let tab = fixture.open("fixture.html").await;
+        let waiting = fixture.result(
+            "browser.wait",
+            json!({"tab":tab,"url":"**/never","timeout":30000}),
+            CancellationToken::new(),
+        );
+        let close = async {
+            wait_until_busy(&fixture, &tab).await;
+            fixture.call("browser.close", json!({"tab":tab})).await;
+        };
+        let ((code, failure), ()) = tokio::join!(waiting, close);
+        assert_eq!(code, 1, "{failure}");
+        assert_eq!(failure["error"]["code"], "browser_lost");
+        assert_eq!(failure["error"]["details"]["action"], "not_started");
+        assert_eq!(
+            fixture.lifecycle("status").await,
+            json!({"conversations":[]})
+        );
+        fixture
     })
     .await;
 }

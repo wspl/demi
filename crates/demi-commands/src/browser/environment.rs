@@ -173,6 +173,10 @@ where
                 _ => format!("browser connection ended: {error}"),
             };
             pump_failure.send_replace(Some(message));
+        } else if !pump_ended.is_cancelled() {
+            // An EOF without a protocol error is still transport loss unless
+            // joined retirement already ended the environment intentionally.
+            pump_failure.send_replace(Some("browser connection ended".into()));
         }
         pump_ended.cancel();
         result
