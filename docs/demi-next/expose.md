@@ -58,7 +58,10 @@ An expose belongs to a user and a device, not to a conversation. It records:
 The public hostname is `<id>.<expose domain>`. The expose domain is instance
 configuration ([deployment](#deployment)); when none is configured the
 feature is unavailable, `add` says so, and the product shows no expose
-controls.
+controls. The URL the commands and the API print takes its scheme and
+port from the backend's configured public URL, the one runners connect
+to: behind a reverse proxy on the default port the URL has no port, and a
+local backend on `3271` prints `http://<id>.expose.localhost:3271/`.
 
 A conversation names the device when it creates the expose: the conversation's
 main Host, or an attached Host through `--host`. After that the conversation
@@ -223,7 +226,8 @@ the scheme of the URLs it prints from the same forwarded-protocol handling
 its session cookie uses.
 
 For local development, Chrome and Firefox resolve `*.expose.localhost` to the
-loopback address without DNS; Safari does not.
+loopback address without DNS; Safari does not. The backend's public URL
+supplies the port, so no proxy is needed locally.
 
 In the multi-worker deployment, the proxy must route an expose hostname to
 the worker owning that user. The hostname carries the expose id and nothing
