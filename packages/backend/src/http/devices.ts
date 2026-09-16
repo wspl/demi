@@ -5,6 +5,7 @@ import { z } from 'zod'
 import type { AuthEnv } from '../auth/identity'
 import type { RunnerRegistry } from '../runner/registry'
 import type { ControlService } from '../storage/control'
+import type { Exposes } from '../expose/records'
 
 const claimBodySchema = z.object({ code: z.string().min(1) })
 
@@ -25,7 +26,8 @@ const createDirectoryBodySchema = z.object({ path: devicePathSchema })
  */
 export function deviceRoutes(options: {
   control: ControlService;
-  registry: RunnerRegistry
+  registry: RunnerRegistry;
+  exposes?: Exposes
 }): Hono<AuthEnv> {
   const { control, registry } = options
   const app = new Hono<AuthEnv>()
@@ -85,6 +87,9 @@ export function deviceRoutes(options: {
         message: `${inUse} workspace(s) still point at this device`
       }, 409)
     await registry.revoke(device.id)
+    // Revocation destroys every expose on the device with its attachments
+    // (`expose.md` § Lifetime).
+    await options.exposes?.destroyForDevice(device.id)
     return c.body(null, 204)
   })
 

@@ -168,6 +168,21 @@ CREATE TABLE model_catalogs (
 );
 `,
   },
+  {
+    id: 3,
+    name: 'exposes',
+    sql: `
+CREATE TABLE exposes (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id),
+  device_id  TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+  address    TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+CREATE INDEX idx_exposes_expiry ON exposes(expires_at);
+`,
+  },
 ]
 
 /**
