@@ -121,8 +121,12 @@ For each visitor connection the backend:
    headers, and body as they arrive. Bodies are never buffered whole;
    chunked and event-stream responses reach the visitor as the service
    sends them.
-5. Relays a WebSocket upgrade the same way: after the service answers 101
-   the connection is bytes in both directions until either side closes.
+5. Relays a WebSocket upgrade message by message: the backend accepts the
+   visitor's upgrade with its server runtime, performs the client handshake
+   with the service over the stream, and passes every text and binary
+   message, and the close code and reason, in both directions. The server
+   runtime offers no raw socket after an upgrade, so the frames are re-emitted
+   rather than copied; the payloads are unchanged.
 
 The relay rewrites `Host` to the expose's `address`, adds
 `X-Forwarded-For`, `X-Forwarded-Host` (the expose hostname) and
@@ -139,6 +143,9 @@ Limits, defined once here:
 | Connect timeout on the device | 10 seconds |
 | Connection with no bytes in either direction | Closed after 10 minutes |
 | Request header block | Bun's server default |
+
+A body on a `GET` request never reaches the relay: the server runtime drops
+it before the handler runs. No HTTP feature depends on one.
 
 Each relayed connection is one network stream on the runner and two pipes
 through the pipe broker ([Runner](runner.md#pipes-and-output)); a visitor's
