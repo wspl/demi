@@ -68,13 +68,20 @@ export function exposeHostname(id: string, domain: string): string {
   return `${id}.${domain}`
 }
 
-/** `expose.md` § Deployment: the scheme of the printed URLs follows the forwarded protocol. */
-export function exposeUrl(
-  id: string,
-  domain: string,
-  scheme: string
-): string {
-  return `${scheme}://${exposeHostname(id, domain)}/`
+/** The public URL's port, empty when it is the scheme's default. */
+function originPort(origin: string): string {
+  const url = new URL(origin)
+  const standard = url.protocol === 'https:' ? 443 : 80
+  return url.port && Number(url.port) !== standard ? `:${url.port}` : ''
+}
+
+/**
+ * The printed URL's scheme and port come from the backend's public URL
+ * (`expose.md` § The expose record): a local backend on 3271 yields
+ * `http://<id>.<domain>:3271/`, a proxy on the default port yields none.
+ */
+export function exposeUrl(id: string, domain: string, origin: string): string {
+  return `${new URL(origin).protocol}//${exposeHostname(id, domain)}${originPort(origin)}/`
 }
 
 /** The response shape of an expose on every surface (`web-api.md` § Exposes). */
@@ -104,8 +111,8 @@ export class Exposes {
     /** The registry's live-connection check: creation requires a connected device. */
     deviceOnline: (deviceId: string) => boolean
     now: () => number
-    /** The fallback scheme of printed URLs when no request supplies one. */
-    scheme: () => string
+    /** The public URL every printed expose URL takes its scheme and port from. */
+    origin: () => string
     /** Tests raise the sweep cadence; production sweeps every 60 s. */
     sweepMs?: number
     log?: (line: string) => void
@@ -224,12 +231,8 @@ export class Exposes {
     return Date.parse(record.expiresAt) <= this.deps.now()
   }
 
-  url(record: ExposeRecord, scheme?: string): string {
-    return exposeUrl(
-      record.id,
-      this.deps.domain!,
-      scheme ?? this.deps.scheme()
-    )
+  url(record: ExposeRecord): string {
+    return exposeUrl(record.id, this.deps.domain!, this.deps.origin())
   }
 
   /** The response shape every surface prints (`web-api.md` § Exposes). */

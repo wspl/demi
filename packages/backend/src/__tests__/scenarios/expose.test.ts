@@ -212,7 +212,7 @@ describe('expose acceptance', () => {
     const output = turn.received.join('\n')
     expect(output).toContain(`Exposed 127.0.0.1:${fixture.port} on laptop`)
     expect(output).toMatch(/Expires in 60 minutes \(expose \w{26}\)/)
-    const id = /https?:\/\/(\w{26})\.expose\.localhost\//.exec(output)![1]!
+    const id = /https?:\/\/(\w{26})\.expose\.localhost(?::\d+)?\//.exec(output)![1]!
     const response = await relay(`${id}.expose.localhost`, '/seen')
     expect(response.status).toBe(200)
     const seen = fixture.seen()!
