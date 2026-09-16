@@ -32,6 +32,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Devices | `GET /devices`, `POST /devices/claim { code }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=<absolute>`, `POST /devices/:id/fs { path }` |
 | Workspaces | `GET/POST /workspaces`, `PATCH /workspaces/:id { name }`, `DELETE /workspaces/:id` |
 | Cloud | `GET /cloud`, `POST /cloud/reset { operationId }` |
+| Exposes | `GET /exposes`, `POST /exposes { deviceId, address }`, `POST /exposes/:id/renew`, `DELETE /exposes/:id` |
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
 | Attached hosts | `GET /conversations/:id/hosts`, `POST .../hosts { deviceId }`, `PATCH .../hosts/:deviceId { name }`, `DELETE .../hosts/:deviceId` |
 | Runner transport | `WS /runner`; device-authenticated `PUT/GET /pipes/:id` for source/sink streams |
@@ -114,6 +115,25 @@ A reset affects every job on the user's Cloud and preserves home. Requests
 cannot name another user's device or arbitrary image paths. Settings use this
 API even when the guest is offline or broken. Lifecycle behavior is defined in
 [Managed hosts](managed-hosts.md).
+
+## Exposes
+
+An expose response carries `id`, `deviceId`, `address`, `url`, `createdAt`
+and `expiresAt`. `GET /api/exposes` lists the caller's exposes, soonest
+expiry first. `POST /api/exposes` takes `{ deviceId, address }` for a
+caller-owned, connected device and returns 201 with the record; a device
+that is offline or a stopped Cloud answers 409 `device_offline`, and an
+instance without an expose domain answers 409 `expose_unavailable`.
+`POST /api/exposes/:id/renew` sets the expiry to one hour from now and
+returns the record. `DELETE /api/exposes/:id` destroys it and ends its
+connections. An expose the caller does not own, or one that has expired,
+answers 404 `expose_not_found`. The `GET /api/state` snapshot includes the
+same list and `exposeDomain`, null when the feature is unavailable.
+
+Requests whose `Host` header is an expose hostname are not part of this API:
+the backend answers them with the public relay, for every path and method,
+and never with product routes. Lifetime, relay behavior and the
+`demi host expose` commands are defined in [Host expose](expose.md).
 
 ## Account API
 

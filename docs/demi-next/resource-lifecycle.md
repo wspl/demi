@@ -21,7 +21,7 @@ A conversation is active while any of these holds:
 Everything else is retention, not activity: open browser tabs, cookies, a
 resident native service, a paired device that stays online, a sidebar entry, a
 connected chat, a metadata observer, a scheduled future turn that has not been
-admitted. The backend's existing admission records are the only source of this
+admitted, a [Host expose](expose.md#lifetime) and its visitors' traffic. The backend's existing admission records are the only source of this
 fact; no module keeps a second busy flag.
 
 ## Idle window
@@ -34,7 +34,7 @@ work that won admission first.
 
 | Resource | Idle predicate | Consequence |
 | --- | --- | --- |
-| Cloud device | No conversation using this device has been active within the window, and no running job | Save disks and stop the VM; everything inside it ends with the machine |
+| Cloud device | No conversation using this device has been active within the window, and no running job | Save disks and stop the VM; everything inside it ends with the machine, and the device's exposes are destroyed |
 | Conversation on a paired device | This conversation has not been active within the window | Send the conversation release to that device |
 
 Idle retirement never interrupts active work. A retirement that loses the race

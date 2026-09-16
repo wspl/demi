@@ -150,7 +150,8 @@ active and no running job. Open browser tabs, resident native services,
 attachments, and backend metadata observers are retention, not activity.
 Cleanup and checkpoints are maintenance: they serialize against conflicting
 transitions without restarting the idle clock. Stopping the machine ends every
-conversation's browser and native state inside it; no per-conversation release
+conversation's browser and native state inside it and destroys the device's
+[exposes](expose.md#lifetime); no per-conversation release
 is sent to a stopping or stopped Cloud. Only new demand may wake a stopped Cloud;
 a cleanup callback cannot do so.
 
@@ -228,7 +229,9 @@ trusted infrastructure adapter, not a boundary against the manager account.
 The networking setup prepares taps, forwarding, and firewall policy. Guests can
 reach the configured backend endpoint and public destinations. Other private and
 link-local destinations are blocked, inbound services are not exposed, and no
-host directories are mounted into a Firecracker guest.
+host directories are mounted into a Firecracker guest. A public URL to a
+service inside the guest goes through the backend relay of a
+[Host expose](expose.md), over the runner's own outbound connection.
 
 The backend mints a managed-device token for boot and stores its hash. Kernel
 arguments supply the guest's backend URL, token, address, gateway, and DNS.

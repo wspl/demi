@@ -33,6 +33,7 @@ Contracts and package boundaries
 | Accounts and product | Authentication, roles, provider mode, and resource isolation hold across every exposed operation | [Product](product.md), [Web API](web-api.md) |
 | Browser | Shared UI has real product adapters and gallery examples; backend persistence and authorization are verified through the product | [Web architecture](web-application.md) |
 | Browser automation | Conversation-owned browser, shell commands, observations, screenshots and lifecycle satisfy their contracts on paired devices and Cloud; workpanel display is deferred | [Conversation browser](browser.md#acceptance) |
+| Host expose | A device service gets a one-hour public URL; HTTP, streaming and WebSocket relay byte-faithfully on paired devices and Cloud; expiry, removal, Cloud stop and revocation destroy it | [Host expose](expose.md#acceptance) |
 | Packaging | Published artifacts install and start; shipped images boot in direct and jailer Linux/KVM modes | [Native builds](../native-builds.md), [Cloud setup](../managed-hosts-setup.md) |
 | Distributed deployment | Ownership loss fences old writers before reassignment; metadata and disk generations recover consistently | [Backend](backend.md), [Storage](storage.md) |
 

@@ -59,6 +59,9 @@ meaning and atomicity rather than duplicating every SQL column.
   hash, and timestamps. A partial unique index permits one managed device per
   user. `workspaces` names directories on devices; deleting a workspace never
   deletes its files. Online status comes from live connections, not `last_seen_at`.
+  `exposes` stores each [Host expose](expose.md#the-expose-record): id, owner,
+  device, target address, creation and expiry time. Expiry, removal, a Cloud
+  stop and device revocation delete rows; nothing updates a row except renewal.
 - **Conversation index:** `conversations` stores ownership, title, archive and
   pin state, ordering, read revision, target selection, target context revision,
   last switch, Cloud reset marker, and provider/model identifiers. The full agent
