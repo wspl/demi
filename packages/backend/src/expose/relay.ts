@@ -111,6 +111,9 @@ export class ExposeRelay {
       release()
     }
     const endings: ConnectionEndings = { end: stop(true), settle: stop(false) }
+    // Destroying the record ends its connections: the registry's stored
+    // closer aborts this signal (`expose.md` § Lifetime).
+    controller.signal.addEventListener('abort', () => endings.end(), { once: true })
     const idleOf = () => new IdleWatch(
       this.deps.idleTimeoutMs ?? IDLE_TIMEOUT_MS,
       () => {
@@ -207,7 +210,7 @@ export class ExposeRelay {
     const response = new Promise<Response>((resolve, reject) => {
       // The body is delivered only from inside the stream's own pulls: this
       // Bun serves no response whose stream is fed from the outside.
-      const body = new BodyQueue()
+      const body = new BodyQueue(() => endings.end())
       const parser = new HttpResponseParser(
         head => {
           const responseHeaders: Array<[string, string]> = []
@@ -479,8 +482,13 @@ class BodyQueue {
     cancel: () => {
       this.state = 'closed'
       this.woken()
+      // The visitor walked away from a body that may never end; the
+      // exchange's own end owns the rest.
+      this.onCancel?.()
     },
   })
+
+  constructor(private readonly onCancel?: () => void) {}
 
   enqueue(chunk: Uint8Array): void {
     if (this.state !== 'open')
