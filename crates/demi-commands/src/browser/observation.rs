@@ -539,6 +539,37 @@ impl References {
     }
 }
 
+/// Preserve the observed browser hierarchy in the public inspect result.
+pub(super) fn hierarchy(nodes: Vec<BrowserNode>) -> Result<serde_json::Value> {
+    let mut roots: Vec<(u64, serde_json::Value)> = Vec::new();
+    for node in nodes.into_iter().rev() {
+        let depth = node.depth;
+        let mut value = serde_json::to_value(node)
+            .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
+        let object = value.as_object_mut().expect("browser node is an object");
+        object.remove("depth");
+        object.remove("bounds");
+        let mut children = Vec::new();
+        while roots
+            .last()
+            .is_some_and(|(child_depth, _)| *child_depth > depth)
+        {
+            children.push(roots.pop().expect("child exists").1);
+        }
+        if !children.is_empty() {
+            object.insert("children".into(), json!(children));
+        }
+        roots.push((depth, value));
+    }
+    Ok(json!(
+        roots
+            .into_iter()
+            .rev()
+            .map(|(_, node)| node)
+            .collect::<Vec<_>>()
+    ))
+}
+
 /// Chrome AX values carry optional JSON; absent name/role means empty text.
 fn ax_text(value: &Option<AxValue>) -> &str {
     value

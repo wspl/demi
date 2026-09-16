@@ -1014,7 +1014,14 @@ async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() 
                 .is_match(&tab.id())
         );
         let tree = command(&tab, "inspect", json!({"limit": 1000})).await?;
-        let nodes = tree["tree"].as_array().unwrap();
+        let mut nodes: Vec<&Value> = tree["tree"].as_array().unwrap().iter().collect();
+        let mut index = 0;
+        while index < nodes.len() {
+            if let Some(children) = nodes[index]["children"].as_array() {
+                nodes.extend(children);
+            }
+            index += 1;
+        }
         let text = nodes
             .iter()
             .find(|node| node["name"] == "Text field")

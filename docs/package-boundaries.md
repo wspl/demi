@@ -244,7 +244,7 @@ Test code may depend upward for integration coverage. Production code must not.
   state without a second browser inventory. All Host IO uses conversation Host
   access, including transition cleanup.
 - Status: target contract.
-- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/machines`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
+- Production deps: `@demicodes/agent`, `@demicodes/browser-protocol`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/command-protocol`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/machines`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
 - Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, the per-conversation `AgentTreeStore` over node and block rows, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the transfer broker, browse endpoints), the managed-hosts module (one managed device per user over the `ManagedHostProvisioner` contract, reached through `@demicodes/machines`' `RemoteProvisioner` as the machine manager's client; lifecycle/hibernate/reset, the backend-contributed `demi host` subcommand group), the LLM module (per-provider provider assembly, model metadata caching in memory and control.sqlite with TTL and shared refresh, metering wrap), the credential vault (instance secret, GCM-encrypted providers, subscription device-login flows over per-provider provider pools), and usage accounting (ledger + rate limit). The backend accepts explicitly submitted API keys and setup tokens at authenticated write boundaries, passes subscription material to provider-owned credential pools, and never returns secrets or proxies model traffic.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
 - May assemble: concrete providers, AgentServer, `RemoteHost`, `RemoteShellEnvironment` and the coding harness.
@@ -489,38 +489,28 @@ utils -> none
 provider -> core, utils
 shell -> command-protocol, utils
 agent -> core, provider, shell, utils
-coding-agent -> agent, core, shell, utils
+coding-agent -> agent, browser-protocol, core, shell, utils
 provider-claude-code -> core, provider, utils
 provider-codex -> core, provider, utils
 provider-openai-api -> core, provider, utils
 provider-anthropic-api -> core, provider, utils
 provider-grok-build -> core, provider, utils
 provider-google -> core, provider, utils
+browser-protocol -> none
 command-protocol -> none
 command-loader -> command-protocol, shell, utils
 runner-protocol -> command-protocol, shell, utils
 machines -> utils
 host-remote -> command-loader, command-protocol, runner-protocol, shell, utils
-backend -> agent, coding-agent, command-loader, command-protocol, core, host-remote, machines, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
+backend -> agent, browser-protocol, coding-agent, command-loader, command-protocol, core, host-remote, machines, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
 web-ui -> agent, core, utils
 web-gallery -> web-ui, core, utils
 web -> web-ui, core, utils
 ```
 
-The planned browser contract adds the following dependencies when implemented;
-these are additions to the graph above, not current manifest contents:
-
-```text
-browser-protocol -> none
-coding-agent -> browser-protocol
-backend -> browser-protocol
-web-ui -> browser-protocol
-```
-
-The browser package's registry and this planned extension define the intended
-boundary together. Its implementation checkpoint must fold these edges into the
-main graph and manifests. Native binding generation consumes browser-protocol
-as a build input and adds no first-party Rust runtime dependency.
+The browser contract supplies shared schemas to coding-agent and backend. Native
+binding generation consumes browser-protocol as a build input and adds no
+first-party Rust runtime dependency.
 
 First-party Rust production dependencies are:
 

@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 use super::{
     BrowserError, BrowserTab, Result, element, evaluation, keyboard,
     navigation::{Navigation, NavigationObservation},
-    observation::{Observation, has_target_flags},
+    observation::{self, Observation, has_target_flags},
     operation::Operation,
     protocol::{BrowserCommand, BrowserTarget, DEFAULT_NODES, INLINE_BYTES, MAX_NODES},
 };
@@ -139,6 +139,11 @@ impl BrowserTab {
             // Each branch has its own heap allocation; large command futures must
             // not be embedded together on native-service or test-thread stacks.
             let branch: futures_util::future::BoxFuture<'_, Result<Value>> = match command {
+                BrowserCommand::Probe(_)
+                | BrowserCommand::Drag(_)
+                | BrowserCommand::SelectText(_)
+                | BrowserCommand::AxAction(_)
+                | BrowserCommand::Logs(_) => Box::pin(super::catalog::pending()),
                 BrowserCommand::Info(_) => {
                     Box::pin(async { self.metadata(cancel, command.timeout()).await })
                 }
@@ -222,7 +227,8 @@ impl BrowserTab {
                         input.limit.map_or(DEFAULT_NODES, |limit| limit as usize),
                     )?;
                     let mut result = self.navigation_result().await?;
-                    result["tree"] = json!(tree);
+                    result["tree"] = observation::hierarchy(tree)?;
+                    result["view"] = json!("accessibility");
                     result["truncated"] = json!(truncated);
                     Ok(result)
                 }),
@@ -249,23 +255,28 @@ impl BrowserTab {
                     if input.all != Some(true) && elements.len() != 1 {
                         return Err(BrowserError::Ambiguous(elements.len()));
                     }
+                    if input.property.is_some() == input.attribute.is_some() {
+                        return Err(BrowserError::Configuration(
+                            "read requires exactly one --property or --attribute".into(),
+                        ));
+                    }
+                    let property = input.property.as_deref().unwrap_or("attribute");
                     let mut values = Vec::new();
                     for element in elements.iter().take(MAX_NODES) {
-                        let value = match input.property.as_str() {
+                        let value = match property {
                             "text" | "html" | "text-content" | "value" => {
-                                if input.property == "value"
+                                if property == "value"
                                     && observation.protected(element.backend_node_id)
                                 {
                                     return Err(BrowserError::ProtectedValue);
                                 }
-                                let property = match input.property.as_str() {
+                                let dom_property = match property {
                                     "text" => "innerText",
                                     "html" => "outerHTML",
                                     "text-content" => "textContent",
                                     _ => "value",
                                 };
-                                let fallback = if matches!(input.property.as_str(), "text" | "html")
-                                {
+                                let fallback = if matches!(property, "text" | "html") {
                                     json!("")
                                 } else {
                                     Value::Null
@@ -274,13 +285,13 @@ impl BrowserTab {
                                     &self.page,
                                     element,
                                     "function(property, fallback) { return this[property] ?? fallback; }",
-                                    vec![json!(property), fallback],
+                                    vec![json!(dom_property), fallback],
                                 )
                                 .await?
                             }
                             "visible" | "enabled" | "checked" => {
                                 let state = element::state(&self.page, element, &[], false).await?;
-                                match input.property.as_str() {
+                                match property {
                                     "visible" => json!(state.visible),
                                     "enabled" => json!(state.enabled),
                                     _ => json!(state.checked),
@@ -537,7 +548,6 @@ impl BrowserTab {
                     let dialog = self.state.dialog.borrow().clone();
                     Ok(json!({ "dialog": dialog.as_ref().map(|dialog| json!({
                         "type": dialog.r#type, "message": dialog.message,
-                        "defaultPrompt": dialog.default_prompt.as_deref().unwrap_or_default(),
                     })) }))
                 }),
                 BrowserCommand::DialogAccept(_) | BrowserCommand::DialogDismiss(_) => {
@@ -584,7 +594,9 @@ impl BrowserTab {
                             }
                             releases.remove(0);
                         }
-                        Ok(json!({ "handled": true }))
+                        Ok(
+                            json!({ "type": dialog.r#type, "outcome": if matches!(command, BrowserCommand::DialogAccept(_)) { "accepted" } else { "dismissed" } }),
+                        )
                     })
                 }
                 BrowserCommand::Wait(input) => Box::pin(async {
@@ -669,6 +681,11 @@ impl BrowserTab {
                         content.floor_char_boundary(INLINE_BYTES.min(content.len()))
                     };
                     let mut result = self.navigation_result().await?;
+                    result
+                        .as_object_mut()
+                        .expect("metadata object")
+                        .remove("tab");
+                    result["format"] = json!(input.format.as_deref().unwrap_or("text"));
                     result["content"] = json!(&content[..end]);
                     result["truncated"] = json!(truncated);
                     Ok(result)
@@ -683,7 +700,19 @@ impl BrowserTab {
                 BrowserCommand::Open(_)
                 | BrowserCommand::Tabs(_)
                 | BrowserCommand::Close(_)
-                | BrowserCommand::Screenshot(_) => Box::pin(async {
+                | BrowserCommand::Screenshot(_)
+                | BrowserCommand::Upload(_)
+                | BrowserCommand::Download(_)
+                | BrowserCommand::ClipboardRead(_)
+                | BrowserCommand::ClipboardWrite(_)
+                | BrowserCommand::CdpTargets(_)
+                | BrowserCommand::CdpSend(_)
+                | BrowserCommand::CdpEvents(_)
+                | BrowserCommand::ContentFetch(_)
+                | BrowserCommand::AssetsList(_)
+                | BrowserCommand::AssetsExport(_)
+                | BrowserCommand::WebmcpList(_)
+                | BrowserCommand::WebmcpCall(_) => Box::pin(async {
                     unreachable!("resource-level operation is dispatched before tab actions")
                 }),
             };

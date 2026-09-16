@@ -237,7 +237,13 @@ impl Resources {
     ) -> Result<CommandOutput> {
         let controller = self.controller(context).await?;
         let environment = controller
-            .environment(matches!(command, BrowserCommand::Open(_)), cancellation)
+            .environment(
+                matches!(
+                    command,
+                    BrowserCommand::Open(_) | BrowserCommand::ContentFetch(_)
+                ),
+                cancellation,
+            )
             .await?;
         let Some(environment) = environment else {
             if matches!(command, BrowserCommand::Tabs(_)) {
@@ -275,6 +281,18 @@ impl Resources {
             };
             return Ok(CommandOutput::Json(result));
         }
+        if matches!(command, BrowserCommand::ContentFetch(_)) {
+            return super::fetch::execute(
+                context,
+                &environment,
+                None,
+                command,
+                cancellation,
+                deadline,
+            )
+            .await
+            .map(CommandOutput::Json);
+        }
         let tabs = environment.tabs(cancellation, command.timeout()).await?;
         if matches!(command, BrowserCommand::Tabs(_)) {
             let mut rows = Vec::new();
@@ -296,6 +314,69 @@ impl Resources {
             .iter()
             .find(|tab| Some(tab.id().as_str()) == command.tab())
             .ok_or(BrowserError::TabNotFound)?;
+        let family: Option<futures_util::future::BoxFuture<'_, Result<serde_json::Value>>> =
+            match command {
+                BrowserCommand::Upload(_) => Some(Box::pin(super::upload::execute(
+                    context,
+                    &environment,
+                    Some(tab),
+                    command,
+                    cancellation,
+                    deadline,
+                ))),
+                BrowserCommand::Download(_) => Some(Box::pin(super::download::execute(
+                    context,
+                    &environment,
+                    Some(tab),
+                    command,
+                    cancellation,
+                    deadline,
+                ))),
+                BrowserCommand::ClipboardRead(_) | BrowserCommand::ClipboardWrite(_) => {
+                    Some(Box::pin(super::clipboard::execute(
+                        context,
+                        &environment,
+                        Some(tab),
+                        command,
+                        cancellation,
+                        deadline,
+                    )))
+                }
+                BrowserCommand::CdpTargets(_)
+                | BrowserCommand::CdpSend(_)
+                | BrowserCommand::CdpEvents(_) => Some(Box::pin(super::cdp::execute(
+                    context,
+                    &environment,
+                    Some(tab),
+                    command,
+                    cancellation,
+                    deadline,
+                ))),
+                BrowserCommand::AssetsList(_) | BrowserCommand::AssetsExport(_) => {
+                    Some(Box::pin(super::assets::execute(
+                        context,
+                        &environment,
+                        Some(tab),
+                        command,
+                        cancellation,
+                        deadline,
+                    )))
+                }
+                BrowserCommand::WebmcpList(_) | BrowserCommand::WebmcpCall(_) => {
+                    Some(Box::pin(super::webmcp::execute(
+                        context,
+                        &environment,
+                        Some(tab),
+                        command,
+                        cancellation,
+                        deadline,
+                    )))
+                }
+                _ => None,
+            };
+        if let Some(family) = family {
+            return family.await.map(CommandOutput::Json);
+        }
         if let BrowserCommand::Screenshot(input) = command {
             if input.output.is_none() && context.request.json == Some(true) {
                 return Err(BrowserError::Configuration(
@@ -353,7 +434,10 @@ impl Resources {
             )
             .await?;
             result["path"] = serde_json::json!(path);
-            result["content"] = serde_json::json!("");
+            if let Some(result) = result.as_object_mut() {
+                result.remove("content");
+                result.remove("truncated");
+            }
         }
         Ok(CommandOutput::Json(result))
     }

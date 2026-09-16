@@ -413,7 +413,10 @@ command-line parser.
 Finite stdin carries evaluation expressions, CDP parameter objects, WebMCP
 arguments, complex `find --query` trees, and clipboard writes. Each input has
 one source: for example, `eval` does not also accept a positional expression and
-an `--expression` option. Help is resolved before any stdin read.
+an `--expression` option. Text and JSON bodies use the command declaration's
+`stdinField`; `find` reads that field only as a query when `--query` is selected.
+Clipboard write uses the existing raw byte stdin channel so PNG bytes remain
+unchanged; it has no argv body field. Help is resolved before any stdin read.
 
 Validate CLI input, JSON bodies, Host files, CDP replies and events, and
 page-provided tool schemas/results at entry. Types derive from schemas; casts
