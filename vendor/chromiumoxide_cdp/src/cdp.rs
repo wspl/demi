@@ -31420,6 +31420,102 @@ pub mod browser_protocol {
         impl chromiumoxide_types::Command for SetPermissionParams {
             type Response = SetPermissionReturns;
         }
+        #[deprecated]
+        #[doc = "Grant specific permissions to the given origin and reject all others. Deprecated. Use\nsetPermission instead.\n[grantPermissions](https://chromedevtools.github.io/devtools-protocol/tot/Browser/#method-grantPermissions)"]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub struct GrantPermissionsParams {
+            #[serde(rename = "permissions")]
+            #[serde(skip_serializing_if = "Vec::is_empty")]
+            pub permissions: Vec<PermissionType>,
+            #[doc = "Origin the permission applies to, all origins if not specified."]
+            #[serde(rename = "origin")]
+            #[serde(skip_serializing_if = "Option::is_none")]
+            pub origin: Option<String>,
+            #[doc = "BrowserContext to override permissions. When omitted, default browser context is used."]
+            #[serde(rename = "browserContextId")]
+            #[serde(skip_serializing_if = "Option::is_none")]
+            pub browser_context_id: Option<BrowserContextId>,
+        }
+        impl GrantPermissionsParams {
+            pub fn new(permissions: Vec<PermissionType>) -> Self {
+                Self {
+                    permissions,
+                    origin: None,
+                    browser_context_id: None,
+                }
+            }
+        }
+        impl GrantPermissionsParams {
+            pub fn builder() -> GrantPermissionsParamsBuilder {
+                GrantPermissionsParamsBuilder::default()
+            }
+        }
+        #[derive(Default, Clone)]
+        pub struct GrantPermissionsParamsBuilder {
+            permissions: Option<Vec<PermissionType>>,
+            origin: Option<String>,
+            browser_context_id: Option<BrowserContextId>,
+        }
+        impl GrantPermissionsParamsBuilder {
+            pub fn permission(mut self, permission: impl Into<PermissionType>) -> Self {
+                let v = self.permissions.get_or_insert(Vec::new());
+                v.push(permission.into());
+                self
+            }
+            pub fn permissions<I, S>(mut self, permissions: I) -> Self
+            where
+                I: IntoIterator<Item = S>,
+                S: Into<PermissionType>,
+            {
+                let v = self.permissions.get_or_insert(Vec::new());
+                for val in permissions {
+                    v.push(val.into());
+                }
+                self
+            }
+            pub fn origin(mut self, origin: impl Into<String>) -> Self {
+                self.origin = Some(origin.into());
+                self
+            }
+            pub fn browser_context_id(
+                mut self,
+                browser_context_id: impl Into<BrowserContextId>,
+            ) -> Self {
+                self.browser_context_id = Some(browser_context_id.into());
+                self
+            }
+            pub fn build(self) -> Result<GrantPermissionsParams, String> {
+                Ok(GrantPermissionsParams {
+                    permissions: self.permissions.ok_or_else(|| {
+                        format!("Field `{}` is mandatory.", std::stringify!(permissions))
+                    })?,
+                    origin: self.origin,
+                    browser_context_id: self.browser_context_id,
+                })
+            }
+        }
+        impl GrantPermissionsParams {
+            pub const IDENTIFIER: &'static str = "Browser.grantPermissions";
+        }
+        impl chromiumoxide_types::Method for GrantPermissionsParams {
+            fn identifier(&self) -> chromiumoxide_types::MethodId {
+                Self::IDENTIFIER.into()
+            }
+        }
+        impl chromiumoxide_types::MethodType for GrantPermissionsParams {
+            fn method_id() -> chromiumoxide_types::MethodId
+            where
+                Self: Sized,
+            {
+                Self::IDENTIFIER.into()
+            }
+        }
+        #[doc = "Grant specific permissions to the given origin and reject all others. Deprecated. Use\nsetPermission instead.\n[grantPermissions](https://chromedevtools.github.io/devtools-protocol/tot/Browser/#method-grantPermissions)"]
+        #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+        pub struct GrantPermissionsReturns {}
+        impl chromiumoxide_types::Command for GrantPermissionsParams {
+            type Response = GrantPermissionsReturns;
+        }
         #[doc = "Reset all permission management for all origins.\n[resetPermissions](https://chromedevtools.github.io/devtools-protocol/tot/Browser/#method-resetPermissions)"]
         #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
         pub struct ResetPermissionsParams {
@@ -73285,7 +73381,8 @@ pub mod browser_protocol {
                 mut self,
                 local_network_access_request_policy: impl Into<LocalNetworkAccessRequestPolicy>,
             ) -> Self {
-                self.local_network_access_request_policy = Some(local_network_access_request_policy.into());
+                self.local_network_access_request_policy =
+                    Some(local_network_access_request_policy.into());
                 self
             }
             pub fn build(self) -> Result<ClientSecurityState, String> {
@@ -73309,11 +73406,11 @@ pub mod browser_protocol {
                     local_network_access_request_policy: self
                         .local_network_access_request_policy
                         .ok_or_else(|| {
-                            format!(
-                                "Field `{}` is mandatory.",
-                                std::stringify!(local_network_access_request_policy)
-                            )
-                        })?,
+                        format!(
+                            "Field `{}` is mandatory.",
+                            std::stringify!(local_network_access_request_policy)
+                        )
+                    })?,
                 })
             }
         }
@@ -105138,6 +105235,10 @@ pub mod browser_protocol {
             #[doc = "Whether the target has an attached client."]
             #[serde(rename = "attached")]
             pub attached: bool,
+            #[doc = "Id of the parent target, if any. For example, \"iframe\" target may have a \"page\" parent."]
+            #[serde(rename = "parentId")]
+            #[serde(skip_serializing_if = "Option::is_none")]
+            pub parent_id: Option<TargetId>,
             #[doc = "Opener target Id"]
             #[serde(rename = "openerId")]
             #[serde(skip_serializing_if = "Option::is_none")]
@@ -105149,7 +105250,7 @@ pub mod browser_protocol {
             #[serde(rename = "openerFrameId")]
             #[serde(skip_serializing_if = "Option::is_none")]
             pub opener_frame_id: Option<super::page::FrameId>,
-            #[doc = "Id of the parent frame, only present for the \"iframe\" targets."]
+            #[doc = "Id of the parent frame, present for \"iframe\" and \"worker\" targets. For nested workers,\nthis is the \"ancestor\" frame that created the first worker in the nested chain."]
             #[serde(rename = "parentFrameId")]
             #[serde(skip_serializing_if = "Option::is_none")]
             pub parent_frame_id: Option<super::page::FrameId>,
@@ -105160,6 +105261,10 @@ pub mod browser_protocol {
             #[serde(rename = "subtype")]
             #[serde(skip_serializing_if = "Option::is_none")]
             pub subtype: Option<String>,
+            #[doc = "Embedder-specific target metadata. This is only set for targets of\ntype \"tab\"."]
+            #[serde(rename = "embedderData")]
+            #[serde(skip_serializing_if = "Option::is_none")]
+            pub embedder_data: Option<serde_json::Value>,
         }
         impl TargetInfo {
             pub fn builder() -> TargetInfoBuilder {
@@ -105173,12 +105278,14 @@ pub mod browser_protocol {
             title: Option<String>,
             url: Option<String>,
             attached: Option<bool>,
+            parent_id: Option<TargetId>,
             opener_id: Option<TargetId>,
             can_access_opener: Option<bool>,
             opener_frame_id: Option<super::page::FrameId>,
             parent_frame_id: Option<super::page::FrameId>,
             browser_context_id: Option<super::browser::BrowserContextId>,
             subtype: Option<String>,
+            embedder_data: Option<serde_json::Value>,
         }
         impl TargetInfoBuilder {
             pub fn target_id(mut self, target_id: impl Into<TargetId>) -> Self {
@@ -105199,6 +105306,10 @@ pub mod browser_protocol {
             }
             pub fn attached(mut self, attached: impl Into<bool>) -> Self {
                 self.attached = Some(attached.into());
+                self
+            }
+            pub fn parent_id(mut self, parent_id: impl Into<TargetId>) -> Self {
+                self.parent_id = Some(parent_id.into());
                 self
             }
             pub fn opener_id(mut self, opener_id: impl Into<TargetId>) -> Self {
@@ -105234,6 +105345,10 @@ pub mod browser_protocol {
                 self.subtype = Some(subtype.into());
                 self
             }
+            pub fn embedder_data(mut self, embedder_data: impl Into<serde_json::Value>) -> Self {
+                self.embedder_data = Some(embedder_data.into());
+                self
+            }
             pub fn build(self) -> Result<TargetInfo, String> {
                 Ok(TargetInfo {
                     target_id: self.target_id.ok_or_else(|| {
@@ -105251,6 +105366,7 @@ pub mod browser_protocol {
                     attached: self.attached.ok_or_else(|| {
                         format!("Field `{}` is mandatory.", std::stringify!(attached))
                     })?,
+                    parent_id: self.parent_id,
                     opener_id: self.opener_id,
                     can_access_opener: self.can_access_opener.ok_or_else(|| {
                         format!(
@@ -105262,6 +105378,7 @@ pub mod browser_protocol {
                     parent_frame_id: self.parent_frame_id,
                     browser_context_id: self.browser_context_id,
                     subtype: self.subtype,
+                    embedder_data: self.embedder_data,
                 })
             }
         }
@@ -106042,6 +106159,10 @@ pub mod browser_protocol {
             #[serde(rename = "hidden")]
             #[serde(skip_serializing_if = "Option::is_none")]
             pub hidden: Option<bool>,
+            #[doc = "If specified, determines whether the new target should be focused.\nBy default, the focus behavior depends on the `background` parameter:\n- If `background` is false (default) and `focus` is omitted, the new target is focused and the browser window is brought to the foreground.\n- If `background` is false and `focus` is false, the target is opened but the browser window's focus remains unchanged (e.g., if the window was in the background, it stays there).\n- If `background` is true, setting `focus` to true is not supported and will result in an error."]
+            #[serde(rename = "focus")]
+            #[serde(skip_serializing_if = "Option::is_none")]
+            pub focus: Option<bool>,
         }
         impl CreateTargetParams {
             pub fn new(url: impl Into<String>) -> Self {
@@ -106058,6 +106179,7 @@ pub mod browser_protocol {
                     background: None,
                     for_tab: None,
                     hidden: None,
+                    focus: None,
                 }
             }
         }
@@ -106085,6 +106207,7 @@ pub mod browser_protocol {
             background: Option<bool>,
             for_tab: Option<bool>,
             hidden: Option<bool>,
+            focus: Option<bool>,
         }
         impl CreateTargetParamsBuilder {
             pub fn url(mut self, url: impl Into<String>) -> Self {
@@ -106141,6 +106264,10 @@ pub mod browser_protocol {
                 self.hidden = Some(hidden.into());
                 self
             }
+            pub fn focus(mut self, focus: impl Into<bool>) -> Self {
+                self.focus = Some(focus.into());
+                self
+            }
             pub fn build(self) -> Result<CreateTargetParams, String> {
                 Ok(CreateTargetParams {
                     url: self
@@ -106157,6 +106284,7 @@ pub mod browser_protocol {
                     background: self.background,
                     for_tab: self.for_tab,
                     hidden: self.hidden,
+                    focus: self.focus,
                 })
             }
         }
@@ -106924,7 +107052,7 @@ pub mod browser_protocol {
             #[doc = "This can be the page or tab target ID."]
             #[serde(rename = "targetId")]
             pub target_id: TargetId,
-            #[doc = "The id of the panel we want DevTools to open initially. Currently\nsupported panels are elements, console, network, sources, resources\nand performance."]
+            #[doc = "The id of the panel we want DevTools to open initially. Currently\nsupported panels are elements, console, network, sources, resources,\ntimeline, chrome-recorder, heap-profiler, lighthouse, and security."]
             #[serde(rename = "panelId")]
             #[serde(skip_serializing_if = "Option::is_none")]
             pub panel_id: Option<String>,

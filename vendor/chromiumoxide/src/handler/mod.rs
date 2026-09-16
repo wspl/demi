@@ -397,6 +397,43 @@ impl Handler {
 
     /// Process an incoming event read from the websocket
     fn on_event(&mut self, event: CdpEventMessage) {
+        // Flattened child target attachment events carry their parent's session.
+        // Register them before routing so out-of-process frames own usable sessions.
+        if event.session_id.is_some() {
+            match &event.params {
+                CdpEvent::TargetAttachedToTarget(attached)
+                    if attached.target_info.r#type == "iframe" =>
+                {
+                    self.on_attached_to_target(
+                        attached.clone(),
+                        event.session_id.clone().map(Into::into),
+                    );
+                }
+                CdpEvent::TargetDetachedFromTarget(detached) => {
+                    self.on_detached_from_target(detached.clone())
+                }
+                _ => {}
+            }
+        }
+        // A tab's console includes its OOPIF renderers. Forward only the event
+        // to ancestor listeners; their frame managers must not consume it.
+        if let CdpEvent::RuntimeConsoleApiCalled(console) = &event.params {
+            let mut parent = event
+                .session_id
+                .as_ref()
+                .and_then(|id| self.sessions.get(id.as_str()))
+                .and_then(Session::parent)
+                .cloned();
+            while let Some(id) = parent {
+                let Some(session) = self.sessions.get(&id) else {
+                    break;
+                };
+                if let Some(target) = self.targets.get_mut(session.target_id()) {
+                    target.event_listeners_mut().start_send(console.clone());
+                }
+                parent = session.parent().cloned();
+            }
+        }
         if let Some(ref session_id) = event.session_id {
             if let Some(session) = self.sessions.get(session_id.as_str()) {
                 if let Some(target) = self.targets.get_mut(session.target_id()) {
@@ -407,7 +444,7 @@ impl Handler {
         let CdpEventMessage { params, method, .. } = event;
         match params.clone() {
             CdpEvent::TargetTargetCreated(ev) => self.on_target_created(*ev),
-            CdpEvent::TargetAttachedToTarget(ev) => self.on_attached_to_target(ev),
+            CdpEvent::TargetAttachedToTarget(ev) => self.on_attached_to_target(ev, None),
             CdpEvent::TargetTargetDestroyed(ev) => self.on_target_destroyed(ev),
             CdpEvent::TargetDetachedFromTarget(ev) => self.on_detached_from_target(ev),
             _ => {}
@@ -422,6 +459,12 @@ impl Handler {
     ///
     /// Creates a new `Target` instance and keeps track of it
     fn on_target_created(&mut self, event: EventTargetCreated) {
+        // Creation and auto-attachment can arrive in either order. Retain the
+        // initialized target/session instead of replacing it on the second event.
+        if self.targets.contains_key(&event.target_info.target_id) {
+            return;
+        }
+
         let browser_ctx = event
             .target_info
             .browser_context_id
@@ -429,12 +472,15 @@ impl Handler {
             .map(BrowserContext::from)
             .filter(|id| self.browser_contexts.contains(id))
             .unwrap_or_else(|| self.default_browser_context.clone());
+        let viewport = (event.target_info.r#type != "iframe")
+            .then(|| self.config.viewport.clone())
+            .flatten();
         let target = Target::new(
             event.target_info,
             TargetConfig {
                 ignore_https_errors: self.config.ignore_https_errors,
                 request_timeout: self.config.request_timeout,
-                viewport: self.config.viewport.clone(),
+                viewport,
                 request_intercept: self.config.request_intercept,
                 cache_enabled: self.config.cache_enabled,
             },
@@ -445,8 +491,21 @@ impl Handler {
     }
 
     /// A new session is attached to a target
-    fn on_attached_to_target(&mut self, event: Box<EventAttachedToTarget>) {
-        let session = Session::new(event.session_id.clone(), event.target_info.target_id);
+    fn on_attached_to_target(
+        &mut self,
+        event: Box<EventAttachedToTarget>,
+        parent: Option<SessionId>,
+    ) {
+        if !self.targets.contains_key(&event.target_info.target_id) {
+            self.on_target_created(EventTargetCreated {
+                target_info: event.target_info.clone(),
+            });
+        }
+        let session = Session::new(
+            event.session_id.clone(),
+            event.target_info.target_id,
+            parent,
+        );
         if let Some(target) = self.targets.get_mut(session.target_id()) {
             target.set_session_id(session.session_id().clone())
         }
@@ -587,6 +646,20 @@ impl Stream for Handler {
                                     req,
                                     now,
                                 );
+                            }
+                            TargetEvent::RelatedPage(requested, tx) => {
+                                // A timed-out requester can drop its reply channel.
+                                let page = if requested == *target.target_id() {
+                                    target
+                                        .get_or_create_page()
+                                        .map(|page| Page::from(page.clone()))
+                                } else {
+                                    pin.targets
+                                        .get_mut(&requested)
+                                        .and_then(|related| related.get_or_create_page())
+                                        .map(|page| Page::from(page.clone()))
+                                };
+                                let _ = tx.send(page);
                             }
                             TargetEvent::Command(msg) => {
                                 pin.on_target_message(&mut target, msg, now);
