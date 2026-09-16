@@ -1,5 +1,5 @@
 import { mkdtemp } from 'node:fs/promises'
-import { createServer, type AddressInfo, type Socket } from 'node:net'
+import { createServer, type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
@@ -61,6 +61,18 @@ test(
     const vacantPort = (vacant.address() as AddressInfo).port
     await new Promise<void>((resolve) => vacant.close(() => resolve()))
 
+    // A peer that resets the connection mid-transfer: it never reads what
+    // arrives and destroys the socket, so the runner sees a read error, not
+    // a clean EOF.
+    const reaper = createServer((socket) => {
+      // Paused: the received bytes stay unread, making destroy() a reset.
+      socket.pause()
+      socket.on('error', () => {})
+      setTimeout(() => socket.destroy(), 200)
+    })
+    await new Promise<void>((resolve) => reaper.listen(0, '127.0.0.1', resolve))
+    const reaperPort = (reaper.address() as AddressInfo).port
+
     const inbound: RunnerToBackendMessage[] = []
     const uploads = new Map<string, ReturnType<typeof deferred<Uint8Array>>>()
     let socket: Bun.ServerWebSocket<unknown> | null = null
@@ -77,6 +89,20 @@ test(
           return new Response(new ReadableStream({
             start() {},
           }))
+        if (request.method === 'GET' && url.pathname === '/api/pipes/flow')
+          // Yields bytes forever: the transfer only ends by failure or
+          // cancellation, which stops the pump via enqueue throwing.
+          return new Response(new ReadableStream({
+            async start(controller) {
+              const chunk = new Uint8Array(64 * 1024).fill(120)
+              try {
+                while (true) {
+                  controller.enqueue(chunk)
+                  await new Promise((resolve) => setTimeout(resolve, 10))
+                }
+              } catch {}
+            },
+          }))
         if (request.method === 'PUT' && url.pathname.startsWith('/api/pipes/out')) {
           const chunks: Uint8Array[] = []
           for await (const chunk of request.body!) chunks.push(chunk)
@@ -86,6 +112,14 @@ test(
         if (request.method === 'PUT' && url.pathname === '/api/pipes/hold-out') {
           // Consumes the upload without answering: the stream stays open.
           for await (const _chunk of request.body!) {}
+          return new Response('drained')
+        }
+        if (request.method === 'PUT' && url.pathname === '/api/pipes/reap-out') {
+          // The upload breaks when the runner fails the pipe; consuming it
+          // must not surface as a test error.
+          try {
+            for await (const _chunk of request.body!) {}
+          } catch {}
           return new Response('drained')
         }
         await request.arrayBuffer()
@@ -186,6 +220,25 @@ test(
         expect((error as RemoteNetError).code).toBe('refused')
       })
 
+      // A peer reset mid-transfer fails the output pipe: the backend sees
+      // pipe_done ok=false, not a clean EOF.
+      await remoteHost.net.open({
+        host: '127.0.0.1',
+        port: reaperPort,
+        input: { id: 'flow-in', url: '/api/pipes/flow' },
+        output: { id: 'reap-out', url: '/api/pipes/reap-out' },
+      })
+      await waitFor(
+        () => {
+          const done = doneFor('reap-out')
+          return done !== undefined && done.ok === false
+        },
+        () => `${runner.log.join('\n')}\n${JSON.stringify(inbound.slice(-8).map((m) => m.type === 'pipe_done' ? m : { type: m.type }))}`,
+        { timeoutMs: 15_000 }
+      )
+      expect(doneFor('reap-out')!.ok).toBe(false)
+      expect(doneFor('reap-out')!.error).toBeDefined()
+
       // An open stream's socket does not outlive the runner connection: the
       // silent peer observes the close.
       await remoteHost.net.open({
@@ -204,6 +257,7 @@ test(
       server.stop(true)
       echo.close()
       sink.close()
+      reaper.close()
     }
   },
   60_000,
