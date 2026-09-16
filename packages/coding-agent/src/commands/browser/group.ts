@@ -17,7 +17,6 @@ const summaries: Record<string, string> = {
   probe: 'Find elements at viewport coordinates and optionally save an annotated screenshot.',
   drag: 'Drag through ordered viewport points, releasing input on every exit.',
   'select-text': 'Select rendered text or position its cursor; prefix and suffix disambiguate.',
-  'ax-action': 'Perform an accessibility action advertised by the observed node.',
   upload: 'Attach Host files through a file input or chooser.',
   download: 'Trigger and save a completed download on this Host.',
   'clipboard.write': 'Write finite raw stdin to the managed clipboard with the declared MIME type.',

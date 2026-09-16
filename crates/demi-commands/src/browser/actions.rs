@@ -158,12 +158,6 @@ impl BrowserTab {
             // not be embedded together on native-service or test-thread stacks.
             let branch: futures_util::future::BoxFuture<'_, Result<Value>> = match command {
                 BrowserCommand::Probe(input) => Box::pin(self.probe(input, references, &operation)),
-                BrowserCommand::AxAction(_) => Box::pin(async {
-                    observation::validate_target(required_target(&target)?)?;
-                    Err(BrowserError::UnsupportedCapability(
-                        super::accessibility::ACTIONS_UNAVAILABLE.into(),
-                    ))
-                }),
                 BrowserCommand::Logs(input) => {
                     Box::pin(async { self.state.console.lock().await.read(input) })
                 }
@@ -787,7 +781,6 @@ impl BrowserTab {
                     super::webmcp::capability(&self.page).await?,
                     super::cdp::capability(),
                     { "id": "page-assets", "available": true },
-                    { "id": "ax-actions", "available": false, "reason": super::accessibility::ACTIONS_UNAVAILABLE },
                     { "id": "cross-origin-frames", "available": true }
                 ] }))
                 }),

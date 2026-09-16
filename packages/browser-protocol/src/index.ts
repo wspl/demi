@@ -146,7 +146,6 @@ export const browserOperations = {
   check: { input: z.strictObject({ ...targeted, value: z.boolean() }), result: action },
   select: { input: z.strictObject({ ...targeted, value: z.array(text).optional(), 'option-label': z.array(text).optional(), 'option-index': z.array(z.number().int().min(0)).optional() }), result: action },
   'select-text': { input: z.strictObject({ ...targeted, text, cursor: z.enum(['before', 'after']).optional(), prefix: text.optional(), suffix: text.optional() }), result: action },
-  'ax-action': { input: z.strictObject({ ...targeted, action: locator }), result: action },
   wait: { input: z.strictObject({ ...targeted, url: locator.optional(), load, state: z.enum(['visible', 'hidden', 'attached', 'detached', 'enabled']).optional() }), result: z.strictObject({ condition: z.string(), matched: z.boolean(), url: z.string().optional(), ref: z.string().optional() }) },
   upload: { input: z.strictObject({ ...targeted, file: z.array(locator).min(1) }), result: z.strictObject({ files: z.array(z.string()), attached: z.number().int().min(0) }) },
   download: { input: z.strictObject({ ...pointer, ...fileOptions }), result: z.strictObject({ path: z.string(), suggestedFilename: z.string(), bytes: z.number().int().min(0), mimeType: z.string() }) },
