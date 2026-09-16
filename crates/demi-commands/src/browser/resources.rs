@@ -123,6 +123,19 @@ impl Controller {
         Ok(())
     }
 
+    /// Retire an empty browser only after all tab-acquisition batches have finished.
+    async fn retire_empty(&self, environment: &BrowserEnvironment) -> Result<()> {
+        if let Ok(_admission) = environment.acquisition.clone().try_write_owned()
+            && environment
+                .tabs(&CancellationToken::new(), super::operation::CONTROL_TIMEOUT)
+                .await?
+                .is_empty()
+        {
+            self.release().await?;
+        }
+        Ok(())
+    }
+
     async fn live(&self) -> bool {
         match &*self.state.lock().await {
             State::Absent => true,
@@ -141,20 +154,21 @@ pub(crate) struct Resources {
 impl Resources {
     pub async fn invoke(
         &self,
-        context: InvocationContext,
+        mut context: InvocationContext,
     ) -> std::result::Result<Completion, ServiceError> {
         let operation = context
             .request
             .operation
             .strip_prefix("browser.")
-            .ok_or_else(|| ServiceError::Handler("not a browser operation".into()))?;
+            .ok_or_else(|| ServiceError::Handler("not a browser operation".into()))?
+            .to_owned();
         let result = async {
-            let command = BrowserCommand::parse(operation, context.request.args.clone())
+            let command = BrowserCommand::parse(&operation, context.request.args.clone())
                 .map_err(|error| BrowserError::Configuration(error.to_string()))?;
             let cancellation = context.cancellation.child_token();
             let _cancel_on_drop = cancellation.clone().drop_guard();
             let deadline = tokio::time::Instant::now() + command.timeout();
-            let invocation = self.execute(&context, &command, &cancellation, deadline);
+            let invocation = self.execute(&mut context, &command, &cancellation, deadline);
             tokio::pin!(invocation);
             match tokio::time::timeout_at(deadline, invocation.as_mut()).await {
                 Ok(result) => result,
@@ -177,7 +191,7 @@ impl Resources {
         .await
         .and_then(|value| match value {
             CommandOutput::Json(value) => {
-                super::output::render(operation, value, context.request.json == Some(true))
+                super::output::render(&operation, value, context.request.json == Some(true))
             }
             CommandOutput::Png(bytes) => Ok(bytes),
         });
@@ -230,7 +244,7 @@ impl Resources {
 
     async fn execute(
         &self,
-        context: &InvocationContext,
+        context: &mut InvocationContext,
         command: &BrowserCommand,
         cancellation: &CancellationToken,
         deadline: tokio::time::Instant,
@@ -282,21 +296,23 @@ impl Resources {
             return Ok(CommandOutput::Json(result));
         }
         if matches!(command, BrowserCommand::ContentFetch(_)) {
-            return super::fetch::execute(
-                context,
-                &environment,
-                None,
-                command,
-                cancellation,
-                deadline,
+            let result =
+                super::fetch::execute(context, &environment, None, command, cancellation, deadline)
+                    .await;
+            return super::operation::after_cleanup(
+                result,
+                controller.retire_empty(&environment).await,
             )
-            .await
             .map(CommandOutput::Json);
         }
         let tabs = environment.tabs(cancellation, command.timeout()).await?;
-        if matches!(command, BrowserCommand::Tabs(_)) {
+        if let BrowserCommand::Tabs(input) = command {
+            let offset = input.offset.unwrap_or(0) as usize;
+            let limit = input
+                .limit
+                .map_or(super::protocol::DEFAULT_NODES, |limit| limit as usize);
             let mut rows = Vec::new();
-            for tab in &tabs {
+            for tab in tabs.iter().skip(offset).take(limit) {
                 let mut row = tab.metadata(cancellation, command.timeout()).await?;
                 let metadata = row.as_object_mut().expect("metadata is an object");
                 metadata.remove("viewport");
@@ -307,75 +323,77 @@ impl Resources {
                 rows.push(row);
             }
             return Ok(CommandOutput::Json(
-                serde_json::json!({ "tabs": rows, "truncated": false }),
+                serde_json::json!({ "tabs": rows, "truncated": tabs.len() > offset.saturating_add(limit) }),
             ));
         }
         let tab = tabs
             .iter()
             .find(|tab| Some(tab.id().as_str()) == command.tab())
             .ok_or(BrowserError::TabNotFound)?;
-        let family: Option<futures_util::future::BoxFuture<'_, Result<serde_json::Value>>> =
-            match command {
-                BrowserCommand::Upload(_) => Some(Box::pin(super::upload::execute(
-                    context,
-                    &environment,
-                    Some(tab),
-                    command,
-                    cancellation,
-                    deadline,
-                ))),
-                BrowserCommand::Download(_) => Some(Box::pin(super::download::execute(
-                    context,
-                    &environment,
-                    Some(tab),
-                    command,
-                    cancellation,
-                    deadline,
-                ))),
-                BrowserCommand::ClipboardRead(_) | BrowserCommand::ClipboardWrite(_) => {
-                    Some(Box::pin(super::clipboard::execute(
+        {
+            let family: Option<futures_util::future::BoxFuture<'_, Result<serde_json::Value>>> =
+                match command {
+                    BrowserCommand::Upload(_) => Some(Box::pin(super::upload::execute(
                         context,
                         &environment,
                         Some(tab),
                         command,
                         cancellation,
                         deadline,
-                    )))
-                }
-                BrowserCommand::CdpTargets(_)
-                | BrowserCommand::CdpSend(_)
-                | BrowserCommand::CdpEvents(_) => Some(Box::pin(super::cdp::execute(
-                    context,
-                    &environment,
-                    Some(tab),
-                    command,
-                    cancellation,
-                    deadline,
-                ))),
-                BrowserCommand::AssetsList(_) | BrowserCommand::AssetsExport(_) => {
-                    Some(Box::pin(super::assets::execute(
+                    ))),
+                    BrowserCommand::Download(_) => Some(Box::pin(super::download::execute(
                         context,
                         &environment,
                         Some(tab),
                         command,
                         cancellation,
                         deadline,
-                    )))
-                }
-                BrowserCommand::WebmcpList(_) | BrowserCommand::WebmcpCall(_) => {
-                    Some(Box::pin(super::webmcp::execute(
+                    ))),
+                    BrowserCommand::ClipboardRead(_) | BrowserCommand::ClipboardWrite(_) => {
+                        Some(Box::pin(super::clipboard::execute(
+                            context,
+                            &environment,
+                            Some(tab),
+                            command,
+                            cancellation,
+                            deadline,
+                        )))
+                    }
+                    BrowserCommand::CdpTargets(_)
+                    | BrowserCommand::CdpSend(_)
+                    | BrowserCommand::CdpEvents(_) => Some(Box::pin(super::cdp::execute(
                         context,
                         &environment,
                         Some(tab),
                         command,
                         cancellation,
                         deadline,
-                    )))
-                }
-                _ => None,
-            };
-        if let Some(family) = family {
-            return family.await.map(CommandOutput::Json);
+                    ))),
+                    BrowserCommand::AssetsList(_) | BrowserCommand::AssetsExport(_) => {
+                        Some(Box::pin(super::assets::execute(
+                            context,
+                            &environment,
+                            Some(tab),
+                            command,
+                            cancellation,
+                            deadline,
+                        )))
+                    }
+                    BrowserCommand::WebmcpList(_) | BrowserCommand::WebmcpCall(_) => {
+                        Some(Box::pin(super::webmcp::execute(
+                            context,
+                            &environment,
+                            Some(tab),
+                            command,
+                            cancellation,
+                            deadline,
+                        )))
+                    }
+                    _ => None,
+                };
+            if let Some(family) = family {
+                return family.await.map(CommandOutput::Json);
+            }
         }
         if let BrowserCommand::Screenshot(input) = command {
             if input.output.is_none() && context.request.json == Some(true) {
@@ -383,9 +401,18 @@ impl Resources {
                     "screenshot --json requires --output".into(),
                 ));
             }
+            if let Some(output) = &input.output {
+                super::output::preflight(
+                    &context.request.cwd,
+                    output,
+                    input.overwrite == Some(true),
+                )
+                .await?;
+            }
             let bytes = tab
                 .capture(
                     input.full_page == Some(true),
+                    input.clip.as_deref(),
                     cancellation,
                     command.timeout(),
                 )
@@ -400,24 +427,55 @@ impl Resources {
             let height = decoded.info().height;
             drop(decoded);
             let metadata = tab.metadata(cancellation, command.timeout()).await?;
-            let path =
-                super::output::save(&context.request.cwd, output, bytes, cancellation).await?;
+            let path = super::output::save_with_overwrite(
+                &context.request.cwd,
+                output,
+                bytes,
+                input.overwrite == Some(true),
+                cancellation,
+                deadline,
+            )
+            .await?;
             return Ok(CommandOutput::Json(
                 serde_json::json!({ "path": path, "mimeType": "image/png", "width": width, "height": height, "viewport": metadata["viewport"] }),
             ));
         }
         if matches!(command, BrowserCommand::Close(_)) {
             tab.close(cancellation, command.timeout()).await?;
-            if environment
-                .tabs(cancellation, command.timeout())
-                .await?
-                .is_empty()
-            {
-                controller.release().await?;
-            }
+            controller.retire_empty(&environment).await?;
             return Ok(CommandOutput::Json(
                 serde_json::json!({ "closed": tab.id() }),
             ));
+        }
+        if let BrowserCommand::Probe(input) = command
+            && let Some(output) = &input.output
+        {
+            super::output::preflight(&context.request.cwd, output, input.overwrite == Some(true))
+                .await?;
+            let mut references = tab
+                .state
+                .operations
+                .try_lock()
+                .map_err(|_| BrowserError::Busy)?;
+            let mut result = tab
+                .command_admitted(command, cancellation, deadline, &mut references)
+                .await?;
+            let bytes = super::operation::Operation::until(&tab.ended, cancellation, deadline)
+                .run(tab.screenshot_bytes(false, None))
+                .await?;
+            let bytes = super::probe::annotate(bytes, &result)?;
+            result["path"] = serde_json::json!(
+                super::output::save_with_overwrite(
+                    &context.request.cwd,
+                    output,
+                    bytes,
+                    input.overwrite == Some(true),
+                    cancellation,
+                    deadline
+                )
+                .await?
+            );
+            return Ok(CommandOutput::Json(result));
         }
         let mut result = tab.command(command, cancellation, deadline).await?;
         if let BrowserCommand::ContentRead(input) = command
@@ -426,11 +484,13 @@ impl Resources {
             let content = result["content"].as_str().ok_or_else(|| {
                 BrowserError::InvalidResult("content export did not return text".into())
             })?;
-            let path = super::output::save(
+            let path = super::output::save_with_overwrite(
                 &context.request.cwd,
                 output,
                 content.as_bytes().to_vec(),
+                input.overwrite == Some(true),
                 cancellation,
+                deadline,
             )
             .await?;
             result["path"] = serde_json::json!(path);

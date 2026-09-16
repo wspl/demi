@@ -1,17 +1,20 @@
 function(kind, expected, exact) {
-  const match = text => exact ? text === expected : text.includes(expected);
+  const pattern = kind === 'text-pattern' ? new RegExp(expected) : null;
+  if (kind === 'css') document.querySelector(expected);
+  const match = text => pattern ? pattern.test(text) : exact ? text === expected : text.includes(expected);
   const rendered = new WeakMap();
-  // innerText falls back to raw text on hidden elements; exclude them explicitly.
+  // DOM text locators include hidden elements. innerText supplies rendered
+  // text where available and the browser's text fallback on hidden elements.
   const visibleText = element => {
     if (!rendered.has(element)) {
-      const style = element.ownerDocument.defaultView.getComputedStyle(element);
-      const box = element.getBoundingClientRect();
-      rendered.set(element, style.visibility === 'visible' && box.width > 0 && box.height > 0
-        ? (element.innerText || '').trim() : '');
+      rendered.set(element, (element.innerText || element.textContent || '').trim());
     }
     return rendered.get(element);
   };
   const matches = element => {
+    if (kind === 'css') return element.matches(expected);
+    if (kind === 'placeholder') return element.getAttribute('placeholder') === expected;
+    if (kind === 'test-id') return element.getAttribute('data-testid') === expected;
     if (kind === 'label') {
       const labelledBy = element.getAttribute('aria-labelledby');
       if (labelledBy) {
@@ -21,6 +24,7 @@ function(kind, expected, exact) {
       }
       return Array.from(element.labels || []).some(label => match((label.textContent || '').trim()));
     }
+    if (['script', 'style', 'noscript'].includes(element.localName)) return false;
     const text = visibleText(element);
     if (!text || !match(text)) return false;
     // Prefer the smallest rendered text owner instead of every matching ancestor.

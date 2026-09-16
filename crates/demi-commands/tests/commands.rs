@@ -237,6 +237,24 @@ async fn retained_browser_commands_share_state_and_retire() {
                 .unwrap()
                 .starts_with(b"\x89PNG\r\n\x1a\n")
         );
+        for (operation, args, dimensions) in [
+            ("browser.screenshot", json!({"tab": tab, "output": "clip.png", "clip": "0,0,100,80"}), Some((100, 80))),
+            ("browser.probe", json!({"tab": tab, "xy": "30,30", "include-non-interactable": true, "output": "probe.png"}), None),
+        ] {
+            let (completion, stdout, stderr) = exchange(&client, &request(operation, args), false).await;
+            assert_eq!(completion.exit_code, 0, "{}", String::from_utf8_lossy(&stderr));
+            let result: Value = serde_json::from_slice(&stdout).unwrap();
+            let bytes = std::fs::read(result["path"].as_str().unwrap()).unwrap();
+            let decoded = png::Decoder::new(std::io::Cursor::new(bytes)).read_info().unwrap();
+            if let Some((width, height)) = dimensions {
+                assert_eq!((decoded.info().width, decoded.info().height), (width, height));
+            } else {
+                assert!(!result["matches"].as_array().unwrap().is_empty());
+            }
+        }
+        let (completion, stdout, stderr) = exchange(&client, &request("browser.tabs", json!({"offset": 1, "limit": 1})), false).await;
+        assert_eq!(completion.exit_code, 0, "{}", String::from_utf8_lossy(&stderr));
+        assert_eq!(serde_json::from_slice::<Value>(&stdout).unwrap()["tabs"], json!([]));
         for (args, code) in [
             (
                 json!({"tab": tab, "output": "browser.png"}),

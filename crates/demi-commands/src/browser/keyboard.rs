@@ -30,6 +30,13 @@ pub(super) fn modifier(name: &str) -> Option<i64> {
     }
 }
 
+/// Combine schema-validated browser pointer modifiers using the Host's key mapping.
+pub(super) fn modifiers(names: Option<&[String]>) -> i64 {
+    names.into_iter().flatten().fold(0, |mask, name| {
+        mask | modifier(name).expect("modifier is schema validated")
+    })
+}
+
 impl Key {
     fn named(name: &str) -> Result<Self> {
         let name = match name {
@@ -204,6 +211,90 @@ impl BrowserTab {
         result
     }
 
+    /// Capture the current browser focus without clicking or changing its selection.
+    pub(super) async fn current_focus(
+        &self,
+        references: &mut super::observation::References,
+        operation: &Operation<'_>,
+    ) -> Result<(element::TargetElement, String)> {
+        use chromiumoxide::cdp::{
+            browser_protocol::dom::DescribeNodeParams, js_protocol::runtime::EvaluateParams,
+        };
+        operation
+            .run(async {
+                let mut page = self.page.clone();
+                let mut context = None;
+                let (node, object) = loop {
+                    let mut request = EvaluateParams::builder()
+                        .expression(format!("({})()", include_str!("focused.js")))
+                        .object_group(element::OBJECT_GROUP)
+                        .return_by_value(false)
+                        .build()
+                        .map_err(BrowserError::Configuration)?;
+                    request.context_id = context;
+                    let result = page.evaluate_expression(request).await?;
+                    let object = result
+                        .object()
+                        .object_id
+                        .clone()
+                        .ok_or(BrowserError::StaleReference)?;
+                    let node = page
+                        .execute(
+                            DescribeNodeParams::builder()
+                                .object_id(object.clone())
+                                .build(),
+                        )
+                        .await?
+                        .result
+                        .node;
+                    if matches!(node.local_name.as_str(), "iframe" | "frame")
+                        && let Some(frame) = &node.frame_id
+                    {
+                        if let Some(related) = page
+                            .related_page(
+                                chromiumoxide::cdp::browser_protocol::target::TargetId::new(
+                                    frame.as_ref(),
+                                ),
+                            )
+                            .await?
+                        {
+                            page = related;
+                        }
+                        context = Some(
+                            page.frame_execution_context(frame.clone())
+                                .await?
+                                .ok_or(BrowserError::StaleReference)?,
+                        );
+                        continue;
+                    }
+                    break (node, object);
+                };
+                let target = element::TargetElement {
+                    page,
+                    frame_chain: Vec::new(),
+                    backend_node_id: node.backend_node_id,
+                    remote_object_id: object,
+                };
+                let name = if matches!(node.local_name.as_str(), "body" | "html") {
+                    "document".to_owned()
+                } else {
+                    let observation =
+                        super::observation::Observation::capture(&self.page, references).await?;
+                    if !observation.accessible(&target) {
+                        return Ok((target, "document".into()));
+                    }
+                    observation
+                        .describe_elements(std::slice::from_ref(&target), references, 1)?
+                        .into_iter()
+                        .next()
+                        .and_then(|node| node.r#ref)
+                        .ok_or(BrowserError::StaleReference)?
+                };
+                Ok((target, name))
+            })
+            .await
+    }
+
     /// A retained remote object binds typing to the original element and document.
     async fn typing_focus(
         &self,
@@ -245,14 +336,27 @@ impl BrowserTab {
         operation: &Operation<'_>,
     ) -> Result<()> {
         self.focus(target, operation).await?;
+        self.type_focused(Some(target), text, operation).await
+    }
+
+    pub(super) async fn type_focused(
+        &self,
+        target: Option<&element::TargetElement>,
+        text: &str,
+        operation: &Operation<'_>,
+    ) -> Result<()> {
         let mut delivered = 0;
         let result = async {
             for character in text.chars() {
-                self.typing_focus(target, operation).await?;
+                if let Some(target) = target {
+                    self.typing_focus(target, operation).await?;
+                }
                 self.press(&[Key::character(character)], operation).await?;
                 delivered += 1;
             }
-            self.typing_focus(target, operation).await?;
+            if let Some(target) = target {
+                self.typing_focus(target, operation).await?;
+            }
             Ok(())
         }
         .await;

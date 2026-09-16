@@ -8,6 +8,8 @@ export const BROWSER_MAX_NODES = 1_000
 export const BROWSER_DEFAULT_NODES = 100
 export const BROWSER_INLINE_BYTES = 64 * 1024
 export const BROWSER_STDIN_BYTES = 1024 * 1024
+export const BROWSER_CLIPBOARD_PNG_BYTES = 16 * 1024 * 1024
+export const BROWSER_CLIPBOARD_PNG_PIXELS = 16_000_000
 export const BROWSER_FETCH_URLS = 10
 export const BROWSER_CONSOLE_ENTRIES = 1000
 export const BROWSER_CONSOLE_BYTES = 1024 * 1024
@@ -44,6 +46,19 @@ export const browserTargetShape = {
 }
 export const browserTargetSchema = z.strictObject(browserTargetShape)
 export type BrowserTarget = z.infer<typeof browserTargetSchema>
+
+/** Declarative browser queries are data; Rust validates base and locator combinations. */
+export const browserQuerySchema = z.strictObject({
+  match: browserTargetSchema.omit({ frame: true, within: true, nth: true }).optional(),
+  get within() { return browserQuerySchema.optional() },
+  get frame() { return browserQuerySchema.optional() },
+  get and() { return z.array(browserQuerySchema).min(1).optional() },
+  get or() { return z.array(browserQuerySchema).min(1).optional() },
+  get has() { return browserQuerySchema.optional() },
+  get hasNot() { return browserQuerySchema.optional() },
+  hasText: text.optional(), hasNotText: text.optional(), visible: z.boolean().optional(),
+  nth: z.number().int().min(0).optional(),
+})
 
 const viewport = z.strictObject({ width: z.number().int().positive(), height: z.number().int().positive() })
 const bounds = z.strictObject({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
@@ -132,7 +147,7 @@ export const browserOperations = {
   select: { input: z.strictObject({ ...targeted, value: z.array(text).optional(), 'option-label': z.array(text).optional(), 'option-index': z.array(z.number().int().min(0)).optional() }), result: action },
   'select-text': { input: z.strictObject({ ...targeted, text, cursor: z.enum(['before', 'after']).optional(), prefix: text.optional(), suffix: text.optional() }), result: action },
   'ax-action': { input: z.strictObject({ ...targeted, action: locator }), result: action },
-  wait: { input: z.strictObject({ ...targeted, url: locator.optional(), load, state: z.enum(['visible', 'hidden', 'attached', 'detached', 'enabled']).optional() }), result: z.strictObject({ condition: z.string(), matched: z.boolean() }) },
+  wait: { input: z.strictObject({ ...targeted, url: locator.optional(), load, state: z.enum(['visible', 'hidden', 'attached', 'detached', 'enabled']).optional() }), result: z.strictObject({ condition: z.string(), matched: z.boolean(), url: z.string().optional(), ref: z.string().optional() }) },
   upload: { input: z.strictObject({ ...targeted, file: z.array(locator).min(1) }), result: z.strictObject({ files: z.array(z.string()), attached: z.number().int().min(0) }) },
   download: { input: z.strictObject({ ...pointer, ...fileOptions }), result: z.strictObject({ path: z.string(), suggestedFilename: z.string(), bytes: z.number().int().min(0), mimeType: z.string() }) },
   'clipboard.write': { input: z.strictObject({ tab, mime: mime.optional(), timeout }), result: z.strictObject({ mimeType: mime, bytes: z.number().int().min(0) }) },

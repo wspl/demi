@@ -1,4 +1,4 @@
-async function(conditions, scroll, probe, cancel) {
+async function(conditions, scroll, probe, cancel, point) {
   if (cancel) {
     this[probe]?.();
     return null;
@@ -96,8 +96,8 @@ async function(conditions, scroll, probe, cancel) {
     // Verify each root from the target outwards. Accessing getRootNode() on the
     // target also exposes its closed/native root, unlike host.shadowRoot.
     let target = element;
-    let x = result.x;
-    let y = result.y;
+    let x = point ? point[0] : result.x;
+    let y = point ? point[1] : result.y;
     while (target) {
       const root = target.getRootNode();
       const hit = root.elementFromPoint(x, y);
@@ -107,19 +107,9 @@ async function(conditions, scroll, probe, cancel) {
       if (root.host) {
         target = root.host;
       } else {
-        const frame = target.ownerDocument.defaultView.frameElement;
-        if (!frame) break;
-        const rect = frame.getBoundingClientRect();
-        x += rect.left + frame.clientLeft;
-        y += rect.top + frame.clientTop;
-        target = frame;
+        break;
       }
     }
-  }
-  for (let frame = view.frameElement; frame; frame = frame.ownerDocument.defaultView.frameElement) {
-    const rect = frame.getBoundingClientRect();
-    result.x += rect.left + frame.clientLeft;
-    result.y += rect.top + frame.clientTop;
   }
   return result;
 }

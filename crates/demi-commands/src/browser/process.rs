@@ -18,10 +18,12 @@ pub(super) struct ChromeProcess {
     marker: std::ffi::OsString,
     #[cfg(unix)]
     processes: System,
+    #[cfg(unix)]
+    installation: std::path::PathBuf,
 }
 
 impl ChromeProcess {
-    pub fn new(profile: &Path) -> Self {
+    pub fn new(profile: &Path, executable: &Path) -> Self {
         #[cfg(unix)]
         {
             let mut marker = std::ffi::OsString::from(format!("{PROFILE_ENV}="));
@@ -30,11 +32,19 @@ impl ChromeProcess {
                 group: None,
                 marker,
                 processes: System::new(),
+                // macOS helpers live in the app's Frameworks directory; Linux
+                // helpers live beside the main Chrome executable.
+                installation: executable
+                    .ancestors()
+                    .find(|path| path.extension().is_some_and(|extension| extension == "app"))
+                    .or_else(|| executable.parent())
+                    .expect("absolute Chrome executable has a parent")
+                    .to_owned(),
             }
         }
         #[cfg(not(unix))]
         {
-            let _ = profile;
+            let _ = (profile, executable);
             Self {}
         }
     }
@@ -68,11 +78,29 @@ impl ChromeProcess {
     /// Capture helper identities before shutdown, retaining metadata while they exit.
     pub fn observe(&mut self) {
         #[cfg(unix)]
-        self.processes.refresh_processes_specifics(
-            ProcessesToUpdate::All,
-            true,
-            ProcessRefreshKind::nothing().with_environ(UpdateKind::OnlyIfNotSet),
-        );
+        {
+            self.processes.refresh_processes_specifics(
+                ProcessesToUpdate::All,
+                true,
+                ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
+            );
+            let candidates: Vec<_> = self
+                .processes
+                .processes()
+                .iter()
+                .filter(|(_, process)| {
+                    process
+                        .exe()
+                        .is_some_and(|exe| exe.starts_with(&self.installation))
+                })
+                .map(|(pid, _)| *pid)
+                .collect();
+            self.processes.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&candidates),
+                false,
+                ProcessRefreshKind::nothing().with_environ(UpdateKind::Always),
+            );
+        }
     }
 
     /// Terminate and drain the group after chromiumoxide has reaped the leader.
@@ -124,7 +152,11 @@ impl ChromeProcess {
         self.observe();
         let mut helpers_alive = false;
         for process in self.processes.processes().values() {
-            if process.environ().contains(&self.marker) {
+            if process
+                .exe()
+                .is_some_and(|exe| exe.starts_with(&self.installation))
+                && process.environ().contains(&self.marker)
+            {
                 helpers_alive = true;
                 if !process.kill() {
                     let error = io::Error::last_os_error();
@@ -188,7 +220,7 @@ mod tests {
     #[tokio::test]
     async fn retirement_includes_marked_helpers_in_another_session_only() {
         let profile = tempfile::tempdir().unwrap();
-        let mut owner = ChromeProcess::new(profile.path());
+        let mut owner = ChromeProcess::new(profile.path(), &std::env::current_exe().unwrap());
         let mut leader = owner
             .spawn(Command::new("sleep").arg("60").kill_on_drop(true))
             .unwrap();
@@ -213,6 +245,7 @@ mod tests {
         let mut helper = helper_command.spawn().unwrap();
         let mut unrelated = Command::new("sleep")
             .arg("60")
+            .env(PROFILE_ENV, profile.path())
             .kill_on_drop(true)
             .spawn()
             .unwrap();
