@@ -9,8 +9,8 @@ import { useDeviceSettings } from './devices'
 const resources = useResources()
 const product = useProduct()
 const settings = useDeviceSettings()
-const { cloud, reset, revoking } = storeToRefs(settings)
-const { revoke, resetCloud } = settings
+const { cloud, reset, revoking, exposes, exposeDomain, cloudExposes, exposePending } = storeToRefs(settings)
+const { revoke, resetCloud, renewExpose, removeExpose } = settings
 </script>
 
 <template>
@@ -26,6 +26,12 @@ const { revoke, resetCloud } = settings
     :overlay-store="appOverlayStore"
     :installation="deviceInstallation"
     :claim-device="claimDevice"
+    :expose-domain="exposeDomain"
+    :exposes="exposes"
+    :cloud-exposes="cloudExposes"
+    :expose-pending-ids="exposePending"
+    @renew-expose="renewExpose"
+    @remove-expose="removeExpose"
     @revoke="revoke"
   />
 </template>

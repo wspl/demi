@@ -4,11 +4,13 @@ import { computed, onScopeDispose, ref, watch } from 'vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useProduct } from '../state/product'
 import { apiRequest, jsonBody } from '../api/client'
+import { renewExpose, removeExpose } from '../api/exposes'
 
 export const useDeviceSettings = defineStore('device-settings', () => {
   const product = useProduct()
   let lifetime = new AbortController()
   const revoking = ref<string[]>([])
+  const exposePending = ref<string[]>([])
   const reset = ref<
     | { status: 'idle' | 'pending' }
     | {
@@ -29,6 +31,55 @@ export const useDeviceSettings = defineStore('device-settings', () => {
         }
       : null,
   )
+  const exposes = computed(() => product.snapshot?.exposes ?? [])
+  const exposeDomain = computed(() => product.snapshot?.exposeDomain ?? null)
+  const cloudExposes = computed(() => {
+    const cloudDeviceId = product.snapshot?.cloud?.device?.id
+    return cloudDeviceId
+      ? exposes.value.filter((expose) => expose.deviceId === cloudDeviceId)
+      : []
+  })
+
+  /** Shared body of renew and remove: one request per expose, then a fresh snapshot. */
+  async function exposeWrite(
+    id: string,
+    run: (signal: AbortSignal) => Promise<void>,
+    couldNot: string,
+  ): Promise<void> {
+    if (exposePending.value.includes(id)) {
+      return
+    }
+    const current = lifetime
+    exposePending.value.push(id)
+    try {
+      await run(current.signal)
+      await product.revalidate()
+    } catch (error) {
+      if (!current.signal.aborted) {
+        reportError(couldNot, error, { userVisible: true })
+      }
+    } finally {
+      if (current === lifetime) {
+        exposePending.value = exposePending.value.filter((value) => value !== id)
+      }
+    }
+  }
+
+  function renewExposeAction(id: string): Promise<void> {
+    return exposeWrite(
+      id,
+      (signal) => renewExpose(id, signal),
+      'Could not renew expose',
+    )
+  }
+
+  function removeExposeAction(id: string): Promise<void> {
+    return exposeWrite(
+      id,
+      (signal) => removeExpose(id, signal),
+      'Could not remove expose',
+    )
+  }
 
   async function revoke(id: string): Promise<void> {
     if (revoking.value.includes(id)) {
@@ -85,9 +136,22 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       lifetime.abort()
       lifetime = new AbortController()
       revoking.value = []
+      exposePending.value = []
       reset.value = { status: 'idle' }
     },
   )
   onScopeDispose(() => lifetime.abort())
-  return { cloud, reset, revoking, revoke, resetCloud }
+  return {
+    cloud,
+    reset,
+    revoking,
+    revoke,
+    resetCloud,
+    exposes,
+    exposeDomain,
+    cloudExposes,
+    exposePending,
+    renewExpose: renewExposeAction,
+    removeExpose: removeExposeAction,
+  }
 })
