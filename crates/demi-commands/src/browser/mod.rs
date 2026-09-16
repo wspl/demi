@@ -1,10 +1,11 @@
-//! Native browser primitives. Command exposure requires trusted retained-resource scope.
+//! Native browser primitives. Conversation state belongs to this service instance.
 
 mod actions;
 mod assets;
 mod cdp;
 mod clipboard;
 mod content;
+mod conversations;
 mod download;
 mod element;
 mod environment;
@@ -25,7 +26,6 @@ mod probe;
 mod process;
 mod protocol;
 mod query;
-mod resources;
 mod screenshot;
 mod select;
 mod selection;
@@ -33,8 +33,8 @@ mod tab;
 mod upload;
 mod webmcp;
 
+pub(crate) use conversations::Conversations;
 pub use environment::{BrowserEnvironment, LaunchOptions, with_browser};
 pub use operation::{BrowserError, Result};
 pub(crate) use protocol::OPERATIONS;
-pub(crate) use resources::Resources;
 pub use tab::BrowserTab;

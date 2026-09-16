@@ -9,22 +9,22 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 use bytes::Bytes;
 use demi_command_service::protocol::{CommandError, Completion};
-use demi_command_service::{Handler, InvocationContext, ServiceError};
+use demi_command_service::{ConversationContext, Handler, InvocationContext, ServiceError};
 use tokio::{io::AsyncReadExt, sync::Mutex};
 
 #[derive(Default)]
 pub struct DemiCommands {
     mutations: Arc<Mutex<()>>,
-    browsers: Arc<browser::Resources>,
+    browsers: Arc<browser::Conversations>,
 }
 
 impl Handler for DemiCommands {
-    fn resource(
+    fn conversation(
         &self,
-        context: InvocationContext,
+        context: ConversationContext,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
         let browsers = self.browsers.clone();
-        Box::pin(async move { browsers.resource(context).await })
+        Box::pin(async move { browsers.conversation(context).await })
     }
 
     fn close(&self) -> Pin<Box<dyn Future<Output = Result<(), ServiceError>> + Send>> {

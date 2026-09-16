@@ -2,7 +2,7 @@ import { BROWSER_MAX_NODES, BROWSER_MAX_TIMEOUT_MS, browserDefaultTimeout, brows
 import type { CommandGroup, NativeCommand } from '@demicodes/shell'
 
 const summaries: Record<string, string> = {
-  open: 'Open a URL in a new tab on this conversation’s Host; starts its browser when needed.',
+  open: 'Open a URL in a new tab on this Host; starts the conversation’s browser when needed.',
   tabs: 'List the conversation’s live browser tabs without starting a browser.',
   info: 'Read a tab’s URL, title and viewport.',
   goto: 'Navigate a tab to a URL.',
@@ -10,7 +10,7 @@ const summaries: Record<string, string> = {
   forward: 'Navigate to the next history entry.',
   reload: 'Reload a tab.',
   history: 'Read the tab’s navigation history.',
-  close: 'Close a tab. Closing the last tab ends this browser; open again in a new shell call.',
+  close: 'Close a tab. Closing the last tab ends this browser; the next open starts fresh.',
   inspect: `Read accessibility names, roles, values, states and references; at most ${BROWSER_MAX_NODES} nodes.`,
   find: `Find nodes by reference, role/name, associated label, visible text, test ID or CSS; at most ${BROWSER_MAX_NODES} nodes.`,
   read: 'Read a matched element’s text, HTML, value, attribute or visible/enabled/checked state.',
@@ -55,7 +55,7 @@ const summaries: Record<string, string> = {
 export function createBrowserGroup(): CommandGroup {
   const root: CommandGroup = {
     name: 'browser',
-    summary: 'Operate persistent browser tabs on this conversation’s main Host. Use inspect to obtain node references; never guess them.',
+    summary: 'Operate the conversation’s persistent browser tabs on the Host running this shell. Use inspect to obtain node references; never guess them.',
     subcommands: [],
   }
   for (const [name, schema] of Object.entries(browserOperations)) {
@@ -65,7 +65,7 @@ export function createBrowserGroup(): CommandGroup {
     const leaf: NativeCommand = {
       name: path.at(-1)!,
       kind: 'native',
-      binding: { package: 'demi.builtin', operation: `browser.${name}`, resource: 'browser' },
+      binding: { package: 'demi.builtin', operation: `browser.${name}` },
       summary,
       input: {
         ...schema.input.shape,

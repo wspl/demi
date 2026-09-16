@@ -1,11 +1,11 @@
-//! Local Host command fixtures exercise the production resource dispatch.
+//! Local Host command fixtures exercise the production conversation dispatch.
 
 use futures_util::FutureExt;
 use std::{collections::BTreeMap, future::Future, sync::Arc};
 
 use demi_command_service::{
     Handler, Input, InvocationContext, Output, ServiceError,
-    protocol::{Invocation, NativeResourceScope, Record},
+    protocol::{Invocation, Record},
 };
 use demi_commands::DemiCommands;
 use serde_json::{Value, json};
@@ -15,7 +15,8 @@ use tokio_util::sync::CancellationToken;
 pub struct BrowserFixture {
     service: Arc<DemiCommands>,
     pub root: Arc<tempfile::TempDir>,
-    scope: NativeResourceScope,
+    pub conversation: String,
+    pub env: BTreeMap<String, String>,
     pub caller: String,
 }
 
@@ -48,25 +49,19 @@ impl BrowserFixture {
             request: Invocation {
                 operation: operation.into(),
                 invocation_id: uuid::Uuid::new_v4().to_string(),
-                caller: Some(self.caller.clone()),
-                resource: Some(self.scope.clone()),
+                caller: self.caller.clone(),
+                conversation: self.conversation.clone(),
                 json: Some(true),
                 edits: None,
                 args,
                 cwd: self.root.path().to_str().unwrap().into(),
-                env: BTreeMap::new(),
+                env: self.env.clone(),
             },
             input: Input::from_stream(futures_util::stream::iter([Ok(bytes::Bytes::from(bytes))])),
             output,
             cancellation: cancel,
         };
-        let invoke = async {
-            if operation.starts_with("browser.") {
-                self.service.invoke(context).await
-            } else {
-                self.service.resource(context).await
-            }
-        };
+        let invoke = self.service.invoke(context);
         let collect = async {
             let mut stdout = Vec::new();
             let mut stderr = Vec::new();
@@ -100,6 +95,33 @@ impl BrowserFixture {
         (completion.exit_code, value)
     }
 
+    pub async fn lifecycle(&self, operation: &str) -> Value {
+        let (output, mut records) = Output::channel(CancellationToken::new());
+        let invoke = self
+            .service
+            .conversation(demi_command_service::ConversationContext {
+                request: demi_command_service::protocol::ConversationRequest {
+                    operation: operation.into(),
+                    conversation: Some(self.conversation.clone()),
+                },
+                output,
+                cancellation: CancellationToken::new(),
+            });
+        let collect = async {
+            let mut stdout = Vec::new();
+            while let Some(record) = records.recv().await {
+                match record {
+                    Record::Stdout(bytes) => stdout.extend_from_slice(&bytes),
+                    _ => panic!("unexpected lifecycle output"),
+                }
+            }
+            serde_json::from_slice(&stdout).unwrap()
+        };
+        let (completion, value) = tokio::join!(invoke, collect);
+        assert_eq!(completion.unwrap().exit_code, 0);
+        value
+    }
+
     pub async fn open(&self, name: &str) -> String {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/browser")
@@ -125,12 +147,13 @@ where
         service: Arc::new(DemiCommands::default()),
         root: Arc::new(tempfile::tempdir().unwrap()),
         caller: "browser-family-test".into(),
-        scope: NativeResourceScope {
-            id: uuid::Uuid::new_v4().to_string(),
-            kind: "browser".into(),
-        },
+        conversation: uuid::Uuid::new_v4().to_string(),
+        env: BTreeMap::new(),
     };
-    fixture.call("acquire", json!({})).await;
+    assert_eq!(
+        fixture.lifecycle("status").await,
+        json!({"conversations": []})
+    );
     let result = std::panic::AssertUnwindSafe(exercise(fixture.clone()))
         .catch_unwind()
         .await;

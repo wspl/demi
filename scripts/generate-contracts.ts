@@ -114,7 +114,7 @@ function commandProtocol(): string {
     CommandError: commandErrorSchema, Completion: completionSchema, Invocation: invocationSchema }
   for (const [name, schema] of Object.entries(types))
     generator.type(schema, name)
-  const checks = Object.entries(types).filter(([name]) => ['PackageDescriptor', 'Invocation', 'ConversationRequest', 'EditContext', 'EditJournal'].includes(name)).map(([name, schema]) =>
+  const checks = Object.entries(types).filter(([name]) => ['PackageDescriptor', 'Invocation', 'ConversationRequest', 'ConversationStatus', 'EditContext', 'EditJournal'].includes(name)).map(([name, schema]) =>
     `pub fn ${rustField(name)}_validate(value: &${name}) -> Result<(), String> {
       ${generator.validate(schema, 'value')}\nOk(())
     }`)

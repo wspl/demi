@@ -27,11 +27,8 @@ pub(super) async fn execute(
     for url in &input.url {
         super::navigation::validate_url(url)?;
     }
-    let caller = context.request.caller.as_deref().ok_or_else(|| {
-        BrowserError::Configuration("temporary browser tabs require a trusted caller".into())
-    })?;
     let batch = environment
-        .temporary_tabs(caller, input.url.len(), cancel, deadline)
+        .temporary_tabs(&context.request.caller, input.url.len(), cancel, deadline)
         .await?;
     let mut pages = Vec::with_capacity(input.url.len());
     let mut truncated = false;

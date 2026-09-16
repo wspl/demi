@@ -16,8 +16,8 @@ async fn call(
     exchange(
         client,
         &Invocation {
-            caller: None,
-            resource: None,
+            caller: "file-test".into(),
+            conversation: "file-test-conversation".into(),
             json: None,
             edits: Some(demi_command_service::protocol::EditContext {
                 directory: std::path::Path::new(cwd)
@@ -46,7 +46,12 @@ async fn exchange(
     lifecycle: bool,
 ) -> (Completion, Vec<u8>, Vec<u8>) {
     let (_input, mut output) = if lifecycle {
-        client.resource(request).await
+        client
+            .conversation(&demi_command_service::protocol::ConversationRequest {
+                operation: request.operation.clone(),
+                conversation: Some(request.conversation.clone()),
+            })
+            .await
     } else {
         client.invoke(request).await
     }
@@ -69,9 +74,9 @@ async fn exchange(
 
 #[tokio::test]
 #[ignore = "installs the pinned Chrome for Testing release and exercises a real browser"]
-async fn retained_browser_commands_share_state_and_retire() {
+async fn conversation_browser_commands_share_state_and_retire() {
     use axum::{Router, response::Html, routing::get};
-    use demi_command_service::{protocol::NativeResourceScope, serve};
+    use demi_command_service::serve;
     use serde_json::{Value, json};
     use std::sync::Arc;
     use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
@@ -101,23 +106,18 @@ async fn retained_browser_commands_share_state_and_retire() {
         )));
         let (client, connection) = Client::connect(client_io).await.unwrap();
         let driver = AbortOnDropHandle::new(tokio::spawn(connection));
-        let scope = NativeResourceScope {
-            id: uuid::Uuid::new_v4().to_string(),
-            kind: "browser".into(),
-        };
+        let conversation = uuid::Uuid::new_v4().to_string();
         let request = |operation: &str, args: Value| Invocation {
             operation: operation.into(),
             invocation_id: uuid::Uuid::new_v4().to_string(),
-            caller: Some("agent-root".into()),
+            caller: "agent-root".into(),
             cwd: root.path().to_str().unwrap().into(),
             args,
             env: BTreeMap::new(),
             edits: None,
             json: Some(true),
-            resource: Some(scope.clone()),
+            conversation: conversation.clone(),
         };
-        let (completion, _, _) = exchange(&client, &request("acquire", json!({})), true).await;
-        assert_eq!(completion.exit_code, 0);
         let (completion, stdout, stderr) =
             exchange(&client, &request("browser.tabs", json!({})), false).await;
         assert_eq!(
@@ -370,8 +370,8 @@ async fn retained_browser_commands_share_state_and_retire() {
         let (completion, stdout, _) = exchange(&client, &request("status", json!({})), true).await;
         assert_eq!(completion.exit_code, 0);
         assert_eq!(
-            serde_json::from_slice::<Value>(&stdout).unwrap()["state"],
-            "released"
+            serde_json::from_slice::<Value>(&stdout).unwrap()["conversations"],
+            json!([])
         );
         let (completion, _, _) = exchange(
             &client,
@@ -379,7 +379,10 @@ async fn retained_browser_commands_share_state_and_retire() {
             false,
         )
         .await;
-        assert_eq!(completion.exit_code, 1);
+        assert_eq!(completion.exit_code, 0);
+        let (completion, stdout, _) = exchange(&client, &request("release", json!({})), true).await;
+        assert_eq!(completion.exit_code, 0);
+        assert_eq!(serde_json::from_slice::<Value>(&stdout).unwrap(), json!({}));
         client.shutdown().await.unwrap();
         drop(client);
         server.await.unwrap().unwrap();

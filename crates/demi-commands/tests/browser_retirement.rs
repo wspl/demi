@@ -252,3 +252,179 @@ async fn chrome_process_tree_and_profile_retire_together() {
         );
     }
 }
+
+mod browser_families;
+
+/// Locate the test service's browser profiles without exposing diagnostic product APIs.
+fn chrome_profiles() -> std::collections::BTreeMap<i32, PathBuf> {
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
+    );
+    system
+        .processes()
+        .values()
+        .filter_map(|process| {
+            if process.parent() != Some(sysinfo::Pid::from_u32(std::process::id())) {
+                return None;
+            }
+            let profile = process
+                .cmd()
+                .iter()
+                .filter_map(|arg| arg.to_str())
+                .find_map(|arg| arg.strip_prefix("--user-data-dir="))?;
+            Some((
+                i32::try_from(process.pid().as_u32()).unwrap(),
+                PathBuf::from(profile),
+            ))
+        })
+        .collect()
+}
+
+#[tokio::test]
+#[ignore = "installs the pinned Chrome release and exercises conversation retirement"]
+async fn conversation_release_cancels_only_its_commands_and_retires_its_profile() {
+    use serde_json::json;
+    browser_families::with_browser_fixture(|first| async move {
+        let mut second = first.clone();
+        second.conversation = "second-conversation".into();
+        let first_tab = first.open("fixture.html").await;
+        let first_profiles = chrome_profiles();
+        assert_eq!(first_profiles.len(), 1);
+        let (&leader, profile) = first_profiles.first_key_value().unwrap();
+        assert!(profile.is_dir());
+        let second_tab = second.open("fixture.html").await;
+        let profiles = chrome_profiles();
+        assert_eq!(profiles.len(), 2);
+        let second_profiles: std::collections::BTreeMap<_, _> = profiles
+            .into_iter()
+            .filter(|(pid, _)| *pid != leader)
+            .collect();
+        let descendants: HashSet<_> = processes()
+            .iter()
+            .filter(|process| process.group == leader)
+            .map(|process| process.pid)
+            .collect();
+        assert!(descendants.len() > 1);
+        let mut held = vec![first.conversation.clone(), second.conversation.clone()];
+        held.sort();
+        assert_eq!(
+            first.lifecycle("status").await,
+            json!({"conversations": held})
+        );
+
+        let waiting = first.result(
+            "browser.wait",
+            json!({"tab": first_tab, "url": "**/never", "timeout": 30000}),
+            CancellationToken::new(),
+        );
+        tokio::pin!(waiting);
+        let release = async {
+            // tab_busy proves the wait owns its operation lock before release begins.
+            tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let (_, result) = first
+                        .result(
+                            "browser.info",
+                            json!({"tab": first_tab}),
+                            CancellationToken::new(),
+                        )
+                        .await;
+                    if result["error"]["code"] == "tab_busy" {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(first.lifecycle("release").await, json!({}));
+        };
+        let ((code, error), ()) = tokio::join!(&mut waiting, release);
+        assert_eq!(code, 130, "{error}");
+        assert_eq!(error["error"]["code"], "cancelled");
+        assert!(!profile.exists());
+        assert!(
+            !processes()
+                .iter()
+                .any(|process| descendants.contains(&process.pid) || process.group == leader)
+        );
+        assert_eq!(chrome_profiles(), second_profiles);
+        assert_eq!(
+            first.lifecycle("status").await,
+            json!({"conversations": [second.conversation]})
+        );
+        assert_eq!(
+            second.call("browser.tabs", json!({})).await["tabs"][0]["id"],
+            second_tab
+        );
+        assert_eq!(
+            first.call("browser.tabs", json!({})).await["tabs"],
+            json!([])
+        );
+        assert_eq!(first.lifecycle("release").await, json!({}));
+        assert_eq!(second.lifecycle("release").await, json!({}));
+        assert_eq!(
+            first.lifecycle("status").await,
+            json!({"conversations": []})
+        );
+        assert!(chrome_profiles().is_empty());
+        assert!(second_profiles.values().all(|path| !path.exists()));
+        first.clone()
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "installs the pinned Chrome release and verifies trusted invocation identity"]
+async fn browser_uses_trusted_conversation_and_caller_despite_script_environment() {
+    use serde_json::json;
+    browser_families::with_browser_fixture(|mut first| async move {
+        let mut second = first.clone();
+        second.conversation = "other-conversation".into();
+        second.caller = "other-agent".into();
+        let second_tab = second.open("fixture.html").await;
+        first
+            .env
+            .insert("DEMI_CONVERSATION_ID".into(), second.conversation.clone());
+        first
+            .env
+            .insert("DEMI_AGENT_NODE_ID".into(), second.caller.clone());
+        let first_tab = first.open("fixture.html").await;
+        let tabs = first.call("browser.tabs", json!({})).await;
+        assert_eq!(tabs["tabs"].as_array().unwrap().len(), 1);
+        assert_eq!(tabs["tabs"][0]["id"], first_tab);
+        assert_eq!(tabs["tabs"][0]["createdBy"]["nodeId"], first.caller);
+        let (_, error) = first
+            .result(
+                "browser.info",
+                json!({"tab": second_tab}),
+                CancellationToken::new(),
+            )
+            .await;
+        assert_eq!(error["error"]["code"], "tab_not_found");
+        assert_eq!(
+            second.call("browser.tabs", json!({})).await["tabs"][0]["id"],
+            second_tab
+        );
+        first.call("browser.close", json!({"tab": first_tab})).await;
+        assert_eq!(
+            first.lifecycle("status").await,
+            json!({"conversations": [second.conversation]})
+        );
+        let fresh = first.open("fixture.html").await;
+        assert_ne!(fresh, first_tab);
+        let (_, error) = first
+            .result(
+                "browser.info",
+                json!({"tab": first_tab}),
+                CancellationToken::new(),
+            )
+            .await;
+        assert_eq!(error["error"]["code"], "tab_not_found");
+        first
+    })
+    .await;
+}
