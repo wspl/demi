@@ -1,0 +1,6 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Clipboard fixture</title>
+<button id="read" onclick="navigator.clipboard.readText().then(text => document.querySelector('#text').textContent = text)">Read clipboard in page</button>
+<button id="write" onclick="navigator.clipboard.writeText('page copied text')">Copy from page</button>
+<pre id="text"></pre>
