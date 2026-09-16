@@ -202,6 +202,8 @@ export class RunnerRegistry {
   private readonly sockets = new Set<RunnerConnection>()
   private readonly connections = new Map<string, RunnerConnection>()
   private readonly hosts = new Map<string, Map<string, RemoteHost>>()
+  /** Device access Hosts, one per device (`sessions-and-targets.md`). */
+  private readonly deviceHosts = new Map<string, RemoteHost>()
   private readonly conversationOfHost = new WeakMap<RemoteHost, string>()
   /**
    * Last-known identity per device, so a Host can exist while its runner is
@@ -390,14 +392,12 @@ export class RunnerRegistry {
    * The stable `Host` for one execution target: same (device, conversation,
    * path) ⇒ same object, so per-Host shell state survives reconnects. Offline
    * devices still resolve — operations fail as ordinary tool errors until the
-   * runner reattaches. `admit: false` is device access: the Host's calls mark
-   * no machine activity, because expose traffic is retention, not activity.
+   * runner reattaches.
    */
   hostFor(
     workspace: Pick<WorkspaceRecord, 'deviceId' | 'path'>,
     conversationId: string,
-    store: HostStore,
-    options: { admit?: boolean } = {}
+    store: HostStore
   ): RemoteHost {
     const key = `${conversationId}\0${workspace.path}`
     let deviceHosts = this.hosts.get(workspace.deviceId)
@@ -409,9 +409,7 @@ export class RunnerRegistry {
     if (!host) {
       host = new RemoteHost({
         defaultCwd: workspace.path,
-        admit: options.admit === false
-          ? undefined
-          : () => this.options.admit?.(workspace.deviceId) ?? (() => {}),
+        admit: () => this.options.admit?.(workspace.deviceId) ?? (() => {}),
         identity: this.identities.get(workspace.deviceId) ?? {
           uid: 0,
           gid: 0,
@@ -481,6 +479,38 @@ export class RunnerRegistry {
     ).fs
   }
 
+  /**
+   * Device access (`sessions-and-targets.md` § Host operations): the
+   * registry's conversation-less Host for a device — its own entry, not a
+   * conversation in disguise — cached per device, admitted only while
+   * connected, its calls marking no machine activity. It exists for the
+   * public relay alone; null while the device is offline.
+   */
+  deviceHost(deviceId: string): RemoteHost | null {
+    const connection = this.connections.get(deviceId)
+    if (!connection)
+      return null
+    let host = this.deviceHosts.get(deviceId)
+    if (!host) {
+      host = new RemoteHost({
+        defaultCwd: '/',
+        identity: this.identities.get(deviceId) ?? {
+          uid: 0,
+          gid: 0,
+          hostname: deviceId,
+          homeDir: '/'
+        },
+        store: administrativeStore,
+      })
+      this.deviceHosts.set(deviceId, host)
+    }
+    host.attach(
+      (message) => connection.send(message),
+      connection.runner?.identity
+    )
+    return host
+  }
+
   async close(): Promise<void> {
     this.closed = true
     for (const waiter of this.onlineWaiters.values())
@@ -496,6 +526,9 @@ export class RunnerRegistry {
         host.detach('backend shutting down')
     }
     this.hosts.clear()
+    for (const host of this.deviceHosts.values())
+      host.detach('backend shutting down')
+    this.deviceHosts.clear()
   }
 
   private async handleMessage(
@@ -837,6 +870,10 @@ export class RunnerRegistry {
           connection.runner?.identity,
         )
     }
+    this.deviceHosts.get(deviceId)?.attach(
+      (message) => connection.send(message),
+      connection.runner?.identity,
+    )
     if (this.pingIntervalMs > 0 && connection.pingTimer === null) {
       connection.pingTimer = setInterval(() => {
         if (connection.livenessPaused)
@@ -867,6 +904,7 @@ export class RunnerRegistry {
   }
 
   private detachHosts(deviceId: string, reason: string): void {
+    this.deviceHosts.get(deviceId)?.detach(reason)
     const deviceHosts = this.hosts.get(deviceId)
     if (!deviceHosts)
       return
