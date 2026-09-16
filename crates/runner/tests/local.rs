@@ -51,8 +51,8 @@ impl Handler for Commands {
 
 fn invocation(operation: &str) -> Invocation {
     Invocation {
-        caller: None,
-        resource: None,
+        caller: "runner-local".into(),
+        conversation: "runner-local".into(),
         json: None,
         edits: None,
         operation: operation.into(),

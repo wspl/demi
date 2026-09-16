@@ -12,10 +12,9 @@ import {
   buildManifest,
   inProcessRpc,
 } from '@demicodes/command-loader'
-import { RemoteHost, createRemoteShellEnvironmentFactory, type RemoteShellEnvironmentFactoryOptions } from '@demicodes/host-remote'
-import { admitConversationFrame } from './conversation/frame-admission'
-import { ConversationBrowsers } from './conversation/browsers'
-import { LifecycleCoordinator } from './lifecycle/coordinator'
+import { createRemoteShellEnvironmentFactory, type RemoteShellEnvironmentFactoryOptions } from '@demicodes/host-remote'
+import { CONVERSATION_IDLE_MS, LifecycleCoordinator } from './lifecycle/coordinator'
+import { ConversationLifecycle } from './lifecycle/conversations'
 import { CloudConversations } from './managed/conversations'
 import {
   type Command,
@@ -105,8 +104,8 @@ export interface BackendOptions {
     fetch?: ModelsDevFetch;
     url?: string
   }
-  /** Browser idle-deadline tuning — tests only. */
-  browser?: { idleMs?: number }
+  /** One conversation idle window, shared by paired-device release and Cloud stop. */
+  lifecycle?: { idleMs?: number; now?: () => number; pollMs?: number }
   /** Usage-enforcement tuning — tests only. */
   usage?: { providerRequestsPerMinute?: number }
   /** Session lifetime and login lockout tuning — tests only. */
@@ -137,7 +136,8 @@ export interface Backend {
  * surface.
  */
 export async function createBackend(options: BackendOptions): Promise<Backend> {
-  const lifecycle = new LifecycleCoordinator()
+  const idleMs = options.lifecycle?.idleMs ?? CONVERSATION_IDLE_MS
+  const lifecycle = new LifecycleCoordinator(options.lifecycle?.now)
   const createShellEnvironment = createRemoteShellEnvironmentFactory(options.nativeCommands)
   const browserPackage = options.nativeCommands.packages.find(descriptor => descriptor.id === 'demi.builtin' && descriptor.operations.includes('browser.open'))
   const controlDb = openSqliteDatabase(join(options.dataDir, 'control.sqlite'))
@@ -209,6 +209,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         cwd: call.cwd,
         env: {
           ...call.env,
+          DEMI_CONVERSATION_ID: execution.conversationId,
+          DEMI_AGENT_NODE_ID: call.agentSessionId,
           DEMI_SESSION_ID: call.agentSessionId,
           DEMI_SHELL_ID: call.shellId
         },
@@ -257,11 +259,12 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     control,
     targets: () => targets,
     agents: () => agentServer,
-    browsers: () => browsers,
   })
   const managedHosts = options.managedHosts
     ? new ManagedHosts({
       lifecycle,
+      idleMs,
+      now: options.lifecycle?.now,
       control,
       registry: runnerRegistry,
       provisioner: options.managedHosts.provisioner,
@@ -275,10 +278,21 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   // Whatever a previous process left running or unsaved is settled before the first need can boot anything.
   await managedHosts?.reconcile()
 
+  const conversations = new ConversationLifecycle({
+    lifecycle,
+    control,
+    registry: runnerRegistry,
+    targets: () => targets,
+    idleMs,
+    idlePollMs: options.lifecycle?.pollMs,
+    treeActive: id => agentServer.treeActive(id),
+    observeTree: (id, changed) => agentServer.observeTreeActivity(id, changed),
+    reserveTree: id => agentServer.reserveTreeMutation(id),
+  })
+
   // One target resolver serves the root and all descendants.
   const targets = new ConversationTargets({
-    lifecycle,
-    retireBrowser: (id, reservation) => browsers?.retire(id, reservation) ?? Promise.resolve(),
+    lifecycle: conversations,
     control,
     registry: runnerRegistry,
     managedHosts,
@@ -301,24 +315,11 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     control,
     registry: runnerRegistry,
     pipes,
-    managedHosts,
-    hostStoreFor: (conversationId: string) => conversationStores.hostStore(
-      conversationId
-    ),
+    withHost: targets.withHost.bind(targets),
   }
-  const browsers = browserPackage ? new ConversationBrowsers({
-    targets,
-    idleMs: options.browser?.idleMs,
-    descriptor: browserPackage,
-    resolveArtifact: options.nativeCommands.resolveArtifact,
-    lifecycle,
-    treeActive: id => agentServer.treeActive(id),
-    observeTree: (id, changed) => agentServer.observeTreeActivity(id, changed),
-    reserveTree: id => agentServer.reserveTreeMutation(id, 'idle'),
-  }) : null
   const commandsFor = (agentSessionId: string): Command[] => [
     createDemiCommand(
-      { browser: browsers !== null, extraSubcommands: [createHostCommandGroup(
+      { browser: browserPackage !== undefined, extraSubcommands: [createHostCommandGroup(
             hostCommandDeps,
             agentSessionId
           )] }
@@ -343,11 +344,10 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     })
     return createShellEnvironment({
       ...ctx,
-      runJob: browsers ? (signal, operation) => {
-        if (!(ctx.host instanceof RemoteHost))
-          throw new Error('Browser jobs require a runner Host')
-        return browsers.run(ctx.rootSessionId, ctx.host, signal, operation)
-      } : undefined,
+      runJob: (signal, operation) => targets.withHost(ctx.rootSessionId, async host => {
+        if (host !== ctx.host) throw new Error('Conversation Host changed before job dispatch')
+        return operation()
+      }, { signal }),
       retainEdits: (commandId, files) => changes.retain(ctx.rootSessionId, commandId, ctx.host, files),
     })
   }
@@ -395,7 +395,10 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       targets,
       agentServer
     }),
-    admitFrame: (id, signal) => admitConversationFrame(targets.files(id), signal),
+    admitFrame: async (id, signal) => {
+      signal.throwIfAborted()
+      return targets.files(id).tryEnter()
+    },
     vault,
     assembly,
     vendors,
@@ -408,7 +411,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     upgradeWebSocket,
     blobs,
     changes,
-    withHost: (id, operation, options) => targets.withHost(id, operation, options),
+    withHost: targets.withHost.bind(targets),
     managedHosts,
     createCloudWorkspace: managedHosts
       ? (userId, name) => createCloudWorkspace({
@@ -444,7 +447,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       cleanup.defer(() => runnerRegistry.close())
       cleanup.defer(() => pipes.close())
       cleanup.defer(() => managedHosts?.close())
-      cleanup.defer(() => browsers?.close())
+      cleanup.defer(() => targets.close())
+      cleanup.defer(() => conversations.close())
       cleanup.defer(() => agentServer.close())
       cleanup.defer(() => lifecycle.close())
       cleanup.defer(() => logins.close())

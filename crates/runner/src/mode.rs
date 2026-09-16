@@ -7,7 +7,6 @@ use crate::{
     commands::dispatch::Dispatcher,
     commands::local::Server,
     commands::native::{self, Services},
-    commands::resources::Resources,
     commands::rpc::Calls,
     connection::Connection,
     host::HostServer,
@@ -17,7 +16,7 @@ use crate::{
 };
 use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
-use tokio_util::sync::CancellationToken;
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 pub struct Options {
     pub backend: String,
@@ -37,7 +36,6 @@ struct Runtime {
     token: Arc<RwLock<Option<String>>>,
     contexts: Contexts,
     services: Arc<Services>,
-    resources: Arc<Resources>,
     artifacts: Arc<Artifacts>,
     calls: Arc<Calls>,
     management: Arc<Management>,
@@ -81,7 +79,6 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
     .await
     .map_err(io::Error::other)?;
     let artifacts = Artifacts::new(contexts.clone(), native::target().into());
-    let resources = Resources::new(services.clone());
     let pipes = PipeClient::new(&options.backend, token.clone())?;
     let calls = Calls::new(pipes.clone());
     let secret = uuid::Uuid::new_v4().simple().to_string();
@@ -111,7 +108,6 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
         token,
         contexts,
         services,
-        resources,
         artifacts,
         calls,
         management,
@@ -125,7 +121,6 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
     runtime.contexts.close();
     runtime.calls.detach();
     runtime.artifacts.detach();
-    runtime.resources.detach().await;
     runtime.services.close().await;
     let closed = runtime.server.close().await;
     let released = lease.release();
@@ -183,8 +178,7 @@ impl Runtime {
         self.calls
             .attach(connection.control.clone(), connection.cancellation());
         self.artifacts.attach(connection.control.clone());
-        self.resources
-            .attach(connection.control.clone(), connection.cancellation());
+        let lifecycle = TaskTracker::new();
         let result = async {
             let hello = wire::hello(
                 wire::VERSION as f64,
@@ -212,8 +206,7 @@ impl Runtime {
                         continue;
                     },
                     _ = self.contexts.changed() => {
-                        let mut retained = self.contexts.retained_artifacts(native::target());
-                        retained.extend(self.resources.digests());
+                        let retained = self.contexts.retained_artifacts(native::target());
                         self.services.retain(&retained).await;
                         continue;
                     },
@@ -266,7 +259,8 @@ impl Runtime {
                             .map_err(io::Error::other)?;
                     }
                     message if self.management.phase() == Phase::Online => {
-                        self.message(message, &host, &connection, &volumes).await?
+                        self.message(message, &host, &connection, &volumes, &lifecycle)
+                            .await?
                     }
                     _ => {
                         return Err(io::Error::other(
@@ -281,7 +275,9 @@ impl Runtime {
         self.calls.detach();
         self.artifacts.detach();
         tokio::join!(host.close(), volumes.close());
-        self.resources.detach().await;
+        self.services.disconnect().await;
+        lifecycle.close();
+        lifecycle.wait().await;
         self.management.detach();
         let closed = connection.close().await;
         match (result, closed) {
@@ -296,16 +292,36 @@ impl Runtime {
         host: &HostServer,
         connection: &Connection,
         volumes: &crate::volumes::Volumes,
+        lifecycle: &TaskTracker,
     ) -> io::Result<()> {
         if self.calls.reply(&message) {
             return Ok(());
         }
         match message {
-            message @ (Inbound::ResourceAcquire { .. }
-            | Inbound::ResourceRelease { .. }
-            | Inbound::ResourceStatus { .. }
-            | Inbound::ResourceCancel { .. }) => {
-                self.resources.handle(message).map_err(io::Error::other)?;
+            Inbound::ConversationRelease {
+                id,
+                conversation_id,
+            } => {
+                let services = self.services.clone();
+                let contexts = self.contexts.clone();
+                let output = connection.control.clone();
+                let cancel = connection.cancellation();
+                lifecycle.spawn(async move {
+                    let result = tokio::select! {
+                        _ = cancel.cancelled() => return,
+                        result = services.release_conversation(&conversation_id) => result,
+                    };
+                    contexts.refresh();
+                    match wire::conversation_released(id, result.err()) {
+                        Ok(reply) => {
+                            // A disconnected backend no longer needs an acknowledgement.
+                            let _ = output.send(reply).await;
+                        }
+                        Err(error) => {
+                            eprintln!("demi-runner: invalid release acknowledgement: {error}")
+                        }
+                    }
+                });
             }
             Inbound::Manifest { manifest } => {
                 self.contexts.install(manifest).await?;
@@ -337,32 +353,34 @@ impl Runtime {
                     let mut lease: Option<Box<dyn Send>> = None;
                     if let Inbound::JobStart {
                         job_id,
-                        manifest_hash: Some(hash),
+                        manifest_hash,
                         env,
-                        resources,
+                        conversation,
+                        node,
                         ..
                     } = &message
                     {
-                        let (context, lifetime) =
-                            self.contexts.create(job_id.clone(), hash, env).await?;
-                        let bindings = self
-                            .resources
-                            .bindings(
-                                resources.as_deref().unwrap_or_default(),
-                                &context.manifest.packages,
-                            )
-                            .map_err(io::Error::other)?;
-                        context
-                            .resources
-                            .set(bindings)
-                            .map_err(|_| io::Error::other("job resources already bound"))?;
-                        let path = env.get("PATH").or_else(|| self.options.env.get("PATH"));
-                        environment.extend(context.environment(
-                            self.server.endpoint(),
-                            &self.state.root.to_string_lossy(),
-                            path.map(String::as_str),
-                        )?);
-                        lease = Some(Box::new(lifetime));
+                        environment.insert("DEMI_CONVERSATION_ID".into(), conversation.clone());
+                        environment.insert("DEMI_AGENT_NODE_ID".into(), node.clone());
+                        if let Some(hash) = manifest_hash {
+                            let (context, lifetime) = self
+                                .contexts
+                                .create(
+                                    job_id.clone(),
+                                    hash,
+                                    conversation.clone(),
+                                    node.clone(),
+                                    env,
+                                )
+                                .await?;
+                            let path = env.get("PATH").or_else(|| self.options.env.get("PATH"));
+                            environment.extend(context.environment(
+                                self.server.endpoint(),
+                                &self.state.root.to_string_lossy(),
+                                path.map(String::as_str),
+                            )?);
+                            lease = Some(Box::new(lifetime));
+                        }
                     }
                     if let Inbound::JobKill { job_id, .. } = &message {
                         self.contexts.cancel_owner(&format!("job:{job_id}"));

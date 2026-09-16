@@ -9,10 +9,10 @@ test('conversation files boot Cloud, wake it after idle, and follow a target swi
   const fake = new FakeProvisioner()
   const world = await World.create({
     runners: ['paired'],
+    lifecycle: { idleMs: 500 },
     managedHosts: {
       provisioner: fake,
       config: {
-        idleMs: 500,
         sweepMs: 50,
         checkpointIntervalMs: 60_000,
         bootTimeoutMs: 15_000,
@@ -85,10 +85,10 @@ test('attachment browsing admits only bound hosts and wakes an attached Cloud', 
   const fake = new FakeProvisioner()
   const world = await World.create({
     runners: ['paired', 'unattached'],
+    lifecycle: { idleMs: 500 },
     managedHosts: {
       provisioner: fake,
       config: {
-        idleMs: 500,
         sweepMs: 50,
         checkpointIntervalMs: 60_000,
         bootTimeoutMs: 15_000,

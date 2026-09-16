@@ -50,7 +50,7 @@ test(
       identity: { uid: 1, gid: 1, hostname: 'test', homeDir: home },
       store: memoryHostStore()
     })
-    const shell = new RemoteShellEnvironment({ host, commands: { manifest, resolveArtifact: native.resolveArtifact } })
+    const shell = new RemoteShellEnvironment({ conversation: 'test-conversation', node: 'test-session', host, commands: { manifest, resolveArtifact: native.resolveArtifact } })
     const inbound: RunnerToBackendMessage[] = []
     const calls = new Map<string, {
       stream: ReadableStream<Uint8Array>;

@@ -16,6 +16,8 @@ export interface RemoteShellEnvironmentFactoryOptions {
 
 /** Structural context keeps the execution adapter independent of the agent package. */
 export interface RemoteShellEnvironmentContext {
+  rootSessionId: string
+  agentSessionId: string
   host: Host
   commands: Pick<CommandRegistry, 'list'>
   commandStorage(signal?: AbortSignal): CommandStorage
@@ -39,6 +41,8 @@ export function createRemoteShellEnvironmentFactory(options: RemoteShellEnvironm
     return new RemoteShellEnvironment({
       ...context.shell,
       host: context.host,
+      conversation: context.rootSessionId,
+      node: context.agentSessionId,
       commandStorage: context.commandStorage,
       retainEdits: context.retainEdits,
       runJob: context.runJob,

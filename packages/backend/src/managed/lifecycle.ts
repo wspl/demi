@@ -1,5 +1,5 @@
 import { ActivityGate, errorMessage, noop, withTimeout } from '@demicodes/utils'
-import { LifecycleCoordinator, type Retirement } from '../lifecycle/coordinator'
+import { CONVERSATION_IDLE_MS, LifecycleCoordinator, type Retirement } from '../lifecycle/coordinator'
 import type { CloudConversationReservation } from './conversations'
 import { generateDeviceToken, hashDeviceToken } from '../runner/claim-codes'
 import type { RunnerRegistry } from '../runner/registry'
@@ -11,7 +11,6 @@ import type {
 import type { ManagedHostProvisioner, ManagedVolume } from '@demicodes/machines'
 
 export interface ManagedHostsConfig {
-  idleMs: number
   hardCapMs: number
   checkpointIntervalMs: number
   crashLoop: {
@@ -26,7 +25,6 @@ export interface ManagedHostsConfig {
   maxRunning: number
 }
 export const DEFAULT_MANAGED_HOSTS_CONFIG: ManagedHostsConfig = {
-  idleMs: 10 * 60_000,
   hardCapMs: 24 * 60 * 60_000,
   checkpointIntervalMs: 15 * 60_000,
   crashLoop: { deaths: 3, windowMs: 10 * 60_000 },
@@ -48,6 +46,7 @@ export interface ManagedHostsOptions {
   config?: Partial<ManagedHostsConfig>
   log?: (line: string) => void
   now?: () => number
+  idleMs?: number
   lifecycle?: LifecycleCoordinator
 }
 export class ManagedHostError extends Error {
@@ -268,24 +267,6 @@ export class ManagedHosts {
     return release
   }
 
-  /** Borrow a proven device reservation or take non-demand admission without waking it. */
-  maintenance(deviceId: string, reservation?: () => void): () => void {
-    const machine = this.machines.get(deviceId)
-    if (!machine || !this.options.registry.deviceIdentity(deviceId))
-      throw new ManagedHostError('unavailable', 'Cloud generation is unavailable')
-    if (reservation) {
-      if (!machine.activity.holdsReservation(reservation))
-        throw new ManagedHostError('unavailable', 'Cloud cleanup reservation has ended')
-      return noop
-    }
-    if (machine.state !== 'running' || machine.resetTask)
-      throw new ManagedHostError('unavailable', 'Cloud is changing state')
-    const release = machine.activity.tryEnter('maintenance')
-    if (!release)
-      throw new ManagedHostError('unavailable', 'Cloud is changing state')
-    return release
-  }
-
   async hibernate(deviceId: string): Promise<void> {
     const machine = this.machines.get(deviceId)
     if (!machine) {
@@ -468,8 +449,7 @@ export class ManagedHosts {
       machine.state = 'resetting'
       conversations = await this.options.reserveConversations(machine.device.userId, 'reset')
       if (!conversations) throw new Error('Cloud reset could not reserve its conversations')
-      releaseMachine = await machine.activity.reserve('forced', AbortSignal.timeout(30_000))
-      await conversations.retire(releaseMachine)
+      releaseMachine = await machine.activity.reserve(AbortSignal.timeout(30_000))
       await this.options.registry
         .sync(machine.device.id, this.config.syncTimeoutMs)
         .catch(error => this.log(errorMessage(error)))
@@ -546,7 +526,7 @@ export class ManagedHosts {
   private trackIdle(machine: Machine): void {
     machine.stopIdle?.()
     machine.stopIdle = this.lifecycle.idle({
-      idleMs: this.config.idleMs,
+      idleMs: this.options.idleMs ?? CONVERSATION_IDLE_MS,
       pollMs: this.config.sweepMs,
       demand: () => machine.activity.demandActive,
       eligible: async () => machine.state === 'running' && !machine.resetTask &&
@@ -585,7 +565,7 @@ export class ManagedHosts {
   }
 
   private async reserveRetirement(machine: Machine): Promise<Retirement | null> {
-    const releaseMachine = machine.activity.tryReserve('idle')
+    const releaseMachine = machine.activity.tryReserve()
     if (!releaseMachine) return null
     try {
       const conversations = await this.options.reserveConversations(machine.device.userId, 'idle')
@@ -594,10 +574,7 @@ export class ManagedHosts {
         return null
       }
       return {
-        run: async () => {
-          await conversations.retire(releaseMachine)
-          await this.hibernateReserved(machine)
-        },
+        run: () => this.hibernateReserved(machine),
         release: () => {
           conversations.release()
           releaseMachine()

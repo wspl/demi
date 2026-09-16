@@ -314,12 +314,12 @@ test(
     try {
       pair.client.send({ type: 'abort' })
       await entered.promise
-      expect(gate.tryReserve('forced')).toBeNull()
+      expect(gate.tryReserve()).toBeNull()
       finish.resolve()
       await waitFor(() => replies.length === 1)
       expect(replies[0])
         .toMatchObject({ type: 'error', code: 'frame_delivery_failed' })
-      const release = gate.tryReserve('forced')
+      const release = gate.tryReserve()
       expect(release).not.toBeNull()
       release?.()
     } finally {

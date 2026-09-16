@@ -33,7 +33,7 @@ async function connected() {
     onClose: () => remote.detach('runner disconnected'),
   })
   cleanups.push(connection.close)
-  const shell = new RemoteShellEnvironment({
+  const shell = new RemoteShellEnvironment({ conversation: 'test-conversation', node: 'test-session',
     host: remote,
     initialEnv: { PATH: '/usr/bin:/bin' }
   })
@@ -81,7 +81,7 @@ test(
     const [facts, path] = (result.status === 'exited' ? result.stdout.delta : '').split('\n')
     expect(facts).toBe('from the device|device|s1')
     expect(path?.split(':')).toContain('/usr/bin')
-    const overriding = new RemoteShellEnvironment({
+    const overriding = new RemoteShellEnvironment({ conversation: 'test-conversation', node: 'test-session',
       host: (await connected()).remote,
       initialEnv: { SHARED: 'backend' }
     })

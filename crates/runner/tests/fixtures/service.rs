@@ -1,14 +1,22 @@
 //! Deliberately faulty operations available only in native integration tests.
 use bytes::Bytes;
 use demi_command_service::protocol::Completion;
-use demi_command_service::{Handler, InvocationContext, ServiceError};
-use std::{future::Future, pin::Pin, sync::Arc};
+use demi_command_service::{ConversationContext, Handler, InvocationContext, ServiceError};
+use std::{
+    collections::BTreeSet,
+    future::Future,
+    pin::Pin,
+    sync::{Arc, Mutex},
+};
 
-struct Fixture;
+#[derive(Default)]
+struct Fixture {
+    conversations: Arc<Mutex<BTreeSet<String>>>,
+}
 
 impl Handler for Fixture {
     fn operations(&self) -> Vec<String> {
-        ["where", "echo", "first", "spin", "result"]
+        ["where", "echo", "first", "spin", "result", "retain"]
             .map(String::from)
             .to_vec()
     }
@@ -17,12 +25,21 @@ impl Handler for Fixture {
         &self,
         mut context: InvocationContext,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+        let conversations = self.conversations.clone();
         Box::pin(async move {
             let mut exit_code = 0;
             match context.request.operation.as_str() {
+                "retain" => {
+                    conversations
+                        .lock()
+                        .unwrap()
+                        .insert(context.request.conversation);
+                }
                 "where" => {
                     let value = serde_json::json!({
                         "label": context.request.args.get("label"),
+                        "conversation": context.request.conversation,
+                        "caller": context.request.caller,
                         "cwd": context.request.cwd,
                         "value": context.request.env.get("PROBE"),
                     });
@@ -76,11 +93,36 @@ impl Handler for Fixture {
             })
         })
     }
+    fn conversation(
+        &self,
+        context: ConversationContext,
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+        let conversations = self.conversations.clone();
+        Box::pin(async move {
+            let value = {
+                let mut held = conversations.lock().unwrap();
+                if context.request.operation == "status" {
+                    serde_json::json!({ "conversations": *held })
+                } else {
+                    if context.request.conversation.as_deref() == Some("fail") {
+                        return Err(ServiceError::Handler("fixture cleanup failed".into()));
+                    }
+                    held.remove(context.request.conversation.as_ref().unwrap());
+                    serde_json::json!({})
+                }
+            };
+            context.output.stdout(value.to_string().into()).await?;
+            Ok(Completion {
+                exit_code: 0,
+                error: None,
+            })
+        })
+    }
 }
 
 #[tokio::main]
 async fn main() {
-    let result = demi_command_service::serve_stdio(Arc::new(Fixture)).await;
+    let result = demi_command_service::serve_stdio(Arc::new(Fixture::default())).await;
     if let Err(error) = result {
         eprintln!("fixture: {error}");
         std::process::exit(1);

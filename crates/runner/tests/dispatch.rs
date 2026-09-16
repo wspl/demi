@@ -104,6 +104,8 @@ impl Fixture {
             .create(
                 "job".into(),
                 &self.hash,
+                "conversation".into(),
+                "session".into(),
                 &BTreeMap::from([
                     ("DEMI_SESSION_ID".into(), "session".into()),
                     ("DEMI_SHELL_ID".into(), "shell".into()),
@@ -114,8 +116,8 @@ impl Fixture {
     }
     fn request(&self, id: String, argv: Vec<String>) -> Invocation {
         Invocation {
-            caller: None,
-            resource: None,
+            caller: "runner-local".into(),
+            conversation: "runner-local".into(),
             json: None,
             edits: None,
             operation: "raw".into(),

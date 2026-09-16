@@ -150,7 +150,7 @@ test(
     const agentServer = new AgentServer({ store: memoryAgentStores(),
       agent: harness,
       providers: [provider],
-      shellEnvironment: (ctx) => new RemoteShellEnvironment({
+      shellEnvironment: (ctx) => new RemoteShellEnvironment({ conversation: ctx.rootSessionId, node: ctx.agentSessionId,
         ...ctx.shell,
         host: remoteHost
       }),

@@ -29,9 +29,10 @@ e2e(
       dataDir,
       port: Number(new URL(publicUrl).port),
       publicUrl,
+      lifecycle: { idleMs: 60_000 },
       managedHosts: {
         provisioner,
-        config: { idleMs: 60_000, sweepMs: 60_000 }
+        config: { sweepMs: 60_000 }
       }
     })
     try {
@@ -112,9 +113,10 @@ e2e(
       dataDir,
       port: Number(new URL(publicUrl).port),
       publicUrl,
+      lifecycle: { idleMs: 600_000 },
       managedHosts: {
         provisioner: new FirecrackerProvisioner(config),
-        config: { idleMs: 600_000, sweepMs: 600_000 }
+        config: { sweepMs: 600_000 }
       }
     })
     try {

@@ -1,4 +1,4 @@
-import type { FrameAdmission } from '../conversation/frame-admission'
+import type { FrameAdmission } from './stream'
 import type { ConversationHostAccess } from '../conversation/target'
 import { RemoteGitError, type RemoteHost } from '@demicodes/host-remote'
 import { errorCode, errorMessage } from '@demicodes/utils'
@@ -278,7 +278,8 @@ export function conversationRoutes(options: {
   })
 
   app.use('/:id/*', async (c, next) => {
-    if (c.req.method === 'GET') {
+    // Detach owns exclusive admission and must not first enter as ordinary work.
+    if (c.req.method === 'GET' || c.req.method === 'DELETE') {
       return next()
     }
     const release = await options.admitFrame(c.req.param('id') ?? '', c.req.raw.signal)
@@ -442,7 +443,10 @@ export function conversationRoutes(options: {
         404,
       )
     }
-    await control.detachHost(conversation.id, c.req.param('deviceId'))
+    if (conversation.archived)
+      return c.json({ code: 'archived', message: 'Restore the conversation before editing it' }, 409)
+    if (!await options.updates.detachHost(conversation.id, c.req.param('deviceId')))
+      return c.json({ code: 'turn_in_flight', message: 'Conversation is busy' }, 409)
     return c.body(null, 204)
   })
 

@@ -420,7 +420,7 @@ export class RunnerRegistry {
       this.conversationOfHost.set(host, conversationId)
       const connection = this.connections.get(workspace.deviceId)
       if (connection)
-        host.attach((message) => connection.send(message), undefined, connection.runner?.nativeTarget)
+        host.attach((message) => connection.send(message))
     }
     return host
   }
@@ -564,7 +564,7 @@ export class RunnerRegistry {
     // fs results, spawn and job streams: each per-target host claims its own ids.
     const deviceHosts = this.hosts.get(connection.deviceId)
     if (message.type === 'artifact_resolve') {
-      const host = [...(deviceHosts?.values() ?? [])].find(host => host.jobEnvironment(message.jobId) !== undefined)
+      const host = [...(deviceHosts?.values() ?? [])].find(host => host.jobEnvironment(message.jobId) !== null)
       if (host)
         host.handleMessage(message)
       else
@@ -616,11 +616,12 @@ export class RunnerRegistry {
       const env = host.jobEnvironment(call.jobId)
       if (!env)
         continue
-      if (env.DEMI_SESSION_ID !== call.agentSessionId ||
+      const conversationId = this.conversationOfHost.get(host)!
+      if (env.DEMI_CONVERSATION_ID !== conversationId ||
+        env.DEMI_AGENT_NODE_ID !== call.agentSessionId ||
         env.DEMI_SHELL_ID !== call.shellId) {
         throw new Error('rpc identity does not match the dispatched job')
       }
-      const conversationId = this.conversationOfHost.get(host)!
       return { conversationId, host, env, commandStorage: host.jobCommandStorage(call.jobId) }
     }
     throw new Error('rpc requires a live job dispatched to this device')
@@ -830,7 +831,6 @@ export class RunnerRegistry {
         host.attach(
           (message) => connection.send(message),
           connection.runner?.identity,
-          connection.runner?.nativeTarget,
         )
     }
     if (this.pingIntervalMs > 0 && connection.pingTimer === null) {

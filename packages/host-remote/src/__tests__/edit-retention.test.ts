@@ -14,7 +14,7 @@ test('completion waits for publication and later polls retain UI metadata', asyn
   let publish!: () => void
   const barrier = new Promise<void>(resolve => { publish = resolve })
   const file = { path: '/work/file', kind: 'modified' as const, added: 1, removed: 1, edits: [{ kept: true }] }
-  const shell = new RemoteShellEnvironment({ host, retainEdits: async () => { await barrier; return [file] } })
+  const shell = new RemoteShellEnvironment({ conversation: 'test-conversation', node: 'test-session', host, retainEdits: async () => { await barrier; return [file] } })
   try {
     const started = await shell.exec({ script: 'echo new > file', timeoutMs: 1 })
     host.handleMessage({ type: 'job_exit', jobId, exitCode: 7, filesTruncated: true,

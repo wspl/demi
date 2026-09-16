@@ -5,7 +5,7 @@ import type {
   ShellEnvironment,
   ShellEnvironmentOptions
 } from '@demicodes/shell'
-import { ActivityGate, type ActivityReservationPurpose } from '@demicodes/utils'
+import { ActivityGate } from '@demicodes/utils'
 import type { SessionPhase } from '@demicodes/core'
 import type { Provider } from '@demicodes/provider'
 import { AgentClient } from '../client/client'
@@ -166,8 +166,8 @@ export class AgentServer {
    * All action entrances in the root and its descendants share this
    * reservation.
    */
-  reserveTreeMutation(rootSessionId: string, purpose: ActivityReservationPurpose = 'forced'): (() => void) | null {
-    return this.activity(rootSessionId).tryReserve(purpose)
+  reserveTreeMutation(rootSessionId: string): (() => void) | null {
+    return this.activity(rootSessionId).tryReserve()
   }
 
   /**
@@ -176,7 +176,7 @@ export class AgentServer {
    */
   async interruptTree(rootSessionId: string): Promise<() => void> {
     const reserved = this.activity(rootSessionId)
-      .reserve('forced', AbortSignal.timeout(30_000))
+      .reserve(AbortSignal.timeout(30_000))
     reserved.catch(() => {})
     try {
       const live = this.sessionOwnership.get(rootSessionId)

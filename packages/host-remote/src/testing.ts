@@ -151,7 +151,7 @@ export async function nativeCommandFixture() {
   const artifact = { sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length }
   const descriptor = nativePackageSchema.parse({
     id: 'demicodes.runner-test', version: 'test', protocolVersion: 1,
-    operations: ['where', 'echo', 'first', 'spin', 'result'],
+    operations: ['where', 'echo', 'first', 'spin', 'result', 'retain'],
     targets: Object.fromEntries(NATIVE_TARGETS.map(target => [target, artifact])),
   })
   const resolveArtifact: ArtifactResolver = async (requested, signal) => {

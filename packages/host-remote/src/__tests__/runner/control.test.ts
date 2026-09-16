@@ -52,7 +52,7 @@ test(
         const start = received.length
         const script = 'printf ready; sleep 2'
         send(kind === 'job'
-          ? { type: 'job_start', jobId: kind, script, cwd: home, env: {} }
+          ? { type: 'job_start', conversation: 'test-conversation', node: 'test-session', jobId: kind, script, cwd: home, env: {} }
           : {
             type: 'spawn',
             spawnId: kind,

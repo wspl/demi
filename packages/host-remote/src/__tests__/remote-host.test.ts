@@ -262,7 +262,7 @@ test(
     await read
     expect(active).toBe(0)
     const process = await host.process.spawn({ command: 'sleep', args: ['10'] })
-    const job = host.startJob({ script: 'sleep 10', cwd: '/work', env: {} })
+    const job = host.startJob({ conversation: 'test-conversation', node: 'test-session', script: 'sleep 10', cwd: '/work', env: {} })
     expect(active).toBe(2)
     blocked = true
     await expect(host.fs.readFile('/work/next'))
@@ -270,7 +270,7 @@ test(
     await expect(host.process.spawn({ command: 'true' }))
       .rejects.toThrow('machine transition')
     expect(
-      () => host.startJob({ script: 'true', cwd: '/work', env: {} })
+      () => host.startJob({ conversation: 'test-conversation', node: 'test-session', script: 'true', cwd: '/work', env: {} })
     ).toThrow('machine transition')
     expect(messages).toHaveLength(3)
     host.detach()
@@ -292,7 +292,7 @@ test(
     remote.attach(message => messages.push(message))
     try {
       const process = await remote.process.spawn({ command: 'cat' })
-      const job = remote.startJob({ script: 'cat', cwd: '/work', env: {} })
+      const job = remote.startJob({ conversation: 'test-conversation', node: 'test-session', script: 'cat', cwd: '/work', env: {} })
       for (const handle of [process, job]) {
         for (const size of [0, STDIN_CHUNK_BYTES, STDIN_CHUNK_BYTES + 1]) {
           messages.length = 0

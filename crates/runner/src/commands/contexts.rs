@@ -14,12 +14,12 @@ pub struct ExecutionContext {
     pub id: String,
     pub owner: String,
     pub job_id: String,
+    pub conversation: String,
     pub agent_session_id: String,
     pub shell_id: String,
     pub manifest: Arc<Manifest>,
     pub cancel: CancellationToken,
     pub edits: OnceLock<demi_command_service::protocol::EditContext>,
-    pub resources: OnceLock<Vec<demi_command_service::protocol::NativeResourceGrant>>,
     aliases: tempfile::TempDir,
 }
 
@@ -112,6 +112,8 @@ impl Contexts {
         &self,
         job_id: String,
         manifest_hash: &str,
+        conversation: String,
+        node: String,
         env: &BTreeMap<String, String>,
     ) -> io::Result<(Arc<ExecutionContext>, Lease)> {
         let manifest = self
@@ -148,12 +150,12 @@ impl Contexts {
             id: id.clone(),
             owner: format!("job:{job_id}"),
             job_id,
-            agent_session_id: env.get("DEMI_SESSION_ID").cloned().unwrap_or_default(),
+            conversation,
+            agent_session_id: node,
             shell_id: env.get("DEMI_SHELL_ID").cloned().unwrap_or_default(),
             manifest,
             cancel: CancellationToken::new(),
             edits: OnceLock::new(),
-            resources: OnceLock::new(),
             aliases,
         });
         let mut state = self.state.lock().unwrap();
@@ -236,6 +238,10 @@ impl Contexts {
         }
     }
 
+    pub fn refresh(&self) {
+        self.changed.notify_one();
+    }
+
     pub async fn changed(&self) {
         self.changed.notified().await;
     }
@@ -267,6 +273,8 @@ impl ExecutionContext {
             (ENDPOINT_ENV.into(), endpoint.into()),
             (CONTEXT_ENV.into(), self.id.clone()),
             ("DEMI_HOME".into(), home.into()),
+            ("DEMI_CONVERSATION_ID".into(), self.conversation.clone()),
+            ("DEMI_AGENT_NODE_ID".into(), self.agent_session_id.clone()),
             ("PATH".into(), path),
         ]))
     }

@@ -56,6 +56,8 @@ export async function runnerShell(options: ShellEnvironmentOptions & {
   }, agentSessionId, host.store)
   const native = await nativePackageFixture()
   const environment = new RemoteShellEnvironment({
+    conversation: agentSessionId,
+    node: agentSessionId,
     commands: { manifest: await buildManifest(commands.list(), { packages: native.packages }), resolveArtifact: native.resolveArtifact },
     ...shell,
     initialEnv: {

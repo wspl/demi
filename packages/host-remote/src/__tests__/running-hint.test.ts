@@ -26,7 +26,7 @@ test(
           signal: 'SIGTERM'
         })
     })
-    const shell = new RemoteShellEnvironment({ host })
+    const shell = new RemoteShellEnvironment({ conversation: 'test-conversation', node: 'test-session', host })
     const wire = createRunnerWire(msgpackCodec)
     try {
       const started = await shell.exec({
@@ -86,7 +86,7 @@ test('disconnect clears a remote job hint with the failed job', async () => {
     if (message.type === 'job_start')
       jobId = message.jobId
   })
-  const job = host.startJob({ script: 'attend', cwd: '/work', env: {} })
+  const job = host.startJob({ conversation: 'test-conversation', node: 'test-session', script: 'attend', cwd: '/work', env: {} })
   host.handleMessage({
     type: 'job_running_hint',
     jobId,

@@ -1,6 +1,5 @@
 import {
-  artifactLocationSchema, nativeResourceGrantSchema, nativeResourceStatusSchema,
-  type NativeResourceGrant, type NativeTarget, type NativePackage, type ArtifactResolver,
+  artifactLocationSchema,
 } from '@demicodes/command-protocol'
 import type { RemoteCommandCatalog } from './shell-environment-factory'
 import type {
@@ -111,9 +110,6 @@ export class RemoteHost implements Host {
 
   private send: ((message: BackendToRunnerMessage) => void) | null = null
   private currentIdentity: HostIdentity
-  private nativeTarget: NativeTarget | undefined
-  private readonly resourceIds = new Set<string>()
-  private readonly resourceChanges = new EventTarget()
   private readonly pendingCalls = new Map<string, Deferred<unknown>>()
   private readonly activeSpawns = new Map<string, RemoteSpawn>()
   private readonly activeJobs = new Map<string, RemoteJobState>()
@@ -149,12 +145,10 @@ export class RemoteHost implements Host {
   attach(
     send: (message: BackendToRunnerMessage) => void,
     identity?: HostIdentity,
-    nativeTarget?: NativeTarget,
   ): void {
     this.send = send
     if (identity)
       this.currentIdentity = identity
-    this.nativeTarget = nativeTarget
   }
 
   /**
@@ -162,8 +156,6 @@ export class RemoteHost implements Host {
    */
   detach(reason = 'runner disconnected'): void {
     this.send = null
-    this.resourceIds.clear()
-    this.resourceChanges.dispatchEvent(new Event('change'))
     const pending = [...this.pendingCalls.values()]
     this.pendingCalls.clear()
     for (const call of pending) {
@@ -193,81 +185,19 @@ export class RemoteHost implements Host {
     return this.send !== null
   }
 
-  resourceLive(grant: NativeResourceGrant): boolean {
-    return this.resourceIds.has(grant.scope.id)
-  }
-
-  observeResources(changed: () => void): () => void {
-    this.resourceChanges.addEventListener('change', changed)
-    return () => this.resourceChanges.removeEventListener('change', changed)
-  }
-
-  /** Acquire only through the embedding application's admitted Host access. */
-  async acquireResource(
-    owner: string,
-    kind: string,
-    descriptor: NativePackage,
-    resolveArtifact: ArtifactResolver,
-    signal: AbortSignal,
-  ): Promise<NativeResourceGrant> {
-    signal.throwIfAborted()
-    const send = this.send
-    const artifact = this.nativeTarget ? descriptor.targets[this.nativeTarget] : undefined
-    if (!send || !artifact)
-      throw new Error('Runner is offline or has no supported native target')
-    const location = artifactLocationSchema.parse(await resolveArtifact(artifact, signal))
-    signal.throwIfAborted()
-    if (this.send !== send)
-      throw offlineError('runner connection changed during resource acquisition')
-    const grant = nativeResourceGrantSchema.parse(await this.callResource({
-      type: 'resource_acquire', id: createId(), owner, kind, descriptor, location,
-    }, signal))
-    this.resourceIds.add(grant.scope.id)
-    if (signal.aborted) {
-      await this.releaseResource(grant)
-      signal.throwIfAborted()
-    }
-    return grant
-  }
-
-  async releaseResource(grant: NativeResourceGrant): Promise<void> {
-    if (!this.resourceLive(grant))
-      return
-    const result = await this.callResource({ type: 'resource_release', id: createId(), grantId: grant.scope.id })
-    if (result !== null)
-      throw new Error('Invalid resource release acknowledgement')
-    this.resourceIds.delete(grant.scope.id)
-    this.resourceChanges.dispatchEvent(new Event('change'))
-  }
-
-  async resourceStatus(grant: NativeResourceGrant, signal?: AbortSignal) {
-    if (!this.resourceLive(grant))
-      return nativeResourceStatusSchema.parse({ state: 'released' })
-    return nativeResourceStatusSchema.parse(await this.callResource({ type: 'resource_status', id: createId(), grantId: grant.scope.id }, signal))
-  }
-
-  private async callResource(
-    request: Extract<BackendToRunnerMessage, { type: 'resource_acquire' | 'resource_release' | 'resource_status' }>,
-    signal?: AbortSignal,
-  ): Promise<unknown> {
-    signal?.throwIfAborted()
+  /** Release state on the current connection without admitting work or waking a Host. */
+  async releaseConversation(conversationId: string): Promise<void> {
     const send = this.send
     if (!send)
-      throw offlineError('runner disconnected')
+      return
+    const id = createId()
     const pending = deferred<unknown>()
-    this.pendingCalls.set(request.id, pending)
-    const cancel = () => {
-      if (this.send === send)
-        send({ type: 'resource_cancel', id: request.id })
-    }
+    this.pendingCalls.set(id, pending)
     try {
-      signal?.addEventListener('abort', cancel, { once: true })
-      send(request)
-      return await withTimeout(pending.promise, 360_000, 'Native resource request timed out')
+      send({ type: 'conversation_release', id, conversationId })
+      await withTimeout(pending.promise, 360_000, 'Conversation release timed out')
     } finally {
-      signal?.removeEventListener('abort', cancel)
-      if (this.pendingCalls.delete(request.id))
-        cancel()
+      this.pendingCalls.delete(id)
     }
   }
 
@@ -295,7 +225,7 @@ export class RemoteHost implements Host {
   }
 
   /**
-   * Starts `bash -c script` on the runner as one job; offline, the job fails
+   * Runs the script on the runner as one job; offline, the job fails
    * at once. `stdin` / `stdout` attach the job's fd 0 / fd 1 to pipes whose
    * other ends are elsewhere (`runner.md` § Pipes).
    */
@@ -307,14 +237,19 @@ export class RemoteHost implements Host {
     stdout?: PipeRef;
     commandStorage?: CommandStorage;
     commands?: RemoteCommandCatalog
-    resources?: readonly NativeResourceGrant[]
+    conversation: string
+    node: string
   }): RemoteJob {
     const release = this.options.admit?.()
     const jobId = createId()
     const job = new RemoteJobState(
       jobId,
       (message) => this.dispatch(message),
-      Object.freeze({ ...params.env }),
+      Object.freeze({
+        ...params.env,
+        DEMI_CONVERSATION_ID: params.conversation,
+        DEMI_AGENT_NODE_ID: params.node,
+      }),
       params.commandStorage,
       params.commands ? { ...params.commands } : undefined
     )
@@ -334,7 +269,8 @@ export class RemoteHost implements Host {
       this.send({
         type: 'job_start',
         ...(params.commands ? { manifestHash: params.commands.manifest.hash } : {}),
-        ...(params.resources ? { resources: params.resources.map(grant => grant.scope.id) } : {}),
+        conversation: params.conversation,
+        node: params.node,
         jobId,
         script: params.script,
         cwd: params.cwd,
@@ -386,18 +322,13 @@ export class RemoteHost implements Host {
    * streams).
    */
   handleMessage(message: RunnerToBackendMessage): void {
-    if (message.type === 'resource_lost') {
-      this.resourceIds.delete(message.grantId)
-      this.resourceChanges.dispatchEvent(new Event('change'))
-      return
-    }
-    if (message.type === 'resource_result') {
+    if (message.type === 'conversation_released') {
       const pending = this.pendingCalls.get(message.id)
       this.pendingCalls.delete(message.id)
-      if (message.error)
+      if (message.error !== undefined)
         pending?.reject(new Error(message.error))
       else
-        pending?.resolve(message.result)
+        pending?.resolve(undefined)
       return
     }
     if (message.type === 'artifact_resolve') {

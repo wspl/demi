@@ -1,5 +1,4 @@
 import type { RemoteCommandCatalog } from './shell-environment-factory'
-import type { NativeResourceGrant } from '@demicodes/command-protocol'
 import {
   DEFAULT_BINARY_LIMIT_BYTES,
   DEFAULT_OUTPUT_LIMIT_BYTES,
@@ -32,12 +31,14 @@ import type { RemoteHost, RemoteJob, RemoteJobExit } from './remote-host'
 
 export interface RemoteShellEnvironmentOptions extends ShellEnvironmentOptions {
   host: RemoteHost
+  conversation: string
+  node: string
   commands?: RemoteCommandCatalog
   commandStorage?: (signal?: AbortSignal) => CommandStorage
   /** Publish edit snapshots before exposing the command as completed. */
   retainEdits?: (commandId: string, files: RemoteJobExit['files']) => Promise<ShellEditedFile[]>
   /** Hold the application's Host admission through job startup, output and edit publication. */
-  runJob?: <T>(signal: AbortSignal, operation: (resources: readonly NativeResourceGrant[]) => Promise<T>) => Promise<T>
+  runJob?: <T>(signal: AbortSignal, operation: () => Promise<T>) => Promise<T>
 }
 
 interface RemoteShell {
@@ -77,6 +78,8 @@ const ABORT_GRACE_MS = 5_000
  * same shell; nothing else of the shell's state does.
  */
 export class RemoteShellEnvironment implements ShellEnvironment {
+  private readonly conversation: string
+  private readonly node: string
   private readonly host: RemoteHost
   private readonly shellIdFactory: () => string
   private readonly commandIdFactory: () => string
@@ -99,6 +102,8 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     this.retainEdits = options.retainEdits
     this.runJob = options.runJob
     this.host = options.host
+    this.conversation = options.conversation
+    this.node = options.node
     this.shellIdFactory = options.shellIdFactory
       ?? (() => globalThis.crypto.randomUUID())
     this.commandIdFactory = options.commandIdFactory
@@ -238,7 +243,7 @@ export class RemoteShellEnvironment implements ShellEnvironment {
       })
     }
     signal.addEventListener('abort', onAbort, { once: true })
-    const execute = async (resources: readonly NativeResourceGrant[]) => {
+    const execute = async () => {
       signal.throwIfAborted()
       const job = this.host.startJob({
         script,
@@ -246,7 +251,8 @@ export class RemoteShellEnvironment implements ShellEnvironment {
         env: { ...shell.env, PWD: shell.cwd },
         commands: this.commands,
         commandStorage: this.commandStorage?.(signal),
-        resources,
+        conversation: this.conversation,
+        node: this.node,
       })
       running.job = job
       const head: { stdout: Uint8Array[]; stderr: Uint8Array[] } = { stdout: [], stderr: [] }
@@ -264,7 +270,7 @@ export class RemoteShellEnvironment implements ShellEnvironment {
       const [, exit] = await Promise.all([ingest(), job.wait()])
       await this.finish(shell, running, exit, head)
     }
-    running.settled = (this.runJob ? this.runJob(signal, execute) : execute([]))
+    running.settled = (this.runJob ? this.runJob(signal, execute) : execute())
       .catch(error => {
         if (signal.aborted) {
           this.markAborted(running)

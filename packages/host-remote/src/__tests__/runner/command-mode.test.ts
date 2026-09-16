@@ -37,7 +37,7 @@ async function fixture(label: string, commands: Command[] = []) {
     identity: { uid: 1, gid: 1, hostname: label, homeDir: home },
     store: memoryHostStore()
   })
-  const shell = new RemoteShellEnvironment({ host, commands: catalog })
+  const shell = new RemoteShellEnvironment({ conversation: 'test-conversation', node: 'test-session', host, commands: catalog })
   let sendManifest: (value: Manifest) => void
   const server = Bun.serve(
     { port: 0, fetch: (request, server) => server.upgrade(request) ? undefined : new Response(
@@ -89,7 +89,7 @@ test(
     try {
       const calls = await Promise.all([
         a.shell.exec({
-          script: 'PROBE=alpha demi where --label A',
+          script: 'DEMI_CONVERSATION_ID=forged DEMI_AGENT_NODE_ID=forged PROBE=alpha demi where --label A',
           timeoutMs: 10_000
         }),
         b.shell.exec({
@@ -98,11 +98,15 @@ test(
         })
       ])
       expect(JSON.parse(calls[0]!.stdout.delta)).toEqual({
+        conversation: 'test-conversation',
+        caller: 'test-session',
         label: 'A',
         cwd: a.home,
         value: 'alpha'
       })
       expect(JSON.parse(calls[1]!.stdout.delta)).toEqual({
+        conversation: 'test-conversation',
+        caller: 'test-session',
         label: 'B',
         cwd: b.home,
         value: 'beta'

@@ -9,6 +9,5 @@ pub mod dispatch;
 pub mod local;
 pub mod manifest;
 pub mod native;
-pub mod resources;
 pub mod rpc;
 pub mod services;
