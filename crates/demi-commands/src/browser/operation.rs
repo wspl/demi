@@ -17,6 +17,18 @@ pub type Result<T> = std::result::Result<T, BrowserError>;
 pub enum BrowserError {
     #[error("unsupported browser capability: {0}")]
     UnsupportedCapability(String),
+    #[error("browser asset inventory is stale")]
+    StaleInventory,
+    #[error("browser tool declarations are stale")]
+    StaleTools,
+    #[error("browser cursor is stale or belongs to another stream")]
+    StaleCursor,
+    #[error("CDP method is denied: {0}")]
+    CdpMethodDenied(String),
+    #[error("some browser items failed")]
+    PartialFailure { details: serde_json::Value },
+    #[error("read-only evaluation rejected a possible side effect")]
+    SideEffectRejected,
     #[error("browser environment is closed")]
     Closed,
     #[error("{0}")]
@@ -215,6 +227,12 @@ impl BrowserError {
             Self::ProfileRetained { source, .. } => source.code(),
             Self::Closed | Self::Connection(_) => "browser_lost",
             Self::TabNotFound => "tab_not_found",
+            Self::StaleInventory => "stale_inventory",
+            Self::StaleTools => "stale_tools",
+            Self::StaleCursor => "stale_cursor",
+            Self::SideEffectRejected => "side_effect_rejected",
+            Self::CdpMethodDenied(_) => "cdp_method_denied",
+            Self::PartialFailure { .. } => "partial_failure",
             Self::TargetNotFound => "target_not_found",
             Self::NotActionable { .. } => "not_actionable",
             Self::HistoryBoundary => "history_boundary",
@@ -242,7 +260,7 @@ impl BrowserError {
 
     pub fn details(&self) -> serde_json::Value {
         match self {
-            Self::Action { details, .. } => details.clone(),
+            Self::Action { details, .. } | Self::PartialFailure { details } => details.clone(),
             Self::Cleanup {
                 operation: Some(error),
                 ..

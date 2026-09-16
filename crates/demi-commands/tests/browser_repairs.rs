@@ -4,20 +4,11 @@ use demi_commands::browser::{
     BrowserEnvironment, BrowserError, BrowserTab, LaunchOptions, Result, with_browser,
 };
 use serde_json::{Value, json};
-use std::{
-    future::Future,
-    path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
-    time::Duration,
-};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio_util::{
-    sync::CancellationToken,
-    task::{AbortOnDropHandle, TaskTracker},
-};
+use std::{future::Future, path::PathBuf, sync::Arc, time::Duration};
+use tokio_util::sync::CancellationToken;
+
+#[path = "browser/server.rs"]
+mod browser_server;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -28,78 +19,15 @@ where
     W: Future<Output = Result<()>>,
 {
     let executable = PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
-    let stop = CancellationToken::new();
-    let _stop_on_drop = stop.clone().drop_guard();
-    let site_stop = stop.clone();
-    let reloads = Arc::new(AtomicUsize::new(0));
-    let server = AbortOnDropHandle::new(tokio::spawn(async move {
-        let connections = TaskTracker::new();
-        loop {
-            let accepted = tokio::select! {
-                _ = site_stop.cancelled() => break,
-                result = listener.accept() => result,
-            };
-            let (mut socket, _) = accepted.unwrap();
-            let stopped = site_stop.clone();
-            let reloads = reloads.clone();
-            connections.spawn(async move {
-                let work = async {
-                    let mut request = Vec::new();
-                    loop {
-                        let mut bytes = [0; 1024];
-                        let size = socket.read(&mut bytes).await?;
-                        if size == 0 {
-                            return Ok::<_, std::io::Error>(());
-                        }
-                        request.extend_from_slice(&bytes[..size]);
-                        if request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
-                            break;
-                        }
-                        assert!(request.len() < 16 * 1024);
-                    }
-                    let request = String::from_utf8(request).unwrap();
-                    let path = request.split_whitespace().nth(1).unwrap();
-                    if path == "/drop" || (path == "/reload-drop" && reloads.fetch_add(1, Ordering::SeqCst) > 0) {
-                        return socket.shutdown().await;
-                    }
-                    if path == "/stall" {
-                        stopped.cancelled().await;
-                        return Ok(());
-                    }
-                    let (status, headers, body) = match path {
-                        "/500" => ("500 Internal Server Error", "", "<!doctype html><title>HTTP error document</title><h1>Received 500</h1>"),
-                        "/redirect" => ("302 Found", "Location: /destination\r\n", ""),
-                        "/destination" => ("200 OK", "", "<!doctype html><title>Destination</title><h1>Arrived</h1>"),
-                        _ => ("200 OK", "", include_str!("browser/repairs.html")),
-                    };
-                    let response = format!("HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n{headers}\r\n{body}", body.len());
-                    socket.write_all(response.as_bytes()).await?;
-                    socket.shutdown().await
-                };
-                tokio::select! {
-                    _ = stopped.cancelled() => {},
-                    result = work => {
-                        // Browser cancellation may close a fixture connection first.
-                        if let Err(error) = result {
-                            assert!(matches!(error.kind(), std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset), "{error}");
-                        }
-                    }
-                }
-            });
-        }
-        connections.close();
-        connections.wait().await;
-    }));
+    let server = browser_server::Server::start(include_str!("browser/repairs.html")).await;
+    let base = server.base.clone();
     let result = with_browser(
         LaunchOptions { executable },
         CancellationToken::new(),
         |browser| exercise(browser, base),
     )
     .await;
-    stop.cancel();
-    server.await.unwrap();
+    server.close().await;
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -1201,6 +1129,180 @@ async fn unregistered_popup_survives_its_opener_closing() {
         );
         let repeated = browser.tabs(&CancellationToken::new(), TIMEOUT).await?;
         assert_eq!(repeated[0].id(), tabs[0].id());
+        Ok(())
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; launches a real browser"]
+async fn catalog_queries_patterns_pagination_and_read_only_elements() {
+    with_fixture(|browser, base| async move {
+        let tab = browser.open(&base, &CancellationToken::new(), TIMEOUT).await?;
+        let matches = command(&tab, "find", json!({"role": "button", "name-pattern": "^Delete$", "offset": 1, "limit": 1})).await?;
+        assert_eq!(matches["count"], 2);
+        assert_eq!(matches["matches"].as_array().unwrap().len(), 1);
+        assert_eq!(matches["truncated"], false);
+        let query = json!({"within": {"match": {"css": ".catalog-row"}, "hasText": "Order A"}, "match": {"role": "button", "name": "Delete", "exact": true}, "visible": true});
+        let found = command(&tab, "find", json!({"query": true, "body": query.to_string()})).await?;
+        assert_eq!(found["count"], 1);
+        let reference = found["matches"][0]["ref"].as_str().unwrap();
+        let value = command(&tab, "eval", json!({"ref": reference, "expression": "element.parentElement.innerText"})).await?;
+        assert!(value["value"].as_str().unwrap().contains("Order A"));
+        let root = command(&tab, "inspect", json!({})).await?["tree"][0]["ref"].clone();
+        assert_eq!(command(&tab, "eval", json!({"ref":root,"expression":"document === element"})).await?["value"], true);
+        let all = command(&tab, "eval", json!({"css": ".catalog-delete", "all": true, "expression": "elements.map(element => element.textContent)"})).await?;
+        assert_eq!(all["value"], json!(["Delete", "Delete"]));
+        error(command(&tab, "eval", json!({"ref": reference, "expression": "element.textContent = 'mutated'"})).await, "side_effect_rejected", "not_started");
+        for invalid in [json!({"match":{"css":"button"},"or":[{"match":{"css":"button"}}]}), json!({"match":{"css":"button"},"bogus":true}), json!({"or":[]}), json!({"match":{"css":"button","role":"button"}})] {
+            error(command(&tab, "find", json!({"query":true,"body":invalid.to_string()})).await,"invalid_input","not_started");
+        }
+        for args in [json!({"role":"button","name-pattern":"["}), json!({"text-pattern":"["}), json!({"css":"["})] {
+            error(command(&tab, "find", args).await, "invalid_input", "not_started");
+        }
+        let html = command(&tab,"read",json!({"css":"#named","property":"html"})).await?;
+        assert!(html["value"].as_str().unwrap().starts_with("<button"));
+        command(&tab,"wait",json!({"load":"load"})).await?;
+        Ok(())
+    }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; launches a real browser"]
+async fn catalog_untargeted_keys_selection_drag_and_console_cursors() {
+    with_fixture(|browser, base| async move {
+        let tab = browser.open(&base, &CancellationToken::new(), TIMEOUT).await?;
+        click(&tab,"#select-middle").await?;
+        let typed = command(&tab,"type",json!({"text":"XY"})).await?;
+        assert!(typed["target"].as_str().unwrap().starts_with("e_"));
+        assert_eq!(value(&tab,"#text").await?, json!("heXYo"));
+        command(&tab,"key",json!({"key":"ControlOrMeta+A"})).await?;
+        command(&tab,"type",json!({"text":"hello"})).await?;
+        command(&tab,"select-text",json!({"css":"#text","text":"ll"})).await?;
+        command(&tab,"type",json!({"text":"XY"})).await?;
+        assert_eq!(value(&tab,"#text").await?, json!("heXYo"));
+        command(&tab,"select-text",json!({"css":"#text","text":"XY","cursor":"after"})).await?;
+        command(&tab,"type",json!({"text":"!"})).await?;
+        assert_eq!(value(&tab,"#text").await?, json!("heXY!o"));
+        error(command(&tab,"select-text",json!({"css":"#repeated-text","text":"word"})).await,"ambiguous_target","not_started");
+        command(&tab,"select-text",json!({"css":"#repeated-text","text":"word","prefix":"second ","suffix":"!"})).await?;
+        assert_eq!(command(&tab,"eval",json!({"expression":"getSelection().toString()"})).await?["value"],"word");
+        click(&tab,"#focus-document").await?;
+        assert_eq!(command(&tab,"key",json!({"key":"Escape"})).await?["target"],"document");
+        command(&tab, "key", json!({"css":"#key-navigate","key":"Shift"})).await?;
+        let navigation = command(&tab, "key", json!({"key":"Enter","wait-url":"**/#key-focus"})).await?;
+        assert!(navigation["url"].as_str().unwrap().ends_with("/#key-focus"));
+        assert!(navigation["target"].as_str().unwrap().starts_with("e_"));
+        command(&tab,"move",json!({"css":"#drag-area"})).await?;
+        let rect = command(&tab,"eval",json!({"css":"#drag-area","expression":"({x:element.getBoundingClientRect().x,y:element.getBoundingClientRect().y})"})).await?["value"].clone();
+        let x=rect["x"].as_f64().unwrap()+10.0;
+        let y=rect["y"].as_f64().unwrap()+10.0;
+        command(&tab,"drag",json!({"point":[format!("{x},{y}"),format!("{},{}",x+30.0,y+20.0)],"modifier":["Shift"]})).await?;
+        let events=command(&tab,"eval",json!({"expression":"dragEvents"})).await?["value"].clone();
+        assert_eq!(events[0]["type"],"mousedown");
+        assert_eq!(events[0]["shift"],true);
+        assert_eq!(events.as_array().unwrap().last().unwrap()["buttons"],0);
+        assert_eq!(events.as_array().unwrap().last().unwrap()["shift"],true);
+        click(&tab,"#console-burst").await?;
+        let logs=command(&tab,"logs",json!({"limit":2,"filter":"catalog"})).await?;
+        assert_eq!(logs["entries"].as_array().unwrap().len(),2);
+        assert_eq!(logs["truncated"],true);
+        assert_eq!(logs["entries"][1]["level"],"error");
+        let again=command(&tab,"logs",json!({"limit":2,"filter":"catalog"})).await?;
+        assert_eq!(logs,again);
+        let empty=command(&tab,"logs",json!({"after":logs["cursor"]})).await?;
+        assert_eq!(empty["entries"],json!([]));
+        error(command(&tab,"logs",json!({"after":"foreign:0"})).await,"stale_cursor","not_started");
+        Ok(())
+    }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; launches a real browser"]
+async fn catalog_cross_origin_frames_scope_focus_and_references() {
+    with_fixture(|browser, base| async move {
+        let tab = browser.open(&format!("{base}/catalog-frame"), &CancellationToken::new(), TIMEOUT).await?;
+        command(&tab,"wait",json!({"load":"load"})).await?;
+        let outer = command(&tab,"find",json!({"css":"#cross-frame"})).await?["matches"][0]["ref"].as_str().unwrap().to_owned();
+        let input = command(&tab,"find",json!({"frame":[outer],"label":"Cross frame input"})).await?["matches"][0]["ref"].as_str().unwrap().to_owned();
+        command(&tab,"fill",json!({"ref":input,"text":"cross"})).await?;
+        assert_eq!(command(&tab,"read",json!({"ref":input,"property":"value"})).await?["value"],"cross");
+        let typed=command(&tab,"type",json!({"text":"-focus"})).await?;
+        assert_eq!(typed["target"],input);
+        assert_eq!(command(&tab,"read",json!({"ref":input,"property":"value"})).await?["value"],"cross-focus");
+        assert_eq!(command(&tab,"eval",json!({"ref":input,"expression":"element.value"})).await?["value"],"cross-focus");
+        command(&tab,"click",json!({"frame":[outer],"css":"#cross-button"})).await?;
+        assert_eq!(command(&tab,"read",json!({"frame":[outer],"css":"#cross-button","property":"text"})).await?["value"],"Cross clicked");
+        let logs = command(&tab, "logs", json!({"filter":"cross-frame console","level":["info"]})).await?;
+        assert_eq!(logs["entries"].as_array().unwrap().len(), 1);
+        click(&tab, "#toggle-frame").await?;
+        assert_eq!(command(&tab, "read", json!({"ref":input,"property":"visible"})).await?["value"], false);
+        command(&tab, "wait", json!({"ref":input,"state":"hidden"})).await?;
+        click(&tab, "#toggle-frame").await?;
+        let nested=command(&tab,"find",json!({"frame":[outer],"css":"#nested"})).await?["matches"][0]["ref"].as_str().unwrap().to_owned();
+        command(&tab,"fill",json!({"frame":[outer,nested],"label":"Nested input","text":"nested"})).await?;
+        let query=json!({"frame":{"frame":{"match":{"css":"#cross-frame"}},"match":{"css":"#nested"}},"match":{"label":"Nested input"}});
+        assert_eq!(command(&tab,"find",json!({"query":true,"body":query.to_string()})).await?["count"],1);
+        let tree=command(&tab,"inspect",json!({"frame":[outer],"view":"dom"})).await?;
+        assert!(tree.to_string().contains("cross-focus"));
+        assert!(!tree.to_string().contains("Appointment date"));
+        assert_eq!(browser.tabs(&CancellationToken::new(),TIMEOUT).await?.len(),1);
+        click(&tab, "#replace-frame").await?;
+        command(&tab, "wait", json!({"text-match":"Frame ready","exact":true})).await?;
+        error(command(&tab,"read",json!({"ref":input,"property":"value"})).await,"stale_ref","not_started");
+        let input = command(&tab,"find",json!({"frame":[outer],"label":"Cross frame input"})).await?["matches"][0]["ref"].as_str().unwrap().to_owned();
+        command(&tab,"reload",json!({})).await?;
+        error(command(&tab,"read",json!({"ref":input,"property":"value"})).await,"stale_ref","not_started");
+        Ok(())
+    }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; launches a real browser"]
+async fn catalog_probe_and_server_recorded_native_form_state() {
+    with_fixture(|browser, base| async move {
+        let tab = browser.open(&base,&CancellationToken::new(),TIMEOUT).await?;
+        command(&tab,"move",json!({"css":"#named"})).await?;
+        let rect=command(&tab,"eval",json!({"css":"#named","expression":"({x:element.getBoundingClientRect().x+5,y:element.getBoundingClientRect().y+5})"})).await?["value"].clone();
+        let xy=format!("{},{}",rect["x"],rect["y"]);
+        let probe=command(&tab,"probe",json!({"xy":xy})).await?;
+        assert!(probe["matches"].as_array().unwrap().iter().any(|node| node["name"]=="Accessible label" && node["bounds"]["width"].as_f64().unwrap()>0.0));
+        let ordinary=command(&tab,"probe",json!({"xy":xy,"include-non-interactable":true})).await?;
+        assert!(ordinary["matches"].as_array().unwrap().len()>probe["matches"].as_array().unwrap().len());
+        error(command(&tab,"probe",json!({"xy":"-1,0"})).await,"invalid_input","not_started");
+        error(command(&tab,"ax-action",json!({"css":"#named","action":"expand"})).await,"unsupported_capability","not_started");
+        for date in ["2026-10-01","2026-10-02"] {
+            assert_eq!(command(&tab,"read",json!({"css":"[name=confirm]","property":"checked"})).await?["value"],false);
+            command(&tab,"fill",json!({"label":"Submission date","text":date})).await?;
+            command(&tab,"check",json!({"css":"[name=confirm]","value":true})).await?;
+            click(&tab,"#submit-final").await?;
+        }
+        let state=reqwest::get(format!("{base}/submitted-state")).await.unwrap().text().await.unwrap();
+        let submissions:Vec<String>=serde_json::from_str(&state).unwrap();
+        assert_eq!(submissions,vec!["/submit?date=2026-10-01&confirm=on","/submit?date=2026-10-02&confirm=on"]);
+        Ok(())
+    }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; launches a real browser"]
+async fn catalog_load_wait_tracks_only_the_current_document() {
+    with_fixture(|browser, base| async move {
+        let tab = browser
+            .open(
+                &format!("{base}/load-replaced"),
+                &CancellationToken::new(),
+                TIMEOUT,
+            )
+            .await?;
+        command(&tab, "wait", json!({"load":"commit"})).await?;
+        command(&tab, "wait", json!({"load":"domcontentloaded"})).await?;
+        error(
+            command(&tab, "wait", json!({"load":"load"})).await,
+            "navigation_failed",
+            "not_started",
+        );
+        command(&tab, "wait", json!({"load":"load"})).await?;
         Ok(())
     })
     .await;

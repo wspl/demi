@@ -1,26 +1,35 @@
 //! Native browser primitives. Command exposure requires trusted retained-resource scope.
 
+mod accessibility;
 mod actions;
 mod assets;
-mod catalog;
 mod cdp;
 mod clipboard;
+mod content;
 mod download;
 mod element;
 mod environment;
 mod evaluation;
 mod fetch;
+mod frames;
 mod handles;
+mod history;
 mod installation;
 mod keyboard;
+mod logs;
 mod navigation;
 mod observation;
 mod operation;
 mod output;
+mod pointer;
+mod probe;
 mod process;
 mod protocol;
+mod query;
 mod resources;
+mod screenshot;
 mod select;
+mod selection;
 mod tab;
 mod upload;
 mod webmcp;

@@ -16,7 +16,7 @@ import {
 } from '../packages/runner-protocol/src/schemas'
 import { JOB_VIEW_BYTES, RUNNER_PROTOCOL_VERSION } from '../packages/runner-protocol/src/messages'
 import { RustZodTypes, rustField, rustPascal, rustString } from './rust-zod'
-import { BROWSER_STDIN_BYTES, BROWSER_FETCH_URLS, BROWSER_CONSOLE_ENTRIES, BROWSER_CONSOLE_BYTES, BROWSER_CDP_EVENTS, BROWSER_CDP_BYTES, browserErrorSchema, browserOperations, browserTargetSchema, browserNodeSchema, browserCreatedBySchema, browserReleaseSchema, browserInstallationSchema, browserRuntimeConfigSchema, browserDefaultTimeout, BROWSER_DEFAULT_NODES, BROWSER_MAX_NODES, BROWSER_INLINE_BYTES } from '../packages/browser-protocol/src/index'
+import { BROWSER_CLIPBOARD_PNG_BYTES, BROWSER_CLIPBOARD_PNG_PIXELS, BROWSER_STDIN_BYTES, BROWSER_FETCH_URLS, BROWSER_CONSOLE_ENTRIES, BROWSER_CONSOLE_BYTES, BROWSER_CDP_EVENTS, BROWSER_CDP_BYTES, browserQuerySchema, browserErrorSchema, browserOperations, browserTargetSchema, browserNodeSchema, browserCreatedBySchema, browserReleaseSchema, browserInstallationSchema, browserRuntimeConfigSchema, browserDefaultTimeout, BROWSER_DEFAULT_NODES, BROWSER_MAX_NODES, BROWSER_INLINE_BYTES } from '../packages/browser-protocol/src/index'
 
 function flatten(schema: z.core.$ZodType): z.ZodObject[] {
   const def = (schema as z.core.$ZodTypes)._zod.def
@@ -144,6 +144,7 @@ function browserProtocol(): string {
   const generator = new RustZodTypes()
   generator.type(browserErrorSchema, 'BrowserFailure')
   generator.type(browserTargetSchema, 'BrowserTarget')
+  generator.type(browserQuerySchema, 'BrowserQuery')
   generator.type(browserNodeSchema, 'BrowserNode')
   generator.type(browserCreatedBySchema, 'BrowserCreatedBy')
   generator.type(browserReleaseSchema, 'BrowserRelease')
@@ -199,6 +200,8 @@ function browserProtocol(): string {
     pub const MAX_NODES: usize = ${BROWSER_MAX_NODES};
     pub const INLINE_BYTES: usize = ${BROWSER_INLINE_BYTES};
     pub const STDIN_BYTES: usize = ${BROWSER_STDIN_BYTES};
+    pub const CLIPBOARD_PNG_BYTES: usize = ${BROWSER_CLIPBOARD_PNG_BYTES};
+    pub const CLIPBOARD_PNG_PIXELS: usize = ${BROWSER_CLIPBOARD_PNG_PIXELS};
     pub const FETCH_URLS: usize = ${BROWSER_FETCH_URLS};
     pub const CONSOLE_ENTRIES: usize = ${BROWSER_CONSOLE_ENTRIES};
     pub const CONSOLE_BYTES: usize = ${BROWSER_CONSOLE_BYTES};

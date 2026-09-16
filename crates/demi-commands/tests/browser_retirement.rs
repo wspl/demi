@@ -99,38 +99,53 @@ async fn canceled_launch_reaps_helpers_before_removing_profile() {
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME pointing to an installed Chrome for Testing release"]
 async fn chrome_process_tree_and_profile_retire_together() {
-    assert!(std::env::var_os("DEMI_TEST_CHROME").is_some());
+    let executable =
+        PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("installed Chrome executable"));
     for mode in ["success", "failure", "cancel", "killed"] {
         let directory = tempfile::tempdir().unwrap();
-        let launcher = directory.path().join("chrome-launcher");
-        // Capture the real leader and profile before exec, without adding a public
-        // diagnostic API to the production browser environment.
-        std::fs::write(&launcher, "#!/bin/sh\nprintf '%s\\n' \"$$\" \"$@\" > \"$0.record\"\nexec \"$DEMI_TEST_CHROME\" \"$@\"\n").unwrap();
-        std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let record = directory.path().join("chrome-launcher.record");
+        let fixture = directory.path().join("retirement.html");
+        std::fs::write(&fixture, "<!doctype html><h1>Retirement</h1>").unwrap();
+        let fixture = url::Url::from_file_path(fixture).unwrap();
+        let chrome = executable.clone();
         let stop = CancellationToken::new();
         let cancel = stop.clone();
         let mut observed = None;
         let observation = &mut observed;
         let result = with_browser(
             LaunchOptions {
-                executable: launcher,
+                executable: executable.clone(),
             },
             stop,
             |browser| async move {
                 browser
                     .open(
-                        "data:text/html,<h1>Retirement</h1>",
+                        fixture.as_str(),
                         &CancellationToken::new(),
                         Duration::from_secs(5),
                     )
                     .await?;
-                let launch = std::fs::read_to_string(&record).unwrap();
-                let mut lines = launch.lines();
-                let leader: i32 = lines.next().unwrap().parse().unwrap();
+                let mut system = System::new();
+                system.refresh_processes_specifics(
+                    ProcessesToUpdate::All,
+                    true,
+                    ProcessRefreshKind::nothing()
+                        .with_exe(UpdateKind::Always)
+                        .with_cmd(UpdateKind::Always),
+                );
+                let main = system
+                    .processes()
+                    .values()
+                    .find(|process| {
+                        process.parent() == Some(sysinfo::Pid::from_u32(std::process::id()))
+                            && process.exe() == Some(chrome.as_path())
+                    })
+                    .expect("the test owns Chrome's direct child");
+                let leader = i32::try_from(main.pid().as_u32()).unwrap();
                 let profile = PathBuf::from(
-                    lines
-                        .find_map(|line| line.strip_prefix("--user-data-dir="))
+                    main.cmd()
+                        .iter()
+                        .filter_map(|argument| argument.to_str())
+                        .find_map(|argument| argument.strip_prefix("--user-data-dir="))
                         .unwrap(),
                 );
                 assert!(profile.is_dir());
@@ -143,10 +158,24 @@ async fn chrome_process_tree_and_profile_retire_together() {
                         .group,
                     leader
                 );
-                let mut system = System::new();
+                let installation = chrome
+                    .ancestors()
+                    .find(|path| path.extension().is_some_and(|extension| extension == "app"))
+                    .or_else(|| chrome.parent())
+                    .unwrap();
+                let candidates: Vec<_> = system
+                    .processes()
+                    .iter()
+                    .filter(|(_, process)| {
+                        process
+                            .exe()
+                            .is_some_and(|exe| exe.starts_with(installation))
+                    })
+                    .map(|(pid, _)| *pid)
+                    .collect();
                 system.refresh_processes_specifics(
-                    ProcessesToUpdate::All,
-                    true,
+                    ProcessesToUpdate::Some(&candidates),
+                    false,
                     ProcessRefreshKind::nothing().with_environ(UpdateKind::Always),
                 );
                 let mut marker = std::ffi::OsString::from("DEMI_BROWSER_PROFILE=");
