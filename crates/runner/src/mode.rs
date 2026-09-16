@@ -340,6 +340,7 @@ impl Runtime {
             } => volumes.grown(&id, &volume, bytes, error)?,
             message if message.fs_request_id().is_some() => host.handle_filesystem(message)?,
             message if message.git_request_id().is_some() => host.handle_git(message)?,
+            Inbound::NetOpen { .. } => host.handle_net(message)?,
             message => {
                 let started = matches!(message, Inbound::JobStart { .. } | Inbound::Spawn { .. });
                 let setup = async {
