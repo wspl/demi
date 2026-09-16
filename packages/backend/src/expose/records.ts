@@ -7,6 +7,9 @@ export const EXPOSE_LIFETIME_MS = 60 * 60_000
 /** Concurrent relayed connections per expose; the 65th answers 503. */
 export const EXPOSE_CONNECTION_LIMIT = 64
 
+/** The expiry sweep's production cadence (`expose.md` § Lifetime). */
+const DEFAULT_SWEEP_MS = 60_000
+
 const BASE32_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
 
 /** 128 random bits as 26 lowercase base32 characters — a DNS label and the only credential. */
@@ -97,17 +100,18 @@ export class Exposes {
     now: () => number
     /** The fallback scheme of printed URLs when no request supplies one. */
     scheme: () => string
-    /** Tests raise the sweep cadence. */
+    /** Tests raise the sweep cadence; production sweeps every 60 s. */
     sweepMs?: number
     log?: (line: string) => void
   }) {
-    if (deps.sweepMs !== undefined)
-      this.sweepTimer = setInterval(
-        () => void this.sweep().catch(error =>
-          this.deps.log?.(`expose sweep: ${errorMessage(error)}`)
-        ),
-        deps.sweepMs
-      )
+    this.sweepTimer = setInterval(
+      () => void this.sweep().catch(error =>
+        this.deps.log?.(`expose sweep: ${errorMessage(error)}`)
+      ),
+      deps.sweepMs ?? DEFAULT_SWEEP_MS
+    )
+    // The sweep is housekeeping: it must not hold the process open.
+    this.sweepTimer.unref()
   }
 
   get domain(): string | null {
