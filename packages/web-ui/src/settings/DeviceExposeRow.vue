@@ -37,7 +37,7 @@ const expiresAt = computed(() => new Date(props.expose.expiresAt).toLocaleString
         <ExternalLink :href="expose.url">Open</ExternalLink>
       </div>
     </template>
-    <Button size="xs" :loading="pending" @click="emit('renew')">Renew</Button>
-    <Button size="xs" :loading="pending" @click="emit('remove')">Remove</Button>
+    <Button size="sm" :loading="pending" @click="emit('renew')">Renew</Button>
+    <Button size="sm" :loading="pending" @click="emit('remove')">Remove</Button>
   </SettingsRow>
 </template>
