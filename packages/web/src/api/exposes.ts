@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { apiRequest, readResponse } from './client'
 import { exposeSchema } from './contracts'
 
@@ -12,7 +13,7 @@ export async function renewExpose(
     method: 'POST',
     signal,
   })
-  await readResponse(response, exposeSchema)
+  await readResponse(response, z.object({ expose: exposeSchema }))
 }
 
 /** Destroys the expose and ends its connections (`DELETE /exposes/:id`). */
