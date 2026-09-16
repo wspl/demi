@@ -125,11 +125,17 @@ For each visitor connection the backend:
    servers, Bun's among them, abort a response still streaming when the
    client's side closes first.
 5. Relays a WebSocket upgrade message by message: the backend accepts the
-   visitor's upgrade with its server runtime, performs the client handshake
-   with the service over the stream, and passes every text and binary
+   visitor's upgrade with its server runtime first, then opens the stream
+   and performs the client handshake with the service, holding the
+   visitor's early frames until the service answers 101; a service that
+   refuses the handshake, or cannot be reached, closes the visitor with
+   code 1011 and the reason. After that it passes every text and binary
    message, and the close code and reason, in both directions. The server
-   runtime offers no raw socket after an upgrade, so the frames are re-emitted
-   rather than copied; the payloads are unchanged.
+   runtime offers no raw socket after an upgrade, so the frames are
+   re-emitted rather than copied; the payloads are unchanged. Upgrading
+   first is required, not a choice: frames a visitor sends while its
+   request still waits in the server runtime's HTTP state crash Bun 1.4.2
+   at the later upgrade.
 
 The relay rewrites `Host` to the expose's `address`, adds
 `X-Forwarded-For`, `X-Forwarded-Host` (the expose hostname) and
