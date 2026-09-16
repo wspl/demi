@@ -59,6 +59,7 @@ future deployment requirements.
 | Archive and project removal | Metadata operations preserve machine identity and files; conversation deletion is not a product operation |
 | Reset | Affected jobs end, retained home survives, and the selected system generation becomes authoritative without changing device/project identity |
 | Cross-host RPC and pipes | Valid callbacks use the invoking Host; unauthorized or mismatched job/node/device contexts fail; bulk bytes stream separately from bounded control views |
+| Host expose | A public URL relays HTTP, streaming and WebSocket to the device service; another user cannot manage it; expiry, removal and Cloud stop destroy it and end its connections ([Host expose](expose.md#acceptance)) |
 
 Use [Commands](commands.md), [Sessions and targets](sessions-and-targets.md),
 [Storage](storage.md), and [Managed hosts](managed-hosts.md) as the authorities for

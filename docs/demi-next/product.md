@@ -165,7 +165,7 @@ catalog, and quota details have their authoritative home in
 ## Browser scope
 
 The browser provides conversations, account settings, provider management,
-devices, and Cloud controls. Administrative account management and usage have
+devices with their [exposes](expose.md#product-surface), and Cloud controls. Administrative account management and usage have
 backend APIs; their dedicated browser pages are deferred. Notifications, MCP,
 Skills, data/privacy actions, language switching, and account deletion are also
 deferred.
