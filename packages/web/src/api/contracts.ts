@@ -51,6 +51,15 @@ export const deviceSchema = z.object({
   online: z.boolean(),
   home: z.string().nullable(),
 })
+/** An expose record as the Web API returns it (`web-api.md` § Exposes). */
+export const exposeSchema = z.object({
+  id: z.string().min(1),
+  deviceId: z.string().min(1),
+  address: z.string().min(1),
+  url: z.string(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+})
 export const workspaceSchema = z.object({
   id: z.string().min(1),
   deviceId: z.string().min(1),
@@ -289,6 +298,9 @@ export const productStateSchema = z.object({
   providers: z.array(providerStateSchema),
   conversations: z.array(conversationSummarySchema),
   cloud: cloudSchema.nullable(),
+  exposes: z.array(exposeSchema),
+  /** Null when the instance has no expose domain and the feature is off. */
+  exposeDomain: z.string().nullable(),
 })
 export const directorySchema = z.object({
   path: z.string(),

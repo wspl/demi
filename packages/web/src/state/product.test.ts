@@ -20,6 +20,8 @@ const state = productStateSchema.parse({
   providers: [],
   conversations: [],
   cloud: null,
+    exposes: [],
+    exposeDomain: null,
 })
 let modelResponse: () => Promise<Response>
 let vendorResponse: () => Promise<Response>
