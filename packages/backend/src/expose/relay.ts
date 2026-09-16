@@ -189,11 +189,13 @@ export class ExposeRelay {
     await writer.write(
       serializeRequestHead(request.method, url.pathname + url.search, headers)
     )
-    // The request's last byte half-closes the service's socket: the input
-    // pipe ending is the runner's EOF (`runner.md` § Network streams).
-    const endInput = () => stream.writer.end()
-    if (!request.body)
-      endInput()
+    // The exchange's completion is the request's true end: the input pipe
+    // ends here (EOF half-closes the service socket) once the response is
+    // fully parsed, never while it may still be streaming.
+    const settleExchange = () => {
+      stream.writer.end()
+      endings.settle()
+    }
     const response = new Promise<Response>((resolve, reject) => {
       // The body is delivered only from inside the stream's own pulls: this
       // Bun serves no response whose stream is fed from the outside.
@@ -218,7 +220,7 @@ export class ExposeRelay {
         },
         () => {
           body.close()
-          endings.settle()
+          settleExchange()
         }
       )
       void (async () => {
@@ -227,7 +229,7 @@ export class ExposeRelay {
             parser.feed(chunk)
           }
           parser.end()
-          endings.settle()
+          settleExchange()
         } catch (error) {
           parser.fail(String(error))
           body.fail(error)
@@ -246,7 +248,11 @@ export class ExposeRelay {
             await writer.write(CHUNK_END)
           }
           await writer.write(CHUNKED_EOF)
-          endInput()
+          // The request's last byte half-closes the service's socket: the
+          // input pipe ending is the runner's EOF (`runner.md` § Network
+          // streams). A bodiless request waits for the exchange's end: this
+          // Bun aborts a still-streaming response on the client's FIN.
+          stream.writer.end()
         } catch {
           // The stream's failure ends the exchange; the visitor sees the
           // response end rather than a hang.
@@ -370,12 +376,11 @@ export class ExposeRelay {
         const payload = typeof data === 'string'
           ? new TextEncoder().encode(data)
           : new Uint8Array(data as ArrayBuffer)
-        void writer
-          .write(encodeClientFrame(
-            typeof data === 'string' ? WS_TEXT : WS_BINARY,
-            payload
-          ))
-          .catch(() => finish(1006, '', false))
+        const frame = encodeClientFrame(
+          typeof data === 'string' ? WS_TEXT : WS_BINARY,
+          payload
+        )
+        void writer.write(frame).catch(() => finish(1006, '', false))
       },
       onClose(event) {
         const code = 'code' in event && typeof event.code === 'number'
