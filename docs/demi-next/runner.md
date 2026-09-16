@@ -146,6 +146,9 @@ Embedded execution cooperates with cancellation. Blocking IO must be interruptib
 external children belong to a Unix process group or Windows Job Object. The runner
 continues handling control requests while a job blocks on input or output.
 
+A cancelled job reports the signal that requested its cancellation, or `SIGKILL`
+when cancellation had no signal request and forcibly terminates external descendants.
+
 A cancellation request alone does not establish that execution stopped. If the
 backend cannot confirm remote termination, it reports an unknown outcome.
 Cancellation does not undo completed file changes or other side effects.

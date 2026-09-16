@@ -37,6 +37,20 @@ fn table(
     )
 }
 
+/// Waits for a shell job's complete readiness marker across output frames.
+async fn wait_for_job_ready(job: &mut demi_runner::shell::job::Job) {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        let mut ready = Vec::new();
+        while ready.len() < 5 {
+            let chunk = job.output.recv().await.expect("job exited before ready");
+            ready.extend(chunk.bytes);
+        }
+        assert_eq!(ready, b"ready");
+    })
+    .await
+    .unwrap();
+}
+
 #[tokio::test]
 async fn shell_job_keeps_full_logs_but_only_sends_head_and_tail_views() {
     let root = tempfile::tempdir().unwrap();
@@ -186,6 +200,49 @@ async fn cancellation_terminates_a_blocking_native_builtin() {
 }
 
 #[tokio::test]
+async fn shell_cancellation_reports_the_requesting_signal() {
+    use demi_runner::shell::{job::Job, scope::Scope};
+    use tokio_util::sync::CancellationToken;
+
+    for signal in [
+        Some("SIGTERM"),
+        Some("SIGINT"),
+        Some("SIGHUP"),
+        Some("SIGQUIT"),
+        Some("SIGKILL"),
+        None,
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let scope = Scope::new(CancellationToken::new(), None);
+        let mut job = Job::start(
+            "printf ready; sleep 60".into(),
+            root.path().into(),
+            BTreeMap::new(),
+            true,
+            scope.clone(),
+        )
+        .unwrap();
+        wait_for_job_ready(&mut job).await;
+        assert!(job.signal("SIGUSR1").await.is_err());
+        assert!(!job.is_cancelled());
+        if let Some(signal) = signal {
+            job.signal(signal).await.unwrap();
+            // Cleanup or repeated requests cannot replace the original cause.
+            job.signal("SIGKILL").await.unwrap();
+        } else {
+            job.cancel();
+            job.signal("SIGTERM").await.unwrap();
+        }
+        let (exit, _) = tokio::time::timeout(Duration::from_secs(3), job.wait())
+            .await
+            .unwrap();
+        assert_eq!(exit.signal.as_deref(), Some(signal.unwrap_or("SIGKILL")));
+        assert!(exit.error.is_none());
+        assert_eq!(scope.tasks.len(), 0);
+    }
+}
+
+#[tokio::test]
 async fn shutdown_does_not_wait_for_a_blocked_output_consumer() {
     let root = tempfile::tempdir().unwrap();
     let (table, mut receiver) = table(root.path(), 1);
@@ -237,15 +294,7 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
             scope.clone(),
         )
         .unwrap();
-        let mut ready = Vec::new();
-        while ready.len() < 5 {
-            let first = tokio::time::timeout(Duration::from_secs(3), blocked.output.recv())
-                .await
-                .unwrap()
-                .unwrap();
-            ready.extend(first.bytes);
-        }
-        assert_eq!(ready, b"ready");
+        wait_for_job_ready(&mut blocked).await;
         let mut sibling = Job::start(
             "printf '%s' $$; sleep 0.1; printf done".into(),
             root.path().into(),
