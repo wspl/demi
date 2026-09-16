@@ -65,8 +65,10 @@ require AGPL licensing.
 
 ### Conversation owns the browser
 
-A conversation owns one Demi-managed browser environment on its current main
-Host. The root agent and its children operate tabs in that environment. The
+A conversation owns one Demi-managed browser environment on each Host where
+its shell runs; the browser is wherever the command runs, and a command never
+reaches a browser on another Host. The root agent and its children operate
+tabs in that environment. The
 environment contains an isolated browser storage context, tabs, a clipboard,
 and debugging connections. It is not an agent-selectable session.
 
@@ -93,11 +95,11 @@ argument.
 the browser has not started; listing alone does not launch it. A command with
 an expired tab ID fails rather than opening a replacement page.
 
-The environment belongs to the main Host. Browser commands invoked from a shell
-on an attached Host return `wrong_host`; they do not silently dispatch elsewhere.
-The user changes the browser's execution location through the existing target
-selection. Concurrent browser environments on multiple Hosts of one conversation
-are outside this design.
+A shell on the main Host and a shell on an attached Host therefore use two
+environments with separate tabs, cookies, and handles; a handle from one is
+`tab_not_found` on the other. The browser does not know which role its Host
+plays in the conversation and does not need to: the conversation release
+reaches every device the conversation used.
 
 Different conversations have isolated cookies, local storage, caches,
 clipboards, and tabs. Tabs within a conversation share browser storage, so a
@@ -178,10 +180,10 @@ Its internal lifecycle uses one state:
 | Conversation is forked | Do not inherit the live browser or handles; IDs in copied history are historical text |
 | Chrome for Testing crashes, runner connection ends, backend restarts, or Cloud stops/resets | Invalidate the environment and fail affected calls; never replay page actions |
 
-The native service fences further page actions once last-tab closure begins,
-including later commands in the same shell call; opening again requires a new
-call. Browser profiles and live page state are not restored across process
-lifetime boundaries. Explicit output files survive according to their Host
+Commands already running against a closing environment fail with
+`browser_lost`; the next `open`, in the same shell call or a later one, starts a
+fresh environment. Browser profiles and live page state are not restored across
+process lifetime boundaries. Explicit output files survive according to their Host
 location. Screenshots already persisted into the transcript follow the existing
 media storage contract.
 
@@ -1462,7 +1464,6 @@ Messages explain the situation; scripts inspect code and typed details:
 | Code | Meaning |
 | --- | --- |
 | `invalid_input` | Arguments or finite input violate the contract |
-| `wrong_host` | Invocation is not on the current main Host |
 | `tab_not_found` | Missing, closed, or inaccessible tab; other tabs are unaffected |
 | `tab_busy` | Another agent command owns the tab operation lock |
 | `stale_ref`, `stale_cursor`, `stale_inventory`, `stale_tools` | Expired object or generation |
@@ -1620,8 +1621,8 @@ and isolated storage. Never run tests that call real models.
 2. Retain tabs and login state across shell jobs, agent turns, and user Web
    disconnect while the environment is live.
 3. Reject cross-conversation tab/ref use, including a script that rewrites
-   `DEMI_CONVERSATION_ID`. Isolate browser storage. Return wrong_host for
-   browser calls from an attached Host.
+   `DEMI_CONVERSATION_ID`. Isolate browser storage. A main-Host shell and an
+   attached-Host shell of one conversation use separate environments.
 4. Verify target changes, archive, Fork, sleep/reset, disconnect, and crashes.
    Old handles never identify replacement pages.
 5. Concurrent calls on one tab report busy; separate tabs progress independently.
