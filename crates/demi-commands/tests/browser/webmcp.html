@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native WebMCP tools</title>
+<button id="replace">Replace tool declaration</button>
+<button id="remove">Remove tool</button>
+<output id="calls">0</output>
+<output id="cancelled">false</output>
+<script>
+let owner = new AbortController();
+let calls = 0;
+async function register(description) {
+  await document.modelContext.registerTool({
+    name: 'echo', description,
+    inputSchema: {type:'object', properties:{text:{type:'string'}}, required:['text'], additionalProperties:false},
+    execute: async ({text}) => {
+      document.querySelector('#calls').textContent = String(++calls);
+      return {echo:text};
+    }
+  }, {signal:owner.signal});
+}
+if (document.modelContext) {
+  register('Echo the provided text');
+  document.modelContext.registerTool({
+    name:'wait', description:'Wait for cancellation', inputSchema:{type:'object'},
+    execute: async (_, {signal}) => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => {
+        document.querySelector('#cancelled').textContent = 'true';
+        reject(new Error('cancelled'));
+      }, {once:true});
+    })
+  });
+}
+document.querySelector('#replace').onclick = async () => {
+  owner.abort();
+  owner = new AbortController();
+  await register('Replacement echo declaration');
+};
+document.querySelector('#remove').onclick = () => owner.abort();
+</script>

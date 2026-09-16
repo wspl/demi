@@ -29,6 +29,8 @@ getrandom = "0.4"
 url = "2"
 zip = { version = "6", default-features = false, features = ["deflate"] }
 png = "0.18"
+# Validate page tool schemas and the pinned CDP protocol without fetching external refs (MIT).
+jsonschema = { version = "0.56", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
