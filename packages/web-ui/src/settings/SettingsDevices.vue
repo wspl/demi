@@ -113,6 +113,7 @@ const { isOpen, phase, open, close, submit } = useDevicePairing(
             @renew="emit('renewExpose', $event)"
             @remove="emit('removeExpose', $event)"
           />
+        </template>
         <div
           v-if="!devices.length"
           class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
