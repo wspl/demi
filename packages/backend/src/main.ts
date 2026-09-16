@@ -28,6 +28,7 @@ const backendEnvSchema = z
       ['shared', 'isolated'],
       'must be "shared" or "isolated" (product.md § Instance mode)',
     ),
+    DEMI_EXPOSE_DOMAIN: z.string().min(1).optional(),
     DEMI_MACHINES_SOCKET: z.string().min(1).optional(),
     DEMI_BACKEND_PUBLIC_URL: z.url().optional(),
     DEMI_NATIVE_CONFIG: z
@@ -70,6 +71,7 @@ async function main(): Promise<void> {
     nativeCommands,
     dataDir,
     webDirectory: env.DEMI_WEB_DIRECTORY,
+    exposeDomain: env.DEMI_EXPOSE_DOMAIN,
     port: env.DEMI_BACKEND_PORT,
     mode: env.DEMI_INSTANCE_MODE,
     ...(publicUrl ? { publicUrl } : {}),

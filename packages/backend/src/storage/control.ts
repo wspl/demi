@@ -274,6 +274,44 @@ export interface ControlService {
    */
   defaultConversationTitle(id: string, title: string): Promise<void>
   touchConversation(id: string): Promise<void>
+  /**
+   * Host exposes (`expose.md` § The expose record). The id, owner, device,
+   * address and both timestamps are decided by the caller — the expose module
+   * owns the clock; nothing updates a row except renewal.
+   */
+  createExpose(expose: {
+    id: string
+    userId: string
+    deviceId: string
+    address: string
+    createdAt: string
+    expiresAt: string
+  }): Promise<ExposeRecord>
+  /** By id, any owner — the relay reads the record behind a hostname. */
+  getExpose(id: string): Promise<ExposeRecord | null>
+  /** The user's exposes, soonest expiry first. */
+  listExposes(userId: string): Promise<ExposeRecord[]>
+  /** Moves the expiry; null when the id is not the user's. */
+  renewExpose(
+    id: string,
+    userId: string,
+    expiresAt: string
+  ): Promise<ExposeRecord | null>
+  deleteExpose(id: string): Promise<void>
+  /** Every expose on a device — a Cloud stop and device revocation. */
+  deleteExposesByDevice(deviceId: string): Promise<string[]>
+  /** Expiry sweep: the destroyed ids, so their connections end too. */
+  deleteExpiredExposes(before: string): Promise<string[]>
+}
+
+export interface ExposeRecord {
+  id: string
+  userId: string
+  deviceId: string
+  /** `host:port` as given; a bare port meant `127.0.0.1:<port>`. */
+  address: string
+  createdAt: string
+  expiresAt: string
 }
 
 /**
@@ -1671,6 +1709,86 @@ export class LocalControlService implements ControlService {
       [new Date().toISOString(), id]
     )
   }
+
+  async createExpose(expose: {
+    id: string
+    userId: string
+    deviceId: string
+    address: string
+    createdAt: string
+    expiresAt: string
+  }): Promise<ExposeRecord> {
+    this.db.run(
+      'INSERT INTO exposes (id, user_id, device_id, address, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [
+        expose.id,
+        expose.userId,
+        expose.deviceId,
+        expose.address,
+        expose.createdAt,
+        expose.expiresAt,
+      ]
+    )
+    return expose
+  }
+
+  async getExpose(id: string): Promise<ExposeRecord | null> {
+    const row = this.db.get<ExposeRow>(
+      `${EXPOSE_SELECT} WHERE id = ?`,
+      [id]
+    )
+    return row ? exposeFromRow(row) : null
+  }
+
+  async listExposes(userId: string): Promise<ExposeRecord[]> {
+    return this.db.all<ExposeRow>(
+      `${EXPOSE_SELECT} WHERE user_id = ? ORDER BY expires_at, id`,
+      [userId]
+    )
+      .map(exposeFromRow)
+  }
+
+  async renewExpose(
+    id: string,
+    userId: string,
+    expiresAt: string
+  ): Promise<ExposeRecord | null> {
+    this.db.run(
+      'UPDATE exposes SET expires_at = ? WHERE id = ? AND user_id = ?',
+      [expiresAt, id, userId]
+    )
+    return this.getExpose(id)
+  }
+
+  async deleteExpose(id: string): Promise<void> {
+    this.db.run('DELETE FROM exposes WHERE id = ?', [id])
+  }
+
+  async deleteExposesByDevice(deviceId: string): Promise<string[]> {
+    return this.db.transaction(() =>
+      this.db.all<{ id: string }>(
+        'SELECT id FROM exposes WHERE device_id = ?',
+        [deviceId]
+      )
+        .map(row => {
+          this.db.run('DELETE FROM exposes WHERE id = ?', [row.id])
+          return row.id
+        })
+    )
+  }
+
+  async deleteExpiredExposes(before: string): Promise<string[]> {
+    return this.db.transaction(() =>
+      this.db.all<{ id: string }>(
+        'SELECT id FROM exposes WHERE expires_at <= ?',
+        [before]
+      )
+        .map(row => {
+          this.db.run('DELETE FROM exposes WHERE id = ?', [row.id])
+          return row.id
+        })
+    )
+  }
 }
 
 interface DeviceRow {
@@ -1775,6 +1893,29 @@ function providerFromRow(row: ProviderRow): ProviderRecord {
     label: row.label,
     config: row.config,
     createdAt: row.created_at,
+  }
+}
+
+interface ExposeRow {
+  id: string
+  user_id: string
+  device_id: string
+  address: string
+  created_at: string
+  expires_at: string
+}
+
+const EXPOSE_SELECT =
+  'SELECT id, user_id, device_id, address, created_at, expires_at FROM exposes'
+
+function exposeFromRow(row: ExposeRow): ExposeRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    deviceId: row.device_id,
+    address: row.address,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
   }
 }
 
