@@ -9,9 +9,12 @@ acceptance are required before enabling a deployed release.
 This is the authoritative browser design. Command dispatch, Host admission,
 native service ownership, and package boundaries retain their existing owners.
 Browser automation does not introduce another shell or agent loop, and it does
-not reach into the agent framework: the browser keeps its own state per
-conversation and ends it when the conversation is released, as
-[Conversation idle and Host resource release](resource-lifecycle.md) defines.
+not reach into the agent framework: the browser is a plugin behind the
+[conversation-scoped state port](native-runtime.md#conversation-scoped-state).
+It keeps its own state per conversation and ends it when the conversation is
+released, as [Conversation idle and Host resource release](resource-lifecycle.md)
+defines. Nothing in the agent, backend, runner, or protocol exists for the
+browser specifically.
 
 ## Reading map
 
