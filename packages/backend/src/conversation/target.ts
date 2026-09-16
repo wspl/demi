@@ -11,7 +11,6 @@ import type {
   DeviceRecord,
 } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
-import { administrativeStore } from '../storage/host-store'
 import {
   cloudSessionDirectory,
   resolveExecutionTarget
@@ -52,7 +51,6 @@ interface HostSelection {
 }
 
 export class ConversationTargets {
-  /** Device access is conversation-less; its Hosts share one scratch scope. */
   private readonly fileActivity = new Map<string, ActivityGate>()
   private readonly activityObservers = new Set<(id: string, active: boolean) => void>()
   private readonly subscriptions = new DisposableStack()
@@ -202,14 +200,7 @@ export class ConversationTargets {
     const device = await this.deps.control.getDevice(deviceId)
     if (!device || device.userId !== userId)
       return null
-    if (!this.deps.registry.deviceOnline(deviceId))
-      return null
-    return this.deps.registry.hostFor(
-      { deviceId, path: '/' },
-      DEVICE_ACCESS_CONVERSATION,
-      administrativeStore,
-      { admit: false }
-    )
+    return this.deps.registry.deviceHost(deviceId)
   }
 
   /** Resolve the authorized Host binding without waiting for any device transition. */
@@ -318,5 +309,3 @@ export class ConversationTargets {
     }
   }
 }
-
-const DEVICE_ACCESS_CONVERSATION = '\0device-access'
