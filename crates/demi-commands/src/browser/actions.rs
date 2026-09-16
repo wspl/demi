@@ -43,7 +43,7 @@ impl BrowserTab {
                 | BrowserCommand::Screenshot(_)
         ) {
             return Err(BrowserError::Configuration(
-                "this operation requires the browser resource controller".into(),
+                "this operation requires the browser conversation controller".into(),
             ));
         }
         let result = self
@@ -801,7 +801,7 @@ impl BrowserTab {
                 | BrowserCommand::AssetsExport(_)
                 | BrowserCommand::WebmcpList(_)
                 | BrowserCommand::WebmcpCall(_) => Box::pin(async {
-                    unreachable!("resource-level operation is dispatched before tab actions")
+                    unreachable!("conversation-level operation is dispatched before tab actions")
                 }),
             };
             branch.await

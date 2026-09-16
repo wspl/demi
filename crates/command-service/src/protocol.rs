@@ -70,6 +70,12 @@ impl ConversationRequest {
     }
 }
 
+impl ConversationStatus {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        generated::conversation_status_validate(self).map_err(|_| ProtocolError::InvalidMetadata)
+    }
+}
+
 /// Frame command-service metadata with the shared bounded length prefix.
 fn encode_metadata(value: &impl serde::Serialize) -> Result<Bytes, ProtocolError> {
     let json = serde_json::to_vec(value)?;

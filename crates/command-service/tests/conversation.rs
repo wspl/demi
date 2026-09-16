@@ -186,3 +186,29 @@ async fn conversation_cancellation_joins_hook_and_cleanup_failure_retires_servic
         let _ = driver.await.unwrap();
     }).await.unwrap();
 }
+
+#[test]
+fn conversation_status_checks_conversation_identity() {
+    use demi_command_service::protocol::ConversationStatus;
+    assert!(
+        ConversationStatus {
+            conversations: vec![]
+        }
+        .validate()
+        .is_ok()
+    );
+    assert!(
+        ConversationStatus {
+            conversations: vec!["conversation".into()]
+        }
+        .validate()
+        .is_ok()
+    );
+    assert!(
+        ConversationStatus {
+            conversations: vec![String::new()]
+        }
+        .validate()
+        .is_err()
+    );
+}
