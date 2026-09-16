@@ -26,6 +26,10 @@ export function generateExposeId(): string {
       out += BASE32_ALPHABET[(acc >> bits) & 31]
     }
   }
+  // The final partial character carries the leftover bits: 128 bits is 26
+  // base32 characters, not the 25 the whole groups spell.
+  if (bits > 0)
+    out += BASE32_ALPHABET[(acc << (5 - bits)) & 31]
   return out
 }
 
