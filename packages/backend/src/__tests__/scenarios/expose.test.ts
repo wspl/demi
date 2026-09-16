@@ -1,14 +1,17 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { login } from '../session'
-import { Driver, model } from './driver'
+import { model } from './driver'
 import { World } from './world'
+import { FakeProvisioner } from './fake-provisioner'
+import { waitFor } from '@demicodes/utils'
 
 /**
  * The expose scenarios (`expose.md` § Acceptance), one test per item, over a
  * real runner (the paired `laptop` device) and the fake-provisioner Cloud.
  * The fixture service is a plain HTTP server on this machine: the runner
- * connects to it on the device's network, which is the host's here.
+ * connects to it on the device's network, which is the host's here. Every
+ * test creates its own expose, so each runs alone.
  */
 
 const FIXTURE_BYTES = 8 * 1024 * 1024
@@ -23,21 +26,24 @@ interface Seen {
 }
 
 let world!: World
+let fake!: FakeProvisioner
 let fixture!: ReturnType<typeof startFixture>
 let clock = Date.now()
-let driver!: Driver
 
-function relay(path: string, init?: RequestInit & { headers?: Record<string, string> }, hostname?: string): Promise<Response> {
-  const host = hostname ?? fixture.exposeHost!
-  return fetch(`http://localhost:${port(world)}${path}`, {
-    ...init,
-    verbose: true,
-    headers: { ...(init?.headers ?? {}), host },
-  } as RequestInit & { verbose: boolean })
+/** The backend's injected expiry clock; every test resets it to the wall. */
+function now(): number {
+  return clock
 }
 
-function port(of: World): string {
-  return new URL(of.url).port
+function backendPort(): string {
+  return new URL(world.url).port
+}
+
+function relay(host: string, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(`http://localhost:${backendPort()}${path}`, {
+    ...init,
+    headers: { ...(init?.headers as Record<string, string> | undefined), host },
+  })
 }
 
 function sha256(bytes: Uint8Array): string {
@@ -49,6 +55,30 @@ function bigBytes(): Uint8Array {
   for (let i = 0; i < bytes.length; i++)
     bytes[i] = i % 251
   return bytes
+}
+
+/** A fresh expose on the paired device, at the current clock. */
+async function pairedExpose(): Promise<{ id: string; host: string }> {
+  clock = Date.now()
+  const { expose } = await world.api<{ expose: { id: string } }>('/api/exposes', {
+    deviceId: world.device('laptop').deviceId,
+    address: String(fixture.port),
+  })
+  return { id: expose.id, host: `${expose.id}.expose.localhost` }
+}
+
+/** Wakes the user's Cloud with one turn, then exposes the fixture on it. */
+async function cloudExpose(): Promise<{ id: string; host: string; deviceId: string }> {
+  clock = Date.now()
+  const conversation = await world.conversation('cloud')
+  await conversation.turn({ model: [model.shell('wake', 'true'), model.say('done')] })
+  const state = await world.api<{ devices: Array<{ id: string; kind: string }> }>('/api/state')
+  const deviceId = state.devices.find(device => device.kind === 'managed')!.id
+  const { expose } = await world.api<{ expose: { id: string } }>('/api/exposes', {
+    deviceId,
+    address: String(fixture.port),
+  })
+  return { id: expose.id, host: `${expose.id}.expose.localhost`, deviceId }
 }
 
 function startFixture() {
@@ -65,7 +95,9 @@ function startFixture() {
       request.headers.forEach((value, name) => {
         headers[name] = value
       })
-      const body = request.body ? new Uint8Array(await new Response(request.body).arrayBuffer()) : new Uint8Array(0)
+      const body = request.body
+        ? new Uint8Array(await new Response(request.body).arrayBuffer())
+        : new Uint8Array(0)
       seen = {
         method: request.method,
         path: url.pathname + url.search,
@@ -79,17 +111,19 @@ function startFixture() {
       if (url.pathname === '/hash')
         return new Response(seen.bodySha256)
       if (url.pathname === '/sse') {
-        const stream = new ReadableStream<Uint8Array>({
-          async start(controller) {
-            const encode = new TextEncoder()
-            for (let i = 1; i <= 3; i++) {
-              await Bun.sleep(30)
-              controller.enqueue(encode.encode(`event: tick\ndata: ${i}\n\n`))
-            }
-            controller.close()
-          },
-        })
-        return new Response(stream, { headers: { 'content-type': 'text/event-stream' } })
+        const encode = new TextEncoder()
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            async start(controller) {
+              for (let i = 1; i <= 3; i++) {
+                await Bun.sleep(30)
+                controller.enqueue(encode.encode(`event: tick\ndata: ${i}\n\n`))
+              }
+              controller.close()
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } }
+        )
       }
       if (url.pathname === '/big') {
         const bytes = bigBytes()
@@ -109,7 +143,9 @@ function startFixture() {
         return new Response(
           new ReadableStream<Uint8Array>({
             start(controller) {
-              queueMicrotask(() => controller.enqueue(new TextEncoder().encode('held\n')))
+              queueMicrotask(() =>
+                controller.enqueue(new TextEncoder().encode('held\n'))
+              )
               // Never closed: the connection stays open until the relay ends it.
             },
           })
@@ -119,15 +155,17 @@ function startFixture() {
       return new Response('fixture', { status: 404 })
     },
     websocket: {
-      open() {},
+      open(ws) {
+        ws.send('hello')
+      },
       message(ws, message) {
         ws.send(message)
-        const data = ws.data as URLSearchParams
+        const data = ws.data
         const code = Number(data.get('close'))
         if (code)
           ws.close(code, data.get('reason') ?? '')
       },
-      close(ws, code, reason) {
+      close(_ws, code, reason) {
         lastClose = { code, reason: reason ?? '' }
       },
     },
@@ -137,31 +175,33 @@ function startFixture() {
     port: server.port,
     seen: () => seen,
     lastClose: () => lastClose,
-    exposeHost: null as string | null,
-    cloudHost: null as string | null,
-    cloudDeviceId: null as string | null,
-    exposeId: null as string | null,
   }
 }
 
 beforeAll(async () => {
   fixture = startFixture()
+  fake = new FakeProvisioner()
   clock = Date.now()
   world = await World.create({
     runners: ['laptop'],
     exposeDomain: 'expose.localhost',
-    expose: { now: () => clock, sweepMs: 50 },
+    expose: { now, sweepMs: 50 },
+    managedHosts: {
+      provisioner: fake,
+      config: { sweepMs: 100, checkpointIntervalMs: 200 },
+    },
   })
-  driver = await world.conversation('runner:laptop')
 })
 
 afterAll(async () => {
   await world?.close()
+  await fake?.close()
   fixture?.server.stop(true)
 })
 
 describe('expose acceptance', () => {
-  test('1: add prints a URL; the relay rewrites Host and adds the forwarded headers', async () => {
+  test('1: add on a paired device prints a URL; the relay rewrites Host and adds the forwarded headers', async () => {
+    const driver = await world.conversation('runner:laptop')
     const turn = await driver.turn({
       model: [
         model.shell('t1', `demi host expose add ${fixture.port}`),
@@ -170,188 +210,187 @@ describe('expose acceptance', () => {
     })
     const output = turn.received.join('\n')
     expect(output).toContain(`Exposed 127.0.0.1:${fixture.port} on laptop`)
-    const url = /https?:\/\/(\w+)\.expose\.localhost\//.exec(output)![1]!
-    fixture.exposeHost = `${url}.expose.localhost`
-    fixture.exposeId = url
-    const response = await relay('/seen')
+    expect(output).toMatch(/Expires in 60 minutes \(expose \w{26}\)/)
+    const id = /https?:\/\/(\w{26})\.expose\.localhost\//.exec(output)![1]!
+    const response = await relay(`${id}.expose.localhost`, '/seen')
     expect(response.status).toBe(200)
     const seen = fixture.seen()!
     expect(seen.method).toBe('GET')
     expect(seen.host).toBe(`127.0.0.1:${fixture.port}`)
-    expect(seen.headers['x-forwarded-host']).toBe(fixture.exposeHost)
+    expect(seen.headers['x-forwarded-host']).toBe(`${id}.expose.localhost`)
     expect(seen.headers['x-forwarded-proto']).toBe('http')
     expect(seen.headers['x-forwarded-for'].length).toBeGreaterThan(0)
     expect(seen.headers['cookie']).toBeUndefined()
-  })
+  }, 30_000)
 
-  test('1: add on Cloud prints a URL too', async () => {
-    const cloud = await world.conversation('cloud')
-    await cloud.turn({ model: [model.shell('t2', 'true'), model.say('done')] })
-    const state = await world.api<{ devices: Array<{ id: string; kind: string }> }>('/api/state')
-    const cloudDevice = state.devices.find(device => device.kind === 'managed')!
-    const { expose } = await world.api<{ expose: { url: string } }>('/api/exposes', {
-      deviceId: cloudDevice.id,
-      address: String(fixture.port),
-    })
-    const hostname = new URL(expose.url).hostname
-    const response = await relay('/seen', undefined, hostname)
-    expect(response.status).toBe(200)
-    expect(fixture.seen()!.host).toBe(`127.0.0.1:${fixture.port}`)
-    fixture.cloudHost = hostname
-    fixture.cloudDeviceId = cloudDevice.id
-  })
+  test('1: add on Cloud works too, and a checkpoint keeps the expose while a stop destroys it', async () => {
+    const expose = await cloudExpose()
+    expect((await relay(expose.host, '/seen')).status).toBe(200)
+    // A checkpoint pauses and resumes the machine; exposes survive it.
+    await waitFor(
+      () => fake.calls.includes(`checkpoint:${expose.deviceId}`),
+      () => fake.calls.join('\n'),
+      { timeoutMs: 10_000 }
+    )
+    expect((await relay(expose.host, '/seen')).status).toBe(200)
+    let list = await world.api<{ exposes: Array<{ id: string }> }>('/api/exposes')
+    expect(list.exposes.map(entry => entry.id)).toContain(expose.id)
+    // Leaving the running state — the idle stop here — destroys it.
+    await world.backend.managedHosts!.hibernate(expose.deviceId)
+    list = await world.api<{ exposes: Array<{ id: string }> }>('/api/exposes')
+    expect(list.exposes.map(entry => entry.id)).not.toContain(expose.id)
+    expect((await relay(expose.host, '/seen')).status).toBe(404)
+  }, 60_000)
 
-  test('2: 8 MiB bodies arrive byte-equal both ways; SSE streams', async () => {
+  test('2: 8 MiB bodies arrive byte-equal both ways; an event stream reaches the visitor', async () => {
+    const { host } = await pairedExpose()
     const bytes = bigBytes()
-    const up = await relay('/hash', {
+    const up = await relay(host, '/hash', {
       method: 'POST',
       body: bytes,
       headers: { 'content-type': 'application/octet-stream' },
     })
     expect(await up.text()).toBe(sha256(bytes))
-    const down = await relay('/big')
+    const down = await relay(host, '/big')
     expect(down.status).toBe(200)
     expect(sha256(new Uint8Array(await down.arrayBuffer()))).toBe(sha256(bytes))
-    const sse = await relay('/sse')
-    expect(await sse.text()).toBe('event: tick\ndata: 1\n\nevent: tick\ndata: 2\n\nevent: tick\ndata: 3\n\n')
-  })
+    const sse = await relay(host, '/sse')
+    expect(await sse.text())
+      .toBe('event: tick\ndata: 1\n\nevent: tick\ndata: 2\n\nevent: tick\ndata: 3\n\n')
+  }, 120_000)
 
   test('3: a WebSocket echo carries text and binary and the close codes both ways', async () => {
-    const url = `ws://localhost:${port(world)}/ws?close=4001&reason=bye`
-    const socket = new WebSocket(url, { headers: { host: fixture.exposeHost! } } as unknown as ConstructorParameters<typeof WebSocket>[1])
-    const opened = new Promise<void>((resolve, reject) => {
+    const { host } = await pairedExpose()
+    const socket = new WebSocket(
+      `ws://localhost:${backendPort()}/ws?close=4001&reason=bye`,
+      { headers: { host } } as unknown as ConstructorParameters<typeof WebSocket>[1]
+    )
+    await new Promise<void>((resolve, reject) => {
       socket.addEventListener('open', () => resolve(), { once: true })
       socket.addEventListener('error', () => reject(new Error('ws open failed')), { once: true })
     })
-    await opened
-    const binary = crypto.getRandomValues(new Uint8Array(4096))
-    const received: string[] = []
-    const receivedBinary = new Promise<Uint8Array>(resolve =>
+    const texts: string[] = []
+    socket.addEventListener('message', event => {
+      if (typeof event.data === 'string')
+        texts.push(event.data)
+    })
+    const textSeen = async (text: string) => {
+      await waitFor(() => texts.includes(text), () => texts.join(','), { timeoutMs: 5_000 })
+      return text
+    }
+    const binarySeen = new Promise<Uint8Array>(resolve =>
       socket.addEventListener('message', event => {
-        if (typeof event.data === 'string')
-          received.push(event.data)
-        else
+        if (typeof event.data !== 'string')
           resolve(new Uint8Array(event.data as ArrayBuffer))
       })
     )
     const closed = new Promise<{ code: number; reason: string }>(resolve =>
       socket.addEventListener('close', event =>
-        resolve({ code: (event as CloseEvent).code, reason: (event as CloseEvent).reason })
+        resolve({
+          code: (event as CloseEvent).code,
+          reason: (event as CloseEvent).reason,
+        })
       )
     )
+    // The service greets on open; the echo answers each message.
+    expect(await textSeen('hello')).toBe('hello')
+    const binary = crypto.getRandomValues(new Uint8Array(4096))
     socket.send('ping')
     socket.send(binary)
-    expect(received.at(-1)).toBe('ping')
-    expect(Buffer.from(await receivedBinary).equals(Buffer.from(binary))).toBe(true)
+    expect(await textSeen('ping')).toBe('ping')
+    expect(Buffer.from(await binarySeen).equals(Buffer.from(binary))).toBe(true)
     // Any further message triggers the service-side close 4001 "bye".
     socket.send('finish')
     expect(await closed).toEqual({ code: 4001, reason: 'bye' })
     // The client-side close code and reason reach the service.
-    const second = new WebSocket(`ws://localhost:${port(world)}/ws`, { headers: { host: fixture.exposeHost! } } as unknown as ConstructorParameters<typeof WebSocket>[1])
-    await new Promise<void>(resolve => second.addEventListener('open', () => resolve(), { once: true }))
+    const second = new WebSocket(`ws://localhost:${backendPort()}/ws`, {
+      headers: { host },
+    } as unknown as ConstructorParameters<typeof WebSocket>[1])
+    await new Promise<void>(resolve =>
+      second.addEventListener('open', () => resolve(), { once: true })
+    )
     second.close(4321, 'client-done')
-    await Bun.sleep(200)
+    await waitFor(
+      () => fixture.lastClose()?.code === 4321,
+      () => JSON.stringify(fixture.lastClose()),
+      { timeoutMs: 5_000 }
+    )
     expect(fixture.lastClose()).toEqual({ code: 4321, reason: 'client-done' })
-  })
+  }, 30_000)
 
-  test('4: expiry destroys the record; renew extends it', async () => {
-    const expiring = await world.api<{ expose: { id: string } }>('/api/exposes', {
-      deviceId: world.device('laptop').deviceId,
-      address: String(fixture.port),
-    })
-    const host = `${expiring.expose.id}.expose.localhost`
+  test('4: expiry destroys the record; a renewal before it extends the record', async () => {
+    const expiring = await pairedExpose()
     clock += 61 * 60_000
     await Bun.sleep(100)
-    const gone = await relay('/seen', undefined, host)
+    const gone = await relay(expiring.host, '/seen')
     expect(gone.status).toBe(404)
-    const list = await world.api<{ exposes: unknown[] }>('/api/exposes')
-    expect(list.exposes.map((expose) => (expose as { id: string }).id))
-      .not.toContain(expiring.expose.id)
-    // Renewal before expiry keeps the expose past the original hour.
-    clock += 50 * 60_000
-    await world.api(`/api/exposes/${fixture.exposeId!}/renew`, undefined, 'POST')
-    clock += 50 * 60_000
-    const renewed = await relay('/seen')
-    expect(renewed.status).toBe(200)
-  })
-
-  test('5: a Cloud stop destroys its exposes; a paired device going offline keeps them', async () => {
-    await world.backend.managedHosts!.hibernate(fixture.cloudDeviceId!)
     const list = await world.api<{ exposes: Array<{ id: string }> }>('/api/exposes')
-    expect(list.exposes.map(expose => expose.id)).not.toContain(
-      (fixture.cloudHost!.match(/^(\w+)\./)![1]!)
-    )
-    expect((await relay('/seen', undefined, fixture.cloudHost!)).status).toBe(404)
-    // The paired device keeps its exposes while offline and answers 502.
+    expect(list.exposes.map(entry => entry.id)).not.toContain(expiring.id)
+    // Renewed before its hour: alive past the original deadline.
+    const renewed = await pairedExpose()
+    clock += 50 * 60_000
+    await world.api(`/api/exposes/${renewed.id}/renew`, undefined, 'POST')
+    clock += 50 * 60_000
+    expect((await relay(renewed.host, '/seen')).status).toBe(200)
+  }, 30_000)
+
+  test('5: a paired device going offline keeps its exposes and answers 502 until reconnect', async () => {
+    const { host } = await pairedExpose()
     await world.killRunner('laptop')
     await Bun.sleep(100)
-    const offline = await relay('/seen')
+    const offline = await relay(host, '/seen')
     expect(offline.status).toBe(502)
     expect(await offline.text()).toContain('device_offline')
-    const kept = await world.api<{ exposes: unknown[] }>('/api/exposes')
-    expect(kept.exposes.length).toBeGreaterThan(0)
+    const kept = await world.api<{ exposes: Array<{ id: string }> }>('/api/exposes')
+    expect(kept.exposes.length).toBe(1)
     await world.returnRunner('laptop')
-    expect((await relay('/seen')).status).toBe(200)
-  })
+    expect((await relay(host, '/seen')).status).toBe(200)
+  }, 60_000)
 
   test('6: another user cannot list, renew or remove; the URL itself needs no session', async () => {
-    await world.api('/api/users', {
-      email: 'other@example.test',
-      password: 'other-pass-1',
-      role: 'user'
-    })
-    const other = await login(world.backend, 'other@example.test', 'other-pass-1')
-    const listed = await other.fetch('/api/exposes')
-    expect(await (listed as Response).json()).toEqual({ exposes: [] })
-    const renew = await other.fetch(`/api/exposes/${fixture.exposeId!}/renew`, { method: 'POST' })
-    expect(renew.status).toBe(404)
-    const remove = await other.fetch(`/api/exposes/${fixture.exposeId!}`, { method: 'DELETE' })
-    expect(remove.status).toBe(404)
-    // The relay never saw a session cookie in any test: the URL works anonymous.
-    const anonymous = await fetch(`http://localhost:${port(world)}/seen`, {
-      headers: { host: fixture.exposeHost! },
+    const { id, host } = await pairedExpose()
+    const email = `other-${Date.now()}@example.test`
+    await world.api('/api/users', { email, password: 'other-pass-1', role: 'user' })
+    const other = await login(world.backend, email, 'other-pass-1')
+    expect(await (await other.fetch('/api/exposes')).json()).toEqual({ exposes: [] })
+    expect((await other.fetch(`/api/exposes/${id}/renew`, { method: 'POST' })).status).toBe(404)
+    expect((await other.fetch(`/api/exposes/${id}`, { method: 'DELETE' })).status).toBe(404)
+    // The relay never sees a session: the URL works for an anonymous visitor.
+    const anonymous = await fetch(`http://localhost:${backendPort()}/seen`, {
+      headers: { host },
     })
     expect(anonymous.status).toBe(200)
-  })
+  }, 30_000)
 
   test('7: remove while a connection is open ends that connection', async () => {
-    const held = await relay('/hold')
+    const { id, host } = await pairedExpose()
+    const held = await relay(host, '/hold')
     expect(held.status).toBe(200)
     const body = held.body!.getReader()
     expect(new TextDecoder().decode((await body.read()).value)).toBe('held\n')
-    await world.api(`/api/exposes/${fixture.exposeId!}`, undefined, 'DELETE')
-    const rest = await body.read()
-    expect(rest.done).toBe(true)
-  })
+    await world.api(`/api/exposes/${id}`, undefined, 'DELETE')
+    expect((await body.read()).done).toBe(true)
+  }, 30_000)
 
   test('8: the 65th concurrent connection answers 503 and a closed one admits again', async () => {
-    const add = async () => {
-      const { expose } = await world.api<{ expose: { id: string } }>('/api/exposes', {
-        deviceId: world.device('laptop').deviceId,
-        address: String(fixture.port),
-      })
-      fixture.exposeId = expose.id
-      fixture.exposeHost = `${expose.id}.expose.localhost`
-    }
-    await add()
+    const { host } = await pairedExpose()
     const held: Array<Response> = []
     for (let i = 0; i < 64; i++) {
-      const response = await relay('/hold')
+      const response = await relay(host, '/hold')
       expect(response.status).toBe(200)
       // Pull the first byte so the head has arrived and the slot is held.
       await response.body!.getReader().read()
       held.push(response)
     }
-    const refused = await relay('/hold')
-    expect(refused.status).toBe(503)
+    expect((await relay(host, '/hold')).status).toBe(503)
     await held.pop()!.body!.cancel()
-    await Bun.sleep(150)
-    const admitted = await relay('/hold')
+    await Bun.sleep(200)
+    const admitted = await relay(host, '/hold')
     expect(admitted.status).toBe(200)
     for (const response of held)
       await response.body!.cancel()
     await admitted.body!.cancel()
-  })
+  }, 60_000)
 
   test('9: without DEMI_EXPOSE_DOMAIN, add answers expose_unavailable and the state hides the feature', async () => {
     const bare = await World.create({ runners: ['laptop'] })
@@ -377,5 +416,5 @@ describe('expose acceptance', () => {
     } finally {
       await bare.close()
     }
-  })
+  }, 60_000)
 })
