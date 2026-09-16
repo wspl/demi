@@ -180,9 +180,10 @@ Its internal lifecycle uses one state:
 | Conversation is forked | Do not inherit the live browser or handles; IDs in copied history are historical text |
 | Chrome for Testing crashes, runner connection ends, backend restarts, or Cloud stops/resets | Invalidate the environment and fail affected calls; never replay page actions |
 
-Commands already running against a closing environment fail with
-`browser_lost`; the next `open`, in the same shell call or a later one, starts a
-fresh environment. Browser profiles and live page state are not restored across
+A command still running when another command closes the last tab fails with
+`browser_lost`; a command still running when the conversation release arrives
+fails as `cancelled`, like any invocation cancellation. The next `open`, in the
+same shell call or a later one, starts a fresh environment. Browser profiles and live page state are not restored across
 process lifetime boundaries. Explicit output files survive according to their Host
 location. Screenshots already persisted into the transcript follow the existing
 media storage contract.
@@ -731,7 +732,6 @@ If `open` creates a tab but navigation times out, the error retains `details.tab
 so the agent can inspect it. Navigation failures report the current URL and
 known action progress rather than implying nothing happened.
 
-`info` includes conversation browser control state and revision.
 `tabs` and `history` accept `--offset` and `--limit`. Their listings are not
 frozen across calls. Closing reports success only after tab resources are
 released. An invalid or already closed handle returns `tab_not_found`.
