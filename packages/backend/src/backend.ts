@@ -278,8 +278,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     deviceOnline: deviceId => runnerRegistry.deviceOnline(deviceId),
     now: options.expose?.now ?? (() => Date.now()),
     sweepMs: options.expose?.sweepMs,
-    scheme: () =>
-      options.publicUrl?.startsWith('https') ? 'https' : 'http',
+    origin: () => options.publicUrl ?? url,
   })
   const managedHosts = options.managedHosts
     ? new ManagedHosts({
