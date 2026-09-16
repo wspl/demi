@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Upload attachment fixture</title>
+<label>Single file<input id="single" type="file"></label>
+<label>Multiple files<input id="multiple" type="file" multiple></label>
+<input id="hidden" type="file" multiple hidden>
+<button id="choose" onclick="triggers++; document.querySelector('#hidden').click()">Choose files</button>
+<button id="no-chooser" onclick="triggers++">No chooser</button>
+<input id="disabled" type="file" disabled>
+<output id="names"></output>
+<script>
+let triggers = 0;
+document.addEventListener('change', event => {
+  if (event.target.type === 'file') {
+    document.querySelector('#names').textContent = [...event.target.files].map(file => file.name).join(',');
+  }
+});
+</script>
