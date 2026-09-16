@@ -275,6 +275,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const exposes = new Exposes({
     control,
     domain: options.exposeDomain ?? null,
+    deviceOnline: deviceId => runnerRegistry.deviceOnline(deviceId),
     now: options.expose?.now ?? (() => Date.now()),
     sweepMs: options.expose?.sweepMs,
     scheme: () =>

@@ -97,6 +97,8 @@ export class Exposes {
     control: ControlService
     /** `DEMI_EXPOSE_DOMAIN`; null disables the whole feature. */
     domain: string | null
+    /** The registry's live-connection check: creation requires a connected device. */
+    deviceOnline: (deviceId: string) => boolean
     now: () => number
     /** The fallback scheme of printed URLs when no request supplies one. */
     scheme: () => string
@@ -136,6 +138,11 @@ export class Exposes {
       throw new ExposeError(
         'expose_unavailable',
         'This backend has no expose domain configured (DEMI_EXPOSE_DOMAIN)'
+      )
+    if (!this.deps.deviceOnline(device.id))
+      throw new ExposeError(
+        'device_offline',
+        `The device ${device.id} is offline; connect it before exposing a service`
       )
     const now = this.deps.now()
     return this.deps.control.createExpose({

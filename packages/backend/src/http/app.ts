@@ -179,8 +179,7 @@ export function createApp(options: {
   if (options.exposes)
     app.route('/api/exposes', exposeRoutes({
       exposes: options.exposes,
-      control: options.control,
-      registry: options.runnerRegistry
+      control: options.control
     }))
   app.route('/api/workspaces', workspaceRoutes({
     control: options.control,
