@@ -11,6 +11,7 @@ import type {
   DeviceRecord,
 } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
+import { administrativeStore } from '../storage/host-store'
 import {
   cloudSessionDirectory,
   resolveExecutionTarget
@@ -51,6 +52,7 @@ interface HostSelection {
 }
 
 export class ConversationTargets {
+  /** Device access is conversation-less; its Hosts share one scratch scope. */
   private readonly fileActivity = new Map<string, ActivityGate>()
   private readonly activityObservers = new Set<(id: string, active: boolean) => void>()
   private readonly subscriptions = new DisposableStack()
@@ -188,6 +190,28 @@ export class ConversationTargets {
     return this.withHost(id, async host => host, { deviceId: selectedDeviceId })
   }
 
+  /**
+   * Device access — the one entry `withHost` has no conversation for
+   * (`sessions-and-targets.md` § Host operations): the registry's Host for a
+   * device the owner owns, admitted only while connected. It takes no file
+   * gate (it touches no conversation files) and never wakes a stopped Cloud
+   * (a stop has already destroyed the device's exposes). It exists for the
+   * public relay alone; its calls mark no machine activity.
+   */
+  async deviceHost(userId: string, deviceId: string): Promise<RemoteHost | null> {
+    const device = await this.deps.control.getDevice(deviceId)
+    if (!device || device.userId !== userId)
+      return null
+    if (!this.deps.registry.deviceOnline(deviceId))
+      return null
+    return this.deps.registry.hostFor(
+      { deviceId, path: '/' },
+      DEVICE_ACCESS_CONVERSATION,
+      administrativeStore,
+      { admit: false }
+    )
+  }
+
   /** Resolve the authorized Host binding without waiting for any device transition. */
   private async select(id: string, selectedDeviceId: string | undefined, allocate: boolean): Promise<HostSelection> {
     const { control, registry, managedHosts } = this.deps
@@ -294,3 +318,5 @@ export class ConversationTargets {
     }
   }
 }
+
+const DEVICE_ACCESS_CONVERSATION = '\0device-access'

@@ -14,6 +14,8 @@ import type { RunnerRegistry } from '../runner/registry'
 import { relayedPipesOf, type Pipe, type PipeBroker } from '../runner/pipes'
 import type { ControlService } from '../storage/control'
 import type { ConversationHostAccess } from '../conversation/target'
+import { createExposeCommandGroup } from '../expose/commands'
+import type { Exposes } from '../expose/records'
 
 export interface HostCommandDeps {
   catalogFor(agentSessionId: string): Promise<RemoteCommandCatalog>
@@ -21,13 +23,16 @@ export interface HostCommandDeps {
   registry: RunnerRegistry
   pipes: PipeBroker
   withHost: ConversationHostAccess
+  /** The expose records behind `demi host expose` (`expose.md`). */
+  exposes: Exposes
 }
 
 /**
  * The backend-contributed `demi host` subcommand group (`commands.md` § The
- * `demi host` group): `list`, `current`, `shell --host`. A cross-host command
- * runs as a job on that host with the caller's stdin and stdout attached to
- * the job's as pipes (`runner.md` § Pipes), never over the runner sockets.
+ * `demi host` group): `list`, `current`, `shell --host`, `expose`. A
+ * cross-host command runs as a job on that host with the caller's stdin and
+ * stdout attached to the job's as pipes (`runner.md` § Pipes), never over
+ * the runner sockets.
  */
 export function createHostCommandGroup(
   deps: HostCommandDeps,
@@ -35,11 +40,12 @@ export function createHostCommandGroup(
 ): CommandGroup {
   return {
     name: 'host',
-    summary: 'The hosts this conversation reaches: list them, show the main one, run a command on another.',
+    summary: 'The hosts this conversation reaches: list them, show the main one, run a command on another, expose a service.',
     subcommands: [
       listCommand(deps, conversationId),
       currentCommand(deps, conversationId),
-      shellCommand(deps, conversationId)
+      shellCommand(deps, conversationId),
+      createExposeCommandGroup(deps, conversationId),
     ],
   }
 }

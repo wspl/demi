@@ -390,12 +390,14 @@ export class RunnerRegistry {
    * The stable `Host` for one execution target: same (device, conversation,
    * path) ⇒ same object, so per-Host shell state survives reconnects. Offline
    * devices still resolve — operations fail as ordinary tool errors until the
-   * runner reattaches.
+   * runner reattaches. `admit: false` is device access: the Host's calls mark
+   * no machine activity, because expose traffic is retention, not activity.
    */
   hostFor(
     workspace: Pick<WorkspaceRecord, 'deviceId' | 'path'>,
     conversationId: string,
-    store: HostStore
+    store: HostStore,
+    options: { admit?: boolean } = {}
   ): RemoteHost {
     const key = `${conversationId}\0${workspace.path}`
     let deviceHosts = this.hosts.get(workspace.deviceId)
@@ -407,7 +409,9 @@ export class RunnerRegistry {
     if (!host) {
       host = new RemoteHost({
         defaultCwd: workspace.path,
-        admit: () => this.options.admit?.(workspace.deviceId) ?? (() => {}),
+        admit: options.admit === false
+          ? undefined
+          : () => this.options.admit?.(workspace.deviceId) ?? (() => {}),
         identity: this.identities.get(workspace.deviceId) ?? {
           uid: 0,
           gid: 0,

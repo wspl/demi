@@ -48,6 +48,12 @@ export interface ManagedHostsOptions {
   now?: () => number
   idleMs?: number
   lifecycle?: LifecycleCoordinator
+  /**
+   * A machine leaving the running state (`expose.md` § Lifetime): idle stop,
+   * lifetime cap, reset, death and backend close all pass here — the single
+   * transition, not a second observer of machine state.
+   */
+  onLeftRunning?: (deviceId: string) => Promise<void>
 }
 export class ManagedHostError extends Error {
   constructor(
@@ -101,11 +107,27 @@ export class ManagedHosts {
         return
       }
       machine.deaths.push(this.now())
+      this.leaveRunning(machine)
       machine.state = 'off'
       machine.stopIdle?.()
       machine.stopIdle = null
       this.options.registry.disconnect(id)
     })
+  }
+
+  /**
+   * The one place every running→not-running transition passes through; the
+   * caller commits the new state right after, so the exposes end before the
+   * machine's sockets do.
+   */
+  private async leaveRunning(machine: Machine): Promise<void> {
+    if (machine.state !== 'running')
+      return
+    try {
+      await this.options.onLeftRunning?.(machine.device.id)
+    } catch (error) {
+      this.log(`leaving running: ${machine.device.id}: ${errorMessage(error)}`)
+    }
   }
 
   private machine(device: DeviceRecord): Machine {
@@ -282,6 +304,7 @@ export class ManagedHosts {
     if (machine.state !== 'running') {
       return
     }
+    await this.leaveRunning(machine)
     machine.state = 'saving'
     const save = this.saveMachine(machine)
     machine.transitionTask = save
@@ -446,6 +469,7 @@ export class ManagedHosts {
       if (machine.transitionTask) {
         await machine.transitionTask.catch(noop)
       }
+      await this.leaveRunning(machine)
       machine.state = 'resetting'
       conversations = await this.options.reserveConversations(machine.device.userId, 'reset')
       if (!conversations) throw new Error('Cloud reset could not reserve its conversations')

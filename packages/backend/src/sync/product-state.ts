@@ -6,6 +6,7 @@ import type { RunnerRegistry } from '../runner/registry'
 import type { ProviderVault } from '../vault/providers'
 import type { ProviderAssembly } from '../llm/assembly'
 import type { ManagedHosts } from '../managed/lifecycle'
+import type { Exposes } from '../expose/records'
 import { providerOwner } from '../vault/scope'
 import { publicProvider } from '../vault/public-provider'
 import { providerDetails } from '../llm/provider-details'
@@ -26,11 +27,12 @@ export class ProductState {
     assembly: ProviderAssembly;
     managed: ManagedHosts | null;
     mode: InstanceMode;
+    exposes: Exposes;
   }) {}
 
   async read(user: User) {
-    const { control, stores, server, registry, vault, assembly, managed, mode } = this.deps
-    const [active, archived, workspaces, paired, managedDevice, preferences, entries, cloud] = await Promise.all(
+    const { control, stores, server, registry, vault, assembly, managed, mode, exposes } = this.deps
+    const [active, archived, workspaces, paired, managedDevice, preferences, entries, cloud, exposeRecords] = await Promise.all(
       [
         control.listConversations(user.id),
         control.listConversations(user.id, { archived: true }),
@@ -40,6 +42,7 @@ export class ProductState {
         control.getUserPreferences(user.id),
         vault.list({ ownerUserId: providerOwner(mode, user.id) }),
         managed?.status(user.id) ?? null,
+        exposes.list(user.id),
       ]
     )
     // The user's Cloud is a device like the paired ones for everything that
@@ -83,6 +86,8 @@ export class ProductState {
           ? { id: cloud.device.id, name: cloud.device.name }
           : null
       } : null,
+      exposes: exposeRecords.map(record => exposes.view(record)),
+      exposeDomain: exposes.domain,
     }
   }
 }

@@ -37,6 +37,8 @@ import { ConversationTargets } from './conversation/target'
 import { CLOUD_HOME } from './conversation/execution-target'
 import { createCloudWorkspace } from './managed/cloud-workspace'
 import { createHostCommandGroup } from './runner/host-command'
+import { Exposes } from './expose/records'
+import { ExposeRelay } from './expose/relay'
 import { ManagedHosts, type ManagedHostsConfig } from './managed/lifecycle'
 import type { ManagedHostProvisioner } from '@demicodes/machines'
 import { createApp } from './http/app'
@@ -67,6 +69,11 @@ import { CONTROL_MIGRATIONS, migrate } from './storage/migrations'
 export interface BackendOptions {
   /** Published historical edits; the caller owns an injected storage client. */
   changeObjects?: ChangeObjects
+  /**
+   * `DEMI_EXPOSE_DOMAIN` (`expose.md` § Deployment): the domain under which
+   * expose hostnames live. Unset disables the feature everywhere.
+   */
+  exposeDomain?: string
   /** Exact native package catalog and deployment-owned artifact resolution. */
   nativeCommands: RemoteShellEnvironmentFactoryOptions
   /**
@@ -108,6 +115,8 @@ export interface BackendOptions {
   lifecycle?: { idleMs?: number; now?: () => number; pollMs?: number }
   /** Usage-enforcement tuning — tests only. */
   usage?: { providerRequestsPerMinute?: number }
+  /** Expose timing tuning — tests only. */
+  expose?: { now?: () => number; sweepMs?: number; idleTimeoutMs?: number }
   /** Session lifetime and login lockout tuning — tests only. */
   auth?: WebSessionsOptions & LoginLimiterOptions
   /**
@@ -260,11 +269,23 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     targets: () => targets,
     agents: () => agentServer,
   })
+  // The expose records (`expose.md`): one-hour public URLs over the relay.
+  // Without a domain the service still answers — `add` and the product
+  // surface say the feature is unavailable.
+  const exposes = new Exposes({
+    control,
+    domain: options.exposeDomain ?? null,
+    now: options.expose?.now ?? (() => Date.now()),
+    sweepMs: options.expose?.sweepMs,
+    scheme: () =>
+      options.publicUrl?.startsWith('https') ? 'https' : 'http',
+  })
   const managedHosts = options.managedHosts
     ? new ManagedHosts({
       lifecycle,
       idleMs,
       now: options.lifecycle?.now,
+      onLeftRunning: deviceId => exposes.destroyForDevice(deviceId),
       control,
       registry: runnerRegistry,
       provisioner: options.managedHosts.provisioner,
@@ -316,6 +337,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     registry: runnerRegistry,
     pipes,
     withHost: targets.withHost.bind(targets),
+    exposes,
   }
   const commandsFor = (agentSessionId: string): Command[] => [
     createDemiCommand(
@@ -362,6 +384,17 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   })
 
   const { upgradeWebSocket, websocket } = createBunWebSocket()
+  // The public relay exists only with a domain: an expose hostname is never
+  // answered by the product routes, and without the domain there are none.
+  const relay = options.exposeDomain
+    ? new ExposeRelay({
+      exposes,
+      targets,
+      pipes,
+      upgradeWebSocket,
+      idleTimeoutMs: options.expose?.idleTimeoutMs,
+    })
+    : null
   const runnerReleaseDir = options.runnerReleaseDir ??
     process.env.DEMI_RUNNER_RELEASE_DIR
   const conversationForks = new ConversationForks({
@@ -371,6 +404,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
 
   const app = createApp({
     webDirectory: options.webDirectory,
+    ...(relay ? { relay } : {}),
+    exposes,
     ...(runnerReleaseDir ? { runnerInstallation: {
         directory: runnerReleaseDir,
         backendUrl: options.publicUrl
@@ -385,7 +420,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       vault,
       assembly,
       managed: managedHosts,
-      mode: options.mode
+      mode: options.mode,
+      exposes,
     }),
     conversationForks,
     conversationUpdates: new ConversationUpdates({
@@ -450,6 +486,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       cleanup.defer(() => targets.close())
       cleanup.defer(() => conversations.close())
       cleanup.defer(() => agentServer.close())
+      cleanup.defer(() => exposes.close())
       cleanup.defer(() => lifecycle.close())
       cleanup.defer(() => logins.close())
       await cleanup.disposeAsync()
