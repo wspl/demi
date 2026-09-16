@@ -111,13 +111,7 @@ export function createApp(options: {
     app.use('*', async (c, next) => {
       if (relay.idFromHostHeader(c.req.header('host')) === null)
         return next()
-      try {
-        const response = await relay.handle(c)
-        return relay.handle(c)
-      } catch (error) {
-        console.error('[app] relay threw', error)
-        throw error
-      }
+      return relay.handle(c)
     })
   }
 
