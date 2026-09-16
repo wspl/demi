@@ -336,14 +336,14 @@ describe('expose acceptance', () => {
   }, 30_000)
 
   test('5: a paired device going offline keeps its exposes and answers 502 until reconnect', async () => {
-    const { host } = await pairedExpose()
+    const { id, host } = await pairedExpose()
     await world.killRunner('laptop')
     await Bun.sleep(100)
     const offline = await relay(host, '/seen')
     expect(offline.status).toBe(502)
     expect(await offline.text()).toContain('device_offline')
     const kept = await world.api<{ exposes: Array<{ id: string }> }>('/api/exposes')
-    expect(kept.exposes.length).toBe(1)
+    expect(kept.exposes.map(entry => entry.id)).toContain(id)
     await world.returnRunner('laptop')
     expect((await relay(host, '/seen')).status).toBe(200)
   }, 60_000)
@@ -375,21 +375,22 @@ describe('expose acceptance', () => {
 
   test('8: the 65th concurrent connection answers 503 and a closed one admits again', async () => {
     const { host } = await pairedExpose()
-    const held: Array<Response> = []
+    const held: Array<ReturnType<ReadableStream<Uint8Array>['getReader']>> = []
     for (let i = 0; i < 64; i++) {
       const response = await relay(host, '/hold')
       expect(response.status).toBe(200)
       // Pull the first byte so the head has arrived and the slot is held.
-      await response.body!.getReader().read()
-      held.push(response)
+      const reader = response.body!.getReader()
+      await reader.read()
+      held.push(reader)
     }
     expect((await relay(host, '/hold')).status).toBe(503)
-    await held.pop()!.body!.cancel()
+    await held.pop()!.cancel()
     await Bun.sleep(200)
     const admitted = await relay(host, '/hold')
     expect(admitted.status).toBe(200)
-    for (const response of held)
-      await response.body!.cancel()
+    for (const reader of held)
+      await reader.cancel()
     await admitted.body!.cancel()
   }, 60_000)
 
