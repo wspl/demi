@@ -33,7 +33,20 @@ const IDLE_TIMEOUT_MS = 10 * 60_000
 interface RelayStream {
   writer: PipeWriter
   source: AsyncIterable<Uint8Array>
+  /** Fails both pipes: the abnormal ending of the connection. */
   dispose(reason: string): void
+}
+
+/** The two endings of one relayed connection. */
+interface ConnectionEndings {
+  /** Abnormal: the pipes fail, the runner closes its socket at once. */
+  end(): void
+  /**
+   * The exchange completed: the input pipe already ended (EOF half-closes
+   * the socket's write side) and the output pipe settles at its own EOF, so
+   * nothing is torn down — only the relay's bookkeeping closes.
+   */
+  settle(): void
 }
 
 /**
@@ -83,29 +96,35 @@ export class ExposeRelay {
     )
     if (!release)
       return limitReached()
+    let stream: RelayStream | null = null
+    let idle: IdleWatch | null = null
+    let done = false
+    // One owner for the connection's whole life: the response may stream long
+    // after `handle` returns, so nothing is released on the way out.
+    const stop = (teardown: boolean) => () => {
+      if (done)
+        return
+      done = true
+      if (teardown)
+        stream?.dispose('visitor connection ended')
+      idle?.close()
+      release()
+    }
+    const endings: ConnectionEndings = { end: stop(true), settle: stop(false) }
     try {
-      const stream = await this.openStream(record, host.net)
-      const idle = new IdleWatch(
-        this.deps.idleTimeoutMs ?? IDLE_TIMEOUT_MS,
-        () => {
-          controller.abort(new Error('relay connection idle'))
-          stream.dispose('relay connection idle')
-        }
-      )
-      try {
-        if (c.req.header('upgrade')?.toLowerCase() === 'websocket')
-          return await this.relayWebSocket(c, record, stream, idle)
-        return await this.relayHttp(c, record, stream, idle)
-      } finally {
-        idle.close()
-        stream.dispose('visitor connection ended')
-      }
+      stream = await this.openStream(record, host.net)
+      idle = new IdleWatch(this.deps.idleTimeoutMs ?? IDLE_TIMEOUT_MS, () => {
+        controller.abort(new Error('relay connection idle'))
+        endings.end()
+      })
+      if (c.req.header('upgrade')?.toLowerCase() === 'websocket')
+        return await this.relayWebSocket(c, record, stream, idle, endings)
+      return await this.relayHttp(c, record, stream, idle, endings)
     } catch (error) {
+      endings.end()
       if (controller.signal.aborted)
         return aborted()
       return badGateway(error instanceof RemoteNetError ? error.code : 'unreachable')
-    } finally {
-      release()
     }
   }
 
@@ -121,11 +140,13 @@ export class ExposeRelay {
     const [host, port] = splitAddress(record.address)
     const input = this.deps.pipes.open(undefined, { deviceId: record.deviceId })
     const output = this.deps.pipes.open({ deviceId: record.deviceId })
+    // Disposal at the connection's abnormal end rejects settled pipes; a
+    // rejection no one observes is an expected ending here.
+    input.done.catch(() => {})
+    output.done.catch(() => {})
     try {
       await net.open({ host, port, input: input.ref(), output: output.ref() })
     } catch (error) {
-      input.done.catch(() => {})
-      output.done.catch(() => {})
       this.deps.pipes.fail(input.id, 'net open failed')
       this.deps.pipes.fail(output.id, 'net open failed')
       throw error
@@ -145,13 +166,15 @@ export class ExposeRelay {
     c: Context,
     record: { address: string },
     stream: RelayStream,
-    idle: IdleWatch
+    idle: IdleWatch,
+    endings: ConnectionEndings
   ): Promise<Response> {
     const request = c.req.raw
     const url = new URL(request.url)
     const headers: Array<[string, string]> = []
     for (const [name, value] of request.headers) {
-      if (isHopByHop(name) || name === 'host' || name === 'content-length')
+      const lower = name.toLowerCase()
+      if (isHopByHop(lower) || lower === 'host' || lower === 'content-length')
         continue
       headers.push([name, value])
     }
@@ -166,34 +189,36 @@ export class ExposeRelay {
     await writer.write(
       serializeRequestHead(request.method, url.pathname + url.search, headers)
     )
+    // The request's last byte half-closes the service's socket: the input
+    // pipe ending is the runner's EOF (`runner.md` § Network streams).
+    const endInput = () => stream.writer.end()
+    if (!request.body)
+      endInput()
     const response = new Promise<Response>((resolve, reject) => {
-      const body: {
-        current: ReadableStreamDefaultController<Uint8Array> | null
-      } = { current: null }
+      // The body is delivered only from inside the stream's own pulls: this
+      // Bun serves no response whose stream is fed from the outside.
+      const body = new BodyQueue()
       const parser = new HttpResponseParser(
         head => {
           const responseHeaders: Array<[string, string]> = []
           for (const [name, value] of head.headers) {
-            if (isHopByHop(name) || name === 'content-length')
+            const lower = name.toLowerCase()
+            if (isHopByHop(lower) || lower === 'content-length')
               continue
             responseHeaders.push([name, value])
           }
           resolve(new Response(
-            new ReadableStream<Uint8Array>({
-              start: (controller) => {
-                body.current = controller
-              },
-              cancel: () => stream.dispose('visitor cancelled the response'),
-            }),
+            body.stream,
             { status: head.status, headers: responseHeaders }
           ))
         },
         chunk => {
           idle.touch()
-          body.current?.enqueue(chunk)
+          body.enqueue(chunk)
         },
         () => {
-          body.current?.close()
+          body.close()
+          endings.settle()
         }
       )
       void (async () => {
@@ -202,10 +227,12 @@ export class ExposeRelay {
             parser.feed(chunk)
           }
           parser.end()
+          endings.settle()
         } catch (error) {
           parser.fail(String(error))
-          body.current?.error(error)
+          body.fail(error)
           reject(error)
+          endings.end()
         }
       })()
     })
@@ -219,10 +246,11 @@ export class ExposeRelay {
             await writer.write(CHUNK_END)
           }
           await writer.write(CHUNKED_EOF)
+          endInput()
         } catch {
           // The stream's failure ends the exchange; the visitor sees the
           // response end rather than a hang.
-          stream.dispose('request body failed')
+          endings.end()
         }
       })()
     }
@@ -234,30 +262,51 @@ export class ExposeRelay {
     c: Context,
     record: { address: string },
     stream: RelayStream,
-    idle: IdleWatch
+    idle: IdleWatch,
+    endings: ConnectionEndings
   ): Promise<Response> {
     const url = new URL(c.req.url)
     const writer = new TouchingWriter(stream.writer, idle)
     await writer.write(
       wsHandshake(url.pathname + url.search, record.address, wsKey())
     )
-    // The service's handshake answer arrives before any frame.
-    const handshake = await readHandshake(stream.source)
-    if (!/^HTTP\/1\.[01] 101/.test(handshake.head))
-      return badGateway('refused')
+    // The service's handshake answer arrives before any frame. The iterator
+    // stays alive across it: returning it early would cancel the stream.
+    const chunks = stream.source[Symbol.asyncIterator]()
+    const nextChunk = async (): Promise<Uint8Array | null> => {
+      const next = await chunks.next()
+      return next.done ? null : next.value
+    }
+    let pending: Uint8Array = new Uint8Array(0)
+    for (;;) {
+      const chunk = await nextChunk()
+      if (chunk === null)
+        throw new Error('no handshake answer')
+      pending = concat(pending, chunk)
+      const headEnd = indexOfAscii(pending, '\r\n\r\n')
+      if (headEnd !== -1) {
+        const head = ascii(pending.subarray(0, headEnd))
+        if (!/^HTTP\/1\.[01] 101/.test(head))
+          return badGateway('refused')
+        pending = pending.subarray(headEnd + 4)
+        break
+      }
+    }
     const parser = new WsFrameParser()
     let client: {
       send(data: string | ArrayBuffer | Uint8Array): void
       close(code: number, reason: string): void
     } | null = null
     let closed = false
-    const finish = (code: number, reason: string) => {
+    const finish = (code: number, reason: string, graceful: boolean) => {
       if (closed)
         return
       closed = true
-      idle.close()
       client?.close(code, reason)
-      stream.dispose('websocket closed')
+      if (graceful)
+        endings.settle()
+      else
+        endings.end()
     }
     const deliver = (frame: ServerFrame) => {
       if (frame.kind === 'message') {
@@ -266,7 +315,15 @@ export class ExposeRelay {
           : frame.data)
         idle.touch()
       } else if (frame.kind === 'close') {
-        finish(frame.code === 1005 ? 1000 : frame.code, frame.reason)
+        // The close handshake: answer the service's close, then EOF.
+        void writer
+          .write(encodeClientFrame(WS_CLOSE, encodeClosePayload(
+            frame.code === 1005 ? 1000 : frame.code,
+            frame.reason
+          )))
+          .then(() => stream.writer.end())
+          .catch(() => {})
+        finish(frame.code === 1005 ? 1000 : frame.code, frame.reason, true)
       } else if (frame.kind === 'ping') {
         void writer.write(encodeClientFrame(WS_PONG, frame.data))
           .catch(() => {})
@@ -274,17 +331,20 @@ export class ExposeRelay {
     }
     void (async () => {
       try {
-        if (handshake.rest.length > 0)
-          for (const frame of parser.feed(handshake.rest))
+        if (pending.length > 0)
+          for (const frame of parser.feed(pending))
             deliver(frame)
-        for await (const chunk of stream.source) {
+        for (;;) {
+          const chunk = await nextChunk()
+          if (chunk === null)
+            break
           for (const frame of parser.feed(chunk))
             deliver(frame)
         }
       } catch {
         // The stream's end closes the client; nothing else to deliver.
       }
-      finish(1006, '')
+      finish(1006, '', false)
     })()
     // The server runtime offers no socket after the upgrade, so the frames
     // are re-emitted through the instance's own WebSocket upgrade helper.
@@ -302,7 +362,7 @@ export class ExposeRelay {
             typeof data === 'string' ? WS_TEXT : WS_BINARY,
             payload
           ))
-          .catch(() => finish(1006, ''))
+          .catch(() => finish(1006, '', false))
       },
       onClose(event) {
         const code = 'code' in event && typeof event.code === 'number'
@@ -313,11 +373,68 @@ export class ExposeRelay {
           : ''
         void writer
           .write(encodeClientFrame(WS_CLOSE, encodeClosePayload(code, reason)))
+          .then(() => stream.writer.end())
           .catch(() => {})
-        finish(1005, '')
+        finish(code, reason, true)
       },
     }))(c, async () => {})
     return upgraded ?? badGateway('refused')
+  }
+}
+
+/** The relayed response body: queued by the parser, drained by the visitor. */
+class BodyQueue {
+  private chunks: Uint8Array[] = []
+  private state: 'open' | 'closed' | 'failed' = 'open'
+  private failure: unknown = null
+  private wake: (() => void) | null = null
+  readonly stream = new ReadableStream<Uint8Array>({
+    pull: async (controller) => {
+      while (this.chunks.length === 0 && this.state === 'open')
+        await new Promise<void>(resolve => {
+          this.wake = resolve
+        })
+      this.wake = null
+      const chunk = this.chunks.shift()
+      if (chunk !== undefined) {
+        controller.enqueue(chunk)
+        return
+      }
+      if (this.state === 'failed')
+        throw this.failure
+      controller.close()
+    },
+    cancel: () => {
+      this.state = 'closed'
+      this.woken()
+    },
+  })
+
+  enqueue(chunk: Uint8Array): void {
+    if (this.state !== 'open')
+      return
+    this.chunks.push(chunk)
+    this.woken()
+  }
+
+  close(): void {
+    if (this.state !== 'open')
+      return
+    this.state = 'closed'
+    this.woken()
+  }
+
+  fail(error: unknown): void {
+    if (this.state !== 'open')
+      return
+    this.state = 'failed'
+    this.failure = error
+    this.woken()
+  }
+
+  private woken(): void {
+    this.wake?.()
+    this.wake = null
   }
 }
 
@@ -356,22 +473,6 @@ class IdleWatch {
       clearTimeout(this.timer)
     this.timer = null
   }
-}
-
-async function readHandshake(
-  source: AsyncIterable<Uint8Array>
-): Promise<{ head: string; rest: Uint8Array }> {
-  let buffer: Uint8Array = new Uint8Array(0)
-  for await (const chunk of source) {
-    buffer = concat(buffer, chunk)
-    const index = indexOfAscii(buffer, '\r\n\r\n')
-    if (index !== -1)
-      return {
-        head: ascii(buffer.subarray(0, index)),
-        rest: buffer.subarray(index + 4),
-      }
-  }
-  throw new Error('no handshake answer')
 }
 
 function splitAddress(address: string): [string, number] {
