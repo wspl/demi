@@ -126,7 +126,7 @@ const fullNarrowTab = ref<SettingsTab>('skills')
         title="Devices · exposes"
         note="Each device's exposes under its row: address, live countdown, URL to copy or open, renew and remove. First with exposes (one under a minute), then none, then the feature off entirely."
       >
-        <div class="max-w-2xl rounded-lg border border-line bg-surface">
+        <div class="max-w-2xl">
           <GalleryDeviceExposes />
         </div>
       </GallerySection>

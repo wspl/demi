@@ -88,38 +88,44 @@ async function claimDevice() {
 
 <template>
   <div class="flex flex-col gap-6">
-    <SettingsDevices
-      :devices="devices"
-      :cloud="cloud"
-      :overlay-store="appOverlayStore"
-      :installation="demoDeviceInstallation"
-      :claim-device="claimDevice"
-      expose-domain="expose.demi.example"
-      :exposes="live"
-      :cloud-exposes="[]"
-      :expose-pending-ids="pending"
-      @renew-expose="renew"
-      @remove-expose="remove"
-    />
-    <SettingsDevices
-      :devices="devices"
-      :cloud="cloud"
-      :overlay-store="appOverlayStore"
-      :installation="demoDeviceInstallation"
-      :claim-device="claimDevice"
-      expose-domain="expose.demi.example"
-      :exposes="empty"
-      :cloud-exposes="[]"
-    />
-    <SettingsDevices
-      :devices="devices"
-      :cloud="cloud"
-      :overlay-store="appOverlayStore"
-      :installation="demoDeviceInstallation"
-      :claim-device="claimDevice"
-      :expose-domain="null"
-      :exposes="[]"
-      :cloud-exposes="[]"
-    />
+    <div class="rounded-lg border border-line bg-surface">
+      <SettingsDevices
+        :devices="devices"
+        :cloud="cloud"
+        :overlay-store="appOverlayStore"
+        :installation="demoDeviceInstallation"
+        :claim-device="claimDevice"
+        expose-domain="expose.demi.example"
+        :exposes="live"
+        :cloud-exposes="[]"
+        :expose-pending-ids="pending"
+        @renew-expose="renew"
+        @remove-expose="remove"
+      />
+    </div>
+    <div class="rounded-lg border border-line bg-surface">
+      <SettingsDevices
+        :devices="devices"
+        :cloud="cloud"
+        :overlay-store="appOverlayStore"
+        :installation="demoDeviceInstallation"
+        :claim-device="claimDevice"
+        expose-domain="expose.demi.example"
+        :exposes="empty"
+        :cloud-exposes="[]"
+      />
+    </div>
+    <div class="rounded-lg border border-line bg-surface">
+      <SettingsDevices
+        :devices="devices"
+        :cloud="cloud"
+        :overlay-store="appOverlayStore"
+        :installation="demoDeviceInstallation"
+        :claim-device="claimDevice"
+        :expose-domain="null"
+        :exposes="[]"
+        :cloud-exposes="[]"
+      />
+    </div>
   </div>
 </template>
