@@ -75,6 +75,12 @@ export interface Device {
    * exit.
    */
   lost: number
+  /**
+   * Pipe ends named but unreported when the runner was killed: a killed
+   * runner never sends them (test 5's offline scenario kills the laptop
+   * with an exchange still in flight).
+   */
+  lostPipeEnds: number
 }
 
 export interface WireFrame {
@@ -220,7 +226,8 @@ export class World {
       runner,
       deviceId: device.id,
       workspaceId: workspace.id,
-      lost: 0
+      lost: 0,
+      lostPipeEnds: 0
     }
     this.devices.set(name, paired)
     return paired
@@ -237,7 +244,35 @@ export class World {
       'in',
       'job_exit'
     ) - device.lost
+    // Pipe ends named but unreported at the kill are forgiven the same way:
+    // a runner the world killed never sends them (the offline scenario's
+    // exchange is still in flight here).
+    device.lostPipeEnds += this.pipeEndsNamed(device) - this.pipeEndsReported(
+      device
+    ) - device.lostPipeEnds
     await device.runner.stop()
+  }
+
+  private pipeEndsNamed(device: Device): number {
+    return this.frames.filter(
+      f => f.deviceId === device.deviceId && f.direction === 'out'
+    ).reduce((n, f) => {
+      const m = f.message
+      if (m.type === 'rpc_pipes')
+        return n + (m.stdin ? 1 : 0) + 1
+      if (m.type === 'job_start')
+        return n + (m.stdin ? 1 : 0) + (m.stdout ? 1 : 0)
+      if (m.type === 'net_open')
+        return n + 2
+      return n
+    }, 0)
+  }
+
+  private pipeEndsReported(device: Device): number {
+    return this.frames.filter(
+      f => f.deviceId === device.deviceId && f.direction === 'in' &&
+        f.message.type === 'pipe_done'
+    ).length
   }
 
   private jobCount(
@@ -415,14 +450,21 @@ export class World {
         return n
       }, 0)
       const reported = () => count('in', 'pipe_done')
+      // Ends the kill made impossible are already forgiven; the rest must
+      // all arrive (test 5's offline scenario is the killing case).
+      const forgivable = device.lostPipeEnds
       if (device.lost === 0)
-        await waitFor(() => reported() === endsNamed, undefined, { timeoutMs: 5_000 })
+        await waitFor(
+          () => reported() === endsNamed - forgivable,
+          undefined,
+          { timeoutMs: 5_000 }
+        )
           .catch(() => {})
       expect(reported(), `pipe ends reported on ${device.name}`)
         .toBeLessThanOrEqual(endsNamed)
       if (device.lost === 0)
         expect(reported(), `pipe ends reported on ${device.name}`)
-          .toBe(endsNamed)
+          .toBe(endsNamed - forgivable)
     }
     // One ledger row per provider request the model answered.
     const usage = await this.api<{ totals: Array<{ requests: number }> }>(
