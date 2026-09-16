@@ -1,0 +1,6 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CDP scope fixture</title>
+<script>
+const worker = new Worker(URL.createObjectURL(new Blob(['self.answer = 42; self.onmessage = () => postMessage(answer);'], {type:'text/javascript'})));
+</script>
