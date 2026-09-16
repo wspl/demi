@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
@@ -14,12 +16,16 @@ const acceptance = process.env.DEMI_BROWSER_CLOUD_E2E === '1' ? test : test.skip
 acceptance('Agent browser runs in real Cloud, retires before reset/idle shutdown, and wakes with preserved files', async () => {
   const configuration = z.object({
     DEMI_BROWSER_PACKAGE: z.string().min(1),
+    DEMI_BROWSER_RUNNER: z.string().min(1),
     DEMI_BROWSER_CLOUD_SOCKET: z.string().min(1),
     DEMI_BROWSER_CLOUD_PUBLIC: z.url(),
     DEMI_BROWSER_CLOUD_TARGET: nativeTargetSchema,
   }).parse(process.env)
   const descriptor = nativePackageSchema.parse(await Bun.file(join(configuration.DEMI_BROWSER_PACKAGE, 'descriptor.json')).json())
   const artifact = descriptor.targets[configuration.DEMI_BROWSER_CLOUD_TARGET]
+  const runnerHash = createHash('sha256')
+    .update(await readFile(configuration.DEMI_BROWSER_RUNNER))
+    .digest('hex')
   const publicUrl = new URL(configuration.DEMI_BROWSER_CLOUD_PUBLIC)
   const world = await World.create({
     port: Number(publicUrl.port), publicUrl: publicUrl.origin,
@@ -41,6 +47,7 @@ acceptance('Agent browser runs in real Cloud, retires before reset/idle shutdown
     const driver = await world.conversation('cloud')
     const first = await driver.turn({ model: [
       model.shell('cloud-browser', withCloudApplication(`set -euxo pipefail
+sudo -n sha256sum /proc/1/exe
 tab=$(demi browser open '${applicationUrl.href}' --json | jq -r .tab)
 printf '%s' "$tab" > browser-tab.txt
 printf retained > browser-marker.txt
@@ -54,6 +61,7 @@ test -s cloud-browser.png`), 600000),
     ] })
     expect(first.received[0]).toContain('exitCode: 0')
     expect(first.received[0]).toContain('Cloud signed in')
+    expect(first.received[0]).toContain(`${runnerHash}  /proc/1/exe`)
     console.info('Cloud browser login and screenshot passed')
     const reset = await world.api<{ operation: ManagedOperation }>('/api/cloud/reset', { operationId: crypto.randomUUID() })
     const resetDeadline = performance.now() + 90_000
@@ -84,11 +92,12 @@ demi browser open '${applicationUrl.href}' --json`), 360000),
     }
     expect(world.frames.filter(frame => frame.message.type === 'resource_release').length).toBeGreaterThanOrEqual(2)
     const woken = await driver.turn({ model: [
-      model.shell('cloud-browser-wake', 'cat browser-marker.txt; demi browser tabs --json', 30000),
+      model.shell('cloud-browser-wake', 'set -e; sudo -n sha256sum /proc/1/exe; cat browser-marker.txt; demi browser tabs --json', 30000),
       model.say('Cloud woke without reviving expired browser tabs'),
     ] })
     expect(woken.received[0]).toContain('exitCode: 0')
     expect(woken.received[0]).toContain('retained')
+    expect(woken.received[0]).toContain(`${runnerHash}  /proc/1/exe`)
     expect(woken.received[0]).toContain('"tabs":[]')
     console.info('Cloud idle shutdown and wake preserved files without restoring expired tabs')
   } finally {
