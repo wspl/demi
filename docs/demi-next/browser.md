@@ -695,7 +695,6 @@ another action's conditions:
 | `select-text` | Visible; the element renders the requested text |
 | `upload` | Enabled; the element is a file input or a control that opens a file chooser |
 | `download` | The conditions of `click` |
-| `ax-action` | The observed node advertises the action |
 | `move`, `scroll` with an element | A bounding box after scrolling into view; no enabled or editable requirement |
 | `type`, `key` without a target | None; input goes to the tab's current focus |
 | `--xy`, `drag --point` | Every point lies inside the current viewport |
@@ -962,9 +961,6 @@ Selected text in [ref=e7].
 
 $ demi browser select-text tab-1 --ref e7 --text 'Replace this' --cursor before
 Cursor placed before the matching text in [ref=e7].
-
-$ demi browser ax-action tab-1 --ref e8 --action expand
-Performed accessibility action "expand" on [ref=e8].
 ```
 
 Without a target, `type` and `key` deliver input to the tab's current focus,
@@ -1015,11 +1011,11 @@ Select-text defaults
 to selecting the match; `--cursor before|after` positions a cursor instead.
 `--prefix` and `--suffix` disambiguate repeated text; remaining ambiguity fails.
 
-AX actions must be advertised by the observed element. They are not arbitrary
-JavaScript. An unsupported action returns `unsupported_capability`. The pinned
-Chrome CDP Accessibility domain exposes neither an action list nor an AX action
-dispatch method. That native driver reports `ax-actions` unavailable and rejects
-`ax-action`; it must not infer actions from roles or substitute DOM clicks.
+There is no accessibility-action command. The Chrome DevTools Protocol
+Accessibility domain observes nodes but exposes neither an advertised action
+list nor an action dispatch, and inferring actions from roles or substituting
+DOM clicks would misreport what happened. Expanding, collapsing, or activating
+a control is done with the pointer and keyboard commands.
 
 ### Waiting
 
@@ -1425,7 +1421,7 @@ field with a different meaning or type.
 | read | `value`, or explicit-all `values, truncated`; mutually exclusive |
 | screenshot | `path, mimeType, width, height, viewport`; JSON requires file output |
 | probe | `matches, viewport, path?, truncated` |
-| Pointer/form actions, including `drag`, `select-text`, `ax-action`, and untargeted `type`/`key` | `operation, target?, result`; optional observed `url, openedTabs, dialog` |
+| Pointer/form actions, including `drag`, `select-text`, and untargeted `type`/`key` | `operation, target?, result`; optional observed `url, openedTabs, dialog` |
 | wait | `condition, matched, url?, ref?`; load waits carry neither `url` nor `ref` |
 | dialog inspect | `dialog: null | {type, message}` |
 | dialog accept/dismiss | `type, outcome` |
@@ -1710,7 +1706,7 @@ The command catalog is the command reference above:
 | --- | --- |
 | Navigation and ownership | `open`, `tabs`, `info`, `goto`, `back`, `forward`, `reload`, `history`, `close` |
 | Observation | `inspect`, `find` including `--query`, `read`, `screenshot`, `probe`, enforced read-only `eval`, `logs` |
-| Page input | `click`, `move`, `drag`, `scroll`, `fill`, `type`, `key`, `check`, `select`, `select-text`, `ax-action`, `wait` |
+| Page input | `click`, `move`, `drag`, `scroll`, `fill`, `type`, `key`, `check`, `select`, `select-text`, `wait` |
 | Files and clipboard | `upload`, `download`, `clipboard write/read` |
 | Viewport and dialogs | `viewport set/reset`, `dialog inspect/accept/dismiss` |
 | Debugging | `cdp targets/send/events` |
