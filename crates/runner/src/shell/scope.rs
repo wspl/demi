@@ -284,25 +284,22 @@ impl ExecutionHost for Scope {
         }
         let (reader, writer) = super::job::pipe()?;
         let scope = self.clone();
-        let completion = self.tasks.spawn_blocking(move || {
-            let result = (|| -> io::Result<()> {
-                let mut buffer = vec![0; 64 * 1024];
-                loop {
-                    let count = scope.read(&reader, &mut buffer)?;
-                    if count == 0 {
-                        return Ok(());
-                    }
-                    let mut bytes = &buffer[..count];
-                    while !bytes.is_empty() {
-                        let count = scope.write(&file, bytes)?;
-                        if count == 0 {
-                            return Err(io::ErrorKind::WriteZero.into());
-                        }
-                        bytes = &bytes[count..];
-                    }
+        let completion = self.tasks.spawn_blocking(move || -> io::Result<()> {
+            let mut buffer = vec![0; 64 * 1024];
+            loop {
+                let count = scope.read(&reader, &mut buffer)?;
+                if count == 0 {
+                    return Ok(());
                 }
-            })();
-            result
+                let mut bytes = &buffer[..count];
+                while !bytes.is_empty() {
+                    let count = scope.write(&file, bytes)?;
+                    if count == 0 {
+                        return Err(io::ErrorKind::WriteZero.into());
+                    }
+                    bytes = &bytes[count..];
+                }
+            }
         });
         Ok((
             writer,

@@ -298,16 +298,16 @@ impl Resources {
                 resource
                     .ready
                     .send_replace(Some(started.map(|_| client.clone()).map_err(Arc::new)));
-                if matches!(&*resource.ready.borrow(), Some(Ok(_))) {
-                    if let Some(mut service) = self.services.observe(&resource.digest).await {
-                        loop {
-                            if matches!(&*service.borrow_and_update(), Some(Err(_))) {
-                                break;
-                            }
-                            tokio::select! {
-                                _ = resource.stop.cancelled() => break,
-                                changed = service.changed() => if changed.is_err() { break; },
-                            }
+                if matches!(&*resource.ready.borrow(), Some(Ok(_)))
+                    && let Some(mut service) = self.services.observe(&resource.digest).await
+                {
+                    loop {
+                        if matches!(&*service.borrow_and_update(), Some(Err(_))) {
+                            break;
+                        }
+                        tokio::select! {
+                            _ = resource.stop.cancelled() => break,
+                            changed = service.changed() => if changed.is_err() { break; },
                         }
                     }
                 }
