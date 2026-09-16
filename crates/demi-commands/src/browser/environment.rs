@@ -88,7 +88,7 @@ pub struct BrowserEnvironment {
     pub(super) acquisition: Arc<RwLock<()>>,
 }
 
-/// Own Chrome, its event task and its profile until the retained-resource work ends.
+/// Own Chrome, its event task and its profile until the conversation work ends.
 /// Completion, failure and owner cancellation share the same joined cleanup path.
 /// Cancel through `stop` and await this owner. On abrupt future disposal the child
 /// has kill-on-drop protection; weak session handles cannot keep Chrome alive.

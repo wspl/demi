@@ -1,7 +1,5 @@
 import { z } from 'zod'
 
-export const BROWSER_RESOURCE_KIND = 'browser'
-export const BROWSER_IDLE_MS = 10 * 60_000
 export const BROWSER_TIMEOUT_MS = 30_000
 export const BROWSER_MAX_TIMEOUT_MS = 300_000
 export const BROWSER_MAX_NODES = 1_000
@@ -111,7 +109,7 @@ const asset = z.strictObject({ id: z.string(), kind: assetKind, url: z.string(),
 const logEntry = z.strictObject({ sequence: z.number().int().min(0), level: z.string(), text: z.string(), url: z.string().optional(), timestamp: z.number() })
 const cdpEvent = z.strictObject({ sequence: z.number().int().min(0), method: z.string(), params: z.unknown(), target: z.string() })
 export const browserErrorCodeSchema = z.enum([
-  'invalid_input', 'wrong_host', 'tab_not_found', 'tab_busy', 'stale_ref', 'stale_cursor',
+  'invalid_input', 'tab_not_found', 'tab_busy', 'stale_ref', 'stale_cursor',
   'stale_inventory', 'stale_tools', 'target_not_found', 'ambiguous_target', 'not_actionable',
   'timeout', 'dialog_blocked', 'dialog_not_found', 'invalid_dialog_action', 'history_boundary',
   'navigation_failed', 'protected_value', 'side_effect_rejected', 'unsupported_result',

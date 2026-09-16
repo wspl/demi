@@ -128,11 +128,7 @@ pub(super) async fn execute(
         .operations
         .try_lock()
         .map_err(|_| BrowserError::Busy)?;
-    let owner = context
-        .request
-        .caller
-        .as_deref()
-        .ok_or_else(|| BrowserError::Configuration("CDP requires a trusted caller".into()))?;
+    let owner = &context.request.caller;
     if matches!(command, BrowserCommand::CdpDetach(_)) {
         cancel_owner(tab, owner).await?;
         return Ok(json!({"detached":tab.id()}));
