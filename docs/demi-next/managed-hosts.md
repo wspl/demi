@@ -9,9 +9,9 @@ This document defines provisioning, disk persistence, and reset. Target selectio
 and shared-device admission follow the
 [conversation execution contract](sessions-and-targets.md). Installation commands
 and environment settings are in [managed-host setup](../managed-hosts-setup.md).
-[Resource lifecycle coordination](resource-lifecycle.md) defines the shared
-scheduling/admission mechanism; this document owns Cloud policy and
-VM/disk outcomes.
+[Conversation idle and Host resource release](resource-lifecycle.md) defines
+the one idle rule and its clock; this document owns Cloud policy and VM/disk
+outcomes.
 
 ## Provisioning
 
@@ -144,29 +144,25 @@ can reference Cloud before any VM exists.
 | Resetting → running | Replace the system layer, retain home, and boot the reset generation. |
 | Failed boot or save | Expose the failed operation and allow explicit recovery without creating another device. |
 
-Idle reclamation requires the configured idle window, no admitted device demand,
-no relevant active agent trees, and no running jobs. Evaluate activity across all
-conversations using this device. Browser commands count through their Host
-operation leases; idle browser grants, attachments, and
-backend metadata observers do not. Cleanup and checkpoints are maintenance:
-they serialize against conflicting transitions without restarting the idle clock.
-
-The [shared coordinator](resource-lifecycle.md#retiring-dependencies-together)
-retires dependent browser resources before the adapter saves disks and stops the
-VM. If both deadlines are due, one coordinated retirement handles them. This
-does not alter the browser's conversation ownership or the device's user ownership.
-Only new demand may wake a stopped Cloud; a cleanup callback cannot do so.
+Idle reclamation follows the [conversation idle rule](resource-lifecycle.md):
+the configured idle window has passed with no conversation using this device
+active and no running job. Open browser tabs, resident native services,
+attachments, and backend metadata observers are retention, not activity.
+Cleanup and checkpoints are maintenance: they serialize against conflicting
+transitions without restarting the idle clock. Stopping the machine ends every
+conversation's browser and native state inside it; no per-conversation release
+is sent to a stopping or stopped Cloud. Only new demand may wake a stopped Cloud;
+a cleanup callback cannot do so.
 
 The hard lifetime cap measures the running device lifetime and permits stopping
 unattended jobs when no relevant agent turn is active. It is separate from idle
 eligibility. Reserve admission and recheck active turns and demand other than the
 cap-eligible jobs. A viewer or admitted interactive operation postpones the cap
 transition. Cancel eligible unattended jobs and await their released leases
-before proceeding with browser retirement and machine shutdown. The cap does
-not authorize dropping a live browser viewer.
+before machine shutdown.
 Crash-loop protection stops repeated automatic boots while leaving reset available.
 Checkpoint timing remains Cloud policy and uses shared maintenance admission;
-a checkpoint preserves the browser's live process and is not a browser retirement.
+a checkpoint preserves running processes, the browser included.
 
 The shared coordinator owns idle intervals and scheduling for each machine
 independently. Device and agent-tree activity notifications reset demand intervals;
@@ -182,7 +178,7 @@ Current configuration defaults are:
 | Machine manager | vCPU / guest RAM | 2 / 2 GiB |
 | Machine manager | Initial system / home capacity | 1 GiB / 1 GiB |
 | Backend lifecycle | System / home quota | 16 GiB / 32 GiB |
-| Backend lifecycle | Idle window / unattended-job cap | 10 minutes / 24 hours |
+| Backend lifecycle | Idle window / unattended-job cap | 1 hour / 24 hours |
 | Backend lifecycle | Checkpoint interval | 15 minutes |
 | Backend lifecycle | Concurrent running or booting machines | 16 |
 

@@ -37,7 +37,7 @@ changes.
 | Command assembly | Coding-agent roots plus the product's `host` group, manifests, incoming RPC dispatch | [Commands](commands.md) |
 | `llm`, `vault`, `usage` | Provider assembly, credential scope, model discovery, inference admission and accounting | [Providers](providers-and-vault.md) |
 | `runner` | Device pairing, live connection registry, remote Host handles, command relay, pipe broker | [Runner](runner.md) |
-| `lifecycle` (planned) | Shared use admission, startup joining, idle scheduling, dependent-resource retirement and disposal | [Resource lifecycle coordination](resource-lifecycle.md) |
+| `lifecycle` | The conversation idle clock, Cloud idle scheduling and the conversation release | [Conversation idle and Host resource release](resource-lifecycle.md) |
 | `managed` | Cloud policy, allocation, machine transitions, image generations and reset through the shared coordinator | [Managed hosts](managed-hosts.md) |
 | `storage` | Control records, per-conversation persistence, user blob namespaces | [Storage](storage.md) |
 | `sync` | Reconstructible application snapshots for browser polling | [Web API state synchronization](web-api.md#sidebar-mutations-read-state-and-page-synchronization) |
