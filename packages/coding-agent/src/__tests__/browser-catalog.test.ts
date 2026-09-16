@@ -23,6 +23,7 @@ test('browser catalog declares every family and one input source per operand', (
     expect(() => parseCommandInput(group, ['browser', ...command, `--${field}`, body])).toThrow()
   }
   expect(parseCommandInput(group, ['browser', 'type', tab, '--text', 'hello']).values.text).toBe('hello')
+  expect(parseCommandInput(group, ['browser', 'cdp', 'detach', tab]).values.tab).toBe(tab)
   expect(parseCommandInput(group, ['browser', 'key', tab, '--key', 'ControlOrMeta+A']).values.key).toBe('ControlOrMeta+A')
   expect(parseCommandInput(group, ['browser', 'content', 'fetch', '--url', 'https://example.test/']).values.url).toEqual(['https://example.test/'])
   expect(renderCommandHelp(group)).toContain('probe')
@@ -30,6 +31,7 @@ test('browser catalog declares every family and one input source per operand', (
 })
 
 test('browser results enforce the catalog fields and preserve nested inspect nodes', () => {
+  expect(browserOperations['cdp.detach'].result.parse({ detached: tab })).toEqual({ detached: tab })
   expect(browserOperations.inspect.result.parse({
     tab, url: 'about:blank', title: '', view: 'accessibility', truncated: false,
     tree: [{ role: 'main', children: [{ role: 'checkbox', states: ['checked=false'] }] }],
