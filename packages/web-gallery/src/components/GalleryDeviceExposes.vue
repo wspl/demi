@@ -4,7 +4,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import type { SettingsExpose } from '@demicodes/web-ui/settings/types'
 import { demoDeviceInstallation } from '../fixtures/device-installation'
-import { ahead } from '../fixtures/time'
+import { demoExposes } from '../fixtures/settings'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
 
 /**
@@ -24,33 +24,7 @@ const devices = [
   { id: 'lab', name: 'lab-workstation', online: true, seen: '2 minutes ago' },
 ]
 
-function fixtures(): SettingsExpose[] {
-  return [
-    {
-      id: 'k7x2m9qw4p3s6t8v0w2y4z6a8b',
-      deviceId: 'mac',
-      address: '127.0.0.1:5173',
-      url: 'https://k7x2m9qw4p3s6t8v0w2y4z6a8b.expose.demi.example/',
-      expiresAt: ahead(52 * 60_000),
-    },
-    {
-      id: 'q9w8e7r6t5y4u3i2o1p0a1s2d3',
-      deviceId: 'mac',
-      address: '127.0.0.1:3000',
-      url: 'https://q9w8e7r6t5y4u3i2o1p0a1s2d3.expose.demi.example/',
-      expiresAt: ahead(45_000),
-    },
-    {
-      id: 'm3n5p7r9t1v3w5x7y9z1a3c5e',
-      deviceId: 'lab',
-      address: '127.0.0.1:8080',
-      url: 'https://m3n5p7r9t1v3w5x7y9z1a3c5e.expose.demi.example/',
-      expiresAt: ahead(9 * 60_000),
-    },
-  ]
-}
-
-const live = ref(fixtures())
+const live = ref(demoExposes())
 const empty = ref<SettingsExpose[]>([])
 const pending = ref<string[]>([])
 
