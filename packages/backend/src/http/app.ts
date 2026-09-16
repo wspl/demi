@@ -11,6 +11,9 @@ import type { UpgradeWebSocket } from 'hono/ws'
 import type { ProviderAssembly } from '../llm/assembly'
 import type { RunnerRegistry } from '../runner/registry'
 import type { PipeBroker } from '../runner/pipes'
+import type { ExposeRelay } from '../expose/relay'
+import type { Exposes } from '../expose/records'
+import { exposeRoutes } from '../expose/routes'
 import type { ControlService, WorkspaceRecord } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 import type { ChangeStore } from '../storage/change-store'
@@ -56,6 +59,8 @@ import { workspaceRoutes } from './workspaces'
 export function createApp(options: {
   webDirectory?: string
   runnerInstallation?: RunnerInstallationOptions
+  relay?: ExposeRelay
+  exposes: Exposes | null
   productState: ProductState
   conversationUpdates: ConversationUpdates
   conversationForks: ConversationForks
@@ -97,6 +102,18 @@ export function createApp(options: {
     code: 'not_found',
     message: `No route for ${c.req.method} ${c.req.path}`
   }, 404))
+
+  // Expose hostnames carry no Demi session and never reach the product
+  // routes (`expose.md` § The public relay): the relay answers every path
+  // and method on them first.
+  if (options.relay) {
+    const relay = options.relay
+    app.use('*', async (c, next) => {
+      if (relay.idFromHostHeader(c.req.header('host')) === null)
+        return next()
+      return relay.handle(c)
+    })
+  }
 
   // Everything under /api needs a session except the two entrances and the
   // routes runners dial with their device token.
@@ -155,9 +172,16 @@ export function createApp(options: {
   }))
   app.route('/api/devices', deviceRoutes({
     control: options.control,
-    registry: options.runnerRegistry
+    registry: options.runnerRegistry,
+    ...(options.exposes ? { exposes: options.exposes } : {})
   }))
   app.route('/api/cloud', cloudRoutes(options.managedHosts))
+  if (options.exposes)
+    app.route('/api/exposes', exposeRoutes({
+      exposes: options.exposes,
+      control: options.control,
+      registry: options.runnerRegistry
+    }))
   app.route('/api/workspaces', workspaceRoutes({
     control: options.control,
     managedHosts: options.managedHosts,
