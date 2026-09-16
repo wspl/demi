@@ -25,6 +25,7 @@ export {
   type GitOp,
   type GitParams,
   type GitResult,
+  type NetErrorCode,
   type JobExitMessage,
   type JobOutput,
   type RpcCallMessage,

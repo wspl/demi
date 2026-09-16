@@ -18,7 +18,9 @@ test('runner messages round-trip through the MessagePack wire', () => {
     'spawn_exit',
     'rpc_call',
     'rpc_cancel',
-    'pipe_done'
+    'pipe_done',
+    'net_opened',
+    'net_error'
   ])
   const roundTrip = (message: RunnerProtocolMessage): RunnerProtocolMessage =>
     runnerToBackend.has(message.type)
@@ -118,6 +120,41 @@ test('runner messages round-trip through the MessagePack wire', () => {
     error: 'pipe refused (404)'
   }
   expect(roundTrip(done)).toEqual(done)
+
+  // Network streams name the address and the two pipes; the outcome is the
+  // runner's answer under the stream id.
+  const netOpen: RunnerProtocolMessage = {
+    type: 'net_open',
+    streamId: 'n1',
+    host: '127.0.0.1',
+    port: 5173,
+    input: { id: 'p1', url: '/api/pipes/p1' },
+    output: { id: 'p2', url: '/api/pipes/p2' }
+  }
+  expect(roundTrip(netOpen)).toEqual(netOpen)
+  const opened: RunnerProtocolMessage = { type: 'net_opened', streamId: 'n1' }
+  expect(roundTrip(opened)).toEqual(opened)
+  const netError: RunnerProtocolMessage = {
+    type: 'net_error',
+    streamId: 'n1',
+    code: 'refused',
+    message: 'connection refused'
+  }
+  expect(roundTrip(netError)).toEqual(netError)
+  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({
+    type: 'net_error',
+    streamId: 'n1',
+    code: 'no_route',
+    message: 'unknown code'
+  }))).toThrow('Malformed')
+  expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({
+    type: 'net_open',
+    streamId: 'n1',
+    host: '127.0.0.1',
+    port: 0,
+    input: { id: 'p1', url: '/api/pipes/p1' },
+    output: { id: 'p2', url: '/api/pipes/p2' }
+  }))).toThrow('Malformed')
 
   expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode(42)))
     .toThrow('Malformed')

@@ -468,7 +468,32 @@ export const runnerToBackendMessageSchema = z.union([
     ok: z.boolean(),
     error: z.string().optional()
   }),
+  /**
+   * The runner connected a `net_open` stream's socket; bytes now flow through
+   * the two named pipes (`runner.md` § Network streams).
+   */
+  z.strictObject({ type: z.literal('net_opened'), streamId: z.string() }),
+  /**
+   * A `net_open` stream never opened: why connecting to the address failed.
+   */
+  z.strictObject({
+    type: z.literal('net_error'),
+    streamId: z.string(),
+    code: z.enum(['refused', 'unreachable', 'resolve_failed', 'timeout']),
+    message: z.string()
+  }),
 ])
+
+/**
+ * Why a `net_open` stream could not connect (`runner.md` § Network streams).
+ */
+export const netErrorCodeSchema = z.enum([
+  'refused',
+  'unreachable',
+  'resolve_failed',
+  'timeout'
+])
+export type NetErrorCode = z.infer<typeof netErrorCodeSchema>
 
 /**
  * Why a hello was refused. `already_connected` is the one outcome a runner
@@ -590,6 +615,20 @@ export const backendToRunnerMessageSchema = z.union([
       type: z.literal('rpc_exit'),
       callId: z.string(),
       exitCode: z.number()
+    }),
+    /**
+     * Open a TCP stream on the device's network (`runner.md` § Network
+     * streams): connect to `host:port` within 10 seconds, then carry bytes
+     * between the socket and the two pipes — `input` into the socket's write
+     * side, the socket's read side into `output`.
+     */
+    z.strictObject({
+      type: z.literal('net_open'),
+      streamId: z.string(),
+      host: z.string(),
+      port: z.number().int().min(1).max(65535),
+      input: pipeRefSchema,
+      output: pipeRefSchema,
     }),
     /**
      * The command manifest for the runner's cache. Its shape is the loader's

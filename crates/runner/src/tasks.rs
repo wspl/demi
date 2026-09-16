@@ -618,7 +618,9 @@ fn failure(kind: TaskKind, id: String, error: String) -> Result<wire::Outbound, 
     }
 }
 
-async fn report_pipe(
+/// Reports a pipe end's outcome to the backend; `shutdown` stops reporting
+/// without a backend to receive it.
+pub(crate) async fn report_pipe(
     output: &mpsc::Sender<wire::Outbound>,
     id: String,
     result: io::Result<()>,

@@ -30,6 +30,7 @@ import type {
   GitParams,
   GitResult,
   JobExitMessage,
+  NetErrorCode,
   PipeRef,
   RunnerToBackendMessage
 } from '@demicodes/runner-protocol'
@@ -51,6 +52,31 @@ export class RemoteGitError extends Error {
   constructor(code: GitErrorCode, message: string) {
     super(message)
     this.name = 'RemoteGitError'
+    this.code = code
+  }
+}
+
+/**
+ * The runner's network facet (`runner.md` § Network streams): one TCP stream
+ * on the device's network as two pipes whose other ends are elsewhere. `open`
+ * resolves when the runner answers `net_opened`; a refusal is a
+ * `RemoteNetError` with the runner's code.
+ */
+export interface RemoteNet {
+  open(params: {
+    host: string
+    port: number
+    input: PipeRef
+    output: PipeRef
+  }): Promise<void>
+}
+
+export class RemoteNetError extends Error {
+  readonly code: NetErrorCode
+
+  constructor(code: NetErrorCode, message: string) {
+    super(message)
+    this.name = 'RemoteNetError'
     this.code = code
   }
 }
@@ -107,10 +133,12 @@ export class RemoteHost implements Host {
   readonly fs: HostFileSystem
   readonly process: HostProcess
   readonly git: RemoteGit
+  readonly net: RemoteNet
 
   private send: ((message: BackendToRunnerMessage) => void) | null = null
   private currentIdentity: HostIdentity
   private readonly pendingCalls = new Map<string, Deferred<unknown>>()
+  private readonly pendingNet = new Map<string, Deferred<void>>()
   private readonly activeSpawns = new Map<string, RemoteSpawn>()
   private readonly activeJobs = new Map<string, RemoteJobState>()
   private readonly artifactRequests = new Set<string>()
@@ -124,6 +152,7 @@ export class RemoteHost implements Host {
       changes: (root) => this.callGit('changes', { root }),
       show: (root, path) => this.callGit('show', { root, path }),
     }
+    this.net = { open: (params) => this.openNet(params) }
     this.process = {
       spawn: (params) => this.spawn(params),
       openCwd: async (path) => this.openCwd(path),
@@ -160,6 +189,11 @@ export class RemoteHost implements Host {
     this.pendingCalls.clear()
     for (const call of pending) {
       call.reject(offlineError(reason))
+    }
+    const streams = [...this.pendingNet.values()]
+    this.pendingNet.clear()
+    for (const stream of streams) {
+      stream.reject(offlineError(reason))
     }
     const spawns = [...this.activeSpawns.values()]
     this.activeSpawns.clear()
@@ -356,6 +390,15 @@ export class RemoteHost implements Host {
       else pending.reject(new RemoteGitError(message.code, message.message))
       return
     }
+    if (message.type === 'net_opened' || message.type === 'net_error') {
+      const pending = this.pendingNet.get(message.streamId)
+      if (!pending)
+        return
+      this.pendingNet.delete(message.streamId)
+      if (message.type === 'net_opened') pending.resolve()
+      else pending.reject(new RemoteNetError(message.code, message.message))
+      return
+    }
     if (message.type === 'spawn_output') {
       this.activeSpawns.get(message.spawnId)?.pushChunk({
         stream: message.stream,
@@ -454,6 +497,41 @@ export class RemoteHost implements Host {
     } catch (error) {
       this.pendingCalls.delete(id)
       throw error
+    }
+  }
+
+  /**
+   * One `net_open` stream, answered by `net_opened` under the stream id; a
+   * refusal rejects with the runner's code. The pipes' own outcomes arrive
+   * later as `pipe_done`.
+   */
+  private async openNet(params: {
+    host: string
+    port: number
+    input: PipeRef
+    output: PipeRef
+  }): Promise<void> {
+    if (!this.send)
+      throw offlineError('runner disconnected')
+    const release = this.options.admit?.()
+    const streamId = createId()
+    const pending = deferred<void>()
+    this.pendingNet.set(streamId, pending)
+    try {
+      this.send({
+        type: 'net_open',
+        streamId,
+        host: params.host,
+        port: params.port,
+        input: params.input,
+        output: params.output,
+      })
+      await pending.promise
+    } catch (error) {
+      this.pendingNet.delete(streamId)
+      throw error
+    } finally {
+      release?.()
     }
   }
 
