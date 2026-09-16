@@ -142,6 +142,11 @@ cleanup before reporting cancellation complete. Browser state and nonblocking
 observations such as buffered logs remain available. Cancellation does not undo
 submitted forms or page JavaScript and does not close unrelated tabs.
 
+Turn completion, failure, and cancellation all release the invoking node's
+retained CDP debug connections, including state installed by an already completed
+command. The turn stays active until this cleanup finishes; its next turn cannot
+start earlier. Cancelling only a temporary event wait does not end the turn.
+
 Commands rejected before dispatch use `details.action: not_started`; completed
 or uncertain effects keep their actual progress. No automatic replay occurs.
 
@@ -393,6 +398,17 @@ Backend operations for browser resources enter through
 `ConversationTargets.withHost`. Its scope covers actual Host IO. Keeping an
 old Host object is not permission to bypass this entry on later requests.
 Cloud and paired devices use the same contract.
+
+Before an agent node's turn becomes idle, the backend sends `release_caller` to
+the conversation's existing browser grant through `withHost`, while turn
+admission is still held. The authenticated caller is that node's identity, the
+same identity supplied to its native invocations. Native cleanup calls
+`cdp::cancel_owner` on every live tab and awaits all of those cleanups. This does
+not release the conversation resource, open Chrome, create a replacement grant,
+or manufacture a shell job. With no retained grant there is no Host work; a lost
+generation is invalidated, never retried against a replacement. Other nodes'
+debug connections and the conversation's tabs remain owned. Cleanup failure is
+reported as turn failure and the faulty native service is retired.
 
 ## Command contract
 
@@ -1290,10 +1306,11 @@ protocol.
 Read-only eval and CDP have different contracts: authorized tab debugging can
 change page state, such as installing a breakpoint. Do not report such a command
 as read-only inspection. Domain subscriptions, breakpoints, and explicit debug
-pauses are scoped to the invoking agent turn and tab. Turn cancellation removes
+pauses are scoped to the invoking agent turn and tab. Turn end or cancellation removes
 breakpoints, releases debug pauses/interceptions, and closes the owning debug
-connection before cancellation cleanup completes. Nonblocking
-subscriptions can last until explicitly removed or the tab is released.
+connection before turn cleanup completes. Nonblocking CDP subscriptions share
+that connection's lifetime. Tab-owned nonblocking observations, such as buffered
+logs, remain until explicitly removed or the tab is released.
 Cancelling a temporary event wait removes only that wait. Interception and other facilities
 that can block the page must release blocked requests when their owning debug
 connection ends.
