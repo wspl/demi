@@ -88,6 +88,23 @@ computation stops at its next check when the connection closes or after thirty
 seconds (`timeout`). A failure inside the git library answers `internal` for
 that request and affects nothing else.
 
+### Network streams
+
+A `net_open` request asks the runner to connect to a TCP address on the
+device's network and carry bytes both ways. It names the stream, the
+`host` and `port` to connect to, and two pipes ([Pipes and output](#pipes-and-output)):
+`input`, whose bytes the runner writes to the socket, and `output`, into
+which it writes what the socket sends. The runner resolves the host name on
+the device, connects within 10 seconds, and answers `net_opened`, or
+`net_error` with `refused`, `unreachable`, `resolve_failed`, or `timeout`;
+no bytes move before that answer. The input pipe ending shuts the socket's
+write side; the socket's end-of-stream ends the output pipe; a pipe failing
+or the connection to the backend closing closes the socket. The runner
+tracks each open socket and reports its two pipe ends with `pipe_done` like
+any other pipe. The stream is generic mechanism: the runner does not parse
+what flows through it. The backend uses it for the public relay of
+[Host expose](expose.md#the-public-relay).
+
 ## Shell jobs
 
 A shell job owns its working directory, environment, IO, and asynchronous work.

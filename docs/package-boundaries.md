@@ -21,6 +21,9 @@ implementing commands in `demi-commands` and declaring them in `coding-agent`;
 `runner`, `runner-protocol`, `host-remote`, `backend`, and `agent` do not change.
 A proposal that adds a tool-specific message, adapter, or lifecycle hook to any
 of those packages violates this contract and is redesigned at the port instead.
+A generic Host mechanism is different: a message the runner answers without
+knowing who asked or why, such as a filesystem operation, a working-tree
+listing, or a network stream, belongs to the runner wire like the others.
 
 ## Source organization
 
@@ -256,7 +259,7 @@ Test code may depend upward for integration coverage. Production code must not.
   release; browser state lives in the native package.
 - Status: target contract.
 - Production deps: `@demicodes/agent`, `@demicodes/browser-protocol`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/command-protocol`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/machines`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
-- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, the per-conversation `AgentTreeStore` over node and block rows, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the transfer broker, browse endpoints), the managed-hosts module (one managed device per user over the `ManagedHostProvisioner` contract, reached through `@demicodes/machines`' `RemoteProvisioner` as the machine manager's client; lifecycle/hibernate/reset, the backend-contributed `demi host` subcommand group), the LLM module (per-provider provider assembly, model metadata caching in memory and control.sqlite with TTL and shared refresh, metering wrap), the credential vault (instance secret, GCM-encrypted providers, subscription device-login flows over per-provider provider pools), and usage accounting (ledger + rate limit). The backend accepts explicitly submitted API keys and setup tokens at authenticated write boundaries, passes subscription material to provider-owned credential pools, and never returns secrets or proxies model traffic.
+- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, the per-conversation `AgentTreeStore` over node and block rows, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the transfer broker, browse endpoints), the managed-hosts module (one managed device per user over the `ManagedHostProvisioner` contract, reached through `@demicodes/machines`' `RemoteProvisioner` as the machine manager's client; lifecycle/hibernate/reset, the backend-contributed `demi host` subcommand group), the expose module (`expose/`: expose records and their one-hour lifetime, the public relay answering expose hostnames over device access and the network stream, the `demi host expose` leaves; see `docs/demi-next/expose.md`), the LLM module (per-provider provider assembly, model metadata caching in memory and control.sqlite with TTL and shared refresh, metering wrap), the credential vault (instance secret, GCM-encrypted providers, subscription device-login flows over per-provider provider pools), and usage accounting (ledger + rate limit). The backend accepts explicitly submitted API keys and setup tokens at authenticated write boundaries, passes subscription material to provider-owned credential pools, and never returns secrets or proxies model traffic.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
 - May assemble: concrete providers, AgentServer, `RemoteHost`, `RemoteShellEnvironment` and the coding harness.
 - Builds the JS command manifest with Bun's transpiler, serves it to runners and executes authenticated RPC handlers. All shell scripts execute on the selected machine.
@@ -304,7 +307,7 @@ Test code may depend upward for integration coverage. Production code must not.
   `conversation_release` is the one generic release message; no browser policy.
 - Status: implemented (the final wire: MessagePack frames, per-op fs messages, jobs, the rpc relay, the manifest push, transfers).
 - Production deps: `@demicodes/command-protocol`, `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
-- Owns: the authoritative Zod backend runner wire contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` used by Bun; Rust uses the generated contract and rmp-serde), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
+- Owns: the authoritative Zod backend runner wire contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers, the network stream `net_open` and its replies), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` used by Bun; Rust uses the generated contract and rmp-serde), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
 - Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`; six-target runner release schemas under `release`. The backend consumes this package directly; the Rust runner generates bindings from its Zod schemas. It depends on neither endpoint.
 - Must not: contain network IO, a Host implementation, a shell environment, the job table, credentials, claim policy, device registry, or conversation state.
 
@@ -314,7 +317,7 @@ Test code may depend upward for integration coverage. Production code must not.
   each job and forward the conversation release; no browser knowledge.
 - Status: implemented (M9).
 - Production deps: `@demicodes/command-loader`, `@demicodes/command-protocol`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: the backend's end of a runner — `RemoteHost`, a `Host` over a connection with a jobs facet (stable object across reconnects, logical cwd fallback, injected store), and `RemoteShellEnvironment`, the `ShellEnvironment` of a real host over jobs (the model's view as the record, the working directory carried between execs). The production Host and shell the backend injects into the agent.
+- Owns: the backend's end of a runner — `RemoteHost`, a `Host` over a connection with a jobs facet (stable object across reconnects, logical cwd fallback, injected store), a working-tree facet and a network facet (`net.open`: one TCP stream on the device as two pipes, `runner.md` § Network streams), and `RemoteShellEnvironment`, the `ShellEnvironment` of a real host over jobs (the model's view as the record, the working directory carried between execs). The production Host and shell the backend injects into the agent.
 - Public boundary: `RemoteHost`, `RemoteShellEnvironment`, `createRemoteShellEnvironmentFactory` and their option types from root. The factory validates a package catalog and serializes each context's declarations. Each job pins its manifest; artifact location requests are admitted only for a matching active job, manifest and target artifact. The injected resolver supplies a location, and job completion cancels outstanding resolutions.
 - Must not: contain network IO (the wire is an injected send/handle pair), credentials, the device registry, or conversation state. `Host.store` never crosses the wire.
 
@@ -403,7 +406,9 @@ Test code may depend upward for integration coverage. Production code must not.
   conversation state, and forwards the conversation release; it implements no
   browser operation.
 - Owns: the `demi-runner` execution host, backend registration and connection,
-  filesystem/process RPC, shell jobs, local command forwarding and installation.
+  filesystem/process RPC, network streams (`net_open`: a TCP socket on the
+  device carried as two pipes, no protocol parsing), shell jobs, local command
+  forwarding and installation.
 - `build.rs` consumes the Zod runner-message and manifest definitions from
   `packages/runner-protocol` and `packages/command-loader`. Generated bindings
   remain internal to the consuming runner modules.

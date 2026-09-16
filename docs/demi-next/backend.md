@@ -38,6 +38,7 @@ changes.
 | `llm`, `vault`, `usage` | Provider assembly, credential scope, model discovery, inference admission and accounting | [Providers](providers-and-vault.md) |
 | `runner` | Device pairing, live connection registry, remote Host handles, command relay, pipe broker | [Runner](runner.md) |
 | `lifecycle` | The conversation idle clock, Cloud idle scheduling and the conversation release | [Conversation idle and Host resource release](resource-lifecycle.md) |
+| `expose` | Expose records and their lifetime, the public relay on expose hostnames, the `demi host expose` leaves | [Host expose](expose.md) |
 | `managed` | Cloud policy, allocation, machine transitions, image generations and reset through the shared coordinator | [Managed hosts](managed-hosts.md) |
 | `storage` | Control records, per-conversation persistence, user blob namespaces | [Storage](storage.md) |
 | `sync` | Reconstructible application snapshots for browser polling | [Web API state synchronization](web-api.md#sidebar-mutations-read-state-and-page-synchronization) |
@@ -127,7 +128,8 @@ persistence and blob ownership are defined in [Storage](storage.md).
 
 The local deployment runs one backend with in-process `ControlService`, local
 conversation databases, blob storage, and optional managed machines. It can serve
-the built browser directory alongside the API. Cloud setup is described in
+the built browser directory alongside the API, and with `DEMI_EXPOSE_DOMAIN`
+configured it answers expose hostnames with the public relay. Cloud setup is described in
 [Managed-host setup](../managed-hosts-setup.md).
 
 The intended multi-worker deployment retains a complete backend per assigned
@@ -167,4 +169,5 @@ Multi-worker routing, ownership fencing, the remote control service, and S3
 recovery are not implemented. Shared-mode subscription credentials also need an
 explicit multi-worker distribution and refresh policy before that deployment can
 be implemented. Routing an authenticated claim to an unclaimed runner on another
-worker is also an open deployment decision. User affinity alone does not solve instance-shared credentials.
+worker is also an open deployment decision, as is routing an
+[expose hostname](expose.md#deployment) to the worker owning its user. User affinity alone does not solve instance-shared credentials.
