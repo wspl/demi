@@ -50,8 +50,8 @@ impl Handler for Fixture {
 
 fn request(operation: &str) -> Invocation {
     Invocation {
-        caller: None,
-        resource: None,
+        caller: "node".into(),
+        conversation: "conversation".into(),
         json: None,
         edits: None,
         operation: operation.into(),

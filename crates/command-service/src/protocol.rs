@@ -17,12 +17,11 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/protocol.rs"));
 }
 pub use generated::{
-    ArtifactLocation, CommandError, Completion, EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES,
-    EDIT_JOB_SEGMENTS, EditContext, EditCopies, EditFile, EditJournal, INFO_PATH, INVOKE_PATH,
-    Invocation, MAX_INVOCATIONS, MAX_METADATA_BYTES, MAX_RECORD_BYTES, NativeResourceGrant,
-    NativeResourceScope, NativeResourceStatus, PackageDescriptor,
-    PackageDescriptorTargetsValue as PackageArtifact, RESOURCE_PATH, SHUTDOWN_PATH, ServiceInfo,
-    TARGETS, VERSION,
+    ArtifactLocation, CONVERSATION_PATH, CommandError, Completion, ConversationRequest,
+    ConversationStatus, EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS,
+    EditContext, EditCopies, EditFile, EditJournal, INFO_PATH, INVOKE_PATH, Invocation,
+    MAX_INVOCATIONS, MAX_METADATA_BYTES, MAX_RECORD_BYTES, PackageDescriptor,
+    PackageDescriptorTargetsValue as PackageArtifact, SHUTDOWN_PATH, ServiceInfo, TARGETS, VERSION,
 };
 pub use package::{canonical_digest, host_target, target_artifact};
 
@@ -51,15 +50,36 @@ impl Invocation {
 
     pub fn encode(&self) -> Result<Bytes, ProtocolError> {
         self.validate()?;
-        let json = serde_json::to_vec(self)?;
-        if json.len() > MAX_METADATA_BYTES {
-            return Err(ProtocolError::TooLarge);
-        }
-        let mut bytes = BytesMut::with_capacity(4 + json.len());
-        bytes.put_u32(json.len() as u32);
-        bytes.extend_from_slice(&json);
-        Ok(bytes.freeze())
+        encode_metadata(self)
     }
+}
+
+impl ConversationRequest {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        generated::conversation_request_validate(self)
+            .map_err(|_| ProtocolError::InvalidMetadata)?;
+        if self.operation == "release" && self.conversation.is_none() {
+            return Err(ProtocolError::InvalidMetadata);
+        }
+        Ok(())
+    }
+
+    pub fn encode(&self) -> Result<Bytes, ProtocolError> {
+        self.validate()?;
+        encode_metadata(self)
+    }
+}
+
+/// Frame command-service metadata with the shared bounded length prefix.
+fn encode_metadata(value: &impl serde::Serialize) -> Result<Bytes, ProtocolError> {
+    let json = serde_json::to_vec(value)?;
+    if json.len() > MAX_METADATA_BYTES {
+        return Err(ProtocolError::TooLarge);
+    }
+    let mut bytes = BytesMut::with_capacity(4 + json.len());
+    bytes.put_u32(json.len() as u32);
+    bytes.extend_from_slice(&json);
+    Ok(bytes.freeze())
 }
 
 #[derive(Debug, Clone, PartialEq)]

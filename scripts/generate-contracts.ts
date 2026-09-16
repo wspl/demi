@@ -4,17 +4,13 @@ import type { z } from 'zod'
 import {
   commandArgsSchema, commandErrorSchema, completionSchema, invocationSchema,
   serviceInfoSchema, nativePackageSchema, NATIVE_TARGETS, NATIVE_PROTOCOL_VERSION,
-  MAX_METADATA_BYTES, MAX_RECORD_BYTES, MAX_INVOCATIONS, INFO_PATH, INVOKE_PATH, RESOURCE_PATH, SHUTDOWN_PATH,
-  nativeResourceScopeSchema, nativeResourceGrantSchema, nativeResourceStatusSchema,
+  MAX_METADATA_BYTES, MAX_RECORD_BYTES, MAX_INVOCATIONS, INFO_PATH, INVOKE_PATH, CONVERSATION_PATH, SHUTDOWN_PATH,
+  conversationRequestSchema, conversationStatusSchema,
   artifactLocationSchema,
   editContextSchema, editCopiesSchema, editFileSchema, editJournalSchema,
   EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS,
 } from '../packages/command-protocol/src/index'
 import { manifestSchema, manifestNodeSchema } from '../packages/command-loader/src/manifest/schema'
-import {
-  backendToRunnerMessageSchema, runnerToBackendMessageSchema, bytesSchema,
-} from '../packages/runner-protocol/src/schemas'
-import { JOB_VIEW_BYTES, RUNNER_PROTOCOL_VERSION } from '../packages/runner-protocol/src/messages'
 import { RustZodTypes, rustField, rustPascal, rustString } from './rust-zod'
 import { BROWSER_CLIPBOARD_PNG_BYTES, BROWSER_CLIPBOARD_PNG_PIXELS, BROWSER_STDIN_BYTES, BROWSER_FETCH_URLS, BROWSER_CONSOLE_ENTRIES, BROWSER_CONSOLE_BYTES, BROWSER_CDP_EVENTS, BROWSER_CDP_BYTES, browserQuerySchema, browserErrorSchema, browserOperations, browserTargetSchema, browserNodeSchema, browserCreatedBySchema, browserReleaseSchema, browserInstallationSchema, browserRuntimeConfigSchema, browserDefaultTimeout, BROWSER_DEFAULT_NODES, BROWSER_MAX_NODES, BROWSER_INLINE_BYTES } from '../packages/browser-protocol/src/index'
 
@@ -27,7 +23,9 @@ function flatten(schema: z.core.$ZodType): z.ZodObject[] {
   return [schema as z.ZodObject]
 }
 
-function wire(): string {
+async function wire(): Promise<string> {
+  const { backendToRunnerMessageSchema, runnerToBackendMessageSchema, bytesSchema } = await import('../packages/runner-protocol/src/schemas')
+  const { JOB_VIEW_BYTES, RUNNER_PROTOCOL_VERSION } = await import('../packages/runner-protocol/src/messages')
   const generator = new RustZodTypes({
     bytes: bytesSchema,
     dateType: 'super::Timestamp',
@@ -35,8 +33,6 @@ function wire(): string {
       [editCopiesSchema, 'demi_command_service::protocol::EditCopies'],
       [nativePackageSchema, 'demi_command_service::protocol::PackageDescriptor'],
       [artifactLocationSchema, 'demi_command_service::protocol::ArtifactLocation'],
-      [nativeResourceGrantSchema, 'demi_command_service::protocol::NativeResourceGrant'],
-      [nativeResourceStatusSchema, 'demi_command_service::protocol::NativeResourceStatus'],
     ]),
   })
   const schemas = flatten(backendToRunnerMessageSchema)
@@ -111,15 +107,14 @@ function commandProtocol(): string {
   })
   const types = { EditContext: editContextSchema, EditCopies: editCopiesSchema,
     EditFile: editFileSchema, EditJournal: editJournalSchema,
-    NativeResourceScope: nativeResourceScopeSchema,
-    NativeResourceGrant: nativeResourceGrantSchema,
-    NativeResourceStatus: nativeResourceStatusSchema,
+    ConversationRequest: conversationRequestSchema,
+    ConversationStatus: conversationStatusSchema,
     ArtifactLocation: artifactLocationSchema,
     PackageDescriptor: nativePackageSchema, ServiceInfo: serviceInfoSchema,
     CommandError: commandErrorSchema, Completion: completionSchema, Invocation: invocationSchema }
   for (const [name, schema] of Object.entries(types))
     generator.type(schema, name)
-  const checks = Object.entries(types).filter(([name]) => ['PackageDescriptor', 'Invocation', 'EditContext', 'EditJournal'].includes(name)).map(([name, schema]) =>
+  const checks = Object.entries(types).filter(([name]) => ['PackageDescriptor', 'Invocation', 'ConversationRequest', 'EditContext', 'EditJournal'].includes(name)).map(([name, schema]) =>
     `pub fn ${rustField(name)}_validate(value: &${name}) -> Result<(), String> {
       ${generator.validate(schema, 'value')}\nOk(())
     }`)
@@ -136,7 +131,7 @@ function commandProtocol(): string {
     pub const EDIT_JOB_SEGMENTS: u64 = ${EDIT_JOB_SEGMENTS};
     pub const INFO_PATH: &str = ${rustString(INFO_PATH)};
     pub const INVOKE_PATH: &str = ${rustString(INVOKE_PATH)};
-    pub const RESOURCE_PATH: &str = ${rustString(RESOURCE_PATH)};
+    pub const CONVERSATION_PATH: &str = ${rustString(CONVERSATION_PATH)};
     pub const SHUTDOWN_PATH: &str = ${rustString(SHUTDOWN_PATH)};`
 }
 
@@ -213,7 +208,7 @@ function browserProtocol(): string {
 const [target, output] = process.argv.slice(2)
 if (!output || !['runner', 'command-service', 'demi-commands'].includes(target ?? ''))
   throw new Error('Usage: generate-contracts.ts <runner|command-service|demi-commands> <OUT_DIR>')
-const sources = target === 'runner' ? { wire: wire(), manifest: manifest() }
+const sources = target === 'runner' ? { wire: await wire(), manifest: manifest() }
   : target === 'demi-commands' ? { browser: browserProtocol() } : { protocol: commandProtocol() }
 for (const [name, source] of Object.entries(sources))
   await writeFile(join(output, `${name}.rs`), `// Generated from authoritative Zod schemas.\n${source}\n`)

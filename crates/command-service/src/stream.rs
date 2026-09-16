@@ -4,7 +4,7 @@ use h2::{RecvStream, SendStream};
 use thiserror::Error;
 
 use crate::Output;
-use crate::protocol::{Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, ProtocolError};
+use crate::protocol::{MAX_METADATA_BYTES, MAX_RECORD_BYTES, ProtocolError};
 
 #[derive(Debug, Error)]
 pub enum ServiceError {
@@ -20,6 +20,8 @@ pub enum ServiceError {
     Cancelled,
     #[error("command handler failed: {0}")]
     Handler(String),
+    #[error("conversation cleanup failed; retire the service process: {0}")]
+    ConversationCleanup(String),
     #[error("invalid service operation catalog")]
     InvalidCatalog,
     #[error("handler exceeded cancellation deadline; retire the service process")]
@@ -58,9 +60,11 @@ impl Input {
         }
     }
 
-    pub(crate) async fn invocation(&mut self) -> Result<Invocation, ServiceError> {
+    pub(crate) async fn metadata<T: serde::de::DeserializeOwned>(
+        &mut self,
+    ) -> Result<T, ServiceError> {
         match &mut self.0 {
-            InputSource::Http(input) => input.invocation().await,
+            InputSource::Http(input) => input.metadata().await,
             InputSource::Local(_) => Err(ServiceError::Handler(
                 "local input has no wire metadata".into(),
             )),
@@ -136,16 +140,16 @@ impl HttpInput {
         Ok(Some(self.read_exact(length).await?))
     }
 
-    pub(crate) async fn invocation(&mut self) -> Result<Invocation, ServiceError> {
+    pub(crate) async fn metadata<T: serde::de::DeserializeOwned>(
+        &mut self,
+    ) -> Result<T, ServiceError> {
         let prefix = self.read_exact(4).await?;
         let length = u32::from_be_bytes(prefix[..].try_into().unwrap()) as usize;
         if length > MAX_METADATA_BYTES {
             return Err(ProtocolError::TooLarge.into());
         }
         let json = self.read_exact(length).await?;
-        let invocation: Invocation = serde_json::from_slice(&json)?;
-        invocation.validate()?;
-        Ok(invocation)
+        Ok(serde_json::from_slice(&json)?)
     }
 
     async fn read_exact(&mut self, length: usize) -> Result<Bytes, ServiceError> {
