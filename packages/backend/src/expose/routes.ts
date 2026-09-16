@@ -4,7 +4,6 @@ import type { AuthEnv } from '../auth/identity'
 import { ExposeError, type Exposes } from './records'
 import type { ExposeRecord } from '../storage/control'
 import type { ControlService } from '../storage/control'
-import type { RunnerRegistry } from '../runner/registry'
 
 const createBodySchema = z.object({
   deviceId: z.string().min(1),
@@ -19,9 +18,8 @@ const createBodySchema = z.object({
 export function exposeRoutes(options: {
   exposes: Exposes
   control: ControlService
-  registry: RunnerRegistry
 }): Hono<AuthEnv> {
-  const { exposes, control, registry } = options
+  const { exposes, control } = options
   const app = new Hono<AuthEnv>()
   const view = (record: ExposeRecord) => exposes.view(record)
 
@@ -42,11 +40,6 @@ export function exposeRoutes(options: {
     const device = await control.getDevice(parsed.data.deviceId)
     if (!device || device.userId !== c.get('user').id)
       return c.json({ code: 'device_not_found', message: 'No such device' }, 404)
-    if (!registry.deviceOnline(device.id))
-      return c.json({
-        code: 'device_offline',
-        message: 'The device is offline; connect it before exposing a service'
-      }, 409)
     try {
       const record = await exposes.add(
         c.get('user').id,
@@ -55,7 +48,8 @@ export function exposeRoutes(options: {
       )
       return c.json({ expose: view(record) }, 201)
     } catch (error) {
-      if (error instanceof ExposeError && error.code === 'expose_unavailable')
+      if (error instanceof ExposeError &&
+        (error.code === 'expose_unavailable' || error.code === 'device_offline'))
         return c.json({ code: error.code, message: error.message }, 409)
       throw error
     }
