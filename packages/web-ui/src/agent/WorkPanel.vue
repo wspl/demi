@@ -1,17 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Copy, File, FileDiff, PanelRightClose, Plus, X } from '@lucide/vue'
-import { useContextMenuOwner } from '../composables/useContextMenuOwner'
-import { reportError } from '../infra/errors'
-import { showToast } from '../infra/toast'
-import { t } from '../infra/i18n'
-import { appOverlayStore } from '../overlay/appOverlay'
-import Dropdown from '../ui/Dropdown.vue'
+import { FileDiff, Globe, PanelRightClose } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
-import Menu from '../ui/Menu.vue'
-import MenuDivider from '../ui/MenuDivider.vue'
-import MenuItem from '../ui/MenuItem.vue'
-import Popover from '../ui/Popover.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from '../files/FileIcon.vue'
@@ -20,72 +10,49 @@ import FileView from '../files/FileView.vue'
 import { callChangeSource, emptyChangeSet, type ReadCallChange, type ChangeMode, type ChangeSetSource, type ChangeSources } from '../files/changes'
 import { joinPath, normalizePath } from '../files/paths'
 import type { FileBrowserSource } from '../files/types'
-import TabItem from './TabItem.vue'
-import TabStrip from './TabStrip.vue'
-import { tabsToClose, type TabCloseScope } from './tab-close'
-import { findChangeWorkTab, changeTabPath, workTabTitle, type ChangeWorkTab, type WorkTab } from './work-panel'
+import BrowserPanel from './BrowserPanel.vue'
+import { changeTabPath, workTabTitle, type BrowserWorkTab, type ChangeWorkTab, type WorkTab } from './work-panel'
 
-/**
- * The work panel: the app frame's right pane, where the reader keeps files
- * and the conversation's changes (its diff) open beside it. It continues the
- * session's raised sheet behind a hairline divider, with the tab row (on the
- * raised surface) at the height of the session header. The host owns the
- * tabs and which one is active; the panel shows them, asks for new ones, and
- * says which to close.
- *
- * A tab's menu closes it, the others, or one side of it; a file tab also
- * copies its path. There is one change tab at most: asking for it again
- * selects the open one.
- *
- * A file tab shows its file through `workspace`: the source it reads from
- * and the root its paths are relative to. The file view's tree shows the
- * workspace; a file chosen there, or in a crumb's menu, is asked for with
- * `open`, and the host shows it in the active tab in place (see
- * `showFileInTab`), so Back and Forward walk that tab's files. The change
- * tab shows the workspace's changes when the host gives them, in the mode
- * and on the file the tab holds; a mode switch or a pick in its tree is
- * asked for with `showChange`, and the host steps the tab (see
- * `showChangeInTab`), so Back and Forward walk those steps. A new change tab
- * starts on the uncommitted changes; picking a file pill opens its retained
- * edit in Conversation mode. Only the file view and Uncommitted have trees.
- * Retained edits stay readable without a workspace.
- */
+/** Fixed work-panel sections; the host retains each conversation's selections. */
 const props = defineProps<{
   tabs: readonly WorkTab[]
   activeId: string | null
   readCallChange?: ReadCallChange
   historyRoot?: string
-  /** `name` stands in for the root directory's name wherever the views name the workspace. */
   workspace?: { source: FileBrowserSource; root: string; name?: string; changes?: ChangeSetSource }
 }>()
 const emit = defineEmits<{
   select: [id: string]
-  closeTabs: [ids: string[]]
-  /** New tab: a file, the host decides which; or the change tab, in the given mode. */
-  add: [kind: 'file'] | [kind: 'change', mode: ChangeMode]
-  /** The change tab's next step: this mode, showing this file (null leaves the choice to the view). */
   showChange: [id: string, mode: ChangeMode, path: string | null, selection?: { call: ChangeWorkTab['call']; edit: number }]
-  /** A file from the tree or a crumb menu, by its path relative to the workspace root: show it in the active tab. */
+  updateBrowser: [tab: BrowserWorkTab]
   open: [path: string]
-  /** The active tab's Back and Forward. */
   back: [id: string]
   forward: [id: string]
-  /** The fold control: put the whole panel away. */
   close: []
 }>()
 
 const treeOpen = ref(true)
+const active = computed(() => props.tabs.find((tab) => tab.id === props.activeId) ?? null)
 const changes = computed<ChangeSources>(() => {
   const call = active.value?.kind === 'change' ? active.value.call : null
   return {
     uncommitted: props.workspace?.changes ?? emptyChangeSet,
-    conversation: call && props.readCallChange
-      ? callChangeSource(call, props.readCallChange)
-      : null,
+    conversation: call && props.readCallChange ? callChangeSource(call, props.readCallChange) : null,
   }
 })
+const totals = computed(() => changes.value.uncommitted.files.reduce(
+  (sum, file) => ({ added: sum.added + file.added, removed: sum.removed + file.removed }),
+  { added: 0, removed: 0 },
+))
 
-/** The file the change tab shows in its mode: the one it holds, else the first there is. */
+function select(tab: WorkTab): void {
+  if (tab.kind === 'change') {
+    emit('showChange', tab.id, 'uncommitted', tab.uncommitted)
+  }
+  emit('select', tab.id)
+}
+
+/** Resolve the changed file within the selected change mode. */
 function changeSelection(tab: ChangeWorkTab): string | null {
   return changeTabPath(tab, tab.mode, changes.value.uncommitted.files)
 }
@@ -99,146 +66,48 @@ function openFromTree(path: string): void {
   const relative = path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
   emit('open', relative)
 }
-const active = computed(
-  () => props.tabs.find((tab) => tab.id === props.activeId) ?? null,
-)
-
-const addOpen = ref(false)
-
-const menuTabId = ref<string | null>(null)
-const menuTab = computed(
-  () => props.tabs.find((tab) => tab.id === menuTabId.value) ?? null,
-)
-const {
-  isOpen: menuOpen,
-  anchorX: menuX,
-  anchorY: menuY,
-  anchorContextEl: menuEl,
-  open: openMenu,
-  close: closeMenu,
-} = useContextMenuOwner(() => {
-  menuTabId.value = null
-})
-
-function openTabMenu(event: MouseEvent, id: string): void {
-  menuTabId.value = id
-  openMenu(event)
-}
-
-function closeScope(scope: TabCloseScope): void {
-  if (menuTabId.value === null) {
-    return
-  }
-  const ids = tabsToClose(props.tabs, menuTabId.value, scope)
-  if (ids.length > 0) {
-    emit('closeTabs', ids)
-  }
-}
-
-function scopeIsEmpty(scope: TabCloseScope): boolean {
-  return menuTabId.value === null || tabsToClose(props.tabs, menuTabId.value, scope).length === 0
-}
-
-async function copyPath(): Promise<void> {
-  const tab = menuTab.value
-  if (tab?.kind !== 'file') {
-    return
-  }
-  try {
-    await navigator.clipboard.writeText(tab.path)
-    showToast({ title: t('common.copied') })
-  } catch (error) {
-    reportError('Could not copy the path', error, { userVisible: true })
-  }
-}
-
-function add(kind: WorkTab['kind']): void {
-  addOpen.value = false
-  if (kind === 'file') {
-    emit('add', 'file')
-    return
-  }
-  const open = findChangeWorkTab(props.tabs)
-  if (open) {
-    emit('select', open.id)
-    return
-  }
-  emit('add', 'change', 'uncommitted')
-}
 </script>
 
 <template>
   <aside class="flex h-full min-w-0 flex-col overflow-hidden border-l border-line bg-surface text-fg">
     <div class="flex h-11 shrink-0 items-center gap-1 pl-2 pr-3">
-      <TabStrip class="flex-1" surface="raised">
-        <TabItem
+      <div role="tablist" aria-label="Work panel" class="flex min-w-0 flex-1 items-center gap-1">
+        <button
           v-for="tab in tabs"
           :key="tab.id"
-          :tab="{ id: tab.id, title: workTabTitle(tab) }"
-          :tooltip="tab.kind === 'file' ? tab.path : undefined"
-          :is-active="tab.id === activeId"
-          @pointerdown="emit('select', tab.id)"
-          @contextmenu="openTabMenu($event, tab.id)"
-          @close="emit('closeTabs', [tab.id])"
+          type="button"
+          role="tab"
+          :aria-selected="tab.id === activeId"
+          :title="tab.kind === 'file' ? tab.path || 'File' : workTabTitle(tab)"
+          class="flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-chrome hover:bg-surface-base hover:text-fg"
+          :class="[tab.kind === 'file' ? 'shrink' : 'shrink-0', tab.id === activeId ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle']"
+          @click="select(tab)"
         >
-          <template #mark>
-            <FileIcon
-              v-if="tab.kind === 'file'"
-              :name="workTabTitle(tab)"
-              :is-directory="false"
-              :size="ICON_PX.markIn28"
-            />
-            <FileDiff
-              v-else
-              :size="ICON_PX.markIn28"
-              class="text-fg-subtle"
-            />
-          </template>
-        </TabItem>
-        <template #trailing>
-          <Dropdown
-            v-model:open="addOpen"
-            :overlay-store="appOverlayStore"
-            placement="bottom-start"
-          >
-            <template #trigger="{ isOpen }">
-              <IconButton
-                class="ml-1"
-                :icon="Plus"
-                size="sm"
-                variant="ghost"
-                aria-label="New tab"
-                :pressed="isOpen"
-              />
-            </template>
-            <template #content>
-              <Menu>
-                <MenuItem :icon="File" label="File" @select="add('file')" />
-                <MenuItem :icon="FileDiff" label="Change" @select="add('change')" />
-              </Menu>
-            </template>
-          </Dropdown>
-        </template>
-      </TabStrip>
+          <FileIcon v-if="tab.kind === 'file'" :name="tab.path" :is-directory="false" :size="ICON_PX.markIn28" class="shrink-0" />
+          <FileDiff v-else-if="tab.kind === 'change'" :size="ICON_PX.markIn28" class="shrink-0" />
+          <Globe v-else :size="ICON_PX.markIn28" class="shrink-0" />
+          <span class="truncate whitespace-nowrap">{{ tab.kind === 'file' ? tab.path ? `File: ${workTabTitle(tab)}` : 'File' : workTabTitle(tab) }}</span>
+          <span v-if="tab.kind === 'change'" class="flex shrink-0 gap-1 text-[11px] tabular-nums">
+            <span class="text-on-success">+{{ totals.added }}</span>
+            <span class="text-on-danger">−{{ totals.removed }}</span>
+          </span>
+        </button>
+      </div>
       <Tooltip content="Close panel" class="shrink-0">
-        <IconButton
-          :icon="PanelRightClose"
-          variant="ghost"
-          aria-label="Close panel"
-          @click="emit('close')"
-        />
+        <IconButton :icon="PanelRightClose" variant="ghost" aria-label="Close panel" @click="emit('close')" />
       </Tooltip>
     </div>
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <slot :tab="active">
-        <!-- One view across file tabs, so the tree keeps what it has unfolded. -->
+        <BrowserPanel v-if="active?.kind === 'browser'" :tab="active" @update="emit('updateBrowser', $event)" />
+        <!-- File navigation reuses the view and its unfolded tree. -->
         <FileView
-          v-if="active?.kind === 'file' && workspace"
+          v-else-if="active?.kind === 'file' && workspace"
           v-model:tree="treeOpen"
           :source="workspace.source"
           :root="workspace.root"
           :root-name="workspace.name"
-          :path="absolutePath(active.path)"
+          :path="active.path ? absolutePath(active.path) : null"
           :can-back="active.back.length > 0"
           :can-forward="active.forward.length > 0"
           @open="openFromTree"
@@ -276,26 +145,5 @@ function add(kind: WorkTab['kind']): void {
         </div>
       </slot>
     </div>
-    <Popover
-      :overlay-store="appOverlayStore"
-      :is-open="menuOpen"
-      :anchor-x="menuX"
-      :anchor-y="menuY"
-      :anchor-context-el="menuEl"
-      :offset="0"
-      @close="closeMenu"
-    >
-      <Menu @click="closeMenu">
-        <template v-if="menuTab?.kind === 'file'">
-          <MenuItem :icon="Copy" label="Copy path" @select="copyPath" />
-          <MenuDivider />
-        </template>
-        <!-- Only the plain close has an icon; the scoped closes would repeat it. -->
-        <MenuItem :icon="X" label="Close" @select="closeScope('self')" />
-        <MenuItem label="Close others" :disabled="scopeIsEmpty('others')" @select="closeScope('others')" />
-        <MenuItem label="Close to the right" :disabled="scopeIsEmpty('right')" @select="closeScope('right')" />
-        <MenuItem label="Close to the left" :disabled="scopeIsEmpty('left')" @select="closeScope('left')" />
-      </Menu>
-    </Popover>
   </aside>
 </template>

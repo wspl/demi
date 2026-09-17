@@ -22,3 +22,26 @@ export function tabsToClose(
       return tabs.slice(0, index).map((tab) => tab.id)
   }
 }
+
+/**
+ * The tabs and active tab after `ids` close. When the active tab goes, the
+ * nearest remaining tab before it takes over, else the first that remains.
+ */
+export function closeTabs<T extends { id: string }>(
+  tabs: readonly T[],
+  activeId: string | null,
+  ids: readonly string[],
+): { tabs: T[]; activeId: string | null } {
+  const closing = new Set(ids)
+  const remaining = tabs.filter((tab) => !closing.has(tab.id))
+  if (activeId !== null && !closing.has(activeId)) {
+    return { tabs: remaining, activeId }
+  }
+  const activeIndex = tabs.findIndex((tab) => tab.id === activeId)
+  const before = tabs
+    .slice(0, Math.max(0, activeIndex))
+    .reverse()
+    .find((tab) => !closing.has(tab.id))
+  const next = before ?? remaining[0] ?? null
+  return { tabs: remaining, activeId: next?.id ?? null }
+}
