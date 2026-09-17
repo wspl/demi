@@ -59,7 +59,7 @@ function updateAddress(address: string): void {
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
-    <div class="flex h-11 shrink-0 items-center border-t border-line-subtle px-2">
+    <div class="flex h-9 shrink-0 items-center border-t border-line-subtle px-2">
       <TabStrip class="flex-1" surface="raised">
         <TabItem
           v-for="page in tab.pages"
@@ -80,7 +80,7 @@ function updateAddress(address: string): void {
         </template>
       </TabStrip>
     </div>
-    <div class="flex h-11 shrink-0 items-center gap-1 px-2">
+    <div class="flex h-9 shrink-0 items-center gap-1 px-2">
       <IconButton :icon="ArrowLeft" variant="ghost" aria-label="Back" disabled disabled-reason="Browser navigation is not connected yet" />
       <IconButton :icon="ArrowRight" variant="ghost" aria-label="Forward" disabled disabled-reason="Browser navigation is not connected yet" />
       <IconButton :icon="RotateCw" variant="ghost" aria-label="Refresh" disabled disabled-reason="Browser navigation is not connected yet" />
