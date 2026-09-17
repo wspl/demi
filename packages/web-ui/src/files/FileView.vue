@@ -30,7 +30,7 @@ const props = defineProps<{
   /** What the first crumb and the tree's caption say in place of the root directory's name. */
   rootName?: string
   /** The file, by absolute path. */
-  path: string
+  path: string | null
   /** Whether the host has a file to go back or forward to in this view. */
   canBack?: boolean
   canForward?: boolean
@@ -47,12 +47,18 @@ const tree = defineModel<boolean>('tree', { default: true })
 const treeWidth = defineModel<number>('treeWidth', { default: TREE_WIDTH.default })
 
 const editor = ref<InstanceType<typeof CodeEditor> | null>(null)
-const state = ref<'loading' | 'ready' | 'failed'>('loading')
+const state = ref<'idle' | 'loading' | 'ready' | 'failed'>('loading')
 const failure = ref<string | null>(null)
 let controller: AbortController | null = null
 
 async function read(): Promise<void> {
   controller?.abort()
+  if (!props.path) {
+    controller = null
+    state.value = 'idle'
+    failure.value = null
+    return
+  }
   const current = new AbortController()
   controller = current
   state.value = 'loading'
@@ -104,11 +110,11 @@ onBeforeUnmount(() => {
       <FileBrowserAddressBar
         class="min-w-0 flex-1"
         mode="browse"
-        :path="path"
+        :path="path ?? root"
         :root="root"
         :root-name="rootName"
         :source="source"
-        leaf="file"
+        :leaf="path ? 'file' : 'directory'"
         :editable="false"
         @open="emit('open', $event)"
       />
@@ -136,7 +142,7 @@ onBeforeUnmount(() => {
           class="h-full"
           :busy="state === 'loading'"
           :failed="state === 'failed'"
-          :label="state === 'loading' ? 'Reading…' : 'Could not read this file.'"
+          :label="state === 'idle' ? 'Select a file.' : state === 'loading' ? 'Reading…' : 'Could not read this file.'"
           :detail="failure"
           :action="state === 'failed' ? 'Retry' : undefined"
           @action="read"

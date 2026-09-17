@@ -12,7 +12,7 @@ import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activit
 import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { changeWorkTab, changeTabPath, closeWorkTabs, fileWorkTab, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import { changeWorkTab, changeTabPath, workPanelTabs, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type BrowserWorkTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
 import { callChangeSource, type CallEditSelection, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
@@ -123,38 +123,21 @@ const panelProjects = ref(demoProjects())
 const panelConversations = ref(demoConversations())
 const panelActiveConversationId = ref<string | null>('c-login')
 function workTabs(): WorkTab[] {
-  return [
-    fileWorkTab('w1', 'src/auth/cookie.ts'),
-    changeWorkTab('w2', 'uncommitted'),
-    fileWorkTab('w3', 'tests/login/auth.test.ts'),
-    fileWorkTab('w4', 'packages/web-ui/src/agent/blocks/FileChangePills.vue'),
-  ]
+  return workPanelTabs('src/auth/cookie.ts')
 }
-/** A work panel's tabs and active tab, with the closes and adds the panel asks for. */
+/** Host-owned selections for the fixed work-panel specimens. */
 function useWorkTabs(activeId: string | null) {
   const tabs = ref(workTabs())
   const active = ref<string | null>(activeId)
-  let nextId = 5
-  function close(ids: string[]) {
-    const next = closeWorkTabs(tabs.value, active.value, ids)
-    tabs.value = next.tabs
-    active.value = next.activeId
-  }
-  function add(kind: WorkTab['kind'], mode?: ChangeMode) {
-    if (kind === 'file') {
-      open('src/auth/session.ts')
-      return
-    }
-    const id = `w${nextId++}`
-    tabs.value = [...tabs.value, changeWorkTab(id, mode ?? 'uncommitted')]
-    active.value = id
+  function updateBrowser(tab: BrowserWorkTab) {
+    tabs.value = tabs.value.map((current) => current.id === tab.id ? tab : current)
   }
   function showChange(id: string, mode: ChangeMode, path: string | null, selection?: { call: ChangeWorkTab['call']; edit: number }) {
     tabs.value = showChangeInTab(tabs.value, id, mode, path, selection)
   }
   /** A file by workspace path, shown in the active tab in place. */
   function open(path: string) {
-    const next = showFileInTab(tabs.value, active.value, path, () => `w${nextId++}`)
+    const next = showFileInTab(tabs.value, path)
     tabs.value = next.tabs
     active.value = next.activeId
   }
@@ -165,7 +148,7 @@ function useWorkTabs(activeId: string | null) {
     tabs.value = goForwardInTab(tabs.value, id)
   }
   function selectEdit(selection: CallEditSelection) {
-    const next = showCallEdit(tabs.value, selection, () => `w${nextId++}`)
+    const next = showCallEdit(tabs.value, selection)
     tabs.value = next.tabs
     active.value = next.activeId
   }
@@ -173,7 +156,7 @@ function useWorkTabs(activeId: string | null) {
     tabs.value = workTabs()
     active.value = activeId
   }
-  return { tabs, active, close, add, open, showChange, selectEdit, back, forward, reset }
+  return { tabs, active, updateBrowser, open, showChange, selectEdit, back, forward, reset }
 }
 const workspace = createGalleryWorkspace()
 const fileViewTree = ref(true)
@@ -224,9 +207,9 @@ function fileViewGoForward() {
   fileViewBack.value = [...fileViewBack.value, fileViewPath.value]
   fileViewPath.value = next
 }
-const panelWork = useWorkTabs('w2')
-const exhibitWork = useWorkTabs('w1')
-const editWork = useWorkTabs('w2')
+const panelWork = useWorkTabs('change')
+const exhibitWork = useWorkTabs('file')
+const editWork = useWorkTabs('change')
 provideEditSelection(editWork.selectEdit)
 async function readCallChange(commandId: string, path: string, edit: number) {
   return {
@@ -251,7 +234,7 @@ const changeStale = useChangeTab('uncommitted', 'src/auth/cookie.ts', {
   conversation: null,
   uncommitted: createGalleryChangeSet(200, { truncated: true, failure: 'The device is offline.' }),
 })
-const emptyTabs: WorkTab[] = []
+const browserWork = useWorkTabs('browser')
 let nextQueue = 3
 let nextSent = 1
 
@@ -1224,8 +1207,7 @@ function abortTerminal(id: string) {
         <WorkPanel
           :tabs="editWork.tabs.value" :active-id="editWork.active.value"
           :workspace="workspace" :read-call-change="readCallChange"
-          @select="editWork.active.value = $event" @close-tabs="editWork.close"
-          @add="editWork.add" @show-change="editWork.showChange" @open="editWork.open"
+          @select="editWork.active.value = $event" @update-browser="editWork.updateBrowser" @show-change="editWork.showChange" @open="editWork.open"
           @back="editWork.back" @forward="editWork.forward"
         />
       </div>
@@ -1545,7 +1527,7 @@ function abortTerminal(id: string) {
     <template v-if="view === 'panel'">
       <GallerySection
         title="The frame"
-        note="The app frame with the work panel open on the right: the sidebar, the session, and the panel are siblings, each side pane behind its own divider. The header's panel control opens it and the panel's fold control closes it, using the same 28px button, 14px icon, 12px right inset, tooltip and hover treatment as the conversation’s Open panel control; drag or double-click the divider on its left; Show tabs restores the starting tabs."
+        note="The app frame with the work panel open on the right: the sidebar, the session, and the panel are siblings, each side pane behind its own divider. The header's panel control opens it and the panel's fold control closes it, using the same 28px button, 14px icon, 12px right inset, tooltip and hover treatment as the conversation’s Open panel control; drag or double-click the divider on its left; Reset panel restores the initial selections."
       >
         <GallerySpecimen variant="frame · live" wide>
           <div class="gallery-frame flex h-[44rem] w-full overflow-hidden">
@@ -1597,8 +1579,7 @@ function abortTerminal(id: string) {
                   :active-id="panelWork.active.value"
                   :workspace="workspace"
                   @select="(id) => (panelWork.active.value = id)"
-                  @close-tabs="panelWork.close"
-                  @add="panelWork.add"
+                  @update-browser="panelWork.updateBrowser"
                   @show-change="panelWork.showChange"
                   @open="panelWork.open"
                   @back="panelWork.back"
@@ -1610,13 +1591,13 @@ function abortTerminal(id: string) {
           </div>
         </GallerySpecimen>
         <div class="flex gap-2">
-          <Button size="sm" @click="panelWork.reset">Show tabs</Button>
+          <Button size="sm" @click="panelWork.reset">Reset panel</Button>
           <span class="self-center font-mono text-[11px] text-fg-faint">panel {{ panelAsideWidth }}px · {{ ASIDE_WIDTH.min }}–{{ ASIDE_WIDTH.max }}</span>
         </div>
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="The panel alone. A file tab carries the file's icon; the one Change tab a diff mark. New tab follows the last tab until they scroll, then stays at the right. Right-click a tab for its menu; a file tab also copies its path. A file tab reads its file from the workspace, and a file chosen in its tree or crumbs takes the tab's place instead of opening another; the Change tab shows the workspace's changes."
+        note="Three fixed sections: Change shows the uncommitted totals and returns to Uncommitted when clicked; File shows the selected filename and keeps one file history; Browser has its own second-row tabs, with add, close and context menus. Its third row has Back, Forward, Refresh and an address draft. Subtle dividers separate the fixed sections from browser tabs and the address row from page content; no divider separates browser tabs from the address row. Navigation is disabled until the browser is connected. File pills still open retained edits in Change."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
@@ -1627,19 +1608,29 @@ function abortTerminal(id: string) {
                 :active-id="exhibitWork.active.value"
                 :workspace="workspace"
                 @select="(id) => (exhibitWork.active.value = id)"
-                @close-tabs="exhibitWork.close"
-                @add="exhibitWork.add"
+                @update-browser="exhibitWork.updateBrowser"
                 @show-change="exhibitWork.showChange"
                 @open="exhibitWork.open"
                 @back="exhibitWork.back"
                 @forward="exhibitWork.forward"
-                @close="exhibitWork.close(exhibitWork.tabs.value.map((tab) => tab.id))"
+                @close="exhibitWork.reset"
               />
             </div>
           </GallerySpecimen>
-          <GallerySpecimen variant="empty" wide>
+          <GallerySpecimen variant="browser placeholder" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <WorkPanel class="w-full" :tabs="emptyTabs" :active-id="null" />
+              <WorkPanel
+                class="w-full"
+                :tabs="browserWork.tabs.value"
+                :active-id="browserWork.active.value"
+                :workspace="workspace"
+                @select="browserWork.active.value = $event"
+                @update-browser="browserWork.updateBrowser"
+                @show-change="browserWork.showChange"
+                @open="browserWork.open"
+                @back="browserWork.back"
+                @forward="browserWork.forward"
+              />
             </div>
           </GallerySpecimen>
         </div>
@@ -1667,7 +1658,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Change view"
-        note="Diffs from one of two sources, the switch in the header picks. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation shows only the file picked under a shell call, without a file tree or a list source. It shows that file’s retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Either way the header names the file shown with its counts. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself. Only Uncommitted offers a tree toggle; its tree's caption lists the changes again, its control turning while the list is on its way. Picking a file opens Conversation; a new Change tab otherwise starts on Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows “Not a git repository.” without the file tree or its toggle. It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
+        note="Diffs from one of two sources, the switch in the header picks. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation shows only the file picked under a shell call, without a file tree or a list source. It shows that file’s retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Either way the header names the file shown with its counts. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself. Only Uncommitted offers a tree toggle; its tree's caption lists the changes again, its control turning while the list is on its way. Picking a file opens Conversation; selecting the fixed Change section returns to Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows “Not a git repository.” without the file tree or its toggle. It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
       >
         <GallerySpecimen
           v-for="specimen in [
