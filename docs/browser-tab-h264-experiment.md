@@ -9,6 +9,8 @@ Cloud acceptance. The authoritative product contract remains
 - [Capture and encoding](#capture-and-encoding): direct tab capture and decode.
 - [Encoder comparison](#encoder-comparison): identical captured frames.
 - [Adaptive quality](#adaptive-quality): tested changes and remaining work.
+- [4:4:4 decoding](#h264-444-follow-up): Web client results and capture limits.
+- [RGB capture](#rgb-capture-entry-point-investigation): source-level findings and implementation choices.
 
 ## Capture and encoding
 
@@ -141,3 +143,54 @@ This is an internal compositor interface, not evidence that an extension can
 request RGB from tabCapture. Reaching that path would require an exposed API or
 a native browser integration; neither was implemented here. Converting the
 observed I420 frames to RGB or I444 after capture does not restore lost chroma.
+
+## RGB capture entry-point investigation
+
+The investigation followed the pinned Chromium 153.0.8010.36 source, rather than
+assuming that an encoder option could change capture sampling.
+
+The decisive selection is in
+[`SelectVideoCaptureParamsFromCandidates`](https://raw.githubusercontent.com/chromium/chromium/153.0.8010.36/third_party/blink/renderer/modules/mediastream/media_stream_constraints_util_video_content.cc):
+it constructs the requested capture format with `media::PIXEL_FORMAT_I420`.
+The exposed content constraints select dimensions and frame rate, not a pixel
+format. This explains the observed I420 frames; changing the downstream encoder
+or requesting an RGB copy of those frames does not change their source sampling.
+
+[`FrameSinkVideoCaptureDevice`](https://raw.githubusercontent.com/chromium/chromium/153.0.8010.36/content/browser/media/capture/frame_sink_video_capture_device.cc)
+passes the requested format to the compositor capturer. Its automatic format
+selection, when the request is unspecified, chooses NV12 or I420; neither is
+4:4:4. The compositor's RGB capability therefore does not by itself make RGB
+available through tabCapture. No usable stock-Chrome capture constraint or launch
+switch for selecting RGB on this path was found.
+
+There are two substantive implementation directions:
+
+1. A custom Chromium build can expose a tab-scoped RGB capture request and use
+   the existing compositor ARGB/shared-memory path. A first experiment would
+   change format selection for the controlled tab capture and inspect the
+   resulting VideoFrames. That is an untested patch hypothesis, not a claim that
+   changing one constant makes the complete path work. Every downstream adapter,
+   resize path, and buffer transport must preserve RGB. A production alternative
+   is a native, bounded shared-memory frame channel to x264, with explicit buffer
+   release and tab-generation ownership. It avoids moving raw pixels through
+   JSON, but requires a maintained browser distribution and interface.
+2. An embedded browser runtime exposes page pixels directly. CEF's documented
+   [`OnPaint`](https://raw.githubusercontent.com/chromiumembedded/cef/master/include/cef_render_handler.h)
+   receives a full BGRA buffer plus dirty rectangles, separately identifying view
+   and popup paints. Electron also exposes page bitmaps through
+   [offscreen rendering](https://www.electronjs.org/docs/latest/tutorial/offscreen-rendering).
+   These are page rendering APIs, not desktop capture. Neither can simply attach
+   this facility to the existing Chrome for Testing process: adopting one changes
+   the browser runtime and needs automation, shared-storage, popup, lifecycle, and
+   platform revalidation. In particular, offscreen rendering alone does not prove
+   that the selected Linux build runs without an X11/Wayland display service;
+   that prerequisite remains unverified and must not be assumed.
+
+No Chromium build, native integration, or runtime replacement was performed.
+Within the existing stock Chrome for Testing plus tabCapture contract, genuine
+RGB capture remains unavailable in this investigation. If end-to-end 4:4:4 is a
+requirement, browser runtime/distribution becomes an explicit design decision.
+A useful next experiment is the narrowly scoped Chromium RGB capture change,
+using one-pixel alternating colors to detect any intervening chroma reduction,
+then native x264 and the already-probed WebCodecs software decoder. This remains
+a proposal, not delivered functionality.
