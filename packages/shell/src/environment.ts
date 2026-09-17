@@ -3,7 +3,7 @@ import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, 
 import type { HostSpawnRedirection } from '@demicodes/just-bash/interpreter'
 import type { ScriptNode } from '@demicodes/just-bash/ast/types'
 import { createLazyCommands } from '@demicodes/just-bash/commands'
-import { decodeBytesToUtf8, unsafeBytesFromLatin1 } from '@demicodes/just-bash/encoding'
+import { stdoutAsBytes, stderrAsBytes, latin1FromBytes } from '@demicodes/just-bash/encoding'
 import { parse } from '@demicodes/just-bash/parser'
 import { ParseException } from '@demicodes/just-bash/parser/types'
 import { LexerError } from '@demicodes/just-bash/parser/lexer'
@@ -17,6 +17,7 @@ import {
   buildShellopts,
   createOutputSinks,
   flushForegroundSinks,
+  finishForegroundText,
   notifyForegroundWaiters,
   pumpOutputStream,
   pumpStream,
@@ -223,6 +224,7 @@ interface ShellCommandRecord {
   binaryStdout?: BinaryStdout
   /** Full binary stream bytes awaiting their one-time write to stdout.bin. */
   pendingBinaryArtifact?: Uint8Array
+  pendingBinaryStderrArtifact?: Uint8Array
   /** Output limit of the exec that started this command (binary carry cap). */
   outputLimitBytes: number
   persistedFingerprint?: string
@@ -713,20 +715,22 @@ export class BashEnvironment {
     // chatty one is not killed; only the most recent output within the view
     // budget is retained — `wait` is the sole consumer and it renders a view.
     const retainLimit = this.defaultOutputLimitBytes
+    const stdoutDecoder = new TextDecoder('utf-8', { ignoreBOM: true })
+    const stderrDecoder = new TextDecoder('utf-8', { ignoreBOM: true })
     job.stdoutPump = pumpStream(handle.stdout, (chunk) => {
-      job.stdoutBuffer += decodeUtf8(chunk)
+      job.stdoutBuffer += stdoutDecoder.decode(chunk, { stream: true })
       if (job.stdoutBuffer.length > retainLimit) {
         job.droppedStdoutChars += job.stdoutBuffer.length - retainLimit
         job.stdoutBuffer = job.stdoutBuffer.slice(-retainLimit)
       }
-    })
+    }).then(() => { job.stdoutBuffer += stdoutDecoder.decode() })
     job.stderrPump = pumpStream(handle.stderr, (chunk) => {
-      job.stderrBuffer += decodeUtf8(chunk)
+      job.stderrBuffer += stderrDecoder.decode(chunk, { stream: true })
       if (job.stderrBuffer.length > retainLimit) {
         job.droppedStderrChars += job.stderrBuffer.length - retainLimit
         job.stderrBuffer = job.stderrBuffer.slice(-retainLimit)
       }
-    })
+    }).then(() => { job.stderrBuffer += stderrDecoder.decode() })
     session.backgroundJobs.set(id, job)
     session.state.lastBackgroundPid = id
     session.state.env.set('!', String(id))
@@ -932,6 +936,7 @@ export class BashEnvironment {
       rawStdoutBuffer: '',
       rawStdoutBytes: [],
       rawStderrBuffer: '',
+      rawStderrBytes: [],
       stdoutBuffer: '',
       stderrBuffer: '',
       outputChunks: [],
@@ -969,6 +974,7 @@ export class BashEnvironment {
 
     const exit = await foreground.exitPromise
     await Promise.allSettled([foreground.stdoutPump, foreground.stderrPump])
+    finishForegroundText(foreground)
 
     // Return raw output bytes (latin1-packed, stdoutKind 'bytes') so real-
     // process output pipes onward losslessly; the streamed text view on the
@@ -978,7 +984,7 @@ export class BashEnvironment {
     let stderr = foreground.captureOverflowed
       ? `${command}: output exceeded the ${this.captureLimitBytes}-byte capture limit and the process was killed; ` +
         `the shell buffers whole command outputs in memory — narrow the output at the source (filters, head, tighter paths)\n`
-      : foreground.rawStderrBuffer
+      : decodeLatin1(concatBytes(foreground.rawStderrBytes))
     let spawnError = exit.spawnError
     if (!foreground.captureOverflowed && exit.spawnError) {
       exitCode = spawnErrorExitCode(exit.spawnError.kind)
@@ -995,7 +1001,7 @@ export class BashEnvironment {
     }
     session.foreground = undefined
 
-    return { stdout, stdoutKind: 'bytes', stderr, exitCode, ...(spawnError ? { spawnError } : {}) }
+    return { stdout, stdoutKind: 'bytes', stderr, stderrKind: foreground.captureOverflowed || spawnError || exit.exitCode === null ? 'text' : 'bytes', exitCode, ...(spawnError ? { spawnError } : {}) }
   }
 
   private async hostResolveCommand(
@@ -1041,14 +1047,8 @@ export class BashEnvironment {
     if (resultOrError instanceof Error) {
       if (resultOrError instanceof ExitError) {
         session.exited = true
-        const err = resultOrError as unknown as { stdout: string; stderr: string; exitCode: number }
-        const outText = decodeBytesToUtf8(unsafeBytesFromLatin1(err.stdout))
-        const errText = decodeBytesToUtf8(unsafeBytesFromLatin1(err.stderr))
-        session.accumulator.stdout = outText
-        session.accumulator.stderr = errText
-        appendRecordOutput(record, 'stdout', outText)
-        appendRecordOutput(record, 'stderr', errText)
-        return this.finishExited(session, record, err.exitCode, input)
+        const err = resultOrError
+        return this.collectExited(session, record, { stdout: err.stdout, stdoutKind: 'bytes', stderr: err.stderr, stderrKind: 'bytes', exitCode: err.exitCode }, foreground, input)
       }
       if (resultOrError instanceof ExecutionLimitError) {
         const text = `bash: execution limit exceeded: ${resultOrError.message}\n`
@@ -1076,23 +1076,14 @@ export class BashEnvironment {
       return this.finishExited(session, record, 1, input)
     }
 
-    // Final-stream boundary. The interpreter's script-level stdout is either a
-    // latin1-packed byte string (each char = one raw byte; the pipe convention)
-    // or an already-decoded Unicode string (any char > 0xFF). Valid UTF-8
-    // becomes text; anything else stays raw bytes on the record (binaryStdout)
-    // with a placeholder in the text channel — raw binary never enters the
-    // text render.
-    const raw = resultOrError.stdout
+    // The interpreter declares its output shape; never infer encoding from characters.
+    const bytes = encodeLatin1(latin1FromBytes(stdoutAsBytes(resultOrError)))
+    const strict = decodeUtf8Strict(bytes)
     let stdoutText: string
     let binary: BinaryStdout | undefined
-    if (hasWideChar(raw)) {
-      stdoutText = raw
+    if (strict !== null) {
+      stdoutText = strict
     } else {
-      const bytes = encodeLatin1(raw)
-      const strict = decodeUtf8Strict(bytes)
-      if (strict !== null) {
-        stdoutText = strict
-      } else {
         // Raw bytes answer to their own ceiling, not the text budget: this
         // stream exists to be looked at, and the text cap is sized to stop a
         // log flood.
@@ -1109,13 +1100,15 @@ export class BashEnvironment {
         }; raw bytes at ${record.artifactDir}/stdout.bin>\n`
         // The full stream goes to disk regardless of the in-memory carry cap.
         record.pendingBinaryArtifact = bytes
-      }
     }
-    const stderrText = foreground ? resultOrError.stderr : decodeBytesToUtf8(unsafeBytesFromLatin1(resultOrError.stderr))
+    const stderrBytes = encodeLatin1(latin1FromBytes(stderrAsBytes(resultOrError)))
+    const decodedStderr = decodeUtf8Strict(stderrBytes)
+    const stderrText = decodedStderr ?? `<binary stderr: ${stderrBytes.length} bytes; raw bytes at ${record.artifactDir}/stderr.bin>\n`
+    if (decodedStderr === null) record.pendingBinaryStderrArtifact = stderrBytes
     session.accumulator.stdout = stdoutText
     session.accumulator.stderr = stderrText
     if (binary) record.binaryStdout = binary
-    if (binary) {
+    if (binary || decodedStderr === null) {
       // Drop any streamed (mojibake) view of a binary stream at exit; the
       // placeholder is the canonical text render.
       record.outputChunks = []
@@ -1236,6 +1229,8 @@ export class BashEnvironment {
     const fingerprint = `${record.status}:${record.exitCode ?? ''}:${record.stdout.length}:${record.stderr.length}:${record.binaryStdout?.totalBytes ?? ''}`
     if (record.persistedFingerprint === fingerprint) return
     record.persistedFingerprint = fingerprint
+    const stderrBin = record.pendingBinaryStderrArtifact
+    record.pendingBinaryStderrArtifact = undefined
     const stdoutBin = record.pendingBinaryArtifact
     record.pendingBinaryArtifact = undefined
     this.artifacts.persist(record.commandStorageId, record.id, {
@@ -1243,6 +1238,7 @@ export class BashEnvironment {
       stdout: record.stdout,
       stderr: record.stderr,
       ...(stdoutBin ? { stdoutBin } : {}),
+      ...(stderrBin ? { stderrBin } : {}),
     })
   }
 }
@@ -1287,12 +1283,6 @@ function spawnErrorStderr(
   return `bash: ${command}: ${kind}\n`
 }
 
-function hasWideChar(value: string): boolean {
-  for (let i = 0; i < value.length; i += 1) {
-    if (value.charCodeAt(i) > 0xff) return true
-  }
-  return false
-}
 
 function normalizeTimeoutMs(value: number): number {
   if (!Number.isFinite(value) || value < 1 || value > MAX_TIMEOUT_MS) {

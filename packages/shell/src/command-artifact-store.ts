@@ -7,6 +7,7 @@ export interface CommandArtifactFiles {
   stderr: string
   /** Full raw bytes of a binary final stream; written once at command exit. */
   stdoutBin?: Uint8Array
+  stderrBin?: Uint8Array
 }
 
 /**
@@ -44,6 +45,7 @@ export class CommandArtifactStore {
       await this.host.fs.writeFile(`${dir}/meta.json`, encodeUtf8(files.meta), writeOptions)
       await this.host.fs.writeFile(`${dir}/stdout.txt`, encodeUtf8(files.stdout), writeOptions)
       await this.host.fs.writeFile(`${dir}/stderr.txt`, encodeUtf8(files.stderr), writeOptions)
+      if (files.stderrBin) await this.host.fs.writeFile(`${dir}/stderr.bin`, files.stderrBin, writeOptions)
       if (files.stdoutBin) await this.host.fs.writeFile(`${dir}/stdout.bin`, files.stdoutBin, writeOptions)
     })
   }

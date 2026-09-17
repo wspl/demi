@@ -1,7 +1,7 @@
 import { concatBytes, decodeLatin1, decodeUtf8, encodeLatin1, encodeUtf8 } from '@demicodes/utils'
 import type { Command as ForkCommand, CommandContext as ForkCommandContext, ExecResult as ForkExecResult } from '@demicodes/just-bash/types'
 import { runRegisteredCommand, type Command, type CommandIO, type CommandStdin } from './command'
-import { createOutputSinks, notifyForegroundWaiters, recordForegroundChunk } from './environment-output'
+import { createOutputSinks, finishForegroundText, notifyForegroundWaiters, recordForegroundChunk } from './environment-output'
 import type { ForegroundProcess, ShellSession } from './environment-state'
 import type { AgentSessionCommandStorage } from './storage'
 import type { Host, HostSpawnExit, HostSpawnHandle } from './host'
@@ -57,7 +57,8 @@ export function commandToForkCommand(
             metadata: result.metadata,
           })
         }
-        return { stdout: job.stdoutLatin1(), stdoutKind: 'bytes', stderr: job.stderrText(), exitCode: result.exitCode }
+        job.finishText()
+        return { stdout: job.stdoutLatin1(), stdoutKind: 'bytes', stderr: job.stderrLatin1(), stderrKind: 'bytes', exitCode: result.exitCode }
       } catch (error) {
         if (job.foreground.captureOverflowed) return job.overflowResult()
         const message = error instanceof Error ? error.message : String(error)
@@ -141,6 +142,7 @@ class VirtualForegroundJob {
       rawStdoutBuffer: '',
       rawStdoutBytes: [],
       rawStderrBuffer: '',
+      rawStderrBytes: [],
       stdoutBuffer: '',
       stderrBuffer: '',
       outputChunks: [],
@@ -196,6 +198,14 @@ class VirtualForegroundJob {
 
   stdoutLatin1(): string {
     return decodeLatin1(concatBytes(this.foreground.rawStdoutBytes))
+  }
+
+  finishText(): void {
+    finishForegroundText(this.foreground)
+  }
+
+  stderrLatin1(): string {
+    return decodeLatin1(concatBytes(this.foreground.rawStderrBytes))
   }
 
   stderrText(): string {
@@ -285,18 +295,6 @@ function mapToRecord(map: Map<string, string>): Record<string, string> {
 function decodeForkStdin(stdin: ForkCommandContext['stdin']): CommandStdin {
   if (!stdin) return { text: '', bytes: new Uint8Array(0) }
   if (stdin instanceof Uint8Array) return { text: decodeUtf8(stdin), bytes: stdin }
-  const latin1 = stdin as unknown as string
-  if (!latin1) return { text: '', bytes: new Uint8Array(0) }
-  const bytes = encodeLatin1(latin1)
-  let hasHighByte = false
-  let hasWideChar = false
-  for (let i = 0; i < latin1.length; i += 1) {
-    const code = latin1.charCodeAt(i)
-    if (code > 0xff) hasWideChar = true
-    else if (code > 0x7f) hasHighByte = true
-  }
-  // Already-Unicode text (wide chars) passes through; latin1-packed UTF-8 decodes.
-  if (hasWideChar) return { text: latin1, bytes: encodeUtf8(latin1) }
-  if (!hasHighByte) return { text: latin1, bytes }
+  const bytes = encodeLatin1(stdin as unknown as string)
   return { text: decodeUtf8(bytes), bytes }
 }
