@@ -227,7 +227,7 @@ test('updateModel swaps the provider, disposes the old one, and the next turn us
   expect(session.transcript().blocks.filter((block) => block.type === 'user')).toHaveLength(2)
 })
 
-test('switching to a smaller-window model defers compaction to the next turn, done by the OLD model', async () => {
+test('switching to a smaller-window model defers compaction to the next turn, done by the selected model', async () => {
   // Realistic usage: the estimate anchors on reported usage, so the history
   // must actually measure as large for the small model to require compaction.
   const big = new RecordingProvider('summary from the big model', {
@@ -239,11 +239,11 @@ test('switching to a smaller-window model defers compaction to the next turn, do
   const small = new RecordingProvider('small reply')
   const bigModel: ModelSelection = { ...model, model: { ...model.model, id: 'big', contextWindow: 100_000 } }
   // Tiny window so the accumulated history is over threshold for the target model.
-  const smallModel: ModelSelection = { ...model, model: { ...model.model, id: 'small', contextWindow: 8 } }
+  const smallModel: ModelSelection = { ...model, model: { ...model.model, id: 'small', contextWindow: 1_000 } }
   const session = createSession(big, createRuntime(), undefined, bigModel)
 
-  await session.send(text('first turn with some content to fill the transcript'))
-  await session.send(text('second turn with even more content to fill the transcript'))
+  await session.send(text('first turn ' + 'x'.repeat(6_000)))
+  await session.send(text('second turn ' + 'y'.repeat(6_000)))
   const bigRunsBeforeSwitch = big.runModelIds.length
 
   // Recording the switch is lazy: nothing compacts, nothing swaps, no model is touched yet.
@@ -251,10 +251,9 @@ test('switching to a smaller-window model defers compaction to the next turn, do
   expect(big.runModelIds.length).toBe(bigRunsBeforeSwitch)
   expect(small.runModelIds).toEqual([])
 
-  // The next turn's preflight compacts with the OLD (big) model — because the small model can't
-  // fit the history — produces a summary boundary, and only then runs the turn on the small model.
+  // The selected provider handles both the summary and the next turn.
   await session.send(text('after switch'))
-  expect(big.runModelIds.length).toBeGreaterThan(bigRunsBeforeSwitch) // big did the compaction
+  expect(big.runModelIds.length).toBe(bigRunsBeforeSwitch)
   expect(big.runModelIds.every((id) => id === 'big')).toBe(true)
   expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
   expect(small.runModelIds.length).toBeGreaterThan(0) // small ran the actual turn
@@ -376,7 +375,7 @@ test('a cross-provider mid-turn switch disposes the old provider and continues t
   expect(providerB.requests[0]?.items.some((item) => item.type === 'tool_result' && item.toolUseId === 'tool-1')).toBe(true)
 })
 
-test('a mid-turn switch to a smaller-window model compacts with the OLD model first, then continues on the new one', async () => {
+test('a mid-turn switch to a smaller-window model compacts with the selected model, then continues on the new one', async () => {
   const summaryModelIds: string[] = []
   // Realistic anchor: the first response reports usage large enough that the history cannot
   // fit the small target window, forcing the switch to compact at the continuation boundary.
@@ -407,17 +406,17 @@ test('a mid-turn switch to a smaller-window model compacts with the OLD model fi
   }
   const provider = new MidturnProvider()
   const bigModel: ModelSelection = { ...model, model: { ...model.model, id: 'big', contextWindow: 100_000 } }
-  const smallModel: ModelSelection = { ...model, model: { ...model.model, id: 'small', contextWindow: 8 } }
+  const smallModel: ModelSelection = { ...model, model: { ...model.model, id: 'small', contextWindow: 1_000 } }
   const sessionRef: { current: AgentSession<{ toolCalls: number }> | null } = { current: null }
   const session = createSession(provider, createSwitchToolRuntime(sessionRef, () => ({ provider: null, model: smallModel, apply: 'immediate' })), undefined, bigModel)
   sessionRef.current = session
 
-  await session.send(text('do the thing'))
+  await session.send(text('do the thing ' + 'x'.repeat(6_000)))
 
-  // The old (big) model summarized; the continuation ran on the small model within the same turn.
+  // The selected model summarizes and continues within the same turn.
   expect(provider.runModelIds).toEqual(['big', 'small'])
   expect(summaryModelIds.length).toBeGreaterThan(0)
-  expect(summaryModelIds.every((id) => id === 'big')).toBe(true)
+  expect(summaryModelIds.every((id) => id === 'small')).toBe(true)
   expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
   // The compacted continuation is marked like auto-compaction: a resume turn follows the boundary.
   expect(session.transcript().blocks.some((block) => block.type === 'resume')).toBe(true)

@@ -63,7 +63,9 @@ export interface ForegroundProcess {
   rawStdoutBuffer: string
   /** Raw stdout byte chunks for byte-clean pipeline continuation. */
   rawStdoutBytes: Uint8Array[]
+  rawStderrBytes: Uint8Array[]
   rawStderrBuffer: string
+  rawDecoders?: Record<1 | 2, TextDecoder>
   /** Output routed to the visible sinks only (redirections excluded) — this is
    * what command records and model previews show. */
   stdoutBuffer: string

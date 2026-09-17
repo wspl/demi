@@ -45,3 +45,29 @@ See also `docs/provider-session-clone.md`.
 - Real-provider harness (not in `bun test`):
   `packages/agent/fixtures/compaction/` — DeepSeek Flash recall + window switch
   on the committed large-context fixture.
+
+## Model changes and recovery
+
+At an allowed model-switch boundary, AgentSession applies the selected provider
+and model before attempting compaction. An unavailable previous provider is never
+needed to summarize history for its replacement. A failed summary leaves the
+selected model active and retains the history for another attempt.
+
+An immediate switch during a summary cancels only the ephemeral clone and starts
+again with the newest selection. Parent abort is separate. Summary revisions are
+checked again before inserting a boundary, including after clone disposal, so an
+obsolete result cannot commit. A next-turn switch waits for the next action.
+Model-only updates retain a pending provider replacement rather than discarding it.
+
+Summary requests still use the normal clone/send path. Context-length rejection
+shrinks the history prefix at completed response boundaries. A preceding summary
+is included with at least one new turn; shrinking must not strand the prefix
+summary before the first available complete turn. Switching compaction checks
+progress and a bounded pass limit; it reports inability to fit instead of claiming
+success. Context sizes are estimates and provider rejections remain authoritative;
+a single unsplittable oversized turn can fail explicitly without truncating it.
+
+`model-switch-recovery.test.ts` covers unavailable previous providers, target
+failure/retry, cancellation, deferred selection, pending provider ownership,
+window reduction with fact retention, and impossible windows. Existing session,
+compaction and cache-prefix tests cover normal execution and clone isolation.
