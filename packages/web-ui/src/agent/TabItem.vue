@@ -165,7 +165,7 @@ const tabStyle = computed(() => {
     <span
       v-else
       class="min-w-0 flex-1 truncate whitespace-nowrap px-1.5"
-      >{{ tab.title }}</span
+      ><slot name="title">{{ tab.title }}</slot></span
     >
     <span
       v-if="closable"

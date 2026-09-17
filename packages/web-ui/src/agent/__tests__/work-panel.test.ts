@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { changeTabPath, findChangeWorkTab, goBackInTab, goForwardInTab, showCallEdit, showChangeInTab, showFileInTab, workPanelTabs } from '../work-panel'
+import { addBrowserTab, closeBrowserTabs, changeTabPath, findChangeWorkTab, goBackInTab, goForwardInTab, showCallEdit, showChangeInTab, showFileInTab, workPanelTabs } from '../work-panel'
 import { closeTabs, tabsToClose } from '../tab-close'
 import type { CallEditSelection } from '../../files/changes'
 
@@ -9,33 +9,44 @@ const selection: CallEditSelection = {
 }
 
 describe('fixed work panel sections', () => {
-  test('starts with Change, Browser and File and an independent browser page', () => {
-    const first = workPanelTabs()
-    expect(first.map((tab) => tab.kind)).toEqual(['change', 'browser', 'file'])
-    expect(findChangeWorkTab(first)?.mode).toBe('uncommitted')
-    expect(first[1]).toMatchObject({ pages: [{ title: 'New tab', address: '' }], activeId: 'first' })
-    expect(first[1]).not.toBe(workPanelTabs()[1])
+  test('starts with only the fixed Change and File tabs', () => {
+    const tabs = workPanelTabs()
+    expect(tabs.map((tab) => tab.kind)).toEqual(['change', 'file'])
+    expect(findChangeWorkTab(tabs)?.mode).toBe('uncommitted')
+  })
+
+  test('browser tabs have independent drafts and closing never removes fixed tabs', () => {
+    const first = addBrowserTab(workPanelTabs())
+    const second = addBrowserTab(first.tabs)
+    expect(first.activeId).not.toBe(second.activeId)
+    expect(second.tabs).toHaveLength(4)
+    expect(second.tabs[3]).toMatchObject({ kind: 'browser', title: 'New tab', address: '' })
+    expect(closeBrowserTabs(second.tabs, second.activeId, [second.activeId]).activeId).toBe(first.activeId)
+    const closed = closeBrowserTabs(second.tabs, second.activeId, second.tabs.map((tab) => tab.id))
+    expect(closed.tabs.map((tab) => tab.kind)).toEqual(['change', 'file'])
+    expect(closed.activeId).toBe('file')
+    expect(closeBrowserTabs(second.tabs, 'change', [first.activeId]).activeId).toBe('change')
   })
 
   test('files selected from any section replace the single file and preserve history', () => {
     const first = showFileInTab(workPanelTabs(), 'src/a.ts')
     const second = showFileInTab(first.tabs, 'src/b.ts')
     expect(second.activeId).toBe('file')
-    expect(second.tabs).toHaveLength(3)
-    expect(second.tabs[2]).toMatchObject({ path: 'src/b.ts', back: ['src/a.ts'], forward: [] })
+    expect(second.tabs).toHaveLength(2)
+    expect(second.tabs[1]).toMatchObject({ path: 'src/b.ts', back: ['src/a.ts'], forward: [] })
     const back = goBackInTab(second.tabs, 'file')
-    expect(back[2]).toMatchObject({ path: 'src/a.ts', back: [], forward: ['src/b.ts'] })
-    expect(goForwardInTab(back, 'file')[2]).toMatchObject({ path: 'src/b.ts' })
+    expect(back[1]).toMatchObject({ path: 'src/a.ts', back: [], forward: ['src/b.ts'] })
+    expect(goForwardInTab(back, 'file')[1]).toMatchObject({ path: 'src/b.ts' })
     const replaced = showFileInTab(back, 'src/c.ts')
-    expect(replaced.tabs[2]).toMatchObject({ path: 'src/c.ts', forward: [] })
-    expect(showFileInTab(replaced.tabs, 'src/c.ts').tabs[2]).toEqual(replaced.tabs[2])
+    expect(replaced.tabs[1]).toMatchObject({ path: 'src/c.ts', forward: [] })
+    expect(showFileInTab(replaced.tabs, 'src/c.ts').tabs[1]).toEqual(replaced.tabs[1])
   })
 
   test('retained edits open Change and returning to Uncommitted keeps its selection', () => {
     const initial = showChangeInTab(workPanelTabs(), 'change', 'uncommitted', 'README.md')
     const retained = showCallEdit(initial, selection)
     expect(retained.activeId).toBe('change')
-    expect(retained.tabs).toHaveLength(3)
+    expect(retained.tabs).toHaveLength(2)
     expect(findChangeWorkTab(retained.tabs)).toMatchObject({ mode: 'conversation', call: selection })
     const uncommitted = showChangeInTab(retained.tabs, 'change', 'uncommitted', 'README.md')
     expect(changeTabPath(findChangeWorkTab(uncommitted)!)).toBe('README.md')

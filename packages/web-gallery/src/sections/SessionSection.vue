@@ -12,7 +12,7 @@ import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activit
 import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { changeWorkTab, changeTabPath, workPanelTabs, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type BrowserWorkTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import { changeWorkTab, changeTabPath, workPanelTabs, addBrowserTab, closeBrowserTabs, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type BrowserWorkTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
 import { callChangeSource, type CallEditSelection, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
@@ -122,13 +122,20 @@ const panelAsideOpen = ref(true)
 const panelProjects = ref(demoProjects())
 const panelConversations = ref(demoConversations())
 const panelActiveConversationId = ref<string | null>('c-login')
-function workTabs(path: string): WorkTab[] {
-  return workPanelTabs(path)
-}
-/** Host-owned selections for the fixed work-panel specimens. */
+/** Host-owned selections for the work-panel specimens. */
 function useWorkTabs(activeId: string | null, path = 'src/auth/cookie.ts') {
-  const tabs = ref(workTabs(path))
+  const tabs = ref(workPanelTabs(path))
   const active = ref<string | null>(activeId)
+  function addBrowser() {
+    const next = addBrowserTab(tabs.value)
+    tabs.value = next.tabs
+    active.value = next.activeId
+  }
+  function closeTabs(ids: string[]) {
+    const next = closeBrowserTabs(tabs.value, active.value, ids)
+    tabs.value = next.tabs
+    active.value = next.activeId
+  }
   function updateBrowser(tab: BrowserWorkTab) {
     tabs.value = tabs.value.map((current) => current.id === tab.id ? tab : current)
   }
@@ -153,10 +160,10 @@ function useWorkTabs(activeId: string | null, path = 'src/auth/cookie.ts') {
     active.value = next.activeId
   }
   function reset() {
-    tabs.value = workTabs(path)
+    tabs.value = workPanelTabs(path)
     active.value = activeId
   }
-  return { tabs, active, updateBrowser, open, showChange, selectEdit, back, forward, reset }
+  return { tabs, active, addBrowser, closeTabs, updateBrowser, open, showChange, selectEdit, back, forward, reset }
 }
 const workspace = createGalleryWorkspace()
 const fileViewTree = ref(true)
@@ -234,7 +241,8 @@ const changeStale = useChangeTab('uncommitted', 'src/auth/cookie.ts', {
   conversation: null,
   uncommitted: createGalleryChangeSet(200, { truncated: true, failure: 'The device is offline.' }),
 })
-const browserWork = useWorkTabs('browser', '')
+const browserWork = useWorkTabs('change', '')
+browserWork.addBrowser()
 let nextQueue = 3
 let nextSent = 1
 
@@ -1207,7 +1215,7 @@ function abortTerminal(id: string) {
         <WorkPanel
           :tabs="editWork.tabs.value" :active-id="editWork.active.value"
           :workspace="workspace" :read-call-change="readCallChange"
-          @select="editWork.active.value = $event" @update-browser="editWork.updateBrowser" @show-change="editWork.showChange" @open="editWork.open"
+          @select="editWork.active.value = $event" @add-browser="editWork.addBrowser" @close-tabs="editWork.closeTabs" @update-browser="editWork.updateBrowser" @show-change="editWork.showChange" @open="editWork.open"
           @back="editWork.back" @forward="editWork.forward"
         />
       </div>
@@ -1579,7 +1587,7 @@ function abortTerminal(id: string) {
                   :active-id="panelWork.active.value"
                   :workspace="workspace"
                   @select="(id) => (panelWork.active.value = id)"
-                  @update-browser="panelWork.updateBrowser"
+                  @add-browser="panelWork.addBrowser" @close-tabs="panelWork.closeTabs" @update-browser="panelWork.updateBrowser"
                   @show-change="panelWork.showChange"
                   @open="panelWork.open"
                   @back="panelWork.back"
@@ -1597,7 +1605,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="Fixed sections in order: Change, Browser, File. Change shows the uncommitted totals and returns to Uncommitted when clicked; File uses a Lucide outline icon until a file is selected, then shows its file-type icon and filename and keeps one file history; Browser has its own second-row tabs, with add, close and context menus. The browser tabs retain their original top inset and the address row its bottom inset; only the gap between them is reduced. The third row has Back, Forward, Refresh and an address draft. Browser and File address bars leave 12px after the navigation controls. Subtle dividers separate the fixed sections from browser tabs and the address row from page content; no divider separates browser tabs from the address row. Navigation is disabled until the browser is connected. File pills still open retained edits in Change."
+        note="One tab strip: Change and File are fixed, nonclosable tabs. The plus button adds browser tabs alongside them, using the same tab styling, scrolling and close menus. Browser close menus affect only browser tabs. Change shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Browser tabs use a globe. Selecting one shows Back, Forward, Refresh and its own address draft immediately below the strip; a subtle divider separates the address row from page content. Browser and File address bars leave 12px after navigation controls. Browser navigation remains disconnected."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
@@ -1608,7 +1616,7 @@ function abortTerminal(id: string) {
                 :active-id="exhibitWork.active.value"
                 :workspace="workspace"
                 @select="(id) => (exhibitWork.active.value = id)"
-                @update-browser="exhibitWork.updateBrowser"
+                @add-browser="exhibitWork.addBrowser" @close-tabs="exhibitWork.closeTabs" @update-browser="exhibitWork.updateBrowser"
                 @show-change="exhibitWork.showChange"
                 @open="exhibitWork.open"
                 @back="exhibitWork.back"
@@ -1625,7 +1633,7 @@ function abortTerminal(id: string) {
                 :active-id="browserWork.active.value"
                 :workspace="workspace"
                 @select="browserWork.active.value = $event"
-                @update-browser="browserWork.updateBrowser"
+                @add-browser="browserWork.addBrowser" @close-tabs="browserWork.closeTabs" @update-browser="browserWork.updateBrowser"
                 @show-change="browserWork.showChange"
                 @open="browserWork.open"
                 @back="browserWork.back"
