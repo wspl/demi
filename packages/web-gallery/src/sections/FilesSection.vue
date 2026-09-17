@@ -355,7 +355,7 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Pinned path"
-        note="The workspace name always heads the tree. Under it pin the directories the rows at the top sit in, each once its own row scrolls out above and until its last row has too; the deepest slides out under the ones above. A closed directory never pins. Scroll each tree to move through the states."
+        note="The workspace name always heads the tree. Its lower fade is absent at scroll position zero and appears only when rows scroll underneath the pinned stack. Under it pin the directories the rows at the top sit in, each once its own row scrolls out above and until its last row has too; the deepest slides out under the ones above. A closed directory never pins. Scroll each tree to move through the states."
       >
         <div class="flex flex-wrap gap-6">
           <GallerySpecimen variant="at the top">
