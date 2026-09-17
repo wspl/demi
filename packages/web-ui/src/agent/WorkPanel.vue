@@ -21,7 +21,7 @@ import { appOverlayStore } from '../overlay/appOverlay'
 import { tabsToClose, type TabCloseScope } from './tab-close'
 import { changeTabPath, workTabTitle, type BrowserWorkTab, type ChangeWorkTab, type WorkTab } from './work-panel'
 
-/** One tab strip with fixed Change and File tabs and removable browser tabs. */
+/** Fixed view buttons alongside a strip of removable browser tabs. */
 const props = defineProps<{
   tabs: readonly WorkTab[]
   activeId: string | null
@@ -62,6 +62,7 @@ function select(tab: WorkTab): void {
   emit('select', tab.id)
 }
 
+const fixedViews = computed(() => props.tabs.filter((tab) => tab.kind !== 'browser'))
 const browserTabs = computed(() => props.tabs.filter((tab) => tab.kind === 'browser'))
 const menuId = ref<string | null>(null)
 const menu = useContextMenuOwner(() => {
@@ -102,15 +103,33 @@ function openFromTree(path: string): void {
 <template>
   <aside class="flex h-full min-w-0 flex-col overflow-hidden border-l border-line bg-surface text-fg">
     <div class="flex h-11 shrink-0 items-center gap-1 pl-2 pr-3">
-      <TabStrip class="flex-1" surface="raised">
-        <TabItem
-          v-for="tab in tabs"
+      <div class="flex shrink-0 items-center gap-1" role="group" aria-label="Work panel views">
+        <button
+          v-for="tab in fixedViews"
           :key="tab.id"
-          :tab="{ id: tab.id, title: tab.kind === 'file' ? tab.path ? `File: ${workTabTitle(tab)}` : 'File' : workTabTitle(tab) }"
+          type="button"
+          :aria-pressed="tab.id === activeId"
+          :title="tab.kind === 'file' ? tab.path || 'File' : 'Change'"
+          class="flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome hover:bg-surface-base hover:text-fg"
+          :class="tab.id === activeId ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle'"
+          @click="select(tab)"
+        >
+          <FileIcon v-if="tab.kind === 'file' && tab.path" :name="tab.path" :is-directory="false" :size="ICON_PX.markIn28" />
+          <File v-else-if="tab.kind === 'file'" :size="ICON_PX.markIn28" />
+          <FileDiff v-else :size="ICON_PX.markIn28" />
+          <span>{{ tab.kind === 'file' ? tab.path ? `File: ${workTabTitle(tab)}` : 'File' : 'Change' }}</span>
+          <template v-if="tab.kind === 'change'">
+            <span class="text-[11px] tabular-nums text-on-success">+{{ totals.added }}</span>
+            <span class="text-[11px] tabular-nums text-on-danger">−{{ totals.removed }}</span>
+          </template>
+        </button>
+      </div>
+      <TabStrip class="min-w-0 flex-1" surface="raised">
+        <TabItem
+          v-for="tab in browserTabs"
+          :key="tab.id"
+          :tab="tab"
           :is-active="tab.id === activeId"
-          :closable="tab.kind === 'browser'"
-          :fit-content="tab.kind !== 'browser'"
-          :tooltip="tab.kind === 'file' ? tab.path || 'File' : undefined"
           tabindex="0"
           @pointerdown="select(tab)"
           @keydown.enter="select(tab)"
@@ -118,19 +137,7 @@ function openFromTree(path: string): void {
           @contextmenu="openMenu($event, tab)"
           @close="emit('closeTabs', [tab.id])"
         >
-          <template #mark>
-            <FileIcon v-if="tab.kind === 'file' && tab.path" :name="tab.path" :is-directory="false" :size="ICON_PX.markIn28" />
-            <File v-else-if="tab.kind === 'file'" :size="ICON_PX.markIn28" />
-            <FileDiff v-else-if="tab.kind === 'change'" :size="ICON_PX.markIn28" />
-            <Globe v-else :size="ICON_PX.markIn28" />
-          </template>
-          <template v-if="tab.kind === 'change'" #title>
-            <span class="flex items-center gap-1.5">
-              <span>Change</span>
-              <span class="text-[11px] tabular-nums text-on-success">+{{ totals.added }}</span>
-              <span class="text-[11px] tabular-nums text-on-danger">−{{ totals.removed }}</span>
-            </span>
-          </template>
+          <template #mark><Globe :size="ICON_PX.markIn28" /></template>
         </TabItem>
         <template #trailing>
           <Tooltip content="New browser tab" class="ml-1 shrink-0">
