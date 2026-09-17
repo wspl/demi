@@ -43,7 +43,8 @@ Agent -> demi browser commands -> Host browser -> Application :3000
 ```
 
 The current scope is browser automation for agents. Workpanel does not display
-these tabs. There is no live picture or video stream, user browser-input surface,
+these Host tabs. Its local placeholder is described in
+[Web architecture](web-application.md#package-responsibilities). There is no live picture or video stream, user browser-input surface,
 or Managed/Free mode. Visible browser interaction is deferred to a separate
 future design; this contract does not prescribe its capture or transport scheme.
 Explicit screenshots continue through the existing command media contract.

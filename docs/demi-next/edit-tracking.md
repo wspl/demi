@@ -176,7 +176,9 @@ file/segment or its contents were not kept. No host is involved.
 The shell block shows the entries as file pills under the call, from the block's
 view ([Tool rendering](../tool-rendering-spec.md)). Picking a pill opens the
 work panel's change view in Conversation mode on that call, with the picked
-file selected. This mode receives only that file's metadata, command ID and
+file selected. Selecting the fixed Change section returns to Uncommitted,
+including when Change is already selected. Its header counts always describe
+the uncommitted working tree, not the retained edit. This mode receives only that file's metadata, command ID and
 edit segments, not the call's file list. Its two sides, fetched through the
 route above, show in the same diff editor the Uncommitted mode uses. If the file
 has several edit segments, a shared control selects one in order, initially the

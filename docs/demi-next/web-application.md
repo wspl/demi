@@ -28,9 +28,10 @@ examples. Those details are not duplicated in design documents. This document
 covers only the browser's technology and architectural boundaries.
 
 [Conversation browser](browser.md#purpose) currently covers agent commands only.
-It adds no workpanel browser surface or streaming transport. Explicit screenshots
-use existing command media handling; future visible browser interaction requires
-a separate design.
+The work panel includes a browser placeholder owned by `web-ui`; its local tabs
+and address drafts do not connect to the Host browser. Page rendering, navigation
+and streaming transport remain deferred. Explicit screenshots use existing
+command media handling; live browser interaction requires a separate design.
 
 ## Backend communication
 
@@ -73,6 +74,12 @@ Editing and Fork use their backend operation contracts; see
 Product adapters connect shared file interfaces to device filesystem APIs,
 the working-tree change routes, and uploads, and shared account interfaces to
 provider, pairing, and Cloud APIs.
+The work panel keeps one file selection, one change selection and local browser
+placeholder state per conversation. Its fixed sections cannot be closed or added.
+The change summary comes from the uncommitted working-tree source, refreshed
+while the panel is visible, independently of which section is selected.
+Historical edit selection follows [Edit tracking](edit-tracking.md#delivery-to-the-conversation).
+
 Gallery adapters use fixtures. Submitted operations and requests belong to the
 appropriate conversation or account lifetime and are released on its cleanup.
 A fixture demonstrates interface behavior; it does not establish persistence,
