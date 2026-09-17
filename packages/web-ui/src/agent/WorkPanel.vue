@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { File, FileDiff, Globe, PanelRightClose, X } from '@lucide/vue'
+import { File, FileDiff, Globe, PanelRightClose, Plus, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import { GlobePlus } from '../ui/GlobePlus'
 import Tooltip from '../ui/Tooltip.vue'
@@ -142,7 +142,7 @@ function openFromTree(path: string): void {
         </TabItem>
         <template #trailing>
           <Tooltip content="New browser tab" class="ml-1 shrink-0">
-            <IconButton :icon="GlobePlus" size="sm" variant="ghost" aria-label="New browser tab" @click="emit('addBrowser')" />
+            <IconButton :icon="browserTabs.length > 0 ? Plus : GlobePlus" size="sm" variant="ghost" aria-label="New browser tab" @click="emit('addBrowser')" />
           </Tooltip>
         </template>
       </TabStrip>
