@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { File, FileDiff, Globe, PanelRightClose } from '@lucide/vue'
+import { File, FileDiff, Globe, PanelRightClose, Plus, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { ICON_PX } from '../ui/icon-metrics'
@@ -11,9 +11,17 @@ import { callChangeSource, emptyChangeSet, type ReadCallChange, type ChangeMode,
 import { joinPath, normalizePath } from '../files/paths'
 import type { FileBrowserSource } from '../files/types'
 import BrowserPanel from './BrowserPanel.vue'
+import TabItem from './TabItem.vue'
+import TabStrip from './TabStrip.vue'
+import Menu from '../ui/Menu.vue'
+import MenuItem from '../ui/MenuItem.vue'
+import Popover from '../ui/Popover.vue'
+import { useContextMenuOwner } from '../composables/useContextMenuOwner'
+import { appOverlayStore } from '../overlay/appOverlay'
+import { tabsToClose, type TabCloseScope } from './tab-close'
 import { changeTabPath, workTabTitle, type BrowserWorkTab, type ChangeWorkTab, type WorkTab } from './work-panel'
 
-/** Fixed work-panel sections; the host retains each conversation's selections. */
+/** One tab strip with fixed Change and File tabs and removable browser tabs. */
 const props = defineProps<{
   tabs: readonly WorkTab[]
   activeId: string | null
@@ -23,6 +31,8 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   select: [id: string]
+  addBrowser: []
+  closeTabs: [ids: string[]]
   showChange: [id: string, mode: ChangeMode, path: string | null, selection?: { call: ChangeWorkTab['call']; edit: number }]
   updateBrowser: [tab: BrowserWorkTab]
   open: [path: string]
@@ -52,6 +62,27 @@ function select(tab: WorkTab): void {
   emit('select', tab.id)
 }
 
+const browserTabs = computed(() => props.tabs.filter((tab) => tab.kind === 'browser'))
+const menuId = ref<string | null>(null)
+const menu = useContextMenuOwner(() => {
+  menuId.value = null
+})
+
+function openMenu(event: MouseEvent, tab: WorkTab): void {
+  if (tab.kind !== 'browser') {
+    return
+  }
+  menuId.value = tab.id
+  menu.open(event)
+}
+
+function closeScope(scope: TabCloseScope): void {
+  if (menuId.value) {
+    emit('closeTabs', tabsToClose(browserTabs.value, menuId.value, scope))
+  }
+  menu.close()
+}
+
 /** Resolve the changed file within the selected change mode. */
 function changeSelection(tab: ChangeWorkTab): string | null {
   return changeTabPath(tab, tab.mode, changes.value.uncommitted.files)
@@ -71,29 +102,41 @@ function openFromTree(path: string): void {
 <template>
   <aside class="flex h-full min-w-0 flex-col overflow-hidden border-l border-line bg-surface text-fg">
     <div class="flex h-11 shrink-0 items-center gap-1 pl-2 pr-3">
-      <div role="tablist" aria-label="Work panel" class="flex min-w-0 flex-1 items-center gap-1">
-        <button
+      <TabStrip class="flex-1" surface="raised">
+        <TabItem
           v-for="tab in tabs"
           :key="tab.id"
-          type="button"
-          role="tab"
-          :aria-selected="tab.id === activeId"
-          :title="tab.kind === 'file' ? tab.path || 'File' : workTabTitle(tab)"
-          class="flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-chrome hover:bg-surface-base hover:text-fg"
-          :class="[tab.kind === 'file' ? 'shrink' : 'shrink-0', tab.id === activeId ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle']"
-          @click="select(tab)"
+          :tab="{ id: tab.id, title: tab.kind === 'file' ? tab.path ? `File: ${workTabTitle(tab)}` : 'File' : workTabTitle(tab) }"
+          :is-active="tab.id === activeId"
+          :closable="tab.kind === 'browser'"
+          :tooltip="tab.kind === 'file' ? tab.path || 'File' : undefined"
+          tabindex="0"
+          @pointerdown="select(tab)"
+          @keydown.enter="select(tab)"
+          @keydown.space.prevent="select(tab)"
+          @contextmenu="openMenu($event, tab)"
+          @close="emit('closeTabs', [tab.id])"
         >
-          <FileIcon v-if="tab.kind === 'file' && tab.path" :name="tab.path" :is-directory="false" :size="ICON_PX.markIn28" class="shrink-0" />
-          <File v-else-if="tab.kind === 'file'" :size="ICON_PX.markIn28" class="shrink-0" />
-          <FileDiff v-else-if="tab.kind === 'change'" :size="ICON_PX.markIn28" class="shrink-0" />
-          <Globe v-else :size="ICON_PX.markIn28" class="shrink-0" />
-          <span class="truncate whitespace-nowrap">{{ tab.kind === 'file' ? tab.path ? `File: ${workTabTitle(tab)}` : 'File' : workTabTitle(tab) }}</span>
-          <span v-if="tab.kind === 'change'" class="flex shrink-0 gap-1 text-[11px] tabular-nums">
-            <span class="text-on-success">+{{ totals.added }}</span>
-            <span class="text-on-danger">−{{ totals.removed }}</span>
-          </span>
-        </button>
-      </div>
+          <template #mark>
+            <FileIcon v-if="tab.kind === 'file' && tab.path" :name="tab.path" :is-directory="false" :size="ICON_PX.markIn28" />
+            <File v-else-if="tab.kind === 'file'" :size="ICON_PX.markIn28" />
+            <FileDiff v-else-if="tab.kind === 'change'" :size="ICON_PX.markIn28" />
+            <Globe v-else :size="ICON_PX.markIn28" />
+          </template>
+          <template v-if="tab.kind === 'change'" #title>
+            <span class="flex items-center gap-1.5">
+              <span>Change</span>
+              <span class="text-[11px] tabular-nums text-on-success">+{{ totals.added }}</span>
+              <span class="text-[11px] tabular-nums text-on-danger">−{{ totals.removed }}</span>
+            </span>
+          </template>
+        </TabItem>
+        <template #trailing>
+          <Tooltip content="New browser tab" class="ml-1 shrink-0">
+            <IconButton :icon="Plus" size="sm" variant="ghost" aria-label="New browser tab" @click="emit('addBrowser')" />
+          </Tooltip>
+        </template>
+      </TabStrip>
       <Tooltip content="Close panel" class="shrink-0">
         <IconButton :icon="PanelRightClose" variant="ghost" aria-label="Close panel" @click="emit('close')" />
       </Tooltip>
@@ -146,5 +189,25 @@ function openFromTree(path: string): void {
         </div>
       </slot>
     </div>
+    <Popover
+      :overlay-store="appOverlayStore"
+      :is-open="menu.isOpen.value"
+      :anchor-x="menu.anchorX.value"
+      :anchor-y="menu.anchorY.value"
+      :anchor-context-el="menu.anchorContextEl.value"
+      :offset="0"
+      @close="menu.close"
+    >
+      <Menu>
+        <MenuItem :icon="X" label="Close" @select="closeScope('self')" />
+        <MenuItem
+          v-for="item in [{ scope: 'others', label: 'Close others' }, { scope: 'right', label: 'Close to the right' }, { scope: 'left', label: 'Close to the left' }] as const"
+          :key="item.scope"
+          :label="item.label"
+          :disabled="!menuId || tabsToClose(browserTabs, menuId, item.scope).length === 0"
+          @select="closeScope(item.scope)"
+        />
+      </Menu>
+    </Popover>
   </aside>
 </template>
