@@ -127,7 +127,10 @@ that neither writable disk changed. Two VMs must never write the same disk.
 
 `DirMachineImageStore` publishes immutable generations and atomically advances
 `current.json` after syncing files and directories. It retains the current and
-previous generation. Cross-worker storage and execution fencing remains a
+previous generation. Base pins are never removed automatically: a base that no
+generation references stays on disk until an operator deletes it, so a manager
+that has shipped many bases fills its disk and resets fail with `ENOSPC`.
+Automatic collection of unreferenced bases is an open decision. Cross-worker storage and execution fencing remains a
 [scaled-deployment requirement](sessions-and-targets.md#implementation-ownership-and-checks).
 
 ## Lifecycle and capacity
