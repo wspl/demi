@@ -85,7 +85,7 @@ function updateAddress(address: string): void {
       <IconButton :icon="ArrowRight" variant="ghost" aria-label="Forward" disabled disabled-reason="Browser navigation is not connected yet" />
       <IconButton :icon="RotateCw" variant="ghost" aria-label="Refresh" disabled disabled-reason="Browser navigation is not connected yet" />
       <TextInput
-        class="min-w-0 flex-1"
+        class="ml-2 min-w-0 flex-1"
         :model-value="active?.address ?? ''"
         :disabled="!active"
         placeholder="Enter address"
