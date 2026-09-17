@@ -122,12 +122,12 @@ const panelAsideOpen = ref(true)
 const panelProjects = ref(demoProjects())
 const panelConversations = ref(demoConversations())
 const panelActiveConversationId = ref<string | null>('c-login')
-function workTabs(): WorkTab[] {
-  return workPanelTabs('src/auth/cookie.ts')
+function workTabs(path: string): WorkTab[] {
+  return workPanelTabs(path)
 }
 /** Host-owned selections for the fixed work-panel specimens. */
-function useWorkTabs(activeId: string | null) {
-  const tabs = ref(workTabs())
+function useWorkTabs(activeId: string | null, path = 'src/auth/cookie.ts') {
+  const tabs = ref(workTabs(path))
   const active = ref<string | null>(activeId)
   function updateBrowser(tab: BrowserWorkTab) {
     tabs.value = tabs.value.map((current) => current.id === tab.id ? tab : current)
@@ -153,7 +153,7 @@ function useWorkTabs(activeId: string | null) {
     active.value = next.activeId
   }
   function reset() {
-    tabs.value = workTabs()
+    tabs.value = workTabs(path)
     active.value = activeId
   }
   return { tabs, active, updateBrowser, open, showChange, selectEdit, back, forward, reset }
@@ -234,7 +234,7 @@ const changeStale = useChangeTab('uncommitted', 'src/auth/cookie.ts', {
   conversation: null,
   uncommitted: createGalleryChangeSet(200, { truncated: true, failure: 'The device is offline.' }),
 })
-const browserWork = useWorkTabs('browser')
+const browserWork = useWorkTabs('browser', '')
 let nextQueue = 3
 let nextSent = 1
 
@@ -1597,7 +1597,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="Fixed sections in order: Change, Browser, File. Change shows the uncommitted totals and returns to Uncommitted when clicked; File shows the selected filename and keeps one file history; Browser has its own second-row tabs, with add, close and context menus. The browser tabs retain their original top inset and the address row its bottom inset; only the gap between them is reduced. The third row has Back, Forward, Refresh and an address draft. Subtle dividers separate the fixed sections from browser tabs and the address row from page content; no divider separates browser tabs from the address row. Navigation is disabled until the browser is connected. File pills still open retained edits in Change."
+        note="Fixed sections in order: Change, Browser, File. Change shows the uncommitted totals and returns to Uncommitted when clicked; File uses a Lucide outline icon until a file is selected, then shows its file-type icon and filename and keeps one file history; Browser has its own second-row tabs, with add, close and context menus. The browser tabs retain their original top inset and the address row its bottom inset; only the gap between them is reduced. The third row has Back, Forward, Refresh and an address draft. Subtle dividers separate the fixed sections from browser tabs and the address row from page content; no divider separates browser tabs from the address row. Navigation is disabled until the browser is connected. File pills still open retained edits in Change."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
