@@ -50,6 +50,7 @@ const scrollArea = ref<InstanceType<typeof ScrollArea> | null>(null)
 const rowEls = new Map<string, HTMLElement>()
 const stickyPaths = ref<string[]>([])
 const stickyOffset = ref(0)
+const scrolled = ref(false)
 // The selected row loses its fill once any of it is under the stack: a sliver
 // of highlight at the stack's edge would read as a line.
 const selectedUnderStack = ref(false)
@@ -76,6 +77,7 @@ function updateSticky(): void {
   if (!viewport) {
     return
   }
+  scrolled.value = viewport.scrollTop > 0
   const stack = stickyTreeRows(
     props.rows,
     (path) => rowEls.get(path)?.offsetTop,
@@ -168,8 +170,8 @@ defineExpose({ scrollToRow, scrollBy })
           </TreeRow>
         </div>
       </div>
-      <!-- A soft fall-off in the surface's own hue below the stack, so it reads as sitting above the rows. -->
-      <div class="pointer-events-none absolute inset-x-0 top-full h-2 bg-linear-to-b from-surface-editor to-transparent" />
+      <!-- Only scrolled rows need a fall-off below the stack that covers them. -->
+      <div v-if="scrolled && rows.length > 0" class="pointer-events-none absolute inset-x-0 top-full h-2 bg-linear-to-b from-surface-editor to-transparent" />
     </div>
     <!-- The caption's room plus one gap; the pinned copy above covers it. -->
     <div class="h-[29px] shrink-0" aria-hidden="true" />

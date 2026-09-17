@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { File, FileDiff, Globe, PanelRightClose, Plus, X } from '@lucide/vue'
+import { File, FileDiff, Globe, PanelRightClose, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
+import { GlobePlus } from '../ui/GlobePlus'
 import Tooltip from '../ui/Tooltip.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from '../files/FileIcon.vue'
@@ -118,10 +119,10 @@ function openFromTree(path: string): void {
           <File v-else-if="tab.kind === 'file'" :size="ICON_PX.markIn28" />
           <FileDiff v-else :size="ICON_PX.markIn28" />
           <span>{{ tab.kind === 'file' ? tab.path ? `File: ${workTabTitle(tab)}` : 'File' : 'Change' }}</span>
-          <template v-if="tab.kind === 'change'">
-            <span class="text-[11px] tabular-nums text-on-success">+{{ totals.added }}</span>
-            <span class="text-[11px] tabular-nums text-on-danger">−{{ totals.removed }}</span>
-          </template>
+          <span v-if="tab.kind === 'change'" class="flex items-center gap-0.5 text-[11px] tabular-nums">
+            <span class="text-on-success">+{{ totals.added }}</span>
+            <span class="text-on-danger">−{{ totals.removed }}</span>
+          </span>
         </button>
       </div>
       <TabStrip class="min-w-0 flex-1" surface="raised">
@@ -141,7 +142,7 @@ function openFromTree(path: string): void {
         </TabItem>
         <template #trailing>
           <Tooltip content="New browser tab" class="ml-1 shrink-0">
-            <IconButton :icon="Plus" size="sm" variant="ghost" aria-label="New browser tab" @click="emit('addBrowser')" />
+            <IconButton :icon="GlobePlus" size="sm" variant="ghost" aria-label="New browser tab" @click="emit('addBrowser')" />
           </Tooltip>
         </template>
       </TabStrip>
