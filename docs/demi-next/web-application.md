@@ -75,8 +75,8 @@ Product adapters connect shared file interfaces to device filesystem APIs,
 the working-tree change routes, and uploads, and shared account interfaces to
 provider, pairing, and Cloud APIs.
 The work panel keeps one file selection, one change selection and local browser
-placeholder tabs per conversation. Change and File are fixed tabs; browser tabs
-can be added and closed in the same tab collection. One active tab selects the
+placeholder tabs per conversation. Change and File are fixed view selections; browser tabs
+can be added and closed. One active tab selects the
 view. Closing the active browser tab selects its nearest remaining predecessor,
 or the first remaining tab. Browser address drafts belong to their tabs.
 The change summary comes from the uncommitted working-tree source, refreshed
