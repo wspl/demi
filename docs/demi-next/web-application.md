@@ -63,7 +63,11 @@ attachment without stopping the backend task. Reload starts a new browser cache.
 The backend owns saved conversation state, ordering, preferences, and attachments.
 Per-user IndexedDB retains local drafts, pending edits, unconfirmed submissions,
 and attachment bytes. Browser-local preferences hold presentation-only choices.
-These stores do not replace backend ownership or authorization.
+Work-panel width and per-conversation open/closed state use the same account-scoped
+local preferences. Refreshing restores whether the panel was open; a conversation
+without a saved choice starts closed. Tab selections and browser address drafts
+remain in memory for the page lifetime. Switching accounts uses that account's
+saved choices. These stores do not replace backend ownership or authorization.
 
 New conversations begin with a local UUID. The first send creates the backend
 record using that ID. Submissions retain their message ID until admission is

@@ -14,6 +14,7 @@ import {
   type BrowserWorkTab,
   type ChangeWorkTab,
 } from '@demicodes/web-ui/agent/work-panel'
+import { useResources } from '../state/resources'
 import { createCallChangeReader, createWorkingTreeSource, type WorkingTreeSource } from './changes'
 
 /** One conversation's work panel: whether it is open, its tabs, the active one, and its working tree. */
@@ -28,16 +29,23 @@ export interface WorkState {
 /**
  * The work panel's state per conversation, for the page's lifetime: whether
  * the reader has it open beside that conversation, its tabs and their
- * selections, and the working-tree source behind its Change tab. Nothing here
- * persists; a reload starts every conversation's panel closed on Uncommitted.
+ * selections, and the working-tree source behind its Change tab. The open flag
+ * reads and writes account-local preferences; tab selections remain in memory.
  */
 export const useWorkPanel = defineStore('work-panel', () => {
+  const resources = useResources()
   const states = reactive(new Map<string, WorkState>())
 
   function stateFor(conversationId: string): WorkState {
     if (!states.has(conversationId)) {
       states.set(conversationId, {
-        open: false,
+        get open(): boolean {
+          return resources.local.workPanelOpen?.[conversationId] ?? false
+        },
+        set open(open: boolean) {
+          resources.local.workPanelOpen ??= {}
+          resources.local.workPanelOpen[conversationId] = open
+        },
         tabs: workPanelTabs(),
         activeId: 'change',
         readCallChange: createCallChangeReader(conversationId),

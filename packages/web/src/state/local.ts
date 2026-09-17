@@ -9,6 +9,8 @@ const localStateSchema = z.object({
   sidebarWidth: z.number().int().optional(),
   /** The work panel's width in px; absent until the reader resizes it. */
   asideWidth: z.number().int().optional(),
+  /** Whether the work panel is open, keyed by conversation id. */
+  workPanelOpen: z.record(z.string(), z.boolean()).optional(),
 })
 export type LocalState = z.infer<typeof localStateSchema>
 
