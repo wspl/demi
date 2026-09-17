@@ -29,7 +29,7 @@ function updateAddress(address: string): void {
         @update:model-value="updateAddress"
       />
     </div>
-    <div class="flex min-h-0 flex-1 items-center justify-center border-t border-line-subtle text-[13px] text-fg-faint">
+    <div class="flex min-h-0 flex-1 items-center justify-center border-t border-line text-[13px] text-fg-faint">
       Browser is not connected yet.
     </div>
   </div>
