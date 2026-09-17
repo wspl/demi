@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { FileDiff, Globe, PanelRightClose } from '@lucide/vue'
+import { File, FileDiff, Globe, PanelRightClose } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { ICON_PX } from '../ui/icon-metrics'
@@ -83,7 +83,8 @@ function openFromTree(path: string): void {
           :class="[tab.kind === 'file' ? 'shrink' : 'shrink-0', tab.id === activeId ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle']"
           @click="select(tab)"
         >
-          <FileIcon v-if="tab.kind === 'file'" :name="tab.path" :is-directory="false" :size="ICON_PX.markIn28" class="shrink-0" />
+          <FileIcon v-if="tab.kind === 'file' && tab.path" :name="tab.path" :is-directory="false" :size="ICON_PX.markIn28" class="shrink-0" />
+          <File v-else-if="tab.kind === 'file'" :size="ICON_PX.markIn28" class="shrink-0" />
           <FileDiff v-else-if="tab.kind === 'change'" :size="ICON_PX.markIn28" class="shrink-0" />
           <Globe v-else :size="ICON_PX.markIn28" class="shrink-0" />
           <span class="truncate whitespace-nowrap">{{ tab.kind === 'file' ? tab.path ? `File: ${workTabTitle(tab)}` : 'File' : workTabTitle(tab) }}</span>
