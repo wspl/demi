@@ -108,7 +108,7 @@ onBeforeUnmount(() => {
       </div>
       <!-- Crumbs open menus of what lies beside them: another file is a pick away. -->
       <FileBrowserAddressBar
-        class="min-w-0 flex-1"
+        class="ml-2 min-w-0 flex-1"
         mode="browse"
         :path="path ?? root"
         :root="root"
