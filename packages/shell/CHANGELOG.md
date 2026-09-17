@@ -1,5 +1,18 @@
 # @demicodes/shell
 
+## 0.25.2
+
+### Patch Changes
+
+- Apply model selection before compaction so recovery does not depend on an unavailable previous provider. Allow immediate switches to cancel obsolete summaries, retain failed target selections, and bound context reduction.
+
+  Preserve explicitly typed stdout/stderr bytes through interpreter aggregation, pipes, redirections and command exits. Remove shell encoding guesses, retain binary artifacts, and decode streamed UTF-8 across chunk boundaries without corrupting text or offsets.
+
+  Correct Grok OAuth header and optional principal typing so the release passes the repository typecheck.
+
+- Updated dependencies
+  - @demicodes/utils@0.25.2
+
 ## 0.25.1
 
 ### Patch Changes
