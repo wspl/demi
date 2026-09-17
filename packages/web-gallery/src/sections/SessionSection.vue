@@ -1597,7 +1597,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="Three fixed sections: Change shows the uncommitted totals and returns to Uncommitted when clicked; File shows the selected filename and keeps one file history; Browser has its own second-row tabs, with add, close and context menus. Its third row has Back, Forward, Refresh and an address draft. Subtle dividers separate the fixed sections from browser tabs and the address row from page content; no divider separates browser tabs from the address row. Navigation is disabled until the browser is connected. File pills still open retained edits in Change."
+        note="Fixed sections in order: Change, Browser, File. Change shows the uncommitted totals and returns to Uncommitted when clicked; File shows the selected filename and keeps one file history; Browser has its own second-row tabs, with add, close and context menus. Its compact second and third rows are 36px tall; the third row has Back, Forward, Refresh and an address draft. Subtle dividers separate the fixed sections from browser tabs and the address row from page content; no divider separates browser tabs from the address row. Navigation is disabled until the browser is connected. File pills still open retained edits in Change."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>

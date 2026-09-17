@@ -15,8 +15,8 @@ export interface BrowserWorkTab {
 export function workPanelTabs(path = ''): WorkTab[] {
   return [
     changeWorkTab('change', 'uncommitted'),
-    fileWorkTab('file', path),
     { id: 'browser', kind: 'browser', pages: [{ id: 'first', title: 'New tab', address: '' }], activeId: 'first' },
+    fileWorkTab('file', path),
   ]
 }
 

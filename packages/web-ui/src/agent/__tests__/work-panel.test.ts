@@ -9,12 +9,12 @@ const selection: CallEditSelection = {
 }
 
 describe('fixed work panel sections', () => {
-  test('starts with Change, File and Browser and an independent browser page', () => {
+  test('starts with Change, Browser and File and an independent browser page', () => {
     const first = workPanelTabs()
-    expect(first.map((tab) => tab.kind)).toEqual(['change', 'file', 'browser'])
+    expect(first.map((tab) => tab.kind)).toEqual(['change', 'browser', 'file'])
     expect(findChangeWorkTab(first)?.mode).toBe('uncommitted')
-    expect(first[2]).toMatchObject({ pages: [{ title: 'New tab', address: '' }], activeId: 'first' })
-    expect(first[2]).not.toBe(workPanelTabs()[2])
+    expect(first[1]).toMatchObject({ pages: [{ title: 'New tab', address: '' }], activeId: 'first' })
+    expect(first[1]).not.toBe(workPanelTabs()[1])
   })
 
   test('files selected from any section replace the single file and preserve history', () => {
@@ -22,13 +22,13 @@ describe('fixed work panel sections', () => {
     const second = showFileInTab(first.tabs, 'src/b.ts')
     expect(second.activeId).toBe('file')
     expect(second.tabs).toHaveLength(3)
-    expect(second.tabs[1]).toMatchObject({ path: 'src/b.ts', back: ['src/a.ts'], forward: [] })
+    expect(second.tabs[2]).toMatchObject({ path: 'src/b.ts', back: ['src/a.ts'], forward: [] })
     const back = goBackInTab(second.tabs, 'file')
-    expect(back[1]).toMatchObject({ path: 'src/a.ts', back: [], forward: ['src/b.ts'] })
-    expect(goForwardInTab(back, 'file')[1]).toMatchObject({ path: 'src/b.ts' })
+    expect(back[2]).toMatchObject({ path: 'src/a.ts', back: [], forward: ['src/b.ts'] })
+    expect(goForwardInTab(back, 'file')[2]).toMatchObject({ path: 'src/b.ts' })
     const replaced = showFileInTab(back, 'src/c.ts')
-    expect(replaced.tabs[1]).toMatchObject({ path: 'src/c.ts', forward: [] })
-    expect(showFileInTab(replaced.tabs, 'src/c.ts').tabs[1]).toEqual(replaced.tabs[1])
+    expect(replaced.tabs[2]).toMatchObject({ path: 'src/c.ts', forward: [] })
+    expect(showFileInTab(replaced.tabs, 'src/c.ts').tabs[2]).toEqual(replaced.tabs[2])
   })
 
   test('retained edits open Change and returning to Uncommitted keeps its selection', () => {
