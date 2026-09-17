@@ -1,23 +1,32 @@
 import type { CallEditSelection, ChangeFile, ChangeMode } from '../files/changes'
 import { baseName } from '../files/paths'
+import { closeTabs } from './tab-close'
 
-/** The fixed work-panel sections and their per-conversation selections. */
+/** Fixed Change and File tabs and removable browser tabs for one conversation. */
 export type WorkTab = FileWorkTab | ChangeWorkTab | BrowserWorkTab
 
 export interface BrowserWorkTab {
   id: string
   kind: 'browser'
-  pages: { id: string; title: string; address: string }[]
-  activeId: string | null
+  title: string
+  address: string
 }
 
-/** Initial selections for a conversation's three fixed work-panel sections. */
+/** Initial fixed tabs for a conversation's work panel. */
 export function workPanelTabs(path = ''): WorkTab[] {
-  return [
-    changeWorkTab('change', 'uncommitted'),
-    { id: 'browser', kind: 'browser', pages: [{ id: 'first', title: 'New tab', address: '' }], activeId: 'first' },
-    fileWorkTab('file', path),
-  ]
+  return [changeWorkTab('change', 'uncommitted'), fileWorkTab('file', path)]
+}
+
+/** Add an independent browser address draft and select its tab. */
+export function addBrowserTab(tabs: readonly WorkTab[]): { tabs: WorkTab[]; activeId: string } {
+  const tab: BrowserWorkTab = { id: crypto.randomUUID(), kind: 'browser', title: 'New tab', address: '' }
+  return { tabs: [...tabs, tab], activeId: tab.id }
+}
+
+/** Close browser tabs while preserving the fixed Change and File tabs. */
+export function closeBrowserTabs(tabs: readonly WorkTab[], activeId: string | null, ids: readonly string[]) {
+  const browserIds = tabs.filter((tab) => tab.kind === 'browser' && ids.includes(tab.id)).map((tab) => tab.id)
+  return closeTabs(tabs, activeId, browserIds)
 }
 
 export interface FileWorkTab {
@@ -183,7 +192,7 @@ export function goForwardInTab(tabs: readonly WorkTab[], id: string): WorkTab[] 
 
 /** The section label, or the selected file's basename. */
 export function workTabTitle(tab: WorkTab): string {
-  return tab.kind === 'file' ? baseName(tab.path) : tab.kind === 'change' ? 'Change' : 'Browser'
+  return tab.kind === 'file' ? baseName(tab.path) : tab.kind === 'change' ? 'Change' : tab.title
 }
 
 /** The one change tab, when it is open. */

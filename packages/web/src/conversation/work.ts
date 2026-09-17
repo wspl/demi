@@ -3,6 +3,8 @@ import { defineStore } from 'pinia'
 import type { CallEditSelection, ChangeMode, ReadCallChange } from '@demicodes/web-ui/files/changes'
 import {
   workPanelTabs,
+  addBrowserTab,
+  closeBrowserTabs,
   goBackInTab,
   goForwardInTab,
   showChangeInTab,
@@ -25,7 +27,7 @@ export interface WorkState {
 
 /**
  * The work panel's state per conversation, for the page's lifetime: whether
- * the reader has it open beside that conversation, its fixed sections and their
+ * the reader has it open beside that conversation, its tabs and their
  * selections, and the working-tree source behind its Change tab. Nothing here
  * persists; a reload starts every conversation's panel closed on Uncommitted.
  */
@@ -52,6 +54,18 @@ export const useWorkPanel = defineStore('work-panel', () => {
 
   function select(state: WorkState, id: string): void {
     state.activeId = id
+  }
+
+  function addBrowser(state: WorkState): void {
+    const next = addBrowserTab(state.tabs)
+    state.tabs = next.tabs
+    state.activeId = next.activeId
+  }
+
+  function closeTabs(state: WorkState, ids: string[]): void {
+    const next = closeBrowserTabs(state.tabs, state.activeId, ids)
+    state.tabs = next.tabs
+    state.activeId = next.activeId
   }
 
   function updateBrowser(state: WorkState, tab: BrowserWorkTab): void {
@@ -84,5 +98,5 @@ export const useWorkPanel = defineStore('work-panel', () => {
     state.tabs = goForwardInTab(state.tabs, id)
   }
 
-  return { stateFor, setOpen, select, updateBrowser, open, showChange, selectEdit, back, forward }
+  return { stateFor, setOpen, select, addBrowser, closeTabs, updateBrowser, open, showChange, selectEdit, back, forward }
 })
