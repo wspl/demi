@@ -576,7 +576,7 @@ function abortTerminal(id: string) {
     <template v-if="view === 'tabs'">
       <GallerySection
         title="Tab bar"
-        note="Session tabs and the conversation list."
+        note="Session tabs and the conversation list. Tabs fit their icon and title up to 160px; longer titles truncate."
       >
         <GalleryTabBar />
       </GallerySection>
@@ -1605,7 +1605,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="Change and File are content-sized buttons outside the browser tab strip. They never shrink or scroll with browser tabs; only the browser strip uses the remaining width. The plus button adds browser tabs, using the same tab styling, scrolling and close menus. Browser close menus affect only browser tabs. Change shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Browser tabs use a globe. Selecting one shows Back, Forward, Refresh and its own address draft immediately below the strip; a subtle divider separates the address row from page content. Browser and File address bars leave 12px after navigation controls. Browser navigation remains disconnected."
+        note="Change and File are content-sized buttons outside the browser tab strip. They never shrink or scroll with browser tabs; only the browser strip uses the remaining width. The plus button adds browser tabs, using the same content-sized tabs capped at 160px, scrolling and close menus. Browser close menus affect only browser tabs. Change shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Browser tabs use a globe. Selecting one shows Back, Forward, Refresh and its own address draft immediately below the strip; a subtle divider separates the address row from page content. Browser and File address bars leave 12px after navigation controls. Browser navigation remains disconnected."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
