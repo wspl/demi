@@ -16,7 +16,7 @@ import {
 const FADE_PX = 24
 
 /**
- * The row every tab bar uses. Tabs can use fixed or content widths; when they outgrow the
+ * The row every tab bar uses. Tabs are all one width; when they outgrow the
  * row the strip scrolls with no scrollbar and fades out at whichever edge
  * has more behind it. Whenever the active tab changes, or a tab enters, the
  * strip scrolls until that tab shows whole and clear of the fades. The
