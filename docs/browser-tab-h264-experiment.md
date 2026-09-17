@@ -104,3 +104,40 @@ Still untested: constrained-network feedback, live browser-to-native transfer,
 Linux Cloud performance, simultaneous tab captures, RGB/4:4:4 capture paths,
 and comparative visual readability. No product, runner, or browser lifecycle
 behavior changed in this experiment.
+
+## H.264 4:4:4 follow-up
+
+On the same machine and Chrome version, x264 encoded a synthetic RGB test chart
+into a single-frame H.264 High 4:4:4 Predictive lossless sample (`yuv444p`, QP 0).
+A separate High Profile 4:2:0 sample served as the control. The codec strings
+were derived from each sample's SPS: `avc1.f40016` and `avc1.640016`.
+This tests the client decoder independently; the 4:4:4 source was not a tab.
+
+The WebCodecs test did not stop at `isConfigSupported()`: it configured a decoder,
+submitted the Annex B keyframe, flushed, inspected the output VideoFrame format,
+and drew it to an OffscreenCanvas with a pixel readback. Both default Chrome GPU
+settings and `--disable-gpu` were tested.
+
+| Path | Result on this Chrome/macOS installation |
+| --- | --- |
+| H.264 4:4:4 decode, software preference | Supported; decoded I444 and drew to canvas |
+| H.264 4:4:4 decode, no preference | Supported; decoded I444 and drew to canvas |
+| H.264 4:4:4 decode, hardware preference | Unsupported, including with default GPU settings |
+| H.264 4:4:4 WebCodecs encoding | Unsupported for all three acceleration preferences |
+| H.264 4:2:0 hardware decode, default GPU settings | Supported; decoded NV12 |
+| tabCapture output, both GPU configurations | I420 |
+
+The supported capture constraints exposed no pixel-format/chroma selector.
+Consequently this experiment establishes a working Web client software decode
+path for a static 4:4:4 frame, but not an end-to-end 4:4:4 tab stream. It does not
+establish Chrome on other platforms, Safari, Firefox, or sustained decode speed.
+Artifacts: `probe444.mjs`, `444-software.json`, `444-default.json`, and
+`sample444.h264` in the same local experiment directory.
+
+The pinned Chromium source has an internal RGB capture path:
+[FrameSinkVideoCapturerImpl](https://raw.githubusercontent.com/chromium/chromium/153.0.8010.36/components/viz/service/frame_sinks/video_capture/frame_sink_video_capturer_impl.cc)
+supports ARGB and maps it to RGBA copy output, including a shared-memory path.
+This is an internal compositor interface, not evidence that an extension can
+request RGB from tabCapture. Reaching that path would require an exposed API or
+a native browser integration; neither was implemented here. Converting the
+observed I420 frames to RGB or I444 after capture does not restore lost chroma.
