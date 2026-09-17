@@ -50,7 +50,7 @@ function resolveLoginSurface(options: GrokDeviceLoginOptions): GrokLoginSurface 
   return options.onPending ? 'ui' : 'headless'
 }
 
-function oauthHeaders(surface: GrokLoginSurface): HeadersInit {
+function oauthHeaders(surface: GrokLoginSurface): Record<string, string> {
   return {
     'content-type': 'application/x-www-form-urlencoded',
     'x-grok-client-version': resolveGrokClientVersion(),

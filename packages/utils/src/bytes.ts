@@ -1,5 +1,5 @@
 const encoder = new TextEncoder()
-const decoder = new TextDecoder()
+const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
 
 /** Encodes a string to UTF-8 bytes. */
 export function encodeUtf8(text: string): Uint8Array {
@@ -36,7 +36,7 @@ export function decodeLatin1(bytes: Uint8Array): string {
 /** Strictly decodes UTF-8; returns null when the bytes are not valid UTF-8. */
 export function decodeUtf8Strict(bytes: Uint8Array): string | null {
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
   } catch {
     return null
   }

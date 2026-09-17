@@ -1,4 +1,4 @@
-import { concatBytes, decodeUtf8 } from '@demicodes/utils'
+import { concatBytes, utf8Bytes } from '@demicodes/utils'
 import type { HostSpawnRedirection, ShellOptions, ShoptOptions } from '@demicodes/just-bash/interpreter'
 import type { ForegroundProcess, ForegroundSink, ShellSession } from './environment-state'
 import type { HostProcessOutputChunk } from './host'
@@ -80,16 +80,22 @@ export function recordForegroundChunk(
     foreground.captureOverflowed = true
     foreground.rawStdoutBuffer = ''
     foreground.rawStdoutBytes = []
+    foreground.rawStderrBytes = []
     void foreground.handle.kill('SIGKILL').catch(() => {})
     return
   }
   foreground.capturedBytes += chunk.byteLength
-  const text = decodeUtf8(chunk)
+  const decoders = foreground.rawDecoders ??= {
+    1: new TextDecoder('utf-8', { ignoreBOM: true }),
+    2: new TextDecoder('utf-8', { ignoreBOM: true }),
+  }
+  const text = decoders[sourceFd].decode(chunk, { stream: true })
   foreground.lastOutputAt = Date.now()
   if (sourceFd === 1) {
     foreground.rawStdoutBuffer += text
     foreground.rawStdoutBytes.push(chunk)
   } else {
+    foreground.rawStderrBytes.push(chunk)
     foreground.rawStderrBuffer += text
   }
 
@@ -99,7 +105,20 @@ export function recordForegroundChunk(
     return
   }
 
-  appendVisibleChunk(foreground, sink.fd ?? sourceFd, text, chunk.byteLength)
+  appendVisibleChunk(foreground, sink.fd ?? sourceFd, text, utf8Bytes(text))
+}
+
+/** Finish each text view after its byte stream closes. Raw bytes are never decoded in place. */
+export function finishForegroundText(foreground: ForegroundProcess): void {
+  if (!foreground.rawDecoders) return
+  for (const fd of [1, 2] as const) {
+    const text = foreground.rawDecoders[fd].decode()
+    if (fd === 1) foreground.rawStdoutBuffer += text
+    else foreground.rawStderrBuffer += text
+    const sink = foreground.outputSinks[fd]
+    if (text && sink.kind !== 'file' && sink.kind !== 'null') appendVisibleChunk(foreground, sink.fd ?? fd, text, utf8Bytes(text))
+  }
+  foreground.rawDecoders = undefined
 }
 
 export async function flushForegroundSinks(session: ShellSession, foreground: ForegroundProcess): Promise<void> {

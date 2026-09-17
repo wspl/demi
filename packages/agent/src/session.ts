@@ -61,6 +61,7 @@ interface TakenQueuedSend {
 export class AgentSession<State> {
   private provider: AgentProvider
   private model: ModelSelection
+  private modelNeedsCompaction = false
   private pendingModelSwitch: { provider: AgentProvider | null; model: ModelSelection; apply: ModelSwitchApply } | null = null
   private readonly cwd: string
   private readonly runtime: AgentHarnessRuntime<State>
@@ -193,6 +194,7 @@ export class AgentSession<State> {
         return self.compactionThresholdTokens
       },
       currentSignal: () => self.currentSignal(),
+      applyModelSwitch: () => self.applyModelSelection(true),
       clone: (transcript) =>
         self.clone({
           transcript,
@@ -402,12 +404,19 @@ export class AgentSession<State> {
    * start of the next queued action, so a running turn finishes entirely on the old model;
    * 'immediate' also applies mid-turn at the next sampling/tool continuation, so the very
    * next request already runs on the new model (the same "as soon as possible" semantics
-   * steering has). Either way, if the new model can't hold the history, compaction runs
-   * first with the current (pre-switch) model, then the swap happens. Recording is cheap
+   * steering has). The selection is applied before compaction, so recovery never
+   * depends on the previous provider remaining available. Recording is cheap
    * and non-blocking so it never holds up an in-flight turn or other frames.
    */
   updateModel(provider: AgentProvider | null, model: ModelSelection, apply: ModelSwitchApply = 'next_turn'): void {
-    this.pendingModelSwitch = { provider, model, apply }
+    const previous = this.pendingModelSwitch?.provider
+    // A model-only update targets the already selected pending provider.
+    const next = provider ?? previous ?? null
+    this.pendingModelSwitch = { provider: next, model, apply }
+    if (previous && previous !== next && previous !== this.provider) {
+      void Promise.resolve().then(() => previous.dispose?.()).catch((error) => this.emit({ type: 'error', error: asError(error) }))
+    }
+    if (apply === 'immediate') this.compaction.interrupt()
   }
 
   async abort(): Promise<AbortResult> {
@@ -854,26 +863,24 @@ export class AgentSession<State> {
     }
   }
 
-  /**
-   * Applies a queued model/provider switch at an action boundary (turn preflight). If the
-   * new model's context window can't hold the current history, compaction runs FIRST with
-   * the current (pre-switch) model + provider — which can still load it to summarize — and
-   * only then do we swap. Doing it the other way would ask the smaller model to summarize
-   * a history it may not be able to load. Returns whether that compaction actually ran
-   * (false when no switch was pending).
-   */
-  private async applyPendingModelSwitch(): Promise<boolean> {
+  /** Apply selection independently of whether the selected model can summarize. */
+  private async applyModelSelection(immediateOnly = false): Promise<boolean> {
     const pending = this.pendingModelSwitch
-    if (!pending) return false
+    if (!pending || (immediateOnly && pending.apply !== 'immediate')) return false
     this.pendingModelSwitch = null
-
-    const compacted = await this.compaction.compactToFit(pending.model)
-    if (pending.provider && pending.provider !== this.provider) {
-      const previous = this.provider
-      this.provider = pending.provider
-      await previous.dispose?.()
-    }
+    const previous = this.provider
+    this.provider = pending.provider ?? previous
     this.model = pending.model
+    this.modelNeedsCompaction = true
+    if (previous !== this.provider) await previous.dispose?.()
+    return true
+  }
+
+  private async applyPendingModelSwitch(immediateOnly = false): Promise<boolean> {
+    await this.applyModelSelection(immediateOnly)
+    if (!this.modelNeedsCompaction) return false
+    const compacted = await this.compaction.compactToFit()
+    this.modelNeedsCompaction = false
     return compacted
   }
 
@@ -883,8 +890,7 @@ export class AgentSession<State> {
    * finishes and the next action starts.
    */
   private async applyImmediateModelSwitch(): Promise<boolean> {
-    if (this.pendingModelSwitch?.apply !== 'immediate') return false
-    return this.applyPendingModelSwitch()
+    return this.applyPendingModelSwitch(true)
   }
 
   private async runWithCompactingPhase<T>(fn: () => Promise<T>): Promise<T> {

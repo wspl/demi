@@ -46,7 +46,7 @@ test.skipIf(!oracle.ok)('type -t: builtins vs PATH files', async () => {
 })
 
 test.skipIf(!oracle.ok)('functions override builtins; posix forbids special-builtin functions', async () => {
-  const def = await runBash('cd() { echo FUNC-CD; }; cd /tmp; printf PWD=%s\\n "$PWD"')
+  const def = await runBash('cd() { echo FUNC-CD; }; cd /tmp; printf PWD=%s\\n "$PWD"', { cwd: '/' })
   expect(def.stdout).toMatch(/^FUNC-CD$/m)
   expect(def.stdout).not.toContain('PWD=/tmp')
 
