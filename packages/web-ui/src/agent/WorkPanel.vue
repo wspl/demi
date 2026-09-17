@@ -109,6 +109,7 @@ function openFromTree(path: string): void {
           :tab="{ id: tab.id, title: tab.kind === 'file' ? tab.path ? `File: ${workTabTitle(tab)}` : 'File' : workTabTitle(tab) }"
           :is-active="tab.id === activeId"
           :closable="tab.kind === 'browser'"
+          :fit-content="tab.kind !== 'browser'"
           :tooltip="tab.kind === 'file' ? tab.path || 'File' : undefined"
           tabindex="0"
           @pointerdown="select(tab)"

@@ -1605,7 +1605,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="One tab strip: Change and File are fixed, nonclosable tabs. The plus button adds browser tabs alongside them, using the same tab styling, scrolling and close menus. Browser close menus affect only browser tabs. Change shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Browser tabs use a globe. Selecting one shows Back, Forward, Refresh and its own address draft immediately below the strip; a subtle divider separates the address row from page content. Browser and File address bars leave 12px after navigation controls. Browser navigation remains disconnected."
+        note="One tab strip: Change and File are fixed, nonclosable tabs sized to their icon and label; browser tabs retain their standard fixed width. The plus button adds browser tabs alongside them, using the same tab styling, scrolling and close menus. Browser close menus affect only browser tabs. Change shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Browser tabs use a globe. Selecting one shows Back, Forward, Refresh and its own address draft immediately below the strip; a subtle divider separates the address row from page content. Browser and File address bars leave 12px after navigation controls. Browser navigation remains disconnected."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
