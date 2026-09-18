@@ -10,14 +10,17 @@ import { ICON_PX } from './icon-metrics'
 withDefaults(defineProps<{
   open: boolean
   visible?: boolean
+  /** The glyph's px, from `ICON_PX`: the row size by default, smaller beside small text. */
+  size?: number
 }>(), {
   visible: true,
+  size: ICON_PX.in28,
 })
 </script>
 
 <template>
   <ChevronRight
-    :size="ICON_PX.in28"
+    :size="size"
     aria-hidden="true"
     class="fold-chevron shrink-0"
     :class="[visible ? '' : 'invisible', open ? 'is-open' : '']"
