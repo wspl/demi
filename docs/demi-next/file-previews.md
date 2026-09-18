@@ -150,9 +150,11 @@ access.
 A transfer is a Host operation, so while it lasts it keeps a Cloud awake and
 holds the conversation's file gate. A paused player can keep its connection
 open without reading, so a transfer the browser accepts nothing from for 60
-seconds ends, and an archive or a target switch ends open transfers instead of
-waiting for them ([Host operations](sessions-and-targets.md#host-operations)).
-A player asks for the range again when it needs more.
+seconds lets go of the Host, and an archive or a target switch ends open
+transfers instead of waiting for them
+([Host operations](sessions-and-targets.md#host-operations)). Either way the
+browser sees the response cut short, never complete, and a player asks for the
+range again when it needs more.
 
 ## Keeping file content inert
 

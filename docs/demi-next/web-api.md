@@ -346,19 +346,22 @@ and with the same failures, and without a size limit. A media type the
 preview table shows in place is served as itself; any other file, and every
 file when `download=true`, is served as `application/octet-stream` with
 `Content-Disposition: attachment` and the file's name. A path that is not a
-regular file answers 404. One byte range in `Range` answers 206 with that
+regular file answers 404. A streamed answer has no `Content-Length`; `HEAD`
+reports it, with the ETag and `Last-Modified`. One byte range in `Range` answers 206 with that
 range; several ranges answer the whole file with 200, and a range that starts
 past the end answers 416. The ETag derives from the file's size and
 modification time, and `If-None-Match` answers 304. A request that names the
-`version` it expects, an ETag it saw earlier, answers 412 once the file no
-longer has it: a player's retries carry no validator, and they must never
+`version` it expects, an ETag it saw earlier, answers 412 `file_changed` once
+the file no longer has it: a player's retries carry no validator, and they must never
 splice two versions of a file together. Every answer carries
 `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-cache`,
 `Vary: Cookie` and `X-Accel-Buffering: no`, the last so that a proxy in front
 streams it instead of buffering it; an image served in place also carries the
 [content policy](file-previews.md#keeping-file-content-inert). `HEAD` answers
 the headers alone. How long a transfer may last, and what ends it, follows
-[Host operations](sessions-and-targets.md#host-operations).
+[Host operations](sessions-and-targets.md#host-operations); while an archive,
+a target change or a detach is ending the conversation's transfers, a new one
+answers 409 `conversation_busy`.
 
 The remote attachment picker lists and creates directories through
 `GET/POST /api/conversations/:id/hosts/:deviceId/fs`, with the same directory
