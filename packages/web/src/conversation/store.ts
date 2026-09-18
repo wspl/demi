@@ -172,6 +172,7 @@ export const useConversations = defineStore('conversations', () => {
       terminals: [],
       load: 'loading',
       pendingAction: null,
+      retrying: false,
     }
   }
 

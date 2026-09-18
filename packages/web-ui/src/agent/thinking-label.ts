@@ -24,8 +24,15 @@ export function thinkingFaceLabel(streaming: boolean, elapsedMs: number | null):
   return `${prefix} ${formatThinkingDuration(elapsedMs)}`
 }
 
-export function requestingFaceLabel(elapsedMs: number): string {
+/**
+ * The tail row while the provider is asked: Requesting, or Retrying while the
+ * agent asks again on its own, with how long the request has waited.
+ */
+export function providerWaitLabel(kind: 'requesting' | 'retrying', elapsedMs: number): string {
+  const [short, long] = kind === 'retrying'
+    ? ['agent.block.retrying', 'agent.block.retryingFor']
+    : ['agent.block.requesting', 'agent.block.requestingFor']
   if (elapsedMs <= 1000)
-    return t('agent.block.requesting')
-  return `${t('agent.block.requestingFor')} ${formatThinkingDuration(elapsedMs)}`
+    return t(short)
+  return `${t(long)} ${formatThinkingDuration(elapsedMs)}`
 }

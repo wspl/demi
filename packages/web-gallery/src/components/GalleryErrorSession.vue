@@ -42,6 +42,7 @@ function state(
     load: 'ready',
     lastError: null,
     pendingAction: null,
+    retrying: false,
     archived: false,
     status: 'idle',
     scroll: null,
