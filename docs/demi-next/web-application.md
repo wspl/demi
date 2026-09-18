@@ -28,10 +28,18 @@ examples. Those details are not duplicated in design documents. This document
 covers only the browser's technology and architectural boundaries.
 
 [Conversation browser](browser.md#purpose) currently covers agent commands only.
-The work panel includes a browser placeholder owned by `web-ui`; its local tabs
-and address drafts do not connect to the Host browser. Page rendering, navigation
-and streaming transport remain deferred. Explicit screenshots use existing
-command media handling; live browser interaction requires a separate design.
+The work panel's browser tabs, owned by `web-ui`, do not connect to the Host
+browser: a tab shows a page in the user's own browser, in a sandboxed iframe.
+A tab opens on a URL, as an [expose](expose.md#product-surface) does, or loads
+the `http` or `https` address the user submits; an empty tab shows nothing.
+The frame may run scripts, submit forms and open popups, which land in
+ordinary browser tabs; it cannot navigate the product page. The parent sees
+nothing of a cross-origin page, so Back and Forward stay unavailable, Refresh
+reloads the tab's URL, and a control opens that URL in an ordinary browser
+tab for pages that refuse framing. Showing the Host browser's pages, with
+navigation and streaming transport, remains deferred. Explicit screenshots
+use existing command media handling; live browser interaction requires a
+separate design.
 
 ## Backend communication
 
@@ -79,10 +87,10 @@ Product adapters connect shared file interfaces to device filesystem APIs,
 the working-tree change routes, and uploads, and shared account interfaces to
 provider, pairing, and Cloud APIs.
 The work panel keeps one file selection, one change selection and local browser
-placeholder tabs per conversation. Change and File are fixed view selections; browser tabs
+tabs per conversation. Change and File are fixed view selections; browser tabs
 can be added and closed. One active tab selects the
 view. Closing the active browser tab selects its nearest remaining predecessor,
-or the first remaining tab. Browser address drafts belong to their tabs.
+or the first remaining tab. Browser address drafts and shown URLs belong to their tabs.
 The change summary comes from the uncommitted working-tree source, refreshed
 while the panel is visible, independently of which section is selected.
 Historical edit selection follows [Edit tracking](edit-tracking.md#delivery-to-the-conversation).
