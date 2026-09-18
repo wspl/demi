@@ -296,13 +296,14 @@ export class ProviderAssembly {
    * own message.
    */
   /**
-   * One minimal request to the provider's first model. A test that ran and
-   * failed is a result, not an error: `message` is the provider's own text,
-   * passed through, and `model` what was asked, since a plan can cover some
-   * models and refuse others.
+   * One minimal request to the model the caller names: a plan can cover some
+   * models and refuse others, and which ones the user keeps enabled is the
+   * browser's knowledge. A test that ran and failed is a result, not an
+   * error: `message` is the provider's own text, passed through.
    */
   async testProvider(
-    providerId: string
+    providerId: string,
+    modelId: string
   ): Promise<{
     ok: boolean;
     message?: string
@@ -319,9 +320,11 @@ export class ProviderAssembly {
         message: "This provider runs on a conversation's execution target; start a conversation to try it"
       }
     }
-    const model = (await this.modelsOf(entry, provider))[0]
+    const model = (await this.modelsOf(entry, provider)).find(
+      candidate => candidate.id === modelId
+    )
     if (!model)
-      return { ok: false, message: 'No model available to test with' }
+      return { ok: false, message: `This provider lists no model ${modelId}` }
     const selection = await this.selection(
       entry.id,
       modelSelectionFromCatalog(entry.id, model)
