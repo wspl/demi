@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { delay } from '@demicodes/utils'
-import { RemoteHost, RemoteShellEnvironment } from '../index'
+import { PipeBroker, RemoteHost, RemoteShellEnvironment, devicePipes } from '../index'
 
 test('completion waits for publication and later polls retain UI metadata', async () => {
-  const host = new RemoteHost({ defaultCwd: '/work', identity: { uid: 1, gid: 1, hostname: 'test', homeDir: '/work' }, store: memoryHostStore() })
+  const host = new RemoteHost({ defaultCwd: '/work', identity: { uid: 1, gid: 1, hostname: 'test', homeDir: '/work' }, store: memoryHostStore(), pipes: devicePipes(new PipeBroker(), 'unused') })
   let jobId = ''
   host.attach(message => {
     if (message.type === 'job_start') {

@@ -25,7 +25,7 @@ function flatten(schema: z.core.$ZodType): z.ZodObject[] {
 
 async function wire(): Promise<string> {
   const { backendToRunnerMessageSchema, runnerToBackendMessageSchema, bytesSchema } = await import('../packages/runner-protocol/src/schemas')
-  const { JOB_VIEW_BYTES, RUNNER_PROTOCOL_VERSION } = await import('../packages/runner-protocol/src/messages')
+  const { JOB_VIEW_BYTES, MAX_MESSAGE_BYTES, RUNNER_PROTOCOL_VERSION } = await import('../packages/runner-protocol/src/messages')
   const generator = new RustZodTypes({
     bytes: bytesSchema,
     dateType: 'super::Timestamp',
@@ -74,6 +74,7 @@ async function wire(): Promise<string> {
   })
   return `pub const VERSION: u64 = ${RUNNER_PROTOCOL_VERSION};
     pub const JOB_VIEW_BYTES: usize = ${JOB_VIEW_BYTES};
+    pub const MAX_MESSAGE_BYTES: usize = ${MAX_MESSAGE_BYTES};
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     #[serde(tag = "type", deny_unknown_fields)]
     pub enum Inbound { ${variants.join('\n')} }

@@ -4,12 +4,13 @@ import { nativePackageSchema } from '@demicodes/command-protocol'
 import type { BackendToRunnerMessage } from '@demicodes/runner-protocol'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import fixture from '../../../command-protocol/tests/fixtures/package.json'
+import { PipeBroker, devicePipes } from '../pipes'
 import { RemoteHost } from '../remote-host'
 
 const descriptor = nativePackageSchema.parse(fixture.descriptor)
 
 async function setup(resolveArtifact: Parameters<RemoteHost['startJob']>[0]['commands']) {
-  const host = new RemoteHost({ defaultCwd: '/work', identity: { uid: 1, gid: 1, hostname: 'fixture', homeDir: '/work' }, store: memoryHostStore() })
+  const host = new RemoteHost({ defaultCwd: '/work', identity: { uid: 1, gid: 1, hostname: 'fixture', homeDir: '/work' }, store: memoryHostStore(), pipes: devicePipes(new PipeBroker(), 'unused') })
   const messages: BackendToRunnerMessage[] = []
   host.attach(message => messages.push(message))
   host.startJob({ conversation: 'test-conversation', node: 'test-session', script: 'native', cwd: '/work', env: {}, commands: resolveArtifact })

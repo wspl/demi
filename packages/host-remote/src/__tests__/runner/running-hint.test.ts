@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildManifest } from '@demicodes/command-loader'
-import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
+import { PipeBroker, RemoteHost, RemoteShellEnvironment, devicePipes } from '@demicodes/host-remote'
 import {
   createRunnerWire,
   type RunnerToBackendMessage
@@ -12,7 +12,7 @@ import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { type Command } from '@demicodes/shell'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
-import { startRunner, nativeCommandFixture, type Runner } from '../../testing'
+import { nativeCommandFixture, servePipe, startRunner, type Runner } from '../../testing'
 
 const wire = createRunnerWire(msgpackCodec)
 
@@ -45,10 +45,14 @@ test(
       },
     ] }]
     const manifest = await buildManifest(roots, { packages: [native.descriptor] })
+    // The runner's claimed token names this device at the pipe routes.
+    const device = { id: 'hint-device', token: 'hint-test-token' }
+    const pipes = new PipeBroker()
     const host = new RemoteHost({
       defaultCwd: home,
       identity: { uid: 1, gid: 1, hostname: 'test', homeDir: home },
-      store: memoryHostStore()
+      store: memoryHostStore(),
+      pipes: devicePipes(pipes, device.id),
     })
     const shell = new RemoteShellEnvironment({ conversation: 'test-conversation', node: 'test-session', host, commands: { manifest, resolveArtifact: native.resolveArtifact } })
     const inbound: RunnerToBackendMessage[] = []
@@ -66,10 +70,8 @@ test(
             { status: 400 }
           )
         const call = calls.get(url.pathname.slice('/api/pipes/'.length))
-        return call ? new Response(call.stream) : new Response(
-          'missing pipe',
-          { status: 404 }
-        )
+        // A relayed call's stdout is the test's own; any other pipe is the Host's.
+        return call ? new Response(call.stream) : servePipe(pipes, request, device)
       },
       websocket: {
         message(ws, data) {
@@ -83,7 +85,7 @@ test(
             })
             ws.send(wire.encode({
               type: 'claimed',
-              deviceToken: 'hint-test-token'
+              deviceToken: device.token
             }))
             ws.send(wire.encode({ type: 'manifest', manifest }))
           } else if (message.type === 'rpc_call') {

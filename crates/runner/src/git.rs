@@ -20,7 +20,7 @@ use notify::Watcher as _;
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
-use crate::connection::wire::{self as wire, Inbound, Outbound, WireBytes};
+use crate::connection::wire::{self as wire, Inbound, Outbound};
 use crate::paths::resolve;
 
 /// The list stops here and reports `truncated`.
@@ -856,7 +856,9 @@ pub async fn handle(
 ) -> Option<Result<Outbound, wire::WireError>> {
     let id = message.git_request_id()?;
     Some(match call(service, message, default_cwd, cancel).await {
-        Ok(reply) => Ok(reply),
+        Ok(reply) => wire::within_limit(reply, |reason| {
+            wire::git_error(id.to_owned(), GitError::TooLarge.code().to_owned(), reason)
+        }),
         Err(error) => wire::git_error(id.to_owned(), error.code().to_owned(), error.message()),
     })
 }
@@ -872,11 +874,6 @@ async fn call(
             let root = resolve(root, default_cwd).map_err(GitError::Io)?;
             let changes = service.changes(&root, cancel).await?;
             wire::git_ok_changes(id.clone(), to_wire(changes)).map_err(internal)
-        }
-        Inbound::GitShow { id, root, path } => {
-            let root = resolve(root, default_cwd).map_err(GitError::Io)?;
-            let bytes = service.show(&root, path, cancel).await?;
-            wire::git_ok_show(id.clone(), WireBytes(bytes)).map_err(internal)
         }
         _ => Err(GitError::Internal("not a working-tree request".into())),
     }
