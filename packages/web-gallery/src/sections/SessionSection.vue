@@ -19,7 +19,7 @@ import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryChangeSet, createGalleryWorkspace } from '../fixtures/workspace'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
-import { ASIDE_WIDTH, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
+import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { demoAccount, demoConversations, demoProjects } from '../sidebar/sidebar-data'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
@@ -117,7 +117,7 @@ watch(
 )
 // The Panel view: the whole app frame, with the work panel open beside the session.
 const panelSidebarWidth = ref<number>(SIDEBAR_WIDTH.default)
-const panelAsideWidth = ref<number>(ASIDE_WIDTH.default)
+const panelAsideShare = ref<number>(ASIDE_SHARE.default)
 const panelAsideOpen = ref(true)
 const panelProjects = ref(demoProjects())
 const panelConversations = ref(demoConversations())
@@ -1541,14 +1541,14 @@ function abortTerminal(id: string) {
     <template v-if="view === 'panel'">
       <GallerySection
         title="The frame"
-        note="The app frame with the work panel open on the right: the sidebar, the session, and the panel are siblings, each side pane behind its own divider. The header's panel control opens it and the panel's fold control closes it, using the same 28px button, 14px icon, 12px right inset, tooltip and hover treatment as the conversation’s Open panel control; drag or double-click the divider on its left; Reset panel restores the initial selections."
+        note="The app frame with the work panel open on the right: the sidebar, the session, and the panel are siblings, each side pane behind its own divider. The header's panel control opens it and the panel's fold control closes it, using the same 28px button, 14px icon, 12px right inset, tooltip and hover treatment as the conversation’s Open panel control; drag or double-click the divider on its left. The panel keeps a share of the width it splits with the session, so resizing the frame scales both while the sidebar keeps its px width; Reset panel restores the initial selections."
       >
         <GallerySpecimen variant="frame · live" wide>
           <div class="gallery-frame flex h-[44rem] w-full overflow-hidden">
             <SidebarLayout
               v-model:width="panelSidebarWidth"
               v-model:aside-open="panelAsideOpen"
-              v-model:aside-width="panelAsideWidth"
+              v-model:aside-share="panelAsideShare"
               class="w-full"
             >
               <template #sidebar>
@@ -1606,7 +1606,7 @@ function abortTerminal(id: string) {
         </GallerySpecimen>
         <div class="flex gap-2">
           <Button size="sm" @click="panelWork.reset">Reset panel</Button>
-          <span class="self-center font-mono text-[11px] text-fg-faint">panel {{ panelAsideWidth }}px · {{ ASIDE_WIDTH.min }}–{{ ASIDE_WIDTH.max }}</span>
+          <span class="self-center font-mono text-[11px] text-fg-faint">panel {{ Math.round(panelAsideShare * 100) }}% of the width it splits with the session · at least {{ ASIDE_SHARE.minWidth }}px, leaving the session {{ ASIDE_SHARE.mainMinWidth }}px</span>
         </div>
       </GallerySection>
       <GallerySection
