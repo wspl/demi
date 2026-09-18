@@ -38,6 +38,18 @@ export function isRetryableCode(
 }
 
 /**
+ * A wait the vendor names beyond the backoff ceiling makes a retry pointless:
+ * it would fail the same way. The failure is terminal and its record says when
+ * the limit lifts.
+ */
+export function outlastsRetries(
+  policy: TurnRetryPolicy,
+  retryAfterMs: number | null
+): boolean {
+  return retryAfterMs !== null && retryAfterMs > policy.maxDelayMs
+}
+
+/**
  * Delay before retry `attempt` (1-based): a provider-supplied Retry-After wins,
  * otherwise exponential backoff with full jitter, capped at `maxDelayMs`.
  */

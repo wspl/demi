@@ -372,6 +372,7 @@ const providerErrorDiagnosticsSchema: z.ZodType<ProviderErrorDiagnostics> = z
     providerResponseId: z.string().optional(),
     providerCode: z.string().optional(),
     httpStatus: z.number().optional(),
+    upstream: z.string().optional(),
   })
 
 const blockMeta = {

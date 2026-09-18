@@ -23,6 +23,9 @@ export type {
   ShellCommandStatusLike,
 } from './protocol/frames'
 export type { ProviderSelection } from '@demicodes/provider'
+// Reading a stored vendor failure is the provider layer's knowledge; the
+// browser gets it through this entry, its only path to that package.
+export { retryAtFromUpstream } from '@demicodes/provider'
 export {
   modelSelectionSchema,
   thinkingConfigSchema,

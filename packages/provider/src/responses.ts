@@ -10,6 +10,7 @@
 import { z } from 'zod'
 import { tokenUsageWithCachedInput } from './usage'
 import {
+  reportedNumberSchema,
   reportedStringSchema,
   taggedUnion,
   tokenCountSchema
@@ -23,6 +24,9 @@ export const responsesErrorSchema = z.looseObject({
   message: reportedStringSchema,
   request_id: reportedStringSchema,
   requestId: reportedStringSchema,
+  // A usage limit says when it lifts: an epoch second, and the seconds until it.
+  resets_at: reportedNumberSchema,
+  resets_in_seconds: reportedNumberSchema,
 })
 export type ResponsesError = z.infer<typeof responsesErrorSchema>
 
@@ -162,6 +166,8 @@ export const responsesEventSchema = taggedUnion({
     message: reportedStringSchema,
     code: reportedStringSchema,
     error: responsesErrorSchema.optional(),
+    // The Codex WebSocket backend reports the HTTP status the request would have had.
+    status_code: reportedNumberSchema,
   }),
 })
 export type ResponsesEvent = NonNullable<z.infer<typeof responsesEventSchema>>
