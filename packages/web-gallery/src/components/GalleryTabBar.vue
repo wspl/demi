@@ -51,6 +51,7 @@ function createTab(
       lastError: status === 'error' ? 'rate limited' : null,
       load: 'ready',
       pendingAction: null,
+      retrying: false,
     },
   }
 }
