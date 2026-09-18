@@ -21,6 +21,7 @@ import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import SessionToolsMenu from '@demicodes/web-ui/hosts/SessionToolsMenu.vue'
 import type { ExposeMenuEntry, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
+import { demoExposes } from '../fixtures/settings'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
@@ -66,30 +67,29 @@ function detachHost(id: string) {
   attachedHosts.value = attachedHosts.value.filter(device => device.id !== id)
 }
 
-// Session tools: live exposes across hosts, one under a minute, and the empty menu.
-const sessionExposes = ref<ExposeMenuEntry[]>([
-  {
-    id: 'k7x2m9qw4p3s6t8v0w2y4z6a8b',
-    address: '127.0.0.1:5173',
-    hostName: 'zan-mbp',
-    url: 'https://k7x2m9qw4p3s6t8v0w2y4z6a8b.expose.demi.example/',
-    expiresAt: new Date(Date.now() + 52 * 60_000).toISOString(),
-  },
-  {
-    id: 'q9w8e7r6t5y4u3i2o1p0a1s2d3',
-    address: '127.0.0.1:3000',
-    hostName: 'Cloud',
-    url: 'https://q9w8e7r6t5y4u3i2o1p0a1s2d3.expose.demi.example/',
-    expiresAt: new Date(Date.now() + 45_000).toISOString(),
-  },
-])
+// Session tools: live exposes across hosts (one under a minute), the empty menu, and the feature off.
+const sessionExposes = ref<ExposeMenuEntry[]>(demoExposes())
 const sessionExposePending = ref<string[]>([])
-function removeSessionExpose(id: string) {
+function sessionExposeWrite(id: string, apply: () => void) {
+  if (sessionExposePending.value.includes(id))
+    return
   sessionExposePending.value.push(id)
   window.setTimeout(() => {
-    sessionExposes.value = sessionExposes.value.filter(expose => expose.id !== id)
+    apply()
     sessionExposePending.value = sessionExposePending.value.filter(entry => entry !== id)
   }, 600)
+}
+function renewSessionExpose(id: string) {
+  sessionExposeWrite(id, () => {
+    const expose = sessionExposes.value.find(entry => entry.id === id)
+    if (expose)
+      expose.expiresAt = new Date(Date.now() + 60 * 60_000).toISOString()
+  })
+}
+function removeSessionExpose(id: string) {
+  sessionExposeWrite(id, () => {
+    sessionExposes.value = sessionExposes.value.filter(expose => expose.id !== id)
+  })
 }
 
 const items = [
@@ -375,7 +375,9 @@ function itemLabel(id: string, list: {
         <GallerySpecimen variant="session tools · live exposes with a countdown">
           <SessionToolsMenu
             :exposes="sessionExposes"
+            expose-domain="expose.demi.example"
             :pending-ids="sessionExposePending"
+            @renew="renewSessionExpose"
             @remove="removeSessionExpose"
             @manage-devices="showToast({ title: 'Open devices settings' })"
           />
@@ -383,6 +385,14 @@ function itemLabel(id: string, list: {
         <GallerySpecimen variant="session tools · nothing exposed">
           <SessionToolsMenu
             :exposes="[]"
+            expose-domain="expose.demi.example"
+            @manage-devices="showToast({ title: 'Open devices settings' })"
+          />
+        </GallerySpecimen>
+        <GallerySpecimen variant="session tools · feature off">
+          <SessionToolsMenu
+            :exposes="[]"
+            :expose-domain="null"
             @manage-devices="showToast({ title: 'Open devices settings' })"
           />
         </GallerySpecimen>

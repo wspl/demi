@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
+import type { ExposeMenuEntry } from '@demicodes/web-ui/hosts/types'
 import type {
-  SettingsExpose,
   SettingsMcpServer,
   SettingsMcpState,
   SettingsProviderAccount,
@@ -19,27 +19,27 @@ import { ahead } from './time'
  * expiring auth, a crashed server, a full quota, a disabled provider.
  */
 
-/** The exposes the devices specimens show: two on `mac` (one under a minute), one on `lab`. */
-export function demoExposes(): SettingsExpose[] {
+/** The exposes the session tools specimens list: two on `zan-mbp` (one under a minute), one on Cloud. */
+export function demoExposes(): ExposeMenuEntry[] {
   return [
     {
       id: 'k7x2m9qw4p3s6t8v0w2y4z6a8b',
-      deviceId: 'mac',
       address: '127.0.0.1:5173',
+      hostName: 'zan-mbp',
       url: 'https://k7x2m9qw4p3s6t8v0w2y4z6a8b.expose.demi.example/',
       expiresAt: ahead(52 * 60_000),
     },
     {
       id: 'q9w8e7r6t5y4u3i2o1p0a1s2d3',
-      deviceId: 'mac',
       address: '127.0.0.1:3000',
+      hostName: 'zan-mbp',
       url: 'https://q9w8e7r6t5y4u3i2o1p0a1s2d3.expose.demi.example/',
       expiresAt: ahead(45_000),
     },
     {
       id: 'm3n5p7r9t1v3w5x7y9z1a3c5e',
-      deviceId: 'lab',
       address: '127.0.0.1:8080',
+      hostName: 'Cloud',
       url: 'https://m3n5p7r9t1v3w5x7y9z1a3c5e.expose.demi.example/',
       expiresAt: ahead(9 * 60_000),
     },
@@ -734,8 +734,6 @@ export function createSettingsState() {
         seen: '2 minutes ago'
       },
     ],
-    exposeDomain: 'expose.demi.example',
-    exposes: demoExposes(),
     keys: [
       { id: 'new', action: 'New conversation', keys: '⌘⇧O' },
       { id: 'send', action: 'Send message', keys: '⏎' },

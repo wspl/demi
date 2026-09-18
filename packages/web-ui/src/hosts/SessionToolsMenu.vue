@@ -15,18 +15,20 @@ import type { ExposeMenuEntry } from './types'
 
 /**
  * The session tools button of the conversation header (`expose.md` § Product
- * surface): the home of conversation-level utilities. Its menu lists the
- * user's live exposes across hosts; the trigger carries an accent dot while
- * one exists. Renewal and the URL to copy live in the devices settings the
- * menu links to.
+ * surface): the home of conversation-level utilities, and the only place the
+ * browser shows exposes. Its menu lists the user's live exposes across hosts
+ * with renew and remove; the trigger carries an accent dot while one exists.
  */
 const props = defineProps<{
   /** Soonest expiry first, as the snapshot orders them. */
   exposes: ExposeMenuEntry[]
-  /** Expose ids with a remove request in flight. */
+  /** The instance's expose domain; null means the feature is off. */
+  exposeDomain: string | null
+  /** Expose ids with a renew or remove request in flight. */
   pendingIds?: string[]
 }>()
 const emit = defineEmits<{
+  renew: [id: string]
   remove: [id: string]
   manageDevices: []
 }>()
@@ -67,7 +69,7 @@ function manageDevices() {
       </Tooltip>
     </template>
     <template #content>
-      <Menu class="w-80">
+      <Menu class="w-[22rem]">
         <MenuGroup label="Exposed URLs">
           <ExposeMenuItem
             v-for="expose in exposes"
@@ -75,14 +77,20 @@ function manageDevices() {
             :expose="expose"
             :pending="pendingIds?.includes(expose.id)"
             @open="openUrl(expose)"
+            @renew="emit('renew', expose.id)"
             @remove="emit('remove', expose.id)"
           />
           <div
             v-if="!exposes.length"
             class="select-none px-2 pb-1.5 pt-0.5 text-[12px] leading-5 text-fg-subtle"
           >
-            No URLs exposed. Create one with
-            <code>demi host expose add &lt;address&gt;</code>.
+            <template v-if="exposeDomain === null">
+              This instance has no expose domain; public URLs are off.
+            </template>
+            <template v-else>
+              No URLs exposed. Create one with
+              <code>demi host expose add &lt;address&gt;</code>.
+            </template>
           </div>
         </MenuGroup>
         <MenuDivider />

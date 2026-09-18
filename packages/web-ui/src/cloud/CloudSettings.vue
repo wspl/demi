@@ -5,8 +5,6 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import SettingsGroup from '../settings/SettingsGroup.vue'
 import SettingsRow from '../settings/SettingsRow.vue'
-import DeviceExposes from '../settings/DeviceExposes.vue'
-import type { SettingsExpose } from '../settings/types'
 import CloudResetDialog from './CloudResetDialog.vue'
 
 const props = defineProps<{
@@ -14,14 +12,9 @@ const props = defineProps<{
   resetPending?: boolean
   resetError?: string | null
   overlayStore: OverlayStore
-  /** The Cloud device's exposes; undefined hides the block while the feature is off. */
-  exposes?: SettingsExpose[]
-  pendingIds?: string[]
 }>()
 const emit = defineEmits<{
   reset: [operationId: string]
-  renew: [id: string]
-  remove: [id: string]
 }>()
 const open = ref(false)
 const submitted = ref(false)
@@ -65,13 +58,6 @@ function reset() {
     <SettingsRow
       label="Storage limits"
       :description="`System: ${Math.round(cloud.systemBytes / 1024 ** 3)} GiB · Home: ${Math.round(cloud.homeBytes / 1024 ** 3)} GiB`"
-    />
-    <DeviceExposes
-      v-if="exposes"
-      :exposes="exposes"
-      :pending-ids="pendingIds"
-      @renew="emit('renew', $event)"
-      @remove="emit('remove', $event)"
     />
     <CloudResetDialog
       :is-open="open"

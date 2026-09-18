@@ -10,19 +10,18 @@ import { sessionToolsExposes } from './session-tools'
 const product = useProduct()
 const resources = useResources()
 const settings = useDeviceSettings()
-const { exposePending } = storeToRefs(settings)
-const exposes = computed(() =>
-  sessionToolsExposes(
-    product.snapshot?.exposes ?? [],
-    product.snapshot?.devices ?? [],
-  ),
+const { exposes, exposeDomain, exposePending } = storeToRefs(settings)
+const entries = computed(() =>
+  sessionToolsExposes(exposes.value, product.snapshot?.devices ?? []),
 )
 </script>
 
 <template>
   <SessionToolsMenu
-    :exposes="exposes"
+    :exposes="entries"
+    :expose-domain="exposeDomain"
     :pending-ids="exposePending"
+    @renew="settings.renewExpose"
     @remove="settings.removeExpose"
     @manage-devices="resources.openSettings('devices')"
   />

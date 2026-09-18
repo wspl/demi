@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import AsyncRegion from '../ui/AsyncRegion.vue'
 import CloudSettings from '../cloud/CloudSettings.vue'
 import type { CloudState } from '../cloud/types'
@@ -10,8 +9,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
-import type { SettingsDevice, SettingsExpose } from './types'
-import DeviceExposes from './DeviceExposes.vue'
+import type { SettingsDevice } from './types'
 import type { DeviceInstallation } from '../devices/installation'
 import type { OverlayStore } from '../overlay/overlayStore'
 import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
@@ -27,29 +25,14 @@ const props = defineProps<{
   overlayStore: OverlayStore
   installation: DeviceInstallation
   claimDevice: (code: string, signal?: AbortSignal) => Promise<PairingResult>
-  /** The instance's expose domain; null means the feature is off and no expose controls show. */
-  exposeDomain: string | null
-  /** Every expose of the user, as the snapshot lists them, soonest expiry first. */
-  exposes: SettingsExpose[]
-  /** The Cloud device's id, when the snapshot has one; its exposes filter like any device's. */
-  cloudDeviceId: string | null
-  /** Expose ids with a renew or remove request in flight. */
-  exposePendingIds?: string[]
 }>()
 const emit = defineEmits<{
   retry: []
   revoke: [id: string]
   resetCloud: [operationId: string]
-  renewExpose: [id: string]
-  removeExpose: [id: string]
 }>()
 const { isOpen, phase, open, close, submit } = useDevicePairing(
   (code, signal) => props.claimDevice(code, signal),
-)
-const cloudExposes = computed(() =>
-  props.cloudDeviceId === null
-    ? []
-    : props.exposes.filter((expose) => expose.deviceId === props.cloudDeviceId),
 )
 </script>
 
@@ -64,10 +47,6 @@ const cloudExposes = computed(() =>
       :reset-error="resetError"
       :cloud="cloud"
       :overlay-store="overlayStore"
-      :exposes="exposeDomain === null ? undefined : cloudExposes"
-      :pending-ids="exposePendingIds"
-      @renew="emit('renewExpose', $event)"
-      @remove="emit('removeExpose', $event)"
       @reset="emit('resetCloud', $event)"
     />
     <SettingsGroup>
@@ -112,13 +91,6 @@ const cloudExposes = computed(() =>
               >Revoke</Button
             >
           </SettingsRow>
-          <DeviceExposes
-            v-if="exposeDomain !== null"
-            :exposes="exposes.filter((expose) => expose.deviceId === device.id)"
-            :pending-ids="exposePendingIds"
-            @renew="emit('renewExpose', $event)"
-            @remove="emit('removeExpose', $event)"
-          />
         </template>
         <div
           v-if="!devices.length"

@@ -61,24 +61,31 @@ const mainHost = computed<HostMenuHost>(() => {
     : { id: 'cloud', name: 'Cloud', kind: 'cloud', online: true }
 })
 const attachedHosts = ref<HostMenuHost[]>([])
-// The session tools menu lists the settings fixture's exposes, named after the file hosts.
-const exposes = ref<ExposeMenuEntry[]>(demoExposes().map((expose) => ({
-  id: expose.id,
-  address: expose.address,
-  hostName: devices.find((device) => device.id === expose.deviceId)?.name ?? expose.deviceId,
-  url: expose.url,
-  expiresAt: expose.expiresAt,
-})))
+// The session tools menu: renew waits a beat so the pending state shows, then moves the expiry.
+const exposes = ref<ExposeMenuEntry[]>(demoExposes())
 const exposePending = ref<string[]>([])
-function removeExpose(id: string): void {
+function exposeWrite(id: string, apply: () => void): void {
   if (exposePending.value.includes(id)) {
     return
   }
   exposePending.value.push(id)
   window.setTimeout(() => {
-    exposes.value = exposes.value.filter((expose) => expose.id !== id)
+    apply()
     exposePending.value = exposePending.value.filter((entry) => entry !== id)
   }, 600)
+}
+function renewExpose(id: string): void {
+  exposeWrite(id, () => {
+    const expose = exposes.value.find((entry) => entry.id === id)
+    if (expose) {
+      expose.expiresAt = new Date(Date.now() + 60 * 60_000).toISOString()
+    }
+  })
+}
+function removeExpose(id: string): void {
+  exposeWrite(id, () => {
+    exposes.value = exposes.value.filter((expose) => expose.id !== id)
+  })
 }
 const locked = computed(() => session.phase !== 'idle' || session.archived)
 async function selectFolder(deviceId: string, path: string): Promise<boolean> {
@@ -162,7 +169,9 @@ function abortAgents(): void {
         <template #tools>
           <SessionToolsMenu
             :exposes="exposes"
+            expose-domain="expose.demi.example"
             :pending-ids="exposePending"
+            @renew="renewExpose"
             @remove="removeExpose"
           />
         </template>
