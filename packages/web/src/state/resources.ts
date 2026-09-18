@@ -9,6 +9,7 @@ import { useProduct } from './product'
 import { usePreferences } from './preferences'
 import { modelInfo, providerView, wireApi } from './catalog'
 import { ASIDE_WIDTH, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
+import { isSettingsSectionEnabled } from '@demicodes/web-ui/settings/sections'
 import { emptyLocalState, readLocalState, writeLocalState } from './local'
 import type { Device, Project } from './types'
 
@@ -41,6 +42,13 @@ export const useResources = defineStore('resources', () => {
   const providerDetailOpen = ref(false)
   const settingsTab = ref('general')
   const settingsOpen = ref(false)
+  /** Opens the settings dialog, on `tab` when it names an enabled section. */
+  function openSettings(tab?: string) {
+    if (tab && isSettingsSectionEnabled(tab)) {
+      settingsTab.value = tab
+    }
+    settingsOpen.value = true
+  }
   const targetOpen = ref(false)
   const pairingOpen = ref(false)
   const sidebarOpen = ref(false)
@@ -275,6 +283,7 @@ export const useResources = defineStore('resources', () => {
     providerDetailOpen,
     settingsTab,
     settingsOpen,
+    openSettings,
     targetOpen,
     pairingOpen,
     sidebarOpen,
