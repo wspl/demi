@@ -297,16 +297,15 @@ export class ProviderAssembly {
    */
   /**
    * One minimal request to the provider's first model. A test that ran and
-   * failed is a result, not an error: `message` is the upstream text, `code`
-   * its normalized kind, and `model` what was asked, since a plan can cover
-   * some models and refuse others.
+   * failed is a result, not an error: `message` is the provider's own text,
+   * passed through, and `model` what was asked, since a plan can cover some
+   * models and refuse others.
    */
   async testProvider(
     providerId: string
   ): Promise<{
     ok: boolean;
     message?: string
-    code?: string | null
     model?: string
   }> {
     const resolved = await this.providerFor(providerId)
@@ -352,7 +351,7 @@ export class ProviderAssembly {
       })
       for await (const event of run) {
         if (event.type === 'error')
-          return { ok: false, message: event.message, code: event.code, model: model.displayName }
+          return { ok: false, message: event.message, model: model.displayName }
         if (event.type === 'abort')
           return {
             ok: false,
