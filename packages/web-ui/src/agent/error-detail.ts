@@ -1,15 +1,18 @@
 import type { ProviderErrorDiagnostics } from '@demicodes/core'
 import { t } from '@demicodes/web-ui/infra/i18n'
 
-/** One plain sentence for the chrome, from the normalized code. The upstream text goes in the body. */
+/**
+ * The sentence over a failure. It states what Demi itself knows and nothing
+ * more: that a request to the provider failed, or that Demi had no credentials
+ * to send one. The codes derived from a vendor's status or wording (an expired
+ * login, a rate limit, an overload) drive retries but never the headline: the
+ * same status means different things at different vendors, and the body
+ * carries the provider's own words.
+ */
 export function errorSummary(code: string | null | undefined): string {
   switch (code) {
-    case 'rate_limit': return t('agent.error.rateLimit')
-    case 'overloaded': return t('agent.error.overloaded')
-    case 'auth_expired': return t('agent.error.authExpired')
     case 'auth_missing':
     case 'credential_not_found': return t('agent.error.authMissing')
-    case 'context_length_exceeded': return t('agent.error.contextLength')
     default: return t('agent.error.failed')
   }
 }
