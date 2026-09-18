@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Monitor, SlidersHorizontal } from '@lucide/vue'
+import { Monitor, RadioTower } from '@lucide/vue'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
@@ -54,7 +54,7 @@ function manageDevices() {
     <template #trigger>
       <Tooltip content="Session tools" :open-delay-ms="80">
         <IconButton
-          :icon="SlidersHorizontal"
+          :icon="RadioTower"
           variant="ghost"
           aria-label="Session tools"
           :pressed="open"
