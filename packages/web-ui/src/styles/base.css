@@ -21,6 +21,7 @@
   --color-line-focus: var(--line-focus);
   --color-tint-danger: var(--tint-danger);
   --color-tint-danger-strong: var(--tint-danger-strong);
+  --color-sunken: var(--sunken);
   --color-tint-success: var(--tint-success);
   --color-tint-warning: var(--tint-warning);
   --color-tint-accent: var(--tint-accent);
@@ -74,6 +75,8 @@
   --line-overlay: #4a4a4a;
   --tint-danger: rgba(239, 68, 68, 0.15);
   --tint-danger-strong: rgba(239, 68, 68, 0.25);
+  /* A well set into whatever it sits on: darker than its surroundings in both schemes. */
+  --sunken: rgba(0, 0, 0, 0.22);
   --tint-success: rgba(16, 185, 129, 0.15);
   --tint-warning: rgba(245, 158, 11, 0.15);
   --tint-accent: rgba(59, 130, 246, 0.15);
@@ -158,6 +161,7 @@
   --line-overlay: rgba(0, 0, 0, 0.12);
   --tint-danger: rgba(220, 38, 38, 0.08);
   --tint-danger-strong: rgba(220, 38, 38, 0.12);
+  --sunken: rgba(0, 0, 0, 0.05);
   --tint-success: rgba(22, 163, 74, 0.08);
   --tint-warning: rgba(217, 119, 6, 0.08);
   --tint-accent: rgba(37, 99, 235, 0.08);
