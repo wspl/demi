@@ -7,6 +7,7 @@ import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import { conversationPageKind } from '@demicodes/web-ui/agent/session-status'
 import ConversationComposer from './ConversationComposer.vue'
 import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
+import SessionTools from '../targets/SessionTools.vue'
 import { useConversations } from './store'
 import { useResources } from '../state/resources'
 import { useWorkPanel } from './work'
@@ -125,6 +126,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     <template #workspace
       ><WorkspaceInfo :project="project" :conversation="conversation"
     /></template>
+    <template #tools><SessionTools /></template>
     <template #composer
       ><ConversationComposer
         :key="conversation.id"
