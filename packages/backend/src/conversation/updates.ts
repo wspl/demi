@@ -150,8 +150,10 @@ export class ConversationUpdates {
         'turn_in_flight',
         'A conversation with running work cannot be archived or restored'
       )
+    const reopenTransfers = await this.deps.targets.closeTransfers(id)
     const releaseFiles = this.deps.targets.files(id).tryReserve()
     if (!releaseFiles) {
+      reopenTransfers()
       releaseTree()
       return refused(
         'turn_in_flight',
@@ -166,6 +168,7 @@ export class ConversationUpdates {
       await this.deps.control.setConversationArchived(id, archived)
     } finally {
       releaseFiles()
+      reopenTransfers()
       releaseTree()
     }
   }

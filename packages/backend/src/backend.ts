@@ -464,6 +464,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     blobs,
     changes,
     withHost: targets.withHost.bind(targets),
+    transfer: targets.transfer.bind(targets),
     managedHosts,
     createCloudWorkspace: managedHosts
       ? (userId, name) => createCloudWorkspace({

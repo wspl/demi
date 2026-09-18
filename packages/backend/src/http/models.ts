@@ -1,4 +1,3 @@
-import { z } from 'zod'
 import { modelSelectionFromCatalog } from '@demicodes/provider'
 import { Hono } from 'hono'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
@@ -7,11 +6,7 @@ import {
   modelAvailability
 } from '../llm/model-availability'
 import { providerOwner } from '../vault/scope'
-
-/** `?refresh=true|false`; nothing else, and nothing else spelled. */
-const refreshQuerySchema = z
-  .stringbool({ truthy: ['true'], falsy: ['false'], case: 'sensitive' })
-  .optional()
+import { booleanQuerySchema } from './query'
 
 /**
  * `/api/models` — the aggregated catalog of the caller's provider scope,
@@ -23,7 +18,7 @@ export function modelRoutes(options: {
 }): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>()
   app.get('/', async (c) => {
-    const parsed = refreshQuerySchema.safeParse(c.req.query('refresh'))
+    const parsed = booleanQuerySchema.safeParse(c.req.query('refresh'))
     if (!parsed.success)
       return c.json({
         code: 'invalid_query',

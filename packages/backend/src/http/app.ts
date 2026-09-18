@@ -1,5 +1,5 @@
 import type { FrameAdmission } from './stream'
-import type { ConversationHostAccess } from '../conversation/target'
+import type { ConversationHostAccess, ConversationTargets } from '../conversation/target'
 import { webAssetRoutes } from './web-assets'
 import {
   runnerInstallRoutes,
@@ -83,6 +83,7 @@ export function createApp(options: {
   upgradeWebSocket: UpgradeWebSocket
   blobs: UserBlobStores
   withHost: ConversationHostAccess
+  transfer: ConversationTargets['transfer']
   managedHosts: ManagedHosts | null
   createCloudWorkspace: ((
     userId: string,
@@ -228,6 +229,7 @@ export function createApp(options: {
       conversationStores: options.conversationStores,
       changes: options.changes,
       withHost: options.withHost,
+      transfer: options.transfer,
       registry: options.runnerRegistry,
       readFailures,
     }),
