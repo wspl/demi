@@ -139,13 +139,14 @@ as a user watches a video. It holds Host access like any operation, until its
 last byte is delivered or the browser ends it. Two rules keep a forgotten
 transfer from holding a Cloud awake or a conversation's file gate:
 
-- A transfer the browser has accepted no bytes from for 60 seconds ends:
-  its connection is reset, not ended cleanly, and its access is released.
-  Only time spent waiting for the browser counts; waiting for the runner or
-  for a Cloud to wake does not. A paused player keeps its connection open
-  without reading; when it needs more, it asks for the range again. Sixty
-  seconds is the stalled-client timeout web servers use, nginx's
-  `send_timeout` among them.
+- A transfer the browser has accepted no bytes from for 60 seconds releases
+  its access and stops the runner's read. Only time spent waiting for the
+  browser counts; waiting for the runner or for a Cloud to wake does not. The
+  response is left without an end, so when its connection closes the browser
+  sees it cut short, never complete, and a paused player asks again for the
+  range it still needs. A connection on which no byte has moved for 60
+  seconds is closed. Sixty seconds is the stalled-client timeout web servers
+  use, nginx's `send_timeout` among them.
 - An archive, a target or directory change, and a detach end the
   conversation's open transfers instead of waiting for them or being refused
   by them. A Cloud stop or reset ends them with the device's other work.
