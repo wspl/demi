@@ -16,14 +16,12 @@ import type { ExposeMenuEntry } from './types'
  * The session tools button of the conversation header (`expose.md` § Product
  * surface): the home of conversation-level utilities, and the only place the
  * browser shows exposes. Its menu lists the user's live exposes across hosts
- * with renew and remove; the trigger's icon carries a green dot while one
- * exists.
+ * with renew and remove. The button exists only while an expose is live, and
+ * its icon carries a green dot, so a forgotten URL is visible in the header.
  */
 const props = defineProps<{
   /** Soonest expiry first, as the snapshot orders them. */
   exposes: ExposeMenuEntry[]
-  /** The instance's expose domain; null means the feature is off. */
-  exposeDomain: string | null
   /** Expose ids with a renew or remove request in flight. */
   pendingIds?: string[]
 }>()
@@ -50,7 +48,12 @@ function manageDevices() {
 </script>
 
 <template>
-  <Dropdown v-model:open="open" :overlay-store="appOverlayStore" placement="bottom-end">
+  <Dropdown
+    v-if="exposes.length"
+    v-model:open="open"
+    :overlay-store="appOverlayStore"
+    placement="bottom-end"
+  >
     <template #trigger>
       <Tooltip content="Session tools" :open-delay-ms="80">
         <IconButton
@@ -58,8 +61,8 @@ function manageDevices() {
           variant="ghost"
           aria-label="Session tools"
           :pressed="open"
-          :indicator="exposes.length ? 'success' : null"
-          :indicator-label="exposes.length ? liveLabel : undefined"
+          indicator="success"
+          :indicator-label="liveLabel"
         />
       </Tooltip>
     </template>
@@ -75,12 +78,6 @@ function manageDevices() {
             @renew="emit('renew', expose.id)"
             @remove="emit('remove', expose.id)"
           />
-          <div
-            v-if="!exposes.length"
-            class="select-none px-2 pb-1.5 pt-0.5 text-[12px] leading-5 text-fg-subtle"
-          >
-            {{ exposeDomain === null ? 'Public URLs are off on this instance.' : 'No URLs exposed.' }}
-          </div>
         </MenuGroup>
         <MenuDivider />
         <MenuItem label="Manage devices…" :icon="Monitor" @select="manageDevices" />

@@ -67,7 +67,7 @@ function detachHost(id: string) {
   attachedHosts.value = attachedHosts.value.filter(device => device.id !== id)
 }
 
-// Session tools: live exposes across hosts (one under a minute), the empty menu, and the feature off.
+// Session tools: live exposes across hosts (one under a minute). Removing the last one removes the button.
 const sessionExposes = ref<ExposeMenuEntry[]>(demoExposes())
 const sessionExposePending = ref<string[]>([])
 function sessionExposeWrite(id: string, apply: () => void) {
@@ -372,27 +372,12 @@ function itemLabel(id: string, list: {
             @connect="showToast({ title: 'Connect new device' })"
           />
         </GallerySpecimen>
-        <GallerySpecimen variant="session tools · live exposes with a countdown">
+        <GallerySpecimen variant="session tools · live exposes with a countdown; gone with the last one">
           <SessionToolsMenu
             :exposes="sessionExposes"
-            expose-domain="expose.demi.example"
             :pending-ids="sessionExposePending"
             @renew="renewSessionExpose"
             @remove="removeSessionExpose"
-            @manage-devices="showToast({ title: 'Open devices settings' })"
-          />
-        </GallerySpecimen>
-        <GallerySpecimen variant="session tools · nothing exposed">
-          <SessionToolsMenu
-            :exposes="[]"
-            expose-domain="expose.demi.example"
-            @manage-devices="showToast({ title: 'Open devices settings' })"
-          />
-        </GallerySpecimen>
-        <GallerySpecimen variant="session tools · feature off">
-          <SessionToolsMenu
-            :exposes="[]"
-            :expose-domain="null"
             @manage-devices="showToast({ title: 'Open devices settings' })"
           />
         </GallerySpecimen>
