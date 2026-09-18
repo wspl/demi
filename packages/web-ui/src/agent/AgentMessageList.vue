@@ -43,8 +43,10 @@ const props = defineProps<{
   editTargetId?: string
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
-  /** A recovery the server has not acknowledged: the tail row says Resuming or Retrying. */
+  /** A recovery the server has not acknowledged: the tail row says Requesting. */
   pendingAction?: PendingAction
+  /** The agent is retrying a failed provider request on its own: the tail row says Retrying. */
+  retrying?: boolean
   loadError?: string | null
   /** A session-level failure told at the tail of the transcript, in flow. */
   failure?: SessionFailureNotice | null
@@ -92,6 +94,7 @@ const slotKind = computed(() => activitySlotKind({
   load: props.load ?? 'ready',
   phase: props.phase,
   pendingAction: props.pendingAction ?? null,
+  retrying: props.retrying ?? false,
   transcriptBlocks: visibleBlocks.value,
   renderBlocks: [...transcriptBlocks.value, ...tailBlocks.value],
 }))

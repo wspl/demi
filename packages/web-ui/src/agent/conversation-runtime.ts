@@ -33,6 +33,7 @@ export type RuntimeState = Pick<
   | 'lastError'
   | 'load'
   | 'pendingAction'
+  | 'retrying'
 >
 
 export interface ConversationRuntimeOptions {
@@ -185,8 +186,8 @@ export class ConversationRuntime {
   }
 
   /**
-   * The tail row says Resuming or Retrying from the click until the server's
-   * next `phase` event; a refused or lost request ends that wait as well.
+   * The tail row says Requesting from the click until the server's next
+   * `phase` event; a refused or lost request ends that wait as well.
    */
   async resume(): Promise<void> {
     const state = this.options.state
@@ -345,9 +346,18 @@ export class ConversationRuntime {
       case 'transcript_reset':
       case 'transcript_patch':
         state.blocks = event.blocks
+        // The rewrite that unwinds a failed attempt arrives before its
+        // `retry_scheduled`; the next change is the retry's own output.
+        state.retrying = false
+        break
+      case 'retry_scheduled':
+        state.retrying = true
         break
       case 'phase':
         state.phase = event.phase
+        if (event.phase === 'idle') {
+          state.retrying = false
+        }
         this.settlePendingAction()
         break
       case 'queue':

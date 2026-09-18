@@ -6,14 +6,15 @@ import type { SessionLoad } from './session-status'
 
 /**
  * Why the transcript's tail row is waiting. `connecting` is the socket;
- * `resuming` and `retrying` are a recovery the server has not acknowledged
- * yet; `requesting` is a running turn between outputs.
+ * `requesting` is the provider being asked, including a recovery the server
+ * has not acknowledged yet; `retrying` is the agent asking again on its own
+ * after a failed attempt (`product.md` § Recovering an unfinished turn).
  */
-export type ActivityKind = 'connecting' | 'resuming' | 'retrying' | 'requesting'
+export type ActivityKind = 'connecting' | 'retrying' | 'requesting'
 
 /**
  * An action the client sent whose acknowledgement (the next `phase` event)
- * has not arrived. The tail row names it meanwhile.
+ * has not arrived. The tail row says Requesting meanwhile.
  */
 export type PendingAction = 'resume' | null
 
@@ -37,6 +38,8 @@ export interface ActivitySlotInput {
   load: SessionLoad
   phase: SessionPhase
   pendingAction: PendingAction
+  /** The agent is retrying a failed provider request on its own. */
+  retrying: boolean
   /** The visible transcript, including a record a pending recovery hides from the list. */
   transcriptBlocks: readonly MessageListBlock[]
   /** What the list renders: the transcript with pending steers and the queue after it. */
@@ -49,28 +52,31 @@ export interface ActivitySlotInput {
  * everything: a recovery or a turn cannot progress without the socket.
  */
 export function activitySlotKind(input: ActivitySlotInput): ActivityKind | null {
-  const renderBlocks = input.renderBlocks ?? input.transcriptBlocks
   if (input.load === 'reconnecting') {
     return 'connecting'
   }
   if (input.pendingAction === 'resume') {
-    const tail = input.transcriptBlocks.at(-1)
-    return tail?.type === 'error' ? 'retrying' : 'resuming'
-  }
-  if (input.phase !== 'running') {
-    return null
-  }
-  if (hasActiveOutput(input.transcriptBlocks)) {
-    return null
-  }
-  const last = lastNonQueueBlock(renderBlocks)
-  if (!last) {
     return 'requesting'
   }
-  if (last.type === 'tool_call') {
-    return last.status === 'executing' ? null : 'requesting'
+  if (!isWaitingForProvider(input)) {
+    return null
   }
-  return WAITING_TAIL_TYPES.has(last.type) ? 'requesting' : null
+  return input.retrying ? 'retrying' : 'requesting'
+}
+
+/** A running turn with nothing streaming and a tail that waits for the model's next output. */
+function isWaitingForProvider(input: ActivitySlotInput): boolean {
+  if (input.phase !== 'running' || hasActiveOutput(input.transcriptBlocks)) {
+    return false
+  }
+  const last = lastNonQueueBlock(input.renderBlocks ?? input.transcriptBlocks)
+  if (!last) {
+    return true
+  }
+  if (last.type === 'tool_call') {
+    return last.status !== 'executing'
+  }
+  return WAITING_TAIL_TYPES.has(last.type)
 }
 
 export function isHandoffBlock(block: MessageListBlock | undefined): block is HandoffBlock {
