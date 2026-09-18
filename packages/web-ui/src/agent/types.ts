@@ -50,8 +50,14 @@ export interface ConversationState {
   lastError: string | null
   /** History restore and the live socket. A new conversation starts `ready`. */
   load: SessionLoad
-  /** A recovery sent and not yet acknowledged by a `phase` event; the tail row names it. */
+  /** A recovery sent and not yet acknowledged by a `phase` event; the tail row says Requesting meanwhile. */
   pendingAction: PendingAction
+  /**
+   * The agent is retrying a failed provider request on its own: set by
+   * `retry_scheduled`, ended by the next transcript change (the retry's
+   * output) or the turn's end. The tail row says Retrying meanwhile.
+   */
+  retrying: boolean
 }
 
 /** What `ChatSession` reads: the live conversation fields plus what the product keeps beside them. */
@@ -67,6 +73,7 @@ export interface ChatSessionState
     | 'load'
     | 'lastError'
     | 'pendingAction'
+    | 'retrying'
   > {
   archived: boolean
   status: ConversationStatus

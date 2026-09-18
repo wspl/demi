@@ -7,7 +7,7 @@ import { t } from '@demicodes/web-ui/infra/i18n'
 import type { ActivityKind, HandoffBlock } from '../activity-slot'
 import { parseToolCallInput } from '../block-helpers'
 import { useElapsedTime } from '../../composables/useElapsedTime'
-import { requestingFaceLabel, thinkingFaceLabel } from '../thinking-label'
+import { providerWaitLabel, thinkingFaceLabel } from '../thinking-label'
 import { standardToolTitle, toolRenderKind } from '../tool-rendering'
 import FunctionalBlock from './FunctionalBlock.vue'
 
@@ -22,7 +22,10 @@ const props = defineProps<{
   incoming?: HandoffBlock | null
 }>()
 
-const isRequesting = computed(() => props.kind === 'requesting' && !props.incoming)
+// Requesting and Retrying are one wait on the provider; the clock runs across both.
+const isRequesting = computed(
+  () => (props.kind === 'requesting' || props.kind === 'retrying') && !props.incoming,
+)
 const requestingSince = ref(Date.now())
 watch(isRequesting, (requesting) => {
   if (requesting) {
@@ -44,12 +47,9 @@ const waitLabel = computed(() => {
   switch (props.kind) {
     case 'connecting':
       return t('agent.block.connecting')
-    case 'resuming':
-      return t('agent.block.resuming')
     case 'retrying':
-      return t('agent.block.retrying')
     case 'requesting':
-      return requestingFaceLabel(requestingElapsed.value ?? 0)
+      return providerWaitLabel(props.kind, requestingElapsed.value ?? 0)
   }
 })
 

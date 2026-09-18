@@ -10,7 +10,7 @@ import { demoModel } from '../fixtures/blocks'
 const createdAt = new Date(Date.now() - 35_000).toISOString()
 const source = reactive<ChatSessionState>({
   id: 'fork-source', title: 'Planning', phase: 'running', status: 'active',
-  load: 'ready', lastError: null, pendingAction: null, archived: false, queue: [], pendingSteers: [],
+  load: 'ready', lastError: null, pendingAction: null, retrying: false, archived: false, queue: [], pendingSteers: [],
   scroll: null, subagents: [], terminals: [],
   blocks: [
     { type: 'user', id: 'user-1', turnId: 'turn-1', model: demoModel, createdAt,

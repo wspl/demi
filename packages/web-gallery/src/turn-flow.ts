@@ -65,6 +65,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     lastError: null,
     load: 'ready',
     pendingAction: null,
+    retrying: false,
     archived: false,
     get status() {
       return conversationStatus(state)

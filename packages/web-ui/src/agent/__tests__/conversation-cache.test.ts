@@ -16,6 +16,7 @@ function fixture(id: string) {
     id, cwd: '/', blocks: [], phase: 'idle', queue: [], pendingSteers: [],
     model: { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null },
     lastError: null, load: 'loading', pendingAction: null,
+    retrying: false,
   }
   let receive: (frame: ServerFrame) => void = () => {}
   let connections = 0

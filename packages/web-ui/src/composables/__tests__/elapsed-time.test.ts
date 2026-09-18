@@ -1,7 +1,7 @@
 import { expect, spyOn, test } from 'bun:test'
 import { effectScope, nextTick, ref } from 'vue'
 import { useElapsedTime } from '../useElapsedTime'
-import { requestingFaceLabel, thinkingFaceLabel } from '../../agent/thinking-label'
+import { providerWaitLabel, thinkingFaceLabel } from '../../agent/thinking-label'
 
 test('thinking and requesting show durations only after one second', () => {
   expect(thinkingFaceLabel(false, 0)).toBe('Thought briefly')
@@ -9,9 +9,11 @@ test('thinking and requesting show durations only after one second', () => {
   expect(thinkingFaceLabel(true, 500)).toBe('Thinking')
   expect(thinkingFaceLabel(true, 1000)).toBe('Thinking')
   expect(thinkingFaceLabel(true, 1001)).toBe('Thinking for 1s')
-  expect(requestingFaceLabel(0)).toBe('Requesting')
-  expect(requestingFaceLabel(1000)).toBe('Requesting')
-  expect(requestingFaceLabel(1001)).toBe('Requesting for 1s')
+  expect(providerWaitLabel('requesting', 0)).toBe('Requesting')
+  expect(providerWaitLabel('requesting', 1000)).toBe('Requesting')
+  expect(providerWaitLabel('requesting', 1001)).toBe('Requesting for 1s')
+  expect(providerWaitLabel('retrying', 500)).toBe('Retrying')
+  expect(providerWaitLabel('retrying', 42_000)).toBe('Retrying for 42s')
   expect(thinkingFaceLabel(false, 60000)).toBe('Thought for 1m')
 })
 
