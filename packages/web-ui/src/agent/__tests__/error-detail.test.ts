@@ -1,11 +1,39 @@
 import { expect, test } from 'bun:test'
-import { errorFacts, errorReportText, errorSummary } from '../error-detail'
+import { errorFacts, errorPresentation, errorReportText } from '../error-detail'
 
-test('the chrome sentence states only what Demi knows; codes derived from a vendor never head a failure', () => {
-  for (const code of ['rate_limit', 'overloaded', 'auth_expired', 'context_length_exceeded', 'something_else', null])
-    expect(errorSummary(code)).toBe('The provider request failed')
-  expect(errorSummary('auth_missing')).toBe('No credentials for this provider')
-  expect(errorSummary('credential_not_found')).toBe('No credentials for this provider')
+test('a plain sentence from the source is the whole record', () => {
+  expect(errorPresentation('The usage limit has been reached')).toEqual({
+    label: 'The usage limit has been reached',
+    detail: null,
+  })
+  expect(errorPresentation('The agent session was shut down while this turn was running.')).toEqual({
+    label: 'The agent session was shut down while this turn was running.',
+    detail: null,
+  })
+})
+
+test('a wrapped vendor body leads with the sentence inside it and keeps the full text', () => {
+  const credits = 'OpenAI API request failed with HTTP 401: {"type":"error","error":{"type":"CreditsError","message":"Insufficient balance."}}'
+  expect(errorPresentation(credits)).toEqual({ label: 'Insufficient balance.', detail: credits })
+  const plan = 'OpenAI API request failed with HTTP 429: {"error":{"code":"1311","message":"当前订阅套餐暂未开放GLM-5.3-Highspeed权限"}}'
+  expect(errorPresentation(plan)).toEqual({ label: '当前订阅套餐暂未开放GLM-5.3-Highspeed权限', detail: plan })
+  expect(errorPresentation('Upstream said: {"error":"model overloaded"}').label).toBe('model overloaded')
+  expect(errorPresentation('Gateway: {"message":"try later"}').label).toBe('try later')
+})
+
+test('a message with no sentence to lead with gets the neutral line over its text', () => {
+  const long = `Request failed: ${'x'.repeat(300)}`
+  expect(errorPresentation(long)).toEqual({ label: 'The turn failed', detail: long })
+  expect(errorPresentation('first line\nsecond line')).toEqual({
+    label: 'The turn failed',
+    detail: 'first line\nsecond line',
+  })
+  expect(errorPresentation('HTTP 500: {"unexpected":true}')).toEqual({
+    label: 'HTTP 500: {"unexpected":true}',
+    detail: null,
+  })
+  expect(errorPresentation('HTTP 500: {not json')).toEqual({ label: 'HTTP 500: {not json', detail: null })
+  expect(errorPresentation('')).toEqual({ label: 'The turn failed', detail: null })
 })
 
 test('the facts line carries the status, the code, and the request id when present', () => {
