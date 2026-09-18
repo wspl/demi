@@ -134,9 +134,11 @@ The request:
 | Release | The request is aborted when the conversation is archived or the backend closes. |
 
 The instruction tells the model to produce a title, never an answer: one line
-short enough for a narrow sidebar (two to five words, or four to ten
-characters in Chinese, Japanese or Korean, shown by examples), in the language
-of the message, natural grammar,
+that fits where it is shown, in the language of the message. The instruction
+describes the place rather than listing a length per language: one line of a
+narrow sidebar about 24 columns wide, where a Latin character takes one column
+and a Chinese, Japanese or Korean character two, and the overflow is cut off;
+examples show the result. It also asks for natural grammar,
 exact technical terms, file names, numbers and error codes kept, no tool
 names, no leading "the" or "my", and something meaningful even for a greeting.
 
