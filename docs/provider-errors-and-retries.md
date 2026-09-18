@@ -2,7 +2,14 @@
 
 Provider runtimes classify vendor and transport failures into stable error codes. `rate_limit` represents quota or throttling failures, while `overloaded` represents transient service, HTTP 5xx, timeout, network, and socket failures. Authentication, invalid requests, and context-length failures remain terminal categories.
 
-Error events retain bounded diagnostics separately from the normalized policy code: failure source, client request id, provider request/response ids, raw provider code, and HTTP status when available. Products use the normalized code for recovery decisions and the diagnostics for logging, inspection, and support escalation. Arbitrary raw response bodies are not persisted.
+Error events retain bounded diagnostics separately from the normalized policy code: failure source, client request id, provider request/response ids, raw provider code, and HTTP status when available. Products use the normalized code for recovery decisions and the diagnostics for logging, inspection, and support escalation.
+
+What the vendor said is kept, not reduced to a sentence. A Codex usage limit arrives as an error object with the plan, the time the limit lifts and the quota headers; keeping only its `message` throws away the one thing the user wants to know, when it works again. The diagnostics therefore carry:
+
+- `upstream`: the vendor's failure as it arrived, as JSON text: the stream's error event, or the HTTP error body. It is redacted of the request's secret and cut at 16 KB. It is persisted with the error block and travels wherever the diagnostics do.
+- `retryAt`: the moment the vendor says the request can succeed again, as an ISO time, taken from the vendor's own field (`resets_at`, `resets_in_seconds`, `Retry-After`). Absent when the vendor gives none.
+
+A vendor wait longer than the policy's backoff ceiling is not retried: the retry would fail the same way, so the failure is terminal at once and its record says when the limit lifts.
 
 The same diagnostics travel through `retry_scheduled`, terminal transcript error blocks, server frames, and `ProviderStreamError`. Products can therefore explain an in-progress retry and retain the identifiers needed to investigate a terminal failure without parsing vendor message text.
 
