@@ -87,15 +87,17 @@ test(
       undefined,
       { timeoutMs: 10_000 }
     )
-    // Closing the backend aborts the turn — the job
-    // is killed on the runner, the tool call is settled as an error, and the
-    // turn closes with an abort block. Nothing dangles.
+    // Closing the backend ends the turn — the job is killed on the runner, the
+    // tool call is settled as an error, and the turn closes with an error
+    // record: a shutdown under a turn is a failure, not the user's Stop
+    // (product.md § Recovering an unfinished turn). Nothing dangles.
     const cut = driver.transcript().slice(begin.blocks).map(
       (block) => (block.type === 'tool_call'
         ? `${block.type}:${block.status}`
         : block.type)
     )
-    expect(cut).toEqual(['user', 'tool_call:error', 'response', 'abort'])
+    expect(cut).toEqual(['user', 'tool_call:error', 'response', 'error'])
+    expect(driver.transcript().at(-1)).toMatchObject({ type: 'error', code: 'interrupted' })
     const kills = world.wire('alpha')
       .map((frame) => `${frame.direction}:${frame.message.type}`)
     expect(kills).toContain('out:job_kill')
