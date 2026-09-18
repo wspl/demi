@@ -6,7 +6,6 @@ import type { SettingsTab } from '@demicodes/web-ui/settings/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
-import GalleryDeviceExposes from '../components/GalleryDeviceExposes.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import { createSettingsState } from '../fixtures/settings'
 import { useGalleryView } from '../gallery-views'
@@ -120,15 +119,6 @@ const fullNarrowTab = ref<SettingsTab>('skills')
             <GallerySettingsFull :tab="fullNarrowTab" :state="full" />
           </SettingsDialog>
         </GalleryOverlayWell>
-      </GallerySection>
-
-      <GallerySection
-        title="Devices · exposes"
-        note="Each device's exposes under its row: address, live countdown, URL to copy or open, renew and remove. First with exposes (one under a minute), then none, then the feature off entirely."
-      >
-        <div class="max-w-2xl">
-          <GalleryDeviceExposes />
-        </div>
       </GallerySection>
     </template>
 

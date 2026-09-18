@@ -8,8 +8,6 @@ const props = withDefaults(
   defineProps<{
     code: string;
     copyLabel?: string
-    /** Keep the code on one line with an ellipsis; the full value shows on hover and copies whole. */
-    truncate?: boolean
   }>(),
   { copyLabel: 'Copy' }
 )
@@ -27,9 +25,7 @@ async function copyCode() {
     class="flex min-w-0 items-center gap-2 rounded-md border border-line bg-surface px-3 py-2"
   >
     <code
-      class="min-w-0 flex-1 select-text font-mono text-[12px] leading-5 text-fg-body"
-      :class="truncate ? 'truncate' : 'break-words'"
-      :title="truncate ? code : undefined"
+      class="min-w-0 flex-1 select-text break-words font-mono text-[12px] leading-5 text-fg-body"
     >{{ code }}</code>
     <IconButton
       :icon="copied && copiedCode === code ? Check : Copy"
