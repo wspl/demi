@@ -9,7 +9,7 @@
  */
 import { parseJsonOrString } from '@demicodes/utils'
 import { zeroUsage } from '@demicodes/core'
-import { normalizeErrorCode } from './http'
+import { normalizeErrorCode, upstreamDiagnostic } from './http'
 import {
   decodeResponsesEvent,
   tokenUsageFromResponsesUsage,
@@ -207,15 +207,18 @@ function* mapResponsesEvent(
       const rawCode = error?.code ?? error?.type ?? null
       const providerRequestId = providerRequestIdFrom(error, message)
       const providerResponseId = event.response?.id
+      const retryAfterMs = resetWaitMs(error)
       yield {
         type: 'error',
         message,
         code: normalizeErrorCode(rawCode, message),
+        ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
         diagnostics: {
           source: 'stream',
           ...(rawCode ? { providerCode: rawCode } : {}),
           ...(providerRequestId ? { providerRequestId } : {}),
           ...(providerResponseId ? { providerResponseId } : {}),
+          upstream: upstreamDiagnostic(event),
         },
       }
       return
@@ -239,14 +242,18 @@ function* mapResponsesEvent(
         ?? `${vendorLabel} stream error`
       const rawCode = event.code ?? nested?.code ?? nested?.type ?? null
       const providerRequestId = providerRequestIdFrom(nested, message)
+      const retryAfterMs = resetWaitMs(nested)
       yield {
         type: 'error',
         message,
         code: normalizeErrorCode(rawCode, message),
+        ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
         diagnostics: {
           source: 'stream',
           ...(rawCode ? { providerCode: rawCode } : {}),
           ...(providerRequestId ? { providerRequestId } : {}),
+          ...(event.status_code !== undefined ? { httpStatus: event.status_code } : {}),
+          upstream: upstreamDiagnostic(event),
         },
       }
       return
@@ -286,4 +293,13 @@ function providerRequestIdFrom(
   if (explicit)
     return explicit
   return message.match(/request ID ([A-Za-z0-9-]+)/i)?.[1] ?? null
+}
+
+/** How long until a vendor's limit lifts, from the fields its error names; undefined when it names none. */
+function resetWaitMs(error: ResponsesError | undefined): number | undefined {
+  if (error?.resets_in_seconds !== undefined)
+    return error.resets_in_seconds * 1000
+  if (error?.resets_at !== undefined)
+    return Math.max(0, error.resets_at * 1000 - Date.now())
+  return undefined
 }
