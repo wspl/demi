@@ -57,21 +57,15 @@ export function errorPresentation(message: string): ErrorPresentation {
 
 /**
  * The line under a failure: when the vendor says it works again, which is what
- * the reader does next, and the request id a support thread asks for. The
- * status and the normalized code are Demi's bookkeeping; they go in the copied
- * report, not in front of the reader.
+ * the reader does next. The status, the normalized code and the request ids are
+ * bookkeeping for a support thread; they go in the copied report.
  */
 export function errorFacts(
   diagnostics: ProviderErrorDiagnostics | undefined,
   createdAt?: string
 ): string[] {
-  const facts: string[] = []
   const retryAt = createdAt ? retryAtFromUpstream(diagnostics?.upstream, createdAt) : null
-  if (retryAt !== null)
-    facts.push(`resets ${new Date(retryAt).toLocaleString()}`)
-  if (diagnostics?.clientRequestId)
-    facts.push(diagnostics.clientRequestId)
-  return facts
+  return retryAt === null ? [] : [`resets ${new Date(retryAt).toLocaleString()}`]
 }
 
 /** What the copy button puts on the clipboard: the upstream message and every diagnostic. */

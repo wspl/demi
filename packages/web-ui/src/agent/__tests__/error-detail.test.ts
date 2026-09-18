@@ -36,9 +36,8 @@ test('a message with no sentence to lead with gets the neutral line over its tex
   expect(errorPresentation('')).toEqual({ label: 'The turn failed', detail: null })
 })
 
-test('the facts line carries the request id and leaves Demi\'s bookkeeping to the report', () => {
-  expect(errorFacts({ source: 'http', httpStatus: 429, clientRequestId: 'req_1' })).toEqual(['req_1'])
-  expect(errorFacts({ source: 'stream' })).toEqual([])
+test('the facts line leaves the status, the code and the request ids to the report', () => {
+  expect(errorFacts({ source: 'http', httpStatus: 429, clientRequestId: 'req_1' })).toEqual([])
   expect(errorFacts(undefined)).toEqual([])
 })
 
@@ -63,7 +62,7 @@ test('the facts lead with when the vendor says it works again, read from the sto
   expect(errorFacts(
     { source: 'stream', httpStatus: 429, clientRequestId: 'req_1', upstream },
     '2026-09-18T14:00:00.000Z',
-  )).toEqual([`resets ${new Date(1790062659 * 1000).toLocaleString()}`, 'req_1'])
+  )).toEqual([`resets ${new Date(1790062659 * 1000).toLocaleString()}`])
   // Without a named time nothing is claimed.
   expect(errorFacts({ source: 'stream', upstream: '{"error":{}}' }, '2026-09-18T14:00:00.000Z')).toEqual([])
 })

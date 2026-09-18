@@ -29,7 +29,7 @@ const messages: Record<string, string> = {
   'agent.block.retrying': 'Retrying',
   'agent.block.aborted': 'Aborted',
   'agent.error.failed': 'The turn failed',
-  'error.upstream': 'What the provider sent',
+  'error.upstream': 'Provider response',
   'agent.stats.contextWindow': 'Context window',
   'agent.stats.cacheRead': 'Cache read',
   'agent.stats.input': 'Input',
