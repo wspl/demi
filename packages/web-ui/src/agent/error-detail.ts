@@ -1,20 +1,57 @@
 import type { ProviderErrorDiagnostics } from '@demicodes/core'
+import { z } from 'zod'
 import { t } from '@demicodes/web-ui/infra/i18n'
 
-/**
- * The sentence over a failure. It states what Demi itself knows and nothing
- * more: that a request to the provider failed, or that Demi had no credentials
- * to send one. The codes derived from a vendor's status or wording (an expired
- * login, a rate limit, an overload) drive retries but never the headline: the
- * same status means different things at different vendors, and the body
- * carries the provider's own words.
- */
-export function errorSummary(code: string | null | undefined): string {
-  switch (code) {
-    case 'auth_missing':
-    case 'credential_not_found': return t('agent.error.authMissing')
-    default: return t('agent.error.failed')
+/** A first line stays one line: past this the source's text goes in the body. */
+const HEADLINE_MAX_LENGTH = 160
+
+/** What a failure record shows: the first line, and the body when the first line is not the whole story. */
+export interface ErrorPresentation {
+  label: string
+  detail: string | null
+}
+
+const vendorErrorSchema = z.object({
+  error: z.union([
+    z.string(),
+    z.object({ message: z.string() }),
+  ]).optional(),
+  message: z.string().optional(),
+})
+
+/** The sentence a vendor put in its JSON error body, from the shapes vendors share; null when there is none. */
+function vendorSentence(message: string): string | null {
+  const start = message.indexOf('{')
+  if (start === -1)
+    return null
+  let body: unknown
+  try {
+    body = JSON.parse(message.slice(start))
+  } catch {
+    return null
   }
+  const parsed = vendorErrorSchema.safeParse(body)
+  if (!parsed.success)
+    return null
+  const error = parsed.data.error
+  const sentence = typeof error === 'string' ? error : error?.message ?? parsed.data.message
+  return sentence?.trim() || null
+}
+
+/**
+ * The first line of a failure is what its source said, never Demi's reading of
+ * it. A plain sentence is the whole record. A message that wraps a vendor's
+ * JSON body leads with the sentence inside it and keeps the full text below.
+ * Only a message with no sentence to lead with falls back to a neutral line.
+ */
+export function errorPresentation(message: string): ErrorPresentation {
+  const text = message.trim()
+  const sentence = vendorSentence(text)
+  if (sentence !== null && sentence.length <= HEADLINE_MAX_LENGTH && !sentence.includes('\n'))
+    return { label: sentence, detail: text }
+  if (text.length > 0 && text.length <= HEADLINE_MAX_LENGTH && !text.includes('\n'))
+    return { label: text, detail: null }
+  return { label: t('agent.error.failed'), detail: text || null }
 }
 
 /** The short facts a support thread asks for first, in one line under the upstream message. */

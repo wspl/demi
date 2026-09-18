@@ -2189,5 +2189,5 @@ async function readProviderIterator(
 
 /** What the error record of a turn the process died under says. */
 export const INTERRUPTED_TURN_MESSAGE =
-  'The agent session was shut down while this turn was running, so the turn did not finish. Nothing it had already done was lost.'
+  'The agent session was shut down while this turn was running.'
 

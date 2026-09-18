@@ -104,8 +104,7 @@ either without the user typing anything.
   backend restart, a crash, a release. Every one of these is an error: the
   transcript gets an error record that says what happened. A provider failure
   carries the provider's own words; a failure of Demi's own carries Demi's
-  fact: "The agent session was shut down while this turn was running, so the
-  turn did not finish. Nothing it had already done was lost." A graceful
+  fact: "The agent session was shut down while this turn was running." A graceful
   shutdown writes the record as it ends the turn; after a crash the restored
   conversation writes it when it is next opened. No turn ends unfinished
   without either such a record or the user's own Stop.
@@ -118,7 +117,8 @@ either without the user typing anything.
   stopped marker it leaves today.
 
 The transcript says what happened; the place to act is above the composer.
-The error record keeps its text, the facts and Copy, and carries no button.
+The error record leads with what its source said, keeps the facts and Copy,
+and carries no button.
 One recovery control sits in the dock, directly over the input, where the
 user's next action already is:
 

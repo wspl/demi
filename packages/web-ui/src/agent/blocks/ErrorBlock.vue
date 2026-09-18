@@ -2,11 +2,12 @@
 import { computed } from 'vue'
 import type { ProviderErrorDiagnostics } from '@demicodes/core'
 import ErrorNotice from '@demicodes/web-ui/ui/ErrorNotice.vue'
-import { errorFacts, errorReportText, errorSummary } from '../error-detail'
+import { errorFacts, errorPresentation, errorReportText } from '../error-detail'
 
 /**
- * The transcript record of a turn that failed: a neutral sentence, the
- * message in its source's own words, the diagnostics and Copy. It says what
+ * The transcript record of a turn that failed: what its source said on the
+ * first line, the full text below only when there is more, the diagnostics
+ * and Copy. It says what
  * happened and offers no action: recovery sits in the dock above the composer
  * (`product.md` § Recovering an unfinished turn).
  */
@@ -17,7 +18,7 @@ const props = defineProps<{
   diagnostics?: ProviderErrorDiagnostics
 }>()
 
-const summary = computed(() => errorSummary(props.code))
+const presentation = computed(() => errorPresentation(props.message))
 const facts = computed(() => errorFacts(props.code, props.diagnostics))
 const reportText = computed(() =>
   errorReportText(props.message, props.code, props.diagnostics),
@@ -26,8 +27,8 @@ const reportText = computed(() =>
 
 <template>
   <ErrorNotice
-    :label="summary"
-    :detail="message"
+    :label="presentation.label"
+    :detail="presentation.detail"
     :facts="facts"
     :copy-text="reportText"
   />

@@ -18,12 +18,27 @@ import GallerySpecimen from './GallerySpecimen.vue'
   <div class="space-y-8">
     <GallerySection
       title="ErrorNotice · a failure in the conversation"
-      note="One tinted bar, full width where it sits: a neutral sentence that never interprets the vendor, the message in its source's own words, the facts, and Copy for a support thread. A turn's failure carries no button: Resume sits in the dock above the composer. With one line the controls sit centred; with facts they hold the first line."
+      note="One tinted bar, full width where it sits. The first line is what the source said, never Demi's reading of it: a plain sentence is the whole record; a message that wraps a vendor's JSON body leads with the sentence inside it and keeps the full text below; only a message with no sentence to lead with gets the neutral line. Then the facts and Copy for a support thread. A turn's failure carries no button: Resume sits in the dock above the composer. With one line the controls sit centred; with facts they hold the first line."
     >
-      <GallerySpecimen wide variant="Turn failed · with facts and Copy">
+      <GallerySpecimen wide variant="A plain sentence is the whole record">
         <ErrorNotice
-          label="The provider request failed"
-          detail="Anthropic API request failed with HTTP 429: This request would exceed the rate limit of 50 requests per minute for your organization. Retry after 12 seconds."
+          label="The usage limit has been reached"
+          :facts="['rate_limit', '3667df4b-19c0-4f31-8e93-aed23ceeb5c6']"
+          copy-text="The usage limit has been reached"
+        />
+      </GallerySpecimen>
+      <GallerySpecimen wide variant="A wrapped vendor body · its sentence first, the full text below">
+        <ErrorNotice
+          label="Insufficient balance. Manage your billing here: https://vendor.example/billing"
+          detail='OpenAI API request failed with HTTP 401: {"type":"error","error":{"type":"CreditsError","message":"Insufficient balance. Manage your billing here: https://vendor.example/billing"}}'
+          :facts="['HTTP 401', 'auth_expired', 'req_01J8Y3Q6ZKX4']"
+          copy-text="OpenAI API request failed with HTTP 401"
+        />
+      </GallerySpecimen>
+      <GallerySpecimen wide variant="No sentence to lead with · the neutral line over the text">
+        <ErrorNotice
+          label="The turn failed"
+          detail="Anthropic API request failed with HTTP 429: This request would exceed the rate limit of 50 requests per minute for your organization. Retry after 12 seconds. Your current usage is 50 requests in the last 60 seconds across all models."
           :facts="['HTTP 429', 'rate_limit', 'req_01J8Y3Q6ZKX4']"
           copy-text="Anthropic API request failed with HTTP 429"
         />
