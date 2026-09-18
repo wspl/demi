@@ -213,15 +213,22 @@ export class PipeBroker {
     }
   }
 
-  /** A failed transfer report is authoritative only for a device at an end. */
-  failFromDevice(id: string, deviceId: string, reason: string): void {
+  /**
+   * A failed transfer report is authoritative only for a device at an end.
+   * Returns whether the report ended the pipe: false from a device at no end,
+   * and for a pipe already over, whose failure on the device is only the
+   * consequence.
+   */
+  failFromDevice(id: string, deviceId: string, reason: string): boolean {
     const pipe = this.pipes.get(id)
     if (!pipe)
-      return
-    if ([pipe.source, pipe.sink].some((end) =>
+      return false
+    if (![pipe.source, pipe.sink].some((end) =>
       end?.kind === 'device' && end.deviceId === deviceId
     ))
-      this.fail(id, reason)
+      return false
+    this.fail(id, reason)
+    return true
   }
 
   fail(id: string, reason: string): void {

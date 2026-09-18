@@ -218,6 +218,8 @@ test(
     await writeFile(join(runnerDir, 'demo.mp4'), video)
     const streamed = await raw('demo.mp4')
     expect(streamed.headers.get('content-type')).toBe('video/mp4')
+    // Streamed, the answer has no length; HEAD reports it.
+    expect(streamed.headers.get('content-length')).toBeNull()
     expect(streamed.headers.get('content-security-policy')).toBeNull()
     expect(new Uint8Array(await streamed.arrayBuffer())).toEqual(video)
 
