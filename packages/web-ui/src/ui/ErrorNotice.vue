@@ -4,8 +4,10 @@ import { useClipboard } from '@vueuse/core'
 import { Check, CircleX, Copy } from '@lucide/vue'
 import { t } from '../infra/i18n'
 import Button from './Button.vue'
+import Fold from './Fold.vue'
 import FoldChevron from './FoldChevron.vue'
 import IconButton from './IconButton.vue'
+import { ICON_PX } from './icon-metrics'
 import Tooltip from './Tooltip.vue'
 
 /**
@@ -71,17 +73,20 @@ const rawOpen = ref(false)
         <template v-if="raw">
           <button
             type="button"
-            class="-ml-0.5 mt-1 flex cursor-default items-center gap-1 text-[11px] leading-4 text-on-danger-muted hover:text-on-danger"
+            class="-ml-0.5 mt-1 flex cursor-default items-center gap-px text-[11px] leading-4 text-on-danger-muted hover:text-on-danger"
             :aria-expanded="rawOpen"
             @click="rawOpen = !rawOpen"
           >
-            <FoldChevron :open="rawOpen" />
+            <!-- 10px beside an 11px label, tight against it. -->
+            <FoldChevron :open="rawOpen" :size="ICON_PX.in12" />
             {{ t('error.upstream') }}
           </button>
-          <pre
-            v-if="rawOpen"
-            class="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-overlay/10 p-2 font-mono text-[11px] leading-4 text-on-danger-muted"
-          >{{ raw }}</pre>
+          <!-- Mounted while closed so the height can animate both ways. -->
+          <Fold :open="rawOpen">
+            <pre
+              class="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-overlay/10 p-2 font-mono text-[11px] leading-4 text-on-danger-muted"
+            >{{ raw }}</pre>
+          </Fold>
         </template>
       </div>
     </div>
