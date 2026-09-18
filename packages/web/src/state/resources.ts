@@ -8,7 +8,7 @@ import { useSession } from '../auth/session'
 import { useProduct } from './product'
 import { usePreferences } from './preferences'
 import { modelInfo, providerView, wireApi } from './catalog'
-import { ASIDE_WIDTH, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
+import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { isSettingsSectionEnabled } from '@demicodes/web-ui/settings/sections'
 import { emptyLocalState, readLocalState, writeLocalState } from './local'
 import type { Device, Project } from './types'
@@ -184,10 +184,10 @@ export const useResources = defineStore('resources', () => {
       local.value.sidebarWidth = width
     },
   })
-  const asideWidth = computed({
-    get: () => local.value.asideWidth ?? ASIDE_WIDTH.default,
-    set: (width: number) => {
-      local.value.asideWidth = width
+  const asideShare = computed({
+    get: () => local.value.asideShare ?? ASIDE_SHARE.default,
+    set: (share: number) => {
+      local.value.asideShare = share
     },
   })
   const recentProjectIds = computed(() => local.value.recentProjects)
@@ -288,7 +288,7 @@ export const useResources = defineStore('resources', () => {
     pairingOpen,
     sidebarOpen,
     sidebarWidth,
-    asideWidth,
+    asideShare,
     deviceById,
     recentProjectIds,
     rememberProject,
