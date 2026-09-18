@@ -209,11 +209,21 @@ The devices settings list each device's exposes with the address, the time
 remaining, the URL to copy or open, and renew and remove actions; the
 `GET /api/state` snapshot carries them, and the Web API adds create, renew and
 remove ([Web API](web-api.md#exposes)). The list is per device because the
-record is. There is no conversation-level surface: the agent prints the URL
-into the transcript, where it is a link.
+record is. The agent prints the URL into the transcript, where it is a link.
 
-The behavior lives in `web-ui` with a gallery specimen; `web` supplies the
-snapshot and the request handlers.
+The conversation header has a session tools button between the host menu and
+the work panel toggle. It is the home of conversation-level utilities; today
+its menu lists every live expose of the user, across devices, soonest expiry
+first: the address, the host it is on, and a countdown that ticks. Choosing a
+row opens the URL in a new tab; each row carries a remove control that
+destroys the expose at once, the same action as in settings. The button shows
+an accent dot while an expose is live, so a forgotten URL is visible without
+opening the menu. The menu ends with a link to the devices settings, where
+renewal and the URL to copy live; the menu does not repeat them. Without any
+expose the menu says so and names the command that creates one.
+
+The behavior lives in `web-ui` with gallery specimens; `web` supplies the
+snapshot, the host names and the request handlers.
 
 ## Deployment
 
