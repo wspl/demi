@@ -212,7 +212,8 @@ place the browser shows exposes. The menu lists every live expose of the
 user, across devices, soonest expiry first: the address, the host it is on,
 and a countdown that ticks. Choosing a row opens the URL in a new browser tab
 of the conversation's [work panel](web-application.md), opening the panel if
-it is closed; each row carries a renew control, which moves the expiry an hour out, and a remove
+it is closed; that tab carries the expose glyph of the button instead of the
+browser's globe. Each row carries a renew control, which moves the expiry an hour out, and a remove
 control, which destroys the expose at once. The button's icon carries a small
 green dot on its top-right corner, so a forgotten URL is visible without
 opening the menu. The devices settings do not list exposes.

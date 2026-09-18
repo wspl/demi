@@ -20,7 +20,7 @@ describe('fixed work panel sections', () => {
     const second = addBrowserTab(first.tabs)
     expect(first.activeId).not.toBe(second.activeId)
     expect(second.tabs).toHaveLength(4)
-    expect(second.tabs[3]).toMatchObject({ kind: 'browser', title: 'New tab', address: '', url: null })
+    expect(second.tabs[3]).toMatchObject({ kind: 'browser', title: 'New tab', address: '', url: null, expose: false })
     expect(closeBrowserTabs(second.tabs, second.activeId, [second.activeId]).activeId).toBe(first.activeId)
     const closed = closeBrowserTabs(second.tabs, second.activeId, second.tabs.map((tab) => tab.id))
     expect(closed.tabs.map((tab) => tab.kind)).toEqual(['change', 'file'])
@@ -71,13 +71,20 @@ describe('fixed work panel sections', () => {
 
 describe('browser tab pages', () => {
   test('a tab opened on a page shows it under the given title, with the URL in the address bar', () => {
-    const opened = addBrowserTab(workPanelTabs(), { url: 'https://abc.expose.demi.example/', title: '127.0.0.1:5173' })
+    const opened = addBrowserTab(workPanelTabs(), { url: 'https://abc.expose.demi.example/', title: '127.0.0.1:5173', expose: true })
     expect(opened.tabs.at(-1)).toMatchObject({
       id: opened.activeId,
       title: '127.0.0.1:5173',
       address: 'https://abc.expose.demi.example/',
       url: 'https://abc.expose.demi.example/',
+      expose: true,
     })
+    // Submitting another address makes it an ordinary page again.
+    const expose = opened.tabs.at(-1)
+    if (expose?.kind !== 'browser') {
+      throw new Error('expected a browser tab')
+    }
+    expect(loadBrowserAddress({ ...expose, address: 'example.com' }).expose).toBe(false)
   })
 
   test('submitting the address loads http and https, tries a bare host as https, and ignores the rest', () => {

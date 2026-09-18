@@ -13,12 +13,15 @@ export interface BrowserWorkTab {
   address: string
   /** The page the tab shows in its frame; null while the tab is empty. */
   url: string | null
+  /** The page is an expose opened from the session tools; a submitted address ends that. */
+  expose: boolean
 }
 
 /** A page a browser tab opens on: an expose's URL under its address as the title. */
 export interface BrowserPage {
   url: string
   title: string
+  expose: boolean
 }
 
 /** Initial fixed tabs for a conversation's work panel. */
@@ -34,6 +37,7 @@ export function addBrowserTab(tabs: readonly WorkTab[], page?: BrowserPage): { t
     title: page?.title ?? 'New tab',
     address: page?.url ?? '',
     url: page?.url ?? null,
+    expose: page?.expose ?? false,
   }
   return { tabs: [...tabs, tab], activeId: tab.id }
 }
@@ -53,7 +57,7 @@ export function loadBrowserAddress(tab: BrowserWorkTab): BrowserWorkTab {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return tab
   }
-  return { ...tab, title: url.host, address: url.href, url: url.href }
+  return { ...tab, title: url.host, address: url.href, url: url.href, expose: false }
 }
 
 /** Close browser tabs while preserving the fixed Change and File tabs. */

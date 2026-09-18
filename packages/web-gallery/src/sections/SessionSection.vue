@@ -241,12 +241,13 @@ const changeStale = useChangeTab('uncommitted', 'src/auth/cookie.ts', {
   conversation: null,
   uncommitted: createGalleryChangeSet(200, { truncated: true, failure: 'The device is offline.' }),
 })
-// One empty tab, then one opened on a page the way an expose row opens it.
+// One empty tab with the globe, then one opened the way an expose row opens it, with the expose glyph.
 const browserWork = useWorkTabs('change', '')
 browserWork.addBrowser()
 browserWork.addBrowser({
   url: `data:text/html,${encodeURIComponent('<body style="font:14px system-ui;padding:24px"><h1>Dev server</h1><p>A page shown in the tab\'s sandboxed frame.</p><a href="https://example.com" target="_blank">A link that opens a popup</a></body>')}`,
   title: '127.0.0.1:5173',
+  expose: true,
 })
 let nextQueue = 3
 let nextSent = 1

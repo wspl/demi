@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Monitor, RadioTower } from '@lucide/vue'
+import { Monitor } from '@lucide/vue'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
@@ -10,6 +10,7 @@ import MenuItem from '../ui/MenuItem.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import ExposeMenuItem from './ExposeMenuItem.vue'
+import { EXPOSE_ICON } from './icons'
 import type { ExposeMenuEntry } from './types'
 
 /**
@@ -59,7 +60,7 @@ function manageDevices() {
     <template #trigger>
       <Tooltip content="Session tools" :open-delay-ms="80">
         <IconButton
-          :icon="RadioTower"
+          :icon="EXPOSE_ICON"
           variant="ghost"
           aria-label="Session tools"
           :pressed="open"

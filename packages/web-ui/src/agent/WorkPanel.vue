@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { File, FileDiff, Globe, PanelRightClose, Plus, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import { GlobePlus } from '../ui/GlobePlus'
+import { EXPOSE_ICON } from '../hosts/icons'
 import Tooltip from '../ui/Tooltip.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from '../files/FileIcon.vue'
@@ -138,7 +139,7 @@ function openFromTree(path: string): void {
           @contextmenu="openMenu($event, tab)"
           @close="emit('closeTabs', [tab.id])"
         >
-          <template #mark><Globe :size="ICON_PX.markIn28" /></template>
+          <template #mark><component :is="tab.expose ? EXPOSE_ICON : Globe" :size="ICON_PX.markIn28" /></template>
         </TabItem>
         <template #trailing>
           <Tooltip content="New browser tab" class="ml-1 shrink-0">
