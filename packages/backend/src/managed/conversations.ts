@@ -47,6 +47,10 @@ export class CloudConversations {
         : agents.reserveTreeMutation(id)
       if (!tree) return null
       reservations.defer(tree)
+      // A reset ends the conversation's transfers with the device's other
+      // work; an idle stop has none, since a transfer is activity.
+      if (reason === 'reset')
+        reservations.defer(await targets.closeTransfers(id))
       const file = reason === 'reset'
         ? await targets.files(id).reserve()
         : targets.files(id).tryReserve()
