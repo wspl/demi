@@ -86,13 +86,63 @@ remains readable; sending and metadata changes require restore. Persistent order
 is independent of activity; its storage rules belong to
 [Storage](storage.md#control-records).
 
-The conversation interface exposes steering, queued messages, stop, Retry/Resume,
-manual compaction, model switching, message editing, Fork, and child/terminal
-inspection. Retry/Resume continues the interrupted session; it does not silently
-rerun completed tool effects. [Message editing](../message-editing.md) and
+The conversation interface exposes steering, queued messages, stop,
+[recovery of an unfinished turn](#recovering-an-unfinished-turn), manual
+compaction, model switching, message editing, Fork, and child/terminal
+inspection. [Message editing](../message-editing.md) and
 [Conversation Fork](../conversation-fork.md) define their history boundaries.
 Interactive stdin is an agent-protocol capability; exposing a terminal input
 control remains separate from read-only job inspection.
+
+### Recovering an unfinished turn
+
+A turn can end without finishing: the provider refuses the request after the
+automatic retries give up, the user presses Stop halfway through a task, or
+the backend restarts under a running turn. In each case the agent can go on
+from where it was, without the user typing anything.
+
+The transcript says what happened; the place to act is above the composer.
+The error record keeps the provider's own words, the facts and Copy, and
+carries no button. One recovery control sits in the dock, directly over the
+input, where the user's next action already is:
+
+```text
+  ... transcript ...
+  [x] The provider request failed
+      Insufficient balance. Manage your billing here: ...
+      HTTP 401 · req_01J8...
+
+  [ > Resume ]   [ 2 Running ]  [ 1 Agent ]        <- the dock's chips
+  +--------------------------------------------------------------+
+  | Ask Demi...                                  GLM-5.3-Flash   |
+  +--------------------------------------------------------------+
+```
+
+Its label says why the turn is unfinished, because the user's expectation
+differs:
+
+| How the turn ended | Control | What the user expects |
+| --- | --- | --- |
+| A provider failure ended it (conversation status `error`) | **Resume** | The same step again: nothing was decided, something broke. |
+| The user stopped it, or an interruption did: backend restart, lost Host (`stopped`, `interrupted`) | **Continue** | The agent goes on with the work it was cut off from. |
+| It finished | none | |
+
+Both are the same operation, the session's `resume`: it unwinds to the turn's
+resume point, keeps everything that already left the process, and infers
+again from there. It adds no user message and never reruns a completed tool
+effect. The label is presentation only.
+
+The control is offered when the last turn is unfinished and the conversation
+is idle, not archived, has a usable provider, has its history loaded, and no
+message edit is open. It leaves when recovery starts, which shows as the
+transcript's Resuming row, and for good once a newer turn exists: sending a
+message is the other way forward, and the old turn is then history. Automatic
+retries of transient failures stay what they are, a Retrying row with no
+control; the control appears only after they give up.
+
+Two other retries are not this and keep their own places: reloading a history
+that failed to load, and resending a message whose delivery is unconfirmed.
+They recover reading and delivery, not a turn.
 
 ### Conversation titles
 
