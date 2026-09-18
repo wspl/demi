@@ -3,7 +3,7 @@ import { createServer, type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { RemoteHost, RemoteNetError } from '@demicodes/host-remote'
+import { PipeBroker, RemoteHost, RemoteNetError, devicePipes } from '@demicodes/host-remote'
 import { LocalHost } from '@demicodes/host-remote/testing'
 import {
   createRunnerWire,
@@ -149,6 +149,7 @@ test(
       defaultCwd: runnerDir,
       identity: new LocalHost(runnerDir).identity,
       store: memoryHostStore(),
+      pipes: devicePipes(new PipeBroker(), 'unused'),
     })
 
     const runner = await startRunner({
@@ -329,6 +330,7 @@ test(
       defaultCwd: runnerDir,
       identity: new LocalHost(runnerDir).identity,
       store: memoryHostStore(),
+      pipes: devicePipes(new PipeBroker(), 'unused'),
     })
 
     const runner = await startRunner({

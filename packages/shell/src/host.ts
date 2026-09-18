@@ -21,15 +21,23 @@ export interface HostIdentity {
 
 export interface HostFileSystem {
   readFile(path: string, options?: { cwd?: string }): Promise<Uint8Array>
-  writeFile(
+  /**
+   * The file's bytes as they are read: `length` bytes from `offset`, or to
+   * the end when `length` is absent. Resolves once the file is open, so a
+   * missing or unreadable file rejects here, before any byte. Ending the
+   * iteration early, or aborting `signal`, stops the read.
+   */
+  readStream(
     path: string,
-    data: Uint8Array,
     options?: {
       cwd?: string;
-      createParents?: boolean
+      offset?: number;
+      length?: number;
+      signal?: AbortSignal
     }
-  ): Promise<void>
-  appendFile(
+  ): Promise<AsyncIterable<Uint8Array>>
+  /** Replaces the file whole: a failed write leaves it as it was. */
+  writeFile(
     path: string,
     data: Uint8Array,
     options?: {

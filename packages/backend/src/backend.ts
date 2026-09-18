@@ -52,7 +52,7 @@ import type { ModelsDevFetch } from '@demicodes/provider'
 import { createSessionProviderResolver } from './llm/session-providers'
 import { ConversationTitles } from './conversation/title'
 import { RunnerRegistry, type RunnerRegistryOptions } from './runner/registry'
-import { PipeBroker } from './runner/pipes'
+import { PipeBroker } from '@demicodes/host-remote'
 import { ProviderRateLimiter } from './usage/rate-limit'
 import { ProviderVault } from './vault/providers'
 import { loadOrCreateInstanceSecret } from './vault/secret'
@@ -107,7 +107,7 @@ export interface BackendOptions {
    */
   publicUrl?: string
   /** Runner-management tuning (claim TTL, liveness interval) — tests only. */
-  runner?: Omit<RunnerRegistryOptions, 'control'>
+  runner?: Omit<RunnerRegistryOptions, 'control' | 'pipes'>
   /**
    * Extra provider families merged over the builtins — tests register stubs
    * here.

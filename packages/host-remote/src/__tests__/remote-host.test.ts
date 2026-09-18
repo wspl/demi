@@ -2,13 +2,13 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test } from 'bun:test'
-import { connectTestRunner } from '@demicodes/host-remote/testing'
+import { connectTestRunner, TEST_RUNNER_DEVICE } from '@demicodes/host-remote/testing'
 import {
   STDIN_CHUNK_BYTES,
   type BackendToRunnerMessage,
 } from '@demicodes/runner-protocol'
 import { memoryHostStore } from '@demicodes/shell/testing'
-import { RemoteGitError, RemoteHost } from '../index'
+import { PipeBroker, RemoteGitError, RemoteHost, devicePipes } from '../index'
 import { collectBytes, concatBytes, deferred } from '@demicodes/utils'
 
 const cleanup: (() => Promise<void>)[] = []
@@ -19,14 +19,16 @@ afterEach(async () => {
 async function connectedPair(outgoingGate?: Promise<void>) {
   const dir = await mkdtemp(join(tmpdir(), 'demi-runner-proto-'))
   cleanup.push(() => rm(dir, { recursive: true, force: true }))
+  const pipes = new PipeBroker()
   const remote = new RemoteHost({
     defaultCwd: dir,
     identity: { uid: 501, gid: 20, hostname: 'test', homeDir: '/' },
     store: memoryHostStore(),
+    pipes: devicePipes(pipes, TEST_RUNNER_DEVICE),
   })
   const connect = async () => {
     const server = await connectTestRunner({
-      home: dir, outgoingGate,
+      home: dir, outgoingGate, pipes,
       onHello: send => remote.attach(send),
       onMessage: message => remote.handleMessage(message),
       onClose: () => remote.detach(),
@@ -43,7 +45,8 @@ test(
     const host = new RemoteHost({
       defaultCwd: '/w',
       identity: { uid: 0, gid: 0, hostname: 'offline', homeDir: '/w' },
-      store: memoryHostStore()
+      store: memoryHostStore(),
+      pipes: devicePipes(new PipeBroker(), 'unused'),
     })
     host.attach(
       () => {},
@@ -101,6 +104,7 @@ test(
       defaultCwd: '/w',
       identity: { uid: 0, gid: 0, hostname: 'test', homeDir: '/w' },
       store: memoryHostStore(),
+      pipes: devicePipes(new PipeBroker(), 'unused'),
     })
     const sent: BackendToRunnerMessage[] = []
     remote.attach((message) => sent.push(message))
@@ -237,6 +241,7 @@ test(
         hostname: 'cloud',
         homeDir: '/home/demi'
       }, store: memoryHostStore(),
+      pipes: devicePipes(new PipeBroker(), 'unused'),
       admit: () => {
         if (blocked)
           throw new Error('machine transition')
@@ -247,19 +252,19 @@ test(
       },
     })
     host.attach(message => messages.push(message))
-    const read = host.fs.readFile('/work/file')
+    const exists = host.fs.exists('/work/file')
     const request = messages[0]!
-    expect(request.type).toBe('fs_readFile')
+    expect(request.type).toBe('fs_exists')
     expect(active).toBe(1)
-    if (request.type !== 'fs_readFile')
-      throw new Error('Expected read request')
+    if (request.type !== 'fs_exists')
+      throw new Error('Expected an exists request')
     host.handleMessage({
       type: 'fs_ok',
       id: request.id,
-      op: 'readFile',
-      result: new Uint8Array()
+      op: 'exists',
+      result: true
     })
-    await read
+    await exists
     expect(active).toBe(0)
     const process = await host.process.spawn({ command: 'sleep', args: ['10'] })
     const job = host.startJob({ conversation: 'test-conversation', node: 'test-session', script: 'sleep 10', cwd: '/work', env: {} })
@@ -287,6 +292,7 @@ test(
       defaultCwd: '/work',
       identity: { uid: 501, gid: 20, hostname: 'test', homeDir: '/work' },
       store: memoryHostStore(),
+      pipes: devicePipes(new PipeBroker(), 'unused'),
     })
     const messages: BackendToRunnerMessage[] = []
     remote.attach(message => messages.push(message))

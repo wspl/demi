@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import type { PipeBroker } from '../runner/pipes'
+import type { PipeBroker } from '@demicodes/host-remote'
 import type { ControlService } from '../storage/control'
 import { hashDeviceToken } from '../runner/claim-codes'
 

@@ -7,6 +7,7 @@ use tokio::sync::{Semaphore, mpsc};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
+    files::FileTransfers,
     git::GitService,
     net::NetStreams,
     pipes::PipeClient,
@@ -23,6 +24,7 @@ pub struct HostServer {
     git: GitService,
     git_capacity: Arc<Semaphore>,
     net: NetStreams,
+    files: FileTransfers,
     cancel: CancellationToken,
 }
 
@@ -45,15 +47,11 @@ impl HostServer {
     ) -> Self {
         let cancel = CancellationToken::new();
         Self {
-            tasks: TaskTable::new(
-                output.clone(),
-                dispatcher,
-                output_dir,
-                pipes.clone(),
-            ),
+            tasks: TaskTable::new(output.clone(), dispatcher, output_dir, pipes.clone()),
             default_cwd,
             device_env,
-            net: NetStreams::new(output.clone(), pipes, cancel.clone()),
+            net: NetStreams::new(output.clone(), pipes.clone(), cancel.clone()),
+            files: FileTransfers::new(output.clone(), pipes, cancel.clone()),
             output,
             filesystem: TaskTracker::new(),
             filesystem_capacity: Arc::new(Semaphore::new(32)),
@@ -168,7 +166,13 @@ impl HostServer {
     }
 
     /// Filesystem work never blocks the connection's control-message loop.
+    /// A file's contents go to the transfers, whose pipes pace them.
     pub fn handle_filesystem(&self, message: Inbound) -> io::Result<()> {
+        match message {
+            Inbound::FsReadFile { .. } => return self.files.read(message, &self.default_cwd),
+            Inbound::FsWriteFile { .. } => return self.files.write(message, &self.default_cwd),
+            _ => {}
+        }
         let id = message
             .fs_request_id()
             .ok_or_else(|| io::Error::other("not a filesystem request"))?;
@@ -243,6 +247,11 @@ impl HostServer {
                     .map_err(|error| io::Error::other(error.to_string()));
             }
         };
+        if let Inbound::GitShow { .. } = message {
+            return self
+                .files
+                .show(message, &self.default_cwd, self.git.clone(), permit);
+        }
         let cancel = self.cancel.clone();
         let output = self.output.clone();
         let cwd = self.default_cwd.clone();
@@ -282,7 +291,12 @@ impl HostServer {
     pub async fn close(&self) {
         self.cancel.cancel();
         self.filesystem.close();
-        tokio::join!(self.tasks.close(), self.filesystem.wait(), self.net.close());
+        tokio::join!(
+            self.tasks.close(),
+            self.filesystem.wait(),
+            self.net.close(),
+            self.files.close()
+        );
     }
 
     fn environment(

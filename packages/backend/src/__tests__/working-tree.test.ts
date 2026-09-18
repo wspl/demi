@@ -1,8 +1,9 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { startRunner } from '@demicodes/host-remote/testing'
+import { MAX_MESSAGE_BYTES } from '@demicodes/runner-protocol'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
@@ -109,6 +110,18 @@ test(
     expect(await text.json()).toEqual({ path: join(runnerDir, 'a.txt'), text: '1\n2\n3\n' })
     const missing = await api(backend, `/api/conversations/${conversation.id}/fs/file?path=${encodeURIComponent(join(runnerDir, 'nope'))}`)
     expect(missing.status).toBe(404)
+
+    // A listing over the runner's message limit fails that request alone.
+    const crowded = join(runnerDir, 'crowded')
+    await mkdir(crowded)
+    const name = 'n'.repeat(200)
+    for (let index = 0; index <= MAX_MESSAGE_BYTES / 200; index += 1)
+      await writeFile(join(crowded, `${name}${index}`), '')
+    const listing = await api(backend, `/api/conversations/${conversation.id}/fs?path=${encodeURIComponent(crowded)}`)
+    expect(listing.status).toBe(413)
+    expect(((await listing.json()) as { code: string }).code).toBe('directory_too_large')
+    const after = await api(backend, `/api/conversations/${conversation.id}/fs/file?path=${encodeURIComponent(join(runnerDir, 'a.txt'))}`)
+    expect(after.status).toBe(200)
 
     // Offline: the routes say so rather than waking anything.
     await runner.stop()

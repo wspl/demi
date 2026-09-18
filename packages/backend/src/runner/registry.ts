@@ -1,6 +1,6 @@
 import { LiveInput } from './live-input'
 import { administrativeStore } from '../storage/host-store'
-import { RemoteHost } from '@demicodes/host-remote'
+import { RemoteHost, devicePipes, type Pipe, type PipeBroker } from '@demicodes/host-remote'
 import {
   RUNNER_PROTOCOL_VERSION,
   createRunnerWire,
@@ -41,7 +41,7 @@ import {
   hashDeviceToken,
   normalizeClaimCode
 } from './claim-codes'
-import { withRelayedPipes, type Pipe, type PipeBroker } from './pipes'
+import { withRelayedPipes } from './pipes'
 
 export interface RunnerRegistryOptions {
   admit?: (deviceId: string) => () => void
@@ -65,10 +65,11 @@ export interface RunnerRegistryOptions {
    */
   rpc?: RpcRelayHandler
   /**
-   * The pipe broker; the registry mints a relayed call's pipes and fails a
-   * device's pipes when its connection drops.
+   * The pipe broker; the registry mints a relayed call's pipes and the pipes
+   * its Hosts' file contents travel through, and fails a device's pipes when
+   * its connection drops.
    */
-  pipes?: PipeBroker
+  pipes: PipeBroker
   /**
    * Every message on every authenticated socket, by device — the wire audit
    * tests run.
@@ -188,7 +189,7 @@ export class RunnerRegistry {
   private readonly log: (line: string) => void
   private readonly manifest: (() => Promise<unknown>) | null
   private readonly rpc: RpcRelayHandler | null
-  private readonly pipes: PipeBroker | null
+  private readonly pipes: PipeBroker
   private readonly trace: ((
     deviceId: string,
     direction: 'in' | 'out',
@@ -223,7 +224,7 @@ export class RunnerRegistry {
     this.log = options.log ?? ((line) => console.warn(line))
     this.manifest = options.manifest ?? null
     this.rpc = options.rpc ?? null
-    this.pipes = options.pipes ?? null
+    this.pipes = options.pipes
     this.trace = options.trace ?? null
     this.volumeGrow = options.volumeGrow ?? null
   }
@@ -243,8 +244,11 @@ export class RunnerRegistry {
           return
         if (connection.deviceId !== null)
           this.trace?.(connection.deviceId, 'out', message)
+        // A message over the limit throws here, failing the request it
+        // belongs to; the connection is untouched.
+        const frame = wire.encode(message)
         try {
-          io.send(wire.encode(message))
+          io.send(frame)
         } catch {
         // A racing close drops the frame; the close event owns cleanup.
         }
@@ -420,6 +424,7 @@ export class RunnerRegistry {
           homeDir: workspace.path
         },
         store,
+        pipes: devicePipes(this.pipes, workspace.deviceId),
       })
       deviceHosts.set(key, host)
       this.conversationOfHost.set(host, conversationId)
@@ -504,6 +509,7 @@ export class RunnerRegistry {
           homeDir: '/'
         },
         store: administrativeStore,
+        pipes: devicePipes(this.pipes, deviceId),
       })
       this.deviceHosts.set(deviceId, host)
     }
@@ -573,7 +579,7 @@ export class RunnerRegistry {
     if (message.type === 'pipe_done') {
       // HTTP EOF owns success; an endpoint can report a failed transfer early.
       if (!message.ok) {
-        this.pipes?.failFromDevice(
+        this.pipes.failFromDevice(
           message.pipeId, connection.deviceId, message.error ?? 'device transfer failed'
         )
         this.log(
@@ -694,8 +700,6 @@ export class RunnerRegistry {
       const execution = this.executionFor(deviceId, call)
       if (!this.rpc)
         throw new Error('this backend serves no rpc commands to runners')
-      if (!this.pipes)
-        throw new Error('this backend brokers no pipes')
       const stdin = call.stdin ? this.pipes.open({ deviceId }) : null
       const stdout = this.pipes.open(undefined, { deviceId })
       pipes.push(stdout, ...(stdin ? [stdin] : []))
@@ -743,7 +747,7 @@ export class RunnerRegistry {
       connection.rpcCalls.delete(call.callId)
       live.close()
       for (const pipe of pipes)
-        this.pipes?.fail(pipe.id, 'rpc call ended')
+        this.pipes.fail(pipe.id, 'rpc call ended')
     }
     connection.send({
       type: 'rpc_exit',
@@ -759,7 +763,7 @@ export class RunnerRegistry {
     call.controller.abort(reason)
     call.live.close()
     for (const pipe of call.pipes)
-      this.pipes?.fail(pipe.id, reason.message)
+      this.pipes.fail(pipe.id, reason.message)
   }
 
   private async handleHello(
@@ -904,7 +908,7 @@ export class RunnerRegistry {
       this.connections.delete(connection.deviceId)
       void this.control.touchDeviceSeen(connection.deviceId).catch(() => {})
       this.detachHosts(connection.deviceId, 'runner disconnected')
-      this.pipes?.deviceGone(connection.deviceId)
+      this.pipes.deviceGone(connection.deviceId)
     }
   }
 

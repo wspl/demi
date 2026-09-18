@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildManifest, type Manifest } from '@demicodes/command-loader'
-import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
+import { PipeBroker, RemoteHost, RemoteShellEnvironment, devicePipes } from '@demicodes/host-remote'
 import { createRunnerWire } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { type Command } from '@demicodes/shell'
@@ -35,7 +35,8 @@ async function fixture(label: string, commands: Command[] = []) {
   const host = new RemoteHost({
     defaultCwd: home,
     identity: { uid: 1, gid: 1, hostname: label, homeDir: home },
-    store: memoryHostStore()
+    store: memoryHostStore(),
+    pipes: devicePipes(new PipeBroker(), 'unused'),
   })
   const shell = new RemoteShellEnvironment({ conversation: 'test-conversation', node: 'test-session', host, commands: catalog })
   let sendManifest: (value: Manifest) => void

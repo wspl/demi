@@ -11,6 +11,14 @@ export {
   type RemoteJobExit
 } from './remote-host'
 export {
+  PipeBroker,
+  devicePipes,
+  type DeviceEnd,
+  type HostPipes,
+  type Pipe,
+  type PipeWriter
+} from './pipes'
+export {
   RemoteShellEnvironment,
   type RemoteShellEnvironmentOptions
 } from './remote-shell-environment'

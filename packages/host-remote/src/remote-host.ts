@@ -17,7 +17,15 @@ import type {
   HostStore,
 } from '@demicodes/shell'
 import { createLogicalHostCwd } from '@demicodes/shell'
-import { createId, deferred, errorMessage, withTimeout, type Deferred } from '@demicodes/utils'
+import {
+  collectBytes,
+  createId,
+  deferred,
+  errorMessage,
+  noop,
+  withTimeout,
+  type Deferred
+} from '@demicodes/utils'
 import { fsOps, gitOps, STDIN_CHUNK_BYTES } from '@demicodes/runner-protocol'
 import type {
   BackendToRunnerMessage,
@@ -34,6 +42,7 @@ import type {
   PipeRef,
   RunnerToBackendMessage
 } from '@demicodes/runner-protocol'
+import type { HostPipes, Pipe } from './pipes'
 
 /**
  * The runner's working-tree facet (`runner.md` § Working tree): the
@@ -112,11 +121,14 @@ export interface RemoteHostOptions {
    * protocol.
    */
   store: HostStore
+  /** The pipes the Host's file contents travel through (`runner.md` § File contents). */
+  pipes: HostPipes
 }
 
 /**
  * The backend-side `Host` over a connected runner: every `fs` method is one
- * `fs_call` round trip, `process.spawn` streams over `spawn_*` messages, and
+ * `fs_call` round trip, with a file's contents in a pipe beside it,
+ * `process.spawn` streams over `spawn_*` messages, and
  * `openCwd` uses the contract's own logical path fallback (directory fds
  * cannot cross the wire). `git` is the runner's working-tree facet, one
  * `git_*` round trip per call, outside the `Host` contract.
@@ -147,10 +159,20 @@ export class RemoteHost implements Host {
     this.defaultCwd = options.defaultCwd
     this.currentIdentity = options.identity
     this.store = options.store
-    this.fs = createRemoteFs((op, params) => this.call(op, params))
+    this.fs = createRemoteFs((op, params) => this.call(op, params), {
+      readFile: async (path, options) => collectBytes((await this.openRead(path, options)).stream()),
+      readStream: async (path, options) => {
+        options?.signal?.throwIfAborted()
+        return pipeBytes(await this.openRead(path, options), options?.signal)
+      },
+      writeFile: (path, data, options) => this.sendFile(path, data, options),
+    })
     this.git = {
       changes: (root) => this.callGit('changes', { root }),
-      show: (root, path) => this.callGit('show', { root, path }),
+      show: async (root, path) => {
+        const pipe = await this.receive((output) => this.callGit('show', { root, path, output }))
+        return collectBytes(pipe.stream())
+      },
     }
     this.net = { open: (params) => this.openNet(params) }
     this.process = {
@@ -478,6 +500,74 @@ export class RemoteHost implements Host {
     } finally {
       release?.()
     }
+  }
+
+  /**
+   * A pipe the runner fills once `request` succeeds (`runner.md` § File
+   * contents). A refused request fails the pipe, since its bytes will never
+   * come.
+   */
+  private async receive(request: (output: PipeRef) => Promise<unknown>): Promise<Pipe> {
+    const pipe = this.options.pipes.fromRunner()
+    // The pipe's outcome reaches whoever reads it; nothing else awaits it.
+    pipe.done.catch(noop)
+    try {
+      await request(pipe.ref())
+    } catch (error) {
+      pipe.fail(errorMessage(error))
+      throw error
+    }
+    return pipe
+  }
+
+  /**
+   * `fs_readFile`: the pipe the runner streams `length` bytes from `offset`
+   * into, once the runner has the file open.
+   */
+  private openRead(
+    path: string,
+    options?: { cwd?: string; offset?: number; length?: number },
+  ): Promise<Pipe> {
+    return this.receive((output) => this.call('readFile', {
+      path,
+      cwd: options?.cwd,
+      offset: options?.offset,
+      length: options?.length,
+      output,
+    }))
+  }
+
+  /**
+   * `fs_writeFile`: this process fills the pipe while the runner writes it
+   * into place. The runner's reply says how the write went, and it comes
+   * only after the runner read the whole pipe.
+   */
+  private async sendFile(
+    path: string,
+    data: Uint8Array,
+    options?: { cwd?: string; createParents?: boolean },
+  ): Promise<void> {
+    const pipe = this.options.pipes.toRunner()
+    pipe.done.catch(noop)
+    const writer = pipe.writer()
+    // A refused write fails the pipe, which stops this upload; the reply
+    // carries the reason.
+    const upload = (async () => {
+      await writer.write(data)
+      writer.end()
+    })().catch(noop)
+    try {
+      await this.call('writeFile', {
+        path,
+        cwd: options?.cwd,
+        createParents: options?.createParents,
+        input: pipe.ref(),
+      })
+    } catch (error) {
+      pipe.fail(errorMessage(error))
+      throw error
+    }
+    await upload
   }
 
   private async callGit<Op extends GitOp>(
@@ -815,22 +905,40 @@ function failedSpawnHandle(exit: HostSpawnExit): HostSpawnHandle {
 
 async function* emptyStream(): AsyncIterable<never> {}
 
+/**
+ * The bytes the runner puts in `pipe`. Ending the iteration early stops the
+ * runner's read; so does aborting `signal`, which fails the pipe, whether or
+ * not the iteration has begun.
+ */
+function pipeBytes(pipe: Pipe, signal?: AbortSignal): AsyncIterable<Uint8Array> {
+  const abort = () => pipe.fail('the reader went away')
+  signal?.addEventListener('abort', abort, { once: true })
+  if (signal?.aborted)
+    abort()
+  return (async function* () {
+    try {
+      yield* pipe.stream()
+    } finally {
+      signal?.removeEventListener('abort', abort)
+    }
+  })()
+}
+
 type RemoteCall = <Op extends FsOp>(
   op: Op,
   params: FsParams<Op>
 ) => Promise<FsResult<Op>>
 
-function createRemoteFs(call: RemoteCall): HostFileSystem {
+/**
+ * The `fs` facet: metadata operations are one call each; `contents` moves a
+ * file's bytes through pipes.
+ */
+function createRemoteFs(
+  call: RemoteCall,
+  contents: Pick<HostFileSystem, 'readFile' | 'readStream' | 'writeFile'>,
+): HostFileSystem {
   return {
-    readFile: (path, options) => call('readFile', { path, cwd: options?.cwd }),
-    writeFile: async (path, data, options) => void (await call(
-      'writeFile',
-      { path, data, cwd: options?.cwd, createParents: options?.createParents }
-    )),
-    appendFile: async (path, data, options) => void (await call(
-      'appendFile',
-      { path, data, cwd: options?.cwd, createParents: options?.createParents }
-    )),
+    ...contents,
     exists: (path, options) => call('exists', { path, cwd: options?.cwd }),
     stat: (path, options) => call('stat', { path, cwd: options?.cwd }),
     lstat: (path, options) => call('lstat', { path, cwd: options?.cwd }),

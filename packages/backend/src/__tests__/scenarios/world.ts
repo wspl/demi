@@ -242,6 +242,14 @@ export class World {
    */
   async killRunner(name: string): Promise<void> {
     const device = this.device(name)
+    // A pipe end's report trails the transfer it ends by a moment: let the
+    // settled ones land before the rest count as lost. An exchange still in
+    // flight (the offline scenario's) keeps the wait to its bound.
+    await waitFor(
+      () => this.pipeEndsReported(device) === this.pipeEndsNamed(device) - device.lostPipeEnds,
+      undefined,
+      { timeoutMs: 1_000 }
+    ).catch(() => {})
     device.lost += this.jobCount(device, 'out', 'job_start') - this.jobCount(
       device,
       'in',
@@ -265,8 +273,12 @@ export class World {
         return n + (m.stdin ? 1 : 0) + 1
       if (m.type === 'job_start')
         return n + (m.stdin ? 1 : 0) + (m.stdout ? 1 : 0)
+      // A relayed network stream names its two pipes on the wire too.
       if (m.type === 'net_open')
         return n + 2
+      // A file's contents travel through one pipe (`runner.md` § File contents).
+      if (m.type === 'fs_readFile' || m.type === 'fs_writeFile' || m.type === 'git_show')
+        return n + 1
       return n
     }, 0)
   }
@@ -442,17 +454,8 @@ export class World {
         .toBe(count('out', 'job_start'))
       // Every pipe end named to a runner reports back — its report may trail
       // the turn it belonged to, and a runner the world killed never sends it.
-      const endsNamed = of('out').reduce((n, m) => {
-        if (m.type === 'rpc_pipes')
-          return n + (m.stdin ? 1 : 0) + 1
-        if (m.type === 'job_start')
-          return n + (m.stdin ? 1 : 0) + (m.stdout ? 1 : 0)
-        // A relayed network stream names its two pipes on the wire too.
-        if (m.type === 'net_open')
-          return n + 2
-        return n
-      }, 0)
-      const reported = () => count('in', 'pipe_done')
+      const endsNamed = this.pipeEndsNamed(device)
+      const reported = () => this.pipeEndsReported(device)
       // Ends the kill made impossible are already forgiven; the rest must
       // all arrive (test 5's offline scenario is the killing case).
       const forgivable = device.lostPipeEnds

@@ -19,7 +19,6 @@ use tokio_util::sync::CancellationToken;
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
-const MAX_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
 const QUEUE_MESSAGES: usize = 8;
 
 pub struct Connection {
@@ -48,8 +47,8 @@ impl Connection {
     pub async fn connect(backend: &str, cancel: CancellationToken) -> io::Result<Self> {
         let url = socket_url(backend)?;
         let config = WebSocketConfig::default()
-            .max_message_size(Some(MAX_MESSAGE_BYTES))
-            .max_frame_size(Some(MAX_MESSAGE_BYTES));
+            .max_message_size(Some(wire::MAX_MESSAGE_BYTES))
+            .max_frame_size(Some(wire::MAX_MESSAGE_BYTES));
         let (socket, _) = tokio::select! {
             _ = cancel.cancelled() => return Err(io::Error::new(io::ErrorKind::Interrupted, "connection cancelled")),
             result = tokio::time::timeout(HANDSHAKE_TIMEOUT, tokio_tungstenite::connect_async_with_config(url.as_str(), Some(config), true)) => {
@@ -105,10 +104,15 @@ impl Connection {
                         else => break,
                     };
                     let bytes = message.into_bytes();
-                    if bytes.len() > MAX_MESSAGE_BYTES {
+                    // Replies over the limit already failed their requests;
+                    // anything else this large breaks the protocol.
+                    if bytes.len() > wire::MAX_MESSAGE_BYTES {
                         return Err(io::Error::new(
                             io::ErrorKind::InvalidData,
-                            "runner outbound message exceeds 16 MiB",
+                            format!(
+                                "runner outbound message exceeds {} bytes",
+                                wire::MAX_MESSAGE_BYTES
+                            ),
                         ));
                     }
                     tokio::time::timeout(WRITE_TIMEOUT, writer.send(Message::Binary(bytes.into())))

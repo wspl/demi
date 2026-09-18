@@ -22,6 +22,14 @@ import type {
 export const bytesSchema = z.custom<Uint8Array>((value) => value instanceof Uint8Array)
 const cwd = z.string().optional()
 
+/**
+ * One end of a pipe as the wire names it (`runner.md` § Pipes): the id the
+ * runner reports `pipe_done` under, and the origin-relative URL its end
+ * `PUT`s to or `GET`s from with its device token.
+ */
+export const pipeRefSchema = z.strictObject({ id: z.string(), url: z.string() })
+export type PipeRef = z.infer<typeof pipeRefSchema>
+
 export const jobFileChangeSchema = editFileSchema.extend({
   added: z.number().int().nonnegative(),
   removed: z.number().int().nonnegative(),
@@ -72,24 +80,30 @@ const hostDirentSchema: z.ZodType<HostDirent> = z.strictObject({
  * The `HostFileSystem` method set as the wire sees it: one message per
  * operation with its parameters typed, one result shape per operation.
  * `fs_<op>` requests, `fs_ok { id, op, result }` / `fs_error` replies.
+ *
+ * A file's contents travel through a pipe, never in a message (`runner.md`
+ * § File contents). `readFile` streams `length` bytes from `offset`, or to
+ * the end, into `output`, and its reply comes once the file is open, before
+ * any byte; `writeFile` fills the file from `input` and replies once the
+ * file is in place.
  */
 export const fsOps = {
-  readFile: { params: z.strictObject({ path: z.string(), cwd }), result: bytesSchema },
-  writeFile: {
+  readFile: {
     params: z.strictObject({
       path: z.string(),
-      data: bytesSchema,
       cwd,
-      createParents: z.boolean().optional()
+      offset: z.number().int().nonnegative().optional(),
+      length: z.number().int().nonnegative().optional(),
+      output: pipeRefSchema
     }),
     result: z.null()
   },
-  appendFile: {
+  writeFile: {
     params: z.strictObject({
       path: z.string(),
-      data: bytesSchema,
       cwd,
-      createParents: z.boolean().optional()
+      createParents: z.boolean().optional(),
+      input: pipeRefSchema
     }),
     result: z.null()
   },
@@ -230,9 +244,13 @@ export const gitOps = {
       watched: z.boolean(),
     }),
   },
+  /**
+   * The file as the last commit has it, streamed whole into `output` after
+   * the reply (`runner.md` § Working tree).
+   */
   show: {
-    params: z.strictObject({ root: z.string(), path: z.string() }),
-    result: bytesSchema,
+    params: z.strictObject({ root: z.string(), path: z.string(), output: pipeRefSchema }),
+    result: z.null(),
   },
 } as const
 
@@ -317,14 +335,6 @@ export const netErrorCodeSchema = z.enum([
   'timeout'
 ])
 export type NetErrorCode = z.infer<typeof netErrorCodeSchema>
-
-/**
- * One end of a pipe as the wire names it (`runner.md` § Pipes): the id the
- * runner reports `pipe_done` under, and the origin-relative URL its end
- * `PUT`s to or `GET`s from with its device token.
- */
-export const pipeRefSchema = z.strictObject({ id: z.string(), url: z.string() })
-export type PipeRef = z.infer<typeof pipeRefSchema>
 
 /**
  * Where a job's full output lives on the target, and the last bytes of each

@@ -4,14 +4,16 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-use crate::connection::wire::{self as wire, Inbound, Outbound, Timestamp, WireBytes};
+use crate::connection::wire::{self as wire, Inbound, Outbound, Timestamp};
 use futures_util::future::BoxFuture;
-use tokio::{fs, io::AsyncWriteExt};
+use tokio::fs;
 use tokio_util::sync::CancellationToken;
 
 use crate::paths::resolve;
 
-/// Returns None for messages owned by other runner subsystems.
+/// Returns None for messages owned by other runner subsystems. A file's
+/// contents are not answered here: they travel through pipes
+/// (`crate::files`).
 pub async fn handle(
     message: &Inbound,
     default_cwd: &Path,
@@ -19,7 +21,9 @@ pub async fn handle(
 ) -> Option<Result<Outbound, wire::WireError>> {
     let id = message.fs_request_id()?;
     Some(match call(message, default_cwd, cancel).await {
-        Ok(reply) => Ok(reply),
+        Ok(reply) => wire::within_limit(reply, |reason| {
+            wire::fs_error(id.to_owned(), Some("too_large".into()), reason)
+        }),
         Err(error) => wire::fs_error(
             id.to_owned(),
             error_code(&error).map(String::from),
@@ -39,41 +43,6 @@ async fn call(
         resolve(path, cwd.as_deref().map(Path::new).unwrap_or(default_cwd))
     };
     let encoded = match message {
-        FsReadFile {
-            id,
-            path: value,
-            cwd,
-        } => wire::fs_ok_read_file(id.clone(), WireBytes(fs::read(path(value, cwd)?).await?)),
-        FsWriteFile {
-            id,
-            path: value,
-            cwd,
-            data,
-            create_parents,
-        } => {
-            let target = path(value, cwd)?;
-            create_parent(&target, *create_parents).await?;
-            fs::write(target, &data.0).await?;
-            wire::fs_ok_write_file(id.clone(), ())
-        }
-        FsAppendFile {
-            id,
-            path: value,
-            cwd,
-            data,
-            create_parents,
-        } => {
-            let target = path(value, cwd)?;
-            create_parent(&target, *create_parents).await?;
-            let mut file = fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(target)
-                .await?;
-            file.write_all(&data.0).await?;
-            file.flush().await?;
-            wire::fs_ok_append_file(id.clone(), ())
-        }
         FsExists {
             id,
             path: value,
@@ -255,15 +224,6 @@ async fn call(
         }
     };
     encoded.map_err(io::Error::other)
-}
-
-async fn create_parent(path: &Path, enabled: Option<bool>) -> io::Result<()> {
-    if enabled == Some(true)
-        && let Some(parent) = path.parent()
-    {
-        fs::create_dir_all(parent).await?;
-    }
-    Ok(())
 }
 
 pub async fn chmod(path: &Path, mode: u32) -> io::Result<()> {

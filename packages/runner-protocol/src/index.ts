@@ -1,6 +1,8 @@
 export {
   RUNNER_PROTOCOL_VERSION,
   JOB_VIEW_BYTES,
+  MAX_MESSAGE_BYTES,
+  MessageTooLargeError,
   STDIN_CHUNK_BYTES,
   FS_OPS,
   GIT_OPS,

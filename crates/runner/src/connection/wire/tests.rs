@@ -8,13 +8,9 @@ fn decodes_binary_and_dates_written_by_the_typescript_codec() {
     )))
     .unwrap()
     {
-        Inbound::FsWriteFile {
-            data,
-            create_parents,
-            ..
-        } => {
-            assert_eq!(data.0, [0, 255, 13, 10]);
-            assert_eq!(create_parents, Some(true));
+        Inbound::JobStdin { job_id, bytes } => {
+            assert_eq!(job_id, "job");
+            assert_eq!(bytes.0, [0, 255, 13, 10]);
         }
         _ => panic!("wrong message type"),
     }
@@ -42,8 +38,7 @@ fn decodes_binary_and_dates_written_by_the_typescript_codec() {
 
 #[test]
 fn rejects_array_disguised_as_binary_unknown_fields_and_trailing_data() {
-    let invalid =
-        serde_json::json!({"type":"fs_writeFile", "id":"bad", "path":"/tmp/data", "data":[1,2]});
+    let invalid = serde_json::json!({"type":"job_stdin", "jobId":"bad", "bytes":[1,2]});
     assert!(decode(&rmp_serde::to_vec_named(&invalid).unwrap()).is_err());
     let invalid = serde_json::json!({"type":"ping", "extra":true});
     assert!(decode(&rmp_serde::to_vec_named(&invalid).unwrap()).is_err());

@@ -271,13 +271,13 @@ export function hostConformanceCases(
       }
     ),
     {
-      name: 'fs: write, append, read, readdir, stat, exists, rm',
+      name: 'fs: write, replace, read, readdir, stat, exists, rm',
       run: async () => {
         const dir = `${root}/basic`
         await fs.mkdir(`${dir}/src`, { recursive: true })
-        await fs.writeFile('src/file.txt', text('hello\n'), { cwd: dir })
-        await fs.appendFile('src/file.txt', text('tail\n'), { cwd: dir })
-        equal(await read(`${dir}/src/file.txt`), 'hello\ntail\n', 'content')
+        await fs.writeFile('src/file.txt', text('first\n'), { cwd: dir })
+        await fs.writeFile('src/file.txt', text('hello\ntail\n'), { cwd: dir })
+        equal(await read(`${dir}/src/file.txt`), 'hello\ntail\n', 'a write replaces the content')
         equal(
           await fs.readdir('src', { cwd: dir }),
           ['file.txt'],
@@ -387,6 +387,24 @@ export function hostConformanceCases(
           (await fs.stat(`${dir}/target.txt`)).mtime.getTime(),
           when.getTime(),
           'utimes'
+        )
+      },
+    },
+    {
+      name: 'fs: readStream reads the whole file or one byte range',
+      run: async () => {
+        const dir = `${root}/stream`
+        await fs.mkdir(dir, { recursive: true })
+        await fs.writeFile(`${dir}/digits.txt`, text('0123456789'))
+        const streamed = async (options?: { offset?: number; length?: number }) =>
+          decodeUtf8(await collectBytes(await fs.readStream(`${dir}/digits.txt`, options)))
+        equal(await streamed(), '0123456789', 'the whole file')
+        equal(await streamed({ offset: 3, length: 4 }), '3456', 'a range')
+        equal(await streamed({ offset: 7 }), '789', 'from an offset to the end')
+        equal(
+          await codeOf(() => fs.readStream(`${dir}/missing`)),
+          'ENOENT',
+          'a missing file rejects before any byte'
         )
       },
     },

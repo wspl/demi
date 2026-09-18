@@ -277,10 +277,9 @@ async fn the_wire_carries_changes_and_errors() {
 
     let reply = call(
         &service,
-        Inbound::GitShow {
+        Inbound::GitChanges {
             id: "2".into(),
-            root: ".".into(),
-            path: "d.txt".into(),
+            root: "missing".into(),
         },
         &repo,
     )
