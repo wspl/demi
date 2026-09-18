@@ -6,6 +6,7 @@ import type { Component } from 'vue'
 import { disabledTooltip } from './disabled'
 import { ICON_PX } from './icon-metrics'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
+import CornerDot, { type CornerDotTone } from './CornerDot.vue'
 import Tooltip from './Tooltip.vue'
 
 defineOptions({ inheritAttrs: false })
@@ -34,6 +35,10 @@ const props = withDefaults(
     pressed?: boolean
     spinning?: boolean
     spinOnClick?: boolean
+    /** A status on the icon's top-right corner: a small dot in this tone, none when null. */
+    indicator?: CornerDotTone | null
+    /** What the dot means, for assistive technology; decorative without it. */
+    indicatorLabel?: string
   }>(),
   {
     size: 'md',
@@ -120,13 +125,21 @@ const glyphPx = computed(() => {
       ]"
     >
       <IndeterminateSpinner v-if="loading" :size="glyphPx" />
-      <component
-        v-else
-        :is="icon"
-        :size="glyphPx"
-        :width="glyphPx"
-        :height="glyphPx"
-      />
+      <span v-else class="relative flex">
+        <component
+          :is="icon"
+          :size="glyphPx"
+          :width="glyphPx"
+          :height="glyphPx"
+        />
+        <CornerDot
+          v-if="indicator !== undefined"
+          :tone="indicator"
+          size="xs"
+          :ring="variant === 'ghost' ? 'surface' : 'button'"
+          :label="indicatorLabel"
+        />
+      </span>
     </span>
   </Tooltip>
 </template>
