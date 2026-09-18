@@ -334,9 +334,17 @@ svg.lucide {
   grid-column: 1 / -1;
 }
 
+/* The row's height and side padding are named so the actions cell can derive its inset from them. */
+[data-menu-item] {
+  --menu-row-h: 1.75rem;
+  --menu-row-px: 0.5rem;
+  height: var(--menu-row-h);
+}
+
 .menu-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
+  padding-inline: var(--menu-row-px);
 }
 
 .menu-group,
@@ -377,6 +385,16 @@ svg.lucide {
 
 .menu-cell-value + .menu-cell-suffix {
   grid-column: 4;
+}
+
+/* Trailing icon buttons sit as far from the row's right edge as centering puts them from its
+   top and bottom: (row height - control height) / 2. The row's side padding is sized for
+   text, so the cell pulls back the difference. */
+.menu-cell-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: calc((var(--menu-row-h) - var(--spacing-hit-xs)) / 2 - var(--menu-row-px));
 }
 
 .input-float {
