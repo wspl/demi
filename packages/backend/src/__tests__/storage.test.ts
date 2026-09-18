@@ -120,6 +120,17 @@ test(
   }
 )
 
+test('a title chosen at creation is a user title: neither a message nor a model replaces it', async () => {
+  const control = new LocalControlService(openControlDb())
+  const user = (await control.createMaster(
+    { email: 'local@example.test', passwordHash: '!' }
+  ))!
+  const named = await control.createConversation(user.id, { title: 'Chosen at creation' })
+  expect(await control.defaultConversationTitle(named.id, 'from a message')).toBe(false)
+  expect(await control.generatedConversationTitle(named.id, 'from a model')).toBe(false)
+  expect((await control.getConversation(named.id))?.title).toBe('Chosen at creation')
+})
+
 test('ControlService conversation CRUD and ordering', async () => {
   const db = openControlDb()
   const control = new LocalControlService(db)
@@ -136,11 +147,19 @@ test('ControlService conversation CRUD and ordering', async () => {
   const second = await control.createConversation(user.id)
   expect(first.title).toBe('New conversation')
 
-  await control.defaultConversationTitle(first.id, 'hello world')
-  await control.defaultConversationTitle(first.id, 'should not overwrite')
+  // Title origins (product.md § Conversation titles): placeholder → message → generated, each once.
+  expect(await control.defaultConversationTitle(first.id, 'hello world')).toBe(true)
+  expect(await control.defaultConversationTitle(first.id, 'should not overwrite')).toBe(false)
   expect((await control.getConversation(first.id))?.title).toBe('hello world')
+  expect(await control.generatedConversationTitle(first.id, 'Greeting')).toBe(true)
+  expect(await control.generatedConversationTitle(first.id, 'Second greeting')).toBe(false)
+  expect((await control.getConversation(first.id))?.title).toBe('Greeting')
 
+  // A placeholder has no message to improve on, and a user's title is never replaced.
+  expect(await control.generatedConversationTitle(second.id, 'Too early')).toBe(false)
   await control.renameConversation(second.id, 'renamed')
+  expect(await control.defaultConversationTitle(second.id, 'from a message')).toBe(false)
+  expect(await control.generatedConversationTitle(second.id, 'from a model')).toBe(false)
   expect((await control.getConversation(second.id))?.title).toBe('renamed')
 
   // Most recently updated first.

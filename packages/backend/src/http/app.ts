@@ -48,6 +48,7 @@ import { modelRoutes } from './models'
 import { runnerSocketRoutes } from './runner-socket'
 import { pipeRoutes } from './pipes'
 import { streamRoutes } from './stream'
+import type { ConversationTitles } from '../conversation/title'
 import { usageRoutes } from './usage'
 import { cloudRoutes } from './cloud'
 import { workspaceRoutes } from './workspaces'
@@ -65,6 +66,7 @@ export function createApp(options: {
   conversationUpdates: ConversationUpdates
   conversationForks: ConversationForks
   admitFrame: FrameAdmission
+  titles: ConversationTitles
   control: ControlService
   conversationStores: ConversationStores
   changes: ChangeStore
@@ -208,6 +210,7 @@ export function createApp(options: {
       withHost: options.withHost,
       vault: options.vault,
       mode: options.mode,
+      titles: options.titles,
     }),
   )
   app.route(

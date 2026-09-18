@@ -3,6 +3,7 @@ import type {
   InferenceRequest,
   ProviderEvent
 } from '@demicodes/provider'
+import { TITLE_INSTRUCTION } from '../../conversation/title'
 
 /**
  * The scripted model behind the world's `stub` provider type. Scripts are
@@ -14,6 +15,11 @@ import type {
  * A turn's script is a list of provider events or a function of the
  * inference request, which is how a scenario asserts what the model was
  * shown. Every request the model answered is kept in `requests`, in order.
+ *
+ * A conversation's title request (`product.md` § Conversation titles) runs
+ * beside its first turn and is no part of any turn script: it is kept in
+ * `titleRequests`, and it is answered only for a session `scriptTitle` named;
+ * otherwise it ends as an abort, which writes no title and no usage.
  */
 export type TurnScript = ProviderEvent[] | ((
   request: InferenceRequest
@@ -23,6 +29,8 @@ export class ScriptedModel {
   private readonly queues = new Map<string, TurnScript[]>()
   private readonly children: TurnScript[] = []
   readonly requests: InferenceRequest[] = []
+  private readonly titles = new Map<string, string | (() => Promise<string>)>()
+  readonly titleRequests: InferenceRequest[] = []
   /**
    * Requests whose script ran to its `response`; an abort cuts a script short
    * and leaves no usage.
@@ -33,6 +41,11 @@ export class ScriptedModel {
     const queue = this.queues.get(sessionId) ?? []
     queue.push(...turns)
     this.queues.set(sessionId, queue)
+  }
+
+  /** What the model answers this session's title request with; a function answers when it resolves. */
+  scriptTitle(sessionId: string, title: string | (() => Promise<string>)): void {
+    this.titles.set(sessionId, title)
   }
 
   scriptChild(...turns: TurnScript[]): void {
@@ -61,6 +74,22 @@ export class ScriptedModel {
     const model = this
     const runtime: AgentProvider = {
       async *run(request) {
+        if (request.systemPrompt === TITLE_INSTRUCTION) {
+          model.titleRequests.push(request)
+          const title = model.titles.get(request.sessionId)
+          if (title === undefined) {
+            yield { type: 'abort' }
+            return
+          }
+          yield { type: 'text_delta', text: typeof title === 'function' ? await title() : title }
+          yield {
+            type: 'response',
+            usage: { inputTokens: 40, outputTokens: 8, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          }
+          // An answered title request is a ledger row like any other.
+          model.answered += 1
+          return
+        }
         model.requests.push({ ...request, items: structuredClone(request.items) })
         const queue = model.queues.get(request.sessionId)
         const turn = queue?.length ? queue.shift() : model.children.shift()

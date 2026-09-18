@@ -39,6 +39,8 @@ export async function openBackend(
     mode: 'shared',
     nativeCommands: await nativePackageFixture(),
     modelsDev: { fetch: modelsDevFetch() },
+    // These tests count provider requests; the scenarios cover generated titles.
+    conversationTitles: false,
     ...options
   })
   try {

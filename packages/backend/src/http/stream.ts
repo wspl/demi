@@ -14,6 +14,7 @@ import type { RunnerRegistry } from '../runner/registry'
 import { resolveExecutionTarget } from '../conversation/execution-target'
 import { resolveRemoteFileRefs } from '../conversation/remote-file-refs'
 import { conversationScopedTransport } from '../conversation/scoped-transport'
+import type { ConversationTitles } from '../conversation/title'
 import type { ControlService } from '../storage/control'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
 import type { ProviderVault } from '../vault/providers'
@@ -37,6 +38,7 @@ export function streamRoutes(options: {
   withHost: ConversationHostAccess
   vault: ProviderVault
   mode: InstanceMode
+  titles: ConversationTitles
 }): Hono<AuthEnv> {
   const { control, agentServer, upgradeWebSocket, blobsFor, vault, mode } = options
   const app = new Hono<AuthEnv>()
@@ -84,6 +86,11 @@ export function streamRoutes(options: {
               writeAttachment: (fileName, data) => options.withHost(
                 conversation.id,
                 (host) => writeAttachmentToHost(host, conversation.id, fileName, data)
+              ),
+              startTitle: (provider, text) => options.titles.start(
+                conversation.id,
+                provider,
+                text
               ),
               providerAllowed: async (providerId) => (await visibleProvider(
                 vault,
