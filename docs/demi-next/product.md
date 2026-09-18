@@ -134,7 +134,9 @@ The request:
 | Release | The request is aborted when the conversation is archived or the backend closes. |
 
 The instruction tells the model to produce a title, never an answer: one line
-of at most 50 characters, in the language of the message, natural grammar,
+short enough for a narrow sidebar (two to five words, or four to ten
+characters in Chinese, Japanese or Korean, shown by examples), in the language
+of the message, natural grammar,
 exact technical terms, file names, numbers and error codes kept, no tool
 names, no leading "the" or "my", and something meaningful even for a greeting.
 

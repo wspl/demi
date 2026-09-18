@@ -1,18 +1,11 @@
 import { expect, test } from 'bun:test'
 import { errorFacts, errorReportText, errorSummary } from '../error-detail'
 
-test('the chrome sentence follows the normalized code', () => {
-  expect(errorSummary('rate_limit')).toBe('Rate limited by the provider')
-  expect(errorSummary('overloaded')).toBe(
-    'The provider is overloaded or unreachable'
-  )
-  expect(errorSummary('auth_expired')).toBe('Authentication expired')
+test('the chrome sentence states only what Demi knows; codes derived from a vendor never head a failure', () => {
+  for (const code of ['rate_limit', 'overloaded', 'auth_expired', 'context_length_exceeded', 'something_else', null])
+    expect(errorSummary(code)).toBe('The provider request failed')
   expect(errorSummary('auth_missing')).toBe('No credentials for this provider')
-  expect(errorSummary('context_length_exceeded')).toBe(
-    'The context is too long for this model'
-  )
-  expect(errorSummary(null)).toBe('The provider request failed')
-  expect(errorSummary('something_else')).toBe('The provider request failed')
+  expect(errorSummary('credential_not_found')).toBe('No credentials for this provider')
 })
 
 test('the facts line carries the status, the code, and the request id when present', () => {

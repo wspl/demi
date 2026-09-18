@@ -18,11 +18,11 @@ import GallerySpecimen from './GallerySpecimen.vue'
   <div class="space-y-8">
     <GallerySection
       title="ErrorNotice · a failure in the conversation"
-      note="One tinted bar, full width where it sits: a sentence, the upstream message, the facts, Copy for a support thread, and Retry only where the failure is the tail of the conversation. With one line the controls sit centred; with facts they hold the first line."
+      note="One tinted bar, full width where it sits: a neutral sentence that never interprets the vendor, the upstream message in the provider's own words, the facts, Copy for a support thread, and Retry only where the failure is the tail of the conversation. With one line the controls sit centred; with facts they hold the first line."
     >
       <GallerySpecimen wide variant="Turn failed · tail, with facts, Copy and Retry">
         <ErrorNotice
-          label="Rate limited by the provider"
+          label="The provider request failed"
           detail="Anthropic API request failed with HTTP 429: This request would exceed the rate limit of 50 requests per minute for your organization. Retry after 12 seconds."
           :facts="['HTTP 429', 'rate_limit', 'req_01J8Y3Q6ZKX4']"
           copy-text="Anthropic API request failed with HTTP 429"
