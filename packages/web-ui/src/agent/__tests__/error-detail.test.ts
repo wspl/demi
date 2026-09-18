@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { errorFacts, errorPresentation, errorReportText } from '../error-detail'
+import { errorFacts, errorPresentation, errorReportText, prettyUpstream } from '../error-detail'
 
 test('a plain sentence from the source is the whole record', () => {
   expect(errorPresentation('The usage limit has been reached')).toEqual({
@@ -36,19 +36,10 @@ test('a message with no sentence to lead with gets the neutral line over its tex
   expect(errorPresentation('')).toEqual({ label: 'The turn failed', detail: null })
 })
 
-test('the facts line carries the status, the code, and the request id when present', () => {
-  expect(errorFacts(
-      'rate_limit',
-      {
-        source: 'http',
-        httpStatus: 429,
-        clientRequestId: 'req_1'
-      }
-    )).toEqual(
-    ['HTTP 429', 'rate_limit', 'req_1']
-  )
-  expect(errorFacts(null, { source: 'stream' })).toEqual([])
-  expect(errorFacts(null, undefined)).toEqual([])
+test('the facts line carries the request id and leaves Demi\'s bookkeeping to the report', () => {
+  expect(errorFacts({ source: 'http', httpStatus: 429, clientRequestId: 'req_1' })).toEqual(['req_1'])
+  expect(errorFacts({ source: 'stream' })).toEqual([])
+  expect(errorFacts(undefined)).toEqual([])
 })
 
 test('the report is the upstream message followed by every diagnostic', () => {
@@ -69,11 +60,20 @@ test('the report is the upstream message followed by every diagnostic', () => {
 
 test('the facts lead with when the vendor says it works again, read from the stored payload', () => {
   const upstream = JSON.stringify({ type: 'error', error: { resets_at: 1790062659 }, status_code: 429 })
-  const facts = errorFacts('rate_limit', { source: 'stream', httpStatus: 429, upstream }, '2026-09-18T14:00:00.000Z')
-  expect(facts[0]).toBe(`resets ${new Date(1790062659 * 1000).toLocaleString()}`)
-  expect(facts.slice(1)).toEqual(['HTTP 429', 'rate_limit'])
-  // Without a named time, or without the record's time for a relative wait, nothing is claimed.
-  expect(errorFacts('rate_limit', { source: 'stream', upstream: '{"error":{}}' }, '2026-09-18T14:00:00.000Z')).toEqual(['rate_limit'])
+  expect(errorFacts(
+    { source: 'stream', httpStatus: 429, clientRequestId: 'req_1', upstream },
+    '2026-09-18T14:00:00.000Z',
+  )).toEqual([`resets ${new Date(1790062659 * 1000).toLocaleString()}`, 'req_1'])
+  // Without a named time nothing is claimed.
+  expect(errorFacts({ source: 'stream', upstream: '{"error":{}}' }, '2026-09-18T14:00:00.000Z')).toEqual([])
+})
+
+test('the reader sees the vendor payload without its transport headers; the report keeps them', () => {
+  const upstream = JSON.stringify({ type: 'error', error: { plan_type: 'pro' }, headers: { 'X-Codex-Plan-Type': 'pro' } })
+  expect(prettyUpstream(upstream, { headers: false })).toBe('{\n  "type": "error",\n  "error": {\n    "plan_type": "pro"\n  }\n}')
+  expect(prettyUpstream(upstream, { headers: true })).toContain('X-Codex-Plan-Type')
+  expect(prettyUpstream('plain text', { headers: false })).toBe('plain text')
+  expect(prettyUpstream('[1,2]', { headers: false })).toBe('[\n  1,\n  2\n]')
 })
 
 test('the copied report carries the vendor payload, indented', () => {

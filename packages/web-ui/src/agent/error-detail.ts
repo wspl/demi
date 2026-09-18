@@ -55,21 +55,20 @@ export function errorPresentation(message: string): ErrorPresentation {
   return { label: t('agent.error.failed'), detail: text || null }
 }
 
-/** The short facts a support thread asks for first, in one line under the upstream message. */
+/**
+ * The line under a failure: when the vendor says it works again, which is what
+ * the reader does next, and the request id a support thread asks for. The
+ * status and the normalized code are Demi's bookkeeping; they go in the copied
+ * report, not in front of the reader.
+ */
 export function errorFacts(
-  code: string | null | undefined,
   diagnostics: ProviderErrorDiagnostics | undefined,
   createdAt?: string
 ): string[] {
   const facts: string[] = []
-  // When the vendor says it works again comes first: it is what the reader does next.
   const retryAt = createdAt ? retryAtFromUpstream(diagnostics?.upstream, createdAt) : null
   if (retryAt !== null)
     facts.push(`resets ${new Date(retryAt).toLocaleString()}`)
-  if (diagnostics?.httpStatus !== undefined)
-    facts.push(`HTTP ${diagnostics.httpStatus}`)
-  if (code)
-    facts.push(code)
   if (diagnostics?.clientRequestId)
     facts.push(diagnostics.clientRequestId)
   return facts
@@ -98,16 +97,26 @@ export function errorReportText(
         lines.push(`${key}: ${value}`)
     }
     if (diagnostics.upstream)
-      lines.push('', 'upstream:', prettyUpstream(diagnostics.upstream))
+      lines.push('', 'upstream:', prettyUpstream(diagnostics.upstream, { headers: true }))
   }
   return lines.join('\n')
 }
 
-/** The stored vendor failure, indented when it is JSON, for a reader's eyes. */
-export function prettyUpstream(upstream: string): string {
+/**
+ * The stored vendor failure for a reader's eyes: indented when it is JSON, and
+ * without its transport headers unless the caller wants the whole record.
+ */
+export function prettyUpstream(upstream: string, options: { headers: boolean }): string {
+  let payload: unknown
   try {
-    return JSON.stringify(JSON.parse(upstream), null, 2)
+    payload = JSON.parse(upstream)
   } catch {
     return upstream
   }
+  const record = z.record(z.string(), z.unknown()).safeParse(payload)
+  if (!options.headers && record.success) {
+    const { headers: _headers, ...rest } = record.data
+    payload = rest
+  }
+  return JSON.stringify(payload, null, 2)
 }
