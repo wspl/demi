@@ -107,7 +107,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: none.
-- Owns: shared data types only: transcript blocks, content blocks, model selection, thinking config, usage, session phase, queued messages, accepted user steers awaiting transcript insertion, and the table of media types the product shows in place, by file extension (`docs/demi-next/file-previews.md`), which the backend serves from and `web-ui` picks viewers from.
+- Owns: shared data types only: transcript blocks, content blocks, model selection, thinking config, usage, session phase, queued messages, accepted user steers awaiting transcript insertion, and the file types the product previews, by extension, with which of them the page shows in place (`file-types.ts`, `docs/demi-next/file-previews.md`), which the backend serves by and `web-ui` picks viewers from.
 - Public boundary: type/data contracts shared across packages.
 - Must not: contain concrete provider names, catalog source names, shell runtime details, Host details, UI concepts, transport URLs, or backend identifiers.
 
