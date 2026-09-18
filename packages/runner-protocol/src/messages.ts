@@ -25,7 +25,27 @@ import {
  * is the hardest component to update, so the backend must be able to tell an
  * incompatible runner apart from a broken one (`hello_error`).
  */
-export const RUNNER_PROTOCOL_VERSION = 15
+export const RUNNER_PROTOCOL_VERSION = 16
+
+/**
+ * The largest message either end sends or accepts (`runner.md` § Connection
+ * and identity). A sender refuses a larger one for the request it belongs
+ * to; a receiver closes the connection that delivers one.
+ */
+export const MAX_MESSAGE_BYTES = 4 * 1024 * 1024
+
+/**
+ * A message over `MAX_MESSAGE_BYTES` that this end was about to send: the
+ * request it belongs to fails with `too_large`, and the connection stays.
+ */
+export class MessageTooLargeError extends Error {
+  readonly code = 'too_large'
+
+  constructor(size: number) {
+    super(`A ${size}-byte runner message is over the ${MAX_MESSAGE_BYTES}-byte limit`)
+    this.name = 'MessageTooLargeError'
+  }
+}
 
 /**
  * The view budget per stream of a job: what crosses the wire is the model's
@@ -75,9 +95,10 @@ export interface MessagePackCodec {
 
 /**
  * One end's framing: encode any message, decode and validate the inbound
- * direction.
+ * direction, each within `MAX_MESSAGE_BYTES`.
  */
 export interface RunnerWire {
+  /** Throws `MessageTooLargeError` for a message over the limit. */
   encode(message: RunnerProtocolMessage): Uint8Array
   /** A frame arriving at the backend (runner → backend). */
   decodeRunnerToBackend(frame: Uint8Array): RunnerToBackendMessage
@@ -87,7 +108,12 @@ export interface RunnerWire {
 
 export function createRunnerWire(codec: MessagePackCodec): RunnerWire {
   return {
-    encode: (message) => codec.encode(message),
+    encode: (message) => {
+      const frame = codec.encode(message)
+      if (frame.byteLength > MAX_MESSAGE_BYTES)
+        throw new MessageTooLargeError(frame.byteLength)
+      return frame
+    },
     decodeRunnerToBackend: (frame) => decodeWith(
       runnerToBackendMessageSchema,
       codec,
@@ -106,6 +132,8 @@ function decodeWith<Schema extends z.ZodType>(
   codec: MessagePackCodec,
   frame: Uint8Array
 ): z.infer<Schema> {
+  if (frame.byteLength > MAX_MESSAGE_BYTES)
+    throw new Error(`Malformed runner-protocol frame: ${frame.byteLength} bytes is over the ${MAX_MESSAGE_BYTES}-byte limit`)
   let value: unknown
   try {
     value = codec.decode(frame)

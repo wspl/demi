@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { BackendToRunnerMessage } from '@demicodes/runner-protocol'
 import { memoryHostStore } from '@demicodes/shell/testing'
+import { PipeBroker, devicePipes } from '../pipes'
 import { RemoteHost } from '../remote-host'
 
 test('conversation release skips offline Hosts and joins acknowledgement without admitting work', async () => {
@@ -8,6 +9,7 @@ test('conversation release skips offline Hosts and joins acknowledgement without
   const host = new RemoteHost({
     defaultCwd: '/', identity: { uid: 1, gid: 1, hostname: 'fixture', homeDir: '/' },
     store: memoryHostStore(),
+    pipes: devicePipes(new PipeBroker(), 'unused'),
     admit: () => { throw new Error('release must not admit work') },
   })
   await host.releaseConversation('conversation')

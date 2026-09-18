@@ -9,7 +9,7 @@ import { memoryHostStore } from '@demicodes/shell/testing'
 import { deferred, waitFor } from '@demicodes/utils'
 import { RunnerRegistry } from '../runner/registry'
 import { hashDeviceToken } from '../runner/claim-codes'
-import { PipeBroker } from '../runner/pipes'
+import { PipeBroker } from '@demicodes/host-remote'
 import type { ControlService } from '../storage/control'
 
 const wire = createRunnerWire(msgpackCodec)
@@ -51,6 +51,7 @@ test(
     const manifest = deferred<unknown>()
     const registry = new RunnerRegistry({
       control,
+      pipes: new PipeBroker(),
       manifest: () => manifest.promise,
       pingIntervalMs: 0,
       log() {}
@@ -85,6 +86,7 @@ test(
       const started = deferred<void>()
       const registry = new RunnerRegistry({
         control,
+        pipes: new PipeBroker(),
         manifest: () => {
           started.resolve();
           return manifest.promise
@@ -112,6 +114,7 @@ test(
     const created = deferred<never>()
     const deleted: string[] = []
     const registry = new RunnerRegistry({
+      pipes: new PipeBroker(),
       control: {
         ...control,
         createDevice: () => created.promise,

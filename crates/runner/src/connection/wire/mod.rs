@@ -73,6 +73,28 @@ impl Outbound {
     pub fn into_bytes(self) -> Vec<u8> {
         self.0
     }
+
+    /// The encoded size, which `MAX_MESSAGE_BYTES` bounds.
+    pub fn encoded_len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+/// A reply over `MAX_MESSAGE_BYTES` fails its own request instead of the
+/// connection (`runner.md` § Connection and identity): `refuse` builds that
+/// request's error from the reason.
+pub fn within_limit(
+    reply: Outbound,
+    refuse: impl FnOnce(String) -> Result<Outbound, WireError>,
+) -> Result<Outbound, WireError> {
+    if reply.encoded_len() <= MAX_MESSAGE_BYTES {
+        return Ok(reply);
+    }
+    refuse(format!(
+        "the reply is {} bytes, over the {}-byte message limit",
+        reply.encoded_len(),
+        MAX_MESSAGE_BYTES
+    ))
 }
 
 fn encode<T: Serialize>(message: &T) -> Result<Outbound, WireError> {

@@ -13,7 +13,7 @@ import {
 import { LocalHost } from '@demicodes/host-remote/testing'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
+import { PipeBroker, RemoteHost, RemoteShellEnvironment, devicePipes } from '@demicodes/host-remote'
 import {
   createRunnerWire,
   type BackendToRunnerMessage
@@ -54,6 +54,7 @@ test(
       defaultCwd: runnerDir,
       identity: new LocalHost(runnerDir).identity,
       store: memoryHostStore(),
+      pipes: devicePipes(new PipeBroker(), 'unused'),
     })
 
     // Bare backend socket: accept the runner, reply hello_ok, and bind the

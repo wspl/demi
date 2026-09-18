@@ -3,10 +3,10 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { connectTestRunner } from '@demicodes/host-remote/testing'
+import { connectTestRunner, TEST_RUNNER_DEVICE } from '@demicodes/host-remote/testing'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { delay, waitFor } from '@demicodes/utils'
-import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
+import { PipeBroker, RemoteHost, RemoteShellEnvironment, devicePipes } from '@demicodes/host-remote'
 import { JOB_VIEW_BYTES } from '@demicodes/runner-protocol'
 
 const cleanups: Array<() => Promise<void>> = []
@@ -18,14 +18,17 @@ async function connected() {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'demi-jobs-')))
   cleanups.push(() => rm(dir, { recursive: true, force: true }))
   let remote!: RemoteHost
+  const pipes = new PipeBroker()
   const connection = await connectTestRunner({
     home: dir,
+    pipes,
     env: { DEVICE_FACT: 'from the device', SHARED: 'device' },
     onHello(send, hello) {
       remote = new RemoteHost({
         defaultCwd: dir,
         identity: hello.runner.identity,
-        store: memoryHostStore()
+        store: memoryHostStore(),
+        pipes: devicePipes(pipes, TEST_RUNNER_DEVICE),
       })
       remote.attach(send)
     },
