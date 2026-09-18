@@ -4,6 +4,7 @@ import { useClipboard } from '@vueuse/core'
 import { Check, CircleX, Copy } from '@lucide/vue'
 import { t } from '../infra/i18n'
 import Button from './Button.vue'
+import FoldChevron from './FoldChevron.vue'
 import IconButton from './IconButton.vue'
 import Tooltip from './Tooltip.vue'
 
@@ -70,11 +71,12 @@ const rawOpen = ref(false)
         <template v-if="raw">
           <button
             type="button"
-            class="mt-1 cursor-default text-[11px] leading-4 text-on-danger-muted underline-offset-2 hover:underline"
+            class="-ml-0.5 mt-1 flex cursor-default items-center gap-1 text-[11px] leading-4 text-on-danger-muted hover:text-on-danger"
             :aria-expanded="rawOpen"
             @click="rawOpen = !rawOpen"
           >
-            {{ rawOpen ? t('error.hideUpstream') : t('error.showUpstream') }}
+            <FoldChevron :open="rawOpen" />
+            {{ t('error.upstream') }}
           </button>
           <pre
             v-if="rawOpen"

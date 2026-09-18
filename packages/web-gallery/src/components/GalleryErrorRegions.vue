@@ -23,7 +23,6 @@ const usageLimitPayload = JSON.stringify({
     resets_in_seconds: 321250,
   },
   status_code: 429,
-  headers: { 'X-Codex-Primary-Used-Percent': '100', 'X-Codex-Primary-Window-Minutes': '10080' },
 }, null, 2)
 </script>
 
@@ -31,12 +30,12 @@ const usageLimitPayload = JSON.stringify({
   <div class="space-y-8">
     <GallerySection
       title="ErrorNotice · a failure in the conversation"
-      note="One tinted bar, full width where it sits. The first line is what the source said, never Demi's reading of it: a plain sentence is the whole record; a message that wraps a vendor's JSON body leads with the sentence inside it and keeps the full text below; only a message with no sentence to lead with gets the neutral line. Then the facts and Copy for a support thread. A turn's failure carries no button: Resume sits in the dock above the composer. With one line the controls sit centred; with facts they hold the first line."
+      note="One tinted bar, full width where it sits. The first line is what the source said, never Demi's reading of it: a plain sentence is the whole record; a message that wraps a vendor's JSON body leads with the sentence inside it and keeps the full text below; only a message with no sentence to lead with gets the neutral line. Then one line of facts: when the vendor says it works again, and the request id; the status and Demi's own code stay in the copied report. What the provider sent opens under a chevron, without its transport headers. Copy takes the whole report. A turn's failure carries no button: Resume sits in the dock above the composer. With one line the controls sit centred; with facts they hold the first line."
     >
       <GallerySpecimen wide variant="A plain sentence is the whole record · when it lifts leads the facts · the vendor payload behind a disclosure">
         <ErrorNotice
           label="The usage limit has been reached"
-          :facts="['resets 9/22/2026, 3:37:39 PM', 'HTTP 429', 'rate_limit', '3667df4b-19c0-4f31-8e93-aed23ceeb5c6']"
+          :facts="['resets 9/22/2026, 3:37:39 PM', '3667df4b-19c0-4f31-8e93-aed23ceeb5c6']"
           :raw="usageLimitPayload"
           copy-text="The usage limit has been reached"
         />
@@ -45,7 +44,7 @@ const usageLimitPayload = JSON.stringify({
         <ErrorNotice
           label="Insufficient balance. Manage your billing here: https://vendor.example/billing"
           detail='OpenAI API request failed with HTTP 401: {"type":"error","error":{"type":"CreditsError","message":"Insufficient balance. Manage your billing here: https://vendor.example/billing"}}'
-          :facts="['HTTP 401', 'auth_expired', 'req_01J8Y3Q6ZKX4']"
+          :facts="['req_01J8Y3Q6ZKX4']"
           copy-text="OpenAI API request failed with HTTP 401"
         />
       </GallerySpecimen>
@@ -53,7 +52,7 @@ const usageLimitPayload = JSON.stringify({
         <ErrorNotice
           label="The turn failed"
           detail="Anthropic API request failed with HTTP 429: This request would exceed the rate limit of 50 requests per minute for your organization. Retry after 12 seconds. Your current usage is 50 requests in the last 60 seconds across all models."
-          :facts="['HTTP 429', 'rate_limit', 'req_01J8Y3Q6ZKX4']"
+          :facts="['req_01J8Y3Q6ZKX4']"
           copy-text="Anthropic API request failed with HTTP 429"
         />
       </GallerySpecimen>
