@@ -295,11 +295,19 @@ export class ProviderAssembly {
    * endpoint/key — first streamed event wins, errors report the provider's
    * own message.
    */
+  /**
+   * One minimal request to the provider's first model. A test that ran and
+   * failed is a result, not an error: `message` is the upstream text, `code`
+   * its normalized kind, and `model` what was asked, since a plan can cover
+   * some models and refuse others.
+   */
   async testProvider(
     providerId: string
   ): Promise<{
     ok: boolean;
     message?: string
+    code?: string | null
+    model?: string
   }> {
     const resolved = await this.providerFor(providerId)
     if (!resolved)
@@ -344,17 +352,18 @@ export class ProviderAssembly {
       })
       for await (const event of run) {
         if (event.type === 'error')
-          return { ok: false, message: event.message }
+          return { ok: false, message: event.message, code: event.code, model: model.displayName }
         if (event.type === 'abort')
           return {
             ok: false,
-            message: 'Provider test was cancelled'
+            message: 'Provider test was cancelled',
+            model: model.displayName
           }
-        return { ok: true }
+        return { ok: true, model: model.displayName }
       }
-      return { ok: false, message: 'Provider returned no events' }
+      return { ok: false, message: 'Provider returned no events', model: model.displayName }
     } catch (error) {
-      return { ok: false, message: errorMessage(error) }
+      return { ok: false, message: errorMessage(error), model: model.displayName }
     } finally {
       cancel.abort()
       await runtime?.dispose?.()
