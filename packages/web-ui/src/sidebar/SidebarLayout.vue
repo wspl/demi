@@ -61,7 +61,7 @@ function closeOverlays(): void {
     />
     <div
       class="h-full shrink-0"
-      :class="open ? 'fixed inset-y-0 left-0 z-40 md:static' : 'hidden md:block'"
+      :class="open ? 'fixed inset-y-0 left-0 z-40 md:static md:z-auto' : 'hidden md:block'"
       :style="{ '--sidebar-width': `${shownWidth}px` }"
     >
       <slot name="sidebar" />
@@ -98,8 +98,10 @@ function closeOverlays(): void {
         label="Work panel width"
         @commit="emit('asideResizeEnd', $event)"
       />
+      <!-- A flex item honors z-index even when static, so the overlay's z-40 must end at md:
+           otherwise the panel covers the right half of the resize handle beside it. -->
       <div
-        class="fixed inset-y-0 right-0 z-40 h-full max-w-full shrink-0 md:static"
+        class="fixed inset-y-0 right-0 z-40 h-full max-w-full shrink-0 md:static md:z-auto"
         :style="{ width: `${shownAsideWidth}px` }"
       >
         <slot name="aside" />
