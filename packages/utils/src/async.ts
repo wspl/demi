@@ -93,6 +93,33 @@ export async function waitFor(
 }
 
 /**
+ * Calls `onIdle` once `timeoutMs` pass without a `touch`. The wait starts at
+ * construction; `touch` starts it over and `close` ends it until the next
+ * `touch`.
+ */
+export class IdleTimer {
+  private timer: ReturnType<typeof setTimeout> | null = null
+
+  constructor(
+    private readonly timeoutMs: number,
+    private readonly onIdle: () => void
+  ) {
+    this.touch()
+  }
+
+  touch(): void {
+    this.close()
+    this.timer = setTimeout(this.onIdle, this.timeoutMs)
+  }
+
+  close(): void {
+    if (this.timer !== null)
+      clearTimeout(this.timer)
+    this.timer = null
+  }
+}
+
+/**
  * Rejects with `Error(message)` if `promise` does not settle within `ms`
  * milliseconds.
  */

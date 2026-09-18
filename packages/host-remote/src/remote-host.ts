@@ -911,7 +911,7 @@ async function* emptyStream(): AsyncIterable<never> {}
  * not the iteration has begun.
  */
 function pipeBytes(pipe: Pipe, signal?: AbortSignal): AsyncIterable<Uint8Array> {
-  const abort = () => pipe.fail('the reader went away')
+  const abort = () => pipe.fail(signal?.reason === undefined ? 'the reader went away' : errorMessage(signal.reason))
   signal?.addEventListener('abort', abort, { once: true })
   if (signal?.aborted)
     abort()
