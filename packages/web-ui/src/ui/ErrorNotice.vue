@@ -15,8 +15,8 @@ import Tooltip from './Tooltip.vue'
  * message that was not delivered, a session that lost its connection.
  *
  * One tinted bar, full width where it sits: a sentence, the upstream message
- * under it, the diagnostic facts on one line, and at most one action beside a
- * copy control for the support thread. It is a record in the transcript, not a
+ * under it, the facts on one line, the source's payload behind a fold, and at
+ * most one action beside a copy control for the support thread. It is a record in the transcript, not a
  * fixture of the dock, so it scrolls with what it describes.
  */
 const props = withDefaults(
@@ -24,7 +24,7 @@ const props = withDefaults(
     label: string
     /** The upstream message or reason, in the caller's words. */
     detail?: string | null
-    /** The short facts a support thread asks for first: status, code, request id. */
+    /** Short facts under the message, in the UI font: what the reader does next, such as when a limit lifts. */
     facts?: readonly string[]
     /** What the source sent, in full, behind a disclosure: the vendor's own payload. */
     raw?: string | null
@@ -66,18 +66,18 @@ const rawOpen = ref(false)
         </p>
         <p
           v-if="facts.length > 0"
-          class="mt-1.5 truncate font-mono text-[11px] leading-4 text-on-danger-muted"
+          class="mt-1 truncate text-[12px] leading-[18px] text-on-danger-muted"
         >
           {{ facts.join(' · ') }}
         </p>
         <template v-if="raw">
           <button
             type="button"
-            class="-ml-0.5 mt-1 flex cursor-default items-center gap-px text-[11px] leading-4 text-on-danger-muted hover:text-on-danger"
+            class="-ml-0.5 mt-1 flex cursor-default items-center gap-[3px] text-[12px] leading-[18px] text-on-danger-muted hover:text-on-danger"
             :aria-expanded="rawOpen"
             @click="rawOpen = !rawOpen"
           >
-            <!-- 10px beside an 11px label, tight against it. -->
+            <!-- 10px beside a 12px label; the glyph's own margin plus 3px reads as one word space. -->
             <FoldChevron :open="rawOpen" :size="ICON_PX.in12" />
             {{ t('error.upstream') }}
           </button>
