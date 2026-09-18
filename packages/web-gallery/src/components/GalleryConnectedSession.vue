@@ -169,7 +169,6 @@ function abortAgents(): void {
         <template #tools>
           <SessionToolsMenu
             :exposes="exposes"
-            expose-domain="expose.demi.example"
             :pending-ids="exposePending"
             @renew="renewExpose"
             @remove="removeExpose"

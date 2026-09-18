@@ -101,9 +101,8 @@ afterEach(() => {
   disposePinia(pinia)
 })
 
-test('the snapshot feeds the expose list and the domain', () => {
+test('the snapshot feeds the expose list', () => {
   const settings = useDeviceSettings()
-  expect(settings.exposeDomain).toBe('expose.demi.example')
   expect(settings.exposes.map((expose) => expose.id)).toEqual([
     'k7x2m9qw4p3s6t8v0w2y4z6a8b',
     'm3n5p7r9t1v3w5x7y9z1a3c5e',
@@ -139,11 +138,9 @@ test('an expose that expires disappears with the next snapshot, without any requ
   expect(removals).toEqual([])
 })
 
-test('a missing domain means the feature is unavailable and nothing shows', async () => {
+test('an instance without an expose domain lists nothing', async () => {
   state.exposeDomain = null
   state.exposes = []
   await useProduct().refresh()
-  const settings = useDeviceSettings()
-  expect(settings.exposeDomain).toBeNull()
-  expect(settings.exposes).toEqual([])
+  expect(useDeviceSettings().exposes).toEqual([])
 })
