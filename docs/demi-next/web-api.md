@@ -22,7 +22,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Application state | `GET /state`; conditional snapshot with private ETag |
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }` |
-| Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories; `WS /conversations/:id/stream` carries agent frames |
+| Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries agent frames |
 | Conversation files | `GET/POST /conversations/:id/fs`, `GET /conversations/:id/fs/file?path=...`, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...` |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |

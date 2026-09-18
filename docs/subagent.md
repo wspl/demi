@@ -475,9 +475,13 @@ export type SubagentJob = {
 export type ServerFrame =
   | /* existing frames */
   | { type: 'subagent'; event: 'started' | 'closed'; job: SubagentJob }
-  | { type: 'subagent_transcript_reset'; subagentId: string; blocks: Block[]; revision: number }
-  | { type: 'subagent_transcript_patch'; subagentId: string; patches: TranscriptPatch[]; revision: number }
+  | { type: 'subagent_transcript_reset'; subagentId: string; blocks: Block[]; revision: number; failures?: Record<string, ProviderFailureFacts> }
+  | { type: 'subagent_transcript_patch'; subagentId: string; patches: TranscriptPatch[]; revision: number; failures?: Record<string, ProviderFailureFacts> }
 ```
+
+`failures` is the host's reading of the error blocks the frame carries,
+attached when the frame is sent and never stored; root `transcript_*` frames
+carry the same field ([Backend](demi-next/backend.md#failure-facts)).
 
 `ClientSessionEvent` mirrors those three (client-side transcript events omit
 `revision`, matching `transcript_reset` / `transcript_patch`).
