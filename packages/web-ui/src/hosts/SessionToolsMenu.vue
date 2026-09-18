@@ -79,13 +79,7 @@ function manageDevices() {
             v-if="!exposes.length"
             class="select-none px-2 pb-1.5 pt-0.5 text-[12px] leading-5 text-fg-subtle"
           >
-            <template v-if="exposeDomain === null">
-              This instance has no expose domain; public URLs are off.
-            </template>
-            <template v-else>
-              No URLs exposed. Create one with
-              <code>demi host expose add &lt;address&gt;</code>.
-            </template>
+            {{ exposeDomain === null ? 'Public URLs are off on this instance.' : 'No URLs exposed.' }}
           </div>
         </MenuGroup>
         <MenuDivider />
