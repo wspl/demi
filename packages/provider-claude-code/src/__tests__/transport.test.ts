@@ -149,10 +149,11 @@ test(
 
     const messages: unknown[] = []
     for await (const message of transport.messages()) messages.push(message)
+    // Each line keeps the text the CLI wrote beside its value.
     expect(messages).toEqual([
-      { type: 'system' },
-      { type: 'assistant', n: 1 },
-      { type: 'result' }
+      { text: '{"type":"system"}', value: { type: 'system' } },
+      { text: '{"type":"assistant","n":1}', value: { type: 'assistant', n: 1 } },
+      { text: '{"type":"result"}', value: { type: 'result' } }
     ])
 
     await transport.kill()

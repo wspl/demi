@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { zeroUsage } from '@demicodes/core'
 import {
+  readHttpFailure,
   mapChatCompletionsStream,
   type ProviderEvent,
   type ServerSentEvent,
@@ -63,7 +64,7 @@ describe('mapChatCompletionsStream', () => {
         },
       },
       '[DONE]',
-    ]), 'OpenAI'))
+    ]), 'OpenAI', readHttpFailure))
 
     expect(events).toEqual([
       { type: 'text_delta', text: 'hi ' },
@@ -97,7 +98,7 @@ describe('mapChatCompletionsStream', () => {
       { choices: [{ delta: { content: null, reasoning_content: 'more' } }] },
       { choices: [{ delta: { content: 'answer' } }] },
       '[DONE]',
-    ]), 'Grok Build'))
+    ]), 'Grok Build', readHttpFailure))
 
     expect(events).toEqual([
       { type: 'thinking_start' },
@@ -123,7 +124,7 @@ describe('mapChatCompletionsStream', () => {
       },
       { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
       '[DONE]',
-    ]), 'OpenAI'))
+    ]), 'OpenAI', readHttpFailure))
 
     expect(events[0]).toEqual({
       type: 'tool_call_requested',
@@ -137,11 +138,20 @@ describe('mapChatCompletionsStream', () => {
     const events = await collect(mapChatCompletionsStream(framesOf([
       { error: { message: 'quota exceeded', type: 'insufficient_quota' } },
       { choices: [{ delta: { content: 'never read' } }] },
-    ]), 'Grok Build'))
+    ]), 'Grok Build', readHttpFailure))
 
     expect(events).toEqual([
-      // `normalizeErrorCode` maps the vendor's code onto Demi's vocabulary.
-      { type: 'error', message: 'quota exceeded', code: 'rate_limit' },
+      // `normalizeErrorCode` maps the vendor's code onto Demi's vocabulary; the
+      // frame the vendor sent is the failure record.
+      {
+        type: 'error',
+        message: 'quota exceeded',
+        code: 'rate_limit',
+        diagnostics: {
+          source: 'stream',
+          upstream: '{"error":{"message":"quota exceeded","type":"insufficient_quota"}}',
+        },
+      },
     ])
   })
 
@@ -149,10 +159,16 @@ describe('mapChatCompletionsStream', () => {
     const events = await collect(mapChatCompletionsStream(
       framesOf([{ error: {} }]),
       'Grok Build',
+      readHttpFailure,
     ))
 
     expect(events).toEqual([
-      { type: 'error', message: 'Grok Build stream error', code: null },
+      {
+        type: 'error',
+        message: 'Grok Build stream error',
+        code: null,
+        diagnostics: { source: 'stream', upstream: '{"error":{}}' },
+      },
     ])
   })
 
@@ -160,6 +176,7 @@ describe('mapChatCompletionsStream', () => {
     const events = await collect(mapChatCompletionsStream(
       framesOf([{ choices: [{ delta: { content: 'hi' } }] }]),
       'OpenAI',
+      readHttpFailure,
     ))
 
     expect(events).toEqual([
@@ -174,6 +191,7 @@ describe('mapChatCompletionsStream', () => {
     const events = await collect(mapChatCompletionsStream(
       framesOf([{ choices: [{ delta: { content: 'hi' } }] }]),
       'OpenAI',
+      readHttpFailure,
       controller.signal,
     ))
 
@@ -184,6 +202,7 @@ describe('mapChatCompletionsStream', () => {
     const stream = mapChatCompletionsStream(
       framesOf([{ choices: [{ delta: { content: 42 } }] }]),
       'OpenAI',
+      readHttpFailure,
     )
 
     expect(collect(stream)).rejects.toThrow(/content/)

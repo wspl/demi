@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   blockSchema,
+  failuresSchema,
   refSourceSchema,
   type ClientFrame,
 } from '@demicodes/web-ui/transport/protocol'
@@ -55,6 +56,8 @@ export const displayedUserContentSchema = z.discriminatedUnion('type', [
 ])
 export const transcriptSchema = z.object({
   blocks: z.array(blockSchema),
+  /** The failure facts of the error blocks, by block id (`backend.md` § Failure facts). */
+  failures: failuresSchema,
   subagents: z.array(
     z.object({
       id: z.string(),
@@ -63,6 +66,7 @@ export const transcriptSchema = z.object({
       startedAt: z.string(),
       endedAt: z.string().nullable(),
       blocks: z.array(blockSchema),
+      failures: failuresSchema,
     }),
   ),
 })

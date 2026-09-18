@@ -26,9 +26,15 @@ function resolveSpawnCwd(cwd: string): string {
   return process.cwd()
 }
 
+/** One line of the CLI's stdout: the text as written, and its JSON value. */
+export interface ClaudeStdoutLine {
+  text: string
+  value: unknown
+}
+
 export interface ClaudeTransport {
   writeJson(value: unknown): Promise<void>
-  messages(): AsyncIterable<unknown>
+  messages(): AsyncIterable<ClaudeStdoutLine>
   kill(): Promise<void>
   wait(): Promise<{
     exitCode: number | null;
@@ -201,13 +207,13 @@ class SpawnHandleClaudeTransport implements ClaudeTransport {
     await this.handle.writeStdin(encodeUtf8(`${JSON.stringify(value)}\n`))
   }
 
-  async *messages(): AsyncIterable<unknown> {
+  async *messages(): AsyncIterable<ClaudeStdoutLine> {
     for await (const line of utf8Lines(this.handle.stdout)) {
       if (line.trim() === '')
         continue
-      const parsed: unknown = JSON.parse(line)
-      this.wireLog.record('out', parsed)
-      yield parsed
+      const value: unknown = JSON.parse(line)
+      this.wireLog.record('out', value)
+      yield { text: line, value }
     }
   }
 

@@ -20,7 +20,9 @@ import {
   httpRequestFailedEvent,
   normalizeErrorCode,
   providerErrorFromUnknown,
+  readHttpFailure,
   readServerSentEvents,
+  withRetryWait,
   reportedStringSchema,
   tokenCountSchema,
   withCatalogProviderId,
@@ -138,7 +140,7 @@ export class GoogleProvider implements AgentProvider {
         return
       }
     } catch (error) {
-      yield providerErrorFromUnknown(error, apiKey)
+      yield providerErrorFromUnknown(error)
       return
     }
 
@@ -156,7 +158,7 @@ export class GoogleProvider implements AgentProvider {
         signal: request.cancel,
       })
       if (!response.ok) {
-        yield await httpRequestFailedEvent(response, apiKey, 'Google')
+        yield await httpRequestFailedEvent(response, 'Google', readHttpFailure)
         return
       }
       yield* mapGoogleContentStream(
@@ -168,7 +170,7 @@ export class GoogleProvider implements AgentProvider {
         yield { type: 'abort' }
         return
       }
-      yield providerErrorFromUnknown(error, apiKey)
+      yield providerErrorFromUnknown(error)
     }
   }
 
@@ -213,6 +215,7 @@ export function createGoogleProvider(
   return defineProvider({
     id,
     displayName,
+    readFailure: readHttpFailure,
     auth: {
       status: () => authStatusFromKey(
         apiKey,
@@ -668,11 +671,12 @@ export async function* mapGoogleContentStream(
 
     if (chunk.error) {
       const message = chunk.error.message ?? 'Google API stream error'
-      yield {
+      yield withRetryWait({
         type: 'error',
         message,
         code: normalizeErrorCode(chunk.error.status ?? null, message),
-      }
+        diagnostics: { source: 'stream', upstream: frame.data },
+      }, readHttpFailure)
       return
     }
 

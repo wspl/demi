@@ -170,6 +170,7 @@ watch(() => props.conversation.id, close)
             :load="conversation.load"
             :pending-action="conversation.pendingAction"
             :retrying="conversation.retrying"
+            :failures="conversation.failures"
             :load-error="conversation.lastError"
             :failure="failureNotice"
             :pending-submission="pendingSubmission"

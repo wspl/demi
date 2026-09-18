@@ -101,8 +101,12 @@ re-implementing several of these:
   entry must satisfy.
 - `thinkingToReasoningEffort` — the request-body field
   the OpenAI-compatible formats spell the same way.
-- `redactSecretText`, `httpErrorCode`, `normalizeErrorCode`, `providerErrorFromUnknown`,
-  `authStatusFromKey`, `httpRequestFailedEvent` — for HTTP backends.
+- `httpErrorCode`, `normalizeErrorCode`, `providerErrorFromUnknown`, `authStatusFromKey`,
+  `httpRequestFailedEvent` — for HTTP backends.
+- `readHttpFailure`, `readHttpFailureRecord`, `withRetryWait` — reading failure records. A
+  provider sets `readFailure` to the reader of its own vendor's records and passes the same
+  reader to the stream mappers and `httpRequestFailedEvent`
+  (`docs/provider-errors-and-retries.md` § Reading a failure).
 - `createProviderQuota`, `ensureQuota`, percent/severity helpers — subscription rate-limit
   surface (`docs/provider-quota.md`).
 - `zeroUsage` (from `@demicodes/core`) — a zeroed `TokenUsage`.
