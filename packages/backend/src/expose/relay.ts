@@ -3,7 +3,7 @@ import type { UpgradeWebSocket } from 'hono/ws'
 import type { Server } from 'bun'
 import { RemoteNetError, type RemoteNet } from '@demicodes/host-remote'
 import type { ConversationTargets } from '../conversation/target'
-import type { PipeBroker, PipeWriter } from '../runner/pipes'
+import type { PipeBroker, PipeWriter } from '@demicodes/host-remote'
 import type { Exposes } from './records'
 import {
   CHUNKED_EOF,

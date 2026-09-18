@@ -1,5 +1,6 @@
 //! Native runner: machine IO, jobs, command dispatch and backend connection.
 
+pub mod files;
 pub mod fs;
 pub mod git;
 pub mod paths;

@@ -1,11 +1,11 @@
 // Node filesystem adapter for test fixtures only.
 import {
-  appendFile,
   chmod,
   cp,
   link,
   lstat,
   mkdir,
+  open,
   readFile,
   readdir,
   readlink,
@@ -18,8 +18,8 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import type { Dirent, Stats } from 'node:fs'
-import { dirname, isAbsolute, resolve } from 'node:path'
-import { isFileNotFoundError } from '@demicodes/utils'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { createId, isFileNotFoundError } from '@demicodes/utils'
 import type { HostDirent, HostFileStat, HostFileSystem } from '@demicodes/shell'
 
 /**
@@ -37,6 +37,37 @@ class NodeFileSystem implements HostFileSystem {
     return readFile(this.resolvePath(path, options?.cwd))
   }
 
+  async readStream(
+    path: string,
+    options?: {
+      cwd?: string;
+      offset?: number;
+      length?: number;
+      signal?: AbortSignal
+    }
+  ): Promise<AsyncIterable<Uint8Array>> {
+    const handle = await open(this.resolvePath(path, options?.cwd), 'r')
+    try {
+      if (!(await handle.stat()).isFile())
+        throw Object.assign(new Error('not a regular file'), { code: 'EISDIR' })
+    } catch (error) {
+      await handle.close()
+      throw error
+    }
+    const start = options?.offset ?? 0
+    if (options?.length === 0) {
+      await handle.close()
+      return (async function* () {})()
+    }
+    // The stream owns the handle from here and closes it when it ends.
+    return handle.createReadStream({
+      start,
+      ...(options?.length !== undefined ? { end: start + options.length - 1 } : {}),
+      ...(options?.signal ? { signal: options.signal } : {}),
+    })
+  }
+
+  /** The same whole-or-nothing replacement as the runner's. */
   async writeFile(
     path: string,
     data: Uint8Array,
@@ -51,24 +82,14 @@ class NodeFileSystem implements HostFileSystem {
         dirname(target),
         { recursive: true }
       )
-    await writeFile(target, data)
-  }
-
-  async appendFile(
-    path: string,
-    data: Uint8Array,
-    options?: {
-      cwd?: string;
-      createParents?: boolean
+    const temporary = join(dirname(target), `.demi-write-${createId()}`)
+    try {
+      await writeFile(temporary, data, { flag: 'wx' })
+      await rename(temporary, target)
+    } catch (error) {
+      await rm(temporary, { force: true })
+      throw error
     }
-  ): Promise<void> {
-    const target = this.resolvePath(path, options?.cwd)
-    if (options?.createParents)
-      await mkdir(
-        dirname(target),
-        { recursive: true }
-      )
-    await appendFile(target, data)
   }
 
   async exists(path: string, options?: { cwd?: string }): Promise<boolean> {

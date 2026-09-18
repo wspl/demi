@@ -4,7 +4,7 @@ import { Hono } from 'hono'
 import { bytesStream, collectBytes, delay, encodeUtf8 } from '@demicodes/utils'
 import { pipeRoutes } from '../http/pipes'
 import { hashDeviceToken } from '../runner/claim-codes'
-import { PipeBroker } from '../runner/pipes'
+import { PipeBroker } from '@demicodes/host-remote'
 import type { ControlService } from '../storage/control'
 
 // The broker pipes a source's PUT into a sink's GET, or either end into

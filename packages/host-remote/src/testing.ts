@@ -163,4 +163,4 @@ export async function nativeCommandFixture() {
   return { descriptor, resolveArtifact }
 }
 
-export { connectTestRunner } from './testing/connection'
+export { connectTestRunner, pipeId, servePipe, TEST_RUNNER_DEVICE } from './testing/connection'

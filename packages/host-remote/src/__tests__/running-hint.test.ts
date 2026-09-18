@@ -5,7 +5,7 @@ import {
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { memoryHostStore } from '@demicodes/shell/testing'
-import { RemoteHost, RemoteShellEnvironment } from '../index'
+import { PipeBroker, RemoteHost, RemoteShellEnvironment, devicePipes } from '../index'
 
 test(
   'remote statuses track active invocation hints independently and discard them at job exit',
@@ -13,7 +13,8 @@ test(
     const host = new RemoteHost({
       defaultCwd: '/work',
       identity: { uid: 1, gid: 1, hostname: 'test', homeDir: '/work' },
-      store: memoryHostStore()
+      store: memoryHostStore(),
+      pipes: devicePipes(new PipeBroker(), 'unused'),
     })
     const sent: BackendToRunnerMessage[] = []
     host.attach((message) => {
@@ -79,7 +80,8 @@ test('disconnect clears a remote job hint with the failed job', async () => {
   const host = new RemoteHost({
     defaultCwd: '/work',
     identity: { uid: 1, gid: 1, hostname: 'test', homeDir: '/work' },
-    store: memoryHostStore()
+    store: memoryHostStore(),
+    pipes: devicePipes(new PipeBroker(), 'unused'),
   })
   let jobId = ''
   host.attach((message) => {
