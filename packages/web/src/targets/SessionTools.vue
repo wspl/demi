@@ -24,6 +24,7 @@ function openExpose(expose: ExposeMenuEntry): void {
   work.addBrowser(work.stateFor(props.conversationId), {
     url: expose.url,
     title: expose.address,
+    expose: true,
   })
 }
 </script>
