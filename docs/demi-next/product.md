@@ -73,8 +73,8 @@ user preferences; existing conversations keep their own selections. If a saved
 choice becomes unavailable, the picker keeps it with a warning and requires an
 explicit replacement. With no saved choice, the first available model is used.
 
-The first send creates the backend record. The default title comes from the
-first user message and can be renamed. Draft persistence and confirmation of
+The first send creates the backend record and starts its
+[title](#conversation-titles). Draft persistence and confirmation of
 uncertain sends belong to [Web architecture](web-application.md). Choosing a
 project or device directory affects subsequent execution; target-switch admission
 and context announcements are defined in
@@ -93,6 +93,60 @@ rerun completed tool effects. [Message editing](../message-editing.md) and
 [Conversation Fork](../conversation-fork.md) define their history boundaries.
 Interactive stdin is an agent-protocol capability; exposing a terminal input
 control remains separate from read-only job inspection.
+
+### Conversation titles
+
+A user opens a conversation with "why does `pnpm build` fail with TS2307 after
+I moved auth into its own package". At once the sidebar shows the start of
+that message; a few seconds later it shows "pnpm build TS2307 after auth
+package move", written by the model the user picked for the conversation.
+
+```text
+first send ──► title = start of the message (80 characters)      origin: message
+           └─► one model request, beside the first turn
+                    │ a usable line comes back, and the origin is still `message`
+                    ▼
+               title = the generated line                         origin: generated
+
+rename at any time ──► title = what the user typed               origin: user
+```
+
+Every title records its origin, one of `placeholder` ("New conversation",
+before any send), `message`, `generated`, and `user`. The generated title is
+written only while the origin is `message`, in the same statement that checks
+it, so a rename that lands while the request is in flight wins and is never
+overwritten. A Fork's title, the source's with " (Fork)", has origin `user`:
+it is already a settled name and is not regenerated.
+
+The request:
+
+| Aspect | Rule |
+| --- | --- |
+| When | Once per conversation, at the first send, concurrently with the first turn. It neither waits for the turn nor delays it. A first message without text starts none, and the title stays the placeholder until renamed. |
+| Model | The provider and model selected for the conversation at that send. No separate title model is configured. The first message therefore goes only where the user already chose to send it. |
+| Effort | The lowest thinking effort the model offers, the default service tier, and a small output limit. |
+| Input | A fixed title instruction as the system prompt, and the text of the first user message, at most its first 4,000 characters. No agent system prompt, no tools, no history, no attachments or images. |
+| Path | The same metered provider runtime a turn uses, so the request counts in the user's usage ledger and obeys the same limits. It is not a session turn: nothing is added to the transcript and no session event is emitted. |
+| Output | The first non-empty line of the text response, without surrounding quotes, cut to 80 characters. Thinking output is ignored. An empty result writes nothing. |
+| Failure | A refused, failed or empty request is logged and ends there; the message-derived title stays. There is no retry: the title in place is already usable. |
+| Release | The request is aborted when the conversation is archived or the backend closes. |
+
+The instruction tells the model to produce a title, never an answer: one line
+of at most 50 characters, in the language of the message, natural grammar,
+exact technical terms, file names, numbers and error codes kept, no tool
+names, no leading "the" or "my", and something meaningful even for a greeting.
+
+The browser learns the new title the way it learns a rename made elsewhere,
+from the next [state snapshot](web-api.md); there is no title event.
+
+Not included: regenerating a title on request, retitling after the first
+message is edited, and titling from a different, cheaper model. The last is a
+natural extension once instance or user configuration names such a model.
+
+Rationale: a request beside the turn, rather than a clone of the session the
+way [compaction](../compaction-context-cache.md) summarizes, keeps the agent's
+system prompt, tools and history out of a job that needs one message, and
+keeps the title independent of whether the first turn succeeds.
 
 ## Attachments
 

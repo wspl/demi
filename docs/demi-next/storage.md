@@ -62,7 +62,8 @@ meaning and atomicity rather than duplicating every SQL column.
   `exposes` stores each [Host expose](expose.md#the-expose-record): id, owner,
   device, target address, creation and expiry time. Expiry, removal, a Cloud
   stop and device revocation delete rows; nothing updates a row except renewal.
-- **Conversation index:** `conversations` stores ownership, title, archive and
+- **Conversation index:** `conversations` stores ownership, title and its
+  [origin](product.md#conversation-titles), archive and
   pin state, ordering, read revision, target selection, target context revision,
   last switch, Cloud reset marker, and provider/model identifiers. The full agent
   checkpoint belongs to the conversation database. `conversation_hosts` stores
