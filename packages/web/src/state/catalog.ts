@@ -114,7 +114,10 @@ export function providerView(
     catalogFetched: catalog?.sourceFetchedAt ?? null,
     stale: catalog?.stale ?? false,
     state,
-    detail: entry.error ?? details?.auth.message ?? details?.runtime.message,
+    // A healthy provider's messages are notes ("Uses the … API"), not failures.
+    detail: state === 'ready'
+      ? undefined
+      : entry.error ?? details?.auth.message ?? details?.runtime.message,
     enabled: !local.hiddenProviders.includes(entry.id),
     models:
       catalog?.models.map((model) =>

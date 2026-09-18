@@ -512,11 +512,12 @@ export function providerRoutes(options: {
         code: 'provider_not_found',
         message: 'No such provider'
       }, 404)
+    // The test ran either way: a provider that refused is the answer, with
+    // its reason, not a failure of this request.
     try {
-      const result = await assembly.testProvider(provider.id)
-      return c.json(result, result.ok ? 200 : 502)
+      return c.json(await assembly.testProvider(provider.id))
     } catch (error) {
-      return c.json({ ok: false, message: errorMessage(error) }, 502)
+      return c.json({ ok: false, message: errorMessage(error) })
     }
   })
 

@@ -24,6 +24,7 @@ import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import Meter from '@demicodes/web-ui/ui/Meter.vue'
+import RelativeTime from '../ui/RelativeTime.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
@@ -563,21 +564,36 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   label="API key"
                   :description="
                     selected.keyConfigured
-                      ? 'Key saved. Enter a new key to replace it.'
-                      : undefined
+                      ? 'A key is saved. It is never shown again; enter a new one to replace it.'
+                      : 'Stored encrypted on the server.'
                   "
                 >
+                  <template v-if="selected.keyConfigured" #tags>
+                    <Tag tone="success">Saved</Tag>
+                  </template>
                   <CommitTextInput
                     :disabled="!!operations?.[selected.id]"
                     :model-value="selected.apiKey"
                     aria-label="API key"
                     @commit="emit('change', selected, { apiKey: $event })"
                     secret
-                    placeholder="sk-…"
+                    :placeholder="selected.keyConfigured ? 'Enter a new key to replace' : 'Paste your API key'"
                     class="w-72 max-w-full"
                   />
                 </SettingsRow>
-                <SettingsRow label="Test connection">
+                <SettingsRow
+                  label="Test connection"
+                  description="Sends one short request to the first model in the list."
+                >
+                  <!-- The upstream text in full, under the row: it is often a sentence with a link. -->
+                  <template
+                    v-if="selected.detail && testing !== selected.id && !operations?.[selected.id]"
+                    #detail
+                  >
+                    <p class="select-text break-words text-[12px] leading-4 text-on-danger">
+                      {{ selected.detail }}
+                    </p>
+                  </template>
                   <span
                     v-if="
                       testing === selected.id ||
@@ -590,7 +606,11 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   <span
                     v-else-if="selected.testPassed || selected.testedIn"
                     class="flex items-center gap-1 text-[12px] text-on-success"
-                    ><Check :size="ICON_PX.in24" /> OK<template
+                    ><Check :size="ICON_PX.in24" /> Connected<template
+                      v-if="selected.testedWith"
+                    >
+                      · {{ selected.testedWith }}</template
+                    ><template
                       v-if="selected.testedIn"
                     >
                       · {{ selected.testedIn }}</template
@@ -598,8 +618,12 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   >
                   <span
                     v-else-if="selected.detail"
-                    class="min-w-0 truncate font-mono text-[12px] text-on-danger"
-                    >{{ selected.detail }}</span
+                    class="min-w-0 truncate text-[12px] text-on-danger"
+                    >{{ selected.detailSummary ?? 'Failed' }}<template
+                      v-if="selected.testedWith"
+                    >
+                      · {{ selected.testedWith }}</template
+                    ></span
                   >
                   <Tooltip content="Test connection"
                     ><IconButton
@@ -633,8 +657,8 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       selected.catalogFetched
                     "
                     class="text-[12px] text-fg-subtle"
-                    >fetched {{ selected.catalogFetched }}</span
-                  >
+                    >Updated <RelativeTime :timestamp="selected.catalogFetched"
+                  /></span>
                   <Tag v-if="selected.stale" tone="warning">Stale</Tag>
                   <span v-if="selected.kind === 'subscription'" class="ml-auto"
                     ><Tooltip content="Refresh"

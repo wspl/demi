@@ -133,11 +133,15 @@ export interface SettingsProviderEntry {
   catalogFetched: string | null
   stale: boolean
   state: SettingsProviderState
-  /** What went wrong, from the last test or request. */
+  /** What went wrong, from the last test or request: the upstream text, in full. Never a note about a healthy provider. */
   detail?: string
+  /** One plain sentence for `detail`, from the failure's normalized kind. */
+  detailSummary?: string
   /** How long the last successful test took, formatted by the host. */
   testedIn?: string
   testPassed?: boolean
+  /** The model the last test asked: a plan can cover some models and refuse others. */
+  testedWith?: string
   enabled: boolean
   models: SettingsProviderModel[]
   accounts: SettingsProviderAccount[]
