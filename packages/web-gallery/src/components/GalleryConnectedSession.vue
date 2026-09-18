@@ -14,6 +14,7 @@ import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
 import { createGalleryFileHosts } from '../fixtures/files'
 import GalleryComposer from './GalleryComposer.vue'
+import { showToast } from '@demicodes/web-ui/infra/toast'
 import { demoExposes } from '../fixtures/settings'
 
 const props = withDefaults(defineProps<{ showActivity?: boolean }>(), { showActivity: true })
@@ -170,6 +171,7 @@ function abortAgents(): void {
           <SessionToolsMenu
             :exposes="exposes"
             :pending-ids="exposePending"
+            @open="showToast({ title: `Open ${$event.address} in a work panel browser tab` })"
             @renew="renewExpose"
             @remove="removeExpose"
           />

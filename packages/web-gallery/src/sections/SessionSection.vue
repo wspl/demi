@@ -12,7 +12,7 @@ import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activit
 import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { changeWorkTab, changeTabPath, workPanelTabs, addBrowserTab, closeBrowserTabs, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type BrowserWorkTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import { changeWorkTab, changeTabPath, workPanelTabs, addBrowserTab, closeBrowserTabs, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type BrowserPage, type BrowserWorkTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
 import { callChangeSource, type CallEditSelection, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
@@ -126,8 +126,8 @@ const panelActiveConversationId = ref<string | null>('c-login')
 function useWorkTabs(activeId: string | null, path = 'src/auth/cookie.ts') {
   const tabs = ref(workPanelTabs(path))
   const active = ref<string | null>(activeId)
-  function addBrowser() {
-    const next = addBrowserTab(tabs.value)
+  function addBrowser(page?: BrowserPage) {
+    const next = addBrowserTab(tabs.value, page)
     tabs.value = next.tabs
     active.value = next.activeId
   }
@@ -241,8 +241,13 @@ const changeStale = useChangeTab('uncommitted', 'src/auth/cookie.ts', {
   conversation: null,
   uncommitted: createGalleryChangeSet(200, { truncated: true, failure: 'The device is offline.' }),
 })
+// One empty tab, then one opened on a page the way an expose row opens it.
 const browserWork = useWorkTabs('change', '')
 browserWork.addBrowser()
+browserWork.addBrowser({
+  url: `data:text/html,${encodeURIComponent('<body style="font:14px system-ui;padding:24px"><h1>Dev server</h1><p>A page shown in the tab\'s sandboxed frame.</p><a href="https://example.com" target="_blank">A link that opens a popup</a></body>')}`,
+  title: '127.0.0.1:5173',
+})
 let nextQueue = 3
 let nextSent = 1
 
@@ -1625,7 +1630,7 @@ function abortTerminal(id: string) {
               />
             </div>
           </GallerySpecimen>
-          <GallerySpecimen variant="browser placeholder" wide>
+          <GallerySpecimen variant="browser tabs · an empty tab and a page in the sandboxed frame" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
               <WorkPanel
                 class="w-full"
