@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import {
   conversationPageKind,
   sessionFailureNotice,
+  turnRecovery,
   sessionPaneStatus,
   sessionStatusCopy,
 } from '../session-status'
@@ -54,4 +55,12 @@ test('an unknown id waits for the list', () => {
   expect(conversationPageKind('ready', true)).toBe('session')
   expect(conversationPageKind('loading', true)).toBe('session')
   expect(conversationPageKind('failed', true)).toBe('session')
+})
+
+test('the dock offers Resume after an error, Continue after a Stop, and nothing while running or finished', () => {
+  expect(turnRecovery('idle', { type: 'error' })).toBe('resume')
+  expect(turnRecovery('idle', { type: 'abort' })).toBe('continue')
+  expect(turnRecovery('idle', { type: 'response' })).toBeNull()
+  expect(turnRecovery('idle', undefined)).toBeNull()
+  expect(turnRecovery('running', { type: 'error' })).toBeNull()
 })

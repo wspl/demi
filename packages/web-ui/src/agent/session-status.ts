@@ -47,7 +47,7 @@ export interface SessionFailureNotice {
 /**
  * What the transcript's tail notice says for a session-level failure, or null
  * when another surface already says it: the status pane (no transcript to
- * keep) or the error record at the tail (it carries its own Retry).
+ * keep) or the error record at the tail (it already says it).
  */
 export function sessionFailureNotice(
   load: SessionLoad,
@@ -110,4 +110,23 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
     }
   }
   return { label: t('agent.session.empty') }
+}
+
+/**
+ * The recovery the dock offers for a turn that did not finish (`product.md`
+ * § Recovering an unfinished turn), from the record that ended it: an error
+ * resumes, the user's own Stop continues, and anything else is finished or
+ * still running. Both are the session's `resume`; the word tells the cause.
+ */
+export function turnRecovery(
+  phase: 'idle' | string,
+  tail: { type: string } | undefined,
+): 'resume' | 'continue' | null {
+  if (phase !== 'idle') {
+    return null
+  }
+  if (tail?.type === 'error') {
+    return 'resume'
+  }
+  return tail?.type === 'abort' ? 'continue' : null
 }
