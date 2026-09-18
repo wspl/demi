@@ -149,11 +149,20 @@ effect. The label is presentation only.
 
 The control is offered when the last turn is unfinished and the conversation
 is idle, not archived, has a usable provider, has its history loaded, and no
-message edit is open. It leaves when recovery starts, which shows as the
-transcript's Resuming row, and for good once a newer turn exists: sending a
-message is the other way forward, and the old turn is then history. Automatic
-retries of transient failures stay what they are, a Retrying row with no
-control; the control appears only after they give up.
+message edit is open. It leaves when recovery starts, and for good once a
+newer turn exists: sending a message is the other way forward, and the old turn
+is then history.
+
+While a turn waits for the provider, the transcript's tail row says
+**Requesting**, with how long it has waited. The word says whose the wait is:
+a slow model must never read as something broken in Demi. Recovery shows the
+same row from the moment the control is used; there is no separate resuming
+state. While the agent retries a failed request on its own (a rate limit or an
+overload, within the retry policy of
+[Provider errors and retries](../provider-errors-and-retries.md)), the row says
+**Retrying** instead, from the failed attempt until the retry produces output
+or the turn ends. Retrying has no control; the Resume control appears only
+after the automatic retries give up.
 
 Two other retries are not this and keep their own places: reloading a history
 that failed to load, and resending a message whose delivery is unconfirmed.
