@@ -51,8 +51,7 @@ const usage = computed(
       ?.usage ?? null,
 )
 function openProviders() {
-  resources.settingsTab = 'models'
-  resources.settingsOpen = true
+  resources.openSettings('models')
 }
 function selectModel(providerId: string, modelId: string) {
   void store.selectModel(props.conversation, providerId, modelId)
