@@ -241,6 +241,15 @@ test(
     expect((await original('path=new.png')).status).toBe(404)
     expect((await original('path=../escape.png')).status).toBe(400)
 
+    // Git's copy is decoded whole, so one over the runner's 8 MiB is refused.
+    await writeFile(join(runnerDir, 'poster.png'), pattern(8 * 1024 * 1024 + 1))
+    git(runnerDir, 'add', 'poster.png')
+    git(runnerDir, 'commit', '-q', '-m', 'poster')
+    const oversized = await original('path=poster.png')
+    expect(oversized.status).toBe(413)
+    expect(((await oversized.json()) as { code: string }).code).toBe('file_too_large')
+    expect((await original('path=poster.png', { method: 'HEAD' })).status).toBe(413)
+
     await backend.close()
   },
   60_000
