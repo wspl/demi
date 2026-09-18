@@ -2,15 +2,34 @@
 
 Provider runtimes classify vendor and transport failures into stable error codes. `rate_limit` represents quota or throttling failures, while `overloaded` represents transient service, HTTP 5xx, timeout, network, and socket failures. Authentication, invalid requests, and context-length failures remain terminal categories.
 
-Error events retain bounded diagnostics separately from the normalized policy code: failure source, client request id, provider request/response ids, raw provider code, and HTTP status when available. Products use the normalized code for recovery decisions and the diagnostics for logging, inspection, and support escalation.
+Error events retain diagnostics separately from the normalized policy code: failure source, client request id, provider request/response ids, raw provider code, HTTP status when available, and the vendor's failure record. Products use the normalized code for recovery decisions and the diagnostics for logging, inspection, and support escalation.
 
-What the vendor said is kept, not reduced to a sentence. A Codex usage limit arrives as an error object with the plan, the time the limit lifts and the quota headers; keeping only its `message` throws away the one thing the user wants to know, when it works again. The diagnostics therefore carry:
+## The failure record
 
-`upstream`: the vendor's failure as it arrived, as JSON text. For a stream it is the error event; for an HTTP failure it is `{ status, headers, body }`, with the headers that say when to retry, what quota is left and which request it was, and the body parsed when it is JSON. It is redacted of the request's secret and cut at 16 KB. It is persisted with the error block and travels wherever the diagnostics do.
+What the vendor said is kept exactly as it arrived. A Codex usage limit arrives as a WebSocket frame with the plan, the moment the limit lifts, and the quota headers. Keeping only its `message` would throw away the one thing the user wants to know: when it works again. The diagnostics therefore carry `upstream`, the vendor's failure as text:
 
-The record stores what the vendor sent and nothing worked out from it. Whatever a reader needs is read out of `upstream` when it is needed, by the layer that knows vendor formats: `@demicodes/provider` owns `retryAtFromUpstream(upstream, receivedAt)`, which finds the moment the vendor says the request can succeed again (`resets_at`, `resets_in_seconds`, a `Retry-After` header), counting a relative wait from the time the failure was recorded. The browser reaches it through the agent's client entry and shows it on the error record. A new fact worth showing is a new reader over the same stored payload, with no change to what is stored and no old records left behind.
+| `source` | Where the failure came from | `upstream` |
+| --- | --- | --- |
+| `stream` | An error event inside a streamed response | The frame's text as received: the SSE `data` payload, the WebSocket message, or a CLI's output line |
+| `http` | A request the vendor answered with a failure status | JSON `{ "status", "headers", "body" }`: the status code, every response header as the HTTP client reports it, as `[name, value]` pairs, and the body text verbatim |
+| `transport`, `unknown` | No answer from the vendor | Absent |
 
-The one thing taken from the payload at failure time is the wait the retry policy needs, `retryAfterMs` on the error event, which is never stored. A vendor wait longer than the policy's backoff ceiling is not retried: the retry would fail the same way, so the failure is terminal at once.
+Nothing in the record is parsed and rewritten, reordered, filtered, redacted, or cut. A field the vendor sends in a form Demi does not expect is still there for a later reader. An HTTP failure arrives as three parts, so the record keeps them together in one container; that container is the only structure Demi adds. The record is persisted with the error block and travels wherever the diagnostics do.
+
+Error messages are not redacted either. Mainstream vendors do not echo a full key in an error, so a filter against it would aim at nothing. Redaction stays where Demi prints its own credential files, which is a different concern.
+
+## Reading a failure
+
+Whatever a reader needs is read out of the record when it is needed, by the provider that produced it: only that provider knows its vendor's format. A provider's public shell offers `readFailure(diagnostics, receivedAt)`, which returns the facts Demi shows. Today there is one fact, `retryAt`: the moment the vendor says the request can succeed again, as an ISO time, with a relative wait counted from `receivedAt`. `@demicodes/provider` supplies the standard pieces a provider composes, such as the HTTP `Retry-After` header. A vendor's own fields, such as Codex's `resets_at` and `resets_in_seconds`, are read by that vendor's provider and nowhere else.
+
+The same reader serves both uses, so there is one implementation:
+
+- At failure time the provider reads its own record to set `retryAfterMs` on the error event, the wait the retry policy needs. It is never stored. A vendor wait longer than the policy's backoff ceiling is not retried: the retry would fail the same way, so the failure is terminal at once.
+- When blocks are shown, the backend reads each error block's record through the provider named in the block's model selection and sends the facts beside the transcript ([Backend](demi-next/backend.md#failure-facts)). The browser renders them and never interprets a vendor payload. A record whose provider configuration no longer exists shows without facts.
+
+A new fact worth showing is a new field of the reader over the same stored record, with no change to what is stored and no old records left behind.
+
+## Retries
 
 The same diagnostics travel through `retry_scheduled`, terminal transcript error blocks, server frames, and `ProviderStreamError`. Products can therefore explain an in-progress retry and retain the identifiers needed to investigate a terminal failure without parsing vendor message text.
 
