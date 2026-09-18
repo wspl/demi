@@ -1,3 +1,4 @@
+import type { ConversationTitles } from './title'
 import { z } from 'zod'
 import { errorMessage } from '@demicodes/utils'
 import type { AgentServer } from '@demicodes/agent'
@@ -38,6 +39,7 @@ export class ConversationUpdates {
     mode: InstanceMode;
     targets: ConversationTargets;
     agentServer: AgentServer
+    titles: ConversationTitles
   }) {}
 
   detachHost(id: string, deviceId: string): Promise<boolean> {
@@ -100,8 +102,14 @@ export class ConversationUpdates {
               'archived',
               'Restore the conversation before editing it'
             )
-          if (field === 'title')
+          if (field === 'title') {
+            // A patch that repeats the current title is no rename: the browser
+            // sends the draft's placeholder when it creates the record, and
+            // that must not settle the title as the user's.
+            if (patch.title === current.title)
+              return
             return await control.renameConversation(id, patch.title!)
+          }
           if (field === 'pinned')
             return await control.setConversationPinned(id, patch.pinned!)
           const providerId = patch.providerId === undefined
@@ -151,7 +159,10 @@ export class ConversationUpdates {
       )
     }
     try {
-      if (archived) await this.deps.targets.releaseConversation(id)
+      if (archived) {
+        await this.deps.targets.releaseConversation(id)
+        this.deps.titles.abort(id)
+      }
       await this.deps.control.setConversationArchived(id, archived)
     } finally {
       releaseFiles()

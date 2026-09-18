@@ -167,6 +167,8 @@ export class World {
           })
         },
       },
+      // The scripted model answers title requests on their own lane (model.ts).
+      conversationTitles: true,
       ...(options.managedHosts ? { managedHosts: options.managedHosts } : {}),
       ...(options.publicUrl ? { publicUrl: options.publicUrl } : {}),
       ...(options.providerRequestsPerMinute

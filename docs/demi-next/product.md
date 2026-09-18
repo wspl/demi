@@ -115,7 +115,9 @@ Every title records its origin, one of `placeholder` ("New conversation",
 before any send), `message`, `generated`, and `user`. The generated title is
 written only while the origin is `message`, in the same statement that checks
 it, so a rename that lands while the request is in flight wins and is never
-overwritten. A Fork's title, the source's with " (Fork)", has origin `user`:
+overwritten. A rename is a title that differs from the current one; a patch
+that repeats the current title, as the browser's record creation does with
+the placeholder, changes no origin. A Fork's title, the source's with " (Fork)", has origin `user`:
 it is already a settled name and is not regenerated.
 
 The request:

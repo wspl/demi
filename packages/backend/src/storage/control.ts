@@ -269,10 +269,16 @@ export interface ControlService {
     modelId: string | null
   ): Promise<void>
   /**
-   * Sets the title only when it is still the creation default (first user
-   * message becomes the title).
+   * The first user message becomes the title while the title is still the
+   * creation placeholder (`product.md` § Conversation titles). Returns whether
+   * it did: that send is the one a generated title may follow.
    */
-  defaultConversationTitle(id: string, title: string): Promise<void>
+  defaultConversationTitle(id: string, title: string): Promise<boolean>
+  /**
+   * The generated title replaces the message-derived one, and nothing else: a
+   * rename that landed meanwhile stays. Returns whether it was written.
+   */
+  generatedConversationTitle(id: string, title: string): Promise<boolean>
   touchConversation(id: string): Promise<void>
   /**
    * Host exposes (`expose.md` § The expose record). The id, owner, device,
@@ -1481,11 +1487,12 @@ export class LocalControlService implements ControlService {
       throw new Error('Conversation id is reserved for Fork')
     }
     this.db.run(
-      'INSERT INTO conversations (id, user_id, title, archived, target_json, provider_id, model_id, created_at, updated_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?)) ON CONFLICT(id) DO NOTHING',
+      'INSERT INTO conversations (id, user_id, title, title_origin, archived, target_json, provider_id, model_id, created_at, updated_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?)) ON CONFLICT(id) DO NOTHING',
       [
         record.id,
         userId,
         record.title,
+        options.title === undefined ? 'placeholder' : 'user',
         0,
         JSON.stringify(record.target),
         null,
@@ -1659,7 +1666,7 @@ export class LocalControlService implements ControlService {
 
   async renameConversation(id: string, title: string): Promise<void> {
     this.db.run(
-      'UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?',
+      "UPDATE conversations SET title = ?, title_origin = 'user', updated_at = ? WHERE id = ?",
       [title, new Date().toISOString(), id]
     )
   }
@@ -1691,16 +1698,28 @@ export class LocalControlService implements ControlService {
     )
   }
 
-  async defaultConversationTitle(id: string, title: string): Promise<void> {
-    this.db.run(
-      'UPDATE conversations SET title = ?, updated_at = ? WHERE id = ? AND title = ?',
-      [
-        title,
-        new Date().toISOString(),
-        id,
-        'New conversation',
-      ]
-    )
+  async defaultConversationTitle(id: string, title: string): Promise<boolean> {
+    return this.retitle(id, title, 'placeholder', 'message')
+  }
+
+  async generatedConversationTitle(id: string, title: string): Promise<boolean> {
+    return this.retitle(id, title, 'message', 'generated')
+  }
+
+  /** Writes a title only while its origin is `from`, in the statement that checks it. */
+  private retitle(
+    id: string,
+    title: string,
+    from: 'placeholder' | 'message',
+    to: 'message' | 'generated'
+  ): boolean {
+    return this.db.transaction(() => {
+      this.db.run(
+        'UPDATE conversations SET title = ?, title_origin = ?, updated_at = ? WHERE id = ? AND title_origin = ?',
+        [title, to, new Date().toISOString(), id, from]
+      )
+      return (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
+    })
   }
 
   async touchConversation(id: string): Promise<void> {

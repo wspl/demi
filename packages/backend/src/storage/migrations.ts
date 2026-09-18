@@ -183,6 +183,17 @@ CREATE TABLE exposes (
 CREATE INDEX idx_exposes_expiry ON exposes(expires_at);
 `,
   },
+  {
+    id: 4,
+    name: 'conversation_title_origin',
+    // Where a title came from (product.md § Conversation titles). A row that
+    // names no origin carries a settled title: a Fork's, or one a caller chose.
+    sql: `
+ALTER TABLE conversations ADD COLUMN title_origin TEXT NOT NULL DEFAULT 'user'
+  CHECK (title_origin IN ('placeholder', 'message', 'generated', 'user'));
+UPDATE conversations SET title_origin = 'placeholder' WHERE title = 'New conversation';
+`,
+  },
 ]
 
 /**
