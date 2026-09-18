@@ -512,10 +512,18 @@ export function providerRoutes(options: {
         code: 'provider_not_found',
         message: 'No such provider'
       }, 404)
+    const parsed = z.object({ modelId: z.string().min(1) }).safeParse(
+      await c.req.json().catch(() => null)
+    )
+    if (!parsed.success)
+      return c.json({
+        code: 'invalid_body',
+        message: 'Expected { modelId: string }: the model to test with'
+      }, 400)
     // The test ran either way: a provider that refused is the answer, with
     // its reason, not a failure of this request.
     try {
-      return c.json(await assembly.testProvider(provider.id))
+      return c.json(await assembly.testProvider(provider.id, parsed.data.modelId))
     } catch (error) {
       return c.json({ ok: false, message: errorMessage(error) })
     }

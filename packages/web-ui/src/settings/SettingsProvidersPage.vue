@@ -583,11 +583,15 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                 </SettingsRow>
                 <SettingsRow
                   label="Test connection"
-                  description="Sends one short request to the first model in the list."
+                  description="Sends one short request to the first enabled model."
                 >
                   <!-- The provider's own words in full, under the row; the page does not paraphrase them. -->
                   <template
-                    v-if="selected.detail && testing !== selected.id && !operations?.[selected.id]"
+                    v-if="
+                      selected.detail &&
+                      testing !== selected.id &&
+                      operations?.[selected.id]?.kind !== 'testing'
+                    "
                     #detail
                   >
                     <p class="select-text break-words text-[12px] leading-4 text-on-danger">
@@ -632,7 +636,13 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       aria-label="Test connection"
                       :disabled="
                         selected.configured === false ||
-                        !!operations?.[selected.id]
+                        !!operations?.[selected.id] ||
+                        !selected.models.some((model) => model.enabled)
+                      "
+                      :disabled-reason="
+                        selected.models.some((model) => model.enabled)
+                          ? undefined
+                          : 'Enable a model to test with'
                       "
                       @click="emit('test', selected)"
                   /></Tooltip>
