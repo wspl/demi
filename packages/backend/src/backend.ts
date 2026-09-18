@@ -50,6 +50,7 @@ import {
 import { VendorCatalog } from './llm/vendors'
 import type { ModelsDevFetch } from '@demicodes/provider'
 import { createSessionProviderResolver } from './llm/session-providers'
+import { ConversationTitles } from './conversation/title'
 import { RunnerRegistry, type RunnerRegistryOptions } from './runner/registry'
 import { PipeBroker } from './runner/pipes'
 import { ProviderRateLimiter } from './usage/rate-limit'
@@ -67,6 +68,12 @@ import { openSqliteDatabase } from './storage/database'
 import { CONTROL_MIGRATIONS, migrate } from './storage/migrations'
 
 export interface BackendOptions {
+  /**
+   * Generated conversation titles (`product.md` § Conversation titles). On by
+   * default; off leaves every title as the first message gave it, which is
+   * what a caller counting provider requests wants.
+   */
+  conversationTitles?: boolean
   /** Published historical edits; the caller owns an injected storage client. */
   changeObjects?: ChangeObjects
   /**
@@ -402,8 +409,16 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   })
   await conversationForks.recover()
 
+  const titles = new ConversationTitles({
+    control,
+    resolveProvider,
+    enabled: options.conversationTitles ?? true,
+    log: console.warn,
+  })
+
   const app = createApp({
     webDirectory: options.webDirectory,
+    titles,
     ...(relay ? { relay } : {}),
     exposes,
     ...(runnerReleaseDir ? { runnerInstallation: {
@@ -429,7 +444,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       vault,
       mode: options.mode,
       targets,
-      agentServer
+      agentServer,
+      titles
     }),
     admitFrame: async (id, signal) => {
       signal.throwIfAborted()
@@ -487,6 +503,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       cleanup.defer(() => conversations.close())
       cleanup.defer(() => agentServer.close())
       cleanup.defer(() => exposes.close())
+      cleanup.defer(() => titles.close())
       cleanup.defer(() => lifecycle.close())
       cleanup.defer(() => logins.close())
       await cleanup.disposeAsync()

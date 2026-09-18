@@ -9,7 +9,9 @@ import {
 } from '@demicodes/agent'
 import type { Block, ModelSelection } from '@demicodes/core'
 import { errorMessage, SerialQueue } from '@demicodes/utils'
+import type { ProviderSelection } from '@demicodes/provider'
 import type { ControlService, ConversationRecord } from '../storage/control'
+import { titleFromMessage } from './title'
 import { resolveUploadRefs } from './attachment-refs'
 import {
   conversationClientFrameSchema,
@@ -50,6 +52,16 @@ export interface ConversationTransportOptions {
   blobs?: BlobStore
   /** Puts an attachment's bytes on the conversation's host; returns the absolute path. */
   writeAttachment?: (fileName: string, data: Uint8Array) => Promise<string>
+  /**
+   * The send that gave the conversation its message-derived title: a generated
+   * title may follow (`product.md` § Conversation titles).
+   */
+  startTitle?: (provider: ProviderSelection, text: string) => void
+}
+
+/** What the connection has established so far; a send reads the provider an open or switch set. */
+interface ConnectionState {
+  provider: ProviderSelection | null
 }
 
 /**
@@ -76,6 +88,7 @@ export function conversationScopedTransport(
   const deliveries = new SerialQueue()
   const sends = new SerialQueue()
   const closing = new AbortController()
+  const connection: ConnectionState = { provider: null }
   const close = () => {
     closing.abort()
     inner.close()
@@ -140,7 +153,8 @@ export function conversationScopedTransport(
               parsed.data,
               current,
               options,
-              cwd
+              cwd,
+              connection
             )
             if (!signal.aborted)
               await handler(rewritten)
@@ -221,6 +235,7 @@ async function rewriteFrame(
   conversation: ConversationRecord,
   options: ConversationTransportOptions,
   cwd: string,
+  connection: ConnectionState,
 ): Promise<ClientFrame> {
   const { control, blobs } = options
   const recordProvider = async (provider: {
@@ -237,6 +252,7 @@ async function rewriteFrame(
       provider.providerId,
       model.model.id
     )
+    connection.provider = { providerId: provider.providerId, model }
     return { ...provider, model }
   }
   if (frame.type === 'open') {
@@ -261,10 +277,13 @@ async function rewriteFrame(
     if (frame.type === 'send') {
       const text = frame.content.flatMap(block => block.type === 'text'
         ? [block.text]
-        : [])[0]
-      const title = (text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
-      if (title)
-        await control.defaultConversationTitle(conversation.id, title)
+        : [])[0] ?? ''
+      const title = titleFromMessage(text)
+      const titled = title
+        ? await control.defaultConversationTitle(conversation.id, title)
+        : false
+      if (titled && connection.provider)
+        options.startTitle?.(connection.provider, text)
       await control.touchConversation(conversation.id)
     }
     return rewritten
