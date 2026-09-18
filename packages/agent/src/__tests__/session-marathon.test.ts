@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { deferred } from '@demicodes/utils'
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
-import { AgentSession, TranscriptLog } from '../index'
+import { AgentSession, INTERRUPTED_TURN_MESSAGE, TranscriptLog } from '../index'
 import { COMPACTION_SUMMARY_INSTRUCTION } from '../session/compaction'
 import {
   assertNoOrphanToolItems,
@@ -402,6 +402,20 @@ test(
         status: 'error'
       }
     )
+
+    // The root says why its turn is unfinished, once, in an error record that
+    // the next inference treats as a leftover.
+    await restored.recordInterruption()
+    await restored.recordInterruption()
+    const records = restored.transcript().blocks.filter(
+      (block) => block.type === 'error' && block.code === 'interrupted'
+    )
+    expect(records).toHaveLength(1)
+    expect(restored.transcript().blocks.at(-1)).toMatchObject({
+      type: 'error',
+      code: 'interrupted',
+      message: INTERRUPTED_TURN_MESSAGE,
+    })
 
     await restored.send(text('continue after crash'))
 

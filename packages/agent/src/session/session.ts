@@ -179,6 +179,8 @@ export class AgentSession<State> {
   private readonly compaction: CompactionController
   private readonly turnLoop: ProviderTurnLoop<State>
   private abortRecorded = false
+  /** Dispose is ending the turn, not the user: the turn is recorded as interrupted, not stopped. */
+  private disposing = false
   private idleResolvers: Array<() => void> = []
   private readonly persistIntervalMs: number
   private readonly retryPolicy: TurnRetryPolicy
@@ -802,6 +804,7 @@ export class AgentSession<State> {
    */
   async dispose(): Promise<void> {
     this.commandGeneration.abort()
+    this.disposing = true
     await this.abort()
     this.clearPendingActions()
     this.yields.clear()
@@ -1817,6 +1820,26 @@ export class AgentSession<State> {
     return this.activeTurnId
   }
 
+  /**
+   * Records that the process died under this session's turn: an error record
+   * at the tail, in Demi's own words, so the transcript says why the turn is
+   * unfinished. `resume` discards it like any failed attempt's leftover. The
+   * commit also writes the restored phase, so a second restart finds a settled
+   * checkpoint and records nothing twice.
+   */
+  async recordInterruption(): Promise<void> {
+    // A graceful shutdown already said so when it ended the turn.
+    const tail = this.transcriptLog.blocks.at(-1)
+    if (tail?.type === 'error' && tail.code === 'interrupted')
+      return
+    this.transcriptLog.applyProviderEvent(this.model, {
+      type: 'error',
+      message: INTERRUPTED_TURN_MESSAGE,
+      code: 'interrupted',
+    })
+    await this.commitTranscript()
+  }
+
   private async recordAbort(): Promise<void> {
     if (this.abortRecorded)
       return
@@ -1829,8 +1852,14 @@ export class AgentSession<State> {
         true,
       )
     }
-    this.transcriptLog.pushAbort(this.model)
-    await this.commitTranscript()
+    // Stop is the user's decision and leaves the stopped marker; a process that
+    // shuts down under the turn is a failure and leaves an error record.
+    if (this.disposing)
+      await this.recordInterruption()
+    else {
+      this.transcriptLog.pushAbort(this.model)
+      await this.commitTranscript()
+    }
   }
 
   private async materializePendingSteersForCurrentTurn(includeInternal = true): Promise<boolean> {
@@ -2157,3 +2186,8 @@ async function readProviderIterator(
     }
   }
 }
+
+/** What the error record of a turn the process died under says. */
+export const INTERRUPTED_TURN_MESSAGE =
+  'The agent session was shut down while this turn was running, so the turn did not finish. Nothing it had already done was lost.'
+

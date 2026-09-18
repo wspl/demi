@@ -122,8 +122,13 @@ export class SessionNode<State = unknown> {
       return
     const metadata = this.record.metadata ?? undefined
     const options = metadata ? { metadata } : {}
-    if (continuation.interrupted && this.policy.resumeInterrupted)
-      track(this.session.resume(options))
+    if (continuation.interrupted) {
+      // A child picks its turn up again; the root's is the user's to resume,
+      // so its transcript says why the turn is unfinished.
+      track(this.policy.resumeInterrupted
+        ? this.session.resume(options)
+        : this.session.recordInterruption())
+    }
     for (const message of continuation.queued) track(this.session.send(
       message.content,
       { id: message.id, ...options }

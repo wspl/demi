@@ -100,13 +100,20 @@ A turn can end without finishing in two ways, and the agent can go on from
 either without the user typing anything.
 
 - **Something broke.** The provider refuses the request after the automatic
-  retries give up; the backend restarts under a running turn; the Host goes
-  away and does not come back. Every one of these is an error: the transcript
-  gets an error record that says what happened. A provider failure carries the
-  provider's own words; a failure of Demi's own carries Demi's fact, for
-  example "The backend restarted while this turn was running" or "The Host
-  ZandeMacBook-Pro went offline during this turn". No turn ends unfinished
+  retries give up, or the agent session is shut down under a running turn: a
+  backend restart, a crash, a release. Every one of these is an error: the
+  transcript gets an error record that says what happened. A provider failure
+  carries the provider's own words; a failure of Demi's own carries Demi's
+  fact: "The agent session was shut down while this turn was running, so the
+  turn did not finish. Nothing it had already done was lost." A graceful
+  shutdown writes the record as it ends the turn; after a crash the restored
+  conversation writes it when it is next opened. No turn ends unfinished
   without either such a record or the user's own Stop.
+
+  A Host that goes offline does not end a turn. The operation that needed it
+  fails with the runner's offline error
+  ([Host operations](sessions-and-targets.md#host-operations)), the tool call
+  shows that error, and the agent goes on and says what it could not do.
 - **The user stopped it.** Stop is a decision, not a failure, and leaves the
   stopped marker it leaves today.
 
@@ -131,7 +138,7 @@ Its label follows the cause, because the user's expectation differs:
 
 | How the turn ended | Control | What the user expects |
 | --- | --- | --- |
-| An error ended it: a provider failure, a backend restart, a lost Host | **Resume** | The same step again: nothing was decided, something broke. |
+| An error ended it: a provider failure, or a shutdown or crash under the turn | **Resume** | The same step again: nothing was decided, something broke. |
 | The user pressed Stop | **Continue** | The agent goes on with the work the user cut short. |
 | It finished | none | |
 
