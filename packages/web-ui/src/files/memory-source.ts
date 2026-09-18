@@ -3,12 +3,14 @@
  * Nothing here touches a real disk; a directory can be marked as failing to exercise
  * the browser's error states, and every read can carry a simulated latency.
  */
+import { previewMediaType } from '@demicodes/core'
 import {
   FileBrowserError,
   type FileBrowserEntry,
   type FileBrowserFailure,
   type FileBrowserSource,
-  type FileBrowserPlatform
+  type FileBrowserPlatform,
+  type FileContents
 } from './types'
 import { baseName, joinPath, normalizePath, parentPath } from './paths'
 
@@ -18,6 +20,8 @@ export interface MemoryFile {
   modifiedAt: string
   /** What `read` returns; a file without it reads as empty. */
   content?: string
+  /** Where a binary file's bytes load from, a fixture asset; `read` refuses such a file as binary. */
+  url?: string
 }
 
 export interface MemoryDirectory {
@@ -59,6 +63,11 @@ export function textFile(content: string, modifiedAt: string): MemoryFile {
   return { kind: 'file', size: content.length, modifiedAt, content }
 }
 
+/** A binary file whose bytes are a fixture asset at `url`. */
+export function assetFile(url: string, size: number, modifiedAt: string): MemoryFile {
+  return { kind: 'file', size, modifiedAt, url }
+}
+
 export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBrowserSource & {
   root: MemoryDirectory
 } {
@@ -87,6 +96,30 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
         reject(new DOMException('Aborted', 'AbortError'))
       }, { once: true })
     })
+  }
+
+  function fileAt(path: string): MemoryFile {
+    if (options.offline)
+      throw new FileBrowserError('offline')
+    const node = lookup(path)
+    if (!node || node.kind !== 'file')
+      throw new FileBrowserError('not-found', `No such file: ${normalizePath(path)}`)
+    return node
+  }
+
+  /** An asset's own URL, or a text file's content as a `data:` URL typed by its extension. */
+  const contents: FileContents = {
+    url(path) {
+      const node = lookup(path)
+      if (!node || node.kind !== 'file')
+        return ''
+      return node.url ?? `data:${previewMediaType(path) ?? 'text/plain'};charset=utf-8,${encodeURIComponent(node.content ?? '')}`
+    },
+    async describe(path, signal) {
+      await wait(signal)
+      const node = fileAt(path)
+      return { size: node.size, modifiedAt: node.modifiedAt, version: node.modifiedAt }
+    },
   }
 
   return {
@@ -119,13 +152,12 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
     },
     async read(path, signal) {
       await wait(signal)
-      if (options.offline)
-        throw new FileBrowserError('offline')
-      const node = lookup(path)
-      if (!node || node.kind !== 'file')
-        throw new FileBrowserError('not-found', `No such file: ${normalizePath(path)}`)
+      const node = fileAt(path)
+      if (node.url !== undefined && node.content === undefined)
+        throw new FileBrowserError('binary', 'The file is not UTF-8 text')
       return node.content ?? ''
     },
+    contents,
     async createDirectory(path) {
       await wait()
       if (options.offline)

@@ -40,11 +40,19 @@ export async function readResponse<T>(
 ): Promise<T> {
   const parsed = schema.safeParse(await response.json())
   if (!parsed.success) {
-    throw new Error(
-      `Invalid server response: ${parsed.error.issues[0]?.message ?? 'unknown shape'}`,
-    )
+    throw invalidResponse(parsed.error)
   }
   return parsed.data
+}
+
+/** An answer, body or headers, that does not match its schema. */
+export function invalidResponse(error: z.ZodError): Error {
+  return new Error(`Invalid server response: ${error.issues[0]?.message ?? 'unknown shape'}`)
+}
+
+/** The URL of an API path, for what the browser loads itself: an image, a player, a download. */
+export function apiUrl(path: string): string {
+  return `/api${path}`
 }
 
 interface ApiRequestOptions extends RequestInit {
@@ -61,7 +69,7 @@ export async function apiRequest(
   const signal = options.signal
     ? AbortSignal.any([options.signal, timeout])
     : timeout
-  const response = await fetch(`/api${path}`, {
+  const response = await fetch(apiUrl(path), {
     ...request,
     credentials: 'same-origin',
     cache: 'no-store',

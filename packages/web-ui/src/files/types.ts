@@ -18,9 +18,13 @@ export interface FileBrowserEntry {
   modifiedAt?: string
 }
 
-/** Why a directory could not be listed. `kind` picks the empty-state copy; `message` is shown as the detail. */
+/**
+ * Why a directory could not be listed or a file read. `kind` picks the copy;
+ * `message` is shown as the detail. `binary` and `too-large` are files the
+ * text read cannot show, which a view shows as a card instead.
+ */
 export interface FileBrowserFailure {
-  kind: 'not-found' | 'permission' | 'offline' | 'other'
+  kind: 'not-found' | 'permission' | 'offline' | 'binary' | 'too-large' | 'other'
   message?: string
 }
 
@@ -32,6 +36,25 @@ export class FileBrowserError extends Error {
     this.name = 'FileBrowserError'
     this.kind = kind
   }
+}
+
+/** A file's size, modification time and version, read without its bytes. */
+export interface FileDescription {
+  size: number
+  /** ISO time; null when the source does not know it, as for a committed version. */
+  modifiedAt: string | null
+  /** What `FileContents.url` pins a preview to; null when the source has none. */
+  version: string | null
+}
+
+/** A file's bytes as the page loads them (`file-previews.md` § Getting the bytes). */
+export interface FileContents {
+  /**
+   * Where the page loads the file from: `version` pins the one a preview
+   * opened, and `download` asks for it as an attachment.
+   */
+  url(path: string, options?: { version?: string; download?: boolean }): string
+  describe(path: string, signal?: AbortSignal): Promise<FileDescription>
 }
 
 /** The operating system behind a source; picks the root glyph. */
@@ -48,6 +71,8 @@ export interface FileBrowserSource {
   createDirectory?(path: string, signal?: AbortSignal): Promise<void>
   /** Reads one file as text. Absent when the source cannot read files; a file view then has nothing to show. */
   read?(path: string, signal?: AbortSignal): Promise<string>
+  /** The files' bytes for previews and Download; absent when the source serves none. */
+  contents?: FileContents
 }
 
 /** A shortcut in the sidebar: a home, a recent workspace, a pinned directory. */

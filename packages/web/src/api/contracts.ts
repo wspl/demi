@@ -344,6 +344,26 @@ export type CatalogModel = z.infer<typeof catalogModelSchema>
 export type ConfiguredModel = z.infer<typeof configuredModelSchema>
 export type VendorCatalog = z.infer<typeof vendorCatalogSchema>
 
+/**
+ * A raw file answer's headers as a file description (`web-api.md` § File
+ * text and working tree changes): its size, its modification time when the
+ * route knows it, and the version a preview pins.
+ */
+export const fileHeadersSchema = z.object({
+  size: z.string().regex(/^\d+$/).transform(Number),
+  modifiedAt: z.string().nullable().transform((value, context) => {
+    if (value === null)
+      return null
+    const time = Date.parse(value)
+    if (Number.isNaN(time)) {
+      context.addIssue('Expected an HTTP date')
+      return z.NEVER
+    }
+    return new Date(time).toISOString()
+  }),
+  version: z.string().nullable(),
+})
+
 /** One text file of the conversation Host, as `GET /conversations/:id/fs/file` returns it. */
 export const fileTextSchema = z.object({ path: z.string(), text: z.string() })
 

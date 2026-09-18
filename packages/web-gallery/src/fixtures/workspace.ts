@@ -1,8 +1,8 @@
 import { reactive } from 'vue'
 import type { ChangeFile } from '@demicodes/web-ui/files/changes'
 import type { ChangeSetSource } from '@demicodes/web-ui/files/changes'
-import { createMemoryFileSource, dir, textFile, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
-import type { FileBrowserSource } from '@demicodes/web-ui/files/types'
+import { assetFile, createMemoryFileSource, dir, textFile, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
+import { FileBrowserError, type FileBrowserSource, type FileContents } from '@demicodes/web-ui/files/types'
 
 /**
  * The demo workspace behind the work panel: the project the login-test
@@ -75,15 +75,60 @@ describe('session cookie', () => {
 })
 `
 
-const readme = `# demi
+const readme = `---
+title: demi
+tags: [agents, cloud]
+---
+
+<p align="center"><img src="assets/photo.png" width="240" alt="The test pattern"></p>
+
+# demi
 
 Conversations that run commands on Cloud or your own machines.
+
+- [Getting started](#getting-started)
+- [The guide](docs/guides/getting-started.md), and [the session cookie](/src/auth/cookie.ts)
+- [Bun](https://bun.sh), which runs all of it, and [why a Cloud](#why-a-cloud)
+
+## Getting started
 
 \`\`\`bash
 bun install
 bun run dev
 \`\`\`
+
+| Command | What it does |
+| :-- | :-: |
+| \`bun run dev\` | Starts the product |
+| \`bun run typecheck\` | Checks every package |
+
+- [x] Previews images, video, audio and PDF
+- [ ] Mermaid diagrams
+
+The identity $e^{i\\pi} + 1 = 0$, and a block:
+
+$$
+\\int_0^1 x^2\\,dx = \\frac{1}{3}
+$$
+
+<a name="why-a-cloud"></a>
+<details><summary>Why a Cloud?</summary>
+
+Work keeps running while the laptop sleeps.
+
+</details>
+
+<script>alert('a document never runs script')</script>
+<img src="assets/missing.png" onerror="alert('nor handlers')" alt="A missing image">
 `
+
+const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <rect x="10" y="10" width="100" height="100" rx="24" fill="#3b82f6"/>
+  <circle cx="60" cy="60" r="26" fill="#ffffff"/>
+</svg>
+`
+
+const logoSvgBefore = logoSvg.replace('#3b82f6', '#f97316').replace('rx="24"', 'rx="8"')
 
 const packageJson = `{
   "name": "demi",
@@ -138,6 +183,18 @@ function tree(): MemoryDirectory {
     }),
     '.vscode': dir(files('.vscode', ['settings.json', 'extensions.json'])),
     '.gitignore': textFile('node_modules\ndist\n', at),
+    // Files the work panel previews rather than reads as text (`file-previews.md`).
+    assets: dir({
+      'logo.svg': textFile(logoSvg, at),
+      'photo.png': assetFile('/fixtures/preview/photo.png', 15822, at),
+      'demo.mp4': assetFile('/fixtures/preview/demo.mp4', 31814, at),
+      'intro.mov': assetFile('/fixtures/preview/demo.mp4', 31814, at),
+      'tone.m4a': assetFile('/fixtures/preview/tone.m4a', 10396, at),
+    }),
+    dist: dir({
+      'app.zip': assetFile('/fixtures/preview/app.zip', 140, at),
+      'cache.db': assetFile('/fixtures/preview/app.zip', 140, at),
+    }),
     '.editorconfig': stub('.editorconfig'),
     'AGENTS.md': stub('AGENTS.md'),
     'CLAUDE.md': stub('CLAUDE.md'),
@@ -155,6 +212,7 @@ function tree(): MemoryDirectory {
         'sessions-and-targets.md', 'storage.md', 'web-application.md',
       ])),
       guides: dir(files('docs/guides', ['getting-started.md', 'deploying.md'])),
+      'guide.pdf': assetFile('/fixtures/preview/guide.pdf', 734, at),
     }),
     packages: dir({
       agent: dir({
@@ -394,16 +452,49 @@ const changeSides: Record<string, ChangedSides> = {
   'scripts/release.ts': { kind: 'deleted', original: generated('scripts/release.ts', 36, 14), modified: '' },
   '.github/workflows/ci.yml': generatedChange('.github/workflows/ci.yml', 24, 15),
   'package.json': { kind: 'modified', original: packageJson.replace('"typecheck": "tsgo --noEmit"', '"typecheck": "tsc --noEmit"'), modified: packageJson },
+  'assets/logo.svg': { kind: 'modified', original: logoSvgBefore, modified: logoSvg },
 }
 
-const changedFiles: ChangeFile[] = Object.entries(changeSides).map(([path, sides]) => {
-  const counts = lineCounts(sides.original, sides.modified)
-  const change: ChangeFile = { path, kind: sides.kind, ...counts }
-  if (sides.from) {
-    change.from = sides.from
-  }
-  return change
-})
+/**
+ * Changed files that are not text: the committed version's asset, or that
+ * it is over the 8 MiB git's copy is served up to; none for an added file.
+ */
+const binaryChanges: Record<string, { kind: ChangeFile['kind']; committed: { url: string; size: number } | 'too-large' | null }> = {
+  'assets/photo.png': { kind: 'modified', committed: { url: '/fixtures/preview/photo-before.png', size: 16078 } },
+  'assets/demo.mp4': { kind: 'added', committed: null },
+  'assets/intro.mov': { kind: 'modified', committed: 'too-large' },
+  'dist/app.zip': { kind: 'modified', committed: { url: '/fixtures/preview/app-before.zip', size: 124 } },
+  'dist/cache.db': { kind: 'modified', committed: 'too-large' },
+}
+
+const changedFiles: ChangeFile[] = [
+  ...Object.entries(changeSides).map(([path, sides]) => {
+    const counts = lineCounts(sides.original, sides.modified)
+    const change: ChangeFile = { path, kind: sides.kind, ...counts }
+    if (sides.from) {
+      change.from = sides.from
+    }
+    return change
+  }),
+  // Binary files count no lines, as the runner reports them.
+  ...Object.entries(binaryChanges).map(([path, change]) => ({ path, kind: change.kind, added: 0, removed: 0 })),
+]
+
+/** The committed side of the binary changes, the way the raw committed route serves it. */
+const committedContents: FileContents = {
+  url: (path) => {
+    const committed = binaryChanges[path]?.committed
+    return committed && committed !== 'too-large' ? committed.url : ''
+  },
+  async describe(path) {
+    const committed = binaryChanges[path]?.committed
+    if (committed === 'too-large')
+      throw new FileBrowserError('too-large', 'The file is over 8 MiB')
+    if (!committed)
+      throw new FileBrowserError('not-found', `The last commit has no ${path}`)
+    return { size: committed.size, modifiedAt: null, version: null }
+  },
+}
 
 /** How a fixture change set presents its listing, beyond the files themselves. */
 export interface GalleryChangeListing {
@@ -435,6 +526,7 @@ export function createGalleryChangeSet(latencyMs: number, listing: GalleryChange
       }, latencyMs * 4)
     },
     read: fixed.read,
+    committed: committedContents,
   })
   return source
 }
@@ -450,6 +542,9 @@ function createGalleryChanges(latencyMs: number): ChangeSetSource {
           reject(new DOMException('Aborted', 'AbortError'))
         }, { once: true })
       })
+      if (binaryChanges[path]) {
+        throw new FileBrowserError('binary', 'The file is not UTF-8 text')
+      }
       const sides = changeSides[path]
       if (!sides) {
         throw new Error(`No change recorded for ${path}`)

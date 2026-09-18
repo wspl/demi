@@ -238,6 +238,10 @@ test(
     expect(tail.status).toBe(206)
     expect(new Uint8Array(await tail.arrayBuffer())).toEqual(committed.subarray(committed.length - 100))
     expect((await original('path=chart.png', { method: 'HEAD' })).headers.get('content-length')).toBe('5000')
+    const saved = await original('path=chart.png&download=true')
+    expect(saved.headers.get('content-type')).toBe('application/octet-stream')
+    expect(saved.headers.get('content-disposition')).toStartWith('attachment; filename="chart.png"')
+    expect(new Uint8Array(await saved.arrayBuffer())).toEqual(committed)
     expect((await original('path=new.png')).status).toBe(404)
     expect((await original('path=../escape.png')).status).toBe(400)
 

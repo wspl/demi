@@ -77,8 +77,9 @@ source, since rendering that much stalls the page.
 HTML inside the Markdown renders after it is sanitized
 ([Keeping file content inert](#keeping-file-content-inert)), so README layouts
 such as a centered logo or a `<details>` block look as their authors meant.
-Heading anchors carry a `user-content-` prefix, as on GitHub, so a document's
-ids never collide with the page's; `#` links follow the prefix.
+Heading ids and `<a name>` anchors carry a `user-content-` prefix, as on
+GitHub, so a document's names never collide with the page's; `#` links follow
+the prefix.
 
 Links and images resolve against the file:
 
@@ -99,9 +100,10 @@ In Uncommitted mode, a file with a preview shows its committed version beside
 its working-tree version. An added file has only the working-tree side, a
 deleted file only the committed side, and a renamed file takes its committed
 side from the old path. The two columns stack when the panel is narrow. A
-committed version over 8 MiB shows a card in its column saying it is too large
-to show; the working-tree side is unaffected. A file without a preview shows a
-card per side, each with Download.
+file without a preview shows a card per side, each with Download. A committed
+version over 8 MiB, which the committed side's route cannot serve, shows a card
+in its column saying it is too large to show, without Download; the
+working-tree side is unaffected.
 
 Conversation mode is unchanged. A call's retained edits are text only, and a
 binary edit keeps no contents ([Edit tracking](edit-tracking.md#rationale)).
