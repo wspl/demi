@@ -1,3 +1,12 @@
+<script lang="ts">
+import { ref } from 'vue'
+
+// Markdown and SVG: what each view shows them as holds across files,
+// conversations and panels for the page's lifetime (`file-previews.md`).
+const fileMode = ref<'preview' | 'source'>('preview')
+const changePresentation = ref<'diff' | 'preview'>('diff')
+</script>
+
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { File, FileDiff, Globe, PanelRightClose, Plus, X } from '@lucide/vue'
@@ -158,6 +167,7 @@ function openFromTree(path: string): void {
         <FileView
           v-else-if="active?.kind === 'file' && workspace"
           v-model:tree="treeOpen"
+          v-model:mode="fileMode"
           :source="workspace.source"
           :root="workspace.root"
           :root-name="workspace.name"
@@ -171,12 +181,14 @@ function openFromTree(path: string): void {
         <ChangeView
           v-else-if="active?.kind === 'change'"
           v-model:tree="treeOpen"
+          v-model:presentation="changePresentation"
           :mode="active.mode"
           :selected="changeSelection(active)"
           :changes="changes"
           :edit="active.edit"
           :root="workspace?.root ?? historyRoot ?? '/'"
           :root-name="workspace?.name"
+          :contents="workspace?.source.contents"
           :can-back="active.back.length > 0"
           :can-forward="active.forward.length > 0"
           @update:mode="emit('showChange', active.id, $event, changeTabPath(active, $event))"

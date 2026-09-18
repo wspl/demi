@@ -1,27 +1,41 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, FolderTree } from '@lucide/vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { ArrowLeft, ArrowRight, Download, FolderTree } from '@lucide/vue'
 import CodeEditor from '../editor/components/CodeEditor.vue'
 import { appEditorHost } from '../editor/host/appHost'
 import { toEditorUri } from '../editor/editorUri'
+import { renderable, type DocumentPlace } from '../markdown/document'
 import IconButton from '../ui/IconButton.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
+import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
+import FilePreview from './FilePreview.vue'
+import FileSummary from './FileSummary.vue'
 import FileTree from './FileTree.vue'
+import MarkdownDocument from './MarkdownDocument.vue'
+import { downloadUrl } from './download'
 import { TREE_WIDTH } from './file-view'
+import { hasSourceView, previewKind, TOO_LARGE_NOTE } from './preview'
 import { FileBrowserError, type FileBrowserSource } from './types'
 
 /**
  * One file of a workspace, read through its source: the path as crumbs from
- * the workspace root, the text in the code editor (read-only for now: the
- * editor can edit, the product does not yet save), and beside it the
- * workspace tree with the file selected. The control at the end of the crumb row shows and
- * hides the tree, and the divider before the tree sizes it; the host keeps
- * both (v-model) so they hold across files. A click on another file in the
- * tree, or a pick from a crumb's menu, asks the host to show it here; Back
- * and Forward before the crumbs ask for the files shown before and after.
+ * the workspace root, the file itself, and beside it the workspace tree with
+ * the file selected. Text opens in the code editor (read-only for now: the
+ * editor can edit, the product does not yet save). An image, a video, an
+ * audio file or a PDF shows in the browser's own viewer, Markdown renders as
+ * a document, and a file the page cannot show is a card
+ * (`file-previews.md`). Markdown and SVG offer Preview and Source, and every
+ * file can be downloaded.
+ *
+ * The control at the end of the crumb row shows and hides the tree, and the
+ * divider before the tree sizes it; the host keeps both, and the Preview or
+ * Source choice (v-model), so they hold across files. A click on another file
+ * in the tree, a pick from a crumb's menu, or a link in a Markdown document
+ * asks the host to show it here; Back and Forward before the crumbs ask for
+ * the files shown before and after.
  */
 const props = defineProps<{
   source: FileBrowserSource
@@ -46,48 +60,100 @@ const tree = defineModel<boolean>('tree', { default: true })
 
 const treeWidth = defineModel<number>('treeWidth', { default: TREE_WIDTH.default })
 
+/** Markdown and SVG only: their rendered view, or their text. */
+const mode = defineModel<'preview' | 'source'>('mode', { default: 'preview' })
+
+const modeOptions: readonly SegmentedOption<'preview' | 'source'>[] = [
+  { value: 'preview', label: 'Preview' },
+  { value: 'source', label: 'Source' },
+]
+
+const kind = computed(() => props.path === null ? 'text' : previewKind(props.path))
+const sourceView = computed(() => props.path !== null && hasSourceView(props.path))
+/** An image, video, audio file or PDF shown from its bytes, SVG only while Preview is chosen. */
+const media = computed(() => {
+  const shown = kind.value
+  if (shown === 'text' || shown === 'markdown' || !props.source.contents)
+    return null
+  return sourceView.value && mode.value === 'source' ? null : shown
+})
+
+type TextState =
+  | { phase: 'idle' }
+  | { phase: 'loading' }
+  | { phase: 'ready'; text: string }
+  | { phase: 'card'; note: string | null }
+  | { phase: 'failed'; message: string }
+
 const editor = ref<InstanceType<typeof CodeEditor> | null>(null)
-const state = ref<'idle' | 'loading' | 'ready' | 'failed'>('loading')
-const failure = ref<string | null>(null)
+const state = ref<TextState>({ phase: 'loading' })
 let controller: AbortController | null = null
+
+/** Rendered Markdown, unless Source is chosen or the document is too large to render. */
+const markdown = computed(() => kind.value === 'markdown' &&
+  mode.value === 'preview' &&
+  state.value.phase === 'ready' &&
+  renderable(state.value.text))
+const tooLargeToRender = computed(() => kind.value === 'markdown' &&
+  state.value.phase === 'ready' &&
+  !renderable(state.value.text))
+const place = computed<DocumentPlace | null>(() => props.path === null
+  ? null
+  : {
+      path: props.path,
+      root: props.root,
+      imageUrl: (path) => props.source.contents?.url(path) ?? '',
+    })
 
 async function read(): Promise<void> {
   controller?.abort()
-  if (!props.path) {
-    controller = null
-    state.value = 'idle'
-    failure.value = null
+  controller = null
+  if (props.path === null || media.value !== null) {
+    state.value = { phase: 'idle' }
     return
   }
   const current = new AbortController()
   controller = current
-  state.value = 'loading'
-  failure.value = null
+  state.value = { phase: 'loading' }
   if (!props.source.read) {
-    state.value = 'failed'
-    failure.value = 'This source cannot read files.'
+    state.value = { phase: 'failed', message: 'This source cannot read files.' }
     return
   }
   try {
-    const content = await props.source.read(props.path, current.signal)
-    if (current.signal.aborted) {
+    const text = await props.source.read(props.path, current.signal)
+    if (current.signal.aborted)
       return
-    }
-    state.value = 'ready'
-    await nextTick()
-    editor.value?.setFile({ resourceUri: toEditorUri('workspace', props.path), content })
+    state.value = { phase: 'ready', text }
+    await showInEditor()
   } catch (error) {
-    if (current.signal.aborted) {
+    if (current.signal.aborted)
+      return
+    // A file the text read cannot show is a card.
+    if (error instanceof FileBrowserError && (error.kind === 'binary' || error.kind === 'too-large')) {
+      state.value = { phase: 'card', note: error.kind === 'too-large' ? TOO_LARGE_NOTE : null }
       return
     }
-    state.value = 'failed'
-    failure.value = error instanceof FileBrowserError || error instanceof Error
-      ? error.message
-      : String(error)
+    state.value = { phase: 'failed', message: error instanceof Error ? error.message : String(error) }
   }
 }
 
-watch(() => [props.source, props.path], read, { immediate: true })
+async function showInEditor(): Promise<void> {
+  if (state.value.phase !== 'ready' || markdown.value || props.path === null)
+    return
+  const content = state.value.text
+  const path = props.path
+  await nextTick()
+  editor.value?.setFile({ resourceUri: toEditorUri('workspace', path), content })
+}
+
+function download(): void {
+  if (props.path !== null && props.source.contents)
+    downloadUrl(props.source.contents.url(props.path, { download: true }))
+}
+
+watch(() => [props.source, props.path, media.value], read, { immediate: true })
+// Markdown switches between its document and the editor without a new read.
+watch(markdown, showInEditor)
 
 onBeforeUnmount(() => {
   controller?.abort()
@@ -118,6 +184,18 @@ onBeforeUnmount(() => {
         :editable="false"
         @open="emit('open', $event)"
       />
+      <Segmented
+        v-if="sourceView"
+        v-model="mode"
+        :options="modeOptions"
+        size="sm"
+        class="shrink-0"
+        :disabled="tooLargeToRender"
+        disabled-reason="Too large to render; showing its source"
+      />
+      <Tooltip v-if="source.contents" content="Download" class="shrink-0">
+        <IconButton :icon="Download" variant="ghost" aria-label="Download" :disabled="path === null" @click="download" />
+      </Tooltip>
       <Tooltip :content="tree ? 'Hide file tree' : 'Show file tree'" class="shrink-0">
         <IconButton
           :icon="FolderTree"
@@ -130,21 +208,40 @@ onBeforeUnmount(() => {
     </div>
     <div class="flex min-h-0 flex-1 border-t border-line">
       <div class="relative min-w-0 flex-1">
+        <FilePreview
+          v-if="media && path && source.contents"
+          :key="path"
+          :path="path"
+          :kind="media"
+          :contents="source.contents"
+        />
+        <MarkdownDocument
+          v-else-if="markdown && state.phase === 'ready' && place"
+          :text="state.text"
+          :place="place"
+          @open="emit('open', $event)"
+        />
         <CodeEditor
-          v-if="state === 'ready'"
+          v-else-if="state.phase === 'ready'"
           ref="editor"
           class="h-full"
           :host="appEditorHost"
           read-only
         />
+        <FileSummary
+          v-else-if="state.phase === 'card' && path"
+          :path="path"
+          :contents="source.contents"
+          :note="state.note"
+        />
         <RegionStatus
           v-else
           class="h-full"
-          :busy="state === 'loading'"
-          :failed="state === 'failed'"
-          :label="state === 'idle' ? 'Select a file.' : state === 'loading' ? 'Reading…' : 'Could not read this file.'"
-          :detail="failure"
-          :action="state === 'failed' ? 'Retry' : undefined"
+          :busy="state.phase === 'loading'"
+          :failed="state.phase === 'failed'"
+          :label="state.phase === 'idle' ? 'Select a file.' : state.phase === 'loading' ? 'Reading…' : 'Could not read this file.'"
+          :detail="state.phase === 'failed' ? state.message : null"
+          :action="state.phase === 'failed' ? 'Retry' : undefined"
           @action="read"
         />
       </div>
@@ -163,7 +260,7 @@ onBeforeUnmount(() => {
           :style="{ flex: `0 0 ${treeWidth}px`, width: `${treeWidth}px` }"
           :source="source"
           :root="root"
-        :root-name="rootName"
+          :root-name="rootName"
           :selected="path"
           @open="emit('open', $event)"
         />

@@ -43,6 +43,8 @@ const relativePathQuerySchema = z.object({
     'Expected a relative path',
   ),
 })
+/** `?path=&download=` of the committed file route. */
+const committedFileQuerySchema = relativePathQuerySchema.extend({ download: booleanQuerySchema })
 const attachBodySchema = z.object({ deviceId: z.string().min(1) })
 const renameHostBodySchema = z.object({ name: z.string().trim().min(1).max(64) })
 
@@ -640,11 +642,11 @@ export function conversationRoutes(options: {
   })
 
   app.on(['GET', 'HEAD'], '/:id/changes/raw', async (c) => {
-    const query = relativePathQuerySchema.safeParse(c.req.query())
+    const query = committedFileQuerySchema.safeParse(c.req.query())
     if (!query.success) {
-      return c.json({ code: 'invalid_query', message: 'Expected a relative path query parameter' }, 400)
+      return c.json({ code: 'invalid_query', message: 'Expected a relative path, and download as true or false' }, 400)
     }
-    const path = query.data.path
+    const { path, download } = query.data
     // Git's copy is decoded whole on the runner and is at most 8 MiB, so it
     // is held here and served without a transfer's stream.
     return withConversationHost(c, async (host, root) => {
@@ -652,7 +654,7 @@ export function conversationRoutes(options: {
       const part = rangeAnswer(c.req.header('range'), bytes.byteLength)
       const headers = {
         ...RAW_FILE_HEADERS,
-        ...contentHeaders(previewMediaType(path), { fileName: basenamePath(path) }),
+        ...contentHeaders(previewMediaType(path), { download, fileName: basenamePath(path) }),
         ...part.headers,
       }
       if (part.status === 416 || c.req.method === 'HEAD')

@@ -38,6 +38,7 @@ const workspace = computed(() => {
     source: fileSource({
       directory: `/conversations/${encodeURIComponent(props.conversationId)}/fs`,
       text: `/conversations/${encodeURIComponent(props.conversationId)}/fs/file`,
+      raw: `/conversations/${encodeURIComponent(props.conversationId)}/fs/raw`,
     }, device),
     root: execution.path,
     // The Cloud's own session directory has no name worth showing; it is the workspace.

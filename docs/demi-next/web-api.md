@@ -24,7 +24,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }` |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries agent frames |
 | Conversation files | `GET/POST /conversations/:id/fs`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
-| Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...` |
+| Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
@@ -389,8 +389,8 @@ for an added file), `modified` as the working tree has it (empty for a deleted
 one), under the text limits of the file route.
 
 `GET /api/conversations/:id/changes/raw?path=...` streams one file as the last
-commit has it, the committed side of a previewed change, with the headers and
-range handling of the raw file route but no validators. The working-tree side
+commit has it, the committed side of a previewed change, with the headers,
+range handling and `download` of the raw file route but no validators. The working-tree side
 comes from the raw file route. A path the last commit does not have answers
 404, and a file over 8 MiB answers 413 `file_too_large`, since git's copy is
 decoded whole before it is sent ([Runner](runner.md#working-tree)).
