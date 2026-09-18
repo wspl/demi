@@ -213,9 +213,9 @@ the host it is on, and a countdown that ticks. Choosing a row opens the URL in
 a new tab; each row carries a renew control, which moves the expiry an hour
 out, and a remove control, which destroys the expose at once. The button's
 icon carries a small green dot on its top-right corner while an expose is
-live, so a forgotten URL is visible without opening the menu. Without any expose the menu says so and names the
-command that creates one; on an instance without an expose domain it says
-the feature is off instead. The devices settings do not list exposes.
+live, so a forgotten URL is visible without opening the menu. Without any
+expose the menu says only that; on an instance without an expose domain it
+says the feature is off instead. The devices settings do not list exposes.
 
 The `GET /api/state` snapshot carries the exposes and the domain, and the Web
 API adds create, renew and remove ([Web API](web-api.md#exposes)). The agent
