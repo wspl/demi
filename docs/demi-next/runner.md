@@ -25,6 +25,21 @@ stops admission, waits for active work, and releases the installation lock so a
 replacement runner can start. [External command clients](commands.md#external-command-clients)
 defines local endpoint access and installer verification.
 
+A message on the connection is at most 4 MiB, the limit `runner-protocol`
+defines for both ends. The side about to send a larger one fails the one
+request that message belongs to with `too_large` and keeps the connection; a
+directory with tens of thousands of entries, for example, cannot be listed. A
+receiver still closes a connection that delivers a larger message, since its
+peer broke the protocol. Bulk bytes never need a large message: file contents
+and command IO travel through [pipes](#pipes-and-output).
+
+The limit is eight times the largest regular message, a 5,000-file working
+tree list or a shell command as long as a model can write, about 0.5 MiB
+each. One connection carries everything, so a message in flight holds up the
+rest; at 4 MiB a message still leaves within the 30-second write deadline on
+an uplink of a little over 1 Mbit/s, and a full inbound queue of eight
+messages stays within 32 MiB.
+
 ## Host operations
 
 Filesystem and raw process requests do not require a shell job. The runner
@@ -44,12 +59,43 @@ The runner releases contexts when execution completes, is cancelled, or loses
 its backend connection. Provider CLI assembly can request environment inheritance,
 but the runner has no provider-specific behavior.
 
+### File contents
+
+A file's contents never travel in a message; they go through a pipe, the
+way command IO does. Messages carry the request, its reply and the file's
+metadata.
+
+- `fs_readFile` names a file, an optional byte range (`offset`, and `length` up
+  to the end when absent) and an output pipe. The runner opens the file and
+  replies once it is open and positioned; only then does it stream the range
+  into the pipe. A file that cannot be opened is an error reply, never an
+  empty stream.
+- `fs_writeFile` names a file, whether to create its parent directories, and an
+  input pipe. The runner writes into a temporary file beside the destination
+  and renames it into place only when the pipe ends cleanly, then replies. A
+  pipe that fails or is cancelled removes the temporary file and leaves the
+  destination as it was.
+- A pipe that fails, for example because the reader of a preview went away,
+  stops the read and closes the file.
+- Every pipe end named to the runner is reported with `pipe_done`, including
+  one a refused request never used.
+
+For example, the browser seeks a video to the middle of a 300 MB file. The
+backend asks for `fs_readFile` from byte 150,000,000 into a new pipe; the runner
+opens the file, seeks, replies, and uploads the bytes as the backend accepts
+them. When the user picks another file, the backend fails the pipe, and the
+runner's upload ends and the file closes.
+
 ### Working tree
 
 A `git_changes` request lists the uncommitted changes under a directory, and
-`git_show` returns a file as the last commit has it. The runner answers both in
+`git_show` sends a file as the last commit has it. The runner answers both in
 process with gitoxide; the device needs no git executable. Both name the
-directory as `root`; a `git_show` also names the file's path relative to it.
+directory as `root`; a `git_show` also names the file's path relative to it
+and an output pipe, and streams the whole file into the pipe like any
+[file contents](#file-contents). Git stores the file compressed, often as the
+difference from another version, so the runner decodes it whole in memory
+before replying.
 The `git_changes` reply:
 
 | Field | Meaning |

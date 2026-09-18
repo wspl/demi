@@ -83,8 +83,8 @@ requests, so the backend is part of that device's execution trust boundary.
 
 Conversation records live in backend storage. Working files and full shell output
 live on their execution targets. The backend receives bounded shell output views
-and can request target files when needed. Runner messages can carry bytes, and
-HTTP pipes stream command IO; the protocols are not reference-only.
+and can request target files when needed. Runner messages carry requests,
+replies and small values; HTTP pipes stream file contents and command IO.
 [Storage](storage.md) defines persistence, and [runner IO](runner.md#pipes-and-output)
 defines output and pipe lifetimes.
 
@@ -132,6 +132,7 @@ implementation.
 | How are native commands installed and executed? | [Native runtime](native-runtime.md) |
 | What does a device runner own? | [Runner](runner.md) |
 | What did a tool call edit? | [Edit tracking](edit-tracking.md) |
+| How does the work panel show images, media, PDF and Markdown? | [File previews](file-previews.md) |
 | How do external programs call declared commands? | [External command clients](commands.md#external-command-clients) |
 | How is Cloud provisioned and reset? | [Managed hosts](managed-hosts.md) |
 | How does the web application fit together? | [Web application](web-application.md) |

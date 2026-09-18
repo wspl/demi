@@ -84,7 +84,8 @@ Editing and Fork use their backend operation contracts; see
 [Message editing](../message-editing.md) and [Conversation Fork](../conversation-fork.md).
 
 Product adapters connect shared file interfaces to device filesystem APIs,
-the working-tree change routes, and uploads, and shared account interfaces to
+the working-tree change routes, the raw file routes behind
+[file previews](file-previews.md), and uploads, and shared account interfaces to
 provider, pairing, and Cloud APIs.
 The work panel keeps one file selection, one change selection and local browser
 tabs per conversation. Change and File are fixed view selections; browser tabs

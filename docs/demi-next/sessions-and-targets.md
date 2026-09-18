@@ -133,6 +133,23 @@ Lifecycle cleanup is the explicitly scoped extension below; it still uses this
 entry. Any other change to wake or gate behavior must be decided here, not
 introduced as a bypass in code.
 
+A file transfer is the one operation whose length the browser decides: the
+bytes of a [file preview](file-previews.md) or a download, which last as long
+as a user watches a video. It holds Host access like any operation, until its
+last byte is delivered or the browser ends it. Two rules keep a forgotten
+transfer from holding a Cloud awake or a conversation's file gate:
+
+- A transfer the browser has accepted no bytes from for 60 seconds ends:
+  its connection is reset, not ended cleanly, and its access is released.
+  Only time spent waiting for the browser counts; waiting for the runner or
+  for a Cloud to wake does not. A paused player keeps its connection open
+  without reading; when it needs more, it asks for the range again. Sixty
+  seconds is the stalled-client timeout web servers use, nginx's
+  `send_timeout` among them.
+- An archive, a target or directory change, and a detach end the
+  conversation's open transfers instead of waiting for them or being refused
+  by them. A Cloud stop or reset ends them with the device's other work.
+
 One kind of access reaches a device without a conversation: the public relay
 of a [Host expose](expose.md#the-public-relay), whose traffic comes from
 anonymous visitors and belongs to the user's device, not to any
@@ -170,9 +187,9 @@ unstarted admission attempt may wait and re-enter. Reset/archive/loss preserve
 their explicit refusal semantics.
 
 A target/directory change or archive validates its request, reserves the idle
-tree, cancels existing viewers, and awaits their release. Other file work
-follows normal busy admission and is not silently classified as a passive
-observer. After reserving conversation file admission, it sends the conversation
+tree, cancels existing viewers and file transfers, and awaits their release.
+Other file work follows normal busy admission and is not silently classified
+as a passive observer. After reserving conversation file admission, it sends the conversation
 release to the old device through the conversation's host access, then commits
 the target/archive change. The old binding remains authoritative until commit.
 The release is a runner message, not Host IO: it needs no file gate, never
@@ -191,7 +208,7 @@ Conversation and device admission protect different resources:
 | Scope | Protected transition | Work that prevents an idle transition |
 | --- | --- | --- |
 | One conversation tree | Target change | Root and child turns, restores, queued work, and wakeups admitted by the tree lifecycle |
-| Conversation files | Target change | Host operations: uploads, the working tree, file text |
+| Conversation files | Target change | Host operations: uploads, the working tree, file text. File transfers are ended, not awaited. |
 | One Cloud device | Shutdown or reset | Device operations and relevant agent trees across all of its user's conversations |
 
 The lifecycle module reserves device admission before the managed-host
