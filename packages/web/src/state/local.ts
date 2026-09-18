@@ -8,7 +8,8 @@ const localStateSchema = z.object({
   /** The sidebar's width in px; absent until the reader resizes it. */
   sidebarWidth: z.number().int().optional(),
   /** The work panel's width in px; absent until the reader resizes it. */
-  asideWidth: z.number().int().optional(),
+  /** The work panel's share of the width it splits with the conversation. */
+  asideShare: z.number().min(0).max(1).optional(),
   /** Whether the work panel is open, keyed by conversation id. */
   workPanelOpen: z.record(z.string(), z.boolean()).optional(),
 })
