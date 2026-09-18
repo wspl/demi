@@ -2,6 +2,7 @@ import { reactive } from 'vue'
 import type { ChangeFile, ChangeSetSource, ReadCallChange } from '@demicodes/web-ui/files/changes'
 import { ApiError, apiRequest, readResponse } from '../api/client'
 import { changeSidesSchema, workingTreeChangesSchema } from '../api/contracts'
+import { fileBrowserError, rawFileContents } from '../api/files'
 
 /**
  * The uncommitted changes of a conversation's execution directory, as the
@@ -72,12 +73,18 @@ export function createWorkingTreeSource(conversationId: string): WorkingTreeSour
       stale = true
     },
     async read(path: string, signal?: AbortSignal) {
-      const response = await apiRequest(
-        `/conversations/${id}/changes/file?${new URLSearchParams({ path })}`,
-        { signal },
-      )
-      return readResponse(response, changeSidesSchema)
+      try {
+        const response = await apiRequest(
+          `/conversations/${id}/changes/file?${new URLSearchParams({ path })}`,
+          { signal },
+        )
+        return await readResponse(response, changeSidesSchema)
+      } catch (error) {
+        // A side that is not text is the views' to show another way.
+        throw fileBrowserError(error)
+      }
     },
+    committed: rawFileContents(`/conversations/${id}/changes/raw`),
   })
   return source
 }

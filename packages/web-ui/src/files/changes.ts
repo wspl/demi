@@ -1,6 +1,7 @@
 import type { ShellEditedFile } from '@demicodes/agent/client'
 import { baseName, joinPath } from './paths'
 import type { TreeRow } from './tree'
+import type { FileContents } from './types'
 
 /**
  * One changed file as the change view lists it: its path, how it changed,
@@ -30,8 +31,18 @@ export interface ChangeSetSource {
   failure?: string | null
   /** Lists the working tree again. */
   refresh?(): void
-  /** Both sides of one file: empty `original` for an added file, empty `modified` for a deleted one. */
+  /**
+   * Both sides of one file: empty `original` for an added file, empty
+   * `modified` for a deleted one. A side that is not text rejects with a
+   * `FileBrowserError` of kind `binary` or `too-large`.
+   */
   read(path: string, signal?: AbortSignal): Promise<ChangeSides | null>
+  /**
+   * Each file as the last commit has it, by the path relative to the
+   * workspace, for previews and Download; absent when the source serves no
+   * bytes.
+   */
+  committed?: FileContents
 }
 
 export interface ChangeSides { original: string; modified: string }

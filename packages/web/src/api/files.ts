@@ -1,32 +1,77 @@
-import { FileBrowserError, type FileBrowserSource } from '@demicodes/web-ui/files/types'
-import { ApiError, apiRequest, jsonBody, readResponse } from './client'
-import { directorySchema, fileTextSchema } from './contracts'
+import {
+  FileBrowserError,
+  type FileBrowserFailure,
+  type FileBrowserSource,
+  type FileContents,
+} from '@demicodes/web-ui/files/types'
+import { ApiError, apiRequest, apiUrl, invalidResponse, jsonBody, readResponse } from './client'
+import { directorySchema, fileHeadersSchema, fileTextSchema } from './contracts'
 import type { Device } from '../state/types'
 
+/** What an API failure means to the file views; a `HEAD` answer has only its status to say it. */
+function failureKind(error: ApiError): FileBrowserFailure['kind'] {
+  if (error.code === 'device_offline')
+    return 'offline'
+  if (error.code === 'not_text' || error.status === 415)
+    return 'binary'
+  if (error.code === 'file_too_large' || error.status === 413)
+    return 'too-large'
+  if (error.status === 404)
+    return 'not-found'
+  if (error.status === 403)
+    return 'permission'
+  return 'other'
+}
+
+/** An API failure as the file views read it; anything else as it is. */
+export function fileBrowserError(error: unknown): unknown {
+  return error instanceof ApiError ? new FileBrowserError(failureKind(error), error.message) : error
+}
+
 function browserError(error: unknown): never {
-  if (error instanceof ApiError) {
-    const kind =
-      error.code === 'device_offline'
-        ? 'offline'
-        : error.status === 404
-          ? 'not-found'
-          : error.status === 403
-            ? 'permission'
-            : 'other'
-    throw new FileBrowserError(kind, error.message)
+  throw fileBrowserError(error)
+}
+
+/**
+ * The bytes behind a raw file route (`web-api.md` § File text and working
+ * tree changes): `endpoint` serves `?path=`, with `version` and `download`,
+ * and answers `HEAD` with a file's size, modification time and version.
+ */
+export function rawFileContents(endpoint: string): FileContents {
+  return {
+    url: (path, options = {}) => apiUrl(`${endpoint}?${new URLSearchParams({
+      path,
+      ...(options.version ? { version: options.version } : {}),
+      ...(options.download ? { download: 'true' } : {}),
+    })}`),
+    async describe(path, signal) {
+      let response: Response
+      try {
+        response = await apiRequest(`${endpoint}?${new URLSearchParams({ path })}`, { method: 'HEAD', signal })
+      } catch (error) {
+        browserError(error)
+      }
+      const headers = fileHeadersSchema.safeParse({
+        size: response.headers.get('content-length'),
+        modifiedAt: response.headers.get('last-modified'),
+        version: response.headers.get('etag'),
+      })
+      if (!headers.success)
+        throw invalidResponse(headers.error)
+      return headers.data
+    },
   }
-  throw error
 }
 
 const sources = new Map<string, FileBrowserSource>()
 
 /** The shared browser handles paths and selection; this adapter handles HTTP. */
 export function fileSource(
-  endpoints: { directory: string | null; text?: string },
+  endpoints: { directory: string | null; text?: string; raw?: string },
   device: Pick<Device, 'platform' | 'home'> | null,
 ): FileBrowserSource {
-  const { directory: endpoint, text: textEndpoint } = endpoints
-  const key = JSON.stringify([endpoint, textEndpoint, device?.platform, device?.home])
+  const { directory: endpoint, text: textEndpoint, raw: rawEndpoint } = endpoints
+  const key = JSON.stringify([endpoint, textEndpoint, rawEndpoint, device?.platform, device?.home])
   const cached = sources.get(key)
   if (cached) {
     return cached
@@ -69,6 +114,7 @@ export function fileSource(
           },
         }
       : {}),
+    ...(rawEndpoint ? { contents: rawFileContents(rawEndpoint) } : {}),
     ...(textEndpoint
       ? {
           async read(path: string, signal?: AbortSignal) {
