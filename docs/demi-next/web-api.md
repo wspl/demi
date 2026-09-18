@@ -23,8 +23,8 @@ Partial conversation mutations use the explicit outcomes described below.
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }` |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries agent frames |
-| Conversation files | `GET/POST /conversations/:id/fs`, `GET /conversations/:id/fs/file?path=...`, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
-| Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...` |
+| Conversation files | `GET/POST /conversations/:id/fs`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
+| Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...` |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
@@ -40,13 +40,15 @@ Partial conversation mutations use the explicit outcomes described below.
 
 ### Query parameters
 
-A boolean query parameter (`archived`, `refresh`) is spelled exactly `true` or
+A boolean query parameter (`archived`, `refresh`, `download`) is spelled exactly `true` or
 `false`; omitted means false, and anything else — `1`, `TRUE`, an empty value —
 returns 400 `invalid_query` rather than being read as one of them. A directory
 in `GET /devices/:id/fs?path=` must be absolute on that device; omitted, the
 listing starts at the device's home directory. `GET /blobs/:sha256?type=` is not
 validated the same way: the parameter asks for a media type to render in place,
-and a type outside the inline list simply leaves the blob as a download.
+and a type the page does not show in place
+([File previews](file-previews.md#keeping-file-content-inert)) simply leaves
+the blob as a download.
 
 ## Conversation creation and Fork
 
@@ -266,7 +268,9 @@ so archiving and renaming together archives successfully but refuses the rename.
 207 with an outcome per item; missing conversations are reported individually.
 
 Running root or child work refuses archive. Archive also refuses while a file
-operation or asynchronous frame admission is in progress. Archived conversations
+operation or asynchronous frame admission is in progress, except a file
+transfer, which archive ends instead
+([Host operations](sessions-and-targets.md#host-operations)). Archived conversations
 allow transcript reads and read acknowledgements; stream upgrades, existing
 socket writes, attachment delivery, host changes and metadata edits are refused until restore.
 The transport waits for frame handling to finish before releasing admission;
@@ -324,7 +328,9 @@ same route with `{ path }` creates a directory recursively and returns `{ path }
 with status 201. `GET /api/conversations/:id/fs/file?path=...` returns
 `{ path, text }`. Paths follow the Host's filesystem rules; the execution directory
 is a starting directory, not a permission boundary. Missing paths answer 404,
-and permission failures answer 403.
+and permission failures answer 403. A directory too large to list in one
+runner message ([Runner](runner.md#connection-and-identity)) answers 413
+`directory_too_large`.
 
 All three operations use [conversation Host access](sessions-and-targets.md#host-operations),
 including Cloud wake and the file gate. Archived conversations answer 409
@@ -333,6 +339,26 @@ including Cloud wake and the file gate. Archived conversations answer 409
 A file over 8 MiB answers 413 `file_too_large`, the same limit a retained edit
 snapshot has ([Edit tracking](edit-tracking.md#scope)); one that is not UTF-8
 text, or contains a NUL byte, answers 415 `not_text`.
+
+`GET /api/conversations/:id/fs/raw?path=...` streams a file's bytes for
+[file previews](file-previews.md) and downloads, through the same Host access
+and with the same failures, and without a size limit. A media type the
+preview table shows in place is served as itself; any other file, and every
+file when `download=true`, is served as `application/octet-stream` with
+`Content-Disposition: attachment` and the file's name. A path that is not a
+regular file answers 404. One byte range in `Range` answers 206 with that
+range; several ranges answer the whole file with 200, and a range that starts
+past the end answers 416. The ETag derives from the file's size and
+modification time, and `If-None-Match` answers 304. A request that names the
+`version` it expects, an ETag it saw earlier, answers 412 once the file no
+longer has it: a player's retries carry no validator, and they must never
+splice two versions of a file together. Every answer carries
+`X-Content-Type-Options: nosniff`, `Cache-Control: private, no-cache`,
+`Vary: Cookie` and `X-Accel-Buffering: no`, the last so that a proxy in front
+streams it instead of buffering it; an image served in place also carries the
+[content policy](file-previews.md#keeping-file-content-inert). `HEAD` answers
+the headers alone. How long a transfer may last, and what ends it, follows
+[Host operations](sessions-and-targets.md#host-operations).
 
 The remote attachment picker lists and creates directories through
 `GET/POST /api/conversations/:id/hosts/:deviceId/fs`, with the same directory
@@ -358,6 +384,13 @@ refresh failed.
 modified }` for one changed file: `original` as the last commit has it (empty
 for an added file), `modified` as the working tree has it (empty for a deleted
 one), under the text limits of the file route.
+
+`GET /api/conversations/:id/changes/raw?path=...` streams one file as the last
+commit has it, the committed side of a previewed change, with the headers and
+range handling of the raw file route but no validators. The working-tree side
+comes from the raw file route. A path the last commit does not have answers
+404, and a file over 8 MiB answers 413 `file_too_large`, since git's copy is
+decoded whole before it is sent ([Runner](runner.md#working-tree)).
 
 `GET /api/conversations/:id/commands/:commandId/changes/file?path=...&edit=0` returns
 the same shape for one retained edit segment of a tool call, from the conversation's change

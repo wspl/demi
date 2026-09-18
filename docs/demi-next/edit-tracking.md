@@ -222,3 +222,8 @@ together.
 
 Only creations and modifications are reported because the conversation shows
 what the model wrote, not the state of the directory.
+
+Binary contents are never retained, whatever their size: copies of images and
+media would fill the change store for little use, since the change view's
+history is about text. The work panel shows a binary file only as it exists
+on the Host ([File previews](file-previews.md)).
