@@ -1,4 +1,3 @@
-import { errorSummary } from '@demicodes/web-ui/agent/error-detail'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { useSession } from '../auth/session'
@@ -53,7 +52,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         state: 'ready' | 'error'
         testPassed?: boolean
         detail?: string
-        detailSummary?: string
         testedWith?: string
       }
     >
@@ -453,7 +451,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           z.object({
             ok: z.boolean(),
             message: z.string().optional(),
-            code: z.string().nullish(),
             model: z.string().optional(),
           }),
         )
@@ -462,7 +459,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           state: result.ok ? 'ready' : 'error',
           testPassed: result.ok,
           detail: result.ok ? undefined : result.message ?? 'The provider gave no reason.',
-          detailSummary: result.ok ? undefined : errorSummary(result.code),
           testedWith: result.model,
         }
       } catch (error) {
