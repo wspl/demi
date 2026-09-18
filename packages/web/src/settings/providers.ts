@@ -436,7 +436,12 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
   }
 
+  /** Tests with the first model the user keeps enabled; the page offers no test without one. */
   function test(provider: SettingsProviderEntry): void {
+    const model = provider.models.find((candidate) => candidate.enabled)
+    if (!model) {
+      return
+    }
     perform(provider.id, { kind: 'testing' }, async (signal) => {
       try {
         const response = await apiRequest(
@@ -444,6 +449,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           {
             method: 'POST',
             signal,
+            ...jsonBody({ modelId: model.id }),
           },
         )
         const result = await readResponse(
