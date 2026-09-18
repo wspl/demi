@@ -61,6 +61,7 @@ const messages: Record<string, string> = {
   'agent.assistant.forkUnavailable': 'Fork is available after this message completes.',
   'agent.assistant.copyFailed': 'Could not copy. Try again.',
   'agent.dock.resume': 'Resume',
+  'agent.dock.continue': 'Continue',
   'agent.input.attachmentUploading': 'Uploading',
   'agent.input.attachmentFailed': "Couldn't attach",
   'agent.input.waitForAttachments': 'Wait for attachments to finish uploading',

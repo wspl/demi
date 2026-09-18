@@ -20,7 +20,7 @@ import type { MessageForkHandler } from './message-fork'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { t } from '../infra/i18n'
-import { sessionFailureNotice } from './session-status'
+import { sessionFailureNotice, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
 
@@ -53,8 +53,8 @@ const emit = defineEmits<{
 }>()
 provideEditSelection((selection) => props.selectEdit?.(selection))
 const surface = ref<{ dockHeight: number }>()
-// Recovery (Retry on the tail error record, Resume after an abort) needs a
-// provider and a conversation that is neither archived nor being edited.
+// Recovery of an unfinished turn needs a provider and a conversation that is
+// neither archived nor being edited.
 const canRecover = computed(
   () =>
     props.hasProvider &&
@@ -64,7 +64,7 @@ const canRecover = computed(
 )
 // A session-level failure is told once, in the transcript flow: never beside
 // the status pane that already replaced the transcript, never under an error
-// record that already carries Retry.
+// record that already says it.
 const failureNotice = computed(() => {
   const visible = getVisibleBlocks(props.conversation.blocks)
   return sessionFailureNotice(
@@ -74,6 +74,12 @@ const failureNotice = computed(() => {
     visible.at(-1)?.type === 'error',
   )
 })
+// One control in the dock: Resume after an error, Continue after the user's Stop.
+const recovery = computed(() =>
+  canRecover.value
+    ? turnRecovery(props.conversation.phase, getVisibleBlocks(props.conversation.blocks).at(-1))
+    : null,
+)
 const canEdit = computed(() => !!props.editVersion && !props.messageEdit
   && !props.pendingSubmission
   && !props.conversation.archived
@@ -165,7 +171,6 @@ watch(() => props.conversation.id, close)
             :pending-action="conversation.pendingAction"
             :load-error="conversation.lastError"
             :failure="failureNotice"
-            :retry="canRecover ? () => emit('retry') : undefined"
             :pending-submission="pendingSubmission"
             :read-only="!canEdit"
             :fork="fork"
@@ -188,13 +193,10 @@ watch(() => props.conversation.id, close)
             @scroll-to-bottom="list?.scrollToBottom()"
           >
             <template #chips>
-              <!-- An error record carries its own Retry in the transcript; only an abort resumes from here. -->
-              <SessionDockChip
-                v-if="canRecover && conversation.status === 'aborted'"
-                @click="emit('retry')"
-              >
+              <!-- The transcript says what happened; the one recovery control is here, over the input. -->
+              <SessionDockChip v-if="recovery" @click="emit('retry')">
                 <Play :size="ICON_PX.in28" />
-                {{ t('agent.dock.resume') }}
+                {{ t(recovery === 'resume' ? 'agent.dock.resume' : 'agent.dock.continue') }}
               </SessionDockChip>
               <TerminalChip
                 :terminals="conversation.terminals"

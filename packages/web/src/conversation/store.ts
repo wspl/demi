@@ -98,10 +98,12 @@ export const useConversations = defineStore('conversations', () => {
     if (status === 'running' || status === 'compacting') {
       return 'active'
     }
-    if (status === 'error') {
+    // A turn the process died under is a failure, like a provider's; only the
+    // user's own Stop is an abort (`product.md` § Recovering an unfinished turn).
+    if (status === 'error' || status === 'interrupted') {
       return 'error'
     }
-    if (status === 'interrupted' || status === 'stopped') {
+    if (status === 'stopped') {
       return 'aborted'
     }
     return status === 'completed' ? 'done' : 'idle'

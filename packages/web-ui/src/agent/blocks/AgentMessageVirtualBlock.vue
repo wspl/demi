@@ -28,7 +28,6 @@ const props = defineProps<{
   fork?: () => Promise<void>
   forkState?: MessageForkState
   /** Retry on the error record that ended the conversation. */
-  retry?: () => void
   /** The block just arrived in a live transcript: a chrome row slides in from the left as it fades in. */
   entering?: boolean
 }>()
@@ -139,7 +138,6 @@ const entersAsChrome = computed(() =>
         :message="block.message"
         :code="block.code"
         :diagnostics="block.diagnostics"
-        :retry="retry"
       />
     </div>
     <div

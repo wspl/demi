@@ -48,8 +48,6 @@ const props = defineProps<{
   loadError?: string | null
   /** A session-level failure told at the tail of the transcript, in flow. */
   failure?: SessionFailureNotice | null
-  /** Offered on the error record that ended an idle conversation. */
-  retry?: () => void
   pendingSubmission?: PendingSubmissionState | null
 }>()
 
@@ -124,13 +122,6 @@ const paneStatus = computed(() =>
   props.pendingSubmission ? null : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.length > 0),
 )
 const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.editTargetId))
-// Only the record that ended the conversation is a place to retry from; older
-// errors are history.
-const retryTargetId = computed(() => {
-  const tail = transcriptBlocks.value.at(-1)
-  return props.phase === 'idle' && tail?.type === 'error' ? tail.id : null
-})
-
 // Every streamed delta re-renders the visible rows; the lookup must not rescan the transcript per row.
 const transcriptIndexById = computed(
   () =>
@@ -250,7 +241,6 @@ defineExpose({
                 :thinking-ended-at="thinkingEndedAt(item.index)"
                 :fork="fork ? () => forkMessage(renderBlocks[item.index]!.id) : undefined"
                 :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
-                :retry="renderBlocks[item.index]!.id === retryTargetId ? retry : undefined"
                 :entering="isEntering(renderBlocks[item.index]!.id)"
                 :editable="renderBlocks[item.index]!.id === editableUserId && !props.readOnly && phase === 'idle' && !queue.length && !pendingSteers.length"
                 @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
