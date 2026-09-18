@@ -96,15 +96,24 @@ control remains separate from read-only job inspection.
 
 ### Recovering an unfinished turn
 
-A turn can end without finishing: the provider refuses the request after the
-automatic retries give up, the user presses Stop halfway through a task, or
-the backend restarts under a running turn. In each case the agent can go on
-from where it was, without the user typing anything.
+A turn can end without finishing in two ways, and the agent can go on from
+either without the user typing anything.
+
+- **Something broke.** The provider refuses the request after the automatic
+  retries give up; the backend restarts under a running turn; the Host goes
+  away and does not come back. Every one of these is an error: the transcript
+  gets an error record that says what happened. A provider failure carries the
+  provider's own words; a failure of Demi's own carries Demi's fact, for
+  example "The backend restarted while this turn was running" or "The Host
+  ZandeMacBook-Pro went offline during this turn". No turn ends unfinished
+  without either such a record or the user's own Stop.
+- **The user stopped it.** Stop is a decision, not a failure, and leaves the
+  stopped marker it leaves today.
 
 The transcript says what happened; the place to act is above the composer.
-The error record keeps the provider's own words, the facts and Copy, and
-carries no button. One recovery control sits in the dock, directly over the
-input, where the user's next action already is:
+The error record keeps its text, the facts and Copy, and carries no button.
+One recovery control sits in the dock, directly over the input, where the
+user's next action already is:
 
 ```text
   ... transcript ...
@@ -118,13 +127,12 @@ input, where the user's next action already is:
   +--------------------------------------------------------------+
 ```
 
-Its label says why the turn is unfinished, because the user's expectation
-differs:
+Its label follows the cause, because the user's expectation differs:
 
 | How the turn ended | Control | What the user expects |
 | --- | --- | --- |
-| A provider failure ended it (conversation status `error`) | **Resume** | The same step again: nothing was decided, something broke. |
-| The user stopped it, or an interruption did: backend restart, lost Host (`stopped`, `interrupted`) | **Continue** | The agent goes on with the work it was cut off from. |
+| An error ended it: a provider failure, a backend restart, a lost Host | **Resume** | The same step again: nothing was decided, something broke. |
+| The user pressed Stop | **Continue** | The agent goes on with the work the user cut short. |
 | It finished | none | |
 
 Both are the same operation, the session's `resume`: it unwinds to the turn's
