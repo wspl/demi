@@ -168,6 +168,13 @@ function useWorkTabs(activeId: string | null, path = 'src/auth/cookie.ts') {
 const workspace = createGalleryWorkspace()
 const fileViewTree = ref(true)
 const changeViewTree = ref(true)
+const fileViewMode = ref<'preview' | 'source'>('preview')
+const changeViewPresentation = ref<'diff' | 'preview'>('diff')
+/** One of each kind the File view previews, by workspace path. */
+const previewFiles = [
+  'README.md', 'assets/logo.svg', 'assets/photo.png', 'assets/demo.mp4',
+  'assets/tone.m4a', 'docs/guide.pdf', 'dist/app.zip', 'src/auth/cookie.ts',
+]
 /** One change tab on its own, stepped the way the panel steps the host's: for the Change view specimens. */
 function useChangeTab(mode: ChangeMode, path: string | null, changes: ChangeSources) {
   const tabs = ref<WorkTab[]>(showChangeInTab([changeWorkTab('c', mode)], 'c', mode, path, { call: changes.conversation, edit: 0 }))
@@ -231,6 +238,13 @@ const changePicked = useChangeTab('conversation', 'src/auth/cookie.ts', {
     commandId: 'gallery-cookie-edit',
     file: { path: 'src/auth/cookie.ts', kind: 'modified', added: 1, removed: 1, edits: [{ kept: true }] },
   }, readCallChange),
+})
+const changeDocument = useChangeTab('conversation', 'README.md', {
+  uncommitted: workspace.changes,
+  conversation: callChangeSource({
+    commandId: 'gallery-readme-edit',
+    file: { path: 'README.md', kind: 'modified', added: 0, removed: 1, edits: [{ kept: true }] },
+  }, (_commandId, path, _edit, signal) => workspace.changes.read(path, signal)),
 })
 const changeEmpty = useChangeTab('conversation', null, { conversation: null, uncommitted: workspace.changes })
 const changeNoRepository = useChangeTab('uncommitted', null, {
@@ -1652,13 +1666,17 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="File view"
-        note="A file of the workspace: the path as crumbs from the workspace root, the highlighted text, and the workspace tree beside it with the file selected. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, or clicked in the tree, replaces the one shown, and Back and Forward before the crumbs walk the files shown. The control at the end of the crumb row hides and shows the tree. Reads carry the fixture's latency, so the text and each directory show their loading state first."
+        note="A file of the workspace: the path as crumbs from the workspace root, the file itself, and the workspace tree beside it with the file selected. Text opens highlighted in the editor. An image fits the pane without being enlarged, over a checkerboard where it is transparent, and a click shows it at its actual size; video and audio play in the browser's own player and PDF in its own viewer, each with its pixel size and file size under it. Markdown renders like a repository file on GitHub: its HTML sanitized, so the script and the handler at the end of the README never run, its math and code rendered, its front matter a YAML block, and its links opening files here, scrolling to headings, or leaving for the web. Markdown and SVG switch between Preview and Source. A file that is neither text nor previewable is a card with its facts and Download, and every file has Download in the header. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, clicked in the tree or linked from a document replaces the one shown, and Back and Forward before the crumbs walk the files shown. The control at the end of the crumb row hides and shows the tree. Reads carry the fixture's latency, so the text and each directory show their loading state first."
       >
-        <GallerySpecimen variant="cookie.ts · live" wide>
+        <div class="flex flex-wrap gap-1">
+          <Button v-for="file in previewFiles" :key="file" size="sm" @click="showInFileView(`${workspace.root}/${file}`)">{{ file }}</Button>
+        </div>
+        <GallerySpecimen variant="workspace file · live" wide>
           <div class="gallery-frame flex h-[40rem] overflow-hidden">
             <FileView
               class="w-full"
               v-model:tree="fileViewTree"
+              v-model:mode="fileViewMode"
               :source="workspace.source"
               :root="workspace.root"
               :path="fileViewPath"
@@ -1673,7 +1691,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Change view"
-        note="Diffs from one of two sources, the switch in the header picks. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation shows only the file picked under a shell call, without a file tree or a list source. It shows that file’s retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Either way the header names the file shown with its counts. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself. Only Uncommitted offers a tree toggle; its tree's caption lists the changes again, its control turning while the list is on its way. Picking a file opens Conversation; selecting the fixed Change section returns to Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows “Not a git repository.” without the file tree or its toggle. It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
+        note="Diffs from one of two sources, the switch in the header picks. A changed image, video, audio file or PDF shows its committed version beside the working tree's instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled Committed and Working tree, or Before and After in Conversation. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation shows only the file picked under a shell call, without a file tree or a list source. It shows that file’s retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Either way the header names the file shown with its counts. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself. Only Uncommitted offers a tree toggle; its tree's caption lists the changes again, its control turning while the list is on its way. Picking a file opens Conversation; selecting the fixed Change section returns to Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows “Not a git repository.” without the file tree or its toggle. It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
       >
         <GallerySpecimen
           v-for="specimen in [
@@ -1681,6 +1699,7 @@ function abortTerminal(id: string) {
             { variant: 'uncommitted · not a repository, named Workspace', work: changeNoRepository, rootName: 'Workspace' },
             { variant: 'uncommitted · listing failed, cut short', work: changeStale, rootName: undefined },
             { variant: 'conversation · picked', work: changePicked, rootName: undefined },
+            { variant: 'conversation · a Markdown file picked', work: changeDocument, rootName: undefined },
             { variant: 'conversation · nothing picked', work: changeEmpty, rootName: undefined },
           ]"
           :key="specimen.variant"
@@ -1691,6 +1710,8 @@ function abortTerminal(id: string) {
             <ChangeView
               class="w-full"
               v-model:tree="changeViewTree"
+              v-model:presentation="changeViewPresentation"
+              :contents="workspace.source.contents"
               :mode="specimen.work.tab.value.mode"
               :selected="specimen.work.selected.value"
               :changes="specimen.work.changes.value"

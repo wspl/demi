@@ -13,8 +13,8 @@ import {
 import { escapeHtml } from './html'
 
 // `$...$` inline / `$$...$$` block LaTeX, rendered to self-contained HTML (KaTeX CSS is loaded
-// by the app). `nonStandard` lets inline math sit flush against CJK text the model writes;
-// `throwOnError` keeps malformed math from blowing up the whole message.
+// by web-ui's base stylesheet). `nonStandard` lets inline math sit flush against CJK text the
+// model writes; `throwOnError` keeps malformed math from blowing up the whole message.
 const katexExtension = markedKatex({
   throwOnError: false,
   nonStandard: true,
