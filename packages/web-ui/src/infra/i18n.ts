@@ -29,6 +29,8 @@ const messages: Record<string, string> = {
   'agent.block.retrying': 'Retrying',
   'agent.block.aborted': 'Aborted',
   'agent.error.failed': 'The turn failed',
+  'error.showUpstream': 'Show what the provider sent',
+  'error.hideUpstream': 'Hide what the provider sent',
   'agent.stats.contextWindow': 'Context window',
   'agent.stats.cacheRead': 'Cache read',
   'agent.stats.input': 'Input',

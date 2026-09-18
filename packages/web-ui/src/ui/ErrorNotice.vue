@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { Check, CircleX, Copy } from '@lucide/vue'
 import { t } from '../infra/i18n'
@@ -22,6 +23,8 @@ const props = withDefaults(
     detail?: string | null
     /** The short facts a support thread asks for first: status, code, request id. */
     facts?: readonly string[]
+    /** What the source sent, in full, behind a disclosure: the vendor's own payload. */
+    raw?: string | null
     /** The single action's label; the caller decides what it does. */
     action?: string
     /** What the copy control puts on the clipboard; no control without it. */
@@ -29,12 +32,14 @@ const props = withDefaults(
   }>(),
   {
     detail: null,
+    raw: null,
     facts: () => [],
     copyText: null,
   },
 )
 defineEmits<{ action: [] }>()
 const { copy, copied } = useClipboard({ copiedDuring: 1500 })
+const rawOpen = ref(false)
 </script>
 
 <template>
@@ -62,6 +67,20 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
         >
           {{ facts.join(' · ') }}
         </p>
+        <template v-if="raw">
+          <button
+            type="button"
+            class="mt-1 cursor-default text-[11px] leading-4 text-on-danger-muted underline-offset-2 hover:underline"
+            :aria-expanded="rawOpen"
+            @click="rawOpen = !rawOpen"
+          >
+            {{ rawOpen ? t('error.hideUpstream') : t('error.showUpstream') }}
+          </button>
+          <pre
+            v-if="rawOpen"
+            class="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-overlay/10 p-2 font-mono text-[11px] leading-4 text-on-danger-muted"
+          >{{ raw }}</pre>
+        </template>
       </div>
     </div>
     <!-- Two lines: the controls sit centred. Three (with facts): they hold the first line. -->

@@ -22,6 +22,7 @@ import type {
 import { TranscriptLog } from '../transcript/transcript'
 import { ProviderStreamError } from './provider-stream-error'
 import {
+  outlastsRetries,
   isRetryableCode,
   retryDelayMs,
   type TurnRetryPolicy
@@ -253,7 +254,7 @@ export class ProviderTurnLoop<State> {
           if (isUnwindable && attempt < policy.maxAttempts && isRetryableCode(
             policy,
             errorEvent.code
-          )) {
+          ) && !outlastsRetries(policy, errorEvent.retryAfterMs ?? null)) {
             await this.host.restoreCommandState(attemptStart)
             return {
               type: 'retry',

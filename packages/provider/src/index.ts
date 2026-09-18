@@ -44,6 +44,7 @@ export {
   DEFAULT_POLL_INTERVAL_SECONDS,
 } from './oauth'
 export { readServerSentEvents, type ServerSentEvent } from './sse'
+export { retryAtFromUpstream } from './upstream'
 export {
   reportedStringSchema,
   taggedUnion,
