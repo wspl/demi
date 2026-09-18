@@ -1,9 +1,10 @@
 import type { Context } from 'hono'
 import type { UpgradeWebSocket } from 'hono/ws'
-import type { Server } from 'bun'
 import { RemoteNetError, type RemoteNet } from '@demicodes/host-remote'
 import type { ConversationTargets } from '../conversation/target'
 import type { PipeBroker, PipeWriter } from '@demicodes/host-remote'
+import { IdleTimer } from '@demicodes/utils'
+import { bunServerOf } from '../http/bun-server'
 import type { Exposes } from './records'
 import {
   CHUNKED_EOF,
@@ -97,7 +98,7 @@ export class ExposeRelay {
     if (!release)
       return limitReached()
     let stream: RelayStream | null = null
-    let idle: IdleWatch | null = null
+    let idle: IdleTimer | null = null
     let done = false
     // One owner for the connection's whole life: the response may stream long
     // after `handle` returns, so nothing is released on the way out.
@@ -114,7 +115,7 @@ export class ExposeRelay {
     // Destroying the record ends its connections: the registry's stored
     // closer aborts this signal (`expose.md` § Lifetime).
     controller.signal.addEventListener('abort', () => endings.end(), { once: true })
-    const idleOf = () => new IdleWatch(
+    const idleOf = () => new IdleTimer(
       this.deps.idleTimeoutMs ?? IDLE_TIMEOUT_MS,
       () => {
         controller.abort(new Error('relay connection idle'))
@@ -177,7 +178,7 @@ export class ExposeRelay {
     c: Context,
     record: { address: string },
     stream: RelayStream,
-    idle: IdleWatch,
+    idle: IdleTimer,
     endings: ConnectionEndings
   ): Promise<Response> {
     const request = c.req.raw
@@ -288,7 +289,7 @@ export class ExposeRelay {
     c: Context,
     record: { deviceId: string; address: string },
     net: RemoteNet,
-    idleOf: () => IdleWatch,
+    idleOf: () => IdleTimer,
     endings: ConnectionEndings
   ): Promise<Response> {
     // The visitor is upgraded first (`expose.md` § The public relay step 5);
@@ -535,7 +536,7 @@ class TouchingWriter {
 
   constructor(
     private readonly writer: PipeWriter,
-    private readonly idle: IdleWatch
+    private readonly idle: IdleTimer
   ) {}
 
   write(chunk: Uint8Array): Promise<void> {
@@ -548,29 +549,6 @@ class TouchingWriter {
   }
 }
 
-/** No bytes in either direction for the timeout: the connection is closed. */
-class IdleWatch {
-  private timer: ReturnType<typeof setTimeout> | null = null
-  constructor(
-    private readonly timeoutMs: number,
-    private readonly onFire: () => void
-  ) {
-    this.touch()
-  }
-
-  touch(): void {
-    if (this.timer !== null)
-      clearTimeout(this.timer)
-    this.timer = setTimeout(this.onFire, this.timeoutMs)
-  }
-
-  close(): void {
-    if (this.timer !== null)
-      clearTimeout(this.timer)
-    this.timer = null
-  }
-}
-
 function splitAddress(address: string): [string, number] {
   const index = address.lastIndexOf(':')
   const port = Number(address.slice(index + 1))
@@ -578,8 +556,7 @@ function splitAddress(address: string): [string, number] {
 }
 
 function visitorIp(c: Context): string | null {
-  // Hono carries the Bun server as the fetch handler's second argument.
-  const server = c.env as Server<unknown> | undefined
+  const server = bunServerOf(c)
   try {
     return server?.requestIP(c.req.raw)?.address ?? null
   } catch {

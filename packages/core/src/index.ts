@@ -542,3 +542,5 @@ export interface QueuedMessage {
 export interface Transcript {
   blocks: Block[]
 }
+
+export { previewMediaType, showsInPlace } from './file-types'

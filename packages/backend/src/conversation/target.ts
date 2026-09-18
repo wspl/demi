@@ -1,6 +1,6 @@
 import type { RemoteHost } from '@demicodes/host-remote'
 import { reachableHosts } from './hosts'
-import { ActivityGate } from '@demicodes/utils'
+import { ActivityGate, noop } from '@demicodes/utils'
 import type { ManagedHosts } from '../managed/lifecycle'
 import type { ConversationLifecycle } from '../lifecycle/conversations'
 import type { RunnerRegistry } from '../runner/registry'
@@ -37,7 +37,10 @@ export type SwitchTargetResult = {
 }
 
 export class HostAccessRefused extends Error {
-  constructor(readonly code: 'conversation_archived' | 'host_not_attached', message: string) {
+  constructor(
+    readonly code: 'conversation_archived' | 'host_not_attached' | 'conversation_busy',
+    message: string,
+  ) {
     super(message)
   }
 }
@@ -50,8 +53,17 @@ interface HostSelection {
   prepareDirectory: boolean
 }
 
+/** One running file transfer: how to end it, and when it has let go of its access. */
+interface Transfer {
+  controller: AbortController
+  settled: Promise<void>
+}
+
 export class ConversationTargets {
   private readonly fileActivity = new Map<string, ActivityGate>()
+  private readonly transfers = new Map<string, Set<Transfer>>()
+  /** Conversations whose transfers are closed, with how many closings hold them. */
+  private readonly transfersClosed = new Map<string, number>()
   private readonly activityObservers = new Set<(id: string, active: boolean) => void>()
   private readonly subscriptions = new DisposableStack()
   constructor(private readonly deps: ConversationTargetsDeps) {}
@@ -81,8 +93,10 @@ export class ConversationTargets {
   async detach(id: string, deviceId: string): Promise<boolean> {
     const tree = this.deps.reserveTree(id)
     if (!tree) return false
+    const reopenTransfers = await this.closeTransfers(id)
     const file = this.files(id).tryReserve()
     if (!file) {
+      reopenTransfers()
       tree()
       return false
     }
@@ -95,6 +109,7 @@ export class ConversationTargets {
       return true
     } finally {
       file()
+      reopenTransfers()
       tree()
     }
   }
@@ -170,6 +185,73 @@ export class ConversationTargets {
       }
     } finally {
       machine?.release()
+    }
+  }
+
+  /**
+   * A file transfer (`sessions-and-targets.md` § Host operations): `run`
+   * holds the conversation's Host access for as long as it lasts, like any
+   * operation, but an archive, a target change, a detach or a Cloud reset
+   * ends it instead of waiting for it, through the signal `run` receives.
+   * `signal`, the browser's request, ends it as well.
+   */
+  async transfer<T>(
+    id: string,
+    run: (host: RemoteHost, signal: AbortSignal) => Promise<T>,
+    options: { signal: AbortSignal; deviceId?: string },
+  ): Promise<T> {
+    if (this.transfersClosed.has(id))
+      throw new HostAccessRefused('conversation_busy', 'The conversation is changing; its file transfers are closed')
+    const controller = new AbortController()
+    const end = () => controller.abort(options.signal.reason)
+    options.signal.addEventListener('abort', end, { once: true })
+    if (options.signal.aborted)
+      end()
+    const running = this.withHost(id, (host) => run(host, controller.signal), {
+      signal: controller.signal,
+      deviceId: options.deviceId,
+    })
+    // `settled` only marks the end; the caller of `transfer` sees the outcome.
+    const transfer: Transfer = { controller, settled: running.then(noop, noop) }
+    let open = this.transfers.get(id)
+    if (!open) {
+      open = new Set()
+      this.transfers.set(id, open)
+    }
+    open.add(transfer)
+    try {
+      return await running
+    } finally {
+      open.delete(transfer)
+      if (open.size === 0)
+        this.transfers.delete(id)
+      options.signal.removeEventListener('abort', end)
+    }
+  }
+
+  /**
+   * Ends the conversation's file transfers and refuses new ones until the
+   * returned release, so an archive, a target change, a detach or a Cloud
+   * reset can take the file gate. Resolves once every ended transfer has
+   * released its access; a player's retry in the meantime is refused, never
+   * admitted ahead of the change.
+   */
+  async closeTransfers(id: string): Promise<() => void> {
+    this.transfersClosed.set(id, (this.transfersClosed.get(id) ?? 0) + 1)
+    const open = [...(this.transfers.get(id) ?? [])]
+    for (const transfer of open)
+      transfer.controller.abort(new HostAccessRefused('conversation_busy', 'The conversation changed under the transfer'))
+    await Promise.all(open.map((transfer) => transfer.settled))
+    let released = false
+    return () => {
+      if (released)
+        return
+      released = true
+      const holders = (this.transfersClosed.get(id) ?? 1) - 1
+      if (holders === 0)
+        this.transfersClosed.delete(id)
+      else
+        this.transfersClosed.set(id, holders)
     }
   }
 
@@ -269,8 +351,10 @@ export class ConversationTargets {
     const releaseTree = this.deps.reserveTree(id)
     if (!releaseTree)
       return { outcome: 'turn_in_flight' }
+    const reopenTransfers = await this.closeTransfers(id)
     const releaseFiles = this.files(id).tryReserve()
     if (!releaseFiles) {
+      reopenTransfers()
       releaseTree()
       return { outcome: 'turn_in_flight' }
     }
@@ -305,6 +389,7 @@ export class ConversationTargets {
       return { outcome: won ? 'switched' : 'conflict' }
     } finally {
       releaseFiles()
+      reopenTransfers()
       releaseTree()
     }
   }
