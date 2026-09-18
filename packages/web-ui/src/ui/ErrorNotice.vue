@@ -73,18 +73,18 @@ const rawOpen = ref(false)
         <template v-if="raw">
           <button
             type="button"
-            class="-ml-0.5 mt-1 flex cursor-default items-center gap-[3px] text-[12px] leading-[18px] text-on-danger-muted hover:text-on-danger"
+            class="mt-1 flex cursor-default items-center gap-1 text-[12px] leading-[18px] text-on-danger-muted hover:text-on-danger"
             :aria-expanded="rawOpen"
             @click="rawOpen = !rawOpen"
           >
-            <!-- 10px beside a 12px label; the glyph's own margin plus 3px reads as one word space. -->
-            <FoldChevron :open="rawOpen" :size="ICON_PX.in12" />
+            <!-- The label, then its chevron, as the transcript's foldable rows read ("Thought briefly ›"). -->
             {{ t('error.upstream') }}
+            <FoldChevron :open="rawOpen" :size="ICON_PX.in12" />
           </button>
           <!-- Mounted while closed so the height can animate both ways. -->
           <Fold :open="rawOpen">
             <pre
-              class="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-overlay/10 p-2 font-mono text-[11px] leading-4 text-on-danger-muted"
+              class="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-sunken p-2 font-mono text-[11px] leading-4 text-on-danger-muted"
             >{{ raw }}</pre>
           </Fold>
         </template>
