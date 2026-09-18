@@ -58,9 +58,10 @@ const menuRoot = inject(menuRootKey, null)
 const showIconGutter = computed(() => props.iconless !== true && !menuIconless.value)
 const showsSubmenu = computed(() => props.hasSubmenu || slots.submenu != null)
 // The suffix column only exists when something renders in it, so empty rows add no width.
+const hasActions = computed(() => slots.actions != null)
 const hasSuffix = computed(
   () =>
-    slots.suffix != null || isChoice.value || showsSubmenu.value || !!props.shortcut
+    slots.suffix != null || hasActions.value || isChoice.value || showsSubmenu.value || !!props.shortcut
 )
 
 const triggerRef = ref<HTMLElement | null>(null)
@@ -103,7 +104,7 @@ function handleClick(event: MouseEvent) {
     shouldDismissMenuTree({
       isChoice: isChoice.value,
       hasSubmenu: false,
-      hasSuffix: slots.suffix != null,
+      hasSuffix: slots.suffix != null || hasActions.value,
     })
   ) {
     menuRoot?.dismiss()
@@ -137,7 +138,7 @@ const toneClass = computed(() => {
   <Tooltip
     v-bind="$attrs"
     data-menu-item
-    class="flex h-7 shrink-0"
+    class="flex shrink-0"
     :content="tooltipContent"
     :disabled="!tooltipContent"
     placement="bottom"
@@ -147,7 +148,7 @@ const toneClass = computed(() => {
     <div
       ref="triggerRef"
       role="menuitem"
-      class="menu-row h-full w-full cursor-default select-none items-center rounded-md px-2 text-chrome transition-colors duration-200 ease-out"
+      class="menu-row h-full w-full cursor-default select-none items-center rounded-md text-chrome transition-colors duration-200 ease-out"
       :class="toneClass"
       :aria-checked="isChoice ? isSelected : undefined"
       :aria-disabled="isDisabled || undefined"
@@ -199,7 +200,11 @@ const toneClass = computed(() => {
         v-if="hasSuffix"
         class="menu-cell-suffix flex items-center justify-end"
       >
-        <slot name="suffix">
+        <!-- Trailing `xs` icon buttons go here, never in `suffix`: this cell owns their inset from the row's edge. -->
+        <span v-if="hasActions" class="menu-cell-actions">
+          <slot name="actions" />
+        </span>
+        <slot v-else name="suffix">
           <span
             v-if="isChoice"
             class="flex size-3.5 shrink-0 items-center justify-center"

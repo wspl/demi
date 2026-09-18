@@ -9,7 +9,7 @@ import type { ExposeMenuEntry } from './types'
 /**
  * One expose row of the session tools menu: the address, the host in
  * parentheses, and a countdown on the shared clock. Selecting the row opens
- * the URL; the suffix controls renew or remove the expose without leaving
+ * the URL; the row's actions renew or remove the expose without leaving
  * the menu.
  */
 const props = defineProps<{
@@ -36,25 +36,23 @@ const countdown = computed(() => formatTimeRemaining(remaining.value))
     :title="expose.url"
     @select="emit('open')"
   >
-    <template #suffix>
-      <span class="flex items-center gap-0.5">
-        <IconButton
-          :icon="RefreshCw"
-          size="xs"
-          variant="ghost"
-          aria-label="Renew for an hour"
-          :disabled="pending"
-          @click.stop="emit('renew')"
-        />
-        <IconButton
-          :icon="X"
-          size="xs"
-          variant="ghost"
-          aria-label="Remove expose"
-          :loading="pending"
-          @click.stop="emit('remove')"
-        />
-      </span>
+    <template #actions>
+      <IconButton
+        :icon="RefreshCw"
+        size="xs"
+        variant="ghost"
+        aria-label="Renew for an hour"
+        :disabled="pending"
+        @click.stop="emit('renew')"
+      />
+      <IconButton
+        :icon="X"
+        size="xs"
+        variant="ghost"
+        aria-label="Remove expose"
+        :loading="pending"
+        @click.stop="emit('remove')"
+      />
     </template>
   </MenuItem>
 </template>

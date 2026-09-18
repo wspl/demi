@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Search } from '@lucide/vue'
+import { Globe, RefreshCw, Search, X } from '@lucide/vue'
+import Menu from '@demicodes/web-ui/ui/Menu.vue'
+import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -116,6 +118,20 @@ const surfaces = [
             />
           </div>
         </div>
+      </GallerySpecimen>
+      <!-- A control at a container's edge keeps one distance to every edge it touches:
+           (container height - control height) / 2. The container's primitive owns that
+           inset through a dedicated slot; callers never place a control with their own margin. -->
+      <GallerySpecimen variant="row actions · equal inset to the top, bottom and right edge">
+        <Menu class="w-72" data-row-actions>
+          <MenuItem :icon="Globe" label="127.0.0.1:5173" value="52 min left">
+            <template #actions>
+              <IconButton :icon="RefreshCw" size="xs" variant="ghost" aria-label="Renew" />
+              <IconButton :icon="X" size="xs" variant="ghost" aria-label="Remove" />
+            </template>
+          </MenuItem>
+          <MenuItem :icon="Globe" label="A row without actions" value="text keeps the row padding" />
+        </Menu>
       </GallerySpecimen>
     </div>
     <GalleryLoadingStates />
